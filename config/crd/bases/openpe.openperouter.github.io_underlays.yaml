@@ -1,0 +1,139 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.14.0
+  name: underlays.openpe.openperouter.github.io
+spec:
+  group: openpe.openperouter.github.io
+  names:
+    kind: Underlay
+    listKind: UnderlayList
+    plural: underlays
+    singular: underlay
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Underlay is the Schema for the underlays API.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: UnderlaySpec defines the desired state of Underlay.
+            properties:
+              asn:
+                description: ASN is the local AS number to use for the session with
+                  the TOR switch.
+                format: int32
+                maximum: 4294967295
+                minimum: 0
+                type: integer
+              neighbors:
+                description: Neighbors is the list of external neighbors to peer with.
+                items:
+                  description: Neighbor represents a BGP Neighbor we want FRR to connect
+                    to.
+                  properties:
+                    address:
+                      description: Address is the IP address to establish the session
+                        with.
+                      type: string
+                    asn:
+                      description: |-
+                        ASN is the AS number to use for the local end of the session.
+                        ASN and DynamicASN are mutually exclusive and one of them must be specified.
+                      format: int32
+                      maximum: 4294967295
+                      minimum: 0
+                      type: integer
+                    bfdProfile:
+                      description: |-
+                        BFDProfile is the name of the BFD Profile to be used for the BFD session associated
+                        to the BGP session. If not set, the BFD session won't be set up.
+                      type: string
+                    connectTime:
+                      description: Requested BGP connect time, controls how long BGP
+                        waits between connection attempts to a neighbor.
+                      type: string
+                      x-kubernetes-validations:
+                      - message: connect time should be between 1 seconds to 65535
+                        rule: duration(self).getSeconds() >= 1 && duration(self).getSeconds()
+                          <= 65535
+                      - message: connect time should contain a whole number of seconds
+                        rule: duration(self).getMilliseconds() % 1000 == 0
+                    ebgpMultiHop:
+                      description: EBGPMultiHop indicates if the BGPPeer is multi-hops
+                        away.
+                      type: boolean
+                    holdTime:
+                      description: |-
+                        HoldTime is the requested BGP hold time, per RFC4271.
+                        Defaults to 180s.
+                      type: string
+                    keepaliveTime:
+                      description: |-
+                        KeepaliveTime is the requested BGP keepalive time, per RFC4271.
+                        Defaults to 60s.
+                      type: string
+                    password:
+                      description: |-
+                        Password to be used for establishing the BGP session.
+                        Password and PasswordSecret are mutually exclusive.
+                      type: string
+                    passwordSecret:
+                      description: |-
+                        PasswordSecret is name of the authentication secret for the neighbor.
+                        the secret must be of type "kubernetes.io/basic-auth", and created in the
+                        same namespace as the frr-k8s daemon. The password is stored in the
+                        secret as the key "password".
+                        Password and PasswordSecret are mutually exclusive.
+                      type: string
+                    port:
+                      description: |-
+                        Port is the port to dial when establishing the session.
+                        Defaults to 179.
+                      maximum: 16384
+                      minimum: 0
+                      type: integer
+                  required:
+                  - address
+                  type: object
+                type: array
+              nic:
+                description: |-
+                  Nics is the list of physical nics to move under the PERouter namespace to connect
+                  to external routers.
+                items:
+                  type: string
+                type: array
+              vtepcidr:
+                description: VTEPCIDR is CIDR to be used to assign IPs to the local
+                  VTEP on each node.
+                type: string
+            type: object
+          status:
+            description: UnderlayStatus defines the observed state of Underlay.
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

@@ -7,4 +7,23 @@ layout:
 - go.kubebuilder.io/v4
 projectName: openperouter
 repo: github.com/openperouter/openperouter
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: openperouter.github.io
+  group: openpe
+  kind: Underlay
+  path: github.com/openperouter/openperouter/api/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: openperouter.github.io
+  group: openpe
+  kind: VNI
+  path: github.com/openperouter/openperouter/api/v1alpha1
+  version: v1alpha1
 version: "3"
