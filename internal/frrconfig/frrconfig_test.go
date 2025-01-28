@@ -82,18 +82,18 @@ func TestFakeReloadHelper(t *testing.T) {
 		}
 		args = args[1:]
 	}
-	if len(args) != 4 {
-		fmt.Printf("expecting 4 args, got %v", args)
+	if len(args) != 3 {
+		fmt.Printf("expecting 3 args, got %v", args)
 		os.Exit(1)
 	}
 
-	if !reflect.DeepEqual(args[:2], []string{"-c", reloaderPath}) {
+	if !reflect.DeepEqual(args[0], reloaderPath) {
 		fmt.Println("expected to be called with -c reloader args", args)
 		os.Exit(1)
 	}
-	actionParam, _ := strings.CutPrefix(args[2], "--")
+	actionParam, _ := strings.CutPrefix(args[1], "--")
 	action := Action(actionParam)
-	path := args[3]
+	path := args[2]
 
 	params, ok := tests[path]
 	if !ok {
