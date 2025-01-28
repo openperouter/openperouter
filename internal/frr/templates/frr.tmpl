@@ -1,0 +1,80 @@
+log file /etc/frr/frr.log {{.Loglevel}}
+log timestamp precision 3
+{{- if eq .Loglevel "debug" }}
+debug zebra events
+debug zebra nht
+debug zebra kernel
+debug zebra rib
+debug zebra nexthop
+debug bgp neighbor-events
+debug bgp updates
+debug bgp keepalives
+debug bgp nht
+debug bgp zebra
+debug bfd network
+debug bfd peer
+debug bfd zebra
+{{- end }}
+hostname {{.Hostname}}
+ip nht resolve-via-default
+ipv6 nht resolve-via-default
+
+{{- range .VNIs }}
+vrf {{ .VRF }}
+  vni {{ .VNI }}
+exit-vrf
+{{- end }}
+
+route-map allowall permit 1
+
+{{- if .Underlay.MyASN }}
+router bgp {{ .Underlay.MyASN }}
+  no bgp ebgp-requires-policy
+  no bgp network import-check
+  no bgp default ipv4-unicast
+
+{{- range $n := .Underlay.Neighbors }}
+{{- template "neighborsession" dict "neighbor" $n "routerASN" $.Underlay.MyASN -}}
+{{- end }}
+{{- range $n := .Underlay.Neighbors }}
+{{- template "neighborenableipfamily" . -}}
+{{end }}
+  address-family ipv4 unicast
+    network {{ .Underlay.VTEP }}
+  exit-address-family
+
+  address-family l2vpn evpn
+{{- range .Underlay.Neighbors }}
+    neighbor {{ .Addr }} activate
+    neighbor {{ .Addr }} allowas-in origin
+{{- end }}
+    advertise-all-vni
+    advertise-svi-ip
+  exit-address-family
+{{- end }}
+
+{{- range .VNIs }}
+
+router bgp {{ .ASN }} vrf {{ .VRF }}
+  no bgp ebgp-requires-policy
+  no bgp network import-check
+  no bgp default ipv4-unicast
+
+  neighbor {{ .LocalNeighbor.Addr }} remote-as {{ .LocalNeighbor.ASN }}
+
+  address-family ipv4 unicast
+  {{- range .ToAdvertise }}
+    network {{ . }}
+  {{- end }}
+    neighbor {{ .LocalNeighbor.Addr }} activate
+    neighbor {{ .LocalNeighbor.Addr }} route-map allowall in
+    neighbor {{ .LocalNeighbor.Addr }} route-map allowall out
+    neighbor {{ .LocalNeighbor.Addr }} allowas-in origin
+  exit-address-family
+
+  address-family l2vpn evpn
+    advertise ipv4 unicast
+    advertise ipv6 unicast
+  exit-address-family
+exit
+{{- end }}
