@@ -54,3 +54,5 @@ Add a status on VNI with the local ip / a way to use it from outside.
 
 Remove the VRF field and use the name of the VNI / autogenerate it
 Add a label to the node so the node index is sticky, or even better, use the annotation to express the VTEP / VNI cidr
+
+Destroy the frr pod if somebody tries to change the underlay interface.
