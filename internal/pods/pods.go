@@ -47,7 +47,7 @@ func NewRuntime(socketPath string, timeout time.Duration) (*Runtime, error) {
 		return nil, fmt.Errorf("path to CRI socket missing")
 	}
 
-	clientConnection, err := connect(socketPath, timeout)
+	clientConnection, err := connect(socketPath)
 	if err != nil {
 		return nil, fmt.Errorf("error establishing connection to CRI: %w", err)
 	}
@@ -120,18 +120,13 @@ func (r *Runtime) podSandboxID(ctx context.Context, podUID string) (string, erro
 	return podSandbox.Items[0].Id, nil
 }
 
-func connect(socketPath string, timeout time.Duration) (*grpc.ClientConn, error) {
+func connect(socketPath string) (*grpc.ClientConn, error) {
 	if socketPath == "" {
 		return nil, fmt.Errorf("endpoint is not set")
 	}
 
-	ctx, cancelFn := context.WithTimeout(context.Background(), timeout)
-	defer cancelFn()
-	conn, err := grpc.DialContext(
-		ctx,
-		criServerAddress(socketPath),
+	conn, err := grpc.NewClient(criServerAddress(socketPath),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error connecting to endpoint '%s': %v", socketPath, err)
