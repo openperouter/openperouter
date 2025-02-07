@@ -83,6 +83,11 @@ jobs:
           go-version-file: "go.mod"
           cache: true
 
+      - name: Install kernel modules
+        run: |
+          sudo apt-get update
+          sudo apt-get install linux-modules-extra-$(uname -r)
+
       - name: Unit Tests
         run: |
           make test
