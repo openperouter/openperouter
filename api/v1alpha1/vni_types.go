@@ -78,6 +78,15 @@ type VNI struct {
 	Status VNIStatus `json:"status,omitempty"`
 }
 
+// VRFName returns the name to be used for the
+// vrf corresponding to the object.
+func (v VNI) VRFName() string {
+	if v.Spec.VRF != nil && *v.Spec.VRF != "" {
+		return *v.Spec.VRF
+	}
+	return v.Name
+}
+
 // +kubebuilder:object:root=true
 
 // VNIList contains a list of VNI.
