@@ -2,13 +2,11 @@
 set -euo pipefail
 
 pushd "$(dirname $(readlink -f $0))"
-
 KUBECONFIG_PATH=${KUBECONFIG_PATH:-"$(pwd)/kubeconfig"}
 KIND_BIN=${KIND_BIN:-"kind"}
 CLAB_VERSION=0.64.0
 
 KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME:-pe-kind}"
-
 
 clusters=$("${KIND_BIN}" get clusters)
 for cluster in $clusters; do
@@ -37,12 +35,14 @@ docker run --rm -it --privileged \
     -w $(pwd) \
     ghcr.io/srl-labs/clab:$CLAB_VERSION /usr/bin/clab deploy --reconfigure --topo kind.clab.yml
 
-docker image pull quay.io/metallb/frr-k8s:v0.0.17
-docker image pull quay.io/frrouting/frr:9.1.0
+docker image pull quay.io/metallb/frr-k8s:main
+docker image pull quay.io/frrouting/frr:9.0.0
+docker image pull quay.io/frrouting/frr:9.0.2
 docker image pull gcr.io/kubebuilder/kube-rbac-proxy:v0.13.1
-kind load docker-image quay.io/frrouting/frr:9.1.0 --name pe-kind
+kind load docker-image quay.io/frrouting/frr:9.0.0 --name pe-kind
+kind load docker-image quay.io/frrouting/frr:9.0.2 --name pe-kind
 kind load docker-image gcr.io/kubebuilder/kube-rbac-proxy:v0.13.1 --name pe-kind
-kind load docker-image quay.io/metallb/frr-k8s:v0.0.17 --name pe-kind
+kind load docker-image quay.io/metallb/frr-k8s:main --name pe-kind
 
 docker cp kind/setup.sh pe-kind-control-plane:/setup.sh
 docker cp kind/setupworker.sh pe-kind-worker:/setupworker.sh
@@ -58,8 +58,4 @@ docker exec clab-kind-leaf1 /setup.sh
 docker exec clab-kind-leaf2 /setup.sh
 docker exec clab-kind-spine /setup.sh
 docker exec clab-kind-HOST1 /setup.sh
-
-sudo ./check_veths.sh kindctrlpl toswitch pe-kind-control-plane 192.168.11.3/24 &
-sudo ./check_veths.sh kindworker toswitch pe-kind-worker 192.168.11.4/24 &
-
 popd
