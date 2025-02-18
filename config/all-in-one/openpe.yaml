@@ -634,7 +634,7 @@ spec:
       terminationGracePeriodSeconds: 10
       tolerations:
       - effect: NoSchedule
-        key: node-role.kubernetes.io/10.2.1
+        key: node-role.kubernetes.io/master
         operator: Exists
       - effect: NoSchedule
         key: node-role.kubernetes.io/control-plane
