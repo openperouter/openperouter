@@ -1,5 +1,3 @@
-<<<<<<< HEAD
-=======
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -658,4 +656,3 @@ spec:
         name: frrsharedconfig
       - emptyDir: {}
         name: frrconfig
->>>>>>> 33a505b (Underlay: fix the nic field to plural)
