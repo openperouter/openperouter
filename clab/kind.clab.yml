@@ -1,0 +1,59 @@
+name: kind
+topology:
+  nodes:
+    leaf1:
+      kind: linux
+      image: quay.io/frrouting/frr:10.2.1
+      binds:
+        - leaf1/daemons:/etc/frr/daemons
+        - leaf1/frr.conf:/etc/frr/frr.conf
+        - leaf1/vtysh.conf:/etc/frr/vtysh.conf
+        - leaf1/setup.sh:/setup.sh
+    leaf2:
+      kind: linux
+      image: quay.io/frrouting/frr:10.2.1
+      binds:
+        - leaf2/daemons:/etc/frr/daemons
+        - leaf2/vtysh.conf:/etc/frr/vtysh.conf
+        - leaf2/frr.conf:/etc/frr/frr.conf
+        - leaf2/setup.sh:/setup.sh
+    spine:
+      kind: linux
+      image: quay.io/frrouting/frr:10.2.1
+      binds:
+        - spine/daemons:/etc/frr/daemons
+        - spine/vtysh.conf:/etc/frr/vtysh.conf
+        - spine/frr.conf:/etc/frr/frr.conf
+        - spine/setup.sh:/setup.sh
+
+    HOST1:
+      kind: linux
+      image: praqma/network-multitool:latest
+      binds:
+        - host1/setup.sh:/setup.sh
+      cmd: sleep INF
+
+    leaf2-switch:
+      kind: bridge
+
+    pe-kind:
+      kind: k8s-kind
+      startup-config: kind-configuration.yaml
+
+    pe-kind-control-plane:
+      kind: ext-container
+      binds:
+        - kind/setup.sh:/setup.sh
+
+    pe-kind-worker:
+      kind: ext-container
+      binds:
+        - kind/setupworker.sh:/setupworker.sh
+
+  links:
+    - endpoints: ["leaf1:eth1", "spine:eth1"]
+    - endpoints: ["leaf2:eth1", "spine:eth2"]
+    - endpoints: ["HOST1:eth1", "leaf1:eth2"]
+    - endpoints: ["leaf2:eth2", "leaf2-switch:cleth1"]
+    - endpoints: ["pe-kind-control-plane:cleth1", "leaf2-switch:cleth2"]
+    - endpoints: ["pe-kind-worker:cleth1", "leaf2-switch:cleth3"]
