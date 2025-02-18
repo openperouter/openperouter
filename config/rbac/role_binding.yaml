@@ -4,12 +4,12 @@ metadata:
   labels:
     app.kubernetes.io/name: openperouter
     app.kubernetes.io/managed-by: kustomize
-  name: manager-rolebinding
+  name: controller-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: manager-role
+  name: controller-role
 subjects:
 - kind: ServiceAccount
-  name: controller-manager
+  name: controller
   namespace: system
