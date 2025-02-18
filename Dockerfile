@@ -1,33 +1,35 @@
 # Build the manager binary
-FROM golang:1.22 AS builder
+FROM golang:1.23.6 AS builder
+
+ARG GIT_COMMIT=dev
+ARG GIT_BRANCH=dev
 ARG TARGETOS
 ARG TARGETARCH
 
-WORKDIR /workspace
-# Copy the Go Modules manifests
-COPY go.mod go.mod
-COPY go.sum go.sum
-# cache deps before building and copying source so that we don't need to re-download as much
-# and so that source changes don't invalidate our downloaded layer
+WORKDIR $GOPATH/openperouter
+# Cache the downloads
+COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy the go source
-COPY cmd/main.go cmd/main.go
+COPY cmd/ cmd/
 COPY api/ api/
 COPY internal/ internal/
 
-# Build
-# the GOARCH has not a default value to allow the binary be built according to the host where the command
-# was called. For example, if we call make docker-build in a local env which has the Apple Silicon M1 SO
-# the docker BUILDPLATFORM arg will be linux/arm64 when for Apple x86 it will be linux/amd64. Therefore,
-# by leaving it empty we can ensure that the container and binary shipped on it will have the same platform.
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o manager cmd/main.go
+RUN --mount=type=cache,target=/root/.cache/go-build \
+  --mount=type=cache,target=/go/pkg \
+  CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -o reloader cmd/reloader/main.go \
+  && \
+  CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -o controller cmd/hostcontroller/main.go \
+  && \
+  CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -o cp-tool cmd/cp-tool/main.go
 
 # Use distroless as minimal base image to package the manager binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
-FROM gcr.io/distroless/static:nonroot
+#FROM gcr.io/distroless/static:nonroot
+FROM quay.io/fedora/fedora:latest
 WORKDIR /
-COPY --from=builder /workspace/manager .
-USER 65532:65532
+COPY --from=builder /go/openperouter/reloader .
+COPY --from=builder /go/openperouter/controller .
+COPY --from=builder /go/openperouter/cp-tool .
 
-ENTRYPOINT ["/manager"]
+ENTRYPOINT ["/controller"]
