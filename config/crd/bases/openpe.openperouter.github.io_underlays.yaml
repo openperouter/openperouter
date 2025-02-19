@@ -112,7 +112,7 @@ spec:
                   type: object
                 minItems: 1
                 type: array
-              nic:
+              nics:
                 description: |-
                   Nics is the list of physical nics to move under the PERouter namespace to connect
                   to external routers.

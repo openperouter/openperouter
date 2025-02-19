@@ -41,7 +41,7 @@ type UnderlaySpec struct {
 	// +kubebuilder:validation:Items=Pattern=`^[a-zA-Z][a-zA-Z0-9_-]*$`
 	// +kubebuilder:validation:Items=MaxLength=15
 	// +kubebuilder:validation:MinItems=1
-	Nics []string `json:"nic,omitempty"`
+	Nics []string `json:"nics,omitempty"`
 }
 
 // UnderlayStatus defines the observed state of Underlay.

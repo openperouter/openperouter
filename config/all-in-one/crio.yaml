@@ -1,0 +1,661 @@
+<<<<<<< HEAD
+=======
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: openperouter
+    control-plane: controller-manager
+    pod-security.kubernetes.io/enforce: privileged
+  name: openperouter-system
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.14.0
+  name: underlays.openpe.openperouter.github.io
+spec:
+  group: openpe.openperouter.github.io
+  names:
+    kind: Underlay
+    listKind: UnderlayList
+    plural: underlays
+    singular: underlay
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Underlay is the Schema for the underlays API.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: UnderlaySpec defines the desired state of Underlay.
+            properties:
+              asn:
+                description: ASN is the local AS number to use for the session with
+                  the TOR switch.
+                format: int32
+                maximum: 4294967295
+                minimum: 1
+                type: integer
+              neighbors:
+                description: Neighbors is the list of external neighbors to peer with.
+                items:
+                  description: Neighbor represents a BGP Neighbor we want FRR to connect
+                    to.
+                  properties:
+                    address:
+                      description: Address is the IP address to establish the session
+                        with.
+                      type: string
+                    asn:
+                      description: ASN is the AS number to use for the local end of
+                        the session.
+                      format: int32
+                      maximum: 4294967295
+                      minimum: 1
+                      type: integer
+                    connectTime:
+                      description: Requested BGP connect time, controls how long BGP
+                        waits between connection attempts to a neighbor.
+                      type: string
+                      x-kubernetes-validations:
+                      - message: connect time should be between 1 seconds to 65535
+                        rule: duration(self).getSeconds() >= 1 && duration(self).getSeconds()
+                          <= 65535
+                      - message: connect time should contain a whole number of seconds
+                        rule: duration(self).getMilliseconds() % 1000 == 0
+                    ebgpMultiHop:
+                      description: EBGPMultiHop indicates if the BGPPeer is multi-hops
+                        away.
+                      type: boolean
+                    holdTime:
+                      description: |-
+                        HoldTime is the requested BGP hold time, per RFC4271.
+                        Defaults to 180s.
+                      type: string
+                    keepaliveTime:
+                      description: |-
+                        KeepaliveTime is the requested BGP keepalive time, per RFC4271.
+                        Defaults to 60s.
+                      type: string
+                    password:
+                      description: |-
+                        Password to be used for establishing the BGP session.
+                        Password and PasswordSecret are mutually exclusive.
+                      type: string
+                    passwordSecret:
+                      description: |-
+                        PasswordSecret is name of the authentication secret for the neighbor.
+                        the secret must be of type "kubernetes.io/basic-auth", and created in the
+                        same namespace as the perouter daemon. The password is stored in the
+                        secret as the key "password".
+                        Password and PasswordSecret are mutually exclusive.
+                      type: string
+                    port:
+                      description: |-
+                        Port is the port to dial when establishing the session.
+                        Defaults to 179.
+                      maximum: 16384
+                      minimum: 0
+                      type: integer
+                  required:
+                  - address
+                  type: object
+                minItems: 1
+                type: array
+              nics:
+                description: |-
+                  Nics is the list of physical nics to move under the PERouter namespace to connect
+                  to external routers.
+                items:
+                  type: string
+                minItems: 1
+                type: array
+              vtepcidr:
+                description: VTEPCIDR is CIDR to be used to assign IPs to the local
+                  VTEP on each node.
+                type: string
+            type: object
+          status:
+            description: UnderlayStatus defines the observed state of Underlay.
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.14.0
+  name: vnis.openpe.openperouter.github.io
+spec:
+  group: openpe.openperouter.github.io
+  names:
+    kind: VNI
+    listKind: VNIList
+    plural: vnis
+    singular: vni
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          VNI represents a VXLan VNI to receive EVPN type 5 routes
+          from.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: VNISpec defines the desired state of VNI.
+            properties:
+              asn:
+                description: |-
+                  ASN is the local AS number to use to establish a BGP session with
+                  the default namespace.
+                format: int32
+                maximum: 4294967295
+                minimum: 1
+                type: integer
+              hostasn:
+                description: |-
+                  ASN is the expected AS number for a BGP speaking component running in
+                  the default network namespace. If not set, the ASN field is going to be used.
+                format: int32
+                maximum: 4294967295
+                minimum: 0
+                type: integer
+              localcidr:
+                description: |-
+                  LocalCIDR is the CIDR to be used for the veth pair
+                  to connect with the default namespace. The interface under
+                  the PERouter side is going to use the first IP of the cidr on all the nodes.
+                type: string
+              vni:
+                description: VNI is the VXLan VNI to be used
+                format: int32
+                maximum: 4294967295
+                minimum: 0
+                type: integer
+              vrf:
+                description: |-
+                  VRF is the name of the linux VRF to be used inside the PERouter namespace.
+                  The field is optional, if not set it the name of the VNI instance will be used.
+                maxLength: 15
+                pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
+                type: string
+              vxlanport:
+                default: 4789
+                description: VXLanPort is the port to be used for VXLan encapsulation.
+                format: int32
+                type: integer
+            type: object
+          status:
+            description: VNIStatus defines the observed state of VNI.
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: openperouter
+  name: openperouter-controller
+  namespace: openperouter-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: openperouter
+  name: openperouter-perouter
+  namespace: openperouter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: openperouter-controller-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - openpe.openperouter.github.io
+  resources:
+  - underlays
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - openpe.openperouter.github.io
+  resources:
+  - underlays/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - openpe.openperouter.github.io
+  resources:
+  - underlays/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - openpe.openperouter.github.io
+  resources:
+  - vnis
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - openpe.openperouter.github.io
+  resources:
+  - vnis/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - openpe.openperouter.github.io
+  resources:
+  - vnis/status
+  verbs:
+  - get
+  - patch
+  - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: openperouter
+  name: openperouter-controller-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: openperouter-controller-role
+subjects:
+- kind: ServiceAccount
+  name: openperouter-controller
+  namespace: openperouter-system
+---
+apiVersion: v1
+data:
+  daemons: |
+    # This file tells the frr package which daemons to start.
+    #
+    # Sample configurations for these daemons can be found in
+    # /usr/share/doc/frr/examples/.
+    #
+    # ATTENTION:
+    #
+    # When activating a daemon for the first time, a config file, even if it is
+    # empty, has to be present *and* be owned by the user and group "frr", else
+    # the daemon will not be started by /etc/init.d/frr. The permissions should
+    # be u=rw,g=r,o=.
+    # When using "vtysh" such a config file is also needed. It should be owned by
+    # group "frrvty" and set to ug=rw,o= though. Check /etc/pam.d/frr, too.
+    #
+    # The watchfrr and zebra daemons are always started.
+    #
+    bgpd=yes
+    ospfd=no
+    ospf6d=no
+    ripd=no
+    ripngd=no
+    isisd=no
+    pimd=no
+    ldpd=no
+    nhrpd=no
+    eigrpd=no
+    babeld=no
+    sharpd=no
+    pbrd=no
+    bfdd=yes
+    fabricd=no
+    vrrpd=no
+
+    #
+    # If this option is set the /etc/init.d/frr script automatically loads
+    # the config via "vtysh -b" when the servers are started.
+    # Check /etc/pam.d/frr if you intend to use "vtysh"!
+    #
+    vtysh_enable=yes
+    zebra_options="  -A 127.0.0.1 -s 90000000"
+    bgpd_options="   -A 127.0.0.1"
+    ospfd_options="  -A 127.0.0.1"
+    ospf6d_options=" -A ::1"
+    ripd_options="   -A 127.0.0.1"
+    ripngd_options=" -A ::1"
+    isisd_options="  -A 127.0.0.1"
+    pimd_options="   -A 127.0.0.1"
+    ldpd_options="   -A 127.0.0.1"
+    nhrpd_options="  -A 127.0.0.1"
+    eigrpd_options=" -A 127.0.0.1"
+    babeld_options=" -A 127.0.0.1"
+    sharpd_options=" -A 127.0.0.1"
+    pbrd_options="   -A 127.0.0.1"
+    staticd_options="-A 127.0.0.1"
+    bfdd_options="   -A 127.0.0.1"
+    fabricd_options="-A 127.0.0.1"
+    vrrpd_options="  -A 127.0.0.1"
+
+    # configuration profile
+    #
+    #frr_profile="traditional"
+    #frr_profile="datacenter"
+
+    #
+    # This is the maximum number of FD's that will be available.
+    # Upon startup this is read by the control files and ulimit
+    # is called. Uncomment and use a reasonable value for your
+    # setup if you are expecting a large number of peers in
+    # say BGP.
+    #MAX_FDS=1024
+
+    # The list of daemons to watch is automatically generated by the init script.
+    #watchfrr_options=""
+
+    # for debugging purposes, you can specify a "wrap" command to start instead
+    # of starting the daemon directly, e.g. to use valgrind on ospfd:
+    #   ospfd_wrap="/usr/bin/valgrind"
+    # or you can use "all_wrap" for all daemons, e.g. to use perf record:
+    #   all_wrap="/usr/bin/perf record --call-graph -"
+    # the normal daemon command is added to this at the end.
+  frr.conf: |
+    ! This file gets overriden the first time the speaker renders a config.
+    ! So anything configured here is only temporary.
+    frr version 8.0
+    frr defaults traditional
+    hostname Router
+    line vty
+    log file /etc/frr/frr.log informational
+  vtysh.conf: |
+    service integrated-vtysh-config
+kind: ConfigMap
+metadata:
+  name: openperouter-frr-startup
+  namespace: openperouter-system
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  labels:
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/created-by: controller
+    app.kubernetes.io/instance: controller
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: controller
+    app.kubernetes.io/part-of: controller
+    control-plane: controller
+  name: openperouter-controller
+  namespace: openperouter-system
+spec:
+  selector:
+    matchLabels:
+      control-plane: controller
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: controller
+      labels:
+        app: controller
+        control-plane: controller
+    spec:
+      containers:
+      - args:
+        - --nodename=$(NODE_NAME)
+        - --loglevel=debug
+        - --namespace=$(NAMESPACE)
+        - --frrconfig=/etc/frr/frr.conf
+        - --crisocket=/var/run/crio/crio.sock
+        command:
+        - /controller
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        image: quay.io/openperouter/router:latest
+        imagePullPolicy: IfNotPresent
+        name: controller
+        resources:
+          limits:
+            cpu: 500m
+            memory: 128Mi
+          requests:
+            cpu: 10m
+            memory: 64Mi
+        securityContext:
+          capabilities:
+            add:
+            - NET_ADMIN
+            - NET_RAW
+            - SYS_ADMIN
+            - NET_BIND_SERVICE
+          privileged: true
+        volumeMounts:
+        - mountPath: /var/run/crio/crio.sock
+          name: varrun
+          subPath: crio.sock
+        - mountPath: /run/containerd/containerd.sock
+          name: varrun
+          subPath: containerd.sock
+        - mountPath: /run/netns
+          mountPropagation: HostToContainer
+          name: runns
+        - mountPath: /etc/frr/
+          mountPropagation: HostToContainer
+          name: frr-config
+      hostNetwork: true
+      hostPID: true
+      serviceAccountName: openperouter-controller
+      tolerations:
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/master
+        operator: Exists
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/control-plane
+        operator: Exists
+      volumes:
+      - hostPath:
+          path: /var/run/crio
+        name: varrun
+      - hostPath:
+          path: /run/netns
+        name: runns
+      - hostPath:
+          path: /etc/perouter/frr
+          type: DirectoryOrCreate
+        name: frr-config
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  labels:
+    app.kubernetes.io/component: router
+    app.kubernetes.io/created-by: router
+    app.kubernetes.io/instance: router
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: router
+    app.kubernetes.io/part-of: router
+    control-plane: router
+  name: openperouter-router
+  namespace: openperouter-system
+spec:
+  selector:
+    matchLabels:
+      control-plane: router
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: router
+      labels:
+        app: router
+        control-plane: router
+    spec:
+      containers:
+      - command:
+        - /bin/sh
+        - -c
+        - |
+          /sbin/tini -- /usr/lib/frr/docker-start &
+          attempts=0
+          until [[ -f /etc/frr/frr.log || $attempts -eq 60 ]]; do
+            sleep 1
+            attempts=$(( $attempts + 1 ))
+          done
+          tail -f /etc/frr/frr.log
+        env:
+        - name: TINI_SUBREAPER
+          value: "true"
+        image: quay.io/frrouting/frr:master
+        imagePullPolicy: IfNotPresent
+        name: frr
+        securityContext:
+          capabilities:
+            add:
+            - NET_ADMIN
+            - NET_RAW
+            - SYS_ADMIN
+            - NET_BIND_SERVICE
+        volumeMounts:
+        - mountPath: /var/run/frr
+          name: frr-sockets
+        - mountPath: /etc/frr
+          name: frrconfig
+      - args:
+        - --frrconfig=/etc/perouter/frr.conf
+        - --loglevel=debug
+        command:
+        - /etc/frr_reloader/reloader
+        image: quay.io/frrouting/frr:master
+        imagePullPolicy: IfNotPresent
+        name: reloader
+        volumeMounts:
+        - mountPath: /etc/frr
+          name: frrconfig
+        - mountPath: /var/run/frr
+          name: frr-sockets
+        - mountPath: /etc/perouter
+          name: frrsharedconfig
+        - mountPath: /etc/frr_reloader
+          name: reloader
+      initContainers:
+      - command:
+        - /bin/sh
+        - -c
+        - cp -rLf /tmp/frr/* /etc/frr/
+        image: quay.io/frrouting/frr:master
+        imagePullPolicy: IfNotPresent
+        name: cp-frr-files
+        volumeMounts:
+        - mountPath: /tmp/frr
+          name: frr-startup
+        - mountPath: /etc/frr
+          name: frrconfig
+      - command:
+        - /cp-tool
+        - /reloader
+        - /etc/frr_reloader/reloader
+        image: quay.io/openperouter/router:latest
+        imagePullPolicy: IfNotPresent
+        name: cp-reloader
+        volumeMounts:
+        - mountPath: /etc/frr_reloader
+          name: reloader
+      serviceAccountName: openperouter-perouter
+      shareProcessNamespace: true
+      terminationGracePeriodSeconds: 10
+      tolerations:
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/master
+        operator: Exists
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/control-plane
+        operator: Exists
+      volumes:
+      - emptyDir: {}
+        name: frr-sockets
+      - configMap:
+          name: openperouter-frr-startup
+        name: frr-startup
+      - emptyDir: {}
+        name: reloader
+      - hostPath:
+          path: /etc/perouter/frr
+          type: DirectoryOrCreate
+        name: frrsharedconfig
+      - emptyDir: {}
+        name: frrconfig
+>>>>>>> 33a505b (Underlay: fix the nic field to plural)
