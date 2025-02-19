@@ -49,7 +49,7 @@ func APItoFRR(nodeIndex int, underlays []v1alpha1.Underlay, vnis []v1alpha1.VNI,
 	}
 	underlayConfig := frr.UnderlayConfig{
 		MyASN:     underlay.Spec.ASN,
-		VTEP:      vtepIP.IP.String(),
+		VTEP:      vtepIP.String(),
 		Neighbors: underlayNeighbors,
 	}
 	vniConfigs := []frr.VNIConfig{}

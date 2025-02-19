@@ -28,7 +28,7 @@ func APItoHostConfig(nodeIndex int, targetNS string, underlays []v1alpha1.Underl
 	underlayParams := hostnetwork.UnderlayParams{
 		UnderlayInterface: underlay.Spec.Nics[0],
 		TargetNS:          targetNS,
-		VtepIP:            vtepIP.IP.String(),
+		VtepIP:            vtepIP.String(),
 	}
 
 	vniParams := []hostnetwork.VNIParams{}
@@ -42,7 +42,7 @@ func APItoHostConfig(nodeIndex int, targetNS string, underlays []v1alpha1.Underl
 		v := hostnetwork.VNIParams{
 			VRF:        vni.VRFName(),
 			TargetNS:   targetNS,
-			VTEPIP:     vtepIP.IP.String(),
+			VTEPIP:     vtepIP.String(),
 			VNI:        int(vni.Spec.VNI),
 			VethHostIP: vethIPs.HostSide.String(),
 			VethNSIP:   vethIPs.PeSide.String(),

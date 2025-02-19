@@ -82,7 +82,7 @@ func TestAPItoFRR(t *testing.T) {
 			want: frr.Config{
 				Underlay: frr.UnderlayConfig{
 					MyASN: 65000,
-					VTEP:  "192.168.1.0",
+					VTEP:  "192.168.1.0/32",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name:         "65001@192.168.1.1",

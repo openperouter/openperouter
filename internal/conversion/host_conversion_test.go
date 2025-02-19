@@ -58,7 +58,7 @@ func TestAPItoHostConfig(t *testing.T) {
 			wantUnderlay: hostnetwork.UnderlayParams{
 				UnderlayInterface: "eth0",
 				TargetNS:          "namespace",
-				VtepIP:            "10.0.0.0",
+				VtepIP:            "10.0.0.0/32",
 			},
 			wantVNIParams: []hostnetwork.VNIParams{
 				{
