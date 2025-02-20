@@ -1,0 +1,61 @@
+apiVersion: "k8s.cni.cncf.io/v1"
+kind: NetworkAttachmentDefinition
+metadata:
+  name: macvlan-conf
+spec:
+  config: '{
+      "cniVersion": "0.3.0",
+      "type": "macvlan",
+      "master": "host110",
+      "mode": "bridge",
+      "ipam": {
+         "type": "static"
+      }
+    }'
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: first
+  annotations:
+    k8s.v1.cni.cncf.io/networks: '[{
+      "name": "macvlan-conf",
+      "namespace": "default",
+      "ips": ["192.170.1.3/24"]
+      }]'
+spec:
+  tolerations:
+  - effect: NoSchedule
+    key: node-role.kubernetes.io/master
+    operator: Exists
+  - effect: NoSchedule
+    key: node-role.kubernetes.io/control-plane
+    operator: Exists
+  nodeSelector:
+    kubernetes.io/hostname: pe-kind-control-plane
+  containers:
+    - name: client
+      image: quay.io/fedora/fedora:latest
+      command: ["/bin/sh", "-c"]
+      args:
+        ["sleep INF"]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: second
+  annotations:
+    k8s.v1.cni.cncf.io/networks: '[{
+      "name": "macvlan-conf",
+      "namespace": "default",
+      "ips": ["192.170.1.4/24"]
+      }]'
+spec:
+  nodeSelector:
+    kubernetes.io/hostname: pe-kind-worker
+  containers:
+    - name: client
+      image: quay.io/fedora/fedora:latest
+      command: ["/bin/sh", "-c"]
+      args:
+        ["sleep INF"]
