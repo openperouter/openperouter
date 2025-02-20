@@ -13,6 +13,13 @@ import (
 	"github.com/vishvananda/netns"
 )
 
+type VNIType string
+
+const (
+	L2 VNIType = "l2"
+	L3 VNIType = "l3"
+)
+
 type VNIParams struct {
 	VRF        string
 	TargetNS   string
@@ -21,6 +28,7 @@ type VNIParams struct {
 	VethNSIP   string
 	VNI        int
 	VXLanPort  int
+	Type       VNIType
 }
 
 const (
@@ -51,13 +59,14 @@ func SetupVNI(ctx context.Context, params VNIParams) error {
 		}
 	}()
 
-	hostVeth, peVeth, err := setupVeth(ctx, params.VRF, ns)
+	hostVeth, peVeth, err := setupVeth(ctx, params.VNI, ns)
 	if err != nil {
 		return err
 	}
-	err = assignIPToInterface(hostVeth, params.VethHostIP)
-	if err != nil {
-		return err
+	if params.Type == L3 {
+		if err := assignIPToInterface(hostVeth, params.VethHostIP); err != nil {
+			return err
+		}
 	}
 
 	err = netlink.LinkSetUp(hostVeth)
@@ -66,9 +75,10 @@ func SetupVNI(ctx context.Context, params VNIParams) error {
 	}
 
 	if err := inNamespace(ns, func() error {
-		err = assignIPToInterface(peVeth, params.VethNSIP)
-		if err != nil {
-			return err
+		if params.Type == L3 {
+			if err := assignIPToInterface(peVeth, params.VethNSIP); err != nil {
+				return err
+			}
 		}
 		err = netlink.LinkSetUp(peVeth)
 		if err != nil {
@@ -81,11 +91,6 @@ func SetupVNI(ctx context.Context, params VNIParams) error {
 			return err
 		}
 
-		err = netlink.LinkSetMaster(peVeth, vrf)
-		if err != nil {
-			return fmt.Errorf("failed to set vrf %s as master of pe veth %s", vrf.Name, peVeth.Attrs().Name)
-		}
-
 		slog.DebugContext(ctx, "setting up bridge")
 		bridge, err := setupBridge(params, vrf)
 		if err != nil {
@@ -96,6 +101,17 @@ func SetupVNI(ctx context.Context, params VNIParams) error {
 		err = setupVXLan(params, bridge)
 		if err != nil {
 			return err
+		}
+
+		if params.Type == L3 {
+			if err := netlink.LinkSetMaster(peVeth, vrf); err != nil {
+				return fmt.Errorf("failed to set vrf %s as master of pe veth %s", vrf.Name, peVeth.Attrs().Name)
+			}
+		}
+		if params.Type == L2 {
+			if err := netlink.LinkSetMaster(peVeth, bridge); err != nil {
+				return fmt.Errorf("failed to set bridge %s as master of pe veth %s", bridge.Name, peVeth.Attrs().Name)
+			}
 		}
 
 		return nil
@@ -127,8 +143,12 @@ func RemoveNonConfiguredVNIs(ns netns.NsHandle, params []VNIParams) error {
 		if !strings.HasPrefix(hl.Attrs().Name, HostVethPrefix) {
 			continue
 		}
-		vrf := vrfFromHostVeth(hl.Attrs().Name)
-		if vrfs[vrf] {
+		vni, err := vniFromHostVeth(hl.Attrs().Name)
+		if err != nil {
+			return fmt.Errorf("failed to get vni from host leg %s: %w", hl.Attrs().Name, err)
+		}
+
+		if vnis[vni] {
 			continue
 		}
 		if err := netlink.LinkDel(hl); err != nil {

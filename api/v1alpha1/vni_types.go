@@ -20,6 +20,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const (
+	L2VNI string = "l2"
+	L3VNI string = "l3"
+)
+
 // VNISpec defines the desired state of VNI.
 type VNISpec struct {
 	// ASN is the local AS number to use to establish a BGP session with
@@ -57,6 +62,9 @@ type VNISpec struct {
 	// VXLanPort is the port to be used for VXLan encapsulation.
 	// +kubebuilder:default:=4789
 	VXLanPort uint32 `json:"vxlanport,omitempty"`
+
+	// +kubebuilder:validation:Enum=l2;l3
+	Type string `json:"type,omitempty"`
 }
 
 // VNIStatus defines the observed state of VNI.

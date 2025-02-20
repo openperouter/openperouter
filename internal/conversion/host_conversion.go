@@ -48,8 +48,22 @@ func APItoHostConfig(nodeIndex int, targetNS string, underlays []v1alpha1.Underl
 			VethNSIP:   vethIPs.PeSide.String(),
 			VXLanPort:  int(vni.Spec.VXLanPort),
 		}
+		v.Type, err = apiVNITypeToVNI(vni.Spec.Type)
+		if err != nil {
+			return hostnetwork.UnderlayParams{}, nil, fmt.Errorf("failed to get vnitype for vni %s: %w", vni.Name, err)
+		}
 		vniParams = append(vniParams, v)
 	}
 
 	return underlayParams, vniParams, nil
+}
+
+func apiVNITypeToVNI(vniType string) (hostnetwork.VNIType, error) {
+	switch vniType {
+	case v1alpha1.L2VNI:
+		return hostnetwork.L2, nil
+	case v1alpha1.L3VNI:
+		return hostnetwork.L3, nil
+	}
+	return hostnetwork.VNIType(""), fmt.Errorf("invalid vni type %s", vniType)
 }
