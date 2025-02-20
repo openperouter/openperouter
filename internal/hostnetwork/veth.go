@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 
 	"github.com/vishvananda/netlink"
@@ -15,19 +16,19 @@ import (
 
 // setupVeth sets up a veth pair with the name generated from the given name and one leg in the
 // given namespace.
-func setupVeth(ctx context.Context, name string, targetNS netns.NsHandle) (netlink.Link, netlink.Link, error) {
-	logger := slog.Default().With("veth", name)
+func setupVeth(ctx context.Context, vni int, targetNS netns.NsHandle) (netlink.Link, netlink.Link, error) {
+	logger := slog.Default().With("veth", vni)
 	logger.DebugContext(ctx, "setting up veth")
 
-	hostSide, err := createVeth(ctx, logger, name)
+	hostSide, err := createVeth(ctx, logger, vni)
 	if err != nil {
-		return nil, nil, fmt.Errorf("could not create veth for VRF %s: %w", name, err)
+		return nil, nil, fmt.Errorf("could not create veth for VNI %d: %w", vni, err)
 	}
 
 	var peSideNs netlink.Link
 	// Let's try to look into the namespace
 	err = inNamespace(targetNS, func() error {
-		_, peSideName := vethNamesFromVRF(name)
+		_, peSideName := vethNamesFromVNI(vni)
 		peSideNs, err = netlink.LinkByName(peSideName)
 		if err != nil {
 			return err
@@ -58,12 +59,12 @@ func setupVeth(ctx context.Context, name string, targetNS netns.NsHandle) (netli
 	}
 	slog.DebugContext(ctx, "pe leg moved to ns", "pe veth", peSide.Attrs().Name)
 
-	slog.DebugContext(ctx, "veth is set up", "vrf", name)
+	slog.DebugContext(ctx, "veth is set up", "vni", vni)
 	return hostSide, peSide, nil
 }
 
-func createVeth(ctx context.Context, logger *slog.Logger, vrfName string) (*netlink.Veth, error) {
-	hostSide, peSide := vethNamesFromVRF(vrfName)
+func createVeth(ctx context.Context, logger *slog.Logger, vni int) (*netlink.Veth, error) {
+	hostSide, peSide := vethNamesFromVNI(vni)
 	toCreate := &netlink.Veth{LinkAttrs: netlink.LinkAttrs{Name: hostSide}, PeerName: peSide}
 
 	link, err := netlink.LinkByName(hostSide)
@@ -102,10 +103,15 @@ const PEVethPrefix = "pe"
 
 // vethNamesFromVRF returns the names of the veth legs
 // corresponding to the default namespace and the target namespace.
-func vethNamesFromVRF(name string) (string, string) {
-	hostSide := HostVethPrefix + name
-	peSide := PEVethPrefix + name
+func vethNamesFromVNI(vni int) (string, string) {
+	hostSide := fmt.Sprintf("%v%d", HostVethPrefix, vni)
+	peSide := fmt.Sprintf("%v%d", PEVethPrefix, vni)
 	return hostSide, peSide
+}
+
+func vniFromHostVeth(hostVethName string) (int, error) {
+	vniString := strings.TrimPrefix(hostVethName, HostVethPrefix)
+	return strconv.Atoi(vniString)
 }
 
 func vrfFromHostVeth(hostVethName string) string {

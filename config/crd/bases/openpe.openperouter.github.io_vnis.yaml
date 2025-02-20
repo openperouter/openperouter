@@ -63,6 +63,11 @@ spec:
                   to connect with the default namespace. The interface under
                   the PERouter side is going to use the first IP of the cidr on all the nodes.
                 type: string
+              type:
+                enum:
+                - l2
+                - l3
+                type: string
               vni:
                 description: VNI is the VXLan VNI to be used
                 format: int32
