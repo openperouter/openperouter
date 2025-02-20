@@ -54,6 +54,10 @@ func APItoFRR(nodeIndex int, underlays []v1alpha1.Underlay, vnis []v1alpha1.VNI,
 	}
 	vniConfigs := []frr.VNIConfig{}
 	for _, vni := range vnis {
+		if vni.Spec.Type == v1alpha1.L2VNI {
+			continue
+		}
+
 		frrVNI, err := vniToFRR(vni, nodeIndex)
 		if err != nil {
 			return frr.Config{}, fmt.Errorf("failed to translate vni to frr: %w, vni %v", err, vni)
