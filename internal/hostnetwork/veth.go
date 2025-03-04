@@ -25,36 +25,41 @@ func setupVeth(ctx context.Context, vni int, targetNS netns.NsHandle) (netlink.L
 		return nil, nil, fmt.Errorf("could not create veth for VNI %d: %w", vni, err)
 	}
 
+	var peSideNs netlink.Link
+	// Let's try to look into the namespace
+	err = inNamespace(targetNS, func() error {
+		_, peSideName := vethNamesFromVNI(vni)
+		peSideNs, err = netlink.LinkByName(peSideName) // we need to reassign here, because we want the one in the ns
+		if err != nil {
+			return err
+		}
+		slog.DebugContext(ctx, "pe leg already in ns", "pe veth", peSideNs.Attrs().Name)
+		return nil
+	})
+	if err != nil && !errors.As(err, &netlink.LinkNotFoundError{}) { // real error
+		return nil, nil, fmt.Errorf("could not find peer by name for %s: %w", hostSide.Name, err)
+	}
+	if err == nil {
+		return hostSide, peSideNs, nil
+	}
+
+	// Not in the namespace, let's try locally
 	peerIndex, err := netlink.VethPeerIndex(hostSide)
 	if err != nil {
 		return nil, nil, fmt.Errorf("could not find peer veth for %s: %w", hostSide.Name, err)
 	}
 	peSide, err := netlink.LinkByIndex(peerIndex)
-	if err == nil { // found, and in the default ns. We need to move it
-		if err = netlink.LinkSetNsFd(peSide, int(targetNS)); err != nil {
-			return nil, nil, fmt.Errorf("setupUnderlay: Failed to move %s to network namespace %s: %w", peSide.Attrs().Name, targetNS.String(), err)
-		}
-		slog.DebugContext(ctx, "pe leg moved to ns", "pe veth", peSide.Attrs().Name)
-		return hostSide, peSide, nil
-	}
+
 	if err != nil && !errors.As(err, &netlink.LinkNotFoundError{}) { // real error
 		return nil, nil, fmt.Errorf("could not find peer by index for %s: %w", hostSide.Name, err)
 	}
 
-	if errors.As(err, &netlink.LinkNotFoundError{}) { // Let's try to look into the namespace
-		if err := inNamespace(targetNS, func() error {
-			peSide, err = netlink.LinkByIndex(peerIndex) // we need to reassign here, because we want the one in the ns
-			if err != nil {
-				return err
-			}
-			return nil
-		}); err != nil {
-			return nil, nil, fmt.Errorf("could not find peer veth by index for vni %d: %w", vni, err)
-		}
-		slog.DebugContext(ctx, "pe leg already in ns", "pe veth", peSide.Attrs().Name)
+	if err = netlink.LinkSetNsFd(peSide, int(targetNS)); err != nil {
+		return nil, nil, fmt.Errorf("setupUnderlay: Failed to move %s to network namespace %s: %w", peSide.Attrs().Name, targetNS.String(), err)
 	}
+	slog.DebugContext(ctx, "pe leg moved to ns", "pe veth", peSide.Attrs().Name)
 
-	slog.DebugContext(ctx, "veth is set up", "vni", vni)
+	defer slog.DebugContext(ctx, "veth is set up", "vni", vni)
 	return hostSide, peSide, nil
 }
 

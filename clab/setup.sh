@@ -38,6 +38,8 @@ docker run --rm -it --privileged \
 docker image pull quay.io/metallb/frr-k8s:v0.0.17
 docker image pull quay.io/frrouting/frr:9.1.0
 docker image pull gcr.io/kubebuilder/kube-rbac-proxy:v0.13.1
+docker image pull quay.io/fpaoline/fedoranet:2.0
+kind load docker-image quay.io/fpaoline/fedoranet:2.0 --name pe-kind
 kind load docker-image quay.io/frrouting/frr:9.1.0 --name pe-kind
 kind load docker-image gcr.io/kubebuilder/kube-rbac-proxy:v0.13.1 --name pe-kind
 kind load docker-image quay.io/metallb/frr-k8s:v0.0.17 --name pe-kind
