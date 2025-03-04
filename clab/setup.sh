@@ -55,5 +55,6 @@ sleep 4s
 docker exec clab-kind-leaf1 /setup.sh
 docker exec clab-kind-leaf2 /setup.sh
 docker exec clab-kind-spine /setup.sh
-docker exec clab-kind-HOST1 /setup.sh
+docker exec clab-kind-HOSTRED /setup.sh
+docker exec clab-kind-HOSTGREEN /setup.sh
 popd
