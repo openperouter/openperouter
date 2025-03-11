@@ -103,15 +103,17 @@ func SetupVNI(ctx context.Context, params VNIParams) error {
 			return err
 		}
 
-		if params.Type == L3 {
+		switch params.Type {
+		case L3:
 			if err := netlink.LinkSetMaster(peVeth, vrf); err != nil {
 				return fmt.Errorf("failed to set vrf %s as master of pe veth %s", vrf.Name, peVeth.Attrs().Name)
 			}
-		}
-		if params.Type == L2 {
+		case L2:
 			if err := netlink.LinkSetMaster(peVeth, bridge); err != nil {
 				return fmt.Errorf("failed to set bridge %s as master of pe veth %s", bridge.Name, peVeth.Attrs().Name)
 			}
+		default:
+			return fmt.Errorf("invalid vni type %s", params.Type)
 		}
 
 		return nil

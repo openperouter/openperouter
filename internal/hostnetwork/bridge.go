@@ -3,6 +3,8 @@
 package hostnetwork
 
 import (
+	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"strconv"
@@ -29,7 +31,15 @@ func setupBridge(params VNIParams, vrf *netlink.Vrf) (*netlink.Bridge, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not set link up for bridge %s: %v", name, err)
 	}
+	if params.Type == L3 {
+		return bridge, nil
+	}
+	// setting up the same mac address for all the nodes for distributed gateway
+	if err := setBridgeMacAddress(bridge, params.VNI); err != nil {
+		return nil, fmt.Errorf("failed to set bridge mac address %s: %v", name, err)
+	}
 	return bridge, nil
+
 }
 
 // create bridge creates a bridge with the given name, enslaved
@@ -68,6 +78,28 @@ func createBridge(name string, vrfIndex int) (*netlink.Bridge, error) {
 	}
 
 	return toCreate, nil
+}
+
+const (
+	macSize = 6
+)
+
+var macHeader = []byte{0xF3, 0xD3}
+
+func setBridgeMacAddress(bridge netlink.Link, vni int) error {
+	macAddress := make([]byte, macSize)
+
+	buf := new(bytes.Buffer)
+	err := binary.Write(buf, binary.BigEndian, int32(vni))
+	if err != nil {
+		return err
+	}
+	copy(macAddress, macHeader)
+	copy(macAddress[2:], buf.Bytes())
+	if err := netlink.LinkSetHardwareAddr(bridge, macAddress); err != nil {
+		return fmt.Errorf("failed to set mac address to bridge %s %s: %w", bridge.Attrs().Name, macAddress, err)
+	}
+	return nil
 }
 
 const bridgePrefix = "br"
