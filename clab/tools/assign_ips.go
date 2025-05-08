@@ -5,6 +5,7 @@ package main
 import (
 	"bufio"
 	"encoding/csv"
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -12,15 +13,22 @@ import (
 )
 
 func main() {
-	if len(os.Args) != 2 {
-		fmt.Println("Usage: assign_ips <input_file>")
+	inputFile := flag.String("file", "", "Input CSV file with IP assignments")
+	containerEngine := flag.String("engine", "docker", "Container engine to use (docker, podman, etc.)")
+
+	// Parse command line arguments
+	flag.Parse()
+
+	// Validate input file parameter
+	if *inputFile == "" {
+		fmt.Println("Error: Input file is required")
+		fmt.Println("Usage: assign_ips -file=<input_file> [-engine=<container_engine>]")
+		flag.PrintDefaults()
 		os.Exit(1)
 	}
 
-	inputFile := os.Args[1]
-
 	// #nosec G304
-	file, err := os.Open(inputFile)
+	file, err := os.Open(*inputFile)
 	if err != nil {
 		fmt.Printf("Error opening file: %v\n", err)
 		os.Exit(1)
@@ -45,14 +53,14 @@ func main() {
 		fmt.Printf("Assigning IP %s to interface %s in container %s...\n", ipAddress, interfaceName, containerName)
 
 		// #nosec G204
-		cmdAdd := exec.Command("docker", "exec", containerName, "ip", "addr", "add", ipAddress, "dev", interfaceName)
+		cmdAdd := exec.Command(*containerEngine, "exec", containerName, "ip", "addr", "add", ipAddress, "dev", interfaceName)
 		if err := cmdAdd.Run(); err != nil {
 			fmt.Printf("Error assigning IP: %v \n", err)
 			continue
 		}
 
 		// #nosec G204
-		cmdUp := exec.Command("docker", "exec", containerName, "ip", "link", "set", interfaceName, "up")
+		cmdUp := exec.Command(*containerEngine, "exec", containerName, "ip", "link", "set", interfaceName, "up")
 		if err := cmdUp.Run(); err != nil {
 			fmt.Printf("Error bringing interface up: %v\n", err)
 			continue

@@ -2,13 +2,15 @@
 
 set -u
 
+source common.sh
+
 function veth_exists {
     ip link show "$1" &> /dev/null
     return $?
 }
 
 function container_exists {
-    docker ps -a --format '{{.Names}}' | grep -w "$1" &> /dev/null
+    ${CONTAINER_ENGINE_CLI} ps -a --format '{{.Names}}' | grep -w "$1" &> /dev/null
     return $?
 }
 
@@ -23,14 +25,14 @@ function ensure_veth {
     echo "Veth $VETH_NAME not there, recreating"
     ip link add "$VETH_NAME" type veth peer name "$PEER_NAME"
     echo "Veth $VETH_NAME not there, recreated"
-    pid=$(docker inspect -f '{{.State.Pid}}' "$CONTAINER_NAME")
+    pid=$("$CONTAINER_ENGINE_CLI" inspect -f '{{.State.Pid}}' "$CONTAINER_NAME")
     ip link set "$PEER_NAME" netns "$pid"
     ip link set "$VETH_NAME" up
 
     ip link set "$VETH_NAME" master leafkind-switch
     echo "Veth $VETH_NAME setting ip"
-    docker exec "$CONTAINER_NAME" ip address add $CONTAINER_SIDE_IP dev "$PEER_NAME"
-    docker exec "$CONTAINER_NAME" ip link set "$PEER_NAME" up
+    "$CONTAINER_ENGINE_CLI" exec "$CONTAINER_NAME" ip address add $CONTAINER_SIDE_IP dev "$PEER_NAME"
+    "$CONTAINER_ENGINE_CLI" exec "$CONTAINER_NAME" ip link set "$PEER_NAME" up
   fi
 }
 
@@ -56,4 +58,3 @@ for node in "${nodes[@]}"; do
 done
 sleep 5s
 done
-

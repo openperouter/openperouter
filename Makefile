@@ -16,7 +16,7 @@ endif
 # Be aware that the target commands are only tested with Docker which is
 # scaffolded by default. However, you might want to replace it to use other
 # tools. (i.e. podman)
-CONTAINER_TOOL ?= docker
+CONTAINER_ENGINE ?= docker
 
 # Setting SHELL to bash allows bash commands to be executed by recipes.
 # Options are set to exit when a recipe line exits non-zero or a piped command fails.
@@ -87,11 +87,19 @@ BRANCH = $(shell git rev-parse --abbrev-ref HEAD)
 
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build -t ${IMG} .
+	@if [ "$(CONTAINER_ENGINE)" = "podman" ]; then \
+		sudo $(CONTAINER_ENGINE) build --network=host -t ${IMG} .; \
+	else \
+		$(CONTAINER_ENGINE) build -t ${IMG} .; \
+	fi
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
-	$(CONTAINER_TOOL) push ${IMG}
+	@if [ "$(CONTAINER_ENGINE)" = "podman" ]; then \
+		sudo $(CONTAINER_ENGINE) push --network=host -t ${IMG} .; \
+	else \
+		$(CONTAINER_ENGINE) push -t ${IMG} .; \
+	fi
 
 ##@ Deployment
 
@@ -123,7 +131,7 @@ KUSTOMIZE_VERSION ?= v5.0.0
 CONTROLLER_TOOLS_VERSION ?= v0.14.0
 KUBECTL_VERSION ?= v1.27.0
 GINKGO_VERSION ?= v2.23.0
-KIND_VERSION ?= v0.23.0
+KIND_VERSION ?= v0.27.0
 KIND_CLUSTER_NAME ?= pe-kind
 HELM_VERSION ?= v3.12.3
 HELM_DOCS_VERSION ?= v1.10.0
@@ -244,13 +252,13 @@ e2etests: ginkgo kubectl build-validator
 
 .PHONY: clab-cluster
 clab-cluster:
-	KUBECONFIG_PATH=$(KUBECONFIG_PATH) clab/setup.sh
+	KUBECONFIG_PATH=$(KUBECONFIG_PATH) KIND=$(KIND) clab/setup.sh
 	@echo 'kind cluster created, to use it please'
 	@echo 'export KUBECONFIG=${KUBECONFIG_PATH}'
 
 .PHONY: load-on-kind
 load-on-kind: clab-cluster ## Load the docker image into the kind cluster.
-	$(LOCALBIN)/kind load docker-image ${IMG} -n ${KIND_CLUSTER_NAME}
+	KIND=$(KIND) bash -c 'source clab/common.sh && load_local_image_to_kind ${IMG} router'
 
 .PHONY: lint
 lint:
