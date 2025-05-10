@@ -4,7 +4,6 @@ package tests
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	frrk8sv1beta1 "github.com/metallb/frr-k8s/api/v1beta1"
@@ -13,7 +12,6 @@ import (
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/e2etests/pkg/config"
 	"github.com/openperouter/openperouter/e2etests/pkg/executor"
-	"github.com/openperouter/openperouter/e2etests/pkg/frr"
 	"github.com/openperouter/openperouter/e2etests/pkg/frrk8s"
 	"github.com/openperouter/openperouter/e2etests/pkg/infra"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
@@ -66,33 +64,30 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 	})
 
 	AfterEach(func() {
+		dumpIfFails(cs)
 		err := Updater.CleanButUnderlay()
 		Expect(err).NotTo(HaveOccurred())
 	})
 
-	It("peers with the tor", func() {
+	validateTORSession := func() {
 		exec := executor.ForContainer(infra.KindLeaf)
 		Eventually(func() error {
 			for _, node := range nodes {
-				ipToCheck, err := infra.NeighborIP(infra.KindLeaf, node.Name)
+				neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
 				Expect(err).NotTo(HaveOccurred())
-
-				neigh, err := frr.NeighborInfo(ipToCheck, exec)
-				if err != nil {
-					return err
-				}
-				if neigh.BgpState != "Established" {
-					return fmt.Errorf("neighbor %s is not established", ipToCheck)
-				}
+				validateSessionWithNeighbor(exec, neighborIP, Established)
 			}
 			return nil
 		}, time.Minute, time.Second).ShouldNot(HaveOccurred())
+	}
+	It("peers with the tor", func() {
+		validateTORSession()
 	})
 
 	Context("with a vni", func() {
 		vni := v1alpha1.VNI{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "vni",
+				Name:      "red",
 				Namespace: openperouter.Namespace,
 			},
 			Spec: v1alpha1.VNISpec{
@@ -111,36 +106,7 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 		})
 
-		It("receives type 5 routes from the fabric", func() {
-			leafAConfig := infra.LeafConfiguration{
-				Leaf: infra.LeafAConfig,
-				Red: infra.Addresses{
-					IPV4: []string{"192.168.20.0/24"},
-				},
-			}
-
-			config, err := infra.LeafConfigToFRR(leafAConfig)
-			Expect(err).NotTo(HaveOccurred())
-
-			By("announcing type 5 routes from leafA")
-			err = infra.LeafAContainer.ReloadConfig(config)
-			Expect(err).NotTo(HaveOccurred())
-
-			Eventually(func() error {
-				for _, p := range routerPods {
-					exec := executor.ForPod(p.Namespace, p.Name, "frr")
-					evpn, err := frr.EVPNInfo(exec)
-					Expect(err).NotTo(HaveOccurred())
-					if !evpn.ContainsType5Route("192.168.20.0", leafAConfig.VTEPIP) {
-						return fmt.Errorf("type5 route for 192.168.20.0 - %s not found in %v in router %s", leafAConfig.VTEPIP, evpn, p.Name)
-					}
-				}
-				return nil
-			}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
-
-		})
-
-		It("establishes a session with the host", func() {
+		It("establishes a session with the host and then removes it when deleting the vni", func() {
 			frrConfig, err := frrk8s.ConfigFromVNI(vni)
 			Expect(err).ToNot(HaveOccurred())
 			err = Updater.Update(config.Resources{
@@ -148,23 +114,29 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			ipToCheck, err := openperouter.RouterIPFromCIDR(vni.Spec.LocalCIDR)
+			validateFRRK8sSessionForVNI(vni, frrk8sPods, Established)
+
+			By("deleting the vni removes the session with the host")
+			err = Updater.Client().Delete(context.Background(), &vni)
 			Expect(err).NotTo(HaveOccurred())
 
-			for _, p := range frrk8sPods {
-				exec := executor.ForPod(p.Namespace, p.Name, "frr")
-				Eventually(func() error {
-					neigh, err := frr.NeighborInfo(ipToCheck, exec)
-					if err != nil {
-						return err
-					}
-					if neigh.BgpState != "Established" {
-						return fmt.Errorf("neighbor %s is not established", ipToCheck)
-					}
-					return nil
-				}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
-			}
+			validateFRRK8sSessionForVNI(vni, frrk8sPods, !Established)
 		})
 
+		// This test must be the last of the ordered describe as it will remove the underlay
+		It("deleting the underlay removes the session with the tor", func() {
+			validateTORSession()
+
+			By("deleting the vni removes the session with the host")
+			err := Updater.Client().Delete(context.Background(), &infra.Underlay)
+			Expect(err).NotTo(HaveOccurred())
+
+			exec := executor.ForContainer(infra.KindLeaf)
+			for _, node := range nodes {
+				neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
+				Expect(err).NotTo(HaveOccurred())
+				validateNoSuchNeigh(exec, neighborIP)
+			}
+		})
 	})
 })

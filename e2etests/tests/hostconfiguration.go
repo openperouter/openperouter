@@ -99,6 +99,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 	})
 
 	ginkgo.AfterEach(func() {
+		dumpIfFails(cs)
 		err := Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
 		ginkgo.By("waiting for the router pod to rollout after removing the underlay")

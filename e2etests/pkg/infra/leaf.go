@@ -8,16 +8,20 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+
+	"github.com/openperouter/openperouter/e2etests/pkg/frr"
 )
 
 var (
 	LeafAConfig = Leaf{
 		VTEPIP:       "100.64.0.1",
 		SpineAddress: "192.168.1.0",
+		Container:    LeafAContainer,
 	}
 	LeafBConfig = Leaf{
 		VTEPIP:       "100.64.0.2",
 		SpineAddress: "192.168.1.2",
+		Container:    LeafBContainer,
 	}
 )
 
@@ -35,6 +39,7 @@ type Addresses struct {
 type Leaf struct {
 	VTEPIP       string
 	SpineAddress string
+	frr.Container
 }
 
 // LeafConfigToFRR reads a Go template from the testdata directory and generates a string.

@@ -237,9 +237,9 @@ $(APIDOCSGEN): $(LOCALBIN)
 	test -s $(LOCALBIN)/crd-ref-docs || \
 	GOBIN=$(LOCALBIN) go install github.com/elastic/crd-ref-docs@$(APIDOCSGEN_VERSION)
 
-.PHONY: e2etests
-e2etests: ginkgo kubectl build-validator
-	$(GINKGO) -v $(GINKGO_ARGS) --timeout=3h ./e2etests -- --kubectl=$(KUBECTL) $(TEST_ARGS) --hostvalidator $(VALIDATOR_PATH)
+.PHONY: e2etests 
+e2etests: ginkgo kubectl build-validator create-export-logs
+	$(GINKGO) -v $(GINKGO_ARGS) --timeout=3h ./e2etests -- --kubectl=$(KUBECTL) $(TEST_ARGS) --hostvalidator $(VALIDATOR_PATH) --reporterpath=${KIND_EXPORT_LOGS} 
 
 
 .PHONY: clab-cluster
@@ -271,7 +271,7 @@ bumpall: bumplicense manifests
 KIND_EXPORT_LOGS ?=/tmp/kind_logs
 
 .PHONY: kind-export-logs
-kind-export-logs:
+kind-export-logs: create-export-logs
 	$(LOCALBIN)/kind export logs --name ${KIND_CLUSTER_NAME} ${KIND_EXPORT_LOGS}
 
 .PHONY: generate-all-in-one
@@ -303,3 +303,7 @@ cutrelease: bumpversion generate-all-in-one helm-docs
 build-validator: ginkgo ## Build Ginkgo test binary.
 	CGO_ENABLED=0 $(GINKGO) build -tags=externaltests ./internal/hostnetwork
 	mv internal/hostnetwork/hostnetwork.test $(VALIDATOR_PATH)
+
+.PHONY: create-export-logs
+create-export-logs:
+	mkdir -p ${KIND_EXPORT_LOGS}

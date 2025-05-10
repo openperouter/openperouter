@@ -11,6 +11,8 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/openperouter/openperouter/e2etests/pkg/config"
 	"github.com/openperouter/openperouter/e2etests/pkg/executor"
+	"github.com/openperouter/openperouter/e2etests/pkg/frrk8s"
+	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 	"github.com/openperouter/openperouter/e2etests/tests"
@@ -26,6 +28,7 @@ var (
 func handleFlags() {
 	flag.StringVar(&executor.Kubectl, "kubectl", "kubectl", "the path for the kubectl binary")
 	flag.StringVar(&tests.ValidatorPath, "hostvalidator", "hostvalidator", "the path for the hostvalidator binary")
+	flag.StringVar(&tests.ReportPath, "reporterpath", "/tmp", "the path for the reporter")
 	flag.Parse()
 }
 
@@ -55,7 +58,11 @@ var _ = ginkgo.BeforeSuite(func() {
 	updater, err = config.UpdaterForCRs(clientconfig, openperouter.Namespace)
 	Expect(err).NotTo(HaveOccurred())
 	tests.Updater = updater
-
+	kubeconfig := os.Getenv("KUBECONFIG")
+	if kubeconfig == "" {
+		ginkgo.Fail("KUBECONFIG not set")
+	}
+	tests.K8sReporter = k8s.InitReporter(kubeconfig, tests.ReportPath, openperouter.Namespace, frrk8s.Namespace)
 })
 
 var _ = ginkgo.AfterSuite(func() {

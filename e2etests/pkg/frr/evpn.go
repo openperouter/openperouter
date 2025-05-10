@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/openperouter/openperouter/e2etests/pkg/executor"
@@ -36,13 +37,15 @@ type EVPNData struct {
 
 // ContainsType5Route tells if the given prefix is received as type 5 route
 // with the given vtep as next hop.
-func (e *EVPNData) ContainsType5Route(prefix string, vtep string) bool {
+func (e *EVPNData) ContainsType5RouteForVNI(prefix string, vtep string, vni int) bool {
 	for _, entry := range e.Entries {
 		for _, prefixEntry := range entry.Prefixes {
 			for _, path := range prefixEntry.Paths {
-				if path.IP == prefix {
+				routePrefix := fmt.Sprintf("%s/%d", path.IP, path.IPLen)
+				if routePrefix == prefix {
 					for _, n := range path.Nexthops {
-						if n.IP == vtep {
+						if n.IP == vtep &&
+							vniFromExtendedCommunity(path.ExtendedCommunity.String) == vni {
 							return true
 						}
 					}
@@ -134,4 +137,19 @@ func parseL2VPNEVPN(data []byte) (EVPNData, error) {
 	}
 
 	return res, nil
+}
+
+func vniFromExtendedCommunity(extendedCommunity string) int {
+	// extended community looks like: "RT:64514:200 ET:8 Rmac:22:2e:e4:41:7f:5c"
+
+	parts := strings.Split(extendedCommunity, " ")
+	rtPart := parts[0]
+	rtValues := strings.Split(rtPart, ":")
+
+	vniValueStr := rtValues[2]
+	vni, err := strconv.Atoi(vniValueStr)
+	if err != nil {
+		panic("error getting vni from " + extendedCommunity)
+	}
+	return vni
 }

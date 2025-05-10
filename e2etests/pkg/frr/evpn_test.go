@@ -76,7 +76,7 @@ func TestParseL2VPNEVPN1(t *testing.T) {
 		Entries: []RdEntry{
 			{
 				RD: "192.168.20.1:2",
-				Prefixs: map[string]Prefix{
+				Prefixes: map[string]Prefix{
 					"[5]:[0]:[24]:[192.168.20.0]": {
 						Prefix:    "[5]:[0]:[24]:[192.168.20.0]",
 						PrefixLen: 352,
@@ -103,7 +103,7 @@ func TestParseL2VPNEVPN1(t *testing.T) {
 			},
 			{
 				RD: "192.169.10.0:2",
-				Prefixs: map[string]Prefix{
+				Prefixes: map[string]Prefix{
 					"[5]:[0]:[32]:[192.169.10.1]": {
 						Prefix:    "[5]:[0]:[32]:[192.169.10.1]",
 						PrefixLen: 352,

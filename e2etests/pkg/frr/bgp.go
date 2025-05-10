@@ -25,6 +25,34 @@ func NeighborInfo(neighborName string, exec executor.Executor) (*FRRNeighbor, er
 	return neighbor, nil
 }
 
+type BGPRoutes map[string][]string
+
+func (r BGPRoutes) HaveRoute(prefix, expectedNexthop string) bool {
+	nextHops, ok := r[prefix]
+	if !ok {
+		return false
+	}
+	for _, n := range nextHops {
+		if n == expectedNexthop {
+			return true
+		}
+	}
+	return false
+}
+
+func BGPRoutesFor(exec executor.Executor) (BGPRoutes, error) {
+	res, err := exec.Exec("vtysh", "-c", "show bgp ipv4 json")
+
+	if err != nil {
+		return nil, fmt.Errorf("Failed to show bgp ipv4: %w - %s", err, res)
+	}
+	routes, err := parseRoutes(res)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to parse routes: %w", err)
+	}
+	return routes, nil
+}
+
 const EstablishedState = "Established"
 
 type FRRNeighbor struct {
@@ -61,6 +89,7 @@ type IPInfo struct {
 
 type FRRRoute struct {
 	Stale     bool   `json:"stale"`
+	BestPath  bool   `json:"bestpath"`
 	Valid     bool   `json:"valid"`
 	PeerID    string `json:"peerId"`
 	LocalPref uint32 `json:"locPrf"`
@@ -97,9 +126,23 @@ type BFDPeer struct {
 	RemoteDetectMultiplier    int    `json:"remote-detect-multiplier"`
 }
 
+type NoNeighborError struct{}
+
+func (n NoNeighborError) Error() string {
+	return "no such neighbor"
+}
+
 // parseNeighbour takes the result of a show bgp neighbor x.y.w.z
 // and parses the informations related to the neighbour.
 func parseNeighbour(vtyshRes string) (*FRRNeighbor, error) {
+	var rawNeighborReply map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(vtyshRes), &rawNeighborReply); err != nil {
+		return nil, fmt.Errorf("error unmarshalling raw JSON: %v", err)
+	}
+	if _, ok := rawNeighborReply["bgpNoSuchNeighbor"]; ok {
+		return nil, NoNeighborError{}
+	}
+
 	res := map[string]FRRNeighbor{}
 	err := json.Unmarshal([]byte(vtyshRes), &res)
 	if err != nil {
@@ -115,4 +158,29 @@ func parseNeighbour(vtyshRes string) (*FRRNeighbor, error) {
 		return &n, nil
 	}
 	return nil, nil
+}
+
+func parseRoutes(vtyshRes string) (BGPRoutes, error) {
+	res := BGPRoutes{}
+	parsed := IPInfo{}
+	err := json.Unmarshal([]byte(vtyshRes), &parsed)
+	if err != nil {
+		return nil, errors.Join(err, fmt.Errorf("failed to parse vtysh response: %s", vtyshRes))
+	}
+
+	for p, routes := range parsed.Routes {
+		for _, r := range routes {
+			if !r.BestPath || !r.Valid {
+				continue
+			}
+
+			if res[p] == nil {
+				res[p] = []string{}
+			}
+			for _, nextHop := range r.Nexthops {
+				res[p] = append(res[p], nextHop.IP)
+			}
+		}
+	}
+	return res, nil
 }

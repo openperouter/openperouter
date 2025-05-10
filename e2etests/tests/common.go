@@ -2,8 +2,12 @@
 
 package tests
 
-import "github.com/openperouter/openperouter/e2etests/pkg/config"
+import (
+	"github.com/openperouter/openperouter/e2etests/pkg/config"
+	"github.com/openshift-kni/k8sreporter"
+)
 
 var (
-	Updater *config.Updater
+	Updater     *config.Updater
+	K8sReporter *k8sreporter.KubernetesReporter
 )
