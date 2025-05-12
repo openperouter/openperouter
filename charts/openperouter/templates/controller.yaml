@@ -46,10 +46,10 @@ spec:
         - --loglevel={{ . }}
         {{- end }}
         {{- if eq .Values.openperouter.cri "containerd" }}
-        - --crisocket=/var/run/containerd/containerd.sock
+        - --crisocket=/containerd.sock
         {{- end }}
         {{- if eq .Values.openperouter.cri "crio" }}
-        - --crisocket=/var/run/crio/crio.sock
+        - --crisocket=/crio.sock
         {{- end }}
         command:
         - /controller
@@ -81,12 +81,12 @@ spec:
           privileged: true
         volumeMounts:
         {{- if eq .Values.openperouter.cri "containerd" }}
-        - mountPath: /run/containerd/containerd.sock
+        - mountPath: /containerd.sock
           name: varrun
           subPath: containerd.sock
         {{- end }}
         {{- if eq .Values.openperouter.cri "crio" }}
-        - mountPath: /var/run/crio/crio.sock
+        - mountPath: /crio.sock
           name: varrun
           subPath: crio.sock
         {{- end }}
