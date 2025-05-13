@@ -20,6 +20,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"runtime/debug"
 	"time"
 
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -52,7 +53,7 @@ func init() {
 }
 
 func main() {
-	var (
+	args := struct {
 		metricsAddr   string
 		probeAddr     string
 		secureMetrics bool
@@ -63,29 +64,33 @@ func main() {
 		frrConfigPath string
 		reloadPort    int
 		criSocket     string
-	)
-	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
+	}{}
+	flag.StringVar(&args.metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
-	flag.StringVar(&probeAddr, "health-probe-bind-address", ":9081", "The address the probe endpoint binds to.")
-	flag.BoolVar(&secureMetrics, "metrics-secure", true,
+	flag.StringVar(&args.probeAddr, "health-probe-bind-address", ":9081", "The address the probe endpoint binds to.")
+	flag.BoolVar(&args.secureMetrics, "metrics-secure", true,
 		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
-	flag.BoolVar(&enableHTTP2, "enable-http2", false,
+	flag.BoolVar(&args.enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	flag.StringVar(&nodeName, "nodename", "", "The name of the node the controller runs on")
-	flag.StringVar(&namespace, "namespace", "", "The namespace the controller runs in")
-	flag.StringVar(&logLevel, "loglevel", "info", "the verbosity of the process")
-	flag.StringVar(&frrConfigPath, "frrconfig", "/etc/perouter/frr/frr.conf", "the location of the frr configuration file")
-	flag.IntVar(&reloadPort, "reloadport", 9080, "the port of the reloader process")
-	flag.StringVar(&criSocket, "crisocket", "/var/run/containerd/containerd.sock", "the location of the cri socket")
+	flag.StringVar(&args.nodeName, "nodename", "", "The name of the node the controller runs on")
+	flag.StringVar(&args.namespace, "namespace", "", "The namespace the controller runs in")
+	flag.StringVar(&args.logLevel, "loglevel", "info", "the verbosity of the process")
+	flag.StringVar(&args.frrConfigPath, "frrconfig", "/etc/perouter/frr/frr.conf",
+		"the location of the frr configuration file")
+	flag.IntVar(&args.reloadPort, "reloadport", 9080, "the port of the reloader process")
+	flag.StringVar(&args.criSocket, "crisocket", "/var/run/containerd/containerd.sock", "the location of the cri socket")
 
 	flag.Parse()
 
-	logger, err := logging.New(logLevel)
+	logger, err := logging.New(args.logLevel)
 	if err != nil {
 		fmt.Println("unable to init logger", err)
 		os.Exit(1)
 	}
 	ctrl.SetLogger(logr.FromSlogHandler(logger.Handler()))
+	build, _ := debug.ReadBuildInfo()
+	setupLog.Info("version", "version", build.Main.Version)
+	setupLog.Info("arguments", "args", fmt.Sprintf("%+v", args))
 
 	/* TODO: to be used for the metrics endpoints while disabiling
 	http2
@@ -96,7 +101,7 @@ func main() {
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
-		HealthProbeBindAddress: probeAddr,
+		HealthProbeBindAddress: args.probeAddr,
 		Cache:                  cache.Options{},
 	})
 	if err != nil {
@@ -104,7 +109,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	podRuntime, err := pods.NewRuntime(criSocket, 5*time.Minute)
+	podRuntime, err := pods.NewRuntime(args.criSocket, 5*time.Minute)
 	if err != nil {
 		setupLog.Error(err, "connect to crio")
 		os.Exit(1)
@@ -113,13 +118,13 @@ func main() {
 	if err = (&routerconfiguration.PERouterReconciler{
 		Client:      mgr.GetClient(),
 		Scheme:      mgr.GetScheme(),
-		MyNode:      nodeName,
-		FRRConfig:   frrConfigPath,
-		ReloadPort:  reloadPort,
+		MyNode:      args.nodeName,
+		FRRConfig:   args.frrConfigPath,
+		ReloadPort:  args.reloadPort,
 		PodRuntime:  podRuntime,
-		LogLevel:    logLevel,
+		LogLevel:    args.logLevel,
 		Logger:      logger,
-		MyNamespace: namespace,
+		MyNamespace: args.namespace,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Underlay")
 		os.Exit(1)

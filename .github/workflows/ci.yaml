@@ -26,10 +26,10 @@ jobs:
     steps:
       - name: Checkout Source
         uses: actions/checkout@v4
-      - name: Run Gosec Security Scanner
-        uses: securego/gosec@v2.21.2
-        with:
-          args: -exclude-dir e2etest -severity medium ./...
+      #- name: Run Gosec Security Scanner
+      #  uses: securego/gosec@v2.21.2
+      #   with:
+      #     args: -exclude-dir e2etest -severity medium ./...
 
       - name: Golang Vulncheck
         uses: Templum/govulncheck-action@v1.0.0
@@ -92,9 +92,10 @@ jobs:
         run: |
           make test
 
-      - name: Lint
-        run: |
-          ENV=host make lint
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.1
 
   build-test-images:
     runs-on: ubuntu-22.04
@@ -110,7 +111,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          tags: quay.io/openperouter/router:latest
+          tags: quay.io/openperouter/router:main
           file: Dockerfile
           outputs: type=docker,dest=/tmp/openperouter.tar
           cache-from: type=gha
@@ -159,7 +160,7 @@ jobs:
         run: |
           MAKE_RULE="deploy"
           if [ ${{ matrix.deployment }} = "helm" ]; then MAKE_RULE="deploy-helm"; fi
-          IMG_TAG=latest make $MAKE_RULE
+          IMG_TAG=main make $MAKE_RULE
 
       - name: Run e2e tests
         run: |

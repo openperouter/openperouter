@@ -40,21 +40,21 @@ type NodesReconciler struct {
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch;update
 
 func (r *NodesReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := r.Logger.With("controller", "NodeIndex", "request", req.NamespacedName.String())
+	logger := r.Logger.With("controller", "NodeIndex", "request", req.String())
 	logger.Info("start reconcile")
 	defer logger.Info("end reconcile")
 
-	ctx = context.WithValue(ctx, requestKey("request"), req.NamespacedName.String())
+	ctx = context.WithValue(ctx, requestKey("request"), req.String())
 
 	var nodes v1.NodeList
-	if err := r.Client.List(ctx, &nodes); err != nil {
+	if err := r.List(ctx, &nodes); err != nil {
 		slog.Error("failed to list nodes", "error", err)
 		return ctrl.Result{}, err
 	}
 
 	nodesToAnnotate := nodesToAnnotate(nodes.Items)
 	for _, n := range nodesToAnnotate {
-		if err := r.Client.Update(ctx, &n); err != nil {
+		if err := r.Update(ctx, &n); err != nil {
 			slog.Error("failed to update node", "node", n.Name, "error", err)
 			return ctrl.Result{}, err
 		}

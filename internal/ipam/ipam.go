@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/apparentlymart/go-cidr/cidr"
 	gocidr "github.com/apparentlymart/go-cidr/cidr"
 	"github.com/openperouter/openperouter/internal/ipfamily"
 )
@@ -75,7 +74,7 @@ func sliceCIDR(pool *net.IPNet, index, size int) ([]net.IPNet, error) {
 	res := []net.IPNet{}
 	for i := 0; i < size; i++ {
 		ipIndex := size*index + i
-		ip, err := cidr.Host(pool, ipIndex)
+		ip, err := gocidr.Host(pool, ipIndex)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get %d address from %s: %w", ipIndex, pool, err)
 		}

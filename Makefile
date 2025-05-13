@@ -1,5 +1,5 @@
 # Image URL to use all building/pushing image targets
-IMG ?= quay.io/openperouter/router:latest
+IMG ?= quay.io/openperouter/router:main
 NAMESPACE ?= "openperouter-system"
 LOGLEVEL ?= "info"
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.

@@ -25,6 +25,7 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"runtime/debug"
 	"time"
 
 	"github.com/openperouter/openperouter/internal/frrconfig"
@@ -45,6 +46,10 @@ func main() {
 	if err != nil {
 		fmt.Println("failed to init logger", err)
 	}
+
+	build, _ := debug.ReadBuildInfo()
+	slog.Info("version", "version", build.Main.Version)
+
 	slog.Info("listening", "address", bindAddress)
 	http.HandleFunc("/", reloadHandler)
 	server := &http.Server{

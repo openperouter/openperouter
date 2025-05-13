@@ -2,7 +2,7 @@
 set -o errexit
 set -x
 
-GOLANGCI_LINT_VERSION="${GOLANGCI_LINT_VERSION:-1.62.2}"
+GOLANGCI_LINT_VERSION="${GOLANGCI_LINT_VERSION:-2.1.6}"
 CMD="golangci-lint run --timeout 10m0s ./..."
 ENV="${ENV:-container}"
 

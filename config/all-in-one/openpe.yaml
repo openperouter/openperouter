@@ -473,7 +473,7 @@ spec:
         - --loglevel=debug
         command:
         - /nodemarker
-        image: quay.io/openperouter/router:latest
+        image: quay.io/openperouter/router:main
         imagePullPolicy: IfNotPresent
         name: nodemarker
         resources:
@@ -527,7 +527,7 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
-        image: quay.io/openperouter/router:latest
+        image: quay.io/openperouter/router:main
         imagePullPolicy: IfNotPresent
         name: controller
         resources:
@@ -666,7 +666,7 @@ spec:
         - /cp-tool
         - /reloader
         - /etc/frr_reloader/reloader
-        image: quay.io/openperouter/router:latest
+        image: quay.io/openperouter/router:main
         imagePullPolicy: IfNotPresent
         name: cp-reloader
         volumeMounts:

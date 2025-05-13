@@ -1,5 +1,5 @@
 # Build the manager binary
-FROM golang:1.23.6 AS builder
+FROM golang:1.24.3 AS builder
 
 ARG GIT_COMMIT=dev
 ARG GIT_BRANCH=dev
@@ -17,13 +17,13 @@ COPY internal/ internal/
 
 RUN --mount=type=cache,target=/root/.cache/go-build \
   --mount=type=cache,target=/go/pkg \
-  CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -o reloader cmd/reloader/main.go \
+  CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -o reloader ./cmd/reloader \
   && \
-  CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -o controller cmd/hostcontroller/main.go \
+  CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -o controller ./cmd/hostcontroller \
   && \
-  CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -o cp-tool cmd/cp-tool/main.go \
+  CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -o cp-tool ./cmd/cp-tool \
   && \
-  CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -o nodemarker cmd/nodemarker/main.go
+  CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -o nodemarker ./cmd/nodemarker
 
 FROM quay.io/fedora/fedora:43
 WORKDIR /

@@ -30,7 +30,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
-	periov1alpha1 "github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/conversion"
 	"github.com/openperouter/openperouter/internal/pods"
 	v1 "k8s.io/api/core/v1"
@@ -60,11 +59,11 @@ type requestKey string
 // +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=underlays/finalizers,verbs=update
 
 func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := r.Logger.With("controller", "RouterConfiguration", "request", req.NamespacedName.String())
+	logger := r.Logger.With("controller", "RouterConfiguration", "request", req.String())
 	logger.Info("start reconcile")
 	defer logger.Info("end reconcile")
 
-	ctx = context.WithValue(ctx, requestKey("request"), req.NamespacedName.String())
+	ctx = context.WithValue(ctx, requestKey("request"), req.String())
 
 	nodeIndex, err := nodeIndex(ctx, r.Client, r.MyNode)
 	if err != nil {
@@ -84,7 +83,7 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 
 	var underlays v1alpha1.UnderlayList
-	if err := r.Client.List(ctx, &underlays); err != nil {
+	if err := r.List(ctx, &underlays); err != nil {
 		slog.Error("failed to list underlays", "error", err)
 		return ctrl.Result{}, err
 	}
@@ -95,7 +94,7 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 
 	var vnis v1alpha1.VNIList
-	if err := r.Client.List(ctx, &vnis); err != nil {
+	if err := r.List(ctx, &vnis); err != nil {
 		slog.Error("failed to list vnis", "error", err)
 		return ctrl.Result{}, err
 	}
@@ -128,7 +127,7 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	if nonRecoverableHostError(err) {
 		logger.Info("breaking configuration change", "killing pod", routerPod.Name)
-		if err := r.Client.Delete(ctx, routerPod); err != nil && !errors.IsNotFound(err) {
+		if err := r.Delete(ctx, routerPod); err != nil && !errors.IsNotFound(err) {
 			slog.Error("failed to delete router pod", "error", err)
 			return ctrl.Result{}, err
 		}
@@ -184,9 +183,9 @@ func (r *PERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return err
 	}
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&periov1alpha1.Underlay{}).
+		For(&v1alpha1.Underlay{}).
 		Watches(&v1.Pod{}, &handler.EnqueueRequestForObject{}).
-		Watches(&periov1alpha1.VNI{}, &handler.EnqueueRequestForObject{}).
+		Watches(&v1alpha1.VNI{}, &handler.EnqueueRequestForObject{}).
 		WithEventFilter(filterNonRouterPods).
 		WithEventFilter(filterUpdates).
 		Named("routercontroller").

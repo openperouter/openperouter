@@ -9,8 +9,8 @@ kind: Kustomization
 images:
 - name: controller
   newName: quay.io/openperouter/router
-  newTag: latest
+  newTag: main
 - name: router
   newName: quay.io/openperouter/router
-  newTag: latest
+  newTag: main
 namespace: openperouter-system

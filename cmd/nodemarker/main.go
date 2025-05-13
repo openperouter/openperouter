@@ -20,6 +20,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"runtime/debug"
 
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
@@ -50,20 +51,22 @@ func init() {
 }
 
 func main() {
-	var (
-		nodeName  string
-		namespace string
-		logLevel  string
-		probeAddr string
-	)
-	flag.StringVar(&probeAddr, "health-probe-bind-address", ":9081", "The address the probe endpoint binds to.")
-	flag.StringVar(&nodeName, "nodename", "", "The name of the node the controller runs on")
-	flag.StringVar(&namespace, "namespace", "", "The namespace the controller runs in")
-	flag.StringVar(&logLevel, "loglevel", "info", "the verbosity of the process")
+	args := struct {
+		metricsAddr string
+		probeAddr   string
+		namespace   string
+		logLevel    string
+	}{}
+
+	flag.StringVar(&args.metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
+	flag.StringVar(&args.probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
+	flag.StringVar(&args.namespace, "namespace", "",
+		"The namespace to watch for resources. Leave empty for all namespaces.")
+	flag.StringVar(&args.logLevel, "loglevel", "info", "Set the logging level (debug, info, warn, error).")
 
 	flag.Parse()
 
-	logger, err := logging.New(logLevel)
+	logger, err := logging.New(args.logLevel)
 	if err != nil {
 		fmt.Println("unable to init logger", err)
 		os.Exit(1)
@@ -76,10 +79,13 @@ func main() {
 		setupLog.Info("disabling http/2")
 		c.NextProtos = []string{"http/1.1"}
 	})*/
+	build, _ := debug.ReadBuildInfo()
+	setupLog.Info("version", "version", build.Main.Version)
+	setupLog.Info("arguments", "args", fmt.Sprintf("%+v", args))
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
-		HealthProbeBindAddress: probeAddr,
+		HealthProbeBindAddress: args.probeAddr,
 		Cache:                  cache.Options{},
 	})
 	if err != nil {
@@ -91,7 +97,7 @@ func main() {
 	if err = (&nodeindex.NodesReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		LogLevel: logLevel,
+		LogLevel: args.logLevel,
 		Logger:   logger,
 	}).SetupWithManager(signalHandlerContext, mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "NodeReconciler")
