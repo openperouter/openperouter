@@ -516,7 +516,7 @@ spec:
         - --loglevel=debug
         - --namespace=$(NAMESPACE)
         - --frrconfig=/etc/frr/frr.conf
-        - --crisocket=/var/run/crio/crio.sock
+        - --crisocket=/crio.sock
         command:
         - /controller
         env:
@@ -547,10 +547,10 @@ spec:
             - NET_BIND_SERVICE
           privileged: true
         volumeMounts:
-        - mountPath: /var/run/crio/crio.sock
+        - mountPath: /crio.sock
           name: varrun
           subPath: crio.sock
-        - mountPath: /run/containerd/containerd.sock
+        - mountPath: /containerd.sock
           name: varrun
           subPath: containerd.sock
         - mountPath: /run/netns

@@ -546,7 +546,7 @@ spec:
             - NET_BIND_SERVICE
           privileged: true
         volumeMounts:
-        - mountPath: /run/containerd/containerd.sock
+        - mountPath: /containerd.sock
           name: varrun
           subPath: containerd.sock
         - mountPath: /run/netns

@@ -9,7 +9,7 @@ spec:
       containers:
         - name: controller
           volumeMounts:
-          - mountPath: /var/run/crio/crio.sock
+          - mountPath: /crio.sock
             name: varrun
             subPath: crio.sock
           args:
@@ -17,7 +17,7 @@ spec:
           - "--loglevel=debug"
           - "--namespace=$(NAMESPACE)"
           - "--frrconfig=/etc/frr/frr.conf"
-          - "--crisocket=/var/run/crio/crio.sock"
+          - "--crisocket=/crio.sock"
       volumes:
       - name: varrun
         hostPath:

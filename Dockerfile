@@ -25,7 +25,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
   && \
   CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -o nodemarker cmd/nodemarker/main.go
 
-FROM quay.io/fedora/fedora:43
+FROM gcr.io/distroless/static:latest
 WORKDIR /
 COPY --from=builder /go/openperouter/reloader .
 COPY --from=builder /go/openperouter/controller .

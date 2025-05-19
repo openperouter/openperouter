@@ -76,7 +76,7 @@ func main() {
 	flag.StringVar(&logLevel, "loglevel", "info", "the verbosity of the process")
 	flag.StringVar(&frrConfigPath, "frrconfig", "/etc/perouter/frr/frr.conf", "the location of the frr configuration file")
 	flag.IntVar(&reloadPort, "reloadport", 9080, "the port of the reloader process")
-	flag.StringVar(&criSocket, "crisocket", "/var/run/containerd/containerd.sock", "the location of the cri socket")
+	flag.StringVar(&criSocket, "crisocket", "/containerd.sock", "the location of the cri socket")
 
 	flag.Parse()
 
