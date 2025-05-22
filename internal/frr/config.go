@@ -33,6 +33,7 @@ type UnderlayConfig struct {
 }
 
 type VNIConfig struct {
+	RouterID      string
 	ASN           uint32
 	ToAdvertise   []string
 	LocalNeighbor *NeighborConfig

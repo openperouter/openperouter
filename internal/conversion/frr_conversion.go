@@ -87,6 +87,9 @@ func vniToFRR(vni v1alpha1.VNI, nodeIndex int) (frr.VNIConfig, error) {
 	}
 
 	res := frr.VNIConfig{
+		// we want a unique router id per VRF. From the host perspective it's multiple
+		// sessoins to different routers with the same asn. The router id must be unique
+		RouterID:      vniNeighbor.Addr,
 		ASN:           vni.Spec.ASN,
 		VNI:           int(vni.Spec.VNI),
 		VRF:           vni.VRFName(),

@@ -64,6 +64,7 @@ func SetupVNI(ctx context.Context, params VNIParams) error {
 	if err != nil {
 		return fmt.Errorf("could not set link up for host leg %s: %v", hostVeth, err)
 	}
+	slog.DebugContext(ctx, "host side is up", "veth", hostVeth.Attrs().Name)
 
 	if err := inNamespace(ns, func() error {
 		err = assignIPToInterface(peVeth, params.VethNSIP)
@@ -74,6 +75,7 @@ func SetupVNI(ctx context.Context, params VNIParams) error {
 		if err != nil {
 			return fmt.Errorf("could not set link up for host leg %s: %v", hostVeth, err)
 		}
+		slog.DebugContext(ctx, "ns side is up", "veth", peVeth.Attrs().Name)
 
 		slog.DebugContext(ctx, "setting up vrf", "vrf", params.VRF)
 		vrf, err := setupVRF(params.VRF)
