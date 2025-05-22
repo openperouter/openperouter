@@ -12,6 +12,13 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/frr"
 )
 
+const (
+	HostARedIP  = "192.168.20.2"
+	HostABlueIP = "192.168.21.2"
+	HostBRedIP  = "192.169.20.2"
+	HostBBlueIP = "192.169.21.2"
+)
+
 var (
 	LeafAConfig = Leaf{
 		VTEPIP:       "100.64.0.1",
@@ -32,14 +39,19 @@ type LeafConfiguration struct {
 }
 
 type Addresses struct {
-	IPV4 []string
-	IPV6 []string
+	RedistributeConnected bool
+	IPV4                  []string
+	IPV6                  []string
 }
 
 type Leaf struct {
 	VTEPIP       string
 	SpineAddress string
 	frr.Container
+}
+
+func (l Leaf) VTEPPrefix() string {
+	return l.VTEPIP + "/32"
 }
 
 // LeafConfigToFRR reads a Go template from the testdata directory and generates a string.

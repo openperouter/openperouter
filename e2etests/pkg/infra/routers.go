@@ -42,10 +42,10 @@ func init() {
 	links.Add("clab-kind-leafkind", "clab-kind-spine", "192.168.1.5", "192.168.1.4")
 	links.Add("clab-kind-leafA", "clab-kind-spine", "192.168.1.1", "192.168.1.0")
 	links.Add("clab-kind-leafB", "clab-kind-spine", "192.168.1.3", "192.168.1.2")
-	links.Add("clab-kind-leafA", "clab-kind-hostA_red", "192.168.20.1", "192.168.20.2")
-	links.Add("clab-kind-leafA", "clab-kind-hostA_blue", "192.168.21.1", "192.168.21.2")
-	links.Add("clab-kind-leafB", "clab-kind-hostB_red", "192.169.20.1", "192.169.20.2")
-	links.Add("clab-kind-leafB", "clab-kind-hostB_blue", "192.169.21.1", "192.169.21.2")
+	links.Add("clab-kind-leafA", "clab-kind-hostA_red", "192.168.20.1", HostARedIP)
+	links.Add("clab-kind-leafA", "clab-kind-hostA_blue", "192.168.21.1", HostABlueIP)
+	links.Add("clab-kind-leafB", "clab-kind-hostB_red", "192.169.20.1", HostBRedIP)
+	links.Add("clab-kind-leafB", "clab-kind-hostB_blue", "192.169.21.1", HostBBlueIP)
 }
 
 type linksForRouters struct {

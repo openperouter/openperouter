@@ -10,4 +10,5 @@ import (
 var (
 	Updater     *config.Updater
 	K8sReporter *k8sreporter.KubernetesReporter
+	ReportPath  string
 )

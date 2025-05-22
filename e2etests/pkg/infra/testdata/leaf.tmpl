@@ -34,7 +34,7 @@ router bgp 64520
  !
  address-family ipv4 unicast
   neighbor {{ .Leaf.SpineAddress }} activate
-  network {{ .Leaf.VTEPIP }}
+  network {{ .Leaf.VTEPPrefix }}
  exit-address-family
  !
  address-family l2vpn evpn
@@ -47,12 +47,18 @@ exit
 router bgp 64520 vrf red
  !
  address-family ipv4 unicast
+   {{ if .Red.RedistributeConnected }}
+   redistribute connected
+   {{- end }}
    {{- range .Red.IPV4 }}
    network {{ . }}
    {{- end }}
  exit-address-family
  !
  address-family ipv6 unicast
+   {{ if .Red.RedistributeConnected }}
+   redistribute connected
+   {{- end }}
    {{- range .Red.IPV6 }}
    network {{ . }}
    {{- end }}
@@ -67,12 +73,18 @@ exit
 router bgp 64520 vrf blue
  !
  address-family ipv4 unicast
+   {{ if .Blue.RedistributeConnected }}
+   redistribute connected
+   {{- end }}
    {{- range .Blue.IPV4 }}
    network {{ . }}
    {{- end }}
  exit-address-family
  !
  address-family ipv6 unicast
+   {{ if .Blue.RedistributeConnected }}
+   redistribute connected
+   {{- end }}
    {{- range .Blue.IPV6 }}
    network {{ . }}
    {{- end }}

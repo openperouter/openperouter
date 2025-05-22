@@ -34,31 +34,31 @@ topology:
 
     hostA_red:
       kind: linux
-      image: praqma/network-multitool:latest
+      image: "k8s.gcr.io/e2e-test-images/agnhost:2.40"
       binds:
         - hostA_red/setup.sh:/setup.sh
-      cmd: sleep INF
+      cmd: netexec --http-port=8090
 
     hostB_red:
       kind: linux
-      image: praqma/network-multitool:latest
+      image: "k8s.gcr.io/e2e-test-images/agnhost:2.40"
       binds:
         - hostB_red/setup.sh:/setup.sh
-      cmd: sleep INF
+      cmd: netexec --http-port=8090
 
     hostA_blue:
       kind: linux
-      image: praqma/network-multitool:latest
+      image: "k8s.gcr.io/e2e-test-images/agnhost:2.40"
       binds:
         - hostA_blue/setup.sh:/setup.sh
-      cmd: sleep INF
+      cmd: netexec --http-port=8090
 
     hostB_blue:
       kind: linux
-      image: praqma/network-multitool:latest
+      image: "k8s.gcr.io/e2e-test-images/agnhost:2.40"
       binds:
         - hostB_blue/setup.sh:/setup.sh
-      cmd: sleep INF
+      cmd: netexec --http-port=8090
 
     leafkind-switch:
       kind: bridge

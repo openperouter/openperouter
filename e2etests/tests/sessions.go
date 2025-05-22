@@ -75,7 +75,7 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 			for _, node := range nodes {
 				neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
 				Expect(err).NotTo(HaveOccurred())
-				validateSessionWithNeighbor(exec, neighborIP, Established)
+				validateSessionWithNeighbor(infra.KindLeaf, node.Name, exec, neighborIP, Established)
 			}
 			return nil
 		}, time.Minute, time.Second).ShouldNot(HaveOccurred())
@@ -114,13 +114,13 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			validateFRRK8sSessionForVNI(vni, frrk8sPods, Established)
+			validateFRRK8sSessionForVNI(vni, Established, frrk8sPods...)
 
 			By("deleting the vni removes the session with the host")
 			err = Updater.Client().Delete(context.Background(), &vni)
 			Expect(err).NotTo(HaveOccurred())
 
-			validateFRRK8sSessionForVNI(vni, frrk8sPods, !Established)
+			validateFRRK8sSessionForVNI(vni, !Established, frrk8sPods...)
 		})
 
 		// This test must be the last of the ordered describe as it will remove the underlay
