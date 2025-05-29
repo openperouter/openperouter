@@ -65,7 +65,7 @@ topology:
 
     pe-kind:
       kind: k8s-kind
-      startup-config: kind-configuration.yaml
+      startup-config: kind-configuration-registry.yaml
 
     pe-kind-control-plane:
       kind: ext-container

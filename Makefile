@@ -1,5 +1,8 @@
 # Image URL to use all building/pushing image targets
-IMG ?= quay.io/openperouter/router:main
+IMG_TAG ?= main
+IMG_REPO ?= quay.io/openperouter
+IMG_NAME ?= router
+IMG ?= $(IMG_REPO)/$(IMG_NAME):$(IMG_TAG)
 NAMESPACE ?= "openperouter-system"
 LOGLEVEL ?= "info"
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
@@ -47,8 +50,12 @@ help: ## Display this help.
 
 .PHONY: manifests
 manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
-	$(CONTROLLER_GEN) rbac:roleName=controller-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+	$(CONTROLLER_GEN) crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+	$(CONTROLLER_GEN) rbac:roleName=controller-role paths="./internal/controller/..." output:rbac:artifacts:config=config/rbac/controller/
+	$(CONTROLLER_GEN) rbac:roleName=operator-role paths="./internal/operator/..." output:rbac:artifacts:config=config/rbac/operator/
 	cp config/crd/bases/*.yaml charts/openperouter/charts/crds/templates
+	rm -f charts/openperouter/charts/crds/templates/kustomization.yaml && rm -f charts/openperouter/charts/crds/templates/openpe.openperouter.github.io_openperouters.yaml
+	hack/generate-bindata.sh
 
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
@@ -63,7 +70,7 @@ vet: ## Run go vet against code.
 	go vet ./...
 
 .PHONY: test
-test: fmt vet ## Run tests.
+test: fmt vet envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v e2etest) -coverprofile cover.out
 	sudo -E sh -c "umask 0; PATH=${GOPATH}/bin:$(pwd)/bin:${PATH} go test -tags=runasroot -v -race ./internal/hostnetwork"
 
@@ -88,17 +95,19 @@ BRANCH = $(shell git rev-parse --abbrev-ref HEAD)
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
 	@if [ "$(CONTAINER_ENGINE)" = "podman" ]; then \
-		sudo $(CONTAINER_ENGINE) build --network=host -t ${IMG} .; \
+		sudo $(CONTAINER_ENGINE) build  -t ${IMG} .; \
 	else \
 		$(CONTAINER_ENGINE) build -t ${IMG} .; \
 	fi
 
+
+TLS_VERIFY ?= "true"
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
 	@if [ "$(CONTAINER_ENGINE)" = "podman" ]; then \
-		sudo $(CONTAINER_ENGINE) push --network=host -t ${IMG} .; \
+		sudo $(CONTAINER_ENGINE) push --tls-verify=${TLS_VERIFY} ${IMG}; \
 	else \
-		$(CONTAINER_ENGINE) push -t ${IMG} .; \
+		$(CONTAINER_ENGINE) push ${IMG}; \
 	fi
 
 ##@ Deployment
@@ -160,15 +169,15 @@ deploy-prometheus: kubectl
 	$(KUBECTL) -n monitoring wait --for=condition=Ready --all pods --timeout 300s
 
 .PHONY: deploy-cluster
-deploy-cluster: kubectl manifests kustomize load-on-kind ## Deploy a cluster for the controller.
+deploy-cluster: kubectl manifests kustomize clab-cluster load-on-kind ## Deploy a cluster for the controller.
 
 .PHONY: deploy-clab
-deploy-clab: kubectl manifests kustomize load-on-kind ## Deploy a cluster for the controller.
+deploy-clab: kubectl manifests kustomize clab-cluster load-on-kind ## Deploy a cluster for the controller.
 
-KUSTOMIZE_LAYER ?= default
+KUSTOMIZE_LAYER ?= controller
 .PHONY: deploy-controller
 deploy-controller: kubectl kustomize ## Deploy controller to the K8s cluster specified in $KUBECONFIG.
-	cd config/pods && $(KUSTOMIZE) edit set image router=${IMG}
+	cd config/pods/controller && $(KUSTOMIZE) edit set image router=${IMG}
 	$(KUBECTL) -n ${NAMESPACE} delete ds controller || true
 	$(KUBECTL) -n ${NAMESPACE} delete ds router || true
 	$(KUBECTL) -n ${NAMESPACE} delete deployment nodemarker || true
@@ -192,7 +201,7 @@ deploy-helm: helm kind deploy-cluster
 
 .PHONY: undeploy
 undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
-	$(KUSTOMIZE) build config/default | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
+	$(KUSTOMIZE) build config/controller | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
 
 KUSTOMIZE_INSTALL_SCRIPT ?= "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"
 .PHONY: kustomize
@@ -257,7 +266,7 @@ clab-cluster:
 	@echo 'export KUBECONFIG=${KUBECONFIG_PATH}'
 
 .PHONY: load-on-kind
-load-on-kind: clab-cluster ## Load the docker image into the kind cluster.
+load-on-kind: ## Load the docker image into the kind cluster.
 	KIND=$(KIND) bash -c 'source clab/common.sh && load_local_image_to_kind ${IMG} router'
 
 .PHONY: lint
@@ -284,10 +293,10 @@ kind-export-logs: create-export-logs
 
 .PHONY: generate-all-in-one
 generate-all-in-one: manifests kustomize ## Create manifests
-	cd config/pods && $(KUSTOMIZE) edit set image controller=${IMG}
-	cd config/pods && $(KUSTOMIZE) edit set namespace $(NAMESPACE)
+	cd config/pods/controller && $(KUSTOMIZE) edit set image controller=${IMG}
+	cd config/pods/controller && $(KUSTOMIZE) edit set namespace $(NAMESPACE)
 
-	$(KUSTOMIZE) build config/default > config/all-in-one/openpe.yaml
+	$(KUSTOMIZE) build config/controller > config/all-in-one/openpe.yaml
 	$(KUSTOMIZE) build config/crio > config/all-in-one/crio.yaml
 
 .PHONY: helm-docs
@@ -315,3 +324,137 @@ build-validator: ginkgo ## Build Ginkgo test binary.
 .PHONY: create-export-logs
 create-export-logs:
 	mkdir -p ${KIND_EXPORT_LOGS}
+
+# Operator specifics, copied from a Makefile generated on a clean folder by operator-sdk, then modified.
+#
+
+CSV_VERSION = $(shell echo $(IMG_TAG) | sed 's/v//')
+ifeq ($(IMG_TAG), main)
+CSV_VERSION := 0.0.0
+endif
+ifeq ($(IMG_TAG), dev)
+CSV_VERSION := 0.0.0
+endif
+
+# CHANNELS define the bundle channels used in the bundle.
+# Add a new line here if you would like to change its default config. (E.g CHANNELS = "candidate,fast,stable")
+# To re-generate a bundle for other specific channels without changing the standard setup, you can:
+# - use the CHANNELS as arg of the bundle target (e.g make bundle CHANNELS=candidate,fast,stable)
+# - use environment variables to overwrite this value (e.g export CHANNELS="candidate,fast,stable")
+ifneq ($(origin CHANNELS), undefined)
+BUNDLE_CHANNELS := --channels=$(CHANNELS)
+endif
+
+# DEFAULT_CHANNEL defines the default channel used in the bundle.
+# Add a new line here if you would like to change its default config. (E.g DEFAULT_CHANNEL = "stable")
+# To re-generate a bundle for any other default channel without changing the default setup, you can:
+# - use the DEFAULT_CHANNEL as arg of the bundle target (e.g make bundle DEFAULT_CHANNEL=stable)
+# - use environment variables to overwrite this value (e.g export DEFAULT_CHANNEL="stable")
+ifneq ($(origin DEFAULT_CHANNEL), undefined)
+BUNDLE_DEFAULT_CHANNEL := --default-channel=$(DEFAULT_CHANNEL)
+endif
+BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
+
+IMAGE_TAG_BASE ?= $(IMG_REPO)/openperouter-operator
+BUNDLE_IMG ?= $(IMAGE_TAG_BASE)-bundle:v$(CSV_VERSION)
+BUNDLE_GEN_FLAGS ?= -q --overwrite --version $(CSV_VERSION) $(BUNDLE_METADATA_OPTS)
+
+USE_IMAGE_DIGESTS ?= false
+ifeq ($(USE_IMAGE_DIGESTS), true)
+	BUNDLE_GEN_FLAGS += --use-image-digests
+endif
+
+OPERATOR_SDK_VERSION ?= v1.39.2
+OLM_VERSION ?= v0.18.3
+
+.PHONY: operator-sdk
+OPERATOR_SDK ?= $(LOCALBIN)/operator-sdk
+operator-sdk: ## Download operator-sdk locally if necessary.
+ifeq (,$(wildcard $(OPERATOR_SDK)))
+ifeq (, $(shell which operator-sdk 2>/dev/null))
+	@{ \
+	set -e ;\
+	mkdir -p $(dir $(OPERATOR_SDK)) ;\
+	OS=$(shell go env GOOS) && ARCH=$(shell go env GOARCH) && \
+	curl -sSLo $(OPERATOR_SDK) https://github.com/operator-framework/operator-sdk/releases/download/$(OPERATOR_SDK_VERSION)/operator-sdk_$${OS}_$${ARCH} ;\
+	chmod +x $(OPERATOR_SDK) ;\
+	}
+else
+OPERATOR_SDK = $(shell which operator-sdk)
+endif
+endif
+
+# TODO: The bundle ignores the perouter ServiceAccount because it doesn't have RBACs attached.
+# For now the operator hardcodes the router's ServiceAccount to be default.
+.PHONY: bundle
+bundle: manifests kustomize operator-sdk ## Generate bundle manifests and metadata, then validate generated files.
+	$(OPERATOR_SDK) generate kustomize manifests --interactive=false -q
+	cd config/pods/operator && $(KUSTOMIZE) edit set image controller=$(IMG)
+	$(KUSTOMIZE) build config/operator | $(OPERATOR_SDK) generate bundle $(BUNDLE_GEN_FLAGS) --extra-service-accounts "controller,perouter" --package openperouter-operator
+	$(OPERATOR_SDK) bundle validate ./bundle
+
+.PHONY: bundle-build
+bundle-build: ## Build the bundle image.
+	$(CONTAINER_ENGINE) build -f bundle.Dockerfile -t $(BUNDLE_IMG) .
+
+.PHONY: bundle-push
+bundle-push: ## Push the bundle image.
+	$(MAKE) docker-push IMG=$(BUNDLE_IMG)
+
+.PHONY: opm
+OPM = $(LOCALBIN)/opm
+opm: ## Download opm locally if necessary.
+ifeq (,$(wildcard $(OPM)))
+ifeq (,$(shell which opm 2>/dev/null))
+	@{ \
+	set -e ;\
+	mkdir -p $(dir $(OPM)) ;\
+	OS=$(shell go env GOOS) && ARCH=$(shell go env GOARCH) && \
+	curl -sSLo $(OPM) https://github.com/operator-framework/operator-registry/releases/download/v1.23.0/$${OS}-$${ARCH}-opm ;\
+	chmod +x $(OPM) ;\
+	}
+else
+OPM = $(shell which opm)
+endif
+endif
+
+# A comma-separated list of bundle images (e.g. make catalog-build BUNDLE_IMGS=example.com/operator-bundle:v0.1.0,example.com/operator-bundle:v0.2.0).
+# These images MUST exist in a registry and be pull-able.
+BUNDLE_IMGS ?= $(BUNDLE_IMG)
+
+# The image tag given to the resulting catalog image (e.g. make catalog-build CATALOG_IMG=example.com/operator-catalog:v0.2.0).
+CATALOG_IMG ?= $(IMAGE_TAG_BASE)-catalog:v$(CSV_VERSION)
+
+# Set CATALOG_BASE_IMG to an existing catalog image tag to add $BUNDLE_IMGS to that image.
+ifneq ($(origin CATALOG_BASE_IMG), undefined)
+FROM_INDEX_OPT := --from-index $(CATALOG_BASE_IMG)
+endif
+
+# Build a catalog image by adding bundle images to an empty catalog using the operator package manager tool, 'opm'.
+# This recipe invokes 'opm' in 'semver' bundle add mode. For more information on add modes, see:
+# https://github.com/operator-framework/community-operators/blob/7f1438c/docs/packaging-operator.md#updating-your-existing-operator
+USE_HTTP ?= ""
+.PHONY: catalog-build
+catalog-build: opm ## Build a catalog image.
+	$(OPM) index add --container-tool $(CONTAINER_ENGINE) --mode semver --tag $(CATALOG_IMG) --bundles $(BUNDLE_IMGS) $(FROM_INDEX_OPT) $(USE_HTTP)
+
+# Push the catalog image.
+.PHONY: catalog-push
+catalog-push: ## Push a catalog image.
+	$(MAKE) docker-push IMG=$(CATALOG_IMG)
+
+
+deploy-operator-with-olm: export VERSION=dev
+deploy-operator-with-olm: export CSV_VERSION=0.0.0
+deploy-operator-with-olm: export KIND_WITH_REGISTRY=true
+deploy-operator-with-olm: bundle kustomize kind clab-cluster load-on-kind deploy-olm build-and-push-bundle-images ## deploys the operator with OLM instead of manifests
+	sed -i 's|image:.*|image: $(CATALOG_IMG)|' config/olm-install/install-resources.yaml
+	sed -i 's#openperouter-system#$(NAMESPACE)#g' config/olm-install/install-resources.yaml
+	$(KUSTOMIZE) build config/olm-install | kubectl apply -f -
+	VERSION=$(CSV_VERSION) NAMESPACE=$(NAMESPACE) hack/wait-for-csv.sh
+
+deploy-olm: operator-sdk ## deploys OLM on the cluster
+	$(OPERATOR_SDK) olm install --version $(OLM_VERSION) --timeout 5m0s
+	$(OPERATOR_SDK) olm status
+
+build-and-push-bundle-images: bundle-build bundle-push catalog-build catalog-push

@@ -96,6 +96,11 @@ jobs:
         uses: golangci/golangci-lint-action@v8
         with:
           version: v2.1
+      
+      - name: Verify bundle manifests
+        run: |
+          make bundle
+          git diff --exit-code -I'^    createdAt: ' bundle
 
   build-test-images:
     runs-on: ubuntu-22.04
@@ -111,7 +116,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          tags: quay.io/openperouter/router:main
+          tags: quay.io/openperouter/router:main,localhost:5000/router:main
           file: Dockerfile
           outputs: type=docker,dest=/tmp/openperouter.tar
           cache-from: type=gha
@@ -131,7 +136,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        deployment: [manifests, helm]
+        deployment: [manifests, helm, operator]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -159,8 +164,11 @@ jobs:
       - name: Deploy the cluster
         run: |
           MAKE_RULE="deploy"
+          IMG_REPO="quay.io/openperouter"
           if [ ${{ matrix.deployment }} = "helm" ]; then MAKE_RULE="deploy-helm"; fi
-          IMG_TAG=main make $MAKE_RULE
+          if [ ${{ matrix.deployment }} = "operator" ]; then MAKE_RULE="deploy-operator-with-olm"; IMG_REPO="localhost:5000"; export USE_HTTP=--use-http; export TLS_VERIFY=false; export KUBECONFIG=bin/kubeconfig; fi
+          IMG_REPO=$IMG_REPO make $MAKE_RULE
+          if [ ${{ matrix.deployment }} = "operator" ]; then IMG_REPO="quay.io/openperouter" make load-on-kind; kubectl apply -f config/samples/openperouter.yaml; sleep 5; kubectl -n openperouter-system wait --for=condition=Ready pods -l "component in (controller,router,nodemarker)" --timeout 300s; fi
 
       - name: Run e2e tests
         run: |

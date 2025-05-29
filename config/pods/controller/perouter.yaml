@@ -102,7 +102,7 @@ spec:
               mountPath: /etc/frr
         # Copies the reloader to the shared volume between the k8s-frr controller and reloader.
         - name: cp-reloader
-          image: router:latest
+          image: router:main
           imagePullPolicy: IfNotPresent
           command: ["/cp-tool", "/reloader", "/etc/frr_reloader/reloader"]
           volumeMounts:

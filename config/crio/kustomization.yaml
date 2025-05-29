@@ -1,4 +1,4 @@
 resources:
-- ../default
+- ../controller
 patchesStrategicMerge:
   - controller_patch.yaml
