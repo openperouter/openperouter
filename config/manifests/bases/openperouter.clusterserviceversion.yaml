@@ -1,0 +1,60 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  annotations:
+    alm-examples: '[]'
+    capabilities: Basic Install
+  name: openperouter.v0.0.0
+  namespace: placeholder
+spec:
+  apiservicedefinitions: {}
+  customresourcedefinitions:
+    owned:
+    - description: OpenPERouter is the Schema for the openperouters API
+      displayName: Open PERouter
+      kind: OpenPERouter
+      name: openperouters.openpe.openperouter.github.io
+      version: v1alpha1
+    - description: Underlay is the Schema for the underlays API.
+      displayName: Underlay
+      kind: Underlay
+      name: underlays.openpe.openperouter.github.io
+      version: v1alpha1
+    - description: |-
+        VNI represents a VXLan VNI to receive EVPN type 5 routes
+        from.
+      displayName: VNI
+      kind: VNI
+      name: vnis.openpe.openperouter.github.io
+      version: v1alpha1
+  description: Openperouter description. TODO.
+  displayName: Openperouter
+  icon:
+  - base64data: ""
+    mediatype: ""
+  install:
+    spec:
+      deployments: null
+    strategy: ""
+  installModes:
+  - supported: false
+    type: OwnNamespace
+  - supported: false
+    type: SingleNamespace
+  - supported: false
+    type: MultiNamespace
+  - supported: true
+    type: AllNamespaces
+  keywords:
+  - openperouter
+  links:
+  - name: Openperouter
+    url: https://openperouter.domain
+  maintainers:
+  - email: your@email.com
+    name: Maintainer Name
+  maturity: alpha
+  provider:
+    name: Provider Name
+    url: https://your.domain
+  version: 0.0.0

@@ -31,7 +31,7 @@ spec:
         - "--loglevel=debug"
         - "--namespace=$(NAMESPACE)"
         - "--frrconfig=/etc/frr/frr.conf"
-        image: router:latest
+        image: router:main
         imagePullPolicy: IfNotPresent
         name: controller
         securityContext:

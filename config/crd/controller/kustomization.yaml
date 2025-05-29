@@ -1,0 +1,4 @@
+resources:
+- ../bases
+patches:
+  - path: ignore_operator_crd.yaml

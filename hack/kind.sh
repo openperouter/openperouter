@@ -14,16 +14,23 @@ for cluster in $clusters; do
   fi
 done
 
+# create registry container unless it already exists
+running="$($CONTAINER_ENGINE inspect -f '{{.State.Running}}' "kind-registry" 2>/dev/null || true)"
+if [ "${running}" != 'true' ]; then
+  $CONTAINER_ENGINE run \
+    -d --restart=always -p "5000:5000" --name "kind-registry" \
+    registry:2
+fi
+
 # create a cluster with the local registry enabled in containerd
-cat <<EOF | "${KIND_BIN}" create cluster --image "${NODE_IMAGE}" --name "${KIND_CLUSTER_NAME}" --config=-
-kind: Cluster
-apiVersion: kind.x-k8s.io/v1alpha4
-networking:
-  ipFamily: "${IP_FAMILY}"
-nodes:
-- role: control-plane
-- role: worker
-- role: worker
-EOF
+KIND_CONFIG_NAME="hack/kind/config_with_registry.yaml"
+"${KIND_BIN}" create cluster --image "${NODE_IMAGE}" --name "${KIND_CLUSTER_NAME}" --config=${KIND_CONFIG_NAME}
+
+# connect the registry to the cluster network
+$CONTAINER_ENGINE network connect "kind" "kind-registry" || true
+
+# Document the local registry
+# https://github.com/kubernetes/enhancements/tree/master/keps/sig-cluster-lifecycle/generic/1755-communicating-a-local-registry
+kubectl apply -f hack/kind/registry_configmap.yaml
 
 kubectl label node "$KIND_CLUSTER_NAME"-worker "$KIND_CLUSTER_NAME"-worker2 node-role.kubernetes.io/worker=worker

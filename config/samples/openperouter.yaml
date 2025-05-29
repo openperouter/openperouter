@@ -1,0 +1,7 @@
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: OpenPERouter
+metadata:
+  name: openperouter
+  namespace: openperouter-system
+spec:
+  logLevel: debug

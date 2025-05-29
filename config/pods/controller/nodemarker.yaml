@@ -28,7 +28,7 @@ spec:
         - /nodemarker
         args:
         - "--loglevel=debug"
-        image: router:latest
+        image: router:main
         imagePullPolicy: IfNotPresent
         name: nodemarker
         resources:
