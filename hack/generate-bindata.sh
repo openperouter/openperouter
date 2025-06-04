@@ -1,10 +1,10 @@
 #!/bin/bash
 set -euo pipefail
-rm -rf ./bindata/deployment
-mkdir -p ./bindata/deployment
-cp -rf ./charts/* ./bindata/deployment/
+rm -rf ./operator/bindata/deployment
+mkdir -p ./operator/bindata/deployment
+cp -rf ./charts/* ./operator/bindata/deployment/
 
-pushd ./bindata/deployment/openperouter
+pushd ./operator/bindata/deployment/openperouter
 
 rm -rf charts
 rm -f templates/rbac.yaml

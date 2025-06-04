@@ -50,10 +50,6 @@ func TestFromEnvironment(t *testing.T) {
 				_ = os.Setenv("FRR_HTTPS_METRICS_PORT", "3333")
 				_ = os.Setenv("METRICS_PORT", "4444")
 				_ = os.Setenv("HTTPS_METRICS_PORT", "5555")
-				_ = os.Setenv("FRRK8S_FRR_METRICS_PORT", "6666")
-				_ = os.Setenv("FRRK8S_HTTPS_METRICS_PORT", "7777")
-				_ = os.Setenv("FRRK8S_FRR_HTTPS_METRICS_PORT", "8888")
-				_ = os.Setenv("FRRK8S_METRICS_PORT", "9999")
 			},
 			expected: EnvConfig{
 				Namespace: "test-namespace",

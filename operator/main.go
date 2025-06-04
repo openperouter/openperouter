@@ -40,7 +40,7 @@ import (
 	openpev1alpha1 "github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/envconfig"
 	"github.com/openperouter/openperouter/internal/logging"
-	"github.com/openperouter/openperouter/internal/operator"
+	operator "github.com/openperouter/openperouter/operator/internal"
 	// +kubebuilder:scaffold:imports
 )
 

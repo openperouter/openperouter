@@ -23,10 +23,6 @@ func mergeMetadataForUpdate(current, updated *uns.Unstructured) {
 	mergeLabels(current, updated)
 }
 
-const (
-	MetalLBConfigMap = "config"
-)
-
 // MergeObjectForUpdate prepares a "desired" object to be updated.
 // Some objects, such as Deployments and Services require
 // some semantic-aware updates
