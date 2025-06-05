@@ -1,0 +1,6 @@
+namespace: openperouter-system
+
+resources:
+- ../crd
+- ../rbac
+- ../pods

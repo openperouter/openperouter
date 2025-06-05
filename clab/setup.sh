@@ -1,5 +1,6 @@
 #!/bin/bash
 set -euo pipefail
+set -x
 
 pushd "$(dirname $(readlink -f $0))"
 source common.sh
@@ -19,6 +20,14 @@ fi
 
 if [[ $(cat /sys/class/net/leafkind-switch/operstate) != "up" ]]; then
 sudo ip link set dev leafkind-switch up
+fi
+
+# create registry container unless it already exists
+running="$($CONTAINER_ENGINE inspect -f '{{.State.Running}}' "kind-registry" 2>/dev/null || true)"
+if [ "${running}" != 'true' ]; then
+  $CONTAINER_ENGINE run \
+    -d --restart=always -p "5000:5000" --name "kind-registry" \
+    registry:2
 fi
 
 if [[ $CONTAINER_ENGINE == "docker" ]]; then
@@ -49,6 +58,13 @@ load_image_to_kind quay.io/metallb/frr-k8s:v0.0.17 frrk8s
 
 ${KIND_COMMAND} --name ${KIND_CLUSTER_NAME} get kubeconfig > $KUBECONFIG_PATH
 export KUBECONFIG=$KUBECONFIG_PATH
+
+# connect the registry to the cluster network
+$CONTAINER_ENGINE network connect "kind" "kind-registry" || true
+
+# Document the local registry
+# https://github.com/kubernetes/enhancements/tree/master/keps/sig-cluster-lifecycle/generic/1755-communicating-a-local-registry
+kubectl apply -f kind-registry_configmap.yaml
 
 kind/frr-k8s/setup.sh
 

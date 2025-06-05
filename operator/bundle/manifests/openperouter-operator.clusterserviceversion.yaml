@@ -1,0 +1,249 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  annotations:
+    alm-examples: '[]'
+    capabilities: Basic Install
+    createdAt: "2025-06-05T12:08:17Z"
+    operators.operatorframework.io/builder: operator-sdk-v1.39.2
+    operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
+  name: openperouter-operator.v0.0.0
+  namespace: placeholder
+spec:
+  apiservicedefinitions: {}
+  customresourcedefinitions:
+    owned:
+    - description: OpenPERouter is the Schema for the openperouters API
+      displayName: Open PERouter
+      kind: OpenPERouter
+      name: openperouters.openpe.openperouter.github.io
+      version: v1alpha1
+    - description: Underlay is the Schema for the underlays API.
+      displayName: Underlay
+      kind: Underlay
+      name: underlays.openpe.openperouter.github.io
+      version: v1alpha1
+    - description: |-
+        VNI represents a VXLan VNI to receive EVPN type 5 routes
+        from.
+      displayName: VNI
+      kind: VNI
+      name: vnis.openpe.openperouter.github.io
+      version: v1alpha1
+  description: An operator for deploying OpenPERouter on a Kubernetes cluster.
+  displayName: OpenPERouter Operator
+  icon:
+  - base64data: ""
+    mediatype: ""
+  install:
+    spec:
+      clusterPermissions:
+      - rules:
+        - apiGroups:
+          - ""
+          resources:
+          - nodes
+          verbs:
+          - get
+          - list
+          - update
+          - watch
+        - apiGroups:
+          - ""
+          resources:
+          - pods
+          verbs:
+          - delete
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - openpe.openperouter.github.io
+          resources:
+          - underlays
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - openpe.openperouter.github.io
+          resources:
+          - underlays/finalizers
+          verbs:
+          - update
+        - apiGroups:
+          - openpe.openperouter.github.io
+          resources:
+          - underlays/status
+          verbs:
+          - get
+          - patch
+          - update
+        - apiGroups:
+          - openpe.openperouter.github.io
+          resources:
+          - vnis
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - openpe.openperouter.github.io
+          resources:
+          - vnis/finalizers
+          verbs:
+          - update
+        - apiGroups:
+          - openpe.openperouter.github.io
+          resources:
+          - vnis/status
+          verbs:
+          - get
+          - patch
+          - update
+        serviceAccountName: controller
+      - rules:
+        - apiGroups:
+          - openpe.openperouter.github.io
+          resources:
+          - openperouters
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - openpe.openperouter.github.io
+          resources:
+          - openperouters/finalizers
+          verbs:
+          - update
+        - apiGroups:
+          - openpe.openperouter.github.io
+          resources:
+          - openperouters/status
+          verbs:
+          - get
+          - patch
+          - update
+        serviceAccountName: operator
+      deployments:
+      - label:
+          app.kubernetes.io/component: operator
+          app.kubernetes.io/created-by: operator
+          app.kubernetes.io/instance: operator
+          app.kubernetes.io/managed-by: kustomize
+          app.kubernetes.io/name: operator
+          app.kubernetes.io/part-of: operator
+          control-plane: operator
+        name: operator
+        spec:
+          selector:
+            matchLabels:
+              control-plane: operator
+          strategy: {}
+          template:
+            metadata:
+              annotations:
+                kubectl.kubernetes.io/default-container: operator
+              labels:
+                app: operator
+                control-plane: operator
+            spec:
+              containers:
+              - args:
+                - --loglevel=debug
+                command:
+                - /operator
+                env:
+                - name: OPERATOR_NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.namespace
+                - name: CONTROLLER_IMAGE
+                  value: quay.io/openperouter/router:main
+                - name: FRR_IMAGE
+                  value: quay.io/frrouting/frr:10.2.1
+                - name: KUBE_RBAC_PROXY_IMAGE
+                  value: quay.io/brancz/kube-rbac-proxy:v0.11.0
+                - name: DEPLOY_KUBE_RBAC_PROXIES
+                  value: "false"
+                image: quay.io/openperouter/router:main
+                imagePullPolicy: IfNotPresent
+                name: operator
+                resources:
+                  limits:
+                    cpu: 500m
+                    memory: 128Mi
+                  requests:
+                    cpu: 10m
+                    memory: 64Mi
+              serviceAccountName: operator
+      permissions:
+      - rules:
+        - apiGroups:
+          - ""
+          resources:
+          - configmaps
+          - services
+          verbs:
+          - create
+          - delete
+          - get
+          - patch
+          - update
+        - apiGroups:
+          - ""
+          resources:
+          - events
+          verbs:
+          - create
+          - patch
+        - apiGroups:
+          - apps
+          resources:
+          - daemonsets
+          - deployments
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        serviceAccountName: operator
+    strategy: deployment
+  installModes:
+  - supported: false
+    type: OwnNamespace
+  - supported: false
+    type: SingleNamespace
+  - supported: false
+    type: MultiNamespace
+  - supported: true
+    type: AllNamespaces
+  keywords:
+  - openperouter-operator
+  links:
+  - name: OpenPERouter Operator
+    url: https://github.com/openperouter/openperouter
+  maintainers:
+  - email: fpaoline@redhat.com
+    name: Federico Paolinelli
+  maturity: alpha
+  provider:
+    name: Community
+    url: https://github.com/openperouter/openperouter
+  version: 0.0.0
