@@ -105,13 +105,27 @@ func TestValidateVNIs(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name: "invalid localcidr",
+			vnis: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+					Spec: v1alpha1.L3VNISpec{
+						VNI:       100,
+						LocalCIDR: "not-a-cidr",
+					},
+					Status: v1alpha1.L3VNIStatus{},
+				},
+			},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := ValidateL3VNIs(tt.vnis)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("validateVNIs() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("validateL3VNIs() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
