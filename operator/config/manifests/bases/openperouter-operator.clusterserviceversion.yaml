@@ -4,17 +4,12 @@ metadata:
   annotations:
     alm-examples: '[]'
     capabilities: Basic Install
-  name: openperouter.v0.0.0
+  name: openperouter-operator.v0.0.0
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
   customresourcedefinitions:
     owned:
-    - description: OpenPERouter is the Schema for the openperouters API
-      displayName: Open PERouter
-      kind: OpenPERouter
-      name: openperouters.openpe.openperouter.github.io
-      version: v1alpha1
     - description: Underlay is the Schema for the underlays API.
       displayName: Underlay
       kind: Underlay
@@ -27,8 +22,13 @@ spec:
       kind: VNI
       name: vnis.openpe.openperouter.github.io
       version: v1alpha1
-  description: Openperouter description. TODO.
-  displayName: Openperouter
+    - description: OpenPERouter is the Schema for the openperouters API
+      displayName: Open PERouter
+      kind: OpenPERouter
+      name: openperouters.openpe.openperouter.github.io
+      version: v1alpha1
+  description: An operator for deploying OpenPERouter on a Kubernetes cluster.
+  displayName: OpenPERouter Operator
   icon:
   - base64data: ""
     mediatype: ""
@@ -46,15 +46,15 @@ spec:
   - supported: true
     type: AllNamespaces
   keywords:
-  - openperouter
+  - openperouter-operator
   links:
-  - name: Openperouter
-    url: https://openperouter.domain
+  - name: OpenPERouter Operator
+    url: https://github.com/openperouter/openperouter
   maintainers:
-  - email: your@email.com
-    name: Maintainer Name
+  - email: fpaoline@redhat.com
+    name: Federico Paolinelli
   maturity: alpha
   provider:
-    name: Provider Name
-    url: https://your.domain
+    name: Community
+    url: https://github.com/openperouter/openperouter
   version: 0.0.0

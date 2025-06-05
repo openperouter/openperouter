@@ -21,7 +21,7 @@ import (
 	"io"
 	"strings"
 
-	openpev1alpha1 "github.com/openperouter/openperouter/api/v1alpha1"
+	operatorapi "github.com/openperouter/openperouter/operator/api/v1alpha1"
 	"github.com/pkg/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/yaml"
@@ -71,11 +71,11 @@ func setOcpMonitorFields(obj *unstructured.Unstructured) error {
 	return nil
 }
 
-func logLevelValue(crdConfig *openpev1alpha1.OpenPERouter) openpev1alpha1.LogLevel {
+func logLevelValue(crdConfig *operatorapi.OpenPERouter) operatorapi.LogLevel {
 	if crdConfig.Spec.LogLevel != "" {
 		return crdConfig.Spec.LogLevel
 	}
-	return openpev1alpha1.LogLevelInfo
+	return operatorapi.LogLevelInfo
 }
 
 /*

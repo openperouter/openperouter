@@ -1,6 +1,0 @@
-namespace: openperouter-system
-
-resources:
-- ../crd/operator
-- ../rbac/operator
-- ../pods/operator

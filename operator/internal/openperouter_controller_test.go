@@ -28,7 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	openpev1alpha1 "github.com/openperouter/openperouter/api/v1alpha1"
+	operatorapi "github.com/openperouter/openperouter/operator/api/v1alpha1"
 )
 
 var _ = Describe("OpenPERouter Controller", func() {
@@ -57,12 +57,12 @@ var _ = Describe("OpenPERouter Controller", func() {
 				"nodemarker": controllerImage,
 			}
 
-			openperouter := &openpev1alpha1.OpenPERouter{
+			openperouter := &operatorapi.OpenPERouter{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "openperouter",
 					Namespace: openperouterTestNamespace,
 				},
-				Spec: openpev1alpha1.OpenPERouterSpec{
+				Spec: operatorapi.OpenPERouterSpec{
 					LogLevel: "debug",
 				},
 			}
@@ -167,7 +167,7 @@ var _ = Describe("OpenPERouter Controller", func() {
 })
 
 func cleanTestNamespace() error {
-	err := k8sClient.DeleteAllOf(context.Background(), &openpev1alpha1.OpenPERouter{}, client.InNamespace(openperouterTestNamespace))
+	err := k8sClient.DeleteAllOf(context.Background(), &operatorapi.OpenPERouter{}, client.InNamespace(openperouterTestNamespace))
 	if err != nil {
 		return err
 	}

@@ -22,8 +22,8 @@ import (
 	"testing"
 
 	. "github.com/onsi/gomega"
-	openpev1alpha1 "github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/envconfig"
+	operatorapi "github.com/openperouter/openperouter/operator/api/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,8 +33,8 @@ import (
 // var update = flag.Bool("update", false, "update .golden files")
 
 const (
-	invalidChartPath          = "../../bindata/deployment/no-chart"
-	testChartPath             = "../../bindata/deployment/openperouter"
+	invalidChartPath          = "../bindata/deployment/no-chart"
+	testChartPath             = "../bindata/deployment/openperouter"
 	openperouterChartName     = "openperouter"
 	openperouterTestNamespace = "openperouter-test-namespace"
 	controllerDaemonSetName   = "controller"
@@ -70,12 +70,12 @@ func TestParseChartWithCustomValues(t *testing.T) {
 	g := NewGomegaWithT(t)
 	chart, err := newChart(testChartPath, openperouterChartName, openperouterTestNamespace)
 	g.Expect(err).ToNot(HaveOccurred())
-	openperouter := &openpev1alpha1.OpenPERouter{
+	openperouter := &operatorapi.OpenPERouter{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "openperouter",
 			Namespace: openperouterTestNamespace,
 		},
-		Spec: openpev1alpha1.OpenPERouterSpec{
+		Spec: operatorapi.OpenPERouterSpec{
 			LogLevel: "info",
 		},
 	}

@@ -1,4 +1,3 @@
 resources:
-- underlay.yaml
-- vni.yaml
+- openperouter.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

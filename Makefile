@@ -50,11 +50,11 @@ help: ## Display this help.
 
 .PHONY: manifests
 manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
-	$(CONTROLLER_GEN) crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases
-	$(CONTROLLER_GEN) rbac:roleName=controller-role paths="./internal/controller/..." output:rbac:artifacts:config=config/rbac/controller/
-	$(CONTROLLER_GEN) rbac:roleName=operator-role paths="./internal/operator/..." output:rbac:artifacts:config=config/rbac/operator/
+	$(CONTROLLER_GEN) crd webhook paths="./api/..." paths="./config/..." output:crd:artifacts:config=config/crd/bases
+	$(CONTROLLER_GEN) rbac:roleName=controller-role paths="./internal/controller/..." output:rbac:artifacts:config=config/rbac/
+	$(CONTROLLER_GEN) rbac:roleName=operator-role paths="./operator/..." output:rbac:artifacts:config=operator/config/rbac/
 	cp config/crd/bases/*.yaml charts/openperouter/charts/crds/templates
-	rm -f charts/openperouter/charts/crds/templates/kustomization.yaml && rm -f charts/openperouter/charts/crds/templates/openpe.openperouter.github.io_openperouters.yaml
+	rm -f charts/openperouter/charts/crds/templates/kustomization.yaml
 	hack/generate-bindata.sh
 
 .PHONY: generate
@@ -174,10 +174,10 @@ deploy-cluster: kubectl manifests kustomize clab-cluster load-on-kind ## Deploy 
 .PHONY: deploy-clab
 deploy-clab: kubectl manifests kustomize clab-cluster load-on-kind ## Deploy a cluster for the controller.
 
-KUSTOMIZE_LAYER ?= controller
+KUSTOMIZE_LAYER ?= default
 .PHONY: deploy-controller
 deploy-controller: kubectl kustomize ## Deploy controller to the K8s cluster specified in $KUBECONFIG.
-	cd config/pods/controller && $(KUSTOMIZE) edit set image router=${IMG}
+	cd config/pods && $(KUSTOMIZE) edit set image router=${IMG}
 	$(KUBECTL) -n ${NAMESPACE} delete ds controller || true
 	$(KUBECTL) -n ${NAMESPACE} delete ds router || true
 	$(KUBECTL) -n ${NAMESPACE} delete deployment nodemarker || true
@@ -201,7 +201,7 @@ deploy-helm: helm kind deploy-cluster
 
 .PHONY: undeploy
 undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
-	$(KUSTOMIZE) build config/controller | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
+	$(KUSTOMIZE) build config/default | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
 
 KUSTOMIZE_INSTALL_SCRIPT ?= "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"
 .PHONY: kustomize
@@ -293,10 +293,10 @@ kind-export-logs: create-export-logs
 
 .PHONY: generate-all-in-one
 generate-all-in-one: manifests kustomize ## Create manifests
-	cd config/pods/controller && $(KUSTOMIZE) edit set image controller=${IMG}
-	cd config/pods/controller && $(KUSTOMIZE) edit set namespace $(NAMESPACE)
+	cd config/pods && $(KUSTOMIZE) edit set image controller=${IMG}
+	cd config/pods && $(KUSTOMIZE) edit set namespace $(NAMESPACE)
 
-	$(KUSTOMIZE) build config/controller > config/all-in-one/openpe.yaml
+	$(KUSTOMIZE) build config/default > config/all-in-one/openpe.yaml
 	$(KUSTOMIZE) build config/crio > config/all-in-one/crio.yaml
 
 .PHONY: helm-docs
@@ -325,6 +325,7 @@ build-validator: ginkgo ## Build Ginkgo test binary.
 create-export-logs:
 	mkdir -p ${KIND_EXPORT_LOGS}
 
+#
 # Operator specifics, copied from a Makefile generated on a clean folder by operator-sdk, then modified.
 #
 
@@ -388,14 +389,14 @@ endif
 # For now the operator hardcodes the router's ServiceAccount to be default.
 .PHONY: bundle
 bundle: manifests kustomize operator-sdk ## Generate bundle manifests and metadata, then validate generated files.
-	$(OPERATOR_SDK) generate kustomize manifests --interactive=false -q
-	cd config/pods/operator && $(KUSTOMIZE) edit set image controller=$(IMG)
-	$(KUSTOMIZE) build config/operator | $(OPERATOR_SDK) generate bundle $(BUNDLE_GEN_FLAGS) --extra-service-accounts "controller,perouter" --package openperouter-operator
-	$(OPERATOR_SDK) bundle validate ./bundle
+	cd operator && $(OPERATOR_SDK) generate kustomize manifests --interactive=false -q
+	cd operator/config/pods && $(KUSTOMIZE) edit set image controller=$(IMG)
+	cd operator && $(KUSTOMIZE) build config/default | $(OPERATOR_SDK) generate bundle $(BUNDLE_GEN_FLAGS) --extra-service-accounts "controller,perouter" --package openperouter-operator
+	cd operator && $(OPERATOR_SDK) bundle validate ./bundle
 
 .PHONY: bundle-build
 bundle-build: ## Build the bundle image.
-	$(CONTAINER_ENGINE) build -f bundle.Dockerfile -t $(BUNDLE_IMG) .
+	cd operator && $(CONTAINER_ENGINE) build -f bundle.Dockerfile -t $(BUNDLE_IMG) .
 
 .PHONY: bundle-push
 bundle-push: ## Push the bundle image.
@@ -448,9 +449,9 @@ deploy-operator-with-olm: export VERSION=dev
 deploy-operator-with-olm: export CSV_VERSION=0.0.0
 deploy-operator-with-olm: export KIND_WITH_REGISTRY=true
 deploy-operator-with-olm: bundle kustomize kind clab-cluster load-on-kind deploy-olm build-and-push-bundle-images ## deploys the operator with OLM instead of manifests
-	sed -i 's|image:.*|image: $(CATALOG_IMG)|' config/olm-install/install-resources.yaml
-	sed -i 's#openperouter-system#$(NAMESPACE)#g' config/olm-install/install-resources.yaml
-	$(KUSTOMIZE) build config/olm-install | kubectl apply -f -
+	sed -i 's|image:.*|image: $(CATALOG_IMG)|' operator/config/olm-install/install-resources.yaml
+	sed -i 's#openperouter-system#$(NAMESPACE)#g' operator/config/olm-install/install-resources.yaml
+	$(KUSTOMIZE) build operator/config/olm-install | kubectl apply -f -
 	VERSION=$(CSV_VERSION) NAMESPACE=$(NAMESPACE) hack/wait-for-csv.sh
 
 deploy-olm: operator-sdk ## deploys OLM on the cluster

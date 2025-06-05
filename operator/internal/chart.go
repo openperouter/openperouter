@@ -17,8 +17,8 @@ limitations under the License.
 package operator
 
 import (
-	openpev1alpha1 "github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/envconfig"
+	operatorapi "github.com/openperouter/openperouter/operator/api/v1alpha1"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chart/loader"
@@ -60,7 +60,7 @@ func newChart(chartPath, chartName, namespace string) (*helmChart, error) {
 
 // Objects retrieves manifests from chart after patching custom values passed in crdConfig
 // and environment variables.
-func (h *helmChart) Objects(envConfig envconfig.EnvConfig, crdConfig *openpev1alpha1.OpenPERouter) ([]*unstructured.Unstructured, error) {
+func (h *helmChart) Objects(envConfig envconfig.EnvConfig, crdConfig *operatorapi.OpenPERouter) ([]*unstructured.Unstructured, error) {
 	chartValueOpts := &values.Options{}
 	chartValues, err := chartValueOpts.MergeValues(getter.All(h.envSettings))
 	if err != nil {
@@ -90,7 +90,7 @@ func (h *helmChart) Objects(envConfig envconfig.EnvConfig, crdConfig *openpev1al
 	return objs, nil
 }
 
-func patchChartValues(envConfig envconfig.EnvConfig, crdConfig *openpev1alpha1.OpenPERouter, valuesMap map[string]interface{}) {
+func patchChartValues(envConfig envconfig.EnvConfig, crdConfig *operatorapi.OpenPERouter, valuesMap map[string]interface{}) {
 	valuesMap["openperouter"] = map[string]interface{}{
 		"logLevel": logLevelValue(crdConfig),
 		"image": map[string]interface{}{

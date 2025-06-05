@@ -6,7 +6,7 @@ import (
 	"context"
 	"time"
 
-	openpev1alpha1 "github.com/openperouter/openperouter/api/v1alpha1"
+	operatorapi "github.com/openperouter/openperouter/operator/api/v1alpha1"
 	"github.com/pkg/errors"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -46,7 +46,7 @@ const (
 	ConditionUpgradeable = "Upgradeable"
 )
 
-func UpdateStatus(ctx context.Context, client k8sclient.Client, openperouter *openpev1alpha1.OpenPERouter, condition string, reason string, message string) error {
+func UpdateStatus(ctx context.Context, client k8sclient.Client, openperouter *operatorapi.OpenPERouter, condition string, reason string, message string) error {
 	conditions := getConditions(condition, reason, message)
 	if equality.Semantic.DeepEqual(conditions, openperouter.Status.Conditions) {
 		return nil

@@ -37,9 +37,9 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/go-logr/logr"
-	openpev1alpha1 "github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/envconfig"
 	"github.com/openperouter/openperouter/internal/logging"
+	operatorapi "github.com/openperouter/openperouter/operator/api/v1alpha1"
 	operator "github.com/openperouter/openperouter/operator/internal"
 	// +kubebuilder:scaffold:imports
 )
@@ -52,7 +52,7 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
-	utilruntime.Must(openpev1alpha1.AddToScheme(scheme))
+	utilruntime.Must(operatorapi.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 

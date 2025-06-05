@@ -100,7 +100,7 @@ jobs:
       - name: Verify bundle manifests
         run: |
           make bundle
-          git diff --exit-code -I'^    createdAt: ' bundle
+          git diff --exit-code -I'^    createdAt: ' operator/bundle
 
   build-test-images:
     runs-on: ubuntu-22.04

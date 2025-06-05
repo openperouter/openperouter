@@ -29,8 +29,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	openpev1alpha1 "github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/envconfig"
+	operatorapi "github.com/openperouter/openperouter/operator/api/v1alpha1"
 	pkgerrors "github.com/pkg/errors"
 )
 
@@ -65,7 +65,7 @@ func (r *OpenPERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	logger.Info("start reconcile")
 	defer logger.Info("end reconcile")
 
-	instance := &openpev1alpha1.OpenPERouter{}
+	instance := &operatorapi.OpenPERouter{}
 	err := r.Get(ctx, req.NamespacedName, instance)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
@@ -112,7 +112,7 @@ func (r *OpenPERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	return ctrl.Result{}, err
 }
 
-func (r *OpenPERouterReconciler) syncK8SResources(ctx context.Context, config *openpev1alpha1.OpenPERouter) error {
+func (r *OpenPERouterReconciler) syncK8SResources(ctx context.Context, config *operatorapi.OpenPERouter) error {
 	objs, err := r.chart.Objects(r.EnvConfig, config)
 	if err != nil {
 		return err
@@ -148,6 +148,6 @@ func (r *OpenPERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&openpev1alpha1.OpenPERouter{}).
+		For(&operatorapi.OpenPERouter{}).
 		Complete(r)
 }
