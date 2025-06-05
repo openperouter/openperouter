@@ -10,10 +10,25 @@ import (
 )
 
 func ValidateUnderlays(underlays []v1alpha1.Underlay) error {
+	if len(underlays) > 1 {
+		return fmt.Errorf("can't have more than one underlay")
+	}
+
 	for _, underlay := range underlays {
+		if underlay.Spec.ASN == 0 {
+			return fmt.Errorf("underlay %s must have a valid ASN", underlay.Name)
+		}
+
 		_, _, err := net.ParseCIDR(underlay.Spec.VTEPCIDR)
 		if err != nil {
 			return fmt.Errorf("invalid vtep CIDR format for underlay %s: %s - %w", underlay.Name, underlay.Spec.VTEPCIDR, err)
+		}
+
+		if len(underlay.Spec.Nics) == 0 {
+			return fmt.Errorf("underlay %s must have at least one nic", underlay.Name)
+		}
+		if len(underlay.Spec.Nics) > 1 {
+			return fmt.Errorf("underlay %s can only have one nic, found %d", underlay.Name, len(underlay.Spec.Nics))
 		}
 
 		for _, n := range underlay.Spec.Nics {
