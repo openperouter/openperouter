@@ -23,6 +23,10 @@ func ValidateVNIs(vnis []v1alpha1.VNI) error {
 
 	for _, vni := range vnis {
 		vrfName := vni.VRFName()
+		if _, _, err := net.ParseCIDR(vni.Spec.LocalCIDR); err != nil {
+			return fmt.Errorf("invalid local CIDR %s for vni %s: %w", vni.Spec.LocalCIDR, vni.Name, err)
+		}
+
 		if err := isValidInterfaceName(vrfName); err != nil {
 			return fmt.Errorf("invalid vrf name for vni %s: %s - %w", vni.Name, vrfName, err)
 		}

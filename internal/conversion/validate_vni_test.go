@@ -105,6 +105,20 @@ func TestValidateVNIs(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name: "invalid localcidr",
+			vnis: []v1alpha1.VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+					Spec: v1alpha1.VNISpec{
+						VNI:       1001,
+						LocalCIDR: "not-a-cidr",
+					},
+					Status: v1alpha1.VNIStatus{},
+				},
+			},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
