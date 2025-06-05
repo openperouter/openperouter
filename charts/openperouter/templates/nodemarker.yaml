@@ -39,8 +39,23 @@ spec:
         {{- with .Values.openperouter.logLevel }}
         - --loglevel={{ . }}
         {{- end }}
+        - "--namespace=$(NAMESPACE)"
+        - "--enablewebhook"
         command:
         - /nodemarker
+        env:
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        ports:
+          - containerPort: 9443
+            name: webhook-server
+            protocol: TCP
+        volumeMounts:
+        - name: cert
+          mountPath: /tmp/k8s-webhook-server/serving-certs
+          readOnly: true
         image: {{ .Values.openperouter.image.repository }}:{{ .Values.openperouter.image.tag | default .Chart.AppVersion }}
         {{- if .Values.openperouter.image.pullPolicy }}
         imagePullPolicy: {{ .Values.openperouter.image.pullPolicy }}
@@ -50,3 +65,9 @@ spec:
         resources:
           {{- toYaml . | nindent 10 }}
         {{- end }}
+      volumes:
+        - name: cert
+          secret:
+            defaultMode: 420
+            secretName: openpe-webhook-server-cert
+
