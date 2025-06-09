@@ -27,12 +27,12 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 	var cs clientset.Interface
 	routerPods := []*corev1.Pod{}
 
-	vniRed := v1alpha1.VNI{
+	vniRed := v1alpha1.L3VNI{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "red",
 			Namespace: openperouter.Namespace,
 		},
-		Spec: v1alpha1.VNISpec{
+		Spec: v1alpha1.L3VNISpec{
 			ASN:       64514,
 			VNI:       100,
 			LocalCIDR: "192.169.10.0/24",
@@ -101,7 +101,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		err = Updater.Update(config.Resources{
-			VNIs: []v1alpha1.VNI{
+			L3VNIs: []v1alpha1.L3VNI{
 				vniRed,
 			},
 			L2VNIs: []v1alpha1.L2VNI{

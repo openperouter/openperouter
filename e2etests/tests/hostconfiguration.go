@@ -87,24 +87,24 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 
 	ginkgo.Context("L3", func() {
 
-		l3vni100 := v1alpha1.VNI{
+		l3vni100 := v1alpha1.L3VNI{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "first",
 				Namespace: openperouter.Namespace,
 			},
-			Spec: v1alpha1.VNISpec{
+			Spec: v1alpha1.L3VNISpec{
 				ASN:       64514,
 				VNI:       100,
 				LocalCIDR: "192.169.10.0/24",
 				HostASN:   ptr.To(uint32(64515)),
 			},
 		}
-		l3vni200 := v1alpha1.VNI{
+		l3vni200 := v1alpha1.L3VNI{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "second",
 				Namespace: openperouter.Namespace,
 			},
-			Spec: v1alpha1.VNISpec{
+			Spec: v1alpha1.L3VNISpec{
 				ASN:       64514,
 				VNI:       200,
 				LocalCIDR: "192.169.11.0/24",
@@ -143,7 +143,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				Underlays: []v1alpha1.Underlay{
 					underlay,
 				},
-				VNIs: []v1alpha1.VNI{
+				L3VNIs: []v1alpha1.L3VNI{
 					l3vni100,
 				},
 			})
@@ -175,7 +175,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				Underlays: []v1alpha1.Underlay{
 					underlay,
 				},
-				VNIs: []v1alpha1.VNI{
+				L3VNIs: []v1alpha1.L3VNI{
 					l3vni100,
 					l3vni200,
 				},
@@ -246,7 +246,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				Underlays: []v1alpha1.Underlay{
 					underlay,
 				},
-				VNIs: []v1alpha1.VNI{
+				L3VNIs: []v1alpha1.L3VNI{
 					*l3vni100.DeepCopy(),
 				},
 			}
@@ -269,10 +269,10 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 
 			ginkgo.By("editing the first vni")
 
-			resources.VNIs[0].Spec.ASN = 64515
-			resources.VNIs[0].Spec.VNI = 300
-			resources.VNIs[0].Spec.LocalCIDR = "192.171.10.0/24"
-			resources.VNIs[0].Spec.HostASN = ptr.To(uint32(64516))
+			resources.L3VNIs[0].Spec.ASN = 64515
+			resources.L3VNIs[0].Spec.VNI = 300
+			resources.L3VNIs[0].Spec.LocalCIDR = "192.171.10.0/24"
+			resources.L3VNIs[0].Spec.HostASN = ptr.To(uint32(64516))
 			err = Updater.Update(resources)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -280,7 +280,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				ginkgo.By(fmt.Sprintf("validating VNI for pod %s", p.Name))
 
 				vtepIP := vtepIPForPod(cs, underlay.Spec.VTEPCIDR, p)
-				changedVni := resources.VNIs[0]
+				changedVni := resources.L3VNIs[0]
 				validateConfig(l3vniParams{
 					VRF:       changedVni.Name,
 					VethNSIP:  changedVni.Spec.LocalCIDR,
@@ -307,7 +307,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				Underlays: []v1alpha1.Underlay{
 					*underlay.DeepCopy(),
 				},
-				VNIs: []v1alpha1.VNI{
+				L3VNIs: []v1alpha1.L3VNI{
 					l3vni100,
 				},
 			}

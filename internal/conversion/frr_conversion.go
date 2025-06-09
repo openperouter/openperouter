@@ -22,7 +22,7 @@ func (e FRREmptyConfigError) Error() string {
 	return string(e)
 }
 
-func APItoFRR(nodeIndex int, underlays []v1alpha1.Underlay, vnis []v1alpha1.VNI, logLevel string) (frr.Config, error) {
+func APItoFRR(nodeIndex int, underlays []v1alpha1.Underlay, vnis []v1alpha1.L3VNI, logLevel string) (frr.Config, error) {
 	if len(underlays) > 1 {
 		return frr.Config{}, errors.New("multiple underlays defined")
 	}
@@ -49,9 +49,9 @@ func APItoFRR(nodeIndex int, underlays []v1alpha1.Underlay, vnis []v1alpha1.VNI,
 		VTEP:      vtepIP.String(),
 		Neighbors: underlayNeighbors,
 	}
-	vniConfigs := []frr.VNIConfig{}
+	vniConfigs := []frr.L3VNIConfig{}
 	for _, vni := range vnis {
-		frrVNI, err := vniToFRR(vni, nodeIndex)
+		frrVNI, err := l3vniToFRR(vni, nodeIndex)
 		if err != nil {
 			return frr.Config{}, fmt.Errorf("failed to translate vni to frr: %w, vni %v", err, vni)
 		}
@@ -65,10 +65,10 @@ func APItoFRR(nodeIndex int, underlays []v1alpha1.Underlay, vnis []v1alpha1.VNI,
 	}, nil
 }
 
-func vniToFRR(vni v1alpha1.VNI, nodeIndex int) (frr.VNIConfig, error) {
+func l3vniToFRR(vni v1alpha1.L3VNI, nodeIndex int) (frr.L3VNIConfig, error) {
 	veths, err := ipam.VethIPs(vni.Spec.LocalCIDR, nodeIndex)
 	if err != nil {
-		return frr.VNIConfig{}, fmt.Errorf("failed to get veths ips for vni %s: %w", vni.Name, err)
+		return frr.L3VNIConfig{}, fmt.Errorf("failed to get veths ips for vni %s: %w", vni.Name, err)
 	}
 
 	vniNeighbor := &frr.NeighborConfig{
@@ -86,7 +86,7 @@ func vniToFRR(vni v1alpha1.VNI, nodeIndex int) (frr.VNIConfig, error) {
 		Mask: net.CIDRMask(32, 32), // TODO ipv6
 	}
 
-	res := frr.VNIConfig{
+	res := frr.L3VNIConfig{
 		ASN:           vni.Spec.ASN,
 		VNI:           int(vni.Spec.VNI),
 		VRF:           vni.VRFName(),

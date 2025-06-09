@@ -20,8 +20,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// VNISpec defines the desired state of VNI.
-type VNISpec struct {
+// L3VNISpec defines the desired state of VNI.
+type L3VNISpec struct {
 	// ASN is the local AS number to use to establish a BGP session with
 	// the default namespace.
 	// +kubebuilder:validation:Minimum=1
@@ -59,8 +59,8 @@ type VNISpec struct {
 	VXLanPort uint32 `json:"vxlanport,omitempty"`
 }
 
-// VNIStatus defines the observed state of VNI.
-type VNIStatus struct {
+// L3VNIStatus defines the observed state of L3VNI.
+type L3VNIStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 }
@@ -68,19 +68,19 @@ type VNIStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 
-// VNI represents a VXLan VNI to receive EVPN type 5 routes
+// L3VNI represents a VXLan L3VNI to receive EVPN type 5 routes
 // from.
-type VNI struct {
+type L3VNI struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   VNISpec   `json:"spec,omitempty"`
-	Status VNIStatus `json:"status,omitempty"`
+	Spec   L3VNISpec   `json:"spec,omitempty"`
+	Status L3VNIStatus `json:"status,omitempty"`
 }
 
 // VRFName returns the name to be used for the
 // vrf corresponding to the object.
-func (v VNI) VRFName() string {
+func (v L3VNI) VRFName() string {
 	if v.Spec.VRF != nil && *v.Spec.VRF != "" {
 		return *v.Spec.VRF
 	}
@@ -89,13 +89,13 @@ func (v VNI) VRFName() string {
 
 // +kubebuilder:object:root=true
 
-// VNIList contains a list of VNI.
-type VNIList struct {
+// L3VNIList contains a list of L3VNI.
+type L3VNIList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []VNI `json:"items"`
+	Items           []L3VNI `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&VNI{}, &VNIList{})
+	SchemeBuilder.Register(&L3VNI{}, &L3VNIList{})
 }

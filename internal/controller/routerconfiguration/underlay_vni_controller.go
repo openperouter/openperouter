@@ -51,9 +51,9 @@ type requestKey string
 
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;delete
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=vnis,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=vnis/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=vnis/finalizers,verbs=update
+// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l3vnis,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l3vnis/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l3vnis/finalizers,verbs=update
 // +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l2vnis,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l2vnis/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l2vnis/finalizers,verbs=update
@@ -96,22 +96,23 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, nil
 	}
 
-	var vnis v1alpha1.VNIList
-	if err := r.List(ctx, &vnis); err != nil {
-		slog.Error("failed to list vnis", "error", err)
+	var l3vnis v1alpha1.L3VNIList
+	if err := r.List(ctx, &l3vnis); err != nil {
+		slog.Error("failed to list l3vnis", "error", err)
 		return ctrl.Result{}, err
 	}
-	if err := conversion.ValidateVNIs(vnis.Items); err != nil {
-		slog.Error("failed to validate vnis", "error", err)
+	if err := conversion.ValidateVNIs(l3vnis.Items); err != nil {
+		slog.Error("failed to validate l3vnis", "error", err)
 		return ctrl.Result{}, nil
 	}
-	logger.Debug("using config", "vnis", vnis.Items, "underlays", underlays.Items)
 
 	var l2vnis v1alpha1.L2VNIList
 	if err := r.List(ctx, &l2vnis); err != nil {
 		slog.Error("failed to list l2vnis", "error", err)
 		return ctrl.Result{}, err
 	}
+
+	logger.Debug("using config", "l3vnis", l3vnis.Items, "l2vnis", l2vnis.Items, "underlays", underlays.Items)
 	/* TODO implement
 	if err := conversion.ValidateL2VNIs(l2vnis.Items); err != nil {
 		slog.Error("failed to validate l2vnis", "error", err)
@@ -124,7 +125,7 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		nodeIndex:  nodeIndex,
 		underlays:  underlays.Items,
 		logLevel:   r.LogLevel,
-		vnis:       vnis.Items,
+		l3vnis:     l3vnis.Items,
 	}); err != nil {
 		slog.Error("failed to reload frr config", "error", err)
 		return ctrl.Result{}, err
@@ -135,7 +136,7 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		PodRuntime:    *r.PodRuntime,
 		NodeIndex:     nodeIndex,
 		Underlays:     underlays.Items,
-		Vnis:          vnis.Items,
+		L3Vnis:        l3vnis.Items,
 		L2Vnis:        l2vnis.Items,
 	})
 
@@ -199,7 +200,7 @@ func (r *PERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.Underlay{}).
 		Watches(&v1.Pod{}, &handler.EnqueueRequestForObject{}).
-		Watches(&v1alpha1.VNI{}, &handler.EnqueueRequestForObject{}).
+		Watches(&v1alpha1.L3VNI{}, &handler.EnqueueRequestForObject{}).
 		Watches(&v1alpha1.L2VNI{}, &handler.EnqueueRequestForObject{}).
 		WithEventFilter(filterNonRouterPods).
 		WithEventFilter(filterUpdates).

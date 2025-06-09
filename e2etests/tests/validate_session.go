@@ -18,7 +18,7 @@ import (
 
 const Established = true
 
-func validateFRRK8sSessionForVNI(vni v1alpha1.VNI, established bool, frrk8sPods ...*corev1.Pod) {
+func validateFRRK8sSessionForVNI(vni v1alpha1.L3VNI, established bool, frrk8sPods ...*corev1.Pod) {
 	neighborIP, err := openperouter.RouterIPFromCIDR(vni.Spec.LocalCIDR)
 	Expect(err).NotTo(HaveOccurred())
 

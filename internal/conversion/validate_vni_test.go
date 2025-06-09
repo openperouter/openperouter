@@ -13,94 +13,94 @@ import (
 func TestValidateVNIs(t *testing.T) {
 	tests := []struct {
 		name    string
-		vnis    []v1alpha1.VNI
+		vnis    []v1alpha1.L3VNI
 		wantErr bool
 	}{
 		{
 			name: "valid VNIs",
-			vnis: []v1alpha1.VNI{
+			vnis: []v1alpha1.L3VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
-					Spec: v1alpha1.VNISpec{
+					Spec: v1alpha1.L3VNISpec{
 						VNI:       1001,
 						LocalCIDR: "192.168.1.0/24",
 					},
-					Status: v1alpha1.VNIStatus{},
+					Status: v1alpha1.L3VNIStatus{},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni2"},
-					Spec: v1alpha1.VNISpec{
+					Spec: v1alpha1.L3VNISpec{
 						VNI:       1002,
 						LocalCIDR: "192.168.2.0/24",
 					},
-					Status: v1alpha1.VNIStatus{},
+					Status: v1alpha1.L3VNIStatus{},
 				},
 			},
 			wantErr: false,
 		},
 		{
 			name: "duplicate VRF name",
-			vnis: []v1alpha1.VNI{
+			vnis: []v1alpha1.L3VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
-					Spec: v1alpha1.VNISpec{
+					Spec: v1alpha1.L3VNISpec{
 						VNI:       1001,
 						LocalCIDR: "192.168.1.0/24",
 					},
-					Status: v1alpha1.VNIStatus{},
+					Status: v1alpha1.L3VNIStatus{},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni2"},
-					Spec: v1alpha1.VNISpec{
+					Spec: v1alpha1.L3VNISpec{
 						VNI:       1002,
 						LocalCIDR: "192.168.2.0/24",
 						VRF:       ptr.To("vni1"),
 					},
-					Status: v1alpha1.VNIStatus{},
+					Status: v1alpha1.L3VNIStatus{},
 				},
 			},
 			wantErr: true,
 		},
 		{
 			name: "overlapping CIDRs",
-			vnis: []v1alpha1.VNI{
+			vnis: []v1alpha1.L3VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
-					Spec: v1alpha1.VNISpec{
+					Spec: v1alpha1.L3VNISpec{
 						VNI:       1001,
 						LocalCIDR: "192.168.1.0/24",
 					},
-					Status: v1alpha1.VNIStatus{},
+					Status: v1alpha1.L3VNIStatus{},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni2"},
-					Spec: v1alpha1.VNISpec{
+					Spec: v1alpha1.L3VNISpec{
 						VNI:       1002,
 						LocalCIDR: "192.168.1.128/25",
 					},
-					Status: v1alpha1.VNIStatus{},
+					Status: v1alpha1.L3VNIStatus{},
 				},
 			},
 			wantErr: true,
 		},
 		{
 			name: "duplicate VNI",
-			vnis: []v1alpha1.VNI{
+			vnis: []v1alpha1.L3VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
-					Spec: v1alpha1.VNISpec{
+					Spec: v1alpha1.L3VNISpec{
 						VNI:       1001,
 						LocalCIDR: "192.168.1.0/24",
 					},
-					Status: v1alpha1.VNIStatus{},
+					Status: v1alpha1.L3VNIStatus{},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni2"},
-					Spec: v1alpha1.VNISpec{
+					Spec: v1alpha1.L3VNISpec{
 						VNI:       1001,
 						LocalCIDR: "192.168.2.0/24",
 					},
-					Status: v1alpha1.VNIStatus{},
+					Status: v1alpha1.L3VNIStatus{},
 				},
 			},
 			wantErr: true,

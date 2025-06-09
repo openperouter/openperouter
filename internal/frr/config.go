@@ -23,7 +23,7 @@ type Config struct {
 	Loglevel string
 	Hostname string
 	Underlay UnderlayConfig
-	VNIs     []VNIConfig
+	VNIs     []L3VNIConfig
 }
 
 type UnderlayConfig struct {
@@ -32,7 +32,7 @@ type UnderlayConfig struct {
 	Neighbors []NeighborConfig
 }
 
-type VNIConfig struct {
+type L3VNIConfig struct {
 	ASN           uint32
 	ToAdvertise   []string
 	LocalNeighbor *NeighborConfig

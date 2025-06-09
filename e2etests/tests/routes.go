@@ -40,12 +40,12 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 	var cs clientset.Interface
 	routerPods := []*corev1.Pod{}
 
-	vniRed := v1alpha1.VNI{
+	vniRed := v1alpha1.L3VNI{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "red",
 			Namespace: openperouter.Namespace,
 		},
-		Spec: v1alpha1.VNISpec{
+		Spec: v1alpha1.L3VNISpec{
 			ASN:       64514,
 			VNI:       100,
 			LocalCIDR: "192.169.10.0/24",
@@ -53,12 +53,12 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		},
 	}
 
-	vniBlue := v1alpha1.VNI{
+	vniBlue := v1alpha1.L3VNI{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "blue",
 			Namespace: openperouter.Namespace,
 		},
-		Spec: v1alpha1.VNISpec{
+		Spec: v1alpha1.L3VNISpec{
 			ASN:       64514,
 			VNI:       200,
 			LocalCIDR: "192.169.11.0/24",
@@ -111,7 +111,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 	Context("with vnis", func() {
 		BeforeEach(func() {
 			err := Updater.Update(config.Resources{
-				VNIs: []v1alpha1.VNI{
+				L3VNIs: []v1alpha1.L3VNI{
 					vniRed,
 					vniBlue,
 				},
@@ -122,7 +122,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 
 		It("receives type 5 routes from the fabric", func() {
 			Contains := true
-			checkRouteFromLeaf := func(leaf infra.Leaf, vni v1alpha1.VNI, mustContain bool, prefixes []string) {
+			checkRouteFromLeaf := func(leaf infra.Leaf, vni v1alpha1.L3VNI, mustContain bool, prefixes []string) {
 				By(fmt.Sprintf("checking routes from leaf %s on vni %s, mustContain %v %v", leaf.Name, vni.Name, mustContain, prefixes))
 				Eventually(func() error {
 					for _, p := range routerPods {
@@ -199,7 +199,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			DumpPods("FRRK8s pods", frrk8sPods)
 
 			err := Updater.Update(config.Resources{
-				VNIs: []v1alpha1.VNI{
+				L3VNIs: []v1alpha1.L3VNI{
 					vniRed,
 					vniBlue,
 				},
@@ -215,7 +215,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		})
 
 		It("translates EVPN incoming routes as BGP routes", func() {
-			checkBGPPrefixesForVNI := func(frrk8s *corev1.Pod, vni v1alpha1.VNI, prefixes []string, shouldExist bool) {
+			checkBGPPrefixesForVNI := func(frrk8s *corev1.Pod, vni v1alpha1.L3VNI, prefixes []string, shouldExist bool) {
 				exec := executor.ForPod(frrk8s.Namespace, frrk8s.Name, "frr")
 				Eventually(func() error {
 					routes, err := frr.BGPRoutesFor(exec)
@@ -306,7 +306,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			err = Updater.Update(config.Resources{
-				VNIs: []v1alpha1.VNI{
+				L3VNIs: []v1alpha1.L3VNI{
 					vniRed,
 					vniBlue,
 				},
@@ -331,7 +331,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 
 		It("should be able to reach the hosts from the test pod and vice versa", func() {
 			tests := []struct {
-				vni            v1alpha1.VNI
+				vni            v1alpha1.L3VNI
 				hostName       string
 				externalHostIP string
 			}{

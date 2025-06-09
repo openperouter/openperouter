@@ -17,7 +17,7 @@ func TestAPItoHostConfig(t *testing.T) {
 		nodeIndex       int
 		targetNS        string
 		underlays       []v1alpha1.Underlay
-		vnis            []v1alpha1.VNI
+		vnis            []v1alpha1.L3VNI
 		l2vnis          []v1alpha1.L2VNI
 		wantUnderlay    hostnetwork.UnderlayParams
 		wantL2VNIParams []hostnetwork.L2VNIParams
@@ -29,7 +29,7 @@ func TestAPItoHostConfig(t *testing.T) {
 			nodeIndex:    0,
 			targetNS:     "namespace",
 			underlays:    []v1alpha1.Underlay{},
-			vnis:         []v1alpha1.VNI{},
+			vnis:         []v1alpha1.L3VNI{},
 			wantUnderlay: hostnetwork.UnderlayParams{},
 			wantErr:      false,
 		},
@@ -41,7 +41,7 @@ func TestAPItoHostConfig(t *testing.T) {
 				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth0"}, VTEPCIDR: "10.0.0.0/24"}},
 				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth1"}, VTEPCIDR: "10.0.1.0/24"}},
 			},
-			vnis:         []v1alpha1.VNI{},
+			vnis:         []v1alpha1.L3VNI{},
 			wantUnderlay: hostnetwork.UnderlayParams{},
 			wantErr:      true,
 		},
@@ -52,8 +52,8 @@ func TestAPItoHostConfig(t *testing.T) {
 			underlays: []v1alpha1.Underlay{
 				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth0"}, VTEPCIDR: "10.0.0.0/24"}},
 			},
-			vnis: []v1alpha1.VNI{
-				{Spec: v1alpha1.VNISpec{VRF: ptr.String("red"), LocalCIDR: "10.1.0.0/24", VNI: 100, VXLanPort: 4789}},
+			vnis: []v1alpha1.L3VNI{
+				{Spec: v1alpha1.L3VNISpec{VRF: ptr.String("red"), LocalCIDR: "10.1.0.0/24", VNI: 100, VXLanPort: 4789}},
 			},
 			wantUnderlay: hostnetwork.UnderlayParams{
 				UnderlayInterface: "eth0",

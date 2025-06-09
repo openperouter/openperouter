@@ -21,7 +21,7 @@ var (
 )
 
 // ConfigFromVNI converts a VNI object to a FRRConfiguration object.
-func ConfigFromVNI(vni v1alpha1.VNI, tweak ...func(*frrk8sapi.FRRConfiguration)) (frrk8sapi.FRRConfiguration, error) {
+func ConfigFromVNI(vni v1alpha1.L3VNI, tweak ...func(*frrk8sapi.FRRConfiguration)) (frrk8sapi.FRRConfiguration, error) {
 	routerIP, err := openperouter.RouterIPFromCIDR(vni.Spec.LocalCIDR)
 	if err != nil {
 		return frrk8sapi.FRRConfiguration{}, err
