@@ -54,6 +54,9 @@ type requestKey string
 // +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=vnis,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=vnis/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=vnis/finalizers,verbs=update
+// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l2vnis,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l2vnis/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l2vnis/finalizers,verbs=update
 // +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=underlays,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=underlays/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=underlays/finalizers,verbs=update
@@ -104,6 +107,16 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 	logger.Debug("using config", "vnis", vnis.Items, "underlays", underlays.Items)
 
+	var l2vnis v1alpha1.L2VNIList
+	if err := r.List(ctx, &l2vnis); err != nil {
+		slog.Error("failed to list l2vnis", "error", err)
+		return ctrl.Result{}, err
+	}
+	/* TODO implement
+	if err := conversion.ValidateL2VNIs(l2vnis.Items); err != nil {
+		slog.Error("failed to validate l2vnis", "error", err)
+		return ctrl.Result{}, nil
+	}*/
 	if err := configureFRR(ctx, frrConfigData{
 		configFile: r.FRRConfig,
 		address:    routerPod.Status.PodIP,
@@ -123,6 +136,7 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		NodeIndex:     nodeIndex,
 		Underlays:     underlays.Items,
 		Vnis:          vnis.Items,
+		L2Vnis:        l2vnis.Items,
 	})
 
 	if nonRecoverableHostError(err) {
@@ -186,6 +200,7 @@ func (r *PERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&v1alpha1.Underlay{}).
 		Watches(&v1.Pod{}, &handler.EnqueueRequestForObject{}).
 		Watches(&v1alpha1.VNI{}, &handler.EnqueueRequestForObject{}).
+		Watches(&v1alpha1.L2VNI{}, &handler.EnqueueRequestForObject{}).
 		WithEventFilter(filterNonRouterPods).
 		WithEventFilter(filterUpdates).
 		Named("routercontroller").

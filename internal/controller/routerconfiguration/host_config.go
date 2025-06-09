@@ -20,6 +20,7 @@ type interfacesConfiguration struct {
 	NodeIndex     int                 `json:"nodeIndex,omitempty"`
 	Underlays     []v1alpha1.Underlay `json:"underlays,omitempty"`
 	Vnis          []v1alpha1.VNI      `json:"vnis,omitempty"`
+	L2Vnis        []v1alpha1.L2VNI    `json:"l2Vnis,omitempty"`
 }
 
 type UnderlayRemovedError struct{}
@@ -48,7 +49,7 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 
 	slog.InfoContext(ctx, "configure interface start", "namespace", targetNS)
 	defer slog.InfoContext(ctx, "configure interface end", "namespace", targetNS)
-	underlayParams, vnis, err := conversion.APItoHostConfig(config.NodeIndex, targetNS, config.Underlays, config.Vnis)
+	underlayParams, vnis, l2vnis, err := conversion.APItoHostConfig(config.NodeIndex, targetNS, config.Underlays, config.Vnis, config.L2Vnis)
 	if err != nil {
 		return fmt.Errorf("failed to convert config to host configuration: %w", err)
 	}
@@ -59,12 +60,26 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 	}
 	for _, vni := range vnis {
 		slog.InfoContext(ctx, "setting up VNI", "vni", vni.VRF)
-		if err := hostnetwork.SetupVNI(ctx, vni); err != nil {
+		if err := hostnetwork.SetupL3VNI(ctx, vni); err != nil {
+			return fmt.Errorf("failed to setup vni: %w", err)
+		}
+	}
+
+	for _, vni := range l2vnis {
+		slog.InfoContext(ctx, "setting up L2VNI", "vni", vni.VNI)
+		if err := hostnetwork.SetupL2VNI(ctx, vni); err != nil {
 			return fmt.Errorf("failed to setup vni: %w", err)
 		}
 	}
 	slog.InfoContext(ctx, "removing deleted vnis")
-	if err := hostnetwork.RemoveNonConfiguredVNIs(targetNS, vnis); err != nil {
+	toCheck := make([]hostnetwork.VNIParams, 0, len(vnis)+len(l2vnis))
+	for _, vni := range vnis {
+		toCheck = append(toCheck, vni.VNIParams)
+	}
+	for _, l2vni := range l2vnis {
+		toCheck = append(toCheck, l2vni.VNIParams)
+	}
+	if err := hostnetwork.RemoveNonConfiguredVNIs(targetNS, toCheck); err != nil {
 		return fmt.Errorf("failed to remove deleted vnis: %w", err)
 	}
 	return nil
