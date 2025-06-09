@@ -1,6 +1,7 @@
 #!/bin/bash
 
 set -u
+set -x
 
 source common.sh
 
@@ -32,10 +33,16 @@ function ensure_veth {
     ip link set "$VETH_NAME" up
 
     ip link set "$VETH_NAME" master leafkind-switch
+
+    MAC_ADDR="02:ed:$[RANDOM%10]$[RANDOM%10]:$[RANDOM%10]$[RANDOM%10]:$[RANDOM%10]$[RANDOM%10]:$[RANDOM%10]$[RANDOM%10]"
+    ip link set "$VETH_NAME" address "$MAC_ADDR"
     echo "Veth $VETH_NAME setting ip"
     "$CONTAINER_ENGINE_CLI" exec "$CONTAINER_NAME" ip address add $CONTAINER_SIDE_IP dev "$TEMP_PEER_NAME"
     "$CONTAINER_ENGINE_CLI" exec "$CONTAINER_NAME" ip link set "$TEMP_PEER_NAME" up
     "$CONTAINER_ENGINE_CLI" exec "$CONTAINER_NAME" ip link set "$TEMP_PEER_NAME" name "$PEER_NAME"
+    MAC_ADDR="02:ed:$[RANDOM%10]$[RANDOM%10]:$[RANDOM%10]$[RANDOM%10]:$[RANDOM%10]$[RANDOM%10]:$[RANDOM%10]$[RANDOM%10]"
+
+    "$CONTAINER_ENGINE_CLI" exec "$CONTAINER_NAME" ip link set "$PEER_NAME" address "$MAC_ADDR"
   fi
 }
 
