@@ -372,19 +372,13 @@ OLM_VERSION ?= v0.18.3
 .PHONY: operator-sdk
 OPERATOR_SDK ?= $(LOCALBIN)/operator-sdk
 operator-sdk: ## Download operator-sdk locally if necessary.
-ifeq (,$(wildcard $(OPERATOR_SDK)))
-ifeq (, $(shell which operator-sdk 2>/dev/null))
-	@{ \
-	set -e ;\
-	mkdir -p $(dir $(OPERATOR_SDK)) ;\
-	OS=$(shell go env GOOS) && ARCH=$(shell go env GOARCH) && \
-	curl -sSLo $(OPERATOR_SDK) https://github.com/operator-framework/operator-sdk/releases/download/$(OPERATOR_SDK_VERSION)/operator-sdk_$${OS}_$${ARCH} ;\
-	chmod +x $(OPERATOR_SDK) ;\
-	}
-else
-OPERATOR_SDK = $(shell which operator-sdk)
-endif
-endif
+	@if [ ! -x $(OPERATOR_SDK) ] || ! $(OPERATOR_SDK) version | grep -q $(OPERATOR_SDK_VERSION); then \
+		set -e ;\
+		mkdir -p $(dir $(OPERATOR_SDK)) ;\
+		OS=$$(go env GOOS) && ARCH=$$(go env GOARCH) && \
+		curl -sSLo $(OPERATOR_SDK) https://github.com/operator-framework/operator-sdk/releases/download/$(OPERATOR_SDK_VERSION)/operator-sdk_$${OS}_$${ARCH} ;\
+		chmod +x $(OPERATOR_SDK) ;\
+	fi
 
 # TODO: The bundle ignores the perouter ServiceAccount because it doesn't have RBACs attached.
 # For now the operator hardcodes the router's ServiceAccount to be default.
