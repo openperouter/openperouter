@@ -19,7 +19,7 @@ func TestAPItoFRR(t *testing.T) {
 		name      string
 		nodeIndex int
 		underlays []v1alpha1.Underlay
-		vnis      []v1alpha1.VNI
+		vnis      []v1alpha1.L3VNI
 		logLevel  string
 		want      frr.Config
 		wantErr   bool
@@ -28,7 +28,7 @@ func TestAPItoFRR(t *testing.T) {
 			name:      "no underlays",
 			nodeIndex: 0,
 			underlays: []v1alpha1.Underlay{},
-			vnis:      []v1alpha1.VNI{{}},
+			vnis:      []v1alpha1.L3VNI{{}},
 			wantErr:   true,
 		},
 		{
@@ -43,7 +43,7 @@ func TestAPItoFRR(t *testing.T) {
 					},
 				},
 			},
-			vnis:     []v1alpha1.VNI{},
+			vnis:     []v1alpha1.L3VNI{},
 			logLevel: "debug",
 			want: frr.Config{
 				Underlay: frr.UnderlayConfig{
@@ -59,7 +59,7 @@ func TestAPItoFRR(t *testing.T) {
 						},
 					},
 				},
-				VNIs:     []frr.VNIConfig{},
+				VNIs:     []frr.L3VNIConfig{},
 				Loglevel: "debug",
 			},
 			wantErr: false,
@@ -76,10 +76,10 @@ func TestAPItoFRR(t *testing.T) {
 					},
 				},
 			},
-			vnis: []v1alpha1.VNI{
+			vnis: []v1alpha1.L3VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
-					Spec: v1alpha1.VNISpec{
+					Spec: v1alpha1.L3VNISpec{
 						ASN:       65000,
 						LocalCIDR: "192.168.2.0/24",
 						HostASN:   ptr.To(uint32(65001)),
@@ -89,7 +89,7 @@ func TestAPItoFRR(t *testing.T) {
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni2"},
-					Spec: v1alpha1.VNISpec{
+					Spec: v1alpha1.L3VNISpec{
 						ASN:       65000,
 						LocalCIDR: "192.168.3.0/24",
 						VNI:       300,
@@ -111,7 +111,7 @@ func TestAPItoFRR(t *testing.T) {
 						},
 					},
 				},
-				VNIs: []frr.VNIConfig{
+				VNIs: []frr.L3VNIConfig{
 					{
 						ASN: 65000,
 						VNI: 200,

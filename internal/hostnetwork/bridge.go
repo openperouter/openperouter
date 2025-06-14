@@ -70,13 +70,17 @@ func createBridge(name string, vrfIndex int) (*netlink.Bridge, error) {
 	return toCreate, nil
 }
 
-const bridgePrefix = "br"
+const bridgePrefix = "br-pe-"
 
 func bridgeName(vni int) string {
 	return fmt.Sprintf("%s%d", bridgePrefix, vni)
 }
 
 func vniFromBridgeName(name string) (int, error) {
+	if !strings.HasPrefix(name, bridgePrefix) {
+		return 0, NotRouterInterfaceError{Name: name}
+	}
+
 	vni := strings.TrimPrefix(name, bridgePrefix)
 	res, err := strconv.Atoi(vni)
 	if err != nil {

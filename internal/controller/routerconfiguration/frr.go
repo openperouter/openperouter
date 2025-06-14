@@ -21,12 +21,12 @@ type frrConfigData struct {
 	nodeIndex  int
 	logLevel   string
 	underlays  []v1alpha1.Underlay
-	vnis       []v1alpha1.VNI
+	l3vnis     []v1alpha1.L3VNI
 }
 
 func configureFRR(ctx context.Context, data frrConfigData) error {
 	slog.DebugContext(ctx, "reloading FRR config", "config", data)
-	frrConfig, err := conversion.APItoFRR(data.nodeIndex, data.underlays, data.vnis, data.logLevel)
+	frrConfig, err := conversion.APItoFRR(data.nodeIndex, data.underlays, data.l3vnis, data.logLevel)
 	emptyConfig := conversion.FRREmptyConfigError("")
 	if errors.As(err, &emptyConfig) {
 		slog.InfoContext(ctx, "reloading FRR config", "empty config", data, "event", "cleaning the frr configuration")

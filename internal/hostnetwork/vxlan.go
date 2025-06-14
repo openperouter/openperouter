@@ -122,6 +122,9 @@ func vxLanNameFromVNI(vni int) string {
 }
 
 func vniFromVXLanName(name string) (int, error) {
+	if !strings.HasPrefix(name, vniPrefix) {
+		return 0, NotRouterInterfaceError{Name: name}
+	}
 	vni := strings.TrimPrefix(name, vniPrefix)
 	res, err := strconv.Atoi(vni)
 	if err != nil {

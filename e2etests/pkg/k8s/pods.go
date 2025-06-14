@@ -16,7 +16,9 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 )
 
-func CreateAgnhostPod(cs clientset.Interface, podName, namespace string) (*corev1.Pod, error) {
+type PodModifier func(*corev1.Pod)
+
+func CreateAgnhostPod(cs clientset.Interface, podName, namespace string, modifiers ...PodModifier) (*corev1.Pod, error) {
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      podName,
@@ -38,10 +40,19 @@ func CreateAgnhostPod(cs clientset.Interface, podName, namespace string) (*corev
 							ContainerPort: 8090,
 						},
 					},
+					SecurityContext: &corev1.SecurityContext{
+						Capabilities: &corev1.Capabilities{
+							Add: []corev1.Capability{"NET_ADMIN"},
+						},
+					},
 				},
 			},
 		},
 	}
+	for _, modifier := range modifiers {
+		modifier(pod)
+	}
+
 	pod, err := cs.CoreV1().Pods(namespace).Create(context.Background(), pod, metav1.CreateOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create pod %s: %w", podName, err)
@@ -51,6 +62,22 @@ func CreateAgnhostPod(cs clientset.Interface, podName, namespace string) (*corev
 		return nil, err
 	}
 	return res, nil
+}
+
+func WithNad(name, namespace, ip string) func(*corev1.Pod) {
+	annotation := fmt.Sprintf(`[{"name": "%s", "namespace": "%s", "ips": ["%s"]}]`, name, namespace, ip)
+	return func(p *corev1.Pod) {
+		if p.Annotations == nil {
+			p.Annotations = make(map[string]string)
+		}
+		p.Annotations["k8s.v1.cni.cncf.io/networks"] = annotation
+	}
+}
+
+func OnNode(nodeName string) func(*corev1.Pod) {
+	return func(pod *corev1.Pod) {
+		pod.Spec.NodeName = nodeName
+	}
 }
 
 func waitForPodReady(cs clientset.Interface, pod *corev1.Pod) (*corev1.Pod, error) {

@@ -85,12 +85,12 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 	})
 
 	Context("with a vni", func() {
-		vni := v1alpha1.VNI{
+		vni := v1alpha1.L3VNI{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "red",
 				Namespace: openperouter.Namespace,
 			},
-			Spec: v1alpha1.VNISpec{
+			Spec: v1alpha1.L3VNISpec{
 				ASN:       64514,
 				VNI:       100,
 				LocalCIDR: "192.169.10.0/24",
@@ -99,7 +99,7 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 		}
 		BeforeEach(func() {
 			err := Updater.Update(config.Resources{
-				VNIs: []v1alpha1.VNI{
+				L3VNIs: []v1alpha1.L3VNI{
 					vni,
 				},
 			})

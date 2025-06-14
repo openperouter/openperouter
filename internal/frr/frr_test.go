@@ -37,7 +37,7 @@ func TestBasic(t *testing.T) {
 				},
 			},
 		},
-		VNIs: []VNIConfig{
+		VNIs: []L3VNIConfig{
 			{
 				VRF: "red",
 				ASN: 64512,

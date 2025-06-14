@@ -16,7 +16,7 @@ func init() {
 	interfaceNameRegexp = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_-]*$`)
 }
 
-func ValidateVNIs(vnis []v1alpha1.VNI) error {
+func ValidateVNIs(vnis []v1alpha1.L3VNI) error {
 	existingVrfs := map[string]string{}  // a map between the given VRF and the VNI instance it's configured in
 	existingVNIs := map[uint32]string{}  // a map between the given VNI number and the VNI instance it's configured in
 	existingCIDRs := map[string]string{} // a map between the given local cidr and the VNI instance it's configured in

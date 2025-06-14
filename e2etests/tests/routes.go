@@ -21,7 +21,6 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/utils/ptr"
@@ -41,12 +40,12 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 	var cs clientset.Interface
 	routerPods := []*corev1.Pod{}
 
-	vniRed := v1alpha1.VNI{
+	vniRed := v1alpha1.L3VNI{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "red",
 			Namespace: openperouter.Namespace,
 		},
-		Spec: v1alpha1.VNISpec{
+		Spec: v1alpha1.L3VNISpec{
 			ASN:       64514,
 			VNI:       100,
 			LocalCIDR: "192.169.10.0/24",
@@ -54,37 +53,17 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		},
 	}
 
-	vniBlue := v1alpha1.VNI{
+	vniBlue := v1alpha1.L3VNI{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "blue",
 			Namespace: openperouter.Namespace,
 		},
-		Spec: v1alpha1.VNISpec{
+		Spec: v1alpha1.L3VNISpec{
 			ASN:       64514,
 			VNI:       200,
 			LocalCIDR: "192.169.11.0/24",
 			HostASN:   ptr.To(uint32(64515)),
 		},
-	}
-
-	changeLeafPrefixes := func(leaf infra.Leaf, redPrefixes, bluePrefixes []string) {
-		leafConfiguration := infra.LeafConfiguration{
-			Leaf: leaf,
-			Red: infra.Addresses{
-				IPV4: redPrefixes,
-			},
-			Blue: infra.Addresses{
-				IPV4: bluePrefixes,
-			},
-		}
-		config, err := infra.LeafConfigToFRR(leafConfiguration)
-		Expect(err).NotTo(HaveOccurred())
-		err = leaf.ReloadConfig(config)
-		Expect(err).NotTo(HaveOccurred())
-	}
-
-	removeLeafPrefixes := func(leaf infra.Leaf) {
-		changeLeafPrefixes(leaf, []string{}, []string{})
 	}
 
 	BeforeAll(func() {
@@ -132,7 +111,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 	Context("with vnis", func() {
 		BeforeEach(func() {
 			err := Updater.Update(config.Resources{
-				VNIs: []v1alpha1.VNI{
+				L3VNIs: []v1alpha1.L3VNI{
 					vniRed,
 					vniBlue,
 				},
@@ -143,7 +122,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 
 		It("receives type 5 routes from the fabric", func() {
 			Contains := true
-			checkRouteFromLeaf := func(leaf infra.Leaf, vni v1alpha1.VNI, mustContain bool, prefixes []string) {
+			checkRouteFromLeaf := func(leaf infra.Leaf, vni v1alpha1.L3VNI, mustContain bool, prefixes []string) {
 				By(fmt.Sprintf("checking routes from leaf %s on vni %s, mustContain %v %v", leaf.Name, vni.Name, mustContain, prefixes))
 				Eventually(func() error {
 					for _, p := range routerPods {
@@ -220,7 +199,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			DumpPods("FRRK8s pods", frrk8sPods)
 
 			err := Updater.Update(config.Resources{
-				VNIs: []v1alpha1.VNI{
+				L3VNIs: []v1alpha1.L3VNI{
 					vniRed,
 					vniBlue,
 				},
@@ -236,7 +215,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		})
 
 		It("translates EVPN incoming routes as BGP routes", func() {
-			checkBGPPrefixesForVNI := func(frrk8s *corev1.Pod, vni v1alpha1.VNI, prefixes []string, shouldExist bool) {
+			checkBGPPrefixesForVNI := func(frrk8s *corev1.Pod, vni v1alpha1.L3VNI, prefixes []string, shouldExist bool) {
 				exec := executor.ForPod(frrk8s.Namespace, frrk8s.Name, "frr")
 				Eventually(func() error {
 					routes, err := frr.BGPRoutesFor(exec)
@@ -302,35 +281,14 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		var testPod *corev1.Pod
 		var podNode *corev1.Node
 
-		redistributeConnectedForLeaf := func(leaf infra.Leaf) {
-			leafConfiguration := infra.LeafConfiguration{
-				Leaf: leaf,
-				Red: infra.Addresses{
-					RedistributeConnected: true,
-				},
-				Blue: infra.Addresses{
-					RedistributeConnected: true,
-				},
-			}
-			config, err := infra.LeafConfigToFRR(leafConfiguration)
-			Expect(err).NotTo(HaveOccurred())
-			err = leaf.ReloadConfig(config)
-			Expect(err).NotTo(HaveOccurred())
-		}
-
 		BeforeEach(func() {
 			By("setting redistribute connected on leaves")
 			redistributeConnectedForLeaf(infra.LeafAConfig)
 			redistributeConnectedForLeaf(infra.LeafBConfig)
 
 			By("Creating the test namespace")
-			ns := corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: testNamespace}}
-			_, err := cs.CoreV1().Namespaces().Create(context.Background(), &ns, metav1.CreateOptions{})
+			_, err := k8s.CreateNamespace(cs, testNamespace)
 			Expect(err).NotTo(HaveOccurred())
-			Eventually(func() error {
-				_, err := cs.CoreV1().Namespaces().Get(context.Background(), testNamespace, metav1.GetOptions{})
-				return err
-			}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 
 			By("Creating the test pod")
 			testPod, err = k8s.CreateAgnhostPod(cs, "test-pod", testNamespace)
@@ -348,7 +306,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			err = Updater.Update(config.Resources{
-				VNIs: []v1alpha1.VNI{
+				L3VNIs: []v1alpha1.L3VNI{
 					vniRed,
 					vniBlue,
 				},
@@ -367,17 +325,13 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 
 		AfterEach(func() {
 			By("Deleting the test namespace")
-			err := cs.CoreV1().Namespaces().Delete(context.Background(), testNamespace, metav1.DeleteOptions{})
+			err := k8s.DeleteNamespace(cs, testNamespace)
 			Expect(err).NotTo(HaveOccurred())
-			Eventually(func() bool {
-				_, err := cs.CoreV1().Namespaces().Get(context.Background(), testNamespace, metav1.GetOptions{})
-				return errors.IsNotFound(err)
-			}, time.Minute, time.Second).Should(BeTrue())
 		})
 
 		It("should be able to reach the hosts from the test pod and vice versa", func() {
 			tests := []struct {
-				vni            v1alpha1.VNI
+				vni            v1alpha1.L3VNI
 				hostName       string
 				externalHostIP string
 			}{

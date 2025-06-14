@@ -4,7 +4,7 @@ metadata:
   annotations:
     alm-examples: '[]'
     capabilities: Basic Install
-    createdAt: "2025-06-10T07:19:57Z"
+    createdAt: "2025-06-13T09:32:25Z"
     operators.operatorframework.io/builder: operator-sdk-v1.39.2
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
   name: openperouter-operator.v0.0.0
@@ -13,6 +13,12 @@ spec:
   apiservicedefinitions: {}
   customresourcedefinitions:
     owned:
+    - kind: L2VNI
+      name: l2vnis.openpe.openperouter.github.io
+      version: v1alpha1
+    - kind: L3VNI
+      name: l3vnis.openpe.openperouter.github.io
+      version: v1alpha1
     - description: OpenPERouter is the Schema for the openperouters API
       displayName: Open PERouter
       kind: OpenPERouter
@@ -22,13 +28,6 @@ spec:
       displayName: Underlay
       kind: Underlay
       name: underlays.openpe.openperouter.github.io
-      version: v1alpha1
-    - description: |-
-        VNI represents a VXLan VNI to receive EVPN type 5 routes
-        from.
-      displayName: VNI
-      kind: VNI
-      name: vnis.openpe.openperouter.github.io
       version: v1alpha1
   description: An operator for deploying OpenPERouter on a Kubernetes cluster.
   displayName: OpenPERouter Operator
@@ -60,6 +59,58 @@ spec:
         - apiGroups:
           - openpe.openperouter.github.io
           resources:
+          - l2vnis
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - openpe.openperouter.github.io
+          resources:
+          - l2vnis/finalizers
+          verbs:
+          - update
+        - apiGroups:
+          - openpe.openperouter.github.io
+          resources:
+          - l2vnis/status
+          verbs:
+          - get
+          - patch
+          - update
+        - apiGroups:
+          - openpe.openperouter.github.io
+          resources:
+          - l3vnis
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - openpe.openperouter.github.io
+          resources:
+          - l3vnis/finalizers
+          verbs:
+          - update
+        - apiGroups:
+          - openpe.openperouter.github.io
+          resources:
+          - l3vnis/status
+          verbs:
+          - get
+          - patch
+          - update
+        - apiGroups:
+          - openpe.openperouter.github.io
+          resources:
           - underlays
           verbs:
           - create
@@ -79,32 +130,6 @@ spec:
           - openpe.openperouter.github.io
           resources:
           - underlays/status
-          verbs:
-          - get
-          - patch
-          - update
-        - apiGroups:
-          - openpe.openperouter.github.io
-          resources:
-          - vnis
-          verbs:
-          - create
-          - delete
-          - get
-          - list
-          - patch
-          - update
-          - watch
-        - apiGroups:
-          - openpe.openperouter.github.io
-          resources:
-          - vnis/finalizers
-          verbs:
-          - update
-        - apiGroups:
-          - openpe.openperouter.github.io
-          resources:
-          - vnis/status
           verbs:
           - get
           - patch

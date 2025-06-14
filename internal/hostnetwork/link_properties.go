@@ -57,6 +57,20 @@ func interfaceHasIP(link netlink.Link, address string) (bool, error) {
 	return false, nil
 }
 
+// interfaceHasIP tells if the given link does not have
+// ips of the given family.
+func interfaceHasNoIP(link netlink.Link, family int) (bool, error) {
+	addresses, err := netlink.AddrList(link, family)
+	if err != nil {
+		return false, fmt.Errorf("interfaceHasNoIP: failed to list addresses for interface %s: %w", link.Attrs().Name, err)
+	}
+	if len(addresses) == 0 {
+		return true, nil
+	}
+
+	return false, nil
+}
+
 // setAddrGenModeNone sets addr_gen_mode to none to the given link.
 func setAddrGenModeNone(l netlink.Link) error {
 	fileName := fmt.Sprintf("/proc/sys/net/ipv6/conf/%s/addr_gen_mode", l.Attrs().Name)
