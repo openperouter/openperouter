@@ -1,4 +1,12 @@
-# API Reference
+---
+weight: 60
+title: "API Reference"
+description: "OpenPERouter API reference documentation"
+icon: "article"
+date: "2025-06-15T15:03:22+02:00"
+lastmod: "2025-06-15T15:03:22+02:00"
+toc: true
+--- # API Reference
 
 ## Packages
 - [openpe.openperouter.github.io/v1alpha1](#openpeopenperoutergithubiov1alpha1)
