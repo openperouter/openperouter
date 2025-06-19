@@ -144,3 +144,6 @@ When you create or update VNI configurations, OpenPERouter automatically:
    - Host side: Second IP in the CIDR (e.g., `192.169.11.2`)
 4. **Establishes BGP Session**: Opens BGP session between router and host using the specified ASNs
 
+## API Reference
+
+For detailed information about all available configuration fields, validation rules, and API specifications, see the [API Reference](../api-reference.md) documentation.
