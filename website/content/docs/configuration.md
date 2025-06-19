@@ -121,9 +121,6 @@ When you create or update VNI configurations, OpenPERouter automatically:
    - Host side: Each node gets a free IP in the CIDR, starting from the second (e.g., `192.169.11.15`)
 4. **Creates BGP Session**: Opens BGP session between router and host using the specified ASNs
 
-<<<<<<< Updated upstream
-=======
-
 ## L2VNI Configuration
 
 L2VNIs provide Layer 2 connectivity across nodes using EVPN tunnels. Unlike L3VNIs, L2VNIs extend Layer 2 domains rather than routing domains.

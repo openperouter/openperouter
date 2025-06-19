@@ -309,6 +309,8 @@ helm-docs:
 .PHONY: api-docs
 api-docs: crd-ref-docs
 	$(APIDOCSGEN) --config hack/crd-ref-docs.yaml --max-depth 10 --source-path "./api" --renderer=markdown --output-path ./API-DOCS.md
+	cat website/content/docs/api-reference.md.template > website/content/docs/api-reference.md
+	cat ./API-DOCS.md >> website/content/docs/api-reference.md
 
 .PHONY: bumpversion
 bumpversion:
@@ -316,7 +318,7 @@ bumpversion:
 	hack/release/bumpversion.sh
 
 .PHONY: cutrelease
-cutrelease: bumpversion generate-all-in-one helm-docs
+cutrelease: bumpversion generate-all-in-one helm-docs api-docs
 	hack/release/release.sh
 
 .PHONY: build-validator
@@ -338,8 +340,12 @@ hugo-download:
 	fi
 
 .PHONY: serve-website
-serve-website: hugo-download
+serve-website: hugo-download api-docs
 	$(HUGO) --source website server
+
+.PHONY: build-website
+build-website: hugo-download api-docs ## Build the website with API documentation
+	$(HUGO) --source website --minify
 
 #
 # Operator specifics, copied from a Makefile generated on a clean folder by operator-sdk, then modified.
