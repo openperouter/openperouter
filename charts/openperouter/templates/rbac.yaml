@@ -133,6 +133,7 @@ rules:
   - get
   - patch
   - update
+{{- if .Values.webhook.enabled }}
 - apiGroups:
   - admissionregistration.k8s.io
   resources:
@@ -149,6 +150,7 @@ rules:
   - validatingwebhookconfigurations
   verbs:
   - update
+{{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

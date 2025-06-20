@@ -1,8 +1,4 @@
 {{- if .Values.webhook.enabled }}
-# Webhook functionality has been removed from the application
-# This file is kept for backward compatibility but contains no webhook configurations
-{{- end }}
-
 apiVersion: v1
 kind: Secret
 metadata:
@@ -104,3 +100,4 @@ webhooks:
     resources:
     - underlays
   sideEffects: None
+{{- end }}

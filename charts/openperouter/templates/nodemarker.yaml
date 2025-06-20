@@ -40,7 +40,10 @@ spec:
         - --loglevel={{ . }}
         {{- end }}
         - "--namespace=$(NAMESPACE)"
-        - "--webhookmode=enabled"
+        {{- if not .Values.webhook.enabled }}
+        - "--webhookmode=disabled"
+        - "--disable-cert-rotation"
+        {{- end }}
         command:
         - /nodemarker
         env:
@@ -48,6 +51,7 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
+        {{- if .Values.webhook.enabled }}
         ports:
           - containerPort: 9443
             name: webhook-server
@@ -56,6 +60,7 @@ spec:
         - name: cert
           mountPath: /tmp/k8s-webhook-server/serving-certs
           readOnly: true
+        {{- end }}
         image: {{ .Values.openperouter.image.repository }}:{{ .Values.openperouter.image.tag | default .Chart.AppVersion }}
         {{- if .Values.openperouter.image.pullPolicy }}
         imagePullPolicy: {{ .Values.openperouter.image.pullPolicy }}
@@ -65,9 +70,11 @@ spec:
         resources:
           {{- toYaml . | nindent 10 }}
         {{- end }}
+      {{- if .Values.webhook.enabled }}
       volumes:
         - name: cert
           secret:
             defaultMode: 420
             secretName: openpe-webhook-server-cert
+      {{- end }}
 
