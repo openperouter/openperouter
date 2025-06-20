@@ -28,6 +28,9 @@ func ValidateL3VNIs(l3Vnis []v1alpha1.L3VNI) error {
 	// Perform L3-specific validation (CIDR overlap checking)
 	existingCIDRs := map[string]string{} // a map between the given local cidr and the VNI instance it's configured in
 	for _, vni := range l3Vnis {
+		if err := isValidCIDR(vni.Spec.LocalCIDR); err != nil {
+			return fmt.Errorf("invalid local CIDR %s for vni %s: %w", vni.Spec.LocalCIDR, vni.Name, err)
+		}
 		for cidr, cidrVNI := range existingCIDRs {
 			overlap, err := cidrsOverlap(cidr, vni.Spec.LocalCIDR)
 			if err != nil {

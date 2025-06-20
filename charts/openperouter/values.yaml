@@ -55,6 +55,10 @@ openperouter:
     reloader:
       resources: {}
   cri: "containerd" # cri to bind its socket, can be containerd or crio.
+
+webhook:
+  enabled: true
+
 crds:
   enabled: true
   validationFailurePolicy: Fail
