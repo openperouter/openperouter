@@ -30,7 +30,7 @@ spec:
         args:
         - "--loglevel=debug"
         - "--namespace=$(NAMESPACE)"
-        - "--enablewebhook"
+        - "--webhookmode=enabled"
         env:
         - name: NAMESPACE
           valueFrom:

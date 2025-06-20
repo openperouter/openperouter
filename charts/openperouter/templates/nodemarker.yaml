@@ -40,7 +40,7 @@ spec:
         - --loglevel={{ . }}
         {{- end }}
         - "--namespace=$(NAMESPACE)"
-        - "--enablewebhook"
+        - "--webhookmode=enabled"
         command:
         - /nodemarker
         env:

@@ -49,6 +49,13 @@ var (
 	setupLog = ctrl.Log.WithName("setup")
 )
 
+const (
+	// Webhook modes
+	WebhookModeDisabled    = "disabled"
+	WebhookModeEnabled     = "enabled"
+	WebhookModeWebhookOnly = "webhookonly"
+)
+
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
@@ -61,7 +68,7 @@ func main() {
 		metricsAddr                   string
 		namespace                     string
 		logLevel                      string
-		enableWebhook                 bool
+		webhookMode                   string
 		webhookPort                   int
 		disableCertRotation           bool
 		restartOnRotatorSecretRefresh bool
@@ -82,9 +89,17 @@ func main() {
 	flag.StringVar(&args.certServiceName, "cert-service-name", "openpe-webhook-service",
 		"The service name used to generate the TLS cert's hostname")
 	flag.IntVar(&args.webhookPort, "webhook-port", 9443, "the verbosity of the process")
-	flag.BoolVar(&args.enableWebhook, "enablewebhook", true, "enable the webhook server")
+	flag.StringVar(&args.webhookMode, "webhookmode", WebhookModeEnabled, "webhook mode: disabled, enabled, or webhookonly")
 
 	flag.Parse()
+
+	switch args.webhookMode {
+	case WebhookModeDisabled, WebhookModeEnabled, WebhookModeWebhookOnly:
+	default:
+		setupLog.Error(nil, "invalid webhook mode", "mode", args.webhookMode,
+			"valid_modes", []string{WebhookModeDisabled, WebhookModeEnabled, WebhookModeWebhookOnly})
+		os.Exit(1)
+	}
 
 	logger, err := logging.New(args.logLevel)
 	if err != nil {
@@ -114,7 +129,7 @@ func main() {
 	})
 
 	startListeners := make(chan struct{})
-	if args.enableWebhook && !args.disableCertRotation {
+	if !args.disableCertRotation {
 		setupLog.Info("Starting certs generator")
 		if err := setupCertRotation(startListeners, mgr, logger, args.namespace,
 			args.certDir, args.certServiceName, args.restartOnRotatorSecretRefresh); err != nil {
@@ -129,19 +144,21 @@ func main() {
 	go func() {
 		<-startListeners
 
-		setupLog.Info("Starting controllers")
-		if err = (&nodeindex.NodesReconciler{
-			Client:   mgr.GetClient(),
-			Scheme:   mgr.GetScheme(),
-			LogLevel: args.logLevel,
-			Logger:   logger,
-		}).SetupWithManager(signalHandlerContext, mgr); err != nil {
-			setupLog.Error(err, "unable to create controller", "controller", "NodeReconciler")
-			os.Exit(1)
+		if args.webhookMode != WebhookModeWebhookOnly {
+			setupLog.Info("Starting controllers")
+			if err = (&nodeindex.NodesReconciler{
+				Client:   mgr.GetClient(),
+				Scheme:   mgr.GetScheme(),
+				LogLevel: args.logLevel,
+				Logger:   logger,
+			}).SetupWithManager(signalHandlerContext, mgr); err != nil {
+				setupLog.Error(err, "unable to create controller", "controller", "NodeReconciler")
+				os.Exit(1)
+			}
+			// +kubebuilder:scaffold:builder
 		}
-		// +kubebuilder:scaffold:builder
 
-		if args.enableWebhook {
+		if args.webhookMode == WebhookModeEnabled || args.webhookMode == WebhookModeWebhookOnly {
 			setupLog.Info("Starting webhooks")
 			if err := v1alpha1.AddToScheme(mgr.GetScheme()); err != nil {
 				logger.Error("unable to add v1alpha1 scheme", "error", err)
