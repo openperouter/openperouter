@@ -110,4 +110,8 @@ func patchChartValues(envConfig envconfig.EnvConfig, crdConfig *operatorapi.Open
 			"enabled": false,
 		},
 	}
+
+	valuesMap["webhook"] = map[string]interface{}{
+		"enabled": false,
+	}
 }

@@ -42,7 +42,7 @@ spec:
         - "--namespace=$(NAMESPACE)"
         {{- if not .Values.webhook.enabled }}
         - "--webhookmode=disabled"
-        - "--disable-cert-rotation"
+        - "--disable-cert-rotation=true"
         {{- end }}
         command:
         - /nodemarker

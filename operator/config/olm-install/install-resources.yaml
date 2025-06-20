@@ -10,7 +10,7 @@ metadata:
   namespace: openperouter-system
 spec:
   displayName: OpenPERouter Operator
-  image: quay.io/openperouter/openperouter-operator-bundle-index:main
+  image: quay.io/openperouter/openperouter-operator-catalog:v0.0.0
   publisher: github.com/openperouter/openperouter-operator
   sourceType: grpc
 ---

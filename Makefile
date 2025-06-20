@@ -386,6 +386,7 @@ operator-sdk: ## Download operator-sdk locally if necessary.
 bundle: manifests kustomize operator-sdk ## Generate bundle manifests and metadata, then validate generated files.
 	cd operator && $(OPERATOR_SDK) generate kustomize manifests --interactive=false -q
 	cd operator/config/pods && $(KUSTOMIZE) edit set image controller=$(IMG)
+	cd operator/config/webhook/backend && $(KUSTOMIZE) edit set image controller=$(IMG)
 	cd operator && $(KUSTOMIZE) build config/default | $(OPERATOR_SDK) generate bundle $(BUNDLE_GEN_FLAGS) --extra-service-accounts "controller,perouter" --package openperouter-operator
 	cd operator && $(OPERATOR_SDK) bundle validate ./bundle
 
