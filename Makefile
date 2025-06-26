@@ -134,6 +134,7 @@ HELM ?= $(LOCALBIN)/helm
 KUBECONFIG_PATH ?= $(LOCALBIN)/kubeconfig
 VALIDATOR_PATH ?= $(LOCALBIN)/validatehost
 APIDOCSGEN ?= $(LOCALBIN)/crd-ref-docs
+HUGO ?= $(LOCALBIN)/hugo
 export KUBECONFIG=$(KUBECONFIG_PATH)
 
 ## Tool Versions
@@ -146,6 +147,7 @@ KIND_CLUSTER_NAME ?= pe-kind
 HELM_VERSION ?= v3.12.3
 HELM_DOCS_VERSION ?= v1.10.0
 APIDOCSGEN_VERSION ?= v0.0.12
+HUGO_VERSION ?= v0.147.8
 
 .PHONY: install
 install: kubectl manifests kustomize ## Install CRDs into the K8s cluster specified in $KUBECONFIG_PATH.
@@ -307,6 +309,8 @@ helm-docs:
 .PHONY: api-docs
 api-docs: crd-ref-docs
 	$(APIDOCSGEN) --config hack/crd-ref-docs.yaml --max-depth 10 --source-path "./api" --renderer=markdown --output-path ./API-DOCS.md
+	cat website/content/docs/api-reference.md.template > website/content/docs/api-reference.md
+	cat ./API-DOCS.md >> website/content/docs/api-reference.md
 
 .PHONY: bumpversion
 bumpversion:
@@ -314,7 +318,7 @@ bumpversion:
 	hack/release/bumpversion.sh
 
 .PHONY: cutrelease
-cutrelease: bumpversion generate-all-in-one helm-docs
+cutrelease: bumpversion generate-all-in-one helm-docs api-docs
 	hack/release/release.sh
 
 .PHONY: build-validator
@@ -325,6 +329,23 @@ build-validator: ginkgo ## Build Ginkgo test binary.
 .PHONY: create-export-logs
 create-export-logs:
 	mkdir -p ${KIND_EXPORT_LOGS}
+
+.PHONY: hugo-download
+hugo-download:
+	@if [ -x $(HUGO) ] && $(HUGO) version | grep -q '$(HUGO_VERSION)'; then :; \
+	else \
+		mkdir -p bin; \
+		HUGO_ARCH=$$(go env GOOS)-$$(go env GOARCH); \
+		curl -L https://github.com/gohugoio/hugo/releases/download/$(HUGO_VERSION)/hugo_extended_$(subst v,,$(HUGO_VERSION))_$${HUGO_ARCH}.tar.gz | tar -xz -C bin hugo; \
+	fi
+
+.PHONY: serve-website
+serve-website: hugo-download api-docs
+	$(HUGO) --source website server
+
+.PHONY: build-website
+build-website: hugo-download api-docs ## Build the website with API documentation
+	$(HUGO) --source website --minify
 
 #
 # Operator specifics, copied from a Makefile generated on a clean folder by operator-sdk, then modified.
@@ -455,3 +476,4 @@ deploy-olm: operator-sdk ## deploys OLM on the cluster
 	$(OPERATOR_SDK) olm status
 
 build-and-push-bundle-images: bundle-build bundle-push catalog-build catalog-push
+
