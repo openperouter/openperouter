@@ -1,3 +1,0 @@
-resources:
-- openperouter.yaml
-# +kubebuilder:scaffold:manifestskustomizesamples

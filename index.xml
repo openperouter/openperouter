@@ -1,0 +1,224 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Home on OpenPERouter official docs</title><link>openperouter.github.io/</link><description>Recent content in Home on OpenPERouter official docs</description><generator>Hugo</generator><language>en-us</language><lastBuildDate>Sun, 15 Jun 2025 15:03:22 +0200</lastBuildDate><atom:link href="openperouter.github.io/index.xml" rel="self" type="application/rss+xml"/><item><title>The development environment</title><link>openperouter.github.io/docs/contributing/devenv/</link><pubDate>Sun, 15 Jun 2025 15:03:22 +0200</pubDate><guid>openperouter.github.io/docs/contributing/devenv/</guid><description>&lt;p>In order to test and experiment with OpenPERouter, a &lt;a href="https://containerlab.dev/">containerlab&lt;/a> and &lt;a href="https://kind.sigs.k8s.io/">kind&lt;/a> based environment is available.&lt;/p>
+&lt;p>To start it, run&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>make deploy
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>The topology of the environment is as follows:&lt;/p>
+&lt;p>&lt;img src="openperouter.github.io/images/openpedevenv.svg" alt="" />&lt;/p>
+&lt;p>With:&lt;/p>
+&lt;ul>
+&lt;li>Two kind nodes connected to a leaf, running OpenPERouter&lt;/li>
+&lt;li>A spine container&lt;/li>
+&lt;li>Two EVPN enabled leaves, leafA and leafB&lt;/li>
+&lt;li>For each leaf, two hosts connected to a type 5 EVPN (VNI 100 and 200)&lt;/li>
+&lt;/ul>
+&lt;p>The kubeconfig file required to interact with the cluster is created under &lt;code>bin/kubeconfig&lt;/code>.&lt;/p></description></item><item><title>Code of Conduct</title><link>openperouter.github.io/docs/contributing/code-of-conduct/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>openperouter.github.io/docs/contributing/code-of-conduct/</guid><description>&lt;h2 id="our-pledge">
+ Our Pledge
+ &lt;a class="anchor" href="#our-pledge">#&lt;/a>
+&lt;/h2>
+&lt;p>In the interest of fostering an open and welcoming environment, we as
+contributors and maintainers pledge to making participation in our project and
+our community a harassment-free experience for everyone, regardless of age, body
+size, disability, ethnicity, gender identity and expression, level of experience,
+nationality, personal appearance, race, religion, or sexual identity and
+orientation.&lt;/p>
+&lt;h2 id="our-standards">
+ Our Standards
+ &lt;a class="anchor" href="#our-standards">#&lt;/a>
+&lt;/h2>
+&lt;p>Examples of behavior that contributes to creating a positive environment
+include:&lt;/p></description></item><item><title>Concepts</title><link>openperouter.github.io/docs/concepts/</link><pubDate>Sun, 15 Jun 2025 15:03:22 +0200</pubDate><guid>openperouter.github.io/docs/concepts/</guid><description>&lt;p>This section explains the core concepts behind OpenPERouter and how it integrates with your network infrastructure.&lt;/p>
+&lt;h2 id="overview">
+ Overview
+ &lt;a class="anchor" href="#overview">#&lt;/a>
+&lt;/h2>
+&lt;p>OpenPERouter transforms Kubernetes nodes into Provider Edge (PE) routers by running &lt;a href="https://frrouting.org/">FRR&lt;/a> in a dedicated network namespace. This enables EVPN (Ethernet VPN) functionality directly on your Kubernetes nodes, eliminating the need for external PE routers.&lt;/p>
+&lt;h2 id="network-architecture">
+ Network Architecture
+ &lt;a class="anchor" href="#network-architecture">#&lt;/a>
+&lt;/h2>
+&lt;h3 id="traditional-vs-openperouter-architecture">
+ Traditional vs. OpenPERouter Architecture
+ &lt;a class="anchor" href="#traditional-vs-openperouter-architecture">#&lt;/a>
+&lt;/h3>
+&lt;p>In traditional deployments, Kubernetes nodes connect to Top-of-Rack (ToR) switches via VLANs, and external PE routers handle EVPN tunneling. OpenPERouter moves this PE functionality directly into the Kubernetes nodes.&lt;/p></description></item><item><title>Architecture</title><link>openperouter.github.io/docs/architecture/</link><pubDate>Sun, 15 Jun 2025 15:03:22 +0200</pubDate><guid>openperouter.github.io/docs/architecture/</guid><description>&lt;p>This document describes the internal architecture of OpenPERouter and how its components work together to provide EVPN functionality on Kubernetes nodes.&lt;/p>
+&lt;h2 id="system-overview">
+ System Overview
+ &lt;a class="anchor" href="#system-overview">#&lt;/a>
+&lt;/h2>
+&lt;p>OpenPERouter consists of three main components:&lt;/p>
+&lt;ol>
+&lt;li>&lt;strong>Router Pod&lt;/strong>: Runs &lt;a href="https://frrouting.org/">FRR&lt;/a> in a dedicated network namespace&lt;/li>
+&lt;li>&lt;strong>Controller Pod&lt;/strong>: Manages network configuration and orchestrates the router setup&lt;/li>
+&lt;li>&lt;strong>Labeler Pod&lt;/strong>: Assigns persistent node indices for resource allocation&lt;/li>
+&lt;/ol>
+&lt;h2 id="component-architecture">
+ Component Architecture
+ &lt;a class="anchor" href="#component-architecture">#&lt;/a>
+&lt;/h2>
+&lt;h3 id="router-pod">
+ Router Pod
+ &lt;a class="anchor" href="#router-pod">#&lt;/a>
+&lt;/h3>
+&lt;p>The router pod is the core networking component that provides the actual EVPN functionality.&lt;/p></description></item><item><title>Installation</title><link>openperouter.github.io/docs/installation/</link><pubDate>Sun, 15 Jun 2025 15:03:22 +0200</pubDate><guid>openperouter.github.io/docs/installation/</guid><description>&lt;p>This guide covers the installation of OpenPERouter using different deployment methods.&lt;/p>
+&lt;h2 id="prerequisites">
+ Prerequisites
+ &lt;a class="anchor" href="#prerequisites">#&lt;/a>
+&lt;/h2>
+&lt;p>Before installing OpenPERouter, ensure you have:&lt;/p>
+&lt;ul>
+&lt;li>A Kubernetes cluster (v1.20 or later)&lt;/li>
+&lt;li>&lt;code>kubectl&lt;/code> configured to communicate with your cluster&lt;/li>
+&lt;li>Cluster administrator privileges (for creating namespaces and CRDs)&lt;/li>
+&lt;li>Network interfaces configured for BGP peering with external routers&lt;/li>
+&lt;li>For OpenShift: &lt;code>oc&lt;/code> CLI tool and cluster admin access&lt;/li>
+&lt;/ul>
+&lt;h2 id="installation-methods">
+ Installation Methods
+ &lt;a class="anchor" href="#installation-methods">#&lt;/a>
+&lt;/h2>
+&lt;p>OpenPERouter offers several deployment methods to suit different environments and preferences:&lt;/p></description></item><item><title>Configuration</title><link>openperouter.github.io/docs/configuration/</link><pubDate>Sun, 15 Jun 2025 15:03:22 +0200</pubDate><guid>openperouter.github.io/docs/configuration/</guid><description>&lt;p>OpenPERouter requires two main configuration components: the &lt;strong>Underlay&lt;/strong> configuration for external router connectivity and &lt;strong>VNI&lt;/strong> configurations for EVPN overlays.&lt;/p>
+&lt;p>All Custom Resources (CRs) must be created in the same namespace where OpenPERouter is deployed (typically &lt;code>openperouter-system&lt;/code>).&lt;/p>
+&lt;h2 id="underlay-configuration">
+ Underlay Configuration
+ &lt;a class="anchor" href="#underlay-configuration">#&lt;/a>
+&lt;/h2>
+&lt;p>The underlay configuration establishes BGP sessions with external routers (typically Top-of-Rack switches) and defines the VTEP IP allocation strategy.&lt;/p>
+&lt;h3 id="basic-underlay-configuration">
+ Basic Underlay Configuration
+ &lt;a class="anchor" href="#basic-underlay-configuration">#&lt;/a>
+&lt;/h3>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">apiVersion&lt;/span>: &lt;span style="color:#ae81ff">openpe.openperouter.github.io/v1alpha1&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">kind&lt;/span>: &lt;span style="color:#ae81ff">Underlay&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">metadata&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">name&lt;/span>: &lt;span style="color:#ae81ff">underlay&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">namespace&lt;/span>: &lt;span style="color:#ae81ff">openperouter-system&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">spec&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">asn&lt;/span>: &lt;span style="color:#ae81ff">64514&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">vtepcidr&lt;/span>: &lt;span style="color:#ae81ff">100.65.0.0&lt;/span>&lt;span style="color:#ae81ff">/24&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">nics&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> - &lt;span style="color:#ae81ff">toswitch&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">neighbors&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> - &lt;span style="color:#f92672">asn&lt;/span>: &lt;span style="color:#ae81ff">64512&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">address&lt;/span>: &lt;span style="color:#ae81ff">192.168.11.2&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="configuration-fields">
+ Configuration Fields
+ &lt;a class="anchor" href="#configuration-fields">#&lt;/a>
+&lt;/h3>
+&lt;table>
+ &lt;thead>
+ &lt;tr>
+ &lt;th>Field&lt;/th>
+ &lt;th>Type&lt;/th>
+ &lt;th>Description&lt;/th>
+ &lt;th>Required&lt;/th>
+ &lt;/tr>
+ &lt;/thead>
+ &lt;tbody>
+ &lt;tr>
+ &lt;td>&lt;code>asn&lt;/code>&lt;/td>
+ &lt;td>integer&lt;/td>
+ &lt;td>Local ASN for BGP sessions&lt;/td>
+ &lt;td>Yes&lt;/td>
+ &lt;/tr>
+ &lt;tr>
+ &lt;td>&lt;code>vtepcidr&lt;/code>&lt;/td>
+ &lt;td>string&lt;/td>
+ &lt;td>CIDR block for VTEP IP allocation&lt;/td>
+ &lt;td>Yes&lt;/td>
+ &lt;/tr>
+ &lt;tr>
+ &lt;td>&lt;code>nics&lt;/code>&lt;/td>
+ &lt;td>array&lt;/td>
+ &lt;td>List of network interface names to move to router namespace&lt;/td>
+ &lt;td>Yes&lt;/td>
+ &lt;/tr>
+ &lt;tr>
+ &lt;td>&lt;code>neighbors&lt;/code>&lt;/td>
+ &lt;td>array&lt;/td>
+ &lt;td>List of BGP neighbors to peer with&lt;/td>
+ &lt;td>Yes&lt;/td>
+ &lt;/tr>
+ &lt;/tbody>
+&lt;/table>
+&lt;h3 id="vtep-ip-allocation">
+ VTEP IP Allocation
+ &lt;a class="anchor" href="#vtep-ip-allocation">#&lt;/a>
+&lt;/h3>
+&lt;p>The &lt;code>vtepcidr&lt;/code> field defines the IP range used for VTEP (Virtual Tunnel End Point) addresses. OpenPERouter automatically assigns a unique VTEP IP to each node from this range. For example, with &lt;code>100.65.0.0/24&lt;/code>:&lt;/p></description></item><item><title>MetalLB Integration</title><link>openperouter.github.io/docs/examples/metallb/</link><pubDate>Sun, 15 Jun 2025 15:03:22 +0200</pubDate><guid>openperouter.github.io/docs/examples/metallb/</guid><description>&lt;p>This example demonstrates how to integrate OpenPERouter with MetalLB to advertise LoadBalancer services across the EVPN fabric, enabling external access to Kubernetes services.&lt;/p>
+&lt;h2 id="overview">
+ Overview
+ &lt;a class="anchor" href="#overview">#&lt;/a>
+&lt;/h2>
+&lt;p>MetalLB provides load balancing for Kubernetes services by advertising service IPs via BGP. When integrated with OpenPERouter, these BGP routes are automatically converted to EVPN Type 5 routes, making the services reachable across the entire fabric.&lt;/p>
+&lt;h2 id="prerequisites">
+ Prerequisites
+ &lt;a class="anchor" href="#prerequisites">#&lt;/a>
+&lt;/h2>
+&lt;p>Before proceeding with this integration:&lt;/p></description></item><item><title>API Reference</title><link>openperouter.github.io/docs/api-reference/</link><pubDate>Sun, 15 Jun 2025 15:03:22 +0200</pubDate><guid>openperouter.github.io/docs/api-reference/</guid><description>&lt;h1 id="api-reference">
+ API Reference
+ &lt;a class="anchor" href="#api-reference">#&lt;/a>
+&lt;/h1>
+&lt;h2 id="packages">
+ Packages
+ &lt;a class="anchor" href="#packages">#&lt;/a>
+&lt;/h2>
+&lt;ul>
+&lt;li>&lt;a href="#openpeopenperoutergithubiov1alpha1">openpe.openperouter.github.io/v1alpha1&lt;/a>&lt;/li>
+&lt;/ul>
+&lt;h2 id="openpeopenperoutergithubiov1alpha1">
+ openpe.openperouter.github.io/v1alpha1
+ &lt;a class="anchor" href="#openpeopenperoutergithubiov1alpha1">#&lt;/a>
+&lt;/h2>
+&lt;p>Package v1alpha1 contains API Schema definitions for the openpe v1alpha1 API group.&lt;/p>
+&lt;h3 id="resource-types">
+ Resource Types
+ &lt;a class="anchor" href="#resource-types">#&lt;/a>
+&lt;/h3>
+&lt;ul>
+&lt;li>&lt;a href="#l2vni">L2VNI&lt;/a>&lt;/li>
+&lt;li>&lt;a href="#l3vni">L3VNI&lt;/a>&lt;/li>
+&lt;li>&lt;a href="#underlay">Underlay&lt;/a>&lt;/li>
+&lt;/ul>
+&lt;h4 id="hostmaster">
+ HostMaster
+ &lt;a class="anchor" href="#hostmaster">#&lt;/a>
+&lt;/h4>
+&lt;p>&lt;em>Appears in:&lt;/em>&lt;/p>
+&lt;ul>
+&lt;li>&lt;a href="#l2vnispec">L2VNISpec&lt;/a>&lt;/li>
+&lt;/ul>
+&lt;table>
+ &lt;thead>
+ &lt;tr>
+ &lt;th>Field&lt;/th>
+ &lt;th>Description&lt;/th>
+ &lt;th>Default&lt;/th>
+ &lt;th>Validation&lt;/th>
+ &lt;/tr>
+ &lt;/thead>
+ &lt;tbody>
+ &lt;tr>
+ &lt;td>&lt;code>name&lt;/code> &lt;em>string&lt;/em>&lt;/td>
+ &lt;td>Name of the host interface. Must match VRF name validation if set.&lt;/td>
+ &lt;td>&lt;/td>
+ &lt;td>MaxLength: 15 &lt;!-- raw HTML omitted -->Pattern: &lt;code>^[a-zA-Z][a-zA-Z0-9_-]*$&lt;/code> &lt;!-- raw HTML omitted -->&lt;/td>
+ &lt;/tr>
+ &lt;tr>
+ &lt;td>&lt;code>type&lt;/code> &lt;em>string&lt;/em>&lt;/td>
+ &lt;td>Type of the host interface. Currently only &amp;ldquo;bridge&amp;rdquo; is supported.&lt;/td>
+ &lt;td>&lt;/td>
+ &lt;td>Enum: [bridge] &lt;!-- raw HTML omitted -->&lt;/td>
+ &lt;/tr>
+ &lt;tr>
+ &lt;td>&lt;code>autocreate&lt;/code> &lt;em>boolean&lt;/em>&lt;/td>
+ &lt;td>If true, the interface will be created automatically if not present.&lt;!-- raw HTML omitted -->The name of the bridge is of the form br-hs-&lt;!-- raw HTML omitted -->.&lt;/td>
+ &lt;td>false&lt;/td>
+ &lt;td>&lt;/td>
+ &lt;/tr>
+ &lt;/tbody>
+&lt;/table>
+&lt;h4 id="l2vni">
+ L2VNI
+ &lt;a class="anchor" href="#l2vni">#&lt;/a>
+&lt;/h4>
+&lt;p>L2VNI represents a VXLan VNI to receive EVPN type 2 routes
+from.&lt;/p></description></item></channel></rss>

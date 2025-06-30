@@ -1,3 +1,0 @@
-resources:
-- bases/openpe.openperouter.github.io_openperouters.yaml
-- ../../../config/crd

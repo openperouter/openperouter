@@ -1,4 +1,0 @@
-resources:
-- bases/openpe.openperouter.github.io_underlays.yaml
-- bases/openpe.openperouter.github.io_l3vnis.yaml
-- bases/openpe.openperouter.github.io_l2vnis.yaml

@@ -1,7 +1,0 @@
-baseURL = 'openperouter.github.io/'
-languageCode = 'en-us'
-title = 'OpenPERouter official docs'
-
-[module]
-[[module.imports]]
-path = 'github.com/alex-shpak/hugo-book'

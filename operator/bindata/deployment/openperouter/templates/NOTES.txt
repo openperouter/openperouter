@@ -1,4 +1,0 @@
-openperouter is now running in the cluster.
-
-You can now configure it via its CRs. Please refer to the openperouter official docs
-on how to use the CRs.

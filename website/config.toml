@@ -1,6 +1,0 @@
-baseURL = "https://openperouter.example.com/"
-languageCode = "en-us"
-title = "Open PE Router"
-theme = "doks"
-# Doks theme options (minimal, for initial setup)
-# See https://getdoks.org/docs/prologue/configuration/ for more

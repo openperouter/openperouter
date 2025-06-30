@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Examples on OpenPERouter official docs</title><link>openperouter.github.io/docs/examples/</link><description>Recent content in Examples on OpenPERouter official docs</description><generator>Hugo</generator><language>en-us</language><lastBuildDate>Sun, 15 Jun 2025 15:03:22 +0200</lastBuildDate><atom:link href="openperouter.github.io/docs/examples/index.xml" rel="self" type="application/rss+xml"/><item><title>MetalLB Integration</title><link>openperouter.github.io/docs/examples/metallb/</link><pubDate>Sun, 15 Jun 2025 15:03:22 +0200</pubDate><guid>openperouter.github.io/docs/examples/metallb/</guid><description>&lt;p>This example demonstrates how to integrate OpenPERouter with MetalLB to advertise LoadBalancer services across the EVPN fabric, enabling external access to Kubernetes services.&lt;/p>
+&lt;h2 id="overview">
+ Overview
+ &lt;a class="anchor" href="#overview">#&lt;/a>
+&lt;/h2>
+&lt;p>MetalLB provides load balancing for Kubernetes services by advertising service IPs via BGP. When integrated with OpenPERouter, these BGP routes are automatically converted to EVPN Type 5 routes, making the services reachable across the entire fabric.&lt;/p>
+&lt;h2 id="prerequisites">
+ Prerequisites
+ &lt;a class="anchor" href="#prerequisites">#&lt;/a>
+&lt;/h2>
+&lt;p>Before proceeding with this integration:&lt;/p></description></item></channel></rss>

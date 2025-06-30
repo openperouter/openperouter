@@ -1,7 +1,0 @@
-resources:
-- https://github.com/metallb/frr-k8s/config/default/?timeout=120&ref=v0.0.18
-patches:
-- path: loglevel-patch.yaml
-  target:
-    kind: DaemonSet
-    name: frr-k8s-daemon

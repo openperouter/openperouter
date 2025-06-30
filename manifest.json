@@ -1,0 +1,15 @@
+{
+  "name": "OpenPERouter official docs",
+  "short_name": "OpenPERouter official docs",
+  "start_url": "/openperouter.github.io/",
+  "scope": "/openperouter.github.io/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "icons": [
+    {
+      "src": "/openperouter.github.io/favicon.svg",
+      "sizes": "512x512"
+    }
+  ]
+}

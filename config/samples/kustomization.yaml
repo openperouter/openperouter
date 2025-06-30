@@ -1,4 +1,0 @@
-resources:
-- underlay.yaml
-- vni.yaml
-# +kubebuilder:scaffold:manifestskustomizesamples
