@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Docs on OpenPERouter official docs</title><link>openperouter.github.io/openperouter/docs/</link><description>Recent content in Docs on OpenPERouter official docs</description><generator>Hugo</generator><language>en-us</language><lastBuildDate>Sun, 15 Jun 2025 15:03:22 +0200</lastBuildDate><atom:link href="openperouter.github.io/openperouter/docs/index.xml" rel="self" type="application/rss+xml"/><item><title>Concepts</title><link>openperouter.github.io/openperouter/docs/concepts/</link><pubDate>Sun, 15 Jun 2025 15:03:22 +0200</pubDate><guid>openperouter.github.io/openperouter/docs/concepts/</guid><description>&lt;p>This section explains the core concepts behind OpenPERouter and how it integrates with your network infrastructure.&lt;/p>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Docs on OpenPERouter official docs</title><link>https://openperouter.github.io/openperouter/docs/</link><description>Recent content in Docs on OpenPERouter official docs</description><generator>Hugo</generator><language>en-us</language><lastBuildDate>Sun, 15 Jun 2025 15:03:22 +0200</lastBuildDate><atom:link href="https://openperouter.github.io/openperouter/docs/index.xml" rel="self" type="application/rss+xml"/><item><title>Concepts</title><link>https://openperouter.github.io/openperouter/docs/concepts/</link><pubDate>Sun, 15 Jun 2025 15:03:22 +0200</pubDate><guid>https://openperouter.github.io/openperouter/docs/concepts/</guid><description>&lt;p>This section explains the core concepts behind OpenPERouter and how it integrates with your network infrastructure.&lt;/p>
 &lt;h2 id="overview">
  Overview
  &lt;a class="anchor" href="#overview">#&lt;/a>
@@ -12,7 +12,7 @@
  Traditional vs. OpenPERouter Architecture
  &lt;a class="anchor" href="#traditional-vs-openperouter-architecture">#&lt;/a>
 &lt;/h3>
-&lt;p>In traditional deployments, Kubernetes nodes connect to Top-of-Rack (ToR) switches via VLANs, and external PE routers handle EVPN tunneling. OpenPERouter moves this PE functionality directly into the Kubernetes nodes.&lt;/p></description></item><item><title>Architecture</title><link>openperouter.github.io/openperouter/docs/architecture/</link><pubDate>Sun, 15 Jun 2025 15:03:22 +0200</pubDate><guid>openperouter.github.io/openperouter/docs/architecture/</guid><description>&lt;p>This document describes the internal architecture of OpenPERouter and how its components work together to provide EVPN functionality on Kubernetes nodes.&lt;/p>
+&lt;p>In traditional deployments, Kubernetes nodes connect to Top-of-Rack (ToR) switches via VLANs, and external PE routers handle EVPN tunneling. OpenPERouter moves this PE functionality directly into the Kubernetes nodes.&lt;/p></description></item><item><title>Architecture</title><link>https://openperouter.github.io/openperouter/docs/architecture/</link><pubDate>Sun, 15 Jun 2025 15:03:22 +0200</pubDate><guid>https://openperouter.github.io/openperouter/docs/architecture/</guid><description>&lt;p>This document describes the internal architecture of OpenPERouter and how its components work together to provide EVPN functionality on Kubernetes nodes.&lt;/p>
 &lt;h2 id="system-overview">
  System Overview
  &lt;a class="anchor" href="#system-overview">#&lt;/a>
@@ -31,7 +31,7 @@
  Router Pod
  &lt;a class="anchor" href="#router-pod">#&lt;/a>
 &lt;/h3>
-&lt;p>The router pod is the core networking component that provides the actual EVPN functionality.&lt;/p></description></item><item><title>Installation</title><link>openperouter.github.io/openperouter/docs/installation/</link><pubDate>Sun, 15 Jun 2025 15:03:22 +0200</pubDate><guid>openperouter.github.io/openperouter/docs/installation/</guid><description>&lt;p>This guide covers the installation of OpenPERouter using different deployment methods.&lt;/p>
+&lt;p>The router pod is the core networking component that provides the actual EVPN functionality.&lt;/p></description></item><item><title>Installation</title><link>https://openperouter.github.io/openperouter/docs/installation/</link><pubDate>Sun, 15 Jun 2025 15:03:22 +0200</pubDate><guid>https://openperouter.github.io/openperouter/docs/installation/</guid><description>&lt;p>This guide covers the installation of OpenPERouter using different deployment methods.&lt;/p>
 &lt;h2 id="prerequisites">
  Prerequisites
  &lt;a class="anchor" href="#prerequisites">#&lt;/a>
@@ -48,7 +48,7 @@
  Installation Methods
  &lt;a class="anchor" href="#installation-methods">#&lt;/a>
 &lt;/h2>
-&lt;p>OpenPERouter offers several deployment methods to suit different environments and preferences:&lt;/p></description></item><item><title>Configuration</title><link>openperouter.github.io/openperouter/docs/configuration/</link><pubDate>Sun, 15 Jun 2025 15:03:22 +0200</pubDate><guid>openperouter.github.io/openperouter/docs/configuration/</guid><description>&lt;p>OpenPERouter requires two main configuration components: the &lt;strong>Underlay&lt;/strong> configuration for external router connectivity and &lt;strong>VNI&lt;/strong> configurations for EVPN overlays.&lt;/p>
+&lt;p>OpenPERouter offers several deployment methods to suit different environments and preferences:&lt;/p></description></item><item><title>Configuration</title><link>https://openperouter.github.io/openperouter/docs/configuration/</link><pubDate>Sun, 15 Jun 2025 15:03:22 +0200</pubDate><guid>https://openperouter.github.io/openperouter/docs/configuration/</guid><description>&lt;p>OpenPERouter requires two main configuration components: the &lt;strong>Underlay&lt;/strong> configuration for external router connectivity and &lt;strong>VNI&lt;/strong> configurations for EVPN overlays.&lt;/p>
 &lt;p>All Custom Resources (CRs) must be created in the same namespace where OpenPERouter is deployed (typically &lt;code>openperouter-system&lt;/code>).&lt;/p>
 &lt;h2 id="underlay-configuration">
  Underlay Configuration
@@ -116,7 +116,7 @@
  VTEP IP Allocation
  &lt;a class="anchor" href="#vtep-ip-allocation">#&lt;/a>
 &lt;/h3>
-&lt;p>The &lt;code>vtepcidr&lt;/code> field defines the IP range used for VTEP (Virtual Tunnel End Point) addresses. OpenPERouter automatically assigns a unique VTEP IP to each node from this range. For example, with &lt;code>100.65.0.0/24&lt;/code>:&lt;/p></description></item><item><title>API Reference</title><link>openperouter.github.io/openperouter/docs/api-reference/</link><pubDate>Sun, 15 Jun 2025 15:03:22 +0200</pubDate><guid>openperouter.github.io/openperouter/docs/api-reference/</guid><description>&lt;h1 id="api-reference">
+&lt;p>The &lt;code>vtepcidr&lt;/code> field defines the IP range used for VTEP (Virtual Tunnel End Point) addresses. OpenPERouter automatically assigns a unique VTEP IP to each node from this range. For example, with &lt;code>100.65.0.0/24&lt;/code>:&lt;/p></description></item><item><title>API Reference</title><link>https://openperouter.github.io/openperouter/docs/api-reference/</link><pubDate>Sun, 15 Jun 2025 15:03:22 +0200</pubDate><guid>https://openperouter.github.io/openperouter/docs/api-reference/</guid><description>&lt;h1 id="api-reference">
  API Reference
  &lt;a class="anchor" href="#api-reference">#&lt;/a>
 &lt;/h1>
