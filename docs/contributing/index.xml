@@ -1,8 +1,8 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Contributing on OpenPERouter official docs</title><link>openperouter.github.io/docs/contributing/</link><description>Recent content in Contributing on OpenPERouter official docs</description><generator>Hugo</generator><language>en-us</language><lastBuildDate>Sun, 15 Jun 2025 15:03:22 +0200</lastBuildDate><atom:link href="openperouter.github.io/docs/contributing/index.xml" rel="self" type="application/rss+xml"/><item><title>The development environment</title><link>openperouter.github.io/docs/contributing/devenv/</link><pubDate>Sun, 15 Jun 2025 15:03:22 +0200</pubDate><guid>openperouter.github.io/docs/contributing/devenv/</guid><description>&lt;p>In order to test and experiment with OpenPERouter, a &lt;a href="https://containerlab.dev/">containerlab&lt;/a> and &lt;a href="https://kind.sigs.k8s.io/">kind&lt;/a> based environment is available.&lt;/p>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Contributing on OpenPERouter official docs</title><link>openperouter.github.io/openperouter/docs/contributing/</link><description>Recent content in Contributing on OpenPERouter official docs</description><generator>Hugo</generator><language>en-us</language><lastBuildDate>Sun, 15 Jun 2025 15:03:22 +0200</lastBuildDate><atom:link href="openperouter.github.io/openperouter/docs/contributing/index.xml" rel="self" type="application/rss+xml"/><item><title>The development environment</title><link>openperouter.github.io/openperouter/docs/contributing/devenv/</link><pubDate>Sun, 15 Jun 2025 15:03:22 +0200</pubDate><guid>openperouter.github.io/openperouter/docs/contributing/devenv/</guid><description>&lt;p>In order to test and experiment with OpenPERouter, a &lt;a href="https://containerlab.dev/">containerlab&lt;/a> and &lt;a href="https://kind.sigs.k8s.io/">kind&lt;/a> based environment is available.&lt;/p>
 &lt;p>To start it, run&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>make deploy
 &lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>The topology of the environment is as follows:&lt;/p>
-&lt;p>&lt;img src="openperouter.github.io/images/openpedevenv.svg" alt="" />&lt;/p>
+&lt;p>&lt;img src="openperouter.github.io/openperouter/images/openpedevenv.svg" alt="" />&lt;/p>
 &lt;p>With:&lt;/p>
 &lt;ul>
 &lt;li>Two kind nodes connected to a leaf, running OpenPERouter&lt;/li>
@@ -10,7 +10,7 @@
 &lt;li>Two EVPN enabled leaves, leafA and leafB&lt;/li>
 &lt;li>For each leaf, two hosts connected to a type 5 EVPN (VNI 100 and 200)&lt;/li>
 &lt;/ul>
-&lt;p>The kubeconfig file required to interact with the cluster is created under &lt;code>bin/kubeconfig&lt;/code>.&lt;/p></description></item><item><title>Code of Conduct</title><link>openperouter.github.io/docs/contributing/code-of-conduct/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>openperouter.github.io/docs/contributing/code-of-conduct/</guid><description>&lt;h2 id="our-pledge">
+&lt;p>The kubeconfig file required to interact with the cluster is created under &lt;code>bin/kubeconfig&lt;/code>.&lt;/p></description></item><item><title>Code of Conduct</title><link>openperouter.github.io/openperouter/docs/contributing/code-of-conduct/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>openperouter.github.io/openperouter/docs/contributing/code-of-conduct/</guid><description>&lt;h2 id="our-pledge">
  Our Pledge
  &lt;a class="anchor" href="#our-pledge">#&lt;/a>
 &lt;/h2>
