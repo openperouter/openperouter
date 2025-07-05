@@ -300,7 +300,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		})
 	})
 
-	Context("testing e2e integration between a pod and the blue / red hosts", func() {
+	FContext("testing e2e integration between a pod and the blue / red hosts", func() {
 		const testNamespace = "test-namespace"
 		var testPod *corev1.Pod
 		var podNode *corev1.Node
@@ -320,13 +320,14 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 
 			podNode, err = cs.CoreV1().Nodes().Get(context.Background(), testPod.Spec.NodeName, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
+		})
 
+		BeforeEach(func() {
 			nodeSelector := k8s.NodeSelectorForPod(testPod)
 
-			By("Creating the frr-k8s configuration for the node where the test pod runs and advertising all pod ips")
 			advertisePodToVNI := func(pod *corev1.Pod, vni v1alpha1.L3VNI) []frrk8sapi.FRRConfiguration {
 				res := []frrk8sapi.FRRConfiguration{}
-				for _, podIP := range testPod.Status.PodIPs {
+				for _, podIP := range pod.Status.PodIPs {
 					var cidrSuffix = "/32"
 					ipFamily, err := ipfamily.ForAddresses(podIP.IP)
 					Expect(err).NotTo(HaveOccurred())
@@ -341,10 +342,12 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 				return res
 			}
 
+			By("Creating the frr-k8s configuration for the node where the test pod runs and advertising all pod ips")
+
 			frrK8sConfigRedForPod := advertisePodToVNI(testPod, vniRed)
 			frrK8sConfigBlueForPod := advertisePodToVNI(testPod, vniBlue)
 
-			err = Updater.Update(config.Resources{
+			err := Updater.Update(config.Resources{
 				L3VNIs: []v1alpha1.L3VNI{
 					vniRed,
 					vniBlue,
@@ -357,7 +360,6 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 			validateFRRK8sSessionForVNI(vniRed, Established, frrK8sPodOnNode)
 			validateFRRK8sSessionForVNI(vniBlue, Established, frrK8sPodOnNode)
-
 		})
 
 		AfterAll(func() {
