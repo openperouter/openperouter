@@ -19,13 +19,25 @@ import (
 const Established = true
 
 func validateFRRK8sSessionForVNI(vni v1alpha1.L3VNI, established bool, frrk8sPods ...*corev1.Pod) {
-	neighborIP, err := openperouter.RouterIPFromCIDR(vni.Spec.LocalCIDR)
-	Expect(err).NotTo(HaveOccurred())
+	var cidrs []string
+	Expect(vni.Spec.LocalCIDR.IPv4 != "" || vni.Spec.LocalCIDR.IPv6 != "").To(BeTrue(), "either IPv4 or IPv6 CIDR must be provided")
 
-	for _, p := range frrk8sPods {
-		By(fmt.Sprintf("checking the session between %s and vni %s", p.Name, vni.Name))
-		exec := executor.ForPod(p.Namespace, p.Name, "frr")
-		validateSessionWithNeighbor(p.Name, vni.Name, exec, neighborIP, established)
+	if vni.Spec.LocalCIDR.IPv4 != "" {
+		cidrs = append(cidrs, vni.Spec.LocalCIDR.IPv4)
+	}
+	if vni.Spec.LocalCIDR.IPv6 != "" {
+		cidrs = append(cidrs, vni.Spec.LocalCIDR.IPv6)
+	}
+
+	for _, cidr := range cidrs {
+		neighborIP, err := openperouter.RouterIPFromCIDR(cidr)
+		Expect(err).NotTo(HaveOccurred())
+
+		for _, p := range frrk8sPods {
+			By(fmt.Sprintf("checking the session between %s and vni %s for CIDR %s", p.Name, vni.Name, cidr))
+			exec := executor.ForPod(p.Namespace, p.Name, "frr")
+			validateSessionWithNeighbor(p.Name, vni.Name, exec, neighborIP, established)
+		}
 	}
 }
 

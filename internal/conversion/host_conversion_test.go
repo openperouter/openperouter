@@ -46,14 +46,14 @@ func TestAPItoHostConfig(t *testing.T) {
 			wantErr:      true,
 		},
 		{
-			name:      "valid input",
+			name:      "ipv4 only",
 			nodeIndex: 0,
 			targetNS:  "namespace",
 			underlays: []v1alpha1.Underlay{
 				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth0"}, VTEPCIDR: "10.0.0.0/24"}},
 			},
 			vnis: []v1alpha1.L3VNI{
-				{Spec: v1alpha1.L3VNISpec{VRF: ptr.String("red"), LocalCIDR: "10.1.0.0/24", VNI: 100, VXLanPort: 4789}},
+				{Spec: v1alpha1.L3VNISpec{VRF: ptr.String("red"), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "10.1.0.0/24"}, VNI: 100, VXLanPort: 4789}},
 			},
 			wantUnderlay: hostnetwork.UnderlayParams{
 				UnderlayInterface: "eth0",
@@ -69,8 +69,72 @@ func TestAPItoHostConfig(t *testing.T) {
 						VNI:       100,
 						VXLanPort: 4789,
 					},
-					VethHostIP: "10.1.0.1/24",
-					VethNSIP:   "10.1.0.0/24",
+					VethHostIPv4: "10.1.0.1/24",
+					VethNSIPv4:   "10.1.0.0/24",
+				},
+			},
+			wantL2VNIParams: []hostnetwork.L2VNIParams{},
+			wantErr:         false,
+		},
+		{
+			name:      "ipv6 only",
+			nodeIndex: 0,
+			targetNS:  "namespace",
+			underlays: []v1alpha1.Underlay{
+				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth0"}, VTEPCIDR: "10.0.0.0/24"}},
+			},
+			vnis: []v1alpha1.L3VNI{
+				{Spec: v1alpha1.L3VNISpec{VRF: ptr.String("red"), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv6: "2001:db8::/64"}, VNI: 100, VXLanPort: 4789}},
+			},
+			wantUnderlay: hostnetwork.UnderlayParams{
+				UnderlayInterface: "eth0",
+				TargetNS:          "namespace",
+				VtepIP:            "10.0.0.0/32",
+			},
+			wantL3VNIParams: []hostnetwork.L3VNIParams{
+				{
+					VNIParams: hostnetwork.VNIParams{
+						VRF:       "red",
+						TargetNS:  "namespace",
+						VTEPIP:    "10.0.0.0/32",
+						VNI:       100,
+						VXLanPort: 4789,
+					},
+					VethHostIPv6: "2001:db8::1/64",
+					VethNSIPv6:   "2001:db8::/64",
+				},
+			},
+			wantL2VNIParams: []hostnetwork.L2VNIParams{},
+			wantErr:         false,
+		},
+		{
+			name:      "dual stack",
+			nodeIndex: 0,
+			targetNS:  "namespace",
+			underlays: []v1alpha1.Underlay{
+				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth0"}, VTEPCIDR: "10.0.0.0/24"}},
+			},
+			vnis: []v1alpha1.L3VNI{
+				{Spec: v1alpha1.L3VNISpec{VRF: ptr.String("red"), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "10.1.0.0/24", IPv6: "2001:db8::/64"}, VNI: 100, VXLanPort: 4789}},
+			},
+			wantUnderlay: hostnetwork.UnderlayParams{
+				UnderlayInterface: "eth0",
+				TargetNS:          "namespace",
+				VtepIP:            "10.0.0.0/32",
+			},
+			wantL3VNIParams: []hostnetwork.L3VNIParams{
+				{
+					VNIParams: hostnetwork.VNIParams{
+						VRF:       "red",
+						TargetNS:  "namespace",
+						VTEPIP:    "10.0.0.0/32",
+						VNI:       100,
+						VXLanPort: 4789,
+					},
+					VethHostIPv4: "10.1.0.1/24",
+					VethNSIPv4:   "10.1.0.0/24",
+					VethHostIPv6: "2001:db8::1/64",
+					VethNSIPv6:   "2001:db8::/64",
 				},
 			},
 			wantL2VNIParams: []hostnetwork.L2VNIParams{},

@@ -55,7 +55,7 @@ func APItoFRR(nodeIndex int, underlays []v1alpha1.Underlay, vnis []v1alpha1.L3VN
 		if err != nil {
 			return frr.Config{}, fmt.Errorf("failed to translate vni to frr: %w, vni %v", err, vni)
 		}
-		vniConfigs = append(vniConfigs, frrVNI)
+		vniConfigs = append(vniConfigs, frrVNI...)
 	}
 
 	return frr.Config{
@@ -65,35 +65,67 @@ func APItoFRR(nodeIndex int, underlays []v1alpha1.Underlay, vnis []v1alpha1.L3VN
 	}, nil
 }
 
-func l3vniToFRR(vni v1alpha1.L3VNI, nodeIndex int) (frr.L3VNIConfig, error) {
-	veths, err := ipam.VethIPs(vni.Spec.LocalCIDR, nodeIndex)
+func l3vniToFRR(vni v1alpha1.L3VNI, nodeIndex int) ([]frr.L3VNIConfig, error) {
+	veths, err := ipam.VethIPsFromPool(vni.Spec.LocalCIDR.IPv4, vni.Spec.LocalCIDR.IPv6, nodeIndex)
 	if err != nil {
-		return frr.L3VNIConfig{}, fmt.Errorf("failed to get veths ips for vni %s: %w", vni.Name, err)
+		return nil, fmt.Errorf("failed to get veths ips for vni %s: %w", vni.Name, err)
 	}
 
+	var configs []frr.L3VNIConfig
+
+	// Create IPv4 neighbor if IPv4 IP is available
+	if veths.Ipv4.HostSide.IP != nil {
+		config := createVNIConfig(vni, veths.Ipv4.HostSide.IP, net.CIDRMask(32, 32))
+		configs = append(configs, config)
+	}
+
+	// Create IPv6 neighbor if IPv6 IP is available
+	if veths.Ipv6.HostSide.IP != nil {
+		config := createVNIConfig(vni, veths.Ipv6.HostSide.IP, net.CIDRMask(128, 128))
+		configs = append(configs, config)
+	}
+
+	if len(configs) == 0 {
+		return nil, fmt.Errorf("no valid host side IP found for vni %s", vni.Name)
+	}
+
+	return configs, nil
+}
+
+// createVNIConfig creates a VNI configuration for a specific IP family
+func createVNIConfig(vni v1alpha1.L3VNI, hostIP net.IP, mask net.IPMask) frr.L3VNIConfig {
 	vniNeighbor := &frr.NeighborConfig{
-		Addr: veths.HostSide.IP.String(),
+		Addr: hostIP.String(),
 	}
 	vniNeighbor.ASN = vni.Spec.ASN
 	if vni.Spec.HostASN != nil {
 		vniNeighbor.ASN = *vni.Spec.HostASN
 	}
 
-	// since the traffic is normally masqueraded, we advertise the node ip so
-	// the return traffic is able to come to the node
-	hostSideIPToAdvertise := net.IPNet{
-		IP:   veths.HostSide.IP,
-		Mask: net.CIDRMask(32, 32), // TODO ipv6
+	ipnet := net.IPNet{
+		IP:   hostIP,
+		Mask: mask,
 	}
 
-	res := frr.L3VNIConfig{
+	config := frr.L3VNIConfig{
 		ASN:           vni.Spec.ASN,
 		VNI:           int(vni.Spec.VNI),
 		VRF:           vni.VRFName(),
 		LocalNeighbor: vniNeighbor,
-		ToAdvertise:   []string{hostSideIPToAdvertise.String()},
 	}
-	return res, nil
+
+	ipFamily := ipfamily.ForAddress(hostIP)
+	if ipFamily == ipfamily.IPv4 {
+		config.ToAdvertiseIPv4 = []string{ipnet.String()}
+		config.ToAdvertiseIPv6 = []string{}
+		return config
+	}
+
+	// Else ipv6
+
+	config.ToAdvertiseIPv4 = []string{}
+	config.ToAdvertiseIPv6 = []string{ipnet.String()}
+	return config
 }
 
 func neighborToFRR(n v1alpha1.Neighbor) (*frr.NeighborConfig, error) {

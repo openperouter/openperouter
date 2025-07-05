@@ -49,14 +49,30 @@ type L3VNISpec struct {
 	// +optional
 	VNI uint32 `json:"vni,omitempty"`
 
-	// LocalCIDR is the CIDR to be used for the veth pair
+	// LocalCIDR is the CIDR configuration for the veth pair
 	// to connect with the default namespace. The interface under
 	// the PERouter side is going to use the first IP of the cidr on all the nodes.
-	LocalCIDR string `json:"localcidr,omitempty"`
+	// At least one of IPv4 or IPv6 must be provided.
+	// +required
+	LocalCIDR LocalCIDRConfig `json:"localcidr"`
 
 	// VXLanPort is the port to be used for VXLan encapsulation.
 	// +kubebuilder:default:=4789
 	VXLanPort uint32 `json:"vxlanport,omitempty"`
+}
+
+type LocalCIDRConfig struct {
+	// IPv4 is the IPv4 CIDR to be used for the veth pair
+	// to connect with the default namespace. The interface under
+	// the PERouter side is going to use the first IP of the cidr on all the nodes.
+	// +optional
+	IPv4 string `json:"ipv4,omitempty"`
+
+	// IPv6 is the IPv6 CIDR to be used for the veth pair
+	// to connect with the default namespace. The interface under
+	// the PERouter side is going to use the first IP of the cidr on all the nodes.
+	// +optional
+	IPv6 string `json:"ipv6,omitempty"`
 }
 
 // L3VNIStatus defines the observed state of L3VNI.

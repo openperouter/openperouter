@@ -126,6 +126,7 @@ ${CONTAINER_ENGINE_CLI} exec clab-kind-hostA_blue /setup.sh
 ${CONTAINER_ENGINE_CLI} exec clab-kind-hostB_red /setup.sh
 ${CONTAINER_ENGINE_CLI} exec clab-kind-hostB_blue /setup.sh
 
+
 if ! pgrep -f check_veths.sh | xargs -r ps -p | grep -q pe-kind-control-plane; then
 	sudo -E ./check_veths.sh kindctrlpl:toswitch:pe-kind-control-plane:192.168.11.3/24  kindworker:toswitch:pe-kind-worker:192.168.11.4/24 &
 fi

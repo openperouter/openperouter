@@ -6,7 +6,6 @@ import (
 	"context"
 	"time"
 
-	frrk8sv1beta1 "github.com/metallb/frr-k8s/api/v1beta1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/openperouter/openperouter/api/v1alpha1"
@@ -91,10 +90,12 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 				Namespace: openperouter.Namespace,
 			},
 			Spec: v1alpha1.L3VNISpec{
-				ASN:       64514,
-				VNI:       100,
-				LocalCIDR: "192.169.10.0/24",
-				HostASN:   ptr.To(uint32(64515)),
+				ASN: 64514,
+				VNI: 100,
+				LocalCIDR: v1alpha1.LocalCIDRConfig{
+					IPv4: "192.169.10.0/24",
+				},
+				HostASN: ptr.To(uint32(64515)),
 			},
 		}
 		BeforeEach(func() {
@@ -110,7 +111,7 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 			frrConfig, err := frrk8s.ConfigFromVNI(vni)
 			Expect(err).ToNot(HaveOccurred())
 			err = Updater.Update(config.Resources{
-				FRRConfigurations: []frrk8sv1beta1.FRRConfiguration{frrConfig},
+				FRRConfigurations: frrConfig,
 			})
 			Expect(err).NotTo(HaveOccurred())
 

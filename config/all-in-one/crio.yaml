@@ -172,10 +172,24 @@ spec:
                 type: integer
               localcidr:
                 description: |-
-                  LocalCIDR is the CIDR to be used for the veth pair
+                  LocalCIDR is the CIDR configuration for the veth pair
                   to connect with the default namespace. The interface under
                   the PERouter side is going to use the first IP of the cidr on all the nodes.
-                type: string
+                  At least one of IPv4 or IPv6 must be provided.
+                properties:
+                  ipv4:
+                    description: |-
+                      IPv4 is the IPv4 CIDR to be used for the veth pair
+                      to connect with the default namespace. The interface under
+                      the PERouter side is going to use the first IP of the cidr on all the nodes.
+                    type: string
+                  ipv6:
+                    description: |-
+                      IPv6 is the IPv6 CIDR to be used for the veth pair
+                      to connect with the default namespace. The interface under
+                      the PERouter side is going to use the first IP of the cidr on all the nodes.
+                    type: string
+                type: object
               vni:
                 description: VNI is the VXLan VNI to be used
                 format: int32
@@ -194,6 +208,8 @@ spec:
                 description: VXLanPort is the port to be used for VXLan encapsulation.
                 format: int32
                 type: integer
+            required:
+            - localcidr
             type: object
           status:
             description: L3VNIStatus defines the observed state of L3VNI.

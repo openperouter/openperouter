@@ -10,27 +10,42 @@ import (
 	"github.com/openperouter/openperouter/internal/ipfamily"
 )
 
-type Veths struct {
+type VethIPs struct {
+	Ipv4 VethIPsForFamily
+	Ipv6 VethIPsForFamily
+}
+
+type VethIPsForFamily struct {
 	HostSide net.IPNet
 	PeSide   net.IPNet
 }
 
-// VethIPs returns the IPs for the host side and the PE side
-// for a given pool on the ith node.
-func VethIPs(pool string, index int) (Veths, error) {
-	_, cidr, err := net.ParseCIDR(pool)
-	if err != nil {
-		return Veths{}, fmt.Errorf("failed to parse pool %s: %w", pool, err)
+// VethIPsFromPool returns the IPs for the host side and the PE side
+// for both IPv4 and IPv6 pools on the ith node.
+func VethIPsFromPool(poolIPv4, poolIPv6 string, index int) (VethIPs, error) {
+	if poolIPv4 == "" && poolIPv6 == "" {
+		return VethIPs{}, fmt.Errorf("at least one pool must be provided (IPv4 or IPv6)")
 	}
-	peSide, err := cidrElem(cidr, 0)
-	if err != nil {
-		return Veths{}, err
+
+	veths := VethIPs{}
+
+	if poolIPv4 != "" {
+		ips, err := vethIPsForFamily(poolIPv4, index)
+		if err != nil {
+			return VethIPs{}, fmt.Errorf("failed to get IPv4 veth IPs: %w", err)
+		}
+		veths.Ipv4 = ips
 	}
-	hostSide, err := cidrElem(cidr, index+1)
-	if err != nil {
-		return Veths{}, err
+
+	if poolIPv6 != "" {
+		ips, err := vethIPsForFamily(poolIPv6, index)
+		if err != nil {
+			return VethIPs{}, fmt.Errorf("failed to get IPv6 veth IPs: %w", err)
+		}
+		veths.Ipv6 = ips
 	}
-	return Veths{HostSide: *hostSide, PeSide: *peSide}, nil
+
+	return veths, nil
 }
 
 // VTEPIp returns the IP to be used for the local VTEP on the ith node.
@@ -97,4 +112,24 @@ func IPsInCIDR(pool string) (uint64, error) {
 	}
 
 	return gocidr.AddressCount(ipNet), nil
+}
+
+// vethIPsForFamily returns the host side and PE side IPs for a given pool and index.
+func vethIPsForFamily(pool string, index int) (VethIPsForFamily, error) {
+	_, cidr, err := net.ParseCIDR(pool)
+	if err != nil {
+		return VethIPsForFamily{}, fmt.Errorf("failed to parse pool %s: %w", pool, err)
+	}
+	peSide, err := cidrElem(cidr, 0)
+	if err != nil {
+		return VethIPsForFamily{}, err
+	}
+	hostSide, err := cidrElem(cidr, index+1)
+	if err != nil {
+		return VethIPsForFamily{}, err
+	}
+	return VethIPsForFamily{
+		HostSide: *hostSide,
+		PeSide:   *peSide,
+	}, nil
 }

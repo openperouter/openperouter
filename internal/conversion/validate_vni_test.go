@@ -17,13 +17,13 @@ func TestValidateVNIs(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "valid VNIs",
+			name: "valid VNIs IPv4 only",
 			vnis: []v1alpha1.L3VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
 					Spec: v1alpha1.L3VNISpec{
 						VNI:       1001,
-						LocalCIDR: "192.168.1.0/24",
+						LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "192.168.1.0/24"},
 					},
 					Status: v1alpha1.L3VNIStatus{},
 				},
@@ -31,7 +31,51 @@ func TestValidateVNIs(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{Name: "vni2"},
 					Spec: v1alpha1.L3VNISpec{
 						VNI:       1002,
-						LocalCIDR: "192.168.2.0/24",
+						LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "192.168.2.0/24"},
+					},
+					Status: v1alpha1.L3VNIStatus{},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid VNIs IPv6 only",
+			vnis: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+					Spec: v1alpha1.L3VNISpec{
+						VNI:       1001,
+						LocalCIDR: v1alpha1.LocalCIDRConfig{IPv6: "2001:db8::/64"},
+					},
+					Status: v1alpha1.L3VNIStatus{},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni2"},
+					Spec: v1alpha1.L3VNISpec{
+						VNI:       1002,
+						LocalCIDR: v1alpha1.LocalCIDRConfig{IPv6: "2001:db9::/64"},
+					},
+					Status: v1alpha1.L3VNIStatus{},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid VNIs dual stack",
+			vnis: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+					Spec: v1alpha1.L3VNISpec{
+						VNI:       1001,
+						LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "192.168.1.0/24", IPv6: "2001:db8::/64"},
+					},
+					Status: v1alpha1.L3VNIStatus{},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni2"},
+					Spec: v1alpha1.L3VNISpec{
+						VNI:       1002,
+						LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "192.168.2.0/24", IPv6: "2001:db9::/64"},
 					},
 					Status: v1alpha1.L3VNIStatus{},
 				},
@@ -45,7 +89,7 @@ func TestValidateVNIs(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
 					Spec: v1alpha1.L3VNISpec{
 						VNI:       1001,
-						LocalCIDR: "192.168.1.0/24",
+						LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "192.168.1.0/24"},
 					},
 					Status: v1alpha1.L3VNIStatus{},
 				},
@@ -53,7 +97,7 @@ func TestValidateVNIs(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{Name: "vni2"},
 					Spec: v1alpha1.L3VNISpec{
 						VNI:       1002,
-						LocalCIDR: "192.168.2.0/24",
+						LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "192.168.2.0/24"},
 						VRF:       ptr.To("vni1"),
 					},
 					Status: v1alpha1.L3VNIStatus{},
@@ -62,13 +106,13 @@ func TestValidateVNIs(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "overlapping CIDRs",
+			name: "overlapping IPv4 CIDRs",
 			vnis: []v1alpha1.L3VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
 					Spec: v1alpha1.L3VNISpec{
 						VNI:       1001,
-						LocalCIDR: "192.168.1.0/24",
+						LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "192.168.1.0/24"},
 					},
 					Status: v1alpha1.L3VNIStatus{},
 				},
@@ -76,7 +120,29 @@ func TestValidateVNIs(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{Name: "vni2"},
 					Spec: v1alpha1.L3VNISpec{
 						VNI:       1002,
-						LocalCIDR: "192.168.1.128/25",
+						LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "192.168.1.128/25"},
+					},
+					Status: v1alpha1.L3VNIStatus{},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "overlapping IPv6 CIDRs",
+			vnis: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+					Spec: v1alpha1.L3VNISpec{
+						VNI:       1001,
+						LocalCIDR: v1alpha1.LocalCIDRConfig{IPv6: "2001:db8::/64"},
+					},
+					Status: v1alpha1.L3VNIStatus{},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni2"},
+					Spec: v1alpha1.L3VNISpec{
+						VNI:       1002,
+						LocalCIDR: v1alpha1.LocalCIDRConfig{IPv6: "2001:db8::/80"},
 					},
 					Status: v1alpha1.L3VNIStatus{},
 				},
@@ -90,7 +156,7 @@ func TestValidateVNIs(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
 					Spec: v1alpha1.L3VNISpec{
 						VNI:       1001,
-						LocalCIDR: "192.168.1.0/24",
+						LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "192.168.1.0/24"},
 					},
 					Status: v1alpha1.L3VNIStatus{},
 				},
@@ -98,7 +164,7 @@ func TestValidateVNIs(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{Name: "vni2"},
 					Spec: v1alpha1.L3VNISpec{
 						VNI:       1001,
-						LocalCIDR: "192.168.2.0/24",
+						LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "192.168.2.0/24"},
 					},
 					Status: v1alpha1.L3VNIStatus{},
 				},
@@ -106,13 +172,41 @@ func TestValidateVNIs(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "invalid localcidr",
+			name: "invalid IPv4 localcidr",
 			vnis: []v1alpha1.L3VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
 					Spec: v1alpha1.L3VNISpec{
 						VNI:       100,
-						LocalCIDR: "not-a-cidr",
+						LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "not-a-cidr"},
+					},
+					Status: v1alpha1.L3VNIStatus{},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid IPv6 localcidr",
+			vnis: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+					Spec: v1alpha1.L3VNISpec{
+						VNI:       100,
+						LocalCIDR: v1alpha1.LocalCIDRConfig{IPv6: "not-a-cidr"},
+					},
+					Status: v1alpha1.L3VNIStatus{},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "no CIDR provided",
+			vnis: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+					Spec: v1alpha1.L3VNISpec{
+						VNI:       100,
+						LocalCIDR: v1alpha1.LocalCIDRConfig{},
 					},
 					Status: v1alpha1.L3VNIStatus{},
 				},

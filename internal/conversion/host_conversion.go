@@ -4,6 +4,7 @@ package conversion
 
 import (
 	"fmt"
+	"net"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
@@ -34,9 +35,9 @@ func APItoHostConfig(nodeIndex int, targetNS string, underlays []v1alpha1.Underl
 	l3vniParams := []hostnetwork.L3VNIParams{}
 
 	for _, vni := range vnis {
-		vethIPs, err := ipam.VethIPs(vni.Spec.LocalCIDR, nodeIndex)
+		vethIPs, err := ipam.VethIPsFromPool(vni.Spec.LocalCIDR.IPv4, vni.Spec.LocalCIDR.IPv6, nodeIndex)
 		if err != nil {
-			return hostnetwork.UnderlayParams{}, nil, nil, fmt.Errorf("failed to get veth ips, cidr %s, nodeIndex %d", vni.Spec.LocalCIDR, nodeIndex)
+			return hostnetwork.UnderlayParams{}, nil, nil, fmt.Errorf("failed to get veth ips, cidr %v, nodeIndex %d", vni.Spec.LocalCIDR, nodeIndex)
 		}
 
 		v := hostnetwork.L3VNIParams{
@@ -47,8 +48,10 @@ func APItoHostConfig(nodeIndex int, targetNS string, underlays []v1alpha1.Underl
 				VNI:       int(vni.Spec.VNI),
 				VXLanPort: int(vni.Spec.VXLanPort),
 			},
-			VethHostIP: vethIPs.HostSide.String(),
-			VethNSIP:   vethIPs.PeSide.String(),
+			VethHostIPv4: ipNetToString(vethIPs.Ipv4.HostSide),
+			VethNSIPv4:   ipNetToString(vethIPs.Ipv4.PeSide),
+			VethHostIPv6: ipNetToString(vethIPs.Ipv6.HostSide),
+			VethNSIPv6:   ipNetToString(vethIPs.Ipv6.PeSide),
 		}
 		l3vniParams = append(l3vniParams, v)
 	}
@@ -78,4 +81,12 @@ func APItoHostConfig(nodeIndex int, targetNS string, underlays []v1alpha1.Underl
 	}
 
 	return underlayParams, l3vniParams, l2vniParams, nil
+}
+
+// ipNetToString returns the string representation of the IPNet, or empty string if IP is nil
+func ipNetToString(ipNet net.IPNet) string {
+	if ipNet.IP == nil {
+		return ""
+	}
+	return ipNet.String()
 }

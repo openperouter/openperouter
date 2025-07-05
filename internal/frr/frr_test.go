@@ -47,8 +47,89 @@ func TestBasic(t *testing.T) {
 					Addr:     "192.168.1.2",
 					IPFamily: ipfamily.IPv4,
 				},
-				ToAdvertise: []string{
+				ToAdvertiseIPv4: []string{
 					"192.169.10.2/24",
+				},
+			},
+		},
+	}
+	if err := ApplyConfig(context.TODO(), &config, updater); err != nil {
+		t.Fatalf("Failed to apply config: %s", err)
+	}
+
+	testCheckConfigFile(t)
+}
+
+func TestDualStack(t *testing.T) {
+	configFile := testSetup(t)
+	updater := testUpdater(configFile)
+
+	config := Config{
+		Underlay: UnderlayConfig{
+			MyASN: 64512,
+			VTEP:  "100.64.0.1/32",
+			Neighbors: []NeighborConfig{
+				{
+					ASN:      64512,
+					Addr:     "192.168.1.2",
+					IPFamily: ipfamily.IPv4,
+				},
+			},
+		},
+		VNIs: []L3VNIConfig{
+			{
+				VRF: "red",
+				ASN: 64512,
+				VNI: 100,
+				LocalNeighbor: &NeighborConfig{
+					ASN:      64512,
+					Addr:     "192.168.1.2",
+					IPFamily: ipfamily.IPv4,
+				},
+				ToAdvertiseIPv4: []string{
+					"192.169.10.2/24",
+				},
+				ToAdvertiseIPv6: []string{
+					"2001:db8::2/64",
+				},
+			},
+		},
+	}
+	if err := ApplyConfig(context.TODO(), &config, updater); err != nil {
+		t.Fatalf("Failed to apply config: %s", err)
+	}
+
+	testCheckConfigFile(t)
+}
+
+func TestIPv6Only(t *testing.T) {
+	configFile := testSetup(t)
+	updater := testUpdater(configFile)
+
+	config := Config{
+		Underlay: UnderlayConfig{
+			MyASN: 64512,
+			VTEP:  "100.64.0.1/32",
+			Neighbors: []NeighborConfig{
+				{
+					ASN:      64512,
+					Addr:     "2001:db8::2",
+					IPFamily: ipfamily.IPv6,
+				},
+			},
+		},
+		VNIs: []L3VNIConfig{
+			{
+				VRF: "red",
+				ASN: 64512,
+				VNI: 100,
+				LocalNeighbor: &NeighborConfig{
+					ASN:      64512,
+					Addr:     "2001:db8::2",
+					IPFamily: ipfamily.IPv6,
+				},
+				ToAdvertiseIPv6: []string{
+					"2001:db8::2/64",
 				},
 			},
 		},

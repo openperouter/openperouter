@@ -33,11 +33,12 @@ type UnderlayConfig struct {
 }
 
 type L3VNIConfig struct {
-	ASN           uint32
-	ToAdvertise   []string
-	LocalNeighbor *NeighborConfig
-	VRF           string
-	VNI           int
+	ASN             uint32
+	ToAdvertiseIPv4 []string
+	ToAdvertiseIPv6 []string
+	LocalNeighbor   *NeighborConfig
+	VRF             string
+	VNI             int
 }
 
 type BFDProfile struct {

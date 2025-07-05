@@ -40,17 +40,26 @@ func (r BGPRoutes) HaveRoute(prefix, expectedNexthop string) bool {
 	return false
 }
 
-func BGPRoutesFor(exec executor.Executor) (BGPRoutes, error) {
-	res, err := exec.Exec("vtysh", "-c", "show bgp ipv4 json")
+func BGPRoutesFor(exec executor.Executor) (BGPRoutes, BGPRoutes, error) {
+	ipv4Res, err := exec.Exec("vtysh", "-c", "show bgp ipv4 json")
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to show bgp ipv4: %w - %s", err, ipv4Res)
+	}
+	ipv4Routes, err := parseRoutes(ipv4Res)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to parse IPv4 routes: %w", err)
+	}
 
+	ipv6Res, err := exec.Exec("vtysh", "-c", "show bgp ipv6 json")
 	if err != nil {
-		return nil, fmt.Errorf("Failed to show bgp ipv4: %w - %s", err, res)
+		return nil, nil, fmt.Errorf("failed to show bgp ipv6: %w - %s", err, ipv6Res)
 	}
-	routes, err := parseRoutes(res)
+	ipv6Routes, err := parseRoutes(ipv6Res)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to parse routes: %w", err)
+		return nil, nil, fmt.Errorf("failed to parse IPv6 routes: %w", err)
 	}
-	return routes, nil
+
+	return ipv4Routes, ipv6Routes, nil
 }
 
 const EstablishedState = "Established"

@@ -63,7 +63,16 @@ router bgp {{ .ASN }} vrf {{ .VRF }}
   neighbor {{ .LocalNeighbor.Addr }} remote-as {{ .LocalNeighbor.ASN }}
 
   address-family ipv4 unicast
-  {{- range .ToAdvertise }}
+  {{- range .ToAdvertiseIPv4 }}
+    network {{ . }}
+  {{- end }}
+    neighbor {{ .LocalNeighbor.Addr }} activate
+    neighbor {{ .LocalNeighbor.Addr }} route-map allowall in
+    neighbor {{ .LocalNeighbor.Addr }} route-map allowall out
+  exit-address-family
+
+  address-family ipv6 unicast
+  {{- range .ToAdvertiseIPv6 }}
     network {{ . }}
   {{- end }}
     neighbor {{ .LocalNeighbor.Addr }} activate
