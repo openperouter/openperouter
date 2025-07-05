@@ -11,12 +11,12 @@ import (
 )
 
 type KindConfig struct {
-	IncludeNetworking bool
+	DisableDefaultCNI bool
 }
 
 func main() {
 	var (
-		includeNetworking = flag.Bool("include-networking", false, "Include networking section in kind config")
+		disableDefaultCNI = flag.Bool("disable-default-cni", false, "Disable default CNI in kind config")
 		outputFile        = flag.String("output", "../kind-configuration-registry.yaml", "Kind configuration output file")
 		templateFile      = flag.String("template",
 			"../kind_template/kind-configuration-registry.yaml.template", "Kind template file path")
@@ -34,7 +34,7 @@ func main() {
 	}
 
 	config := KindConfig{
-		IncludeNetworking: *includeNetworking,
+		DisableDefaultCNI: *disableDefaultCNI,
 	}
 
 	outputDir := filepath.Dir(*outputFile)

@@ -54,8 +54,8 @@ fi
 # Generate kind-configuration-registry.yaml from template
 KIND_CONFIG_ARGS=""
 if [[ "$CALICO_MODE" == "true" ]]; then
-    KIND_CONFIG_ARGS=" -include-networking"
-    echo "Including networking section in kind-configuration-registry.yaml (CALICO_MODE)"
+    KIND_CONFIG_ARGS=" -disable-default-cni"
+    echo "Disabling default CNI in kind-configuration-registry.yaml (CALICO_MODE)"
     
     pushd calico
       ./apply_calico.sh & # required as clab will stop earlier because the cni is not ready
