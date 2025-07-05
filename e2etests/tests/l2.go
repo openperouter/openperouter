@@ -179,11 +179,11 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		}{
 			{exec: podExecutor, from: "firstPod", to: "secondPod", fromIP: firstPodIP, toIP: secondPodIP},
 			{exec: secondPodExecutor, from: "secondPod", to: "firstPod", fromIP: secondPodIP, toIP: firstPodIP},
-			{exec: podExecutor, from: "firstPod", to: "hostARed", fromIP: firstPodIP, toIP: infra.HostARedIP},
-			{exec: podExecutor, from: "firstPod", to: "hostBRed", fromIP: firstPodIP, toIP: infra.HostBRedIP},
-			{exec: secondPodExecutor, from: "secondPod", to: "hostARed", fromIP: secondPodIP, toIP: infra.HostARedIP},
-			{exec: secondPodExecutor, from: "secondPod", to: "hostBRed", fromIP: secondPodIP, toIP: infra.HostBRedIP},
-			{exec: hostARedExecutor, from: "hostARed", to: "firstPod", fromIP: infra.HostARedIP, toIP: firstPodIP},
+			{exec: podExecutor, from: "firstPod", to: "hostARed", fromIP: firstPodIP, toIP: infra.HostARedIPv4},
+			{exec: podExecutor, from: "firstPod", to: "hostBRed", fromIP: firstPodIP, toIP: infra.HostBRedIPv4},
+			{exec: secondPodExecutor, from: "secondPod", to: "hostARed", fromIP: secondPodIP, toIP: infra.HostARedIPv4},
+			{exec: secondPodExecutor, from: "secondPod", to: "hostBRed", fromIP: secondPodIP, toIP: infra.HostBRedIPv4},
+			{exec: hostARedExecutor, from: "hostARed", to: "firstPod", fromIP: infra.HostARedIPv4, toIP: firstPodIP},
 		}
 
 		for _, test := range tests {
