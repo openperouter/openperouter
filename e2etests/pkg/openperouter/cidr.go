@@ -16,9 +16,21 @@ func RouterIPFromCIDR(cidr string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to parse cidr %s: %w", cidr, err)
 	}
-	ip, err := gocidr.Host(routerIPCidr, 0)
+
+	// Check if the first IP ends with 0
+	firstIP, err := gocidr.Host(routerIPCidr, 0)
 	if err != nil {
-		return "", fmt.Errorf("failed to get index %d from cidr %s", 1, routerIPCidr)
+		return "", fmt.Errorf("failed to get index %d from cidr %s", 0, routerIPCidr)
+	}
+
+	var routerIndex = 0
+	if firstIP[len(firstIP)-1] == 0 {
+		routerIndex = 1
+	}
+
+	ip, err := gocidr.Host(routerIPCidr, routerIndex)
+	if err != nil {
+		return "", fmt.Errorf("failed to get index %d from cidr %s", routerIndex, routerIPCidr)
 	}
 	return ip.String(), nil
 }
@@ -37,9 +49,20 @@ func HostIPFromCIDRForNode(cidr string, node *corev1.Node) (string, error) {
 		return "", fmt.Errorf("failed to parse cidr %s: %w", cidr, err)
 	}
 
-	ip, err := gocidr.Host(hostCIDR, nodeIndex+1)
+	// Check if the first IP ends with 0
+	firstIP, err := gocidr.Host(hostCIDR, 0)
 	if err != nil {
-		return "", fmt.Errorf("failed to get index %d from cidr %s", nodeIndex, hostCIDR)
+		return "", fmt.Errorf("failed to get index %d from cidr %s", 0, hostCIDR)
+	}
+
+	var hostIndex = nodeIndex + 1
+	if firstIP[len(firstIP)-1] == 0 {
+		hostIndex = nodeIndex + 2
+	}
+
+	ip, err := gocidr.Host(hostCIDR, hostIndex)
+	if err != nil {
+		return "", fmt.Errorf("failed to get index %d from cidr %s", hostIndex, hostCIDR)
 	}
 	return ip.String(), nil
 }

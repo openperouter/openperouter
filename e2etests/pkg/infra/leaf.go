@@ -13,10 +13,15 @@ import (
 )
 
 const (
-	HostARedIP  = "192.168.20.2"
-	HostABlueIP = "192.168.21.2"
-	HostBRedIP  = "192.169.20.2"
-	HostBBlueIP = "192.169.21.2"
+	HostARedIPv4  = "192.168.20.2"
+	HostABlueIPv4 = "192.168.21.2"
+	HostBRedIPv4  = "192.169.20.2"
+	HostBBlueIPv4 = "192.169.21.2"
+
+	HostARedIPv6  = "2001:db8:20::2"
+	HostABlueIPv6 = "2001:db8:21::2"
+	HostBRedIPv6  = "2001:db8:169:20::2"
+	HostBBlueIPv6 = "2001:db8:169:21::2"
 )
 
 var (

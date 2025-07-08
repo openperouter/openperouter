@@ -17,6 +17,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
+	"github.com/openperouter/openperouter/e2etests/pkg/url"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -152,8 +153,8 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		checkPodIsReacheable := func(exec executor.Executor, from, to string) {
 			Eventually(func() error {
 				By(fmt.Sprintf("trying to hit %s from %s", to, from))
-				url := fmt.Sprintf("http://%s:8090/clientip", to)
-				res, err := exec.Exec("curl", "-sS", url)
+				urlStr := url.Format("http://%s:8090/clientip", to)
+				res, err := exec.Exec("curl", "-sS", urlStr)
 				if err != nil {
 					return fmt.Errorf("curl %s:8090 failed: %s", to, res)
 				}
@@ -179,11 +180,11 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		}{
 			{exec: podExecutor, from: "firstPod", to: "secondPod", fromIP: firstPodIP, toIP: secondPodIP},
 			{exec: secondPodExecutor, from: "secondPod", to: "firstPod", fromIP: secondPodIP, toIP: firstPodIP},
-			{exec: podExecutor, from: "firstPod", to: "hostARed", fromIP: firstPodIP, toIP: infra.HostARedIP},
-			{exec: podExecutor, from: "firstPod", to: "hostBRed", fromIP: firstPodIP, toIP: infra.HostBRedIP},
-			{exec: secondPodExecutor, from: "secondPod", to: "hostARed", fromIP: secondPodIP, toIP: infra.HostARedIP},
-			{exec: secondPodExecutor, from: "secondPod", to: "hostBRed", fromIP: secondPodIP, toIP: infra.HostBRedIP},
-			{exec: hostARedExecutor, from: "hostARed", to: "firstPod", fromIP: infra.HostARedIP, toIP: firstPodIP},
+			{exec: podExecutor, from: "firstPod", to: "hostARed", fromIP: firstPodIP, toIP: infra.HostARedIPv4},
+			{exec: podExecutor, from: "firstPod", to: "hostBRed", fromIP: firstPodIP, toIP: infra.HostBRedIPv4},
+			{exec: secondPodExecutor, from: "secondPod", to: "hostARed", fromIP: secondPodIP, toIP: infra.HostARedIPv4},
+			{exec: secondPodExecutor, from: "secondPod", to: "hostBRed", fromIP: secondPodIP, toIP: infra.HostBRedIPv4},
+			{exec: hostARedExecutor, from: "hostARed", to: "firstPod", fromIP: infra.HostARedIPv4, toIP: firstPodIP},
 		}
 
 		for _, test := range tests {
