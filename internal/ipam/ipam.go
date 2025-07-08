@@ -120,11 +120,22 @@ func vethIPsForFamily(pool string, index int) (VethIPsForFamily, error) {
 	if err != nil {
 		return VethIPsForFamily{}, fmt.Errorf("failed to parse pool %s: %w", pool, err)
 	}
+
 	peSide, err := cidrElem(cidr, 0)
 	if err != nil {
 		return VethIPsForFamily{}, err
 	}
-	hostSide, err := cidrElem(cidr, index+1)
+
+	hostSideIndex := index + 1
+	if peSide.IP[len(peSide.IP)-1] == 0 {
+		peSide, err = cidrElem(cidr, 1)
+		if err != nil {
+			return VethIPsForFamily{}, err
+		}
+		hostSideIndex = index + 2
+	}
+
+	hostSide, err := cidrElem(cidr, hostSideIndex)
 	if err != nil {
 		return VethIPsForFamily{}, err
 	}
