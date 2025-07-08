@@ -32,7 +32,7 @@ var _ = Describe("L3 VNI configuration", func() {
 		cleanTest(testNSName)
 	})
 
-	It("should work with a single L3VNI", func() {
+	It("should work with IPv4 only L3VNI", func() {
 		params := L3VNIParams{
 			VNIParams: VNIParams{
 				VRF:       "testred",
@@ -41,8 +41,8 @@ var _ = Describe("L3 VNI configuration", func() {
 				VNI:       100,
 				VXLanPort: 4789,
 			},
-			VethHostIP: "192.168.9.1/32",
-			VethNSIP:   "192.168.9.0/32",
+			VethHostIPv4: "192.168.9.1/32",
+			VethNSIPv4:   "192.168.9.0/32",
 		}
 
 		err := SetupL3VNI(context.Background(), params)
@@ -58,6 +58,76 @@ var _ = Describe("L3 VNI configuration", func() {
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 	})
 
+	It("should work with IPv6 only L3VNI", func() {
+		params := L3VNIParams{
+			VNIParams: VNIParams{
+				VRF:       "testred",
+				TargetNS:  testNSName,
+				VTEPIP:    "192.170.0.9/32",
+				VNI:       100,
+				VXLanPort: 4789,
+			},
+			VethHostIPv6: "2001:db8::1/128",
+			VethNSIPv6:   "2001:db8::/128",
+		}
+
+		err := SetupL3VNI(context.Background(), params)
+		Expect(err).NotTo(HaveOccurred())
+
+		Eventually(func(g Gomega) {
+			validateL3HostLeg(g, params)
+
+			_ = inNamespace(testNS, func() error {
+				validateL3VNI(g, params)
+				return nil
+			})
+		}, 30*time.Second, 1*time.Second).Should(Succeed())
+	})
+
+	It("should work with dual-stack L3VNI", func() {
+		params := L3VNIParams{
+			VNIParams: VNIParams{
+				VRF:       "testred",
+				TargetNS:  testNSName,
+				VTEPIP:    "192.170.0.9/32",
+				VNI:       100,
+				VXLanPort: 4789,
+			},
+			VethHostIPv4: "192.168.9.1/32",
+			VethNSIPv4:   "192.168.9.0/32",
+			VethHostIPv6: "2001:db8::1/128",
+			VethNSIPv6:   "2001:db8::/128",
+		}
+
+		err := SetupL3VNI(context.Background(), params)
+		Expect(err).NotTo(HaveOccurred())
+
+		Eventually(func(g Gomega) {
+			validateL3HostLeg(g, params)
+
+			_ = inNamespace(testNS, func() error {
+				validateL3VNI(g, params)
+				return nil
+			})
+		}, 30*time.Second, 1*time.Second).Should(Succeed())
+	})
+
+	It("should fail when no IPs are provided", func() {
+		params := L3VNIParams{
+			VNIParams: VNIParams{
+				VRF:       "testred",
+				TargetNS:  testNSName,
+				VTEPIP:    "192.170.0.9/32",
+				VNI:       100,
+				VXLanPort: 4789,
+			},
+		}
+
+		err := SetupL3VNI(context.Background(), params)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("failed to assign IPs to host veth"))
+	})
+
 	It("should work with multiple L3VNIs + cleanup", func() {
 		params := []L3VNIParams{
 			{
@@ -68,8 +138,8 @@ var _ = Describe("L3 VNI configuration", func() {
 					VNI:       100,
 					VXLanPort: 4789,
 				},
-				VethHostIP: "192.168.9.1/32",
-				VethNSIP:   "192.168.9.0/32",
+				VethHostIPv4: "192.168.9.1/32",
+				VethNSIPv4:   "192.168.9.0/32",
 			},
 			{
 				VNIParams: VNIParams{
@@ -79,8 +149,8 @@ var _ = Describe("L3 VNI configuration", func() {
 					VNI:       101,
 					VXLanPort: 4789,
 				},
-				VethHostIP: "192.168.9.2/32",
-				VethNSIP:   "192.168.9.3/32",
+				VethHostIPv4: "192.168.9.2/32",
+				VethNSIPv4:   "192.168.9.3/32",
 			},
 		}
 		for _, p := range params {
@@ -132,8 +202,8 @@ var _ = Describe("L3 VNI configuration", func() {
 				VNI:       100,
 				VXLanPort: 4789,
 			},
-			VethHostIP: "192.168.9.1/32",
-			VethNSIP:   "192.168.9.0/32",
+			VethHostIPv4: "192.168.9.1/32",
+			VethNSIPv4:   "192.168.9.0/32",
 		}
 
 		err := SetupL3VNI(context.Background(), params)
@@ -322,9 +392,20 @@ func validateL3HostLeg(g Gomega, params L3VNIParams) {
 	g.Expect(err).NotTo(HaveOccurred(), "host side not found", hostSide)
 
 	g.Expect(hostLegLink.Attrs().OperState).To(BeEquivalentTo(netlink.OperUp))
-	hasIP, err := interfaceHasIP(hostLegLink, params.VethHostIP)
-	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(hasIP).To(BeTrue(), "host leg does not have ip", params.VethHostIP)
+
+	// Check IPv4 address if provided
+	if params.VethHostIPv4 != "" {
+		hasIP, err := interfaceHasIP(hostLegLink, params.VethHostIPv4)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(hasIP).To(BeTrue(), "host leg does not have IPv4", params.VethHostIPv4)
+	}
+
+	// Check IPv6 address if provided
+	if params.VethHostIPv6 != "" {
+		hasIP, err := interfaceHasIP(hostLegLink, params.VethHostIPv6)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(hasIP).To(BeTrue(), "host leg does not have IPv6", params.VethHostIPv6)
+	}
 }
 
 func validateL2HostLeg(g Gomega, params L2VNIParams) {
@@ -362,9 +443,19 @@ func validateL3VNI(g Gomega, params L3VNIParams) {
 	g.Expect(err).NotTo(HaveOccurred(), "vrf not found", params.VRF)
 	g.Expect(peLegLink.Attrs().MasterIndex).To(Equal(vrfLink.Attrs().Index))
 
-	hasIP, err := interfaceHasIP(peLegLink, params.VethNSIP)
-	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(hasIP).To(BeTrue())
+	// Check IPv4 address if provided
+	if params.VethNSIPv4 != "" {
+		hasIP, err := interfaceHasIP(peLegLink, params.VethNSIPv4)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(hasIP).To(BeTrue(), "PE leg does not have IPv4", params.VethNSIPv4)
+	}
+
+	// Check IPv6 address if provided
+	if params.VethNSIPv6 != "" {
+		hasIP, err := interfaceHasIP(peLegLink, params.VethNSIPv6)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(hasIP).To(BeTrue(), "PE leg does not have IPv6", params.VethNSIPv6)
+	}
 }
 
 func validateL2VNI(g Gomega, params L2VNIParams) {

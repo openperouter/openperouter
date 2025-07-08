@@ -65,7 +65,7 @@ func TestAPItoFRR(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:      "valid input",
+			name:      "ipv4 only",
 			nodeIndex: 0,
 			underlays: []v1alpha1.Underlay{
 				{
@@ -80,19 +80,13 @@ func TestAPItoFRR(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
 					Spec: v1alpha1.L3VNISpec{
-						ASN:       65000,
-						LocalCIDR: "192.168.2.0/24",
-						HostASN:   ptr.To(uint32(65001)),
-						VRF:       ptr.To("vrf1"),
-						VNI:       200,
-					},
-				},
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni2"},
-					Spec: v1alpha1.L3VNISpec{
-						ASN:       65000,
-						LocalCIDR: "192.168.3.0/24",
-						VNI:       300,
+						ASN: 65000,
+						LocalCIDR: v1alpha1.LocalCIDRConfig{
+							IPv4: "192.168.2.0/24",
+						},
+						HostASN: ptr.To(uint32(65001)),
+						VRF:     ptr.To("vrf1"),
+						VNI:     200,
 					},
 				},
 			},
@@ -117,20 +111,139 @@ func TestAPItoFRR(t *testing.T) {
 						VNI: 200,
 						VRF: "vrf1",
 						LocalNeighbor: &frr.NeighborConfig{
-							Addr: "192.168.2.1",
+							Addr: "192.168.2.2",
 							ASN:  65001,
 						},
-						ToAdvertise: []string{"192.168.2.1/32"},
+						ToAdvertiseIPv4: []string{"192.168.2.2/32"},
+						ToAdvertiseIPv6: []string{},
+					},
+				},
+				Loglevel: "debug",
+			},
+			wantErr: false,
+		},
+		{
+			name:      "ipv6 only",
+			nodeIndex: 0,
+			underlays: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						ASN:       65000,
+						VTEPCIDR:  "192.168.1.0/24",
+						Neighbors: []v1alpha1.Neighbor{{Address: "192.168.1.1", ASN: 65001}},
+					},
+				},
+			},
+			vnis: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+					Spec: v1alpha1.L3VNISpec{
+						ASN: 65000,
+						LocalCIDR: v1alpha1.LocalCIDRConfig{
+							IPv6: "2001:db8::/64",
+						},
+						HostASN: ptr.To(uint32(65001)),
+						VRF:     ptr.To("vrf1"),
+						VNI:     200,
+					},
+				},
+			},
+			logLevel: "debug",
+			want: frr.Config{
+				Underlay: frr.UnderlayConfig{
+					MyASN: 65000,
+					VTEP:  "192.168.1.0/32",
+					Neighbors: []frr.NeighborConfig{
+						{
+							Name:         "65001@192.168.1.1",
+							ASN:          65001,
+							Addr:         "192.168.1.1",
+							IPFamily:     ipfamily.IPv4,
+							EBGPMultiHop: false,
+						},
+					},
+				},
+				VNIs: []frr.L3VNIConfig{
+					{
+						ASN: 65000,
+						VNI: 200,
+						VRF: "vrf1",
+						LocalNeighbor: &frr.NeighborConfig{
+							Addr: "2001:db8::2",
+							ASN:  65001,
+						},
+						ToAdvertiseIPv4: []string{},
+						ToAdvertiseIPv6: []string{"2001:db8::2/128"},
+					},
+				},
+				Loglevel: "debug",
+			},
+			wantErr: false,
+		},
+		{
+			name:      "dual stack",
+			nodeIndex: 0,
+			underlays: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						ASN:       65000,
+						VTEPCIDR:  "192.168.1.0/24",
+						Neighbors: []v1alpha1.Neighbor{{Address: "192.168.1.1", ASN: 65001}},
+					},
+				},
+			},
+			vnis: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+					Spec: v1alpha1.L3VNISpec{
+						ASN: 65000,
+						LocalCIDR: v1alpha1.LocalCIDRConfig{
+							IPv4: "192.168.2.0/24",
+							IPv6: "2001:db8::/64",
+						},
+						HostASN: ptr.To(uint32(65001)),
+						VRF:     ptr.To("vrf1"),
+						VNI:     200,
+					},
+				},
+			},
+			logLevel: "debug",
+			want: frr.Config{
+				Underlay: frr.UnderlayConfig{
+					MyASN: 65000,
+					VTEP:  "192.168.1.0/32",
+					Neighbors: []frr.NeighborConfig{
+						{
+							Name:         "65001@192.168.1.1",
+							ASN:          65001,
+							Addr:         "192.168.1.1",
+							IPFamily:     ipfamily.IPv4,
+							EBGPMultiHop: false,
+						},
+					},
+				},
+				VNIs: []frr.L3VNIConfig{
+					{
+						ASN: 65000,
+						VNI: 200,
+						VRF: "vrf1",
+						LocalNeighbor: &frr.NeighborConfig{
+							Addr: "192.168.2.2",
+							ASN:  65001,
+						},
+						ToAdvertiseIPv4: []string{"192.168.2.2/32"},
+						ToAdvertiseIPv6: []string{},
 					},
 					{
 						ASN: 65000,
-						VNI: 300,
-						VRF: "vni2",
+						VNI: 200,
+						VRF: "vrf1",
 						LocalNeighbor: &frr.NeighborConfig{
-							Addr: "192.168.3.1",
-							ASN:  65000,
+							Addr: "2001:db8::2",
+							ASN:  65001,
 						},
-						ToAdvertise: []string{"192.168.3.1/32"},
+						ToAdvertiseIPv4: []string{},
+						ToAdvertiseIPv6: []string{"2001:db8::2/128"},
 					},
 				},
 				Loglevel: "debug",

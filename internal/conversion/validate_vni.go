@@ -17,32 +17,30 @@ func init() {
 }
 
 func ValidateL3VNIs(l3Vnis []v1alpha1.L3VNI) error {
-	// Convert L3VNIs to vni structs
 	vnis := vnisFromL3VNIs(l3Vnis)
-
-	// Perform common validation
 	if err := validateVNIs(vnis); err != nil {
 		return err
 	}
 
-	// Perform L3-specific validation (CIDR overlap checking)
-	existingCIDRs := map[string]string{} // a map between the given local cidr and the VNI instance it's configured in
+	existingCIDRsV4 := map[string]string{}
+	existingCIDRsV6 := map[string]string{}
 	for _, vni := range l3Vnis {
-		if err := isValidCIDR(vni.Spec.LocalCIDR); err != nil {
-			return fmt.Errorf("invalid local CIDR %s for vni %s: %w", vni.Spec.LocalCIDR, vni.Name, err)
-		}
-		for cidr, cidrVNI := range existingCIDRs {
-			overlap, err := cidrsOverlap(cidr, vni.Spec.LocalCIDR)
-			if err != nil {
+		if vni.Spec.LocalCIDR.IPv4 != "" {
+			if err := validateCIDRForVNI(vni, vni.Spec.LocalCIDR.IPv4, existingCIDRsV4); err != nil {
 				return err
 			}
-			if overlap {
-				return fmt.Errorf("overlapping cidrs %s - %s for vnis %s - %s", cidr, vni.Spec.LocalCIDR, cidrVNI, vni.Name)
-			}
+			existingCIDRsV4[vni.Spec.LocalCIDR.IPv4] = vni.Name
 		}
-		existingCIDRs[vni.Spec.LocalCIDR] = vni.Name
+		if vni.Spec.LocalCIDR.IPv6 != "" {
+			if err := validateCIDRForVNI(vni, vni.Spec.LocalCIDR.IPv6, existingCIDRsV6); err != nil {
+				return err
+			}
+			existingCIDRsV6[vni.Spec.LocalCIDR.IPv6] = vni.Name
+		}
+		if vni.Spec.LocalCIDR.IPv4 == "" && vni.Spec.LocalCIDR.IPv6 == "" {
+			return fmt.Errorf("at least one local CIDR (IPv4 or IPv6) must be provided for vni %s", vni.Name)
+		}
 	}
-
 	return nil
 }
 
@@ -168,6 +166,23 @@ func isValidCIDR(cidr string) error {
 	}
 	if _, _, err := net.ParseCIDR(cidr); err != nil {
 		return fmt.Errorf("invalid CIDR: %s - %w", cidr, err)
+	}
+	return nil
+}
+
+// validateCIDRForVNI validates a single CIDR and checks for overlaps with existing CIDRs
+func validateCIDRForVNI(vni v1alpha1.L3VNI, cidr string, existingCIDRs map[string]string) error {
+	if err := isValidCIDR(cidr); err != nil {
+		return fmt.Errorf("invalid local CIDR %s for vni %s: %w", cidr, vni.Name, err)
+	}
+	for existing, existingVNI := range existingCIDRs {
+		overlap, err := cidrsOverlap(existing, cidr)
+		if err != nil {
+			return err
+		}
+		if overlap {
+			return fmt.Errorf("overlapping cidrs %s - %s for vnis %s - %s", existing, cidr, existingVNI, vni.Name)
+		}
 	}
 	return nil
 }

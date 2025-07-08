@@ -62,7 +62,139 @@ func TestSliceCIDR(t *testing.T) {
 	}
 }
 
-func TestVethIPs(t *testing.T) {
+func TestVethIPsFromPool(t *testing.T) {
+	tests := []struct {
+		name             string
+		poolIPv4         string
+		poolIPv6         string
+		index            int
+		expectedPEIPv4   string
+		expectedHostIPv4 string
+		expectedPEIPv6   string
+		expectedHostIPv6 string
+		shouldFail       bool
+	}{
+		{
+			"ipv4_only",
+			"192.168.1.0/24",
+			"",
+			0,
+			"192.168.1.1/24",
+			"192.168.1.2/24",
+			"",
+			"",
+			false,
+		},
+		{
+			"ipv6_only",
+			"",
+			"2001:db8::/64",
+			0,
+			"",
+			"",
+			"2001:db8::1/64",
+			"2001:db8::2/64",
+			false,
+		},
+		{
+			"dual_stack",
+			"192.168.1.0/24",
+			"2001:db8::/64",
+			0,
+			"192.168.1.1/24",
+			"192.168.1.2/24",
+			"2001:db8::1/64",
+			"2001:db8::2/64",
+			false,
+		},
+		{
+			"ipv4_not_ending_in_zero",
+			"192.168.1.1/24",
+			"",
+			0,
+			"192.168.1.1/24",
+			"192.168.1.2/24",
+			"",
+			"",
+			false,
+		},
+		{
+			"ipv6_not_ending_in_zero",
+			"",
+			"2001:db8::1/64",
+			0,
+			"",
+			"",
+			"2001:db8::1/64",
+			"2001:db8::2/64",
+			false,
+		},
+		{
+			"no_pools",
+			"",
+			"",
+			0,
+			"",
+			"",
+			"",
+			"",
+			true,
+		},
+		{
+			"invalid_ipv4",
+			"invalid",
+			"2001:db8::/64",
+			0,
+			"",
+			"",
+			"",
+			"",
+			true,
+		},
+		{
+			"invalid_ipv6",
+			"192.168.1.0/24",
+			"invalid",
+			0,
+			"",
+			"",
+			"",
+			"",
+			true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			res, err := VethIPsFromPool(tc.poolIPv4, tc.poolIPv6, tc.index)
+			if err != nil && !tc.shouldFail {
+				t.Fatalf("got error %v while should not fail", err)
+			}
+			if err == nil && tc.shouldFail {
+				t.Fatalf("was expecting error, didn't fail")
+			}
+
+			if tc.poolIPv4 != "" && !tc.shouldFail {
+				if res.Ipv4.HostSide.String() != tc.expectedHostIPv4 {
+					t.Fatalf("was expecting %s, got %s on the host IPv4", tc.expectedHostIPv4, res.Ipv4.HostSide.String())
+				}
+				if res.Ipv4.PeSide.String() != tc.expectedPEIPv4 {
+					t.Fatalf("was expecting %s, got %s on the container IPv4", tc.expectedPEIPv4, res.Ipv4.PeSide.String())
+				}
+			}
+
+			if tc.poolIPv6 != "" && !tc.shouldFail {
+				if res.Ipv6.HostSide.String() != tc.expectedHostIPv6 {
+					t.Fatalf("was expecting %s, got %s on the host IPv6", tc.expectedHostIPv6, res.Ipv6.HostSide.String())
+				}
+				if res.Ipv6.PeSide.String() != tc.expectedPEIPv6 {
+					t.Fatalf("was expecting %s, got %s on the container IPv6", tc.expectedPEIPv6, res.Ipv6.PeSide.String())
+				}
+			}
+		})
+	}
+}
+
+func TestVethIPsForFamily(t *testing.T) {
 	tests := []struct {
 		name         string
 		pool         string
@@ -72,24 +204,81 @@ func TestVethIPs(t *testing.T) {
 		shouldFail   bool
 	}{
 		{
-			"first",
+			"ipv4_first_ending_in_zero",
 			"192.168.1.0/24",
 			0,
-			"192.168.1.0/24",
 			"192.168.1.1/24",
-			false,
-		}, {
-			"second",
-			"192.168.1.0/24",
-			1,
-			"192.168.1.0/24",
 			"192.168.1.2/24",
 			false,
+		},
+		{
+			"ipv4_second_ending_in_zero",
+			"192.168.1.0/24",
+			1,
+			"192.168.1.1/24",
+			"192.168.1.3/24",
+			false,
+		},
+		{
+			"ipv4_first_not_ending_in_zero",
+			"192.168.1.1/24",
+			0,
+			"192.168.1.1/24",
+			"192.168.1.2/24",
+			false,
+		},
+		{
+			"ipv4_second_not_ending_in_zero",
+			"192.168.1.1/24",
+			1,
+			"192.168.1.1/24",
+			"192.168.1.3/24",
+			false,
+		},
+		{
+			"ipv6_first_ending_in_zero",
+			"2001:db8::/64",
+			0,
+			"2001:db8::1/64",
+			"2001:db8::2/64",
+			false,
+		},
+		{
+			"ipv6_second_ending_in_zero",
+			"2001:db8::/64",
+			1,
+			"2001:db8::1/64",
+			"2001:db8::3/64",
+			false,
+		},
+		{
+			"ipv6_first_not_ending_in_zero",
+			"2001:db8::1/64",
+			0,
+			"2001:db8::1/64",
+			"2001:db8::2/64",
+			false,
+		},
+		{
+			"ipv6_second_not_ending_in_zero",
+			"2001:db8::1/64",
+			1,
+			"2001:db8::1/64",
+			"2001:db8::3/64",
+			false,
+		},
+		{
+			"invalid_pool",
+			"invalid",
+			0,
+			"",
+			"",
+			true,
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			res, err := VethIPs(tc.pool, tc.index)
+			res, err := vethIPsForFamily(tc.pool, tc.index)
 			if err != nil && !tc.shouldFail {
 				t.Fatalf("got error %v while should not fail", err)
 			}
@@ -97,15 +286,16 @@ func TestVethIPs(t *testing.T) {
 				t.Fatalf("was expecting error, didn't fail")
 			}
 
-			if res.HostSide.String() != tc.expectedHost {
-				t.Fatalf("was expecting %s, got %s on the host", tc.expectedHost, res.HostSide.String())
-			}
-			if res.PeSide.String() != tc.expectedPE {
-				t.Fatalf("was expecting %s, got %s on the container", tc.expectedPE, res.PeSide.String())
+			if !tc.shouldFail {
+				if res.HostSide.String() != tc.expectedHost {
+					t.Fatalf("was expecting %s, got %s on the host", tc.expectedHost, res.HostSide.String())
+				}
+				if res.PeSide.String() != tc.expectedPE {
+					t.Fatalf("was expecting %s, got %s on the container", tc.expectedPE, res.PeSide.String())
+				}
 			}
 		})
 	}
-
 }
 
 func TestVTEPIP(t *testing.T) {

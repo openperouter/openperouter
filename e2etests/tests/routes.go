@@ -5,10 +5,11 @@ package tests
 import (
 	"context"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
-	frrk8sv1beta1 "github.com/metallb/frr-k8s/api/v1beta1"
+	frrk8sapi "github.com/metallb/frr-k8s/api/v1beta1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/openperouter/openperouter/api/v1alpha1"
@@ -17,9 +18,11 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/frr"
 	"github.com/openperouter/openperouter/e2etests/pkg/frrk8s"
 	"github.com/openperouter/openperouter/e2etests/pkg/infra"
+	"github.com/openperouter/openperouter/e2etests/pkg/ipfamily"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
+	"github.com/openperouter/openperouter/e2etests/pkg/url"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -29,10 +32,10 @@ import (
 var (
 	// NOTE: we can't advertise any ip via EVPN from the leaves, they
 	// must be reacheable otherwise FRR will skip them.
-	leafAVRFRedPrefixes  = []string{"192.168.20.0/24"}
-	leafAVRFBluePrefixes = []string{"192.168.21.0/24"}
-	leafBVRFRedPrefixes  = []string{"192.169.20.0/24"}
-	leafBVRFBluePrefixes = []string{"192.169.21.0/24"}
+	leafAVRFRedPrefixes  = []string{"192.168.20.0/24", "2001:db8:20::/64"}
+	leafAVRFBluePrefixes = []string{"192.168.21.0/24", "2001:db8:21::/64"}
+	leafBVRFRedPrefixes  = []string{"192.169.20.0/24", "2001:db8:169:20::/64"}
+	leafBVRFBluePrefixes = []string{"192.169.21.0/24", "2001:db8:169:21::/64"}
 	emptyPrefixes        = []string{}
 )
 
@@ -46,10 +49,13 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			Namespace: openperouter.Namespace,
 		},
 		Spec: v1alpha1.L3VNISpec{
-			ASN:       64514,
-			VNI:       100,
-			LocalCIDR: "192.169.10.0/24",
-			HostASN:   ptr.To(uint32(64515)),
+			ASN: 64514,
+			VNI: 100,
+			LocalCIDR: v1alpha1.LocalCIDRConfig{
+				IPv4: "192.169.10.0/24",
+				IPv6: "2001:db8:1::/64",
+			},
+			HostASN: ptr.To(uint32(64515)),
 		},
 	}
 
@@ -59,10 +65,13 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			Namespace: openperouter.Namespace,
 		},
 		Spec: v1alpha1.L3VNISpec{
-			ASN:       64514,
-			VNI:       200,
-			LocalCIDR: "192.169.11.0/24",
-			HostASN:   ptr.To(uint32(64515)),
+			ASN: 64514,
+			VNI: 200,
+			LocalCIDR: v1alpha1.LocalCIDRConfig{
+				IPv4: "192.169.11.0/24",
+				IPv6: "2001:db8:2::/64",
+			},
+			HostASN: ptr.To(uint32(64515)),
 		},
 	}
 
@@ -93,22 +102,15 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 	})
 
-	BeforeEach(func() {
-		removeLeafPrefixes(infra.LeafAConfig)
-		removeLeafPrefixes(infra.LeafBConfig)
-		err := Updater.CleanButUnderlay()
-		Expect(err).NotTo(HaveOccurred())
-	})
-
-	AfterEach(func() {
-		dumpIfFails(cs)
-		err := Updater.CleanButUnderlay()
-		Expect(err).NotTo(HaveOccurred())
-		removeLeafPrefixes(infra.LeafAConfig)
-		removeLeafPrefixes(infra.LeafBConfig)
-	})
-
 	Context("with vnis", func() {
+		AfterEach(func() {
+			dumpIfFails(cs)
+			err := Updater.CleanButUnderlay()
+			Expect(err).NotTo(HaveOccurred())
+			removeLeafPrefixes(infra.LeafAConfig)
+			removeLeafPrefixes(infra.LeafBConfig)
+		})
+
 		BeforeEach(func() {
 			err := Updater.Update(config.Resources{
 				L3VNIs: []v1alpha1.L3VNI{
@@ -198,15 +200,12 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 
 			DumpPods("FRRK8s pods", frrk8sPods)
 
-			err := Updater.Update(config.Resources{
+			err = Updater.Update(config.Resources{
 				L3VNIs: []v1alpha1.L3VNI{
 					vniRed,
 					vniBlue,
 				},
-				FRRConfigurations: []frrk8sv1beta1.FRRConfiguration{
-					frrK8sConfigRed,
-					frrK8sConfigBlue,
-				},
+				FRRConfigurations: append(frrK8sConfigRed, frrK8sConfigBlue...),
 			})
 			Expect(err).NotTo(HaveOccurred())
 
@@ -214,25 +213,52 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			validateFRRK8sSessionForVNI(vniBlue, Established, frrk8sPods...)
 		})
 
+		AfterEach(func() {
+			dumpIfFails(cs)
+			err := Updater.CleanButUnderlay()
+			Expect(err).NotTo(HaveOccurred())
+			removeLeafPrefixes(infra.LeafAConfig)
+			removeLeafPrefixes(infra.LeafBConfig)
+		})
+
 		It("translates EVPN incoming routes as BGP routes", func() {
+			checkPrefixesForIPFamily := func(frrk8s *corev1.Pod, prefixes []string, localCIDR string,
+				ipFamily string, shouldExist bool, routes frr.BGPRoutes) error {
+				if len(prefixes) == 0 || localCIDR == "" {
+					return nil
+				}
+
+				vniRouterIP, err := openperouter.RouterIPFromCIDR(localCIDR)
+				Expect(err).NotTo(HaveOccurred())
+
+				for _, p := range prefixes {
+					routeExists := routes.HaveRoute(p, vniRouterIP)
+					if shouldExist && !routeExists {
+						return fmt.Errorf("%s prefix %s with nexthop %s not found in routes %v for pod %s", ipFamily, p, vniRouterIP, routes, frrk8s.Name)
+					}
+					if !shouldExist && routeExists {
+						return fmt.Errorf("%s prefix %s with nexthop %s found in routes %v for pod %s", ipFamily, p, vniRouterIP, routes, frrk8s.Name)
+					}
+				}
+				return nil
+			}
+
 			checkBGPPrefixesForVNI := func(frrk8s *corev1.Pod, vni v1alpha1.L3VNI, prefixes []string, shouldExist bool) {
 				exec := executor.ForPod(frrk8s.Namespace, frrk8s.Name, "frr")
 				Eventually(func() error {
-					routes, err := frr.BGPRoutesFor(exec)
+					ipv4Routes, ipv6Routes, err := frr.BGPRoutesFor(exec)
 					Expect(err).NotTo(HaveOccurred())
 
-					vniRouterIP, err := openperouter.RouterIPFromCIDR(vni.Spec.LocalCIDR)
-					Expect(err).NotTo(HaveOccurred())
+					ipv4Prefixes, ipv6Prefixes := separateIPFamilies(prefixes)
 
-					for _, p := range prefixes {
-						routeExists := routes.HaveRoute(p, vniRouterIP)
-						if shouldExist && !routeExists {
-							return fmt.Errorf("prefix %s with nexthop %s not found in routes %v for pod %s", p, vniRouterIP, routes, frrk8s.Name)
-						}
-						if !shouldExist && routeExists {
-							return fmt.Errorf("prefix %s with nexthop %s found in routes %v for pod %s", p, vniRouterIP, routes, frrk8s.Name)
-						}
+					if err := checkPrefixesForIPFamily(frrk8s, ipv4Prefixes, vni.Spec.LocalCIDR.IPv4, "IPv4", shouldExist, ipv4Routes); err != nil {
+						return err
 					}
+
+					if err := checkPrefixesForIPFamily(frrk8s, ipv6Prefixes, vni.Spec.LocalCIDR.IPv6, "IPv6", shouldExist, ipv6Routes); err != nil {
+						return err
+					}
+
 					return nil
 				}, 4*time.Minute, time.Second).WithOffset(1).ShouldNot(HaveOccurred())
 			}
@@ -281,7 +307,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		var testPod *corev1.Pod
 		var podNode *corev1.Node
 
-		BeforeEach(func() {
+		BeforeAll(func() {
 			By("setting redistribute connected on leaves")
 			redistributeConnectedForLeaf(infra.LeafAConfig)
 			redistributeConnectedForLeaf(infra.LeafBConfig)
@@ -299,85 +325,159 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 
 			nodeSelector := k8s.NodeSelectorForPod(testPod)
 
-			By("Creating the frr-k8s configuration for the node where the test pod runs and advertising the pod ip")
-			frrK8sConfigRedForPod, err := frrk8s.ConfigFromVNI(vniRed, frrk8s.WithNodeSelector(nodeSelector), frrk8s.AdvertisePrefixes(testPod.Status.PodIP+"/32"))
-			Expect(err).NotTo(HaveOccurred())
-			frrK8sConfigBlueForPod, err := frrk8s.ConfigFromVNI(vniBlue, frrk8s.WithNodeSelector(nodeSelector), frrk8s.AdvertisePrefixes(testPod.Status.PodIP+"/32"))
-			Expect(err).NotTo(HaveOccurred())
+			advertisePodToVNI := func(pod *corev1.Pod, vni v1alpha1.L3VNI) []frrk8sapi.FRRConfiguration {
+				res := []frrk8sapi.FRRConfiguration{}
+				for _, podIP := range pod.Status.PodIPs {
+					var cidrSuffix = "/32"
+					ipFamily, err := ipfamily.ForAddresses(podIP.IP)
+					Expect(err).NotTo(HaveOccurred())
+					if ipFamily == ipfamily.IPv6 {
+						cidrSuffix = "/128"
+					}
+
+					config, err := frrk8s.ConfigFromVNIForIPFamily(vni, ipFamily, frrk8s.WithNodeSelector(nodeSelector), frrk8s.AdvertisePrefixes(podIP.IP+cidrSuffix))
+					Expect(err).NotTo(HaveOccurred())
+					res = append(res, *config)
+				}
+				return res
+			}
+
+			By("Creating the frr-k8s configuration for the node where the test pod runs and advertising all pod ips")
+
+			frrK8sConfigRedForPod := advertisePodToVNI(testPod, vniRed)
+			frrK8sConfigBlueForPod := advertisePodToVNI(testPod, vniBlue)
 
 			err = Updater.Update(config.Resources{
 				L3VNIs: []v1alpha1.L3VNI{
 					vniRed,
 					vniBlue,
 				},
-				FRRConfigurations: []frrk8sv1beta1.FRRConfiguration{
-					frrK8sConfigRedForPod,
-					frrK8sConfigBlueForPod,
-				},
+				FRRConfigurations: append(frrK8sConfigRedForPod, frrK8sConfigBlueForPod...),
 			})
 			Expect(err).NotTo(HaveOccurred())
 
 			frrK8sPodOnNode, err := frrk8s.PodForNode(cs, testPod.Spec.NodeName)
+			Expect(err).NotTo(HaveOccurred())
 			validateFRRK8sSessionForVNI(vniRed, Established, frrK8sPodOnNode)
 			validateFRRK8sSessionForVNI(vniBlue, Established, frrK8sPodOnNode)
-
 		})
 
-		AfterEach(func() {
+		AfterAll(func() {
 			By("Deleting the test namespace")
 			err := k8s.DeleteNamespace(cs, testNamespace)
 			Expect(err).NotTo(HaveOccurred())
+
+			err = Updater.CleanButUnderlay()
+			Expect(err).NotTo(HaveOccurred())
+			removeLeafPrefixes(infra.LeafAConfig)
+			removeLeafPrefixes(infra.LeafBConfig)
 		})
 
-		It("should be able to reach the hosts from the test pod and vice versa", func() {
-			tests := []struct {
-				vni            v1alpha1.L3VNI
-				hostName       string
-				externalHostIP string
-			}{
-				{vniRed, "hostA_red", infra.HostARedIP},
-				{vniRed, "hostB_red", infra.HostBRedIP},
-				{vniBlue, "hostA_blue", infra.HostABlueIP},
-				{vniBlue, "hostB_blue", infra.HostBBlueIP},
+		AfterEach(func() {
+			dumpIfFails(cs)
+		})
+
+		DescribeTable("should be able to reach the hosts from the test pod and vice versa", func(
+			vni v1alpha1.L3VNI,
+			hostName string,
+			externalHostIP string,
+			ipFamily ipfamily.Family,
+		) {
+
+			var localCIDR string
+			localCIDR = vni.Spec.LocalCIDR.IPv4
+
+			if ipFamily == ipfamily.IPv6 {
+				localCIDR = vni.Spec.LocalCIDR.IPv6
 			}
-			for _, test := range tests {
-				hostSide, err := openperouter.HostIPFromCIDRForNode(test.vni.Spec.LocalCIDR, podNode)
+			hostSide, err := openperouter.HostIPFromCIDRForNode(localCIDR, podNode)
+			Expect(err).NotTo(HaveOccurred())
+
+			podIP, err := getPodIPByFamily(testPod, ipFamily)
+			Expect(err).NotTo(HaveOccurred())
+
+			podExecutor := executor.ForPod(testPod.Namespace, testPod.Name, "agnhost")
+			externalHostExecutor := executor.ForContainer("clab-kind-" + hostName)
+
+			Eventually(func() error {
+				By(fmt.Sprintf("trying to hit hosts %s on the %s network", externalHostIP, vni.Name))
+				urlStr := url.Format("http://%s:8090/clientip", externalHostIP)
+				res, err := podExecutor.Exec("curl", "-sS", urlStr)
+				if err != nil {
+					return fmt.Errorf("curl %s:8090 failed: %s", externalHostIP, res)
+				}
+				fmt.Println("res", res)
+				clientIP, err := extractClientIP(res)
 				Expect(err).NotTo(HaveOccurred())
 
-				podExecutor := executor.ForPod(testPod.Namespace, testPod.Name, "agnhost")
-				externalHostExecutor := executor.ForContainer("clab-kind-" + test.hostName)
+				if clientIP != hostSide {
+					return fmt.Errorf("curl %s:8090 returned %s, expected %s", externalHostIP, clientIP, hostSide)
+				}
 
-				Eventually(func() error {
-					By(fmt.Sprintf("trying to hit hosts %s on the %s network", test.externalHostIP, test.vni.Name))
-					url := fmt.Sprintf("http://%s:8090/clientip", test.externalHostIP)
-					res, err := podExecutor.Exec("curl", "-sS", url)
-					if err != nil {
-						return fmt.Errorf("curl %s:8090 failed: %s", test.externalHostIP, res)
-					}
-					clientIP := strings.Split(res, ":")[0]
-					if clientIP != hostSide {
-						return fmt.Errorf("curl %s:8090 returned %s, expected %s", test.externalHostIP, clientIP, hostSide)
-					}
+				urlStr = url.Format("http://%s:8090/hostname", externalHostIP)
+				res, err = podExecutor.Exec("curl", "-sS", urlStr)
+				if err != nil {
+					return fmt.Errorf("curl %s:8090 failed: %s", externalHostIP, res)
+				}
+				if res != hostName {
+					return fmt.Errorf("curl %s:8090 returned %s, expected %s", externalHostIP, res, hostName)
+				}
 
-					url = fmt.Sprintf("http://%s:8090/hostname", test.externalHostIP)
-					res, err = podExecutor.Exec("curl", "-sS", url)
-					if err != nil {
-						return fmt.Errorf("curl %s:8090 failed: %s", test.externalHostIP, res)
-					}
-					if res != test.hostName {
-						return fmt.Errorf("curl %s:8090 returned %s, expected %s", test.externalHostIP, res, test.hostName)
-					}
-					res, err = externalHostExecutor.Exec("curl", "-sS", fmt.Sprintf("http://%s:8090/clientip", testPod.Status.PodIP))
-					if err != nil {
-						return fmt.Errorf("curl from %s to %s:8090 failed: %s", test.hostName, testPod.Status.PodIP, res)
-					}
-					hostClientIP := strings.Split(res, ":")[0]
-					if hostClientIP != test.externalHostIP {
-						return fmt.Errorf("curl from %s to %s:8090 returned %s, expected %s", test.hostName, testPod.Status.PodIP, clientIP, test.externalHostIP)
-					}
-					return nil
-				}, 5*time.Minute, 5*time.Second).ShouldNot(HaveOccurred())
-			}
-		})
+				By(fmt.Sprintf("trying to hit pod %s on the %s network from host %s", podIP, vni.Name, hostName))
+
+				urlStr = url.Format("http://%s:8090/clientip", podIP)
+				res, err = externalHostExecutor.Exec("curl", "-sS", urlStr)
+				if err != nil {
+					return fmt.Errorf("curl from %s to %s:8090 failed: %s", hostName, podIP, res)
+				}
+				hostClientIP, err := extractClientIP(res)
+				Expect(err).NotTo(HaveOccurred())
+
+				if hostClientIP != externalHostIP {
+					return fmt.Errorf("curl from %s to %s:8090 returned %s, expected %s", hostName, podIP, clientIP, externalHostIP)
+				}
+				return nil
+			}, 5*time.Minute, 5*time.Second).ShouldNot(HaveOccurred())
+		},
+			Entry("vni red host A ipv4", vniRed, "hostA_red", infra.HostARedIPv4, ipfamily.IPv4),
+			Entry("vni red host B ipv4", vniRed, "hostB_red", infra.HostBRedIPv4, ipfamily.IPv4),
+			Entry("vni blue host A ipv4", vniBlue, "hostA_blue", infra.HostABlueIPv4, ipfamily.IPv4),
+			Entry("vni blue host B ipv4", vniBlue, "hostB_blue", infra.HostBBlueIPv4, ipfamily.IPv4),
+			Entry("vni red host A ipv6", vniRed, "hostA_red", infra.HostARedIPv6, ipfamily.IPv6),
+			Entry("vni red host B ipv6", vniRed, "hostB_red", infra.HostBRedIPv6, ipfamily.IPv6),
+			Entry("vni blue host A ipv6", vniBlue, "hostA_blue", infra.HostABlueIPv6, ipfamily.IPv6),
+			Entry("vni blue host B ipv6", vniBlue, "hostB_blue", infra.HostBBlueIPv6, ipfamily.IPv6),
+		)
 	})
 })
+
+func getPodIPByFamily(pod *corev1.Pod, family ipfamily.Family) (string, error) {
+	for _, podIP := range pod.Status.PodIPs {
+		ip := net.ParseIP(podIP.IP)
+		if ip == nil {
+			continue
+		}
+		if ipfamily.ForAddress(ip) == family {
+			return podIP.IP, nil
+		}
+	}
+	return "", fmt.Errorf("no %s IP found for pod %s", family, pod.Name)
+}
+
+func extractClientIP(res string) (string, error) {
+	res = strings.TrimSpace(res)
+
+	if strings.HasPrefix(res, "[") {
+		endBracket := strings.Index(res, "]")
+		if endBracket != -1 {
+			return res[1:endBracket], nil
+		}
+	}
+
+	if strings.Contains(res, ":") {
+		parts := strings.Split(res, ":")
+		return parts[0], nil
+	}
+
+	return "", fmt.Errorf("invalid response format: no client IP found in response: %s", res)
+}

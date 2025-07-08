@@ -53,7 +53,13 @@ func main() {
 		fmt.Printf("Assigning IP %s to interface %s in container %s...\n", ipAddress, interfaceName, containerName)
 
 		// #nosec G204
-		cmdAdd := exec.Command(*containerEngine, "exec", containerName, "ip", "addr", "add", ipAddress, "dev", interfaceName)
+		ipCmdArgs := []string{"exec", containerName, "ip"}
+		if strings.Contains(ipAddress, ":") {
+			ipCmdArgs = append(ipCmdArgs, "-6")
+		}
+		ipCmdArgs = append(ipCmdArgs, "addr", "add", ipAddress, "dev", interfaceName)
+		cmdAdd := exec.Command(*containerEngine, ipCmdArgs...)
+		fmt.Printf("Running command: %s\n", strings.Join(cmdAdd.Args, " "))
 		if err := cmdAdd.Run(); err != nil {
 			fmt.Printf("Error assigning IP: %v \n", err)
 			continue

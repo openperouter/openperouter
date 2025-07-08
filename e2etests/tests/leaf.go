@@ -3,18 +3,25 @@
 package tests
 
 import (
+	"net"
+
 	. "github.com/onsi/gomega"
 	"github.com/openperouter/openperouter/e2etests/pkg/infra"
 )
 
 func changeLeafPrefixes(leaf infra.Leaf, redPrefixes, bluePrefixes []string) {
+	redIPv4, redIPv6 := separateIPFamilies(redPrefixes)
+	blueIPv4, blueIPv6 := separateIPFamilies(bluePrefixes)
+
 	leafConfiguration := infra.LeafConfiguration{
 		Leaf: leaf,
 		Red: infra.Addresses{
-			IPV4: redPrefixes,
+			IPV4: redIPv4,
+			IPV6: redIPv6,
 		},
 		Blue: infra.Addresses{
-			IPV4: bluePrefixes,
+			IPV4: blueIPv4,
+			IPV6: blueIPv6,
 		},
 	}
 	config, err := infra.LeafConfigToFRR(leafConfiguration)
@@ -41,4 +48,25 @@ func redistributeConnectedForLeaf(leaf infra.Leaf) {
 	Expect(err).NotTo(HaveOccurred())
 	err = leaf.ReloadConfig(config)
 	Expect(err).NotTo(HaveOccurred())
+}
+
+// separateIPFamilies separates a slice of CIDR prefixes into IPv4 and IPv6 slices
+func separateIPFamilies(prefixes []string) ([]string, []string) {
+	var ipv4Prefixes []string
+	var ipv6Prefixes []string
+
+	for _, prefix := range prefixes {
+		_, ipNet, err := net.ParseCIDR(prefix)
+		if err != nil {
+			continue
+		}
+
+		if ipNet.IP.To4() != nil {
+			ipv4Prefixes = append(ipv4Prefixes, prefix)
+		} else {
+			ipv6Prefixes = append(ipv6Prefixes, prefix)
+		}
+	}
+
+	return ipv4Prefixes, ipv6Prefixes
 }

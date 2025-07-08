@@ -21,11 +21,13 @@ generate_leaf_configs() {
     fi
 
     # leafA neighbors with spine at 192.168.1.0 and advertises 100.64.0.1/32
+    sudo rm ../leafA/frr.conf || true
     go run generate_leaf_config/generate_leaf_config.go \
     -leaf leafA -neighbor 192.168.1.0 -network 100.64.0.1/32 $REDISTRIBUTE_FLAG \
     -template generate_leaf_config/frr_template/frr.conf.template
 
     # leafB neighbors with spine at 192.168.1.2 and advertises 100.64.0.2/32
+    sudo rm ../leafB/frr.conf || true
     go run generate_leaf_config/generate_leaf_config.go \
     -leaf leafB -neighbor 192.168.1.2 -network 100.64.0.2/32 $REDISTRIBUTE_FLAG \
     -template generate_leaf_config/frr_template/frr.conf.template
@@ -52,8 +54,8 @@ fi
 # Generate kind-configuration-registry.yaml from template
 KIND_CONFIG_ARGS=""
 if [[ "$CALICO_MODE" == "true" ]]; then
-    KIND_CONFIG_ARGS=" -include-networking"
-    echo "Including networking section in kind-configuration-registry.yaml (CALICO_MODE)"
+    KIND_CONFIG_ARGS=" -disable-default-cni"
+    echo "Disabling default CNI in kind-configuration-registry.yaml (CALICO_MODE)"
     
     pushd calico
       ./apply_calico.sh & # required as clab will stop earlier because the cni is not ready
@@ -125,6 +127,7 @@ ${CONTAINER_ENGINE_CLI} exec clab-kind-hostA_red /setup.sh
 ${CONTAINER_ENGINE_CLI} exec clab-kind-hostA_blue /setup.sh
 ${CONTAINER_ENGINE_CLI} exec clab-kind-hostB_red /setup.sh
 ${CONTAINER_ENGINE_CLI} exec clab-kind-hostB_blue /setup.sh
+
 
 if ! pgrep -f check_veths.sh | xargs -r ps -p | grep -q pe-kind-control-plane; then
 	sudo -E ./check_veths.sh kindctrlpl:toswitch:pe-kind-control-plane:192.168.11.3/24  kindworker:toswitch:pe-kind-worker:192.168.11.4/24 &

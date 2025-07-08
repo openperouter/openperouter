@@ -54,6 +54,11 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 		return fmt.Errorf("failed to convert config to host configuration: %w", err)
 	}
 
+	slog.InfoContext(ctx, "ensuring IPv6 forwarding")
+	if err := hostnetwork.EnsureIPv6Forwarding(targetNS); err != nil {
+		return fmt.Errorf("failed to ensure IPv6 forwarding: %w", err)
+	}
+
 	slog.InfoContext(ctx, "setting up underlay")
 	if err := hostnetwork.SetupUnderlay(ctx, underlayParams); err != nil {
 		return fmt.Errorf("failed to setup underlay: %w", err)

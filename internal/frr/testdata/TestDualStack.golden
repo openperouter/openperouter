@@ -47,6 +47,7 @@ router bgp 64512 vrf red
   exit-address-family
 
   address-family ipv6 unicast
+    network 2001:db8::2/64
     neighbor 192.168.1.2 activate
     neighbor 192.168.1.2 route-map allowall in
     neighbor 192.168.1.2 route-map allowall out

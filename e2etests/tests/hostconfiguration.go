@@ -93,10 +93,12 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				Namespace: openperouter.Namespace,
 			},
 			Spec: v1alpha1.L3VNISpec{
-				ASN:       64514,
-				VNI:       100,
-				LocalCIDR: "192.169.10.0/24",
-				HostASN:   ptr.To(uint32(64515)),
+				ASN: 64514,
+				VNI: 100,
+				LocalCIDR: v1alpha1.LocalCIDRConfig{
+					IPv4: "192.169.10.0/24",
+				},
+				HostASN: ptr.To(uint32(64515)),
 			},
 		}
 		l3vni200 := v1alpha1.L3VNI{
@@ -105,10 +107,41 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				Namespace: openperouter.Namespace,
 			},
 			Spec: v1alpha1.L3VNISpec{
-				ASN:       64514,
-				VNI:       200,
-				LocalCIDR: "192.169.11.0/24",
-				HostASN:   ptr.To(uint32(64515)),
+				ASN: 64514,
+				VNI: 200,
+				LocalCIDR: v1alpha1.LocalCIDRConfig{
+					IPv4: "192.169.11.0/24",
+				},
+				HostASN: ptr.To(uint32(64515)),
+			},
+		}
+		l3vni300 := v1alpha1.L3VNI{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "ipv6-only",
+				Namespace: openperouter.Namespace,
+			},
+			Spec: v1alpha1.L3VNISpec{
+				ASN: 64514,
+				VNI: 300,
+				LocalCIDR: v1alpha1.LocalCIDRConfig{
+					IPv6: "2001:db8:1::/64",
+				},
+				HostASN: ptr.To(uint32(64515)),
+			},
+		}
+		l3vni400 := v1alpha1.L3VNI{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "dual-stack",
+				Namespace: openperouter.Namespace,
+			},
+			Spec: v1alpha1.L3VNISpec{
+				ASN: 64514,
+				VNI: 400,
+				LocalCIDR: v1alpha1.LocalCIDRConfig{
+					IPv4: "192.169.12.0/24",
+					IPv6: "2001:db8:2::/64",
+				},
+				HostASN: ptr.To(uint32(64515)),
 			},
 		}
 
@@ -154,11 +187,12 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 
 				vtepIP := vtepIPForPod(cs, underlay.Spec.VTEPCIDR, p)
 				validateConfig(l3vniParams{
-					VRF:       l3vni100.Name,
-					VethNSIP:  "192.169.10.0/24",
-					VNI:       100,
-					VXLanPort: 4789,
-					VTEPIP:    vtepIP,
+					VRF:        l3vni100.Name,
+					VethNSIP:   l3vni100.Spec.LocalCIDR.IPv4,
+					VethNSIPv6: l3vni100.Spec.LocalCIDR.IPv6,
+					VNI:        100,
+					VXLanPort:  4789,
+					VTEPIP:     vtepIP,
 				}, l3VNIConfiguredTestSelector, p)
 
 				ginkgo.By(fmt.Sprintf("validating Underlay for pod %s", p.Name))
@@ -187,19 +221,21 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 
 				vtepIP := vtepIPForPod(cs, underlay.Spec.VTEPCIDR, p)
 				validateConfig(l3vniParams{
-					VRF:       l3vni100.Name,
-					VethNSIP:  l3vni100.Spec.LocalCIDR,
-					VNI:       l3vni100.Spec.VNI,
-					VXLanPort: 4789,
-					VTEPIP:    vtepIP,
+					VRF:        l3vni100.Name,
+					VethNSIP:   l3vni100.Spec.LocalCIDR.IPv4,
+					VethNSIPv6: l3vni100.Spec.LocalCIDR.IPv6,
+					VNI:        100,
+					VXLanPort:  4789,
+					VTEPIP:     vtepIP,
 				}, l3VNIConfiguredTestSelector, p)
 
 				validateConfig(l3vniParams{
-					VRF:       l3vni200.Name,
-					VethNSIP:  l3vni200.Spec.LocalCIDR,
-					VNI:       l3vni200.Spec.VNI,
-					VXLanPort: 4789,
-					VTEPIP:    vtepIP,
+					VRF:        l3vni200.Name,
+					VethNSIP:   l3vni200.Spec.LocalCIDR.IPv4,
+					VethNSIPv6: l3vni200.Spec.LocalCIDR.IPv6,
+					VNI:        200,
+					VXLanPort:  4789,
+					VTEPIP:     vtepIP,
 				}, l3VNIConfiguredTestSelector, p)
 			}
 
@@ -212,20 +248,22 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 
 				vtepIP := vtepIPForPod(cs, underlay.Spec.VTEPCIDR, p)
 				validateConfig(l3vniParams{
-					VRF:       l3vni200.Name,
-					VethNSIP:  l3vni200.Spec.LocalCIDR,
-					VNI:       l3vni200.Spec.VNI,
-					VXLanPort: 4789,
-					VTEPIP:    vtepIP,
+					VRF:        l3vni200.Name,
+					VethNSIP:   l3vni200.Spec.LocalCIDR.IPv4,
+					VethNSIPv6: l3vni200.Spec.LocalCIDR.IPv6,
+					VNI:        200,
+					VXLanPort:  4789,
+					VTEPIP:     vtepIP,
 				}, l3VNIConfiguredTestSelector, p)
 
 				ginkgo.By(fmt.Sprintf("validating VNI is deleted for pod %s", p.Name))
 				validateConfig(l3vniParams{
-					VRF:       l3vni100.Name,
-					VethNSIP:  l3vni100.Spec.LocalCIDR,
-					VNI:       l3vni100.Spec.VNI,
-					VXLanPort: 4789,
-					VTEPIP:    vtepIP,
+					VRF:        l3vni100.Name,
+					VethNSIP:   l3vni100.Spec.LocalCIDR.IPv4,
+					VethNSIPv6: l3vni100.Spec.LocalCIDR.IPv6,
+					VNI:        100,
+					VXLanPort:  4789,
+					VTEPIP:     vtepIP,
 				}, l3VNIDeletedTestSelector, p)
 			}
 
@@ -259,11 +297,12 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 
 				vtepIP := vtepIPForPod(cs, underlay.Spec.VTEPCIDR, p)
 				validateConfig(l3vniParams{
-					VRF:       l3vni100.Name,
-					VethNSIP:  l3vni100.Spec.LocalCIDR,
-					VNI:       l3vni100.Spec.VNI,
-					VXLanPort: 4789,
-					VTEPIP:    vtepIP,
+					VRF:        l3vni100.Name,
+					VethNSIP:   l3vni100.Spec.LocalCIDR.IPv4,
+					VethNSIPv6: l3vni100.Spec.LocalCIDR.IPv6,
+					VNI:        100,
+					VXLanPort:  4789,
+					VTEPIP:     vtepIP,
 				}, l3VNIConfiguredTestSelector, p)
 			}
 
@@ -271,7 +310,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 
 			resources.L3VNIs[0].Spec.ASN = 64515
 			resources.L3VNIs[0].Spec.VNI = 300
-			resources.L3VNIs[0].Spec.LocalCIDR = "192.171.10.0/24"
+			resources.L3VNIs[0].Spec.LocalCIDR.IPv4 = "192.171.10.0/24"
 			resources.L3VNIs[0].Spec.HostASN = ptr.To(uint32(64516))
 			err = Updater.Update(resources)
 			Expect(err).NotTo(HaveOccurred())
@@ -282,11 +321,12 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				vtepIP := vtepIPForPod(cs, underlay.Spec.VTEPCIDR, p)
 				changedVni := resources.L3VNIs[0]
 				validateConfig(l3vniParams{
-					VRF:       changedVni.Name,
-					VethNSIP:  changedVni.Spec.LocalCIDR,
-					VNI:       changedVni.Spec.VNI,
-					VXLanPort: 4789,
-					VTEPIP:    vtepIP,
+					VRF:        changedVni.Name,
+					VethNSIP:   changedVni.Spec.LocalCIDR.IPv4,
+					VethNSIPv6: changedVni.Spec.LocalCIDR.IPv6,
+					VNI:        300,
+					VXLanPort:  4789,
+					VTEPIP:     vtepIP,
 				}, l3VNIConfiguredTestSelector, p)
 			}
 
@@ -321,11 +361,12 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 
 					vtepIP := vtepIPForPod(cs, vtepCidr, p)
 					validateConfig(l3vniParams{
-						VRF:       l3vni100.Name,
-						VethNSIP:  l3vni100.Spec.LocalCIDR,
-						VNI:       l3vni100.Spec.VNI,
-						VXLanPort: 4789,
-						VTEPIP:    vtepIP,
+						VRF:        l3vni100.Name,
+						VethNSIP:   l3vni100.Spec.LocalCIDR.IPv4,
+						VethNSIPv6: l3vni100.Spec.LocalCIDR.IPv6,
+						VNI:        100,
+						VXLanPort:  4789,
+						VTEPIP:     vtepIP,
 					}, l3VNIConfiguredTestSelector, p)
 
 					ginkgo.By(fmt.Sprintf("validating underlay for pod %s", p.Name))
@@ -356,6 +397,119 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 			Eventually(func() error {
 				return openperouter.DaemonsetRolled(cs, routerPods)
 			}, time.Minute, time.Second).ShouldNot(HaveOccurred())
+		})
+
+		ginkgo.It("works with IPv6-only L3VNI", func() {
+			err := Updater.Update(config.Resources{
+				Underlays: []v1alpha1.Underlay{
+					underlay,
+				},
+				L3VNIs: []v1alpha1.L3VNI{
+					l3vni300,
+				},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			for _, p := range routerPods {
+				ginkgo.By(fmt.Sprintf("validating IPv6-only VNI for pod %s", p.Name))
+
+				vtepIP := vtepIPForPod(cs, underlay.Spec.VTEPCIDR, p)
+				validateConfig(l3vniParams{
+					VRF:        l3vni300.Name,
+					VethNSIP:   "",
+					VethNSIPv6: l3vni300.Spec.LocalCIDR.IPv6,
+					VNI:        l3vni300.Spec.VNI,
+					VXLanPort:  4789,
+					VTEPIP:     vtepIP,
+				}, l3VNIConfiguredTestSelector, p)
+
+				ginkgo.By(fmt.Sprintf("validating Underlay for pod %s", p.Name))
+
+				validateConfig(underlayParams{
+					UnderlayInterface: "toswitch",
+					VtepIP:            vtepIP,
+				}, underlayTestSelector, p)
+			}
+		})
+
+		ginkgo.It("works with dual-stack L3VNI", func() {
+			err := Updater.Update(config.Resources{
+				Underlays: []v1alpha1.Underlay{
+					underlay,
+				},
+				L3VNIs: []v1alpha1.L3VNI{
+					l3vni400,
+				},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			for _, p := range routerPods {
+				ginkgo.By(fmt.Sprintf("validating dual-stack VNI for pod %s", p.Name))
+
+				vtepIP := vtepIPForPod(cs, underlay.Spec.VTEPCIDR, p)
+				validateConfig(l3vniParams{
+					VRF:        l3vni400.Name,
+					VethNSIP:   l3vni400.Spec.LocalCIDR.IPv4,
+					VethNSIPv6: l3vni400.Spec.LocalCIDR.IPv6,
+					VNI:        l3vni400.Spec.VNI,
+					VXLanPort:  4789,
+					VTEPIP:     vtepIP,
+				}, l3VNIConfiguredTestSelector, p)
+
+				ginkgo.By(fmt.Sprintf("validating Underlay for pod %s", p.Name))
+
+				validateConfig(underlayParams{
+					UnderlayInterface: "toswitch",
+					VtepIP:            vtepIP,
+				}, underlayTestSelector, p)
+			}
+		})
+
+		ginkgo.It("works with mixed IPv4, IPv6, and dual-stack L3VNIs", func() {
+			err := Updater.Update(config.Resources{
+				Underlays: []v1alpha1.Underlay{
+					underlay,
+				},
+				L3VNIs: []v1alpha1.L3VNI{
+					l3vni100,
+					l3vni300,
+					l3vni400,
+				},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			for _, p := range routerPods {
+				ginkgo.By(fmt.Sprintf("validating mixed VNIs for pod %s", p.Name))
+
+				vtepIP := vtepIPForPod(cs, underlay.Spec.VTEPCIDR, p)
+
+				validateConfig(l3vniParams{
+					VRF:        l3vni100.Name,
+					VethNSIP:   l3vni100.Spec.LocalCIDR.IPv4,
+					VethNSIPv6: l3vni100.Spec.LocalCIDR.IPv6,
+					VNI:        l3vni100.Spec.VNI,
+					VXLanPort:  4789,
+					VTEPIP:     vtepIP,
+				}, l3VNIConfiguredTestSelector, p)
+
+				validateConfig(l3vniParams{
+					VRF:        l3vni300.Name,
+					VethNSIP:   "",
+					VethNSIPv6: l3vni300.Spec.LocalCIDR.IPv6,
+					VNI:        l3vni300.Spec.VNI,
+					VXLanPort:  4789,
+					VTEPIP:     vtepIP,
+				}, l3VNIConfiguredTestSelector, p)
+
+				validateConfig(l3vniParams{
+					VRF:        l3vni400.Name,
+					VethNSIP:   l3vni400.Spec.LocalCIDR.IPv4,
+					VethNSIPv6: l3vni400.Spec.LocalCIDR.IPv6,
+					VNI:        l3vni400.Spec.VNI,
+					VXLanPort:  4789,
+					VTEPIP:     vtepIP,
+				}, l3VNIConfiguredTestSelector, p)
+			}
 		})
 	})
 
@@ -540,11 +694,12 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 })
 
 type l3vniParams struct {
-	VRF       string `json:"vrf"`
-	VTEPIP    string `json:"vtepip"`
-	VethNSIP  string `json:"vethnsip"`
-	VNI       uint32 `json:"vni"`
-	VXLanPort int    `json:"vxlanport"`
+	VRF        string `json:"vrf"`
+	VTEPIP     string `json:"vtepip"`
+	VethNSIP   string `json:"vethnsip"`
+	VethNSIPv6 string `json:"vethnsipv6,omitempty"`
+	VNI        uint32 `json:"vni"`
+	VXLanPort  int    `json:"vxlanport"`
 }
 
 type l2vniParams struct {

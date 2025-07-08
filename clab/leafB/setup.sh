@@ -1,9 +1,11 @@
 #!/bin/bash
 #
 
+# this is to avoid to loose the ipv6 address after enslaving to the vrf
+sysctl -w net.ipv6.conf.all.keep_addr_on_down=1
+
 # VTEP IP
 ip addr add 100.64.0.2/32 dev lo
-
 
 # L3 VRF
 ip link add red type vrf table 1100

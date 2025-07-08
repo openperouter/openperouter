@@ -37,8 +37,10 @@ var _ = Describe("Webhooks", func() {
 					Namespace: openperouter.Namespace,
 				},
 				Spec: v1alpha1.L3VNISpec{
-					VRF:       pointer.String("test-vrf"),
-					LocalCIDR: "10.0.0.0/24",
+					VRF: pointer.String("test-vrf"),
+					LocalCIDR: v1alpha1.LocalCIDRConfig{
+						IPv4: "10.0.0.0/24",
+					},
 					VNI:       100,
 					VXLanPort: 4789,
 				},
@@ -64,8 +66,10 @@ var _ = Describe("Webhooks", func() {
 					Namespace: openperouter.Namespace,
 				},
 				Spec: v1alpha1.L3VNISpec{
-					VRF:       pointer.String("test-vrf-2"),
-					LocalCIDR: "10.0.1.0/24",
+					VRF: pointer.String("test-vrf-2"),
+					LocalCIDR: v1alpha1.LocalCIDRConfig{
+						IPv4: "10.0.1.0/24",
+					},
 					VNI:       100,
 					VXLanPort: 4789,
 				},
@@ -76,8 +80,10 @@ var _ = Describe("Webhooks", func() {
 					Namespace: openperouter.Namespace,
 				},
 				Spec: v1alpha1.L3VNISpec{
-					VRF:       pointer.String("test-vrf-3"),
-					LocalCIDR: "invalid-cidr",
+					VRF: pointer.String("test-vrf-3"),
+					LocalCIDR: v1alpha1.LocalCIDRConfig{
+						IPv4: "invalid-cidr",
+					},
 					VNI:       101,
 					VXLanPort: 4789,
 				},
