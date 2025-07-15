@@ -460,7 +460,7 @@ func validateL2HostLeg(g Gomega, params L2VNIParams) {
 	g.Expect(err).NotTo(HaveOccurred(), "host side not found", hostSide)
 
 	g.Expect(hostLegLink.Attrs().OperState).To(BeEquivalentTo(netlink.OperUp))
-	hasNoIP, err := interfaceHasNoIP(hostLegLink, netlink.FAMILY_V4)
+	hasNoIP, err := interfaceHasNoIPv4(hostLegLink)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(hasNoIP).To(BeTrue(), "host leg does have ip")
 	if params.HostMaster != nil {
@@ -512,7 +512,7 @@ func validateL2VNI(g Gomega, params L2VNIParams) {
 	g.Expect(err).NotTo(HaveOccurred(), "veth pe side not found", peSide)
 	g.Expect(peLegLink.Attrs().OperState).To(BeEquivalentTo(netlink.OperUp))
 
-	hasNoIP, err := interfaceHasNoIP(peLegLink, netlink.FAMILY_V4)
+	hasNoIP, err := interfaceHasNoIPv4(peLegLink)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(hasNoIP).To(BeTrue(), "host leg does have ip")
 
@@ -527,7 +527,7 @@ func validateL2VNI(g Gomega, params L2VNIParams) {
 		validateBridgeMacAddress(g, bridgeLink, params.VNI)
 		return
 	} else {
-		hasNoIP, err := interfaceHasNoIP(bridgeLink, netlink.FAMILY_V4)
+		hasNoIP, err := interfaceHasNoIPv4(bridgeLink)
 		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(hasNoIP).To(BeTrue(), "bridge does have ip")
 	}
@@ -653,7 +653,7 @@ func validateL2HostLegWithCustomBridge(g Gomega, params L2VNIParams, customBridg
 	g.Expect(err).NotTo(HaveOccurred(), "host side not found", hostSide)
 
 	g.Expect(hostLegLink.Attrs().OperState).To(BeEquivalentTo(netlink.OperUp))
-	hasNoIP, err := interfaceHasNoIP(hostLegLink, netlink.FAMILY_V4)
+	hasNoIP, err := interfaceHasNoIPv4(hostLegLink)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(hasNoIP).To(BeTrue(), "host leg does have ip")
 

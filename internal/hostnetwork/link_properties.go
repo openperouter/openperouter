@@ -57,10 +57,10 @@ func interfaceHasIP(link netlink.Link, address string) (bool, error) {
 	return false, nil
 }
 
-// interfaceHasIP tells if the given link does not have
-// ips of the given family.
-func interfaceHasNoIP(link netlink.Link, family int) (bool, error) {
-	addresses, err := netlink.AddrList(link, family)
+// interfaceHasNoIPv4 tells if the given link does not have
+// an ipv4 address.
+func interfaceHasNoIPv4(link netlink.Link) (bool, error) {
+	addresses, err := netlink.AddrList(link, netlink.FAMILY_V4)
 	if err != nil {
 		return false, fmt.Errorf("interfaceHasNoIP: failed to list addresses for interface %s: %w", link.Attrs().Name, err)
 	}
