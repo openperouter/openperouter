@@ -384,6 +384,52 @@ var _ = Describe("L2 VNI configuration", func() {
 			})
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 	})
+
+	It("should work with L2VNI using custom bridge name and autocreate", func() {
+		customBridgeName := "custom-bridge"
+		params := L2VNIParams{
+			VNIParams: VNIParams{
+				VRF:       "testred",
+				TargetNS:  testNSName,
+				VTEPIP:    "192.170.0.9/32",
+				VNI:       100,
+				VXLanPort: 4789,
+			},
+			L2GatewayIP: ptr.String("192.168.1.0/24"),
+			HostMaster: &HostMaster{
+				Name:       customBridgeName,
+				AutoCreate: true,
+			},
+		}
+
+		err := SetupL2VNI(context.Background(), params)
+		Expect(err).NotTo(HaveOccurred())
+
+		Eventually(func(g Gomega) {
+			validateL2HostLegWithCustomBridge(g, params, customBridgeName)
+
+			_ = inNamespace(testNS, func() error {
+				validateL2VNI(g, params)
+				return nil
+			})
+		}, 30*time.Second, 1*time.Second).Should(Succeed())
+
+		By("removing the VNI")
+		err = RemoveNonConfiguredVNIs(testNSName, []VNIParams{})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("checking the VNI is removed")
+		hostSide, _ := vethNamesFromVNI(params.VNI)
+		Eventually(func(g Gomega) {
+			checkLinkdeleted(g, hostSide)
+			checkLinkExists(g, customBridgeName) // Custom bridges should not be automatically deleted
+
+			_ = inNamespace(testNS, func() error {
+				validateVNIIsNotConfigured(g, params.VNIParams)
+				return nil
+			})
+		}, 30*time.Second, 1*time.Second).Should(Succeed())
+	})
 })
 
 func validateL3HostLeg(g Gomega, params L3VNIParams) {
@@ -419,7 +465,7 @@ func validateL2HostLeg(g Gomega, params L2VNIParams) {
 	g.Expect(hasNoIP).To(BeTrue(), "host leg does have ip")
 	if params.HostMaster != nil {
 		hostMasterName := params.HostMaster.Name
-		if params.HostMaster.AutoCreate {
+		if params.HostMaster.AutoCreate && params.HostMaster.Name == "" {
 			hostMasterName = hostBridgeName(params.VNI)
 		}
 		hostmaster, err := netlink.LinkByName(hostMasterName)
@@ -599,4 +645,24 @@ func validateBridgeMacAddress(g Gomega, bridge netlink.Link, vni int) {
 	actualMac := bridge.Attrs().HardwareAddr
 	g.Expect(actualMac).NotTo(BeNil(), "bridge should have a MAC address")
 	g.Expect(actualMac).To(Equal(expectedMac), "bridge MAC address should be %v for VNI %d", expectedMac, vni)
+}
+
+func validateL2HostLegWithCustomBridge(g Gomega, params L2VNIParams, customBridgeName string) {
+	hostSide, _ := vethNamesFromVNI(params.VNI)
+	hostLegLink, err := netlink.LinkByName(hostSide)
+	g.Expect(err).NotTo(HaveOccurred(), "host side not found", hostSide)
+
+	g.Expect(hostLegLink.Attrs().OperState).To(BeEquivalentTo(netlink.OperUp))
+	hasNoIP, err := interfaceHasNoIP(hostLegLink, netlink.FAMILY_V4)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(hasNoIP).To(BeTrue(), "host leg does have ip")
+
+	if params.HostMaster != nil {
+		hostmaster, err := netlink.LinkByName(customBridgeName)
+		g.Expect(err).NotTo(HaveOccurred(), "custom host master not found", customBridgeName)
+		g.Expect(hostLegLink.Attrs().MasterIndex).To(Equal(hostmaster.Attrs().Index),
+			"host leg is not attached to the custom bridge", customBridgeName)
+	} else {
+		g.Expect(hostLegLink.Attrs().MasterIndex).To(BeZero(), "host leg is attached to a bridge but should not be")
+	}
 }

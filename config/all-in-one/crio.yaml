@@ -61,11 +61,13 @@ spec:
                     default: false
                     description: |-
                       If true, the interface will be created automatically if not present.
-                      The name of the bridge is of the form br-hs-<VNI>.
+                      If name is also set, the bridge will be created with the provided name.
+                      Otherwise, the name of the bridge is of the form br-hs-<VNI>.
                     type: boolean
                   name:
-                    description: Name of the host interface. Must match VRF name validation
-                      if set.
+                    description: |-
+                      Name of the host interface. Must match VRF name validation if set.
+                      When both name and autocreate are set, the bridge will be created with the provided name.
                     maxLength: 15
                     pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
                     type: string

@@ -12,10 +12,9 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
-// createHostBridge creates a bridge on the host namespace named after the
-// provided vni. If the bridge already exists, it will return the existing one.
-func createHostBridge(vni int) (netlink.Link, error) {
-	name := hostBridgeName(vni)
+// createHostBridge creates a bridge on the host namespace with the provided name.
+// If the bridge already exists, it will return the existing one.
+func createHostBridge(name string) (netlink.Link, error) {
 	_, err := netlink.LinkByName(name)
 	// link does not exist, let's create it
 	if errors.As(err, &netlink.LinkNotFoundError{}) {
