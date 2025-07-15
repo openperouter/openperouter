@@ -43,22 +43,6 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		},
 	}
 
-	l2VniRed := v1alpha1.L2VNI{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "red110",
-			Namespace: openperouter.Namespace,
-		},
-		Spec: v1alpha1.L2VNISpec{
-			VRF:         ptr.To("red"),
-			VNI:         110,
-			L2GatewayIP: "192.171.24.1/24",
-			HostMaster: &v1alpha1.HostMaster{
-				AutoCreate: true,
-				Type:       "bridge",
-			},
-		},
-	}
-
 	BeforeAll(func() {
 		err := Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
@@ -107,16 +91,10 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			L3VNIs: []v1alpha1.L3VNI{
 				vniRed,
 			},
-			L2VNIs: []v1alpha1.L2VNI{
-				l2VniRed,
-			},
 		})
 		Expect(err).NotTo(HaveOccurred())
 
 		_, err = k8s.CreateNamespace(cs, testNamespace)
-		Expect(err).NotTo(HaveOccurred())
-
-		nad, err = k8s.CreateMacvlanNad("110", testNamespace, "br-hs-110", "192.171.24.1")
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -130,8 +108,33 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 
-	It("should create two pods connected to the l2 overlay", func() {
-		var err error
+	DescribeTable("l2 overlay", func(bridgeName, macvlanBridgeName string) {
+		l2VniRed := v1alpha1.L2VNI{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "red110",
+				Namespace: openperouter.Namespace,
+			},
+			Spec: v1alpha1.L2VNISpec{
+				VRF:         ptr.To("red"),
+				VNI:         110,
+				L2GatewayIP: "192.171.24.1/24",
+				HostMaster: &v1alpha1.HostMaster{
+					AutoCreate: true,
+					Type:       "bridge",
+					Name:       bridgeName,
+				},
+			},
+		}
+		err := Updater.Update(config.Resources{
+			L2VNIs: []v1alpha1.L2VNI{
+				l2VniRed,
+			},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		nad, err = k8s.CreateMacvlanNad("110", testNamespace, macvlanBridgeName, "192.171.24.1")
+
+		Expect(err).NotTo(HaveOccurred())
+
 		const (
 			firstPodIP  = "192.171.24.2"
 			secondPodIP = "192.171.24.3"
@@ -191,7 +194,9 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			By(fmt.Sprintf("checking reachability from %s to %s", test.from, test.to))
 			checkPodIsReacheable(test.exec, test.fromIP, test.toIP)
 		}
-	})
+	},
+		Entry("with named bridge", "mybridge", "mybridge"),
+		Entry("with default bridge", "", "br-hs-110"))
 })
 
 func removeGatewayFromPod(pod *corev1.Pod) {

@@ -378,9 +378,14 @@ func hostMaster(vni int, m HostMaster) (netlink.Link, error) {
 		}
 		return hostMaster, nil
 	}
-	bridge, err := createHostBridge(vni)
+
+	bridgeName := m.Name
+	if bridgeName == "" {
+		bridgeName = hostBridgeName(vni)
+	}
+	bridge, err := createHostBridge(bridgeName)
 	if err != nil {
-		return nil, fmt.Errorf("getHostMaster: failed to create host bridge %d: %w", vni, err)
+		return nil, fmt.Errorf("getHostMaster: failed to create host bridge %s: %w", bridgeName, err)
 	}
 	return bridge, nil
 }

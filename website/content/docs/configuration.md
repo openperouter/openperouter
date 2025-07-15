@@ -133,7 +133,7 @@ L2VNIs provide Layer 2 connectivity across nodes using EVPN tunnels. Unlike L3VN
 | `vrf` | string | Name of the VRF to associate with this L2VNI | Yes |
 | `hostmaster.type` | string | Type of host interface management (`bridge` or `direct`) | Yes |
 | `hostmaster.autocreate` | boolean | Whether to automatically create a bridge if type is `bridge` | No |
-| `hostmaster.bridgeName` | string | Name of the bridge to attach to (if not auto-creating) | No |
+| `hostmaster.bridgeName` | string | Name of the bridge to attach to. In case of autocreate, the bridge is created with this name. Otherwise, it assumes the bridge is already existing | No |
 
 ### L2VNI Example
 

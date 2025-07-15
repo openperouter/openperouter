@@ -54,10 +54,11 @@ type L2VNISpec struct {
 }
 
 // +kubebuilder:validation:Required
-// +kubebuilder:validation:xvalidation:rule="(self.name != '' && self.autocreate == false) || (self.name == '' && self.autocreate == true)",message="either name must be set or autocreate must be true, but not both."
+// +kubebuilder:validation:xvalidation:rule="(self.name != '' && self.autocreate == false) || (self.name == '' && self.autocreate == true) || (self.name != '' && self.autocreate == true)",message="either name must be set, autocreate must be true, or both can be set together."
 
 type HostMaster struct {
 	// Name of the host interface. Must match VRF name validation if set.
+	// When both name and autocreate are set, the bridge will be created with the provided name.
 	// +kubebuilder:validation:Pattern=`^[a-zA-Z][a-zA-Z0-9_-]*$`
 	// +kubebuilder:validation:MaxLength=15
 	// +optional
@@ -68,7 +69,8 @@ type HostMaster struct {
 	Type string `json:"type,omitempty"`
 
 	// If true, the interface will be created automatically if not present.
-	// The name of the bridge is of the form br-hs-<VNI>.
+	// If name is also set, the bridge will be created with the provided name.
+	// Otherwise, the name of the bridge is of the form br-hs-<VNI>.
 	// +kubebuilder:default:=false
 	AutoCreate bool `json:"autocreate,omitempty"`
 }
