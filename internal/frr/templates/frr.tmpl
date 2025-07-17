@@ -25,6 +25,14 @@ vrf {{ .VRF }}
 exit-vrf
 {{- end }}
 
+{{- if .BFDProfiles }}
+bfd
+{{- range .BFDProfiles }}
+{{- template "bfdprofile" dict "profile" . }}
+{{- end }}
+exit
+{{- end }}
+
 route-map allowall permit 1
 
 {{- if .Underlay.MyASN }}
