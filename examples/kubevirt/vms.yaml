@@ -1,0 +1,79 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: vm-cirros
+spec:
+  running: false
+  template:
+    spec:
+      networks:
+      - name: evpn
+        multus:
+          networkName: evpn
+      domain:
+        devices:
+          interfaces:
+          - bridge: {}
+            name: evpn
+          disks:
+          - disk:
+              bus: virtio
+            name: containerdisk
+          - disk:
+              bus: virtio
+            name: cloudinitdisk
+        resources:
+          requests:
+            memory: 1024M
+      terminationGracePeriodSeconds: 0
+      volumes:
+      - containerDisk:
+          image: quay.io/kubevirt/cirros-container-disk-demo:devel
+        name: containerdisk
+      - cloudInitNoCloud:
+          userData: |
+            #!/bin/sh
+            sudo ip address add 192.170.1.3/24 dev eth0
+            sudo ip r add default via 192.170.1.1
+            echo 'printed from cloud-init userdata'
+        name: cloudinitdisk
+---
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: vm-cirros1
+spec:
+  running: false
+  template:
+    spec:
+      networks:
+      - name: evpn
+        multus:
+          networkName: evpn
+      domain:
+        devices:
+          interfaces:
+          - bridge: {}
+            name: evpn
+          disks:
+          - disk:
+              bus: virtio
+            name: containerdisk
+          - disk:
+              bus: virtio
+            name: cloudinitdisk
+        resources:
+          requests:
+            memory: 1024M
+      terminationGracePeriodSeconds: 0
+      volumes:
+      - containerDisk:
+          image: quay.io/kubevirt/cirros-container-disk-demo:devel
+        name: containerdisk
+      - cloudInitNoCloud:
+          userData: |
+            #!/bin/sh
+            sudo ip address add 192.170.1.4/24 dev eth0
+            sudo ip r add default via 192.170.1.1
+            echo 'printed from cloud-init userdata'
+        name: cloudinitdisk
