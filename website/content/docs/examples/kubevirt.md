@@ -235,3 +235,4 @@ kubectl get network-attachment-definitions
 virtctl console vm-cirros
 ip addr show
 ```
+
