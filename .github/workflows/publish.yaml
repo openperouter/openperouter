@@ -158,6 +158,8 @@ jobs:
         with:
           app_id: ${{ secrets.PUBLISH_APP_ID }}
           private_key: ${{ secrets.PUBLISH_APP_PRIVATE_KEY }}
+          repositories: |
+            openperouter.github.io
 
       - name: Checkout
         uses: actions/checkout@v4
