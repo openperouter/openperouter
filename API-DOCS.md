@@ -123,7 +123,7 @@ _Appears in:_
 | `vrf` _string_ | VRF is the name of the linux VRF to be used inside the PERouter namespace.<br />The field is optional, if not set it the name of the VNI instance will be used. |  | MaxLength: 15 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9_-]*$` <br /> |
 | `hostasn` _integer_ | ASN is the expected AS number for a BGP speaking component running in<br />the default network namespace. If not set, the ASN field is going to be used. |  | Maximum: 4.294967295e+09 <br />Minimum: 0 <br /> |
 | `vni` _integer_ | VNI is the VXLan VNI to be used |  | Maximum: 4.294967295e+09 <br />Minimum: 0 <br /> |
-| `localcidr` _string_ | LocalCIDR is the CIDR to be used for the veth pair<br />to connect with the default namespace. The interface under<br />the PERouter side is going to use the first IP of the cidr on all the nodes. |  |  |
+| `localcidr` _[LocalCIDRConfig](#localcidrconfig)_ | LocalCIDR is the CIDR configuration for the veth pair<br />to connect with the default namespace. The interface under<br />the PERouter side is going to use the first IP of the cidr on all the nodes.<br />At least one of IPv4 or IPv6 must be provided. |  |  |
 | `vxlanport` _integer_ | VXLanPort is the port to be used for VXLan encapsulation. | 4789 |  |
 
 
@@ -138,6 +138,23 @@ L3VNIStatus defines the observed state of L3VNI.
 _Appears in:_
 - [L3VNI](#l3vni)
 
+
+
+#### LocalCIDRConfig
+
+
+
+
+
+
+
+_Appears in:_
+- [L3VNISpec](#l3vnispec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `ipv4` _string_ | IPv4 is the IPv4 CIDR to be used for the veth pair<br />to connect with the default namespace. The interface under<br />the PERouter side is going to use the first IP of the cidr on all the nodes. |  |  |
+| `ipv6` _string_ | IPv6 is the IPv6 CIDR to be used for the veth pair<br />to connect with the default namespace. The interface under<br />the PERouter side is going to use the first IP of the cidr on all the nodes. |  |  |
 
 
 #### Neighbor
