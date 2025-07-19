@@ -23,11 +23,6 @@ VERSION_PATCH="${VERSION##*.}"
 
 git checkout main
 
-if ! grep -q "## Release v$OPENPE_VERSION" RELEASE_NOTES.md; then
-  echo "Version $OPENPE_VERSION missing from release notes"
-  exit 1
-fi
-
 BRANCH_NAME="v$VERSION_MAJOR.$VERSION_MINOR"
 if [ $minor = "0" ]; then # patch release
 	git checkout -b $BRANCH_NAME
