@@ -36,3 +36,5 @@ resources:
   path: github.com/openperouter/openperouter/api/v1alpha1
   version: v1alpha1  
 version: "3"
+
+hello
