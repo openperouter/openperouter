@@ -139,7 +139,7 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 			for _, node := range nodes {
 				neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
 				Expect(err).NotTo(HaveOccurred())
-				validateNoSuchNeigh(exec, neighborIP)
+				validateNoSessionForNeigh(exec, neighborIP)
 			}
 		})
 	})
