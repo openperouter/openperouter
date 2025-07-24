@@ -57,7 +57,7 @@ func validateSessionWithNeighbor(fromName, toName string, exec executor.Executor
 	}, 5*time.Minute, time.Second).ShouldNot(HaveOccurred())
 }
 
-func validateNoSuchNeigh(exec executor.Executor, neighborIP string) {
+func validateNoSessionForNeigh(exec executor.Executor, neighborIP string) {
 	Eventually(func() error {
 		neigh, err := frr.NeighborInfo(neighborIP, exec)
 		if errors.As(err, &frr.NoNeighborError{}) {
@@ -66,6 +66,10 @@ func validateNoSuchNeigh(exec executor.Executor, neighborIP string) {
 		if err != nil {
 			return err
 		}
-		return fmt.Errorf("neighbor %s exists: %v", neighborIP, neigh)
+
+		if neigh.BgpState == "Established" {
+			return fmt.Errorf("neighbor %s is established: %v", neighborIP, neigh)
+		}
+		return nil
 	}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 }

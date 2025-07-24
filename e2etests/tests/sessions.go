@@ -4,13 +4,16 @@ package tests
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/openperouter/openperouter/api/v1alpha1"
+
 	"github.com/openperouter/openperouter/e2etests/pkg/config"
 	"github.com/openperouter/openperouter/e2etests/pkg/executor"
+	"github.com/openperouter/openperouter/e2etests/pkg/frr"
 	"github.com/openperouter/openperouter/e2etests/pkg/frrk8s"
 	"github.com/openperouter/openperouter/e2etests/pkg/infra"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
@@ -136,8 +139,147 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 			for _, node := range nodes {
 				neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
 				Expect(err).NotTo(HaveOccurred())
-				validateNoSuchNeigh(exec, neighborIP)
+				validateNoSessionForNeigh(exec, neighborIP)
 			}
 		})
 	})
+})
+
+var _ = Describe("Underlay BFD Configuration", Ordered, func() {
+	var cs clientset.Interface
+	routerPods := []*corev1.Pod{}
+	nodes := []corev1.Node{}
+
+	BeforeEach(func() {
+		cs = k8sclient.New()
+		var err error
+		routerPods, err = openperouter.RouterPods(cs)
+		Expect(err).NotTo(HaveOccurred())
+		nodesItems, err := cs.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		nodes = nodesItems.Items
+
+		// Enable BFD on leafkind
+		err = infra.UpdateLeafKindConfig(nodes, infra.EnableBFD)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	AfterEach(func() {
+		dumpIfFails(cs)
+		err := Updater.CleanAll()
+		Expect(err).NotTo(HaveOccurred())
+
+		By("waiting for router pods to rollout")
+		Eventually(func() error {
+			return openperouter.DaemonsetRolled(cs, routerPods)
+		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
+
+		err = infra.UpdateLeafKindConfig(nodes, !infra.EnableBFD)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	DescribeTable("should establish BFD sessions with the ToR",
+		func(underlay v1alpha1.Underlay) {
+			By("applying the underlay configuration")
+			err := Updater.Update(config.Resources{
+				Underlays: []v1alpha1.Underlay{
+					underlay,
+				},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("validating BFD sessions are established")
+			exec := executor.ForContainer(infra.KindLeaf)
+			Eventually(func() error {
+				bfdPeers, err := frr.GetBFDPeers(exec)
+				if err != nil {
+					return err
+				}
+
+				if len(bfdPeers.Peers) != len(nodes) {
+					return fmt.Errorf("expecting %d BFD peers, got %d", len(nodes), len(bfdPeers.Peers))
+				}
+
+				for _, node := range nodes {
+					neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
+					Expect(err).NotTo(HaveOccurred())
+
+					peer, ok := bfdPeers.Peers[neighborIP]
+					if !ok {
+						return fmt.Errorf("BFD session with %s not found", neighborIP)
+					}
+					if peer.Status != "up" {
+						return fmt.Errorf("BFD session with %s is not up", neighborIP)
+					}
+				}
+				return nil
+			}, 3*time.Minute, time.Second).ShouldNot(HaveOccurred())
+
+			By("validating BGP sessions are still established")
+			for _, node := range nodes {
+				neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
+				Expect(err).NotTo(HaveOccurred())
+				validateSessionWithNeighbor(infra.KindLeaf, node.Name, exec, neighborIP, Established)
+			}
+
+			if underlay.Spec.Neighbors[0].BFD != nil && underlay.Spec.Neighbors[0].BFD.TransmitInterval != nil {
+				By("validating BFD parameters are propagated to the router")
+				for _, pod := range routerPods {
+					podExec := executor.ForPod(pod.Namespace, pod.Name, "frr")
+					Eventually(func(g Gomega) {
+						runningConfig, err := frr.RunningConfig(podExec)
+						g.Expect(err).NotTo(HaveOccurred())
+
+						bfdSettings := underlay.Spec.Neighbors[0].BFD
+						g.Expect(runningConfig).To(ContainSubstring(fmt.Sprintf("detect-multiplier %d", *bfdSettings.DetectMultiplier)))
+						g.Expect(runningConfig).To(ContainSubstring(fmt.Sprintf("transmit-interval %d", *bfdSettings.TransmitInterval)))
+						g.Expect(runningConfig).To(ContainSubstring(fmt.Sprintf("receive-interval %d", *bfdSettings.ReceiveInterval)))
+
+					}, time.Minute, time.Second).Should(Succeed())
+				}
+			}
+		},
+		Entry("simple bfd",
+			v1alpha1.Underlay{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "underlay-simple-bfd",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.UnderlaySpec{
+					ASN:      64514,
+					VTEPCIDR: "100.65.0.0/24",
+					Nics:     []string{"toswitch"},
+					Neighbors: []v1alpha1.Neighbor{
+						{
+							ASN:     64512,
+							Address: "192.168.11.2",
+							BFD:     &v1alpha1.BFDSettings{},
+						},
+					},
+				},
+			}),
+		Entry("bfd with parameters",
+			v1alpha1.Underlay{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "underlay-bfd-params",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.UnderlaySpec{
+					ASN:      64514,
+					VTEPCIDR: "100.65.0.0/24",
+					Nics:     []string{"toswitch"},
+					Neighbors: []v1alpha1.Neighbor{
+						{
+							ASN:     64512,
+							Address: "192.168.11.2",
+							BFD: &v1alpha1.BFDSettings{
+								TransmitInterval: ptr.To(uint32(90)),
+								ReceiveInterval:  ptr.To(uint32(80)),
+								DetectMultiplier: ptr.To(uint32(5)),
+							},
+						},
+					},
+				},
+			}),
+	)
 })

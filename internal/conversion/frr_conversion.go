@@ -35,14 +35,19 @@ func APItoFRR(nodeIndex int, underlays []v1alpha1.Underlay, vnis []v1alpha1.L3VN
 	if err != nil {
 		return frr.Config{}, fmt.Errorf("failed to get vtep ip, cidr %s, nodeIntex %d", underlay.Spec.VTEPCIDR, nodeIndex)
 	}
-
 	underlayNeighbors := []frr.NeighborConfig{}
+	bfdProfiles := []frr.BFDSettings{}
 	for _, n := range underlay.Spec.Neighbors {
 		frrNeigh, err := neighborToFRR(n)
 		if err != nil {
 			return frr.Config{}, fmt.Errorf("failed to translate underlay neighbor %s to frr, err: %w", neighborName(n), err)
 		}
 		underlayNeighbors = append(underlayNeighbors, *frrNeigh)
+
+		// Collect BFD profiles if they exist
+		if frrNeigh.BFDSettings != nil {
+			bfdProfiles = append(bfdProfiles, *frrNeigh.BFDSettings)
+		}
 	}
 	underlayConfig := frr.UnderlayConfig{
 		MyASN:     underlay.Spec.ASN,
@@ -59,9 +64,10 @@ func APItoFRR(nodeIndex int, underlays []v1alpha1.Underlay, vnis []v1alpha1.L3VN
 	}
 
 	return frr.Config{
-		Underlay: underlayConfig,
-		VNIs:     vniConfigs,
-		Loglevel: logLevel,
+		Underlay:    underlayConfig,
+		VNIs:        vniConfigs,
+		BFDProfiles: bfdProfiles,
+		Loglevel:    logLevel,
 	}, nil
 }
 
@@ -159,11 +165,55 @@ func neighborToFRR(n v1alpha1.Neighbor) (*frr.NeighborConfig, error) {
 		res.ConnectTime = ptr.To(connectSecond)
 	}
 
+	if n.BFD != nil {
+		if bfdHasCustomSettings(n.BFD) {
+			// Create a profile with custom settings
+			profileName := fmt.Sprintf("neighbor-%s", n.Address)
+			res.BFDProfile = profileName
+			res.BFDSettings = &frr.BFDSettings{
+				Name:             profileName,
+				ReceiveInterval:  n.BFD.ReceiveInterval,
+				TransmitInterval: n.BFD.TransmitInterval,
+				DetectMultiplier: n.BFD.DetectMultiplier,
+				EchoInterval:     n.BFD.EchoInterval,
+				EchoMode:         getBoolValue(n.BFD.EchoMode),
+				PassiveMode:      getBoolValue(n.BFD.PassiveMode),
+				MinimumTTL:       n.BFD.MinimumTTL,
+			}
+		} else {
+			// Just enable BFD with default settings
+			res.BFDEnabled = true
+		}
+	}
+
 	return res, nil
 }
 
 func neighborName(n v1alpha1.Neighbor) string {
 	return fmt.Sprintf("%d@%s", n.ASN, n.Address)
+}
+
+func getBoolValue(ptr *bool) bool {
+	if ptr == nil {
+		return false
+	}
+	return *ptr
+}
+
+// bfdHasCustomSettings checks if BFD settings contain any custom parameters
+func bfdHasCustomSettings(bfd *v1alpha1.BFDSettings) bool {
+	if bfd == nil {
+		return false
+	}
+
+	// Check if any BFD parameter is set to a non-default value
+	return bfd.ReceiveInterval != nil ||
+		bfd.TransmitInterval != nil ||
+		bfd.DetectMultiplier != nil ||
+		bfd.EchoInterval != nil ||
+		bfd.EchoMode != nil ||
+		bfd.PassiveMode != nil ||
+		bfd.MinimumTTL != nil
 }
 
 func parseTimers(ht, ka *metav1.Duration) (*uint64, *uint64, error) {

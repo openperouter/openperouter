@@ -20,10 +20,11 @@ var (
 )
 
 type Config struct {
-	Loglevel string
-	Hostname string
-	Underlay UnderlayConfig
-	VNIs     []L3VNIConfig
+	Loglevel    string
+	Hostname    string
+	Underlay    UnderlayConfig
+	VNIs        []L3VNIConfig
+	BFDProfiles []BFDSettings
 }
 
 type UnderlayConfig struct {
@@ -41,7 +42,7 @@ type L3VNIConfig struct {
 	VNI             int
 }
 
-type BFDProfile struct {
+type BFDSettings struct {
 	Name             string
 	ReceiveInterval  *uint32
 	TransmitInterval *uint32
@@ -61,7 +62,9 @@ type NeighborConfig struct {
 	KeepaliveTime *uint64
 	ConnectTime   *uint64
 	Password      string
+	BFDEnabled    bool
 	BFDProfile    string
+	BFDSettings   *BFDSettings
 	EBGPMultiHop  bool
 	IPFamily      ipfamily.Family
 }
