@@ -43,6 +43,16 @@ spec:
           - containerPort: 9443
             name: webhook-server
             protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: webhook-server
+            scheme: HTTPS
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: webhook-server
+            scheme: HTTPS
         resources:
           limits:
             cpu: 500m
