@@ -98,6 +98,9 @@ spec:
             required:
             - localcidr
             type: object
+            x-kubernetes-validations:
+            - message: hostASN must be different from asn for eBGP
+              rule: '!has(self.hostasn) || self.hostasn != self.asn'
           status:
             description: L3VNIStatus defines the observed state of L3VNI.
             type: object

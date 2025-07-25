@@ -162,6 +162,24 @@ var _ = Describe("Webhooks", func() {
 					VTEPCIDR: "notacidr",
 				},
 			}, "invalid vtep CIDR"),
+			Entry("when trying to create an underlay with a neighbor with the same ASN and HostASN", v1alpha1.Underlay{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "underlay",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.UnderlaySpec{
+					ASN: 65000,
+					Nics:     []string{"nic1"},
+					VTEPCIDR: "192.168.1.0/24",
+					Neighbors: []v1alpha1.Neighbor{
+						{
+							ASN:     65001,
+							HostASN: pointer.Uint32(65001),
+							Address: "192.168.1.1",
+						},
+					},
+				},
+			}, "hostASN must be different from asn for eBGP"),
 		)
 	})
 
