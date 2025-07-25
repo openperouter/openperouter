@@ -1,0 +1,46 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cni-plugins-system
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: cni-plugins-installer
+  namespace: cni-plugins-system
+spec:
+  selector:
+    matchLabels:
+      name: cni-plugins-installer
+  template:
+    metadata:
+      labels:
+        name: cni-plugins-installer
+    spec:
+      containers:
+      - name: pause
+        image: gcr.io/google-containers/pause:3.1
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+      initContainers:
+      - name: install-cni-plugins
+        image: busybox:1.36
+        command:
+          - sh
+          - -c
+          - |
+            set -ex
+            wget -O /tmp/cni-plugins.tgz https://github.com/containernetworking/plugins/releases/download/v1.7.1/cni-plugins-linux-amd64-v1.7.1.tgz
+            tar -xzvf /tmp/cni-plugins.tgz -C /host/opt/cni/bin
+            rm /tmp/cni-plugins.tgz
+        volumeMounts:
+        - mountPath: /host/opt/cni/bin
+          name: cni-bin
+      volumes:
+      - name: cni-bin
+        hostPath:
+          path: /opt/cni/bin
+          type: DirectoryOrCreate
