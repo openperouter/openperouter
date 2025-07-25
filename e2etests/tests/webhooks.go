@@ -131,6 +131,95 @@ var _ = Describe("Webhooks", func() {
 		)
 	})
 
+	Context("when L2VNI immutability is tested", func() {
+		BeforeEach(func() {
+			l2vni1 := v1alpha1.L2VNI{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-l2vni-immutable",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.L2VNISpec{
+					VNI:         300,
+					VXLanPort:   4789,
+					L2GatewayIP: "192.168.10.1/24",
+				},
+			}
+			By("creating an L2VNI with gateway IP")
+			err := Updater.Update(config.Resources{
+				L2VNIs: []v1alpha1.L2VNI{l2vni1},
+			})
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("should block updates to L2GatewayIP", func() {
+			// Try to update the L2GatewayIP
+			l2vniUpdated := v1alpha1.L2VNI{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-l2vni-immutable",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.L2VNISpec{
+					VNI:         300,
+					VXLanPort:   4789,
+					L2GatewayIP: "192.168.20.1/24", // Different gateway IP
+				},
+			}
+
+			err := Updater.Update(config.Resources{
+				L2VNIs: []v1alpha1.L2VNI{l2vniUpdated},
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("L2GatewayIP is immutable"))
+		})
+	})
+
+	Context("when L3VNI immutability is tested", func() {
+		BeforeEach(func() {
+			l3vni1 := v1alpha1.L3VNI{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-l3vni-immutable",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.L3VNISpec{
+					ASN:       65000,
+					VNI:       400,
+					VXLanPort: 4789,
+					LocalCIDR: v1alpha1.LocalCIDRConfig{
+						IPv4: "10.0.0.0/24",
+					},
+				},
+			}
+			By("creating an L3VNI with LocalCIDR")
+			err := Updater.Update(config.Resources{
+				L3VNIs: []v1alpha1.L3VNI{l3vni1},
+			})
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("should block updates to LocalCIDR", func() {
+			l3vniUpdated := v1alpha1.L3VNI{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-l3vni-immutable",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.L3VNISpec{
+					ASN:       65000,
+					VNI:       400,
+					VXLanPort: 4789,
+					LocalCIDR: v1alpha1.LocalCIDRConfig{
+						IPv4: "10.0.1.0/24",
+					},
+				},
+			}
+
+			err := Updater.Update(config.Resources{
+				L3VNIs: []v1alpha1.L3VNI{l3vniUpdated},
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("LocalCIDR is immutable"))
+		})
+	})
+
 	Context("when Underlay webhooks are enabled", func() {
 		DescribeTable("the webhook should block",
 			func(underlay v1alpha1.Underlay, expectedError string) {
