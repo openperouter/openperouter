@@ -72,26 +72,28 @@ Create two VNIs that match the fabric configuration:
 ```yaml
 # Red VNI (VNI 100)
 apiVersion: openpe.openperouter.github.io/v1alpha1
-kind: VNI
+kind: L3VNI
 metadata:
   name: red
   namespace: openperouter-system
 spec:
   asn: 64514
   vni: 100
-  localcidr: 192.169.10.0/24
+  localcidr:
+    ipv4: 192.169.10.0/24
   hostasn: 64515
 ---
 # Blue VNI (VNI 200)
 apiVersion: openpe.openperouter.github.io/v1alpha1
-kind: VNI
+kind: L3VNI
 metadata:
   name: blue
   namespace: openperouter-system
 spec:
   asn: 64514
   vni: 200
-  localcidr: 192.169.11.0/24
+  localcidr:
+    ipv4: 192.169.11.0/24
   hostasn: 64515
 ```
 

@@ -67,7 +67,8 @@ metadata:
 spec:
   asn: 64514
   vni: 100
-  localcidr: 192.169.10.0/24
+  localcidr:
+    ipv4: 192.169.10.0/24
   hostasn: 64515
 ---
 apiVersion: openpe.openperouter.github.io/v1alpha1
@@ -78,7 +79,8 @@ metadata:
 spec:
   asn: 64514
   vni: 200
-  localcidr: 192.169.11.0/24
+  localcidr:
+    ipv4: 192.169.11.0/24
   hostasn: 64515
 ```
 

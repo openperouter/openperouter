@@ -109,7 +109,8 @@ metadata:
 spec:
   asn: 64514
   vni: 200
-  localcidr: 192.169.11.0/24
+  localcidr:
+    ipv4: 192.169.11.0/24
   hostasn: 64515
 ```
 
@@ -136,7 +137,8 @@ metadata:
 spec:
   asn: 64514
   vni: 100
-  localcidr: 192.168.10.0/24
+  localcidr:
+    ipv4: 192.168.10.0/24
   hostasn: 64515
 ---
 # Development VNI
@@ -148,7 +150,8 @@ metadata:
 spec:
   asn: 64514
   vni: 200
-  localcidr: 192.168.20.0/24
+  localcidr:
+    ipv4: 192.168.20.0/24
   hostasn: 64515
 ```
 
