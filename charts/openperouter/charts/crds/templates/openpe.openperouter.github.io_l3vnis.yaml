@@ -77,6 +77,9 @@ spec:
                       the PERouter side is going to use the first IP of the cidr on all the nodes.
                     type: string
                 type: object
+                x-kubernetes-validations:
+                - message: LocalCIDR can't be changed
+                  rule: self == oldSelf
               vni:
                 description: VNI is the VXLan VNI to be used
                 format: int32

@@ -54,6 +54,7 @@ type L3VNISpec struct {
 	// the PERouter side is going to use the first IP of the cidr on all the nodes.
 	// At least one of IPv4 or IPv6 must be provided.
 	// +required
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="LocalCIDR can't be changed"
 	LocalCIDR LocalCIDRConfig `json:"localcidr"`
 
 	// VXLanPort is the port to be used for VXLan encapsulation.
