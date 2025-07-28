@@ -23,12 +23,27 @@ The setup creates both Layer 2 and Layer 3 VNIs, with OpenPERouter automatically
 
 ![KubeVirt L2 Integration](/images/openpel2vmtovm.svg)
 
-## Prerequisites
+## Example Setup
 
-- A Kubernetes cluster with KubeVirt installed
-- OpenPERouter deployed and configured
-- Multus CNI installed and configured
-- Access to a real cluster (this example cannot run on kind)
+> **Note:** Some operating systems have their `inotify.max_user_intances`
+> set too low to support larger kind clusters. This leads to:
+>
+> * virt-handler failing with CrashLoopBackOff, logging `panic: Failed to create an inotify watcher`
+> * nodemarker failing with CrashLoopBackOff, logging `too many open files`
+>
+> If that happens in your setup, you may want to increase the limit with:
+>
+> ```
+> sysctl -w fs.inotify.max_user_instances=1024
+> ```
+
+The full example can be found in the [project repository](https://github.com/openperouter/openperouter/examples/kubevirt) and can be deployed by running:
+
+```bash
+make docker-build demo-kubevirt
+```
+
+The example configures both an L2 VNI and an L3 VNI. The L2 VNI belongs to the L3 VNI's routing domain. VMs are connected into a single L2 overlay. Additionally, the VMs are able to reach the broader L3 domain, and are reachable from the broader L3 domain.
 
 ## Configuration
 
@@ -79,7 +94,6 @@ apiVersion: k8s.cni.cncf.io/v1
 kind: NetworkAttachmentDefinition
 metadata:
   name: evpn
-  namespace: default
 spec:
   config: |
     {
@@ -100,9 +114,9 @@ Create two virtual machines with network connectivity:
 apiVersion: kubevirt.io/v1
 kind: VirtualMachine
 metadata:
-  name: vm-cirros
+  name: vm-1
 spec:
-  running: false
+  runStrategy: Always
   template:
     spec:
       networks:
@@ -123,26 +137,29 @@ spec:
             name: cloudinitdisk
         resources:
           requests:
-            memory: 1024M
+            memory: 2048M
       terminationGracePeriodSeconds: 0
       volumes:
       - containerDisk:
-          image: quay.io/kubevirt/cirros-container-disk-demo:devel
+          image: quay.io/kubevirt/fedora-with-test-tooling-container-disk:v1.1.0
         name: containerdisk
       - cloudInitNoCloud:
-          userData: |
-            #!/bin/sh
-            sudo ip address add 192.170.1.3/24 dev eth0
-            sudo ip r add default via 192.170.1.1
-            echo 'printed from cloud-init userdata'
+          networkData: |
+            version: 2
+            ethernets:
+              eth0:
+                addresses:
+                - 192.170.1.3/24
+                gateway4: 192.170.1.1
         name: cloudinitdisk
+
 ```
 
 **VM Configuration Details:**
 
 - Uses the `evpn` network attachment for bridge connectivity
 - Cloud-init configures the VM's IP address and default gateway
-- Second VM should use IP `192.170.1.4/24` for testing
+- Second VM is using IP `192.170.1.4/24` and name `vm-2`
 
 ## Validation
 
@@ -152,7 +169,10 @@ Test connectivity between the two VMs:
 
 ```bash
 # Connect to VM console
-virtctl console vm-cirros
+virtctl console vm-1
+
+# It may take about 2 minutes to start up and get to the login.
+# Once it does, login with username "fedora" an password "fedora".
 
 # Test ping to the other VM
 ping 192.170.1.4
@@ -209,7 +229,7 @@ Verify that connectivity persists during live migration:
 ping 192.170.1.4
 
 # In another terminal, initiate live migration
-virtctl migrate vm-cirros1
+virtctl migrate vm-2
 ```
 
 The ping should continue working throughout the migration process.
@@ -232,7 +252,7 @@ ip link show br-hs-110
 kubectl get network-attachment-definitions
 
 # Check VM network interfaces
-virtctl console vm-cirros
+virtctl console vm-1
 ip addr show
 ```
 

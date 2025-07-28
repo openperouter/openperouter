@@ -1,9 +1,25 @@
+---
+apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: evpn
+spec:
+  config: |
+    {
+      "cniVersion": "0.3.1",
+      "name": "evpn",
+      "type": "bridge",
+      "bridge": "br-hs-110",
+      "macspoofchk": false,
+      "disableContainerInterface": true
+    }
+---
 apiVersion: kubevirt.io/v1
 kind: VirtualMachine
 metadata:
-  name: vm-cirros
+  name: vm-1
 spec:
-  running: false
+  runStrategy: Always
   template:
     spec:
       networks:
@@ -24,26 +40,28 @@ spec:
             name: cloudinitdisk
         resources:
           requests:
-            memory: 1024M
+            memory: 2048M
       terminationGracePeriodSeconds: 0
       volumes:
       - containerDisk:
-          image: quay.io/kubevirt/cirros-container-disk-demo:devel
+          image: quay.io/kubevirt/fedora-with-test-tooling-container-disk:v1.1.0
         name: containerdisk
       - cloudInitNoCloud:
-          userData: |
-            #!/bin/sh
-            sudo ip address add 192.170.1.3/24 dev eth0
-            sudo ip r add default via 192.170.1.1
-            echo 'printed from cloud-init userdata'
+          networkData: |
+            version: 2
+            ethernets:
+              eth0:
+                addresses:
+                - 192.170.1.3/24
+                gateway4: 192.170.1.1
         name: cloudinitdisk
 ---
 apiVersion: kubevirt.io/v1
 kind: VirtualMachine
 metadata:
-  name: vm-cirros1
+  name: vm-2
 spec:
-  running: false
+  runStrategy: Always
   template:
     spec:
       networks:
@@ -64,16 +82,18 @@ spec:
             name: cloudinitdisk
         resources:
           requests:
-            memory: 1024M
+            memory: 2048M
       terminationGracePeriodSeconds: 0
       volumes:
       - containerDisk:
-          image: quay.io/kubevirt/cirros-container-disk-demo:devel
+          image: quay.io/kubevirt/fedora-with-test-tooling-container-disk:v1.1.0
         name: containerdisk
       - cloudInitNoCloud:
-          userData: |
-            #!/bin/sh
-            sudo ip address add 192.170.1.4/24 dev eth0
-            sudo ip r add default via 192.170.1.1
-            echo 'printed from cloud-init userdata'
+          networkData: |
+            version: 2
+            ethernets:
+              eth0:
+                addresses:
+                - 192.170.1.4/24
+                gateway4: 192.170.1.1
         name: cloudinitdisk
