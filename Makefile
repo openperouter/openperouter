@@ -370,6 +370,10 @@ demo-l2:
 demo-calico:
 	examples/calico/prepare.sh
 
+.PHONY: demo-kubevirt
+demo-kubevirt:
+	examples/kubevirt/prepare.sh
+
 #
 # Operator specifics, copied from a Makefile generated on a clean folder by operator-sdk, then modified.
 #
