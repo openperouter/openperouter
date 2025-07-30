@@ -26,7 +26,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
-	"k8s.io/utils/ptr"
 )
 
 var (
@@ -49,13 +48,15 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			Namespace: openperouter.Namespace,
 		},
 		Spec: v1alpha1.L3VNISpec{
-			ASN: 64514,
 			VNI: 100,
-			LocalCIDR: v1alpha1.LocalCIDRConfig{
-				IPv4: "192.169.10.0/24",
-				IPv6: "2001:db8:1::/64",
+			HostSession: &v1alpha1.HostSession{
+				ASN: 64514,
+				LocalCIDR: v1alpha1.LocalCIDRConfig{
+					IPv4: "192.169.10.0/24",
+					IPv6: "2001:db8:1::/64",
+				},
+				HostASN: 64515,
 			},
-			HostASN: ptr.To(uint32(64515)),
 		},
 	}
 
@@ -65,13 +66,15 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			Namespace: openperouter.Namespace,
 		},
 		Spec: v1alpha1.L3VNISpec{
-			ASN: 64514,
 			VNI: 200,
-			LocalCIDR: v1alpha1.LocalCIDRConfig{
-				IPv4: "192.169.11.0/24",
-				IPv6: "2001:db8:2::/64",
+			HostSession: &v1alpha1.HostSession{
+				ASN: 64514,
+				LocalCIDR: v1alpha1.LocalCIDRConfig{
+					IPv4: "192.169.11.0/24",
+					IPv6: "2001:db8:2::/64",
+				},
+				HostASN: 64515,
 			},
-			HostASN: ptr.To(uint32(64515)),
 		},
 	}
 
@@ -251,11 +254,11 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 
 					ipv4Prefixes, ipv6Prefixes := separateIPFamilies(prefixes)
 
-					if err := checkPrefixesForIPFamily(frrk8s, ipv4Prefixes, vni.Spec.LocalCIDR.IPv4, "IPv4", shouldExist, ipv4Routes); err != nil {
+					if err := checkPrefixesForIPFamily(frrk8s, ipv4Prefixes, vni.Spec.HostSession.LocalCIDR.IPv4, "IPv4", shouldExist, ipv4Routes); err != nil {
 						return err
 					}
 
-					if err := checkPrefixesForIPFamily(frrk8s, ipv6Prefixes, vni.Spec.LocalCIDR.IPv6, "IPv6", shouldExist, ipv6Routes); err != nil {
+					if err := checkPrefixesForIPFamily(frrk8s, ipv6Prefixes, vni.Spec.HostSession.LocalCIDR.IPv6, "IPv6", shouldExist, ipv6Routes); err != nil {
 						return err
 					}
 
@@ -385,10 +388,10 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		) {
 
 			var localCIDR string
-			localCIDR = vni.Spec.LocalCIDR.IPv4
+			localCIDR = vni.Spec.HostSession.LocalCIDR.IPv4
 
 			if ipFamily == ipfamily.IPv6 {
-				localCIDR = vni.Spec.LocalCIDR.IPv6
+				localCIDR = vni.Spec.HostSession.LocalCIDR.IPv6
 			}
 			hostSide, err := openperouter.HostIPFromCIDRForNode(localCIDR, podNode)
 			Expect(err).NotTo(HaveOccurred())
