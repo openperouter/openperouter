@@ -77,11 +77,12 @@ metadata:
   name: red
   namespace: openperouter-system
 spec:
-  asn: 64514
   vni: 100
-  localcidr:
-    ipv4: 192.169.10.0/24
-  hostasn: 64515
+  hostsession:
+    asn: 64514
+    hostasn: 64515
+    localcidr:
+      ipv4: 192.169.10.0/24
 ---
 # Blue VNI (VNI 200)
 apiVersion: openpe.openperouter.github.io/v1alpha1
@@ -90,11 +91,12 @@ metadata:
   name: blue
   namespace: openperouter-system
 spec:
-  asn: 64514
   vni: 200
-  localcidr:
-    ipv4: 192.169.11.0/24
-  hostasn: 64515
+  hostsession:
+    asn: 64514
+    hostasn: 64515
+    localcidr:
+      ipv4: 192.169.11.0/24
 ```
 
 **VNI Details:**
