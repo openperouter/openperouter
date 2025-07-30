@@ -35,9 +35,9 @@ func APItoHostConfig(nodeIndex int, targetNS string, underlays []v1alpha1.Underl
 	l3vniParams := []hostnetwork.L3VNIParams{}
 
 	for _, vni := range vnis {
-		vethIPs, err := ipam.VethIPsFromPool(vni.Spec.LocalCIDR.IPv4, vni.Spec.LocalCIDR.IPv6, nodeIndex)
+		vethIPs, err := ipam.VethIPsFromPool(vni.Spec.HostSession.LocalCIDR.IPv4, vni.Spec.HostSession.LocalCIDR.IPv6, nodeIndex)
 		if err != nil {
-			return hostnetwork.UnderlayParams{}, nil, nil, fmt.Errorf("failed to get veth ips, cidr %v, nodeIndex %d", vni.Spec.LocalCIDR, nodeIndex)
+			return hostnetwork.UnderlayParams{}, nil, nil, fmt.Errorf("failed to get veth ips, cidr %v, nodeIndex %d", vni.Spec.HostSession.LocalCIDR, nodeIndex)
 		}
 
 		v := hostnetwork.L3VNIParams{

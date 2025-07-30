@@ -72,7 +72,7 @@ func APItoFRR(nodeIndex int, underlays []v1alpha1.Underlay, vnis []v1alpha1.L3VN
 }
 
 func l3vniToFRR(vni v1alpha1.L3VNI, nodeIndex int) ([]frr.L3VNIConfig, error) {
-	veths, err := ipam.VethIPsFromPool(vni.Spec.LocalCIDR.IPv4, vni.Spec.LocalCIDR.IPv6, nodeIndex)
+	veths, err := ipam.VethIPsFromPool(vni.Spec.HostSession.LocalCIDR.IPv4, vni.Spec.HostSession.LocalCIDR.IPv6, nodeIndex)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get veths ips for vni %s: %w", vni.Name, err)
 	}
@@ -103,9 +103,9 @@ func createVNIConfig(vni v1alpha1.L3VNI, hostIP net.IP, mask net.IPMask) frr.L3V
 	vniNeighbor := &frr.NeighborConfig{
 		Addr: hostIP.String(),
 	}
-	vniNeighbor.ASN = vni.Spec.ASN
-	if vni.Spec.HostASN != nil {
-		vniNeighbor.ASN = *vni.Spec.HostASN
+	vniNeighbor.ASN = vni.Spec.HostSession.ASN
+	if vni.Spec.HostSession.HostASN != 0 {
+		vniNeighbor.ASN = vni.Spec.HostSession.HostASN
 	}
 
 	ipnet := net.IPNet{
@@ -114,7 +114,7 @@ func createVNIConfig(vni v1alpha1.L3VNI, hostIP net.IP, mask net.IPMask) frr.L3V
 	}
 
 	config := frr.L3VNIConfig{
-		ASN:           vni.Spec.ASN,
+		ASN:           vni.Spec.HostSession.ASN,
 		VNI:           int(vni.Spec.VNI),
 		VRF:           vni.VRFName(),
 		LocalNeighbor: vniNeighbor,

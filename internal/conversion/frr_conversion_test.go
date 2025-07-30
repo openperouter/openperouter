@@ -81,13 +81,15 @@ func TestAPItoFRR(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
 					Spec: v1alpha1.L3VNISpec{
-						ASN: 65000,
-						LocalCIDR: v1alpha1.LocalCIDRConfig{
-							IPv4: "192.168.2.0/24",
+						HostSession: &v1alpha1.HostSession{
+							ASN: 65000,
+							LocalCIDR: v1alpha1.LocalCIDRConfig{
+								IPv4: "192.168.2.0/24",
+							},
+							HostASN: 65001,
 						},
-						HostASN: ptr.To(uint32(65001)),
-						VRF:     ptr.To("vrf1"),
-						VNI:     200,
+						VRF: ptr.To("vrf1"),
+						VNI: 200,
 					},
 				},
 			},
@@ -140,13 +142,15 @@ func TestAPItoFRR(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
 					Spec: v1alpha1.L3VNISpec{
-						ASN: 65000,
-						LocalCIDR: v1alpha1.LocalCIDRConfig{
-							IPv6: "2001:db8::/64",
+						HostSession: &v1alpha1.HostSession{
+							ASN: 65000,
+							LocalCIDR: v1alpha1.LocalCIDRConfig{
+								IPv6: "2001:db8::/64",
+							},
+							HostASN: 65001,
 						},
-						HostASN: ptr.To(uint32(65001)),
-						VRF:     ptr.To("vrf1"),
-						VNI:     200,
+						VRF: ptr.To("vrf1"),
+						VNI: 200,
 					},
 				},
 			},
@@ -199,14 +203,16 @@ func TestAPItoFRR(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
 					Spec: v1alpha1.L3VNISpec{
-						ASN: 65000,
-						LocalCIDR: v1alpha1.LocalCIDRConfig{
-							IPv4: "192.168.2.0/24",
-							IPv6: "2001:db8::/64",
+						HostSession: &v1alpha1.HostSession{
+							ASN: 65000,
+							LocalCIDR: v1alpha1.LocalCIDRConfig{
+								IPv4: "192.168.2.0/24",
+								IPv6: "2001:db8::/64",
+							},
+							HostASN: 65001,
 						},
-						HostASN: ptr.To(uint32(65001)),
-						VRF:     ptr.To("vrf1"),
-						VNI:     200,
+						VRF: ptr.To("vrf1"),
+						VNI: 200,
 					},
 				},
 			},
