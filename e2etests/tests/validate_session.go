@@ -20,13 +20,14 @@ const Established = true
 
 func validateFRRK8sSessionForVNI(vni v1alpha1.L3VNI, established bool, frrk8sPods ...*corev1.Pod) {
 	var cidrs []string
-	Expect(vni.Spec.LocalCIDR.IPv4 != "" || vni.Spec.LocalCIDR.IPv6 != "").To(BeTrue(), "either IPv4 or IPv6 CIDR must be provided")
+	Expect(vni.Spec.HostSession != nil).To(BeTrue(), "HostSession must be provided")
+	Expect(vni.Spec.HostSession.LocalCIDR.IPv4 != "" || vni.Spec.HostSession.LocalCIDR.IPv6 != "").To(BeTrue(), "either IPv4 or IPv6 CIDR must be provided")
 
-	if vni.Spec.LocalCIDR.IPv4 != "" {
-		cidrs = append(cidrs, vni.Spec.LocalCIDR.IPv4)
+	if vni.Spec.HostSession.LocalCIDR.IPv4 != "" {
+		cidrs = append(cidrs, vni.Spec.HostSession.LocalCIDR.IPv4)
 	}
-	if vni.Spec.LocalCIDR.IPv6 != "" {
-		cidrs = append(cidrs, vni.Spec.LocalCIDR.IPv6)
+	if vni.Spec.HostSession.LocalCIDR.IPv6 != "" {
+		cidrs = append(cidrs, vni.Spec.HostSession.LocalCIDR.IPv6)
 	}
 
 	for _, cidr := range cidrs {

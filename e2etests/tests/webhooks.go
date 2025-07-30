@@ -38,8 +38,12 @@ var _ = Describe("Webhooks", func() {
 				},
 				Spec: v1alpha1.L3VNISpec{
 					VRF: pointer.String("test-vrf"),
-					LocalCIDR: v1alpha1.LocalCIDRConfig{
-						IPv4: "10.0.0.0/24",
+					HostSession: &v1alpha1.HostSession{
+						ASN: 64514,
+						LocalCIDR: v1alpha1.LocalCIDRConfig{
+							IPv4: "10.0.0.0/24",
+						},
+						HostASN: 64515,
 					},
 					VNI:       100,
 					VXLanPort: 4789,
@@ -67,8 +71,12 @@ var _ = Describe("Webhooks", func() {
 				},
 				Spec: v1alpha1.L3VNISpec{
 					VRF: pointer.String("test-vrf-2"),
-					LocalCIDR: v1alpha1.LocalCIDRConfig{
-						IPv4: "10.0.1.0/24",
+					HostSession: &v1alpha1.HostSession{
+						ASN: 64514,
+						LocalCIDR: v1alpha1.LocalCIDRConfig{
+							IPv4: "10.0.1.0/24",
+						},
+						HostASN: 64515,
 					},
 					VNI:       100,
 					VXLanPort: 4789,
@@ -81,8 +89,12 @@ var _ = Describe("Webhooks", func() {
 				},
 				Spec: v1alpha1.L3VNISpec{
 					VRF: pointer.String("test-vrf-3"),
-					LocalCIDR: v1alpha1.LocalCIDRConfig{
-						IPv4: "invalid-cidr",
+					HostSession: &v1alpha1.HostSession{
+						ASN: 64514,
+						LocalCIDR: v1alpha1.LocalCIDRConfig{
+							IPv4: "invalid-cidr",
+						},
+						HostASN: 64515,
 					},
 					VNI:       101,
 					VXLanPort: 4789,

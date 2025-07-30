@@ -22,13 +22,6 @@ import (
 
 // L3VNISpec defines the desired state of VNI.
 type L3VNISpec struct {
-	// ASN is the local AS number to use to establish a BGP session with
-	// the default namespace.
-	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:validation:Maximum=4294967295
-	// +required
-	ASN uint32 `json:"asn,omitempty"`
-
 	// VRF is the name of the linux VRF to be used inside the PERouter namespace.
 	// The field is optional, if not set it the name of the VNI instance will be used.
 	// +kubebuilder:validation:Pattern=`^[a-zA-Z][a-zA-Z0-9_-]*$`
@@ -36,18 +29,35 @@ type L3VNISpec struct {
 	// +optional
 	VRF *string `json:"vrf,omitempty"`
 
-	// ASN is the expected AS number for a BGP speaking component running in
-	// the default network namespace. If not set, the ASN field is going to be used.
-	// +kubebuilder:validation:Minimum=0
-	// +kubebuilder:validation:Maximum=4294967295
-	// +optional
-	HostASN *uint32 `json:"hostasn,omitempty"`
-
 	// VNI is the VXLan VNI to be used
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:validation:Maximum=4294967295
 	// +optional
 	VNI uint32 `json:"vni,omitempty"`
+
+	// VXLanPort is the port to be used for VXLan encapsulation.
+	// +kubebuilder:default:=4789
+	VXLanPort uint32 `json:"vxlanport,omitempty"`
+
+	// HostSession is the configuration for the host session.
+	// +optional
+	HostSession *HostSession `json:"hostsession,omitempty"`
+}
+
+type HostSession struct {
+	// ASN is the local AS number to use to establish a BGP session with
+	// the default namespace.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=4294967295
+	// +required
+	ASN uint32 `json:"asn,omitempty"`
+
+	// ASN is the expected AS number for a BGP speaking component running in
+	// the default network namespace. If not set, the ASN field is going to be used.
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=4294967295
+	// +required
+	HostASN uint32 `json:"hostasn,omitempty"`
 
 	// LocalCIDR is the CIDR configuration for the veth pair
 	// to connect with the default namespace. The interface under
@@ -55,10 +65,6 @@ type L3VNISpec struct {
 	// At least one of IPv4 or IPv6 must be provided.
 	// +required
 	LocalCIDR LocalCIDRConfig `json:"localcidr"`
-
-	// VXLanPort is the port to be used for VXLan encapsulation.
-	// +kubebuilder:default:=4789
-	VXLanPort uint32 `json:"vxlanport,omitempty"`
 }
 
 type LocalCIDRConfig struct {

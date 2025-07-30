@@ -25,19 +25,19 @@ func ValidateL3VNIs(l3Vnis []v1alpha1.L3VNI) error {
 	existingCIDRsV4 := map[string]string{}
 	existingCIDRsV6 := map[string]string{}
 	for _, vni := range l3Vnis {
-		if vni.Spec.LocalCIDR.IPv4 != "" {
-			if err := validateCIDRForVNI(vni, vni.Spec.LocalCIDR.IPv4, existingCIDRsV4); err != nil {
+		if vni.Spec.HostSession.LocalCIDR.IPv4 != "" {
+			if err := validateCIDRForVNI(vni, vni.Spec.HostSession.LocalCIDR.IPv4, existingCIDRsV4); err != nil {
 				return err
 			}
-			existingCIDRsV4[vni.Spec.LocalCIDR.IPv4] = vni.Name
+			existingCIDRsV4[vni.Spec.HostSession.LocalCIDR.IPv4] = vni.Name
 		}
-		if vni.Spec.LocalCIDR.IPv6 != "" {
-			if err := validateCIDRForVNI(vni, vni.Spec.LocalCIDR.IPv6, existingCIDRsV6); err != nil {
+		if vni.Spec.HostSession.LocalCIDR.IPv6 != "" {
+			if err := validateCIDRForVNI(vni, vni.Spec.HostSession.LocalCIDR.IPv6, existingCIDRsV6); err != nil {
 				return err
 			}
-			existingCIDRsV6[vni.Spec.LocalCIDR.IPv6] = vni.Name
+			existingCIDRsV6[vni.Spec.HostSession.LocalCIDR.IPv6] = vni.Name
 		}
-		if vni.Spec.LocalCIDR.IPv4 == "" && vni.Spec.LocalCIDR.IPv6 == "" {
+		if vni.Spec.HostSession.LocalCIDR.IPv4 == "" && vni.Spec.HostSession.LocalCIDR.IPv6 == "" {
 			return fmt.Errorf("at least one local CIDR (IPv4 or IPv6) must be provided for vni %s", vni.Name)
 		}
 	}

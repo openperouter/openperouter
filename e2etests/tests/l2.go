@@ -34,12 +34,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			Namespace: openperouter.Namespace,
 		},
 		Spec: v1alpha1.L3VNISpec{
-			ASN: 64514,
 			VNI: 100,
-			LocalCIDR: v1alpha1.LocalCIDRConfig{
-				IPv4: "192.169.10.0/24",
-			},
-			HostASN: ptr.To(uint32(64515)),
 		},
 	}
 
