@@ -69,8 +69,10 @@ func TestAPItoHostConfig(t *testing.T) {
 						VNI:       100,
 						VXLanPort: 4789,
 					},
-					VethHostIPv4: "10.1.0.2/24",
-					VethNSIPv4:   "10.1.0.1/24",
+					HostVeth: &hostnetwork.Veth{
+						HostIPv4: "10.1.0.2/24",
+						NSIPv4:   "10.1.0.1/24",
+					},
 				},
 			},
 			wantL2VNIParams: []hostnetwork.L2VNIParams{},
@@ -100,8 +102,10 @@ func TestAPItoHostConfig(t *testing.T) {
 						VNI:       100,
 						VXLanPort: 4789,
 					},
-					VethHostIPv6: "2001:db8::2/64",
-					VethNSIPv6:   "2001:db8::1/64",
+					HostVeth: &hostnetwork.Veth{
+						HostIPv6: "2001:db8::2/64",
+						NSIPv6:   "2001:db8::1/64",
+					},
 				},
 			},
 			wantL2VNIParams: []hostnetwork.L2VNIParams{},
@@ -131,10 +135,12 @@ func TestAPItoHostConfig(t *testing.T) {
 						VNI:       100,
 						VXLanPort: 4789,
 					},
-					VethHostIPv4: "10.1.0.2/24",
-					VethNSIPv4:   "10.1.0.1/24",
-					VethHostIPv6: "2001:db8::2/64",
-					VethNSIPv6:   "2001:db8::1/64",
+					HostVeth: &hostnetwork.Veth{
+						HostIPv4: "10.1.0.2/24",
+						NSIPv4:   "10.1.0.1/24",
+						HostIPv6: "2001:db8::2/64",
+						NSIPv6:   "2001:db8::1/64",
+					},
 				},
 			},
 			wantL2VNIParams: []hostnetwork.L2VNIParams{},
@@ -199,6 +205,36 @@ func TestAPItoHostConfig(t *testing.T) {
 				},
 			},
 			wantErr: false,
+		},
+		{
+			name:      "l3vni without host session",
+			nodeIndex: 0,
+			targetNS:  "namespace",
+			underlays: []v1alpha1.Underlay{
+				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth0"}, VTEPCIDR: "10.0.0.0/24"}},
+			},
+			vnis: []v1alpha1.L3VNI{
+				{Spec: v1alpha1.L3VNISpec{VRF: ptr.String("red"), HostSession: nil, VNI: 100, VXLanPort: 4789}},
+			},
+			wantUnderlay: hostnetwork.UnderlayParams{
+				UnderlayInterface: "eth0",
+				TargetNS:          "namespace",
+				VtepIP:            "10.0.0.0/32",
+			},
+			wantL3VNIParams: []hostnetwork.L3VNIParams{
+				{
+					VNIParams: hostnetwork.VNIParams{
+						VRF:       "red",
+						TargetNS:  "namespace",
+						VTEPIP:    "10.0.0.0/32",
+						VNI:       100,
+						VXLanPort: 4789,
+					},
+					HostVeth: nil,
+				},
+			},
+			wantL2VNIParams: []hostnetwork.L2VNIParams{},
+			wantErr:         false,
 		},
 	}
 

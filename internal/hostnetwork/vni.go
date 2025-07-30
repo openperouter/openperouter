@@ -22,11 +22,15 @@ type VNIParams struct {
 }
 
 type L3VNIParams struct {
-	VNIParams    `json:",inline"`
-	VethHostIPv4 string `json:"vethhostipv4"`
-	VethNSIPv4   string `json:"vethnsipv4"`
-	VethHostIPv6 string `json:"vethhostipv6"`
-	VethNSIPv6   string `json:"vethnsipv6"`
+	VNIParams `json:",inline"`
+	HostVeth  *Veth `json:"veth"`
+}
+
+type Veth struct {
+	HostIPv4 string `json:"hostipv4"`
+	NSIPv4   string `json:"nsipv4"`
+	HostIPv6 string `json:"hostipv6"`
+	NSIPv6   string `json:"nsipv6"`
 }
 
 type L2VNIParams struct {
@@ -67,6 +71,15 @@ func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
 	slog.DebugContext(ctx, "setting up l3 VNI", "params", params)
 	defer slog.DebugContext(ctx, "end setting up l3 VNI", "params", params)
 
+	if params.HostVeth == nil {
+		slog.DebugContext(ctx, "no host veth configured, skipping setup")
+		return nil
+	}
+
+	if err := setupVNIVeth(ctx, params.VNIParams); err != nil {
+		return fmt.Errorf("SetupL3VNI: failed to setup VNI veth: %w", err)
+	}
+
 	ns, err := netns.GetFromName(params.TargetNS)
 	if err != nil {
 		return fmt.Errorf("SetupVNI: Failed to get network namespace %s: %w", params.TargetNS, err)
@@ -84,7 +97,7 @@ func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
 		return fmt.Errorf("SetupL3VNI: host veth %s does not exist, cannot setup L3 VNI", hostSide)
 	}
 
-	err = assignIPsToInterface(hostVeth, params.VethHostIPv4, params.VethHostIPv6)
+	err = assignIPsToInterface(hostVeth, params.HostVeth.HostIPv4, params.HostVeth.HostIPv6)
 	if err != nil {
 		return fmt.Errorf("failed to assign IPs to host veth: %w", err)
 	}
@@ -95,7 +108,7 @@ func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
 			return fmt.Errorf("could not find peer veth %s in namespace %s: %w", peSide, params.TargetNS, err)
 		}
 
-		err = assignIPsToInterface(peVeth, params.VethNSIPv4, params.VethNSIPv6)
+		err = assignIPsToInterface(peVeth, params.HostVeth.NSIPv4, params.HostVeth.NSIPv6)
 		if err != nil {
 			return fmt.Errorf("failed to assign IPs to PE veth: %w", err)
 		}
@@ -124,6 +137,10 @@ func SetupL2VNI(ctx context.Context, params L2VNIParams) error {
 	if err := setupVNI(ctx, params.VNIParams); err != nil {
 		return fmt.Errorf("SetupL2VNI: failed to setup VNI: %w", err)
 	}
+	if err := setupVNIVeth(ctx, params.VNIParams); err != nil {
+		return fmt.Errorf("SetupL2VNI: failed to setup VNI veth: %w", err)
+	}
+
 	slog.DebugContext(ctx, "setting up l2 VNI", "params", params)
 	defer slog.DebugContext(ctx, "end setting up l2 VNI", "params", params)
 
@@ -206,6 +223,47 @@ func setupVNI(ctx context.Context, params VNIParams) error {
 		}
 	}()
 
+	if err := inNamespace(ns, func() error {
+
+		slog.DebugContext(ctx, "setting up vrf", "vrf", params.VRF)
+		vrf, err := setupVRF(params.VRF)
+		if err != nil {
+			return err
+		}
+
+		slog.DebugContext(ctx, "setting up bridge")
+		bridge, err := setupBridge(params, vrf)
+		if err != nil {
+			return err
+		}
+
+		slog.DebugContext(ctx, "setting up vxlan")
+		err = setupVXLan(params, bridge)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func setupVNIVeth(ctx context.Context, params VNIParams) error {
+	slog.DebugContext(ctx, "setting up VNI", "params", params)
+	defer slog.DebugContext(ctx, "end setting up VNI", "params", params)
+	ns, err := netns.GetFromName(params.TargetNS)
+	if err != nil {
+		return fmt.Errorf("SetupVNI: Failed to get network namespace %s: %w", params.TargetNS, err)
+	}
+	defer func() {
+		if err := ns.Close(); err != nil {
+			slog.Error("failed to close namespace", "namespace", params.TargetNS, "error", err)
+		}
+	}()
+
 	hostVeth, err := setupVeth(ctx, params.VNI, ns)
 	if err != nil {
 		return err
@@ -227,27 +285,15 @@ func setupVNI(ctx context.Context, params VNIParams) error {
 			return fmt.Errorf("could not set link up for host leg %s: %v", hostVeth, err)
 		}
 
-		slog.DebugContext(ctx, "setting up vrf", "vrf", params.VRF)
-		vrf, err := setupVRF(params.VRF)
+		slog.DebugContext(ctx, "enslaving to vrf", "vrf", params.VRF)
+		vrf, err := netlink.LinkByName(params.VRF)
 		if err != nil {
-			return err
+			return fmt.Errorf("could not find vrf %s in namespace %s: %w", params.VRF, params.TargetNS, err)
 		}
 
 		err = netlink.LinkSetMaster(peVeth, vrf)
 		if err != nil {
-			return fmt.Errorf("failed to set vrf %s as master of pe veth %s: %w", vrf.Name, peVeth.Attrs().Name, err)
-		}
-
-		slog.DebugContext(ctx, "setting up bridge")
-		bridge, err := setupBridge(params, vrf)
-		if err != nil {
-			return err
-		}
-
-		slog.DebugContext(ctx, "setting up vxlan")
-		err = setupVXLan(params, bridge)
-		if err != nil {
-			return err
+			return fmt.Errorf("failed to set vrf %s as master of pe veth %s: %w", params.VRF, peVeth.Attrs().Name, err)
 		}
 
 		return nil

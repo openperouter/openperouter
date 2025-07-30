@@ -72,6 +72,15 @@ func APItoFRR(nodeIndex int, underlays []v1alpha1.Underlay, vnis []v1alpha1.L3VN
 }
 
 func l3vniToFRR(vni v1alpha1.L3VNI, nodeIndex int) ([]frr.L3VNIConfig, error) {
+	if vni.Spec.HostSession == nil { // no neighbor, just the vni / vrf
+		return []frr.L3VNIConfig{
+			{
+				VNI: int(vni.Spec.VNI),
+				VRF: vni.VRFName(),
+			},
+		}, nil
+	}
+
 	veths, err := ipam.VethIPsFromPool(vni.Spec.HostSession.LocalCIDR.IPv4, vni.Spec.HostSession.LocalCIDR.IPv6, nodeIndex)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get veths ips for vni %s: %w", vni.Name, err)
