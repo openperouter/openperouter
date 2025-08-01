@@ -25,6 +25,3 @@ go.work
 *.swp
 *.swo
 *~
-clab/clab-kind/*
-clab/kubeconfig
-clab/*.bak
