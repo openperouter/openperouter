@@ -23,6 +23,7 @@ import (
 // UnderlaySpec defines the desired state of Underlay.
 type UnderlaySpec struct {
 	// ASN is the local AS number to use for the session with the TOR switch.
+	// The ASN must be different from the ASN of the neighbors.
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=4294967295
 	// +required

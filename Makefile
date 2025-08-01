@@ -414,8 +414,8 @@ ifeq ($(USE_IMAGE_DIGESTS), true)
 	BUNDLE_GEN_FLAGS += --use-image-digests
 endif
 
-OPERATOR_SDK_VERSION ?= v1.39.2
-OLM_VERSION ?= v0.18.3
+OPERATOR_SDK_VERSION ?= v1.41.1
+OLM_VERSION ?= v0.32.0
 
 .PHONY: operator-sdk
 OPERATOR_SDK ?= $(LOCALBIN)/operator-sdk
@@ -499,8 +499,13 @@ deploy-operator-with-olm: bundle kustomize kind clab-cluster load-on-kind deploy
 	VERSION=$(CSV_VERSION) NAMESPACE=$(NAMESPACE) hack/wait-for-csv.sh
 
 deploy-olm: operator-sdk ## deploys OLM on the cluster
-	$(OPERATOR_SDK) olm install --version $(OLM_VERSION) --timeout 5m0s
-	$(OPERATOR_SDK) olm status
+	@if $(KUBECTL) get deployment -n olm olm-operator > /dev/null 2>&1; then \
+		echo "OLM already installed, skipping installation."; \
+	else \
+		echo "OLM not found, installing..."; \
+		$(OPERATOR_SDK) olm install --version $(OLM_VERSION) --timeout 5m0s; \
+		$(OPERATOR_SDK) olm status; \
+	fi
 
 build-and-push-bundle-images: bundle-build bundle-push catalog-build catalog-push
 

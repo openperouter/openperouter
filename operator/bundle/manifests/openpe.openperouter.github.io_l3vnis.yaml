@@ -44,7 +44,7 @@ spec:
               asn:
                 description: |-
                   ASN is the local AS number to use to establish a BGP session with
-                  the default namespace.
+                  the default namespace. The ASN must be different from the ASN of the neighbors.
                 format: int32
                 maximum: 4294967295
                 minimum: 1
@@ -98,6 +98,9 @@ spec:
             required:
             - localcidr
             type: object
+            x-kubernetes-validations:
+            - message: hostASN must be different from asn
+              rule: self.hostasn != self.asn
           status:
             description: L3VNIStatus defines the observed state of L3VNI.
             type: object

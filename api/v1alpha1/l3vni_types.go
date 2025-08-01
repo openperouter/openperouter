@@ -21,9 +21,10 @@ import (
 )
 
 // L3VNISpec defines the desired state of VNI.
+// +kubebuilder:validation:XValidation:rule="self.hostasn != self.asn",message="hostASN must be different from asn"
 type L3VNISpec struct {
 	// ASN is the local AS number to use to establish a BGP session with
-	// the default namespace.
+	// the default namespace. The ASN must be different from the ASN of the neighbors.
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=4294967295
 	// +required

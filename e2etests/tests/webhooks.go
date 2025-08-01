@@ -37,12 +37,14 @@ var _ = Describe("Webhooks", func() {
 					Namespace: openperouter.Namespace,
 				},
 				Spec: v1alpha1.L3VNISpec{
+					ASN: 65001,
 					VRF: pointer.String("test-vrf"),
 					LocalCIDR: v1alpha1.LocalCIDRConfig{
 						IPv4: "10.0.0.0/24",
 					},
 					VNI:       100,
 					VXLanPort: 4789,
+					HostASN:   pointer.Uint32(65002),
 				},
 			}
 			By("creating the first VNI")
@@ -71,6 +73,8 @@ var _ = Describe("Webhooks", func() {
 						IPv4: "10.0.1.0/24",
 					},
 					VNI:       100,
+					ASN:       65001,
+					HostASN:   pointer.Uint32(65002),
 					VXLanPort: 4789,
 				},
 			}, "duplicate vni"),
@@ -84,10 +88,28 @@ var _ = Describe("Webhooks", func() {
 					LocalCIDR: v1alpha1.LocalCIDRConfig{
 						IPv4: "invalid-cidr",
 					},
+					ASN:       65001,
+					HostASN:   pointer.Uint32(65002),
 					VNI:       101,
 					VXLanPort: 4789,
 				},
 			}, "invalid local CIDR"),
+			Entry("when trying to create a VNI with the same local and remote ASN", v1alpha1.L3VNI{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-vni-4",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.L3VNISpec{
+					ASN:     65001,
+					HostASN: pointer.Uint32(65001),
+					VRF:     pointer.String("test-vrf-4"),
+					LocalCIDR: v1alpha1.LocalCIDRConfig{
+						IPv4: "10.0.2.0/24",
+					},
+					VNI:       102,
+					VXLanPort: 4789,
+				},
+			}, "must be different from asn"),
 		)
 	})
 
@@ -162,6 +184,23 @@ var _ = Describe("Webhooks", func() {
 					VTEPCIDR: "notacidr",
 				},
 			}, "invalid vtep CIDR"),
+			Entry("when trying to create an underlay with a neighbor with the same ASN", v1alpha1.Underlay{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "underlay",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.UnderlaySpec{
+					ASN:      65000,
+					Nics:     []string{"nic1"},
+					VTEPCIDR: "192.168.1.0/24",
+					Neighbors: []v1alpha1.Neighbor{
+						{
+							ASN:     65000,
+							Address: "192.168.1.1",
+						},
+					},
+				},
+			}, "local ASN 65000 must be different from remote ASN 65000"),
 		)
 	})
 

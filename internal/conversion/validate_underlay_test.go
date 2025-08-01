@@ -91,6 +91,21 @@ func TestValidateUnderlay(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name: "same local and remote ASN",
+			underlay: v1alpha1.Underlay{
+				Spec: v1alpha1.UnderlaySpec{
+					VTEPCIDR: "192.168.1.0/24",
+					ASN:      65001,
+					Neighbors: []v1alpha1.Neighbor{
+						{
+							ASN: 65001,
+						},
+					},
+				},
+			},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {

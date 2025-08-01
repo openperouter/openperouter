@@ -25,6 +25,9 @@ func ValidateL3VNIs(l3Vnis []v1alpha1.L3VNI) error {
 	existingCIDRsV4 := map[string]string{}
 	existingCIDRsV6 := map[string]string{}
 	for _, vni := range l3Vnis {
+		if vni.Spec.HostASN != nil && vni.Spec.ASN == *vni.Spec.HostASN {
+			return fmt.Errorf("l3vni %s local ASN %d must be different from remote ASN %d", vni.Name, vni.Spec.ASN, *vni.Spec.HostASN)
+		}
 		if vni.Spec.LocalCIDR.IPv4 != "" {
 			if err := validateCIDRForVNI(vni, vni.Spec.LocalCIDR.IPv4, existingCIDRsV4); err != nil {
 				return err

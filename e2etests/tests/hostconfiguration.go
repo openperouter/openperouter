@@ -50,7 +50,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 			Nics:     []string{"toswitch"},
 			Neighbors: []v1alpha1.Neighbor{
 				{
-					ASN:     64514,
+					ASN:     64517,
 					Address: "192.168.11.2",
 				},
 			},
