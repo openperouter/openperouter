@@ -39,7 +39,7 @@ spec:
           openpe.openperouter.github.io/v1alpha1\n\tkind: UnderlayNodeStatus\n\tmetadata:\n\t
           \ name: my-underlay.worker-1\n\t  namespace: openperouter-system\n\tspec:\n\t
           \ nodeName: worker-1\n\t  underlayName: my-underlay\n\tstatus:\n\t  interfaceStatuses:\n\t
-          \ - name: \"eth0\"\n\t    status: \"Found\"\n\t    message: \"Interface
+          \ - name: \"eth0\"\n\t    status: \"Moved\"\n\t    message: \"Interface
           successfully moved to router namespace\"\n\t  lastReconciled: \"2024-01-01T00:00:00Z\""
         properties:
           apiVersion:
@@ -105,17 +105,13 @@ spec:
                       description: |-
                         Status indicates the current status of the interface.
                         Valid values are:
-                        - "Found": Interface exists and is available for use
                         - "NotFound": Interface does not exist on this node
                         - "Error": An error occurred while checking or configuring the interface
                         - "Moved": Interface has been successfully moved to the router namespace
-                        - "InUse": Interface is already in use by another process
                       enum:
-                      - Found
                       - NotFound
                       - Error
                       - Moved
-                      - InUse
                       type: string
                   required:
                   - name

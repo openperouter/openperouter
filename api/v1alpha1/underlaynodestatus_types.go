@@ -41,13 +41,11 @@ type InterfaceStatus struct {
 
 	// Status indicates the current status of the interface.
 	// Valid values are:
-	// - "Found": Interface exists and is available for use
 	// - "NotFound": Interface does not exist on this node
 	// - "Error": An error occurred while checking or configuring the interface
 	// - "Moved": Interface has been successfully moved to the router namespace
-	// - "InUse": Interface is already in use by another process
 	// +required
-	// +kubebuilder:validation:Enum=Found;NotFound;Error;Moved;InUse
+	// +kubebuilder:validation:Enum=NotFound;Error;Moved
 	Status string `json:"status"`
 
 	// Message provides additional details about the interface status.
@@ -100,7 +98,7 @@ type UnderlayNodeStatusStatus struct {
 //	status:
 //	  interfaceStatuses:
 //	  - name: "eth0"
-//	    status: "Found"
+//	    status: "Moved"
 //	    message: "Interface successfully moved to router namespace"
 //	  lastReconciled: "2024-01-01T00:00:00Z"
 type UnderlayNodeStatus struct {
@@ -126,9 +124,6 @@ func init() {
 
 // Interface status constants
 const (
-	// InterfaceStatusFound indicates that the interface exists and is available for use.
-	InterfaceStatusFound = "Found"
-
 	// InterfaceStatusNotFound indicates that the interface does not exist on this node.
 	InterfaceStatusNotFound = "NotFound"
 
@@ -137,7 +132,4 @@ const (
 
 	// InterfaceStatusMoved indicates that the interface has been successfully moved to the router namespace.
 	InterfaceStatusMoved = "Moved"
-
-	// InterfaceStatusInUse indicates that the interface is already in use by another process.
-	InterfaceStatusInUse = "InUse"
 )
