@@ -4,7 +4,7 @@ metadata:
   annotations:
     alm-examples: '[]'
     capabilities: Basic Install
-    createdAt: "2025-08-12T11:15:42Z"
+    createdAt: "2025-08-12T12:25:40Z"
     operators.operatorframework.io/builder: operator-sdk-v1.39.2
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
   name: openperouter-operator.v0.0.0
@@ -127,6 +127,32 @@ spec:
           - openpe.openperouter.github.io
           resources:
           - l3vnis/status
+          verbs:
+          - get
+          - patch
+          - update
+        - apiGroups:
+          - openpe.openperouter.github.io
+          resources:
+          - underlaynodestatuses
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - openpe.openperouter.github.io
+          resources:
+          - underlaynodestatuses/finalizers
+          verbs:
+          - update
+        - apiGroups:
+          - openpe.openperouter.github.io
+          resources:
+          - underlaynodestatuses/status
           verbs:
           - get
           - patch

@@ -21,11 +21,6 @@ import (
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// NOTE: These are BDD-style integration tests that define the expected behavior
-// of UnderlayNodeStatus functionality. The controller implementation is not yet
-// complete, so these tests are not expected to pass initially. They serve as
-// living documentation of the intended behavior and will guide the implementation.
-
 var _ = Describe("UnderlayNodeStatus Lifecycle", func() {
 	var cs clientset.Interface
 	routerPods := []*corev1.Pod{}

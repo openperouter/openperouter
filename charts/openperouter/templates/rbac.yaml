@@ -133,6 +133,32 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - openpe.openperouter.github.io
+  resources:
+  - underlaynodestatuses
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - openpe.openperouter.github.io
+  resources:
+  - underlaynodestatuses/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - openpe.openperouter.github.io
+  resources:
+  - underlaynodestatuses/status
+  verbs:
+  - get
+  - patch
+  - update
 {{- if .Values.webhook.enabled }}
 - apiGroups:
   - admissionregistration.k8s.io

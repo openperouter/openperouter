@@ -649,6 +649,32 @@ rules:
 - apiGroups:
   - openpe.openperouter.github.io
   resources:
+  - underlaynodestatuses
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - openpe.openperouter.github.io
+  resources:
+  - underlaynodestatuses/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - openpe.openperouter.github.io
+  resources:
+  - underlaynodestatuses/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - openpe.openperouter.github.io
+  resources:
   - underlays
   verbs:
   - create
