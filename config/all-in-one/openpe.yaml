@@ -225,6 +225,102 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.14.0
+  name: underlaynodestatuses.openpe.openperouter.github.io
+spec:
+  group: openpe.openperouter.github.io
+  names:
+    kind: UnderlayNodeStatus
+    listKind: UnderlayNodeStatusList
+    plural: underlaynodestatuses
+    shortNames:
+    - uns
+    singular: underlaynodestatus
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.nodeName
+      name: Node
+      type: string
+    - jsonPath: .spec.underlayName
+      name: Underlay
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: "UnderlayNodeStatus represents the node-specific status of an
+          Underlay configuration.\n\n\nUnderlayNodeStatus is automatically created
+          and managed by the Underlay controller\nfor each node in the cluster when
+          an Underlay resource is created. It provides\ndetailed information about
+          the status of the Underlay configuration on individual nodes,\nincluding
+          interface discovery and configuration application status.\n\n\nThis resource
+          is read-only for users and should not be manually created or modified.\n\n\nExample:\n\n\n\tapiVersion:
+          openpe.openperouter.github.io/v1alpha1\n\tkind: UnderlayNodeStatus\n\tmetadata:\n\t
+          \ name: my-underlay.worker-1\n\t  namespace: openperouter-system\n\tspec:\n\t
+          \ nodeName: worker-1\n\t  underlayName: my-underlay\n\tstatus:\n\t  lastReconciled:
+          \"2024-01-01T00:00:00Z\""
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              UnderlayNodeStatusSpec defines which Underlay and Node this Status
+              represents.
+            properties:
+              nodeName:
+                description: NodeName is the name of the node this status applies
+                  to.
+                type: string
+              underlayName:
+                description: UnderlayName is the name of the Underlay resource this
+                  status is for.
+                type: string
+            required:
+            - nodeName
+            - underlayName
+            type: object
+          status:
+            description: |-
+              UnderlayNodeStatusStatus defines the state of the Underlay configuration on
+              the specific Node.
+            properties:
+              lastReconciled:
+                description: LastReconciled is the timestamp of the last successful
+                  reconciliation of this UnderlayNodeStatus.
+                format: date-time
+                type: string
+            type: object
+        required:
+        - metadata
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.14.0
   name: underlays.openpe.openperouter.github.io
 spec:
   group: openpe.openperouter.github.io
