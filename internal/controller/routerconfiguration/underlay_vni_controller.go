@@ -22,6 +22,7 @@ import (
 	"log/slog"
 
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -60,6 +61,9 @@ type requestKey string
 // +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=underlays,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=underlays/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=underlays/finalizers,verbs=update
+// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=underlaynodestatuses,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=underlaynodestatuses/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=underlaynodestatuses/finalizers,verbs=update
 
 func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := r.Logger.With("controller", "RouterConfiguration", "request", req.String())
@@ -149,6 +153,12 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 	if err != nil {
 		slog.Error("failed to configure the host", "error", err)
+		return ctrl.Result{}, err
+	}
+
+	// Manage UnderlayNodeStatus resources for each Underlay
+	if err := r.manageUnderlayNodeStatuses(ctx, underlays.Items); err != nil {
+		slog.Error("failed to manage UnderlayNodeStatus resources", "error", err)
 		return ctrl.Result{}, err
 	}
 
@@ -246,4 +256,69 @@ func podConditionStatus(p *v1.Pod, condition v1.PodConditionType) v1.ConditionSt
 	}
 
 	return v1.ConditionUnknown
+}
+
+// manageUnderlayNodeStatuses creates or updates UnderlayNodeStatus resources for each Underlay on this node
+func (r *PERouterReconciler) manageUnderlayNodeStatuses(ctx context.Context, underlays []v1alpha1.Underlay) error {
+	for _, underlay := range underlays {
+		if err := r.ensureUnderlayNodeStatus(ctx, underlay); err != nil {
+			return fmt.Errorf("failed to ensure UnderlayNodeStatus for underlay %s: %w", underlay.Name, err)
+		}
+	}
+	return nil
+}
+
+// ensureUnderlayNodeStatus creates or updates a UnderlayNodeStatus resource for the given Underlay on this node
+func (r *PERouterReconciler) ensureUnderlayNodeStatus(ctx context.Context, underlay v1alpha1.Underlay) error {
+	// Create the UnderlayNodeStatus name following the format: <underlayName>.<nodeName>
+	statusName := fmt.Sprintf("%s.%s", underlay.Name, r.MyNode)
+
+	status := &v1alpha1.UnderlayNodeStatus{}
+	err := r.Get(ctx, client.ObjectKey{
+		Name:      statusName,
+		Namespace: r.MyNamespace,
+	}, status)
+
+	if err != nil && !errors.IsNotFound(err) {
+		return fmt.Errorf("failed to get UnderlayNodeStatus %s: %w", statusName, err)
+	}
+
+	// If the status doesn't exist, create it
+	if errors.IsNotFound(err) {
+		status = &v1alpha1.UnderlayNodeStatus{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      statusName,
+				Namespace: r.MyNamespace,
+				OwnerReferences: []metav1.OwnerReference{
+					{
+						APIVersion: underlay.APIVersion,
+						Kind:       underlay.Kind,
+						Name:       underlay.Name,
+						UID:        underlay.UID,
+					},
+				},
+			},
+			Spec: v1alpha1.UnderlayNodeStatusSpec{
+				NodeName:     r.MyNode,
+				UnderlayName: underlay.Name,
+			},
+		}
+
+		if err := r.Create(ctx, status); err != nil {
+			return fmt.Errorf("failed to create UnderlayNodeStatus %s: %w", statusName, err)
+		}
+
+		slog.InfoContext(ctx, "created UnderlayNodeStatus", "name", statusName, "node", r.MyNode, "underlay", underlay.Name)
+	}
+
+	// Update the status with current timestamp
+	now := metav1.Now()
+	status.Status.LastReconciled = &now
+
+	if err := r.Status().Update(ctx, status); err != nil {
+		return fmt.Errorf("failed to update UnderlayNodeStatus status %s: %w", statusName, err)
+	}
+
+	slog.DebugContext(ctx, "updated UnderlayNodeStatus", "name", statusName, "lastReconciled", now)
+	return nil
 }
