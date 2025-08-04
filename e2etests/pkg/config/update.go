@@ -4,11 +4,13 @@ package config
 
 import (
 	"context"
+	"time"
 
 	frrk8sv1beta1 "github.com/metallb/frr-k8s/api/v1beta1"
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -114,38 +116,93 @@ func (o Updater) Update(r Resources) error {
 	return nil
 }
 
-// CleanAll deletes all relevant resources in the namespace.
+// CleanAll deletes all relevant resources in the namespace and waits for them to be fully deleted.
 func (o Updater) CleanAll() error {
+	if err := o.CleanButUnderlay(); err != nil {
+		return err
+	}
+
+	if err := o.CleanUnderlay(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// waitForDeletionOfAllOf waits for all resources of a given type to be deleted from the namespace.
+func (o Updater) waitForDeletionOfAllOf(objList client.ObjectList) error {
+	return wait.PollImmediate(1*time.Second, 30*time.Second, func() (bool, error) {
+		if err := o.cli.List(context.Background(), objList, client.InNamespace(o.namespace)); err != nil {
+			return false, err
+		}
+
+		// Use reflection to check if list is empty
+		switch list := objList.(type) {
+		case *v1alpha1.UnderlayList:
+			return len(list.Items) == 0, nil
+		case *v1alpha1.UnderlayNodeStatusList:
+			return len(list.Items) == 0, nil
+		case *v1alpha1.L3VNIList:
+			return len(list.Items) == 0, nil
+		case *v1alpha1.L2VNIList:
+			return len(list.Items) == 0, nil
+		case *frrk8sv1beta1.FRRConfigurationList:
+			return len(list.Items) == 0, nil
+		}
+		return true, nil
+	})
+}
+
+// CleanUnderlay deletes underlay resources and waits for them to be fully deleted.
+func (o Updater) CleanUnderlay() error {
+	// Delete Underlays, and wait for them to be removed
 	if err := o.cli.DeleteAllOf(context.Background(), &v1alpha1.Underlay{},
 		client.InNamespace(o.namespace)); err != nil {
 		return err
 	}
-	if err := o.CleanButUnderlay(); err != nil {
+	if err := o.waitForDeletionOfAllOf(&v1alpha1.UnderlayList{}); err != nil {
 		return err
 	}
+
+	// Wait for UnderlayNodeStatus to be deleted (via owner references)
+	if err := o.waitForDeletionOfAllOf(&v1alpha1.UnderlayNodeStatusList{}); err != nil {
+		return err
+	}
+
 	return nil
 }
 
-// CleanButUnderlay deletes all resources but the underlays.
+// CleanButUnderlay deletes all resources but the underlays and waits for them to be fully deleted.
 // This is needed as deleting underlays is a time consuming operation that
 // will cause the router pods to be recreated.
 func (o Updater) CleanButUnderlay() error {
+	// Delete L3VNIs, and wait for them to be removed
 	if err := o.cli.DeleteAllOf(context.Background(), &v1alpha1.L3VNI{},
 		client.InNamespace(o.namespace)); err != nil {
 		return err
 	}
+	if err := o.waitForDeletionOfAllOf(&v1alpha1.L3VNIList{}); err != nil {
+		return err
+	}
+
+	// Delete L2VNIs, and wait for them to be removed
 	if err := o.cli.DeleteAllOf(context.Background(), &v1alpha1.L2VNI{},
 		client.InNamespace(o.namespace)); err != nil {
 		return err
 	}
-	if err := o.cli.DeleteAllOf(context.Background(), &v1alpha1.UnderlayNodeStatus{},
-		client.InNamespace(o.namespace)); err != nil {
+	if err := o.waitForDeletionOfAllOf(&v1alpha1.L2VNIList{}); err != nil {
 		return err
 	}
+
+	// Delete FRRConfigurations, and wait for them to be removed
 	if err := o.cli.DeleteAllOf(context.Background(), &frrk8sv1beta1.FRRConfiguration{},
 		client.InNamespace(o.namespace)); err != nil {
 		return err
 	}
+	if err := o.waitForDeletionOfAllOf(&frrk8sv1beta1.FRRConfigurationList{}); err != nil {
+		return err
+	}
+
 	return nil
 }
 
