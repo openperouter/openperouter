@@ -51,6 +51,7 @@ if [[ $(cat /sys/class/net/leafkind-switch/operstate) != "up" ]]; then
 sudo ip link set dev leafkind-switch up
 fi
 
+
 # Generate kind-configuration-registry.yaml from template
 KIND_CONFIG_ARGS=""
 if [[ "$CALICO_MODE" == "true" ]]; then
@@ -130,7 +131,7 @@ ${CONTAINER_ENGINE_CLI} exec clab-kind-hostB_blue /setup.sh
 
 
 if ! pgrep -f check_veths.sh | xargs -r ps -p | grep -q pe-kind-control-plane; then
-	sudo -E ./check_veths.sh kindctrlpl:toswitch:pe-kind-control-plane:192.168.11.3/24  kindworker:toswitch:pe-kind-worker:192.168.11.4/24 &
+	sudo -E ./check_veths.sh kindctrlpl:toswitch:pe-kind-control-plane:192.168.11.3/24  kindworker:toswitch:pe-kind-worker:192.168.11.4/24  kindctrlpl2:toswitch2:pe-kind-control-plane:192.168.11.5/24  kindworker2:toswitch2:pe-kind-worker:192.168.11.6/24 &
 fi
 sleep 4s
 
