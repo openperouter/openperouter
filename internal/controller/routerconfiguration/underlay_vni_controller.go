@@ -134,7 +134,7 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
-	err = configureInterfaces(ctx, interfacesConfiguration{
+	err = configureHost(ctx, hostConfigurationData{
 		RouterPodUUID: string(routerPod.UID),
 		PodRuntime:    *r.PodRuntime,
 		NodeIndex:     nodeIndex,
