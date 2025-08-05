@@ -14,7 +14,7 @@ import (
 	"github.com/openperouter/openperouter/internal/pods"
 )
 
-type interfacesConfiguration struct {
+type hostConfigurationData struct {
 	RouterPodUUID string `json:"routerPodUUID,omitempty"`
 	PodRuntime    pods.Runtime
 	NodeIndex     int                 `json:"nodeIndex,omitempty"`
@@ -29,7 +29,7 @@ func (n UnderlayRemovedError) Error() string {
 	return "no underlays configured"
 }
 
-func configureInterfaces(ctx context.Context, config interfacesConfiguration) error {
+func configureHost(ctx context.Context, config hostConfigurationData) error {
 	targetNS, err := config.PodRuntime.NetworkNamespace(ctx, config.RouterPodUUID)
 	if err != nil {
 		return fmt.Errorf("failed to retrieve namespace for pod %s: %w", config.RouterPodUUID, err)
