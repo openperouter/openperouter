@@ -21,7 +21,7 @@ var _ = Describe("EnsureIPv6Forwarding", func() {
 		})
 
 		AfterEach(func() {
-			cleanTest(testNS)
+			cleanLoopbackTest(testNS)
 		})
 
 		It("should enable IPv6 forwarding", func() {
@@ -54,7 +54,7 @@ var _ = Describe("EnsureIPv6Forwarding", func() {
 		})
 
 		AfterEach(func() {
-			cleanTest(testNS)
+			cleanLoopbackTest(testNS)
 		})
 
 		It("should not change the forwarding setting", func() {

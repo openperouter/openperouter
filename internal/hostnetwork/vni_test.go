@@ -24,12 +24,12 @@ var _ = Describe("L3 VNI configuration", func() {
 	var testNS netns.NsHandle
 
 	BeforeEach(func() {
-		cleanTest(testNSName)
+		cleanLoopbackTest(testNSName)
 		testNS = createTestNS(testNSName)
 		setupLoopback(testNS)
 	})
 	AfterEach(func() {
-		cleanTest(testNSName)
+		cleanLoopbackTest(testNSName)
 	})
 
 	It("should work with IPv4 only L3VNI", func() {
@@ -229,13 +229,13 @@ var _ = Describe("L2 VNI configuration", func() {
 	const bridgeName = "testbridge"
 
 	BeforeEach(func() {
-		cleanTest(testNSName)
+		cleanLoopbackTest(testNSName)
 		testNS = createTestNS(testNSName)
 		setupLoopback(testNS)
 		createLinuxBridge(bridgeName)
 	})
 	AfterEach(func() {
-		cleanTest(testNSName)
+		cleanLoopbackTest(testNSName)
 	})
 
 	It("should work with a single L2VNI", func() {
