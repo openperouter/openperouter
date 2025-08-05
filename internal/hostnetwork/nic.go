@@ -4,14 +4,21 @@ package hostnetwork
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 )
 
-const underlayInterfaceSpecialAddr = "172.16.1.1/32"
+const (
+	underlayInterfaceSpecialAddr = "172.16.1.1/32"
+	StatusError                  = "Error"
+	StatusMoved                  = "Moved"
+	StatusNotFound               = "NotFound"
+)
 
 type UnderlayExistsError string
 
@@ -24,13 +31,31 @@ type NICParams struct {
 	TargetNS          string `json:"target_ns"`
 }
 
-func SetupNIC(ctx context.Context, params NICParams) error {
+type NICResult struct {
+	InterfaceName string
+	Status        string // "Moved", "NotFound", "Error"
+	Message       string
+}
+
+// UnderlayParams combines loopback and NIC parameters for underlay configuration
+type UnderlayParams struct {
+	Loopback LoopbackParams `json:"loopback"`
+	NIC      NICParams      `json:"nic"`
+}
+
+func SetupNIC(ctx context.Context, params NICParams) (NICResult, error) {
 	slog.DebugContext(ctx, "setup underlay NIC", "underlayInterface", params.UnderlayInterface, "targetNS", params.TargetNS)
 	defer slog.DebugContext(ctx, "setup underlay NIC done")
 
+	result := NICResult{
+		InterfaceName: params.UnderlayInterface,
+	}
+
 	ns, err := netns.GetFromName(params.TargetNS)
 	if err != nil {
-		return fmt.Errorf("SetupUnderlayNIC: Failed to find network namespace %s: %w", params.TargetNS, err)
+		result.Status = StatusError
+		result.Message = fmt.Sprintf("failed to find network namespace %s: %v", params.TargetNS, err)
+		return result, fmt.Errorf("SetupUnderlayNIC: Failed to find network namespace %s: %w", params.TargetNS, err)
 	}
 	defer func() {
 		if err := ns.Close(); err != nil {
@@ -39,9 +64,23 @@ func SetupNIC(ctx context.Context, params NICParams) error {
 	}()
 
 	if err := moveUnderlayInterface(ctx, params.UnderlayInterface, ns); err != nil {
-		return err
+		var underlayExistsError UnderlayExistsError
+		if errors.As(err, &underlayExistsError) {
+			result.Status = StatusError
+			result.Message = string(underlayExistsError)
+		} else if strings.Contains(err.Error(), "Failed to find link") {
+			result.Status = StatusNotFound
+			result.Message = fmt.Sprintf("interface %s does not exist", params.UnderlayInterface)
+		} else {
+			result.Status = StatusError
+			result.Message = err.Error()
+		}
+		return result, err
 	}
-	return nil
+
+	result.Status = StatusMoved
+	result.Message = fmt.Sprintf("interface %s successfully moved to router namespace", params.UnderlayInterface)
+	return result, nil
 }
 
 func moveUnderlayInterface(ctx context.Context, underlayInterface string, ns netns.NsHandle) error {

@@ -32,6 +32,7 @@ import (
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/conversion"
+	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/openperouter/openperouter/internal/pods"
 	v1 "k8s.io/api/core/v1"
 )
@@ -134,7 +135,7 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
-	err = configureHost(ctx, hostConfigurationData{
+	nicResults, err := configureHost(ctx, hostConfigurationData{
 		RouterPodUUID: string(routerPod.UID),
 		PodRuntime:    *r.PodRuntime,
 		NodeIndex:     nodeIndex,
@@ -157,7 +158,7 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 
 	// Manage UnderlayNodeStatus resources for each Underlay
-	if err := r.manageUnderlayNodeStatuses(ctx, underlays.Items); err != nil {
+	if err := r.manageUnderlayNodeStatuses(ctx, underlays.Items, nicResults); err != nil {
 		slog.Error("failed to manage UnderlayNodeStatus resources", "error", err)
 		return ctrl.Result{}, err
 	}
@@ -259,9 +260,9 @@ func podConditionStatus(p *v1.Pod, condition v1.PodConditionType) v1.ConditionSt
 }
 
 // manageUnderlayNodeStatuses creates or updates UnderlayNodeStatus resources for each Underlay on this node
-func (r *PERouterReconciler) manageUnderlayNodeStatuses(ctx context.Context, underlays []v1alpha1.Underlay) error {
+func (r *PERouterReconciler) manageUnderlayNodeStatuses(ctx context.Context, underlays []v1alpha1.Underlay, nicResults []hostnetwork.NICResult) error {
 	for _, underlay := range underlays {
-		if err := r.ensureUnderlayNodeStatus(ctx, underlay); err != nil {
+		if err := r.ensureUnderlayNodeStatus(ctx, underlay, nicResults); err != nil {
 			return fmt.Errorf("failed to ensure UnderlayNodeStatus for underlay %s: %w", underlay.Name, err)
 		}
 	}
@@ -269,7 +270,7 @@ func (r *PERouterReconciler) manageUnderlayNodeStatuses(ctx context.Context, und
 }
 
 // ensureUnderlayNodeStatus creates or updates a UnderlayNodeStatus resource for the given Underlay on this node
-func (r *PERouterReconciler) ensureUnderlayNodeStatus(ctx context.Context, underlay v1alpha1.Underlay) error {
+func (r *PERouterReconciler) ensureUnderlayNodeStatus(ctx context.Context, underlay v1alpha1.Underlay, nicResults []hostnetwork.NICResult) error {
 	// Create the UnderlayNodeStatus name following the format: <underlayName>.<nodeName>
 	statusName := fmt.Sprintf("%s.%s", underlay.Name, r.MyNode)
 
@@ -311,9 +312,31 @@ func (r *PERouterReconciler) ensureUnderlayNodeStatus(ctx context.Context, under
 		slog.InfoContext(ctx, "created UnderlayNodeStatus", "name", statusName, "node", r.MyNode, "underlay", underlay.Name)
 	}
 
-	// Update the status with current timestamp
+	// Update the status with current timestamp and interface statuses
 	now := metav1.Now()
 	status.Status.LastReconciled = &now
+
+	// Populate InterfaceStatuses from NIC results
+	interfaceStatuses := make([]v1alpha1.InterfaceStatus, 0, len(underlay.Spec.Nics))
+	for _, nic := range underlay.Spec.Nics {
+		interfaceStatus := v1alpha1.InterfaceStatus{
+			Name:    nic,
+			Status:  v1alpha1.InterfaceStatusError,
+			Message: "Interface setup was not attempted",
+		}
+
+		// Find the corresponding NIC result
+		for _, nicResult := range nicResults {
+			if nicResult.InterfaceName == nic {
+				interfaceStatus.Status = nicResult.Status
+				interfaceStatus.Message = nicResult.Message
+				break
+			}
+		}
+
+		interfaceStatuses = append(interfaceStatuses, interfaceStatus)
+	}
+	status.Status.InterfaceStatuses = interfaceStatuses
 
 	if err := r.Status().Update(ctx, status); err != nil {
 		return fmt.Errorf("failed to update UnderlayNodeStatus status %s: %w", statusName, err)

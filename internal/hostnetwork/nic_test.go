@@ -64,7 +64,7 @@ var _ = Describe("NIC configuration should work when", func() {
 			UnderlayInterface: nicTestInterface,
 			TargetNS:          nicTestNS,
 		}
-		err := SetupNIC(context.Background(), params1)
+		_, err := SetupNIC(context.Background(), params1)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -75,7 +75,7 @@ var _ = Describe("NIC configuration should work when", func() {
 			UnderlayInterface: nicTestInterfaceEdit,
 			TargetNS:          nicTestNS,
 		}
-		err = SetupNIC(context.Background(), params2)
+		_, err = SetupNIC(context.Background(), params2)
 		u := UnderlayExistsError("")
 		Expect(errors.As(err, &u)).To(BeTrue())
 	})

@@ -100,8 +100,6 @@ var _ = Describe("Underlay Interface Management", func() {
 			}
 		})
 
-
-
 		It("detects attempt to change interface and reports error", func() {
 			By("creating initial Underlay with one interface")
 			underlay := directModeUnderlay("interface-change-test", []string{"toswitch"})
@@ -246,7 +244,7 @@ func checkInterfaceInRouterNamespace(nodeName, interfaceName string) error {
 	if len(pods.Items) == 0 {
 		return fmt.Errorf("no router pod found on node %s", nodeName)
 	}
-	
+
 	routerPodName := pods.Items[0].Name
 	exec := executor.ForPod(openperouter.Namespace, routerPodName, "frr")
 	_, err = exec.Exec("ip", "link", "show", interfaceName)

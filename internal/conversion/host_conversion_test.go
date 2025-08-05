@@ -20,7 +20,7 @@ func TestAPItoHostConfig(t *testing.T) {
 		vnis            []v1alpha1.L3VNI
 		l2vnis          []v1alpha1.L2VNI
 		wantLoopback    hostnetwork.LoopbackParams
-		wantNIC         hostnetwork.NICParams
+		wantNIC         []hostnetwork.NICParams
 		wantL2VNIParams []hostnetwork.L2VNIParams
 		wantL3VNIParams []hostnetwork.L3VNIParams
 		wantErr         bool
@@ -32,7 +32,7 @@ func TestAPItoHostConfig(t *testing.T) {
 			underlays:    []v1alpha1.Underlay{},
 			vnis:         []v1alpha1.L3VNI{},
 			wantLoopback: hostnetwork.LoopbackParams{},
-			wantNIC:      hostnetwork.NICParams{},
+			wantNIC:      []hostnetwork.NICParams{},
 			wantErr:      false,
 		},
 		{
@@ -45,7 +45,7 @@ func TestAPItoHostConfig(t *testing.T) {
 			},
 			vnis:         []v1alpha1.L3VNI{},
 			wantLoopback: hostnetwork.LoopbackParams{},
-			wantNIC:      hostnetwork.NICParams{},
+			wantNIC:      []hostnetwork.NICParams{},
 			wantErr:      true,
 		},
 		{
@@ -62,9 +62,11 @@ func TestAPItoHostConfig(t *testing.T) {
 				VtepIP:   "10.0.0.0/32",
 				TargetNS: "namespace",
 			},
-			wantNIC: hostnetwork.NICParams{
-				UnderlayInterface: "eth0",
-				TargetNS:          "namespace",
+			wantNIC: []hostnetwork.NICParams{
+				{
+					UnderlayInterface: "eth0",
+					TargetNS:          "namespace",
+				},
 			},
 			wantL3VNIParams: []hostnetwork.L3VNIParams{
 				{
@@ -96,9 +98,11 @@ func TestAPItoHostConfig(t *testing.T) {
 				VtepIP:   "10.0.0.0/32",
 				TargetNS: "namespace",
 			},
-			wantNIC: hostnetwork.NICParams{
-				UnderlayInterface: "eth0",
-				TargetNS:          "namespace",
+			wantNIC: []hostnetwork.NICParams{
+				{
+					UnderlayInterface: "eth0",
+					TargetNS:          "namespace",
+				},
 			},
 			wantL3VNIParams: []hostnetwork.L3VNIParams{
 				{
@@ -130,9 +134,11 @@ func TestAPItoHostConfig(t *testing.T) {
 				VtepIP:   "10.0.0.0/32",
 				TargetNS: "namespace",
 			},
-			wantNIC: hostnetwork.NICParams{
-				UnderlayInterface: "eth0",
-				TargetNS:          "namespace",
+			wantNIC: []hostnetwork.NICParams{
+				{
+					UnderlayInterface: "eth0",
+					TargetNS:          "namespace",
+				},
 			},
 			wantL3VNIParams: []hostnetwork.L3VNIParams{
 				{
@@ -166,9 +172,11 @@ func TestAPItoHostConfig(t *testing.T) {
 				VtepIP:   "10.0.0.0/32",
 				TargetNS: "namespace",
 			},
-			wantNIC: hostnetwork.NICParams{
-				UnderlayInterface: "eth0",
-				TargetNS:          "namespace",
+			wantNIC: []hostnetwork.NICParams{
+				{
+					UnderlayInterface: "eth0",
+					TargetNS:          "namespace",
+				},
 			},
 			wantL3VNIParams: []hostnetwork.L3VNIParams{},
 			wantL2VNIParams: []hostnetwork.L2VNIParams{
@@ -199,9 +207,11 @@ func TestAPItoHostConfig(t *testing.T) {
 				VtepIP:   "10.0.0.0/32",
 				TargetNS: "namespace",
 			},
-			wantNIC: hostnetwork.NICParams{
-				UnderlayInterface: "eth0",
-				TargetNS:          "namespace",
+			wantNIC: []hostnetwork.NICParams{
+				{
+					UnderlayInterface: "eth0",
+					TargetNS:          "namespace",
+				},
 			},
 			wantL3VNIParams: []hostnetwork.L3VNIParams{},
 			wantL2VNIParams: []hostnetwork.L2VNIParams{
