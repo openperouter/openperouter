@@ -24,12 +24,12 @@ var _ = Describe("L3 VNI configuration", func() {
 	var testNS netns.NsHandle
 
 	BeforeEach(func() {
-		cleanLoopbackTest(testNSName)
+		cleanVNITest(testNSName)
 		testNS = createTestNS(testNSName)
 		setupLoopback(testNS)
 	})
 	AfterEach(func() {
-		cleanLoopbackTest(testNSName)
+		cleanVNITest(testNSName)
 	})
 
 	It("should work with IPv4 only L3VNI", func() {
@@ -229,13 +229,13 @@ var _ = Describe("L2 VNI configuration", func() {
 	const bridgeName = "testbridge"
 
 	BeforeEach(func() {
-		cleanLoopbackTest(testNSName)
+		cleanVNITest(testNSName)
 		testNS = createTestNS(testNSName)
 		setupLoopback(testNS)
 		createLinuxBridge(bridgeName)
 	})
 	AfterEach(func() {
-		cleanLoopbackTest(testNSName)
+		cleanVNITest(testNSName)
 	})
 
 	It("should work with a single L2VNI", func() {
@@ -599,4 +599,34 @@ func validateBridgeMacAddress(g Gomega, bridge netlink.Link, vni int) {
 	actualMac := bridge.Attrs().HardwareAddr
 	g.Expect(actualMac).NotTo(BeNil(), "bridge should have a MAC address")
 	g.Expect(actualMac).To(Equal(expectedMac), "bridge MAC address should be %v for VNI %d", expectedMac, vni)
+}
+
+func cleanVNITest(namespace string) { //nolint:unparam
+	err := netns.DeleteNamed(namespace)
+	if !errors.Is(err, os.ErrNotExist) {
+		Expect(err).NotTo(HaveOccurred())
+	}
+
+	// Clean up test interfaces including veth pairs in main namespace
+	links, err := netlink.LinkList()
+	if err != nil {
+		Expect(err).NotTo(HaveOccurred())
+	}
+	for _, l := range links {
+		if strings.HasPrefix(l.Attrs().Name, "test") ||
+			strings.HasPrefix(l.Attrs().Name, PEVethPrefix) ||
+			strings.HasPrefix(l.Attrs().Name, HostVethPrefix) {
+			err := netlink.LinkDel(l)
+			Expect(err).NotTo(HaveOccurred())
+		}
+	}
+
+	// Clean up any test loopback interfaces in the main namespace
+	loopback, err := netlink.LinkByName(UnderlayLoopback)
+	if errors.As(err, &netlink.LinkNotFoundError{}) {
+		return
+	}
+	Expect(err).NotTo(HaveOccurred())
+	err = netlink.LinkDel(loopback)
+	Expect(err).NotTo(HaveOccurred())
 }
