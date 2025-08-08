@@ -200,8 +200,14 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				ginkgo.By(fmt.Sprintf("validating Underlay for pod %s", p.Name))
 
 				validateConfig(underlayParams{
-					UnderlayInterface: "toswitch",
-					VtepIP:            vtepIP,
+					Loopback: loopbackParams{
+						VtepIP:   vtepIP,
+						TargetNS: "router", // This will be ignored since validation runs inside container
+					},
+					NIC: nicParams{
+						UnderlayInterface: "toswitch",
+						TargetNS:          "router", // This will be ignored since validation runs inside container
+					},
 				}, underlayTestSelector, p)
 			}
 		})
@@ -275,8 +281,14 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				ginkgo.By(fmt.Sprintf("validating Underlay for pod %s", p.Name))
 
 				validateConfig(underlayParams{
-					UnderlayInterface: "toswitch",
-					VtepIP:            vtepIP,
+					Loopback: loopbackParams{
+						VtepIP:   vtepIP,
+						TargetNS: "router", // This will be ignored since validation runs inside container
+					},
+					NIC: nicParams{
+						UnderlayInterface: "toswitch",
+						TargetNS:          "router", // This will be ignored since validation runs inside container
+					},
 				}, underlayTestSelector, p)
 			}
 		})
@@ -338,8 +350,14 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				ginkgo.By(fmt.Sprintf("validating Underlay for pod %s", p.Name))
 
 				validateConfig(underlayParams{
-					UnderlayInterface: "toswitch",
-					VtepIP:            vtepIP,
+					Loopback: loopbackParams{
+						VtepIP:   vtepIP,
+						TargetNS: "router", // This will be ignored since validation runs inside container
+					},
+					NIC: nicParams{
+						UnderlayInterface: "toswitch",
+						TargetNS:          "router", // This will be ignored since validation runs inside container
+					},
 				}, underlayTestSelector, p)
 			}
 		})
@@ -373,8 +391,14 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 
 					ginkgo.By(fmt.Sprintf("validating underlay for pod %s", p.Name))
 					validateConfig(underlayParams{
-						UnderlayInterface: "toswitch",
-						VtepIP:            vtepIP,
+						Loopback: loopbackParams{
+							VtepIP:   vtepIP,
+							TargetNS: "router", // This will be ignored since validation runs inside container
+						},
+						NIC: nicParams{
+							UnderlayInterface: "toswitch",
+							TargetNS:          "router", // This will be ignored since validation runs inside container
+						},
 					}, underlayTestSelector, p)
 				}
 			}
@@ -428,8 +452,14 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				ginkgo.By(fmt.Sprintf("validating Underlay for pod %s", p.Name))
 
 				validateConfig(underlayParams{
-					UnderlayInterface: "toswitch",
-					VtepIP:            vtepIP,
+					Loopback: loopbackParams{
+						VtepIP:   vtepIP,
+						TargetNS: "router", // This will be ignored since validation runs inside container
+					},
+					NIC: nicParams{
+						UnderlayInterface: "toswitch",
+						TargetNS:          "router", // This will be ignored since validation runs inside container
+					},
 				}, underlayTestSelector, p)
 			}
 		})
@@ -461,8 +491,14 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				ginkgo.By(fmt.Sprintf("validating Underlay for pod %s", p.Name))
 
 				validateConfig(underlayParams{
-					UnderlayInterface: "toswitch",
-					VtepIP:            vtepIP,
+					Loopback: loopbackParams{
+						VtepIP:   vtepIP,
+						TargetNS: "router", // This will be ignored since validation runs inside container
+					},
+					NIC: nicParams{
+						UnderlayInterface: "toswitch",
+						TargetNS:          "router", // This will be ignored since validation runs inside container
+					},
 				}, underlayTestSelector, p)
 			}
 		})
@@ -561,8 +597,14 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				ginkgo.By(fmt.Sprintf("validating Underlay for pod %s", p.Name))
 
 				validateConfig(underlayParams{
-					UnderlayInterface: "toswitch",
-					VtepIP:            vtepIP,
+					Loopback: loopbackParams{
+						VtepIP:   vtepIP,
+						TargetNS: "router", // This will be ignored since validation runs inside container
+					},
+					NIC: nicParams{
+						UnderlayInterface: "toswitch",
+						TargetNS:          "router", // This will be ignored since validation runs inside container
+					},
 				}, underlayTestSelector, p)
 			}
 		})
@@ -631,8 +673,14 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				ginkgo.By(fmt.Sprintf("validating Underlay for pod %s", p.Name))
 
 				validateConfig(underlayParams{
-					UnderlayInterface: "toswitch",
-					VtepIP:            vtepIP,
+					Loopback: loopbackParams{
+						VtepIP:   vtepIP,
+						TargetNS: "router", // This will be ignored since validation runs inside container
+					},
+					NIC: nicParams{
+						UnderlayInterface: "toswitch",
+						TargetNS:          "router", // This will be ignored since validation runs inside container
+					},
 				}, underlayTestSelector, p)
 			}
 		})
@@ -687,8 +735,14 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				ginkgo.By(fmt.Sprintf("validating Underlay for pod %s", p.Name))
 
 				validateConfig(underlayParams{
-					UnderlayInterface: "toswitch",
-					VtepIP:            vtepIP,
+					Loopback: loopbackParams{
+						VtepIP:   vtepIP,
+						TargetNS: "router", // This will be ignored since validation runs inside container
+					},
+					NIC: nicParams{
+						UnderlayInterface: "toswitch",
+						TargetNS:          "router", // This will be ignored since validation runs inside container
+					},
 				}, underlayTestSelector, p)
 			}
 		})
@@ -712,8 +766,18 @@ type l2vniParams struct {
 	L2GatewayIP string `json:"l2gatewayip,omitempty"`
 }
 type underlayParams struct {
+	Loopback loopbackParams `json:"loopback"`
+	NIC      nicParams      `json:"nic"`
+}
+
+type loopbackParams struct {
+	VtepIP   string `json:"vtep_ip"`
+	TargetNS string `json:"target_ns"`
+}
+
+type nicParams struct {
 	UnderlayInterface string `json:"underlay_interface"`
-	VtepIP            string `json:"vtep_ip"`
+	TargetNS          string `json:"target_ns"`
 }
 
 func validateConfig[T any](config T, test string, pod *corev1.Pod) {

@@ -16,7 +16,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/vishvananda/netns"
 )
 
 var (
@@ -47,12 +46,8 @@ var _ = Describe("EXTERNAL", func() {
 
 		It("should be configured", func() {
 			Eventually(func(g Gomega) {
-				ns, err := netns.GetFromName(params.Loopback.TargetNS)
-				g.Expect(err).NotTo(HaveOccurred())
-				defer ns.Close()
-
-				validateLoopbackInNS(g, ns, params.Loopback.VtepIP)
-				validateNICInNS(g, ns, params.NIC.UnderlayInterface)
+				validateLoopback(g, params.Loopback.VtepIP)
+				validateNIC(g, params.NIC.UnderlayInterface)
 			}, 30*time.Second, 1*time.Second).Should(Succeed())
 		})
 	})
