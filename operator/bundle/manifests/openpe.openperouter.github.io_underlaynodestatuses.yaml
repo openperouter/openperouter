@@ -1,0 +1,140 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.14.0
+  creationTimestamp: null
+  name: underlaynodestatuses.openpe.openperouter.github.io
+spec:
+  group: openpe.openperouter.github.io
+  names:
+    kind: UnderlayNodeStatus
+    listKind: UnderlayNodeStatusList
+    plural: underlaynodestatuses
+    shortNames:
+    - uns
+    singular: underlaynodestatus
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.nodeName
+      name: Node
+      type: string
+    - jsonPath: .spec.underlayName
+      name: Underlay
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: "UnderlayNodeStatus represents the node-specific status of an
+          Underlay configuration.\n\n\nUnderlayNodeStatus is automatically created
+          and managed by the Underlay controller\nfor each node in the cluster when
+          an Underlay resource is created. It provides\ndetailed information about
+          the status of the Underlay configuration on individual nodes,\nincluding
+          interface discovery and configuration application status.\n\n\nThis resource
+          is read-only for users and should not be manually created or modified.\n\n\nExample:\n\n\n\tapiVersion:
+          openpe.openperouter.github.io/v1alpha1\n\tkind: UnderlayNodeStatus\n\tmetadata:\n\t
+          \ name: my-underlay.worker-1\n\t  namespace: openperouter-system\n\tspec:\n\t
+          \ nodeName: worker-1\n\t  underlayName: my-underlay\n\tstatus:\n\t  interfaceStatuses:\n\t
+          \ - name: \"eth0\"\n\t    status: \"Moved\"\n\t    message: \"Interface
+          successfully moved to router namespace\"\n\t  lastReconciled: \"2024-01-01T00:00:00Z\""
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              UnderlayNodeStatusSpec defines which Underlay and Node this Status
+              represents.
+            properties:
+              nodeName:
+                description: NodeName is the name of the node this status applies
+                  to.
+                type: string
+              underlayName:
+                description: UnderlayName is the name of the Underlay resource this
+                  status is for.
+                type: string
+            required:
+            - nodeName
+            - underlayName
+            type: object
+          status:
+            description: |-
+              UnderlayNodeStatusStatus defines the state of the Underlay configuration on
+              the specific Node.
+            properties:
+              interfaceStatuses:
+                description: |-
+                  InterfaceStatuses contains the status of network interfaces referenced in the Underlay spec.
+                  Each interface specified in the Underlay's nics field will have a corresponding
+                  status entry indicating whether it was found and successfully configured.
+                items:
+                  description: |-
+                    InterfaceStatus represents the status of each network interface used for an
+                    Underlay.
+                  properties:
+                    message:
+                      description: |-
+                        Message provides additional details about the interface status.
+                        This field may contain error messages, configuration details, or other
+                        relevant information about the interface state.
+                      type: string
+                    name:
+                      description: Name is the name of the network interface as specified
+                        in the Underlay's nics field.
+                      type: string
+                    status:
+                      description: |-
+                        Status indicates the current status of the interface.
+                        Valid values are:
+                        - "NotFound": Interface does not exist on this node
+                        - "Error": An error occurred while checking or configuring the interface
+                        - "Moved": Interface has been successfully moved to the router namespace
+                      enum:
+                      - NotFound
+                      - Error
+                      - Moved
+                      type: string
+                  required:
+                  - name
+                  - status
+                  type: object
+                type: array
+              lastReconciled:
+                description: LastReconciled is the timestamp of the last successful
+                  reconciliation of this UnderlayNodeStatus.
+                format: date-time
+                type: string
+            type: object
+        required:
+        - metadata
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: null
+  storedVersions: null

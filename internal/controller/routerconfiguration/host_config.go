@@ -14,7 +14,7 @@ import (
 	"github.com/openperouter/openperouter/internal/pods"
 )
 
-type interfacesConfiguration struct {
+type hostConfigurationData struct {
 	RouterPodUUID string `json:"routerPodUUID,omitempty"`
 	PodRuntime    pods.Runtime
 	NodeIndex     int                 `json:"nodeIndex,omitempty"`
@@ -29,51 +29,64 @@ func (n UnderlayRemovedError) Error() string {
 	return "no underlays configured"
 }
 
-func configureInterfaces(ctx context.Context, config interfacesConfiguration) error {
+func configureHost(ctx context.Context, config hostConfigurationData) ([]hostnetwork.NICResult, error) {
 	targetNS, err := config.PodRuntime.NetworkNamespace(ctx, config.RouterPodUUID)
 	if err != nil {
-		return fmt.Errorf("failed to retrieve namespace for pod %s: %w", config.RouterPodUUID, err)
+		return nil, fmt.Errorf("failed to retrieve namespace for pod %s: %w", config.RouterPodUUID, err)
 	}
 
 	hasAlreadyUnderlay, err := hostnetwork.HasUnderlayInterface(targetNS)
 	if err != nil {
-		return fmt.Errorf("failed to check if target namespace %s for pod %s has underlay: %w", targetNS, config.RouterPodUUID, err)
+		return nil, fmt.Errorf("failed to check if target namespace %s for pod %s has underlay: %w", targetNS, config.RouterPodUUID, err)
 	}
 	if hasAlreadyUnderlay && len(config.Underlays) == 0 {
-		return UnderlayRemovedError{}
+		return nil, UnderlayRemovedError{}
 	}
 
 	if len(config.Underlays) == 0 {
-		return nil // nothing to do
+		return nil, nil // nothing to do
 	}
 
 	slog.InfoContext(ctx, "configure interface start", "namespace", targetNS)
 	defer slog.InfoContext(ctx, "configure interface end", "namespace", targetNS)
-	underlayParams, l3vnis, l2vnis, err := conversion.APItoHostConfig(config.NodeIndex, targetNS, config.Underlays, config.L3Vnis, config.L2Vnis)
+	loopbackParams, nicParamsList, l3vnis, l2vnis, err := conversion.APItoHostConfig(config.NodeIndex, targetNS, config.Underlays, config.L3Vnis, config.L2Vnis)
 	if err != nil {
-		return fmt.Errorf("failed to convert config to host configuration: %w", err)
+		return nil, fmt.Errorf("failed to convert config to host configuration: %w", err)
 	}
 
 	slog.InfoContext(ctx, "ensuring IPv6 forwarding")
 	if err := hostnetwork.EnsureIPv6Forwarding(targetNS); err != nil {
-		return fmt.Errorf("failed to ensure IPv6 forwarding: %w", err)
+		return nil, fmt.Errorf("failed to ensure IPv6 forwarding: %w", err)
 	}
 
-	slog.InfoContext(ctx, "setting up underlay")
-	if err := hostnetwork.SetupUnderlay(ctx, underlayParams); err != nil {
-		return fmt.Errorf("failed to setup underlay: %w", err)
+	slog.InfoContext(ctx, "setting up underlay loopback")
+	if err := hostnetwork.SetupLoopback(ctx, loopbackParams); err != nil {
+		return nil, fmt.Errorf("failed to setup underlay loopback: %w", err)
 	}
+
+	// Setup all underlay NICs
+	nicResults := make([]hostnetwork.NICResult, 0, len(nicParamsList))
+	for _, nicParams := range nicParamsList {
+		slog.InfoContext(ctx, "setting up underlay NIC", "interface", nicParams.UnderlayInterface)
+		nicResult, err := hostnetwork.SetupNIC(ctx, nicParams)
+		nicResults = append(nicResults, nicResult)
+		if err != nil {
+			// Continue with other NICs even if one fails, but still return the error
+			slog.ErrorContext(ctx, "failed to setup underlay NIC", "interface", nicParams.UnderlayInterface, "error", err)
+		}
+	}
+
 	for _, vni := range l3vnis {
 		slog.InfoContext(ctx, "setting up VNI", "vni", vni.VRF)
 		if err := hostnetwork.SetupL3VNI(ctx, vni); err != nil {
-			return fmt.Errorf("failed to setup vni: %w", err)
+			return nicResults, fmt.Errorf("failed to setup vni: %w", err)
 		}
 	}
 
 	for _, vni := range l2vnis {
 		slog.InfoContext(ctx, "setting up L2VNI", "vni", vni.VNI)
 		if err := hostnetwork.SetupL2VNI(ctx, vni); err != nil {
-			return fmt.Errorf("failed to setup vni: %w", err)
+			return nicResults, fmt.Errorf("failed to setup vni: %w", err)
 		}
 	}
 	slog.InfoContext(ctx, "removing deleted vnis")
@@ -85,9 +98,9 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 		toCheck = append(toCheck, l2vni.VNIParams)
 	}
 	if err := hostnetwork.RemoveNonConfiguredVNIs(targetNS, toCheck); err != nil {
-		return fmt.Errorf("failed to remove deleted vnis: %w", err)
+		return nicResults, fmt.Errorf("failed to remove deleted vnis: %w", err)
 	}
-	return nil
+	return nicResults, nil
 }
 
 // nonRecoverableHostError tells whether the router pod

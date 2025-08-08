@@ -4,7 +4,7 @@ metadata:
   annotations:
     alm-examples: '[]'
     capabilities: Basic Install
-    createdAt: "2025-07-24T10:59:43Z"
+    createdAt: "2025-08-06T15:58:27Z"
     operators.operatorframework.io/builder: operator-sdk-v1.39.2
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
   name: openperouter-operator.v0.0.0
@@ -27,6 +27,9 @@ spec:
       displayName: Open PERouter
       kind: OpenPERouter
       name: openperouters.openpe.openperouter.github.io
+      version: v1alpha1
+    - kind: UnderlayNodeStatus
+      name: underlaynodestatuses.openpe.openperouter.github.io
       version: v1alpha1
     - description: Underlay is the Schema for the underlays API.
       displayName: Underlay
@@ -124,6 +127,32 @@ spec:
           - openpe.openperouter.github.io
           resources:
           - l3vnis/status
+          verbs:
+          - get
+          - patch
+          - update
+        - apiGroups:
+          - openpe.openperouter.github.io
+          resources:
+          - underlaynodestatuses
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - openpe.openperouter.github.io
+          resources:
+          - underlaynodestatuses/finalizers
+          verbs:
+          - update
+        - apiGroups:
+          - openpe.openperouter.github.io
+          resources:
+          - underlaynodestatuses/status
           verbs:
           - get
           - patch
