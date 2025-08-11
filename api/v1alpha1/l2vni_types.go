@@ -63,8 +63,8 @@ type HostMaster struct {
 	// +optional
 	Name string `json:"name,omitempty"`
 
-	// Type of the host interface. Currently only "bridge" is supported.
-	// +kubebuilder:validation:Enum=bridge
+	// Type of the host interface. Supports linux bridge or OVS bridge.
+	// +kubebuilder:validation:Enum=bridge;ovs-bridge
 	Type string `json:"type,omitempty"`
 
 	// If true, the interface will be created automatically if not present.

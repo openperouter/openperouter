@@ -145,12 +145,23 @@ func SetupL2VNI(ctx context.Context, params L2VNIParams) error {
 	}
 
 	if params.HostMaster != nil {
-		master, err := hostMaster(params.VNI, *params.HostMaster)
-		if err != nil {
-			return fmt.Errorf("SetupL2VNI: failed to get host master for VRF %s: %w", params.VRF, err)
-		}
-		if err := netlink.LinkSetMaster(hostVeth, master); err != nil {
-			return fmt.Errorf("failed to set host master %s as master of host veth %s: %w", master.Attrs().Name, hostVeth.Attrs().Name, err)
+		m := *params.HostMaster
+		if m.Type == "ovs-bridge" {
+			bridgeName := m.Name
+			if m.AutoCreate || bridgeName == "" {
+				bridgeName = hostBridgeName(params.VNI)
+			}
+			if err := ensureOVSBridgeAndAttach(ctx, bridgeName, hostVeth.Attrs().Name); err != nil {
+				return fmt.Errorf("failed to ensure OVS bridge %s and attach %s: %w", bridgeName, hostVeth.Attrs().Name, err)
+			}
+		} else {
+			master, err := hostMaster(params.VNI, m)
+			if err != nil {
+				return fmt.Errorf("SetupL2VNI: failed to get host master for VRF %s: %w", params.VRF, err)
+			}
+			if err := netlink.LinkSetMaster(hostVeth, master); err != nil {
+				return fmt.Errorf("failed to set host master %s as master of host veth %s: %w", master.Attrs().Name, hostVeth.Attrs().Name, err)
+			}
 		}
 	}
 
