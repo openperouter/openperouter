@@ -1,0 +1,20 @@
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: Underlay
+metadata:
+  name: underlay
+spec:
+  vtepcidr: "10.0.0.0/24"
+  nics: ["eth0"]
+---
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: L2VNI
+metadata:
+  name: ovs-example
+spec:
+  vni: 100
+  vxlanport: 4789
+  hostmaster:
+    type: "ovs-bridge"
+    name: "br-ovs-100"
+    autocreate: true
+  l2gatewayip: "192.168.100.1/24" 
