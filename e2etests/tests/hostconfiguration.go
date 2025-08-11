@@ -419,10 +419,19 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 			err = Updater.Update(resources)
 			Expect(err).NotTo(HaveOccurred())
 
-			ginkgo.By("waiting for the routers to be rolled out again")
+			ginkgo.By("waiting for router pods to be ready after configuration change")
 			Eventually(func() error {
-				return openperouter.DaemonsetRolled(cs, routerPods)
-			}, time.Minute, time.Second).ShouldNot(HaveOccurred())
+				currentRouterPods, err := openperouter.RouterPods(cs)
+				if err != nil {
+					return err
+				}
+				for _, p := range currentRouterPods {
+					if !k8s.PodIsReady(p) {
+						return fmt.Errorf("pod %s is not ready", p.Name)
+					}
+				}
+				return nil
+			}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 		})
 
 		ginkgo.It("works with IPv6-only L3VNI", func() {

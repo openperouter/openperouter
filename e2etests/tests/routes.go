@@ -24,6 +24,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 	"github.com/openperouter/openperouter/e2etests/pkg/url"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/utils/ptr"
@@ -90,6 +91,24 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 				infra.Underlay,
 			},
 		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("waiting for router pods to be ready after creating underlay")
+		Eventually(func() error {
+			currentRouterPods, err := openperouter.RouterPods(cs)
+			if err != nil {
+				return err
+			}
+			for _, p := range currentRouterPods {
+				if !k8s.PodIsReady(p) {
+					return fmt.Errorf("pod %s is not ready", p.Name)
+				}
+			}
+			return nil
+		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
+
+		// Update router pods reference
+		routerPods, err = openperouter.RouterPods(cs)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -448,6 +467,14 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			Entry("vni blue host A ipv6", vniBlue, "hostA_blue", infra.HostABlueIPv6, ipfamily.IPv6),
 			Entry("vni blue host B ipv6", vniBlue, "hostB_blue", infra.HostBBlueIPv6, ipfamily.IPv6),
 		)
+
+		AfterAll(func() {
+			By("Deleting the test namespace")
+			err := cs.CoreV1().Namespaces().Delete(context.Background(), testNamespace, metav1.DeleteOptions{})
+			if err != nil && !errors.IsNotFound(err) {
+				Expect(err).NotTo(HaveOccurred())
+			}
+		})
 	})
 })
 

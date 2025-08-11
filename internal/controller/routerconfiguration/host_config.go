@@ -71,8 +71,9 @@ func configureHost(ctx context.Context, config hostConfigurationData) ([]hostnet
 		nicResult, err := hostnetwork.SetupNIC(ctx, nicParams)
 		nicResults = append(nicResults, nicResult)
 		if err != nil {
-			// Continue with other NICs even if one fails, but still return the error
 			slog.ErrorContext(ctx, "failed to setup underlay NIC", "interface", nicParams.UnderlayInterface, "error", err)
+			// All NIC setup errors should trigger pod restart to ensure clean state
+			return nicResults, fmt.Errorf("failed to setup underlay NIC %s: %w", nicParams.UnderlayInterface, err)
 		}
 	}
 
@@ -106,6 +107,9 @@ func configureHost(ctx context.Context, config hostConfigurationData) ([]hostnet
 // nonRecoverableHostError tells whether the router pod
 // should be restarted instead of being reconfigured.
 func nonRecoverableHostError(e error) bool {
+	if e == nil {
+		return false
+	}
 	if errors.As(e, &UnderlayRemovedError{}) {
 		return true
 	}
