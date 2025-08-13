@@ -34,8 +34,7 @@ func TestHostNetwork(t *testing.T) {
 }
 
 // underlayParams matches the flat structure from e2e tests for JSON deserialization
-// XXX: This will be obsoleted in the next commit, where the test types will be also
-// flattened to standalone NIC and loopback parts.
+// XXX: This duplicates `underlayParams` defined in `e2etests/tests/hostconfiguration.go`.
 type underlayParams struct {
 	UnderlayInterface string `json:"underlay_interface"`
 	VtepIP            string `json:"vtep_ip"`
@@ -63,7 +62,8 @@ var _ = Describe("EXTERNAL", func() {
 					UnderlayInterface: params.UnderlayInterface,
 					TargetNS:          "", // Empty for current namespace validation
 				}
-				validateUnderlay(g, loopbackParams, nicParams)
+				validateUnderlayLoopback(g, loopbackParams)
+				validateUnderlayNIC(g, nicParams)
 			}, 30*time.Second, 1*time.Second).Should(Succeed())
 		})
 	})

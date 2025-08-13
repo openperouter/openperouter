@@ -157,31 +157,40 @@ var _ = Describe("Underlay configuration should work when", func() {
 
 func validateUnderlayInNS(g Gomega, ns netns.NsHandle, loopbackParams LoopbackParams, nicParams NICParams) {
 	_ = inNamespace(ns, func() error {
-		validateUnderlay(g, loopbackParams, nicParams, externalInterfaceIP)
+		validateUnderlayLoopback(g, loopbackParams)
+		validateUnderlayNIC(g, nicParams, externalInterfaceIP)
 		return nil
 	})
 }
 
-func validateUnderlay(g Gomega, loopbackParams LoopbackParams, nicParams NICParams, interfaceIPs ...string) {
+func validateUnderlayLoopback(g Gomega, loopbackParams LoopbackParams) {
 	links, err := netlink.LinkList()
 	g.Expect(err).NotTo(HaveOccurred())
 	loopbackFound := false
-	mainNicFound := false
 	for _, l := range links {
 		if l.Attrs().Name == UnderlayLoopback {
 			loopbackFound = true
 			validateIP(g, l, loopbackParams.VtepIP)
+			break
 		}
+	}
+	g.Expect(loopbackFound).To(BeTrue(), fmt.Sprintf("failed to find loopback in ns, links %v", links))
+}
+
+func validateUnderlayNIC(g Gomega, nicParams NICParams, interfaceIPs ...string) {
+	links, err := netlink.LinkList()
+	g.Expect(err).NotTo(HaveOccurred())
+	mainNicFound := false
+	for _, l := range links {
 		if l.Attrs().Name == nicParams.UnderlayInterface {
 			mainNicFound = true
 			for _, ip := range interfaceIPs {
 				validateIP(g, l, ip)
 			}
 			validateIP(g, l, underlayInterfaceSpecialAddr)
+			break
 		}
-
 	}
-	g.Expect(loopbackFound).To(BeTrue(), fmt.Sprintf("failed to find loopback in ns, links %v", links))
 	g.Expect(mainNicFound).To(BeTrue(), fmt.Sprintf("failed to find underlay interface in ns, links %v", links))
 }
 
@@ -199,7 +208,7 @@ func validateIP(g Gomega, l netlink.Link, address string) {
 	g.Expect(found).To(BeTrue(), fmt.Sprintf("failed to find address %s for %s: %v", address, l.Attrs().Name, addresses))
 }
 
-func cleanTest(namespace string) {
+func cleanUnderlayNICTest(namespace string) {
 	err := netns.DeleteNamed(namespace)
 	if !errors.Is(err, os.ErrNotExist) {
 		Expect(err).NotTo(HaveOccurred())
@@ -216,6 +225,9 @@ func cleanTest(namespace string) {
 			Expect(err).NotTo(HaveOccurred())
 		}
 	}
+}
+
+func cleanLoopbackTest() {
 	loopback, err := netlink.LinkByName(UnderlayLoopback)
 	if errors.As(err, &netlink.LinkNotFoundError{}) {
 		return
@@ -223,6 +235,11 @@ func cleanTest(namespace string) {
 	Expect(err).NotTo(HaveOccurred())
 	err = netlink.LinkDel(loopback)
 	Expect(err).NotTo(HaveOccurred())
+}
+
+func cleanTest(namespace string) {
+	cleanUnderlayNICTest(namespace)
+	cleanLoopbackTest()
 }
 
 func createTestNS(testNs string) netns.NsHandle {
