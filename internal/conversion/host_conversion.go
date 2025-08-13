@@ -11,25 +11,29 @@ import (
 	"github.com/openperouter/openperouter/internal/ipam"
 )
 
-func APItoHostConfig(nodeIndex int, targetNS string, underlays []v1alpha1.Underlay, vnis []v1alpha1.L3VNI, l2vnis []v1alpha1.L2VNI) (hostnetwork.UnderlayParams, []hostnetwork.L3VNIParams, []hostnetwork.L2VNIParams, error) {
+func APItoHostConfig(nodeIndex int, targetNS string, underlays []v1alpha1.Underlay, vnis []v1alpha1.L3VNI, l2vnis []v1alpha1.L2VNI) (hostnetwork.LoopbackParams, hostnetwork.NICParams, []hostnetwork.L3VNIParams, []hostnetwork.L2VNIParams, error) {
 	if len(underlays) > 1 {
-		return hostnetwork.UnderlayParams{}, nil, nil, fmt.Errorf("can't have more than one underlay")
+		return hostnetwork.LoopbackParams{}, hostnetwork.NICParams{}, nil, nil, fmt.Errorf("can't have more than one underlay")
 	}
 	if len(underlays) == 0 {
-		return hostnetwork.UnderlayParams{}, nil, nil, nil
+		return hostnetwork.LoopbackParams{}, hostnetwork.NICParams{}, nil, nil, nil
 	}
 
 	underlay := underlays[0]
 
 	vtepIP, err := ipam.VTEPIp(underlay.Spec.VTEPCIDR, nodeIndex)
 	if err != nil {
-		return hostnetwork.UnderlayParams{}, nil, nil, fmt.Errorf("failed to get vtep ip, cidr %s, nodeIntex %d", underlay.Spec.VTEPCIDR, nodeIndex)
+		return hostnetwork.LoopbackParams{}, hostnetwork.NICParams{}, nil, nil, fmt.Errorf("failed to get vtep ip, cidr %s, nodeIntex %d", underlay.Spec.VTEPCIDR, nodeIndex)
 	}
 
-	underlayParams := hostnetwork.UnderlayParams{
+	loopbackParams := hostnetwork.LoopbackParams{
+		VtepIP:   vtepIP.String(),
+		TargetNS: targetNS,
+	}
+
+	nicParams := hostnetwork.NICParams{
 		UnderlayInterface: underlay.Spec.Nics[0],
 		TargetNS:          targetNS,
-		VtepIP:            vtepIP.String(),
 	}
 
 	l3vniParams := []hostnetwork.L3VNIParams{}
@@ -37,7 +41,7 @@ func APItoHostConfig(nodeIndex int, targetNS string, underlays []v1alpha1.Underl
 	for _, vni := range vnis {
 		vethIPs, err := ipam.VethIPsFromPool(vni.Spec.LocalCIDR.IPv4, vni.Spec.LocalCIDR.IPv6, nodeIndex)
 		if err != nil {
-			return hostnetwork.UnderlayParams{}, nil, nil, fmt.Errorf("failed to get veth ips, cidr %v, nodeIndex %d", vni.Spec.LocalCIDR, nodeIndex)
+			return hostnetwork.LoopbackParams{}, hostnetwork.NICParams{}, nil, nil, fmt.Errorf("failed to get veth ips, cidr %v, nodeIndex %d", vni.Spec.LocalCIDR, nodeIndex)
 		}
 
 		v := hostnetwork.L3VNIParams{
@@ -80,7 +84,7 @@ func APItoHostConfig(nodeIndex int, targetNS string, underlays []v1alpha1.Underl
 		l2vniParams = append(l2vniParams, vni)
 	}
 
-	return underlayParams, l3vniParams, l2vniParams, nil
+	return loopbackParams, nicParams, l3vniParams, l2vniParams, nil
 }
 
 // ipNetToString returns the string representation of the IPNet, or empty string if IP is nil

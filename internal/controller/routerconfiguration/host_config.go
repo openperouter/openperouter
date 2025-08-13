@@ -49,7 +49,7 @@ func configureHost(ctx context.Context, config hostConfigurationData) error {
 
 	slog.InfoContext(ctx, "configure interface start", "namespace", targetNS)
 	defer slog.InfoContext(ctx, "configure interface end", "namespace", targetNS)
-	underlayParams, l3vnis, l2vnis, err := conversion.APItoHostConfig(config.NodeIndex, targetNS, config.Underlays, config.L3Vnis, config.L2Vnis)
+	loopbackParams, nicParams, l3vnis, l2vnis, err := conversion.APItoHostConfig(config.NodeIndex, targetNS, config.Underlays, config.L3Vnis, config.L2Vnis)
 	if err != nil {
 		return fmt.Errorf("failed to convert config to host configuration: %w", err)
 	}
@@ -59,10 +59,16 @@ func configureHost(ctx context.Context, config hostConfigurationData) error {
 		return fmt.Errorf("failed to ensure IPv6 forwarding: %w", err)
 	}
 
-	slog.InfoContext(ctx, "setting up underlay")
-	if err := hostnetwork.SetupUnderlay(ctx, underlayParams); err != nil {
-		return fmt.Errorf("failed to setup underlay: %w", err)
+	slog.InfoContext(ctx, "setting up underlay loopback")
+	if err := hostnetwork.SetupLoopback(ctx, loopbackParams); err != nil {
+		return fmt.Errorf("failed to setup underlay loopback: %w", err)
 	}
+
+	slog.InfoContext(ctx, "setting up underlay NIC")
+	if err := hostnetwork.SetupNIC(ctx, nicParams); err != nil {
+		return fmt.Errorf("failed to setup underlay NIC: %w", err)
+	}
+
 	for _, vni := range l3vnis {
 		slog.InfoContext(ctx, "setting up VNI", "vni", vni.VRF)
 		if err := hostnetwork.SetupL3VNI(ctx, vni); err != nil {

@@ -61,86 +61,108 @@ var _ = Describe("Underlay configuration should work when", func() {
 	})
 
 	It("should work with a single underlay", func() {
-		params := UnderlayParams{
+		loopbackParams := LoopbackParams{
+			VtepIP:   "192.168.1.1/32",
+			TargetNS: underlayTestNS,
+		}
+		nicParams := NICParams{
 			UnderlayInterface: underlayTestInterface,
-			VtepIP:            "192.168.1.1/32",
 			TargetNS:          underlayTestNS,
 		}
-		err := SetupUnderlay(context.Background(), params)
+		err := SetupLoopback(context.Background(), loopbackParams)
+		Expect(err).NotTo(HaveOccurred())
+		err = SetupNIC(context.Background(), nicParams)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
-			validateUnderlayInNS(g, testNs, params)
+			validateUnderlayInNS(g, testNs, loopbackParams, nicParams)
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 	})
 
 	It("creating the same underlay twice should be idempotent", func() {
-		params := UnderlayParams{
+		loopbackParams := LoopbackParams{
+			VtepIP:   "192.168.1.1/32",
+			TargetNS: underlayTestNS,
+		}
+		nicParams := NICParams{
 			UnderlayInterface: underlayTestInterface,
-			VtepIP:            "192.168.1.1/32",
 			TargetNS:          underlayTestNS,
 		}
-		err := SetupUnderlay(context.Background(), params)
+		err := SetupLoopback(context.Background(), loopbackParams)
 		Expect(err).NotTo(HaveOccurred())
-		err = SetupUnderlay(context.Background(), params)
+		err = SetupNIC(context.Background(), nicParams)
+		Expect(err).NotTo(HaveOccurred())
+		err = SetupLoopback(context.Background(), loopbackParams)
+		Expect(err).NotTo(HaveOccurred())
+		err = SetupNIC(context.Background(), nicParams)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
-			validateUnderlayInNS(g, testNs, params)
+			validateUnderlayInNS(g, testNs, loopbackParams, nicParams)
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 	})
 
 	It("changing the underlay interface should error", func() {
-		params := UnderlayParams{
+		loopbackParams := LoopbackParams{
+			VtepIP:   "192.168.1.1/32",
+			TargetNS: underlayTestNS,
+		}
+		nicParams := NICParams{
 			UnderlayInterface: underlayTestInterface,
-			VtepIP:            "192.168.1.1/32",
 			TargetNS:          underlayTestNS,
 		}
-		err := SetupUnderlay(context.Background(), params)
+		err := SetupLoopback(context.Background(), loopbackParams)
+		Expect(err).NotTo(HaveOccurred())
+		err = SetupNIC(context.Background(), nicParams)
 		Expect(err).NotTo(HaveOccurred())
 		Eventually(func(g Gomega) {
-			validateUnderlayInNS(g, testNs, params)
+			validateUnderlayInNS(g, testNs, loopbackParams, nicParams)
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 
-		params.UnderlayInterface = underlayTestInterfaceEdit
+		nicParams.UnderlayInterface = underlayTestInterfaceEdit
 
-		err = SetupUnderlay(context.Background(), params)
+		err = SetupNIC(context.Background(), nicParams)
 		u := UnderlayExistsError("")
 		Expect(errors.As(err, &u)).To(BeTrue())
 	})
 
 	It("changing the vtepip should work", func() {
-		params := UnderlayParams{
+		loopbackParams := LoopbackParams{
+			VtepIP:   "192.168.1.1/32",
+			TargetNS: underlayTestNS,
+		}
+		nicParams := NICParams{
 			UnderlayInterface: underlayTestInterface,
-			VtepIP:            "192.168.1.1/32",
 			TargetNS:          underlayTestNS,
 		}
-		err := SetupUnderlay(context.Background(), params)
+		err := SetupLoopback(context.Background(), loopbackParams)
+		Expect(err).NotTo(HaveOccurred())
+		err = SetupNIC(context.Background(), nicParams)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
-			validateUnderlayInNS(g, testNs, params)
+			validateUnderlayInNS(g, testNs, loopbackParams, nicParams)
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 
-		params.VtepIP = "192.168.1.2/32"
+		loopbackParams.VtepIP = "192.168.1.2/32"
 
-		err = SetupUnderlay(context.Background(), params)
+		err = SetupLoopback(context.Background(), loopbackParams)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
-			validateUnderlayInNS(g, testNs, params)
+			validateUnderlayInNS(g, testNs, loopbackParams, nicParams)
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 	})
 })
 
-func validateUnderlayInNS(g Gomega, ns netns.NsHandle, params UnderlayParams) {
+func validateUnderlayInNS(g Gomega, ns netns.NsHandle, loopbackParams LoopbackParams, nicParams NICParams) {
 	_ = inNamespace(ns, func() error {
-		validateUnderlay(g, params, externalInterfaceIP)
+		validateUnderlay(g, loopbackParams, nicParams, externalInterfaceIP)
 		return nil
 	})
 }
 
-func validateUnderlay(g Gomega, params UnderlayParams, interfaceIPs ...string) {
+func validateUnderlay(g Gomega, loopbackParams LoopbackParams, nicParams NICParams, interfaceIPs ...string) {
 	links, err := netlink.LinkList()
 	g.Expect(err).NotTo(HaveOccurred())
 	loopbackFound := false
@@ -148,9 +170,9 @@ func validateUnderlay(g Gomega, params UnderlayParams, interfaceIPs ...string) {
 	for _, l := range links {
 		if l.Attrs().Name == UnderlayLoopback {
 			loopbackFound = true
-			validateIP(g, l, params.VtepIP)
+			validateIP(g, l, loopbackParams.VtepIP)
 		}
-		if l.Attrs().Name == params.UnderlayInterface {
+		if l.Attrs().Name == nicParams.UnderlayInterface {
 			mainNicFound = true
 			for _, ip := range interfaceIPs {
 				validateIP(g, l, ip)
