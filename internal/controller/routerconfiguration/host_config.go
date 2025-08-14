@@ -14,7 +14,7 @@ import (
 	"github.com/openperouter/openperouter/internal/pods"
 )
 
-type interfacesConfiguration struct {
+type hostConfigurationData struct {
 	RouterPodUUID string `json:"routerPodUUID,omitempty"`
 	PodRuntime    pods.Runtime
 	NodeIndex     int                 `json:"nodeIndex,omitempty"`
@@ -29,7 +29,7 @@ func (n UnderlayRemovedError) Error() string {
 	return "no underlays configured"
 }
 
-func configureInterfaces(ctx context.Context, config interfacesConfiguration) error {
+func configureHost(ctx context.Context, config hostConfigurationData) error {
 	targetNS, err := config.PodRuntime.NetworkNamespace(ctx, config.RouterPodUUID)
 	if err != nil {
 		return fmt.Errorf("failed to retrieve namespace for pod %s: %w", config.RouterPodUUID, err)
@@ -49,7 +49,7 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 
 	slog.InfoContext(ctx, "configure interface start", "namespace", targetNS)
 	defer slog.InfoContext(ctx, "configure interface end", "namespace", targetNS)
-	underlayParams, l3vnis, l2vnis, err := conversion.APItoHostConfig(config.NodeIndex, targetNS, config.Underlays, config.L3Vnis, config.L2Vnis)
+	loopbackParams, nicParams, l3vnis, l2vnis, err := conversion.APItoHostConfig(config.NodeIndex, targetNS, config.Underlays, config.L3Vnis, config.L2Vnis)
 	if err != nil {
 		return fmt.Errorf("failed to convert config to host configuration: %w", err)
 	}
@@ -59,10 +59,16 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 		return fmt.Errorf("failed to ensure IPv6 forwarding: %w", err)
 	}
 
-	slog.InfoContext(ctx, "setting up underlay")
-	if err := hostnetwork.SetupUnderlay(ctx, underlayParams); err != nil {
-		return fmt.Errorf("failed to setup underlay: %w", err)
+	slog.InfoContext(ctx, "setting up underlay loopback")
+	if err := hostnetwork.SetupLoopback(ctx, loopbackParams); err != nil {
+		return fmt.Errorf("failed to setup underlay loopback: %w", err)
 	}
+
+	slog.InfoContext(ctx, "setting up underlay NIC")
+	if err := hostnetwork.SetupNIC(ctx, nicParams); err != nil {
+		return fmt.Errorf("failed to setup underlay NIC: %w", err)
+	}
+
 	for _, vni := range l3vnis {
 		slog.InfoContext(ctx, "setting up VNI", "vni", vni.VRF)
 		if err := hostnetwork.SetupL3VNI(ctx, vni); err != nil {

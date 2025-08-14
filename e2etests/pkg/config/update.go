@@ -138,6 +138,10 @@ func (o Updater) CleanButUnderlay() error {
 		client.InNamespace(o.namespace)); err != nil {
 		return err
 	}
+	if err := o.cli.DeleteAllOf(context.Background(), &v1alpha1.UnderlayNodeStatus{},
+		client.InNamespace(o.namespace)); err != nil {
+		return err
+	}
 	if err := o.cli.DeleteAllOf(context.Background(), &frrk8sv1beta1.FRRConfiguration{},
 		client.InNamespace(o.namespace)); err != nil {
 		return err

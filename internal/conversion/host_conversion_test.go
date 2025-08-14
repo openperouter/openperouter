@@ -19,7 +19,8 @@ func TestAPItoHostConfig(t *testing.T) {
 		underlays       []v1alpha1.Underlay
 		vnis            []v1alpha1.L3VNI
 		l2vnis          []v1alpha1.L2VNI
-		wantUnderlay    hostnetwork.UnderlayParams
+		wantLoopback    hostnetwork.LoopbackParams
+		wantNIC         hostnetwork.NICParams
 		wantL2VNIParams []hostnetwork.L2VNIParams
 		wantL3VNIParams []hostnetwork.L3VNIParams
 		wantErr         bool
@@ -30,7 +31,8 @@ func TestAPItoHostConfig(t *testing.T) {
 			targetNS:     "namespace",
 			underlays:    []v1alpha1.Underlay{},
 			vnis:         []v1alpha1.L3VNI{},
-			wantUnderlay: hostnetwork.UnderlayParams{},
+			wantLoopback: hostnetwork.LoopbackParams{},
+			wantNIC:      hostnetwork.NICParams{},
 			wantErr:      false,
 		},
 		{
@@ -42,7 +44,8 @@ func TestAPItoHostConfig(t *testing.T) {
 				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth1"}, VTEPCIDR: "10.0.1.0/24"}},
 			},
 			vnis:         []v1alpha1.L3VNI{},
-			wantUnderlay: hostnetwork.UnderlayParams{},
+			wantLoopback: hostnetwork.LoopbackParams{},
+			wantNIC:      hostnetwork.NICParams{},
 			wantErr:      true,
 		},
 		{
@@ -55,10 +58,13 @@ func TestAPItoHostConfig(t *testing.T) {
 			vnis: []v1alpha1.L3VNI{
 				{Spec: v1alpha1.L3VNISpec{VRF: ptr.String("red"), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "10.1.0.0/24"}, VNI: 100, VXLanPort: 4789}},
 			},
-			wantUnderlay: hostnetwork.UnderlayParams{
+			wantLoopback: hostnetwork.LoopbackParams{
+				VtepIP:   "10.0.0.0/32",
+				TargetNS: "namespace",
+			},
+			wantNIC: hostnetwork.NICParams{
 				UnderlayInterface: "eth0",
 				TargetNS:          "namespace",
-				VtepIP:            "10.0.0.0/32",
 			},
 			wantL3VNIParams: []hostnetwork.L3VNIParams{
 				{
@@ -86,10 +92,13 @@ func TestAPItoHostConfig(t *testing.T) {
 			vnis: []v1alpha1.L3VNI{
 				{Spec: v1alpha1.L3VNISpec{VRF: ptr.String("red"), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv6: "2001:db8::/64"}, VNI: 100, VXLanPort: 4789}},
 			},
-			wantUnderlay: hostnetwork.UnderlayParams{
+			wantLoopback: hostnetwork.LoopbackParams{
+				VtepIP:   "10.0.0.0/32",
+				TargetNS: "namespace",
+			},
+			wantNIC: hostnetwork.NICParams{
 				UnderlayInterface: "eth0",
 				TargetNS:          "namespace",
-				VtepIP:            "10.0.0.0/32",
 			},
 			wantL3VNIParams: []hostnetwork.L3VNIParams{
 				{
@@ -117,10 +126,13 @@ func TestAPItoHostConfig(t *testing.T) {
 			vnis: []v1alpha1.L3VNI{
 				{Spec: v1alpha1.L3VNISpec{VRF: ptr.String("red"), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "10.1.0.0/24", IPv6: "2001:db8::/64"}, VNI: 100, VXLanPort: 4789}},
 			},
-			wantUnderlay: hostnetwork.UnderlayParams{
+			wantLoopback: hostnetwork.LoopbackParams{
+				VtepIP:   "10.0.0.0/32",
+				TargetNS: "namespace",
+			},
+			wantNIC: hostnetwork.NICParams{
 				UnderlayInterface: "eth0",
 				TargetNS:          "namespace",
-				VtepIP:            "10.0.0.0/32",
 			},
 			wantL3VNIParams: []hostnetwork.L3VNIParams{
 				{
@@ -150,10 +162,13 @@ func TestAPItoHostConfig(t *testing.T) {
 			l2vnis: []v1alpha1.L2VNI{
 				{Spec: v1alpha1.L2VNISpec{VNI: 200, VXLanPort: 4789}},
 			},
-			wantUnderlay: hostnetwork.UnderlayParams{
+			wantLoopback: hostnetwork.LoopbackParams{
+				VtepIP:   "10.0.0.0/32",
+				TargetNS: "namespace",
+			},
+			wantNIC: hostnetwork.NICParams{
 				UnderlayInterface: "eth0",
 				TargetNS:          "namespace",
-				VtepIP:            "10.0.0.0/32",
 			},
 			wantL3VNIParams: []hostnetwork.L3VNIParams{},
 			wantL2VNIParams: []hostnetwork.L2VNIParams{
@@ -180,10 +195,13 @@ func TestAPItoHostConfig(t *testing.T) {
 			l2vnis: []v1alpha1.L2VNI{
 				{Spec: v1alpha1.L2VNISpec{VNI: 201, VXLanPort: 4789, HostMaster: &v1alpha1.HostMaster{Name: "br0"}, L2GatewayIP: "192.168.100.1/24"}},
 			},
-			wantUnderlay: hostnetwork.UnderlayParams{
+			wantLoopback: hostnetwork.LoopbackParams{
+				VtepIP:   "10.0.0.0/32",
+				TargetNS: "namespace",
+			},
+			wantNIC: hostnetwork.NICParams{
 				UnderlayInterface: "eth0",
 				TargetNS:          "namespace",
-				VtepIP:            "10.0.0.0/32",
 			},
 			wantL3VNIParams: []hostnetwork.L3VNIParams{},
 			wantL2VNIParams: []hostnetwork.L2VNIParams{
@@ -204,13 +222,16 @@ func TestAPItoHostConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotUnderlay, gotL3VNIParams, gotL2VNIParams, err := APItoHostConfig(tt.nodeIndex, tt.targetNS, tt.underlays, tt.vnis, tt.l2vnis)
+			gotLoopback, gotNIC, gotL3VNIParams, gotL2VNIParams, err := APItoHostConfig(tt.nodeIndex, tt.targetNS, tt.underlays, tt.vnis, tt.l2vnis)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("APItoHostConfig() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if !reflect.DeepEqual(gotUnderlay, tt.wantUnderlay) {
-				t.Errorf("APItoHostConfig() gotUnderlay = %v, want %v", gotUnderlay, tt.wantUnderlay)
+			if !reflect.DeepEqual(gotLoopback, tt.wantLoopback) {
+				t.Errorf("APItoHostConfig() gotLoopback = %v, want %v", gotLoopback, tt.wantLoopback)
+			}
+			if !reflect.DeepEqual(gotNIC, tt.wantNIC) {
+				t.Errorf("APItoHostConfig() gotNIC = %v, want %v", gotNIC, tt.wantNIC)
 			}
 			if !reflect.DeepEqual(gotL3VNIParams, tt.wantL3VNIParams) {
 				t.Errorf("APItoHostConfig() gotL3VNIParams = %v, want %v", gotL3VNIParams, tt.wantL3VNIParams)

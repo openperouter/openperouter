@@ -84,3 +84,5 @@ topology:
     - endpoints: ["leafkind:toswitch", "leafkind-switch:leaf2"]
     - endpoints: ["pe-kind-control-plane:toswitch", "leafkind-switch:kindctrlpl"]
     - endpoints: ["pe-kind-worker:toswitch", "leafkind-switch:kindworker"]
+    - endpoints: ["pe-kind-control-plane:toswitch2", "leafkind-switch:kindctrlpl2"]
+    - endpoints: ["pe-kind-worker:toswitch2", "leafkind-switch:kindworker2"]

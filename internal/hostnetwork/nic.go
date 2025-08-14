@@ -4,7 +4,6 @@ package hostnetwork
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 
@@ -12,41 +11,7 @@ import (
 	"github.com/vishvananda/netns"
 )
 
-const (
-	UnderlayLoopback = "lound"
-)
-
-// used to identify the interface moved into the network ns to serve
-// the underlay
 const underlayInterfaceSpecialAddr = "172.16.1.1/32"
-
-type UnderlayParams struct {
-	UnderlayInterface string `json:"underlay_interface"`
-	VtepIP            string `json:"vtep_ip"`
-	TargetNS          string `json:"target_ns"`
-}
-
-func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
-	slog.DebugContext(ctx, "setup underlay", "params", params)
-	defer slog.DebugContext(ctx, "setup underlay done")
-	ns, err := netns.GetFromName(params.TargetNS)
-	if err != nil {
-		return fmt.Errorf("setupUnderlay: Failed to find network namespace %s: %w", params.TargetNS, err)
-	}
-	defer func() {
-		if err := ns.Close(); err != nil {
-			slog.Error("failed to close namespace", "namespace", params.TargetNS, "error", err)
-		}
-	}()
-
-	if err := createLoopback(ctx, ns, params.VtepIP); err != nil {
-		return err
-	}
-	if err := moveUnderlayInterface(ctx, params.UnderlayInterface, ns); err != nil {
-		return err
-	}
-	return nil
-}
 
 type UnderlayExistsError string
 
@@ -54,30 +19,28 @@ func (e UnderlayExistsError) Error() string {
 	return string(e)
 }
 
-func createLoopback(ctx context.Context, ns netns.NsHandle, vtepIP string) error {
-	slog.DebugContext(ctx, "setup underlay", "step", "creating loopback interface")
-	defer slog.DebugContext(ctx, "setup underlay", "step", "loopback interface created")
+type NICParams struct {
+	UnderlayInterface string `json:"underlay_interface"`
+	TargetNS          string `json:"target_ns"`
+}
 
-	if err := inNamespace(ns, func() error {
-		loopback, err := netlink.LinkByName(UnderlayLoopback)
-		if errors.As(err, &netlink.LinkNotFoundError{}) {
-			slog.DebugContext(ctx, "setup underlay", "step", "creating loopback interface")
-			loopback = &netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: UnderlayLoopback}}
-			if err := netlink.LinkAdd(loopback); err != nil {
-				return fmt.Errorf("assignVTEPToLoopback: failed to create loopback underlay - %w", err)
-			}
+func SetupNIC(ctx context.Context, params NICParams) error {
+	slog.DebugContext(ctx, "setup underlay NIC", "underlayInterface", params.UnderlayInterface, "targetNS", params.TargetNS)
+	defer slog.DebugContext(ctx, "setup underlay NIC done")
+
+	ns, err := netns.GetFromName(params.TargetNS)
+	if err != nil {
+		return fmt.Errorf("SetupUnderlayNIC: Failed to find network namespace %s: %w", params.TargetNS, err)
+	}
+	defer func() {
+		if err := ns.Close(); err != nil {
+			slog.Error("failed to close namespace", "namespace", params.TargetNS, "error", err)
 		}
+	}()
 
-		err = assignIPToInterface(loopback, vtepIP)
-		if err != nil {
-			return err
-		}
-
-		return nil
-	}); err != nil {
+	if err := moveUnderlayInterface(ctx, params.UnderlayInterface, ns); err != nil {
 		return err
 	}
-
 	return nil
 }
 
@@ -90,15 +53,15 @@ func moveUnderlayInterface(ctx context.Context, underlayInterface string, ns net
 	}
 
 	if currentUnderlayInterface != "" && currentUnderlayInterface == underlayInterface { // nothing to do
-		slog.DebugContext(ctx, "move underlay", "event", "underlay nic already set")
+		slog.DebugContext(ctx, "move underlay interface", "event", "underlay nic already set")
 		return nil
 	}
 
 	if currentUnderlayInterface != "" && currentUnderlayInterface != underlayInterface { // need to move the old one back
-		slog.DebugContext(ctx, "move underlay", "event", "different underlay nic found, removing", "old", currentUnderlayInterface, "new", underlayInterface)
+		slog.DebugContext(ctx, "move underlay interface", "event", "different underlay nic found, removing", "old", currentUnderlayInterface, "new", underlayInterface)
 		// given the tricky nature of the operation, better error and let the caller delete the namespace and start the machinery from scratch.
 		// moving the underlay is a destructive operation anyway.
-		return UnderlayExistsError(fmt.Sprintf("existing underlay found: %s, new is %s", currentUnderlayInterface, underlayInterface))
+		return UnderlayExistsError(fmt.Sprintf("existing underlay interface found: %s, new is %s", currentUnderlayInterface, underlayInterface))
 	}
 
 	err = moveInterfaceToNamespace(ctx, underlayInterface, ns)
@@ -109,7 +72,7 @@ func moveUnderlayInterface(ctx context.Context, underlayInterface string, ns net
 	if err := inNamespace(ns, func() error {
 		underlay, err := netlink.LinkByName(underlayInterface)
 		if err != nil {
-			return fmt.Errorf("failed to get underlay nic by name %s: %w", underlayInterface, err)
+			return fmt.Errorf("failed to get underlay interface by name %s: %w", underlayInterface, err)
 		}
 
 		// we assign a special address so we we can detect if an interface was already moved.
@@ -157,7 +120,7 @@ func findInterfaceWithIP(ns netns.NsHandle, ip string) (string, error) {
 		}
 		for _, l := range links {
 			addr, _ := netlink.AddrList(l, netlink.FAMILY_ALL)
-			slog.Debug("find underlay", "checking link", l.Attrs().Name, "addresses", addr)
+			slog.Debug("find underlay interface", "checking link", l.Attrs().Name, "addresses", addr)
 			hasIP, err := interfaceHasIP(l, ip)
 			if err != nil {
 				return err

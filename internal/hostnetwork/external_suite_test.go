@@ -33,20 +33,37 @@ func TestHostNetwork(t *testing.T) {
 	RunSpecs(t, "HostNetwork Suite")
 }
 
+// underlayParams matches the flat structure from e2e tests for JSON deserialization
+// XXX: This duplicates `underlayParams` defined in `e2etests/tests/hostconfiguration.go`.
+type underlayParams struct {
+	UnderlayInterface string `json:"underlay_interface"`
+	VtepIP            string `json:"vtep_ip"`
+}
+
 var _ = Describe("EXTERNAL", func() {
 
 	Context("underlay", func() {
-		var params UnderlayParams
+		var params underlayParams
 
 		BeforeEach(func() {
 			var err error
-			params, err = readParamsFromFile[UnderlayParams](paramsFile)
+			params, err = readParamsFromFile[underlayParams](paramsFile)
 			Expect(err).NotTo(HaveOccurred())
 		})
 
 		It("should be configured", func() {
 			Eventually(func(g Gomega) {
-				validateUnderlay(g, params)
+				// Convert flat params to LoopbackParams and NICParams for validateUnderlay
+				loopbackParams := LoopbackParams{
+					VtepIP:   params.VtepIP,
+					TargetNS: "", // Empty for current namespace validation
+				}
+				nicParams := NICParams{
+					UnderlayInterface: params.UnderlayInterface,
+					TargetNS:          "", // Empty for current namespace validation
+				}
+				validateUnderlayLoopback(g, loopbackParams)
+				validateUnderlayNIC(g, nicParams)
 			}, 30*time.Second, 1*time.Second).Should(Succeed())
 		})
 	})
