@@ -173,6 +173,43 @@ The separate CRD approach addresses scalability concerns:
 
 ## Future Extensions
 
+### Kubernetes Conditions
+
+Add standard Kubernetes conditions to the UnderlayNodeStatus to provide high-level status summary:
+
+```go
+type UnderlayNodeStatusStatus struct {
+    LastReconciled     *metav1.Time          `json:"lastReconciled,omitempty"`
+    InterfaceStatuses  []InterfaceStatus     `json:"interfaceStatuses,omitempty"`
+    Conditions         []metav1.Condition    `json:"conditions,omitempty"`
+}
+```
+
+**Condition Types**:
+- `Ready`: True when all interfaces are successfully configured
+- `Degraded`: True when some interfaces failed configuration but others succeeded
+
+**Example**:
+```yaml
+status:
+  conditions:
+  - type: Ready
+    status: "False"
+    reason: InterfaceConfigurationFailed
+    message: "Interface eth2 not found on node"
+  - type: Degraded
+    status: "True"
+    reason: PartialConfiguration
+    message: "1 of 2 interfaces configured successfully"
+```
+
+This enables:
+- Quick status overview without parsing interface details
+- Standard Kubernetes condition querying patterns
+- Integration with monitoring tools that understand conditions
+
+### Additional CRDs
+
 We may introduce other CRDs or extend the UnderlayNodeStatus CRD in the future to cover node-specific status of:
 
 - BGP session
