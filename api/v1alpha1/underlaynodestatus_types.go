@@ -20,6 +20,36 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// InterfaceStatusType represents the status of a network interface configuration.
+// +kubebuilder:validation:Enum=SuccessfullyConfigured;NotFound;InUse;Error
+type InterfaceStatusType string
+
+const (
+	// InterfaceStatusSuccessfullyConfigured indicates the interface was successfully configured.
+	InterfaceStatusSuccessfullyConfigured InterfaceStatusType = "SuccessfullyConfigured"
+	// InterfaceStatusNotFound indicates the interface was not found on the node.
+	InterfaceStatusNotFound InterfaceStatusType = "NotFound"
+	// InterfaceStatusInUse indicates the interface is currently in use and cannot be configured.
+	InterfaceStatusInUse InterfaceStatusType = "InUse"
+	// InterfaceStatusError indicates an error occurred while configuring the interface.
+	InterfaceStatusError InterfaceStatusType = "Error"
+)
+
+// InterfaceStatus represents the status of a network interface configuration.
+type InterfaceStatus struct {
+	// Name is the name of the network interface.
+	// +required
+	Name string `json:"name"`
+
+	// Status indicates the current status of the interface configuration.
+	// +required
+	Status InterfaceStatusType `json:"status"`
+
+	// Message provides additional information about the interface status.
+	// +optional
+	Message string `json:"message,omitempty"`
+}
+
 // UnderlayNodeStatusSpec defines which Underlay and Node this Status
 // represents.
 type UnderlayNodeStatusSpec struct {
@@ -38,6 +68,10 @@ type UnderlayNodeStatusStatus struct {
 	// LastReconciled is the timestamp of the last successful reconciliation of this UnderlayNodeStatus.
 	// +optional
 	LastReconciled *metav1.Time `json:"lastReconciled,omitempty"`
+
+	// InterfaceStatuses contains the status of network interface configurations.
+	// +optional
+	InterfaceStatuses []InterfaceStatus `json:"interfaceStatuses,omitempty"`
 }
 
 // +kubebuilder:object:root=true
