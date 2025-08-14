@@ -2,7 +2,7 @@
 
 ## Summary
 
-This enhancement proposes atatus reporting system for OpenPERouter through dedicated Custom Resource Definitions (CRDs). The system provides visibility into per-node configuration status, BGP session health, and VNI operational state to enable effective troubleshooting and monitoring.
+This enhancement proposes atatus reporting system for OpenPERouter through dedicated Custom Resource Definitions (CRDs). The system provides visibility into per-node configuration status to enable effective troubleshooting and monitoring.
 
 ## Motivation
 
