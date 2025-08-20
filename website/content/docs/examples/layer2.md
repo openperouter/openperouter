@@ -47,11 +47,12 @@ metadata:
   name: red
   namespace: openperouter-system
 spec:
-  asn: 64514
   vni: 100
-  localcidr:
-    ipv4: 192.169.10.0/24
-  hostasn: 64515
+  hostsession:
+    asn: 64514
+    hostasn: 64515
+    localcidr:
+      ipv4: 192.169.10.0/24
 ---
 apiVersion: openpe.openperouter.github.io/v1alpha1
 kind: L2VNI

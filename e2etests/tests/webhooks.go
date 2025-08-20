@@ -11,7 +11,6 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
-	"k8s.io/utils/pointer"
 	"k8s.io/utils/ptr"
 )
 
@@ -38,14 +37,15 @@ var _ = Describe("Webhooks", func() {
 					Namespace: openperouter.Namespace,
 				},
 				Spec: v1alpha1.L3VNISpec{
-					ASN: 65001,
-					VRF: pointer.String("test-vrf"),
-					LocalCIDR: v1alpha1.LocalCIDRConfig{
-						IPv4: "10.0.0.0/24",
+					HostSession: &v1alpha1.HostSession{
+						ASN: 65001,
+						LocalCIDR: v1alpha1.LocalCIDRConfig{
+							IPv4: "10.0.0.0/24",
+						},
+						HostASN: 65002,
 					},
 					VNI:       100,
 					VXLanPort: 4789,
-					HostASN:   pointer.Uint32(65002),
 				},
 			}
 			By("creating the first VNI")
@@ -69,14 +69,16 @@ var _ = Describe("Webhooks", func() {
 					Namespace: openperouter.Namespace,
 				},
 				Spec: v1alpha1.L3VNISpec{
-					VRF: pointer.String("test-vrf-2"),
-					LocalCIDR: v1alpha1.LocalCIDRConfig{
-						IPv4: "10.0.1.0/24",
-					},
+					VRF:       ptr.To("test-vrf-2"),
 					VNI:       100,
-					ASN:       65001,
-					HostASN:   pointer.Uint32(65002),
 					VXLanPort: 4789,
+					HostSession: &v1alpha1.HostSession{
+						ASN:     65001,
+						HostASN: 65002,
+						LocalCIDR: v1alpha1.LocalCIDRConfig{
+							IPv4: "10.0.1.0/24",
+						},
+					},
 				},
 			}, "duplicate vni"),
 			Entry("when trying to create a VNI with an invalid CIDR", v1alpha1.L3VNI{
@@ -85,14 +87,16 @@ var _ = Describe("Webhooks", func() {
 					Namespace: openperouter.Namespace,
 				},
 				Spec: v1alpha1.L3VNISpec{
-					VRF: pointer.String("test-vrf-3"),
-					LocalCIDR: v1alpha1.LocalCIDRConfig{
-						IPv4: "invalid-cidr",
-					},
-					ASN:       65001,
-					HostASN:   pointer.Uint32(65002),
+					VRF:       ptr.To("test-vrf-3"),
 					VNI:       101,
 					VXLanPort: 4789,
+					HostSession: &v1alpha1.HostSession{
+						ASN:     65001,
+						HostASN: 65002,
+						LocalCIDR: v1alpha1.LocalCIDRConfig{
+							IPv4: "invalid-cidr",
+						},
+					},
 				},
 			}, "invalid local CIDR"),
 			Entry("when trying to create a VNI with the same local and remote ASN", v1alpha1.L3VNI{
@@ -101,14 +105,16 @@ var _ = Describe("Webhooks", func() {
 					Namespace: openperouter.Namespace,
 				},
 				Spec: v1alpha1.L3VNISpec{
-					ASN:     65001,
-					HostASN: pointer.Uint32(65001),
-					VRF:     pointer.String("test-vrf-4"),
-					LocalCIDR: v1alpha1.LocalCIDRConfig{
-						IPv4: "10.0.2.0/24",
-					},
+					VRF:       ptr.To("test-vrf-4"),
 					VNI:       102,
 					VXLanPort: 4789,
+					HostSession: &v1alpha1.HostSession{
+						ASN:     65001,
+						HostASN: 65001,
+						LocalCIDR: v1alpha1.LocalCIDRConfig{
+							IPv4: "10.0.2.0/24",
+						},
+					},
 				},
 			}, "must be different from asn"),
 		)
@@ -204,12 +210,14 @@ var _ = Describe("Webhooks", func() {
 					Namespace: openperouter.Namespace,
 				},
 				Spec: v1alpha1.L3VNISpec{
-					ASN:       65000,
-					HostASN:   ptr.To(uint32(65001)),
 					VNI:       400,
 					VXLanPort: 4789,
-					LocalCIDR: v1alpha1.LocalCIDRConfig{
-						IPv4: "10.0.0.0/24",
+					HostSession: &v1alpha1.HostSession{
+						ASN:     65000,
+						HostASN: 65001,
+						LocalCIDR: v1alpha1.LocalCIDRConfig{
+							IPv4: "10.0.0.0/24",
+						},
 					},
 				},
 			}
@@ -227,11 +235,14 @@ var _ = Describe("Webhooks", func() {
 					Namespace: openperouter.Namespace,
 				},
 				Spec: v1alpha1.L3VNISpec{
-					ASN:       65000,
 					VNI:       400,
 					VXLanPort: 4789,
-					LocalCIDR: v1alpha1.LocalCIDRConfig{
-						IPv4: "10.0.1.0/24",
+					HostSession: &v1alpha1.HostSession{
+						ASN:     65000,
+						HostASN: 65001,
+						LocalCIDR: v1alpha1.LocalCIDRConfig{
+							IPv4: "10.0.1.0/24",
+						},
 					},
 				},
 			}

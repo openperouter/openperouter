@@ -107,11 +107,13 @@ metadata:
   name: blue
   namespace: openperouter-system
 spec:
-  asn: 64514
+  hostsession:
+    asn: 64514
+    hostasn: 64515
+    localcidr:
+      ipv4: 192.169.11.0/24
   vni: 200
-  localcidr:
-    ipv4: 192.169.11.0/24
-  hostasn: 64515
+  
 ```
 
 ### Configuration Fields
@@ -135,11 +137,12 @@ metadata:
   name: signal
   namespace: openperouter-system
 spec:
-  asn: 64514
   vni: 100
-  localcidr:
-    ipv4: 192.168.10.0/24
-  hostasn: 64515
+  hostsession:
+    asn: 64514
+    hostasn: 64515
+    localcidr:
+      ipv4: 192.168.10.0/24
 ---
 # Development VNI
 apiVersion: openpe.openperouter.github.io/v1alpha1
@@ -148,11 +151,12 @@ metadata:
   name: oam
   namespace: openperouter-system
 spec:
-  asn: 64514
   vni: 200
-  localcidr:
-    ipv4: 192.168.20.0/24
-  hostasn: 64515
+  hostsession:
+    asn: 64514
+    hostasn: 64515
+    localcidr:
+      ipv4: 192.168.20.0/24
 ```
 
 ## What Happens During Reconciliation

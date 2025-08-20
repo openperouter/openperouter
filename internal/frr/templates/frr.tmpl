@@ -62,31 +62,14 @@ router bgp {{ .Underlay.MyASN }}
 {{- end }}
 
 {{- range .VNIs }}
-
 router bgp {{ .ASN }} vrf {{ .VRF }}
   no bgp ebgp-requires-policy
   no bgp network import-check
   no bgp default ipv4-unicast
 
-  neighbor {{ .LocalNeighbor.Addr }} remote-as {{ .LocalNeighbor.ASN }}
-
-  address-family ipv4 unicast
-  {{- range .ToAdvertiseIPv4 }}
-    network {{ . }}
+  {{- if .LocalNeighbor }}
+  {{ template "localneighbor" . }}
   {{- end }}
-    neighbor {{ .LocalNeighbor.Addr }} activate
-    neighbor {{ .LocalNeighbor.Addr }} route-map allowall in
-    neighbor {{ .LocalNeighbor.Addr }} route-map allowall out
-  exit-address-family
-
-  address-family ipv6 unicast
-  {{- range .ToAdvertiseIPv6 }}
-    network {{ . }}
-  {{- end }}
-    neighbor {{ .LocalNeighbor.Addr }} activate
-    neighbor {{ .LocalNeighbor.Addr }} route-map allowall in
-    neighbor {{ .LocalNeighbor.Addr }} route-map allowall out
-  exit-address-family
 
   address-family l2vpn evpn
     advertise ipv4 unicast
