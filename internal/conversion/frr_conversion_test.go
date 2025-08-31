@@ -38,9 +38,11 @@ func TestAPItoFRR(t *testing.T) {
 				{
 					Spec: v1alpha1.UnderlaySpec{
 						ASN:          65000,
-						VTEPCIDR:     "192.168.1.0/24",
 						RouterIDCIDR: "10.0.0.0/24",
 						Neighbors:    []v1alpha1.Neighbor{{Address: "192.168.1.1", ASN: 65001}},
+						EVPN: &v1alpha1.EVPNConfig{
+							VTEPCIDR: "192.168.1.0/24",
+						},
 					},
 				},
 			},
@@ -49,7 +51,6 @@ func TestAPItoFRR(t *testing.T) {
 			want: frr.Config{
 				Underlay: frr.UnderlayConfig{
 					MyASN:    65000,
-					VTEP:     "192.168.1.0/32",
 					RouterID: "10.0.0.1",
 					Neighbors: []frr.NeighborConfig{
 						{
@@ -60,8 +61,11 @@ func TestAPItoFRR(t *testing.T) {
 							EBGPMultiHop: false,
 						},
 					},
+					EVPN: &frr.UnderlayEvpn{
+						VTEP: "192.168.1.0/32",
+					},
 				},
-				VNIs:        []frr.L3VNIConfig{},
+				VRFs:        []frr.VRFConfig{},
 				BFDProfiles: []frr.BFDProfile{},
 				Loglevel:    "debug",
 			},
@@ -74,9 +78,11 @@ func TestAPItoFRR(t *testing.T) {
 				{
 					Spec: v1alpha1.UnderlaySpec{
 						ASN:          65000,
-						VTEPCIDR:     "192.168.1.0/24",
 						RouterIDCIDR: "10.0.0.0/24",
 						Neighbors:    []v1alpha1.Neighbor{{Address: "192.168.1.1", ASN: 65001}},
+						EVPN: &v1alpha1.EVPNConfig{
+							VTEPCIDR: "192.168.1.0/24",
+						},
 					},
 				},
 			},
@@ -100,7 +106,6 @@ func TestAPItoFRR(t *testing.T) {
 			want: frr.Config{
 				Underlay: frr.UnderlayConfig{
 					MyASN:    65000,
-					VTEP:     "192.168.1.0/32",
 					RouterID: "10.0.0.1",
 					Neighbors: []frr.NeighborConfig{
 						{
@@ -111,18 +116,24 @@ func TestAPItoFRR(t *testing.T) {
 							EBGPMultiHop: false,
 						},
 					},
+					EVPN: &frr.UnderlayEvpn{
+						VTEP: "192.168.1.0/32",
+					},
 				},
-				VNIs: []frr.L3VNIConfig{
+				VRFs: []frr.VRFConfig{
 					{
-						ASN: 65000,
-						VNI: 200,
-						VRF: "vrf1",
+						ASN:      65000,
+						VRF:      "vrf1",
+						RouterID: "10.0.0.1",
 						LocalNeighbor: &frr.NeighborConfig{
 							Addr: "192.168.2.2",
 							ASN:  65001,
 						},
 						ToAdvertiseIPv4: []string{"192.168.2.2/32"},
 						ToAdvertiseIPv6: []string{},
+						EVPN: &frr.VRFEvpn{
+							VNI: 200,
+						},
 					},
 				},
 				BFDProfiles: []frr.BFDProfile{},
@@ -137,9 +148,11 @@ func TestAPItoFRR(t *testing.T) {
 				{
 					Spec: v1alpha1.UnderlaySpec{
 						ASN:          65000,
-						VTEPCIDR:     "192.168.1.0/24",
 						RouterIDCIDR: "10.0.0.0/24",
 						Neighbors:    []v1alpha1.Neighbor{{Address: "192.168.1.1", ASN: 65001}},
+						EVPN: &v1alpha1.EVPNConfig{
+							VTEPCIDR: "192.168.1.0/24",
+						},
 					},
 				},
 			},
@@ -163,7 +176,6 @@ func TestAPItoFRR(t *testing.T) {
 			want: frr.Config{
 				Underlay: frr.UnderlayConfig{
 					MyASN:    65000,
-					VTEP:     "192.168.1.0/32",
 					RouterID: "10.0.0.1",
 					Neighbors: []frr.NeighborConfig{
 						{
@@ -174,18 +186,24 @@ func TestAPItoFRR(t *testing.T) {
 							EBGPMultiHop: false,
 						},
 					},
+					EVPN: &frr.UnderlayEvpn{
+						VTEP: "192.168.1.0/32",
+					},
 				},
-				VNIs: []frr.L3VNIConfig{
+				VRFs: []frr.VRFConfig{
 					{
-						ASN: 65000,
-						VNI: 200,
-						VRF: "vrf1",
+						ASN:      65000,
+						VRF:      "vrf1",
+						RouterID: "10.0.0.1",
 						LocalNeighbor: &frr.NeighborConfig{
 							Addr: "2001:db8::2",
 							ASN:  65001,
 						},
 						ToAdvertiseIPv4: []string{},
 						ToAdvertiseIPv6: []string{"2001:db8::2/128"},
+						EVPN: &frr.VRFEvpn{
+							VNI: 200,
+						},
 					},
 				},
 				BFDProfiles: []frr.BFDProfile{},
@@ -200,9 +218,11 @@ func TestAPItoFRR(t *testing.T) {
 				{
 					Spec: v1alpha1.UnderlaySpec{
 						ASN:          65000,
-						VTEPCIDR:     "192.168.1.0/24",
 						RouterIDCIDR: "10.0.0.0/24",
 						Neighbors:    []v1alpha1.Neighbor{{Address: "192.168.1.1", ASN: 65001}},
+						EVPN: &v1alpha1.EVPNConfig{
+							VTEPCIDR: "192.168.1.0/24",
+						},
 					},
 				},
 			},
@@ -227,7 +247,6 @@ func TestAPItoFRR(t *testing.T) {
 			want: frr.Config{
 				Underlay: frr.UnderlayConfig{
 					MyASN:    65000,
-					VTEP:     "192.168.1.0/32",
 					RouterID: "10.0.0.1",
 					Neighbors: []frr.NeighborConfig{
 						{
@@ -238,29 +257,38 @@ func TestAPItoFRR(t *testing.T) {
 							EBGPMultiHop: false,
 						},
 					},
+					EVPN: &frr.UnderlayEvpn{
+						VTEP: "192.168.1.0/32",
+					},
 				},
-				VNIs: []frr.L3VNIConfig{
+				VRFs: []frr.VRFConfig{
 					{
-						ASN: 65000,
-						VNI: 200,
-						VRF: "vrf1",
+						ASN:      65000,
+						VRF:      "vrf1",
+						RouterID: "10.0.0.1",
 						LocalNeighbor: &frr.NeighborConfig{
 							Addr: "192.168.2.2",
 							ASN:  65001,
 						},
 						ToAdvertiseIPv4: []string{"192.168.2.2/32"},
 						ToAdvertiseIPv6: []string{},
+						EVPN: &frr.VRFEvpn{
+							VNI: 200,
+						},
 					},
 					{
-						ASN: 65000,
-						VNI: 200,
-						VRF: "vrf1",
+						ASN:      65000,
+						VRF:      "vrf1",
+						RouterID: "10.0.0.1",
 						LocalNeighbor: &frr.NeighborConfig{
 							Addr: "2001:db8::2",
 							ASN:  65001,
 						},
 						ToAdvertiseIPv4: []string{},
 						ToAdvertiseIPv6: []string{"2001:db8::2/128"},
+						EVPN: &frr.VRFEvpn{
+							VNI: 200,
+						},
 					},
 				},
 				BFDProfiles: []frr.BFDProfile{},
@@ -275,8 +303,10 @@ func TestAPItoFRR(t *testing.T) {
 				{
 					Spec: v1alpha1.UnderlaySpec{
 						ASN:          65000,
-						VTEPCIDR:     "192.168.1.0/24",
 						RouterIDCIDR: "10.0.0.0/24",
+						EVPN: &v1alpha1.EVPNConfig{
+							VTEPCIDR: "192.168.1.0/24",
+						},
 						Neighbors: []v1alpha1.Neighbor{
 							{
 								Address: "192.168.1.100",
@@ -298,7 +328,6 @@ func TestAPItoFRR(t *testing.T) {
 			want: frr.Config{
 				Underlay: frr.UnderlayConfig{
 					MyASN:    65000,
-					VTEP:     "192.168.1.0/32",
 					RouterID: "10.0.0.1",
 					Neighbors: []frr.NeighborConfig{
 						{
@@ -311,8 +340,11 @@ func TestAPItoFRR(t *testing.T) {
 							BFDProfile:   "neighbor-192.168.1.100",
 						},
 					},
+					EVPN: &frr.UnderlayEvpn{
+						VTEP: "192.168.1.0/32",
+					},
 				},
-				VNIs: []frr.L3VNIConfig{},
+				VRFs: []frr.VRFConfig{},
 				BFDProfiles: []frr.BFDProfile{
 					{
 						Name:             "neighbor-192.168.1.100",
@@ -332,8 +364,10 @@ func TestAPItoFRR(t *testing.T) {
 				{
 					Spec: v1alpha1.UnderlaySpec{
 						ASN:          65000,
-						VTEPCIDR:     "192.168.1.0/24",
 						RouterIDCIDR: "10.0.0.0/24",
+						EVPN: &v1alpha1.EVPNConfig{
+							VTEPCIDR: "192.168.1.0/24",
+						},
 						Neighbors: []v1alpha1.Neighbor{
 							{
 								Address: "192.168.1.100",
@@ -349,7 +383,6 @@ func TestAPItoFRR(t *testing.T) {
 			want: frr.Config{
 				Underlay: frr.UnderlayConfig{
 					MyASN:    65000,
-					VTEP:     "192.168.1.0/32",
 					RouterID: "10.0.0.1",
 					Neighbors: []frr.NeighborConfig{
 						{
@@ -362,8 +395,11 @@ func TestAPItoFRR(t *testing.T) {
 							BFDProfile:   "",
 						},
 					},
+					EVPN: &frr.UnderlayEvpn{
+						VTEP: "192.168.1.0/32",
+					},
 				},
-				VNIs:        []frr.L3VNIConfig{},
+				VRFs:        []frr.VRFConfig{},
 				BFDProfiles: []frr.BFDProfile{},
 				Loglevel:    "debug",
 			},
@@ -376,9 +412,11 @@ func TestAPItoFRR(t *testing.T) {
 				{
 					Spec: v1alpha1.UnderlaySpec{
 						ASN:          65000,
-						VTEPCIDR:     "192.168.1.0/24",
 						RouterIDCIDR: "10.0.0.0/24",
 						Neighbors:    []v1alpha1.Neighbor{{Address: "192.168.1.1", ASN: 65001}},
+						EVPN: &v1alpha1.EVPNConfig{
+							VTEPCIDR: "192.168.1.0/24",
+						},
 					},
 				},
 			},
@@ -395,7 +433,6 @@ func TestAPItoFRR(t *testing.T) {
 			want: frr.Config{
 				Underlay: frr.UnderlayConfig{
 					MyASN:    65000,
-					VTEP:     "192.168.1.0/32",
 					RouterID: "10.0.0.1",
 					Neighbors: []frr.NeighborConfig{
 						{
@@ -406,12 +443,17 @@ func TestAPItoFRR(t *testing.T) {
 							EBGPMultiHop: false,
 						},
 					},
+					EVPN: &frr.UnderlayEvpn{
+						VTEP: "192.168.1.0/32",
+					},
 				},
-				VNIs: []frr.L3VNIConfig{
+				VRFs: []frr.VRFConfig{
 					{
-						VNI:      200,
 						VRF:      "vrf1",
 						RouterID: "10.0.0.1",
+						EVPN: &frr.VRFEvpn{
+							VNI: 200,
+						},
 					},
 				},
 				BFDProfiles: []frr.BFDProfile{},

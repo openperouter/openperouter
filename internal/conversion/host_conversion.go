@@ -21,9 +21,13 @@ func APItoHostConfig(nodeIndex int, targetNS string, underlays []v1alpha1.Underl
 
 	underlay := underlays[0]
 
-	vtepIP, err := ipam.VTEPIp(underlay.Spec.VTEPCIDR, nodeIndex)
-	if err != nil {
-		return hostnetwork.UnderlayParams{}, nil, nil, fmt.Errorf("failed to get vtep ip, cidr %s, nodeIntex %d", underlay.Spec.VTEPCIDR, nodeIndex)
+	var vtepIP net.IPNet
+	var err error
+	if underlay.Spec.EVPN != nil {
+		vtepIP, err = ipam.VTEPIp(underlay.Spec.EVPN.VTEPCIDR, nodeIndex)
+		if err != nil {
+			return hostnetwork.UnderlayParams{}, nil, nil, fmt.Errorf("failed to get vtep ip, cidr %s, nodeIntex %d", underlay.Spec.EVPN.VTEPCIDR, nodeIndex)
+		}
 	}
 
 	underlayParams := hostnetwork.UnderlayParams{
