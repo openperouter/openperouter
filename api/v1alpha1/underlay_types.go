@@ -28,10 +28,6 @@ type UnderlaySpec struct {
 	// +required
 	ASN uint32 `json:"asn,omitempty"`
 
-	// VTEPCIDR is CIDR to be used to assign IPs to the local VTEP on each node.
-	// +required
-	VTEPCIDR string `json:"vtepcidr,omitempty"`
-
 	// RouterIDCIDR is the ipv4 cidr to be used to assign a different routerID on each node.
 	// The default value is "10.0.0.0/24".
 	// +kubebuilder:default="10.0.0.0/24"
@@ -47,6 +43,24 @@ type UnderlaySpec struct {
 	// +kubebuilder:validation:Items=Pattern=`^[a-zA-Z][a-zA-Z0-9_-]*$`
 	// +kubebuilder:validation:Items=MaxLength=15
 	Nics []string `json:"nics,omitempty"`
+
+	EVPN *EVPNConfig `json:"evpn,omitempty"`
+	SRV6 *SRV6Config `json:"srv6,omitempty"`
+}
+
+type EVPNConfig struct {
+	// VTEPCIDR is CIDR to be used to assign IPs to the local VTEP on each node.
+	// +required
+	VTEPCIDR string `json:"vtepcidr,omitempty"`
+}
+
+// SRV6Config defines the configuration for SRv6.
+type SRV6Config struct {
+	// Locator range is the range of locators that can be used
+	// on each node.
+	// Example: fd00:0:0::/64-fd00:1:0::/64
+	// +required
+	LocatorRange string `json:"locatorRange,omitempty"`
 }
 
 // UnderlayStatus defines the observed state of Underlay.
