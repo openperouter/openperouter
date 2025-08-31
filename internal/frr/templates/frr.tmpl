@@ -40,6 +40,7 @@ router bgp {{ .Underlay.MyASN }}
   no bgp ebgp-requires-policy
   no bgp network import-check
   no bgp default ipv4-unicast
+  bgp router-id {{ .Underlay.RouterID }}
 
 {{- range $n := .Underlay.Neighbors }}
 {{- template "neighborsession" dict "neighbor" $n "routerASN" $.Underlay.MyASN -}}
@@ -67,6 +68,7 @@ router bgp {{ .ASN }} vrf {{ .VRF }}
   no bgp ebgp-requires-policy
   no bgp network import-check
   no bgp default ipv4-unicast
+  bgp router-id {{ .RouterID }}
 
   neighbor {{ .LocalNeighbor.Addr }} remote-as {{ .LocalNeighbor.ASN }}
 

@@ -49,14 +49,21 @@ func APItoFRR(nodeIndex int, underlays []v1alpha1.Underlay, vnis []v1alpha1.L3VN
 			bfdProfiles = append(bfdProfiles, *bfdProfile)
 		}
 	}
+
+	routerID, err := ipam.RouterID(underlay.Spec.RouterIDCIDR, nodeIndex)
+	if err != nil {
+		return frr.Config{}, fmt.Errorf("failed to get router id, cidr %s, nodeIndex %d: %w", underlay.Spec.RouterIDCIDR, nodeIndex, err)
+	}
+
 	underlayConfig := frr.UnderlayConfig{
 		MyASN:     underlay.Spec.ASN,
 		VTEP:      vtepIP.String(),
+		RouterID:  routerID,
 		Neighbors: underlayNeighbors,
 	}
 	vniConfigs := []frr.L3VNIConfig{}
 	for _, vni := range vnis {
-		frrVNI, err := l3vniToFRR(vni, nodeIndex)
+		frrVNI, err := l3vniToFRR(vni, routerID, nodeIndex)
 		if err != nil {
 			return frr.Config{}, fmt.Errorf("failed to translate vni to frr: %w, vni %v", err, vni)
 		}
@@ -71,12 +78,13 @@ func APItoFRR(nodeIndex int, underlays []v1alpha1.Underlay, vnis []v1alpha1.L3VN
 	}, nil
 }
 
-func l3vniToFRR(vni v1alpha1.L3VNI, nodeIndex int) ([]frr.L3VNIConfig, error) {
+func l3vniToFRR(vni v1alpha1.L3VNI, routerID string, nodeIndex int) ([]frr.L3VNIConfig, error) {
 	if vni.Spec.HostSession == nil { // no neighbor, just the vni / vrf
 		return []frr.L3VNIConfig{
 			{
-				VNI: int(vni.Spec.VNI),
-				VRF: vni.VRFName(),
+				VNI:      int(vni.Spec.VNI),
+				VRF:      vni.VRFName(),
+				RouterID: routerID,
 			},
 		}, nil
 	}

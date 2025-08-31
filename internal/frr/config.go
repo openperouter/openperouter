@@ -30,6 +30,7 @@ type Config struct {
 type UnderlayConfig struct {
 	MyASN     uint32
 	VTEP      string
+	RouterID  string
 	Neighbors []NeighborConfig
 }
 
@@ -40,6 +41,7 @@ type L3VNIConfig struct {
 	LocalNeighbor   *NeighborConfig
 	VRF             string
 	VNI             int
+	RouterID        string
 }
 
 type BFDProfile struct {

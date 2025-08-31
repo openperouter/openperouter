@@ -32,6 +32,11 @@ type UnderlaySpec struct {
 	// +required
 	VTEPCIDR string `json:"vtepcidr,omitempty"`
 
+	// RouterIDCIDR is the ipv4 cidr to be used to assign a different routerID on each node.
+	// +kubebuilder:default="10.0.0.0/24"
+	// +optional
+	RouterIDCIDR string `json:"routeridcidr,omitempty"`
+
 	// Neighbors is the list of external neighbors to peer with.
 	// +kubebuilder:validation:MinItems=1
 	Neighbors []Neighbor `json:"neighbors,omitempty"`
