@@ -33,6 +33,7 @@ type UnderlaySpec struct {
 	VTEPCIDR string `json:"vtepcidr,omitempty"`
 
 	// RouterIDCIDR is the ipv4 cidr to be used to assign a different routerID on each node.
+	// The default value is "10.0.0.0/24".
 	// +kubebuilder:default="10.0.0.0/24"
 	// +optional
 	RouterIDCIDR string `json:"routeridcidr,omitempty"`

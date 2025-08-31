@@ -179,6 +179,12 @@ spec:
                 items:
                   type: string
                 type: array
+              routeridcidr:
+                default: 10.0.0.0/24
+                description: |-
+                  RouterIDCIDR is the ipv4 cidr to be used to assign a different routerID on each node.
+                  The default value is "10.0.0.0/24".
+                type: string
               vtepcidr:
                 description: VTEPCIDR is CIDR to be used to assign IPs to the local
                   VTEP on each node.
