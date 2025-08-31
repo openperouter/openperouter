@@ -22,7 +22,7 @@ func (e FRREmptyConfigError) Error() string {
 	return string(e)
 }
 
-func APItoFRR(nodeIndex int, underlays []v1alpha1.Underlay, vnis []v1alpha1.L3VNI, logLevel string) (frr.Config, error) {
+func APItoFRR(nodeIndex int, underlays []v1alpha1.Underlay, l3vnis []v1alpha1.L3VNI, l3srv6s []v1alpha1.L3SRV6, logLevel string) (frr.Config, error) {
 	if len(underlays) > 1 {
 		return frr.Config{}, errors.New("multiple underlays defined")
 	}
@@ -69,18 +69,36 @@ func APItoFRR(nodeIndex int, underlays []v1alpha1.Underlay, vnis []v1alpha1.L3VN
 		}
 	}
 
-	vniConfigs := []frr.VRFConfig{}
-	for _, vni := range vnis {
+	if underlay.Spec.SRV6 != nil {
+		locator, err := ipam.Locator(underlay.Spec.SRV6.LocatorRange, nodeIndex)
+		if err != nil {
+			return frr.Config{}, fmt.Errorf("failed to get locator, range %s, nodeIndex %d: %w", underlay.Spec.SRV6.LocatorRange, nodeIndex, err)
+		}
+		underlayConfig.SRV6 = &frr.UnderlaySrv6{
+			Locator: locator.String(),
+		}
+	}
+
+	vrfConfigs := []frr.VRFConfig{}
+	for _, vni := range l3vnis {
 		frrVNI, err := l3vniToFRR(vni, routerID, nodeIndex)
 		if err != nil {
 			return frr.Config{}, fmt.Errorf("failed to translate vni to frr: %w, vni %v", err, vni)
 		}
-		vniConfigs = append(vniConfigs, frrVNI...)
+		vrfConfigs = append(vrfConfigs, frrVNI...)
+	}
+
+	for _, srv6 := range l3srv6s {
+		frrSRV6, err := l3srv6ToFRR(srv6, routerID, nodeIndex)
+		if err != nil {
+			return frr.Config{}, fmt.Errorf("failed to translate srv6 to frr: %w, srv6 %v", err, srv6)
+		}
+		vrfConfigs = append(vrfConfigs, frrSRV6...)
 	}
 
 	return frr.Config{
 		Underlay:    underlayConfig,
-		VRFs:        vniConfigs,
+		VRFs:        vrfConfigs,
 		BFDProfiles: bfdProfiles,
 		Loglevel:    logLevel,
 	}, nil
