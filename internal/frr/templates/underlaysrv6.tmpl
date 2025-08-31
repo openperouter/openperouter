@@ -1,0 +1,25 @@
+{{- define "underlaysrv6"}}
+  segment-routing srv6
+    locator MAIN
+  exit
+
+  address-family ipv6 unicast
+    network {{ .Underlay.SRV6.Locator }}
+  exit-address-family
+
+{{ range .Underlay.Neighbors }}
+  neighbor {{ .Addr }} capability extended-nexthop
+  neighbor {{ .Addr }} disable-connected-check
+
+  address-family ipv4 vpn
+    neighbor {{ .Addr }} activate
+    neighbor {{ .Addr }} allowas-in
+  exit-address-family
+ !
+  address-family ipv6 vpn
+    neighbor {{ .Addr }} activate
+    neighbor {{ .Addr }} allowas-in
+  exit-address-family
+{{- end }}
+
+{{- end }}

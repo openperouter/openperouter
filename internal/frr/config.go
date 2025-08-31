@@ -23,25 +23,43 @@ type Config struct {
 	Loglevel    string
 	Hostname    string
 	Underlay    UnderlayConfig
-	VNIs        []L3VNIConfig
+	VRFs        []VRFConfig
 	BFDProfiles []BFDProfile
 }
 
 type UnderlayConfig struct {
 	MyASN     uint32
-	VTEP      string
 	RouterID  string
 	Neighbors []NeighborConfig
+	EVPN      *UnderlayEvpn
+	SRV6      *UnderlaySrv6
 }
 
-type L3VNIConfig struct {
+type UnderlayEvpn struct {
+	VTEP string
+}
+
+type UnderlaySrv6 struct {
+	Locator string
+}
+
+type VRFConfig struct {
 	ASN             uint32
 	ToAdvertiseIPv4 []string
 	ToAdvertiseIPv6 []string
 	LocalNeighbor   *NeighborConfig
 	VRF             string
-	VNI             int
 	RouterID        string
+	EVPN            *VRFEvpn
+	SRV6            *VRFSrv6
+}
+
+type VRFEvpn struct {
+	VNI int
+}
+
+type VRFSrv6 struct {
+	AssignedNumber int
 }
 
 type BFDProfile struct {

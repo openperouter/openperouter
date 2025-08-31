@@ -19,9 +19,11 @@ hostname {{.Hostname}}
 ip nht resolve-via-default
 ipv6 nht resolve-via-default
 
-{{- range .VNIs }}
+{{- range .VRFs }}
 vrf {{ .VRF }}
-  vni {{ .VNI }}
+{{- if .EVPN }}
+  vni {{ .EVPN.VNI }}
+{{- end }}
 exit-vrf
 {{- end }}
 
@@ -45,24 +47,20 @@ router bgp {{ .Underlay.MyASN }}
 {{- range $n := .Underlay.Neighbors }}
 {{- template "neighborsession" dict "neighbor" $n "routerASN" $.Underlay.MyASN -}}
 {{- end }}
+
 {{- range $n := .Underlay.Neighbors }}
 {{- template "neighborenableipfamily" . -}}
 {{end }}
-  address-family ipv4 unicast
-    network {{ .Underlay.VTEP }}
-  exit-address-family
 
-  address-family l2vpn evpn
-{{- range .Underlay.Neighbors }}
-    neighbor {{ .Addr }} activate
-    neighbor {{ .Addr }} allowas-in 
-{{- end }}
-    advertise-all-vni
-    advertise-svi-ip
-  exit-address-family
+{{- if .Underlay.SRV6 }}
+{{- template "underlaysrv6" . -}}
 {{- end }}
 
-{{- range .VNIs }}
+{{- if .Underlay.EVPN }}
+{{- template "underlayevpn" . -}}
+{{- end }}
+
+{{- range .VRFs }}
 
 router bgp {{ .ASN }} vrf {{ .VRF }}
   no bgp ebgp-requires-policy
@@ -90,9 +88,28 @@ router bgp {{ .ASN }} vrf {{ .VRF }}
     neighbor {{ .LocalNeighbor.Addr }} route-map allowall out
   exit-address-family
 
-  address-family l2vpn evpn
-    advertise ipv4 unicast
-    advertise ipv6 unicast
-  exit-address-family
+  {{- if .EVPN }}
+  {{- template "vrfevpn" . -}}
+  {{- end }}
+  {{- if .SRV6 }}
+  {{- template "vrfsrv6" . -}}
+  {{- end }}
+
+exit
+{{- end }}
+{{- end }}
+
+{{- if .Underlay.SRV6 }}
+segment-routing
+ srv6
+  locators
+   locator MAIN
+    prefix {{ .Underlay.SRV6.Locator }} func-bits 8
+   exit
+   !
+  exit
+  !
+ exit
+ !
 exit
 {{- end }}

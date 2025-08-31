@@ -1,0 +1,95 @@
+log file /etc/frr/frr.log 
+log timestamp precision 3
+hostname hostname
+ip nht resolve-via-default
+ipv6 nht resolve-via-default
+vrf red
+exit-vrf
+
+route-map allowall permit 1
+router bgp 64512
+  no bgp ebgp-requires-policy
+  no bgp network import-check
+  no bgp default ipv4-unicast
+  bgp router-id 10.0.0.1
+  neighbor 2001:db8::2 remote-as 64512
+  
+  
+  
+
+  address-family ipv6 unicast
+    neighbor 2001:db8::2 activate
+    neighbor 2001:db8::2 allowas-in
+  exit-address-family
+  segment-routing srv6
+    locator MAIN
+  exit
+
+  address-family ipv6 unicast
+    network fd00:0:1::/64
+  exit-address-family
+
+
+  neighbor 2001:db8::2 capability extended-nexthop
+  neighbor 2001:db8::2 disable-connected-check
+
+  address-family ipv4 vpn
+    neighbor 2001:db8::2 activate
+    neighbor 2001:db8::2 allowas-in
+  exit-address-family
+ !
+  address-family ipv6 vpn
+    neighbor 2001:db8::2 activate
+    neighbor 2001:db8::2 allowas-in
+  exit-address-family
+
+router bgp 64512 vrf red
+  no bgp ebgp-requires-policy
+  no bgp network import-check
+  no bgp default ipv4-unicast
+  bgp router-id 10.0.0.1
+
+  neighbor 192.168.1.2 remote-as 64512
+
+  address-family ipv4 unicast
+    network 192.169.10.2/24
+    neighbor 192.168.1.2 activate
+    neighbor 192.168.1.2 route-map allowall in
+    neighbor 192.168.1.2 route-map allowall out
+  exit-address-family
+
+  address-family ipv6 unicast
+    neighbor 192.168.1.2 activate
+    neighbor 192.168.1.2 route-map allowall in
+    neighbor 192.168.1.2 route-map allowall out
+  exit-address-family
+ 
+  sid vpn per-vrf export auto
+
+  address-family ipv4 unicast
+    rd vpn export 10.0.0.1:101
+    rt vpn both 64512:101
+    export vpn
+    import vpn
+  exit-address-family
+  !
+  address-family ipv6 unicast
+    rd vpn export 10.0.0.1:101
+    rt vpn both 64512:101
+  export vpn
+  import vpn
+ exit-address-family
+
+exit
+segment-routing
+ srv6
+  locators
+   locator MAIN
+    prefix fd00:0:1::/64 func-bits 8
+   exit
+   !
+  exit
+  !
+ exit
+ !
+exit

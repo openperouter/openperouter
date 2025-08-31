@@ -1,0 +1,19 @@
+{{- define "vrfsrv6" }}
+ 
+  sid vpn per-vrf export auto
+
+  address-family ipv4 unicast
+    rd vpn export {{ .RouterID }}:{{ .SRV6.AssignedNumber }}
+    rt vpn both {{ .ASN }}:{{ .SRV6.AssignedNumber }}
+    export vpn
+    import vpn
+  exit-address-family
+  !
+  address-family ipv6 unicast
+    rd vpn export {{ .RouterID }}:{{ .SRV6.AssignedNumber }}
+    rt vpn both {{ .ASN }}:{{ .SRV6.AssignedNumber }}
+  export vpn
+  import vpn
+ exit-address-family
+
+{{- end }}
