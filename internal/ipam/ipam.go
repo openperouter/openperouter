@@ -87,6 +87,72 @@ func RouterID(pool string, index int) (string, error) {
 	return ip.String(), nil
 }
 
+func Locator(pool string, index int) (net.IPNet, error) {
+	_, ipNet, err := net.ParseCIDR(pool)
+	if err != nil {
+		return net.IPNet{}, fmt.Errorf("failed to parse cidr %s: %w", pool, err)
+	}
+
+	// Only support IPv6
+	if len(ipNet.IP) != 16 {
+		return net.IPNet{}, fmt.Errorf("only IPv6 addresses are supported")
+	}
+
+	// Get the network portion and prefix length
+	ones, _ := ipNet.Mask.Size()
+
+	// Only support /48, /64, and /96
+	if ones != 48 && ones != 64 && ones != 96 {
+		return net.IPNet{}, fmt.Errorf("only /48, /64, and /96 prefix lengths are supported, got /%d", ones)
+	}
+
+	// Make a copy of the IP to avoid modifying the original
+	resultIP := make(net.IP, len(ipNet.IP))
+	copy(resultIP, ipNet.IP)
+
+	// Apply the network mask to ensure we start from the network address
+	for i := range resultIP {
+		resultIP[i] &= ipNet.Mask[i]
+	}
+
+	// Determine where to add the index based on the prefix length
+	// IPv6 addresses have 8 groups of 16 bits each:
+	// [0:1] [2:3] [4:5] [6:7] [8:9] [10:11] [12:13] [14:15]
+	// For /48: increment at position [6:7] (4th group)
+	// For /64: increment at position [4:5] (3rd group)
+	// For /96: increment at position [10:11] (6th group)
+
+	var pos int
+	switch ones {
+	case 48:
+		pos = 6 // 4th 16-bit group
+	case 64:
+		pos = 4 // 3rd 16-bit group
+	case 96:
+		pos = 10 // 6th 16-bit group
+	}
+
+	// Add the index with overflow handling (big-endian arithmetic)
+	carry := uint64(index)
+	for i := pos + 1; i >= 0 && carry > 0; i -= 2 {
+		// Read current 16-bit value
+		current := uint64(resultIP[i-1])<<8 + uint64(resultIP[i])
+		current += carry
+
+		// Write back the result
+		resultIP[i-1] = byte(current >> 8)
+		resultIP[i] = byte(current & 0xFF)
+
+		// Propagate carry to next higher-order group
+		carry = current >> 16
+	}
+
+	return net.IPNet{
+		IP:   resultIP,
+		Mask: ipNet.Mask,
+	}, nil
+}
+
 // cidrElem returns the ith elem of len size for the given cidr.
 func cidrElem(pool *net.IPNet, index int) (*net.IPNet, error) {
 	ip, err := gocidr.Host(pool, index)

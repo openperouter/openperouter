@@ -343,3 +343,165 @@ func TestVTEPIP(t *testing.T) {
 	}
 
 }
+
+func TestLocator(t *testing.T) {
+	tests := []struct {
+		name       string
+		pool       string
+		index      int
+		expected   string
+		shouldFail bool
+	}{
+		// /64 tests - increment subnet ID (3rd 16-bit group)
+		{
+			name:       "IPv6 /64 index 0",
+			pool:       "fd00:0:0::/64",
+			index:      0,
+			expected:   "fd00:0:0::/64",
+			shouldFail: false,
+		},
+		{
+			name:       "IPv6 /64 index 1",
+			pool:       "fd00:0:0::/64",
+			index:      1,
+			expected:   "fd00:0:1::/64",
+			shouldFail: false,
+		},
+		{
+			name:       "IPv6 /64 index 2",
+			pool:       "fd00:0:0::/64",
+			index:      2,
+			expected:   "fd00:0:2::/64",
+			shouldFail: false,
+		},
+		{
+			name:       "IPv6 /64 index 255",
+			pool:       "fd00:0:0::/64",
+			index:      255,
+			expected:   "fd00:0:ff::/64",
+			shouldFail: false,
+		},
+		{
+			name:       "IPv6 /64 index 256",
+			pool:       "fd00:0:0::/64",
+			index:      256,
+			expected:   "fd00:0:100::/64",
+			shouldFail: false,
+		},
+		{
+			name:       "IPv6 /64 index 65536",
+			pool:       "fd00:0:0::/64",
+			index:      65536,
+			expected:   "fd00:1:0::/64",
+			shouldFail: false,
+		},
+		// /48 tests - increment 4th 16-bit group
+		{
+			name:       "IPv6 /48 index 0",
+			pool:       "fd00:0:0::/48",
+			index:      0,
+			expected:   "fd00:0:0::/48",
+			shouldFail: false,
+		},
+		{
+			name:       "IPv6 /48 index 1",
+			pool:       "fd00:0:0::/48",
+			index:      1,
+			expected:   "fd00:0:0:1::/48",
+			shouldFail: false,
+		},
+		{
+			name:       "IPv6 /48 index 256",
+			pool:       "fd00:0:0::/48",
+			index:      256,
+			expected:   "fd00:0:0:100::/48",
+			shouldFail: false,
+		},
+		// /96 tests - increment 7th 16-bit group
+		{
+			name:       "IPv6 /96 index 0",
+			pool:       "fd00:0:0:0:0:0::/96",
+			index:      0,
+			expected:   "fd00:0:0:0:0:0::/96",
+			shouldFail: false,
+		},
+		{
+			name:       "IPv6 /96 index 1",
+			pool:       "fd00:0:0:0:0:0::/96",
+			index:      1,
+			expected:   "fd00:0:0:0:0:1::/96",
+			shouldFail: false,
+		},
+		{
+			name:       "IPv6 /96 index 256",
+			pool:       "fd00:0:0:0:0:0::/96",
+			index:      256,
+			expected:   "fd00:0:0:0:0:100::/96",
+			shouldFail: false,
+		},
+		// Error cases
+		{
+			name:       "IPv4 not supported",
+			pool:       "192.168.0.0/24",
+			index:      1,
+			expected:   "",
+			shouldFail: true,
+		},
+		{
+			name:       "invalid CIDR",
+			pool:       "invalid",
+			index:      1,
+			expected:   "",
+			shouldFail: true,
+		},
+		{
+			name:       "IPv6 /32 not supported",
+			pool:       "fd00::/32",
+			index:      1,
+			expected:   "",
+			shouldFail: true,
+		},
+		{
+			name:       "IPv6 /56 not supported",
+			pool:       "fd00:0:0::/56",
+			index:      1,
+			expected:   "",
+			shouldFail: true,
+		},
+		{
+			name:       "IPv6 /128 not supported",
+			pool:       "fd00::1/128",
+			index:      1,
+			expected:   "",
+			shouldFail: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := Locator(tc.pool, tc.index)
+
+			if tc.shouldFail {
+				if err == nil {
+					t.Fatalf("expected error but got none")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			// Parse both expected and actual to compare as IP networks
+			expectedIP, expectedNet, err := net.ParseCIDR(tc.expected)
+			if err != nil {
+				t.Fatalf("failed to parse expected CIDR %s: %v", tc.expected, err)
+			}
+
+			// Compare the IP addresses and masks
+			if !result.IP.Equal(expectedIP) || result.Mask.String() != expectedNet.Mask.String() {
+				t.Fatalf("expected %s, got %s", tc.expected, result.String())
+			}
+		})
+	}
+}
