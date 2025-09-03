@@ -40,13 +40,19 @@ spec:
             description: UnderlaySpec defines the desired state of Underlay.
             properties:
               asn:
-                description: |-
-                  ASN is the local AS number to use for the session with the TOR switch.
-                  The ASN must be different from the ASN of the neighbors.
+                description: ASN is the local AS number to use for the session with
+                  the TOR switch.
                 format: int32
                 maximum: 4294967295
                 minimum: 1
                 type: integer
+              evpn:
+                properties:
+                  vtepcidr:
+                    description: VTEPCIDR is CIDR to be used to assign IPs to the
+                      local VTEP on each node.
+                    type: string
+                type: object
               neighbors:
                 description: Neighbors is the list of external neighbors to peer with.
                 items:
@@ -195,10 +201,6 @@ spec:
                 default: 10.0.0.0/24
                 description: RouterIDCIDR is the ipv4 cidr to be used to assign a
                   different routerID on each node.
-                type: string
-              vtepcidr:
-                description: VTEPCIDR is CIDR to be used to assign IPs to the local
-                  VTEP on each node.
                 type: string
             type: object
           status:
