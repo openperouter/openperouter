@@ -1,0 +1,34 @@
+{{ define "localpassthrough"}}
+
+{{- if .Underlay.Passthrough.LocalNeighborV4 }}
+
+  neighbor {{ .Underlay.Passthrough.LocalNeighborV4.Addr }} remote-as {{ .Underlay.Passthrough.LocalNeighborV4.ASN }}
+
+  address-family ipv4 unicast
+  {{- range .Underlay.Passthrough.ToAdvertiseIPv4 }}
+    network {{ . }}
+  {{- end }}
+    neighbor {{ .Underlay.Passthrough.LocalNeighborV4.Addr }} activate
+    neighbor {{ .Underlay.Passthrough.LocalNeighborV4.Addr }} route-map allowall in
+    neighbor {{ .Underlay.Passthrough.LocalNeighborV4.Addr }} route-map allowall out
+  exit-address-family
+
+{{- template "neighborenableipfamily" .Underlay.Passthrough.LocalNeighborV4 }}
+{{- end -}}
+
+{{- if .Underlay.Passthrough.LocalNeighborV6 }}
+
+  neighbor {{ .Underlay.Passthrough.LocalNeighborV6.Addr }} remote-as {{ .Underlay.Passthrough.LocalNeighborV6.ASN }}
+
+  address-family ipv6 unicast
+  {{- range .Underlay.Passthrough.ToAdvertiseIPv6 }}
+    network {{ . }}
+  {{- end }}
+    neighbor {{ .Underlay.Passthrough.LocalNeighborV6.Addr }} activate
+    neighbor {{ .Underlay.Passthrough.LocalNeighborV6.Addr }} route-map allowall in
+    neighbor {{ .Underlay.Passthrough.LocalNeighborV6.Addr }} route-map allowall out
+  exit-address-family
+{{- template "neighborenableipfamily" .Underlay.Passthrough.LocalNeighborV6 }}
+{{- end -}}
+{{- end }}
+

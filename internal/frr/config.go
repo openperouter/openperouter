@@ -28,14 +28,22 @@ type Config struct {
 }
 
 type UnderlayConfig struct {
-	MyASN     uint32
-	RouterID  string
-	Neighbors []NeighborConfig
-	EVPN      *UnderlayEvpn
+	MyASN       uint32
+	RouterID    string
+	Neighbors   []NeighborConfig
+	EVPN        *UnderlayEvpn
+	Passthrough *PassthroughConfig
 }
 
 type UnderlayEvpn struct {
 	VTEP string
+}
+
+type PassthroughConfig struct {
+	LocalNeighborV4 *NeighborConfig
+	LocalNeighborV6 *NeighborConfig
+	ToAdvertiseIPv4 []string
+	ToAdvertiseIPv6 []string
 }
 
 type L3VNIConfig struct {
