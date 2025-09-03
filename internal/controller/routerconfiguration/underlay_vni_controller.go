@@ -114,6 +114,10 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		slog.Error("failed to list l2vnis", "error", err)
 		return ctrl.Result{}, err
 	}
+	if err := conversion.ValidateL2VNIs(l2vnis.Items); err != nil {
+		slog.Error("failed to validate l2vnis", "error", err)
+		return ctrl.Result{}, nil
+	}
 
 	var l3passthrough v1alpha1.L3PassthroughList
 	if err := r.List(ctx, &l3passthrough); err != nil {
@@ -121,11 +125,12 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
-	logger.Debug("using config", "l3vnis", l3vnis.Items, "l2vnis", l2vnis.Items, "underlays", underlays.Items)
-	if err := conversion.ValidateL2VNIs(l2vnis.Items); err != nil {
-		slog.Error("failed to validate l2vnis", "error", err)
+	if err := conversion.ValidateHostSessions(l3vnis.Items, l3passthrough.Items); err != nil {
+		slog.Error("failed to validate host sessions", "error", err)
 		return ctrl.Result{}, nil
 	}
+
+	logger.Debug("using config", "l3vnis", l3vnis.Items, "l2vnis", l2vnis.Items, "underlays", underlays.Items, "l3passthrough", l3passthrough.Items)
 	apiConfig := conversion.ApiConfigData{
 		NodeIndex:     nodeIndex,
 		Underlays:     underlays.Items,
@@ -134,6 +139,7 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		L2VNIs:        l2vnis.Items,
 		L3Passthrough: l3passthrough.Items,
 	}
+
 	if err := configureFRR(ctx, frrConfigData{
 		configFile:    r.FRRConfig,
 		address:       routerPod.Status.PodIP,

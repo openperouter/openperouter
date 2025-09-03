@@ -106,50 +106,6 @@ func TestValidateVNIs(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "overlapping IPv4 CIDRs",
-			vnis: []v1alpha1.L3VNI{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
-					Spec: v1alpha1.L3VNISpec{
-						VNI:         1001,
-						HostSession: &v1alpha1.HostSession{ASN: 65001, HostASN: 65002, LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "192.168.1.0/24"}},
-					},
-					Status: v1alpha1.L3VNIStatus{},
-				},
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni2"},
-					Spec: v1alpha1.L3VNISpec{
-						VNI:         1002,
-						HostSession: &v1alpha1.HostSession{ASN: 65003, HostASN: 65004, LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "192.168.1.128/25"}},
-					},
-					Status: v1alpha1.L3VNIStatus{},
-				},
-			},
-			wantErr: true,
-		},
-		{
-			name: "overlapping IPv6 CIDRs",
-			vnis: []v1alpha1.L3VNI{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
-					Spec: v1alpha1.L3VNISpec{
-						VNI:         1001,
-						HostSession: &v1alpha1.HostSession{ASN: 65001, HostASN: 65002, LocalCIDR: v1alpha1.LocalCIDRConfig{IPv6: "2001:db8::/64"}},
-					},
-					Status: v1alpha1.L3VNIStatus{},
-				},
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni2"},
-					Spec: v1alpha1.L3VNISpec{
-						VNI:         1002,
-						HostSession: &v1alpha1.HostSession{ASN: 65003, HostASN: 65004, LocalCIDR: v1alpha1.LocalCIDRConfig{IPv6: "2001:db8::/80"}},
-					},
-					Status: v1alpha1.L3VNIStatus{},
-				},
-			},
-			wantErr: true,
-		},
-		{
 			name: "duplicate VNI",
 			vnis: []v1alpha1.L3VNI{
 				{
@@ -170,79 +126,6 @@ func TestValidateVNIs(t *testing.T) {
 				},
 			},
 			wantErr: true,
-		},
-		{
-			name: "invalid IPv4 localcidr",
-			vnis: []v1alpha1.L3VNI{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
-					Spec: v1alpha1.L3VNISpec{
-						VNI:         100,
-						HostSession: &v1alpha1.HostSession{ASN: 65001, HostASN: 65002, LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "not-a-cidr"}},
-					},
-					Status: v1alpha1.L3VNIStatus{},
-				},
-			},
-			wantErr: true,
-		},
-		{
-			name: "invalid IPv6 localcidr",
-			vnis: []v1alpha1.L3VNI{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
-					Spec: v1alpha1.L3VNISpec{
-						VNI:         100,
-						HostSession: &v1alpha1.HostSession{ASN: 65001, HostASN: 65002, LocalCIDR: v1alpha1.LocalCIDRConfig{IPv6: "not-a-cidr"}},
-					},
-					Status: v1alpha1.L3VNIStatus{},
-				},
-			},
-			wantErr: true,
-		},
-		{
-			name: "no CIDR provided",
-			vnis: []v1alpha1.L3VNI{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
-					Spec: v1alpha1.L3VNISpec{
-						VNI:         100,
-						HostSession: &v1alpha1.HostSession{ASN: 65001, HostASN: 65002, LocalCIDR: v1alpha1.LocalCIDRConfig{}},
-					},
-					Status: v1alpha1.L3VNIStatus{},
-				},
-			},
-			wantErr: true,
-		},
-		{
-			name: "same local and remote ASN",
-			vnis: []v1alpha1.L3VNI{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
-					Spec: v1alpha1.L3VNISpec{
-						VNI: 100,
-						HostSession: &v1alpha1.HostSession{
-							ASN:       65001,
-							HostASN:   65001,
-							LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "192.168.1.0/24"},
-						},
-					},
-					Status: v1alpha1.L3VNIStatus{},
-				},
-			},
-			wantErr: true,
-		},
-		{
-			name: "no host session",
-			vnis: []v1alpha1.L3VNI{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
-					Spec: v1alpha1.L3VNISpec{
-						VNI: 100,
-					},
-					Status: v1alpha1.L3VNIStatus{},
-				},
-			},
-			wantErr: false,
 		},
 	}
 
