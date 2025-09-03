@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
+	"github.com/openperouter/openperouter/internal/conversion"
 	v1 "k8s.io/api/admission/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -108,6 +109,7 @@ func validateL3VNIDelete(_ *v1alpha1.L3VNI) error {
 }
 
 func validateL3VNI(l3vni *v1alpha1.L3VNI) error {
+	fmt.Println("fede validating")
 	existingL3VNIs, err := getL3VNIs()
 	if err != nil {
 		return err
@@ -128,6 +130,14 @@ func validateL3VNI(l3vni *v1alpha1.L3VNI) error {
 	}
 
 	if err := ValidateL3VNIs(toValidate); err != nil {
+		return fmt.Errorf("validation failed: %w", err)
+	}
+
+	l3passthroughs, err := getL3Passthroughs()
+	if err != nil {
+		return err
+	}
+	if err := conversion.ValidateHostSessions(toValidate, l3passthroughs.Items); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
 	}
 	return nil

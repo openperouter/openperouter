@@ -230,6 +230,7 @@ func setupWebhook(mgr manager.Manager, logger *slog.Logger) error {
 	webhooks.ValidateL3VNIs = conversion.ValidateL3VNIs
 	webhooks.ValidateL2VNIs = conversion.ValidateL2VNIs
 	webhooks.ValidateUnderlays = conversion.ValidateUnderlays
+	webhooks.ValidateL3Passthroughs = conversion.ValidatePassthrough
 
 	if err := webhooks.SetupL3VNI(mgr); err != nil {
 		logger.Error("unable to create the webook", "error", err, "webhook", "L3VNIs")
@@ -241,6 +242,10 @@ func setupWebhook(mgr manager.Manager, logger *slog.Logger) error {
 	}
 	if err := webhooks.SetupUnderlay(mgr); err != nil {
 		logger.Error("unable to create the webook", "error", err, "webhook", "Underlays")
+		return err
+	}
+	if err := webhooks.SetupL3Passthrough(mgr); err != nil {
+		logger.Error("unable to create the webook", "error", err, "webhook", "L3Passthroughs")
 		return err
 	}
 	return nil
