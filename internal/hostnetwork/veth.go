@@ -19,6 +19,8 @@ type VethNames struct {
 	NamespaceSide string
 }
 
+const VethLinkType = "veth"
+
 // setupVeth sets up a veth pair with the provided namesand one leg in the
 // given namespace.
 
@@ -69,8 +71,11 @@ func setupNamespacedVeth(ctx context.Context, vethNames VethNames, namespace str
 		return fmt.Errorf("could not find peer veth for %s: %w", vethNames.HostSide, err)
 	}
 	nsSide, err := netlink.LinkByIndex(peerIndex)
+	if errors.As(err, &netlink.LinkNotFoundError{}) {
+		return fmt.Errorf("peer veth not found by index for %s: %w", vethNames.HostSide, err)
+	}
 
-	if err != nil && !errors.As(err, &netlink.LinkNotFoundError{}) { // real error
+	if err != nil {
 		return fmt.Errorf("could not find peer by index for %s: %w", vethNames.HostSide, err)
 	}
 

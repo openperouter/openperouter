@@ -219,12 +219,10 @@ func cleanTest(namespace string) {
 			Expect(err).NotTo(HaveOccurred())
 		}
 	}
-	loopback, err := netlink.LinkByName(UnderlayLoopback)
-	if errors.As(err, &netlink.LinkNotFoundError{}) {
-		return
-	}
+	err = removeLinkByName(PassthroughNames.HostSide)
 	Expect(err).NotTo(HaveOccurred())
-	err = netlink.LinkDel(loopback)
+
+	err = removeLinkByName(UnderlayLoopback)
 	Expect(err).NotTo(HaveOccurred())
 }
 

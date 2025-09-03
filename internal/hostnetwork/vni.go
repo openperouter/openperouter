@@ -54,7 +54,6 @@ const (
 	VRFLinkType    = "vrf"
 	BridgeLinkType = "bridge"
 	VXLanLinkType  = "vxlan"
-	VethLinkType   = "veth"
 )
 
 type NotRouterInterfaceError struct {
