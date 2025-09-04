@@ -86,7 +86,7 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 		validateTORSession()
 	})
 
-	Context("with a vni", func() {
+	Context("with a l3 vni", func() {
 		vni := v1alpha1.L3VNI{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "red",
@@ -113,37 +113,80 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 		})
 
 		It("establishes a session with the host and then removes it when deleting the vni", func() {
-			frrConfig, err := frrk8s.ConfigFromVNI(vni)
+			frrConfig, err := frrk8s.ConfigFromHostSession(*vni.Spec.HostSession, vni.Name)
 			Expect(err).ToNot(HaveOccurred())
 			err = Updater.Update(config.Resources{
 				FRRConfigurations: frrConfig,
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			validateFRRK8sSessionForVNI(vni, Established, frrk8sPods...)
+			validateFRRK8sSessionForHostSession(vni.Name, *vni.Spec.HostSession, Established, frrk8sPods...)
 
 			By("deleting the vni removes the session with the host")
 			err = Updater.Client().Delete(context.Background(), &vni)
 			Expect(err).NotTo(HaveOccurred())
 
-			validateFRRK8sSessionForVNI(vni, !Established, frrk8sPods...)
+			validateFRRK8sSessionForHostSession(vni.Name, *vni.Spec.HostSession, !Established, frrk8sPods...)
+		})
+	})
+
+	Context("with a l3 passthrough", func() {
+		l3Passthrough := v1alpha1.L3Passthrough{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "red",
+				Namespace: openperouter.Namespace,
+			},
+			Spec: v1alpha1.L3PassthroughSpec{
+				HostSession: v1alpha1.HostSession{
+					ASN:     64514,
+					HostASN: 64515,
+					LocalCIDR: v1alpha1.LocalCIDRConfig{
+						IPv4: "192.169.10.0/24",
+					},
+				},
+			},
+		}
+		BeforeEach(func() {
+			err := Updater.Update(config.Resources{
+				L3Passthrough: []v1alpha1.L3Passthrough{
+					l3Passthrough,
+				},
+			})
+			Expect(err).NotTo(HaveOccurred())
 		})
 
-		// This test must be the last of the ordered describe as it will remove the underlay
-		It("deleting the underlay removes the session with the tor", func() {
-			validateTORSession()
-
-			By("deleting the vni removes the session with the host")
-			err := Updater.Client().Delete(context.Background(), &infra.Underlay)
+		It("establishes a session with the host and then removes it when deleting the vni", func() {
+			frrConfig, err := frrk8s.ConfigFromHostSession(l3Passthrough.Spec.HostSession, l3Passthrough.Name)
+			Expect(err).ToNot(HaveOccurred())
+			err = Updater.Update(config.Resources{
+				FRRConfigurations: frrConfig,
+			})
 			Expect(err).NotTo(HaveOccurred())
 
-			exec := executor.ForContainer(infra.KindLeaf)
-			for _, node := range nodes {
-				neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
-				Expect(err).NotTo(HaveOccurred())
-				validateSessionDownForNeigh(exec, neighborIP)
-			}
+			validateFRRK8sSessionForHostSession(l3Passthrough.Name, l3Passthrough.Spec.HostSession, Established, frrk8sPods...)
+
+			By("deleting the vni removes the session with the host")
+			err = Updater.Client().Delete(context.Background(), &l3Passthrough)
+			Expect(err).NotTo(HaveOccurred())
+
+			validateFRRK8sSessionForHostSession(l3Passthrough.Name, l3Passthrough.Spec.HostSession, !Established, frrk8sPods...)
 		})
+	})
+
+	// This test must be the last of the ordered describe as it will remove the underlay
+	It("deleting the underlay removes the session with the tor", func() {
+		validateTORSession()
+
+		By("deleting the vni removes the session with the host")
+		err := Updater.Client().Delete(context.Background(), &infra.Underlay)
+		Expect(err).NotTo(HaveOccurred())
+
+		exec := executor.ForContainer(infra.KindLeaf)
+		for _, node := range nodes {
+			neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
+			Expect(err).NotTo(HaveOccurred())
+			validateSessionDownForNeigh(exec, neighborIP)
+		}
 	})
 })
 

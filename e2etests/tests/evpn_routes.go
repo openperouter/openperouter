@@ -148,35 +148,35 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			}
 
 			By("announcing type 5 routes on VNI 100 from leafA")
-			changeLeafPrefixes(infra.LeafAConfig, leafAVRFRedPrefixes, emptyPrefixes)
+			changeLeafPrefixes(infra.LeafAConfig, emptyPrefixes, leafAVRFRedPrefixes, emptyPrefixes)
 			checkRouteFromLeaf(infra.LeafAConfig, vniRed, Contains, leafAVRFRedPrefixes)
 			checkRouteFromLeaf(infra.LeafAConfig, vniBlue, !Contains, leafAVRFBluePrefixes)
 			checkRouteFromLeaf(infra.LeafBConfig, vniRed, !Contains, leafBVRFRedPrefixes)
 			checkRouteFromLeaf(infra.LeafBConfig, vniBlue, !Contains, leafBVRFBluePrefixes)
 
 			By("announcing type5 route on VNI 200 from leafA")
-			changeLeafPrefixes(infra.LeafAConfig, leafAVRFRedPrefixes, leafAVRFBluePrefixes)
+			changeLeafPrefixes(infra.LeafAConfig, emptyPrefixes, leafAVRFRedPrefixes, leafAVRFBluePrefixes)
 			checkRouteFromLeaf(infra.LeafAConfig, vniRed, Contains, leafAVRFRedPrefixes)
 			checkRouteFromLeaf(infra.LeafAConfig, vniBlue, Contains, leafAVRFBluePrefixes)
 			checkRouteFromLeaf(infra.LeafBConfig, vniRed, !Contains, leafBVRFRedPrefixes)
 			checkRouteFromLeaf(infra.LeafBConfig, vniBlue, !Contains, leafBVRFBluePrefixes)
 
 			By("announcing type5 route on both VNIs from leafB")
-			changeLeafPrefixes(infra.LeafBConfig, leafBVRFRedPrefixes, leafBVRFBluePrefixes)
+			changeLeafPrefixes(infra.LeafBConfig, emptyPrefixes, leafBVRFRedPrefixes, leafBVRFBluePrefixes)
 			checkRouteFromLeaf(infra.LeafAConfig, vniRed, Contains, leafAVRFRedPrefixes)
 			checkRouteFromLeaf(infra.LeafAConfig, vniBlue, Contains, leafAVRFBluePrefixes)
 			checkRouteFromLeaf(infra.LeafBConfig, vniRed, Contains, leafBVRFRedPrefixes)
 			checkRouteFromLeaf(infra.LeafBConfig, vniBlue, Contains, leafBVRFBluePrefixes)
 
 			By("removing a route from leafA on vni 100")
-			changeLeafPrefixes(infra.LeafAConfig, emptyPrefixes, leafAVRFBluePrefixes)
+			changeLeafPrefixes(infra.LeafAConfig, emptyPrefixes, emptyPrefixes, leafAVRFBluePrefixes)
 			checkRouteFromLeaf(infra.LeafAConfig, vniRed, !Contains, leafAVRFRedPrefixes)
 			checkRouteFromLeaf(infra.LeafAConfig, vniBlue, Contains, leafAVRFBluePrefixes)
 			checkRouteFromLeaf(infra.LeafBConfig, vniRed, Contains, leafBVRFRedPrefixes)
 			checkRouteFromLeaf(infra.LeafBConfig, vniBlue, Contains, leafBVRFBluePrefixes)
 
 			By("removing a route from leafA on vni 200")
-			changeLeafPrefixes(infra.LeafAConfig, emptyPrefixes, emptyPrefixes)
+			changeLeafPrefixes(infra.LeafAConfig, emptyPrefixes, emptyPrefixes, emptyPrefixes)
 			checkRouteFromLeaf(infra.LeafAConfig, vniRed, !Contains, leafAVRFRedPrefixes)
 			checkRouteFromLeaf(infra.LeafAConfig, vniBlue, !Contains, leafAVRFBluePrefixes)
 			checkRouteFromLeaf(infra.LeafBConfig, vniRed, Contains, leafBVRFRedPrefixes)
@@ -188,11 +188,11 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 	Context("with vnis and frr-k8s", func() {
 		ShouldExist := true
 		frrk8sPods := []*corev1.Pod{}
-		frrK8sConfigRed, err := frrk8s.ConfigFromVNI(vniRed)
+		frrK8sConfigRed, err := frrk8s.ConfigFromHostSession(*vniRed.Spec.HostSession, vniRed.Name)
 		if err != nil {
 			panic(err)
 		}
-		frrK8sConfigBlue, err := frrk8s.ConfigFromVNI(vniBlue)
+		frrK8sConfigBlue, err := frrk8s.ConfigFromHostSession(*vniBlue.Spec.HostSession, vniBlue.Name)
 		if err != nil {
 			panic(err)
 		}
@@ -212,8 +212,8 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			validateFRRK8sSessionForVNI(vniRed, Established, frrk8sPods...)
-			validateFRRK8sSessionForVNI(vniBlue, Established, frrk8sPods...)
+			validateFRRK8sSessionForHostSession(vniRed.Name, *vniRed.Spec.HostSession, Established, frrk8sPods...)
+			validateFRRK8sSessionForHostSession(vniBlue.Name, *vniBlue.Spec.HostSession, Established, frrk8sPods...)
 		})
 
 		AfterEach(func() {
@@ -225,82 +225,41 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		})
 
 		It("translates EVPN incoming routes as BGP routes", func() {
-			checkPrefixesForIPFamily := func(frrk8s *corev1.Pod, prefixes []string, localCIDR string,
-				ipFamily string, shouldExist bool, routes frr.BGPRoutes) error {
-				if len(prefixes) == 0 || localCIDR == "" {
-					return nil
-				}
-
-				vniRouterIP, err := openperouter.RouterIPFromCIDR(localCIDR)
-				Expect(err).NotTo(HaveOccurred())
-
-				for _, p := range prefixes {
-					routeExists := routes.HaveRoute(p, vniRouterIP)
-					if shouldExist && !routeExists {
-						return fmt.Errorf("%s prefix %s with nexthop %s not found in routes %v for pod %s", ipFamily, p, vniRouterIP, routes, frrk8s.Name)
-					}
-					if !shouldExist && routeExists {
-						return fmt.Errorf("%s prefix %s with nexthop %s found in routes %v for pod %s", ipFamily, p, vniRouterIP, routes, frrk8s.Name)
-					}
-				}
-				return nil
-			}
-
-			checkBGPPrefixesForVNI := func(frrk8s *corev1.Pod, vni v1alpha1.L3VNI, prefixes []string, shouldExist bool) {
-				exec := executor.ForPod(frrk8s.Namespace, frrk8s.Name, "frr")
-				Eventually(func() error {
-					ipv4Routes, ipv6Routes, err := frr.BGPRoutesFor(exec)
-					Expect(err).NotTo(HaveOccurred())
-
-					ipv4Prefixes, ipv6Prefixes := separateIPFamilies(prefixes)
-
-					if err := checkPrefixesForIPFamily(frrk8s, ipv4Prefixes, vni.Spec.HostSession.LocalCIDR.IPv4, "IPv4", shouldExist, ipv4Routes); err != nil {
-						return err
-					}
-
-					if err := checkPrefixesForIPFamily(frrk8s, ipv6Prefixes, vni.Spec.HostSession.LocalCIDR.IPv6, "IPv6", shouldExist, ipv6Routes); err != nil {
-						return err
-					}
-
-					return nil
-				}, 4*time.Minute, time.Second).WithOffset(1).ShouldNot(HaveOccurred())
-			}
-
 			By("advertising routes from the leaves for VRF Red - VNI 100")
-			changeLeafPrefixes(infra.LeafAConfig, leafAVRFRedPrefixes, emptyPrefixes)
-			changeLeafPrefixes(infra.LeafBConfig, leafBVRFRedPrefixes, emptyPrefixes)
+			changeLeafPrefixes(infra.LeafAConfig, emptyPrefixes, leafAVRFRedPrefixes, emptyPrefixes)
+			changeLeafPrefixes(infra.LeafBConfig, emptyPrefixes, leafBVRFRedPrefixes, emptyPrefixes)
 
 			By("checking routes are propagated via BGP")
 
 			for _, frrk8s := range frrk8sPods {
-				checkBGPPrefixesForVNI(frrk8s, vniRed, leafAVRFRedPrefixes, ShouldExist)
-				checkBGPPrefixesForVNI(frrk8s, vniRed, leafBVRFRedPrefixes, ShouldExist)
+				checkBGPPrefixesForHostSession(frrk8s, *vniRed.Spec.HostSession, leafAVRFRedPrefixes, ShouldExist)
+				checkBGPPrefixesForHostSession(frrk8s, *vniRed.Spec.HostSession, leafBVRFRedPrefixes, ShouldExist)
 			}
 
 			By("advertising also routes from the leaves for VRF Blue - VNI 200")
-			changeLeafPrefixes(infra.LeafAConfig, leafAVRFRedPrefixes, leafAVRFBluePrefixes)
-			changeLeafPrefixes(infra.LeafBConfig, leafBVRFRedPrefixes, leafBVRFBluePrefixes)
+			changeLeafPrefixes(infra.LeafAConfig, emptyPrefixes, leafAVRFRedPrefixes, leafAVRFBluePrefixes)
+			changeLeafPrefixes(infra.LeafBConfig, emptyPrefixes, leafBVRFRedPrefixes, leafBVRFBluePrefixes)
 
 			By("checking routes are propagated via BGP")
 
 			for _, frrk8s := range frrk8sPods {
-				checkBGPPrefixesForVNI(frrk8s, vniRed, leafAVRFRedPrefixes, ShouldExist)
-				checkBGPPrefixesForVNI(frrk8s, vniRed, leafBVRFRedPrefixes, ShouldExist)
-				checkBGPPrefixesForVNI(frrk8s, vniBlue, leafAVRFBluePrefixes, ShouldExist)
-				checkBGPPrefixesForVNI(frrk8s, vniBlue, leafBVRFBluePrefixes, ShouldExist)
+				checkBGPPrefixesForHostSession(frrk8s, *vniRed.Spec.HostSession, leafAVRFRedPrefixes, ShouldExist)
+				checkBGPPrefixesForHostSession(frrk8s, *vniRed.Spec.HostSession, leafBVRFRedPrefixes, ShouldExist)
+				checkBGPPrefixesForHostSession(frrk8s, *vniBlue.Spec.HostSession, leafAVRFBluePrefixes, ShouldExist)
+				checkBGPPrefixesForHostSession(frrk8s, *vniBlue.Spec.HostSession, leafBVRFBluePrefixes, ShouldExist)
 			}
 
 			By("removing routes from the leaves for VRF Blue - VNI 200")
-			changeLeafPrefixes(infra.LeafAConfig, leafAVRFRedPrefixes, emptyPrefixes)
-			changeLeafPrefixes(infra.LeafBConfig, leafBVRFRedPrefixes, emptyPrefixes)
+			changeLeafPrefixes(infra.LeafAConfig, emptyPrefixes, leafAVRFRedPrefixes, emptyPrefixes)
+			changeLeafPrefixes(infra.LeafBConfig, emptyPrefixes, leafBVRFRedPrefixes, emptyPrefixes)
 
 			By("checking routes are propagated via BGP")
 
 			for _, frrk8s := range frrk8sPods {
-				checkBGPPrefixesForVNI(frrk8s, vniRed, leafAVRFRedPrefixes, ShouldExist)
-				checkBGPPrefixesForVNI(frrk8s, vniRed, leafBVRFRedPrefixes, ShouldExist)
-				checkBGPPrefixesForVNI(frrk8s, vniBlue, leafAVRFBluePrefixes, !ShouldExist)
-				checkBGPPrefixesForVNI(frrk8s, vniBlue, leafBVRFBluePrefixes, !ShouldExist)
+				checkBGPPrefixesForHostSession(frrk8s, *vniRed.Spec.HostSession, leafAVRFRedPrefixes, ShouldExist)
+				checkBGPPrefixesForHostSession(frrk8s, *vniRed.Spec.HostSession, leafBVRFRedPrefixes, ShouldExist)
+				checkBGPPrefixesForHostSession(frrk8s, *vniBlue.Spec.HostSession, leafAVRFBluePrefixes, !ShouldExist)
+				checkBGPPrefixesForHostSession(frrk8s, *vniBlue.Spec.HostSession, leafBVRFBluePrefixes, !ShouldExist)
 			}
 		})
 	})
@@ -338,7 +297,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 						cidrSuffix = "/128"
 					}
 
-					config, err := frrk8s.ConfigFromVNIForIPFamily(vni, ipFamily, frrk8s.WithNodeSelector(nodeSelector), frrk8s.AdvertisePrefixes(podIP.IP+cidrSuffix))
+					config, err := frrk8s.ConfigFromHostSessionForIPFamily(*vni.Spec.HostSession, vni.Name, ipFamily, frrk8s.WithNodeSelector(nodeSelector), frrk8s.AdvertisePrefixes(podIP.IP+cidrSuffix))
 					Expect(err).NotTo(HaveOccurred())
 					res = append(res, *config)
 				}
@@ -361,8 +320,8 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 
 			frrK8sPodOnNode, err := frrk8s.PodForNode(cs, testPod.Spec.NodeName)
 			Expect(err).NotTo(HaveOccurred())
-			validateFRRK8sSessionForVNI(vniRed, Established, frrK8sPodOnNode)
-			validateFRRK8sSessionForVNI(vniBlue, Established, frrK8sPodOnNode)
+			validateFRRK8sSessionForHostSession(vniRed.Name, *vniRed.Spec.HostSession, Established, frrK8sPodOnNode)
+			validateFRRK8sSessionForHostSession(vniBlue.Name, *vniBlue.Spec.HostSession, Established, frrK8sPodOnNode)
 		})
 
 		AfterAll(func() {
