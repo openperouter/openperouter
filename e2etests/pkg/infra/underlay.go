@@ -14,14 +14,16 @@ var Underlay = v1alpha1.Underlay{
 		Namespace: openperouter.Namespace,
 	},
 	Spec: v1alpha1.UnderlaySpec{
-		ASN:      64514,
-		VTEPCIDR: "100.65.0.0/24",
-		Nics:     []string{"toswitch"},
+		ASN:  64514,
+		Nics: []string{"toswitch"},
 		Neighbors: []v1alpha1.Neighbor{
 			{
 				ASN:     64512,
 				Address: "192.168.11.2",
 			},
+		},
+		EVPN: &v1alpha1.EVPNConfig{
+			VTEPCIDR: "100.65.0.0/24",
 		},
 	},
 }

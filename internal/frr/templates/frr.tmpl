@@ -48,18 +48,15 @@ router bgp {{ .Underlay.MyASN }}
 {{- range $n := .Underlay.Neighbors }}
 {{- template "neighborenableipfamily" . -}}
 {{end }}
-  address-family ipv4 unicast
-    network {{ .Underlay.VTEP }}
-  exit-address-family
 
-  address-family l2vpn evpn
-{{- range .Underlay.Neighbors }}
-    neighbor {{ .Addr }} activate
-    neighbor {{ .Addr }} allowas-in 
+{{- if .Underlay.Passthrough }}
+{{- template "localpassthrough" . -}}
 {{- end }}
-    advertise-all-vni
-    advertise-svi-ip
-  exit-address-family
+
+{{- if .Underlay.EVPN }}
+{{- template "underlayevpn" . -}}
+{{- end }}
+
 {{- end }}
 
 {{- range .VNIs }}

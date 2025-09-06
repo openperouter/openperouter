@@ -270,9 +270,11 @@ var _ = Describe("Webhooks", func() {
 					Namespace: openperouter.Namespace,
 				},
 				Spec: v1alpha1.UnderlaySpec{
-					ASN:      65000,
-					Nics:     []string{"nic1", "nic2"},
-					VTEPCIDR: "192.168.1.0/24",
+					ASN:  65000,
+					Nics: []string{"nic1", "nic2"},
+					EVPN: &v1alpha1.EVPNConfig{
+						VTEPCIDR: "192.168.1.0/24",
+					},
 				},
 			}, "can only have one nic"),
 			Entry("when trying to create an underlay with invalid vtep cidr", v1alpha1.Underlay{
@@ -281,9 +283,11 @@ var _ = Describe("Webhooks", func() {
 					Namespace: openperouter.Namespace,
 				},
 				Spec: v1alpha1.UnderlaySpec{
-					ASN:      65000,
-					Nics:     []string{"nic1"},
-					VTEPCIDR: "notacidr",
+					ASN:  65000,
+					Nics: []string{"nic1"},
+					EVPN: &v1alpha1.EVPNConfig{
+						VTEPCIDR: "notacidr",
+					},
 				},
 			}, "invalid vtep CIDR"),
 			Entry("when trying to create an underlay with a neighbor with the same ASN", v1alpha1.Underlay{
@@ -292,9 +296,11 @@ var _ = Describe("Webhooks", func() {
 					Namespace: openperouter.Namespace,
 				},
 				Spec: v1alpha1.UnderlaySpec{
-					ASN:      65000,
-					Nics:     []string{"nic1"},
-					VTEPCIDR: "192.168.1.0/24",
+					ASN:  65000,
+					Nics: []string{"nic1"},
+					EVPN: &v1alpha1.EVPNConfig{
+						VTEPCIDR: "192.168.1.0/24",
+					},
 					Neighbors: []v1alpha1.Neighbor{
 						{
 							ASN:     65000,
@@ -314,9 +320,11 @@ var _ = Describe("Webhooks", func() {
 					Namespace: openperouter.Namespace,
 				},
 				Spec: v1alpha1.UnderlaySpec{
-					ASN:      65000,
-					Nics:     []string{"nic1"},
-					VTEPCIDR: "192.168.1.0/24",
+					ASN:  65000,
+					Nics: []string{"nic1"},
+					EVPN: &v1alpha1.EVPNConfig{
+						VTEPCIDR: "192.168.1.0/24",
+					},
 				},
 			}
 			By("creating the first underlay")
@@ -342,9 +350,11 @@ var _ = Describe("Webhooks", func() {
 							Namespace: openperouter.Namespace,
 						},
 						Spec: v1alpha1.UnderlaySpec{
-							ASN:      65001,
-							Nics:     []string{"nic2"},
-							VTEPCIDR: "192.168.2.0/24",
+							ASN:  65001,
+							Nics: []string{"nic2"},
+							EVPN: &v1alpha1.EVPNConfig{
+								VTEPCIDR: "192.168.2.0/24",
+							},
 						},
 					},
 				},
@@ -358,9 +368,11 @@ var _ = Describe("Webhooks", func() {
 							Namespace: openperouter.Namespace,
 						},
 						Spec: v1alpha1.UnderlaySpec{
-							ASN:      65000,
-							Nics:     []string{"nic1"},
-							VTEPCIDR: "notacidr",
+							ASN:  65000,
+							Nics: []string{"nic1"},
+							EVPN: &v1alpha1.EVPNConfig{
+								VTEPCIDR: "notacidr",
+							},
 						},
 					},
 				},

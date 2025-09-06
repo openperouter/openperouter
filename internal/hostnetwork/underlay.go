@@ -21,9 +21,13 @@ const (
 const underlayInterfaceSpecialAddr = "172.16.1.1/32"
 
 type UnderlayParams struct {
-	UnderlayInterface string `json:"underlay_interface"`
-	VtepIP            string `json:"vtep_ip"`
-	TargetNS          string `json:"target_ns"`
+	UnderlayInterface string              `json:"underlay_interface"`
+	TargetNS          string              `json:"target_ns"`
+	EVPN              *UnderlayEVPNParams `json:"evpn"`
+}
+
+type UnderlayEVPNParams struct {
+	VtepIP string `json:"vtep_ip"`
 }
 
 func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
@@ -39,12 +43,17 @@ func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
 		}
 	}()
 
-	if err := createLoopback(ctx, ns, params.VtepIP); err != nil {
-		return err
-	}
 	if err := moveUnderlayInterface(ctx, params.UnderlayInterface, ns); err != nil {
 		return err
 	}
+
+	if params.EVPN == nil {
+		return nil
+	}
+	if err := createLoopback(ctx, ns, params.EVPN.VtepIP); err != nil {
+		return err
+	}
+
 	return nil
 }
 

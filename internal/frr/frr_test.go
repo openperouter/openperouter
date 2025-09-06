@@ -28,8 +28,10 @@ func TestBasic(t *testing.T) {
 
 	config := Config{
 		Underlay: UnderlayConfig{
-			MyASN:    64512,
-			VTEP:     "100.64.0.1/32",
+			MyASN: 64512,
+			EVPN: &UnderlayEvpn{
+				VTEP: "100.64.0.1/32",
+			},
 			RouterID: "10.0.0.1",
 			Neighbors: []NeighborConfig{
 				{
@@ -69,8 +71,10 @@ func TestDualStack(t *testing.T) {
 
 	config := Config{
 		Underlay: UnderlayConfig{
-			MyASN:    64512,
-			VTEP:     "100.64.0.1/32",
+			MyASN: 64512,
+			EVPN: &UnderlayEvpn{
+				VTEP: "100.64.0.1/32",
+			},
 			RouterID: "10.0.0.1",
 			Neighbors: []NeighborConfig{
 				{
@@ -113,8 +117,10 @@ func TestIPv6Only(t *testing.T) {
 
 	config := Config{
 		Underlay: UnderlayConfig{
-			MyASN:    64512,
-			VTEP:     "100.64.0.1/32",
+			MyASN: 64512,
+			EVPN: &UnderlayEvpn{
+				VTEP: "100.64.0.1/32",
+			},
 			RouterID: "10.0.0.1",
 			Neighbors: []NeighborConfig{
 				{
@@ -166,8 +172,10 @@ func TestNoVNIs(t *testing.T) {
 
 	config := Config{
 		Underlay: UnderlayConfig{
-			MyASN:    64512,
-			VTEP:     "100.64.0.1/32",
+			MyASN: 64512,
+			EVPN: &UnderlayEvpn{
+				VTEP: "100.64.0.1/32",
+			},
 			RouterID: "10.0.0.1",
 			Neighbors: []NeighborConfig{
 				{
@@ -191,8 +199,10 @@ func TestBFDEnabled(t *testing.T) {
 
 	config := Config{
 		Underlay: UnderlayConfig{
-			MyASN:    64512,
-			VTEP:     "100.64.0.1/32",
+			MyASN: 64512,
+			EVPN: &UnderlayEvpn{
+				VTEP: "100.64.0.1/32",
+			},
 			RouterID: "10.0.0.1",
 			Neighbors: []NeighborConfig{
 				{
@@ -217,8 +227,10 @@ func TestBFDProfile(t *testing.T) {
 
 	config := Config{
 		Underlay: UnderlayConfig{
-			MyASN:    64512,
-			VTEP:     "100.64.0.1/32",
+			MyASN: 64512,
+			EVPN: &UnderlayEvpn{
+				VTEP: "100.64.0.1/32",
+			},
 			RouterID: "10.0.0.1",
 			Neighbors: []NeighborConfig{
 				{
@@ -251,8 +263,10 @@ func TestL3VNIWithoutLocalNeighborAndAdvertise(t *testing.T) {
 	config := Config{
 		Underlay: UnderlayConfig{
 			MyASN:    64512,
-			VTEP:     "100.64.0.1/32",
 			RouterID: "10.0.0.1",
+			EVPN: &UnderlayEvpn{
+				VTEP: "100.64.0.1/32",
+			},
 			Neighbors: []NeighborConfig{
 				{
 					ASN:      64512,
@@ -269,6 +283,177 @@ func TestL3VNIWithoutLocalNeighborAndAdvertise(t *testing.T) {
 				ASN:      64512,
 			},
 		},
+	}
+	if err := ApplyConfig(context.TODO(), &config, updater); err != nil {
+		t.Fatalf("Failed to apply config: %s", err)
+	}
+
+	testCheckConfigFile(t)
+}
+
+func TestPassthroughNoEVPN(t *testing.T) {
+	configFile := testSetup(t)
+	updater := testUpdater(configFile)
+
+	config := Config{
+		Underlay: UnderlayConfig{
+			MyASN:    64512,
+			RouterID: "10.0.0.1",
+			Neighbors: []NeighborConfig{
+				{
+					ASN:      64512,
+					Addr:     "192.168.1.2",
+					IPFamily: ipfamily.IPv4,
+				},
+			},
+			Passthrough: &PassthroughConfig{
+				LocalNeighborV4: &NeighborConfig{
+					ASN:      64512,
+					Addr:     "192.168.1.3",
+					IPFamily: ipfamily.IPv4,
+				},
+				ToAdvertiseIPv4: []string{
+					"192.169.20.0/24",
+					"192.169.21.0/24",
+				},
+			},
+		},
+	}
+	if err := ApplyConfig(context.TODO(), &config, updater); err != nil {
+		t.Fatalf("Failed to apply config: %s", err)
+	}
+
+	testCheckConfigFile(t)
+}
+
+func TestPassthroughV4(t *testing.T) {
+	configFile := testSetup(t)
+	updater := testUpdater(configFile)
+
+	config := Config{
+		Underlay: UnderlayConfig{
+			MyASN: 64512,
+			EVPN: &UnderlayEvpn{
+				VTEP: "100.64.0.1/32",
+			},
+			RouterID: "10.0.0.1",
+			Neighbors: []NeighborConfig{
+				{
+					ASN:      64512,
+					Addr:     "192.168.1.2",
+					IPFamily: ipfamily.IPv4,
+				},
+			},
+			Passthrough: &PassthroughConfig{
+				LocalNeighborV4: &NeighborConfig{
+					ASN:      64512,
+					Addr:     "192.168.1.3",
+					IPFamily: ipfamily.IPv4,
+				},
+				ToAdvertiseIPv4: []string{
+					"192.169.20.0/24",
+					"192.169.21.0/24",
+				},
+			},
+		},
+	}
+	if err := ApplyConfig(context.TODO(), &config, updater); err != nil {
+		t.Fatalf("Failed to apply config: %s", err)
+	}
+
+	testCheckConfigFile(t)
+}
+
+func TestPassthroughDual(t *testing.T) {
+	configFile := testSetup(t)
+	updater := testUpdater(configFile)
+
+	config := Config{
+		Underlay: UnderlayConfig{
+			MyASN: 64512,
+			EVPN: &UnderlayEvpn{
+				VTEP: "100.64.0.1/32",
+			},
+			RouterID: "10.0.0.1",
+			Neighbors: []NeighborConfig{
+				{
+					ASN:      64512,
+					Addr:     "192.168.1.2",
+					IPFamily: ipfamily.IPv4,
+				},
+			},
+			Passthrough: &PassthroughConfig{
+				LocalNeighborV4: &NeighborConfig{
+					ASN:      64512,
+					Addr:     "192.168.1.3",
+					IPFamily: ipfamily.IPv4,
+				},
+				LocalNeighborV6: &NeighborConfig{
+					ASN:      64512,
+					Addr:     "2001:db8:20::2",
+					IPFamily: ipfamily.IPv6,
+				},
+				ToAdvertiseIPv4: []string{
+					"192.169.20.0/24",
+					"192.169.21.0/24",
+				},
+				ToAdvertiseIPv6: []string{
+					"2001:db8:20::/64",
+					"2001:db8:21::/64",
+				},
+			},
+		},
+		VNIs: []L3VNIConfig{},
+	}
+	if err := ApplyConfig(context.TODO(), &config, updater); err != nil {
+		t.Fatalf("Failed to apply config: %s", err)
+	}
+
+	testCheckConfigFile(t)
+}
+
+func TestPeKindWorker(t *testing.T) {
+	configFile := testSetup(t)
+	updater := testUpdater(configFile)
+
+	config := Config{
+		Loglevel: "debug",
+		Hostname: "pe-kind-worker",
+		Underlay: UnderlayConfig{
+			MyASN:    64514,
+			RouterID: "10.0.0.2",
+			EVPN: &UnderlayEvpn{
+				VTEP: "100.65.0.1/32",
+			},
+			Neighbors: []NeighborConfig{
+				{
+					Name:     "64512@192.168.11.2",
+					ASN:      64512,
+					Addr:     "192.168.11.2",
+					IPFamily: ipfamily.IPv4,
+				},
+			},
+			Passthrough: &PassthroughConfig{
+				LocalNeighborV4: &NeighborConfig{
+					ASN:      64515,
+					Addr:     "192.169.10.3",
+					IPFamily: ipfamily.IPv4,
+				},
+				LocalNeighborV6: &NeighborConfig{
+					ASN:      64515,
+					Addr:     "2001:db8:1::3",
+					IPFamily: ipfamily.IPv6,
+				},
+				ToAdvertiseIPv4: []string{
+					"192.169.10.3",
+				},
+				ToAdvertiseIPv6: []string{
+					"2001:db8:1::3/128",
+				},
+			},
+		},
+		VNIs:        []L3VNIConfig{},
+		BFDProfiles: []BFDProfile{},
 	}
 	if err := ApplyConfig(context.TODO(), &config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)

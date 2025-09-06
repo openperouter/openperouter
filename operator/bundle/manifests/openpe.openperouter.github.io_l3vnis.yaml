@@ -47,7 +47,7 @@ spec:
                   asn:
                     description: |-
                       ASN is the local AS number to use to establish a BGP session with
-                      the default namespace. The ASN must be different from the ASN of the neighbors.
+                      the default namespace.
                     format: int32
                     maximum: 4294967295
                     minimum: 1
@@ -80,9 +80,6 @@ spec:
                           the PERouter side is going to use the first IP of the cidr on all the nodes.
                         type: string
                     type: object
-                    x-kubernetes-validations:
-                    - message: LocalCIDR can't be changed
-                      rule: self == oldSelf
                 required:
                 - localcidr
                 type: object
@@ -105,9 +102,6 @@ spec:
                 format: int32
                 type: integer
             type: object
-            x-kubernetes-validations:
-            - message: hostASN must be different from asn
-              rule: '!has(self.hostsession) || self.hostsession.hostasn != self.hostsession.asn'
           status:
             description: L3VNIStatus defines the observed state of L3VNI.
             type: object

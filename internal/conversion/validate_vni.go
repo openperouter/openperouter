@@ -21,33 +21,6 @@ func ValidateL3VNIs(l3Vnis []v1alpha1.L3VNI) error {
 	if err := validateVNIs(vnis); err != nil {
 		return err
 	}
-
-	existingCIDRsV4 := map[string]string{}
-	existingCIDRsV6 := map[string]string{}
-	for _, vni := range l3Vnis {
-		if vni.Spec.HostSession == nil {
-			continue
-		}
-		if vni.Spec.HostSession.HostASN == vni.Spec.HostSession.ASN {
-			return fmt.Errorf("l3vni %s local ASN %d must be different from remote ASN %d", vni.Name,
-				vni.Spec.HostSession.HostASN, vni.Spec.HostSession.ASN)
-		}
-		if vni.Spec.HostSession.LocalCIDR.IPv4 != "" {
-			if err := validateCIDRForVNI(vni, vni.Spec.HostSession.LocalCIDR.IPv4, existingCIDRsV4); err != nil {
-				return err
-			}
-			existingCIDRsV4[vni.Spec.HostSession.LocalCIDR.IPv4] = vni.Name
-		}
-		if vni.Spec.HostSession.LocalCIDR.IPv6 != "" {
-			if err := validateCIDRForVNI(vni, vni.Spec.HostSession.LocalCIDR.IPv6, existingCIDRsV6); err != nil {
-				return err
-			}
-			existingCIDRsV6[vni.Spec.HostSession.LocalCIDR.IPv6] = vni.Name
-		}
-		if vni.Spec.HostSession.LocalCIDR.IPv4 == "" && vni.Spec.HostSession.LocalCIDR.IPv6 == "" {
-			return fmt.Errorf("at least one local CIDR (IPv4 or IPv6) must be provided for vni %s", vni.Name)
-		}
-	}
 	return nil
 }
 
@@ -173,23 +146,6 @@ func isValidCIDR(cidr string) error {
 	}
 	if _, _, err := net.ParseCIDR(cidr); err != nil {
 		return fmt.Errorf("invalid CIDR: %s - %w", cidr, err)
-	}
-	return nil
-}
-
-// validateCIDRForVNI validates a single CIDR and checks for overlaps with existing CIDRs
-func validateCIDRForVNI(vni v1alpha1.L3VNI, cidr string, existingCIDRs map[string]string) error {
-	if err := isValidCIDR(cidr); err != nil {
-		return fmt.Errorf("invalid local CIDR %s for vni %s: %w", cidr, vni.Name, err)
-	}
-	for existing, existingVNI := range existingCIDRs {
-		overlap, err := cidrsOverlap(existing, cidr)
-		if err != nil {
-			return err
-		}
-		if overlap {
-			return fmt.Errorf("overlapping cidrs %s - %s for vnis %s - %s", existing, cidr, existingVNI, vni.Name)
-		}
 	}
 	return nil
 }

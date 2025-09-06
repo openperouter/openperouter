@@ -26,6 +26,11 @@ type L3VNIParams struct {
 	HostVeth  *Veth `json:"veth"`
 }
 
+type L3PassthroughParams struct {
+	TargetNS string `json:"targetns"`
+	HostVeth Veth   `json:"veth"`
+}
+
 type Veth struct {
 	HostIPv4 string `json:"hostipv4"`
 	NSIPv4   string `json:"nsipv4"`
@@ -49,7 +54,6 @@ const (
 	VRFLinkType    = "vrf"
 	BridgeLinkType = "bridge"
 	VXLanLinkType  = "vxlan"
-	VethLinkType   = "veth"
 )
 
 type NotRouterInterfaceError struct {
@@ -75,8 +79,8 @@ func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
 		slog.DebugContext(ctx, "no host veth configured, skipping setup")
 		return nil
 	}
-
-	if err := setupVNIVeth(ctx, params.VNIParams); err != nil {
+	vethNames := vethNamesFromVNI(params.VNI)
+	if err := setupNamespacedVeth(ctx, vethNames, params.TargetNS); err != nil {
 		return fmt.Errorf("SetupL3VNI: failed to setup VNI veth: %w", err)
 	}
 
@@ -90,11 +94,9 @@ func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
 		}
 	}()
 
-	hostSide, peSide := vethNamesFromVNI(params.VNI)
-
-	hostVeth, err := netlink.LinkByName(hostSide)
+	hostVeth, err := netlink.LinkByName(vethNames.HostSide)
 	if errors.As(err, &netlink.LinkNotFoundError{}) {
-		return fmt.Errorf("SetupL3VNI: host veth %s does not exist, cannot setup L3 VNI", hostSide)
+		return fmt.Errorf("SetupL3VNI: host veth %s does not exist, cannot setup L3 VNI", vethNames.HostSide)
 	}
 
 	err = assignIPsToInterface(hostVeth, params.HostVeth.HostIPv4, params.HostVeth.HostIPv6)
@@ -103,14 +105,9 @@ func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
 	}
 
 	if err := inNamespace(ns, func() error {
-		peVeth, err := netlink.LinkByName(peSide)
+		peVeth, err := netlink.LinkByName(vethNames.NamespaceSide)
 		if err != nil {
-			return fmt.Errorf("could not find peer veth %s in namespace %s: %w", peSide, params.TargetNS, err)
-		}
-
-		err = assignIPsToInterface(peVeth, params.HostVeth.NSIPv4, params.HostVeth.NSIPv6)
-		if err != nil {
-			return fmt.Errorf("failed to assign IPs to PE veth: %w", err)
+			return fmt.Errorf("could not find peer veth %s in namespace %s: %w", vethNames.NamespaceSide, params.TargetNS, err)
 		}
 
 		vrf, err := netlink.LinkByName(params.VRF)
@@ -121,6 +118,12 @@ func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
 		err = netlink.LinkSetMaster(peVeth, vrf)
 		if err != nil {
 			return fmt.Errorf("failed to set vrf %s as master of pe veth %s: %w", params.VRF, peVeth.Attrs().Name, err)
+		}
+		// Note: since the ipv6 address is removed after enslaving the veth to the vrf, this has to
+		// be performed after the veth is enslaved to the vrf.
+		err = assignIPsToInterface(peVeth, params.HostVeth.NSIPv4, params.HostVeth.NSIPv6)
+		if err != nil {
+			return fmt.Errorf("failed to assign IPs to PE veth: %w", err)
 		}
 		return nil
 	}); err != nil {
@@ -137,7 +140,8 @@ func SetupL2VNI(ctx context.Context, params L2VNIParams) error {
 	if err := setupVNI(ctx, params.VNIParams); err != nil {
 		return fmt.Errorf("SetupL2VNI: failed to setup VNI: %w", err)
 	}
-	if err := setupVNIVeth(ctx, params.VNIParams); err != nil {
+	vethNames := vethNamesFromVNI(params.VNI)
+	if err := setupNamespacedVeth(ctx, vethNames, params.TargetNS); err != nil {
 		return fmt.Errorf("SetupL2VNI: failed to setup VNI veth: %w", err)
 	}
 
@@ -154,11 +158,9 @@ func SetupL2VNI(ctx context.Context, params L2VNIParams) error {
 		}
 	}()
 
-	hostSide, peSide := vethNamesFromVNI(params.VNI)
-
-	hostVeth, err := netlink.LinkByName(hostSide)
+	hostVeth, err := netlink.LinkByName(vethNames.HostSide)
 	if errors.As(err, &netlink.LinkNotFoundError{}) {
-		return fmt.Errorf("SetupL2VNI: host veth %s does not exist, cannot setup L3 VNI", hostSide)
+		return fmt.Errorf("SetupL2VNI: host veth %s does not exist, cannot setup L3 VNI", vethNames.HostSide)
 	}
 
 	if params.HostMaster != nil {
@@ -172,9 +174,9 @@ func SetupL2VNI(ctx context.Context, params L2VNIParams) error {
 	}
 
 	if err := inNamespace(ns, func() error {
-		peVeth, err := netlink.LinkByName(peSide)
+		peVeth, err := netlink.LinkByName(vethNames.NamespaceSide)
 		if err != nil {
-			return fmt.Errorf("could not find peer veth %s in namespace %s: %w", peSide, params.TargetNS, err)
+			return fmt.Errorf("could not find peer veth %s in namespace %s: %w", vethNames.NamespaceSide, params.TargetNS, err)
 		}
 		name := bridgeName(params.VNI)
 		bridge, err := netlink.LinkByName(name)
@@ -241,59 +243,6 @@ func setupVNI(ctx context.Context, params VNIParams) error {
 		err = setupVXLan(params, bridge)
 		if err != nil {
 			return err
-		}
-
-		return nil
-	}); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func setupVNIVeth(ctx context.Context, params VNIParams) error {
-	slog.DebugContext(ctx, "setting up VNI", "params", params)
-	defer slog.DebugContext(ctx, "end setting up VNI", "params", params)
-	ns, err := netns.GetFromName(params.TargetNS)
-	if err != nil {
-		return fmt.Errorf("SetupVNI: Failed to get network namespace %s: %w", params.TargetNS, err)
-	}
-	defer func() {
-		if err := ns.Close(); err != nil {
-			slog.Error("failed to close namespace", "namespace", params.TargetNS, "error", err)
-		}
-	}()
-
-	hostVeth, err := setupVeth(ctx, params.VNI, ns)
-	if err != nil {
-		return err
-	}
-
-	err = netlink.LinkSetUp(hostVeth)
-	if err != nil {
-		return fmt.Errorf("could not set link up for host leg %s: %v", hostVeth, err)
-	}
-
-	if err := inNamespace(ns, func() error {
-		_, peSideName := vethNamesFromVNI(params.VNI)
-		peVeth, err := netlink.LinkByName(peSideName)
-		if err != nil {
-			return fmt.Errorf("could not find peer veth %s in namespace %s: %w", peSideName, params.TargetNS, err)
-		}
-		err = netlink.LinkSetUp(peVeth)
-		if err != nil {
-			return fmt.Errorf("could not set link up for host leg %s: %v", hostVeth, err)
-		}
-
-		slog.DebugContext(ctx, "enslaving to vrf", "vrf", params.VRF)
-		vrf, err := netlink.LinkByName(params.VRF)
-		if err != nil {
-			return fmt.Errorf("could not find vrf %s in namespace %s: %w", params.VRF, params.TargetNS, err)
-		}
-
-		err = netlink.LinkSetMaster(peVeth, vrf)
-		if err != nil {
-			return fmt.Errorf("failed to set vrf %s as master of pe veth %s: %w", params.VRF, peVeth.Attrs().Name, err)
 		}
 
 		return nil

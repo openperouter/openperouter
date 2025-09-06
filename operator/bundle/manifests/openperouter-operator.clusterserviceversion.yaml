@@ -4,7 +4,7 @@ metadata:
   annotations:
     alm-examples: '[]'
     capabilities: Basic Install
-    createdAt: "2025-09-02T10:35:34Z"
+    createdAt: "2025-09-04T15:26:05Z"
     operators.operatorframework.io/builder: operator-sdk-v1.41.1
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
   name: openperouter-operator.v0.0.0
@@ -15,6 +15,9 @@ spec:
     owned:
     - kind: L2VNI
       name: l2vnis.openpe.openperouter.github.io
+      version: v1alpha1
+    - kind: L3Passthrough
+      name: l3passthroughs.openpe.openperouter.github.io
       version: v1alpha1
     - description: |-
         L3VNI represents a VXLan VNI to receive EVPN type 5 routes
@@ -98,6 +101,32 @@ spec:
           - openpe.openperouter.github.io
           resources:
           - l2vnis/status
+          verbs:
+          - get
+          - patch
+          - update
+        - apiGroups:
+          - openpe.openperouter.github.io
+          resources:
+          - l3passthroughs
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - openpe.openperouter.github.io
+          resources:
+          - l3passthroughs/finalizers
+          verbs:
+          - update
+        - apiGroups:
+          - openpe.openperouter.github.io
+          resources:
+          - l3passthroughs/status
           verbs:
           - get
           - patch

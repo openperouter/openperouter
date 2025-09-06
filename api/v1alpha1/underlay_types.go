@@ -23,15 +23,10 @@ import (
 // UnderlaySpec defines the desired state of Underlay.
 type UnderlaySpec struct {
 	// ASN is the local AS number to use for the session with the TOR switch.
-	// The ASN must be different from the ASN of the neighbors.
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=4294967295
 	// +required
 	ASN uint32 `json:"asn,omitempty"`
-
-	// VTEPCIDR is CIDR to be used to assign IPs to the local VTEP on each node.
-	// +required
-	VTEPCIDR string `json:"vtepcidr,omitempty"`
 
 	// RouterIDCIDR is the ipv4 cidr to be used to assign a different routerID on each node.
 	// +kubebuilder:default="10.0.0.0/24"
@@ -47,6 +42,14 @@ type UnderlaySpec struct {
 	// +kubebuilder:validation:Items=Pattern=`^[a-zA-Z][a-zA-Z0-9_-]*$`
 	// +kubebuilder:validation:Items=MaxLength=15
 	Nics []string `json:"nics,omitempty"`
+
+	EVPN *EVPNConfig `json:"evpn,omitempty"`
+}
+
+type EVPNConfig struct {
+	// VTEPCIDR is CIDR to be used to assign IPs to the local VTEP on each node.
+	// +required
+	VTEPCIDR string `json:"vtepcidr,omitempty"`
 }
 
 // UnderlayStatus defines the observed state of Underlay.

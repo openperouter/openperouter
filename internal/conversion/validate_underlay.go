@@ -25,9 +25,10 @@ func ValidateUnderlays(underlays []v1alpha1.Underlay) error {
 			}
 		}
 
-		_, _, err := net.ParseCIDR(underlay.Spec.VTEPCIDR)
-		if err != nil {
-			return fmt.Errorf("invalid vtep CIDR format for underlay %s: %s - %w", underlay.Name, underlay.Spec.VTEPCIDR, err)
+		if underlay.Spec.EVPN != nil {
+			if _, _, err := net.ParseCIDR(underlay.Spec.EVPN.VTEPCIDR); err != nil {
+				return fmt.Errorf("invalid vtep CIDR format for underlay %s: %s - %w", underlay.Name, underlay.Spec.EVPN.VTEPCIDR, err)
+			}
 		}
 
 		if len(underlay.Spec.Nics) > 1 {

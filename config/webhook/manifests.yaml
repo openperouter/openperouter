@@ -30,6 +30,26 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
+      path: /validate-openperouter-io-v1alpha1-l3passthrough
+  failurePolicy: Fail
+  name: l3passthroughvalidationwebhook.openperouter.io
+  rules:
+  - apiGroups:
+    - openpe.openperouter.github.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - l3passthroughs
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
       path: /validate-openperouter-io-v1alpha1-l3vni
   failurePolicy: Fail
   name: l3vnivalidationwebhook.openperouter.io

@@ -43,8 +43,9 @@ var (
 
 type LeafConfiguration struct {
 	Leaf
-	Red  Addresses
-	Blue Addresses
+	Red     Addresses
+	Blue    Addresses
+	Default Addresses
 }
 
 type LeafKindConfiguration struct {

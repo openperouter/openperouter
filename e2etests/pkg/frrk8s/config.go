@@ -21,24 +21,24 @@ var (
 	frrk8sLabelSelector = "app=frr-k8s"
 )
 
-// ConfigFromVNI converts a VNI object to FRRConfiguration objects.
+// ConfigFromHostSession converts a HostSession object to FRRConfiguration objects.
 // Returns a slice with one configuration for each IP family (IPv4 and/or IPv6).
-func ConfigFromVNI(vni v1alpha1.L3VNI, tweak ...func(*frrk8sapi.FRRConfiguration)) ([]frrk8sapi.FRRConfiguration, error) {
-	if vni.Spec.HostSession == nil {
-		return nil, fmt.Errorf("HostSession is required for VNI %s", vni.Name)
+func ConfigFromHostSession(hostsession v1alpha1.HostSession, name string, tweak ...func(*frrk8sapi.FRRConfiguration)) ([]frrk8sapi.FRRConfiguration, error) {
+	if hostsession.LocalCIDR.IPv4 == "" && hostsession.LocalCIDR.IPv6 == "" {
+		return nil, fmt.Errorf("LocalCIDR is required for HostSession %s", name)
 	}
 
 	var configs []frrk8sapi.FRRConfiguration
-	if vni.Spec.HostSession.LocalCIDR.IPv4 != "" {
-		config, err := createFRRConfig(vni, vni.Spec.HostSession.LocalCIDR.IPv4, ipfamily.IPv4, tweak...)
+	if hostsession.LocalCIDR.IPv4 != "" {
+		config, err := createFRRConfig(hostsession, name, hostsession.LocalCIDR.IPv4, ipfamily.IPv4, tweak...)
 		if err != nil {
 			return nil, err
 		}
 		configs = append(configs, config)
 	}
 
-	if vni.Spec.HostSession.LocalCIDR.IPv6 != "" {
-		config, err := createFRRConfig(vni, vni.Spec.HostSession.LocalCIDR.IPv6, ipfamily.IPv6, tweak...)
+	if hostsession.LocalCIDR.IPv6 != "" {
+		config, err := createFRRConfig(hostsession, name, hostsession.LocalCIDR.IPv6, ipfamily.IPv6, tweak...)
 		if err != nil {
 			return nil, err
 		}
@@ -52,26 +52,26 @@ func ConfigFromVNI(vni v1alpha1.L3VNI, tweak ...func(*frrk8sapi.FRRConfiguration
 	return configs, nil
 }
 
-// ConfigFromVNIForIPFamily converts a VNI object to FRRConfiguration objects for a specific IP family.
+// ConfigFromHostSessionForIPFamily converts a HostSession object to FRRConfiguration objects for a specific IP family.
 // Returns a slice with one configuration for the specified IP family.
-func ConfigFromVNIForIPFamily(vni v1alpha1.L3VNI, family ipfamily.Family, tweak ...func(*frrk8sapi.FRRConfiguration)) (*frrk8sapi.FRRConfiguration, error) {
-	if vni.Spec.HostSession == nil {
-		return nil, fmt.Errorf("HostSession is required for VNI %s", vni.Name)
+func ConfigFromHostSessionForIPFamily(hostsession v1alpha1.HostSession, name string, family ipfamily.Family, tweak ...func(*frrk8sapi.FRRConfiguration)) (*frrk8sapi.FRRConfiguration, error) {
+	if hostsession.LocalCIDR.IPv4 == "" && hostsession.LocalCIDR.IPv6 == "" {
+		return nil, fmt.Errorf("LocalCIDR is required for HostSession %s", name)
 	}
 	if family == ipfamily.IPv4 {
-		if vni.Spec.HostSession.LocalCIDR.IPv4 == "" {
-			return nil, fmt.Errorf("IPv4 CIDR not provided for VNI %s", vni.Name)
+		if hostsession.LocalCIDR.IPv4 == "" {
+			return nil, fmt.Errorf("IPv4 CIDR not provided for HostSession %s", name)
 		}
-		res, err := createFRRConfig(vni, vni.Spec.HostSession.LocalCIDR.IPv4, family, tweak...)
+		res, err := createFRRConfig(hostsession, name, hostsession.LocalCIDR.IPv4, family, tweak...)
 		if err != nil {
 			return nil, err
 		}
 		return &res, nil
 	}
-	if vni.Spec.HostSession.LocalCIDR.IPv6 == "" {
-		return nil, fmt.Errorf("IPv6 CIDR not provided for VNI %s", vni.Name)
+	if hostsession.LocalCIDR.IPv6 == "" {
+		return nil, fmt.Errorf("IPv6 CIDR not provided for HostSession %s", name)
 	}
-	res, err := createFRRConfig(vni, vni.Spec.HostSession.LocalCIDR.IPv6, family, tweak...)
+	res, err := createFRRConfig(hostsession, name, hostsession.LocalCIDR.IPv6, family, tweak...)
 	if err != nil {
 		return nil, err
 	}
@@ -118,7 +118,7 @@ func PodForNode(cs clientset.Interface, nodeName string) (*corev1.Pod, error) {
 	return &pods.Items[0], nil
 }
 
-func createFRRConfig(vni v1alpha1.L3VNI, cidr string, family ipfamily.Family, tweak ...func(*frrk8sapi.FRRConfiguration)) (frrk8sapi.FRRConfiguration, error) {
+func createFRRConfig(hostsession v1alpha1.HostSession, name, cidr string, family ipfamily.Family, tweak ...func(*frrk8sapi.FRRConfiguration)) (frrk8sapi.FRRConfiguration, error) {
 	routerIP, err := openperouter.RouterIPFromCIDR(cidr)
 	if err != nil {
 		return frrk8sapi.FRRConfiguration{}, err
@@ -126,17 +126,17 @@ func createFRRConfig(vni v1alpha1.L3VNI, cidr string, family ipfamily.Family, tw
 
 	config := frrk8sapi.FRRConfiguration{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      vni.Name + string(family),
+			Name:      name + string(family),
 			Namespace: Namespace,
 		},
 		Spec: frrk8sapi.FRRConfigurationSpec{
 			BGP: frrk8sapi.BGPConfig{
 				Routers: []frrk8sapi.Router{
 					{
-						ASN: vni.Spec.HostSession.HostASN,
+						ASN: hostsession.HostASN,
 						Neighbors: []frrk8sapi.Neighbor{
 							{
-								ASN:     vni.Spec.HostSession.ASN,
+								ASN:     hostsession.ASN,
 								Address: routerIP,
 								ToReceive: frrk8sapi.Receive{
 									Allowed: frrk8sapi.AllowedInPrefixes{
