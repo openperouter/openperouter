@@ -403,22 +403,57 @@ func TestPassthroughDual(t *testing.T) {
 				},
 			},
 		},
-		VNIs: []L3VNIConfig{
-			{
-				VRF:      "red",
-				ASN:      64512,
-				VNI:      100,
-				RouterID: "10.0.0.1",
-				LocalNeighbor: &NeighborConfig{
+		VNIs: []L3VNIConfig{},
+	}
+	if err := ApplyConfig(context.TODO(), &config, updater); err != nil {
+		t.Fatalf("Failed to apply config: %s", err)
+	}
+
+	testCheckConfigFile(t)
+}
+
+func TestPeKindWorker(t *testing.T) {
+	configFile := testSetup(t)
+	updater := testUpdater(configFile)
+
+	config := Config{
+		Loglevel: "debug",
+		Hostname: "pe-kind-worker",
+		Underlay: UnderlayConfig{
+			MyASN:    64514,
+			RouterID: "10.0.0.2",
+			EVPN: &UnderlayEvpn{
+				VTEP: "100.65.0.1/32",
+			},
+			Neighbors: []NeighborConfig{
+				{
+					Name:     "64512@192.168.11.2",
 					ASN:      64512,
-					Addr:     "192.168.1.2",
+					Addr:     "192.168.11.2",
 					IPFamily: ipfamily.IPv4,
 				},
+			},
+			Passthrough: &PassthroughConfig{
+				LocalNeighborV4: &NeighborConfig{
+					ASN:      64515,
+					Addr:     "192.169.10.3",
+					IPFamily: ipfamily.IPv4,
+				},
+				LocalNeighborV6: &NeighborConfig{
+					ASN:      64515,
+					Addr:     "2001:db8:1::3",
+					IPFamily: ipfamily.IPv6,
+				},
 				ToAdvertiseIPv4: []string{
-					"192.169.10.2/24",
+					"192.169.10.3",
+				},
+				ToAdvertiseIPv6: []string{
+					"2001:db8:1::3/128",
 				},
 			},
 		},
+		VNIs:        []L3VNIConfig{},
+		BFDProfiles: []BFDProfile{},
 	}
 	if err := ApplyConfig(context.TODO(), &config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)

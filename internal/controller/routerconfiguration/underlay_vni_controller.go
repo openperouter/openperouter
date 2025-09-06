@@ -218,6 +218,7 @@ func (r *PERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(&v1.Pod{}, &handler.EnqueueRequestForObject{}).
 		Watches(&v1alpha1.L3VNI{}, &handler.EnqueueRequestForObject{}).
 		Watches(&v1alpha1.L2VNI{}, &handler.EnqueueRequestForObject{}).
+		Watches(&v1alpha1.L3Passthrough{}, &handler.EnqueueRequestForObject{}).
 		WithEventFilter(filterNonRouterPods).
 		WithEventFilter(filterUpdates).
 		Named("routercontroller").

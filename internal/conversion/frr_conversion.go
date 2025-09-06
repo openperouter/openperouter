@@ -122,14 +122,14 @@ func passthroughToFRR(passthrough v1alpha1.L3Passthrough, nodeIndex int) (*frr.P
 
 	if vethIPs.Ipv4.HostSide.IP != nil {
 		res.LocalNeighborV4 = &frr.NeighborConfig{
-			ASN:  passthrough.Spec.HostSession.ASN,
+			ASN:  passthrough.Spec.HostSession.HostASN,
 			Addr: vethIPs.Ipv4.HostSide.IP.String(),
 		}
 		res.ToAdvertiseIPv4 = append(res.ToAdvertiseIPv4, vethIPs.Ipv4.HostSide.IP.String())
 	}
 	if vethIPs.Ipv6.HostSide.IP != nil {
 		res.LocalNeighborV6 = &frr.NeighborConfig{
-			ASN:  passthrough.Spec.HostSession.ASN,
+			ASN:  passthrough.Spec.HostSession.HostASN,
 			Addr: vethIPs.Ipv6.HostSide.IP.String(),
 		}
 		res.ToAdvertiseIPv6 = append(res.ToAdvertiseIPv6, vethIPs.Ipv6.HostSide.IP.String())

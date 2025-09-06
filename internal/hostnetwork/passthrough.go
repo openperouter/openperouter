@@ -23,6 +23,8 @@ var PassthroughNames = VethNames{
 }
 
 func SetupPassthrough(ctx context.Context, params PassthroughParams) error {
+	slog.DebugContext(ctx, "setup passthrough", "params", params)
+	defer slog.DebugContext(ctx, "setup passthrough done")
 	if err := setupNamespacedVeth(ctx, PassthroughNames, params.TargetNS); err != nil {
 		return fmt.Errorf("SetupPassthrough: failed to setup VNI veth: %w", err)
 	}
