@@ -31,6 +31,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
@@ -39,6 +40,7 @@ import (
 	"github.com/openperouter/openperouter/internal/controller/routerconfiguration"
 	"github.com/openperouter/openperouter/internal/logging"
 	"github.com/openperouter/openperouter/internal/pods"
+	"github.com/openperouter/openperouter/internal/status"
 	"github.com/openperouter/openperouter/internal/tlsconfig"
 	// +kubebuilder:scaffold:imports
 )
@@ -123,27 +125,33 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Setup status reporting infrastructure
+	statusUpdateTriggerChannel := make(chan event.GenericEvent, 100)
+	eventReporter := status.NewStatusManager(statusUpdateTriggerChannel, args.nodeName, args.namespace, logger)
+
 	if err = (&routerconfiguration.PERouterReconciler{
-		Client:      mgr.GetClient(),
-		Scheme:      mgr.GetScheme(),
-		MyNode:      args.nodeName,
-		FRRConfig:   args.frrConfigPath,
-		ReloadPort:  args.reloadPort,
-		PodRuntime:  podRuntime,
-		LogLevel:    args.logLevel,
-		Logger:      logger,
-		MyNamespace: args.namespace,
+		Client:         mgr.GetClient(),
+		Scheme:         mgr.GetScheme(),
+		MyNode:         args.nodeName,
+		FRRConfig:      args.frrConfigPath,
+		ReloadPort:     args.reloadPort,
+		PodRuntime:     podRuntime,
+		LogLevel:       args.logLevel,
+		Logger:         logger,
+		MyNamespace:    args.namespace,
+		StatusReporter: eventReporter,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Underlay")
 		os.Exit(1)
 	}
 
 	if err = (&routerconfiguration.RouterNodeConfigurationStatusReconciler{
-		Client:      mgr.GetClient(),
-		Scheme:      mgr.GetScheme(),
-		MyNode:      args.nodeName,
-		MyNamespace: args.namespace,
-		Logger:      logger,
+		Client:        mgr.GetClient(),
+		Scheme:        mgr.GetScheme(),
+		MyNode:        args.nodeName,
+		MyNamespace:   args.namespace,
+		Logger:        logger,
+		EventReporter: eventReporter,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "RouterNodeConfigurationStatus")
 		os.Exit(1)

@@ -32,19 +32,21 @@ import (
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/conversion"
 	"github.com/openperouter/openperouter/internal/pods"
+	"github.com/openperouter/openperouter/internal/status"
 	v1 "k8s.io/api/core/v1"
 )
 
 type PERouterReconciler struct {
 	client.Client
-	Scheme      *runtime.Scheme
-	MyNode      string
-	MyNamespace string
-	FRRConfig   string
-	ReloadPort  int
-	PodRuntime  *pods.Runtime
-	LogLevel    string
-	Logger      *slog.Logger
+	Scheme         *runtime.Scheme
+	MyNode         string
+	MyNamespace    string
+	FRRConfig      string
+	ReloadPort     int
+	PodRuntime     *pods.Runtime
+	LogLevel       string
+	Logger         *slog.Logger
+	StatusReporter status.StatusReporter
 }
 
 type requestKey string
@@ -96,6 +98,11 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	if err := conversion.ValidateUnderlays(underlays.Items); err != nil {
 		slog.Error("failed to validate underlays", "error", err)
+
+		for _, underlay := range underlays.Items {
+			r.StatusReporter.ReportResourceFailure(status.UnderlayKind, underlay.Name, err)
+		}
+
 		return ctrl.Result{}, nil
 	}
 
@@ -158,22 +165,34 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	if nonRecoverableHostError(err) {
 		logger.Info("breaking configuration change", "killing pod", routerPod.Name)
+		r.reportUnderlayConfigurationFailure(err, underlays.Items)
+
 		if err := r.Delete(ctx, routerPod); err != nil && !errors.IsNotFound(err) {
 			slog.Error("failed to delete router pod", "error", err)
 			return ctrl.Result{}, err
 		}
+
 		return ctrl.Result{}, nil
 	}
 	if err != nil {
 		slog.Error("failed to configure the host", "error", err)
+
+		r.reportUnderlayConfigurationFailure(err, underlays.Items)
+
 		return ctrl.Result{}, err
 	}
+
+	r.reportUnderlayConfigurationSuccess(underlays.Items)
 
 	return ctrl.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *PERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if r.StatusReporter == nil {
+		return fmt.Errorf("StatusReporter is required but not set")
+	}
+
 	filterNonRouterPods := predicate.NewPredicateFuncs(func(object client.Object) bool {
 		switch o := object.(type) {
 		case *v1.Pod:
@@ -264,4 +283,16 @@ func podConditionStatus(p *v1.Pod, condition v1.PodConditionType) v1.ConditionSt
 	}
 
 	return v1.ConditionUnknown
+}
+
+func (r *PERouterReconciler) reportUnderlayConfigurationFailure(err error, underlays []v1alpha1.Underlay) {
+	for _, underlay := range underlays {
+		r.StatusReporter.ReportResourceFailure(status.UnderlayKind, underlay.Name, err)
+	}
+}
+
+func (r *PERouterReconciler) reportUnderlayConfigurationSuccess(underlays []v1alpha1.Underlay) {
+	for _, underlay := range underlays {
+		r.StatusReporter.ReportResourceSuccess(status.UnderlayKind, underlay.Name)
+	}
 }
