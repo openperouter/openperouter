@@ -225,6 +225,17 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "Underlay")
 		os.Exit(1)
 	}
+
+	if err = (&routerconfiguration.RouterNodeConfigurationStatusReconciler{
+		Client:      mgr.GetClient(),
+		Scheme:      mgr.GetScheme(),
+		MyNode:      k8sModeParams.nodeName,
+		MyNamespace: k8sModeParams.namespace,
+		Logger:      logger,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "RouterNodeConfigurationStatus")
+		os.Exit(1)
+	}
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
