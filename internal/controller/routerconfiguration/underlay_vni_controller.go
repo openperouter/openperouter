@@ -34,6 +34,8 @@ import (
 	"github.com/openperouter/openperouter/internal/conversion"
 	"github.com/openperouter/openperouter/internal/filter"
 	"github.com/openperouter/openperouter/internal/frrconfig"
+	"github.com/openperouter/openperouter/internal/k8s"
+	"github.com/openperouter/openperouter/internal/status"
 	v1 "k8s.io/api/core/v1"
 )
 
@@ -48,6 +50,7 @@ type PERouterReconciler struct {
 	FRRConfigPath      string
 	FRRReloadSocket    string
 	RouterProvider     RouterProvider
+	StatusReporter     status.StatusReporter
 }
 
 type requestKey string
@@ -78,6 +81,16 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	if err := r.List(ctx, &underlays); err != nil {
 		slog.Error("failed to list underlays", "error", err)
 		return ctrl.Result{}, err
+	}
+
+	if err := conversion.ValidateUnderlays(underlays.Items); err != nil {
+		slog.Error("failed to validate underlays", "error", err)
+
+		for _, underlay := range underlays.Items {
+			r.StatusReporter.ReportResourceFailure(status.UnderlayKind, underlay.Name, err)
+		}
+
+		return ctrl.Result{}, nil
 	}
 
 	var l3vnis v1alpha1.L3VNIList
@@ -166,21 +179,35 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	err = Reconcile(ctx, apiConfig, r.FRRConfigPath, targetNS, updater)
 	if nonRecoverableHostError(err) {
+		logger.Info("breaking configuration change due to non-recoverable error")
+		r.reportUnderlayConfigurationFailure(err, underlays.Items)
+
 		if err := router.HandleNonRecoverableError(ctx); err != nil {
 			slog.Error("failed to handle non recoverable error", "error", err)
 			return ctrl.Result{}, err
 		}
+
+		return ctrl.Result{}, nil
 	}
 	if err != nil {
 		slog.Error("failed to configure the host", "error", err)
+
+		r.reportUnderlayConfigurationFailure(err, underlays.Items)
+
 		return ctrl.Result{}, err
 	}
+
+	r.reportUnderlayConfigurationSuccess(underlays.Items)
 
 	return ctrl.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *PERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if r.StatusReporter == nil {
+		return fmt.Errorf("StatusReporter is required but not set")
+	}
+
 	filterNonRouterPods := predicate.NewPredicateFuncs(func(object client.Object) bool {
 		switch o := object.(type) {
 		case *v1.Pod:
@@ -214,7 +241,7 @@ func (r *PERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				return !labels.Equals(oldLabels, newLabels)
 			case *v1.Pod: // handle only status updates
 				old := e.ObjectOld.(*v1.Pod)
-				if PodIsReady(old) != PodIsReady(o) {
+				if k8s.PodIsReady(old) != k8s.PodIsReady(o) {
 					return true
 				}
 				return false
@@ -258,4 +285,16 @@ func setPodNodeNameIndex(mgr ctrl.Manager) error {
 		return fmt.Errorf("failed to set node indexer %w", err)
 	}
 	return nil
+}
+
+func (r *PERouterReconciler) reportUnderlayConfigurationFailure(err error, underlays []v1alpha1.Underlay) {
+	for _, underlay := range underlays {
+		r.StatusReporter.ReportResourceFailure(status.UnderlayKind, underlay.Name, err)
+	}
+}
+
+func (r *PERouterReconciler) reportUnderlayConfigurationSuccess(underlays []v1alpha1.Underlay) {
+	for _, underlay := range underlays {
+		r.StatusReporter.ReportResourceSuccess(status.UnderlayKind, underlay.Name)
+	}
 }

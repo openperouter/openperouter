@@ -10,6 +10,7 @@ import (
 	"strconv"
 
 	"github.com/openperouter/openperouter/internal/controller/nodeindex"
+	"github.com/openperouter/openperouter/internal/k8s"
 	"github.com/openperouter/openperouter/internal/pods"
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -84,7 +85,7 @@ func (r *RouterPod) HandleNonRecoverableError(ctx context.Context) error {
 }
 
 func (r *RouterPod) CanReconcile(ctx context.Context) (bool, error) {
-	routerPodIsReady := PodIsReady(r.pod)
+	routerPodIsReady := k8s.PodIsReady(r.pod)
 	if !routerPodIsReady {
 		slog.Info("router pod", "Pod", r.pod.Name, "event", "is not ready, waiting for it to be ready before configuring")
 		return false, nil
@@ -108,24 +109,4 @@ func routerPodForNode(ctx context.Context, cli client.Client, node string) (*v1.
 		return nil, fmt.Errorf("no router pods found for node %s", node)
 	}
 	return &pods.Items[0], nil
-}
-
-// PodIsReady returns the given pod's PodReady and ContainersReady condition.
-func PodIsReady(p *v1.Pod) bool {
-	return podConditionStatus(p, v1.PodReady) == v1.ConditionTrue && podConditionStatus(p, v1.ContainersReady) == v1.ConditionTrue
-}
-
-// podConditionStatus returns the status of the condition for a given pod.
-func podConditionStatus(p *v1.Pod, condition v1.PodConditionType) v1.ConditionStatus {
-	if p == nil {
-		return v1.ConditionUnknown
-	}
-
-	for _, c := range p.Status.Conditions {
-		if c.Type == condition {
-			return c.Status
-		}
-	}
-
-	return v1.ConditionUnknown
 }
