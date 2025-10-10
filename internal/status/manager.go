@@ -69,7 +69,7 @@ type StatusManager struct {
 
 // NewStatusManager creates a new StatusManager that sends rich status events
 func NewStatusManager(updateChannel chan event.GenericEvent, nodeName, namespace string, logger *slog.Logger) *StatusManager {
-	return &StatusManager{
+	sm := &StatusManager{
 		triggerChannel:           updateChannel,
 		nodeName:                 nodeName,
 		namespace:                namespace,
@@ -77,6 +77,11 @@ func NewStatusManager(updateChannel chan event.GenericEvent, nodeName, namespace
 		failedResourceCacheMutex: sync.RWMutex{},
 		failedResourceCache:      make(map[string]*failedResourceCacheEntry),
 	}
+
+	// Send initial trigger event to create RouterNodeConfigurationStatus resource
+	sm.sendTriggerEvent()
+
+	return sm
 }
 
 // ReportResourceSuccess implements StatusReporter interface
@@ -117,6 +122,24 @@ func (er *StatusManager) ReportResourceFailure(kind ResourceKind, resourceName s
 		"kind", kind,
 		"resource", resourceName,
 		"error", err)
+}
+
+// ReportResourceRemoved implements StatusReporter interface
+func (er *StatusManager) ReportResourceRemoved(kind ResourceKind, resourceName string) {
+	// Remove any failure entry from cache
+	er.failedResourceCacheMutex.Lock()
+	key := string(kind) + ":" + resourceName
+	_, existed := er.failedResourceCache[key]
+	delete(er.failedResourceCache, key)
+	er.failedResourceCacheMutex.Unlock()
+
+	// Trigger reconciliation only if the resource was actually in the cache
+	if existed {
+		er.sendTriggerEvent()
+		er.logger.Debug("reported resource removal",
+			"kind", kind,
+			"resource", resourceName)
+	}
 }
 
 // sendTriggerEvent sends a minimal trigger event for reconciliation
