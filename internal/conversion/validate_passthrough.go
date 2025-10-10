@@ -9,6 +9,7 @@ import (
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/filter"
+	"github.com/openperouter/openperouter/internal/status"
 )
 
 func ValidatePassthroughsForNodes(nodes []corev1.Node, underlays []v1alpha1.L3Passthrough) error {
@@ -24,9 +25,11 @@ func ValidatePassthroughsForNodes(nodes []corev1.Node, underlays []v1alpha1.L3Pa
 	return nil
 }
 
-func ValidatePassthroughs(l3Passthrough []v1alpha1.L3Passthrough) error {
+func ValidatePassthroughs(l3Passthrough []v1alpha1.L3Passthrough, statusReporter status.StatusReporter) error {
 	if len(l3Passthrough) > 1 {
-		return fmt.Errorf("can't have more than one l3passthrough per node")
+		err := fmt.Errorf("can't have more than one l3passthrough per node")
+		statusReporter.ReportResourceFailure(status.L3PassthroughKind, l3Passthrough[0].Name, err)
+		return err
 	}
 	// host sessions are validated in ValidateHostSessions
 	return nil

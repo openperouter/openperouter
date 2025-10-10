@@ -11,6 +11,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/openperouter/openperouter/api/v1alpha1"
+	"github.com/openperouter/openperouter/e2etests/pkg/config"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 	corev1 "k8s.io/api/core/v1"
@@ -247,6 +248,169 @@ var _ = Describe("RouterNodeConfigurationStatus CRD", func() {
 
 				return nil
 			}, "60s", "5s").Should(Succeed(), "RouterNodeConfigurationStatus resources should have proper owner references")
+		})
+
+		It("should track multiple resource failures and recover properly", func() {
+			// Step 1: Create an invalid underlay (nonexistent NIC)
+			invalidUnderlay := v1alpha1.Underlay{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-underlay",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.UnderlaySpec{
+					ASN:  64514,
+					Nics: []string{"nonexistent"}, // Non-existent NIC
+					EVPN: &v1alpha1.EVPNConfig{
+						VTEPCIDR: "100.65.0.0/24",
+					},
+					Neighbors: []v1alpha1.Neighbor{
+						{
+							ASN:     64512,
+							Address: "192.168.11.2",
+						},
+					},
+				},
+			}
+
+			By("creating invalid underlay")
+			err := Updater.Update(config.Resources{
+				Underlays: []v1alpha1.Underlay{
+					invalidUnderlay,
+				},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Step 2: Status failed
+			By("confirming underlay status is failed")
+			Eventually(func() error {
+				statusList, err := getStableStatusList(k8sClient)
+				if err != nil {
+					return err
+				}
+
+				// Check all status resources for underlay failure
+				for _, status := range statusList.Items {
+					hasUnderlayFailure := false
+
+					for _, failedResource := range status.Status.FailedResources {
+						if failedResource.Kind == "Underlay" && failedResource.Name == invalidUnderlay.Name {
+							hasUnderlayFailure = true
+							break
+						}
+					}
+
+					if !hasUnderlayFailure {
+						return fmt.Errorf("RouterNodeConfigurationStatus %s should contain underlay failure", status.Name)
+					}
+				}
+				return nil
+			}, "60s", "5s").Should(Succeed(), "Underlay failure should be reported in status")
+
+			// Step 3: Fix it
+			fixedUnderlay := invalidUnderlay.DeepCopy()
+			fixedUnderlay.Spec.Nics = []string{"toswitch"} // Use valid NIC
+
+			By("fixing underlay")
+			err = Updater.Update(config.Resources{
+				Underlays: []v1alpha1.Underlay{
+					*fixedUnderlay,
+				},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Step 4: Status OK
+			By("confirming underlay status is now OK")
+			Eventually(func() error {
+				statusList, err := getStableStatusList(k8sClient)
+				if err != nil {
+					return err
+				}
+
+				// Check all status resources should have no failures
+				for _, status := range statusList.Items {
+					if len(status.Status.FailedResources) > 0 {
+						return fmt.Errorf("RouterNodeConfigurationStatus %s should have no failed resources after fixing underlay, but has: %v",
+							status.Name, status.Status.FailedResources)
+					}
+				}
+				return nil
+			}, "60s", "5s").Should(Succeed(), "Status should be clean after fixing underlay")
+
+			// Step 5: Create an invalid L2VNI (nonexistent bridge)
+			invalidL2VNI := v1alpha1.L2VNI{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "invalid-l2vni",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.L2VNISpec{
+					VNI: 500,
+					HostMaster: &v1alpha1.HostMaster{
+						Name:       "nonexist-br", // Non-existent bridge - will fail at host setup
+						Type:       "bridge",
+						AutoCreate: false, // This will cause setup failure
+					},
+				},
+			}
+
+			By("creating invalid L2VNI referencing non-existent host bridge")
+			err = Updater.Update(config.Resources{
+				Underlays: []v1alpha1.Underlay{
+					*fixedUnderlay,
+				},
+				L2VNIs: []v1alpha1.L2VNI{
+					invalidL2VNI,
+				},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Step 6: Status failed
+			By("confirming L2VNI status is failed")
+			Eventually(func() error {
+				statusList, err := getStableStatusList(k8sClient)
+				if err != nil {
+					return err
+				}
+
+				// Check all status resources for L2VNI failure
+				for _, status := range statusList.Items {
+					hasL2VNIFailure := false
+
+					for _, failedResource := range status.Status.FailedResources {
+						if failedResource.Kind == "L2VNI" && failedResource.Name == invalidL2VNI.Name {
+							hasL2VNIFailure = true
+							break
+						}
+					}
+
+					if !hasL2VNIFailure {
+						return fmt.Errorf("RouterNodeConfigurationStatus %s should contain L2VNI failure", status.Name)
+					}
+				}
+				return nil
+			}, "60s", "5s").Should(Succeed(), "L2VNI failure should be reported in status")
+
+			// Step 7: Remove it
+			By("removing the failing L2VNI")
+			err = k8sClient.Delete(context.Background(), &invalidL2VNI)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Step 8: Status OK
+			By("confirming status is OK after removing L2VNI")
+			Eventually(func() error {
+				statusList, err := getStableStatusList(k8sClient)
+				if err != nil {
+					return err
+				}
+
+				// Check all status resources should have no failures
+				for _, status := range statusList.Items {
+					if len(status.Status.FailedResources) > 0 {
+						return fmt.Errorf("RouterNodeConfigurationStatus %s should have no failed resources after removing L2VNI, but has: %v",
+							status.Name, status.Status.FailedResources)
+					}
+				}
+				return nil
+			}, "60s", "5s").Should(Succeed(), "Status should show complete success with no failures")
 		})
 	})
 })

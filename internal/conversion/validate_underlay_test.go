@@ -190,7 +190,7 @@ func TestValidateUnderlay(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateUnderlays([]v1alpha1.Underlay{tt.underlay})
+			err := ValidateUnderlays([]v1alpha1.Underlay{tt.underlay}, &NoOpStatusReporter{})
 			if (err != nil) != tt.wantErr {
 				t.Errorf("validateUnderlay() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -219,7 +219,7 @@ func TestValidateUnderlay(t *testing.T) {
 				},
 			},
 		}
-		err := ValidateUnderlays(underlays)
+		err := ValidateUnderlays(underlays, &NoOpStatusReporter{})
 		if err == nil {
 			t.Errorf("expected error for multiple underlays, got nil")
 		}
