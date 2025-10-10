@@ -52,6 +52,9 @@ type StatusReporter interface {
 
 	// ReportResourceFailure reports failed resource configuration with error details
 	ReportResourceFailure(kind ResourceKind, resourceName string, err error)
+
+	// ReportResourceRemoved reports that a resource has been removed and should be cleaned from status
+	ReportResourceRemoved(kind ResourceKind, resourceName string)
 }
 
 // StatusReader allows controllers to read aggregated status information

@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"log/slog"
 	"reflect"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -186,11 +187,8 @@ func (r *RouterNodeConfigurationStatusReconciler) buildStatus() v1alpha1.RouterN
 		}
 	}
 
-	// Set last update time
-	var lastUpdate *metav1.Time
-	if !statusSummary.LastUpdateTime.IsZero() {
-		lastUpdate = &metav1.Time{Time: statusSummary.LastUpdateTime}
-	}
+	// Always set LastUpdateTime to now since we're updating the status
+	lastUpdate := &metav1.Time{Time: time.Now()}
 
 	// Build conditions
 	conditions := r.buildConditions(len(failedResources))
