@@ -11,19 +11,22 @@ import (
 )
 
 func Reconcile(ctx context.Context, apiConfig conversion.ApiConfigData, frrConfigPath, targetNamespace string, updater frr.ConfigUpdater) error {
-	if err := conversion.ValidateUnderlays(apiConfig.Underlays); err != nil {
+	// Create a no-op status reporter since we don't need status reporting in this context
+	statusReporter := &conversion.NoOpStatusReporter{}
+
+	if err := conversion.ValidateUnderlays(apiConfig.Underlays, statusReporter); err != nil {
 		return fmt.Errorf("failed to validate underlays: %w", err)
 	}
 
-	if err := conversion.ValidateL3VNIs(apiConfig.L3VNIs); err != nil {
+	if err := conversion.ValidateL3VNIs(apiConfig.L3VNIs, statusReporter); err != nil {
 		return fmt.Errorf("failed to validate l3vnis: %w", err)
 	}
 
-	if err := conversion.ValidateL2VNIs(apiConfig.L2VNIs); err != nil {
+	if err := conversion.ValidateL2VNIs(apiConfig.L2VNIs, statusReporter); err != nil {
 		return fmt.Errorf("failed to validate l2vnis: %w", err)
 	}
 
-	if err := conversion.ValidateHostSessions(apiConfig.L3VNIs, apiConfig.L3Passthrough); err != nil {
+	if err := conversion.ValidateHostSessions(apiConfig.L3VNIs, apiConfig.L3Passthrough, statusReporter); err != nil {
 		return fmt.Errorf("failed to validate host sessions: %w", err)
 	}
 

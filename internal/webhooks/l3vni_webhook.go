@@ -136,7 +136,7 @@ func validateL3VNI(l3vni *v1alpha1.L3VNI) error {
 	if err != nil {
 		return err
 	}
-	if err := conversion.ValidateHostSessions(toValidate, l3passthroughs.Items); err != nil {
+	if err := conversion.ValidateHostSessions(toValidate, l3passthroughs.Items, &conversion.NoOpStatusReporter{}); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
 	}
 	return nil

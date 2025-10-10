@@ -81,16 +81,6 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
-	if err := conversion.ValidateUnderlays(underlays.Items); err != nil {
-		slog.Error("failed to validate underlays", "error", err)
-
-		for _, underlay := range underlays.Items {
-			r.StatusReporter.ReportResourceFailure(status.UnderlayKind, underlay.Name, err)
-		}
-
-		return ctrl.Result{}, nil
-	}
-
 	var l3vnis v1alpha1.L3VNIList
 	if err := r.List(ctx, &l3vnis); err != nil {
 		slog.Error("failed to list l3vnis", "error", err)
@@ -109,10 +99,32 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
+	r.cleanupRemovedFailedResources(underlays.Items, l3vnis.Items, l2vnis.Items, l3passthrough.Items)
+
 	nodeIndex, err := r.RouterProvider.NodeIndex(ctx)
 	if err != nil {
 		slog.Error("failed to get node index", "error", err)
 		return ctrl.Result{}, err
+	}
+
+	if err := conversion.ValidateUnderlays(underlays.Items, r.StatusReporter); err != nil {
+		slog.Error("failed to validate underlays", "error", err)
+		return ctrl.Result{}, nil
+	}
+
+	if err := conversion.ValidateL3VNIs(l3vnis.Items, r.StatusReporter); err != nil {
+		slog.Error("failed to validate l3vnis", "error", err)
+		return ctrl.Result{}, nil
+	}
+
+	if err := conversion.ValidateL2VNIs(l2vnis.Items, r.StatusReporter); err != nil {
+		slog.Error("failed to validate l2vnis", "error", err)
+		return ctrl.Result{}, nil
+	}
+
+	if err := conversion.ValidateHostSessions(l3vnis.Items, l3passthrough.Items, r.StatusReporter); err != nil {
+		slog.Error("failed to validate host sessions", "error", err)
+		return ctrl.Result{}, nil
 	}
 	logger.Debug("using config", "l3vnis", l3vnis.Items, "l2vnis", l2vnis.Items, "underlays", underlays.Items, "l3passthrough", l3passthrough.Items)
 	apiConfig := conversion.ApiConfigData{
@@ -143,12 +155,22 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
+	err = configureInterfaces(ctx, interfacesConfiguration{
+		StatusReporter:  r.StatusReporter,
+		targetNamespace: targetNS,
+		ApiConfigData:   apiConfig,
+	})
+
 	updater := frrconfig.UpdaterForSocket(r.FRRReloadSocket, r.FRRConfigPath)
 
 	err = Reconcile(ctx, apiConfig, r.FRRConfigPath, targetNS, updater)
 	if nonRecoverableHostError(err) {
 		logger.Info("breaking configuration change due to non-recoverable error")
+		// NOTE: For non-recoverable errors, mark all resources as failed since the entire router configuration is compromised and requires pod restart
 		r.reportUnderlayConfigurationFailure(err, underlays.Items)
+		r.reportL2VNIConfigurationFailure(err, l2vnis.Items)
+		r.reportL3VNIConfigurationFailure(err, l3vnis.Items)
+		r.reportL3PassthroughConfigurationFailure(err, l3passthrough.Items)
 
 		if err := router.HandleNonRecoverableError(ctx); err != nil {
 			slog.Error("failed to handle non recoverable error", "error", err)
@@ -161,11 +183,18 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		slog.Error("failed to configure the host", "error", err)
 
 		r.reportUnderlayConfigurationFailure(err, underlays.Items)
+		r.reportL2VNIConfigurationFailure(err, l2vnis.Items)
+		r.reportL3VNIConfigurationFailure(err, l3vnis.Items)
+		r.reportL3PassthroughConfigurationFailure(err, l3passthrough.Items)
 
 		return ctrl.Result{}, err
 	}
 
+	// NOTE: All resources should be already set as success by now. But just for a good measure, if we got this far, everything should be confirmed as well.
 	r.reportUnderlayConfigurationSuccess(underlays.Items)
+	r.reportL2VNIConfigurationSuccess(l2vnis.Items)
+	r.reportL3VNIConfigurationSuccess(l3vnis.Items)
+	r.reportL3PassthroughConfigurationSuccess(l3passthrough.Items)
 
 	return ctrl.Result{}, nil
 }
@@ -215,6 +244,7 @@ func (r *PERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if err := setPodNodeNameIndex(mgr); err != nil {
 		return err
 	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.Underlay{}).
 		Watches(&v1.Pod{}, &handler.EnqueueRequestForObject{}).
@@ -257,5 +287,92 @@ func (r *PERouterReconciler) reportUnderlayConfigurationFailure(err error, under
 func (r *PERouterReconciler) reportUnderlayConfigurationSuccess(underlays []v1alpha1.Underlay) {
 	for _, underlay := range underlays {
 		r.StatusReporter.ReportResourceSuccess(status.UnderlayKind, underlay.Name)
+	}
+}
+
+func (r *PERouterReconciler) reportL2VNIConfigurationFailure(err error, l2vnis []v1alpha1.L2VNI) {
+	for _, l2vni := range l2vnis {
+		r.StatusReporter.ReportResourceFailure(status.L2VNIKind, l2vni.Name, err)
+	}
+}
+
+func (r *PERouterReconciler) reportL2VNIConfigurationSuccess(l2vnis []v1alpha1.L2VNI) {
+	for _, l2vni := range l2vnis {
+		r.StatusReporter.ReportResourceSuccess(status.L2VNIKind, l2vni.Name)
+	}
+}
+
+func (r *PERouterReconciler) reportL3VNIConfigurationFailure(err error, l3vnis []v1alpha1.L3VNI) {
+	for _, l3vni := range l3vnis {
+		r.StatusReporter.ReportResourceFailure(status.L3VNIKind, l3vni.Name, err)
+	}
+}
+
+func (r *PERouterReconciler) reportL3VNIConfigurationSuccess(l3vnis []v1alpha1.L3VNI) {
+	for _, l3vni := range l3vnis {
+		r.StatusReporter.ReportResourceSuccess(status.L3VNIKind, l3vni.Name)
+	}
+}
+
+func (r *PERouterReconciler) reportL3PassthroughConfigurationFailure(err error, l3passthroughs []v1alpha1.L3Passthrough) {
+	for _, l3passthrough := range l3passthroughs {
+		r.StatusReporter.ReportResourceFailure(status.L3PassthroughKind, l3passthrough.Name, err)
+	}
+}
+
+func (r *PERouterReconciler) reportL3PassthroughConfigurationSuccess(l3passthroughs []v1alpha1.L3Passthrough) {
+	for _, l3passthrough := range l3passthroughs {
+		r.StatusReporter.ReportResourceSuccess(status.L3PassthroughKind, l3passthrough.Name)
+	}
+}
+
+func (r *PERouterReconciler) cleanupRemovedFailedResources(
+	underlays []v1alpha1.Underlay,
+	l3vnis []v1alpha1.L3VNI,
+	l2vnis []v1alpha1.L2VNI,
+	l3passthrough []v1alpha1.L3Passthrough,
+) {
+	// Build sets of current resources for fast lookup
+	currentUnderlays := make(map[string]bool)
+	for _, underlay := range underlays {
+		currentUnderlays[underlay.Name] = true
+	}
+
+	currentL3VNIs := make(map[string]bool)
+	for _, l3vni := range l3vnis {
+		currentL3VNIs[l3vni.Name] = true
+	}
+
+	currentL2VNIs := make(map[string]bool)
+	for _, l2vni := range l2vnis {
+		currentL2VNIs[l2vni.Name] = true
+	}
+
+	currentL3Passthroughs := make(map[string]bool)
+	for _, passthrough := range l3passthrough {
+		currentL3Passthroughs[passthrough.Name] = true
+	}
+
+	// Get current failed resources and check if they still exist
+	if statusReader, ok := r.StatusReporter.(status.StatusReader); ok {
+		statusSummary := statusReader.GetStatusSummary()
+		for _, failedResource := range statusSummary.FailedResources {
+			var exists bool
+			switch failedResource.Kind {
+			case status.UnderlayKind:
+				exists = currentUnderlays[failedResource.Name]
+			case status.L3VNIKind:
+				exists = currentL3VNIs[failedResource.Name]
+			case status.L2VNIKind:
+				exists = currentL2VNIs[failedResource.Name]
+			case status.L3PassthroughKind:
+				exists = currentL3Passthroughs[failedResource.Name]
+			}
+
+			// If the failed resource no longer exists, report it as removed
+			if !exists {
+				r.StatusReporter.ReportResourceRemoved(failedResource.Kind, failedResource.Name)
+			}
+		}
 	}
 }
