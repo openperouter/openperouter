@@ -27,7 +27,7 @@ SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
 
 .PHONY: all
-all: build
+all: generate format check build
 
 ##@ General
 
@@ -48,51 +48,67 @@ help: ## Display this help.
 
 ##@ Development
 
-.PHONY: manifests
-manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
+.PHONY: generate
+generate: generate-code generate-manifests ## Generate all code and manifests.
+
+.PHONY: generate-code
+generate-code: controller-gen
+	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
+
+.PHONY: generate-manifests
+generate-manifests: generate-manifests-granular generate-manifests-helm generate-manifests-all-in-one generate-manifests-bundle
+
+.PHONY: generate-manifests-granular
+generate-manifests-granular: controller-gen
 	$(CONTROLLER_GEN) crd webhook paths="./api/..." paths="./config/..." output:crd:artifacts:config=config/crd/bases
 	$(CONTROLLER_GEN) crd webhook paths="./operator/api/..." paths="./operator/config/..." output:crd:artifacts:config=operator/config/crd/bases
 	$(CONTROLLER_GEN) rbac:roleName=controller-role paths="./internal/controller/..." output:rbac:artifacts:config=config/rbac/
 	$(CONTROLLER_GEN) rbac:roleName=operator-role paths="./operator/..." output:rbac:artifacts:config=operator/config/rbac/
+
+.PHONY: generate-manifests-helm
+generate-manifests-helm: generate-manifests-granular
 	cp config/crd/bases/*.yaml charts/openperouter/charts/crds/templates
 	rm -f charts/openperouter/charts/crds/templates/kustomization.yaml
 	hack/generate-bindata.sh
 
-.PHONY: generate
-generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
-	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
+.PHONY: generate-manifests-bundle
+generate-manifests-bundle: bundle
 
-.PHONY: fmt
-fmt: ## Run go fmt against code.
+.PHONY: format
+format: format-go ## Run go fmt against the code.
+
+.PHONY: format-go
+format-go:
 	go fmt ./...
 
-.PHONY: vet
-vet: ## Run go vet against code.
+.PHONY: check
+check: check-vet ## Run static checks against the code.
+
+.PHONY: check-vet
+check-vet:
 	go vet ./...
 
-.PHONY: test
-test: fmt vet envtest ## Run tests.
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v e2etest) -coverprofile cover.out
-	sudo -E sh -c "umask 0; PATH=${GOPATH}/bin:$(pwd)/bin:${PATH} go test -tags=runasroot -v -race ./internal/hostnetwork"
-
-.PHONY: release-notes
-release-notes: ## Generate release notes
-	@if [ -z "$(OPENPE_VERSION)" ]; then \
-		echo "Usage: make release-notes OPENPE_VERSION=<version>"; \
-		exit 1; \
-	fi
-	hack/release/prepare_release.sh $(OPENPE_VERSION)
-
-##@ Build
-
 .PHONY: build
-build: manifests generate fmt vet ## Build manager binary.
+build: generate-code ## Build manager binary.
 	go build -o bin/reloader cmd/reloader/main.go
 	go build -o bin/controller cmd/hostcontroller/main.go
 
-.PHONY: run
-run: manifests generate fmt vet ## Run a controller from your host.
-	go run ./cmd/main.go
+.PHONY: test
+test: envtest ## Run unit and integration tests.
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v e2etest) -coverprofile cover.out
+	sudo -E sh -c "umask 0; PATH=${GOPATH}/bin:$(pwd)/bin:${PATH} go test -tags=runasroot -v -race ./internal/hostnetwork"
+
+.PHONY: cluster-up
+cluster-up: kind clab-cluster ## Bring up the local kind cluster for testing.
+
+.PHONY: cluster-sync
+cluster-sync: generate docker-build kind load-on-kind kustomize deploy-controller ## Rebuild sources, images, upload to cluster and restart workload.
+
+.PHONY: e2etests
+e2etests: ginkgo kubectl build-validator create-export-logs ## Run end-to-end tests.
+	$(GINKGO) -v $(GINKGO_ARGS) --timeout=3h ./e2etests -- --kubectl=$(KUBECTL) $(TEST_ARGS) --hostvalidator $(VALIDATOR_PATH) --reporterpath=${KIND_EXPORT_LOGS}
+
+##@ Images
 
 # If you wish to build the perouter image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
@@ -157,11 +173,11 @@ APIDOCSGEN_VERSION ?= v0.0.12
 HUGO_VERSION ?= v0.147.8
 
 .PHONY: install
-install: kubectl manifests kustomize ## Install CRDs into the K8s cluster specified in $KUBECONFIG_PATH.
+install: kubectl generate-manifests kustomize ## Install CRDs into the K8s cluster specified in $KUBECONFIG_PATH.
 	$(KUSTOMIZE) build config/crd | $(KUBECTL) apply -f -
 
 .PHONY: uninstall
-uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
+uninstall: generate-manifests kustomize ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	$(KUSTOMIZE) build config/crd | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
 
 .PHONY: deploy
@@ -179,10 +195,10 @@ deploy-prometheus: kubectl
 	$(KUBECTL) -n monitoring wait --for=condition=Ready --all pods --timeout 300s
 
 .PHONY: deploy-cluster
-deploy-cluster: kubectl manifests kustomize clab-cluster load-on-kind ## Deploy a cluster for the controller.
+deploy-cluster: kubectl kustomize generate clab-cluster load-on-kind ## Deploy a cluster for the controller.
 
 .PHONY: deploy-clab
-deploy-clab: kubectl manifests kustomize clab-cluster load-on-kind ## Deploy a cluster for the controller.
+deploy-clab: kubectl kustomize generate clab-cluster load-on-kind ## Deploy a cluster for the controller.
 
 KUSTOMIZE_LAYER ?= default
 .PHONY: deploy-controller
@@ -264,11 +280,6 @@ $(APIDOCSGEN): $(LOCALBIN)
 	test -s $(LOCALBIN)/crd-ref-docs || \
 	GOBIN=$(LOCALBIN) go install github.com/elastic/crd-ref-docs@$(APIDOCSGEN_VERSION)
 
-.PHONY: e2etests 
-e2etests: ginkgo kubectl build-validator create-export-logs
-	$(GINKGO) -v $(GINKGO_ARGS) --timeout=3h ./e2etests -- --kubectl=$(KUBECTL) $(TEST_ARGS) --hostvalidator $(VALIDATOR_PATH) --reporterpath=${KIND_EXPORT_LOGS} 
-
-
 .PHONY: clab-cluster
 clab-cluster:
 	KUBECONFIG_PATH=$(KUBECONFIG_PATH) KIND=$(KIND) clab/setup.sh
@@ -292,7 +303,7 @@ checkuncommitted:
 	git diff --exit-code
 
 .PHONY: bumpall
-bumpall: bumplicense manifests
+bumpall: bumplicense generate
 	go mod tidy
 
 KIND_EXPORT_LOGS ?=/tmp/kind_logs
@@ -301,8 +312,8 @@ KIND_EXPORT_LOGS ?=/tmp/kind_logs
 kind-export-logs: create-export-logs
 	$(LOCALBIN)/kind export logs --name ${KIND_CLUSTER_NAME} ${KIND_EXPORT_LOGS}
 
-.PHONY: generate-all-in-one
-generate-all-in-one: manifests kustomize ## Create manifests
+.PHONY: generate-manifests-all-in-one
+generate-manifests-all-in-one: generate-manifests-granular kustomize
 	cd config/pods && $(KUSTOMIZE) edit set image controller=${IMG}
 	cd config/pods && $(KUSTOMIZE) edit set namespace $(NAMESPACE)
 
@@ -325,7 +336,7 @@ bumpversion:
 	hack/release/bumpversion.sh
 
 .PHONY: cutrelease
-cutrelease: release-notes bumpversion generate-all-in-one helm-docs api-docs
+cutrelease: release-notes bumpversion generate helm-docs api-docs
 	hack/release/release.sh
 
 .PHONY: build-validator
@@ -434,7 +445,7 @@ operator-sdk: ## Download operator-sdk locally if necessary.
 # TODO: The bundle ignores the perouter ServiceAccount because it doesn't have RBACs attached.
 # For now the operator hardcodes the router's ServiceAccount to be default.
 .PHONY: bundle
-bundle: manifests kustomize operator-sdk ## Generate bundle manifests and metadata, then validate generated files.
+bundle: generate-manifests kustomize operator-sdk ## Generate bundle manifests and metadata, then validate generated files.
 	cd operator && $(OPERATOR_SDK) generate kustomize manifests --interactive=false -q
 	cd operator/config/pods && $(KUSTOMIZE) edit set image controller=$(IMG)
 	cd operator/config/webhook/backend && $(KUSTOMIZE) edit set image controller=$(IMG)
@@ -512,3 +523,10 @@ deploy-olm: operator-sdk ## deploys OLM on the cluster
 
 build-and-push-bundle-images: bundle-build bundle-push catalog-build catalog-push
 
+.PHONY: release-notes
+release-notes: ## Generate release notes.
+	@if [ -z "$(OPENPE_VERSION)" ]; then \
+		echo "Usage: make release-notes OPENPE_VERSION=<version>"; \
+		exit 1; \
+	fi
+	hack/release/prepare_release.sh $(OPENPE_VERSION)
