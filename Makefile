@@ -446,11 +446,17 @@ operator-sdk: ## Download operator-sdk locally if necessary.
 # For now the operator hardcodes the router's ServiceAccount to be default.
 .PHONY: bundle
 bundle: generate-manifests kustomize operator-sdk ## Generate bundle manifests and metadata, then validate generated files.
+	# Backup existing CSV file before regeneration to detect timestamp-only changes
+	@[ -f operator/bundle/manifests/openperouter-operator.clusterserviceversion.yaml ] && cp operator/bundle/manifests/openperouter-operator.clusterserviceversion.yaml /tmp/csv.bak || true
+	# Generate bundle manifests and metadata
 	cd operator && $(OPERATOR_SDK) generate kustomize manifests --interactive=false -q
 	cd operator/config/pods && $(KUSTOMIZE) edit set image controller=$(IMG)
 	cd operator/config/webhook/backend && $(KUSTOMIZE) edit set image controller=$(IMG)
 	cd operator && $(KUSTOMIZE) build config/default | $(OPERATOR_SDK) generate bundle $(BUNDLE_GEN_FLAGS) --extra-service-accounts "controller,perouter" --package openperouter-operator
 	cd operator && $(OPERATOR_SDK) bundle validate ./bundle
+	# Compare old vs new CSV, ignoring createdAt timestamps. If only timestamp changed, restore original file
+	@[ -f /tmp/csv.bak ] && (diff -u /tmp/csv.bak operator/bundle/manifests/openperouter-operator.clusterserviceversion.yaml | grep -v 'createdAt:' | grep -q '^[+-]' || (echo "Only timestamp changed, restoring original" && mv /tmp/csv.bak operator/bundle/manifests/openperouter-operator.clusterserviceversion.yaml)) || true
+	@rm -f /tmp/csv.bak  # Clean up temporary backup file
 
 .PHONY: bundle-build
 bundle-build: ## Build the bundle image.
