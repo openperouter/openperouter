@@ -40,6 +40,10 @@ L2:
 
 The documentation can be found at [openperouter.github.io](https://openperouter.github.io).
 
+## Contributing
+
+For development setup, building, testing, and contribution guidelines, please see the [Contributing Guide](https://openperouter.github.io/docs/contributing/) on the documentation website.
+
 ## License
 
 Copyright 2024.

@@ -79,41 +79,95 @@ documentation:
 
 ## Building and running the code
 
-Start by fetching the OpenPERouter repository, with `git clone
-https://github.com/openperouter/openperouter`.
-
-From there, you can build the docker image locally by calling 
+Start by fetching the OpenPERouter repository.
 
 ```bash
-make docker-build
+git clone https://github.com/openperouter/openperouter
+cd openperouter
 ```
 
-A comprehensive test environment can be deployed locally by using 
+### Code Generation and Building
+
+Generate all code and manifests.
 
 ```bash
-make deploy
+make generate
 ```
 
-Check [the dev environment documentation]({{< relref "devenv.md" >}}) for more details.
+Format the Go code and run static checks.
 
-After deploying the ContainerLab environment together with Kind, the kubeconfig will
-be available at `bin/kubeconfig`.
+```bash
+make format static-check
+```
 
-### Running the tests locally
+Build the binaries.
 
-You can run unit tests locally with:
+```bash
+make build
+```
+
+Or run all of the commands above all at once.
+
+```bash
+make
+```
+
+### Unit Tests
+
+Run unit and integration tests. Some of the integration tests require privileged host access and sudo.
 
 ```bash
 make test
 ```
 
-To run the end-to-end (e2e) tests, first ensure that the local development environment is running (see above), then execute:
+### Local Development Environment
+
+Bring up the local kind cluster with ContainerLab for testing.
 
 ```bash
-make e2etest
+make cluster-up
 ```
 
-This will run the e2e test suite against your local environment.
+After deploying the ContainerLab environment together with Kind, the kubeconfig will
+be available at `bin/kubeconfig`.
+
+```bash
+export KUBECONFIG=bin/kubeconfig
+kubectl get nodes
+```
+
+Rebuild sources, build container images, upload to cluster and restart workload.
+
+```bash
+make cluster-sync
+kubectl -n openperouter-system get pods
+```
+
+> **Note:** Some operating systems have their `inotify.max_user_intances`
+> set too low to support larger kind clusters. This leads to nodemarker pods
+> failing with CrashLoopBackOff, logging `too many open files`.
+>
+> If that happens in your setup, you may want to increase the limit with:
+>
+> ```bash
+> sysctl -w fs.inotify.max_user_instances=1024
+> ```
+
+Check [the dev environment documentation]({{< relref "devenv.md" >}}) for more details.
+
+### Running the tests locally
+
+Run end-to-end tests on your local environment deployed above.
+
+```bash
+make e2etests
+
+# Focus on L2VNI tests
+make e2etests GINKGO_ARGS="-focus=L2VNI"
+
+# Run with verbose output
+make e2etests GINKGO_ARGS="-v"
+```
 
 ## Commit Messages
 
