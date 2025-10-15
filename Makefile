@@ -27,7 +27,7 @@ SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
 
 .PHONY: all
-all: generate format check build
+all: generate format static-check build
 
 ##@ General
 
@@ -81,11 +81,11 @@ format: format-go ## Run go fmt against the code.
 format-go:
 	go fmt ./...
 
-.PHONY: check
-check: check-vet ## Run static checks against the code.
+.PHONY: static-check
+static-check: static-check-vet ## Run static checks against the code.
 
-.PHONY: check-vet
-check-vet:
+.PHONY: static-check-vet
+static-check-vet:
 	go vet ./...
 
 .PHONY: build
