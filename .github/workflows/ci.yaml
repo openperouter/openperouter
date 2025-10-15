@@ -52,6 +52,7 @@ jobs:
         run: |
           make bumplicense
           make generate
+          make format
           # make api-docs
           make checkuncommitted
 
