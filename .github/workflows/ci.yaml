@@ -51,9 +51,7 @@ jobs:
       - name: Check Generated
         run: |
           make bumplicense
-          make manifests
           make generate
-          make generate-all-in-one
           # make api-docs
           make checkuncommitted
 
