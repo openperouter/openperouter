@@ -122,19 +122,34 @@ make test
 
 ### Local Development Environment
 
+#### Two-Step Deployment Process
+
+The OpenPERouter development environment follows a two-step process:
+
+1. **Cluster Setup**: Create the local kind cluster with ContainerLab networking
+2. **Workload Deployment**: Build and deploy the OpenPERouter controller
+
+#### Step 1: Cluster Setup
+
 Bring up the local kind cluster with ContainerLab for testing.
 
 ```bash
 make cluster-up
 ```
 
-After deploying the ContainerLab environment together with Kind, the kubeconfig will
-be available at `bin/kubeconfig`.
+This command:
+- Creates a kind cluster
+- Sets up ContainerLab networking environment
+- Loads base container images (FRR, rbac-proxy, etc.)
+
+After cluster setup, export the kubeconfig to interact with the cluster.
 
 ```bash
 export KUBECONFIG=bin/kubeconfig
 kubectl get nodes
 ```
+
+#### Step 2: Workload Deployment
 
 Rebuild sources, build container images, upload to cluster and restart workload.
 
@@ -142,6 +157,43 @@ Rebuild sources, build container images, upload to cluster and restart workload.
 make cluster-sync
 kubectl -n openperouter-system get pods
 ```
+
+This command:
+- Generates code and manifests
+- Builds the OpenPERouter Docker image
+- Loads the application container image to the cluster
+- Deploys the controller to the cluster
+
+**Alternative Deployment Methods:**
+
+Deploy using Helm charts:
+```bash
+make cluster-sync-helm
+```
+
+Deploy using OLM (Operator Lifecycle Manager):
+```bash
+make cluster-sync-olm
+```
+
+Deploy with Prometheus monitoring (explicit three-step process):
+```bash
+make cluster-up
+make cluster-sync
+make enable-prometheus
+```
+
+**Adding Monitoring to Existing Deployment:**
+
+You can also add Prometheus monitoring to an existing deployment:
+```bash
+# First deploy normally
+make cluster-sync
+
+# Later add Prometheus monitoring
+make enable-prometheus
+```
+
 
 > **Note:** Some operating systems have their `inotify.max_user_intances`
 > set too low to support larger kind clusters. This leads to nodemarker pods

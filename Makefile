@@ -71,8 +71,21 @@ generate-manifests-helm: generate-manifests-granular
 	rm -f charts/openperouter/charts/crds/templates/kustomization.yaml
 	hack/generate-bindata.sh
 
+# TODO: The bundle ignores the perouter ServiceAccount because it doesn't have RBACs attached.
+# For now the operator hardcodes the router's ServiceAccount to be default.
 .PHONY: generate-manifests-bundle
-generate-manifests-bundle: bundle
+generate-manifests-bundle: generate-manifests kustomize operator-sdk ## Generate bundle manifests and metadata, then validate generated files.
+	# Backup existing CSV file before regeneration to detect timestamp-only changes
+	@[ -f operator/bundle/manifests/openperouter-operator.clusterserviceversion.yaml ] && cp operator/bundle/manifests/openperouter-operator.clusterserviceversion.yaml /tmp/csv.bak || true
+	# Generate bundle manifests and metadata
+	cd operator && $(OPERATOR_SDK) generate kustomize manifests --interactive=false -q
+	cd operator/config/pods && $(KUSTOMIZE) edit set image controller=$(IMG)
+	cd operator/config/webhook/backend && $(KUSTOMIZE) edit set image controller=$(IMG)
+	cd operator && $(KUSTOMIZE) build config/default | $(OPERATOR_SDK) generate bundle $(BUNDLE_GEN_FLAGS) --extra-service-accounts "controller,perouter" --package openperouter-operator
+	cd operator && $(OPERATOR_SDK) bundle validate ./bundle
+	# Compare old vs new CSV, ignoring createdAt timestamps. If only timestamp changed, restore original file
+	@[ -f /tmp/csv.bak ] && (diff -u /tmp/csv.bak operator/bundle/manifests/openperouter-operator.clusterserviceversion.yaml | grep -v 'createdAt:' | grep -q '^[+-]' || (echo "Only timestamp changed, restoring original" && mv /tmp/csv.bak operator/bundle/manifests/openperouter-operator.clusterserviceversion.yaml)) || true
+	@rm -f /tmp/csv.bak  # Clean up temporary backup file
 
 .PHONY: format
 format: format-go ## Run go fmt against the code.
@@ -102,7 +115,20 @@ test: envtest ## Run unit and integration tests.
 cluster-up: kind clab-cluster ## Bring up the local kind cluster for testing.
 
 .PHONY: cluster-sync
-cluster-sync: generate docker-build kind load-on-kind kustomize deploy-controller ## Rebuild sources, images, upload to cluster and restart workload.
+cluster-sync: generate docker-build load-on-kind deploy-controller-kustomize ## Rebuild sources, images, upload to cluster and restart workload.
+
+.PHONY: cluster-sync-helm
+cluster-sync-helm: generate docker-build load-on-kind deploy-controller-helm ## Rebuild sources, images, upload to cluster and restart workload via Helm.
+
+.PHONY: cluster-sync-olm
+# cluster-sync-olm: export KIND_WITH_REGISTRY=true
+cluster-sync-olm: generate generate-manifests-bundle docker-build load-on-kind setup-olm ## Rebuild sources, images, upload to cluster and restart workload via OLM.
+	$(MAKE) bundle-build BUNDLE_IMG=localhost:5000/openperouter/openperouter-operator-bundle:v$(CSV_VERSION)
+	$(MAKE) bundle-push BUNDLE_IMG=localhost:5000/openperouter/openperouter-operator-bundle:v$(CSV_VERSION)
+	$(MAKE) catalog-build CATALOG_IMG=localhost:5000/openperouter/openperouter-operator-catalog:v$(CSV_VERSION) BUNDLE_IMGS=localhost:5000/openperouter/openperouter-operator-bundle:v$(CSV_VERSION)
+	$(MAKE) catalog-push CATALOG_IMG=localhost:5000/openperouter/openperouter-operator-catalog:v$(CSV_VERSION)
+	$(MAKE) deploy-controller-olm CATALOG_IMG=localhost:5000/openperouter/openperouter-operator-catalog:v$(CSV_VERSION)
+	$(KUBECTL) apply -f operator/config/samples/openperouter.yaml
 
 .PHONY: e2etests
 e2etests: ginkgo kubectl build-validator create-export-logs ## Run end-to-end tests.
@@ -180,29 +206,30 @@ install: kubectl generate-manifests kustomize ## Install CRDs into the K8s clust
 uninstall: generate-manifests kustomize ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	$(KUSTOMIZE) build config/crd | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
 
-.PHONY: deploy
-deploy: kind deploy-cluster deploy-controller ## Deploy cluster and controller.
 
-.PHONY: deploy-with-prometheus
-deploy-with-prometheus: KUSTOMIZE_LAYER=prometheus
-deploy-with-prometheus: deploy-cluster deploy-prometheus deploy-controller
-
-.PHONY: deploy-prometheus
-deploy-prometheus: kubectl
+.PHONY: setup-prometheus
+setup-prometheus: kubectl ## Install Prometheus monitoring stack only (internal helper).
 	$(KUBECTL) apply --server-side -f hack/prometheus/manifests/setup
 	until $(KUBECTL) get servicemonitors --all-namespaces ; do date; sleep 1; echo ""; done
 	$(KUBECTL) apply -f hack/prometheus/manifests/
 	$(KUBECTL) -n monitoring wait --for=condition=Ready --all pods --timeout 300s
 
-.PHONY: deploy-cluster
-deploy-cluster: kubectl kustomize generate clab-cluster load-on-kind ## Deploy a cluster for the controller.
+.PHONY: enable-prometheus
+enable-prometheus: setup-prometheus kubectl kustomize ## Enable Prometheus monitoring for existing deployment.
+	cd config/pods && $(KUSTOMIZE) edit set image router=${IMG}
+	$(KUBECTL) -n ${NAMESPACE} delete ds controller || true
+	$(KUBECTL) -n ${NAMESPACE} delete ds router || true
+	$(KUBECTL) -n ${NAMESPACE} delete deployment nodemarker || true
 
-.PHONY: deploy-clab
-deploy-clab: kubectl kustomize generate clab-cluster load-on-kind ## Deploy a cluster for the controller.
+	# Redeploy with prometheus layer
+	$(KUSTOMIZE) build config/prometheus | $(KUBECTL) apply -f -
+	sleep 2s # wait for daemonset to be created
+	$(KUBECTL) -n ${NAMESPACE} wait --for=condition=Ready --all pods --timeout 300s
 
 KUSTOMIZE_LAYER ?= default
-.PHONY: deploy-controller
-deploy-controller: kubectl kustomize ## Deploy controller to the K8s cluster specified in $KUBECONFIG.
+
+.PHONY: deploy-controller-kustomize
+deploy-controller-kustomize: kubectl kustomize ## Deploy controller via kustomize to the K8s cluster specified in $KUBECONFIG.
 	cd config/pods && $(KUSTOMIZE) edit set image router=${IMG}
 	$(KUBECTL) -n ${NAMESPACE} delete ds controller || true
 	$(KUBECTL) -n ${NAMESPACE} delete ds router || true
@@ -213,17 +240,28 @@ deploy-controller: kubectl kustomize ## Deploy controller to the K8s cluster spe
 	sleep 2s # wait for daemonset to be created
 	$(KUBECTL) -n ${NAMESPACE} wait --for=condition=Ready --all pods --timeout 300s
 
-.PHONY: deploy-helm
-deploy-helm: helm kind deploy-cluster
+.PHONY: deploy-controller-helm
+deploy-controller-helm: helm kubectl ## Deploy controller via Helm to the K8s cluster specified in $KUBECONFIG.
 	$(KUBECTL) -n ${NAMESPACE} delete ds controller || true
 	$(KUBECTL) -n ${NAMESPACE} delete ds router || true
 	$(KUBECTL) -n ${NAMESPACE} delete deployment nodemarker || true
 	$(KUBECTL) create ns ${NAMESPACE} || true
 	$(KUBECTL) label ns ${NAMESPACE} pod-security.kubernetes.io/enforce=privileged
-	$(HELM) install openperouter charts/openperouter/ --set openperouter.image.tag=${IMG_TAG} \
+	$(HELM) upgrade --install openperouter charts/openperouter/ --set openperouter.image.tag=${IMG_TAG} \
 	--set openperouter.image.pullPolicy=IfNotPresent --set openperouter.logLevel=debug --namespace ${NAMESPACE} $(HELM_ARGS)
 	sleep 2s # wait for daemonset to be created
 	$(KUBECTL) -n ${NAMESPACE} wait --for=condition=Ready --all pods --timeout 300s
+
+.PHONY: deploy-controller-olm
+deploy-controller-olm: kubectl kustomize operator-sdk ## Deploy controller via OLM to the K8s cluster specified in $KUBECONFIG.
+	cp operator/config/olm-install/install-resources.yaml /tmp/install-resources-temp.yaml
+	sed -i 's|image:.*|image: $(CATALOG_IMG)|' /tmp/install-resources-temp.yaml
+	sed -i 's#openperouter-system#$(NAMESPACE)#g' /tmp/install-resources-temp.yaml
+	$(KUBECTL) apply -f /tmp/install-resources-temp.yaml
+	VERSION=$(CSV_VERSION) NAMESPACE=$(NAMESPACE) hack/wait-for-csv.sh
+
+.PHONY: deploy-controller
+deploy-controller: deploy-controller-kustomize ## Deploy controller to the K8s cluster (default: kustomize method).
 
 .PHONY: undeploy
 undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
@@ -255,8 +293,16 @@ $(KUBECTL): $(LOCALBIN)
 .PHONY: helm
 helm: $(HELM) ## Download helm locally if necessary. If wrong version is installed, it will be overwritten.
 $(HELM): $(LOCALBIN)
-	test -s $(LOCALBIN)/helm && $(LOCALBIN)/helm version | grep -q $(HELM_VERSION) || \
-	USE_SUDO=false HELM_INSTALL_DIR=$(LOCALBIN) DESIRED_VERSION=$(HELM_VERSION) bash <(curl -s https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3)
+	# Check if helm binary exists and has the correct version. Install if missing or wrong version.
+	# This avoids the false negative error from the official Helm installer script that expects helm in PATH.
+	@if ! test -s $(LOCALBIN)/helm || ! $(LOCALBIN)/helm version | grep -q $(HELM_VERSION); then \
+		echo "Installing Helm $(HELM_VERSION)..."; \
+		mkdir -p $(LOCALBIN); \
+		HELM_ARCH=$$(go env GOOS)-$$(go env GOARCH); \
+		curl -sSL https://get.helm.sh/helm-$(HELM_VERSION)-$${HELM_ARCH}.tar.gz | tar -xz -C $(LOCALBIN) --strip-components=1 $${HELM_ARCH}/helm; \
+		chmod +x $(LOCALBIN)/helm; \
+		echo "Helm $(HELM_VERSION) installed successfully"; \
+	fi
 
 .PHONY: envtest
 envtest: $(ENVTEST) ## Download envtest-setup locally if necessary.
@@ -289,6 +335,7 @@ clab-cluster:
 .PHONY: load-on-kind
 load-on-kind: ## Load the docker image into the kind cluster.
 	KIND=$(KIND) bash -c 'source clab/common.sh && load_local_image_to_kind ${IMG} router'
+
 
 .PHONY: lint
 lint:
@@ -442,22 +489,6 @@ operator-sdk: ## Download operator-sdk locally if necessary.
 		chmod +x $(OPERATOR_SDK) ;\
 	fi
 
-# TODO: The bundle ignores the perouter ServiceAccount because it doesn't have RBACs attached.
-# For now the operator hardcodes the router's ServiceAccount to be default.
-.PHONY: bundle
-bundle: generate-manifests kustomize operator-sdk ## Generate bundle manifests and metadata, then validate generated files.
-	# Backup existing CSV file before regeneration to detect timestamp-only changes
-	@[ -f operator/bundle/manifests/openperouter-operator.clusterserviceversion.yaml ] && cp operator/bundle/manifests/openperouter-operator.clusterserviceversion.yaml /tmp/csv.bak || true
-	# Generate bundle manifests and metadata
-	cd operator && $(OPERATOR_SDK) generate kustomize manifests --interactive=false -q
-	cd operator/config/pods && $(KUSTOMIZE) edit set image controller=$(IMG)
-	cd operator/config/webhook/backend && $(KUSTOMIZE) edit set image controller=$(IMG)
-	cd operator && $(KUSTOMIZE) build config/default | $(OPERATOR_SDK) generate bundle $(BUNDLE_GEN_FLAGS) --extra-service-accounts "controller,perouter" --package openperouter-operator
-	cd operator && $(OPERATOR_SDK) bundle validate ./bundle
-	# Compare old vs new CSV, ignoring createdAt timestamps. If only timestamp changed, restore original file
-	@[ -f /tmp/csv.bak ] && (diff -u /tmp/csv.bak operator/bundle/manifests/openperouter-operator.clusterserviceversion.yaml | grep -v 'createdAt:' | grep -q '^[+-]' || (echo "Only timestamp changed, restoring original" && mv /tmp/csv.bak operator/bundle/manifests/openperouter-operator.clusterserviceversion.yaml)) || true
-	@rm -f /tmp/csv.bak  # Clean up temporary backup file
-
 .PHONY: bundle-build
 bundle-build: ## Build the bundle image.
 	cd operator && $(CONTAINER_ENGINE) build -f bundle.Dockerfile -t $(BUNDLE_IMG) .
@@ -508,17 +539,7 @@ catalog-build: opm ## Build a catalog image.
 catalog-push: ## Push a catalog image.
 	$(MAKE) docker-push IMG=$(CATALOG_IMG)
 
-
-deploy-operator-with-olm: export VERSION=dev
-deploy-operator-with-olm: export CSV_VERSION=0.0.0
-deploy-operator-with-olm: export KIND_WITH_REGISTRY=true
-deploy-operator-with-olm: bundle kustomize kind clab-cluster load-on-kind deploy-olm build-and-push-bundle-images ## deploys the operator with OLM instead of manifests
-	sed -i 's|image:.*|image: $(CATALOG_IMG)|' operator/config/olm-install/install-resources.yaml
-	sed -i 's#openperouter-system#$(NAMESPACE)#g' operator/config/olm-install/install-resources.yaml
-	$(KUSTOMIZE) build operator/config/olm-install | kubectl apply -f -
-	VERSION=$(CSV_VERSION) NAMESPACE=$(NAMESPACE) hack/wait-for-csv.sh
-
-deploy-olm: operator-sdk ## deploys OLM on the cluster
+setup-olm: operator-sdk ## Setup OLM on the cluster (internal helper).
 	@if $(KUBECTL) get deployment -n olm olm-operator > /dev/null 2>&1; then \
 		echo "OLM already installed, skipping installation."; \
 	else \
