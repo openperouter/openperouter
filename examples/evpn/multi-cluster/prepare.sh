@@ -7,6 +7,33 @@ source "${CURRENT_PATH}/../../common.sh"
 
 DEMO_MODE=true make deploy-multi
 
+# Function to pre-provision dedicated migration network
+provision_migration_network() {
+    local kubeconfig="$1"
+    local cluster_name="$2"
+
+    echo "Pre-provisioning dedicated migration network using kubeconfig: ${kubeconfig} for cluster: ${cluster_name}"
+
+    # Create kubevirt namespace if it doesn't exist
+    KUBECONFIG="$kubeconfig" kubectl create namespace kubevirt --dry-run=client -o yaml | KUBECONFIG="$kubeconfig" kubectl apply -f -
+
+    # Apply the cluster-specific dedicated migration network
+    case "$cluster_name" in
+        "pe-kind-a")
+            KUBECONFIG="$kubeconfig" kubectl apply -f "${CURRENT_PATH}/cluster-a-dedicated-migration-network.yaml" || true
+            ;;
+        "pe-kind-b")
+            KUBECONFIG="$kubeconfig" kubectl apply -f "${CURRENT_PATH}/cluster-b-dedicated-migration-network.yaml" || true
+            ;;
+        *)
+            echo "Unknown cluster: $cluster_name, skipping migration network provisioning..."
+            return 1
+            ;;
+    esac
+
+    echo "Migration network provisioned successfully for cluster: ${cluster_name}"
+}
+
 # Function to install Whereabouts CNI plugin
 install_whereabouts() {
     local kubeconfig="$1"
@@ -39,6 +66,9 @@ install_kubevirt() {
 
     # Enable the decentralized live migration feature gate (requirement for cross cluster live migration)
     KUBECONFIG="$kubeconfig" kubectl patch -n kubevirt kubevirt kubevirt --type merge --patch '{"spec": {"configuration": {"developerConfiguration": {"featureGates": [ "DecentralizedLiveMigration" ]}}}}'
+
+    # Configure the migration network
+    KUBECONFIG="$kubeconfig" kubectl patch -n kubevirt kubevirt kubevirt --type merge --patch '{"spec": {"configuration": {"migrations": {"network": "migration-network"}}}}'
 
     # Wait for KubeVirt to be available
     KUBECONFIG="$kubeconfig" kubectl wait --for=condition=Available kubevirt/kubevirt -n kubevirt --timeout=10m
@@ -90,6 +120,9 @@ for kubeconfig in $(pwd)/bin/kubeconfig-*; do
         # KubeVirt installation to know which migration network to use.
         # KubeVirt's dedicated migration network requires whereabouts IPAM.
         install_whereabouts "$kubeconfig"
+
+        # Pre-provision dedicated migration network before KubeVirt installation
+        provision_migration_network "$kubeconfig" "$cluster_name"
 
         # Install KubeVirt on this cluster
         install_kubevirt "$kubeconfig"
