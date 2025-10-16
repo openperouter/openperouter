@@ -27,6 +27,30 @@ install_kubevirt() {
     KUBECONFIG="$kubeconfig" kubectl wait --for=condition=Available kubevirt/kubevirt -n kubevirt --timeout=10m
 }
 
+# Function to create migration bridge on all nodes
+create_migration_bridge() {
+    local kubeconfig="$1"
+    local nodes=$(KUBECONFIG="$kubeconfig" kubectl get nodes -o jsonpath='{.items[*].metadata.name}')
+
+    echo "Creating migration bridge on all nodes using kubeconfig: ${kubeconfig}"
+    for node in $nodes; do
+        echo "Creating migration bridge on node: $node"
+
+        # Execute commands on the node via docker exec (since we're using kind)
+        docker exec "$node" bash -c "
+            ip link add name br-migration type bridge
+            ip link set br-migration up
+            if ! ip link show migration >/dev/null 2>&1; then
+                exit 1
+            fi
+            # Attach migration interface to the bridge
+            ip link set migration master br-migration
+            ip link set migration up
+            echo 'Migration bridge created and interface attached on node $node'
+        "
+    done
+}
+
 # Function to apply demo manifests
 apply_demo_manifests() {
     local kubeconfig="$1"
@@ -47,6 +71,11 @@ for kubeconfig in $(pwd)/bin/kubeconfig-*; do
 
         # Install KubeVirt on this cluster
         install_kubevirt "$kubeconfig"
+
+        # Create migration bridge on all nodes - this bridge is connected to
+        # the outside using the "migration" veth, whose other leg is attached
+        # to the "migration-net" bridge in the container hypervisor
+        create_migration_bridge "$kubeconfig"
 
         # Determine manifests based on cluster name and apply them
         case "$cluster_name" in
