@@ -46,12 +46,13 @@ type L2VNISpec struct {
 	// +optional
 	HostMaster *HostMaster `json:"hostmaster"`
 
-	// L2GatewayIP is the IP address to be used for the L2 gateway. When this is set, the
-	// bridge the veths are enslaved to will be configured with this IP address, effectively
-	// acting as a distributed gateway for the VNI.
+	// L2GatewayIP is a list of IP addresses to be used for the L2 gateway. When this is set, the
+	// bridge the veths are enslaved to will be configured with these IP addresses, effectively
+	// acting as a distributed gateway for the VNI. This allows for dual-stack (IPv4 and IPv6) support.
 	// +optional
+	// +kubebuilder:validation:XValidation:rule="self.all(ip, isIP(ip))",message="L2GatewayIP must contain only valid IPv4 or IPv6 addresses"
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="L2GatewayIP can't be changed"
-	L2GatewayIP string `json:"l2gatewayip,omitempty"`
+	L2GatewayIP []string `json:"l2gatewayip,omitempty"`
 }
 
 // +kubebuilder:validation:Required

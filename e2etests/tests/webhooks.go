@@ -174,7 +174,94 @@ var _ = Describe("Webhooks", func() {
 					VXLanPort: 4789,
 				},
 			}, "duplicate vni"),
+			Entry("when trying to create an L2VNI with an invalid IPv4 address", v1alpha1.L2VNI{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-l2vni-invalid-ipv4",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.L2VNISpec{
+					VNI:         201,
+					VXLanPort:   4789,
+					L2GatewayIP: []string{"not-an-ip-address"},
+				},
+			}, "L2GatewayIP must contain only valid IPv4 or IPv6 addresses"),
+			Entry("when trying to create an L2VNI with an invalid format in L2GatewayIP", v1alpha1.L2VNI{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-l2vni-invalid-format",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.L2VNISpec{
+					VNI:         202,
+					VXLanPort:   4789,
+					L2GatewayIP: []string{"256.256.256.256/24"},
+				},
+			}, "L2GatewayIP must contain only valid IPv4 or IPv6 addresses"),
+			Entry("when trying to create an L2VNI with mixed valid and invalid IPs", v1alpha1.L2VNI{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-l2vni-mixed-ips",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.L2VNISpec{
+					VNI:         203,
+					VXLanPort:   4789,
+					L2GatewayIP: []string{"192.168.1.1/24", "invalid-ip"},
+				},
+			}, "L2GatewayIP must contain only valid IPv4 or IPv6 addresses"),
 		)
+
+		It("should allow creating an L2VNI with valid IPv4 address", func() {
+			l2vni := v1alpha1.L2VNI{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-l2vni-valid-ipv4",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.L2VNISpec{
+					VNI:         210,
+					VXLanPort:   4789,
+					L2GatewayIP: []string{"192.168.1.1/24"},
+				},
+			}
+			err := Updater.Update(config.Resources{
+				L2VNIs: []v1alpha1.L2VNI{l2vni},
+			})
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("should allow creating an L2VNI with valid IPv6 address", func() {
+			l2vni := v1alpha1.L2VNI{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-l2vni-valid-ipv6",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.L2VNISpec{
+					VNI:         211,
+					VXLanPort:   4789,
+					L2GatewayIP: []string{"2001:db8::1/64"},
+				},
+			}
+			err := Updater.Update(config.Resources{
+				L2VNIs: []v1alpha1.L2VNI{l2vni},
+			})
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("should allow creating an L2VNI with dual-stack (IPv4 and IPv6) addresses", func() {
+			l2vni := v1alpha1.L2VNI{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-l2vni-dualstack",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.L2VNISpec{
+					VNI:         212,
+					VXLanPort:   4789,
+					L2GatewayIP: []string{"192.168.1.1/24", "2001:db8::1/64"},
+				},
+			}
+			err := Updater.Update(config.Resources{
+				L2VNIs: []v1alpha1.L2VNI{l2vni},
+			})
+			Expect(err).NotTo(HaveOccurred())
+		})
 	})
 
 	Context("when L2VNI immutability is tested", func() {
@@ -187,7 +274,7 @@ var _ = Describe("Webhooks", func() {
 				Spec: v1alpha1.L2VNISpec{
 					VNI:         300,
 					VXLanPort:   4789,
-					L2GatewayIP: "192.168.10.1/24",
+					L2GatewayIP: []string{"192.168.10.1/24"},
 				},
 			}
 			By("creating an L2VNI with gateway IP")
@@ -197,8 +284,8 @@ var _ = Describe("Webhooks", func() {
 			Expect(err).NotTo(HaveOccurred())
 		})
 
-		It("should block updates to L2GatewayIP", func() {
-			// Try to update the L2GatewayIP
+		It("should block updates to L2GatewayIP when changing IP", func() {
+			// Try to update the L2GatewayIP to a different IP
 			l2vniUpdated := v1alpha1.L2VNI{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "l2vni-immutable",
@@ -207,7 +294,49 @@ var _ = Describe("Webhooks", func() {
 				Spec: v1alpha1.L2VNISpec{
 					VNI:         300,
 					VXLanPort:   4789,
-					L2GatewayIP: "192.168.20.1/24", // Different gateway IP
+					L2GatewayIP: []string{"192.168.20.1/24"}, // Different gateway IP
+				},
+			}
+
+			err := Updater.Update(config.Resources{
+				L2VNIs: []v1alpha1.L2VNI{l2vniUpdated},
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("L2GatewayIP can't be changed"))
+		})
+
+		It("should block updates to L2GatewayIP when adding an IP", func() {
+			// Try to add an additional IP to the L2GatewayIP slice
+			l2vniUpdated := v1alpha1.L2VNI{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "l2vni-immutable",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.L2VNISpec{
+					VNI:         300,
+					VXLanPort:   4789,
+					L2GatewayIP: []string{"192.168.10.1/24", "2001:db8::1/64"}, // Added IPv6
+				},
+			}
+
+			err := Updater.Update(config.Resources{
+				L2VNIs: []v1alpha1.L2VNI{l2vniUpdated},
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("L2GatewayIP can't be changed"))
+		})
+
+		It("should block updates to L2GatewayIP when removing an IP", func() {
+			// Try to remove the gateway IP
+			l2vniUpdated := v1alpha1.L2VNI{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "l2vni-immutable",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.L2VNISpec{
+					VNI:         300,
+					VXLanPort:   4789,
+					L2GatewayIP: []string{}, // Empty slice
 				},
 			}
 
