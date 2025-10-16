@@ -80,6 +80,9 @@ topology:
     leafkind-sw-b:
       kind: bridge
 
+    migration-net:
+      kind: bridge
+
     pe-kind-a:
       kind: k8s-kind
       startup-config: ../pe-kind-a-configuration-registry.yaml
@@ -116,3 +119,7 @@ topology:
     - endpoints: ["pe-kind-b-control-plane:toswitch", "leafkind-sw-b:kindctrlplb"]
     - endpoints: ["pe-kind-a-worker:toswitch", "leafkind-sw-a:kindworkera"]
     - endpoints: ["pe-kind-b-worker:toswitch", "leafkind-sw-b:kindworkerb"]
+    - endpoints: ["pe-kind-a-control-plane:migration", "migration-net:pe-kind-a-ctrl"]
+    - endpoints: ["pe-kind-a-worker:migration", "migration-net:pe-kind-a-work"]
+    - endpoints: ["pe-kind-b-control-plane:migration", "migration-net:pe-kind-b-ctrl"]
+    - endpoints: ["pe-kind-b-worker:migration", "migration-net:pe-kind-b-work"]

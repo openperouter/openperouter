@@ -4,13 +4,13 @@ set -euo pipefail
 
 source "$(dirname $(readlink -f $0))/../common.sh"
 
-# Get cluster names from arguments
-CLUSTER_NAMES=("$@")
+# Get bridge names from arguments
+BRIDGE_NAMES=("$@")
 
-if [[ ${#CLUSTER_NAMES[@]} -eq 0 ]]; then
-    echo "Usage: $0 <cluster_name> [cluster_name2] ..."
-    echo "Example: $0 pe-kind"
-    echo "Example: $0 pe-kind-a pe-kind-b"
+if [[ ${#BRIDGE_NAMES[@]} -eq 0 ]]; then
+    echo "Usage: $0 <bridge_name> [bridge_name2] ..."
+    echo "Example: $0 leafkind-switch"
+    echo "Example: $0 leafkind-sw-a leafkind-sw-b"
     exit 1
 fi
 
@@ -40,23 +40,13 @@ check_prerequisites() {
     echo "Prerequisites check passed"
 }
 
-# Create bridge interfaces for the provided clusters
+# Create bridge interfaces with the provided names
 create_bridges() {
-    echo "Creating bridge interfaces for clusters: ${CLUSTER_NAMES[*]}"
+    echo "Creating bridge interfaces: ${BRIDGE_NAMES[*]}"
 
-    for cluster_name in "${CLUSTER_NAMES[@]}"; do
-        # For single cluster, use the traditional bridge name
-        if [[ ${#CLUSTER_NAMES[@]} -eq 1 && "$cluster_name" == "pe-kind" ]]; then
-            bridge_name="leafkind-switch"  # 15 chars exactly
-        else
-            # Use cluster suffix to keep bridge name short (under 15 chars)
-            # Extract last part after final dash (e.g., pe-kind-a -> a)
-            suffix="${cluster_name##*-}"
-            bridge_name="leafkind-sw-${suffix}"  # e.g., leafkind-sw-a (13 chars)
-        fi
-
+    for bridge_name in "${BRIDGE_NAMES[@]}"; do
         if [[ ! -d "/sys/class/net/${bridge_name}" ]]; then
-            echo "Creating bridge ${bridge_name} for cluster ${cluster_name}"
+            echo "Creating bridge ${bridge_name}"
             sudo ip link add name ${bridge_name} type bridge
         fi
 
