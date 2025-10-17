@@ -23,6 +23,7 @@
 > /kind failing
 > /kind documentation
 > /kind regression
+> /kind demo
 
 **What this PR does / why we need it**:
 
