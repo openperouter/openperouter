@@ -31,7 +31,7 @@ The simplest way to install OpenPERouter is using the all-in-one manifests. This
 #### Standard Installation (containerd)
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/openperouter/openperouter/v0.0.1/config/all-in-one/openpe.yaml
+kubectl apply -f https://raw.githubusercontent.com/openperouter/openperouter/v0.0.3/config/all-in-one/openpe.yaml
 ```
 
 #### CRI-O Variant
@@ -39,7 +39,7 @@ kubectl apply -f https://raw.githubusercontent.com/openperouter/openperouter/v0.
 If your cluster uses CRI-O as the container runtime:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/openperouter/openperouter/v0.0.1/config/all-in-one/crio.yaml
+kubectl apply -f https://raw.githubusercontent.com/openperouter/openperouter/v0.0.3/config/all-in-one/crio.yaml
 ```
 
 ### Method 2: Kustomize Installation
@@ -54,7 +54,7 @@ Create a `kustomization.yaml` file:
 namespace: openperouter-system
 
 resources:
-  - github.com/openperouter/openperouter/config/default?ref=v0.0.1
+  - github.com/openperouter/openperouter/config/default?ref=v0.0.3
 ```
 
 Then apply it:
@@ -68,7 +68,7 @@ kubectl apply -k .
 ```yaml
 namespace: openperouter-system
 resources:
-  - github.com/openperouter/openperouter/config/crio?ref=v0.0.1
+  - github.com/openperouter/openperouter/config/crio?ref=v0.0.3
 ```
 
 ### Method 3: Helm Installation
