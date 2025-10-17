@@ -12,5 +12,5 @@ images:
   newTag: main
 - name: router
   newName: quay.io/openperouter/router
-  newTag: v0.0.1
+  newTag: v0.0.3
 namespace: openperouter-system

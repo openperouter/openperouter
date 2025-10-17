@@ -2,7 +2,7 @@
 title = "Home"
 +++
 
-## OpenPERouter Version 0.0.1
+## OpenPERouter Version 0.0.3
 
 OpenPERouter is an open implementation of a Provider Edge (PE) router, designed to terminate multiple VPN protocols on Kubernetes nodes and expose a BGP interface to the host network.
 
