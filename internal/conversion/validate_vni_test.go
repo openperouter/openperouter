@@ -285,7 +285,7 @@ func TestValidateL2VNIs(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
 					Spec: v1alpha1.L2VNISpec{
 						VNI:         1001,
-						L2GatewayIP: "192.168.1.0/24",
+						L2GatewayIP: []string{"192.168.1.0/24"},
 					},
 					Status: v1alpha1.L2VNIStatus{},
 				},
@@ -299,7 +299,21 @@ func TestValidateL2VNIs(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
 					Spec: v1alpha1.L2VNISpec{
 						VNI:         1001,
-						L2GatewayIP: "2001:db8::/64",
+						L2GatewayIP: []string{"2001:db8::/64"},
+					},
+					Status: v1alpha1.L2VNIStatus{},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid L2GatewayIP dual-stack",
+			vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI:         1001,
+						L2GatewayIP: []string{"192.168.1.0/24", "2001:db8::/64"},
 					},
 					Status: v1alpha1.L2VNIStatus{},
 				},
@@ -313,7 +327,7 @@ func TestValidateL2VNIs(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
 					Spec: v1alpha1.L2VNISpec{
 						VNI:         1001,
-						L2GatewayIP: "invalid-cidr-format",
+						L2GatewayIP: []string{"invalid-cidr-format"},
 					},
 					Status: v1alpha1.L2VNIStatus{},
 				},

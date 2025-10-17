@@ -40,9 +40,9 @@ func ValidateL2VNIs(l2Vnis []v1alpha1.L2VNI) error {
 				return fmt.Errorf("invalid hostmaster name for vni %s: %s - %w", vni.Name, vni.Spec.HostMaster.Name, err)
 			}
 		}
-		if vni.Spec.L2GatewayIP != "" {
-			if err := isValidCIDR(vni.Spec.L2GatewayIP); err != nil {
-				return fmt.Errorf("invalid l2gatewayip for vni %s: %s - %w", vni.Name, vni.Spec.L2GatewayIP, err)
+		for _, ip := range vni.Spec.L2GatewayIP {
+			if err := isValidCIDR(ip); err != nil {
+				return fmt.Errorf("invalid l2gatewayip for vni %s: %s - %w", vni.Name, ip, err)
 			}
 		}
 	}

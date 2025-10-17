@@ -89,10 +89,7 @@ func validateL2VNIUpdate(l2vni *v1alpha1.L2VNI, oldL2VNI *v1alpha1.L2VNI) error 
 	Logger.Debug("webhook l2vni", "action", "update", "name", l2vni.Name, "namespace", l2vni.Namespace)
 	defer Logger.Debug("webhook l2vni", "action", "end update", "name", l2vni.Name, "namespace", l2vni.Namespace)
 
-	if oldL2VNI.Spec.L2GatewayIP != l2vni.Spec.L2GatewayIP {
-		return errors.New("L2GatewayIP cannot be changed")
-	}
-
+	// L2GatewayIP immutability is enforced by CEL validation in the API types
 	return validateL2VNI(l2vni)
 }
 
