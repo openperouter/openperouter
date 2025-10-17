@@ -37,6 +37,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/openperouter/openperouter/internal/logging"
 	operatorapi "github.com/openperouter/openperouter/operator/api/v1alpha1"
@@ -117,6 +118,9 @@ var _ = BeforeSuite(func() {
 
 	k8sManager, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: scheme.Scheme,
+		Metrics: metricsserver.Options{
+			BindAddress: "0", // Disable metrics server to avoid port conflicts
+		},
 	})
 	Expect(err).ToNot(HaveOccurred())
 
