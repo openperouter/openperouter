@@ -4,7 +4,7 @@ metadata:
   annotations:
     alm-examples: '[]'
     capabilities: Basic Install
-  name: openperouter-operator.v0.0.0
+  name: openperouter-operator.v0.0.4
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -57,4 +57,4 @@ spec:
   provider:
     name: Community
     url: https://github.com/openperouter/openperouter
-  version: 0.0.0
+  version: 0.0.4

@@ -28,7 +28,7 @@ spec:
         - /operator
         args:
         - "--loglevel=debug"
-        image: controller:main
+        image: controller:v0.0.4
         imagePullPolicy: IfNotPresent
         name: operator
         env:
