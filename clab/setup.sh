@@ -46,9 +46,29 @@ echo "CLAB_TOPOLOGY: $CLAB_TOPOLOGY"
 echo "CONTAINER_ENGINE: $CONTAINER_ENGINE"
 echo "CLUSTER_NAMES: ${CLUSTER_ARRAY[*]}"
 
+# Transform cluster names to bridge names
+BRIDGE_ARRAY=()
+for cluster_name in "${CLUSTER_ARRAY[@]}"; do
+    # For single cluster, use the traditional bridge name
+    if [[ ${#CLUSTER_ARRAY[@]} -eq 1 && "$cluster_name" == "pe-kind" ]]; then
+        bridge_name="leafkind-switch"  # 15 chars exactly
+    else
+        # Use cluster suffix to keep bridge name short (under 15 chars)
+        # Extract last part after final dash (e.g., pe-kind-a -> a)
+        suffix="${cluster_name##*-}"
+        bridge_name="leafkind-sw-${suffix}"  # e.g., leafkind-sw-a (13 chars)
+    fi
+    BRIDGE_ARRAY+=("$bridge_name")
+done
+
+# Add migration-net bridge for multi-cluster mode
+if [[ ${#CLUSTER_ARRAY[@]} -gt 1 ]]; then
+    BRIDGE_ARRAY+=("migration-net")
+fi
+
 # Execute setup scripts in sequence using modular scripts
 echo "=== 1/11 Environment setup ==="
-./scripts/00-environment.sh "${CLUSTER_ARRAY[@]}"
+./scripts/00-environment.sh "${BRIDGE_ARRAY[@]}"
 
 echo "=== 2/11 Registry setup ==="
 ./scripts/01-registry.sh "${CLUSTER_ARRAY[@]}"

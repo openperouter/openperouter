@@ -6,24 +6,192 @@ CURRENT_PATH=$(dirname "$0")
 source "${CURRENT_PATH}/../../common.sh"
 
 DEMO_MODE=true make deploy-multi
-export KUBECONFIG=$(pwd)/bin/kubeconfig-pe-kind-a
 
-# install KV in the first cluster
-kubectl apply -f https://github.com/kubevirt/kubevirt/releases/download/v1.5.2/kubevirt-operator.yaml
-kubectl apply -f https://github.com/kubevirt/kubevirt/releases/download/v1.5.2/kubevirt-cr.yaml
-# Patch KubeVirt to allow scheduling on control-planes, so we can test live migration between two nodes
-kubectl patch -n kubevirt kubevirt kubevirt --type merge --patch '{"spec": {"workloads": {"nodePlacement": {"tolerations": [{"key": "node-role.kubernetes.io/control-plane", "operator": "Exists", "effect": "NoSchedule"}]}}}}'
-kubectl wait --for=condition=Available kubevirt/kubevirt -n kubevirt --timeout=10m
+# Function to pre-provision dedicated migration network
+provision_migration_network() {
+    local kubeconfig="$1"
+    local cluster_name="$2"
 
-# provision the manifests on the first cluster
-apply_manifests_with_retries cluster-a-openpe.yaml cluster-a-workload.yaml
+    echo "Pre-provisioning dedicated migration network using kubeconfig: ${kubeconfig} for cluster: ${cluster_name}"
 
-export KUBECONFIG=$(pwd)/bin/kubeconfig-pe-kind-b
+    # Create kubevirt namespace if it doesn't exist
+    KUBECONFIG="$kubeconfig" kubectl create namespace kubevirt --dry-run=client -o yaml | KUBECONFIG="$kubeconfig" kubectl apply -f -
 
-kubectl apply -f https://github.com/kubevirt/kubevirt/releases/download/v1.5.2/kubevirt-operator.yaml
-kubectl apply -f https://github.com/kubevirt/kubevirt/releases/download/v1.5.2/kubevirt-cr.yaml
-# Patch KubeVirt to allow scheduling on control-planes, so we can test live migration between two nodes
-kubectl patch -n kubevirt kubevirt kubevirt --type merge --patch '{"spec": {"workloads": {"nodePlacement": {"tolerations": [{"key": "node-role.kubernetes.io/control-plane", "operator": "Exists", "effect": "NoSchedule"}]}}}}'
-kubectl wait --for=condition=Available kubevirt/kubevirt -n kubevirt --timeout=10m
+    # Apply the cluster-specific dedicated migration network
+    case "$cluster_name" in
+        "pe-kind-a")
+            KUBECONFIG="$kubeconfig" kubectl apply -f "${CURRENT_PATH}/cluster-a-dedicated-migration-network.yaml" || true
+            ;;
+        "pe-kind-b")
+            KUBECONFIG="$kubeconfig" kubectl apply -f "${CURRENT_PATH}/cluster-b-dedicated-migration-network.yaml" || true
+            ;;
+        *)
+            echo "Unknown cluster: $cluster_name, skipping migration network provisioning..."
+            return 1
+            ;;
+    esac
 
-apply_manifests_with_retries cluster-b-openpe.yaml cluster-b-workload.yaml
+    echo "Migration network provisioned successfully for cluster: ${cluster_name}"
+}
+
+# Function to install Whereabouts CNI plugin
+install_whereabouts() {
+    local kubeconfig="$1"
+
+    echo "Installing Whereabouts CNI plugin using kubeconfig: ${kubeconfig}"
+
+    # Install Whereabouts IPAM CNI plugin
+    KUBECONFIG="$kubeconfig" kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/whereabouts/refs/heads/master/doc/crds/daemonset-install.yaml
+    KUBECONFIG="$kubeconfig" kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/whereabouts/refs/heads/master/doc/crds/whereabouts.cni.cncf.io_ippools.yaml
+    KUBECONFIG="$kubeconfig" kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/whereabouts/refs/heads/master/doc/crds/whereabouts.cni.cncf.io_overlappingrangeipreservations.yaml
+
+    # Wait for whereabouts to be ready
+    KUBECONFIG="$kubeconfig" kubectl rollout status daemonset/whereabouts -n kube-system --timeout=5m
+
+    echo "Whereabouts CNI plugin installed successfully"
+}
+
+# Function to install KubeVirt on a cluster
+install_kubevirt() {
+    local kubeconfig="$1"
+
+    echo "Installing KubeVirt using kubeconfig: ${kubeconfig}"
+
+    # Install KubeVirt
+    KUBECONFIG="$kubeconfig" kubectl apply -f https://github.com/kubevirt/kubevirt/releases/download/v1.6.2/kubevirt-operator.yaml
+    KUBECONFIG="$kubeconfig" kubectl apply -f https://github.com/kubevirt/kubevirt/releases/download/v1.6.2/kubevirt-cr.yaml
+
+    # Patch KubeVirt to allow scheduling on control-planes, so we can test live migration between two nodes
+    KUBECONFIG="$kubeconfig" kubectl patch -n kubevirt kubevirt kubevirt --type merge --patch '{"spec": {"workloads": {"nodePlacement": {"tolerations": [{"key": "node-role.kubernetes.io/control-plane", "operator": "Exists", "effect": "NoSchedule"}]}}}}'
+
+    # Enable the decentralized live migration feature gate (requirement for cross cluster live migration)
+    KUBECONFIG="$kubeconfig" kubectl patch -n kubevirt kubevirt kubevirt --type merge --patch '{"spec": {"configuration": {"developerConfiguration": {"featureGates": [ "DecentralizedLiveMigration" ]}}}}'
+
+    # Configure the migration network
+    KUBECONFIG="$kubeconfig" kubectl patch -n kubevirt kubevirt kubevirt --type merge --patch '{"spec": {"configuration": {"migrations": {"network": "migration-network"}}}}'
+
+    # Wait for KubeVirt to be available
+    KUBECONFIG="$kubeconfig" kubectl wait --for=condition=Available kubevirt/kubevirt -n kubevirt --timeout=10m
+}
+
+# Function to create migration bridge on all nodes
+create_migration_bridge() {
+    local kubeconfig="$1"
+    local nodes=$(KUBECONFIG="$kubeconfig" kubectl get nodes -o jsonpath='{.items[*].metadata.name}')
+
+    echo "Creating migration bridge on all nodes using kubeconfig: ${kubeconfig}"
+    for node in $nodes; do
+        echo "Creating migration bridge on node: $node"
+
+        # Execute commands on the node via docker exec (since we're using kind)
+        docker exec "$node" bash -c "
+            ip link add name br-migration type bridge
+            ip link set br-migration up
+            if ! ip link show migration >/dev/null 2>&1; then
+                exit 1
+            fi
+            # Attach migration interface to the bridge
+            ip link set migration master br-migration
+            ip link set migration up
+            echo 'Migration bridge created and interface attached on node $node'
+        "
+    done
+}
+
+# Function to exchange KubeVirt certificates between clusters
+exchange_kubevirt_certificates() {
+    local kubeconfig_a="$1"
+    local kubeconfig_b="$2"
+
+    echo "Exchanging KubeVirt certificates between clusters"
+
+    # Read ca-bundle from cluster A's kubevirt-ca configmap
+    local ca_bundle_a
+    ca_bundle_a=$(KUBECONFIG="$kubeconfig_a" kubectl get configmap kubevirt-ca -n kubevirt -o jsonpath='{.data.ca-bundle}' 2>/dev/null || echo "")
+
+    if [[ -z "$ca_bundle_a" ]]; then
+        echo "Warning: Could not read kubevirt-ca configmap from cluster A, skipping certificate exchange"
+        return 1
+    fi
+
+    # Read ca-bundle from cluster B's kubevirt-ca configmap
+    local ca_bundle_b
+    ca_bundle_b=$(KUBECONFIG="$kubeconfig_b" kubectl get configmap kubevirt-ca -n kubevirt -o jsonpath='{.data.ca-bundle}' 2>/dev/null || echo "")
+
+    if [[ -z "$ca_bundle_b" ]]; then
+        echo "Warning: Could not read kubevirt-ca configmap from cluster B, skipping certificate exchange"
+        return 1
+    fi
+
+    # Create or patch kubevirt-external-ca configmap in cluster A with cluster B's ca-bundle
+    echo "Setting cluster B's CA certificate in cluster A's kubevirt-external-ca configmap"
+    KUBECONFIG="$kubeconfig_a" kubectl create configmap kubevirt-external-ca -n kubevirt --from-literal=ca-bundle="$ca_bundle_b" --dry-run=client -o yaml | \
+        KUBECONFIG="$kubeconfig_a" kubectl apply -f -
+
+    # Create or patch kubevirt-external-ca configmap in cluster B with cluster A's ca-bundle
+    echo "Setting cluster A's CA certificate in cluster B's kubevirt-external-ca configmap"
+    KUBECONFIG="$kubeconfig_b" kubectl create configmap kubevirt-external-ca -n kubevirt --from-literal=ca-bundle="$ca_bundle_a" --dry-run=client -o yaml | \
+        KUBECONFIG="$kubeconfig_b" kubectl apply -f -
+
+    echo "KubeVirt certificate exchange completed successfully"
+}
+
+# Function to apply demo manifests
+apply_demo_manifests() {
+    local kubeconfig="$1"
+    local manifests=("${@:2}")
+
+    echo "Applying demo manifests using kubeconfig: ${kubeconfig}"
+
+    # Apply cluster-specific manifests
+    export KUBECONFIG="$kubeconfig"
+    apply_manifests_with_retries "${manifests[@]}"
+}
+
+# Collect kubeconfig files and their cluster names for certificate exchange
+declare -A kubeconfigs
+
+# Process each kubeconfig file found in bin/
+for kubeconfig in $(pwd)/bin/kubeconfig-*; do
+    if [[ -f "$kubeconfig" ]]; then
+        # Extract cluster name from kubeconfig filename to determine manifests
+        cluster_name=$(basename "$kubeconfig" | sed 's/kubeconfig-//')
+        kubeconfigs["$cluster_name"]="$kubeconfig"
+
+        # Install Whereabouts CNI plugin before KubeVirt since we want the
+        # KubeVirt installation to know which migration network to use.
+        # KubeVirt's dedicated migration network requires whereabouts IPAM.
+        install_whereabouts "$kubeconfig"
+
+        # Pre-provision dedicated migration network before KubeVirt installation
+        provision_migration_network "$kubeconfig" "$cluster_name"
+
+        # Install KubeVirt on this cluster
+        install_kubevirt "$kubeconfig"
+
+        # Create migration bridge on all nodes - this bridge is connected to
+        # the outside using the "migration" veth, whose other leg is attached
+        # to the "migration-net" bridge in the container hypervisor
+        create_migration_bridge "$kubeconfig"
+
+        # Determine manifests based on cluster name and apply them
+        case "$cluster_name" in
+            "pe-kind-a")
+                apply_demo_manifests "$kubeconfig" "cluster-a-openpe.yaml" "cluster-a-workload.yaml"
+                ;;
+            "pe-kind-b")
+                apply_demo_manifests "$kubeconfig" "cluster-b-openpe.yaml" "cluster-b-workload.yaml"
+                ;;
+            *)
+                echo "Unknown cluster: $cluster_name, skipping manifest application..."
+                continue
+                ;;
+        esac
+    fi
+done
+
+# Exchange KubeVirt certificates between all clusters after everything is provisioned
+if [[ -n "${kubeconfigs["pe-kind-a"]-}" && -n "${kubeconfigs["pe-kind-b"]-}" ]]; then
+    echo "Exchanging KubeVirt certificates between clusters..."
+    exchange_kubevirt_certificates "${kubeconfigs["pe-kind-a"]}" "${kubeconfigs["pe-kind-b"]}"
+fi
