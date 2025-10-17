@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.19.0
   name: l3vnis.openpe.openperouter.github.io
 spec:
   group: openpe.openperouter.github.io
@@ -41,41 +41,52 @@ spec:
           spec:
             description: L3VNISpec defines the desired state of VNI.
             properties:
-              asn:
-                description: |-
-                  ASN is the local AS number to use to establish a BGP session with
-                  the default namespace.
-                format: int32
-                maximum: 4294967295
-                minimum: 1
-                type: integer
-              hostasn:
-                description: |-
-                  ASN is the expected AS number for a BGP speaking component running in
-                  the default network namespace. If not set, the ASN field is going to be used.
-                format: int32
-                maximum: 4294967295
-                minimum: 0
-                type: integer
-              localcidr:
-                description: |-
-                  LocalCIDR is the CIDR configuration for the veth pair
-                  to connect with the default namespace. The interface under
-                  the PERouter side is going to use the first IP of the cidr on all the nodes.
-                  At least one of IPv4 or IPv6 must be provided.
+              hostsession:
+                description: HostSession is the configuration for the host session.
                 properties:
-                  ipv4:
+                  asn:
                     description: |-
-                      IPv4 is the IPv4 CIDR to be used for the veth pair
+                      ASN is the local AS number to use to establish a BGP session with
+                      the default namespace.
+                    format: int32
+                    maximum: 4294967295
+                    minimum: 1
+                    type: integer
+                  hostasn:
+                    description: |-
+                      ASN is the expected AS number for a BGP speaking component running in
+                      the default network namespace. If not set, the ASN field is going to be used.
+                    format: int32
+                    maximum: 4294967295
+                    minimum: 0
+                    type: integer
+                  localcidr:
+                    description: |-
+                      LocalCIDR is the CIDR configuration for the veth pair
                       to connect with the default namespace. The interface under
                       the PERouter side is going to use the first IP of the cidr on all the nodes.
-                    type: string
-                  ipv6:
-                    description: |-
-                      IPv6 is the IPv6 CIDR to be used for the veth pair
-                      to connect with the default namespace. The interface under
-                      the PERouter side is going to use the first IP of the cidr on all the nodes.
-                    type: string
+                      At least one of IPv4 or IPv6 must be provided.
+                    properties:
+                      ipv4:
+                        description: |-
+                          IPv4 is the IPv4 CIDR to be used for the veth pair
+                          to connect with the default namespace. The interface under
+                          the PERouter side is going to use the first IP of the cidr on all the nodes.
+                        type: string
+                      ipv6:
+                        description: |-
+                          IPv6 is the IPv6 CIDR to be used for the veth pair
+                          to connect with the default namespace. The interface under
+                          the PERouter side is going to use the first IP of the cidr on all the nodes.
+                        type: string
+                    type: object
+                    x-kubernetes-validations:
+                    - message: LocalCIDR can't be changed
+                      rule: self == oldSelf
+                required:
+                - asn
+                - hostasn
+                - localcidr
                 type: object
               vni:
                 description: VNI is the VXLan VNI to be used
@@ -84,9 +95,8 @@ spec:
                 minimum: 0
                 type: integer
               vrf:
-                description: |-
-                  VRF is the name of the linux VRF to be used inside the PERouter namespace.
-                  The field is optional, if not set it the name of the VNI instance will be used.
+                description: VRF is the name of the linux VRF to be used inside the
+                  PERouter namespace.
                 maxLength: 15
                 pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
                 type: string
@@ -96,8 +106,11 @@ spec:
                 format: int32
                 type: integer
             required:
-            - localcidr
+            - vrf
             type: object
+            x-kubernetes-validations:
+            - message: hostASN must be different from asn
+              rule: '!has(self.hostsession) || self.hostsession.hostasn != self.hostsession.asn'
           status:
             description: L3VNIStatus defines the observed state of L3VNI.
             type: object

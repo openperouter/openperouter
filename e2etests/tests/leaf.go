@@ -9,12 +9,17 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/infra"
 )
 
-func changeLeafPrefixes(leaf infra.Leaf, redPrefixes, bluePrefixes []string) {
+func changeLeafPrefixes(leaf infra.Leaf, defaultPrefixes, redPrefixes, bluePrefixes []string) {
+	defaultIPv4, defaultIPv6 := separateIPFamilies(defaultPrefixes)
 	redIPv4, redIPv6 := separateIPFamilies(redPrefixes)
 	blueIPv4, blueIPv6 := separateIPFamilies(bluePrefixes)
 
 	leafConfiguration := infra.LeafConfiguration{
 		Leaf: leaf,
+		Default: infra.Addresses{
+			IPV4: defaultIPv4,
+			IPV6: defaultIPv6,
+		},
 		Red: infra.Addresses{
 			IPV4: redIPv4,
 			IPV6: redIPv6,
@@ -31,7 +36,7 @@ func changeLeafPrefixes(leaf infra.Leaf, redPrefixes, bluePrefixes []string) {
 }
 
 func removeLeafPrefixes(leaf infra.Leaf) {
-	changeLeafPrefixes(leaf, []string{}, []string{})
+	changeLeafPrefixes(leaf, []string{}, []string{}, []string{})
 }
 
 func redistributeConnectedForLeaf(leaf infra.Leaf) {
@@ -41,6 +46,9 @@ func redistributeConnectedForLeaf(leaf infra.Leaf) {
 			RedistributeConnected: true,
 		},
 		Blue: infra.Addresses{
+			RedistributeConnected: true,
+		},
+		Default: infra.Addresses{
 			RedistributeConnected: true,
 		},
 	}

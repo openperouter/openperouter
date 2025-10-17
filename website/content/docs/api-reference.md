@@ -18,9 +18,48 @@ Package v1alpha1 contains API Schema definitions for the openpe v1alpha1 API gro
 
 ### Resource Types
 - [L2VNI](#l2vni)
+- [L3Passthrough](#l3passthrough)
 - [L3VNI](#l3vni)
 - [Underlay](#underlay)
 
+
+
+#### BFDSettings
+
+
+
+BFDSettings defines the BFD configuration for a BGP session.
+
+
+
+_Appears in:_
+- [Neighbor](#neighbor)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `receiveInterval` _integer_ | The minimum interval that this system is capable of<br />receiving control packets in milliseconds.<br />Defaults to 300ms. |  | Maximum: 60000 <br />Minimum: 10 <br /> |
+| `transmitInterval` _integer_ | The minimum transmission interval (less jitter)<br />that this system wants to use to send BFD control packets in<br />milliseconds. Defaults to 300ms |  | Maximum: 60000 <br />Minimum: 10 <br /> |
+| `detectMultiplier` _integer_ | Configures the detection multiplier to determine<br />packet loss. The remote transmission interval will be multiplied<br />by this value to determine the connection loss detection timer. |  | Maximum: 255 <br />Minimum: 2 <br /> |
+| `echoInterval` _integer_ | Configures the minimal echo receive transmission<br />interval that this system is capable of handling in milliseconds.<br />Defaults to 50ms |  | Maximum: 60000 <br />Minimum: 10 <br /> |
+| `echoMode` _boolean_ | Enables or disables the echo transmission mode.<br />This mode is disabled by default, and not supported on multi<br />hops setups. |  |  |
+| `passiveMode` _boolean_ | Mark session as passive: a passive session will not<br />attempt to start the connection and will wait for control packets<br />from peer before it begins replying. |  |  |
+| `minimumTtl` _integer_ | For multi hop sessions only: configure the minimum<br />expected TTL for an incoming BFD control packet. |  | Maximum: 254 <br />Minimum: 1 <br /> |
+
+
+#### EVPNConfig
+
+
+
+
+
+
+
+_Appears in:_
+- [UnderlaySpec](#underlayspec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `vtepcidr` _string_ | VTEPCIDR is CIDR to be used to assign IPs to the local VTEP on each node. |  |  |
 
 
 #### HostMaster
@@ -39,6 +78,26 @@ _Appears in:_
 | `name` _string_ | Name of the host interface. Must match VRF name validation if set. |  | MaxLength: 15 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9_-]*$` <br /> |
 | `type` _string_ | Type of the host interface. Currently only "bridge" is supported. |  | Enum: [bridge] <br /> |
 | `autocreate` _boolean_ | If true, the interface will be created automatically if not present.<br />The name of the bridge is of the form br-hs-<VNI>. | false |  |
+
+
+#### HostSession
+
+
+
+Host Session represent the leg between the router and the host.
+A BGP session is established over this leg.
+
+
+
+_Appears in:_
+- [L3PassthroughSpec](#l3passthroughspec)
+- [L3VNISpec](#l3vnispec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `asn` _integer_ | ASN is the local AS number to use to establish a BGP session with<br />the default namespace. |  | Maximum: 4.294967295e+09 <br />Minimum: 1 <br /> |
+| `hostasn` _integer_ | ASN is the expected AS number for a BGP speaking component running in<br />the default network namespace. If not set, the ASN field is going to be used. |  | Maximum: 4.294967295e+09 <br />Minimum: 0 <br /> |
+| `localcidr` _[LocalCIDRConfig](#localcidrconfig)_ | LocalCIDR is the CIDR configuration for the veth pair<br />to connect with the default namespace. The interface under<br />the PERouter side is going to use the first IP of the cidr on all the nodes.<br />At least one of IPv4 or IPv6 must be provided. |  |  |
 
 
 #### L2VNI
@@ -94,6 +153,55 @@ _Appears in:_
 
 
 
+#### L3Passthrough
+
+
+
+L3Passthrough represents a session with the host which is not encapsulated and
+takes part to the bgp fabric.
+
+
+
+
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `apiVersion` _string_ | `openpe.openperouter.github.io/v1alpha1` | | |
+| `kind` _string_ | `L3Passthrough` | | |
+| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
+| `spec` _[L3PassthroughSpec](#l3passthroughspec)_ |  |  |  |
+| `status` _[L3PassthroughStatus](#l3passthroughstatus)_ |  |  |  |
+
+
+#### L3PassthroughSpec
+
+
+
+
+
+
+
+_Appears in:_
+- [L3Passthrough](#l3passthrough)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `hostsession` _[HostSession](#hostsession)_ | HostSession is the configuration for the host session. |  |  |
+
+
+#### L3PassthroughStatus
+
+
+
+L3PassthroughStatus defines the observed state of L3Passthrough.
+
+
+
+_Appears in:_
+- [L3Passthrough](#l3passthrough)
+
+
+
 #### L3VNI
 
 
@@ -127,12 +235,10 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `asn` _integer_ | ASN is the local AS number to use to establish a BGP session with<br />the default namespace. |  | Maximum: 4.294967295e+09 <br />Minimum: 1 <br /> |
-| `vrf` _string_ | VRF is the name of the linux VRF to be used inside the PERouter namespace.<br />The field is optional, if not set it the name of the VNI instance will be used. |  | MaxLength: 15 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9_-]*$` <br /> |
-| `hostasn` _integer_ | ASN is the expected AS number for a BGP speaking component running in<br />the default network namespace. If not set, the ASN field is going to be used. |  | Maximum: 4.294967295e+09 <br />Minimum: 0 <br /> |
+| `vrf` _string_ | VRF is the name of the linux VRF to be used inside the PERouter namespace. |  | MaxLength: 15 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9_-]*$` <br />Required: {} <br /> |
 | `vni` _integer_ | VNI is the VXLan VNI to be used |  | Maximum: 4.294967295e+09 <br />Minimum: 0 <br /> |
-| `localcidr` _[LocalCIDRConfig](#localcidrconfig)_ | LocalCIDR is the CIDR configuration for the veth pair<br />to connect with the default namespace. The interface under<br />the PERouter side is going to use the first IP of the cidr on all the nodes.<br />At least one of IPv4 or IPv6 must be provided. |  |  |
 | `vxlanport` _integer_ | VXLanPort is the port to be used for VXLan encapsulation. | 4789 |  |
+| `hostsession` _[HostSession](#hostsession)_ | HostSession is the configuration for the host session. |  |  |
 
 
 #### L3VNIStatus
@@ -157,7 +263,7 @@ _Appears in:_
 
 
 _Appears in:_
-- [L3VNISpec](#l3vnispec)
+- [HostSession](#hostsession)
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
@@ -179,6 +285,7 @@ _Appears in:_
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `asn` _integer_ | ASN is the AS number to use for the local end of the session. |  | Maximum: 4.294967295e+09 <br />Minimum: 1 <br /> |
+| `hostasn` _integer_ | ASN is the expected AS number for a BGP speaking component running in<br />the default network namespace. If not set, the ASN field is going to be used. |  | Maximum: 4.294967295e+09 <br />Minimum: 0 <br /> |
 | `address` _string_ | Address is the IP address to establish the session with. |  |  |
 | `port` _integer_ | Port is the port to dial when establishing the session.<br />Defaults to 179. |  | Maximum: 16384 <br />Minimum: 0 <br /> |
 | `password` _string_ | Password to be used for establishing the BGP session.<br />Password and PasswordSecret are mutually exclusive. |  |  |
@@ -187,6 +294,7 @@ _Appears in:_
 | `keepaliveTime` _[Duration](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#duration-v1-meta)_ | KeepaliveTime is the requested BGP keepalive time, per RFC4271.<br />Defaults to 60s. |  |  |
 | `connectTime` _[Duration](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#duration-v1-meta)_ | Requested BGP connect time, controls how long BGP waits between connection attempts to a neighbor. |  |  |
 | `ebgpMultiHop` _boolean_ | EBGPMultiHop indicates if the BGPPeer is multi-hops away. |  |  |
+| `bfd` _[BFDSettings](#bfdsettings)_ | BFD defines the BFD configuration for the BGP session. |  |  |
 
 
 #### Underlay
@@ -222,9 +330,10 @@ _Appears in:_
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `asn` _integer_ | ASN is the local AS number to use for the session with the TOR switch. |  | Maximum: 4.294967295e+09 <br />Minimum: 1 <br /> |
-| `vtepcidr` _string_ | VTEPCIDR is CIDR to be used to assign IPs to the local VTEP on each node. |  |  |
+| `routeridcidr` _string_ | RouterIDCIDR is the ipv4 cidr to be used to assign a different routerID on each node. | 10.0.0.0/24 |  |
 | `neighbors` _[Neighbor](#neighbor) array_ | Neighbors is the list of external neighbors to peer with. |  | MinItems: 1 <br /> |
 | `nics` _string array_ | Nics is the list of physical nics to move under the PERouter namespace to connect<br />to external routers. This field is optional when using Multus networks for TOR connectivity. |  |  |
+| `evpn` _[EVPNConfig](#evpnconfig)_ |  |  |  |
 
 
 #### UnderlayStatus

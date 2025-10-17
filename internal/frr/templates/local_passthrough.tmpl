@@ -1,0 +1,36 @@
+{{ define "localpassthrough"}}
+
+{{- if .Passthrough.LocalNeighborV4 }}
+
+  neighbor {{ .Passthrough.LocalNeighborV4.Addr }} remote-as {{ .Passthrough.LocalNeighborV4.ASN }}
+
+  address-family ipv4 unicast
+  {{/* the ToAdvertiseIPv4 addresses are intended to be advertised to the fabric */}}
+  {{- range .Passthrough.ToAdvertiseIPv4 }}
+    network {{ . }}
+  {{- end }}
+    neighbor {{ .Passthrough.LocalNeighborV4.Addr }} activate
+    neighbor {{ .Passthrough.LocalNeighborV4.Addr }} route-map allowall in
+    neighbor {{ .Passthrough.LocalNeighborV4.Addr }} route-map allowall out
+  exit-address-family
+
+{{- template "neighborenableipfamily" .Passthrough.LocalNeighborV4 }}
+{{- end -}}
+
+{{- if .Passthrough.LocalNeighborV6 }}
+
+  neighbor {{ .Passthrough.LocalNeighborV6.Addr }} remote-as {{ .Passthrough.LocalNeighborV6.ASN }}
+
+  address-family ipv6 unicast
+  {{/* the ToAdvertiseIPv6 addresses are intended to be advertised to the fabric */}}
+  {{- range .Passthrough.ToAdvertiseIPv6 }}
+    network {{ . }}
+  {{- end }}
+    neighbor {{ .Passthrough.LocalNeighborV6.Addr }} activate
+    neighbor {{ .Passthrough.LocalNeighborV6.Addr }} route-map allowall in
+    neighbor {{ .Passthrough.LocalNeighborV6.Addr }} route-map allowall out
+  exit-address-family
+{{- template "neighborenableipfamily" .Passthrough.LocalNeighborV6 }}
+{{- end -}}
+{{- end }}
+

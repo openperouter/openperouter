@@ -1,0 +1,14 @@
+{{ define "underlayevpn"}}
+  address-family ipv4 unicast
+    network {{ .Underlay.EVPN.VTEP }}
+  exit-address-family
+
+  address-family l2vpn evpn
+{{- range .Underlay.Neighbors }}
+    neighbor {{ .Addr }} activate
+    neighbor {{ .Addr }} allowas-in 
+{{- end }}
+    advertise-all-vni
+    advertise-svi-ip
+  exit-address-family
+{{- end }}

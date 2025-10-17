@@ -28,9 +28,10 @@ type UnderlaySpec struct {
 	// +required
 	ASN uint32 `json:"asn,omitempty"`
 
-	// VTEPCIDR is CIDR to be used to assign IPs to the local VTEP on each node.
-	// +required
-	VTEPCIDR string `json:"vtepcidr,omitempty"`
+	// RouterIDCIDR is the ipv4 cidr to be used to assign a different routerID on each node.
+	// +kubebuilder:default="10.0.0.0/24"
+	// +optional
+	RouterIDCIDR string `json:"routeridcidr,omitempty"`
 
 	// Neighbors is the list of external neighbors to peer with.
 	// +kubebuilder:validation:MinItems=1
@@ -38,9 +39,17 @@ type UnderlaySpec struct {
 
 	// Nics is the list of physical nics to move under the PERouter namespace to connect
 	// to external routers. This field is optional when using Multus networks for TOR connectivity.
-	// +kubebuilder:validation:Items=Pattern=`^[a-zA-Z][a-zA-Z0-9_-]*$`
-	// +kubebuilder:validation:Items=MaxLength=15
+	// +kubebuilder:validation:items:Pattern=`^[a-zA-Z][a-zA-Z0-9._-]*$`
+	// +kubebuilder:validation:items:MaxLength=15
 	Nics []string `json:"nics,omitempty"`
+
+	EVPN *EVPNConfig `json:"evpn,omitempty"`
+}
+
+type EVPNConfig struct {
+	// VTEPCIDR is CIDR to be used to assign IPs to the local VTEP on each node.
+	// +required
+	VTEPCIDR string `json:"vtepcidr,omitempty"`
 }
 
 // UnderlayStatus defines the observed state of Underlay.

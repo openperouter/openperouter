@@ -18,15 +18,15 @@ import (
 
 const Established = true
 
-func validateFRRK8sSessionForVNI(vni v1alpha1.L3VNI, established bool, frrk8sPods ...*corev1.Pod) {
+func validateFRRK8sSessionForHostSession(name string, hostsession v1alpha1.HostSession, established bool, frrk8sPods ...*corev1.Pod) {
 	var cidrs []string
-	Expect(vni.Spec.LocalCIDR.IPv4 != "" || vni.Spec.LocalCIDR.IPv6 != "").To(BeTrue(), "either IPv4 or IPv6 CIDR must be provided")
+	Expect(hostsession.LocalCIDR.IPv4 != "" || hostsession.LocalCIDR.IPv6 != "").To(BeTrue(), "either IPv4 or IPv6 CIDR must be provided")
 
-	if vni.Spec.LocalCIDR.IPv4 != "" {
-		cidrs = append(cidrs, vni.Spec.LocalCIDR.IPv4)
+	if hostsession.LocalCIDR.IPv4 != "" {
+		cidrs = append(cidrs, hostsession.LocalCIDR.IPv4)
 	}
-	if vni.Spec.LocalCIDR.IPv6 != "" {
-		cidrs = append(cidrs, vni.Spec.LocalCIDR.IPv6)
+	if hostsession.LocalCIDR.IPv6 != "" {
+		cidrs = append(cidrs, hostsession.LocalCIDR.IPv6)
 	}
 
 	for _, cidr := range cidrs {
@@ -34,9 +34,9 @@ func validateFRRK8sSessionForVNI(vni v1alpha1.L3VNI, established bool, frrk8sPod
 		Expect(err).NotTo(HaveOccurred())
 
 		for _, p := range frrk8sPods {
-			By(fmt.Sprintf("checking the session between %s and vni %s for CIDR %s", p.Name, vni.Name, cidr))
+			By(fmt.Sprintf("checking the session between %s and session %s for CIDR %s", p.Name, name, cidr))
 			exec := executor.ForPod(p.Namespace, p.Name, "frr")
-			validateSessionWithNeighbor(p.Name, vni.Name, exec, neighborIP, established)
+			validateSessionWithNeighbor(p.Name, name, exec, neighborIP, established)
 		}
 	}
 }
@@ -57,7 +57,9 @@ func validateSessionWithNeighbor(fromName, toName string, exec executor.Executor
 	}, 5*time.Minute, time.Second).ShouldNot(HaveOccurred())
 }
 
-func validateNoSuchNeigh(exec executor.Executor, neighborIP string) {
+// validateSessionDownForNeigh validates that the neighbor is down
+// or if the session does not exist.
+func validateSessionDownForNeigh(exec executor.Executor, neighborIP string) {
 	Eventually(func() error {
 		neigh, err := frr.NeighborInfo(neighborIP, exec)
 		if errors.As(err, &frr.NoNeighborError{}) {
@@ -66,6 +68,10 @@ func validateNoSuchNeigh(exec executor.Executor, neighborIP string) {
 		if err != nil {
 			return err
 		}
-		return fmt.Errorf("neighbor %s exists: %v", neighborIP, neigh)
+
+		if neigh.BgpState == "Established" {
+			return fmt.Errorf("neighbor %s is established: %v", neighborIP, neigh)
+		}
+		return nil
 	}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 }

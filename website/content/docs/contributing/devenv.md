@@ -25,7 +25,11 @@ With:
 - Two kind nodes connected to a leaf, running OpenPERouter
 - A spine container
 - Two EVPN enabled leaves, leafA and leafB
-- For each leaf, two hosts connected to a type 5 EVPN (VNI 100 and 200)
+- For each leaf, two hosts connected to two different VRFs (red and blue)
+- One host connected to the default VRF of leafA
+
+By default, the two VRFs are exposed as type 5 EVPN (VNI 100 and 200) from leafA and leafB
+to the rest of the fabric.
 
 The kubeconfig file required to interact with the cluster is created under `bin/kubeconfig`.
 

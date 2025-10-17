@@ -8,15 +8,15 @@ OpenPERouter is an open implementation of a Provider Edge (PE) router, designed 
 
 **This project is in the early stage of development. Use carefully!**
 
-## Enable L3 EVPN in your cluster
+## Enable L3 VPN in your cluster
 
-OpenPERouter enables L3 EVPN tunneling to any BGP enabled Kubernetes component,
+OpenPERouter enables L3 VPN tunneling to any BGP enabled Kubernetes component,
 such as Calico, MetalLB, KubeVip, Cilium, FRR-K8s and many others, behaving as an external router.
 
 Behaving as an external router, the integration is seamless and BGP based, exactly as if a physical
 Provider Edge Router was moved inside the node.
 
-## Enable L2 EVPN in the cluster
+## Enable L2 VPN in the cluster
 
 OpenPERouter supports L2 overlays, allowing seamless communication between nodes using a stretched
 layer 2 domain.

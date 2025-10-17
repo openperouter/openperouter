@@ -21,7 +21,7 @@ spec:
         kubectl.kubernetes.io/default-container: webhook
       labels:
         control-plane: webhook
-        app: webhook
+        component: webhook
     spec:
       containers:
       - command:

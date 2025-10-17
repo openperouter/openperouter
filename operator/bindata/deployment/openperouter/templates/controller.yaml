@@ -99,12 +99,14 @@ spec:
       hostNetwork: true
       hostPID: true
       tolerations:
+      {{- if .Values.openperouter.runOnMaster }}
       - effect: NoSchedule
         key: node-role.kubernetes.io/master
         operator: Exists
       - effect: NoSchedule
         key: node-role.kubernetes.io/control-plane
         operator: Exists
+      {{- end }}
       {{- with .Values.openperouter.tolerations }}
         {{- toYaml . | nindent 6 }}
       {{- end }}

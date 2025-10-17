@@ -42,6 +42,10 @@ type OpenPERouterSpec struct {
 	// MultusNetworkAnnotation specifies the Multus network annotation to be added to the router pod.
 	// +optional
 	MultusNetworkAnnotation string `json:"multusNetworkAnnotation,omitempty"`
+	// RunOnMaster determines if all pods (router, controller, and nodemarker) will run on master/control-plane nodes. (default: true)
+	// +optional
+	// +kubebuilder:default:=true
+	RunOnMaster bool `json:"runOnMaster,omitempty"`
 }
 
 // OpenPERouterStatus defines the observed state of OpenPERouter

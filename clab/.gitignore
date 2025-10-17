@@ -1,5 +1,7 @@
-./clab-kind
-./leafA/frr.conf
-./leafB/frr.conf
-./kind-configuration-registry.yaml
-./calico/kubeconfig
+/*.bak
+/calico/kubeconfig
+/clab-kind
+/*-configuration-registry.yaml
+/kubeconfig
+/leafA/frr.conf
+/leafB/frr.conf

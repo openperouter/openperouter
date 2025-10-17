@@ -26,6 +26,10 @@ CONTAINER_ENGINE ?= docker
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
 
+# CLAB_TOPOLOGY_FILE allows the user to specify which containerlab topology
+# file to deploy. It defauls to the single cluster variant
+CLAB_TOPOLOGY_FILE ?= singlecluster/kind.clab.yml
+
 .PHONY: all
 all: build
 
@@ -75,6 +79,13 @@ test: fmt vet envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v e2etest) -coverprofile cover.out
 	sudo -E sh -c "umask 0; PATH=${GOPATH}/bin:$(pwd)/bin:${PATH} go test -tags=runasroot -v -race ./internal/hostnetwork"
 
+.PHONY: release-notes
+release-notes: ## Generate release notes
+	@if [ -z "$(OPENPE_VERSION)" ]; then \
+		echo "Usage: make release-notes OPENPE_VERSION=<version>"; \
+		exit 1; \
+	fi
+	hack/release/prepare_release.sh $(OPENPE_VERSION)
 
 ##@ Build
 
@@ -139,9 +150,9 @@ export KUBECONFIG=$(KUBECONFIG_PATH)
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.0.0
-CONTROLLER_TOOLS_VERSION ?= v0.14.0
+CONTROLLER_TOOLS_VERSION ?= v0.19.0
 KUBECTL_VERSION ?= v1.27.0
-GINKGO_VERSION ?= v2.23.0
+GINKGO_VERSION ?= $(shell go list -m -f '{{.Version}}' github.com/onsi/ginkgo/v2)
 KIND_VERSION ?= v0.27.0
 KIND_CLUSTER_NAME ?= pe-kind
 HELM_VERSION ?= v3.12.3
@@ -160,6 +171,9 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified 
 .PHONY: deploy
 deploy: kind deploy-cluster deploy-controller ## Deploy cluster and controller.
 
+.PHONY: deploy-multi
+deploy-multi: kind deploy-multi-cluster deploy-controller-multi ## Deploy cluster and controller.
+
 .PHONY: deploy-with-prometheus
 deploy-with-prometheus: KUSTOMIZE_LAYER=prometheus
 deploy-with-prometheus: deploy-cluster deploy-prometheus deploy-controller
@@ -177,18 +191,32 @@ deploy-cluster: kubectl manifests kustomize clab-cluster load-on-kind ## Deploy 
 .PHONY: deploy-clab
 deploy-clab: kubectl manifests kustomize clab-cluster load-on-kind ## Deploy a cluster for the controller.
 
+.PHONY: deploy-multi-cluster
+deploy-multi-cluster: kubectl manifests kustomize clab-multi-cluster load-on-multi-cluster ## Deploy multi-cluster setup for the controller.
+
 KUSTOMIZE_LAYER ?= default
 .PHONY: deploy-controller
 deploy-controller: kubectl kustomize ## Deploy controller to the K8s cluster specified in $KUBECONFIG.
+	$(MAKE) deploy-controller-cluster CLUSTER_NAME=default CLUSTER_KUBECONFIG=${KUBECONFIG_PATH}
+
+.PHONY: deploy-controller-multi
+deploy-controller-multi: kubectl kustomize ## Deploy controller to both clusters in multi-cluster setup.
+	$(MAKE) deploy-controller-cluster CLUSTER_NAME=pe-kind-a CLUSTER_KUBECONFIG=${KUBECONFIG_PATH}-pe-kind-a
+	$(MAKE) deploy-controller-cluster CLUSTER_NAME=pe-kind-b CLUSTER_KUBECONFIG=${KUBECONFIG_PATH}-pe-kind-b
+
+.PHONY: deploy-controller-cluster
+deploy-controller-cluster: kubectl kustomize ## Deploy controller to a specific cluster (internal target).
+	@echo "=== Deploying controller to cluster $(CLUSTER_NAME) ==="
 	cd config/pods && $(KUSTOMIZE) edit set image router=${IMG}
-	$(KUBECTL) -n ${NAMESPACE} delete ds controller || true
-	$(KUBECTL) -n ${NAMESPACE} delete ds router || true
-	$(KUBECTL) -n ${NAMESPACE} delete deployment nodemarker || true
+	KUBECONFIG=$(CLUSTER_KUBECONFIG) $(KUBECTL) -n ${NAMESPACE} delete ds controller || true
+	KUBECONFIG=$(CLUSTER_KUBECONFIG) $(KUBECTL) -n ${NAMESPACE} delete ds router || true
+	KUBECONFIG=$(CLUSTER_KUBECONFIG) $(KUBECTL) -n ${NAMESPACE} delete deployment nodemarker || true
 
 	# todo tweak loglevel
-	$(KUSTOMIZE) build config/$(KUSTOMIZE_LAYER) | $(KUBECTL) apply -f -
+	$(KUSTOMIZE) build config/$(KUSTOMIZE_LAYER) | KUBECONFIG=$(CLUSTER_KUBECONFIG) $(KUBECTL) apply -f -
 	sleep 2s # wait for daemonset to be created
-	$(KUBECTL) -n ${NAMESPACE} wait --for=condition=Ready --all pods --timeout 300s
+	KUBECONFIG=$(CLUSTER_KUBECONFIG) $(KUBECTL) -n ${NAMESPACE} wait --for=condition=Ready --all pods --timeout 300s
+	@echo "=== Controller deployed successfully to cluster $(CLUSTER_NAME) ==="
 
 .PHONY: deploy-helm
 deploy-helm: helm kind deploy-cluster
@@ -264,13 +292,25 @@ e2etests: ginkgo kubectl build-validator create-export-logs
 
 .PHONY: clab-cluster
 clab-cluster:
-	KUBECONFIG_PATH=$(KUBECONFIG_PATH) KIND=$(KIND) clab/setup.sh
+	KUBECONFIG_PATH=$(KUBECONFIG_PATH) KIND=$(KIND) CLAB_TOPOLOGY=$(CLAB_TOPOLOGY_FILE) clab/setup.sh
 	@echo 'kind cluster created, to use it please'
 	@echo 'export KUBECONFIG=${KUBECONFIG_PATH}'
+
+.PHONY: clab-multi-cluster
+clab-multi-cluster: ## Deploy multi-cluster setup with 2 kindleafs, 2 kind switches, and 2 kind clusters (control plane + worker each)
+	KUBECONFIG_PATH=$(KUBECONFIG_PATH) KIND=$(KIND) CLAB_TOPOLOGY=multicluster/kind.clab.yml clab/setup.sh pe-kind-a pe-kind-b
+	@echo 'Multi-cluster deployment created:'
+	@echo '  - Cluster A: export KUBECONFIG=${KUBECONFIG_PATH}-pe-kind-a'
+	@echo '  - Cluster B: export KUBECONFIG=${KUBECONFIG_PATH}-pe-kind-b'
 
 .PHONY: load-on-kind
 load-on-kind: ## Load the docker image into the kind cluster.
 	KIND=$(KIND) bash -c 'source clab/common.sh && load_local_image_to_kind ${IMG} router'
+
+.PHONY: load-on-multi-cluster
+load-on-multi-cluster: ## Load the docker image into both kind clusters.
+	KIND=$(KIND) bash -c 'export KIND_CLUSTER_NAME=pe-kind-a && source clab/common.sh && load_local_image_to_kind ${IMG} router-a'
+	KIND=$(KIND) bash -c 'export KIND_CLUSTER_NAME=pe-kind-b && source clab/common.sh && load_local_image_to_kind ${IMG} router-b'
 
 .PHONY: lint
 lint:
@@ -318,7 +358,7 @@ bumpversion:
 	hack/release/bumpversion.sh
 
 .PHONY: cutrelease
-cutrelease: bumpversion generate-all-in-one helm-docs api-docs
+cutrelease: bumpversion generate-all-in-one helm-docs api-docs bundle
 	hack/release/release.sh
 
 .PHONY: build-validator
@@ -351,18 +391,29 @@ build-website: hugo-download api-docs ## Build the website with API documentatio
 publish-website: ## Build and publish the website to gh-pages branch
 	hack/publish-website.sh
 
-.PHONY: demo-metallb
+.PHONY: demo-metallb-evpn
 demo-metallb:
-	examples/metallb/prepare.sh
+	examples/evpn/metallb/prepare.sh
 	
-.PHONY: demo-l2
+.PHONY: demo-l2-evpn
 demo-l2:
-	examples/layers/prepare.sh
+	examples/evpn/layer2/prepare.sh
 
-.PHONY: demo-calico
+.PHONY: demo-calico-evpn
 demo-calico:
-	examples/calico/prepare.sh
+	examples/evpn/calico/prepare.sh
 
+.PHONY: demo-kubevirt-evpn
+demo-kubevirt:
+	examples/evpn/kubevirt/prepare.sh
+
+.PHONY: demo-metallb-passthrough
+demo-metallb-passthrough:
+	examples/passthrough/metallb/prepare.sh
+
+.PHONY: demo-multi-cluster
+demo-multi-cluster:
+	examples/evpn/multi-cluster/prepare.sh
 #
 # Operator specifics, copied from a Makefile generated on a clean folder by operator-sdk, then modified.
 #
@@ -403,8 +454,8 @@ ifeq ($(USE_IMAGE_DIGESTS), true)
 	BUNDLE_GEN_FLAGS += --use-image-digests
 endif
 
-OPERATOR_SDK_VERSION ?= v1.39.2
-OLM_VERSION ?= v0.18.3
+OPERATOR_SDK_VERSION ?= v1.41.1
+OLM_VERSION ?= v0.32.0
 
 .PHONY: operator-sdk
 OPERATOR_SDK ?= $(LOCALBIN)/operator-sdk
@@ -488,8 +539,13 @@ deploy-operator-with-olm: bundle kustomize kind clab-cluster load-on-kind deploy
 	VERSION=$(CSV_VERSION) NAMESPACE=$(NAMESPACE) hack/wait-for-csv.sh
 
 deploy-olm: operator-sdk ## deploys OLM on the cluster
-	$(OPERATOR_SDK) olm install --version $(OLM_VERSION) --timeout 5m0s
-	$(OPERATOR_SDK) olm status
+	@if $(KUBECTL) get deployment -n olm olm-operator > /dev/null 2>&1; then \
+		echo "OLM already installed, skipping installation."; \
+	else \
+		echo "OLM not found, installing..."; \
+		$(OPERATOR_SDK) olm install --version $(OLM_VERSION) --timeout 5m0s; \
+		$(OPERATOR_SDK) olm status; \
+	fi
 
 build-and-push-bundle-images: bundle-build bundle-push catalog-build catalog-push
 

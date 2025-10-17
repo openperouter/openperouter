@@ -2,7 +2,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.19.0
   creationTimestamp: null
   name: l2vnis.openpe.openperouter.github.io
 spec:
@@ -73,6 +73,9 @@ spec:
                   bridge the veths are enslaved to will be configured with this IP address, effectively
                   acting as a distributed gateway for the VNI.
                 type: string
+                x-kubernetes-validations:
+                - message: L2GatewayIP can't be changed
+                  rule: self == oldSelf
               vni:
                 description: VNI is the VXLan VNI to be used
                 format: int32

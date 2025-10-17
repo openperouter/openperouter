@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
+	"github.com/openperouter/openperouter/internal/conversion"
 	v1 "k8s.io/api/admission/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -67,7 +68,7 @@ func (v *L3VNIValidator) Handle(ctx context.Context, req admission.Request) (res
 			return admission.Denied(err.Error())
 		}
 	case v1.Update:
-		if err := validateL3VNIUpdate(&l3vni); err != nil {
+		if err := validateL3VNIUpdate(&l3vni, &oldL3VNI); err != nil {
 			return admission.Denied(err.Error())
 		}
 	case v1.Delete:
@@ -85,11 +86,22 @@ func validateL3VNICreate(l3vni *v1alpha1.L3VNI) error {
 	return validateL3VNI(l3vni)
 }
 
-func validateL3VNIUpdate(l3vni *v1alpha1.L3VNI) error {
+func validateL3VNIUpdate(l3vni *v1alpha1.L3VNI, oldL3VNI *v1alpha1.L3VNI) error {
 	Logger.Debug("webhook l3vni", "action", "update", "name", l3vni.Name, "namespace", l3vni.Namespace)
 	defer Logger.Debug("webhook l3vni", "action", "end update", "name", l3vni.Name, "namespace", l3vni.Namespace)
 
+	if localCIDR(oldL3VNI.Spec.HostSession) != localCIDR(l3vni.Spec.HostSession) {
+		return errors.New("LocalCIDR cannot be changed")
+	}
+
 	return validateL3VNI(l3vni)
+}
+
+func localCIDR(hostSession *v1alpha1.HostSession) v1alpha1.LocalCIDRConfig {
+	if hostSession == nil {
+		return v1alpha1.LocalCIDRConfig{}
+	}
+	return hostSession.LocalCIDR
 }
 
 func validateL3VNIDelete(_ *v1alpha1.L3VNI) error {
@@ -117,6 +129,14 @@ func validateL3VNI(l3vni *v1alpha1.L3VNI) error {
 	}
 
 	if err := ValidateL3VNIs(toValidate); err != nil {
+		return fmt.Errorf("validation failed: %w", err)
+	}
+
+	l3passthroughs, err := getL3Passthroughs()
+	if err != nil {
+		return err
+	}
+	if err := conversion.ValidateHostSessions(toValidate, l3passthroughs.Items); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
 	}
 	return nil

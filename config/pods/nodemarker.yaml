@@ -43,6 +43,16 @@ spec:
           - containerPort: 9443
             name: webhook-server
             protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: webhook-server
+            scheme: HTTPS
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: webhook-server
+            scheme: HTTPS
         resources:
           limits:
             cpu: 500m
@@ -60,3 +70,10 @@ spec:
           secret:
             defaultMode: 420
             secretName: openpe-webhook-server-cert
+      tolerations:
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/master
+        operator: Exists
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/control-plane
+        operator: Exists

@@ -12,9 +12,10 @@ import (
 )
 
 type LeafConfig struct {
-	NeighborIP                    string
-	NetworkToAdvertise            string
-	RedistributeConnectedFromVRFs bool
+	NeighborIP                       string
+	NetworkToAdvertise               string
+	RedistributeConnectedFromVRFs    bool
+	RedistributeConnectedFromDefault bool
 }
 
 func main() {
@@ -24,6 +25,8 @@ func main() {
 		networkToAdvertise            = flag.String("network", "", "Network to advertise (CIDR format)")
 		redistributeConnectedFromVRFs = flag.Bool("redistribute-connected-from-vrfs", false,
 			"Add redistribute connected to VRF address families")
+		redistributeConnectedDefault = flag.Bool("redistribute-connected-from-default", false,
+			"Add redistribute connected to default address families")
 		outputDir    = flag.String("output", "", "Output directory (default: ../{leaf_name})")
 		templateFile = flag.String("template", "frr_template/frr.conf.template", "Template file path")
 	)
@@ -51,9 +54,10 @@ func main() {
 	}
 
 	config := LeafConfig{
-		NeighborIP:                    *neighborIP,
-		NetworkToAdvertise:            *networkToAdvertise,
-		RedistributeConnectedFromVRFs: *redistributeConnectedFromVRFs,
+		NeighborIP:                       *neighborIP,
+		NetworkToAdvertise:               *networkToAdvertise,
+		RedistributeConnectedFromVRFs:    *redistributeConnectedFromVRFs,
+		RedistributeConnectedFromDefault: *redistributeConnectedDefault,
 	}
 
 	if err := os.MkdirAll(*outputDir, 0755); err != nil {

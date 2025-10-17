@@ -20,16 +20,30 @@ var (
 )
 
 type Config struct {
-	Loglevel string
-	Hostname string
-	Underlay UnderlayConfig
-	VNIs     []L3VNIConfig
+	Loglevel    string
+	Hostname    string
+	Underlay    UnderlayConfig
+	VNIs        []L3VNIConfig
+	Passthrough *PassthroughConfig
+	BFDProfiles []BFDProfile
 }
 
 type UnderlayConfig struct {
 	MyASN     uint32
-	VTEP      string
+	RouterID  string
 	Neighbors []NeighborConfig
+	EVPN      *UnderlayEvpn
+}
+
+type UnderlayEvpn struct {
+	VTEP string
+}
+
+type PassthroughConfig struct {
+	LocalNeighborV4 *NeighborConfig
+	LocalNeighborV6 *NeighborConfig
+	ToAdvertiseIPv4 []string
+	ToAdvertiseIPv6 []string
 }
 
 type L3VNIConfig struct {
@@ -39,6 +53,7 @@ type L3VNIConfig struct {
 	LocalNeighbor   *NeighborConfig
 	VRF             string
 	VNI             int
+	RouterID        string
 }
 
 type BFDProfile struct {
@@ -61,6 +76,7 @@ type NeighborConfig struct {
 	KeepaliveTime *uint64
 	ConnectTime   *uint64
 	Password      string
+	BFDEnabled    bool
 	BFDProfile    string
 	EBGPMultiHop  bool
 	IPFamily      ipfamily.Family
@@ -130,6 +146,7 @@ func generateAndReloadConfigFile(ctx context.Context, config *Config, updater Co
 		slog.Error("failed to generate config from template", "error", err, "cause", "template", "config", config)
 		return err
 	}
+	slog.DebugContext(ctx, "frr generaetd configuration", "config", configString)
 	err = updater(ctx, configString)
 	if err != nil {
 		slog.Error("failed to write frr config", "error", err, "cause", "updater", "config", config)

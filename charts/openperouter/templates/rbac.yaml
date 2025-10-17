@@ -110,7 +110,7 @@ rules:
 - apiGroups:
   - openpe.openperouter.github.io
   resources:
-  - l2vnis
+  - l3passthroughs
   verbs:
   - create
   - delete
@@ -122,13 +122,13 @@ rules:
 - apiGroups:
   - openpe.openperouter.github.io
   resources:
-  - l2vnis/finalizers
+  - l3passthroughs/finalizers
   verbs:
   - update
 - apiGroups:
   - openpe.openperouter.github.io
   resources:
-  - l2vnis/status
+  - l3passthroughs/status
   verbs:
   - get
   - patch

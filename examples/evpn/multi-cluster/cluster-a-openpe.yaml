@@ -1,0 +1,36 @@
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: L3VNI
+metadata:
+  name: red
+  namespace: openperouter-system
+spec:
+  vni: 100
+  vrf: red
+---
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: L2VNI
+metadata:
+  name: layer2
+  namespace: openperouter-system
+spec:
+  hostmaster:
+    autocreate: true
+    type: bridge
+  l2gatewayip: 192.170.1.1/24
+  vni: 110
+  vrf: red
+---
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: Underlay
+metadata:
+  name: underlay
+  namespace: openperouter-system
+spec:
+  asn: 64514
+  evpn:
+    vtepcidr:  100.65.0.0/24
+  nics:
+    - toswitch
+  neighbors:
+    - asn: 64512
+      address: 192.168.11.2

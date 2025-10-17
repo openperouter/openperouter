@@ -50,6 +50,7 @@ type L2VNISpec struct {
 	// bridge the veths are enslaved to will be configured with this IP address, effectively
 	// acting as a distributed gateway for the VNI.
 	// +optional
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="L2GatewayIP can't be changed"
 	L2GatewayIP string `json:"l2gatewayip,omitempty"`
 }
 

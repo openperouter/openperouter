@@ -43,6 +43,7 @@ Kubernetes: `>= 1.19.0-0`
 | openperouter.nodemarker.resources | object | `{}` |  |
 | openperouter.podAnnotations | object | `{}` |  |
 | openperouter.priorityClassName | string | `""` |  |
+| openperouter.runOnMaster | bool | `true` | If true, all pods (router, controller, and nodemarker) are allowed to run on master/control-plane nodes |
 | openperouter.runtimeClassName | string | `""` |  |
 | openperouter.serviceAccounts.annotations | object | `{}` |  |
 | openperouter.serviceAccounts.controller.name | string | `""` |  |

@@ -21,7 +21,7 @@ layer 2 domain.
 
 ## Overview
 
-Where we normally have a node interacting with the TOR switch, which is configured to map the VLans to a given VPN tunnel,
+Where we normally have a node interacting with the ToR (Top of Rack) switch, which is configured to map the VLans to a given VPN tunnel,
 OpenPERouter runs directly in the node, exposing one Veth interface per VPN tunnel.
 
 After OpenPERouter is configured and deployed on a cluster, it can interact with any BGP-speaking component of the cluster, including FRR-K8s, MetalLB, Calico and others. The abstraction is as if a physical Provider Edge Router was moved inside the node.

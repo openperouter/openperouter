@@ -1,0 +1,50 @@
+apiVersion: metallb.io/v1beta2
+kind: BGPPeer
+metadata:
+  name: pepassthrough
+  namespace: metallb-system
+spec:
+  myASN: 64515
+  peerASN: 64514
+  peerAddress: 192.169.10.1
+---
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: address-pool
+  namespace: metallb-system
+spec:
+  addresses:
+    - 172.30.0.10-172.30.0.15
+  autoAssign: true
+  serviceAllocation:
+    namespaces:
+      - passthrough
+---
+apiVersion: metallb.io/v1beta1
+kind: BGPAdvertisement
+metadata:
+  name: bgp-advertisement-passthrough
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+    - address-pool
+  peers:
+    - pepassthrough
+---
+apiVersion: frrk8s.metallb.io/v1beta1
+kind: FRRConfiguration
+metadata:
+  name: receive-all 
+  namespace: frr-k8s-system
+spec:
+  bgp:
+    routers:
+    - asn: 64515
+      neighbors:
+      - address: 192.169.10.1
+        asn: 64514
+        toReceive:
+          allowed:
+            mode: all
+

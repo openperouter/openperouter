@@ -41,8 +41,10 @@ var _ = Describe("L3 VNI configuration", func() {
 				VNI:       100,
 				VXLanPort: 4789,
 			},
-			VethHostIPv4: "192.168.9.1/32",
-			VethNSIPv4:   "192.168.9.0/32",
+			HostVeth: &Veth{
+				HostIPv4: "192.168.9.1/32",
+				NSIPv4:   "192.168.9.0/32",
+			},
 		}
 
 		err := SetupL3VNI(context.Background(), params)
@@ -67,8 +69,10 @@ var _ = Describe("L3 VNI configuration", func() {
 				VNI:       100,
 				VXLanPort: 4789,
 			},
-			VethHostIPv6: "2001:db8::1/128",
-			VethNSIPv6:   "2001:db8::/128",
+			HostVeth: &Veth{
+				HostIPv6: "2001:db8::1/128",
+				NSIPv6:   "2001:db8::/128",
+			},
 		}
 
 		err := SetupL3VNI(context.Background(), params)
@@ -93,10 +97,12 @@ var _ = Describe("L3 VNI configuration", func() {
 				VNI:       100,
 				VXLanPort: 4789,
 			},
-			VethHostIPv4: "192.168.9.1/32",
-			VethNSIPv4:   "192.168.9.0/32",
-			VethHostIPv6: "2001:db8::1/128",
-			VethNSIPv6:   "2001:db8::/128",
+			HostVeth: &Veth{
+				HostIPv4: "192.168.9.1/32",
+				NSIPv4:   "192.168.9.0/32",
+				HostIPv6: "2001:db8::1/128",
+				NSIPv6:   "2001:db8::/128",
+			},
 		}
 
 		err := SetupL3VNI(context.Background(), params)
@@ -112,22 +118,6 @@ var _ = Describe("L3 VNI configuration", func() {
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 	})
 
-	It("should fail when no IPs are provided", func() {
-		params := L3VNIParams{
-			VNIParams: VNIParams{
-				VRF:       "testred",
-				TargetNS:  testNSName,
-				VTEPIP:    "192.170.0.9/32",
-				VNI:       100,
-				VXLanPort: 4789,
-			},
-		}
-
-		err := SetupL3VNI(context.Background(), params)
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("failed to assign IPs to host veth"))
-	})
-
 	It("should work with multiple L3VNIs + cleanup", func() {
 		params := []L3VNIParams{
 			{
@@ -138,8 +128,10 @@ var _ = Describe("L3 VNI configuration", func() {
 					VNI:       100,
 					VXLanPort: 4789,
 				},
-				VethHostIPv4: "192.168.9.1/32",
-				VethNSIPv4:   "192.168.9.0/32",
+				HostVeth: &Veth{
+					HostIPv4: "192.168.9.1/32",
+					NSIPv4:   "192.168.9.0/32",
+				},
 			},
 			{
 				VNIParams: VNIParams{
@@ -149,8 +141,10 @@ var _ = Describe("L3 VNI configuration", func() {
 					VNI:       101,
 					VXLanPort: 4789,
 				},
-				VethHostIPv4: "192.168.9.2/32",
-				VethNSIPv4:   "192.168.9.3/32",
+				HostVeth: &Veth{
+					HostIPv4: "192.168.9.2/32",
+					NSIPv4:   "192.168.9.3/32",
+				},
 			},
 		}
 		for _, p := range params {
@@ -183,9 +177,9 @@ var _ = Describe("L3 VNI configuration", func() {
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 
 		By("checking non needed L3VNIs are removed")
-		hostSide, _ := vethNamesFromVNI(toDelete.VNI)
+		vethNames := vethNamesFromVNI(toDelete.VNI)
 		Eventually(func(g Gomega) {
-			checkLinkdeleted(g, hostSide)
+			checkLinkdeleted(g, vethNames.HostSide)
 			_ = inNamespace(testNS, func() error {
 				validateVNIIsNotConfigured(g, toDelete.VNIParams)
 				return nil
@@ -202,8 +196,10 @@ var _ = Describe("L3 VNI configuration", func() {
 				VNI:       100,
 				VXLanPort: 4789,
 			},
-			VethHostIPv4: "192.168.9.1/32",
-			VethNSIPv4:   "192.168.9.0/32",
+			HostVeth: &Veth{
+				HostIPv4: "192.168.9.1/32",
+				NSIPv4:   "192.168.9.0/32",
+			},
 		}
 
 		err := SetupL3VNI(context.Background(), params)
@@ -221,6 +217,34 @@ var _ = Describe("L3 VNI configuration", func() {
 			})
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 
+	})
+
+	It("should configure VXLAN and VRF when HostVeth is nil", func() {
+		params := L3VNIParams{
+			VNIParams: VNIParams{
+				VRF:       "testred",
+				TargetNS:  testNSName,
+				VTEPIP:    "192.170.0.9/32",
+				VNI:       100,
+				VXLanPort: 4789,
+			},
+			HostVeth: nil,
+		}
+
+		err := SetupL3VNI(context.Background(), params)
+		Expect(err).NotTo(HaveOccurred())
+
+		Eventually(func(g Gomega) {
+			_ = inNamespace(testNS, func() error {
+				validateVNI(g, params.VNIParams)
+				return nil
+			})
+		}, 30*time.Second, 1*time.Second).Should(Succeed())
+
+		// Verify that no host veth was created
+		vethNames := vethNamesFromVNI(params.VNI)
+		_, err = netlink.LinkByName(vethNames.HostSide)
+		Expect(errors.As(err, &netlink.LinkNotFoundError{})).To(BeTrue(), "host veth should not exist when HostVeth is nil")
 	})
 })
 
@@ -270,9 +294,9 @@ var _ = Describe("L2 VNI configuration", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		By("checking the VNI is removed")
-		hostSide, _ := vethNamesFromVNI(params.VNI)
+		vethNames := vethNamesFromVNI(params.VNI)
 		Eventually(func(g Gomega) {
-			checkLinkdeleted(g, hostSide)
+			checkLinkdeleted(g, vethNames.HostSide)
 			checkLinkExists(g, bridgeName)
 
 			_ = inNamespace(testNS, func() error {
@@ -343,9 +367,9 @@ var _ = Describe("L2 VNI configuration", func() {
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 
 		By("checking non needed L2VNIs are removed")
-		hostSide, _ := vethNamesFromVNI(toDelete.VNI)
+		vethNames := vethNamesFromVNI(toDelete.VNI)
 		Eventually(func(g Gomega) {
-			checkLinkdeleted(g, hostSide)
+			checkLinkdeleted(g, vethNames.HostSide)
 			checkHostBridgedeleted(g, toDelete)
 			_ = inNamespace(testNS, func() error {
 				validateVNIIsNotConfigured(g, toDelete.VNIParams)
@@ -387,31 +411,31 @@ var _ = Describe("L2 VNI configuration", func() {
 })
 
 func validateL3HostLeg(g Gomega, params L3VNIParams) {
-	hostSide, _ := vethNamesFromVNI(params.VNI)
-	hostLegLink, err := netlink.LinkByName(hostSide)
-	g.Expect(err).NotTo(HaveOccurred(), "host side not found", hostSide)
+	vethNames := vethNamesFromVNI(params.VNI)
+	hostLegLink, err := netlink.LinkByName(vethNames.HostSide)
+	g.Expect(err).NotTo(HaveOccurred(), "host side not found", vethNames.HostSide)
 
 	g.Expect(hostLegLink.Attrs().OperState).To(BeEquivalentTo(netlink.OperUp))
 
 	// Check IPv4 address if provided
-	if params.VethHostIPv4 != "" {
-		hasIP, err := interfaceHasIP(hostLegLink, params.VethHostIPv4)
+	if params.HostVeth.HostIPv4 != "" {
+		hasIP, err := interfaceHasIP(hostLegLink, params.HostVeth.HostIPv4)
 		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(hasIP).To(BeTrue(), "host leg does not have IPv4", params.VethHostIPv4)
+		g.Expect(hasIP).To(BeTrue(), "host leg does not have IPv4", params.HostVeth.HostIPv4)
 	}
 
 	// Check IPv6 address if provided
-	if params.VethHostIPv6 != "" {
-		hasIP, err := interfaceHasIP(hostLegLink, params.VethHostIPv6)
+	if params.HostVeth.HostIPv6 != "" {
+		hasIP, err := interfaceHasIP(hostLegLink, params.HostVeth.HostIPv6)
 		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(hasIP).To(BeTrue(), "host leg does not have IPv6", params.VethHostIPv6)
+		g.Expect(hasIP).To(BeTrue(), "host leg does not have IPv6", params.HostVeth.HostIPv6)
 	}
 }
 
 func validateL2HostLeg(g Gomega, params L2VNIParams) {
-	hostSide, _ := vethNamesFromVNI(params.VNI)
-	hostLegLink, err := netlink.LinkByName(hostSide)
-	g.Expect(err).NotTo(HaveOccurred(), "host side not found", hostSide)
+	vethNames := vethNamesFromVNI(params.VNI)
+	hostLegLink, err := netlink.LinkByName(vethNames.HostSide)
+	g.Expect(err).NotTo(HaveOccurred(), "host side not found", vethNames.HostSide)
 
 	g.Expect(hostLegLink.Attrs().OperState).To(BeEquivalentTo(netlink.OperUp))
 	hasNoIP, err := interfaceHasNoIP(hostLegLink, netlink.FAMILY_V4)
@@ -434,9 +458,14 @@ func validateL2HostLeg(g Gomega, params L2VNIParams) {
 func validateL3VNI(g Gomega, params L3VNIParams) {
 	validateVNI(g, params.VNIParams)
 
-	_, peSide := vethNamesFromVNI(params.VNI)
-	peLegLink, err := netlink.LinkByName(peSide)
-	g.Expect(err).NotTo(HaveOccurred(), "veth pe side not found", peSide)
+	if params.HostVeth == nil {
+		return
+	}
+	validateVethForVNI(g, params.VNIParams)
+
+	vethNames := vethNamesFromVNI(params.VNI)
+	peLegLink, err := netlink.LinkByName(vethNames.NamespaceSide)
+	g.Expect(err).NotTo(HaveOccurred(), "veth pe side not found", vethNames.NamespaceSide)
 	g.Expect(peLegLink.Attrs().OperState).To(BeEquivalentTo(netlink.OperUp))
 
 	vrfLink, err := netlink.LinkByName(params.VRF)
@@ -444,26 +473,27 @@ func validateL3VNI(g Gomega, params L3VNIParams) {
 	g.Expect(peLegLink.Attrs().MasterIndex).To(Equal(vrfLink.Attrs().Index))
 
 	// Check IPv4 address if provided
-	if params.VethNSIPv4 != "" {
-		hasIP, err := interfaceHasIP(peLegLink, params.VethNSIPv4)
+	if params.HostVeth.NSIPv4 != "" {
+		hasIP, err := interfaceHasIP(peLegLink, params.HostVeth.NSIPv4)
 		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(hasIP).To(BeTrue(), "PE leg does not have IPv4", params.VethNSIPv4)
+		g.Expect(hasIP).To(BeTrue(), "PE leg does not have IPv4", params.HostVeth.NSIPv4)
 	}
 
 	// Check IPv6 address if provided
-	if params.VethNSIPv6 != "" {
-		hasIP, err := interfaceHasIP(peLegLink, params.VethNSIPv6)
+	if params.HostVeth.NSIPv6 != "" {
+		hasIP, err := interfaceHasIP(peLegLink, params.HostVeth.NSIPv6)
 		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(hasIP).To(BeTrue(), "PE leg does not have IPv6", params.VethNSIPv6)
+		g.Expect(hasIP).To(BeTrue(), "PE leg does not have IPv6", params.HostVeth.NSIPv6)
 	}
 }
 
 func validateL2VNI(g Gomega, params L2VNIParams) {
 	validateVNI(g, params.VNIParams)
+	validateVethForVNI(g, params.VNIParams)
 
-	_, peSide := vethNamesFromVNI(params.VNI)
-	peLegLink, err := netlink.LinkByName(peSide)
-	g.Expect(err).NotTo(HaveOccurred(), "veth pe side not found", peSide)
+	vethNames := vethNamesFromVNI(params.VNI)
+	peLegLink, err := netlink.LinkByName(vethNames.NamespaceSide)
+	g.Expect(err).NotTo(HaveOccurred(), "veth pe side not found", vethNames.NamespaceSide)
 	g.Expect(peLegLink.Attrs().OperState).To(BeEquivalentTo(netlink.OperUp))
 
 	hasNoIP, err := interfaceHasNoIP(peLegLink, netlink.FAMILY_V4)
@@ -519,10 +549,12 @@ func validateVNI(g Gomega, params VNIParams) {
 
 	err = checkVXLanConfigured(vxlan, bridge.Index, loopback.Attrs().Index, params)
 	g.Expect(err).NotTo(HaveOccurred())
+}
 
-	_, peSide := vethNamesFromVNI(params.VNI)
-	peLegLink, err := netlink.LinkByName(peSide)
-	g.Expect(err).NotTo(HaveOccurred(), "veth pe side not found", peSide)
+func validateVethForVNI(g Gomega, params VNIParams) {
+	vethNames := vethNamesFromVNI(params.VNI)
+	peLegLink, err := netlink.LinkByName(vethNames.NamespaceSide)
+	g.Expect(err).NotTo(HaveOccurred(), "veth pe side not found", vethNames.NamespaceSide)
 	g.Expect(peLegLink.Attrs().OperState).To(BeEquivalentTo(netlink.OperUp))
 }
 
@@ -550,8 +582,8 @@ func validateVNIIsNotConfigured(g Gomega, params VNIParams) {
 	checkLinkdeleted(g, params.VRF)
 	checkLinkdeleted(g, bridgeName(params.VNI))
 
-	_, peSide := vethNamesFromVNI(params.VNI)
-	checkLinkdeleted(g, peSide)
+	vethNames := vethNamesFromVNI(params.VNI)
+	checkLinkdeleted(g, vethNames.NamespaceSide)
 }
 
 func checkAddrGenModeNone(l netlink.Link) bool {

@@ -17,6 +17,8 @@
   {{- end }}
 {{- if ne .neighbor.BFDProfile ""}}
   neighbor {{.neighbor.Addr}} bfd profile {{.neighbor.BFDProfile}}
+{{- else if .neighbor.BFDEnabled}}
+  neighbor {{.neighbor.Addr}} bfd
 {{- end }}
 {{- if  mustDisableConnectedCheck .neighbor.IPFamily .routerASN .neighbor.ASN .neighbor.EBGPMultiHop }}
   neighbor {{.neighbor.Addr}} disable-connected-check

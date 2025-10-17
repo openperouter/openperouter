@@ -34,6 +34,15 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ template "openperouter.controller.serviceAccountName" . }}
+      tolerations:
+      {{- if .Values.openperouter.runOnMaster }}
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/master
+        operator: Exists
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/control-plane
+        operator: Exists
+      {{- end }}
       containers:
       - args:
         {{- with .Values.openperouter.logLevel }}
@@ -56,6 +65,16 @@ spec:
           - containerPort: 9443
             name: webhook-server
             protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: webhook-server
+            scheme: HTTPS
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: webhook-server
+            scheme: HTTPS
         volumeMounts:
         - name: cert
           mountPath: /tmp/k8s-webhook-server/serving-certs

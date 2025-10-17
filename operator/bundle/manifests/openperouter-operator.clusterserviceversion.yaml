@@ -4,8 +4,8 @@ metadata:
   annotations:
     alm-examples: '[]'
     capabilities: Basic Install
-    createdAt: "2025-07-16T07:47:04Z"
-    operators.operatorframework.io/builder: operator-sdk-v1.39.2
+    createdAt: "2025-10-16T12:50:12Z"
+    operators.operatorframework.io/builder: operator-sdk-v1.41.1
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
   name: openperouter-operator.v0.0.0
   namespace: placeholder
@@ -15,6 +15,9 @@ spec:
     owned:
     - kind: L2VNI
       name: l2vnis.openpe.openperouter.github.io
+      version: v1alpha1
+    - kind: L3Passthrough
+      name: l3passthroughs.openpe.openperouter.github.io
       version: v1alpha1
     - description: |-
         L3VNI represents a VXLan VNI to receive EVPN type 5 routes
@@ -80,57 +83,8 @@ spec:
           - openpe.openperouter.github.io
           resources:
           - l2vnis
-          verbs:
-          - create
-          - delete
-          - get
-          - list
-          - patch
-          - update
-          - watch
-        - apiGroups:
-          - openpe.openperouter.github.io
-          resources:
-          - l2vnis/finalizers
-          verbs:
-          - update
-        - apiGroups:
-          - openpe.openperouter.github.io
-          resources:
-          - l2vnis/status
-          verbs:
-          - get
-          - patch
-          - update
-        - apiGroups:
-          - openpe.openperouter.github.io
-          resources:
+          - l3passthroughs
           - l3vnis
-          verbs:
-          - create
-          - delete
-          - get
-          - list
-          - patch
-          - update
-          - watch
-        - apiGroups:
-          - openpe.openperouter.github.io
-          resources:
-          - l3vnis/finalizers
-          verbs:
-          - update
-        - apiGroups:
-          - openpe.openperouter.github.io
-          resources:
-          - l3vnis/status
-          verbs:
-          - get
-          - patch
-          - update
-        - apiGroups:
-          - openpe.openperouter.github.io
-          resources:
           - underlays
           verbs:
           - create
@@ -143,12 +97,18 @@ spec:
         - apiGroups:
           - openpe.openperouter.github.io
           resources:
+          - l2vnis/finalizers
+          - l3passthroughs/finalizers
+          - l3vnis/finalizers
           - underlays/finalizers
           verbs:
           - update
         - apiGroups:
           - openpe.openperouter.github.io
           resources:
+          - l2vnis/status
+          - l3passthroughs/status
+          - l3vnis/status
           - underlays/status
           verbs:
           - get
@@ -254,7 +214,7 @@ spec:
               annotations:
                 kubectl.kubernetes.io/default-container: webhook
               labels:
-                app: webhook
+                component: webhook
                 control-plane: webhook
             spec:
               containers:
@@ -391,6 +351,26 @@ spec:
     targetPort: 9443
     type: ValidatingAdmissionWebhook
     webhookPath: /validate-openperouter-io-v1alpha1-l2vni
+  - admissionReviewVersions:
+    - v1
+    containerPort: 443
+    deploymentName: webhook
+    failurePolicy: Fail
+    generateName: l3passthroughvalidationwebhook.openperouter.io
+    rules:
+    - apiGroups:
+      - openpe.openperouter.github.io
+      apiVersions:
+      - v1alpha1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - l3passthroughs
+    sideEffects: None
+    targetPort: 9443
+    type: ValidatingAdmissionWebhook
+    webhookPath: /validate-openperouter-io-v1alpha1-l3passthrough
   - admissionReviewVersions:
     - v1
     containerPort: 443

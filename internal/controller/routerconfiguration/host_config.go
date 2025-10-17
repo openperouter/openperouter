@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/conversion"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/openperouter/openperouter/internal/pods"
@@ -17,10 +16,7 @@ import (
 type interfacesConfiguration struct {
 	RouterPodUUID string `json:"routerPodUUID,omitempty"`
 	PodRuntime    pods.Runtime
-	NodeIndex     int                 `json:"nodeIndex,omitempty"`
-	Underlays     []v1alpha1.Underlay `json:"underlays,omitempty"`
-	L3Vnis        []v1alpha1.L3VNI    `json:"vnis,omitempty"`
-	L2Vnis        []v1alpha1.L2VNI    `json:"l2Vnis,omitempty"`
+	conversion.ApiConfigData
 }
 
 type UnderlayRemovedError struct{}
@@ -49,7 +45,14 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 
 	slog.InfoContext(ctx, "configure interface start", "namespace", targetNS)
 	defer slog.InfoContext(ctx, "configure interface end", "namespace", targetNS)
-	underlayParams, l3vnis, l2vnis, err := conversion.APItoHostConfig(config.NodeIndex, targetNS, config.Underlays, config.L3Vnis, config.L2Vnis)
+	apiConfig := conversion.ApiConfigData{
+		NodeIndex:     config.NodeIndex,
+		Underlays:     config.Underlays,
+		L3VNIs:        config.L3VNIs,
+		L2VNIs:        config.L2VNIs,
+		L3Passthrough: config.L3Passthrough,
+	}
+	hostConfig, err := conversion.APItoHostConfig(config.NodeIndex, targetNS, apiConfig)
 	if err != nil {
 		return fmt.Errorf("failed to convert config to host configuration: %w", err)
 	}
@@ -60,32 +63,46 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 	}
 
 	slog.InfoContext(ctx, "setting up underlay")
-	if err := hostnetwork.SetupUnderlay(ctx, underlayParams); err != nil {
+	if err := hostnetwork.SetupUnderlay(ctx, hostConfig.Underlay); err != nil {
 		return fmt.Errorf("failed to setup underlay: %w", err)
 	}
-	for _, vni := range l3vnis {
+	for _, vni := range hostConfig.L3VNIs {
 		slog.InfoContext(ctx, "setting up VNI", "vni", vni.VRF)
 		if err := hostnetwork.SetupL3VNI(ctx, vni); err != nil {
 			return fmt.Errorf("failed to setup vni: %w", err)
 		}
 	}
 
-	for _, vni := range l2vnis {
+	for _, vni := range hostConfig.L2VNIs {
 		slog.InfoContext(ctx, "setting up L2VNI", "vni", vni.VNI)
 		if err := hostnetwork.SetupL2VNI(ctx, vni); err != nil {
 			return fmt.Errorf("failed to setup vni: %w", err)
 		}
 	}
+
+	slog.InfoContext(ctx, "setting up passthrough")
+	if hostConfig.L3Passthrough != nil {
+		if err := hostnetwork.SetupPassthrough(ctx, *hostConfig.L3Passthrough); err != nil {
+			return fmt.Errorf("failed to setup passthrough: %w", err)
+		}
+	}
+
 	slog.InfoContext(ctx, "removing deleted vnis")
-	toCheck := make([]hostnetwork.VNIParams, 0, len(l3vnis)+len(l2vnis))
-	for _, vni := range l3vnis {
+	toCheck := make([]hostnetwork.VNIParams, 0, len(hostConfig.L3VNIs)+len(hostConfig.L2VNIs))
+	for _, vni := range hostConfig.L3VNIs {
 		toCheck = append(toCheck, vni.VNIParams)
 	}
-	for _, l2vni := range l2vnis {
+	for _, l2vni := range hostConfig.L2VNIs {
 		toCheck = append(toCheck, l2vni.VNIParams)
 	}
 	if err := hostnetwork.RemoveNonConfiguredVNIs(targetNS, toCheck); err != nil {
 		return fmt.Errorf("failed to remove deleted vnis: %w", err)
+	}
+
+	if len(apiConfig.L3Passthrough) == 0 {
+		if err := hostnetwork.RemovePassthrough(targetNS); err != nil {
+			return fmt.Errorf("failed to remove passthrough: %w", err)
+		}
 	}
 	return nil
 }

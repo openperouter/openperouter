@@ -5,6 +5,7 @@
     neighbor {{.Addr}} activate
     neighbor {{.Addr}} allowas-in
   exit-address-family
+
 {{- end -}}
 {{if activateNeighborFor "ipv6" .IPFamily }}
   address-family ipv6 unicast

@@ -13,6 +13,8 @@ openperouter:
   # -- Controller log level. Must be one of: `debug`, `info`, `warn` or `error`.
   logLevel: info
   tolerateMaster: true
+  # -- If true, all pods (router, controller, and nodemarker) are allowed to run on master/control-plane nodes
+  runOnMaster: true
   # -- Multus network annotation to be added to router pods
   multusNetworkAnnotation: ""
   image:

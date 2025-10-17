@@ -13,33 +13,13 @@ import (
 var interfaceNameRegexp *regexp.Regexp
 
 func init() {
-	interfaceNameRegexp = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_-]*$`)
+	interfaceNameRegexp = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9._-]*$`)
 }
 
 func ValidateL3VNIs(l3Vnis []v1alpha1.L3VNI) error {
 	vnis := vnisFromL3VNIs(l3Vnis)
 	if err := validateVNIs(vnis); err != nil {
 		return err
-	}
-
-	existingCIDRsV4 := map[string]string{}
-	existingCIDRsV6 := map[string]string{}
-	for _, vni := range l3Vnis {
-		if vni.Spec.LocalCIDR.IPv4 != "" {
-			if err := validateCIDRForVNI(vni, vni.Spec.LocalCIDR.IPv4, existingCIDRsV4); err != nil {
-				return err
-			}
-			existingCIDRsV4[vni.Spec.LocalCIDR.IPv4] = vni.Name
-		}
-		if vni.Spec.LocalCIDR.IPv6 != "" {
-			if err := validateCIDRForVNI(vni, vni.Spec.LocalCIDR.IPv6, existingCIDRsV6); err != nil {
-				return err
-			}
-			existingCIDRsV6[vni.Spec.LocalCIDR.IPv6] = vni.Name
-		}
-		if vni.Spec.LocalCIDR.IPv4 == "" && vni.Spec.LocalCIDR.IPv6 == "" {
-			return fmt.Errorf("at least one local CIDR (IPv4 or IPv6) must be provided for vni %s", vni.Name)
-		}
 	}
 	return nil
 }
@@ -84,7 +64,7 @@ func vnisFromL3VNIs(l3vnis []v1alpha1.L3VNI) []vni {
 		result[i] = vni{
 			name:    l3vni.Name,
 			vni:     l3vni.Spec.VNI,
-			vrfName: l3vni.VRFName(),
+			vrfName: l3vni.Spec.VRF,
 		}
 	}
 	return result
@@ -166,23 +146,6 @@ func isValidCIDR(cidr string) error {
 	}
 	if _, _, err := net.ParseCIDR(cidr); err != nil {
 		return fmt.Errorf("invalid CIDR: %s - %w", cidr, err)
-	}
-	return nil
-}
-
-// validateCIDRForVNI validates a single CIDR and checks for overlaps with existing CIDRs
-func validateCIDRForVNI(vni v1alpha1.L3VNI, cidr string, existingCIDRs map[string]string) error {
-	if err := isValidCIDR(cidr); err != nil {
-		return fmt.Errorf("invalid local CIDR %s for vni %s: %w", cidr, vni.Name, err)
-	}
-	for existing, existingVNI := range existingCIDRs {
-		overlap, err := cidrsOverlap(existing, cidr)
-		if err != nil {
-			return err
-		}
-		if overlap {
-			return fmt.Errorf("overlapping cidrs %s - %s for vnis %s - %s", existing, cidr, existingVNI, vni.Name)
-		}
 	}
 	return nil
 }

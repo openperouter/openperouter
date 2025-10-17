@@ -12,7 +12,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.19.0
   name: l2vnis.openpe.openperouter.github.io
 spec:
   group: openpe.openperouter.github.io
@@ -82,6 +82,9 @@ spec:
                   bridge the veths are enslaved to will be configured with this IP address, effectively
                   acting as a distributed gateway for the VNI.
                 type: string
+                x-kubernetes-validations:
+                - message: L2GatewayIP can't be changed
+                  rule: self == oldSelf
               vni:
                 description: VNI is the VXLan VNI to be used
                 format: int32
@@ -116,7 +119,105 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.19.0
+  name: l3passthroughs.openpe.openperouter.github.io
+spec:
+  group: openpe.openperouter.github.io
+  names:
+    kind: L3Passthrough
+    listKind: L3PassthroughList
+    plural: l3passthroughs
+    singular: l3passthrough
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          L3Passthrough represents a session with the host which is not encapsulated and
+          takes part to the bgp fabric.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              hostsession:
+                description: HostSession is the configuration for the host session.
+                properties:
+                  asn:
+                    description: |-
+                      ASN is the local AS number to use to establish a BGP session with
+                      the default namespace.
+                    format: int32
+                    maximum: 4294967295
+                    minimum: 1
+                    type: integer
+                  hostasn:
+                    description: |-
+                      ASN is the expected AS number for a BGP speaking component running in
+                      the default network namespace. If not set, the ASN field is going to be used.
+                    format: int32
+                    maximum: 4294967295
+                    minimum: 0
+                    type: integer
+                  localcidr:
+                    description: |-
+                      LocalCIDR is the CIDR configuration for the veth pair
+                      to connect with the default namespace. The interface under
+                      the PERouter side is going to use the first IP of the cidr on all the nodes.
+                      At least one of IPv4 or IPv6 must be provided.
+                    properties:
+                      ipv4:
+                        description: |-
+                          IPv4 is the IPv4 CIDR to be used for the veth pair
+                          to connect with the default namespace. The interface under
+                          the PERouter side is going to use the first IP of the cidr on all the nodes.
+                        type: string
+                      ipv6:
+                        description: |-
+                          IPv6 is the IPv6 CIDR to be used for the veth pair
+                          to connect with the default namespace. The interface under
+                          the PERouter side is going to use the first IP of the cidr on all the nodes.
+                        type: string
+                    type: object
+                    x-kubernetes-validations:
+                    - message: LocalCIDR can't be changed
+                      rule: self == oldSelf
+                required:
+                - asn
+                - hostasn
+                - localcidr
+                type: object
+            type: object
+          status:
+            description: L3PassthroughStatus defines the observed state of L3Passthrough.
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
   name: l3vnis.openpe.openperouter.github.io
 spec:
   group: openpe.openperouter.github.io
@@ -154,41 +255,52 @@ spec:
           spec:
             description: L3VNISpec defines the desired state of VNI.
             properties:
-              asn:
-                description: |-
-                  ASN is the local AS number to use to establish a BGP session with
-                  the default namespace.
-                format: int32
-                maximum: 4294967295
-                minimum: 1
-                type: integer
-              hostasn:
-                description: |-
-                  ASN is the expected AS number for a BGP speaking component running in
-                  the default network namespace. If not set, the ASN field is going to be used.
-                format: int32
-                maximum: 4294967295
-                minimum: 0
-                type: integer
-              localcidr:
-                description: |-
-                  LocalCIDR is the CIDR configuration for the veth pair
-                  to connect with the default namespace. The interface under
-                  the PERouter side is going to use the first IP of the cidr on all the nodes.
-                  At least one of IPv4 or IPv6 must be provided.
+              hostsession:
+                description: HostSession is the configuration for the host session.
                 properties:
-                  ipv4:
+                  asn:
                     description: |-
-                      IPv4 is the IPv4 CIDR to be used for the veth pair
+                      ASN is the local AS number to use to establish a BGP session with
+                      the default namespace.
+                    format: int32
+                    maximum: 4294967295
+                    minimum: 1
+                    type: integer
+                  hostasn:
+                    description: |-
+                      ASN is the expected AS number for a BGP speaking component running in
+                      the default network namespace. If not set, the ASN field is going to be used.
+                    format: int32
+                    maximum: 4294967295
+                    minimum: 0
+                    type: integer
+                  localcidr:
+                    description: |-
+                      LocalCIDR is the CIDR configuration for the veth pair
                       to connect with the default namespace. The interface under
                       the PERouter side is going to use the first IP of the cidr on all the nodes.
-                    type: string
-                  ipv6:
-                    description: |-
-                      IPv6 is the IPv6 CIDR to be used for the veth pair
-                      to connect with the default namespace. The interface under
-                      the PERouter side is going to use the first IP of the cidr on all the nodes.
-                    type: string
+                      At least one of IPv4 or IPv6 must be provided.
+                    properties:
+                      ipv4:
+                        description: |-
+                          IPv4 is the IPv4 CIDR to be used for the veth pair
+                          to connect with the default namespace. The interface under
+                          the PERouter side is going to use the first IP of the cidr on all the nodes.
+                        type: string
+                      ipv6:
+                        description: |-
+                          IPv6 is the IPv6 CIDR to be used for the veth pair
+                          to connect with the default namespace. The interface under
+                          the PERouter side is going to use the first IP of the cidr on all the nodes.
+                        type: string
+                    type: object
+                    x-kubernetes-validations:
+                    - message: LocalCIDR can't be changed
+                      rule: self == oldSelf
+                required:
+                - asn
+                - hostasn
+                - localcidr
                 type: object
               vni:
                 description: VNI is the VXLan VNI to be used
@@ -197,9 +309,8 @@ spec:
                 minimum: 0
                 type: integer
               vrf:
-                description: |-
-                  VRF is the name of the linux VRF to be used inside the PERouter namespace.
-                  The field is optional, if not set it the name of the VNI instance will be used.
+                description: VRF is the name of the linux VRF to be used inside the
+                  PERouter namespace.
                 maxLength: 15
                 pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
                 type: string
@@ -209,8 +320,11 @@ spec:
                 format: int32
                 type: integer
             required:
-            - localcidr
+            - vrf
             type: object
+            x-kubernetes-validations:
+            - message: hostASN must be different from asn
+              rule: '!has(self.hostsession) || self.hostsession.hostasn != self.hostsession.asn'
           status:
             description: L3VNIStatus defines the observed state of L3VNI.
             type: object
@@ -224,7 +338,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.19.0
   name: underlays.openpe.openperouter.github.io
 spec:
   group: openpe.openperouter.github.io
@@ -267,6 +381,15 @@ spec:
                 maximum: 4294967295
                 minimum: 1
                 type: integer
+              evpn:
+                properties:
+                  vtepcidr:
+                    description: VTEPCIDR is CIDR to be used to assign IPs to the
+                      local VTEP on each node.
+                    type: string
+                required:
+                - vtepcidr
+                type: object
               neighbors:
                 description: Neighbors is the list of external neighbors to peer with.
                 items:
@@ -284,6 +407,66 @@ spec:
                       maximum: 4294967295
                       minimum: 1
                       type: integer
+                    bfd:
+                      description: BFD defines the BFD configuration for the BGP session.
+                      properties:
+                        detectMultiplier:
+                          description: |-
+                            Configures the detection multiplier to determine
+                            packet loss. The remote transmission interval will be multiplied
+                            by this value to determine the connection loss detection timer.
+                          format: int32
+                          maximum: 255
+                          minimum: 2
+                          type: integer
+                        echoInterval:
+                          description: |-
+                            Configures the minimal echo receive transmission
+                            interval that this system is capable of handling in milliseconds.
+                            Defaults to 50ms
+                          format: int32
+                          maximum: 60000
+                          minimum: 10
+                          type: integer
+                        echoMode:
+                          description: |-
+                            Enables or disables the echo transmission mode.
+                            This mode is disabled by default, and not supported on multi
+                            hops setups.
+                          type: boolean
+                        minimumTtl:
+                          description: |-
+                            For multi hop sessions only: configure the minimum
+                            expected TTL for an incoming BFD control packet.
+                          format: int32
+                          maximum: 254
+                          minimum: 1
+                          type: integer
+                        passiveMode:
+                          description: |-
+                            Mark session as passive: a passive session will not
+                            attempt to start the connection and will wait for control packets
+                            from peer before it begins replying.
+                          type: boolean
+                        receiveInterval:
+                          description: |-
+                            The minimum interval that this system is capable of
+                            receiving control packets in milliseconds.
+                            Defaults to 300ms.
+                          format: int32
+                          maximum: 60000
+                          minimum: 10
+                          type: integer
+                        transmitInterval:
+                          description: |-
+                            The minimum transmission interval (less jitter)
+                            that this system wants to use to send BFD control packets in
+                            milliseconds. Defaults to 300ms
+                          format: int32
+                          maximum: 60000
+                          minimum: 10
+                          type: integer
+                      type: object
                     connectTime:
                       description: Requested BGP connect time, controls how long BGP
                         waits between connection attempts to a neighbor.
@@ -303,6 +486,14 @@ spec:
                         HoldTime is the requested BGP hold time, per RFC4271.
                         Defaults to 180s.
                       type: string
+                    hostasn:
+                      description: |-
+                        ASN is the expected AS number for a BGP speaking component running in
+                        the default network namespace. If not set, the ASN field is going to be used.
+                      format: int32
+                      maximum: 4294967295
+                      minimum: 0
+                      type: integer
                     keepaliveTime:
                       description: |-
                         KeepaliveTime is the requested BGP keepalive time, per RFC4271.
@@ -331,6 +522,9 @@ spec:
                   required:
                   - address
                   type: object
+                  x-kubernetes-validations:
+                  - message: hostASN must be different from asn for eBGP
+                    rule: '!has(self.hostasn) || self.hostasn != self.asn'
                 minItems: 1
                 type: array
               nics:
@@ -338,12 +532,17 @@ spec:
                   Nics is the list of physical nics to move under the PERouter namespace to connect
                   to external routers. This field is optional when using Multus networks for TOR connectivity.
                 items:
+                  maxLength: 15
+                  pattern: ^[a-zA-Z][a-zA-Z0-9._-]*$
                   type: string
                 type: array
-              vtepcidr:
-                description: VTEPCIDR is CIDR to be used to assign IPs to the local
-                  VTEP on each node.
+              routeridcidr:
+                default: 10.0.0.0/24
+                description: RouterIDCIDR is the ipv4 cidr to be used to assign a
+                  different routerID on each node.
                 type: string
+            required:
+            - asn
             type: object
           status:
             description: UnderlayStatus defines the observed state of Underlay.
@@ -442,57 +641,8 @@ rules:
   - openpe.openperouter.github.io
   resources:
   - l2vnis
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - openpe.openperouter.github.io
-  resources:
-  - l2vnis/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - openpe.openperouter.github.io
-  resources:
-  - l2vnis/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - openpe.openperouter.github.io
-  resources:
+  - l3passthroughs
   - l3vnis
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - openpe.openperouter.github.io
-  resources:
-  - l3vnis/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - openpe.openperouter.github.io
-  resources:
-  - l3vnis/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - openpe.openperouter.github.io
-  resources:
   - underlays
   verbs:
   - create
@@ -505,12 +655,18 @@ rules:
 - apiGroups:
   - openpe.openperouter.github.io
   resources:
+  - l2vnis/finalizers
+  - l3passthroughs/finalizers
+  - l3vnis/finalizers
   - underlays/finalizers
   verbs:
   - update
 - apiGroups:
   - openpe.openperouter.github.io
   resources:
+  - l2vnis/status
+  - l3passthroughs/status
+  - l3vnis/status
   - underlays/status
   verbs:
   - get
@@ -706,11 +862,21 @@ spec:
               fieldPath: metadata.namespace
         image: quay.io/openperouter/router:v0.0.3
         imagePullPolicy: IfNotPresent
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: webhook-server
+            scheme: HTTPS
         name: nodemarker
         ports:
         - containerPort: 9443
           name: webhook-server
           protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: webhook-server
+            scheme: HTTPS
         resources:
           limits:
             cpu: 500m
@@ -723,6 +889,13 @@ spec:
           name: cert
           readOnly: true
       serviceAccountName: controller
+      tolerations:
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/master
+        operator: Exists
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/control-plane
+        operator: Exists
       volumes:
       - name: cert
         secret:
@@ -965,6 +1138,26 @@ webhooks:
     - UPDATE
     resources:
     - l2vnis
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: openpe-webhook-service
+      namespace: openperouter-system
+      path: /validate-openperouter-io-v1alpha1-l3passthrough
+  failurePolicy: Fail
+  name: l3passthroughvalidationwebhook.openperouter.io
+  rules:
+  - apiGroups:
+    - openpe.openperouter.github.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - l3passthroughs
   sideEffects: None
 - admissionReviewVersions:
   - v1

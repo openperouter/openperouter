@@ -198,12 +198,14 @@ spec:
           {{- toYaml . | nindent 12 }}
         {{- end }}
       tolerations:
+      {{- if .Values.openperouter.runOnMaster }}
       - effect: NoSchedule
-        key: node-role.kubernetes.io/10.2.1
+        key: node-role.kubernetes.io/master
         operator: Exists
       - effect: NoSchedule
         key: node-role.kubernetes.io/control-plane
         operator: Exists
+      {{- end }}
       {{- with .Values.openperouter.tolerations }}
         {{- toYaml . | nindent 6 }}
       {{- end }}

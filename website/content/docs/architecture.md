@@ -8,7 +8,7 @@ lastmod: "2025-06-15T15:03:22+02:00"
 toc: true
 ---
 
-This document describes the internal architecture of OpenPERouter and how its components work together to provide EVPN functionality on Kubernetes nodes.
+This document describes the internal architecture of OpenPERouter and how its components work together to provide VPN functionality on Kubernetes nodes.
 
 ## System Overview
 
@@ -22,9 +22,9 @@ OpenPERouter consists of three main components:
 
 ### Router Pod
 
-The router pod is the core networking component that provides the actual EVPN functionality.
+The router pod is the core networking component that provides the actual VPN functionality.
 
-The router pod runs as a Daemonset to allow EVPN connectivity to every node.
+The router pod runs as a Daemonset to allow VPN connectivity to every node.
 
 ![](/images/openperouterpod.svg)
 
@@ -33,21 +33,21 @@ The router pod runs as a Daemonset to allow EVPN connectivity to every node.
 The router pod runs [FRR](https://frrouting.org/) in a dedicated network namespace and is responsible for:
 
 - **BGP Sessions**: Establishing and maintaining BGP sessions with external routers and host components
-- **EVPN Route Processing**: Handling EVPN Type 5 route advertisement and reception
-- **VXLAN Encapsulation**: Managing VXLAN tunnel encapsulation and decapsulation
-- **Route Translation**: Converting between BGP routes and EVPN routes
+- **VPN Route Processing**: Handling handling L3VPNs route advertisement and reception (for example, EVPN type 5 routes)
+- **VPN Encapsulation**: Managing tunnel encapsulation and decapsulation of the VPN of choice
+- **Route Translation**: Converting between BGP routes and L3 VPN routes
 - **Network Namespace Management**: Operating in an isolated network namespace for security and isolation
 
 #### Container Architecture
 
 The router pod consists of two containers:
 
-- **FRR Container**: Runs the Free Range Routing daemon and handles all BGP and EVPN operations
+- **FRR Container**: Runs the Free Range Routing daemon and handles all BGP and VPN operations
 - **Reloader Sidecar**: Provides an HTTP endpoint that accepts FRR configuration updates and triggers configuration reloads
 
 The reloader sidecar container enables dynamic configuration updates without requiring pod restarts, allowing the controller to push new FRR configurations as network conditions change.
 
-#### Network Configuration Requirements
+#### EVPN Network Configuration Requirements
 
 To enable EVPN functionality, FRR requires specific network interfaces and configurations:
 
@@ -79,11 +79,14 @@ The controller pod handles all the complex network configuration logic and is re
 
 - **Resource Reconciliation**: Watches and reconciles OpenPERouter Custom Resources (CRs)
 - **Network Interface Management**: Moves host interfaces into the router's network namespace
-- **VNI Setup**: Creates and configures network interfaces for each VNI
+- **Veth and BGP session Setup**: Creates and configures the veth interfaces for each VPN session
+- **EVPNVNI Setup**: Creates and configures network interfaces for each VNI
 - **Configuration Generation**: Generates and applies FRR configuration
 - **State Management**: Maintains the desired state of network configurations
 
 #### Reconciliation Process
+
+##### EVPN
 
 The controller follows a specific sequence when reconciling VNI configurations:
 
@@ -105,7 +108,8 @@ The node labeler is a critical component that ensures consistent resource alloca
 The node labeler provides persistent node indexing and is responsible for:
 
 - **Node Index Assignment**: Assigns a unique, persistent index to each node in the cluster
-- **Resource Allocation**: Enables deterministic allocation of VTEP IPs and local CIDRs
+- **Resource Allocation**: Enables deterministic allocation of any IP that requires to be different on each node
+(for example EVPN VTEP IPs and local CIDRs)
 - **State Persistence**: Ensures resource allocations remain consistent across pod restarts and cluster reboots
 
 #### Index Persistence

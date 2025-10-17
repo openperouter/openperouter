@@ -115,6 +115,12 @@ make e2etest
 
 This will run the e2e test suite against your local environment.
 
+## Changes in the config
+
+The master is `config`. Changes in crds are reflected in the operator via `make bundle`, in the 
+all in one manifests via `make generate-all-in-one`, in the helm chart via `make generate`.
+Finally, running `make bundle` updates the operator manifests.
+
 ## Commit Messages
 
 The following are our commit message guidelines:

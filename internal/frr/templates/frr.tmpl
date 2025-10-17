@@ -25,6 +25,14 @@ vrf {{ .VRF }}
 exit-vrf
 {{- end }}
 
+{{- if .BFDProfiles }}
+bfd
+{{- range .BFDProfiles }}
+{{- template "bfdprofile" dict "profile" . }}
+{{- end }}
+exit
+{{- end }}
+
 route-map allowall permit 1
 
 {{- if .Underlay.MyASN }}
@@ -32,6 +40,7 @@ router bgp {{ .Underlay.MyASN }}
   no bgp ebgp-requires-policy
   no bgp network import-check
   no bgp default ipv4-unicast
+  bgp router-id {{ .Underlay.RouterID }}
 
 {{- range $n := .Underlay.Neighbors }}
 {{- template "neighborsession" dict "neighbor" $n "routerASN" $.Underlay.MyASN -}}
@@ -39,46 +48,27 @@ router bgp {{ .Underlay.MyASN }}
 {{- range $n := .Underlay.Neighbors }}
 {{- template "neighborenableipfamily" . -}}
 {{end }}
-  address-family ipv4 unicast
-    network {{ .Underlay.VTEP }}
-  exit-address-family
 
-  address-family l2vpn evpn
-{{- range .Underlay.Neighbors }}
-    neighbor {{ .Addr }} activate
-    neighbor {{ .Addr }} allowas-in 
+{{- if .Passthrough }}
+{{- template "localpassthrough" . -}}
 {{- end }}
-    advertise-all-vni
-    advertise-svi-ip
-  exit-address-family
+
+{{- if .Underlay.EVPN }}
+{{- template "underlayevpn" . -}}
+{{- end }}
+
 {{- end }}
 
 {{- range .VNIs }}
-
 router bgp {{ .ASN }} vrf {{ .VRF }}
   no bgp ebgp-requires-policy
   no bgp network import-check
   no bgp default ipv4-unicast
+  bgp router-id {{ .RouterID }}
 
-  neighbor {{ .LocalNeighbor.Addr }} remote-as {{ .LocalNeighbor.ASN }}
-
-  address-family ipv4 unicast
-  {{- range .ToAdvertiseIPv4 }}
-    network {{ . }}
+  {{- if .LocalNeighbor }}
+  {{ template "localneighbor" . }}
   {{- end }}
-    neighbor {{ .LocalNeighbor.Addr }} activate
-    neighbor {{ .LocalNeighbor.Addr }} route-map allowall in
-    neighbor {{ .LocalNeighbor.Addr }} route-map allowall out
-  exit-address-family
-
-  address-family ipv6 unicast
-  {{- range .ToAdvertiseIPv6 }}
-    network {{ . }}
-  {{- end }}
-    neighbor {{ .LocalNeighbor.Addr }} activate
-    neighbor {{ .LocalNeighbor.Addr }} route-map allowall in
-    neighbor {{ .LocalNeighbor.Addr }} route-map allowall out
-  exit-address-family
 
   address-family l2vpn evpn
     advertise ipv4 unicast

@@ -235,6 +235,85 @@ func validateObject(testcase, name string, obj *unstructured.Unstructured) error
 	return nil
 }*/
 
+func TestParseChartWithMasterTolerations(t *testing.T) {
+	g := NewGomegaWithT(t)
+	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace)
+	g.Expect(err).ToNot(HaveOccurred())
+
+	tests := []struct {
+		name              string
+		runOnMaster       bool
+		expectTolerations bool
+	}{
+		{
+			name:              "runOnMaster enabled",
+			runOnMaster:       true,
+			expectTolerations: true,
+		},
+		{
+			name:              "runOnMaster disabled",
+			runOnMaster:       false,
+			expectTolerations: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := NewGomegaWithT(t)
+			openperouter := &operatorapi.OpenPERouter{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "openperouter",
+					Namespace: openperouterTestNamespace,
+				},
+				Spec: operatorapi.OpenPERouterSpec{
+					LogLevel:    "info",
+					RunOnMaster: tt.runOnMaster,
+				},
+			}
+
+			objs, err := chart.Objects(defaultEnvConfig, openperouter)
+			g.Expect(err).ToNot(HaveOccurred())
+
+			for _, obj := range objs {
+				objKind := obj.GetKind()
+				if objKind == daemonSetKind && (obj.GetName() == controllerDaemonSetName || obj.GetName() == routerDaemonSetName) {
+					ds := appsv1.DaemonSet{}
+					err = runtime.DefaultUnstructuredConverter.FromUnstructured(obj.UnstructuredContent(), &ds)
+					g.Expect(err).ToNot(HaveOccurred())
+
+					hasMasterToleration := false
+					for _, tol := range ds.Spec.Template.Spec.Tolerations {
+						if (tol.Key == "node-role.kubernetes.io/master" || tol.Key == "node-role.kubernetes.io/control-plane") &&
+							tol.Effect == v1.TaintEffectNoSchedule {
+							hasMasterToleration = true
+							break
+						}
+					}
+					g.Expect(hasMasterToleration).To(Equal(tt.expectTolerations),
+						fmt.Sprintf("DaemonSet %s should have master toleration=%v", obj.GetName(), tt.expectTolerations))
+				}
+
+				if objKind == deploymentKind && obj.GetName() == nodemarkerDeploymentName {
+					deployment := appsv1.Deployment{}
+					err = runtime.DefaultUnstructuredConverter.FromUnstructured(obj.UnstructuredContent(), &deployment)
+					g.Expect(err).ToNot(HaveOccurred())
+
+					hasMasterToleration := false
+					for _, tol := range deployment.Spec.Template.Spec.Tolerations {
+						if (tol.Key == "node-role.kubernetes.io/master" || tol.Key == "node-role.kubernetes.io/control-plane") &&
+							tol.Effect == v1.TaintEffectNoSchedule {
+							hasMasterToleration = true
+							break
+						}
+					}
+					g.Expect(hasMasterToleration).To(Equal(tt.expectTolerations),
+						fmt.Sprintf("Deployment %s should have master toleration=%v", obj.GetName(), tt.expectTolerations))
+				}
+			}
+		})
+	}
+}
+
 func validateLogLevel(level string, pod v1.PodTemplateSpec) error {
 	foundOne := false
 	for _, c := range pod.Spec.Containers {

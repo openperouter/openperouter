@@ -1,0 +1,24 @@
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: L3Passthrough
+metadata:
+  name: passthrough
+  namespace: openperouter-system
+spec:
+  hostsession:
+    asn: 64514
+    hostasn: 64515
+    localcidr:
+      ipv4: 192.169.10.0/24
+---
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: Underlay
+metadata:
+  name: underlay
+  namespace: openperouter-system
+spec:
+  asn: 64514
+  nics:
+    - toswitch
+  neighbors:
+    - asn: 64512
+      address: 192.168.11.2

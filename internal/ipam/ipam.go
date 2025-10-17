@@ -72,6 +72,21 @@ func VTEPIp(pool string, index int) (net.IPNet, error) {
 	return res, nil
 }
 
+// RouterID returns the IP to be used for the router ID on the ith node.
+func RouterID(pool string, index int) (string, error) {
+	_, cidr, err := net.ParseCIDR(pool)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse pool %s: %w", pool, err)
+	}
+
+	ip, err := gocidr.Host(cidr, index+1)
+	if err != nil {
+		return "", fmt.Errorf("failed to get router id for node %d from cidr %s: %w", index, cidr, err)
+	}
+
+	return ip.String(), nil
+}
+
 // cidrElem returns the ith elem of len size for the given cidr.
 func cidrElem(pool *net.IPNet, index int) (*net.IPNet, error) {
 	ip, err := gocidr.Host(pool, index)

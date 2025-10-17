@@ -19,9 +19,16 @@ func ValidateUnderlays(underlays []v1alpha1.Underlay) error {
 			return fmt.Errorf("underlay %s must have a valid ASN", underlay.Name)
 		}
 
-		_, _, err := net.ParseCIDR(underlay.Spec.VTEPCIDR)
-		if err != nil {
-			return fmt.Errorf("invalid vtep CIDR format for underlay %s: %s - %w", underlay.Name, underlay.Spec.VTEPCIDR, err)
+		for _, neighbor := range underlay.Spec.Neighbors {
+			if underlay.Spec.ASN == neighbor.ASN {
+				return fmt.Errorf("underlay %s local ASN %d must be different from remote ASN %d", underlay.Name, underlay.Spec.ASN, neighbor.ASN)
+			}
+		}
+
+		if underlay.Spec.EVPN != nil {
+			if _, _, err := net.ParseCIDR(underlay.Spec.EVPN.VTEPCIDR); err != nil {
+				return fmt.Errorf("invalid vtep CIDR format for underlay %s: %s - %w", underlay.Name, underlay.Spec.EVPN.VTEPCIDR, err)
+			}
 		}
 
 		if len(underlay.Spec.Nics) > 1 {

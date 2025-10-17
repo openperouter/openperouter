@@ -1,0 +1,37 @@
+log file /etc/frr/frr.log 
+log timestamp precision 3
+hostname hostname
+ip nht resolve-via-default
+ipv6 nht resolve-via-default
+
+route-map allowall permit 1
+router bgp 64512
+  no bgp ebgp-requires-policy
+  no bgp network import-check
+  no bgp default ipv4-unicast
+  bgp router-id 10.0.0.1
+  neighbor 192.168.1.2 remote-as 64512
+  
+  
+  
+
+  address-family ipv4 unicast
+    neighbor 192.168.1.2 activate
+    neighbor 192.168.1.2 allowas-in
+  exit-address-family
+
+  neighbor 192.168.1.3 remote-as 64512
+
+  address-family ipv4 unicast
+  
+    network 192.169.20.0/24
+    network 192.169.21.0/24
+    neighbor 192.168.1.3 activate
+    neighbor 192.168.1.3 route-map allowall in
+    neighbor 192.168.1.3 route-map allowall out
+  exit-address-family
+
+  address-family ipv4 unicast
+    neighbor 192.168.1.3 activate
+    neighbor 192.168.1.3 allowas-in
+  exit-address-family

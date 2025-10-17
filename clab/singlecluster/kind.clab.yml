@@ -1,0 +1,94 @@
+name: kind
+topology:
+  nodes:
+    leafA:
+      kind: linux
+      image: quay.io/frrouting/frr:10.2.1
+      binds:
+        - ../frrcommon/daemons:/etc/frr/daemons
+        - ../leafA/frr.conf:/etc/frr/frr.conf
+        - ../frrcommon/vtysh.conf:/etc/frr/vtysh.conf
+        - ../leafA/setup.sh:/setup.sh
+    leafB:
+      kind: linux
+      image: quay.io/frrouting/frr:10.2.1
+      binds:
+        - ../frrcommon/daemons:/etc/frr/daemons
+        - ../leafB/frr.conf:/etc/frr/frr.conf
+        - ../frrcommon/vtysh.conf:/etc/frr/vtysh.conf
+        - ../leafB/setup.sh:/setup.sh
+    leafkind:
+      kind: linux
+      image: quay.io/frrouting/frr:10.2.1
+      binds:
+        - ../frrcommon/daemons:/etc/frr/daemons
+        - ../frrcommon/vtysh.conf:/etc/frr/vtysh.conf
+        - leafkind/frr.conf:/etc/frr/frr.conf
+    spine:
+      kind: linux
+      image: quay.io/frrouting/frr:10.2.1
+      binds:
+        - ../frrcommon/daemons:/etc/frr/daemons
+        - ../frrcommon/vtysh.conf:/etc/frr/vtysh.conf
+        - spine/frr.conf:/etc/frr/frr.conf
+
+    hostA_default:
+      kind: linux
+      image: "k8s.gcr.io/e2e-test-images/agnhost:2.40"
+      binds:
+        - ../hostA_default/setup.sh:/setup.sh
+      cmd: netexec --http-port=8090    
+
+    hostA_red:
+      kind: linux
+      image: "k8s.gcr.io/e2e-test-images/agnhost:2.40"
+      binds:
+        - ../hostA_red/setup.sh:/setup.sh
+      cmd: netexec --http-port=8090
+
+    hostB_red:
+      kind: linux
+      image: "k8s.gcr.io/e2e-test-images/agnhost:2.40"
+      binds:
+        - ../hostB_red/setup.sh:/setup.sh
+      cmd: netexec --http-port=8090
+
+    hostA_blue:
+      kind: linux
+      image: "k8s.gcr.io/e2e-test-images/agnhost:2.40"
+      binds:
+        - ../hostA_blue/setup.sh:/setup.sh
+      cmd: netexec --http-port=8090
+
+    hostB_blue:
+      kind: linux
+      image: "k8s.gcr.io/e2e-test-images/agnhost:2.40"
+      binds:
+        - ../hostB_blue/setup.sh:/setup.sh
+      cmd: netexec --http-port=8090
+
+    leafkind-switch:
+      kind: bridge
+
+    pe-kind:
+      kind: k8s-kind
+      startup-config: ../pe-kind-configuration-registry.yaml
+
+    pe-kind-control-plane:
+      kind: ext-container
+
+    pe-kind-worker:
+      kind: ext-container
+
+  links:
+    - endpoints: ["leafA:eth1", "spine:eth1"]
+    - endpoints: ["leafB:eth1", "spine:eth2"]
+    - endpoints: ["leafkind:eth1", "spine:eth3"]
+    - endpoints: ["leafA:ethred", "hostA_red:eth1"]
+    - endpoints: ["leafA:ethdefault", "hostA_default:eth1"]
+    - endpoints: ["leafA:ethblue", "hostA_blue:eth1"]
+    - endpoints: ["leafB:ethred", "hostB_red:eth1"]
+    - endpoints: ["leafB:ethblue", "hostB_blue:eth1"]
+    - endpoints: ["leafkind:toswitch", "leafkind-switch:leaf2"]
+    - endpoints: ["pe-kind-control-plane:toswitch", "leafkind-switch:kindctrlpl"]
+    - endpoints: ["pe-kind-worker:toswitch", "leafkind-switch:kindworker"]

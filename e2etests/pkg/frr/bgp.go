@@ -110,29 +110,20 @@ type FRRRoute struct {
 	} `json:"nexthops"`
 }
 
+// BFDPeer represents a BFD peer.
 type BFDPeer struct {
-	Multihop                  bool   `json:"multihop"`
 	Peer                      string `json:"peer"`
-	Local                     string `json:"local"`
-	Vrf                       string `json:"vrf"`
-	Interface                 string `json:"interface"`
-	ID                        int    `json:"id"`
-	RemoteID                  int64  `json:"remote-id"`
-	PassiveMode               bool   `json:"passive-mode"`
 	Status                    string `json:"status"`
-	Uptime                    int    `json:"uptime"`
-	Diagnostic                string `json:"diagnostic"`
-	RemoteDiagnostic          string `json:"remote-diagnostic"`
-	ReceiveInterval           int    `json:"receive-interval"`
-	TransmitInterval          int    `json:"transmit-interval"`
-	EchoReceiveInterval       int    `json:"echo-receive-interval"`
-	EchoTransmitInterval      int    `json:"echo-transmit-interval"`
-	DetectMultiplier          int    `json:"detect-multiplier"`
 	RemoteReceiveInterval     int    `json:"remote-receive-interval"`
 	RemoteTransmitInterval    int    `json:"remote-transmit-interval"`
+	RemoteDetectMultiplier    int    `json:"remote-detect-multiplier"`
 	RemoteEchoInterval        int    `json:"remote-echo-interval"`
 	RemoteEchoReceiveInterval int    `json:"remote-echo-receive-interval"`
-	RemoteDetectMultiplier    int    `json:"remote-detect-multiplier"`
+}
+
+// BFDPeers represents a map of BFD peers.
+type BFDPeers struct {
+	Peers map[string]BFDPeer `json:"peers"`
 }
 
 type NoNeighborError struct{}
@@ -192,4 +183,28 @@ func parseRoutes(vtyshRes string) (BGPRoutes, error) {
 		}
 	}
 	return res, nil
+}
+
+// GetBFDPeers returns the BFD peers.
+func GetBFDPeers(exec executor.Executor) (BFDPeers, error) {
+	output, err := exec.Exec("vtysh", "-c", "show bfd peers json")
+	if err != nil {
+		return BFDPeers{}, err
+	}
+
+	var bfdPeerSlice []BFDPeer
+	err = json.Unmarshal([]byte(output), &bfdPeerSlice)
+	if err != nil {
+		return BFDPeers{}, fmt.Errorf("failed to unmarshal bfd peers: %w, raw: %s", err, output)
+	}
+
+	bfdPeers := BFDPeers{
+		Peers: make(map[string]BFDPeer),
+	}
+	for i := range bfdPeerSlice {
+		peer := bfdPeerSlice[i]
+		bfdPeers.Peers[peer.Peer] = peer
+	}
+
+	return bfdPeers, nil
 }

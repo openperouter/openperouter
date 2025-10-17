@@ -117,7 +117,7 @@ When running on OpenShift, additional Security Context Constraints (SCCs) must b
 
 ```bash
 oc adm policy add-scc-to-user privileged -n openperouter-system -z controller
-oc adm policy add-scc-to-user privileged -n openperouter-system -z router
+oc adm policy add-scc-to-user privileged -n openperouter-system -z perouter
 ```
 
 ## Verification
@@ -138,8 +138,8 @@ You should see pods for:
 
 After successful installation:
 
-1. Configure the [underlay connection]({{< ref "configuration#underlay-configuration" >}}) to your external router
-2. Set up [VNI configurations]({{< ref "configuration#l3-vni-configuration" >}}) for your EVPN overlays
+1. Configure the [underlay connection]({{< ref "configuration/#underlay-configuration" >}}) to your external router
+2. Set up [VNI configurations]({{< ref "configuration/#l3-vni-configuration" >}}) for your EVPN overlays
 3. Test the integration with [BGP-speaking components]({{< ref "examples" >}})
 
 For troubleshooting, check the [contributing guide]({{< ref "contributing" >}}) for development environment setup and debugging information.
