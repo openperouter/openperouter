@@ -31,6 +31,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
@@ -66,6 +67,7 @@ func init() {
 func main() {
 	args := struct {
 		metricsAddr                   string
+		probeAddr                     string
 		namespace                     string
 		logLevel                      string
 		webhookMode                   string
@@ -77,6 +79,7 @@ func main() {
 	}{}
 
 	flag.StringVar(&args.metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
+	flag.StringVar(&args.probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.StringVar(&args.namespace, "namespace", "",
 		"The namespace to watch for resources. Leave empty for all namespaces.")
 	flag.StringVar(&args.logLevel, "loglevel", "info", "Set the logging level (debug, info, warn, error).")
@@ -119,8 +122,9 @@ func main() {
 	setupLog.Info("arguments", "args", fmt.Sprintf("%+v", args))
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme: scheme,
-		Cache:  cache.Options{},
+		Scheme:                 scheme,
+		HealthProbeBindAddress: args.probeAddr,
+		Cache:                  cache.Options{},
 		WebhookServer: webhook.NewServer(
 			webhook.Options{
 				Port: args.webhookPort,
@@ -172,6 +176,15 @@ func main() {
 			webhooks.SetupHealth(mgr)
 		}
 	}()
+
+	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
+		setupLog.Error(err, "unable to set up health check")
+		os.Exit(1)
+	}
+	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
+		setupLog.Error(err, "unable to set up ready check")
+		os.Exit(1)
+	}
 
 	setupLog.Info("starting manager")
 
