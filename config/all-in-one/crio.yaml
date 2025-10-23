@@ -986,7 +986,27 @@ spec:
               fieldPath: metadata.namespace
         image: quay.io/openperouter/router:main
         imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /healthz
+            port: 9081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+          timeoutSeconds: 1
         name: controller
+        ports:
+        - containerPort: 9081
+          name: health
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /readyz
+            port: 9081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 1
         resources:
           limits:
             cpu: 500m
@@ -1112,7 +1132,27 @@ spec:
         - /etc/frr_reloader/reloader
         image: quay.io/frrouting/frr:10.2.1
         imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /healthz
+            port: 9080
+          initialDelaySeconds: 15
+          periodSeconds: 20
+          timeoutSeconds: 1
         name: reloader
+        ports:
+        - containerPort: 9080
+          name: health
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /readyz
+            port: 9080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 1
         volumeMounts:
         - mountPath: /etc/frr
           name: frrconfig

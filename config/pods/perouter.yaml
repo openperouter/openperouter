@@ -69,6 +69,26 @@ spec:
             mountPath: /etc/perouter
           - name: reloader
             mountPath: /etc/frr_reloader
+        ports:
+        - containerPort: 9080
+          name: health
+          protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 9080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 1
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 9080
+          initialDelaySeconds: 15
+          periodSeconds: 20
+          timeoutSeconds: 1
+          failureThreshold: 3
       tolerations:
       - effect: NoSchedule
         key: node-role.kubernetes.io/master
