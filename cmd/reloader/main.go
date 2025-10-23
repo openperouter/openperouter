@@ -54,6 +54,8 @@ func main() {
 
 	slog.Info("listening", "address", args.bindAddress)
 	http.HandleFunc("/", reloadHandler(args.frrConfigPath))
+	http.HandleFunc("/healthz", health())
+	http.HandleFunc("/readyz", health())
 	server := &http.Server{
 		Addr:              args.bindAddress,
 		ReadHeaderTimeout: 3 * time.Second,
@@ -75,6 +77,20 @@ func reloadHandler(frrConfigPath string) func(w http.ResponseWriter, req *http.R
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
+		}
+	}
+}
+
+func health() func(w http.ResponseWriter, req *http.Request) {
+	return func(w http.ResponseWriter, req *http.Request) {
+		if req.Method != http.MethodGet {
+			http.Error(w, "invalid method", http.StatusMethodNotAllowed)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, err := w.Write([]byte("ok"))
+		if err != nil {
+			http.Error(w, "invalid method", http.StatusInternalServerError)
 		}
 	}
 }
