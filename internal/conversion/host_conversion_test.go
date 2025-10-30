@@ -6,7 +6,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/aws/smithy-go/ptr"
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
 )
@@ -217,7 +216,7 @@ func TestAPItoHostConfig(t *testing.T) {
 			},
 			vnis: []v1alpha1.L3VNI{},
 			l2vnis: []v1alpha1.L2VNI{
-				{Spec: v1alpha1.L2VNISpec{VNI: 201, VXLanPort: 4789, HostMaster: &v1alpha1.HostMaster{Name: "br0"}, L2GatewayIP: "192.168.100.1/24"}},
+				{Spec: v1alpha1.L2VNISpec{VNI: 201, VXLanPort: 4789, HostMaster: &v1alpha1.HostMaster{Name: "br0"}, L2GatewayIP: []string{"192.168.100.1/24"}}},
 			},
 			l3Passthrough: []v1alpha1.L3Passthrough{},
 			wantUnderlay: hostnetwork.UnderlayParams{
@@ -236,7 +235,7 @@ func TestAPItoHostConfig(t *testing.T) {
 						VNI:       201,
 						VXLanPort: 4789,
 					},
-					L2GatewayIP: ptr.String("192.168.100.1/24"),
+					L2GatewayIP: []string{"192.168.100.1/24"},
 					HostMaster:  &hostnetwork.HostMaster{Name: "br0"},
 				},
 			},

@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aws/smithy-go/ptr"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/vishvananda/netlink"
@@ -271,7 +270,7 @@ var _ = Describe("L2 VNI configuration", func() {
 				VNI:       100,
 				VXLanPort: 4789,
 			},
-			L2GatewayIP: ptr.String("192.168.1.0/24"),
+			L2GatewayIP: []string{"192.168.1.0/24"},
 			HostMaster: &HostMaster{
 				Name: bridgeName,
 			},
@@ -317,7 +316,7 @@ var _ = Describe("L2 VNI configuration", func() {
 					VNI:       100,
 					VXLanPort: 4789,
 				},
-				L2GatewayIP: ptr.String("192.168.1.0/24"),
+				L2GatewayIP: []string{"192.168.1.0/24"},
 				HostMaster: &HostMaster{
 					Name: bridgeName,
 				},
@@ -330,7 +329,7 @@ var _ = Describe("L2 VNI configuration", func() {
 					VNI:       101,
 					VXLanPort: 4789,
 				},
-				L2GatewayIP: ptr.String("192.168.1.0/24"),
+				L2GatewayIP: []string{"192.168.1.0/24"},
 				HostMaster: &HostMaster{
 					AutoCreate: true,
 				},
@@ -387,7 +386,7 @@ var _ = Describe("L2 VNI configuration", func() {
 				VNI:       100,
 				VXLanPort: 4789,
 			},
-			L2GatewayIP: ptr.String("192.168.1.0/24"),
+			L2GatewayIP: []string{"192.168.1.0/24"},
 			HostMaster: &HostMaster{
 				Name: bridgeName,
 			},
@@ -503,10 +502,12 @@ func validateL2VNI(g Gomega, params L2VNIParams) {
 	bridgeLink, err := netlink.LinkByName(bridgeName(params.VNI))
 	g.Expect(err).NotTo(HaveOccurred(), "bridge not found", bridgeName(params.VNI))
 	g.Expect(peLegLink.Attrs().MasterIndex).To(Equal(bridgeLink.Attrs().Index))
-	if params.L2GatewayIP != nil {
-		hasIP, err := interfaceHasIP(bridgeLink, *params.L2GatewayIP)
-		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(hasIP).To(BeTrue(), "bridge does not have ip", params.L2GatewayIP)
+	if len(params.L2GatewayIP) > 0 {
+		for _, ip := range params.L2GatewayIP {
+			hasIP, err := interfaceHasIP(bridgeLink, ip)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(hasIP).To(BeTrue(), "bridge does not have ip", ip)
+		}
 
 		validateBridgeMacAddress(g, bridgeLink, params.VNI)
 		return

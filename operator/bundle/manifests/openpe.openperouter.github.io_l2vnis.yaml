@@ -69,11 +69,15 @@ spec:
                 type: object
               l2gatewayip:
                 description: |-
-                  L2GatewayIP is the IP address to be used for the L2 gateway. When this is set, the
-                  bridge the veths are enslaved to will be configured with this IP address, effectively
-                  acting as a distributed gateway for the VNI.
-                type: string
+                  L2GatewayIP is a list of IP addresses to be used for the L2 gateway. When this is set, the
+                  bridge the veths are enslaved to will be configured with these IP addresses, effectively
+                  acting as a distributed gateway for the VNI. This allows for dual-stack (IPv4 and IPv6) support.
+                items:
+                  type: string
+                type: array
                 x-kubernetes-validations:
+                - message: L2GatewayIP must contain only valid IPv4 or IPv6 addresses
+                  rule: self.all(ip, isIP(ip))
                 - message: L2GatewayIP can't be changed
                   rule: self == oldSelf
               vni:
