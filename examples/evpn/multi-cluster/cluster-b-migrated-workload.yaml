@@ -1,25 +1,10 @@
 ---
-apiVersion: "k8s.cni.cncf.io/v1"
-kind: NetworkAttachmentDefinition
-metadata:
-  name: evpn
-spec:
-  config: |
-    {
-      "cniVersion": "0.3.1",
-      "name": "evpn",
-      "type": "bridge",
-      "bridge": "br-hs-110",
-      "macspoofchk": false,
-      "disableContainerInterface": true
-    }
----
 apiVersion: kubevirt.io/v1
 kind: VirtualMachine
 metadata:
   name: vm-1
 spec:
-  runStrategy: Always
+  runStrategy: WaitAsReceiver
   template:
     metadata:
       labels:

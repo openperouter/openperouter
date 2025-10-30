@@ -1,0 +1,10 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachineInstanceMigration
+metadata:
+  name: vmim-target
+  namespace: default
+spec:
+  receive:
+    migrationID: abcdef
+  vmiName: vm-1
+
