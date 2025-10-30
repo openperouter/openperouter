@@ -16,6 +16,7 @@ func TestAPItoHostConfig(t *testing.T) {
 		name            string
 		nodeIndex       int
 		targetNS        string
+		multusEnabled   bool
 		underlays       []v1alpha1.Underlay
 		vnis            []v1alpha1.L3VNI
 		l2vnis          []v1alpha1.L2VNI
@@ -336,11 +337,35 @@ func TestAPItoHostConfig(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name:          "underlay without specifying NIC, using multus",
+			nodeIndex:     0,
+			targetNS:      "namespace",
+			multusEnabled: true,
+			underlays: []v1alpha1.Underlay{
+				{Spec: v1alpha1.UnderlaySpec{Nics: []string{}, EVPN: &v1alpha1.EVPNConfig{VTEPCIDR: "10.0.0.0/24"}}},
+			},
+			vnis:          []v1alpha1.L3VNI{},
+			l2vnis:        []v1alpha1.L2VNI{},
+			l3Passthrough: []v1alpha1.L3Passthrough{},
+			wantUnderlay: hostnetwork.UnderlayParams{
+				UnderlayInterface: "",
+				TargetNS:          "namespace",
+				EVPN: &hostnetwork.UnderlayEVPNParams{
+					VtepIP: "10.0.0.0/32",
+				},
+			},
+			wantL3VNIParams: []hostnetwork.L3VNIParams{},
+			wantL2VNIParams: []hostnetwork.L2VNIParams{},
+			wantPassthrough: nil,
+			wantErr:         false,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			apiConfig := ApiConfigData{
+				MultusEnabled: tt.multusEnabled,
 				NodeIndex:     tt.nodeIndex,
 				Underlays:     tt.underlays,
 				L3VNIs:        tt.vnis,

@@ -31,21 +31,24 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 		return fmt.Errorf("failed to retrieve namespace for pod %s: %w", config.RouterPodUUID, err)
 	}
 
-	hasAlreadyUnderlay, err := hostnetwork.HasUnderlayInterface(targetNS)
-	if err != nil {
-		return fmt.Errorf("failed to check if target namespace %s for pod %s has underlay: %w", targetNS, config.RouterPodUUID, err)
-	}
-	if hasAlreadyUnderlay && len(config.Underlays) == 0 {
-		return UnderlayRemovedError{}
-	}
-
 	if len(config.Underlays) == 0 {
 		return nil // nothing to do
+	}
+
+	if len(config.Underlays[0].Spec.Nics) > 0 {
+		hasAlreadyUnderlay, err := hostnetwork.HasUnderlayInterface(targetNS)
+		if err != nil {
+			return fmt.Errorf("failed to check if target namespace %s for pod %s has underlay: %w", targetNS, config.RouterPodUUID, err)
+		}
+		if hasAlreadyUnderlay && len(config.Underlays) == 0 {
+			return UnderlayRemovedError{}
+		}
 	}
 
 	slog.InfoContext(ctx, "configure interface start", "namespace", targetNS)
 	defer slog.InfoContext(ctx, "configure interface end", "namespace", targetNS)
 	apiConfig := conversion.ApiConfigData{
+		MultusEnabled: config.MultusEnabled,
 		NodeIndex:     config.NodeIndex,
 		Underlays:     config.Underlays,
 		L3VNIs:        config.L3VNIs,

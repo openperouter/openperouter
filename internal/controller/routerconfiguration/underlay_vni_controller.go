@@ -81,6 +81,10 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		slog.Error("failed to fetch router pod", "node", r.MyNode, "error", err)
 		return ctrl.Result{}, err
 	}
+	multusEnabled := false
+	if _, ok := routerPod.Annotations["k8s.v1.cni.cncf.io/networks"]; ok {
+		multusEnabled = true
+	}
 	routerPodIsReady := PodIsReady(routerPod)
 
 	if !routerPodIsReady {
@@ -133,6 +137,7 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	logger.Debug("using config", "l3vnis", l3vnis.Items, "l2vnis", l2vnis.Items, "underlays", underlays.Items, "l3passthrough", l3passthrough.Items)
 	apiConfig := conversion.ApiConfigData{
 		NodeIndex:     nodeIndex,
+		MultusEnabled: multusEnabled,
 		Underlays:     underlays.Items,
 		LogLevel:      r.LogLevel,
 		L3VNIs:        l3vnis.Items,
