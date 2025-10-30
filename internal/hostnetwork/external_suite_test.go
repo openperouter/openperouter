@@ -46,7 +46,7 @@ var _ = Describe("EXTERNAL", func() {
 
 		It("should be configured", func() {
 			Eventually(func(g Gomega) {
-				validateUnderlay(g, params)
+				validateUnderlay(g, params, false)
 			}, 30*time.Second, 1*time.Second).Should(Succeed())
 		})
 	})
