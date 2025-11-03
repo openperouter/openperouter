@@ -25,6 +25,10 @@ const (
 	externalInterfaceEditIP   = "192.170.0.10/24"
 )
 
+func underlayTestNSPath() string {
+	return fmt.Sprintf("/var/run/netns/%s", underlayTestNS)
+}
+
 var _ = Describe("Underlay configuration should work when", func() {
 	var testNs netns.NsHandle
 
@@ -66,7 +70,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 			EVPN: &UnderlayEVPNParams{
 				VtepIP: "192.168.1.1/32",
 			},
-			TargetNS: underlayTestNS,
+			TargetNS: underlayTestNSPath(),
 		}
 		err := SetupUnderlay(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
@@ -82,7 +86,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 			EVPN: &UnderlayEVPNParams{
 				VtepIP: "192.168.1.1/32",
 			},
-			TargetNS: underlayTestNS,
+			TargetNS: underlayTestNSPath(),
 		}
 		err := SetupUnderlay(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
@@ -100,7 +104,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 			EVPN: &UnderlayEVPNParams{
 				VtepIP: "192.168.1.1/32",
 			},
-			TargetNS: underlayTestNS,
+			TargetNS: underlayTestNSPath(),
 		}
 		err := SetupUnderlay(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
@@ -121,7 +125,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 			EVPN: &UnderlayEVPNParams{
 				VtepIP: "192.168.1.1/32",
 			},
-			TargetNS: underlayTestNS,
+			TargetNS: underlayTestNSPath(),
 		}
 		err := SetupUnderlay(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
@@ -143,7 +147,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 	It("should work without EVPN set", func() {
 		params := UnderlayParams{
 			UnderlayInterface: underlayTestInterface,
-			TargetNS:          underlayTestNS,
+			TargetNS:          underlayTestNSPath(),
 		}
 		err := SetupUnderlay(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
@@ -156,7 +160,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 	It("should work without NIC set, assuming Multus is used", func() {
 		params := UnderlayParams{
 			UnderlayInterface: "",
-			TargetNS:          underlayTestNS,
+			TargetNS:          underlayTestNSPath(),
 		}
 		err := SetupUnderlay(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())

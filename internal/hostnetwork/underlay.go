@@ -33,7 +33,7 @@ type UnderlayEVPNParams struct {
 func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
 	slog.DebugContext(ctx, "setup underlay", "params", params)
 	defer slog.DebugContext(ctx, "setup underlay done")
-	ns, err := netns.GetFromName(params.TargetNS)
+	ns, err := netns.GetFromPath(params.TargetNS)
 	if err != nil {
 		return fmt.Errorf("setupUnderlay: Failed to find network namespace %s: %w", params.TargetNS, err)
 	}
@@ -140,7 +140,7 @@ func moveUnderlayInterface(ctx context.Context, underlayInterface string, ns net
 // HasUnderlayInterface returns true if the given network
 // namespace already has a configured underlay interface.
 func HasUnderlayInterface(namespace string) (bool, error) {
-	ns, err := netns.GetFromName(namespace)
+	ns, err := netns.GetFromPath(namespace)
 	if err != nil {
 		return false, fmt.Errorf("HasUnderlayInterface: failed to find network namespace %s: %w", namespace, err)
 	}

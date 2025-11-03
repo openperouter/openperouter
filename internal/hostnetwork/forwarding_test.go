@@ -3,6 +3,7 @@
 package hostnetwork
 
 import (
+	"fmt"
 	"os/exec"
 	"strings"
 
@@ -25,7 +26,7 @@ var _ = Describe("EnsureIPv6Forwarding", func() {
 		})
 
 		It("should enable IPv6 forwarding", func() {
-			err := EnsureIPv6Forwarding(testNS)
+			err := EnsureIPv6Forwarding(fmt.Sprintf("/var/run/netns/%s", testNS))
 			Expect(err).NotTo(HaveOccurred())
 
 			var output string
@@ -58,7 +59,7 @@ var _ = Describe("EnsureIPv6Forwarding", func() {
 		})
 
 		It("should not change the forwarding setting", func() {
-			err := EnsureIPv6Forwarding(testNS)
+			err := EnsureIPv6Forwarding(fmt.Sprintf("/var/run/netns/%s", testNS))
 			Expect(err).NotTo(HaveOccurred())
 
 			var output string
