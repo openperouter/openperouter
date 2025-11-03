@@ -24,14 +24,21 @@ if [[ $CONTAINER_ENGINE == "podman" ]]; then
     fi
 fi
 
-load_image_to_kind() {
+load_image_to_podman_on_nodes() {
     local image_tag=$1
     local file_name=$2
     local temp_file="/tmp/${file_name}.tar"
-    sudo rm -f ${temp_file} || true
-    ${CONTAINER_ENGINE_CLI} image pull ${image_tag}
-    ${CONTAINER_ENGINE_CLI} save -o ${temp_file} ${image_tag}
-    ${KIND_COMMAND} load image-archive ${temp_file} --name ${KIND_CLUSTER_NAME}
+
+    # Load to podman on each node
+    local nodes=$(${KIND_COMMAND} get nodes --name ${KIND_CLUSTER_NAME})
+    for node in $nodes; do
+        echo "Copying ${image_tag} to node: $node"
+        ${CONTAINER_ENGINE_CLI} cp ${temp_file} ${node}:/root/${file_name}.tar
+
+        echo "Loading image into podman on node: $node"
+        ${CONTAINER_ENGINE_CLI} exec ${node} podman load -i /root/${file_name}.tar
+        ${CONTAINER_ENGINE_CLI} exec ${node} rm /root/${file_name}.tar
+    done
 }
 
 load_local_image_to_kind() {
@@ -41,4 +48,12 @@ load_local_image_to_kind() {
     sudo rm -f ${temp_file} || true
     ${CONTAINER_ENGINE_CLI} save -o ${temp_file} ${image_tag}
     ${KIND_COMMAND} load image-archive ${temp_file} --name ${KIND_CLUSTER_NAME}
+    load_image_to_podman_on_nodes ${image_tag} ${file_name}
+}
+
+load_image_to_kind() {
+    local image_tag=$1
+    local file_name=$2
+    ${CONTAINER_ENGINE_CLI} image pull ${image_tag}
+    load_local_image_to_kind ${image_tag} ${file_name}
 }

@@ -69,5 +69,15 @@ create_bridges() {
     echo "Bridge interfaces created"
 }
 
+build_kind_node() {
+    IMAGE_NAME="kind-with-podman:latest"
+    DOCKERFILE="kind-node-podman.Dockerfile"
+
+    if [ -z "$(docker images -q $IMAGE_NAME)" ]; then
+        docker build -f "$DOCKERFILE" -t "$IMAGE_NAME" .
+    fi
+}
+
 check_prerequisites
 create_bridges
+build_kind_node
