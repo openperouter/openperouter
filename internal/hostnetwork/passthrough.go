@@ -29,7 +29,7 @@ func SetupPassthrough(ctx context.Context, params PassthroughParams) error {
 		return fmt.Errorf("SetupPassthrough: failed to setup VNI veth: %w", err)
 	}
 
-	ns, err := netns.GetFromName(params.TargetNS)
+	ns, err := netns.GetFromPath(params.TargetNS)
 	if err != nil {
 		return fmt.Errorf("SetupVNI: Failed to get network namespace %s: %w", params.TargetNS, err)
 	}
@@ -71,7 +71,7 @@ func RemovePassthrough(targetNS string) error {
 		return fmt.Errorf("RemovePassthrough: failed to remove host link %s: %w", PassthroughNames.HostSide, err)
 	}
 
-	ns, err := netns.GetFromName(targetNS)
+	ns, err := netns.GetFromPath(targetNS)
 	if err != nil {
 		return fmt.Errorf("RemovePassthrough: failed to get network namespace %s: %w", targetNS, err)
 	}

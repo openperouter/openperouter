@@ -84,7 +84,7 @@ func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
 		return fmt.Errorf("SetupL3VNI: failed to setup VNI veth: %w", err)
 	}
 
-	ns, err := netns.GetFromName(params.TargetNS)
+	ns, err := netns.GetFromPath(params.TargetNS)
 	if err != nil {
 		return fmt.Errorf("SetupVNI: Failed to get network namespace %s: %w", params.TargetNS, err)
 	}
@@ -148,7 +148,7 @@ func SetupL2VNI(ctx context.Context, params L2VNIParams) error {
 	slog.DebugContext(ctx, "setting up l2 VNI", "params", params)
 	defer slog.DebugContext(ctx, "end setting up l2 VNI", "params", params)
 
-	ns, err := netns.GetFromName(params.TargetNS)
+	ns, err := netns.GetFromPath(params.TargetNS)
 	if err != nil {
 		return fmt.Errorf("SetupVNI: Failed to get network namespace %s: %w", params.TargetNS, err)
 	}
@@ -215,7 +215,7 @@ func SetupL2VNI(ctx context.Context, params L2VNIParams) error {
 func setupVNI(ctx context.Context, params VNIParams) error {
 	slog.DebugContext(ctx, "setting up VNI", "params", params)
 	defer slog.DebugContext(ctx, "end setting up VNI", "params", params)
-	ns, err := netns.GetFromName(params.TargetNS)
+	ns, err := netns.GetFromPath(params.TargetNS)
 	if err != nil {
 		return fmt.Errorf("SetupVNI: Failed to get network namespace %s: %w", params.TargetNS, err)
 	}
@@ -292,7 +292,7 @@ func RemoveNonConfiguredVNIs(targetNS string, params []VNIParams) error {
 		}
 	}
 
-	ns, err := netns.GetFromName(targetNS)
+	ns, err := netns.GetFromPath(targetNS)
 	if err != nil {
 		return fmt.Errorf("RemoveNonConfiguredVNIs: Failed to get network namespace %s: %w", targetNS, err)
 	}
