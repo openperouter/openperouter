@@ -20,25 +20,32 @@ import (
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"log/slog"
+	"net"
 	"net/http"
+	"os"
+	"os/signal"
 	"runtime/debug"
+	"syscall"
 	"time"
 
 	"github.com/openperouter/openperouter/internal/frrconfig"
 	"github.com/openperouter/openperouter/internal/logging"
 )
 
+type Args struct {
+	unixSocket    string
+	logLevel      string
+	frrConfigPath string
+}
+
 func main() {
-	args := struct {
-		bindAddress   string
-		logLevel      string
-		frrConfigPath string
-	}{}
-	flag.StringVar(&args.bindAddress, "bindaddress", "0.0.0.0:9080", "The address the reloader endpoint binds to. ")
+	args := Args{}
+	flag.StringVar(&args.unixSocket, "unixsocket", "", "Unix socket path to listen on (overrides bindaddress if set)")
 	flag.StringVar(&args.logLevel, "loglevel", "info", "The log level of the process")
 	flag.StringVar(&args.frrConfigPath, "frrconfig", "/etc/frr/frr.conf", "The path the frr configuration is at")
 	flag.Parse()
@@ -52,14 +59,57 @@ func main() {
 	slog.Info("version", "version", build.Main.Version)
 	slog.Info("arguments", "args", fmt.Sprintf("%+v", args))
 
-	slog.Info("listening", "address", args.bindAddress)
+	if err := serveReload(args); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func serveReload(args Args) error {
+	if err := os.Remove(args.unixSocket); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to remove unix socket: %w", err)
+	}
+
+	listener, err := net.Listen("unix", args.unixSocket)
+	if err != nil {
+		return fmt.Errorf("failed to listen on unix socket %s: %w", args.unixSocket, err)
+	}
+
 	http.HandleFunc("/", reloadHandler(args.frrConfigPath))
+
 	server := &http.Server{
-		Addr:              args.bindAddress,
 		ReadHeaderTimeout: 3 * time.Second,
 	}
 
-	log.Fatal(server.ListenAndServe())
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	serverErr := make(chan error, 1)
+	go func() {
+		slog.Info("starting reloader server", "socket", args.unixSocket)
+		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
+			serverErr <- err
+		}
+	}()
+
+	select {
+	case <-ctx.Done():
+		slog.Info("received signal, shutting down gracefully")
+
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			slog.Error("error during server shutdown", "error", err)
+		}
+
+		if err := os.Remove(args.unixSocket); err != nil {
+			slog.Error("failed to remove unix socket", "socket", args.unixSocket, "error", err)
+		}
+		slog.Info("removed unix socket", "socket", args.unixSocket)
+		return nil
+	case err := <-serverErr:
+		return err
+	}
 }
 
 var updateConfig = frrconfig.Update
