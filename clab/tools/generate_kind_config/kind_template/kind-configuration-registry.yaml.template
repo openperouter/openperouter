@@ -3,7 +3,9 @@ apiVersion: kind.x-k8s.io/v1alpha4
 name: {{.ClusterName}}
 nodes:
 - role: control-plane
+  image: kind-with-podman:latest
 - role: worker
+  image: kind-with-podman:latest
 networking:
 {{- if .DisableDefaultCNI }}
   disableDefaultCNI: true
