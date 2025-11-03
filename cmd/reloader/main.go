@@ -24,7 +24,9 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"net"
 	"net/http"
+	"os"
 	"runtime/debug"
 	"time"
 
@@ -32,13 +34,16 @@ import (
 	"github.com/openperouter/openperouter/internal/logging"
 )
 
+type Args struct {
+	bindAddress   string
+	unixSocket    string
+	logLevel      string
+	frrConfigPath string
+}
+
 func main() {
-	args := struct {
-		bindAddress   string
-		logLevel      string
-		frrConfigPath string
-	}{}
-	flag.StringVar(&args.bindAddress, "bindaddress", "0.0.0.0:9080", "The address the reloader endpoint binds to. ")
+	args := Args{}
+	flag.StringVar(&args.unixSocket, "unixsocket", "", "Unix socket path to listen on (overrides bindaddress if set)")
 	flag.StringVar(&args.logLevel, "loglevel", "info", "The log level of the process")
 	flag.StringVar(&args.frrConfigPath, "frrconfig", "/etc/frr/frr.conf", "The path the frr configuration is at")
 	flag.Parse()
@@ -52,14 +57,29 @@ func main() {
 	slog.Info("version", "version", build.Main.Version)
 	slog.Info("arguments", "args", fmt.Sprintf("%+v", args))
 
-	slog.Info("listening", "address", args.bindAddress)
-	http.HandleFunc("/", reloadHandler(args.frrConfigPath))
-	server := &http.Server{
-		Addr:              args.bindAddress,
-		ReadHeaderTimeout: 3 * time.Second,
+	if err := serveReload(args); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func serveReload(args Args) error {
+	if err := os.Remove(args.unixSocket); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to remove unix socket: %w", err)
 	}
 
-	log.Fatal(server.ListenAndServe())
+	listener, err := net.Listen("unix", args.unixSocket)
+	if err != nil {
+		return fmt.Errorf("failed to listen on unix socket %s: %w", args.unixSocket, err)
+	}
+	http.HandleFunc("/", reloadHandler(args.frrConfigPath))
+
+	server := &http.Server{
+		ReadHeaderTimeout: 3 * time.Second,
+	}
+	if err := server.Serve(listener); err != nil {
+		return err
+	}
+	return nil
 }
 
 var updateConfig = frrconfig.Update
