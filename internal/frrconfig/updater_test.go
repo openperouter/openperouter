@@ -4,13 +4,13 @@ package frrconfig
 
 import (
 	"context"
+	"net"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"testing"
 )
 
-func TestUpdaterForAddress(t *testing.T) {
+func TestUpdaterForSocket(t *testing.T) {
 	tmpfile, err := os.CreateTemp("", "config")
 	if err != nil {
 		t.Fatalf("failed to create temp file: %v", err)
@@ -21,16 +21,37 @@ func TestUpdaterForAddress(t *testing.T) {
 		}
 	}()
 
+	// Create a temporary socket
+	socketPath := "/tmp/test_socket"
+	defer func() {
+		_ = os.Remove(socketPath)
+	}()
+
+	// Create a unix socket server
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatalf("failed to create unix socket: %v", err)
+	}
+	defer func() {
+		_ = listener.Close()
+	}()
+
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			t.Errorf("expected POST request, got %s", r.Method)
 		}
 		w.WriteHeader(http.StatusOK)
 	})
-	server := httptest.NewServer(handler)
-	defer server.Close()
 
-	updater := UpdaterForAddress(server.URL[7:], tmpfile.Name()) // Remove "http://"
+	server := &http.Server{Handler: handler}
+	go func() {
+		_ = server.Serve(listener)
+	}()
+	defer func() {
+		_ = server.Close()
+	}()
+
+	updater := UpdaterForSocket(socketPath, tmpfile.Name())
 
 	err = updater(context.Background(), "test config")
 	if err != nil {
@@ -44,12 +65,5 @@ func TestUpdaterForAddress(t *testing.T) {
 	expectedContent := "test config"
 	if string(content) != expectedContent {
 		t.Errorf("expected content %q, got %q", expectedContent, string(content))
-	}
-
-	// Test HTTP failure
-	server.Close()
-	err = updater(context.TODO(), "test config")
-	if err == nil {
-		t.Errorf("expected error, got nil")
 	}
 }
