@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: hostbridge
+  namespace: kube-system
+  labels:
+    control-plane: hostbridge
+    app.kubernetes.io/name: hostbridge
+    app.kubernetes.io/instance: hostbridge
+    app.kubernetes.io/component: config-exporter
+    app.kubernetes.io/created-by: hostbridge
+    app.kubernetes.io/part-of: hostbridge
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  selector:
+    matchLabels:
+      control-plane: hostbridge
+  template:
+    metadata:
+      labels:
+        control-plane: hostbridge
+        app: hostbridge
+    spec:
+      containers:
+      - name: bridge
+        command:
+        - /hostbridge
+        args:
+        - "--output-path=/shared"
+        image: router:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        securityContext:
+          privileged: true
+          runAsUser: 0
+        volumeMounts:
+        - name: shared-config
+          mountPath: /shared
+        - name: openperouter-config
+          mountPath: /etc/openperouter
+          readOnly: true
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+          limits:
+            cpu: 100m
+            memory: 64Mi
+      volumes:
+      - name: shared-config
+        hostPath:
+          path: /var/lib/hostbridge
+          type: DirectoryOrCreate
+      - name: openperouter-config
+        hostPath:
+          path: /var/lib/openperouter
+          type: DirectoryOrCreate
+      tolerations:
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/master
+        operator: Exists
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/control-plane
+        operator: Exists
+      serviceAccountName: controller
