@@ -294,7 +294,7 @@ var _ = Describe("L2 VNI configuration", func() {
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 
 		By("removing the VNI")
-		err = RemoveNonConfiguredVNIs(testNSName, []VNIParams{})
+		err = RemoveNonConfiguredVNIs(testNSPath(), []VNIParams{})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("checking the VNI is removed")
