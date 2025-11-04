@@ -10,13 +10,11 @@ import (
 
 	"github.com/openperouter/openperouter/internal/conversion"
 	"github.com/openperouter/openperouter/internal/frr"
-	"github.com/openperouter/openperouter/internal/frrconfig"
 )
 
 type frrConfigData struct {
 	configFile string
-	address    string
-	port       int
+	updater    frr.ConfigUpdater
 	conversion.ApiConfigData
 }
 
@@ -32,9 +30,7 @@ func configureFRR(ctx context.Context, data frrConfigData) error {
 		return fmt.Errorf("failed to generate the frr configuration: %w", err)
 	}
 
-	url := fmt.Sprintf("%s:%d", data.address, data.port)
-	updater := frrconfig.UpdaterForAddress(url, data.configFile)
-	err = frr.ApplyConfig(ctx, &frrConfig, updater)
+	err = frr.ApplyConfig(ctx, &frrConfig, data.updater)
 	if err != nil {
 		return fmt.Errorf("failed to update the frr configuration: %w", err)
 	}
