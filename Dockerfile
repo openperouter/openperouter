@@ -46,6 +46,6 @@ COPY --from=builder /go/openperouter/cp-tool .
 COPY --from=builder /go/openperouter/nodemarker .
 COPY --from=builder /go/openperouter/operatorbinary ./operator
 COPY operator/bindata bindata
-COPY frrconfig /tmp/frr
+COPY systemdmode/frrconfig /tmp/frr
 
 ENTRYPOINT ["/controller"]
