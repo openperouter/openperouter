@@ -163,6 +163,15 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified 
 .PHONY: deploy
 deploy: kind deploy-cluster deploy-controller ## Deploy cluster and controller.
 
+.PHONY: setup-hostmode
+setup-hostmode: ## Setup node configuration for hostmode.
+	./systemdmode/setup_node_config.sh $(KIND_CLUSTER_NAME)
+
+.PHONY: deploy-hostmode
+deploy-hostmode: KUSTOMIZE_LAYER=hostmode
+deploy-hostmode: kind deploy-cluster setup-hostmode deploy-controller ## Deploy cluster and controller in hostmode, then setup systemd services.
+	./systemdmode/deploy.sh $(KIND_CLUSTER_NAME)
+
 .PHONY: deploy-multi
 deploy-multi: kind deploy-multi-cluster deploy-controller-multi ## Deploy cluster and controller.
 
