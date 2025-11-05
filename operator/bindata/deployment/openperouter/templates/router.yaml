@@ -1,3 +1,4 @@
+{{- if not .Values.openperouter.hostmode }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -251,3 +252,4 @@ spec:
               mountPath: /etc/frr_reloader
       terminationGracePeriodSeconds: 10
       shareProcessNamespace: true
+{{- end }}
