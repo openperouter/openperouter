@@ -5,11 +5,14 @@ package k8s
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	nad "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	nadclientset "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
+	
+	"github.com/openperouter/openperouter/e2etests/pkg/ipfamily"
 )
 
 var nadClient *nadclientset.Clientset
@@ -23,7 +26,28 @@ func init() {
 	}
 }
 
-func CreateMacvlanNad(name, namespace, master, gatewayIP string) (nad.NetworkAttachmentDefinition, error) {
+func CreateMacvlanNad(name, namespace, master string, gatewayIPs []string) (nad.NetworkAttachmentDefinition, error) {
+	// Build routes based on gateway IPs (IPv4 and/or IPv6)
+	var routes []string
+	for _, gwIP := range gatewayIPs {
+		gwIP := strings.Split(gwIP, "/")[0]
+		dst := "0.0.0.0/0"
+		ipFamily, err := ipfamily.ForAddresses(gwIP)
+		if err != nil {
+			return nad.NetworkAttachmentDefinition{}, err
+		}
+		if ipFamily == ipfamily.IPv6 {
+			dst = "::/0"
+		}
+
+		routes = append(routes, fmt.Sprintf(`{
+                "dst": "%s",
+                "gw": "%s"
+              }`, dst, gwIP))
+	}
+
+	routesStr := strings.Join(routes, ",\n")
+
 	config := fmt.Sprintf(`{
       "cniVersion": "0.3.0",
       "type": "macvlan",
@@ -32,13 +56,10 @@ func CreateMacvlanNad(name, namespace, master, gatewayIP string) (nad.NetworkAtt
       "ipam": {
          "type": "static",
          "routes": [
-              {
-                "dst": "0.0.0.0/0",
-                "gw": "%s"
-              }
+%s
             ]
       }
-    }`, master, gatewayIP)
+    }`, master, routesStr)
 
 	n := nad.NetworkAttachmentDefinition{
 		ObjectMeta: metav1.ObjectMeta{
