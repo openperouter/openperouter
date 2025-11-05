@@ -48,6 +48,25 @@ func (e *containerExecutor) Exec(cmd string, args ...string) (string, error) {
 	return string(out), err
 }
 
+type podmanInContainerExecutor struct {
+	outerContainer string
+	innerContainer string
+}
+
+func ForPodmanInContainer(outerContainer, innerContainer string) Executor {
+	return &podmanInContainerExecutor{
+		outerContainer: outerContainer,
+		innerContainer: innerContainer,
+	}
+}
+
+func (e *podmanInContainerExecutor) Exec(cmd string, args ...string) (string, error) {
+	// Build: docker/podman exec <outerContainer> podman exec <innerContainer> <cmd> <args...>
+	newArgs := append([]string{"exec", e.outerContainer, "podman", "exec", e.innerContainer, cmd}, args...)
+	out, err := exec.Command(ContainerRuntime, newArgs...).CombinedOutput()
+	return string(out), err
+}
+
 type podExecutor struct {
 	namespace string
 	name      string
