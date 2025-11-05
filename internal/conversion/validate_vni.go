@@ -8,6 +8,7 @@ import (
 	"regexp"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
+	"github.com/openperouter/openperouter/internal/ipfamily"
 )
 
 var interfaceNameRegexp *regexp.Regexp
@@ -33,16 +34,17 @@ func ValidateL2VNIs(l2Vnis []v1alpha1.L2VNI) error {
 		return err
 	}
 
-	// Perform L2-specific validation (HostMaster and L2GatewayIP validation)
+	// Perform L2-specific validation (HostMaster and L2GatewayIPs validation)
 	for _, vni := range l2Vnis {
 		if vni.Spec.HostMaster != nil && vni.Spec.HostMaster.Name != "" {
 			if err := isValidInterfaceName(vni.Spec.HostMaster.Name); err != nil {
 				return fmt.Errorf("invalid hostmaster name for vni %s: %s - %w", vni.Name, vni.Spec.HostMaster.Name, err)
 			}
 		}
-		if vni.Spec.L2GatewayIP != "" {
-			if err := isValidCIDR(vni.Spec.L2GatewayIP); err != nil {
-				return fmt.Errorf("invalid l2gatewayip for vni %s: %s - %w", vni.Name, vni.Spec.L2GatewayIP, err)
+		if len(vni.Spec.L2GatewayIPs) > 0 {
+			_, err := ipfamily.ForCIDRStrings(vni.Spec.L2GatewayIPs...)
+			if err != nil {
+				return fmt.Errorf("invalid l2gatewayips for vni %q = %v: %w", vni.Name, vni.Spec.L2GatewayIPs, err)
 			}
 		}
 	}

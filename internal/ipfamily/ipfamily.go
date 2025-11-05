@@ -20,18 +20,44 @@ const (
 )
 
 // ForAddresses returns the address family given list of addresses strings.
-func ForAddresses(ips ...string) (Family, error) {
+func ForAddresses(ipsStrings ...string) (Family, error) {
+	ips := []net.IP{}
+	for _, ipString := range ipsStrings {
+		ip := net.ParseIP(ipString)
+		if ip == nil {
+			return Unknown, fmt.Errorf("invalid ip: %s", ipString)
+		}
+		ips = append(ips, ip)
+	}
+	return ForAddressesIPs(ips)
+}
+
+// ForCIDRStrings returns the address family given list of addresses strings.
+func ForCIDRStrings(cidrsStrings ...string) (Family, error) {
+	ips := []net.IP{}
+	for _, cidrString := range cidrsStrings {
+		ip, _, err := net.ParseCIDR(cidrString)
+		if err != nil {
+			return Unknown, fmt.Errorf("invalid cidr: %w", err)
+		}
+		ips = append(ips, ip)
+	}
+	return ForAddressesIPs(ips)
+}
+
+// ForAddressesIPs returns the address family from a given list of addresses IPs.
+func ForAddressesIPs(ips []net.IP) (Family, error) {
 	switch len(ips) {
 	case 1:
-		ip := net.ParseIP(ips[0])
+		ip := ips[0]
 		if ip == nil {
 			return Unknown, fmt.Errorf("IPFamilyForAddresses: Invalid address %q", ips)
 		}
 		res := ForAddress(ip)
 		return res, nil
 	case 2:
-		ip1 := net.ParseIP(ips[0])
-		ip2 := net.ParseIP(ips[1])
+		ip1 := ips[0]
+		ip2 := ips[1]
 		if ip1 == nil || ip2 == nil {
 			return Unknown, fmt.Errorf("IPFamilyForAddresses: Invalid address %q", ips)
 		}
@@ -42,16 +68,6 @@ func ForAddresses(ips ...string) (Family, error) {
 	default:
 		return Unknown, fmt.Errorf("IPFamilyForAddresses: invalid ips length %d %q", len(ips), ips)
 	}
-}
-
-// ForAddressesIPs returns the address family from a given list of addresses IPs.
-func ForAddressesIPs(ips []net.IP) (Family, error) {
-	ipsStrings := []string{}
-
-	for _, ip := range ips {
-		ipsStrings = append(ipsStrings, ip.String())
-	}
-	return ForAddresses(ipsStrings...)
 }
 
 // ForCIDRString returns the address family from a given CIDR in string format.
