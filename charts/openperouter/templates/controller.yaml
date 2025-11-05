@@ -1,3 +1,4 @@
+{{- if not .Values.openperouter.hostmode }}
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -131,3 +132,4 @@ spec:
           path: /etc/perouter/frr
           type: DirectoryOrCreate
         name: frr-config
+{{- end }}

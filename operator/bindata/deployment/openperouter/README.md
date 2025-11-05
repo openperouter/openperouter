@@ -34,6 +34,7 @@ Kubernetes: `>= 1.19.0-0`
 | openperouter.frr.image.tag | string | `"10.2.1"` |  |
 | openperouter.frr.reloader.resources | object | `{}` |  |
 | openperouter.frr.resources | object | `{}` |  |
+| openperouter.hostmode | bool | `false` | If true, enables host mode deployment: deploys hostbridge DaemonSet instead of router and controller, and configures nodemarker to run in webhook-only mode |
 | openperouter.image.pullPolicy | string | `""` |  |
 | openperouter.image.repository | string | `"quay.io/openperouter/router"` |  |
 | openperouter.image.tag | string | `""` |  |
