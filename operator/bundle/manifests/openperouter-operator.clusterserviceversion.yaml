@@ -4,7 +4,7 @@ metadata:
   annotations:
     alm-examples: '[]'
     capabilities: Basic Install
-    createdAt: "2026-01-13T13:22:06Z"
+    createdAt: "2025-12-12T15:28:34Z"
     operators.operatorframework.io/builder: operator-sdk-v1.41.1
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
   name: openperouter-operator.v0.0.0
@@ -30,6 +30,9 @@ spec:
       displayName: Open PERouter
       kind: OpenPERouter
       name: openperouters.openpe.openperouter.github.io
+      version: v1alpha1
+    - kind: RouterNodeConfigurationStatus
+      name: routernodeconfigurationstatuses.openpe.openperouter.github.io
       version: v1alpha1
     - description: Underlay is the Schema for the underlays API.
       displayName: Underlay
@@ -86,6 +89,7 @@ spec:
           - l2vnis
           - l3passthroughs
           - l3vnis
+          - routernodeconfigurationstatuses
           - underlays
           verbs:
           - create
@@ -101,6 +105,7 @@ spec:
           - l2vnis/finalizers
           - l3passthroughs/finalizers
           - l3vnis/finalizers
+          - routernodeconfigurationstatuses/finalizers
           - underlays/finalizers
           verbs:
           - update
@@ -110,6 +115,7 @@ spec:
           - l2vnis/status
           - l3passthroughs/status
           - l3vnis/status
+          - routernodeconfigurationstatuses/status
           - underlays/status
           verbs:
           - get
@@ -180,7 +186,7 @@ spec:
                 - name: CONTROLLER_IMAGE
                   value: quay.io/openperouter/router:main
                 - name: FRR_IMAGE
-                  value: quay.io/openperouter/router:main
+                  value: quay.io/frrouting/frr:10.2.1
                 - name: KUBE_RBAC_PROXY_IMAGE
                   value: quay.io/brancz/kube-rbac-proxy:v0.11.0
                 - name: DEPLOY_KUBE_RBAC_PROXIES
