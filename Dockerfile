@@ -37,7 +37,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
   && \
   CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -o operatorbinary ./operator
 
-FROM gcr.io/distroless/static:latest
+FROM alpine:3.22.2
 WORKDIR /
 COPY --from=builder /go/openperouter/reloader .
 COPY --from=builder /go/openperouter/controller .
