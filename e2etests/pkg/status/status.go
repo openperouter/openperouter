@@ -112,23 +112,3 @@ func ExpectResourceFailure(resourceKind, resourceName string) {
 		return fmt.Errorf("expected failure for %s %s not found in any node status", resourceKind, resourceName)
 	}, "30s", "5s").Should(Succeed())
 }
-
-// ExpectNoResourceFailure verifies that a specific resource is NOT in failed resources
-func ExpectNoResourceFailure(resourceKind, resourceName string) {
-	k8sClient := k8sclient.New()
-	Eventually(func() error {
-		statusList, err := getStableStatusList(k8sClient)
-		if err != nil {
-			return err
-		}
-		for _, status := range statusList.Items {
-			for _, failed := range status.Status.FailedResources {
-				if failed.Kind == resourceKind && failed.Name == resourceName {
-					return fmt.Errorf("unexpected failure for %s %s found in node %s: %s",
-						resourceKind, resourceName, status.Name, failed.Message)
-				}
-			}
-		}
-		return nil
-	}, "30s", "5s").Should(Succeed())
-}
