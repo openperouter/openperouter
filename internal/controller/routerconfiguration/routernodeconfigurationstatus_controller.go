@@ -73,9 +73,17 @@ func (r *RouterNodeConfigurationStatusReconciler) Reconcile(ctx context.Context,
 		return ctrl.Result{}, err
 	}
 
-	// Create resource if it doesn't exist, let the next reconcile populate it
+	// Create resource if it doesn't exist
 	if errors.IsNotFound(err) {
 		if err := r.createRouterNodeStatus(ctx, &routerNodeConfigurationStatus); err != nil {
+			return ctrl.Result{}, err
+		}
+		// Re-fetch the created resource to get the updated object with proper metadata
+		if err := r.Get(ctx, types.NamespacedName{
+			Name:      r.MyNode,
+			Namespace: r.MyNamespace,
+		}, &routerNodeConfigurationStatus); err != nil {
+			logger.Error("failed to re-fetch created RouterNodeConfigurationStatus", "error", err)
 			return ctrl.Result{}, err
 		}
 	}
