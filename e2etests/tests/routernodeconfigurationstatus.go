@@ -14,6 +14,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/config"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
+	"github.com/openperouter/openperouter/e2etests/pkg/status"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -282,29 +283,7 @@ var _ = Describe("RouterNodeConfigurationStatus CRD", func() {
 
 			// Step 2: Status failed
 			By("confirming underlay status is failed")
-			Eventually(func() error {
-				statusList, err := getStableStatusList(k8sClient)
-				if err != nil {
-					return err
-				}
-
-				// Check all status resources for underlay failure
-				for _, status := range statusList.Items {
-					hasUnderlayFailure := false
-
-					for _, failedResource := range status.Status.FailedResources {
-						if failedResource.Kind == "Underlay" && failedResource.Name == invalidUnderlay.Name {
-							hasUnderlayFailure = true
-							break
-						}
-					}
-
-					if !hasUnderlayFailure {
-						return fmt.Errorf("RouterNodeConfigurationStatus %s should contain underlay failure", status.Name)
-					}
-				}
-				return nil
-			}, "60s", "5s").Should(Succeed(), "Underlay failure should be reported in status")
+			status.ExpectResourceFailure(k8sClient, "Underlay", invalidUnderlay.Name)
 
 			// Step 3: Fix it
 			fixedUnderlay := invalidUnderlay.DeepCopy()
@@ -320,21 +299,7 @@ var _ = Describe("RouterNodeConfigurationStatus CRD", func() {
 
 			// Step 4: Status OK
 			By("confirming underlay status is now OK")
-			Eventually(func() error {
-				statusList, err := getStableStatusList(k8sClient)
-				if err != nil {
-					return err
-				}
-
-				// Check all status resources should have no failures
-				for _, status := range statusList.Items {
-					if len(status.Status.FailedResources) > 0 {
-						return fmt.Errorf("RouterNodeConfigurationStatus %s should have no failed resources after fixing underlay, but has: %v",
-							status.Name, status.Status.FailedResources)
-					}
-				}
-				return nil
-			}, "60s", "5s").Should(Succeed(), "Status should be clean after fixing underlay")
+			status.ExpectSuccessfulStatus(k8sClient)
 
 			// Step 5: Create an invalid L2VNI (nonexistent bridge)
 			invalidL2VNI := v1alpha1.L2VNI{
@@ -365,29 +330,7 @@ var _ = Describe("RouterNodeConfigurationStatus CRD", func() {
 
 			// Step 6: Status failed
 			By("confirming L2VNI status is failed")
-			Eventually(func() error {
-				statusList, err := getStableStatusList(k8sClient)
-				if err != nil {
-					return err
-				}
-
-				// Check all status resources for L2VNI failure
-				for _, status := range statusList.Items {
-					hasL2VNIFailure := false
-
-					for _, failedResource := range status.Status.FailedResources {
-						if failedResource.Kind == "L2VNI" && failedResource.Name == invalidL2VNI.Name {
-							hasL2VNIFailure = true
-							break
-						}
-					}
-
-					if !hasL2VNIFailure {
-						return fmt.Errorf("RouterNodeConfigurationStatus %s should contain L2VNI failure", status.Name)
-					}
-				}
-				return nil
-			}, "60s", "5s").Should(Succeed(), "L2VNI failure should be reported in status")
+			status.ExpectResourceFailure(k8sClient, "L2VNI", invalidL2VNI.Name)
 
 			// Step 7: Remove it
 			By("removing the failing L2VNI")
@@ -396,21 +339,7 @@ var _ = Describe("RouterNodeConfigurationStatus CRD", func() {
 
 			// Step 8: Status OK
 			By("confirming status is OK after removing L2VNI")
-			Eventually(func() error {
-				statusList, err := getStableStatusList(k8sClient)
-				if err != nil {
-					return err
-				}
-
-				// Check all status resources should have no failures
-				for _, status := range statusList.Items {
-					if len(status.Status.FailedResources) > 0 {
-						return fmt.Errorf("RouterNodeConfigurationStatus %s should have no failed resources after removing L2VNI, but has: %v",
-							status.Name, status.Status.FailedResources)
-					}
-				}
-				return nil
-			}, "60s", "5s").Should(Succeed(), "Status should show complete success with no failures")
+			status.ExpectSuccessfulStatus(k8sClient)
 		})
 	})
 })
