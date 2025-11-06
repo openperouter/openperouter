@@ -18,6 +18,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/infra"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
+	"github.com/openperouter/openperouter/e2etests/pkg/status"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -127,11 +128,15 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 
 			validateFRRK8sSessionForHostSession(vni.Name, *vni.Spec.HostSession, Established, frrk8sPods...)
 
+			status.ExpectSuccessfulStatus(Updater.Client())
+
 			By("deleting the vni removes the session with the host")
 			err = Updater.Client().Delete(context.Background(), &vni)
 			Expect(err).NotTo(HaveOccurred())
 
 			validateFRRK8sSessionForHostSession(vni.Name, *vni.Spec.HostSession, !Established, frrk8sPods...)
+
+			status.ExpectSuccessfulStatus(Updater.Client())
 		})
 	})
 
@@ -169,6 +174,8 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			validateFRRK8sSessionForHostSession(l3Passthrough.Name, l3Passthrough.Spec.HostSession, Established, frrk8sPods...)
+
+			status.ExpectSuccessfulStatus(Updater.Client())
 
 			By("deleting the vni removes the session with the host")
 			err = Updater.Client().Delete(context.Background(), &l3Passthrough)
