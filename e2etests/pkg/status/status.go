@@ -5,13 +5,10 @@ package status
 import (
 	"context"
 	"fmt"
-	"time"
 
 	. "github.com/onsi/gomega"
 	"github.com/openperouter/openperouter/api/v1alpha1"
-	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -78,8 +75,7 @@ func getStableStatusList(k8sClient client.Client) (*v1alpha1.RouterNodeConfigura
 }
 
 // ExpectSuccessfulStatus verifies that all nodes have successful status (no failed resources)
-func ExpectSuccessfulStatus() {
-	k8sClient := k8sclient.New()
+func ExpectSuccessfulStatus(k8sClient client.Client) {
 	Eventually(func() error {
 		statusList, err := getStableStatusList(k8sClient)
 		if err != nil {
@@ -95,8 +91,7 @@ func ExpectSuccessfulStatus() {
 }
 
 // ExpectResourceFailure verifies that a specific resource failure is reported in status
-func ExpectResourceFailure(resourceKind, resourceName string) {
-	k8sClient := k8sclient.New()
+func ExpectResourceFailure(k8sClient client.Client, resourceKind, resourceName string) {
 	Eventually(func() error {
 		statusList, err := getStableStatusList(k8sClient)
 		if err != nil {

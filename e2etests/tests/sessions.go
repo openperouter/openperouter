@@ -125,7 +125,7 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 			validateFRRK8sSessionForHostSession(vni.Name, *vni.Spec.HostSession, Established, frrk8sPods...)
 
 			// Verify L3VNI is configured successfully in RouterNodeConfigurationStatus
-			status.ExpectSuccessfulStatus()
+			status.ExpectSuccessfulStatus(Updater.Client())
 
 			By("deleting the vni removes the session with the host")
 			err = Updater.Client().Delete(context.Background(), &vni)
@@ -134,7 +134,7 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 			validateFRRK8sSessionForHostSession(vni.Name, *vni.Spec.HostSession, !Established, frrk8sPods...)
 
 			// Verify overall status is still successful after VNI deletion
-			status.ExpectSuccessfulStatus()
+			status.ExpectSuccessfulStatus(Updater.Client())
 		})
 	})
 
@@ -174,7 +174,7 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 			validateFRRK8sSessionForHostSession(l3Passthrough.Name, l3Passthrough.Spec.HostSession, Established, frrk8sPods...)
 
 			// Verify L3Passthrough is configured successfully in RouterNodeConfigurationStatus
-			status.ExpectSuccessfulStatus()
+			status.ExpectSuccessfulStatus(Updater.Client())
 
 			By("deleting the vni removes the session with the host")
 			err = Updater.Client().Delete(context.Background(), &l3Passthrough)
