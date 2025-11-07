@@ -182,6 +182,7 @@ spec:
         command: ["/etc/frr_reloader/reloader"]
         args:
         - "--frrconfig=/etc/perouter/frr.conf"
+        - "--bindaddress=:9080"
         {{- with .Values.openperouter.logLevel }}
         - --loglevel={{ . }}
         {{- end }}

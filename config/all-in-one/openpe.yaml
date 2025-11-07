@@ -1089,6 +1089,7 @@ spec:
       - args:
         - --frrconfig=/etc/perouter/frr.conf
         - --loglevel=debug
+        - --bindaddress=:9080
         command:
         - /etc/frr_reloader/reloader
         image: quay.io/frrouting/frr:10.2.1
