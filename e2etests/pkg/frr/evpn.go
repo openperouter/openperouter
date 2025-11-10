@@ -15,7 +15,7 @@ import (
 func EVPNInfo(exec executor.Executor) (EVPNData, error) {
 	res, err := exec.Exec("vtysh", "-c", "show bgp l2vpn evpn json")
 	if err != nil {
-		return EVPNData{}, errors.Join(err, errors.New("Failed to query l2vpn evpn"))
+		return EVPNData{}, fmt.Errorf("failed to query l2vpn :%w - %s", err, res)
 	}
 
 	evpnInfo, err := parseL2VPNEVPN([]byte(res))
