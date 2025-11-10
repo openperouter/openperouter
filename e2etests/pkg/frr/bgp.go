@@ -16,7 +16,7 @@ func NeighborInfo(neighborName string, exec executor.Executor) (*FRRNeighbor, er
 	res, err := exec.Exec("vtysh", "-c", fmt.Sprintf("show bgp neighbor %s json", neighborName))
 
 	if err != nil {
-		return nil, errors.Join(err, fmt.Errorf("Failed to query neighbour %s", neighborName))
+		return nil, fmt.Errorf("failed to query neighbor :%w - %s", err, res)
 	}
 	neighbor, err := parseNeighbour(res)
 	if err != nil {
