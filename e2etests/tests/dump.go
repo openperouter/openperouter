@@ -25,17 +25,19 @@ func dumpIfFails(cs clientset.Interface) {
 	if ginkgo.CurrentSpecReport().Failed() {
 		dumpBGPInfo(ReportPath, ginkgo.CurrentSpecReport().LeafNodeText, cs, infra.LeafA, infra.LeafB, infra.KindLeaf)
 		k8s.DumpInfo(K8sReporter, ginkgo.CurrentSpecReport().LeafNodeText)
+		if HostMode {
+			fmt.Println("dumping podman info")
+			dumpPodmanInfo(cs, ReportPath, ginkgo.CurrentSpecReport().LeafNodeText)
+		}
 	}
 }
 
 func dumpBGPInfo(basePath, testName string, cs clientset.Interface, clabContainers ...string) {
-	testPath := path.Join(basePath, strings.ReplaceAll(testName, " ", "-"))
-	err := os.Mkdir(testPath, 0755)
-	if err != nil && !errors.Is(err, os.ErrExist) {
+	testPath, err := createTestOutput(basePath, testName)
+	if err != nil {
 		ginkgo.GinkgoWriter.Printf("failed to create test dir: %s", err)
 		return
 	}
-
 	executors := map[string]executor.Executor{}
 	for _, c := range clabContainers {
 		exec := executor.ForContainer(c)
@@ -87,6 +89,39 @@ func logFileFor(base string, kind string) (*os.File, error) {
 	return f, nil
 }
 
+func dumpPodmanInfo(cs clientset.Interface, basePath, testName string) {
+	testPath, err := createTestOutput(basePath, testName)
+	if err != nil {
+		ginkgo.GinkgoWriter.Printf("failed to create test dir: %s", err)
+		return
+	}
+
+	nodes, err := k8s.GetNodes(cs)
+	if err != nil {
+		ginkgo.GinkgoWriter.Printf("Failed to get nodes for podman dump: %v", err)
+		return
+	}
+
+	dump, err := openperouter.DumpPodmanLogs(nodes)
+	if err != nil {
+		ginkgo.GinkgoWriter.Printf("Podman dump failed: %v", err)
+	}
+
+	f, err := logFileFor(testPath, "podmandump")
+	if err != nil {
+		ginkgo.GinkgoWriter.Printf("Podman dump failed to open file: %v", err)
+		return
+	}
+	defer f.Close()
+
+	fmt.Fprint(f, "Dumping podman information\n")
+	_, err = fmt.Fprint(f, dump)
+	if err != nil {
+		ginkgo.GinkgoWriter.Printf("Podman dump failed to write to file: %v", err)
+		return
+	}
+}
+
 func DumpPods(name string, pods []*corev1.Pod) {
 	ginkgo.GinkgoWriter.Printf("%s pods are: %s", name)
 	for _, pod := range pods {
@@ -99,4 +134,13 @@ func DumpPods(name string, pods []*corev1.Pod) {
 		}
 		ginkgo.GinkgoWriter.Print("\n")
 	}
+}
+
+func createTestOutput(basePath, testName string) (string, error) {
+	testPath := path.Join(basePath, strings.ReplaceAll(testName, " ", "-"))
+	err := os.Mkdir(testPath, 0755)
+	if err != nil && !errors.Is(err, os.ErrExist) {
+		return "", fmt.Errorf("failed to create test dir: %w", err)
+	}
+	return testPath, nil
 }
