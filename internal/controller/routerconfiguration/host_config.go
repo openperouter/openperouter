@@ -46,6 +46,7 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 	slog.InfoContext(ctx, "configure interface start", "namespace", targetNS)
 	defer slog.InfoContext(ctx, "configure interface end", "namespace", targetNS)
 	apiConfig := conversion.ApiConfigData{
+		MultusEnabled: config.MultusEnabled,
 		NodeIndex:     config.NodeIndex,
 		Underlays:     config.Underlays,
 		L3VNIs:        config.L3VNIs,

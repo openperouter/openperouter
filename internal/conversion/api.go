@@ -9,6 +9,7 @@ import (
 
 type ApiConfigData struct {
 	NodeIndex     int
+	MultusEnabled bool
 	Underlays     []v1alpha1.Underlay
 	L3VNIs        []v1alpha1.L3VNI
 	L2VNIs        []v1alpha1.L2VNI
