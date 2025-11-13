@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	v1 "k8s.io/api/admission/v1"
@@ -67,7 +68,7 @@ func (v *L2VNIValidator) Handle(ctx context.Context, req admission.Request) (res
 			return admission.Denied(err.Error())
 		}
 	case v1.Update:
-		if err := validateL2VNIUpdate(&l2vni, &oldL2VNI); err != nil {
+		if err := validateL2VNIUpdate(&oldL2VNI, &l2vni); err != nil {
 			return admission.Denied(err.Error())
 		}
 	case v1.Delete:
@@ -89,8 +90,8 @@ func validateL2VNIUpdate(l2vni *v1alpha1.L2VNI, oldL2VNI *v1alpha1.L2VNI) error 
 	Logger.Debug("webhook l2vni", "action", "update", "name", l2vni.Name, "namespace", l2vni.Namespace)
 	defer Logger.Debug("webhook l2vni", "action", "end update", "name", l2vni.Name, "namespace", l2vni.Namespace)
 
-	if oldL2VNI.Spec.L2GatewayIP != l2vni.Spec.L2GatewayIP {
-		return errors.New("L2GatewayIP cannot be changed")
+	if !slices.Equal(oldL2VNI.Spec.L2GatewayIPs, l2vni.Spec.L2GatewayIPs) {
+		return errors.New("L2GatewayIPs cannot be changed")
 	}
 
 	return validateL2VNI(l2vni)
