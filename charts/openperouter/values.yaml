@@ -15,6 +15,9 @@ openperouter:
   tolerateMaster: true
   # -- If true, all pods (router, controller, and nodemarker) are allowed to run on master/control-plane nodes
   runOnMaster: true
+  # -- If true, enables host mode deployment: deploys hostbridge DaemonSet instead of router and controller,
+  # and configures nodemarker to run in webhook-only mode
+  hostmode: false
   # -- Multus network annotation to be added to router pods
   multusNetworkAnnotation: ""
   image:

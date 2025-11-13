@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"log/slog"
 
-	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -31,20 +30,18 @@ import (
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/conversion"
-	"github.com/openperouter/openperouter/internal/pods"
 	v1 "k8s.io/api/core/v1"
 )
 
 type PERouterReconciler struct {
 	client.Client
-	Scheme      *runtime.Scheme
-	MyNode      string
-	MyNamespace string
-	FRRConfig   string
-	ReloadPort  int
-	PodRuntime  *pods.Runtime
-	LogLevel    string
-	Logger      *slog.Logger
+	Scheme         *runtime.Scheme
+	MyNode         string
+	MyNamespace    string
+	LogLevel       string
+	Logger         *slog.Logger
+	FRRConfigPath  string
+	RouterProvider RouterProvider
 }
 
 type requestKey string
@@ -71,32 +68,10 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	ctx = context.WithValue(ctx, requestKey("request"), req.String())
 
-	nodeIndex, err := nodeIndex(ctx, r.Client, r.MyNode)
-	if err != nil {
-		slog.Error("failed to fetch node index", "node", r.MyNode, "error", err)
-		return ctrl.Result{}, err
-	}
-	routerPod, err := routerPodForNode(ctx, r.Client, r.MyNode)
-	if err != nil {
-		slog.Error("failed to fetch router pod", "node", r.MyNode, "error", err)
-		return ctrl.Result{}, err
-	}
-	routerPodIsReady := PodIsReady(routerPod)
-
-	if !routerPodIsReady {
-		logger.Info("router pod", "Pod", routerPod.Name, "event", "is not ready, waiting for it to be ready before configuring")
-		return ctrl.Result{}, nil
-	}
-
 	var underlays v1alpha1.UnderlayList
 	if err := r.List(ctx, &underlays); err != nil {
 		slog.Error("failed to list underlays", "error", err)
 		return ctrl.Result{}, err
-	}
-
-	if err := conversion.ValidateUnderlays(underlays.Items); err != nil {
-		slog.Error("failed to validate underlays", "error", err)
-		return ctrl.Result{}, nil
 	}
 
 	var l3vnis v1alpha1.L3VNIList
@@ -104,19 +79,11 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		slog.Error("failed to list l3vnis", "error", err)
 		return ctrl.Result{}, err
 	}
-	if err := conversion.ValidateL3VNIs(l3vnis.Items); err != nil {
-		slog.Error("failed to validate l3vnis", "error", err)
-		return ctrl.Result{}, nil
-	}
 
 	var l2vnis v1alpha1.L2VNIList
 	if err := r.List(ctx, &l2vnis); err != nil {
 		slog.Error("failed to list l2vnis", "error", err)
 		return ctrl.Result{}, err
-	}
-	if err := conversion.ValidateL2VNIs(l2vnis.Items); err != nil {
-		slog.Error("failed to validate l2vnis", "error", err)
-		return ctrl.Result{}, nil
 	}
 
 	var l3passthrough v1alpha1.L3PassthroughList
@@ -125,11 +92,11 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
-	if err := conversion.ValidateHostSessions(l3vnis.Items, l3passthrough.Items); err != nil {
-		slog.Error("failed to validate host sessions", "error", err)
-		return ctrl.Result{}, nil
+	nodeIndex, err := r.RouterProvider.NodeIndex(ctx)
+	if err != nil {
+		slog.Error("failed to get node index", "error", err)
+		return ctrl.Result{}, err
 	}
-
 	logger.Debug("using config", "l3vnis", l3vnis.Items, "l2vnis", l2vnis.Items, "underlays", underlays.Items, "l3passthrough", l3passthrough.Items)
 	apiConfig := conversion.ApiConfigData{
 		NodeIndex:     nodeIndex,
@@ -140,29 +107,27 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		L3Passthrough: l3passthrough.Items,
 	}
 
-	if err := configureFRR(ctx, frrConfigData{
-		configFile:    r.FRRConfig,
-		address:       routerPod.Status.PodIP,
-		port:          r.ReloadPort,
-		ApiConfigData: apiConfig,
-	}); err != nil {
-		slog.Error("failed to reload frr config", "error", err)
-		return ctrl.Result{}, err
+	router, err := r.RouterProvider.New(ctx)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to get router pod instance: %w", err)
 	}
 
-	err = configureInterfaces(ctx, interfacesConfiguration{
-		RouterPodUUID: string(routerPod.UID),
-		PodRuntime:    *r.PodRuntime,
-		ApiConfigData: apiConfig,
-	})
+	targetNS, err := router.TargetNS(ctx)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to retrieve target namespace: %w", err)
+	}
 
+	updater, err := router.Updater(ctx)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to retrieve updater: %w", err)
+	}
+
+	err = Reconcile(ctx, apiConfig, r.FRRConfigPath, targetNS, updater)
 	if nonRecoverableHostError(err) {
-		logger.Info("breaking configuration change", "killing pod", routerPod.Name)
-		if err := r.Delete(ctx, routerPod); err != nil && !errors.IsNotFound(err) {
-			slog.Error("failed to delete router pod", "error", err)
+		if err := router.HandleNonRecoverableError(ctx); err != nil {
+			slog.Error("failed to handle non recoverable error", "error", err)
 			return ctrl.Result{}, err
 		}
-		return ctrl.Result{}, nil
 	}
 	if err != nil {
 		slog.Error("failed to configure the host", "error", err)
@@ -244,24 +209,4 @@ func setPodNodeNameIndex(mgr ctrl.Manager) error {
 		return fmt.Errorf("failed to set node indexer %w", err)
 	}
 	return nil
-}
-
-// PodIsReady returns the given pod's PodReady and ContainersReady condition.
-func PodIsReady(p *v1.Pod) bool {
-	return podConditionStatus(p, v1.PodReady) == v1.ConditionTrue && podConditionStatus(p, v1.ContainersReady) == v1.ConditionTrue
-}
-
-// podConditionStatus returns the status of the condition for a given pod.
-func podConditionStatus(p *v1.Pod, condition v1.PodConditionType) v1.ConditionStatus {
-	if p == nil {
-		return v1.ConditionUnknown
-	}
-
-	for _, c := range p.Status.Conditions {
-		if c.Type == condition {
-			return c.Status
-		}
-	}
-
-	return v1.ConditionUnknown
 }

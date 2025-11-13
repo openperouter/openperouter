@@ -5,6 +5,7 @@ package hostnetwork
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -14,6 +15,10 @@ import (
 )
 
 const testPassthroughNSName = "passthroughtestns"
+
+func testPassthroughNSPath() string {
+	return fmt.Sprintf("/var/run/netns/%s", testPassthroughNSName)
+}
 
 var _ = Describe("Passthrough configuration", func() {
 	var testNS netns.NsHandle
@@ -29,7 +34,7 @@ var _ = Describe("Passthrough configuration", func() {
 
 	It("should work with IPv4 only passthrough", func() {
 		params := PassthroughParams{
-			TargetNS: testPassthroughNSName,
+			TargetNS: testPassthroughNSPath(),
 			HostVeth: Veth{
 				HostIPv4: "192.168.10.1/32",
 				NSIPv4:   "192.168.10.0/32",
@@ -46,7 +51,7 @@ var _ = Describe("Passthrough configuration", func() {
 
 	It("should work with IPv6 only passthrough", func() {
 		params := PassthroughParams{
-			TargetNS: testPassthroughNSName,
+			TargetNS: testPassthroughNSPath(),
 			HostVeth: Veth{
 				HostIPv6: "2001:db8::1/128",
 				NSIPv6:   "2001:db8::/128",
@@ -63,7 +68,7 @@ var _ = Describe("Passthrough configuration", func() {
 
 	It("should work with dual-stack passthrough", func() {
 		params := PassthroughParams{
-			TargetNS: testPassthroughNSName,
+			TargetNS: testPassthroughNSPath(),
 			HostVeth: Veth{
 				HostIPv4: "192.168.10.1/32",
 				NSIPv4:   "192.168.10.0/32",
@@ -82,7 +87,7 @@ var _ = Describe("Passthrough configuration", func() {
 
 	It("should remove passthrough interfaces correctly", func() {
 		params := PassthroughParams{
-			TargetNS: testPassthroughNSName,
+			TargetNS: testPassthroughNSPath(),
 			HostVeth: Veth{
 				HostIPv4: "192.168.10.1/32",
 				NSIPv4:   "192.168.10.0/32",
@@ -96,7 +101,7 @@ var _ = Describe("Passthrough configuration", func() {
 			validatePassthrough(g, params, testNS)
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 
-		err = RemovePassthrough(testPassthroughNSName)
+		err = RemovePassthrough(testPassthroughNSPath())
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -106,7 +111,7 @@ var _ = Describe("Passthrough configuration", func() {
 
 	It("should be idempotent", func() {
 		params := PassthroughParams{
-			TargetNS: testPassthroughNSName,
+			TargetNS: testPassthroughNSPath(),
 			HostVeth: Veth{
 				HostIPv4: "192.168.10.1/32",
 				NSIPv4:   "192.168.10.0/32",
@@ -125,7 +130,7 @@ var _ = Describe("Passthrough configuration", func() {
 	})
 
 	It("should handle removal of non-existent passthrough gracefully", func() {
-		err := RemovePassthrough(testPassthroughNSName)
+		err := RemovePassthrough(testPassthroughNSPath())
 		Expect(err).NotTo(HaveOccurred())
 	})
 })

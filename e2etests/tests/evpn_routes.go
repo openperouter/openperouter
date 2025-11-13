@@ -10,6 +10,7 @@ import (
 	"time"
 
 	frrk8sapi "github.com/metallb/frr-k8s/api/v1beta1"
+	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/openperouter/openperouter/api/v1alpha1"
@@ -40,7 +41,7 @@ var (
 
 var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 	var cs clientset.Interface
-	routerPods := []*corev1.Pod{}
+	var routers openperouter.Routers
 
 	vniRed := v1alpha1.L3VNI{
 		ObjectMeta: metav1.ObjectMeta{
@@ -85,10 +86,10 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		cs = k8sclient.New()
-		routerPods, err = openperouter.RouterPods(cs)
+		routers, err = openperouter.Get(cs, HostMode)
 		Expect(err).NotTo(HaveOccurred())
 
-		DumpPods("Router pods", routerPods)
+		routers.Dump(ginkgo.GinkgoWriter)
 
 		err = Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{
@@ -103,7 +104,11 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred())
 		By("waiting for the router pod to rollout after removing the underlay")
 		Eventually(func() error {
-			return openperouter.DaemonsetRolled(cs, routerPods)
+			newRouters, err := openperouter.Get(cs, HostMode)
+			if err != nil {
+				return err
+			}
+			return openperouter.DaemonsetRolled(routers, newRouters)
 		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 	})
 
@@ -132,16 +137,15 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			checkRouteFromLeaf := func(leaf infra.Leaf, vni v1alpha1.L3VNI, mustContain bool, prefixes []string) {
 				By(fmt.Sprintf("checking routes from leaf %s on vni %s, mustContain %v %v", leaf.Name, vni.Name, mustContain, prefixes))
 				Eventually(func() error {
-					for _, p := range routerPods {
-						exec := executor.ForPod(p.Namespace, p.Name, "frr")
+					for exec := range routers.GetExecutors() {
 						evpn, err := frr.EVPNInfo(exec)
 						Expect(err).NotTo(HaveOccurred())
 						for _, prefix := range prefixes {
 							if mustContain && !evpn.ContainsType5RouteForVNI(prefix, leaf.VTEPIP, int(vni.Spec.VNI)) {
-								return fmt.Errorf("type5 route for %s - %s not found in %v in router %s", prefix, leaf.VTEPIP, evpn, p.Name)
+								return fmt.Errorf("type5 route for %s - %s not found in %v in router %s", prefix, leaf.VTEPIP, evpn, exec.Name())
 							}
 							if !mustContain && evpn.ContainsType5RouteForVNI(prefix, leaf.VTEPIP, int(vni.Spec.VNI)) {
-								return fmt.Errorf("type5 route for %s - %s found in %v in router %s", prefix, leaf.VTEPIP, evpn, p.Name)
+								return fmt.Errorf("type5 route for %s - %s found in %v in router %s", prefix, leaf.VTEPIP, evpn, exec.Name())
 							}
 						}
 					}
