@@ -23,6 +23,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
+	"github.com/openperouter/openperouter/e2etests/pkg/status"
 	"github.com/openperouter/openperouter/e2etests/pkg/url"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -130,6 +131,8 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
+			By("confirming L3VNI configurations are successful")
+			status.ExpectSuccessfulStatus(Updater.Client())
 		})
 
 		It("receives type 5 routes from the fabric", func() {
@@ -219,6 +222,9 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 				FRRConfigurations: append(frrK8sConfigRed, frrK8sConfigBlue...),
 			})
 			Expect(err).NotTo(HaveOccurred())
+
+			By("confirming L3VNI and FRR configurations are successful")
+			status.ExpectSuccessfulStatus(Updater.Client())
 
 			validateFRRK8sSessionForHostSession(vniRed.Name, *vniRed.Spec.HostSession, Established, frrk8sPods...)
 			validateFRRK8sSessionForHostSession(vniBlue.Name, *vniBlue.Spec.HostSession, Established, frrk8sPods...)
