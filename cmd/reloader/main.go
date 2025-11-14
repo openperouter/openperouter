@@ -33,6 +33,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/openperouter/openperouter/internal/frr/liveness"
+	"github.com/openperouter/openperouter/internal/frr/vtysh"
 	"github.com/openperouter/openperouter/internal/frrconfig"
 	"github.com/openperouter/openperouter/internal/logging"
 )
@@ -167,6 +169,12 @@ func health() func(w http.ResponseWriter, req *http.Request) {
 			http.Error(w, "invalid method", http.StatusMethodNotAllowed)
 			return
 		}
+
+		if err := liveness.PingFrr(vtysh.Run); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
 		w.WriteHeader(http.StatusOK)
 		_, err := w.Write([]byte("ok"))
 		if err != nil {
