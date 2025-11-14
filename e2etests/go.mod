@@ -7,7 +7,7 @@ toolchain go1.24.2
 require (
 	github.com/apparentlymart/go-cidr v1.1.0
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.7.6
-	github.com/metallb/frr-k8s v0.0.20
+	github.com/metallb/frr-k8s v0.0.21
 	github.com/onsi/ginkgo/v2 v2.23.3
 	github.com/onsi/gomega v1.37.0
 	github.com/openperouter/openperouter v0.0.0-00010101000000-000000000000
