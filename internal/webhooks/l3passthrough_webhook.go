@@ -124,7 +124,7 @@ func validateL3Passthrough(l3passthrough *v1alpha1.L3Passthrough) error {
 	if err != nil {
 		return err
 	}
-	if err := conversion.ValidateHostSessions(l3vnis.Items, toValidate); err != nil {
+	if err := conversion.ValidateHostSessions(l3vnis.Items, toValidate, &conversion.NoOpStatusReporter{}); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
 	}
 	return nil
