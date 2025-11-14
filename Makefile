@@ -314,6 +314,14 @@ clab-multi-cluster: kind-node-image-build ## Deploy multi-cluster setup with 2 k
 	@echo '  - Cluster A: export KUBECONFIG=${KUBECONFIG_PATH}-pe-kind-a'
 	@echo '  - Cluster B: export KUBECONFIG=${KUBECONFIG_PATH}-pe-kind-b'
 
+.PHONY: clean
+clean: kind ## Shutdown and clean up kind cluster(s) and containerlab topology.
+	KUBECONFIG_PATH=$(KUBECONFIG_PATH) KIND=$(KIND) CLAB_TOPOLOGY=$(CLAB_TOPOLOGY_FILE) clab/clean.sh
+
+.PHONY: clean-multi
+clean-multi: kind ## Shutdown and clean up multi-cluster setup.
+	KUBECONFIG_PATH=$(KUBECONFIG_PATH) KIND=$(KIND) CLAB_TOPOLOGY=multicluster/kind.clab.yml clab/clean.sh pe-kind-a pe-kind-b
+
 .PHONY: load-on-kind
 load-on-kind: ## Load the docker image into the kind cluster.
 	KIND=$(KIND) bash -c 'source clab/common.sh && load_local_image_to_kind ${IMG} router'
