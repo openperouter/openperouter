@@ -21,6 +21,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
+	"github.com/openperouter/openperouter/e2etests/pkg/status"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -440,6 +441,9 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 			err = Updater.Update(resources)
 			Expect(err).NotTo(HaveOccurred())
 
+			ginkgo.By("confirming underlay status is failed due to non-existent NIC")
+			status.ExpectResourceFailure(Updater.Client(), "Underlay", resources.Underlays[0].Name)
+
 			ginkgo.By("waiting for the routers to be rolled out again")
 			Eventually(func() error {
 				newRouterPods, err := openperouter.RouterPods(cs)
@@ -460,6 +464,9 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				},
 			})
 			Expect(err).NotTo(HaveOccurred())
+
+			ginkgo.By("confirming IPv6-only L3VNI configuration is successful")
+			status.ExpectSuccessfulStatus(Updater.Client())
 
 			for _, p := range routerPods {
 				ginkgo.By(fmt.Sprintf("validating IPv6-only VNI for pod %s", p.Name))
@@ -497,6 +504,9 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				},
 			})
 			Expect(err).NotTo(HaveOccurred())
+
+			ginkgo.By("confirming dual-stack L3VNI configuration is successful")
+			status.ExpectSuccessfulStatus(Updater.Client())
 
 			for _, p := range routerPods {
 				ginkgo.By(fmt.Sprintf("validating dual-stack VNI for pod %s", p.Name))
@@ -609,6 +619,9 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				},
 			})
 			Expect(err).NotTo(HaveOccurred())
+
+			ginkgo.By("confirming L2VNI configuration is successful")
+			status.ExpectSuccessfulStatus(Updater.Client())
 
 			for _, p := range routerPods {
 				ginkgo.By(fmt.Sprintf("validating VNI for pod %s", p.Name))
