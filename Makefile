@@ -316,10 +316,7 @@ clab-multi-cluster: kind-node-image-build ## Deploy multi-cluster setup with 2 k
 
 .PHONY: clean
 clean: kind ## Shutdown and clean up kind cluster(s) and containerlab topology.
-	KUBECONFIG_PATH=$(KUBECONFIG_PATH) KIND=$(KIND) CLAB_TOPOLOGY=$(CLAB_TOPOLOGY_FILE) clab/clean.sh
-
-.PHONY: clean-multi
-clean-multi: kind ## Shutdown and clean up multi-cluster setup.
+	KUBECONFIG_PATH=$(KUBECONFIG_PATH) KIND=$(KIND) CLAB_TOPOLOGY=singlecluster/kind.clab.yml clab/clean.sh pe-kind
 	KUBECONFIG_PATH=$(KUBECONFIG_PATH) KIND=$(KIND) CLAB_TOPOLOGY=multicluster/kind.clab.yml clab/clean.sh pe-kind-a pe-kind-b
 
 .PHONY: load-on-kind
