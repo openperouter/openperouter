@@ -14,10 +14,17 @@ else
     CLUSTER_ARRAY=("pe-kind")
 fi
 
+# Initialize kubeconfig files array based on cluster mode
 if [[ ${#CLUSTER_ARRAY[@]} -gt 1 ]]; then
     CLUSTER_MODE="multi"
+    KUBECONFIG_FILES=()
+    for cluster_name in "${CLUSTER_ARRAY[@]}"; do
+        KUBECONFIG_FILES+=("${KUBECONFIG_PATH}-${cluster_name}")
+    done
+    KUBECONFIG_FILES+=("${KUBECONFIG_PATH}")
 else
     CLUSTER_MODE="single"
+    KUBECONFIG_FILES=("${KUBECONFIG_PATH}")
 fi
 
 echo "=== Starting ${CLUSTER_MODE} cluster cleanup ==="
@@ -53,42 +60,22 @@ for cluster_name in "${CLUSTER_ARRAY[@]}"; do
 done
 
 echo "=== Cleaning up bridge interfaces ==="
-if [[ "$CLUSTER_MODE" == "single" ]]; then
-    bridge_name="leafkind-switch"
-    if [[ -d "/sys/class/net/${bridge_name}" ]]; then
-        echo "Removing bridge: ${bridge_name}"
-        sudo ip link delete ${bridge_name} 2>/dev/null || true
+for iface in $(ip link show | awk -F': ' '/^[0-9]+: leafkind/ {print $2}' | cut -d'@' -f1); do
+    if [[ -d "/sys/class/net/${iface}" ]]; then
+        echo "Removing bridge: ${iface}"
+        sudo ip link delete ${iface} 2>/dev/null || true
     fi
-else
-    for cluster_name in "${CLUSTER_ARRAY[@]}"; do
-        suffix=$(echo "$cluster_name" | sed 's/pe-kind-//')
-        bridge_name="leafkind-sw-${suffix}"
-        if [[ -d "/sys/class/net/${bridge_name}" ]]; then
-            echo "Removing bridge: ${bridge_name}"
-            sudo ip link delete ${bridge_name} 2>/dev/null || true
-        fi
-    done
-fi
+done
 
 echo "=== Cleaning up kubeconfig files ==="
-if [[ "$CLUSTER_MODE" == "multi" ]]; then
-    for cluster_name in "${CLUSTER_ARRAY[@]}"; do
-        rm -f "${KUBECONFIG_PATH}-${cluster_name}" || true
-        echo "Removed: ${KUBECONFIG_PATH}-${cluster_name}"
-    done
-fi
-rm -f "${KUBECONFIG_PATH}" || true
-echo "Removed: ${KUBECONFIG_PATH}"
+for kubeconfig_file in "${KUBECONFIG_FILES[@]}"; do
+    rm -f "${kubeconfig_file}" || true
+    echo "Removed: ${kubeconfig_file}"
+done
 
 echo "=== Cleaning up local registry ==="
 ${CONTAINER_ENGINE_CLI} stop kind-registry 2>/dev/null || true
 ${CONTAINER_ENGINE_CLI} rm kind-registry 2>/dev/null || true
-
-echo "=== Cleaning up bin/ folder ==="
-popd
-rm -rf bin/ || true
-echo "Removed: bin/"
-pushd "$(dirname $(readlink -f $0))" >/dev/null
 
 echo "=== ${CLUSTER_MODE^} cluster cleanup completed ==="
 echo "All resources have been cleaned up"
