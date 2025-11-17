@@ -30,12 +30,15 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/client-go/rest"
 
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 
 	"github.com/go-logr/logr"
@@ -158,7 +161,16 @@ func main() {
 	mgr, err := ctrl.NewManager(k8sConfig, ctrl.Options{
 		Scheme:                 scheme,
 		HealthProbeBindAddress: args.probeAddr,
-		Cache:                  cache.Options{},
+		// Restrict client cache/informer to events for the node running this pod.
+		// On large clusters, not doing so can overload the API server for daemonsets
+		// since nodes receive frequent updates in some environments.
+		Cache: cache.Options{
+			ByObject: map[client.Object]cache.ByObject{
+				&corev1.Node{}: {
+					Field: fields.Set{"metadata.name": k8sModeParams.nodeName}.AsSelector(),
+				},
+			},
+		},
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
@@ -172,13 +184,15 @@ func main() {
 	}
 
 	var routerProvider routerconfiguration.RouterProvider
+	var nodeName string
 	switch args.mode {
 	case modeK8s:
+		nodeName = k8sModeParams.nodeName
 		routerProvider = &routerconfiguration.RouterPodProvider{
 			FRRConfigPath: args.frrConfigPath,
 			PodRuntime:    podRuntime,
 			Client:        mgr.GetClient(),
-			Node:          k8sModeParams.nodeName,
+			Node:          nodeName,
 		}
 	case modeHost:
 		hostConfig, err := staticconfiguration.ReadFromFile(hostModeParams.configuration)
@@ -186,6 +200,8 @@ func main() {
 			setupLog.Error(err, "failed to load the static configuration file")
 			os.Exit(1)
 		}
+		// In host mode, the node name is passed via --nodename parameter
+		nodeName = k8sModeParams.nodeName
 		routerProvider = &routerconfiguration.RouterHostProvider{
 			FRRConfigPath:     args.frrConfigPath,
 			RouterPidFilePath: hostModeParams.hostContainerPidPath,
@@ -197,7 +213,7 @@ func main() {
 	if err = (&routerconfiguration.PERouterReconciler{
 		Client:             mgr.GetClient(),
 		Scheme:             mgr.GetScheme(),
-		MyNode:             k8sModeParams.nodeName,
+		MyNode:             nodeName,
 		LogLevel:           args.logLevel,
 		Logger:             logger,
 		MyNamespace:        k8sModeParams.namespace,
@@ -261,7 +277,6 @@ func pingAPIServer() (*rest.Config, error) {
 		return nil, fmt.Errorf("failed to get serverversion %w", err)
 	}
 	return cfg, nil
-
 }
 
 func validateParameters(mode string, hostModeParams hostModeParameters, k8sModeParams k8sModeParameters) error {
@@ -282,8 +297,8 @@ func validateParameters(mode string, hostModeParams hostModeParameters, k8sModeP
 	}
 
 	if mode == modeHost {
-		if k8sModeParams.nodeName != "" {
-			return fmt.Errorf("nodename should not be set in %s mode", modeHost)
+		if k8sModeParams.nodeName == "" {
+			return fmt.Errorf("nodename is required in %s mode", modeHost)
 		}
 		if k8sModeParams.namespace != "" {
 			return fmt.Errorf("namespace should not be set in %s mode", modeHost)
