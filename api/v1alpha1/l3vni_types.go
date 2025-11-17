@@ -23,6 +23,12 @@ import (
 // L3VNISpec defines the desired state of VNI.
 // +kubebuilder:validation:XValidation:rule="!has(self.hostsession) || self.hostsession.hostasn != self.hostsession.asn",message="hostASN must be different from asn"
 type L3VNISpec struct {
+	// NodeSelector specifies which nodes this L3VNI applies to.
+	// If empty or not specified, applies to all nodes.
+	// Multiple L3VNIs can match the same node.
+	// +optional
+	NodeSelector *metav1.LabelSelector `json:"nodeSelector,omitempty"`
+
 	// VRF is the name of the linux VRF to be used inside the PERouter namespace.
 	// +kubebuilder:validation:Pattern=`^[a-zA-Z][a-zA-Z0-9_-]*$`
 	// +kubebuilder:validation:MaxLength=15
