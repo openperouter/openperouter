@@ -30,12 +30,15 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/client-go/rest"
 
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 
 	"github.com/go-logr/logr"
@@ -158,7 +161,16 @@ func main() {
 	mgr, err := ctrl.NewManager(k8sConfig, ctrl.Options{
 		Scheme:                 scheme,
 		HealthProbeBindAddress: args.probeAddr,
-		Cache:                  cache.Options{},
+		// Restrict client cache/informer to events for the node running this pod.
+		// On large clusters, not doing so can overload the API server for daemonsets
+		// since nodes receive frequent updates in some environments.
+		Cache: cache.Options{
+			ByObject: map[client.Object]cache.ByObject{
+				&corev1.Node{}: {
+					Field: fields.Set{"metadata.name": k8sModeParams.nodeName}.AsSelector(),
+				},
+			},
+		},
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
@@ -261,7 +273,6 @@ func pingAPIServer() (*rest.Config, error) {
 		return nil, fmt.Errorf("failed to get serverversion %w", err)
 	}
 	return cfg, nil
-
 }
 
 func validateParameters(mode string, hostModeParams hostModeParameters, k8sModeParams k8sModeParameters) error {
