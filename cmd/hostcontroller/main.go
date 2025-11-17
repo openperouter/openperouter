@@ -26,11 +26,14 @@ import (
 
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
@@ -105,12 +108,21 @@ func main() {
 		SecureServing: args.secureMetrics,
 		TLSOpts:       args.tlsOpts,
 	}
-
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
 		HealthProbeBindAddress: args.probeAddr,
-		Cache:                  cache.Options{},
 		Metrics:                metricsServerOptions,
+		// Restrict client cache/informer to events for the node running this pod.
+		// On large clusters, not doing so can overload the API server for daemonsets
+		// since nodes receive frequent updates in some environments.
+		Cache: cache.Options{
+			ByObject: map[client.Object]cache.ByObject{
+				&corev1.Node{}: {
+					Field: fields.Set{"metadata.name": args.nodeName}.AsSelector(),
+				},
+				// TODO: We should do the same for pods since it's a massive resource
+			},
+		},
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")

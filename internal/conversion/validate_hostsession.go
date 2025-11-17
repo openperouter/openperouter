@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	v1alpha1 "github.com/openperouter/openperouter/api/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
 )
 
 type hostSessionInfo struct {
@@ -13,7 +14,24 @@ type hostSessionInfo struct {
 	name string
 }
 
-func ValidateHostSessions(l3VNIs []v1alpha1.L3VNI, l3Passthrough []v1alpha1.L3Passthrough) error {
+func ValidateHostSessionsForNodes(nodes []corev1.Node, l3VNIs []v1alpha1.L3VNI, l3Passthrough []v1alpha1.L3Passthrough) error {
+	for _, node := range nodes {
+		filteredL3VNIs, err := FilterL3VNIsForNode(&node, l3VNIs)
+		if err != nil {
+			return fmt.Errorf("failed to filter L3 VNIs for node %q: %w", node.Name, err)
+		}
+		filteredL3Passthroughs, err := FilterL3PassthroughsForNode(&node, l3Passthrough)
+		if err != nil {
+			return fmt.Errorf("failed to filter L3 Passthrough for node %q: %w", node.Name, err)
+		}
+		if err := ValidateNodeHostSessions(filteredL3VNIs, filteredL3Passthroughs); err != nil {
+			return fmt.Errorf("failed to validate host sessions for node %q: %w", node.Name, err)
+		}
+	}
+	return nil
+}
+
+func ValidateNodeHostSessions(l3VNIs []v1alpha1.L3VNI, l3Passthrough []v1alpha1.L3Passthrough) error {
 	hostSessions := []hostSessionInfo{}
 	for _, vni := range l3VNIs {
 		if vni.Spec.HostSession == nil {
