@@ -22,6 +22,7 @@ import (
 	"log/slog"
 
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -31,6 +32,7 @@ import (
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/conversion"
+	"github.com/openperouter/openperouter/internal/filter"
 	"github.com/openperouter/openperouter/internal/pods"
 	v1 "k8s.io/api/core/v1"
 )
@@ -72,6 +74,12 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	ctx = context.WithValue(ctx, requestKey("request"), req.String())
 
+	node := &v1.Node{}
+	if err := r.Get(ctx, client.ObjectKey{Name: r.MyNode}, node); err != nil {
+		slog.Error("failed to get node", "node", r.MyNode, "error", err)
+		return ctrl.Result{}, err
+	}
+
 	nodeIndex, err := nodeIndex(ctx, r.Client, r.MyNode)
 	if err != nil {
 		slog.Error("failed to fetch node index", "node", r.MyNode, "error", err)
@@ -95,29 +103,16 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
-	if err := conversion.ValidateUnderlays(underlays.Items); err != nil {
-		slog.Error("failed to validate underlays", "error", err)
-		return ctrl.Result{}, nil
-	}
-
 	var l3vnis v1alpha1.L3VNIList
 	if err := r.List(ctx, &l3vnis); err != nil {
 		slog.Error("failed to list l3vnis", "error", err)
 		return ctrl.Result{}, err
-	}
-	if err := conversion.ValidateL3VNIs(l3vnis.Items); err != nil {
-		slog.Error("failed to validate l3vnis", "error", err)
-		return ctrl.Result{}, nil
 	}
 
 	var l2vnis v1alpha1.L2VNIList
 	if err := r.List(ctx, &l2vnis); err != nil {
 		slog.Error("failed to list l2vnis", "error", err)
 		return ctrl.Result{}, err
-	}
-	if err := conversion.ValidateL2VNIs(l2vnis.Items); err != nil {
-		slog.Error("failed to validate l2vnis", "error", err)
-		return ctrl.Result{}, nil
 	}
 
 	var l3passthrough v1alpha1.L3PassthroughList
@@ -126,20 +121,66 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
-	if err := conversion.ValidateHostSessions(l3vnis.Items, l3passthrough.Items); err != nil {
+	// Filter resources by node selector
+	filteredUnderlays, err := filter.FilterUnderlaysForNode(node, underlays.Items)
+	if err != nil {
+		slog.Error("failed to filter underlays for node", "node", r.MyNode, "error", err)
+		return ctrl.Result{}, err
+	}
+
+	filteredL3VNIs, err := filter.FilterL3VNIsForNode(node, l3vnis.Items)
+	if err != nil {
+		slog.Error("failed to filter l3vnis for node", "node", r.MyNode, "error", err)
+		return ctrl.Result{}, err
+	}
+
+	filteredL2VNIs, err := filter.FilterL2VNIsForNode(node, l2vnis.Items)
+	if err != nil {
+		slog.Error("failed to filter l2vnis for node", "node", r.MyNode, "error", err)
+		return ctrl.Result{}, err
+	}
+
+	filteredL3Passthrough, err := filter.FilterL3PassthroughsForNode(node, l3passthrough.Items)
+	if err != nil {
+		slog.Error("failed to filter l3passthrough for node", "node", r.MyNode, "error", err)
+		return ctrl.Result{}, err
+	}
+
+	// Validate filtered resources for this node
+	if err := conversion.ValidateUnderlays(filteredUnderlays); err != nil {
+		slog.Error("failed to validate underlays", "error", err)
+		return ctrl.Result{}, nil
+	}
+
+	if err := conversion.ValidateL3VNIs(filteredL3VNIs); err != nil {
+		slog.Error("failed to validate l3vnis", "error", err)
+		return ctrl.Result{}, nil
+	}
+
+	if err := conversion.ValidatePassthroughs(filteredL3Passthrough); err != nil {
+		slog.Error("failed to validate l3passthroughs", "error", err)
+		return ctrl.Result{}, nil
+	}
+
+	if err := conversion.ValidateL2VNIs(filteredL2VNIs); err != nil {
+		slog.Error("failed to validate l2vnis", "error", err)
+		return ctrl.Result{}, nil
+	}
+
+	if err := conversion.ValidateHostSessions(filteredL3VNIs, filteredL3Passthrough); err != nil {
 		slog.Error("failed to validate host sessions", "error", err)
 		return ctrl.Result{}, nil
 	}
 
-	logger.Debug("using config", "l3vnis", l3vnis.Items, "l2vnis", l2vnis.Items, "underlays", underlays.Items, "l3passthrough", l3passthrough.Items)
+	logger.Debug("using config", "l3vnis", filteredL3VNIs, "l2vnis", filteredL2VNIs, "underlays", filteredUnderlays, "l3passthrough", filteredL3Passthrough)
 	apiConfig := conversion.ApiConfigData{
 		NodeIndex:          nodeIndex,
 		UnderlayFromMultus: r.UnderlayFromMultus,
-		Underlays:          underlays.Items,
+		Underlays:          filteredUnderlays,
 		LogLevel:           r.LogLevel,
-		L3VNIs:             l3vnis.Items,
-		L2VNIs:             l2vnis.Items,
-		L3Passthrough:      l3passthrough.Items,
+		L3VNIs:             filteredL3VNIs,
+		L2VNIs:             filteredL2VNIs,
+		L3Passthrough:      filteredL3Passthrough,
 	}
 
 	if err := configureFRR(ctx, frrConfigData{
@@ -193,14 +234,21 @@ func (r *PERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		default:
 			return true
 		}
-
 	})
 
 	filterUpdates := predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			switch o := e.ObjectNew.(type) {
 			case *v1.Node:
-				return false
+				// Only reconcile if this is our node and labels changed
+				if o.Name != r.MyNode {
+					return false
+				}
+				old := e.ObjectOld.(*v1.Node)
+				oldLabels := labels.Set(old.Labels)
+				newLabels := labels.Set(o.Labels)
+				return !labels.Equals(oldLabels, newLabels)
+
 			case *v1.Pod: // handle only status updates
 				old := e.ObjectOld.(*v1.Pod)
 				if PodIsReady(old) != PodIsReady(o) {
@@ -218,6 +266,7 @@ func (r *PERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.Underlay{}).
 		Watches(&v1.Pod{}, &handler.EnqueueRequestForObject{}).
+		Watches(&v1.Node{}, &handler.EnqueueRequestForObject{}).
 		Watches(&v1alpha1.L3VNI{}, &handler.EnqueueRequestForObject{}).
 		Watches(&v1alpha1.L2VNI{}, &handler.EnqueueRequestForObject{}).
 		Watches(&v1alpha1.L3Passthrough{}, &handler.EnqueueRequestForObject{}).

@@ -208,7 +208,8 @@ var (
 )
 
 func setupCertRotation(notifyFinished chan struct{}, mgr manager.Manager, logger *slog.Logger,
-	namespace, certDir, certServiceName string, restartOnSecretRefresh bool) error {
+	namespace, certDir, certServiceName string, restartOnSecretRefresh bool,
+) error {
 	webhooks := []rotator.WebhookInfo{
 		{
 			Name: webhookName,
@@ -246,7 +247,7 @@ func setupWebhook(mgr manager.Manager, logger *slog.Logger) error {
 	webhooks.ValidateL3VNIs = conversion.ValidateL3VNIs
 	webhooks.ValidateL2VNIs = conversion.ValidateL2VNIs
 	webhooks.ValidateUnderlays = conversion.ValidateUnderlays
-	webhooks.ValidateL3Passthroughs = conversion.ValidatePassthrough
+	webhooks.ValidateL3Passthroughs = conversion.ValidatePassthroughs
 
 	if err := webhooks.SetupL3VNI(mgr); err != nil {
 		logger.Error("unable to create the webook", "error", err, "webhook", "L3VNIs")
