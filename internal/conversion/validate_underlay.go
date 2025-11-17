@@ -9,9 +9,16 @@ import (
 	"github.com/openperouter/openperouter/api/v1alpha1"
 )
 
+// ValidateUnderlays validates that the given underlays (already filtered for the current node)
+// meet the requirements. Only one underlay can apply to a node.
 func ValidateUnderlays(underlays []v1alpha1.Underlay) error {
 	if len(underlays) > 1 {
-		return fmt.Errorf("can't have more than one underlay")
+		// Multiple underlays match this node - this is a conflict
+		names := make([]string, len(underlays))
+		for i, u := range underlays {
+			names[i] = u.Name
+		}
+		return fmt.Errorf("multiple underlays match this node: %v. Only one underlay can apply to a node", names)
 	}
 
 	for _, underlay := range underlays {
