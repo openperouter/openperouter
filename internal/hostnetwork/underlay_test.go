@@ -188,6 +188,11 @@ func validateUnderlay(g Gomega, params UnderlayParams, interfaceIPs ...string) {
 	g.Expect(mainNicFound).To(BeTrue(), fmt.Sprintf("failed to find underlay interface in ns, links %v", links))
 }
 
+func validateUnderlayIsNotConfigured(g Gomega, params UnderlayParams) {
+	checkLinkdeleted(g, UnderlayLoopback)
+	checkLinkdeleted(g, params.UnderlayInterface)
+}
+
 func validateIP(g Gomega, l netlink.Link, address string) {
 	addresses, err := netlink.AddrList(l, netlink.FAMILY_ALL)
 	g.Expect(err).NotTo(HaveOccurred())

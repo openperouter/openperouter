@@ -18,9 +18,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var (
-	paramsFile string
-)
+var paramsFile string
 
 func init() {
 	flag.StringVar(&paramsFile, "paramsfile", "", "the json file containing the parameters to verify")
@@ -34,7 +32,6 @@ func TestHostNetwork(t *testing.T) {
 }
 
 var _ = Describe("EXTERNAL", func() {
-
 	Context("underlay", func() {
 		var params UnderlayParams
 
@@ -47,6 +44,11 @@ var _ = Describe("EXTERNAL", func() {
 		It("should be configured", func() {
 			Eventually(func(g Gomega) {
 				validateUnderlay(g, params)
+			}, 30*time.Second, 1*time.Second).Should(Succeed())
+		})
+		It("should not be configured", func() {
+			Eventually(func(g Gomega) {
+				validateUnderlayIsNotConfigured(g, params)
 			}, 30*time.Second, 1*time.Second).Should(Succeed())
 		})
 	})
@@ -90,7 +92,6 @@ var _ = Describe("EXTERNAL", func() {
 			}, 30*time.Second, 1*time.Second).Should(Succeed())
 		})
 	})
-
 })
 
 func readParamsFromFile[T any](filePath string) (T, error) {

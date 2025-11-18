@@ -25,16 +25,15 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 )
 
-var (
-	ValidatorPath string
-)
+var ValidatorPath string
 
 const (
-	underlayTestSelector        = "EXTERNAL.*underlay"
-	l3VNIConfiguredTestSelector = "EXTERNAL.*l3.*vni.*configured"
-	l3VNIDeletedTestSelector    = "EXTERNAL.*l3.*vni.*deleted"
-	l2VNIConfiguredTestSelector = "EXTERNAL.*l2.*vni.*configured"
-	l2VNIDeletedTestSelector    = "EXTERNAL.*l2.*vni.*deleted"
+	underlayConfiguredTestSelector    = "EXTERNAL.*underlay.* is configured.*"
+	underlayNotConfiguredTestSelector = "EXTERNAL.*underlay.* is not configured.*"
+	l3VNIConfiguredTestSelector       = "EXTERNAL.*l3.*vni.*configured"
+	l3VNIDeletedTestSelector          = "EXTERNAL.*l3.*vni.*deleted"
+	l2VNIConfiguredTestSelector       = "EXTERNAL.*l2.*vni.*configured"
+	l2VNIDeletedTestSelector          = "EXTERNAL.*l2.*vni.*deleted"
 )
 
 var _ = ginkgo.Describe("Router Host configuration", func() {
@@ -88,7 +87,6 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 	})
 
 	ginkgo.Context("L3", func() {
-
 		l3vni100 := v1alpha1.L3VNI{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "first",
@@ -219,7 +217,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 					EVPN: &evpnParams{
 						VtepIP: vtepIP,
 					},
-				}, underlayTestSelector, p)
+				}, underlayConfiguredTestSelector, p)
 			}
 		})
 
@@ -304,7 +302,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 					EVPN: &evpnParams{
 						VtepIP: vtepIP,
 					},
-				}, underlayTestSelector, p)
+				}, underlayConfiguredTestSelector, p)
 			}
 		})
 
@@ -372,7 +370,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 					EVPN: &evpnParams{
 						VtepIP: vtepIP,
 					},
-				}, underlayTestSelector, p)
+				}, underlayConfiguredTestSelector, p)
 			}
 		})
 
@@ -411,7 +409,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 						EVPN: &evpnParams{
 							VtepIP: vtepIP,
 						},
-					}, underlayTestSelector, p)
+					}, underlayConfiguredTestSelector, p)
 				}
 			}
 
@@ -470,7 +468,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 					EVPN: &evpnParams{
 						VtepIP: vtepIP,
 					},
-				}, underlayTestSelector, p)
+				}, underlayConfiguredTestSelector, p)
 			}
 		})
 
@@ -507,7 +505,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 					EVPN: &evpnParams{
 						VtepIP: vtepIP,
 					},
-				}, underlayTestSelector, p)
+				}, underlayConfiguredTestSelector, p)
 			}
 		})
 
@@ -563,6 +561,152 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				}, l3VNIConfiguredTestSelector, p)
 			}
 		})
+		ginkgo.It("works with node selectors", func() {
+			nodeSelectorVNI100 := &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"openperouter/l3vni100": "true",
+				},
+			}
+			nodeSelectorVNI200 := &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"openperouter/l3vni200": "true",
+				},
+			}
+			nodeSelectorVNI100AndVNI200 := &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"openperouter/l3vni100": "true",
+					"openperouter/l3vni200": "true",
+				},
+			}
+			nodes, err := k8s.GetNodes(cs)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(len(nodes)).To(BeNumerically(">=", 2), "Expected at least 2 nodes, but got fewer")
+
+			ginkgo.By("Label two nodes so L3 VNIs are configured at each of one")
+			Expect(k8s.LabelNodes(cs, nodeSelectorVNI100.MatchLabels, nodes[0])).To(Succeed())
+			Expect(k8s.LabelNodes(cs, nodeSelectorVNI200.MatchLabels, nodes[1])).To(Succeed())
+			ginkgo.DeferCleanup(func() {
+				k8s.UnlabelNodes(cs, nodes[0], nodes[1])
+			})
+			l3vni100WithNodeSelector := l3vni100.DeepCopy()
+			l3vni100WithNodeSelector.Spec.NodeSelector = nodeSelectorVNI100
+			l3vni200WithNodeSelector := l3vni200.DeepCopy()
+			l3vni200WithNodeSelector.Spec.NodeSelector = nodeSelectorVNI200
+
+			Expect(Updater.Update(config.Resources{
+				Underlays: []v1alpha1.Underlay{
+					underlay,
+				},
+				L3VNIs: []v1alpha1.L3VNI{
+					*l3vni100WithNodeSelector,
+					*l3vni200WithNodeSelector,
+				},
+			})).To(Succeed())
+			l3VNI100Params := l3vniParams{
+				VRF: l3vni100.Name,
+				HostVeth: &veth{
+					NSIPv4: routerIPWithNetmask(l3vni100.Spec.HostSession.LocalCIDR.IPv4),
+					NSIPv6: routerIPWithNetmask(l3vni100.Spec.HostSession.LocalCIDR.IPv6),
+				},
+				VNI:       100,
+				VXLanPort: 4789,
+			}
+			l3VNI200Params := l3vniParams{
+				VRF: l3vni200.Name,
+				HostVeth: &veth{
+					NSIPv4: routerIPWithNetmask(l3vni200.Spec.HostSession.LocalCIDR.IPv4),
+					NSIPv6: routerIPWithNetmask(l3vni200.Spec.HostSession.LocalCIDR.IPv6),
+				},
+				VNI:       200,
+				VXLanPort: 4789,
+			}
+			validate := func(p *corev1.Pod, params l3vniParams, test string) {
+				ginkgo.GinkgoHelper()
+				vtepIP := vtepIPForPod(cs, underlay.Spec.EVPN.VTEPCIDR, p)
+				checkMsg := "configured"
+				if test == l3VNIDeletedTestSelector {
+					checkMsg = "not configured"
+				}
+				ginkgo.By(fmt.Sprintf("validating L3VNI %d %s for pod %q", params.VNI, checkMsg, p.Name))
+				params.VTEPIP = vtepIP
+				validateConfig(params, test, p)
+			}
+			ginkgo.By("Check that each node has different L3 VNI configured")
+			for _, p := range routerPods {
+				if p.Spec.NodeName == nodes[0].Name {
+					validate(p, l3VNI100Params, l3VNIConfiguredTestSelector)
+					validate(p, l3VNI200Params, l3VNIDeletedTestSelector)
+				} else if p.Spec.NodeName == nodes[1].Name {
+					validate(p, l3VNI100Params, l3VNIDeletedTestSelector)
+					validate(p, l3VNI200Params, l3VNIConfiguredTestSelector)
+				} else {
+					validate(p, l3VNI100Params, l3VNIDeletedTestSelector)
+					validate(p, l3VNI200Params, l3VNIDeletedTestSelector)
+				}
+
+				ginkgo.By(fmt.Sprintf("validating Underlay for pod %s", p.Name))
+
+				vtepIP := vtepIPForPod(cs, underlay.Spec.EVPN.VTEPCIDR, p)
+				validateConfig(underlayParams{
+					UnderlayInterface: "toswitch",
+					EVPN: &evpnParams{
+						VtepIP: vtepIP,
+					},
+				}, underlayConfiguredTestSelector, p)
+			}
+			ginkgo.By("Change node labels to configure both L3 VNIs at the same node")
+			k8s.UnlabelNodes(cs, nodes[1])
+			Expect(k8s.LabelNodes(cs, nodeSelectorVNI100AndVNI200.MatchLabels, nodes[0])).To(Succeed())
+			ginkgo.By("Check that just one node is configured with both L3 VNIs")
+			for _, p := range routerPods {
+				if p.Spec.NodeName == nodes[0].Name {
+					validate(p, l3VNI100Params, l3VNIConfiguredTestSelector)
+					validate(p, l3VNI200Params, l3VNIConfiguredTestSelector)
+				} else {
+					validate(p, l3VNI100Params, l3VNIDeletedTestSelector)
+					validate(p, l3VNI200Params, l3VNIDeletedTestSelector)
+				}
+
+				ginkgo.By(fmt.Sprintf("validating Underlay for pod %s", p.Name))
+
+				vtepIP := vtepIPForPod(cs, underlay.Spec.EVPN.VTEPCIDR, p)
+				validateConfig(underlayParams{
+					UnderlayInterface: "toswitch",
+					EVPN: &evpnParams{
+						VtepIP: vtepIP,
+					},
+				}, underlayConfiguredTestSelector, p)
+			}
+			ginkgo.By("Remove L3 VNI 200 node selector")
+			Expect(Updater.Update(config.Resources{
+				Underlays: []v1alpha1.Underlay{
+					underlay,
+				},
+				L3VNIs: []v1alpha1.L3VNI{
+					l3vni200,
+				},
+			})).To(Succeed())
+			ginkgo.By("Check L3 VNI 200 node selector is at all the nodes now")
+			for _, p := range routerPods {
+				if p.Spec.NodeName == nodes[0].Name {
+					validate(p, l3VNI100Params, l3VNIConfiguredTestSelector)
+					validate(p, l3VNI200Params, l3VNIConfiguredTestSelector)
+				} else {
+					validate(p, l3VNI100Params, l3VNIDeletedTestSelector)
+					validate(p, l3VNI200Params, l3VNIConfiguredTestSelector)
+				}
+
+				ginkgo.By(fmt.Sprintf("validating Underlay for pod %s", p.Name))
+
+				vtepIP := vtepIPForPod(cs, underlay.Spec.EVPN.VTEPCIDR, p)
+				validateConfig(underlayParams{
+					UnderlayInterface: "toswitch",
+					EVPN: &evpnParams{
+						VtepIP: vtepIP,
+					},
+				}, underlayConfiguredTestSelector, p)
+			}
+		})
 	})
 
 	ginkgo.Context("L2", func() {
@@ -615,7 +759,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 					EVPN: &evpnParams{
 						VtepIP: vtepIP,
 					},
-				}, underlayTestSelector, p)
+				}, underlayConfiguredTestSelector, p)
 			}
 		})
 
@@ -687,7 +831,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 					EVPN: &evpnParams{
 						VtepIP: vtepIP,
 					},
-				}, underlayTestSelector, p)
+				}, underlayConfiguredTestSelector, p)
 			}
 		})
 
@@ -745,7 +889,271 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 					EVPN: &evpnParams{
 						VtepIP: vtepIP,
 					},
-				}, underlayTestSelector, p)
+				}, underlayConfiguredTestSelector, p)
+			}
+		})
+		ginkgo.It("works with node selectors", func() {
+			nodeSelectorVNI300 := &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"openperouter/l2vni300": "true",
+				},
+			}
+			nodeSelectorVNI400 := &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"openperouter/l2vni400": "true",
+				},
+			}
+			nodeSelectorVNI300AndVNI400 := &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"openperouter/l2vni300": "true",
+					"openperouter/l2vni400": "true",
+				},
+			}
+			nodes, err := k8s.GetNodes(cs)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(len(nodes)).To(BeNumerically(">=", 2), "Expected at least 2 nodes, but got fewer")
+
+			ginkgo.By("Label two nodes so L2 VNIs are configured at each of one")
+			Expect(k8s.LabelNodes(cs, nodeSelectorVNI300.MatchLabels, nodes[0])).To(Succeed())
+			Expect(k8s.LabelNodes(cs, nodeSelectorVNI400.MatchLabels, nodes[1])).To(Succeed())
+			ginkgo.DeferCleanup(func() {
+				k8s.UnlabelNodes(cs, nodes[0], nodes[1])
+			})
+			l2vni300WithNodeSelector := l2vni300.DeepCopy()
+			l2vni300WithNodeSelector.Spec.NodeSelector = nodeSelectorVNI300
+			l2vni400WithNodeSelector := l2vni400.DeepCopy()
+			l2vni400WithNodeSelector.Spec.NodeSelector = nodeSelectorVNI400
+
+			Expect(Updater.Update(config.Resources{
+				Underlays: []v1alpha1.Underlay{
+					underlay,
+				},
+				L2VNIs: []v1alpha1.L2VNI{
+					*l2vni300WithNodeSelector,
+					*l2vni400WithNodeSelector,
+				},
+			})).To(Succeed())
+			l2VNI300Params := l2vniParams{
+				VRF:       l2vni300.Name,
+				VNI:       300,
+				VXLanPort: 4789,
+			}
+			l2VNI400Params := l2vniParams{
+				VRF:         l2vni400.Name,
+				VNI:         400,
+				VXLanPort:   4789,
+				L2GatewayIP: l2vni400.Spec.L2GatewayIP,
+			}
+			validate := func(p *corev1.Pod, params l2vniParams, test string) {
+				ginkgo.GinkgoHelper()
+				vtepIP := vtepIPForPod(cs, underlay.Spec.EVPN.VTEPCIDR, p)
+				checkMsg := "configured"
+				if test == l2VNIDeletedTestSelector {
+					checkMsg = "not configured"
+				}
+				ginkgo.By(fmt.Sprintf("validating L2VNI %d %s for pod %q", params.VNI, checkMsg, p.Name))
+				params.VTEPIP = vtepIP
+				validateConfig(params, test, p)
+			}
+			ginkgo.By("Check that each node has different L2 VNI configured")
+			for _, p := range routerPods {
+				if p.Spec.NodeName == nodes[0].Name {
+					validate(p, l2VNI300Params, l2VNIConfiguredTestSelector)
+					validate(p, l2VNI400Params, l2VNIDeletedTestSelector)
+				} else if p.Spec.NodeName == nodes[1].Name {
+					validate(p, l2VNI300Params, l2VNIDeletedTestSelector)
+					validate(p, l2VNI400Params, l2VNIConfiguredTestSelector)
+				} else {
+					validate(p, l2VNI300Params, l2VNIDeletedTestSelector)
+					validate(p, l2VNI400Params, l2VNIDeletedTestSelector)
+				}
+
+				ginkgo.By(fmt.Sprintf("validating Underlay for pod %s", p.Name))
+
+				vtepIP := vtepIPForPod(cs, underlay.Spec.EVPN.VTEPCIDR, p)
+				validateConfig(underlayParams{
+					UnderlayInterface: "toswitch",
+					EVPN: &evpnParams{
+						VtepIP: vtepIP,
+					},
+				}, underlayConfiguredTestSelector, p)
+			}
+			ginkgo.By("Change node labels to configure both L2 VNIs at the same node")
+			k8s.UnlabelNodes(cs, nodes[1])
+			Expect(k8s.LabelNodes(cs, nodeSelectorVNI300AndVNI400.MatchLabels, nodes[0])).To(Succeed())
+			ginkgo.By("Check that just one node is configured with both L2 VNIs")
+			for _, p := range routerPods {
+				if p.Spec.NodeName == nodes[0].Name {
+					validate(p, l2VNI300Params, l2VNIConfiguredTestSelector)
+					validate(p, l2VNI400Params, l2VNIConfiguredTestSelector)
+				} else {
+					validate(p, l2VNI300Params, l2VNIDeletedTestSelector)
+					validate(p, l2VNI400Params, l2VNIDeletedTestSelector)
+				}
+
+				ginkgo.By(fmt.Sprintf("validating Underlay for pod %s", p.Name))
+
+				vtepIP := vtepIPForPod(cs, underlay.Spec.EVPN.VTEPCIDR, p)
+				validateConfig(underlayParams{
+					UnderlayInterface: "toswitch",
+					EVPN: &evpnParams{
+						VtepIP: vtepIP,
+					},
+				}, underlayConfiguredTestSelector, p)
+			}
+			ginkgo.By("Remove L2 VNI 400 node selector")
+			Expect(Updater.Update(config.Resources{
+				Underlays: []v1alpha1.Underlay{
+					underlay,
+				},
+				L2VNIs: []v1alpha1.L2VNI{
+					l2vni400,
+				},
+			})).To(Succeed())
+			ginkgo.By("Check L2 VNI 400 node selector is at all the nodes now")
+			for _, p := range routerPods {
+				if p.Spec.NodeName == nodes[0].Name {
+					validate(p, l2VNI300Params, l2VNIConfiguredTestSelector)
+					validate(p, l2VNI400Params, l2VNIConfiguredTestSelector)
+				} else {
+					validate(p, l2VNI300Params, l2VNIDeletedTestSelector)
+					validate(p, l2VNI400Params, l2VNIConfiguredTestSelector)
+				}
+
+				ginkgo.By(fmt.Sprintf("validating Underlay for pod %s", p.Name))
+
+				vtepIP := vtepIPForPod(cs, underlay.Spec.EVPN.VTEPCIDR, p)
+				validateConfig(underlayParams{
+					UnderlayInterface: "toswitch",
+					EVPN: &evpnParams{
+						VtepIP: vtepIP,
+					},
+				}, underlayConfiguredTestSelector, p)
+			}
+		})
+	})
+
+	ginkgo.FContext("Underlay", func() {
+		ginkgo.It("works with node selectors", func() {
+			nodeSelectorUnderlay1 := &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"openperouter/underlay1": "true",
+				},
+			}
+			nodeSelectorUnderlay2 := &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"openperouter/underlay2": "true",
+				},
+			}
+
+			nodes, err := k8s.GetNodes(cs)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(len(nodes)).To(BeNumerically(">=", 2), "Expected at least 2 nodes, but got fewer")
+
+			ginkgo.By("Label two nodes so underlays are configured at each one")
+			Expect(k8s.LabelNodes(cs, nodeSelectorUnderlay1.MatchLabels, nodes[0])).To(Succeed())
+			Expect(k8s.LabelNodes(cs, nodeSelectorUnderlay2.MatchLabels, nodes[1])).To(Succeed())
+			ginkgo.DeferCleanup(func() {
+				k8s.UnlabelNodes(cs, nodes[0], nodes[1])
+			})
+
+			underlay1WithNodeSelector := underlay.DeepCopy()
+			underlay1WithNodeSelector.Name = "underlay1"
+			underlay1WithNodeSelector.Spec.NodeSelector = nodeSelectorUnderlay1
+			underlay1WithNodeSelector.Spec.EVPN.VTEPCIDR = "100.65.0.0/24"
+
+			underlay2WithNodeSelector := underlay.DeepCopy()
+			underlay2WithNodeSelector.Name = "underlay2"
+			underlay2WithNodeSelector.Spec.NodeSelector = nodeSelectorUnderlay2
+			underlay2WithNodeSelector.Spec.EVPN.VTEPCIDR = "100.66.0.0/24"
+
+			Expect(Updater.Update(config.Resources{
+				Underlays: []v1alpha1.Underlay{
+					*underlay1WithNodeSelector,
+					*underlay2WithNodeSelector,
+				},
+			})).To(Succeed())
+
+			ginkgo.By(fmt.Sprintf("Check that each node %q has underlay 1 and that node %q has underlay 2", nodes[0].Name, nodes[1].Name))
+			for _, p := range routerPods {
+				if p.Spec.NodeName == nodes[0].Name {
+					ginkgo.By(fmt.Sprintf("validating underlay1 configured on node %s", p.Spec.NodeName))
+					vtepIP := vtepIPForPod(cs, underlay1WithNodeSelector.Spec.EVPN.VTEPCIDR, p)
+					validateConfig(underlayParams{
+						UnderlayInterface: "toswitch",
+						EVPN: &evpnParams{
+							VtepIP: vtepIP,
+						},
+					}, underlayConfiguredTestSelector, p)
+				} else if p.Spec.NodeName == nodes[1].Name {
+					ginkgo.By(fmt.Sprintf("validating underlay2 configured on node %s", p.Spec.NodeName))
+					vtepIP := vtepIPForPod(cs, underlay2WithNodeSelector.Spec.EVPN.VTEPCIDR, p)
+					validateConfig(underlayParams{
+						UnderlayInterface: "toswitch",
+						EVPN: &evpnParams{
+							VtepIP: vtepIP,
+						},
+					}, underlayConfiguredTestSelector, p)
+				} else {
+					ginkgo.By(fmt.Sprintf("validating underlay is not configured for pod %q on node %s", p.Name, p.Spec.NodeName))
+					validateConfig(underlayParams{
+						UnderlayInterface: "toswitch",
+					}, underlayNotConfiguredTestSelector, p)
+				}
+			}
+
+			Expect(err).NotTo(HaveOccurred())
+			ginkgo.By(fmt.Sprintf("Unlabel the node %q", nodes[1].Name))
+			Expect(k8s.UnlabelNodes(cs, nodes[1])).To(Succeed())
+			ginkgo.By(fmt.Sprintf("Check that only node %q has the underlay configured", nodes[0].Name))
+			routerPodsToRollout := []*corev1.Pod{}
+			for _, p := range routerPods {
+				if p.Spec.NodeName == nodes[0].Name {
+					ginkgo.By(fmt.Sprintf("validating underlay1 configured on node %s", p.Spec.NodeName))
+					vtepIP := vtepIPForPod(cs, underlay1WithNodeSelector.Spec.EVPN.VTEPCIDR, p)
+					validateConfig(underlayParams{
+						UnderlayInterface: "toswitch",
+						EVPN: &evpnParams{
+							VtepIP: vtepIP,
+						},
+					}, underlayConfiguredTestSelector, p)
+				} else {
+					routerPodsToRollout = append(routerPodsToRollout, p)
+					ginkgo.By(fmt.Sprintf("validating underlay is not configured on node %s", p.Spec.NodeName))
+					validateConfig(underlayParams{
+						UnderlayInterface: "toswitch",
+					}, underlayNotConfiguredTestSelector, p)
+				}
+			}
+
+			ginkgo.By("waiting for the routers with deleted underlay to rollout")
+			Eventually(func() error {
+				return openperouter.DaemonsetRolled(cs, routerPodsToRollout)
+			}).
+				WithTimeout(time.Minute).
+				WithPolling(time.Second).
+				ShouldNot(HaveOccurred())
+			routerPods, err = routerPodsWithValidator(cs)
+			Expect(err).ToNot(HaveOccurred())
+
+			ginkgo.By("Change underlay1 to apply to all nodes")
+			underlay1WithNodeSelector.Spec.NodeSelector = nil
+			Expect(Updater.Update(config.Resources{
+				Underlays: []v1alpha1.Underlay{
+					*underlay1WithNodeSelector,
+				},
+			})).To(Succeed())
+			Expect(err).NotTo(HaveOccurred())
+			ginkgo.By("Check that all nodes now have underlay1 configured")
+			for _, p := range routerPods {
+				ginkgo.By(fmt.Sprintf("validating underlay1 configured on node %q", p.Spec.NodeName))
+				vtepIP := vtepIPForPod(cs, underlay1WithNodeSelector.Spec.EVPN.VTEPCIDR, p)
+				validateConfig(underlayParams{
+					UnderlayInterface: "toswitch",
+					EVPN: &evpnParams{
+						VtepIP: vtepIP,
+					},
+				}, underlayConfiguredTestSelector, p)
 			}
 		})
 	})
@@ -847,4 +1255,15 @@ func sendConfigToValidate[T any](pod *corev1.Pod, toValidate T) string {
 	err = k8s.SendFileToPod(toValidateFile.Name(), pod)
 	Expect(err).NotTo(HaveOccurred())
 	return filepath.Base(toValidateFile.Name())
+}
+
+func routerPodsWithValidator(cs clientset.Interface) ([]*corev1.Pod, error) {
+	routerPods, err := openperouter.RouterPods(cs)
+	if err != nil {
+		return nil, err
+	}
+	for _, pod := range routerPods {
+		ensureValidator(cs, pod)
+	}
+	return routerPods, nil
 }
