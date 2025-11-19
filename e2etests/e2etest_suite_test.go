@@ -29,6 +29,7 @@ func handleFlags() {
 	flag.StringVar(&executor.Kubectl, "kubectl", "kubectl", "the path for the kubectl binary")
 	flag.StringVar(&tests.ValidatorPath, "hostvalidator", "hostvalidator", "the path for the hostvalidator binary")
 	flag.StringVar(&tests.ReportPath, "reporterpath", "/tmp", "the path for the reporter")
+	flag.BoolVar(&tests.HostMode, "hostmode", false, "tells if openperouter is running on the host")
 	flag.Parse()
 }
 

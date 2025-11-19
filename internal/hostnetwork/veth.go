@@ -28,7 +28,7 @@ func setupNamespacedVeth(ctx context.Context, vethNames VethNames, namespace str
 	slog.DebugContext(ctx, "setupNamespacedVeth", "hostSide", vethNames.HostSide, "nsSide", vethNames.NamespaceSide)
 	defer slog.DebugContext(ctx, "end setupNamespacedVeth", "hostSide", vethNames.HostSide, "nsSide", vethNames.NamespaceSide)
 
-	targetNS, err := netns.GetFromName(namespace)
+	targetNS, err := netns.GetFromPath(namespace)
 	if err != nil {
 		return fmt.Errorf("setupNamespacedVeth: Failed to get network namespace %s: %w", namespace, err)
 	}

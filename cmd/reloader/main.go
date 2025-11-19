@@ -24,7 +24,9 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"net"
 	"net/http"
+	"os"
 	"runtime/debug"
 	"time"
 
@@ -32,13 +34,17 @@ import (
 	"github.com/openperouter/openperouter/internal/logging"
 )
 
+type Args struct {
+	bindAddress   string
+	unixSocket    string
+	logLevel      string
+	frrConfigPath string
+}
+
 func main() {
-	args := struct {
-		bindAddress   string
-		logLevel      string
-		frrConfigPath string
-	}{}
-	flag.StringVar(&args.bindAddress, "bindaddress", "0.0.0.0:9080", "The address the reloader endpoint binds to. ")
+	args := Args{}
+	flag.StringVar(&args.bindAddress, "bindaddress", "", "The address the reloader endpoint binds to. ")
+	flag.StringVar(&args.unixSocket, "unixsocket", "", "Unix socket path to listen on (overrides bindaddress if set)")
 	flag.StringVar(&args.logLevel, "loglevel", "info", "The log level of the process")
 	flag.StringVar(&args.frrConfigPath, "frrconfig", "/etc/frr/frr.conf", "The path the frr configuration is at")
 	flag.Parse()
@@ -52,14 +58,41 @@ func main() {
 	slog.Info("version", "version", build.Main.Version)
 	slog.Info("arguments", "args", fmt.Sprintf("%+v", args))
 
-	slog.Info("listening", "address", args.bindAddress)
 	http.HandleFunc("/", reloadHandler(args.frrConfigPath))
-	server := &http.Server{
-		Addr:              args.bindAddress,
-		ReadHeaderTimeout: 3 * time.Second,
+
+	listener, err := listenerFor(args)
+	if err != nil {
+		slog.Error("failed to create listener, exiting", "error", err)
+		os.Exit(1)
 	}
 
-	log.Fatal(server.ListenAndServe())
+	server := &http.Server{
+		ReadHeaderTimeout: 3 * time.Second,
+	}
+	log.Fatal(server.Serve(listener))
+}
+
+func listenerFor(args Args) (net.Listener, error) {
+	if args.unixSocket != "" && args.bindAddress != "" {
+		return nil, fmt.Errorf("unix socket and bind address are mutually exclusive, can't have both")
+	}
+	if args.unixSocket != "" {
+		if err := os.Remove(args.unixSocket); err != nil && !os.IsNotExist(err) {
+			return nil, fmt.Errorf("failed to remove unix socket: %w", err)
+		}
+
+		listener, err := net.Listen("unix", args.unixSocket)
+		if err != nil {
+			return nil, fmt.Errorf("failed to listen on unix socket %s: %w", args.unixSocket, err)
+		}
+		return listener, nil
+	}
+
+	listener, err := net.Listen("tcp", args.bindAddress)
+	if err != nil {
+		return nil, fmt.Errorf("failed to listen on address %s: %w", args.bindAddress, err)
+	}
+	return listener, nil
 }
 
 var updateConfig = frrconfig.Update

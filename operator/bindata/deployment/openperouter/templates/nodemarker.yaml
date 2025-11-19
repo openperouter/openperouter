@@ -49,7 +49,9 @@ spec:
         - --loglevel={{ . }}
         {{- end }}
         - "--namespace=$(NAMESPACE)"
-        {{- if not .Values.webhook.enabled }}
+        {{- if .Values.openperouter.hostmode }}
+        - "--webhookmode=webhookonly"
+        {{- else if not .Values.webhook.enabled }}
         - "--webhookmode=disabled"
         - "--disable-cert-rotation=true"
         {{- end }}
