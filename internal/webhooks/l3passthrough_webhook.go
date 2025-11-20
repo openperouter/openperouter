@@ -16,8 +16,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
-var ValidateL3Passthroughs func(l3passthroughs []v1alpha1.L3Passthrough) error
-
 const (
 	l3passthroughValidationWebhookPath = "/validate-openperouter-io-v1alpha1-l3passthrough"
 )
@@ -116,7 +114,11 @@ func validateL3Passthrough(l3passthrough *v1alpha1.L3Passthrough) error {
 		toValidate = append(toValidate, *l3passthrough.DeepCopy())
 	}
 
-	if err := ValidateL3Passthroughs(toValidate); err != nil {
+	nodes, err := getNodes()
+	if err != nil {
+		return err
+	}
+	if err := conversion.ValidatePassthroughsForNodes(nodes, toValidate); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
 	}
 
@@ -124,7 +126,7 @@ func validateL3Passthrough(l3passthrough *v1alpha1.L3Passthrough) error {
 	if err != nil {
 		return err
 	}
-	if err := conversion.ValidateHostSessions(l3vnis.Items, toValidate); err != nil {
+	if err := conversion.ValidateHostSessionsForNodes(nodes, l3vnis.Items, toValidate); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
 	}
 	return nil

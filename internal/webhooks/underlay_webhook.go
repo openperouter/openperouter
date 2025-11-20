@@ -8,19 +8,19 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/openperouter/openperouter/api/v1alpha1"
 	v1 "k8s.io/api/admission/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+
+	"github.com/openperouter/openperouter/api/v1alpha1"
+	"github.com/openperouter/openperouter/internal/conversion"
 )
 
 const (
 	underlayValidationWebhookPath = "/validate-openperouter-io-v1alpha1-underlay"
 )
-
-var ValidateUnderlays func(underlays []v1alpha1.Underlay) error
 
 type UnderlayValidator struct {
 	client  client.Client
@@ -100,7 +100,6 @@ func validateUnderlayDelete(_ *v1alpha1.Underlay) error {
 }
 
 func validateUnderlay(underlay *v1alpha1.Underlay) error {
-
 	existingUnderlays, err := getUnderlays()
 	if err != nil {
 		return err
@@ -119,7 +118,11 @@ func validateUnderlay(underlay *v1alpha1.Underlay) error {
 		toValidate = append(toValidate, *underlay.DeepCopy())
 	}
 
-	if err := ValidateUnderlays(toValidate); err != nil {
+	nodes, err := getNodes()
+	if err != nil {
+		return err
+	}
+	if err := conversion.ValidateUnderlaysForNodes(nodes, toValidate); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
 	}
 	return nil
