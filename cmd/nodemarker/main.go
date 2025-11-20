@@ -40,7 +40,6 @@ import (
 	"github.com/open-policy-agent/cert-controller/pkg/rotator"
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/controller/nodeindex"
-	"github.com/openperouter/openperouter/internal/conversion"
 	"github.com/openperouter/openperouter/internal/logging"
 	"github.com/openperouter/openperouter/internal/tlsconfig"
 	"github.com/openperouter/openperouter/internal/webhooks"
@@ -244,10 +243,6 @@ func setupWebhook(mgr manager.Manager, logger *slog.Logger) error {
 
 	webhooks.Logger = logger
 	webhooks.WebhookClient = mgr.GetAPIReader()
-	webhooks.ValidateL3VNIs = conversion.ValidateL3VNIs
-	webhooks.ValidateL2VNIs = conversion.ValidateL2VNIs
-	webhooks.ValidateUnderlays = conversion.ValidateUnderlays
-	webhooks.ValidateL3Passthroughs = conversion.ValidatePassthroughs
 
 	if err := webhooks.SetupL3VNI(mgr); err != nil {
 		logger.Error("unable to create the webook", "error", err, "webhook", "L3VNIs")
