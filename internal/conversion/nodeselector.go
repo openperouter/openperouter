@@ -30,62 +30,46 @@ func NodeMatchesSelector(node *corev1.Node, selector *metav1.LabelSelector) (boo
 	return labelSelector.Matches(labels.Set(node.Labels)), nil
 }
 
-// FilterUnderlaysForNode returns underlays that match the given node's labels.
-func FilterUnderlaysForNode(node *corev1.Node, underlays []v1alpha1.Underlay) ([]v1alpha1.Underlay, error) {
-	var result []v1alpha1.Underlay
-	for _, underlay := range underlays {
-		matches, err := NodeMatchesSelector(node, underlay.Spec.NodeSelector)
+// filterForNode is a generic function that filters items based on node label selectors.
+// It takes a selector function that extracts the NodeSelector from each item.
+func filterForNode[T any](node *corev1.Node, items []T, getSelector func(T) *metav1.LabelSelector) ([]T, error) {
+	var result []T
+	for _, item := range items {
+		matches, err := NodeMatchesSelector(node, getSelector(item))
 		if err != nil {
 			return nil, err
 		}
 		if matches {
-			result = append(result, underlay)
+			result = append(result, item)
 		}
 	}
 	return result, nil
+}
+
+// FilterUnderlaysForNode returns underlays that match the given node's labels.
+func FilterUnderlaysForNode(node *corev1.Node, underlays []v1alpha1.Underlay) ([]v1alpha1.Underlay, error) {
+	return filterForNode(node, underlays, func(u v1alpha1.Underlay) *metav1.LabelSelector {
+		return u.Spec.NodeSelector
+	})
 }
 
 // FilterL3VNIsForNode returns L3VNIs that match the given node's labels.
 func FilterL3VNIsForNode(node *corev1.Node, l3vnis []v1alpha1.L3VNI) ([]v1alpha1.L3VNI, error) {
-	var result []v1alpha1.L3VNI
-	for _, l3vni := range l3vnis {
-		matches, err := NodeMatchesSelector(node, l3vni.Spec.NodeSelector)
-		if err != nil {
-			return nil, err
-		}
-		if matches {
-			result = append(result, l3vni)
-		}
-	}
-	return result, nil
+	return filterForNode(node, l3vnis, func(v v1alpha1.L3VNI) *metav1.LabelSelector {
+		return v.Spec.NodeSelector
+	})
 }
 
 // FilterL2VNIsForNode returns L2VNIs that match the given node's labels.
 func FilterL2VNIsForNode(node *corev1.Node, l2vnis []v1alpha1.L2VNI) ([]v1alpha1.L2VNI, error) {
-	var result []v1alpha1.L2VNI
-	for _, l2vni := range l2vnis {
-		matches, err := NodeMatchesSelector(node, l2vni.Spec.NodeSelector)
-		if err != nil {
-			return nil, err
-		}
-		if matches {
-			result = append(result, l2vni)
-		}
-	}
-	return result, nil
+	return filterForNode(node, l2vnis, func(v v1alpha1.L2VNI) *metav1.LabelSelector {
+		return v.Spec.NodeSelector
+	})
 }
 
 // FilterL3PassthroughsForNode returns L3Passthroughs that match the given node's labels.
 func FilterL3PassthroughsForNode(node *corev1.Node, l3passthroughs []v1alpha1.L3Passthrough) ([]v1alpha1.L3Passthrough, error) {
-	var result []v1alpha1.L3Passthrough
-	for _, l3passthrough := range l3passthroughs {
-		matches, err := NodeMatchesSelector(node, l3passthrough.Spec.NodeSelector)
-		if err != nil {
-			return nil, err
-		}
-		if matches {
-			result = append(result, l3passthrough)
-		}
-	}
-	return result, nil
+	return filterForNode(node, l3passthroughs, func(p v1alpha1.L3Passthrough) *metav1.LabelSelector {
+		return p.Spec.NodeSelector
+	})
 }

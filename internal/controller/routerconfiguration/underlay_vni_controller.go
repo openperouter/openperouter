@@ -146,22 +146,22 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 
 	// Validate filtered resources for this node
-	if err := conversion.ValidateUnderlays(filteredUnderlays); err != nil {
+	if err := conversion.ValidateNodeUnderlays(filteredUnderlays); err != nil {
 		slog.Error("failed to validate underlays", "error", err)
 		return ctrl.Result{}, nil
 	}
 
-	if err := conversion.ValidateL3VNIs(filteredL3VNIs); err != nil {
+	if err := conversion.ValidateNodeL3VNIs(filteredL3VNIs); err != nil {
 		slog.Error("failed to validate l3vnis", "error", err)
 		return ctrl.Result{}, nil
 	}
 
-	if err := conversion.ValidateL2VNIs(filteredL2VNIs); err != nil {
+	if err := conversion.ValidateNodeL2VNIs(filteredL2VNIs); err != nil {
 		slog.Error("failed to validate l2vnis", "error", err)
 		return ctrl.Result{}, nil
 	}
 
-	if err := conversion.ValidateHostSessions(filteredL3VNIs, filteredL3Passthrough); err != nil {
+	if err := conversion.ValidateNodeHostSessions(filteredL3VNIs, filteredL3Passthrough); err != nil {
 		slog.Error("failed to validate host sessions", "error", err)
 		return ctrl.Result{}, nil
 	}
@@ -227,7 +227,6 @@ func (r *PERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		default:
 			return true
 		}
-
 	})
 
 	filterUpdates := predicate.Funcs{
