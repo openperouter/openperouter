@@ -22,6 +22,11 @@ import (
 
 // L2VNISpec defines the desired state of VNI.
 type L2VNISpec struct {
+	// NodeSelector specifies which nodes this L2VNI applies to.
+	// If empty or not specified, applies to all nodes (backward compatible).
+	// Multiple L2VNIs can match the same node (unlike Underlay).
+	// +optional
+	NodeSelector *metav1.LabelSelector `json:"nodeSelector,omitempty"`
 
 	// VRF is the name of the linux VRF to be used inside the PERouter namespace.
 	// The field is optional, if not set it the name of the VNI instance will be used.
