@@ -114,8 +114,9 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig ApiConfigData) (H
 				VXLanPort: int(l2vni.Spec.VXLanPort),
 			},
 		}
-		if l2vni.Spec.L2GatewayIP != "" {
-			vni.L2GatewayIP = &l2vni.Spec.L2GatewayIP
+		if len(l2vni.Spec.L2GatewayIPs) > 0 {
+			vni.L2GatewayIPs = make([]string, len(l2vni.Spec.L2GatewayIPs))
+			copy(vni.L2GatewayIPs, l2vni.Spec.L2GatewayIPs)
 		}
 		if l2vni.Spec.HostMaster != nil {
 			vni.HostMaster = &hostnetwork.HostMaster{

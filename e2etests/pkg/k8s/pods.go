@@ -5,11 +5,16 @@ package k8s
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os/exec"
 	"time"
 
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	nadclientv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"github.com/openperouter/openperouter/e2etests/pkg/executor"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -64,13 +69,20 @@ func CreateAgnhostPod(cs clientset.Interface, podName, namespace string, modifie
 	return res, nil
 }
 
-func WithNad(name, namespace, ip string) func(*corev1.Pod) {
-	annotation := fmt.Sprintf(`[{"name": "%s", "namespace": "%s", "ips": ["%s"]}]`, name, namespace, ip)
+func WithNad(name, namespace string, ips []string) func(*corev1.Pod) {
+	GinkgoHelper()
+	networks := []nadclientv1.NetworkSelectionElement{{
+		Name:      name,
+		Namespace: namespace,
+		IPRequest: ips,
+	}}
+	marshaledNetworks, err := json.Marshal(networks)
+	Expect(err).ToNot(HaveOccurred())
 	return func(p *corev1.Pod) {
 		if p.Annotations == nil {
 			p.Annotations = make(map[string]string)
 		}
-		p.Annotations["k8s.v1.cni.cncf.io/networks"] = annotation
+		p.Annotations["k8s.v1.cni.cncf.io/networks"] = string(marshaledNetworks)
 	}
 }
 
@@ -102,7 +114,8 @@ func waitForPodReady(cs clientset.Interface, pod *corev1.Pod) (*corev1.Pod, erro
 }
 
 func PodLogsSinceTime(cs clientset.Interface, pod *corev1.Pod,
-	speakerContainerName string, sinceTime *metav1.Time) (string, error) {
+	speakerContainerName string, sinceTime *metav1.Time,
+) (string, error) {
 	podLogOpt := corev1.PodLogOptions{
 		Container: speakerContainerName,
 		SinceTime: sinceTime,
@@ -159,6 +172,7 @@ func PodsForLabel(cs clientset.Interface, namespace, labelSelector string) ([]*c
 	}
 	return res, nil
 }
+
 func SendFileToPod(filePath string, p *corev1.Pod) error {
 	dst := fmt.Sprintf("%s/%s:/", p.Namespace, p.Name)
 	fullargs := []string{"cp", filePath, dst}

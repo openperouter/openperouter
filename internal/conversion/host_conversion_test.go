@@ -6,7 +6,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/aws/smithy-go/ptr"
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
 )
@@ -202,15 +201,15 @@ func TestAPItoHostConfig(t *testing.T) {
 						VNI:       200,
 						VXLanPort: 4789,
 					},
-					L2GatewayIP: nil,
-					HostMaster:  nil,
+					L2GatewayIPs: nil,
+					HostMaster:   nil,
 				},
 			},
 			wantPassthrough: nil,
 			wantErr:         false,
 		},
 		{
-			name:      "l2 vni with hostmaster and l2gatewayip",
+			name:      "l2 vni with hostmaster and l2gatewayips",
 			nodeIndex: 0,
 			targetNS:  "namespace",
 			underlays: []v1alpha1.Underlay{
@@ -218,7 +217,7 @@ func TestAPItoHostConfig(t *testing.T) {
 			},
 			vnis: []v1alpha1.L3VNI{},
 			l2vnis: []v1alpha1.L2VNI{
-				{Spec: v1alpha1.L2VNISpec{VNI: 201, VXLanPort: 4789, HostMaster: &v1alpha1.HostMaster{Name: "br0"}, L2GatewayIP: "192.168.100.1/24"}},
+				{Spec: v1alpha1.L2VNISpec{VNI: 201, VXLanPort: 4789, HostMaster: &v1alpha1.HostMaster{Name: "br0"}, L2GatewayIPs: []string{"192.168.100.1/24"}}},
 			},
 			l3Passthrough: []v1alpha1.L3Passthrough{},
 			wantUnderlay: hostnetwork.UnderlayParams{
@@ -237,8 +236,8 @@ func TestAPItoHostConfig(t *testing.T) {
 						VNI:       201,
 						VXLanPort: 4789,
 					},
-					L2GatewayIP: ptr.String("192.168.100.1/24"),
-					HostMaster:  &hostnetwork.HostMaster{Name: "br0"},
+					L2GatewayIPs: []string{"192.168.100.1/24"},
+					HostMaster:   &hostnetwork.HostMaster{Name: "br0"},
 				},
 			},
 			wantPassthrough: nil,
@@ -379,16 +378,16 @@ func TestAPItoHostConfig(t *testing.T) {
 				return
 			}
 			if !reflect.DeepEqual(gotHostConfig.Underlay, tt.wantUnderlay) {
-				t.Errorf("APItoHostConfig() gotUnderlay = %v, want %v", gotHostConfig.Underlay, tt.wantUnderlay)
+				t.Errorf("APItoHostConfig() gotUnderlay = %+v, want %+v", gotHostConfig.Underlay, tt.wantUnderlay)
 			}
 			if !reflect.DeepEqual(gotHostConfig.L3VNIs, tt.wantL3VNIParams) {
-				t.Errorf("APItoHostConfig() gotL3VNIParams = %v, want %v", gotHostConfig.L3VNIs, tt.wantL3VNIParams)
+				t.Errorf("APItoHostConfig() gotL3VNIParams = %+v, want %+v", gotHostConfig.L3VNIs, tt.wantL3VNIParams)
 			}
 			if !reflect.DeepEqual(gotHostConfig.L2VNIs, tt.wantL2VNIParams) {
-				t.Errorf("APItoHostConfig() gotL2VNIParams = %v, want %v", gotHostConfig.L2VNIs, tt.wantL2VNIParams)
+				t.Errorf("APItoHostConfig() gotL2VNIParams = %+v, want %+v", gotHostConfig.L2VNIs, tt.wantL2VNIParams)
 			}
 			if !reflect.DeepEqual(gotHostConfig.L3Passthrough, tt.wantPassthrough) {
-				t.Errorf("APItoHostConfig() gotPassthrough = %v, want %v", gotHostConfig.L3Passthrough, tt.wantPassthrough)
+				t.Errorf("APItoHostConfig() gotPassthrough = %+v, want %+v", gotHostConfig.L3Passthrough, tt.wantPassthrough)
 			}
 		})
 	}

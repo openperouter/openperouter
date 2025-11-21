@@ -22,7 +22,6 @@ import (
 
 // L2VNISpec defines the desired state of VNI.
 type L2VNISpec struct {
-
 	// VRF is the name of the linux VRF to be used inside the PERouter namespace.
 	// The field is optional, if not set it the name of the VNI instance will be used.
 	// +kubebuilder:validation:Pattern=`^[a-zA-Z][a-zA-Z0-9_-]*$`
@@ -46,12 +45,14 @@ type L2VNISpec struct {
 	// +optional
 	HostMaster *HostMaster `json:"hostmaster"`
 
-	// L2GatewayIP is the IP address to be used for the L2 gateway. When this is set, the
-	// bridge the veths are enslaved to will be configured with this IP address, effectively
-	// acting as a distributed gateway for the VNI.
+	// L2GatewayIPs is a list of IP addresses in CIDR notation to be used for the L2 gateway. When this is set, the
+	// bridge the veths are enslaved to will be configured with these IP addresses, effectively
+	// acting as a distributed gateway for the VNI. This allows for dual-stack (IPv4 and IPv6) support.
+	// Maximum of 2 addresses are allowed. If 2 addresses are provided, one must be IPv4 and one must be IPv6.
 	// +optional
-	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="L2GatewayIP can't be changed"
-	L2GatewayIP string `json:"l2gatewayip,omitempty"`
+	// +kubebuilder:validation:MaxItems=2
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="L2GatewayIPs cannot be changed"
+	L2GatewayIPs []string `json:"l2gatewayips,omitempty"`
 }
 
 // +kubebuilder:validation:Required
