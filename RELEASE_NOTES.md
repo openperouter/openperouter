@@ -1,3 +1,10 @@
+## Release v0.0.5
+
+### Bug fixes
+- Fix flag `--metrics-bind-address` being ignored on controller and nodemarker binaries (#148, @fdomain)
+- Fix: allow omitting underlay NIC configuration when using Multus. (#155, @fdomain)
+- Re-introduce the "redistribute-connected-from-default" flag when generating FRR configurations for the KinD leaves (#151, @maiqueb)
+
 ## Release v0.0.4
 
 ### New Features

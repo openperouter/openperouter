@@ -34,7 +34,7 @@ jobs:
 
       - name: Check
         run: |
-          if [[ ! "${{ steps.regex-match.outputs.group1 }}" =~ ^(api-change|bug|cleanup|deprecation|design|documentation|failing|feature|flake|regression)$ ]]; then
+          if [[ ! "${{ steps.regex-match.outputs.group1 }}" =~ ^(api-change|bug|cleanup|deprecation|design|documentation|example|failing|feature|flake|regression)$ ]]; then
             echo "kind must belong to
                   - api-change \
                   - bug \
@@ -42,6 +42,7 @@ jobs:
                   - deprecation \
                   - design \
                   - documentation \
+                  - example \
                   - failing \
                   - feature \
                   - flake \

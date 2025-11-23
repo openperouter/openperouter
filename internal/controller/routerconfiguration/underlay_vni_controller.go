@@ -37,14 +37,15 @@ import (
 
 type PERouterReconciler struct {
 	client.Client
-	Scheme      *runtime.Scheme
-	MyNode      string
-	MyNamespace string
-	FRRConfig   string
-	ReloadPort  int
-	PodRuntime  *pods.Runtime
-	LogLevel    string
-	Logger      *slog.Logger
+	Scheme             *runtime.Scheme
+	MyNode             string
+	MyNamespace        string
+	FRRConfig          string
+	UnderlayFromMultus bool
+	ReloadPort         int
+	PodRuntime         *pods.Runtime
+	LogLevel           string
+	Logger             *slog.Logger
 }
 
 type requestKey string
@@ -132,12 +133,13 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	logger.Debug("using config", "l3vnis", l3vnis.Items, "l2vnis", l2vnis.Items, "underlays", underlays.Items, "l3passthrough", l3passthrough.Items)
 	apiConfig := conversion.ApiConfigData{
-		NodeIndex:     nodeIndex,
-		Underlays:     underlays.Items,
-		LogLevel:      r.LogLevel,
-		L3VNIs:        l3vnis.Items,
-		L2VNIs:        l2vnis.Items,
-		L3Passthrough: l3passthrough.Items,
+		NodeIndex:          nodeIndex,
+		UnderlayFromMultus: r.UnderlayFromMultus,
+		Underlays:          underlays.Items,
+		LogLevel:           r.LogLevel,
+		L3VNIs:             l3vnis.Items,
+		L2VNIs:             l2vnis.Items,
+		L3Passthrough:      l3passthrough.Items,
 	}
 
 	if err := configureFRR(ctx, frrConfigData{

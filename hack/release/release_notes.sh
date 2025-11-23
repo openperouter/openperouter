@@ -1,101 +1,141 @@
-#!/bin/bash
+#!/bin/bash -e
 
-# SPDX-License-Identifier: Apache-2.0
+# Script to automate generation and committing of release notes
+# Usage:
+#   ./hack/gen_relnotes.sh           # Automates entire release notes workflow (auto-increments version)
+#   ./hack/gen_relnotes.sh <version> # Automates workflow with custom version (e.g., 1.2.3)
 
-set -euo pipefail
+set -e
 
-# Function to generate release notes
-# It takes two arguments:
-# $1: start commit
-# $2: end commit (or branch)
-generate_release_notes() {
-    local start_commit=$1
-    local end_commit=$2
-    local branch=$2
-
-    local release_notes
-    release_notes=$(mktemp)
-
-    trap 'rm -f "$release_notes"' RETURN
-
-    GOFLAGS=-mod=mod go run k8s.io/release/cmd/release-notes@v0.16.5 \
-        --branch "$branch" \
-        --required-author "" \
-        --org metallb \
-        --dependencies=false \
-        --repo frr-k8s \
-        --start-sha "$start_commit" \
-        --end-sha "$end_commit" \
-        --output "$release_notes"
-
-    cat "$release_notes"
-}
-
-# Function to compare semantic versions
-version_gt() {
-    test "$(printf '%s\n' "$1" "$2" | sort -V | head -n 1)" != "$1" || [ "$1" == "$2" ]
-}
-
-if [ -z "$1" ]; then
-    echo "Usage: $0 <version>"
-    echo "Example: $0 1.2.3"
+if [[ ! -v GITHUB_TOKEN ]]; then
+    echo "GITHUB_TOKEN is not set, please set it with a token with read permissions on commits and PRs"
     exit 1
 fi
 
-NEW_VERSION=$1
+script_dir=$(dirname "$(readlink -f "$0")")
+repo_root=$(cd "$script_dir/../.." && pwd)
 
-# Check for GITHUB_TOKEN
-if [ -z "$GITHUB_TOKEN" ]; then
-    echo "Error: GITHUB_TOKEN environment variable is not set."
-    exit 1
-fi
+get_latest_version() {
+    grep -m 1 "^## Release v" "$repo_root/RELEASE_NOTES.md" | sed 's/## Release v//'
+}
 
-echo "Preparing release for version $NEW_VERSION"
+increment_version() {
+    local version=$1
+    # Split version into parts
+    local major=$(echo "$version" | cut -d. -f1)
+    local minor=$(echo "$version" | cut -d. -f2)
+    local patch=$(echo "$version" | cut -d. -f3)
 
-# Find the commit of the previous release notes generation
-LAST_RELEASE_COMMIT_INFO=$(git log --grep="^Generate release for version" --pretty=format:"%H %s" -n 1)
+    # Increment patch version
+    patch=$((patch + 1))
 
-if [ -z "$LAST_RELEASE_COMMIT_INFO" ]; then
-    echo "No previous release found. Using the first commit as the start of the range."
-    START_COMMIT=$(git rev-list --max-parents=0 HEAD)
-else
-    LAST_RELEASE_COMMIT=$(echo "$LAST_RELEASE_COMMIT_INFO" | cut -d' ' -f1)
-    LAST_RELEASE_MSG=$(echo "$LAST_RELEASE_COMMIT_INFO" | cut -d' ' -f2-)
-    PREVIOUS_VERSION=$(echo "$LAST_RELEASE_MSG" | awk '{print $5}')
-    
-    echo "Previous release version: $PREVIOUS_VERSION"
+    echo "${major}.${minor}.${patch}"
+}
 
-    # Compare versions
-    if ! version_gt "$NEW_VERSION" "$PREVIOUS_VERSION"; then
-        echo "Error: New version ($NEW_VERSION) must be greater than the previous version ($PREVIOUS_VERSION)."
+if [ $# -eq 0 ] || [ $# -eq 1 ]; then
+    # Automated mode
+    echo "Running in automated mode..."
+
+    branch=${BRANCH:-main}
+
+    # Find the SHA of the most recent "Prepare the v*" commit
+    from=$(git log --all --grep="^Prepare the v" --format="%H" | head -1)
+
+    if [ -z "$from" ]; then
+        echo "Error: Could not find a previous 'Prepare the v*' commit"
+        echo "This might be the first release."
         exit 1
     fi
-    START_COMMIT=$LAST_RELEASE_COMMIT
+
+    to=$(git ls-remote https://github.com/openperouter/openperouter.git refs/heads/main | cut -f1)
+
+    current_version=$(get_latest_version)
+
+    if [ $# -eq 1 ]; then
+        new_version=$1
+        echo "Found previous release commit: $from"
+        echo "Current HEAD: $to"
+        echo "Current version: v$current_version"
+        echo "Using provided version: v$new_version"
+    else
+        new_version=$(increment_version "$current_version")
+        echo "Found previous release commit: $from"
+        echo "Current HEAD: $to"
+        echo "Current version: v$current_version"
+        echo "Auto-incrementing to version: v$new_version"
+    fi
+else
+    echo "Usage: $0 [version]"
+    echo "  No arguments: Automated mode (auto-increments patch version)"
+    echo "  1 argument: Automated mode with custom version (e.g., $0 1.2.3)"
+    exit 1
 fi
 
-echo "Generating release notes from commit $START_COMMIT to main..."
+release_notes=$(mktemp)
 
-# Generate release notes content
-NOTES_CONTENT=$(generate_release_notes "$START_COMMIT" "main")
+end() {
+    rm -f "$release_notes"
+}
 
-if [ -z "$NOTES_CONTENT" ]; then
-    echo "No new pull requests found since the last release. No release notes to generate."
-    exit 0
+trap end EXIT SIGINT SIGTERM SIGSTOP
+
+echo "Generating release notes..."
+GOFLAGS=-mod=mod go run k8s.io/release/cmd/release-notes@v0.16.5 \
+    --branch "$branch" \
+    --required-author "" \
+    --org openperouter \
+    --dependencies=false \
+    --repo openperouter \
+    --start-sha "$from" \
+    --end-sha "$to" \
+    --go-template "go-template:$script_dir/release-notes-template.md" \
+    --output "$release_notes"
+
+# Update RELEASE_NOTES.md
+temp_notes=$(mktemp)
+
+echo "## Release v$new_version" > "$temp_notes"
+echo "" >> "$temp_notes"
+
+cat "$release_notes" >> "$temp_notes"
+echo "" >> "$temp_notes"
+echo "" >> "$temp_notes"
+
+cat "$repo_root/RELEASE_NOTES.md" >> "$temp_notes"
+
+mv "$temp_notes" "$repo_root/RELEASE_NOTES.md"
+
+echo ""
+echo "Release notes have been updated in RELEASE_NOTES.md"
+echo ""
+
+# Update website release notes by combining frontmatter with RELEASE_NOTES.md
+website_release_notes="$repo_root/website/content/docs/release-notes.md"
+website_frontmatter="$repo_root/website/content/docs/.release-notes-frontmatter.md"
+temp_website_notes=$(mktemp)
+
+# Combine frontmatter with RELEASE_NOTES.md content
+cat "$website_frontmatter" > "$temp_website_notes"
+echo "" >> "$temp_website_notes"
+cat "$repo_root/RELEASE_NOTES.md" >> "$temp_website_notes"
+
+mv "$temp_website_notes" "$website_release_notes"
+
+echo "Release notes have been updated in website/content/docs/release-notes.md"
+echo ""
+
+echo "Changes to be committed:"
+git diff "$repo_root/RELEASE_NOTES.md"
+echo ""
+git diff "$website_release_notes"
+
+read -p "Do you want to commit these changes? (y/n) " -n 1 -r
+echo
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    git add "$repo_root/RELEASE_NOTES.md" "$website_release_notes"
+    git commit -m "Prepare the v$new_version release notes"
+    echo ""
+    echo "Committed: Prepare the v$new_version release notes"
+else
+    echo "Commit cancelled. Changes are staged but not committed."
 fi
-
-# Prepare the new release notes section
-NEW_RELEASE_SECTION="## Release $NEW_VERSION\n\n$NOTES_CONTENT"
-
-RELEASE_NOTES_FILE="website/content/docs/release-notes.md"
-TEMP_FILE=$(mktemp)
-
-awk -v new_section="$(echo -e "\n$NEW_RELEASE_SECTION")" '1;/^# Release Notes/ {printf "%s", new_section}' "$RELEASE_NOTES_FILE" > "$TEMP_FILE"
-mv "$TEMP_FILE" "$RELEASE_NOTES_FILE"
-
-echo "Updated $RELEASE_NOTES_FILE"
-
-# Commit the changes
-git add "$RELEASE_NOTES_FILE"
-git commit -m "Generate release for version $NEW_VERSION"
-
-echo "Committed release notes for version $NEW_VERSION"

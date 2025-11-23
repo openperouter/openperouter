@@ -13,18 +13,19 @@ import (
 
 func TestAPItoHostConfig(t *testing.T) {
 	tests := []struct {
-		name            string
-		nodeIndex       int
-		targetNS        string
-		underlays       []v1alpha1.Underlay
-		vnis            []v1alpha1.L3VNI
-		l2vnis          []v1alpha1.L2VNI
-		l3Passthrough   []v1alpha1.L3Passthrough
-		wantUnderlay    hostnetwork.UnderlayParams
-		wantL2VNIParams []hostnetwork.L2VNIParams
-		wantL3VNIParams []hostnetwork.L3VNIParams
-		wantPassthrough *hostnetwork.PassthroughParams
-		wantErr         bool
+		name               string
+		nodeIndex          int
+		targetNS           string
+		underlayFromMultus bool
+		underlays          []v1alpha1.Underlay
+		vnis               []v1alpha1.L3VNI
+		l2vnis             []v1alpha1.L2VNI
+		l3Passthrough      []v1alpha1.L3Passthrough
+		wantUnderlay       hostnetwork.UnderlayParams
+		wantL2VNIParams    []hostnetwork.L2VNIParams
+		wantL3VNIParams    []hostnetwork.L3VNIParams
+		wantPassthrough    *hostnetwork.PassthroughParams
+		wantErr            bool
 	}{
 		{
 			name:            "no underlays",
@@ -336,16 +337,40 @@ func TestAPItoHostConfig(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name:               "underlay without specifying NIC, using multus",
+			nodeIndex:          0,
+			targetNS:           "namespace",
+			underlayFromMultus: true,
+			underlays: []v1alpha1.Underlay{
+				{Spec: v1alpha1.UnderlaySpec{Nics: []string{}, EVPN: &v1alpha1.EVPNConfig{VTEPCIDR: "10.0.0.0/24"}}},
+			},
+			vnis:          []v1alpha1.L3VNI{},
+			l2vnis:        []v1alpha1.L2VNI{},
+			l3Passthrough: []v1alpha1.L3Passthrough{},
+			wantUnderlay: hostnetwork.UnderlayParams{
+				UnderlayInterface: "",
+				TargetNS:          "namespace",
+				EVPN: &hostnetwork.UnderlayEVPNParams{
+					VtepIP: "10.0.0.0/32",
+				},
+			},
+			wantL3VNIParams: []hostnetwork.L3VNIParams{},
+			wantL2VNIParams: []hostnetwork.L2VNIParams{},
+			wantPassthrough: nil,
+			wantErr:         false,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			apiConfig := ApiConfigData{
-				NodeIndex:     tt.nodeIndex,
-				Underlays:     tt.underlays,
-				L3VNIs:        tt.vnis,
-				L2VNIs:        tt.l2vnis,
-				L3Passthrough: tt.l3Passthrough,
+				UnderlayFromMultus: tt.underlayFromMultus,
+				NodeIndex:          tt.nodeIndex,
+				Underlays:          tt.underlays,
+				L3VNIs:             tt.vnis,
+				L2VNIs:             tt.l2vnis,
+				L3Passthrough:      tt.l3Passthrough,
 			}
 
 			gotHostConfig, err := APItoHostConfig(tt.nodeIndex, tt.targetNS, apiConfig)

@@ -152,6 +152,19 @@ var _ = Describe("Underlay configuration should work when", func() {
 			validateUnderlayInNS(g, testNs, params)
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 	})
+
+	It("should work without NIC set, assuming Multus is used", func() {
+		params := UnderlayParams{
+			UnderlayInterface: "",
+			TargetNS:          underlayTestNS,
+		}
+		err := SetupUnderlay(context.Background(), params)
+		Expect(err).NotTo(HaveOccurred())
+
+		Eventually(func(g Gomega) {
+			validateUnderlayInNS(g, testNs, params)
+		}, 30*time.Second, 1*time.Second).Should(Succeed())
+	})
 })
 
 func validateUnderlayInNS(g Gomega, ns netns.NsHandle, params UnderlayParams) {
@@ -173,7 +186,7 @@ func validateUnderlay(g Gomega, params UnderlayParams, interfaceIPs ...string) {
 				validateIP(g, l, params.EVPN.VtepIP)
 			}
 		}
-		if l.Attrs().Name == params.UnderlayInterface {
+		if params.UnderlayInterface != "" && l.Attrs().Name == params.UnderlayInterface {
 			mainNicFound = true
 			for _, ip := range interfaceIPs {
 				validateIP(g, l, ip)
@@ -185,7 +198,9 @@ func validateUnderlay(g Gomega, params UnderlayParams, interfaceIPs ...string) {
 	if params.EVPN != nil {
 		g.Expect(loopbackFound).To(BeTrue(), fmt.Sprintf("failed to find loopback in ns, links %v", links))
 	}
-	g.Expect(mainNicFound).To(BeTrue(), fmt.Sprintf("failed to find underlay interface in ns, links %v", links))
+	if params.UnderlayInterface != "" && !mainNicFound {
+		g.Expect(mainNicFound).To(BeTrue(), fmt.Sprintf("failed to find underlay interface in ns, links %v", links))
+	}
 }
 
 func validateIP(g Gomega, l netlink.Link, address string) {

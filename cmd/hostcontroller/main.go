@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"os"
@@ -31,12 +32,14 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/go-logr/logr"
 	periov1alpha1 "github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/controller/routerconfiguration"
 	"github.com/openperouter/openperouter/internal/logging"
 	"github.com/openperouter/openperouter/internal/pods"
+	"github.com/openperouter/openperouter/internal/tlsconfig"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -54,16 +57,18 @@ func init() {
 
 func main() {
 	args := struct {
-		metricsAddr   string
-		probeAddr     string
-		secureMetrics bool
-		enableHTTP2   bool
-		nodeName      string
-		namespace     string
-		logLevel      string
-		frrConfigPath string
-		reloadPort    int
-		criSocket     string
+		metricsAddr        string
+		probeAddr          string
+		secureMetrics      bool
+		enableHTTP2        bool
+		tlsOpts            []func(*tls.Config)
+		nodeName           string
+		namespace          string
+		logLevel           string
+		frrConfigPath      string
+		reloadPort         int
+		criSocket          string
+		underlayFromMultus bool
 	}{}
 	flag.StringVar(&args.metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -71,7 +76,7 @@ func main() {
 	flag.BoolVar(&args.secureMetrics, "metrics-secure", true,
 		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
 	flag.BoolVar(&args.enableHTTP2, "enable-http2", false,
-		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+		"If set, HTTP/2 will be enabled for the metrics server")
 	flag.StringVar(&args.nodeName, "nodename", "", "The name of the node the controller runs on")
 	flag.StringVar(&args.namespace, "namespace", "", "The namespace the controller runs in")
 	flag.StringVar(&args.logLevel, "loglevel", "info", "the verbosity of the process")
@@ -79,6 +84,7 @@ func main() {
 		"the location of the frr configuration file")
 	flag.IntVar(&args.reloadPort, "reloadport", 9080, "the port of the reloader process")
 	flag.StringVar(&args.criSocket, "crisocket", "/containerd.sock", "the location of the cri socket")
+	flag.BoolVar(&args.underlayFromMultus, "underlay-from-multus", false, "Whether underlay access is built with Multus")
 
 	flag.Parse()
 
@@ -92,17 +98,21 @@ func main() {
 	setupLog.Info("version", "version", build.Main.Version)
 	setupLog.Info("arguments", "args", fmt.Sprintf("%+v", args))
 
-	/* TODO: to be used for the metrics endpoints while disabiling
-	http2
-	tlsOpts = append(tlsOpts, func(c *tls.Config) {
-		setupLog.Info("disabling http/2")
-		c.NextProtos = []string{"http/1.1"}
-	})*/
+	if !args.enableHTTP2 {
+		args.tlsOpts = append(args.tlsOpts, tlsconfig.DisableHTTP2())
+	}
+
+	metricsServerOptions := metricsserver.Options{
+		BindAddress:   args.metricsAddr,
+		SecureServing: args.secureMetrics,
+		TLSOpts:       args.tlsOpts,
+	}
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
 		HealthProbeBindAddress: args.probeAddr,
 		Cache:                  cache.Options{},
+		Metrics:                metricsServerOptions,
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
@@ -116,15 +126,16 @@ func main() {
 	}
 
 	if err = (&routerconfiguration.PERouterReconciler{
-		Client:      mgr.GetClient(),
-		Scheme:      mgr.GetScheme(),
-		MyNode:      args.nodeName,
-		FRRConfig:   args.frrConfigPath,
-		ReloadPort:  args.reloadPort,
-		PodRuntime:  podRuntime,
-		LogLevel:    args.logLevel,
-		Logger:      logger,
-		MyNamespace: args.namespace,
+		Client:             mgr.GetClient(),
+		Scheme:             mgr.GetScheme(),
+		MyNode:             args.nodeName,
+		FRRConfig:          args.frrConfigPath,
+		ReloadPort:         args.reloadPort,
+		PodRuntime:         podRuntime,
+		LogLevel:           args.logLevel,
+		Logger:             logger,
+		MyNamespace:        args.namespace,
+		UnderlayFromMultus: args.underlayFromMultus,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Underlay")
 		os.Exit(1)

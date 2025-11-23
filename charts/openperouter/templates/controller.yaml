@@ -51,6 +51,9 @@ spec:
         {{- if eq .Values.openperouter.cri "crio" }}
         - --crisocket=/crio.sock
         {{- end }}
+        {{- if .Values.openperouter.multusNetworkAnnotation }}
+        - --underlay-from-multus=true
+        {{- end }}
         command:
         - /controller
         env:

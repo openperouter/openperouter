@@ -46,11 +46,12 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 	slog.InfoContext(ctx, "configure interface start", "namespace", targetNS)
 	defer slog.InfoContext(ctx, "configure interface end", "namespace", targetNS)
 	apiConfig := conversion.ApiConfigData{
-		NodeIndex:     config.NodeIndex,
-		Underlays:     config.Underlays,
-		L3VNIs:        config.L3VNIs,
-		L2VNIs:        config.L2VNIs,
-		L3Passthrough: config.L3Passthrough,
+		UnderlayFromMultus: config.UnderlayFromMultus,
+		NodeIndex:          config.NodeIndex,
+		Underlays:          config.Underlays,
+		L3VNIs:             config.L3VNIs,
+		L2VNIs:             config.L2VNIs,
+		L3Passthrough:      config.L3Passthrough,
 	}
 	hostConfig, err := conversion.APItoHostConfig(config.NodeIndex, targetNS, apiConfig)
 	if err != nil {

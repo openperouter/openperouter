@@ -27,9 +27,15 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig ApiConfigData) (H
 
 	underlay := apiConfig.Underlays[0]
 
+	if len(underlay.Spec.Nics) == 0 && !apiConfig.UnderlayFromMultus {
+		return res, fmt.Errorf("underlay interface must be specified when Multus is not enabled")
+	}
+
 	res.Underlay = hostnetwork.UnderlayParams{
-		UnderlayInterface: underlay.Spec.Nics[0],
-		TargetNS:          targetNS,
+		TargetNS: targetNS,
+	}
+	if len(underlay.Spec.Nics) > 0 {
+		res.Underlay.UnderlayInterface = underlay.Spec.Nics[0]
 	}
 
 	if len(apiConfig.L3Passthrough) == 1 {

@@ -43,8 +43,10 @@ func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
 		}
 	}()
 
-	if err := moveUnderlayInterface(ctx, params.UnderlayInterface, ns); err != nil {
-		return err
+	if params.UnderlayInterface != "" {
+		if err := moveUnderlayInterface(ctx, params.UnderlayInterface, ns); err != nil {
+			return err
+		}
 	}
 
 	if params.EVPN == nil {

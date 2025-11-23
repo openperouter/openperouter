@@ -1,0 +1,11 @@
+code_review:
+  disable: false
+  comment_severity_threshold: MEDIUM
+  pull_request_opened:
+    help: true
+    summary: true
+
+# Patterns to ignore during code review
+# These files are typically auto-generated or vendored
+ignore_patterns:
+  - "**/website/public/**"

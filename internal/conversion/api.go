@@ -8,12 +8,13 @@ import (
 )
 
 type ApiConfigData struct {
-	NodeIndex     int
-	Underlays     []v1alpha1.Underlay
-	L3VNIs        []v1alpha1.L3VNI
-	L2VNIs        []v1alpha1.L2VNI
-	L3Passthrough []v1alpha1.L3Passthrough
-	LogLevel      string
+	NodeIndex          int
+	UnderlayFromMultus bool
+	Underlays          []v1alpha1.Underlay
+	L3VNIs             []v1alpha1.L3VNI
+	L2VNIs             []v1alpha1.L2VNI
+	L3Passthrough      []v1alpha1.L3Passthrough
+	LogLevel           string
 }
 
 type HostConfigData struct {

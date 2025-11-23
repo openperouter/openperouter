@@ -34,6 +34,7 @@ spec:
           interfaces:
           - bridge: {}
             name: evpn
+            macAddress: 02:03:04:05:06:07
           disks:
           - disk:
               bus: virtio
@@ -53,7 +54,7 @@ spec:
       terminationGracePeriodSeconds: 0
       volumes:
       - containerDisk:
-          image: quay.io/kubevirt/fedora-with-test-tooling-container-disk:v1.5.2
+          image: quay.io/kubevirt/fedora-with-test-tooling-container-disk:v1.6.2
         name: containerdisk
       - cloudInitNoCloud:
           networkData: |

@@ -12,7 +12,7 @@ generate_leaf_configs() {
     # Build the command with redistribute parameter (disabled by default)
     REDISTRIBUTE_FLAG=""
     if [[ "${DEMO_MODE:-false}" == "true" ]]; then
-        REDISTRIBUTE_FLAG="-redistribute-connected-from-vrfs"
+        REDISTRIBUTE_FLAG="-redistribute-connected-from-vrfs -redistribute-connected-from-default"
         echo "Enabling redistribute connected from VRFs (demo mode)"
     else
         echo "Disabling redistribute connected from VRFs (default)"

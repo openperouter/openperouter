@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -32,6 +33,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	"github.com/go-logr/logr"
@@ -40,6 +42,7 @@ import (
 	"github.com/openperouter/openperouter/internal/controller/nodeindex"
 	"github.com/openperouter/openperouter/internal/conversion"
 	"github.com/openperouter/openperouter/internal/logging"
+	"github.com/openperouter/openperouter/internal/tlsconfig"
 	"github.com/openperouter/openperouter/internal/webhooks"
 	// +kubebuilder:scaffold:imports
 )
@@ -66,6 +69,9 @@ func init() {
 func main() {
 	args := struct {
 		metricsAddr                   string
+		secureMetrics                 bool
+		enableHTTP2                   bool
+		tlsOpts                       []func(*tls.Config)
 		namespace                     string
 		logLevel                      string
 		webhookMode                   string
@@ -77,6 +83,10 @@ func main() {
 	}{}
 
 	flag.StringVar(&args.metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
+	flag.BoolVar(&args.secureMetrics, "metrics-secure", true,
+		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
+	flag.BoolVar(&args.enableHTTP2, "enable-http2", false,
+		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 	flag.StringVar(&args.namespace, "namespace", "",
 		"The namespace to watch for resources. Leave empty for all namespaces.")
 	flag.StringVar(&args.logLevel, "loglevel", "info", "Set the logging level (debug, info, warn, error).")
@@ -108,22 +118,28 @@ func main() {
 	}
 	ctrl.SetLogger(logr.FromSlogHandler(logger.Handler()))
 
-	/* TODO: to be used for the metrics endpoints while disabiling
-	http2
-	tlsOpts = append(tlsOpts, func(c *tls.Config) {
-		setupLog.Info("disabling http/2")
-		c.NextProtos = []string{"http/1.1"}
-	})*/
 	build, _ := debug.ReadBuildInfo()
 	setupLog.Info("version", "version", build.Main.Version)
 	setupLog.Info("arguments", "args", fmt.Sprintf("%+v", args))
 
+	if !args.enableHTTP2 {
+		args.tlsOpts = append(args.tlsOpts, tlsconfig.DisableHTTP2())
+	}
+
+	metricsServerOptions := metricsserver.Options{
+		BindAddress:   args.metricsAddr,
+		SecureServing: args.secureMetrics,
+		TLSOpts:       args.tlsOpts,
+	}
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme: scheme,
-		Cache:  cache.Options{},
+		Scheme:  scheme,
+		Cache:   cache.Options{},
+		Metrics: metricsServerOptions,
 		WebhookServer: webhook.NewServer(
 			webhook.Options{
-				Port: args.webhookPort,
+				Port:    args.webhookPort,
+				TLSOpts: args.tlsOpts,
 			},
 		),
 	})

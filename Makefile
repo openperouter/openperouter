@@ -79,14 +79,6 @@ test: fmt vet envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v e2etest) -coverprofile cover.out
 	sudo -E sh -c "umask 0; PATH=${GOPATH}/bin:$(pwd)/bin:${PATH} go test -tags=runasroot -v -race ./internal/hostnetwork"
 
-.PHONY: release-notes
-release-notes: ## Generate release notes
-	@if [ -z "$(OPENPE_VERSION)" ]; then \
-		echo "Usage: make release-notes OPENPE_VERSION=<version>"; \
-		exit 1; \
-	fi
-	hack/release/prepare_release.sh $(OPENPE_VERSION)
-
 ##@ Build
 
 .PHONY: build

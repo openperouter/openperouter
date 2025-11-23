@@ -1,0 +1,23 @@
+---
+apiVersion: "k8s.cni.cncf.io/v1"
+kind: NetworkAttachmentDefinition
+metadata:
+  name: migration-evpn
+  namespace: kubevirt
+spec:
+  config: |
+    {
+      "cniVersion": "0.3.1",
+      "name": "migration-evpn",
+      "type": "bridge",
+      "bridge": "br-hs-666",
+      "mtu": 1400,
+      "ipam": {
+        "type": "whereabouts",
+        "range": "192.170.10.0/24",
+        "exclude": [
+          "192.170.10.1/32",
+          "192.170.10.0/25"
+        ]
+      }
+    }

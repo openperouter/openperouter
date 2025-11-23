@@ -1,29 +1,14 @@
 ---
-apiVersion: "k8s.cni.cncf.io/v1"
-kind: NetworkAttachmentDefinition
-metadata:
-  name: evpn
-spec:
-  config: |
-    {
-      "cniVersion": "0.3.1",
-      "name": "evpn",
-      "type": "bridge",
-      "bridge": "br-hs-110",
-      "macspoofchk": false,
-      "disableContainerInterface": true
-    }
----
 apiVersion: kubevirt.io/v1
 kind: VirtualMachine
 metadata:
-  name: vm-2
+  name: vm-1
 spec:
-  runStrategy: Always
+  runStrategy: WaitAsReceiver
   template:
     metadata:
       labels:
-        kubevirt.io/vm: vm-2
+        kubevirt.io/vm: vm-1
     spec:
       tolerations:
       - key: node-role.kubernetes.io/control-plane
@@ -34,6 +19,7 @@ spec:
           interfaces:
           - bridge: {}
             name: evpn
+            macAddress: 02:03:04:05:06:07
           disks:
           - disk:
               bus: virtio
@@ -61,6 +47,7 @@ spec:
             ethernets:
               eth0:
                 addresses:
-                - 192.170.1.30/24
+                - 192.170.1.3/24
                 gateway4: 192.170.1.1
         name: cloudinitdisk
+

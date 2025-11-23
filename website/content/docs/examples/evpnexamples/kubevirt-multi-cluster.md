@@ -314,3 +314,143 @@ kubectl get network-attachment-definitions
 virtctl console vm-1
 ip addr show
 ```
+
+## L2 VNI as KubeVirt dedicated migration network for cross cluster live migration
+
+This example is another use-case we can realize using this multi-cluster
+testbed. All its dependencies are pre-provisioned when you start this demo,
+i.e. when run the following command:
+
+```bash
+make docker-build demo-multi-cluster
+```
+
+This will provision the testbed described in [architecture](#architecture), and
+has one VM pre-provisioned in **each** cluster: `vm-1` in cluster A, and `vm-2`
+in cluster B.
+
+It also has a dedicated migration network set up in both clusters, which
+happens to be implemented using an L2 VNI ! You can find links to the network
+manifests below:
+- [NAD](/examples/evpn/multi-cluster/cluster-a-migration-nad.yaml)
+- [L2VNI](/examples/evpn/multi-cluster/cluster-a-migration-l2vni.yaml)
+
+### Preparing the VM to be migrated
+
+To achieve cross cluster live migration, you need to provision the VM in both
+clusters - but, it is only running on one of them. In the "destination" cluster
+it will have be stuck in `WaitingForSync` phase, until the source and
+destination clusters coordinate to migrate the VM across.
+
+Hence, you need to provision the following manifest in your **destination**
+cluster:
+
+```yaml
+---
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: vm-1
+spec:
+  runStrategy: WaitAsReceiver   # this is MANDATORY
+  template:
+    metadata:
+      labels:
+        kubevirt.io/vm: vm-1
+    spec:
+      tolerations:
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+        effect: NoSchedule
+      domain:
+        devices:
+          interfaces:
+          - bridge: {}
+            name: evpn
+          disks:
+          - disk:
+              bus: virtio
+            name: containerdisk
+          - disk:
+              bus: virtio
+            name: cloudinitdisk
+        resources:
+          requests:
+            memory: 2048M
+        machine:
+          type: ""
+      networks:
+      - multus:
+          networkName: evpn
+        name: evpn
+      terminationGracePeriodSeconds: 0
+      volumes:
+      - containerDisk:
+          image: quay.io/kubevirt/fedora-with-test-tooling-container-disk:v1.6.2
+        name: containerdisk
+      - cloudInitNoCloud:
+          networkData: |
+            version: 2
+            ethernets:
+              eth0:
+                addresses:
+                - 192.170.1.3/24
+                gateway4: 192.170.1.1
+        name: cloudinitdisk
+```
+
+**NOTE:** notice the running strategy on the VM is `WaitAsReceiver`.
+
+The next preparation step is to create the **destination** cluster migration
+CR. Provision the following manifest for that:
+
+```yaml
+apiVersion: kubevirt.io/v1
+kind: VirtualMachineInstanceMigration
+metadata:
+  name: vmim-target
+  namespace: default
+spec:
+  receive:
+    migrationID: abcdef
+  vmiName: vm-1
+```
+
+The `migrationID` attribute is important - in the sense that the **source**
+migration object must use the **same** migration ID. But it can pretty much be
+anything.
+
+Once the object is provisioned in the destination cluster, we need to
+understand how to connect the migration controllers on both clusters. For that,
+we need to inspect the status of the migration CR on the destination cluster.
+Execute the following command:
+
+```shell
+kubectl get vmim vmim-target -ojsonpath="{.status.synchronizationAddresses}" | jq
+[
+  "192.170.10.128:9185"
+]
+```
+
+### Issuing the cross cluster live migration command
+
+Now we know which IP and port to use in our source cluster migration CR;
+provision the following command in the **source** cluster (pay special
+attention to the `connectURL` attribute):
+
+```yaml
+apiVersion: kubevirt.io/v1
+kind: VirtualMachineInstanceMigration
+metadata:
+  name: vmim-source
+  namespace: default
+spec:
+  sendTo:
+    connectURL: "192.170.10.128:9185"
+    migrationID: abcdef
+  vmiName: vm-1
+```
+
+Once this CR is provisioned in the source cluster, the VM will be migrated from
+the source to the destination cluster. It's state will be preserved, and
+established TCP connections will still be alive in the destination cluster.
