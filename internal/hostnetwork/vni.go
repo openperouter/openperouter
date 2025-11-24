@@ -39,9 +39,9 @@ type Veth struct {
 }
 
 type L2VNIParams struct {
-	VNIParams   `json:",inline"`
-	L2GatewayIP *string     `json:"l2gatewayip"`
-	HostMaster  *HostMaster `json:"hostmaster"`
+	VNIParams    `json:",inline"`
+	L2GatewayIPs []string    `json:"l2gatewayips"`
+	HostMaster   *HostMaster `json:"hostmaster"`
 }
 
 type HostMaster struct {
@@ -186,9 +186,11 @@ func SetupL2VNI(ctx context.Context, params L2VNIParams) error {
 		if err := netlink.LinkSetMaster(peVeth, bridge); err != nil {
 			return fmt.Errorf("failed to set bridge %s as master of pe veth %s: %w", name, peVeth.Attrs().Name, err)
 		}
-		if params.L2GatewayIP != nil {
-			if err := assignIPToInterface(bridge, *params.L2GatewayIP); err != nil {
-				return fmt.Errorf("failed to assign L2 gateway IP %s to bridge %s: %w", *params.L2GatewayIP, name, err)
+		if len(params.L2GatewayIPs) > 0 {
+			for _, ip := range params.L2GatewayIPs {
+				if err := assignIPToInterface(bridge, ip); err != nil {
+					return fmt.Errorf("failed to assign L2 gateway IP %s to bridge %s: %w", ip, name, err)
+				}
 			}
 
 			// setting up the same mac address for all the nodes for distributed gateway

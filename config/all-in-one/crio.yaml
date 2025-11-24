@@ -76,14 +76,18 @@ spec:
                     - bridge
                     type: string
                 type: object
-              l2gatewayip:
+              l2gatewayips:
                 description: |-
-                  L2GatewayIP is the IP address to be used for the L2 gateway. When this is set, the
-                  bridge the veths are enslaved to will be configured with this IP address, effectively
-                  acting as a distributed gateway for the VNI.
-                type: string
+                  L2GatewayIPs is a list of IP addresses in CIDR notation to be used for the L2 gateway. When this is set, the
+                  bridge the veths are enslaved to will be configured with these IP addresses, effectively
+                  acting as a distributed gateway for the VNI. This allows for dual-stack (IPv4 and IPv6) support.
+                  Maximum of 2 addresses are allowed. If 2 addresses are provided, one must be IPv4 and one must be IPv6.
+                items:
+                  type: string
+                maxItems: 2
+                type: array
                 x-kubernetes-validations:
-                - message: L2GatewayIP can't be changed
+                - message: L2GatewayIPs cannot be changed
                   rule: self == oldSelf
               vni:
                 description: VNI is the VXLan VNI to be used

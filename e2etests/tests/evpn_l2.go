@@ -4,6 +4,8 @@ package tests
 
 import (
 	"fmt"
+	"net"
+	"regexp"
 	"strings"
 	"time"
 
@@ -14,6 +16,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/config"
 	"github.com/openperouter/openperouter/e2etests/pkg/executor"
 	"github.com/openperouter/openperouter/e2etests/pkg/infra"
+	"github.com/openperouter/openperouter/e2etests/pkg/ipfamily"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
@@ -27,7 +30,6 @@ import (
 var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 	var cs clientset.Interface
 	routerPods := []*corev1.Pod{}
-
 	vniRed := v1alpha1.L3VNI{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "red",
@@ -45,9 +47,8 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			Namespace: openperouter.Namespace,
 		},
 		Spec: v1alpha1.L2VNISpec{
-			VRF:         ptr.To("red"),
-			VNI:         110,
-			L2GatewayIP: "192.171.24.1/24",
+			VRF: ptr.To("red"),
+			VNI: 110,
 			HostMaster: &v1alpha1.HostMaster{
 				AutoCreate: true,
 				Type:       "bridge",
@@ -90,21 +91,24 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		secondPod *corev1.Pod
 		nad       nad.NetworkAttachmentDefinition
 	)
-
-	BeforeEach(func() {
+	type testCase struct {
+		firstPodIPs, secondPodIPs, hostARedIPs, hostBRedIPs, l2GatewayIPs []string
+	}
+	DescribeTable("should create two pods connected to the l2 overlay", func(tc testCase) {
 		By("setting redistribute connected on leaves")
 		redistributeConnectedForLeaf(infra.LeafAConfig)
 		redistributeConnectedForLeaf(infra.LeafBConfig)
 
 		err := Updater.CleanButUnderlay()
 		Expect(err).NotTo(HaveOccurred())
-
+		l2VniRedWithGateway := l2VniRed.DeepCopy()
+		l2VniRedWithGateway.Spec.L2GatewayIPs = tc.l2GatewayIPs
 		err = Updater.Update(config.Resources{
 			L3VNIs: []v1alpha1.L3VNI{
 				vniRed,
 			},
 			L2VNIs: []v1alpha1.L2VNI{
-				l2VniRed,
+				*l2VniRedWithGateway,
 			},
 		})
 		Expect(err).NotTo(HaveOccurred())
@@ -112,55 +116,49 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		_, err = k8s.CreateNamespace(cs, testNamespace)
 		Expect(err).NotTo(HaveOccurred())
 
-		nad, err = k8s.CreateMacvlanNad("110", testNamespace, "br-hs-110", "192.171.24.1")
+		nad, err = k8s.CreateMacvlanNad("110", testNamespace, "br-hs-110", tc.l2GatewayIPs)
 		Expect(err).NotTo(HaveOccurred())
-	})
 
-	AfterEach(func() {
-		removeLeafPrefixes(infra.LeafAConfig)
-		removeLeafPrefixes(infra.LeafBConfig)
-		dumpIfFails(cs)
-		err := Updater.CleanButUnderlay()
-		Expect(err).NotTo(HaveOccurred())
-		err = k8s.DeleteNamespace(cs, testNamespace)
-		Expect(err).NotTo(HaveOccurred())
-	})
+		DeferCleanup(func() {
+			removeLeafPrefixes(infra.LeafAConfig)
+			removeLeafPrefixes(infra.LeafBConfig)
+			dumpIfFails(cs)
+			err := Updater.CleanButUnderlay()
+			Expect(err).NotTo(HaveOccurred())
+			err = k8s.DeleteNamespace(cs, testNamespace)
+			Expect(err).NotTo(HaveOccurred())
+		})
 
-	It("should create two pods connected to the l2 overlay", func() {
-		var err error
-		const (
-			firstPodIP  = "192.171.24.2"
-			secondPodIP = "192.171.24.3"
-		)
 		nodes, err := k8s.GetNodes(cs)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(len(nodes)).To(BeNumerically(">=", 2), "Expected at least 2 nodes, but got fewer")
 
 		By("creating the pods")
-		firstPod, err = k8s.CreateAgnhostPod(cs, "pod1", testNamespace, k8s.WithNad(nad.Name, testNamespace, firstPodIP+"/24"), k8s.OnNode(nodes[0].Name))
+		firstPod, err = k8s.CreateAgnhostPod(cs, "pod1", testNamespace, k8s.WithNad(nad.Name, testNamespace, tc.firstPodIPs), k8s.OnNode(nodes[0].Name))
 		Expect(err).NotTo(HaveOccurred())
-		secondPod, err = k8s.CreateAgnhostPod(cs, "pod2", testNamespace, k8s.WithNad(nad.Name, testNamespace, secondPodIP+"/24"), k8s.OnNode(nodes[1].Name))
+		secondPod, err = k8s.CreateAgnhostPod(cs, "pod2", testNamespace, k8s.WithNad(nad.Name, testNamespace, tc.secondPodIPs), k8s.OnNode(nodes[1].Name))
 		Expect(err).NotTo(HaveOccurred())
 
 		By("removing the default gateway via the primary interface")
-		removeGatewayFromPod(firstPod)
-		removeGatewayFromPod(secondPod)
+		Expect(removeGatewayFromPod(firstPod)).To(Succeed())
+		Expect(removeGatewayFromPod(secondPod)).To(Succeed())
 
 		checkPodIsReacheable := func(exec executor.Executor, from, to string) {
-			Eventually(func() error {
+			GinkgoHelper()
+			const port = "8090"
+			hostPort := net.JoinHostPort(to, port)
+			urlStr := url.Format("http://%s/clientip", hostPort)
+			Eventually(func(g Gomega) string {
 				By(fmt.Sprintf("trying to hit %s from %s", to, from))
-				urlStr := url.Format("http://%s:8090/clientip", to)
 				res, err := exec.Exec("curl", "-sS", urlStr)
-				if err != nil {
-					return fmt.Errorf("curl %s:8090 failed: %s", to, res)
-				}
-				clientIP := strings.Split(res, ":")[0]
-				if clientIP != from {
-					return fmt.Errorf("curl %s:8090 returned %s, expected %s", to, clientIP, from)
-				}
-
-				return nil
-			}, time.Minute, 5*time.Second).ShouldNot(HaveOccurred())
+				g.Expect(err).ToNot(HaveOccurred(), "curl %s failed: %s", hostPort, res)
+				clientIP, _, err := net.SplitHostPort(res)
+				g.Expect(err).ToNot(HaveOccurred())
+				return clientIP
+			}).
+				WithTimeout(5*time.Second).
+				WithPolling(time.Second).
+				Should(Equal(from), "curl should return the expected clientip")
 		}
 
 		podExecutor := executor.ForPod(firstPod.Namespace, firstPod.Name, "agnhost")
@@ -168,30 +166,106 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		hostARedExecutor := executor.ForContainer("clab-kind-hostA_red")
 
 		tests := []struct {
-			exec   executor.Executor
-			from   string
-			to     string
-			fromIP string
-			toIP   string
+			exec    executor.Executor
+			from    string
+			to      string
+			fromIPs []string
+			toIPs   []string
 		}{
-			{exec: podExecutor, from: "firstPod", to: "secondPod", fromIP: firstPodIP, toIP: secondPodIP},
-			{exec: secondPodExecutor, from: "secondPod", to: "firstPod", fromIP: secondPodIP, toIP: firstPodIP},
-			{exec: podExecutor, from: "firstPod", to: "hostARed", fromIP: firstPodIP, toIP: infra.HostARedIPv4},
-			{exec: podExecutor, from: "firstPod", to: "hostBRed", fromIP: firstPodIP, toIP: infra.HostBRedIPv4},
-			{exec: secondPodExecutor, from: "secondPod", to: "hostARed", fromIP: secondPodIP, toIP: infra.HostARedIPv4},
-			{exec: secondPodExecutor, from: "secondPod", to: "hostBRed", fromIP: secondPodIP, toIP: infra.HostBRedIPv4},
-			{exec: hostARedExecutor, from: "hostARed", to: "firstPod", fromIP: infra.HostARedIPv4, toIP: firstPodIP},
+			{exec: podExecutor, from: "firstPod", to: "secondPod", fromIPs: tc.firstPodIPs, toIPs: tc.secondPodIPs},
+			{exec: secondPodExecutor, from: "secondPod", to: "firstPod", fromIPs: tc.secondPodIPs, toIPs: tc.firstPodIPs},
+			{exec: podExecutor, from: "firstPod", to: "hostARed", fromIPs: tc.firstPodIPs, toIPs: tc.hostARedIPs},
+			{exec: podExecutor, from: "firstPod", to: "hostBRed", fromIPs: tc.firstPodIPs, toIPs: tc.hostBRedIPs},
+			{exec: secondPodExecutor, from: "secondPod", to: "hostARed", fromIPs: tc.secondPodIPs, toIPs: tc.hostARedIPs},
+			{exec: secondPodExecutor, from: "secondPod", to: "hostBRed", fromIPs: tc.secondPodIPs, toIPs: tc.hostBRedIPs},
+			{exec: hostARedExecutor, from: "hostARed", to: "firstPod", fromIPs: tc.hostARedIPs, toIPs: tc.firstPodIPs},
 		}
 
 		for _, test := range tests {
 			By(fmt.Sprintf("checking reachability from %s to %s", test.from, test.to))
-			checkPodIsReacheable(test.exec, test.fromIP, test.toIP)
+			Expect(test.fromIPs).To(HaveLen(len(test.toIPs)))
+			for i, fromIP := range test.fromIPs {
+				from := discardAddressLength(fromIP)
+				to := discardAddressLength(test.toIPs[i])
+				checkPodIsReacheable(test.exec, from, to)
+			}
 		}
-	})
+	},
+		Entry("for single stack ipv4", testCase{
+			l2GatewayIPs: []string{"192.171.24.1/24"},
+			firstPodIPs:  []string{"192.171.24.2/24"},
+			secondPodIPs: []string{"192.171.24.3/24"},
+			hostARedIPs:  []string{infra.HostARedIPv4},
+			hostBRedIPs:  []string{infra.HostBRedIPv4},
+		}),
+		Entry("for dual stack", testCase{
+			l2GatewayIPs: []string{"192.171.24.1/24", "fd00:10:245:1::1/64"},
+			firstPodIPs:  []string{"192.171.24.2/24", "fd00:10:245:1::2/64"},
+			secondPodIPs: []string{"192.171.24.3/24", "fd00:10:245:1::3/64"},
+			hostARedIPs:  []string{infra.HostARedIPv4, infra.HostARedIPv6},
+			hostBRedIPs:  []string{infra.HostBRedIPv4, infra.HostBRedIPv6},
+		}),
+		Entry("for single stack ipv6", testCase{
+			l2GatewayIPs: []string{"fd00:10:245:1::1/64"},
+			firstPodIPs:  []string{"fd00:10:245:1::2/64"},
+			secondPodIPs: []string{"fd00:10:245:1::3/64"},
+			hostARedIPs:  []string{infra.HostARedIPv6},
+			hostBRedIPs:  []string{infra.HostBRedIPv6},
+		}),
+	)
 })
 
-func removeGatewayFromPod(pod *corev1.Pod) {
+func removeGatewayFromPod(pod *corev1.Pod) error {
 	exec := executor.ForPod(pod.Namespace, pod.Name, "agnhost")
-	_, err := exec.Exec("ip", "route", "del", "default", "dev", "eth0")
-	Expect(err).NotTo(HaveOccurred(), "Failed to remove gateway from pod %s", pod.Name)
+
+	// Detect IP family from pod status IPs
+	var podIPs []string
+	for _, podIP := range pod.Status.PodIPs {
+		podIPs = append(podIPs, podIP.IP)
+	}
+
+	family, err := ipfamily.ForAddresses(podIPs...)
+	if err != nil {
+		return fmt.Errorf("failed to detect IP family for pod %s: %w", pod.Name, err)
+	}
+
+	// Remove IPv4 default route if IPv4 or dual-stack
+	if family == ipfamily.IPv4 || family == ipfamily.DualStack {
+		output, err := exec.Exec("ip", "route", "del", "default", "dev", "eth0")
+		if err != nil {
+			return fmt.Errorf("failed to remove ipv4 gateway from pod %s: %s: %w", pod.Name, output, err)
+		}
+	}
+
+	// Remove IPv6 default route if IPv6 or dual-stack
+	// IPv6 ECMP route deletion requires the next hop IP, not just the device
+	if family == ipfamily.IPv6 || family == ipfamily.DualStack {
+		nextHopIPv6, err := findNextHopIPv6(exec, "default", "eth0")
+		if err != nil {
+			return fmt.Errorf("failed to find IPv6 next hop for pod %s: %w", pod.Name, err)
+		}
+		output, err := exec.Exec("ip", "-6", "route", "del", "default", "via", nextHopIPv6, "dev", "eth0")
+		if err != nil {
+			return fmt.Errorf("failed to remove ipv6 gateway from pod %s: %s: %w", pod.Name, output, err)
+		}
+	}
+
+	return nil
+}
+
+func findNextHopIPv6(exec executor.Executor, destination, device string) (string, error) {
+	output, err := exec.Exec("ip", "-6", "route", "show", destination)
+	if err != nil {
+		return "", err
+	}
+	re := regexp.MustCompile(fmt.Sprintf(`via +([0-9a-fA-F:]+) dev %s`, device))
+	match := re.FindStringSubmatch(output)
+	if len(match) == 0 {
+		return "", fmt.Errorf("cannot extract ipv6 default gateway for dev eth0 from output: %s", output)
+	}
+	return strings.TrimSpace(match[1]), nil
+}
+
+func discardAddressLength(address string) string {
+	return strings.Split(address, "/")[0]
 }
