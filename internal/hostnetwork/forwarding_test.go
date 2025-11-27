@@ -1,5 +1,8 @@
 // SPDX-License-Identifier:Apache-2.0
 
+//go:build runasroot
+// +build runasroot
+
 package hostnetwork
 
 import (
