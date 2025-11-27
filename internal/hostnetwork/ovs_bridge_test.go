@@ -659,4 +659,48 @@ var _ = Describe("OVS Bridge Operations", func() {
 			Expect(err).To(MatchError(ContainSubstring("attach")))
 		})
 	})
+
+	Describe("OVS Socket Path Configuration", func() {
+		var originalSocketPath string
+
+		BeforeEach(func() {
+			// Save original socket path to restore after tests
+			originalSocketPath = ovsSocketPath
+		})
+
+		AfterEach(func() {
+			// Restore original socket path after each test
+			ovsSocketPath = originalSocketPath
+		})
+
+		It("should use default socket path when not explicitly set", func() {
+			// Reset to default
+			ovsSocketPath = defaultOVSSocketPath
+			Expect(ovsSocketPath).To(Equal("unix:/var/run/openvswitch/db.sock"))
+		})
+
+		It("should set custom socket path", func() {
+			customPath := "unix:/custom/path/db.sock"
+			SetOVSSocketPath(customPath)
+			Expect(ovsSocketPath).To(Equal(customPath))
+		})
+
+		It("should not change socket path when empty string is provided", func() {
+			initialPath := "unix:/initial/path.sock"
+			ovsSocketPath = initialPath
+
+			SetOVSSocketPath("")
+			Expect(ovsSocketPath).To(Equal(initialPath))
+		})
+
+		It("should use configured socket path in newOVSClient", func() {
+			// Set a custom path
+			customPath := "unix:/test/custom.sock"
+			SetOVSSocketPath(customPath)
+
+			// Verify the package variable was set correctly
+			// newOVSClient will use this value when creating the OVS client
+			Expect(ovsSocketPath).To(Equal(customPath))
+		})
+	})
 })

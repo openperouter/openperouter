@@ -12,6 +12,21 @@ import (
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 )
 
+const (
+	defaultOVSSocketPath = "unix:/var/run/openvswitch/db.sock"
+)
+
+// ovsSocketPath holds the OVS database socket path
+var ovsSocketPath = defaultOVSSocketPath
+
+// SetOVSSocketPath sets the OVS database socket path for the package.
+// This should be called during application initialization.
+func SetOVSSocketPath(socketPath string) {
+	if socketPath != "" {
+		ovsSocketPath = socketPath
+	}
+}
+
 // Bridge model represents a row in the Bridge table
 type Bridge struct {
 	UUID        string            `ovsdb:"_uuid"`
@@ -53,7 +68,7 @@ func newOVSClient(ctx context.Context) (libovsclient.Client, error) {
 
 	ovs, err := libovsclient.NewOVSDBClient(
 		dbModel,
-		libovsclient.WithEndpoint("unix:/var/run/openvswitch/db.sock"), // TODO: must parametrize this from the config
+		libovsclient.WithEndpoint(ovsSocketPath),
 	)
 
 	if err != nil {
