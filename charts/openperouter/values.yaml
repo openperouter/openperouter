@@ -59,6 +59,10 @@ openperouter:
     reloader:
       resources: {}
   cri: "containerd" # cri to bind its socket, can be containerd or crio.
+  # -- OVS database socket path. Defaults to standard OVS location if not specified.
+  ovsSocketPath: ""
+  # -- OVS run directory to mount. This is the directory containing the OVS socket.
+  ovsRunDir: "/var/run/openvswitch"
 
 webhook:
   enabled: true

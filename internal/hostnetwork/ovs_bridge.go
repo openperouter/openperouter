@@ -14,6 +14,12 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
+const (
+	defaultOVSSocketPath = "unix:/var/run/openvswitch/db.sock"
+)
+
+var OVSSocketPath = defaultOVSSocketPath
+
 // Bridge model represents a row in the Bridge table
 type Bridge struct {
 	UUID        string            `ovsdb:"_uuid"`
@@ -74,7 +80,7 @@ func newOVSClient(ctx context.Context) (libovsclient.Client, error) {
 
 	ovs, err := libovsclient.NewOVSDBClient(
 		dbModel,
-		libovsclient.WithEndpoint("unix:/var/run/openvswitch/db.sock"), // TODO: must parametrize this from the config
+		libovsclient.WithEndpoint(OVSSocketPath),
 	)
 
 	if err != nil {
