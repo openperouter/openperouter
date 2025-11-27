@@ -43,6 +43,7 @@ spec:
         - --nodename=$(NODE_NAME)
         - --namespace=$(NAMESPACE)
         - --frrconfig=/etc/frr/frr.conf
+        - --reloader-socket=/etc/frr/reload.sock
         {{- with .Values.openperouter.logLevel }}
         - --loglevel={{ . }}
         {{- end }}
@@ -97,6 +98,8 @@ spec:
         - mountPath: /etc/frr/
           mountPropagation: HostToContainer
           name: frr-config
+        - mountPath: /var/run/frr
+          name: frr-sockets
       hostNetwork: true
       hostPID: true
       tolerations:
@@ -132,4 +135,8 @@ spec:
           path: /etc/perouter/frr
           type: DirectoryOrCreate
         name: frr-config
+      - hostPath:
+          path: /var/run/openperouter/frr
+          type: DirectoryOrCreate
+        name: frr-sockets
 {{- end }}
