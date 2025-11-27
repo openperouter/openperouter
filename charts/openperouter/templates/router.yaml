@@ -182,7 +182,7 @@ spec:
         command: ["/etc/frr_reloader/reloader"]
         args:
         - "--frrconfig=/etc/perouter/frr.conf"
-        - "--bindaddress=:9080"
+        - "--unixsocket=/etc/perouter/reload.sock"
         {{- with .Values.openperouter.logLevel }}
         - --loglevel={{ . }}
         {{- end }}
@@ -216,7 +216,9 @@ spec:
       {{- end }}
       volumes:
         - name: frr-sockets
-          emptyDir: {}
+          hostPath:
+            path: /var/run/openperouter/frr
+            type: DirectoryOrCreate
         - name: frr-startup
           configMap:
             name: frr-startup
