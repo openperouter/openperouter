@@ -14,6 +14,12 @@ import (
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 )
 
+const (
+	testInterfaceName = "eth0"
+	testIfaceUUID     = "iface-uuid-123"
+	testPortUUID      = "port-uuid-123"
+)
+
 // mockOVSClient is a mock implementation of libovsclient.Client for testing
 type mockOVSClient struct {
 	// State tracking
@@ -28,14 +34,12 @@ type mockOVSClient struct {
 	operations       [][]ovsdb.Operation
 
 	// Error injection
-	connectError    error
-	monitorError    error
-	getError        error
-	createError     error
-	mutateError     error
-	transactError   error
-	whereError      error
-	whereCacheError error
+	connectError  error
+	monitorError  error
+	getError      error
+	createError   error
+	mutateError   error
+	transactError error
 }
 
 // mockConditionalClient implements conditional operations for the mock
@@ -192,7 +196,8 @@ func (m *mockOVSClient) Transact(ctx context.Context, operations ...ovsdb.Operat
 	for i, op := range operations {
 		result := ovsdb.OperationResult{}
 
-		if op.Op == "insert" {
+		switch op.Op {
+		case "insert":
 			// Generate a UUID for the inserted object
 			uuid := fmt.Sprintf("uuid-%d", m.transactionCalls*100+i)
 			result.UUID = ovsdb.UUID{GoUUID: uuid}
@@ -228,7 +233,7 @@ func (m *mockOVSClient) Transact(ctx context.Context, operations ...ovsdb.Operat
 					Type: "system",
 				}
 			}
-		} else if op.Op == "mutate" {
+		case "mutate":
 			// Handle mutations (like adding ports to bridge)
 			result.Count = 1
 		}
@@ -368,18 +373,18 @@ func (m *mockOVSClient) addExistingBridge(name, uuid string) {
 	m.openVSwitch.Bridges = append(m.openVSwitch.Bridges, uuid)
 }
 
-func (m *mockOVSClient) addExistingInterface(name, uuid string) {
-	m.interfaces[name] = &Interface{
+func (m *mockOVSClient) addExistingInterface(uuid string) {
+	m.interfaces[testInterfaceName] = &Interface{
 		UUID: uuid,
-		Name: name,
+		Name: testInterfaceName,
 		Type: "system",
 	}
 }
 
-func (m *mockOVSClient) addExistingPort(name, uuid, ifaceUUID string) {
-	m.ports[name] = &Port{
+func (m *mockOVSClient) addExistingPort(uuid, ifaceUUID string) {
+	m.ports[testInterfaceName] = &Port{
 		UUID:       uuid,
-		Name:       name,
+		Name:       testInterfaceName,
 		Interfaces: []string{ifaceUUID},
 	}
 }
@@ -413,7 +418,7 @@ var _ = Describe("OVS Bridge Operations", func() {
 		It("should create a new bridge when it doesn't exist", func() {
 			bridgeName := "test-bridge"
 
-			uuid, err := ensureBridge(ctx, mockClient, bridgeName)
+			uuid, err := EnsureBridge(ctx, mockClient, bridgeName)
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(uuid).NotTo(BeEmpty())
@@ -425,7 +430,7 @@ var _ = Describe("OVS Bridge Operations", func() {
 			existingUUID := "existing-uuid-123"
 			mockClient.addExistingBridge(bridgeName, existingUUID)
 
-			uuid, err := ensureBridge(ctx, mockClient, bridgeName)
+			uuid, err := EnsureBridge(ctx, mockClient, bridgeName)
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(uuid).To(Equal(existingUUID))
@@ -435,7 +440,7 @@ var _ = Describe("OVS Bridge Operations", func() {
 		It("should return error for non-NotFound Get errors", func() {
 			mockClient.getError = fmt.Errorf("database connection error")
 
-			_, err := ensureBridge(ctx, mockClient, "test-bridge")
+			_, err := EnsureBridge(ctx, mockClient, "test-bridge")
 
 			// Should return the error immediately, not try to create
 			Expect(err).To(HaveOccurred())
@@ -446,7 +451,7 @@ var _ = Describe("OVS Bridge Operations", func() {
 		It("should handle Create operation failures", func() {
 			mockClient.createError = fmt.Errorf("create failed")
 
-			_, err := ensureBridge(ctx, mockClient, "test-bridge")
+			_, err := EnsureBridge(ctx, mockClient, "test-bridge")
 
 			Expect(err).To(HaveOccurred())
 			Expect(err).To(MatchError(ContainSubstring("create")))
@@ -455,7 +460,7 @@ var _ = Describe("OVS Bridge Operations", func() {
 		It("should handle transaction failures", func() {
 			mockClient.transactError = fmt.Errorf("transaction failed")
 
-			_, err := ensureBridge(ctx, mockClient, "test-bridge")
+			_, err := EnsureBridge(ctx, mockClient, "test-bridge")
 
 			Expect(err).To(HaveOccurred())
 			Expect(err).To(MatchError(ContainSubstring("transaction")))
@@ -465,7 +470,7 @@ var _ = Describe("OVS Bridge Operations", func() {
 			// This test verifies the bridge is created with correct metadata
 			// In the mock, we don't deeply inspect operations, but in real usage
 			// this would be verified
-			uuid, err := ensureBridge(ctx, mockClient, "test-bridge")
+			uuid, err := EnsureBridge(ctx, mockClient, "test-bridge")
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(uuid).NotTo(BeEmpty())
@@ -481,7 +486,7 @@ var _ = Describe("OVS Bridge Operations", func() {
 		})
 
 		It("should create interface and port, then attach to bridge", func() {
-			interfaceName := "eth0"
+			interfaceName := testInterfaceName
 
 			err := ensurePortAttachedToBridge(ctx, mockClient, bridgeUUID, interfaceName)
 
@@ -490,8 +495,8 @@ var _ = Describe("OVS Bridge Operations", func() {
 		})
 
 		It("should be idempotent when interface already exists", func() {
-			interfaceName := "eth0"
-			mockClient.addExistingInterface(interfaceName, "iface-uuid-123")
+			interfaceName := testInterfaceName
+			mockClient.addExistingInterface(testIfaceUUID)
 
 			err := ensurePortAttachedToBridge(ctx, mockClient, bridgeUUID, interfaceName)
 
@@ -501,11 +506,11 @@ var _ = Describe("OVS Bridge Operations", func() {
 		})
 
 		It("should be idempotent when port already exists", func() {
-			interfaceName := "eth0"
-			ifaceUUID := "iface-uuid-123"
-			portUUID := "port-uuid-123"
-			mockClient.addExistingInterface(interfaceName, ifaceUUID)
-			mockClient.addExistingPort(interfaceName, portUUID, ifaceUUID)
+			interfaceName := testInterfaceName
+			ifaceUUID := testIfaceUUID
+			portUUID := testPortUUID
+			mockClient.addExistingInterface(ifaceUUID)
+			mockClient.addExistingPort(portUUID, ifaceUUID)
 
 			err := ensurePortAttachedToBridge(ctx, mockClient, bridgeUUID, interfaceName)
 
@@ -515,11 +520,11 @@ var _ = Describe("OVS Bridge Operations", func() {
 		})
 
 		It("should be idempotent when port already attached to bridge", func() {
-			interfaceName := "eth0"
-			ifaceUUID := "iface-uuid-123"
-			portUUID := "port-uuid-123"
-			mockClient.addExistingInterface(interfaceName, ifaceUUID)
-			mockClient.addExistingPort(interfaceName, portUUID, ifaceUUID)
+			interfaceName := testInterfaceName
+			ifaceUUID := testIfaceUUID
+			portUUID := testPortUUID
+			mockClient.addExistingInterface(ifaceUUID)
+			mockClient.addExistingPort(portUUID, ifaceUUID)
 			mockClient.attachPortToBridge("test-bridge", portUUID)
 
 			err := ensurePortAttachedToBridge(ctx, mockClient, bridgeUUID, interfaceName)
@@ -529,8 +534,8 @@ var _ = Describe("OVS Bridge Operations", func() {
 		})
 
 		It("should handle partial state: interface exists but port doesn't", func() {
-			interfaceName := "eth0"
-			mockClient.addExistingInterface(interfaceName, "iface-uuid-123")
+			interfaceName := testInterfaceName
+			mockClient.addExistingInterface(testIfaceUUID)
 
 			err := ensurePortAttachedToBridge(ctx, mockClient, bridgeUUID, interfaceName)
 
@@ -540,11 +545,11 @@ var _ = Describe("OVS Bridge Operations", func() {
 		})
 
 		It("should handle partial state: port exists but not attached to bridge", func() {
-			interfaceName := "eth0"
-			ifaceUUID := "iface-uuid-123"
-			portUUID := "port-uuid-123"
-			mockClient.addExistingInterface(interfaceName, ifaceUUID)
-			mockClient.addExistingPort(interfaceName, portUUID, ifaceUUID)
+			interfaceName := testInterfaceName
+			ifaceUUID := testIfaceUUID
+			portUUID := testPortUUID
+			mockClient.addExistingInterface(ifaceUUID)
+			mockClient.addExistingPort(portUUID, ifaceUUID)
 
 			err := ensurePortAttachedToBridge(ctx, mockClient, bridgeUUID, interfaceName)
 
@@ -556,7 +561,7 @@ var _ = Describe("OVS Bridge Operations", func() {
 		It("should handle bridge Get failures", func() {
 			mockClient.bridges = make(map[string]*Bridge) // Clear bridges
 
-			err := ensurePortAttachedToBridge(ctx, mockClient, "non-existent-bridge", "eth0")
+			err := ensurePortAttachedToBridge(ctx, mockClient, "non-existent-bridge", testInterfaceName)
 
 			Expect(err).To(HaveOccurred())
 			Expect(err).To(MatchError(ContainSubstring("failed to get bridge")))
@@ -565,7 +570,7 @@ var _ = Describe("OVS Bridge Operations", func() {
 		It("should handle Create operation failures", func() {
 			mockClient.createError = fmt.Errorf("create failed")
 
-			err := ensurePortAttachedToBridge(ctx, mockClient, bridgeUUID, "eth0")
+			err := ensurePortAttachedToBridge(ctx, mockClient, bridgeUUID, testInterfaceName)
 
 			Expect(err).To(HaveOccurred())
 			Expect(err).To(MatchError(ContainSubstring("create")))
@@ -574,7 +579,7 @@ var _ = Describe("OVS Bridge Operations", func() {
 		It("should handle mutate operation failures", func() {
 			mockClient.mutateError = fmt.Errorf("mutate failed")
 
-			err := ensurePortAttachedToBridge(ctx, mockClient, bridgeUUID, "eth0")
+			err := ensurePortAttachedToBridge(ctx, mockClient, bridgeUUID, testInterfaceName)
 
 			Expect(err).To(HaveOccurred())
 			Expect(err).To(MatchError(ContainSubstring("mutate")))
@@ -583,7 +588,7 @@ var _ = Describe("OVS Bridge Operations", func() {
 		It("should handle transaction failures", func() {
 			mockClient.transactError = fmt.Errorf("transaction failed")
 
-			err := ensurePortAttachedToBridge(ctx, mockClient, bridgeUUID, "eth0")
+			err := ensurePortAttachedToBridge(ctx, mockClient, bridgeUUID, testInterfaceName)
 
 			Expect(err).To(HaveOccurred())
 			Expect(err).To(MatchError(ContainSubstring("transaction")))
@@ -592,7 +597,7 @@ var _ = Describe("OVS Bridge Operations", func() {
 		It("should create system type interfaces", func() {
 			// This verifies that interfaces are created with type "system"
 			// In a full implementation, we'd inspect the operation details
-			err := ensurePortAttachedToBridge(ctx, mockClient, bridgeUUID, "eth0")
+			err := ensurePortAttachedToBridge(ctx, mockClient, bridgeUUID, testInterfaceName)
 
 			Expect(err).NotTo(HaveOccurred())
 		})
@@ -602,7 +607,7 @@ var _ = Describe("OVS Bridge Operations", func() {
 		// Note: These tests are skipped because they require actual netlink interfaces
 		// which are only available in integration test environments with real OVS
 		PIt("should successfully ensure bridge and attach interface", func() {
-			err := ensureOVSBridgeAndAttachWithClient(ctx, mockClient, "test-bridge", "eth0")
+			err := ensureOVSBridgeAndAttachWithClient(ctx, mockClient, "test-bridge", testInterfaceName)
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(mockClient.transactionCalls).To(BeNumerically(">=", 1))
@@ -610,13 +615,13 @@ var _ = Describe("OVS Bridge Operations", func() {
 
 		PIt("should be idempotent (running twice succeeds)", func() {
 			// First call
-			err := ensureOVSBridgeAndAttachWithClient(ctx, mockClient, "test-bridge", "eth0")
+			err := ensureOVSBridgeAndAttachWithClient(ctx, mockClient, "test-bridge", testInterfaceName)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Simulate state after first call
 			mockClient.addExistingBridge("test-bridge", "bridge-uuid")
-			mockClient.addExistingInterface("eth0", "iface-uuid")
-			mockClient.addExistingPort("eth0", "port-uuid", "iface-uuid")
+			mockClient.addExistingInterface("iface-uuid")
+			mockClient.addExistingPort("port-uuid", "iface-uuid")
 			mockClient.attachPortToBridge("test-bridge", "port-uuid")
 
 			// Reset transaction counter
@@ -624,7 +629,7 @@ var _ = Describe("OVS Bridge Operations", func() {
 			mockClient.transactionCalls = 0
 
 			// Second call
-			err = ensureOVSBridgeAndAttachWithClient(ctx, mockClient, "test-bridge", "eth0")
+			err = ensureOVSBridgeAndAttachWithClient(ctx, mockClient, "test-bridge", testInterfaceName)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Should have minimal transactions (just monitor setup, no creates)
@@ -634,7 +639,7 @@ var _ = Describe("OVS Bridge Operations", func() {
 		It("should handle monitor setup failures", func() {
 			mockClient.monitorError = fmt.Errorf("monitor failed")
 
-			err := ensureOVSBridgeAndAttachWithClient(ctx, mockClient, "test-bridge", "eth0")
+			err := ensureOVSBridgeAndAttachWithClient(ctx, mockClient, "test-bridge", testInterfaceName)
 
 			Expect(err).To(HaveOccurred())
 			Expect(err).To(MatchError(ContainSubstring("monitor")))
@@ -643,7 +648,7 @@ var _ = Describe("OVS Bridge Operations", func() {
 		It("should propagate ensureBridge errors", func() {
 			mockClient.createError = fmt.Errorf("bridge creation failed")
 
-			err := ensureOVSBridgeAndAttachWithClient(ctx, mockClient, "test-bridge", "eth0")
+			err := ensureOVSBridgeAndAttachWithClient(ctx, mockClient, "test-bridge", testInterfaceName)
 
 			Expect(err).To(HaveOccurred())
 			Expect(err).To(MatchError(ContainSubstring("bridge")))
@@ -656,7 +661,7 @@ var _ = Describe("OVS Bridge Operations", func() {
 			// Then make port addition fail
 			mockClient.mutateError = fmt.Errorf("port attach failed")
 
-			err := ensureOVSBridgeAndAttachWithClient(ctx, mockClient, "test-bridge", "eth0")
+			err := ensureOVSBridgeAndAttachWithClient(ctx, mockClient, "test-bridge", testInterfaceName)
 
 			Expect(err).To(HaveOccurred())
 			Expect(err).To(MatchError(ContainSubstring("attach")))

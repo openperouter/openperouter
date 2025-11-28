@@ -58,7 +58,7 @@ func ensureOVSBridgeAndAttach(ctx context.Context, bridgeName, ifaceName string)
 	}
 	slog.Info("interface exists on host", "name", ifaceName, "index", link.Attrs().Index, "type", link.Type())
 
-	ovs, err := newOVSClient(ctx)
+	ovs, err := NewOVSClient(ctx)
 	if err != nil {
 		return err
 	}
@@ -67,7 +67,8 @@ func ensureOVSBridgeAndAttach(ctx context.Context, bridgeName, ifaceName string)
 	return ensureOVSBridgeAndAttachWithClient(ctx, ovs, bridgeName, ifaceName)
 }
 
-func newOVSClient(ctx context.Context) (libovsclient.Client, error) {
+// NewOVSClient creates a new OVS database client
+func NewOVSClient(ctx context.Context) (libovsclient.Client, error) {
 	dbModel, err := model.NewClientDBModel("Open_vSwitch", map[string]model.Model{
 		"Open_vSwitch": &OpenVSwitch{},
 		"Bridge":       &Bridge{},
@@ -108,7 +109,7 @@ func ensureOVSBridgeAndAttachWithClient(ctx context.Context, ovs libovsclient.Cl
 		return fmt.Errorf("failed to setup monitor: %w", err)
 	}
 
-	bridgeUUID, err := ensureBridge(ctx, ovs, bridgeName)
+	bridgeUUID, err := EnsureBridge(ctx, ovs, bridgeName)
 	if err != nil {
 		return fmt.Errorf("failed to ensure OVS bridge %q exists: %w", bridgeName, err)
 	}
@@ -135,7 +136,8 @@ func ensureOVSBridgeAndAttachWithClient(ctx context.Context, ovs libovsclient.Cl
 	return nil
 }
 
-func ensureBridge(ctx context.Context, ovs libovsclient.Client, bridgeName string) (string, error) {
+// EnsureBridge ensures an OVS bridge exists, creating it if necessary
+func EnsureBridge(ctx context.Context, ovs libovsclient.Client, bridgeName string) (string, error) {
 	br := &Bridge{Name: bridgeName}
 	err := ovs.Get(ctx, br)
 	if err == nil {
