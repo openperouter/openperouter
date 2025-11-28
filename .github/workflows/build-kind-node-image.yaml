@@ -1,0 +1,131 @@
+name: Build Kind Node Image
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'hack/kind-node-image/**'
+      - '.github/workflows/build-kind-node-image.yaml'
+  pull_request:
+    paths:
+      - 'hack/kind-node-image/**'
+      - '.github/workflows/build-kind-node-image.yaml'
+  workflow_dispatch:
+    inputs:
+      kind_version:
+        description: 'Kind node version to use as base (e.g., v1.32.2)'
+        required: false
+        default: 'v1.32.2'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - linux/amd64
+          - linux/arm64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract kind version
+        id: kind-version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.kind_version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=v1.32.2" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build image for platform
+        uses: docker/build-push-action@v5
+        with:
+          context: hack/kind-node-image
+          file: hack/kind-node-image/Dockerfile
+          platforms: ${{ matrix.platform }}
+          build-args: |
+            KIND_NODE_VERSION=${{ steps.kind-version.outputs.version }}
+          tags: |
+            quay.io/openperouter/kind-node-ovs:${{ steps.kind-version.outputs.version }}-${{ strategy.job-index }}
+          cache-from: type=gha,scope=${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.platform }}
+          outputs: type=docker,dest=/tmp/kind-node-${{ strategy.job-index }}.tar
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kind-node-${{ strategy.job-index }}
+          path: /tmp/kind-node-${{ strategy.job-index }}.tar
+          retention-days: 1
+
+      - name: Test image (amd64 only)
+        if: matrix.platform == 'linux/amd64'
+        run: |
+          docker load -i /tmp/kind-node-${{ strategy.job-index }}.tar
+
+          docker run -d --privileged --name test-ovs-node \
+            --tmpfs /run --tmpfs /run/lock \
+            -v /sys/fs/cgroup:/sys/fs/cgroup:rw --cgroupns=host \
+            quay.io/openperouter/kind-node-ovs:${{ steps.kind-version.outputs.version }}-${{ strategy.job-index }}
+
+          echo "Waiting for systemd and OVS initialization..."
+          sleep 30
+
+          echo "Checking systemd status..."
+          docker exec test-ovs-node systemctl is-system-running --wait || true
+
+          echo "Test 1: Checking OVS systemd services..."
+          docker exec test-ovs-node systemctl is-active ovsdb-server.service || (echo "ERROR: ovsdb-server service not active" && exit 1)
+          docker exec test-ovs-node systemctl is-active ovs-vswitchd.service || (echo "ERROR: ovs-vswitchd service not active" && exit 1)
+          if ! docker exec test-ovs-node systemctl is-active ovs-vswitchd.service; then
+            echo "ERROR: ovs-vswitchd service not active"
+            echo "=== ovs-vswitchd service status ==="
+            docker exec test-ovs-node systemctl status ovs-vswitchd.service --no-pager || true
+            echo "=== ovs-vswitchd service logs ==="
+            docker exec test-ovs-node journalctl --no-pager -u ovs-vswitchd.service || true
+            exit 1
+          fi
+          echo "✓ OVS systemd services are active"
+
+          echo "Test 2: Checking OVS processes..."
+          docker exec test-ovs-node pgrep ovsdb-server || (echo "ERROR: ovsdb-server not running" && exit 1)
+          docker exec test-ovs-node pgrep ovs-vswitchd || (echo "ERROR: ovs-vswitchd not running" && exit 1)
+          echo "✓ OVS processes are running"
+
+          echo "Test 3: Checking OVS socket..."
+          docker exec test-ovs-node test -S /var/run/openvswitch/db.sock || (echo "ERROR: OVS socket not found" && exit 1)
+          echo "✓ OVS socket exists"
+
+          echo "Test 4: Testing ovs-vsctl..."
+          docker exec test-ovs-node ovs-vsctl show || (echo "ERROR: ovs-vsctl failed" && exit 1)
+          echo "✓ ovs-vsctl works"
+
+          echo "Test 5: Creating test bridge..."
+          docker exec test-ovs-node ovs-vsctl add-br test-br || (echo "ERROR: Failed to create bridge" && exit 1)
+          docker exec test-ovs-node ovs-vsctl list-br | grep test-br || (echo "ERROR: Bridge not found" && exit 1)
+          echo "✓ Bridge creation works"
+
+          echo "Test 6: Adding port to bridge..."
+          docker exec test-ovs-node ovs-vsctl --may-exist add-port test-br test-port -- \
+            set interface test-port type=internal || (echo "ERROR: Failed to add port" && exit 1)
+          echo "✓ Port addition works"
+
+          docker rm -f test-ovs-node
+
+          echo ""
+          echo "=========================================="
+          echo "All tests passed!"
+          echo "=========================================="

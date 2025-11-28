@@ -129,6 +129,8 @@ jobs:
 
   e2etests:
     runs-on: ubuntu-22.04
+    env:
+      NODE_IMAGE: quay.io/openperouter/kind-node-ovs:v1.32.2
     needs:
       - unit-tests
       - build-test-images
@@ -149,6 +151,21 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install linux-modules-extra-$(uname -r)
+
+      - name: Setup docker buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build kind-node-ovs image
+        uses: docker/build-push-action@v5
+        with:
+          context: hack/kind-node-image
+          file: hack/kind-node-image/Dockerfile
+          build-args: |
+            KIND_NODE_VERSION=v1.32.2
+          tags: quay.io/openperouter/kind-node-ovs:v1.32.2
+          load: true
+          cache-from: type=gha,scope=kind-node-ovs
+          cache-to: type=gha,mode=max,scope=kind-node-ovs
 
       - name: Download openperouter image
         uses: actions/download-artifact@v4
