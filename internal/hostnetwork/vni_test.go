@@ -560,7 +560,7 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 				VTEPIP: "192.170.0.9/32", VNI: 100, VXLanPort: 4789,
 			},
 			L2GatewayIP: &gwIP,
-			HostMaster: &HostMaster{Type: "ovs-bridge", AutoCreate: true},
+			HostMaster:  &HostMaster{Type: "ovs-bridge", AutoCreate: true},
 		}
 
 		err := SetupL2VNI(context.Background(), params)
@@ -777,6 +777,20 @@ func checkAddrGenModeNone(l netlink.Link) bool {
 	Expect(err).NotTo(HaveOccurred())
 
 	return strings.Trim(string(addrGenMode), "\n") == "1"
+}
+
+// interfaceHasNoIP tells if the given link does not have
+// ips of the given family.
+func interfaceHasNoIP(link netlink.Link, family int) (bool, error) {
+	addresses, err := netlink.AddrList(link, family)
+	if err != nil {
+		return false, fmt.Errorf("interfaceHasNoIP: failed to list addresses for interface %s: %w", link.Attrs().Name, err)
+	}
+	if len(addresses) == 0 {
+		return true, nil
+	}
+
+	return false, nil
 }
 
 func setupLoopback(ns netns.NsHandle) {
