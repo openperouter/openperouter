@@ -30,9 +30,12 @@ generate_kind_configs() {
         KIND_CONFIG_NAME="${cluster_name}-configuration-registry.yaml"
 
         echo "Generating kind configuration for cluster name: ${cluster_name}; KIND_CONFIG_NAME: ${KIND_CONFIG_NAME}"
+        if [[ -n "${NODE_IMAGE:-}" ]]; then
+            echo "Using custom node image: ${NODE_IMAGE}"
+        fi
         go run generate_kind_config/generate_kind_config.go \
             --template generate_kind_config/kind_template/kind-configuration-registry.yaml.template \
-            $KIND_CONFIG_ARGS -cluster-name cluster_name -output ../$KIND_CONFIG_NAME $KIND_CONFIG_NAME
+            $KIND_CONFIG_ARGS -cluster-name "${cluster_name}" -output "../${KIND_CONFIG_NAME}"
     done
 
     popd

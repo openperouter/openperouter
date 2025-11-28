@@ -129,6 +129,8 @@ jobs:
 
   e2etests:
     runs-on: ubuntu-22.04
+    env:
+      NODE_IMAGE: quay.io/openperouter/kind-node-ovs:v1.32.2
     needs:
       - unit-tests
       - build-test-images

@@ -152,6 +152,14 @@ HELM_DOCS_VERSION ?= v1.10.0
 APIDOCSGEN_VERSION ?= v0.0.12
 HUGO_VERSION ?= v0.147.8
 
+# Kind node image configuration
+KIND_NODE_VERSION ?= v1.32.2
+KIND_NODE_IMG_REPO ?= quay.io/openperouter
+KIND_NODE_IMG_NAME ?= kind-node-ovs
+KIND_NODE_IMG_TAG ?= $(KIND_NODE_VERSION)
+KIND_NODE_IMG ?= $(KIND_NODE_IMG_REPO)/$(KIND_NODE_IMG_NAME):$(KIND_NODE_IMG_TAG)
+export NODE_IMAGE ?= $(KIND_NODE_IMG)
+
 .PHONY: install
 install: kubectl manifests kustomize ## Install CRDs into the K8s cluster specified in $KUBECONFIG_PATH.
 	$(KUSTOMIZE) build config/crd | $(KUBECTL) apply -f -
@@ -303,6 +311,16 @@ load-on-kind: ## Load the docker image into the kind cluster.
 load-on-multi-cluster: ## Load the docker image into both kind clusters.
 	KIND=$(KIND) bash -c 'export KIND_CLUSTER_NAME=pe-kind-a && source clab/common.sh && load_local_image_to_kind ${IMG} router-a'
 	KIND=$(KIND) bash -c 'export KIND_CLUSTER_NAME=pe-kind-b && source clab/common.sh && load_local_image_to_kind ${IMG} router-b'
+
+##@ Kind Node Image
+
+.PHONY: kind-node-image-build
+kind-node-image-build: ## Build custom kind node image with OVS
+	cd hack/kind-node-image && KIND_NODE_VERSION=$(KIND_NODE_VERSION) ./build.sh
+
+.PHONY: kind-node-image-push
+kind-node-image-push: ## Push custom kind node image to quay.io
+	cd hack/kind-node-image && ./push.sh
 
 .PHONY: lint
 lint:
