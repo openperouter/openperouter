@@ -413,7 +413,7 @@ var _ = Describe("OVS Bridge Operations", func() {
 		It("should create a new bridge when it doesn't exist", func() {
 			bridgeName := "test-bridge"
 
-			uuid, err := ensureBridge(ctx, mockClient, bridgeName)
+			uuid, err := EnsureBridge(ctx, mockClient, bridgeName)
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(uuid).NotTo(BeEmpty())
@@ -425,7 +425,7 @@ var _ = Describe("OVS Bridge Operations", func() {
 			existingUUID := "existing-uuid-123"
 			mockClient.addExistingBridge(bridgeName, existingUUID)
 
-			uuid, err := ensureBridge(ctx, mockClient, bridgeName)
+			uuid, err := EnsureBridge(ctx, mockClient, bridgeName)
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(uuid).To(Equal(existingUUID))
@@ -435,7 +435,7 @@ var _ = Describe("OVS Bridge Operations", func() {
 		It("should handle Get operation errors", func() {
 			mockClient.getError = fmt.Errorf("get failed")
 
-			uuid, err := ensureBridge(ctx, mockClient, "test-bridge")
+			uuid, err := EnsureBridge(ctx, mockClient, "test-bridge")
 
 			// Should try to create since Get failed
 			Expect(err).NotTo(HaveOccurred())
@@ -445,7 +445,7 @@ var _ = Describe("OVS Bridge Operations", func() {
 		It("should handle Create operation failures", func() {
 			mockClient.createError = fmt.Errorf("create failed")
 
-			_, err := ensureBridge(ctx, mockClient, "test-bridge")
+			_, err := EnsureBridge(ctx, mockClient, "test-bridge")
 
 			Expect(err).To(HaveOccurred())
 			Expect(err).To(MatchError(ContainSubstring("create")))
@@ -454,7 +454,7 @@ var _ = Describe("OVS Bridge Operations", func() {
 		It("should handle transaction failures", func() {
 			mockClient.transactError = fmt.Errorf("transaction failed")
 
-			_, err := ensureBridge(ctx, mockClient, "test-bridge")
+			_, err := EnsureBridge(ctx, mockClient, "test-bridge")
 
 			Expect(err).To(HaveOccurred())
 			Expect(err).To(MatchError(ContainSubstring("transaction")))
@@ -464,7 +464,7 @@ var _ = Describe("OVS Bridge Operations", func() {
 			// This test verifies the bridge is created with correct metadata
 			// In the mock, we don't deeply inspect operations, but in real usage
 			// this would be verified
-			uuid, err := ensureBridge(ctx, mockClient, "test-bridge")
+			uuid, err := EnsureBridge(ctx, mockClient, "test-bridge")
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(uuid).NotTo(BeEmpty())
