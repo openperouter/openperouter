@@ -87,6 +87,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install linux-modules-extra-$(uname -r)
 
+      - name: Install Open vSwitch
+        # Required for L2VNI OVS bridge integration tests in internal/hostnetwork/vni_test.go
+        # Tests run on ubuntu-22.04 host with sudo, not in kind nodes
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openvswitch-switch openvswitch-common
+          sudo systemctl start openvswitch-switch
+          sudo systemctl enable openvswitch-switch
+          sudo ovs-vsctl show
+          sudo test -S /var/run/openvswitch/db.sock
+
       - name: Unit Tests
         run: |
           make test
