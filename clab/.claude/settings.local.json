@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker build:*)",
+      "Bash(docker buildx:*)",
+      "Bash(docker image inspect:*)",
+      "Bash(docker run:*)",
+      "Bash(docker:*)",
+      "Bash(docker export:*)",
+      "Bash(tar:*)",
+      "Bash(docker rm:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

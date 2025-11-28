@@ -1,5 +1,5 @@
 # Use the latest kind node image as base
-FROM kindest/node:v1.29.2
+FROM kindest/node:v1.34.0
 
 # Install Podman 4.4+ from the official Kubic unstable repository (for quadlet support)
 RUN apt-get update && \
