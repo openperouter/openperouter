@@ -1,5 +1,8 @@
 // SPDX-License-Identifier:Apache-2.0
 
+//go:build runasroot
+// +build runasroot
+
 package hostnetwork
 
 import (
@@ -222,6 +225,11 @@ func cleanTest(namespace string) {
 	if !errors.Is(err, os.ErrNotExist) {
 		Expect(err).NotTo(HaveOccurred())
 	}
+
+	// Clean up OVS bridges BEFORE deleting veths
+	// This ensures OVS can properly detach ports that reference the veth devices
+	cleanupOVSBridges()
+
 	links, err := netlink.LinkList()
 	if err != nil {
 		Expect(err).NotTo(HaveOccurred())
@@ -234,6 +242,7 @@ func cleanTest(namespace string) {
 			Expect(err).NotTo(HaveOccurred())
 		}
 	}
+
 	err = removeLinkByName(PassthroughNames.HostSide)
 	Expect(err).NotTo(HaveOccurred())
 
