@@ -31,6 +31,9 @@ spec:
       kind: OpenPERouter
       name: openperouters.openpe.openperouter.github.io
       version: v1alpha1
+    - kind: RouterNodeConfigurationStatus
+      name: routernodeconfigurationstatuses.openpe.openperouter.github.io
+      version: v1alpha1
     - description: Underlay is the Schema for the underlays API.
       displayName: Underlay
       kind: Underlay
@@ -85,6 +88,7 @@ spec:
           - l2vnis
           - l3passthroughs
           - l3vnis
+          - routernodeconfigurationstatuses
           - underlays
           verbs:
           - create
@@ -100,6 +104,7 @@ spec:
           - l2vnis/finalizers
           - l3passthroughs/finalizers
           - l3vnis/finalizers
+          - routernodeconfigurationstatuses/finalizers
           - underlays/finalizers
           verbs:
           - update
@@ -109,6 +114,7 @@ spec:
           - l2vnis/status
           - l3passthroughs/status
           - l3vnis/status
+          - routernodeconfigurationstatuses/status
           - underlays/status
           verbs:
           - get
