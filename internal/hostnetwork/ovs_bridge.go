@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	libovsclient "github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/model"
@@ -123,10 +124,10 @@ func ensureOVSBridgeAndAttachWithClient(ctx context.Context, ovs libovsclient.Cl
 		return fmt.Errorf("failed to attach veth %q to bridge %q: %w", ifaceName, bridgeName, err)
 	}
 
-	// Bring the OVS bridge interface UP so it can be used as a master for macvlan/ipvlan
-	bridge, err := netlink.LinkByName(bridgeName)
+	// Wait for OVS bridge interface to appear and bring it UP
+	bridge, err := waitForOVSBridgeInterface(bridgeName)
 	if err != nil {
-		return fmt.Errorf("failed to get OVS bridge %q interface: %w", bridgeName, err)
+		return err
 	}
 	if err := netlink.LinkSetUp(bridge); err != nil {
 		return fmt.Errorf("failed to bring OVS bridge %q UP: %w", bridgeName, err)
@@ -375,4 +376,31 @@ func ensureInternalPortForBridge(ctx context.Context, ovs libovsclient.Client, b
 
 	slog.Info("successfully created internal port for bridge", "name", bridgeName)
 	return nil
+}
+
+// waitForOVSBridgeInterface waits for an OVS bridge interface to appear
+func waitForOVSBridgeInterface(name string) (netlink.Link, error) {
+	if link, err := netlink.LinkByName(name); err == nil {
+		return link, nil
+	}
+
+	ch := make(chan netlink.LinkUpdate)
+	done := make(chan struct{})
+	defer close(done)
+
+	if err := netlink.LinkSubscribe(ch, done); err != nil {
+		return nil, fmt.Errorf("failed to subscribe to link updates: %w", err)
+	}
+
+	timeout := time.After(5 * time.Second)
+	for {
+		select {
+		case update := <-ch:
+			if update.Link.Attrs().Name == name {
+				return update.Link, nil
+			}
+		case <-timeout:
+			return nil, fmt.Errorf("timeout waiting for OVS bridge interface %q to appear", name)
+		}
+	}
 }

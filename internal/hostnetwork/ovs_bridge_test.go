@@ -12,6 +12,7 @@ import (
 	libovsclient "github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
+	"github.com/vishvananda/netlink"
 )
 
 const (
@@ -604,32 +605,42 @@ var _ = Describe("OVS Bridge Operations", func() {
 	})
 
 	Context("ensureOVSBridgeAndAttachWithClient", func() {
-		// Note: These tests are skipped because they require actual netlink interfaces
-		// which are only available in integration test environments with real OVS
-		PIt("should successfully ensure bridge and attach interface", func() {
-			err := ensureOVSBridgeAndAttachWithClient(ctx, mockClient, "test-bridge", testInterfaceName)
+		It("should successfully ensure bridge and attach interface", func() {
+			// Create dummy interface to simulate OVS internal port
+			const bridgeName = "test-bridge"
+			bridge := &netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: bridgeName}}
+			Expect(netlink.LinkAdd(bridge)).To(Succeed())
+			defer func(link netlink.Link) { _ = netlink.LinkDel(link) }(bridge)
 
-			Expect(err).NotTo(HaveOccurred())
+			Expect(
+				ensureOVSBridgeAndAttachWithClient(ctx, mockClient, bridgeName, testInterfaceName),
+			).NotTo(HaveOccurred())
 			Expect(mockClient.transactionCalls).To(BeNumerically(">=", 1))
 		})
 
-		PIt("should be idempotent (running twice succeeds)", func() {
+		It("should be idempotent (running twice succeeds)", func() {
+			// Create dummy interface to simulate OVS internal port
+			bridgeName := "test-bridge"
+			bridge := &netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: bridgeName}}
+			Expect(netlink.LinkAdd(bridge)).To(Succeed())
+			defer func(link netlink.Link) { _ = netlink.LinkDel(link) }(bridge)
+
 			// First call
-			err := ensureOVSBridgeAndAttachWithClient(ctx, mockClient, "test-bridge", testInterfaceName)
+			err := ensureOVSBridgeAndAttachWithClient(ctx, mockClient, bridgeName, testInterfaceName)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Simulate state after first call
-			mockClient.addExistingBridge("test-bridge", "bridge-uuid")
+			mockClient.addExistingBridge(bridgeName, "bridge-uuid")
 			mockClient.addExistingInterface("iface-uuid")
 			mockClient.addExistingPort("port-uuid", "iface-uuid")
-			mockClient.attachPortToBridge("test-bridge", "port-uuid")
+			mockClient.attachPortToBridge(bridgeName, "port-uuid")
 
 			// Reset transaction counter
 			firstCallTransactions := mockClient.transactionCalls
 			mockClient.transactionCalls = 0
 
 			// Second call
-			err = ensureOVSBridgeAndAttachWithClient(ctx, mockClient, "test-bridge", testInterfaceName)
+			err = ensureOVSBridgeAndAttachWithClient(ctx, mockClient, bridgeName, testInterfaceName)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Should have minimal transactions (just monitor setup, no creates)

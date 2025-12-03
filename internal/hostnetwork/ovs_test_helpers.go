@@ -4,10 +4,13 @@ package hostnetwork
 
 import (
 	"context"
+	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 
 	libovsclient "github.com/ovn-kubernetes/libovsdb/client"
+	"github.com/vishvananda/netlink"
 )
 
 // createOVSBridge creates an OVS bridge for testing
@@ -29,12 +32,17 @@ func createOVSBridge(name string) error {
 		return err
 	}
 
-	_, err = EnsureBridge(ctx, ovs, name)
+	bridgeUUID, err := EnsureBridge(ctx, ovs, name)
 	if err != nil {
 		return err
 	}
 
-	return nil
+	err = ensureInternalPortForBridge(ctx, ovs, bridgeUUID, name)
+	if err != nil {
+		return err
+	}
+
+	return waitForOVSInterface(name)
 }
 
 // getOVSBridge retrieves an OVS bridge by name, returns error if not found
@@ -94,6 +102,33 @@ func ovsBridgeHasPort(bridgeName, portName string) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// waitForOVSInterface waits for an OVS interface to appear using netlink notifications
+func waitForOVSInterface(name string) error {
+	if _, err := netlink.LinkByName(name); err == nil {
+		return nil
+	}
+
+	ch := make(chan netlink.LinkUpdate)
+	done := make(chan struct{})
+	defer close(done)
+
+	if err := netlink.LinkSubscribe(ch, done); err != nil {
+		return fmt.Errorf("failed to subscribe to link updates: %w", err)
+	}
+
+	timeout := time.After(5 * time.Second)
+	for {
+		select {
+		case update := <-ch:
+			if update.Link.Attrs().Name == name {
+				return nil
+			}
+		case <-timeout:
+			return fmt.Errorf("timeout waiting for OVS interface %s to appear", name)
+		}
+	}
 }
 
 // cleanupOVSBridges removes all test OVS bridges
