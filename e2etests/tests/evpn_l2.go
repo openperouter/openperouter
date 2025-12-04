@@ -49,13 +49,10 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		Spec: v1alpha1.L2VNISpec{
 			VRF: ptr.To("red"),
 			VNI: 110,
-			HostMaster: &v1alpha1.HostMaster{
-				AutoCreate: true,
-				Type:       "bridge",
-			},
 		},
 	}
 
+	const preExistingOVSBridge = "br-ovs-test"
 	BeforeAll(func() {
 		err := Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
@@ -73,7 +70,14 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		})
 		Expect(err).NotTo(HaveOccurred())
 
-		// TODO create a bridge on each host
+		// Create pre-existing OVS bridges on Kind nodes for testing
+		nodes := []string{infra.KindControlPlane, infra.KindWorker}
+		for _, nodeName := range nodes {
+			exec := executor.ForContainer(nodeName)
+			// Create OVS bridge (ignore error if bridge already exists)
+			_, err = exec.Exec("ovs-vsctl", "add-br", preExistingOVSBridge)
+			Expect(err).NotTo(HaveOccurred())
+		}
 	})
 
 	AfterAll(func() {
@@ -83,6 +87,14 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		Eventually(func() error {
 			return openperouter.DaemonsetRolled(cs, routerPods)
 		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
+
+		// Clean up pre-existing OVS bridges
+		nodes := []string{infra.KindControlPlane, infra.KindWorker}
+		for _, nodeName := range nodes {
+			exec := executor.ForContainer(nodeName)
+			_, err = exec.Exec("ovs-vsctl", "--if-exists", "del-br", preExistingOVSBridge)
+			Expect(err).NotTo(HaveOccurred())
+		}
 	})
 
 	const testNamespace = "test-namespace"
@@ -93,6 +105,8 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 	)
 	type testCase struct {
 		firstPodIPs, secondPodIPs, hostARedIPs, hostBRedIPs, l2GatewayIPs []string
+		hostMaster                                                        v1alpha1.HostMaster // Allow specifying custom HostMaster config
+		nadMaster                                                         string              // Bridge name for NAD (defaults to "br-hs-110")
 	}
 	DescribeTable("should create two pods connected to the l2 overlay", func(tc testCase) {
 		By("setting redistribute connected on leaves")
@@ -103,6 +117,8 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred())
 		l2VniRedWithGateway := l2VniRed.DeepCopy()
 		l2VniRedWithGateway.Spec.L2GatewayIPs = tc.l2GatewayIPs
+		l2VniRedWithGateway.Spec.HostMaster = &tc.hostMaster
+
 		err = Updater.Update(config.Resources{
 			L3VNIs: []v1alpha1.L3VNI{
 				vniRed,
@@ -116,7 +132,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		_, err = k8s.CreateNamespace(cs, testNamespace)
 		Expect(err).NotTo(HaveOccurred())
 
-		nad, err = k8s.CreateMacvlanNad("110", testNamespace, "br-hs-110", tc.l2GatewayIPs)
+		nad, err = k8s.CreateMacvlanNad("110", testNamespace, tc.nadMaster, tc.l2GatewayIPs)
 		Expect(err).NotTo(HaveOccurred())
 
 		DeferCleanup(func() {
@@ -197,6 +213,11 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			secondPodIPs: []string{"192.171.24.3/24"},
 			hostARedIPs:  []string{infra.HostARedIPv4},
 			hostBRedIPs:  []string{infra.HostBRedIPv4},
+			nadMaster:    "br-hs-110",
+			hostMaster: v1alpha1.HostMaster{
+				AutoCreate: true,
+				Type:       "bridge",
+			},
 		}),
 		Entry("for dual stack", testCase{
 			l2GatewayIPs: []string{"192.171.24.1/24", "fd00:10:245:1::1/64"},
@@ -204,6 +225,11 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			secondPodIPs: []string{"192.171.24.3/24", "fd00:10:245:1::3/64"},
 			hostARedIPs:  []string{infra.HostARedIPv4, infra.HostARedIPv6},
 			hostBRedIPs:  []string{infra.HostBRedIPv4, infra.HostBRedIPv6},
+			nadMaster:    "br-hs-110",
+			hostMaster: v1alpha1.HostMaster{
+				AutoCreate: true,
+				Type:       "bridge",
+			},
 		}),
 		Entry("for single stack ipv6", testCase{
 			l2GatewayIPs: []string{"fd00:10:245:1::1/64"},
@@ -211,6 +237,86 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			secondPodIPs: []string{"fd00:10:245:1::3/64"},
 			hostARedIPs:  []string{infra.HostARedIPv6},
 			hostBRedIPs:  []string{infra.HostBRedIPv6},
+			nadMaster:    "br-hs-110",
+			hostMaster: v1alpha1.HostMaster{
+				AutoCreate: true,
+				Type:       "bridge",
+			},
+		}),
+		Entry("OVS bridge autocreate for single stack ipv4", testCase{
+			l2GatewayIPs: []string{"192.171.24.1/24"},
+			firstPodIPs:  []string{"192.171.24.2/24"},
+			secondPodIPs: []string{"192.171.24.3/24"},
+			hostARedIPs:  []string{infra.HostARedIPv4},
+			hostBRedIPs:  []string{infra.HostBRedIPv4},
+			nadMaster:    "br-hs-110",
+			hostMaster: v1alpha1.HostMaster{
+				AutoCreate: true,
+				Type:       "ovs-bridge",
+			},
+		}),
+		Entry("OVS bridge autocreate for dual stack", testCase{
+			l2GatewayIPs: []string{"192.171.24.1/24", "fd00:10:245:1::1/64"},
+			firstPodIPs:  []string{"192.171.24.2/24", "fd00:10:245:1::2/64"},
+			secondPodIPs: []string{"192.171.24.3/24", "fd00:10:245:1::3/64"},
+			hostARedIPs:  []string{infra.HostARedIPv4, infra.HostARedIPv6},
+			hostBRedIPs:  []string{infra.HostBRedIPv4, infra.HostBRedIPv6},
+			nadMaster:    "br-hs-110",
+			hostMaster: v1alpha1.HostMaster{
+				AutoCreate: true,
+				Type:       "ovs-bridge",
+			},
+		}),
+		Entry("OVS bridge autocreate for single stack ipv6", testCase{
+			l2GatewayIPs: []string{"fd00:10:245:1::1/64"},
+			firstPodIPs:  []string{"fd00:10:245:1::2/64"},
+			secondPodIPs: []string{"fd00:10:245:1::3/64"},
+			hostARedIPs:  []string{infra.HostARedIPv6},
+			hostBRedIPs:  []string{infra.HostBRedIPv6},
+			nadMaster:    "br-hs-110",
+			hostMaster: v1alpha1.HostMaster{
+				AutoCreate: true,
+				Type:       "ovs-bridge",
+			},
+		}),
+		Entry("OVS bridge existing for single stack ipv4", testCase{
+			l2GatewayIPs: []string{"192.171.24.1/24"},
+			firstPodIPs:  []string{"192.171.24.2/24"},
+			secondPodIPs: []string{"192.171.24.3/24"},
+			hostARedIPs:  []string{infra.HostARedIPv4},
+			hostBRedIPs:  []string{infra.HostBRedIPv4},
+			nadMaster:    preExistingOVSBridge,
+			hostMaster: v1alpha1.HostMaster{
+				Name:       preExistingOVSBridge,
+				AutoCreate: false,
+				Type:       "ovs-bridge",
+			},
+		}),
+		Entry("OVS bridge existing for dual stack", testCase{
+			l2GatewayIPs: []string{"192.171.24.1/24", "fd00:10:245:1::1/64"},
+			firstPodIPs:  []string{"192.171.24.2/24", "fd00:10:245:1::2/64"},
+			secondPodIPs: []string{"192.171.24.3/24", "fd00:10:245:1::3/64"},
+			hostARedIPs:  []string{infra.HostARedIPv4, infra.HostARedIPv6},
+			hostBRedIPs:  []string{infra.HostBRedIPv4, infra.HostBRedIPv6},
+			nadMaster:    preExistingOVSBridge,
+			hostMaster: v1alpha1.HostMaster{
+				Name:       preExistingOVSBridge,
+				AutoCreate: false,
+				Type:       "ovs-bridge",
+			},
+		}),
+		Entry("OVS bridge existing for single stack ipv6", testCase{
+			l2GatewayIPs: []string{"fd00:10:245:1::1/64"},
+			firstPodIPs:  []string{"fd00:10:245:1::2/64"},
+			secondPodIPs: []string{"fd00:10:245:1::3/64"},
+			hostARedIPs:  []string{infra.HostARedIPv6},
+			hostBRedIPs:  []string{infra.HostBRedIPv6},
+			nadMaster:    preExistingOVSBridge,
+			hostMaster: v1alpha1.HostMaster{
+				Name:       preExistingOVSBridge,
+				AutoCreate: false,
+				Type:       "ovs-bridge",
+			},
 		}),
 	)
 })

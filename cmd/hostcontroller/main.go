@@ -37,6 +37,7 @@ import (
 	"github.com/go-logr/logr"
 	periov1alpha1 "github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/controller/routerconfiguration"
+	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/openperouter/openperouter/internal/logging"
 	"github.com/openperouter/openperouter/internal/pods"
 	"github.com/openperouter/openperouter/internal/tlsconfig"
@@ -69,6 +70,7 @@ func main() {
 		reloadPort         int
 		criSocket          string
 		underlayFromMultus bool
+		ovsSocketPath      string
 	}{}
 	flag.StringVar(&args.metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -85,8 +87,13 @@ func main() {
 	flag.IntVar(&args.reloadPort, "reloadport", 9080, "the port of the reloader process")
 	flag.StringVar(&args.criSocket, "crisocket", "/containerd.sock", "the location of the cri socket")
 	flag.BoolVar(&args.underlayFromMultus, "underlay-from-multus", false, "Whether underlay access is built with Multus")
+	flag.StringVar(&args.ovsSocketPath, "ovssocket", "unix:/var/run/openvswitch/db.sock",
+		"the OVS database socket path")
 
 	flag.Parse()
+
+	// Initialize OVS socket path for the hostnetwork package
+	hostnetwork.OVSSocketPath = args.ovsSocketPath
 
 	logger, err := logging.New(args.logLevel)
 	if err != nil {

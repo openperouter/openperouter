@@ -273,6 +273,7 @@ var _ = Describe("L2 VNI configuration", func() {
 			L2GatewayIPs: []string{"192.168.1.0/24"},
 			HostMaster: &HostMaster{
 				Name: bridgeName,
+				Type: BridgeLinkType,
 			},
 		}
 
@@ -319,6 +320,7 @@ var _ = Describe("L2 VNI configuration", func() {
 				L2GatewayIPs: []string{"192.168.1.0/24"},
 				HostMaster: &HostMaster{
 					Name: bridgeName,
+					Type: BridgeLinkType,
 				},
 			},
 			{
@@ -332,6 +334,7 @@ var _ = Describe("L2 VNI configuration", func() {
 				L2GatewayIPs: []string{"192.168.1.0/24"},
 				HostMaster: &HostMaster{
 					AutoCreate: true,
+					Type:       BridgeLinkType,
 				},
 			},
 		}
@@ -406,6 +409,7 @@ var _ = Describe("L2 VNI configuration", func() {
 			L2GatewayIPs: []string{"192.168.1.0/24"},
 			HostMaster: &HostMaster{
 				Name: bridgeName,
+				Type: BridgeLinkType,
 			},
 		}),
 		Entry("dual-stack (IPv4 and IPv6)", L2VNIParams{
@@ -419,6 +423,7 @@ var _ = Describe("L2 VNI configuration", func() {
 			L2GatewayIPs: []string{"192.168.2.0/24", "2001:db8::1/64"},
 			HostMaster: &HostMaster{
 				Name: bridgeName,
+				Type: BridgeLinkType,
 			},
 		}),
 		Entry("IPv6 single-stack", L2VNIParams{
@@ -432,9 +437,173 @@ var _ = Describe("L2 VNI configuration", func() {
 			L2GatewayIPs: []string{"2001:db8::1/64"},
 			HostMaster: &HostMaster{
 				Name: bridgeName,
+				Type: BridgeLinkType,
 			},
 		}),
 	)
+})
+
+var _ = Describe("L2 VNI configuration with OVS bridges", func() {
+	var testNS netns.NsHandle
+
+	BeforeEach(func() {
+		cleanTest(testNSName)
+		testNS = createTestNS(testNSName)
+		setupLoopback(testNS)
+	})
+
+	AfterEach(func() {
+		cleanTest(testNSName)
+	})
+
+	It("should work with a single L2VNI using auto-created OVS bridge", func() {
+		params := L2VNIParams{
+			VNIParams: VNIParams{
+				VRF: "testred", TargetNS: testNSName,
+				VTEPIP: "192.170.0.9/32", VNI: 100, VXLanPort: 4789,
+			},
+			HostMaster: &HostMaster{Type: OVSBridgeLinkType, AutoCreate: true},
+		}
+
+		err := SetupL2VNI(context.Background(), params)
+		Expect(err).NotTo(HaveOccurred())
+
+		Eventually(func(g Gomega) {
+			validateL2HostLeg(g, params)
+			_ = inNamespace(testNS, func() error {
+				validateL2VNI(g, params)
+				return nil
+			})
+		}, 30*time.Second, 1*time.Second).Should(Succeed())
+
+		By("removing the VNI")
+		err = RemoveNonConfiguredVNIs(testNSName, []VNIParams{})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("checking the VNI and OVS bridge are removed")
+		vethNames := vethNamesFromVNI(params.VNI)
+		Eventually(func(g Gomega) {
+			checkLinkdeleted(g, vethNames.HostSide)
+			checkOVSHostBridgeDeleted(g, params)
+			_ = inNamespace(testNS, func() error {
+				validateVNIIsNotConfigured(g, params.VNIParams)
+				return nil
+			})
+		}, 30*time.Second, 1*time.Second).Should(Succeed())
+	})
+
+	It("should work with a single L2VNI using pre-existing named OVS bridge", func() {
+		const bridgeName = "test-ovs-br"
+		Expect(createOVSBridge(bridgeName)).To(Succeed(), "must pre-provision an OVS bridge")
+
+		params := L2VNIParams{
+			VNIParams: VNIParams{
+				VRF: "testred", TargetNS: testNSName,
+				VTEPIP: "192.170.0.9/32", VNI: 100, VXLanPort: 4789,
+			},
+			HostMaster: &HostMaster{Type: OVSBridgeLinkType, Name: bridgeName},
+		}
+
+		err := SetupL2VNI(context.Background(), params)
+		Expect(err).NotTo(HaveOccurred())
+
+		Eventually(func(g Gomega) {
+			validateL2HostLeg(g, params)
+			checkOVSBridgeExists(g, bridgeName)
+			checkVethAttachedToOVSBridge(g, bridgeName, vethNamesFromVNI(params.VNI).HostSide)
+		}, 30*time.Second, 1*time.Second).Should(Succeed())
+
+		By("removing the VNI")
+		err = RemoveNonConfiguredVNIs(testNSName, []VNIParams{})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("checking the bridge persists (user-managed)")
+		Eventually(func(g Gomega) {
+			checkOVSBridgeExists(g, bridgeName) // Bridge should still exist
+		}, 30*time.Second, 1*time.Second).Should(Succeed())
+	})
+
+	It("should work with multiple L2VNIs with different auto-created OVS bridges + cleanup", func() {
+		params1 := L2VNIParams{
+			VNIParams: VNIParams{
+				VRF: "testred", TargetNS: testNSName,
+				VTEPIP: "192.170.0.9/32", VNI: 100, VXLanPort: 4789,
+			},
+			HostMaster: &HostMaster{Type: OVSBridgeLinkType, AutoCreate: true},
+		}
+
+		params2 := L2VNIParams{
+			VNIParams: VNIParams{
+				VRF: "testgreen", TargetNS: testNSName,
+				VTEPIP: "192.170.0.9/32", VNI: 101, VXLanPort: 4789,
+			},
+			HostMaster: &HostMaster{Type: OVSBridgeLinkType, AutoCreate: true},
+		}
+
+		err := SetupL2VNI(context.Background(), params1)
+		Expect(err).NotTo(HaveOccurred())
+		err = SetupL2VNI(context.Background(), params2)
+		Expect(err).NotTo(HaveOccurred())
+
+		Eventually(func(g Gomega) {
+			validateL2HostLeg(g, params1)
+			validateL2HostLeg(g, params2)
+		}, 30*time.Second, 1*time.Second).Should(Succeed())
+
+		By("removing VNI 100, keeping VNI 101")
+		err = RemoveNonConfiguredVNIs(testNSName, []VNIParams{params2.VNIParams})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("checking VNI 100 removed, VNI 101 persists")
+		Eventually(func(g Gomega) {
+			checkOVSHostBridgeDeleted(g, params1)
+			checkOVSBridgeExists(g, hostBridgeName(params2.VNI))
+		}, 30*time.Second, 1*time.Second).Should(Succeed())
+	})
+
+	It("should be idempotent with OVS bridges", func() {
+		params := L2VNIParams{
+			VNIParams: VNIParams{
+				VRF: "testred", TargetNS: testNSName,
+				VTEPIP: "192.170.0.9/32", VNI: 100, VXLanPort: 4789,
+			},
+			HostMaster: &HostMaster{Type: OVSBridgeLinkType, AutoCreate: true},
+		}
+
+		err := SetupL2VNI(context.Background(), params)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("calling SetupL2VNI a second time")
+		err = SetupL2VNI(context.Background(), params)
+		Expect(err).NotTo(HaveOccurred(), "second SetupL2VNI should be idempotent")
+
+		Eventually(func(g Gomega) {
+			validateL2HostLeg(g, params)
+		}, 30*time.Second, 1*time.Second).Should(Succeed())
+	})
+
+	It("should configure L2 gateway IP with OVS bridge", func() {
+		gwIP := "10.10.100.1/24"
+		params := L2VNIParams{
+			VNIParams: VNIParams{
+				VRF: "testred", TargetNS: testNSName,
+				VTEPIP: "192.170.0.9/32", VNI: 100, VXLanPort: 4789,
+			},
+			L2GatewayIPs: []string{gwIP},
+			HostMaster:   &HostMaster{Type: OVSBridgeLinkType, AutoCreate: true},
+		}
+
+		err := SetupL2VNI(context.Background(), params)
+		Expect(err).NotTo(HaveOccurred())
+
+		Eventually(func(g Gomega) {
+			validateL2HostLeg(g, params)
+			_ = inNamespace(testNS, func() error {
+				validateL2VNI(g, params)
+				return nil
+			})
+		}, 30*time.Second, 1*time.Second).Should(Succeed())
+	})
 })
 
 func validateL3HostLeg(g Gomega, params L3VNIParams) {
@@ -459,6 +628,15 @@ func validateL3HostLeg(g Gomega, params L3VNIParams) {
 	}
 }
 
+func checkOVSHostBridgeDeleted(g Gomega, params L2VNIParams) {
+	g.Expect(params.HostMaster).ToNot(BeNil())
+	g.Expect(params.HostMaster.Type).To(Equal(OVSBridgeLinkType))
+	g.Expect(params.HostMaster.AutoCreate).To(BeTrue())
+
+	hostBridge := hostBridgeName(params.VNI)
+	checkOVSBridgeDeleted(g, hostBridge)
+}
+
 func validateL2HostLeg(g Gomega, params L2VNIParams) {
 	vethNames := vethNamesFromVNI(params.VNI)
 	hostLegLink, err := netlink.LinkByName(vethNames.HostSide)
@@ -469,14 +647,26 @@ func validateL2HostLeg(g Gomega, params L2VNIParams) {
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(hasNoIP).To(BeTrue(), "host leg does have ip")
 	if params.HostMaster != nil {
-		hostMasterName := params.HostMaster.Name
-		if params.HostMaster.AutoCreate {
-			hostMasterName = hostBridgeName(params.VNI)
+		switch params.HostMaster.Type {
+		case OVSBridgeLinkType:
+			hostMasterName := params.HostMaster.Name
+			if params.HostMaster.AutoCreate {
+				hostMasterName = hostBridgeName(params.VNI)
+			}
+			checkOVSBridgeExists(g, hostMasterName)
+			checkVethAttachedToOVSBridge(g, hostMasterName, vethNames.HostSide)
+		case BridgeLinkType:
+			hostMasterName := params.HostMaster.Name
+			if params.HostMaster.AutoCreate {
+				hostMasterName = hostBridgeName(params.VNI)
+			}
+			hostmaster, err := netlink.LinkByName(hostMasterName)
+			g.Expect(err).NotTo(HaveOccurred(), "host master not found", *params.HostMaster)
+			g.Expect(hostLegLink.Attrs().MasterIndex).To(Equal(hostmaster.Attrs().Index),
+				"host leg is not attached to the bridge", params.HostMaster)
+		default:
+			g.Expect(params.HostMaster.Type).To(BeEmpty(), "unknown bridge type: %s", params.HostMaster.Type)
 		}
-		hostmaster, err := netlink.LinkByName(hostMasterName)
-		g.Expect(err).NotTo(HaveOccurred(), "host master not found", *params.HostMaster)
-		g.Expect(hostLegLink.Attrs().MasterIndex).To(Equal(hostmaster.Attrs().Index),
-			"host leg is not attached to the bridge", params.HostMaster)
 	} else {
 		g.Expect(hostLegLink.Attrs().MasterIndex).To(BeZero(), "host leg is attached to a bridge but should not be")
 	}
@@ -623,6 +813,20 @@ func checkAddrGenModeNone(l netlink.Link) bool {
 	return strings.Trim(string(addrGenMode), "\n") == "1"
 }
 
+// interfaceHasNoIP tells if the given link does not have
+// ips of the given family.
+func interfaceHasNoIP(link netlink.Link, family int) (bool, error) {
+	addresses, err := netlink.AddrList(link, family)
+	if err != nil {
+		return false, fmt.Errorf("interfaceHasNoIP: failed to list addresses for interface %s: %w", link.Attrs().Name, err)
+	}
+	if len(addresses) == 0 {
+		return true, nil
+	}
+
+	return false, nil
+}
+
 func setupLoopback(ns netns.NsHandle) {
 	_ = inNamespace(ns, func() error {
 		_, err := netlink.LinkByName(UnderlayLoopback)
@@ -660,4 +864,25 @@ func validateBridgeMacAddress(g Gomega, bridge netlink.Link, vni int) {
 	actualMac := bridge.Attrs().HardwareAddr
 	g.Expect(actualMac).NotTo(BeNil(), "bridge should have a MAC address")
 	g.Expect(actualMac).To(Equal(expectedMac), "bridge MAC address should be %v for VNI %d", expectedMac, vni)
+}
+
+// checkOVSBridgeExists validates that an OVS bridge exists
+func checkOVSBridgeExists(g Gomega, bridgeName string) {
+	bridge, err := getOVSBridge(bridgeName)
+	g.Expect(err).NotTo(HaveOccurred(), "failed to get OVS bridge %q", bridgeName)
+	g.Expect(bridge).NotTo(BeNil())
+	g.Expect(bridge.Name).To(Equal(bridgeName))
+}
+
+// checkOVSBridgeDeleted validates that an OVS bridge does not exist
+func checkOVSBridgeDeleted(g Gomega, bridgeName string) {
+	_, err := getOVSBridge(bridgeName)
+	g.Expect(err).To(HaveOccurred(), "OVS bridge %q should not exist", bridgeName)
+}
+
+// checkVethAttachedToOVSBridge validates that a veth is attached to an OVS bridge
+func checkVethAttachedToOVSBridge(g Gomega, bridgeName, vethName string) {
+	hasPort, err := ovsBridgeHasPort(bridgeName, vethName)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(hasPort).To(BeTrue(), "veth %s should be attached to OVS bridge %s", vethName, bridgeName)
 }

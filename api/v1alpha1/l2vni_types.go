@@ -20,6 +20,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const (
+	LinuxBridge = "bridge"
+	OVSBridge   = "ovs-bridge"
+)
+
 // L2VNISpec defines the desired state of VNI.
 type L2VNISpec struct {
 	// VRF is the name of the linux VRF to be used inside the PERouter namespace.
@@ -65,8 +70,8 @@ type HostMaster struct {
 	// +optional
 	Name string `json:"name,omitempty"`
 
-	// Type of the host interface. Currently only "bridge" is supported.
-	// +kubebuilder:validation:Enum=bridge
+	// Type of the host interface. Supports linux bridge or OVS bridge.
+	// +kubebuilder:validation:Enum=bridge;ovs-bridge
 	Type string `json:"type,omitempty"`
 
 	// If true, the interface will be created automatically if not present.

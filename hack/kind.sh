@@ -4,7 +4,7 @@ set -o errexit
 KIND_BIN="${KIND_BIN:-kind}"
 KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME:-perouter}"
 IP_FAMILY="${IP_FAMILY:-ipv4}"
-NODE_IMAGE="${NODE_IMAGE:-kindest/node:v1.30.0}"
+NODE_IMAGE="${NODE_IMAGE:-quay.io/openperouter/kind-node-ovs:v1.31.4}"
 
 clusters=$("${KIND_BIN}" get clusters)
 for cluster in $clusters; do

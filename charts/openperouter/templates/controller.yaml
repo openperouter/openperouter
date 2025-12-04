@@ -54,6 +54,9 @@ spec:
         {{- if .Values.openperouter.multusNetworkAnnotation }}
         - --underlay-from-multus=true
         {{- end }}
+        {{- with .Values.openperouter.ovsSocketPath }}
+        - --ovssocket={{ . }}
+        {{- end }}
         command:
         - /controller
         env:
@@ -99,6 +102,8 @@ spec:
         - mountPath: /etc/frr/
           mountPropagation: HostToContainer
           name: frr-config
+        - mountPath: {{ .Values.openperouter.ovsRunDir }}
+          name: ovs-var-run
       hostNetwork: true
       hostPID: true
       tolerations:
@@ -134,3 +139,6 @@ spec:
           path: /etc/perouter/frr
           type: DirectoryOrCreate
         name: frr-config
+      - hostPath:
+          path: {{ .Values.openperouter.ovsRunDir }}
+        name: ovs-var-run

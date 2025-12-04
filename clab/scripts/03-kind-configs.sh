@@ -26,13 +26,25 @@ generate_kind_configs() {
         echo "Disabling default CNI in kind configuration files (CALICO_MODE)"
     fi
 
+    echo "=== Kind configuration generation diagnostics ==="
+    echo "NODE_IMAGE environment variable: ${NODE_IMAGE:-<not set>}"
+
     for cluster_name in "${CLUSTER_NAMES[@]}"; do
         KIND_CONFIG_NAME="${cluster_name}-configuration-registry.yaml"
 
         echo "Generating kind configuration for cluster name: ${cluster_name}; KIND_CONFIG_NAME: ${KIND_CONFIG_NAME}"
+        if [[ -n "${NODE_IMAGE:-}" ]]; then
+            echo "Using custom node image: ${NODE_IMAGE}"
+        else
+            echo "WARNING: NODE_IMAGE is not set, using default kind node image"
+        fi
         go run generate_kind_config/generate_kind_config.go \
             --template generate_kind_config/kind_template/kind-configuration-registry.yaml.template \
-            $KIND_CONFIG_ARGS -cluster-name cluster_name -output ../$KIND_CONFIG_NAME $KIND_CONFIG_NAME
+            $KIND_CONFIG_ARGS -cluster-name "${cluster_name}" -output "../${KIND_CONFIG_NAME}"
+
+        echo "Generated configuration file content:"
+        cat "../${KIND_CONFIG_NAME}"
+        echo "=== End of ${KIND_CONFIG_NAME} ==="
     done
 
     popd

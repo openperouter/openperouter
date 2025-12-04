@@ -13,12 +13,14 @@ import (
 type KindConfig struct {
 	DisableDefaultCNI bool
 	ClusterName       string
+	NodeImage         string
 }
 
 func main() {
 	var (
 		disableDefaultCNI = flag.Bool("disable-default-cni", false, "Disable default CNI in kind config")
 		clusterName       = flag.String("cluster-name", "pe-kind", "Name of the kind cluster")
+		nodeImage         = flag.String("node-image", os.Getenv("NODE_IMAGE"), "Kind node image to use")
 		outputFile        = flag.String("output", "../kind-configuration-registry.yaml", "Kind configuration output file")
 		templateFile      = flag.String("template",
 			"../kind_template/kind-configuration-registry.yaml.template", "Kind template file path")
@@ -38,6 +40,7 @@ func main() {
 	config := KindConfig{
 		DisableDefaultCNI: *disableDefaultCNI,
 		ClusterName:       *clusterName,
+		NodeImage:         *nodeImage,
 	}
 
 	outputDir := filepath.Dir(*outputFile)
