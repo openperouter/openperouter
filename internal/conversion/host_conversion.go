@@ -121,6 +121,7 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig ApiConfigData) (H
 		if l2vni.Spec.HostMaster != nil {
 			vni.HostMaster = &hostnetwork.HostMaster{
 				Name:       l2vni.Spec.HostMaster.Name,
+				Type:       l2vni.Spec.HostMaster.Type,
 				AutoCreate: l2vni.Spec.HostMaster.AutoCreate,
 			}
 		}

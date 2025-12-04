@@ -51,9 +51,10 @@ type HostMaster struct {
 }
 
 const (
-	VRFLinkType    = "vrf"
-	BridgeLinkType = "bridge"
-	VXLanLinkType  = "vxlan"
+	VRFLinkType       = "vrf"
+	BridgeLinkType    = "bridge"
+	VXLanLinkType     = "vxlan"
+	OVSBridgeLinkType = "ovs-bridge"
 )
 
 type NotRouterInterfaceError struct {
@@ -160,16 +161,28 @@ func SetupL2VNI(ctx context.Context, params L2VNIParams) error {
 
 	hostVeth, err := netlink.LinkByName(vethNames.HostSide)
 	if errors.As(err, &netlink.LinkNotFoundError{}) {
-		return fmt.Errorf("SetupL2VNI: host veth %s does not exist, cannot setup L3 VNI", vethNames.HostSide)
+		return fmt.Errorf("SetupL2VNI: host veth %s does not exist, cannot setup L2 VNI", vethNames.HostSide)
 	}
+	if err != nil {
+		return fmt.Errorf("SetupL2VNI: failed to get host veth %s: %w", vethNames.HostSide, err)
+	}
+	slog.Info("SetupL2VNI: found host veth", "name", vethNames.HostSide, "index", hostVeth.Attrs().Index)
 
 	if params.HostMaster != nil {
-		master, err := hostMaster(params.VNI, *params.HostMaster)
-		if err != nil {
-			return fmt.Errorf("SetupL2VNI: failed to get host master for VRF %s: %w", params.VRF, err)
-		}
-		if err := netlink.LinkSetMaster(hostVeth, master); err != nil {
-			return fmt.Errorf("failed to set host master %s as master of host veth %s: %w", master.Attrs().Name, hostVeth.Attrs().Name, err)
+		bridgeConfig := *params.HostMaster
+		switch bridgeConfig.Type {
+		case OVSBridgeLinkType:
+			return fmt.Errorf("not implemented yet")
+		case BridgeLinkType:
+			master, err := hostMaster(params.VNI, bridgeConfig)
+			if err != nil {
+				return fmt.Errorf("SetupL2VNI: failed to get host master for VRF %s: %w", params.VRF, err)
+			}
+			if err := netlink.LinkSetMaster(hostVeth, master); err != nil {
+				return fmt.Errorf("failed to set host master %s as master of host veth %s: %w", master.Attrs().Name, hostVeth.Attrs().Name, err)
+			}
+		default:
+			return fmt.Errorf("provided hostmaster.Type %q is not supported", bridgeConfig.Type)
 		}
 	}
 

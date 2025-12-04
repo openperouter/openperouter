@@ -273,6 +273,7 @@ var _ = Describe("L2 VNI configuration", func() {
 			L2GatewayIPs: []string{"192.168.1.0/24"},
 			HostMaster: &HostMaster{
 				Name: bridgeName,
+				Type: BridgeLinkType,
 			},
 		}
 
@@ -319,6 +320,7 @@ var _ = Describe("L2 VNI configuration", func() {
 				L2GatewayIPs: []string{"192.168.1.0/24"},
 				HostMaster: &HostMaster{
 					Name: bridgeName,
+					Type: BridgeLinkType,
 				},
 			},
 			{
@@ -332,6 +334,7 @@ var _ = Describe("L2 VNI configuration", func() {
 				L2GatewayIPs: []string{"192.168.1.0/24"},
 				HostMaster: &HostMaster{
 					AutoCreate: true,
+					Type:       BridgeLinkType,
 				},
 			},
 		}
@@ -406,6 +409,7 @@ var _ = Describe("L2 VNI configuration", func() {
 			L2GatewayIPs: []string{"192.168.1.0/24"},
 			HostMaster: &HostMaster{
 				Name: bridgeName,
+				Type: BridgeLinkType,
 			},
 		}),
 		Entry("dual-stack (IPv4 and IPv6)", L2VNIParams{
@@ -419,6 +423,7 @@ var _ = Describe("L2 VNI configuration", func() {
 			L2GatewayIPs: []string{"192.168.2.0/24", "2001:db8::1/64"},
 			HostMaster: &HostMaster{
 				Name: bridgeName,
+				Type: BridgeLinkType,
 			},
 		}),
 		Entry("IPv6 single-stack", L2VNIParams{
@@ -432,6 +437,7 @@ var _ = Describe("L2 VNI configuration", func() {
 			L2GatewayIPs: []string{"2001:db8::1/64"},
 			HostMaster: &HostMaster{
 				Name: bridgeName,
+				Type: BridgeLinkType,
 			},
 		}),
 	)
