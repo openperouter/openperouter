@@ -172,7 +172,13 @@ func SetupL2VNI(ctx context.Context, params L2VNIParams) error {
 		bridgeConfig := *params.HostMaster
 		switch bridgeConfig.Type {
 		case OVSBridgeLinkType:
-			return fmt.Errorf("not implemented yet")
+			lowerDeviceName := bridgeConfig.Name
+			if bridgeConfig.AutoCreate {
+				lowerDeviceName = hostBridgeName(params.VNI)
+			}
+			if err := ensureOVSBridgeAndAttach(ctx, lowerDeviceName, hostVeth.Attrs().Name); err != nil {
+				return fmt.Errorf("failed to ensure OVS bridge %s and attach %s: %w", lowerDeviceName, hostVeth.Attrs().Name, err)
+			}
 		case BridgeLinkType:
 			master, err := hostMaster(params.VNI, bridgeConfig)
 			if err != nil {
