@@ -96,10 +96,16 @@ func patchChartValues(envConfig envconfig.EnvConfig, crdConfig *operatorapi.Open
 	if envConfig.IsOpenshift {
 		cri = ContainerRuntimeCrio
 	}
+	// Create controller map if needed
+	controllerMap := map[string]interface{}{}
+	if crdConfig.Spec.HealthProbePort != 0 {
+		controllerMap["healthProbePort"] = crdConfig.Spec.HealthProbePort
+	}
 	valuesMap["openperouter"] = map[string]interface{}{
 		"logLevel":                logLevelValue(crdConfig),
 		"multusNetworkAnnotation": crdConfig.Spec.MultusNetworkAnnotation,
 		"runOnMaster":             crdConfig.Spec.RunOnMaster,
+		"controller":              controllerMap,
 		"image": map[string]interface{}{
 			"repository": envConfig.ControllerImage.Repo,
 			"tag":        envConfig.ControllerImage.Tag,
