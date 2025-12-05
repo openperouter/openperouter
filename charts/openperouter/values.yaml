@@ -50,6 +50,8 @@ openperouter:
   labels: {}
   controller:
     resources: {}
+    # -- Health probe port for liveness and readiness checks
+    healthProbePort: 9081
   nodemarker:
     resources: {}
   # frr contains configuration specific to the perouter FRR container,

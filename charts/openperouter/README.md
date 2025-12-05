@@ -27,6 +27,7 @@ Kubernetes: `>= 1.19.0-0`
 | fullnameOverride | string | `""` |  |
 | nameOverride | string | `""` |  |
 | openperouter.affinity | object | `{}` |  |
+| openperouter.controller.healthProbePort | int | `9081` | Health probe port for liveness and readiness checks |
 | openperouter.controller.resources | object | `{}` |  |
 | openperouter.cri | string | `"containerd"` |  |
 | openperouter.frr.image.pullPolicy | string | `""` |  |

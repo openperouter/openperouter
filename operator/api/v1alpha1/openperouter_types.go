@@ -52,6 +52,12 @@ type OpenPERouterSpec struct {
 	// OVSRunDir specifies the OVS run directory to mount. This is the directory containing the OVS socket. (default: /var/run/openvswitch)
 	// +optional
 	OVSRunDir string `json:"ovsRunDir,omitempty"`
+	// HealthProbePort specifies the port for the controller's health and readiness probes. (default: 9081)
+	// +optional
+	// +kubebuilder:default:=9081
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
+	HealthProbePort int `json:"healthProbePort,omitempty"`
 }
 
 // OpenPERouterStatus defines the observed state of OpenPERouter
