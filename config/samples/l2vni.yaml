@@ -7,7 +7,7 @@ spec:
   vni: 210
   vrf: red
   hostmaster:
-    type: bridge
+    type: linux-bridge
     autocreate: true
 
 
