@@ -46,6 +46,12 @@ type OpenPERouterSpec struct {
 	// +optional
 	// +kubebuilder:default:=true
 	RunOnMaster bool `json:"runOnMaster,omitempty"`
+	// HealthProbePort specifies the port for the controller's health and readiness probes. (default: 9081)
+	// +optional
+	// +kubebuilder:default:=9081
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
+	HealthProbePort int `json:"healthProbePort,omitempty"`
 }
 
 // OpenPERouterStatus defines the observed state of OpenPERouter
