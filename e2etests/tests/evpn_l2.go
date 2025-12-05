@@ -43,6 +43,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		},
 	}
 
+	const linuxBridgeHostAttachment = "linux-bridge"
 	l2VniRed := v1alpha1.L2VNI{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "red110",
@@ -51,6 +52,10 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		Spec: v1alpha1.L2VNISpec{
 			VRF: ptr.To("red"),
 			VNI: 110,
+			HostMaster: &v1alpha1.HostMaster{
+				AutoCreate: true,
+				Type:       linuxBridgeHostAttachment,
+			},
 		},
 	}
 
@@ -222,7 +227,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			nadMaster:    "br-hs-110",
 			hostMaster: v1alpha1.HostMaster{
 				AutoCreate: true,
-				Type:       "bridge",
+				Type:       linuxBridgeHostAttachment,
 			},
 		}),
 		Entry("for dual stack", testCase{
@@ -234,7 +239,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			nadMaster:    "br-hs-110",
 			hostMaster: v1alpha1.HostMaster{
 				AutoCreate: true,
-				Type:       "bridge",
+				Type:       linuxBridgeHostAttachment,
 			},
 		}),
 		Entry("for single stack ipv6", testCase{
@@ -246,7 +251,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			nadMaster:    "br-hs-110",
 			hostMaster: v1alpha1.HostMaster{
 				AutoCreate: true,
-				Type:       "bridge",
+				Type:       linuxBridgeHostAttachment,
 			},
 		}),
 		Entry("OVS bridge autocreate for single stack ipv4", testCase{
