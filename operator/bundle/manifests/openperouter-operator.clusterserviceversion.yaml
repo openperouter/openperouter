@@ -4,7 +4,7 @@ metadata:
   annotations:
     alm-examples: '[]'
     capabilities: Basic Install
-    createdAt: "2025-11-20T13:37:21Z"
+    createdAt: "2025-12-05T17:31:38Z"
     operators.operatorframework.io/builder: operator-sdk-v1.41.1
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
   name: openperouter-operator.v0.0.0
@@ -52,6 +52,7 @@ spec:
           verbs:
           - get
           - list
+          - patch
           - update
           - watch
         - apiGroups:
