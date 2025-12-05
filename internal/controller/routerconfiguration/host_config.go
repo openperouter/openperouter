@@ -10,12 +10,10 @@ import (
 
 	"github.com/openperouter/openperouter/internal/conversion"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
-	"github.com/openperouter/openperouter/internal/pods"
 )
 
 type interfacesConfiguration struct {
-	RouterPodUUID string `json:"routerPodUUID,omitempty"`
-	PodRuntime    pods.Runtime
+	targetNamespace string
 	conversion.ApiConfigData
 }
 
@@ -26,14 +24,9 @@ func (n UnderlayRemovedError) Error() string {
 }
 
 func configureInterfaces(ctx context.Context, config interfacesConfiguration) error {
-	targetNS, err := config.PodRuntime.NetworkNamespace(ctx, config.RouterPodUUID)
+	hasAlreadyUnderlay, err := hostnetwork.HasUnderlayInterface(config.targetNamespace)
 	if err != nil {
-		return fmt.Errorf("failed to retrieve namespace for pod %s: %w", config.RouterPodUUID, err)
-	}
-
-	hasAlreadyUnderlay, err := hostnetwork.HasUnderlayInterface(targetNS)
-	if err != nil {
-		return fmt.Errorf("failed to check if target namespace %s for pod %s has underlay: %w", targetNS, config.RouterPodUUID, err)
+		return fmt.Errorf("failed to check if target namespace %s has underlay: %w", config.targetNamespace, err)
 	}
 	if hasAlreadyUnderlay && len(config.Underlays) == 0 {
 		return UnderlayRemovedError{}
@@ -43,8 +36,8 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 		return nil // nothing to do
 	}
 
-	slog.InfoContext(ctx, "configure interface start", "namespace", targetNS)
-	defer slog.InfoContext(ctx, "configure interface end", "namespace", targetNS)
+	slog.InfoContext(ctx, "configure interface start", "namespace", config.targetNamespace)
+	defer slog.InfoContext(ctx, "configure interface end", "namespace", config.targetNamespace)
 	apiConfig := conversion.ApiConfigData{
 		UnderlayFromMultus: config.UnderlayFromMultus,
 		NodeIndex:          config.NodeIndex,
@@ -53,13 +46,13 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 		L2VNIs:             config.L2VNIs,
 		L3Passthrough:      config.L3Passthrough,
 	}
-	hostConfig, err := conversion.APItoHostConfig(config.NodeIndex, targetNS, apiConfig)
+	hostConfig, err := conversion.APItoHostConfig(config.NodeIndex, config.targetNamespace, apiConfig)
 	if err != nil {
 		return fmt.Errorf("failed to convert config to host configuration: %w", err)
 	}
 
 	slog.InfoContext(ctx, "ensuring IPv6 forwarding")
-	if err := hostnetwork.EnsureIPv6Forwarding(targetNS); err != nil {
+	if err := hostnetwork.EnsureIPv6Forwarding(config.targetNamespace); err != nil {
 		return fmt.Errorf("failed to ensure IPv6 forwarding: %w", err)
 	}
 
@@ -96,12 +89,12 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 	for _, l2vni := range hostConfig.L2VNIs {
 		toCheck = append(toCheck, l2vni.VNIParams)
 	}
-	if err := hostnetwork.RemoveNonConfiguredVNIs(targetNS, toCheck); err != nil {
+	if err := hostnetwork.RemoveNonConfiguredVNIs(config.targetNamespace, toCheck); err != nil {
 		return fmt.Errorf("failed to remove deleted vnis: %w", err)
 	}
 
 	if len(apiConfig.L3Passthrough) == 0 {
-		if err := hostnetwork.RemovePassthrough(targetNS); err != nil {
+		if err := hostnetwork.RemovePassthrough(config.targetNamespace); err != nil {
 			return fmt.Errorf("failed to remove passthrough: %w", err)
 		}
 	}

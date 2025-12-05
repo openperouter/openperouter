@@ -10,6 +10,7 @@ import (
 	"time"
 
 	nad "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
+	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/openperouter/openperouter/api/v1alpha1"
@@ -29,7 +30,8 @@ import (
 
 var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 	var cs clientset.Interface
-	routerPods := []*corev1.Pod{}
+	var routers openperouter.Routers
+
 	vniRed := v1alpha1.L3VNI{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "red",
@@ -61,10 +63,10 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		cs = k8sclient.New()
-		routerPods, err = openperouter.RouterPods(cs)
+		routers, err = openperouter.Get(cs, HostMode)
 		Expect(err).NotTo(HaveOccurred())
 
-		DumpPods("Router pods", routerPods)
+		routers.Dump(ginkgo.GinkgoWriter)
 
 		err = Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{
@@ -81,7 +83,11 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred())
 		By("waiting for the router pod to rollout after removing the underlay")
 		Eventually(func() error {
-			return openperouter.DaemonsetRolled(cs, routerPods)
+			newRouters, err := openperouter.Get(cs, HostMode)
+			if err != nil {
+				return err
+			}
+			return openperouter.DaemonsetRolled(routers, newRouters)
 		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 	})
 

@@ -37,7 +37,7 @@ type NodesReconciler struct {
 	Logger   *slog.Logger
 }
 
-// +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch;update
+// +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups="admissionregistration.k8s.io",resources=validatingwebhookconfigurations,verbs=get;list;watch
 // +kubebuilder:rbac:groups="admissionregistration.k8s.io",resources=validatingwebhookconfigurations,resourceNames="openpe-validating-webhook-configuration",verbs=update
 

@@ -85,6 +85,9 @@ test: fmt vet envtest ## Run tests.
 build: manifests generate fmt vet ## Build manager binary.
 	go build -o bin/reloader cmd/reloader/main.go
 	go build -o bin/controller cmd/hostcontroller/main.go
+	go build -o bin/hostbridge cmd/hostbridge/main.go
+	go build -o bin/nodemarker cmd/nodemarker/main.go
+	go build -o bin/cp-tool cmd/cp-tool/main.go
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
@@ -145,7 +148,7 @@ KUSTOMIZE_VERSION ?= v5.0.0
 CONTROLLER_TOOLS_VERSION ?= v0.19.0
 KUBECTL_VERSION ?= v1.27.0
 GINKGO_VERSION ?= $(shell go list -m -f '{{.Version}}' github.com/onsi/ginkgo/v2)
-KIND_VERSION ?= v0.27.0
+KIND_VERSION ?= v0.30.0
 KIND_CLUSTER_NAME ?= pe-kind
 HELM_VERSION ?= v3.12.3
 HELM_DOCS_VERSION ?= v1.10.0
@@ -162,6 +165,15 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified 
 
 .PHONY: deploy
 deploy: kind deploy-cluster deploy-controller ## Deploy cluster and controller.
+
+.PHONY: setup-hostmode
+setup-hostmode: ## Setup node configuration for hostmode.
+	./systemdmode/setup_node_config.sh $(KIND_CLUSTER_NAME)
+
+.PHONY: deploy-hostmode
+deploy-hostmode: export KUSTOMIZE_LAYER=hostmode
+deploy-hostmode: kind deploy-cluster setup-hostmode deploy-controller ## Deploy cluster and controller in hostmode, then setup systemd services.
+	./systemdmode/deploy.sh $(KIND_CLUSTER_NAME)
 
 .PHONY: deploy-multi
 deploy-multi: kind deploy-multi-cluster deploy-controller-multi ## Deploy cluster and controller.

@@ -19,6 +19,10 @@ import (
 
 const testNSName = "vnitestns"
 
+func testNSPath() string {
+	return fmt.Sprintf("/var/run/netns/%s", testNSName)
+}
+
 var _ = Describe("L3 VNI configuration", func() {
 	var testNS netns.NsHandle
 
@@ -35,7 +39,7 @@ var _ = Describe("L3 VNI configuration", func() {
 		params := L3VNIParams{
 			VNIParams: VNIParams{
 				VRF:       "testred",
-				TargetNS:  testNSName,
+				TargetNS:  testNSPath(),
 				VTEPIP:    "192.170.0.9/32",
 				VNI:       100,
 				VXLanPort: 4789,
@@ -63,7 +67,7 @@ var _ = Describe("L3 VNI configuration", func() {
 		params := L3VNIParams{
 			VNIParams: VNIParams{
 				VRF:       "testred",
-				TargetNS:  testNSName,
+				TargetNS:  testNSPath(),
 				VTEPIP:    "192.170.0.9/32",
 				VNI:       100,
 				VXLanPort: 4789,
@@ -91,7 +95,7 @@ var _ = Describe("L3 VNI configuration", func() {
 		params := L3VNIParams{
 			VNIParams: VNIParams{
 				VRF:       "testred",
-				TargetNS:  testNSName,
+				TargetNS:  testNSPath(),
 				VTEPIP:    "192.170.0.9/32",
 				VNI:       100,
 				VXLanPort: 4789,
@@ -122,7 +126,7 @@ var _ = Describe("L3 VNI configuration", func() {
 			{
 				VNIParams: VNIParams{
 					VRF:       "testred",
-					TargetNS:  testNSName,
+					TargetNS:  testNSPath(),
 					VTEPIP:    "192.170.0.9/32",
 					VNI:       100,
 					VXLanPort: 4789,
@@ -135,7 +139,7 @@ var _ = Describe("L3 VNI configuration", func() {
 			{
 				VNIParams: VNIParams{
 					VRF:       "testblue",
-					TargetNS:  testNSName,
+					TargetNS:  testNSPath(),
 					VTEPIP:    "192.170.0.10/32",
 					VNI:       101,
 					VXLanPort: 4789,
@@ -163,7 +167,7 @@ var _ = Describe("L3 VNI configuration", func() {
 		toDelete := params[1]
 
 		By("removing non configured L3VNIs")
-		err := RemoveNonConfiguredVNIs(testNSName, []VNIParams{remaining.VNIParams})
+		err := RemoveNonConfiguredVNIs(testNSPath(), []VNIParams{remaining.VNIParams})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("checking remaining L3VNIs")
@@ -190,7 +194,7 @@ var _ = Describe("L3 VNI configuration", func() {
 		params := L3VNIParams{
 			VNIParams: VNIParams{
 				VRF:       "testred",
-				TargetNS:  testNSName,
+				TargetNS:  testNSPath(),
 				VTEPIP:    "192.170.0.9/32",
 				VNI:       100,
 				VXLanPort: 4789,
@@ -222,7 +226,7 @@ var _ = Describe("L3 VNI configuration", func() {
 		params := L3VNIParams{
 			VNIParams: VNIParams{
 				VRF:       "testred",
-				TargetNS:  testNSName,
+				TargetNS:  testNSPath(),
 				VTEPIP:    "192.170.0.9/32",
 				VNI:       100,
 				VXLanPort: 4789,
@@ -265,7 +269,7 @@ var _ = Describe("L2 VNI configuration", func() {
 		params := L2VNIParams{
 			VNIParams: VNIParams{
 				VRF:       "testred",
-				TargetNS:  testNSName,
+				TargetNS:  testNSPath(),
 				VTEPIP:    "192.170.0.9/32",
 				VNI:       100,
 				VXLanPort: 4789,
@@ -289,7 +293,7 @@ var _ = Describe("L2 VNI configuration", func() {
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 
 		By("removing the VNI")
-		err = RemoveNonConfiguredVNIs(testNSName, []VNIParams{})
+		err = RemoveNonConfiguredVNIs(testNSPath(), []VNIParams{})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("checking the VNI is removed")
@@ -311,7 +315,7 @@ var _ = Describe("L2 VNI configuration", func() {
 			{
 				VNIParams: VNIParams{
 					VRF:       "testred",
-					TargetNS:  testNSName,
+					TargetNS:  testNSPath(),
 					VTEPIP:    "192.170.0.9/32",
 					VNI:       100,
 					VXLanPort: 4789,
@@ -324,7 +328,7 @@ var _ = Describe("L2 VNI configuration", func() {
 			{
 				VNIParams: VNIParams{
 					VRF:       "testblue",
-					TargetNS:  testNSName,
+					TargetNS:  testNSPath(),
 					VTEPIP:    "192.170.0.10/32",
 					VNI:       101,
 					VXLanPort: 4789,
@@ -352,7 +356,7 @@ var _ = Describe("L2 VNI configuration", func() {
 		toDelete := params[1]
 
 		By("removing non configured L2VNIs")
-		err := RemoveNonConfiguredVNIs(testNSName, []VNIParams{remaining.VNIParams})
+		err := RemoveNonConfiguredVNIs(testNSPath(), []VNIParams{remaining.VNIParams})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("checking remaining L2VNIs")
@@ -398,7 +402,7 @@ var _ = Describe("L2 VNI configuration", func() {
 		Entry("IPv4 single-stack", L2VNIParams{
 			VNIParams: VNIParams{
 				VRF:       "testred",
-				TargetNS:  testNSName,
+				TargetNS:  testNSPath(),
 				VTEPIP:    "192.170.0.9/32",
 				VNI:       100,
 				VXLanPort: 4789,
@@ -411,7 +415,7 @@ var _ = Describe("L2 VNI configuration", func() {
 		Entry("dual-stack (IPv4 and IPv6)", L2VNIParams{
 			VNIParams: VNIParams{
 				VRF:       "testgreen",
-				TargetNS:  testNSName,
+				TargetNS:  testNSPath(),
 				VTEPIP:    "192.170.0.11/32",
 				VNI:       300,
 				VXLanPort: 4789,
@@ -424,7 +428,7 @@ var _ = Describe("L2 VNI configuration", func() {
 		Entry("IPv6 single-stack", L2VNIParams{
 			VNIParams: VNIParams{
 				VRF:       "testblue",
-				TargetNS:  testNSName,
+				TargetNS:  testNSPath(),
 				VTEPIP:    "192.170.0.12/32",
 				VNI:       400,
 				VXLanPort: 4789,

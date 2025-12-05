@@ -1,0 +1,91 @@
+{{- if .Values.openperouter.hostmode }}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ template "openperouter.fullname" . }}-hostbridge
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    {{- include "openperouter.labels" . | nindent 4 }}
+    app.kubernetes.io/component: hostbridge
+    {{- range $key, $value := .Values.openperouter.labels }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "openperouter.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: hostbridge
+  template:
+    metadata:
+      labels:
+        {{- include "openperouter.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: hostbridge
+        app: hostbridge
+        {{- range $key, $value := .Values.openperouter.labels }}
+        {{ $key }}: {{ $value | quote }}
+        {{- end }}
+    spec:
+      {{- if .Values.openperouter.runtimeClassName }}
+      runtimeClassName: {{ .Values.openperouter.runtimeClassName }}
+      {{- end }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ template "openperouter.controller.serviceAccountName" . }}
+      containers:
+      - name: bridge
+        command:
+        - /hostbridge
+        args:
+        - "--output-path=/shared"
+        image: {{ .Values.openperouter.image.repository }}:{{ .Values.openperouter.image.tag | default .Chart.AppVersion }}
+        {{- if .Values.openperouter.image.pullPolicy }}
+        imagePullPolicy: {{ .Values.openperouter.image.pullPolicy }}
+        {{- end }}
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        securityContext:
+          privileged: true
+          runAsUser: 0
+        volumeMounts:
+        - name: shared-config
+          mountPath: /shared
+        - name: openperouter-config
+          mountPath: /etc/openperouter
+          readOnly: true
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+          limits:
+            cpu: 100m
+            memory: 64Mi
+      volumes:
+      - name: shared-config
+        hostPath:
+          path: /var/lib/hostbridge
+          type: DirectoryOrCreate
+      - name: openperouter-config
+        hostPath:
+          path: /var/lib/openperouter
+          type: DirectoryOrCreate
+      tolerations:
+      {{- if .Values.openperouter.runOnMaster }}
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/master
+        operator: Exists
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/control-plane
+        operator: Exists
+      {{- end }}
+      {{- with .Values.openperouter.tolerations }}
+        {{- toYaml . | nindent 6 }}
+      {{- end }}
+      {{- with .Values.openperouter.priorityClassName }}
+      priorityClassName: {{ . | quote }}
+      {{- end }}
+{{- end }}

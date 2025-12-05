@@ -14,7 +14,7 @@ import (
 // EnsureIPv6Forwarding checks if IPv6 forwarding is enabled in the target namespace
 // and enables it if not already set to 1.
 func EnsureIPv6Forwarding(namespace string) error {
-	ns, err := netns.GetFromName(namespace)
+	ns, err := netns.GetFromPath(namespace)
 	if err != nil {
 		return fmt.Errorf("failed to get network namespace %s: %w", namespace, err)
 	}

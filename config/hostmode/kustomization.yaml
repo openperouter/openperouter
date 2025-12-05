@@ -1,0 +1,13 @@
+namespace: openperouter-system
+
+resources:
+- ../crd
+- ../rbac
+- ../webhook
+- namespace.yaml
+- hostbridgepod.yaml
+- nodemarker.yaml
+images:
+- name: router
+  newName: quay.io/openperouter/router
+  newTag: main

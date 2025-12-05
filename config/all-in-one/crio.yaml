@@ -630,6 +630,7 @@ rules:
   verbs:
   - get
   - list
+  - patch
   - update
   - watch
 - apiGroups:
@@ -1013,6 +1014,8 @@ spec:
         - mountPath: /etc/frr/
           mountPropagation: HostToContainer
           name: frr-config
+        - mountPath: /var/run/frr
+          name: frr-sockets
       hostNetwork: true
       hostPID: true
       serviceAccountName: controller
@@ -1034,6 +1037,10 @@ spec:
           path: /etc/perouter/frr
           type: DirectoryOrCreate
         name: frr-config
+      - hostPath:
+          path: /var/run/openperouter/frr
+          type: DirectoryOrCreate
+        name: frr-sockets
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -1093,6 +1100,7 @@ spec:
       - args:
         - --frrconfig=/etc/perouter/frr.conf
         - --loglevel=debug
+        - --unixsocket=/etc/perouter/reload.sock
         command:
         - /etc/frr_reloader/reloader
         image: quay.io/frrouting/frr:10.2.1

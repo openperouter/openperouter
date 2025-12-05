@@ -31,6 +31,7 @@ spec:
         - "--loglevel=debug"
         - "--namespace=$(NAMESPACE)"
         - "--frrconfig=/etc/frr/frr.conf"
+        - "--reloader-socket=/etc/frr/reload.sock"
         image: router:latest
         imagePullPolicy: IfNotPresent
         name: controller
@@ -57,6 +58,8 @@ spec:
         - mountPath: /etc/frr/
           name: frr-config
           mountPropagation: HostToContainer
+        - mountPath: /var/run/frr
+          name: frr-sockets
         resources:
           limits:
             cpu: 500m
@@ -74,6 +77,10 @@ spec:
       - name: frr-config
         hostPath:
           path: /etc/perouter/frr
+          type: DirectoryOrCreate
+      - name: frr-sockets
+        hostPath:
+          path: /var/run/openperouter/frr
           type: DirectoryOrCreate
       tolerations:
       - effect: NoSchedule
