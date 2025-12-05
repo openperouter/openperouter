@@ -65,9 +65,23 @@ func ValidateL2VNIs(l2Vnis []v1alpha1.L2VNI) error {
 
 	// Perform L2-specific validation (HostMaster and L2GatewayIPs validation)
 	for _, vni := range l2Vnis {
-		if vni.Spec.HostMaster != nil && vni.Spec.HostMaster.Name != "" {
-			if err := isValidInterfaceName(vni.Spec.HostMaster.Name); err != nil {
-				return fmt.Errorf("invalid hostmaster name for vni %s: %s - %w", vni.Name, vni.Spec.HostMaster.Name, err)
+		if vni.Spec.HostMaster != nil {
+			var name string
+			switch vni.Spec.HostMaster.Type {
+			case "linux-bridge":
+				if vni.Spec.HostMaster.LinuxBridge != nil {
+					name = vni.Spec.HostMaster.LinuxBridge.Name
+				}
+			case "ovs-bridge":
+				if vni.Spec.HostMaster.OVSBridge != nil {
+					name = vni.Spec.HostMaster.OVSBridge.Name
+				}
+			}
+
+			if name != "" {
+				if err := isValidInterfaceName(name); err != nil {
+					return fmt.Errorf("invalid hostmaster name for vni %s: %s - %w", vni.Name, name, err)
+				}
 			}
 		}
 		if len(vni.Spec.L2GatewayIPs) > 0 {

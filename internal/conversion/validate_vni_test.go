@@ -238,7 +238,10 @@ func TestValidateL2VNIs(t *testing.T) {
 					Spec: v1alpha1.L2VNISpec{
 						VNI: 1001,
 						HostMaster: &v1alpha1.HostMaster{
-							Name: "invalid-hostmaster-name-with-dashes",
+							Type: "linux-bridge",
+							LinuxBridge: &v1alpha1.LinuxBridgeConfig{
+								Name: "invalid-hostmaster-name-with-dashes",
+							},
 						},
 					},
 					Status: v1alpha1.L2VNIStatus{},
@@ -254,7 +257,10 @@ func TestValidateL2VNIs(t *testing.T) {
 					Spec: v1alpha1.L2VNISpec{
 						VNI: 1001,
 						HostMaster: &v1alpha1.HostMaster{
-							Name: "validhostmaster",
+							Type: "linux-bridge",
+							LinuxBridge: &v1alpha1.LinuxBridgeConfig{
+								Name: "validhostmaster",
+							},
 						},
 					},
 					Status: v1alpha1.L2VNIStatus{},
@@ -270,7 +276,10 @@ func TestValidateL2VNIs(t *testing.T) {
 					Spec: v1alpha1.L2VNISpec{
 						VNI: 1001,
 						HostMaster: &v1alpha1.HostMaster{
-							AutoCreate: true,
+							Type: "linux-bridge",
+							LinuxBridge: &v1alpha1.LinuxBridgeConfig{
+								AutoCreate: true,
+							},
 						},
 					},
 					Status: v1alpha1.L2VNIStatus{},

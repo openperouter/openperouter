@@ -66,24 +66,53 @@ type L2VNISpec struct {
 	L2GatewayIPs []string `json:"l2gatewayips,omitempty"`
 }
 
-// +kubebuilder:validation:Required
-// +kubebuilder:validation:xvalidation:rule="(self.name != '' && self.autocreate == false) || (self.name == '' && self.autocreate == true)",message="either name must be set or autocreate must be true, but not both."
-
-type HostMaster struct {
-	// Name of the host interface. Must match VRF name validation if set.
+// LinuxBridgeConfig contains configuration for Linux bridge type.
+// +kubebuilder:validation:xvalidation:rule="(self.name != '' && self.autoCreate == false) || (self.name == '' && self.autoCreate == true)",message="either name must be set or autoCreate must be true, but not both."
+type LinuxBridgeConfig struct {
+	// Name of the Linux bridge interface.
 	// +kubebuilder:validation:Pattern=`^[a-zA-Z][a-zA-Z0-9_-]*$`
 	// +kubebuilder:validation:MaxLength=15
 	// +optional
 	Name string `json:"name,omitempty"`
 
-	// Type of the host interface. Supports linux bridge or OVS bridge.
-	// +kubebuilder:validation:Enum=linux-bridge;ovs-bridge
-	Type string `json:"type,omitempty"`
-
-	// If true, the interface will be created automatically if not present.
-	// The name of the bridge is of the form br-hs-<VNI>.
+	// AutoCreate determines if the bridge should be created automatically.
+	// When true, the bridge is created with name br-hs-<VNI>.
 	// +kubebuilder:default:=false
-	AutoCreate bool `json:"autocreate,omitempty"`
+	// +optional
+	AutoCreate bool `json:"autoCreate,omitempty"`
+}
+
+// OVSBridgeConfig contains configuration for OVS bridge type.
+// +kubebuilder:validation:xvalidation:rule="(self.name != '' && self.autoCreate == false) || (self.name == '' && self.autoCreate == true)",message="either name must be set or autoCreate must be true, but not both."
+type OVSBridgeConfig struct {
+	// Name of the OVS bridge interface.
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z][a-zA-Z0-9_-]*$`
+	// +kubebuilder:validation:MaxLength=15
+	// +optional
+	Name string `json:"name,omitempty"`
+
+	// AutoCreate determines if the OVS bridge should be created automatically.
+	// When true, the bridge is created with name br-hs-<VNI>.
+	// +kubebuilder:default:=false
+	// +optional
+	AutoCreate bool `json:"autoCreate,omitempty"`
+}
+
+// +kubebuilder:validation:Required
+// +kubebuilder:validation:XValidation:rule="(self.type == 'linux-bridge' && has(self.linuxBridge) && !has(self.ovsBridge)) || (self.type == 'ovs-bridge' && has(self.ovsBridge) && !has(self.linuxBridge))",message="type/config mismatch: 'linux-bridge' requires linuxBridge field, 'ovs-bridge' requires ovsBridge field"
+type HostMaster struct {
+	// Type of the host interface. Supported values: "linux-bridge", "ovs-bridge".
+	// +kubebuilder:validation:Enum=linux-bridge;ovs-bridge
+	// +kubebuilder:validation:Required
+	Type string `json:"type"`
+
+	// LinuxBridge configuration. Must be set when Type is "linux-bridge".
+	// +optional
+	LinuxBridge *LinuxBridgeConfig `json:"linuxBridge,omitempty"`
+
+	// OVSBridge configuration. Must be set when Type is "ovs-bridge".
+	// +optional
+	OVSBridge *OVSBridgeConfig `json:"ovsBridge,omitempty"`
 }
 
 // VNIStatus defines the observed state of VNI.
