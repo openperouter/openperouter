@@ -8,6 +8,7 @@ spec:
   vrf: red
   hostmaster:
     type: linux-bridge
-    autocreate: true
+    linuxBridge:
+      autoCreate: true
 
 

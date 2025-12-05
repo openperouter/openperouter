@@ -119,9 +119,26 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig ApiConfigData) (H
 			copy(vni.L2GatewayIPs, l2vni.Spec.L2GatewayIPs)
 		}
 		if l2vni.Spec.HostMaster != nil {
+			// Extract configuration based on bridge type
+			var name string
+			var autoCreate bool
+
+			switch l2vni.Spec.HostMaster.Type {
+			case "linux-bridge":
+				if l2vni.Spec.HostMaster.LinuxBridge != nil {
+					name = l2vni.Spec.HostMaster.LinuxBridge.Name
+					autoCreate = l2vni.Spec.HostMaster.LinuxBridge.AutoCreate
+				}
+			case "ovs-bridge":
+				if l2vni.Spec.HostMaster.OVSBridge != nil {
+					name = l2vni.Spec.HostMaster.OVSBridge.Name
+					autoCreate = l2vni.Spec.HostMaster.OVSBridge.AutoCreate
+				}
+			}
+
 			vni.HostMaster = &hostnetwork.HostMaster{
-				Name:       l2vni.Spec.HostMaster.Name,
-				AutoCreate: l2vni.Spec.HostMaster.AutoCreate,
+				Name:       name,
+				AutoCreate: autoCreate,
 			}
 		}
 

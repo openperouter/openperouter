@@ -50,8 +50,10 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			VRF: ptr.To("red"),
 			VNI: 110,
 			HostMaster: &v1alpha1.HostMaster{
-				AutoCreate: true,
-				Type:       "linux-bridge",
+				Type: "linux-bridge",
+				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
+					AutoCreate: true,
+				},
 			},
 		},
 	}
