@@ -85,6 +85,9 @@ test: fmt vet envtest ## Run tests.
 build: manifests generate fmt vet ## Build manager binary.
 	go build -o bin/reloader cmd/reloader/main.go
 	go build -o bin/controller cmd/hostcontroller/main.go
+	go build -o bin/hostbridge cmd/hostbridge/main.go
+	go build -o bin/nodemarker cmd/nodemarker/main.go
+	go build -o bin/cp-tool cmd/cp-tool/main.go
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
@@ -168,7 +171,7 @@ setup-hostmode: ## Setup node configuration for hostmode.
 	./systemdmode/setup_node_config.sh $(KIND_CLUSTER_NAME)
 
 .PHONY: deploy-hostmode
-deploy-hostmode: KUSTOMIZE_LAYER=hostmode
+deploy-hostmode: export KUSTOMIZE_LAYER=hostmode
 deploy-hostmode: kind deploy-cluster setup-hostmode deploy-controller ## Deploy cluster and controller in hostmode, then setup systemd services.
 	./systemdmode/deploy.sh $(KIND_CLUSTER_NAME)
 
