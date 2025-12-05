@@ -7,6 +7,8 @@ import (
 	"net"
 	"regexp"
 
+	corev1 "k8s.io/api/core/v1"
+
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/ipfamily"
 )
@@ -17,7 +19,20 @@ func init() {
 	interfaceNameRegexp = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9._-]*$`)
 }
 
-func ValidateL3VNIs(l3Vnis []v1alpha1.L3VNI) error {
+func ValidateL3VNIsForNodes(nodes []corev1.Node, underlays []v1alpha1.L3VNI) error {
+	for _, node := range nodes {
+		filteredL3VNIs, err := FilterL3VNIsForNode(&node, underlays)
+		if err != nil {
+			return fmt.Errorf("failed to filter underlays for node %q: %w", node.Name, err)
+		}
+		if err := ValidateNodeL3VNIs(filteredL3VNIs); err != nil {
+			return fmt.Errorf("failed to validate underlays for node %q: %w", node.Name, err)
+		}
+	}
+	return nil
+}
+
+func ValidateNodeL3VNIs(l3Vnis []v1alpha1.L3VNI) error {
 	vnis := vnisFromL3VNIs(l3Vnis)
 	if err := validateVNIs(vnis); err != nil {
 		return err
@@ -25,7 +40,20 @@ func ValidateL3VNIs(l3Vnis []v1alpha1.L3VNI) error {
 	return nil
 }
 
-func ValidateL2VNIs(l2Vnis []v1alpha1.L2VNI) error {
+func ValidateL2VNIsForNodes(nodes []corev1.Node, underlays []v1alpha1.L2VNI) error {
+	for _, node := range nodes {
+		filteredL2VNIs, err := FilterL2VNIsForNode(&node, underlays)
+		if err != nil {
+			return fmt.Errorf("failed to filter underlays for node %q: %w", node.Name, err)
+		}
+		if err := ValidateNodeL2VNIs(filteredL2VNIs); err != nil {
+			return fmt.Errorf("failed to validate underlays for node %q: %w", node.Name, err)
+		}
+	}
+	return nil
+}
+
+func ValidateNodeL2VNIs(l2Vnis []v1alpha1.L2VNI) error {
 	// Convert L2VNIs to vni structs
 	vnis := vnisFromL2VNIs(l2Vnis)
 

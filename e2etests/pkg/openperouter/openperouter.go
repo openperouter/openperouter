@@ -21,15 +21,32 @@ func RouterPods(cs clientset.Interface) ([]*corev1.Pod, error) {
 	return k8s.PodsForLabel(cs, Namespace, routerLabelSelector)
 }
 
+func RouterPodsForNodes(cs clientset.Interface, nodes map[string]bool) ([]*corev1.Pod, error) {
+	routerPods, err := k8s.PodsForLabel(cs, Namespace, routerLabelSelector)
+	if err != nil {
+		return nil, err
+	}
+	filteredRouterPods := []*corev1.Pod{}
+	for _, p := range routerPods {
+		if nodes[p.Spec.NodeName] {
+			filteredRouterPods = append(filteredRouterPods, p)
+		}
+	}
+	return filteredRouterPods, nil
+}
+
 func DaemonsetRolled(cs clientset.Interface, oldRouterPods []*corev1.Pod) error {
 	oldPodsNames := []string{}
+	nodes := map[string]bool{}
 	for _, p := range oldRouterPods {
+		nodes[p.Spec.NodeName] = true
 		oldPodsNames = append(oldPodsNames, p.Name)
 	}
-	routerPods, err := RouterPods(cs)
+	routerPods, err := RouterPodsForNodes(cs, nodes)
 	if err != nil {
 		return err
 	}
+
 	if len(routerPods) != len(oldPodsNames) {
 		return fmt.Errorf("new pods len %d different from old pods len: %d", len(routerPods), len(oldPodsNames))
 	}
