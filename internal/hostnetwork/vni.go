@@ -46,8 +46,7 @@ type L2VNIParams struct {
 
 type HostMaster struct {
 	Name       string `json:"name,omitempty"`
-	Type       string `json:"type,omitempty"`
-	AutoCreate bool   `json:"autocreate,omitempty"`
+	AutoCreate bool   `json:"autoCreate,omitempty"`
 }
 
 const (

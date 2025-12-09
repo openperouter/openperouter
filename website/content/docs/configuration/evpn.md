@@ -139,9 +139,11 @@ L2VNIs provide Layer 2 connectivity across nodes using EVPN tunnels. Unlike L3VN
 |-------|------|-------------|----------|
 | `vni` | integer | Virtual Network Identifier for the EVPN tunnel | Yes |
 | `vrf` | string | Name of the VRF to associate with this L2VNI | Yes |
-| `hostmaster.type` | string | Type of host interface management (`bridge` or `direct`) | Yes |
-| `hostmaster.autocreate` | boolean | Whether to automatically create a bridge if type is `bridge` | No |
-| `hostmaster.bridgeName` | string | Name of the bridge to attach to (if not auto-creating) | No |
+| `hostmaster.type` | string | Type of host interface management (`linux-bridge` or `ovs-bridge`) | Yes |
+| `hostmaster.linuxBridge.autoCreate` | boolean | Whether to automatically create a Linux bridge | No |
+| `hostmaster.linuxBridge.name` | string | Name of the Linux bridge to attach to (if not auto-creating) | No |
+| `hostmaster.ovsBridge.autoCreate` | boolean | Whether to automatically create an OVS bridge | No |
+| `hostmaster.ovsBridge.name` | string | Name of the OVS bridge to attach to (if not auto-creating) | No |
 
 ### L2VNI Example
 
@@ -155,8 +157,9 @@ spec:
   vni: 210
   vrf: red
   hostmaster:
-    type: bridge
-    autocreate: true
+    type: linux-bridge
+    linuxBridge:
+      autoCreate: true
 ```
 
 ## What Happens During Reconciliation

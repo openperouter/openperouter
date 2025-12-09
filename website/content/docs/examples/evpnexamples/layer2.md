@@ -64,8 +64,9 @@ spec:
   vni: 110
   vrf: red
   hostmaster:
-    type: bridge
-    autocreate: true
+    type: linux-bridge
+    linuxBridge:
+      autoCreate: true
   l2gatewayip: 192.170.1.1/24
 ```
 
