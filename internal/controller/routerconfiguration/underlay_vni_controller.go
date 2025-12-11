@@ -90,12 +90,6 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		slog.Error("failed to fetch router pod", "node", r.MyNode, "error", err)
 		return ctrl.Result{}, err
 	}
-	routerPodIsReady := PodIsReady(routerPod)
-
-	if !routerPodIsReady {
-		logger.Info("router pod", "Pod", routerPod.Name, "event", "is not ready, waiting for it to be ready before configuring")
-		return ctrl.Result{}, nil
-	}
 
 	var underlays v1alpha1.UnderlayList
 	if err := r.List(ctx, &underlays); err != nil {
@@ -183,16 +177,7 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		L3Passthrough:      filteredL3Passthrough,
 	}
 
-	if err := configureFRR(ctx, frrConfigData{
-		configFile:    r.FRRConfig,
-		address:       routerPod.Status.PodIP,
-		port:          r.ReloadPort,
-		ApiConfigData: apiConfig,
-	}); err != nil {
-		slog.Error("failed to reload frr config", "error", err)
-		return ctrl.Result{}, err
-	}
-
+	// Always check if pod needs deletion due to underlay removal, even if not ready
 	err = configureInterfaces(ctx, interfacesConfiguration{
 		RouterPodUUID: string(routerPod.UID),
 		PodRuntime:    *r.PodRuntime,
@@ -207,8 +192,26 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		}
 		return ctrl.Result{}, nil
 	}
+
+	// If pod is not ready and we're not deleting it, skip FRR configuration
+	routerPodIsReady := PodIsReady(routerPod)
+	if !routerPodIsReady {
+		logger.Info("router pod", "Pod", routerPod.Name, "event", "is not ready, waiting for it to be ready before configuring")
+		return ctrl.Result{}, nil
+	}
+
 	if err != nil {
 		slog.Error("failed to configure the host", "error", err)
+		return ctrl.Result{}, err
+	}
+
+	if err := configureFRR(ctx, frrConfigData{
+		configFile:    r.FRRConfig,
+		address:       routerPod.Status.PodIP,
+		port:          r.ReloadPort,
+		ApiConfigData: apiConfig,
+	}); err != nil {
+		slog.Error("failed to reload frr config", "error", err)
 		return ctrl.Result{}, err
 	}
 
