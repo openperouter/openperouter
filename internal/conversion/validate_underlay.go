@@ -7,37 +7,48 @@ import (
 	"net"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
+	"github.com/openperouter/openperouter/internal/status"
 )
 
-func ValidateUnderlays(underlays []v1alpha1.Underlay) error {
+func ValidateUnderlays(underlays []v1alpha1.Underlay, statusReporter status.StatusReporter) error {
 	if len(underlays) > 1 {
 		return fmt.Errorf("can't have more than one underlay")
 	}
 
 	for _, underlay := range underlays {
 		if underlay.Spec.ASN == 0 {
-			return fmt.Errorf("underlay %s must have a valid ASN", underlay.Name)
+			err := fmt.Errorf("underlay %s must have a valid ASN", underlay.Name)
+			statusReporter.ReportResourceFailure(status.UnderlayKind, underlay.Name, err)
+			return err
 		}
 
 		for _, neighbor := range underlay.Spec.Neighbors {
 			if underlay.Spec.ASN == neighbor.ASN {
-				return fmt.Errorf("underlay %s local ASN %d must be different from remote ASN %d", underlay.Name, underlay.Spec.ASN, neighbor.ASN)
+				err := fmt.Errorf("underlay %s local ASN %d must be different from remote ASN %d", underlay.Name, underlay.Spec.ASN, neighbor.ASN)
+				statusReporter.ReportResourceFailure(status.UnderlayKind, underlay.Name, err)
+				return err
 			}
 		}
 
 		if underlay.Spec.EVPN != nil {
 			if _, _, err := net.ParseCIDR(underlay.Spec.EVPN.VTEPCIDR); err != nil {
-				return fmt.Errorf("invalid vtep CIDR format for underlay %s: %s - %w", underlay.Name, underlay.Spec.EVPN.VTEPCIDR, err)
+				validationErr := fmt.Errorf("invalid vtep CIDR format for underlay %s: %s - %w", underlay.Name, underlay.Spec.EVPN.VTEPCIDR, err)
+				statusReporter.ReportResourceFailure(status.UnderlayKind, underlay.Name, validationErr)
+				return validationErr
 			}
 		}
 
 		if len(underlay.Spec.Nics) > 1 {
-			return fmt.Errorf("underlay %s can only have one nic, found %d", underlay.Name, len(underlay.Spec.Nics))
+			err := fmt.Errorf("underlay %s can only have one nic, found %d", underlay.Name, len(underlay.Spec.Nics))
+			statusReporter.ReportResourceFailure(status.UnderlayKind, underlay.Name, err)
+			return err
 		}
 
 		for _, n := range underlay.Spec.Nics {
 			if err := isValidInterfaceName(n); err != nil {
-				return fmt.Errorf("invalid nic name for underlay %s: %s - %w", underlay.Name, n, err)
+				validationErr := fmt.Errorf("invalid nic name for underlay %s: %s - %w", underlay.Name, n, err)
+				statusReporter.ReportResourceFailure(status.UnderlayKind, underlay.Name, validationErr)
+				return validationErr
 			}
 		}
 	}

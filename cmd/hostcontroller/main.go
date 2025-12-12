@@ -36,6 +36,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 
 	"github.com/go-logr/logr"
@@ -45,6 +46,7 @@ import (
 	"github.com/openperouter/openperouter/internal/logging"
 	"github.com/openperouter/openperouter/internal/pods"
 	"github.com/openperouter/openperouter/internal/staticconfiguration"
+	"github.com/openperouter/openperouter/internal/status"
 	"github.com/openperouter/openperouter/internal/systemdctl"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	// +kubebuilder:scaffold:imports
@@ -194,6 +196,15 @@ func main() {
 		}
 	}
 
+	// Setup status reporting infrastructure
+	statusUpdateTriggerChannel := make(chan event.GenericEvent, 100)
+	statusManager := status.NewStatusManager(
+		statusUpdateTriggerChannel,
+		k8sModeParams.nodeName,
+		k8sModeParams.namespace,
+		logger,
+	)
+
 	if err = (&routerconfiguration.PERouterReconciler{
 		Client:             mgr.GetClient(),
 		Scheme:             mgr.GetScheme(),
@@ -205,8 +216,21 @@ func main() {
 		FRRReloadSocket:    args.reloaderSocket,
 		RouterProvider:     routerProvider,
 		UnderlayFromMultus: args.underlayFromMultus,
+		StatusReporter:     statusManager,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Underlay")
+		os.Exit(1)
+	}
+
+	if err = (&routerconfiguration.RouterNodeConfigurationStatusReconciler{
+		Client:       mgr.GetClient(),
+		Scheme:       mgr.GetScheme(),
+		MyNode:       k8sModeParams.nodeName,
+		MyNamespace:  k8sModeParams.namespace,
+		Logger:       logger,
+		StatusReader: statusManager,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "RouterNodeConfigurationStatus")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
