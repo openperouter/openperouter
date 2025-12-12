@@ -224,3 +224,8 @@ jobs:
         uses: ./.github/workflows/composite/collectlogs
         with:
           artifact-name: kind-logs-${{ matrix.deployment }}
+
+      - name: Cleanup
+        if: always()
+        run: |
+          make clean
