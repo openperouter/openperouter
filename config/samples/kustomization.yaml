@@ -1,4 +1,5 @@
 resources:
 - underlay.yaml
 - vni.yaml
+- l2vni-ovs.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples
