@@ -160,6 +160,9 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		targetNamespace: targetNS,
 		ApiConfigData:   apiConfig,
 	})
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to configure interfaces: %w", err)
+	}
 
 	updater := frrconfig.UpdaterForSocket(r.FRRReloadSocket, r.FRRConfigPath)
 
