@@ -215,7 +215,6 @@ var _ = Describe("L3 VNI configuration", func() {
 				return nil
 			})
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
-
 	})
 
 	It("should configure VXLAN and VRF when HostVeth is nil", func() {
@@ -304,7 +303,6 @@ var _ = Describe("L2 VNI configuration", func() {
 				return nil
 			})
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
-
 	})
 
 	It("should work with multiple L2VNIs + cleanup", func() {
@@ -569,7 +567,7 @@ func validateVNI(g Gomega, params VNIParams) {
 	g.Expect(err).NotTo(HaveOccurred(), "loopback not found", UnderlayLoopback)
 
 	vxlanLink, err := netlink.LinkByName(vxLanNameFromVNI(params.VNI))
-	g.Expect(err).NotTo(HaveOccurred(), "vxlan link not found", vxLanNameFromVNI(params.VNI))
+	g.Expect(err).NotTo(HaveOccurred(), "vxlan link not found %q", vxLanNameFromVNI(params.VNI))
 
 	vxlan := vxlanLink.(*netlink.Vxlan)
 	g.Expect(vxlan.OperState).To(BeEquivalentTo(netlink.OperUnknown))
@@ -621,7 +619,7 @@ func checkLinkdeleted(g Gomega, name string) {
 
 func checkLinkExists(g Gomega, name string) {
 	_, err := netlink.LinkByName(name)
-	g.Expect(err).NotTo(HaveOccurred(), "link not found", name)
+	g.Expect(err).NotTo(HaveOccurred(), "link not found %q", name)
 }
 
 func validateVNIIsNotConfigured(g Gomega, params VNIParams) {
