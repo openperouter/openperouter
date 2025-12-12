@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	LinuxBridge = "bridge"
+	LinuxBridge = "linux-bridge"
 	OVSBridge   = "ovs-bridge"
 )
 
@@ -71,7 +71,7 @@ type HostMaster struct {
 	Name string `json:"name,omitempty"`
 
 	// Type of the host interface. Supports linux bridge or OVS bridge.
-	// +kubebuilder:validation:Enum=bridge;ovs-bridge
+	// +kubebuilder:validation:Enum=linux-bridge;ovs-bridge
 	Type string `json:"type,omitempty"`
 
 	// If true, the interface will be created automatically if not present.

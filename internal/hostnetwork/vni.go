@@ -55,7 +55,7 @@ type HostMaster struct {
 
 const (
 	VRFLinkType       = "vrf"
-	BridgeLinkType    = "bridge"
+	BridgeLinkType    = "linux-bridge"
 	VXLanLinkType     = "vxlan"
 	OVSBridgeLinkType = "ovs-bridge"
 )

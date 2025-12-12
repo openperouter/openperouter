@@ -64,7 +64,7 @@ spec:
                     description: Type of the host interface. Supports linux bridge
                       or OVS bridge.
                     enum:
-                    - bridge
+                    - linux-bridge
                     - ovs-bridge
                     type: string
                 type: object
