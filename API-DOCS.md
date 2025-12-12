@@ -68,7 +68,7 @@ _Appears in:_
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `name` _string_ | Name of the host interface. Must match VRF name validation if set. |  | MaxLength: 15 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9_-]*$` <br /> |
-| `type` _string_ | Type of the host interface. Currently only "bridge" is supported. |  | Enum: [bridge] <br /> |
+| `type` _string_ | Type of the host interface. Supports linux bridge or OVS bridge. |  | Enum: [bridge, ovs-bridge] <br /> |
 | `autocreate` _boolean_ | If true, the interface will be created automatically if not present.<br />The name of the bridge is of the form br-hs-<VNI>. | false |  |
 
 
