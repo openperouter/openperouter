@@ -18,9 +18,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var (
-	paramsFile string
-)
+var paramsFile string
 
 func init() {
 	flag.StringVar(&paramsFile, "paramsfile", "", "the json file containing the parameters to verify")
@@ -34,7 +32,6 @@ func TestHostNetwork(t *testing.T) {
 }
 
 var _ = Describe("EXTERNAL", func() {
-
 	Context("underlay", func() {
 		var params UnderlayParams
 
@@ -47,6 +44,11 @@ var _ = Describe("EXTERNAL", func() {
 		It("should be configured", func() {
 			Eventually(func(g Gomega) {
 				validateUnderlay(g, params)
+			}, 30*time.Second, 1*time.Second).Should(Succeed())
+		})
+		It("should not be configured", func() {
+			Eventually(func(g Gomega) {
+				validateUnderlayIsNotConfigured(g, params)
 			}, 30*time.Second, 1*time.Second).Should(Succeed())
 		})
 	})
@@ -91,6 +93,25 @@ var _ = Describe("EXTERNAL", func() {
 		})
 	})
 
+	Context("l3 passthrough", func() {
+		var params PassthroughParams
+		BeforeEach(func() {
+			var err error
+			params, err = readParamsFromFile[PassthroughParams](paramsFile)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("should be configured", func() {
+			Eventually(func(g Gomega) {
+				validatePassthroughInNamespace(g, params)
+			}, 30*time.Second, 1*time.Second).Should(Succeed())
+		})
+		It("should be deleted", func() {
+			Eventually(func(g Gomega) {
+				validatePassthroughRemovedInNamespace(g)
+			}, 30*time.Second, 1*time.Second).Should(Succeed())
+		})
+	})
 })
 
 func readParamsFromFile[T any](filePath string) (T, error) {
@@ -113,4 +134,9 @@ func readParamsFromFile[T any](filePath string) (T, error) {
 	}
 
 	return params, nil
+}
+
+func validateUnderlayIsNotConfigured(g Gomega, params UnderlayParams) {
+	checkLinkdeleted(g, UnderlayLoopback)
+	checkLinkdeleted(g, params.UnderlayInterface)
 }
