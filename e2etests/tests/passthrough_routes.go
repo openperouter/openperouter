@@ -168,6 +168,16 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			podNode, err = cs.CoreV1().Nodes().Get(context.Background(), testPod.Spec.NodeName, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
 
+			frrk8sPods, err := frrk8s.Pods(cs)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Create FRRConfigurations for ALL nodes
+			// Container mode: configs without nodeSelector (apply to all pods)
+			// Systemd mode: per-node configs with nodeSelector (each pod connects to local router)
+			frrK8sConfigPassthrough, err := frrk8s.ConfigFromHostSessionForAllNodes(cs, passthrough.Spec.HostSession, passthrough.Name, HostMode)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Create ADDITIONAL configs for pod's node that advertise pod IPs
 			nodeSelector := k8s.NodeSelectorForPod(testPod)
 
 			advertisePodToPassthrough := func(pod *corev1.Pod, passthrough v1alpha1.L3Passthrough) []frrk8sapi.FRRConfiguration {
@@ -180,28 +190,37 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 						cidrSuffix = "/128"
 					}
 
-					config, err := frrk8s.ConfigFromHostSessionForIPFamily(passthrough.Spec.HostSession, passthrough.Name, ipFamily, frrk8s.WithNodeSelector(nodeSelector), frrk8s.AdvertisePrefixes(podIP.IP+cidrSuffix))
+					// Use different name to avoid conflict with base config
+					config, err := frrk8s.ConfigFromHostSessionForIPFamily(
+						passthrough.Spec.HostSession,
+						passthrough.Name+"-pod",
+						ipFamily,
+						frrk8s.WithNodeSelector(nodeSelector),
+						frrk8s.AdvertisePrefixes(podIP.IP+cidrSuffix),
+					)
 					Expect(err).NotTo(HaveOccurred())
 					res = append(res, *config)
 				}
 				return res
 			}
 
-			By("Creating the frr-k8s configuration for the node where the test pod runs and advertising all pod ips")
+			By("Creating frr-k8s configuration for all nodes and advertising pod ips from pod's node")
 
 			frrk8sForPassthrough := advertisePodToPassthrough(testPod, passthrough)
+
+			// Combine all configs: base configs for all nodes + pod-specific configs
+			allFRRConfigs := append(frrK8sConfigPassthrough, frrk8sForPassthrough...)
 
 			err = Updater.Update(config.Resources{
 				L3Passthrough: []v1alpha1.L3Passthrough{
 					passthrough,
 				},
-				FRRConfigurations: frrk8sForPassthrough,
+				FRRConfigurations: allFRRConfigs,
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			frrK8sPodOnNode, err := frrk8s.PodForNode(cs, testPod.Spec.NodeName)
-			Expect(err).NotTo(HaveOccurred())
-			validateFRRK8sSessionForHostSession(passthrough.Name, passthrough.Spec.HostSession, Established, frrK8sPodOnNode)
+			// Validate sessions on ALL frr-k8s pods
+			validateFRRK8sSessionForHostSession(passthrough.Name, passthrough.Spec.HostSession, Established, frrk8sPods...)
 		})
 
 		AfterAll(func() {
