@@ -10,7 +10,6 @@ import (
 	"time"
 
 	nad "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
-	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/openperouter/openperouter/api/v1alpha1"
@@ -19,57 +18,23 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/infra"
 	"github.com/openperouter/openperouter/e2etests/pkg/ipfamily"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
-	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 	"github.com/openperouter/openperouter/e2etests/pkg/url"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
-	"k8s.io/utils/ptr"
 )
 
 var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 	var cs clientset.Interface
 	var routers openperouter.Routers
 
-	vniRed := v1alpha1.L3VNI{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "red",
-			Namespace: openperouter.Namespace,
-		},
-		Spec: v1alpha1.L3VNISpec{
-			VRF: "red",
-			VNI: 100,
-		},
-	}
-
-	l2VniRed := v1alpha1.L2VNI{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "red110",
-			Namespace: openperouter.Namespace,
-		},
-		Spec: v1alpha1.L2VNISpec{
-			VRF: ptr.To("red"),
-			VNI: 110,
-		},
-	}
+	vniRed := NewL3VNIRedSimple()
+	l2VniRed := NewL2VNIRed()
 
 	const preExistingOVSBridge = "br-ovs-test"
 	BeforeAll(func() {
-		err := Updater.CleanAll()
-		Expect(err).NotTo(HaveOccurred())
-
-		cs = k8sclient.New()
-		routers, err = openperouter.Get(cs, HostMode)
-		Expect(err).NotTo(HaveOccurred())
-
-		routers.Dump(ginkgo.GinkgoWriter)
-
-		err = Updater.Update(config.Resources{
-			Underlays: []v1alpha1.Underlay{
-				infra.Underlay,
-			},
-		})
+		var err error
+		cs, routers, err = SetupTestWithUnderlay()
 		Expect(err).NotTo(HaveOccurred())
 
 		// Create pre-existing OVS bridges on Kind nodes for testing
@@ -83,16 +48,8 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 	})
 
 	AfterAll(func() {
-		err := Updater.CleanAll()
+		err := CleanupTestWithRolloutWait(cs, routers)
 		Expect(err).NotTo(HaveOccurred())
-		By("waiting for the router pod to rollout after removing the underlay")
-		Eventually(func() error {
-			newRouters, err := openperouter.Get(cs, HostMode)
-			if err != nil {
-				return err
-			}
-			return openperouter.DaemonsetRolled(routers, newRouters)
-		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 
 		// Clean up pre-existing OVS bridges
 		nodes := []string{infra.KindControlPlane, infra.KindWorker}
@@ -116,10 +73,10 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 	}
 	DescribeTable("should create two pods connected to the l2 overlay", func(tc testCase) {
 		By("setting redistribute connected on leaves")
-		redistributeConnectedForLeaf(infra.LeafAConfig)
-		redistributeConnectedForLeaf(infra.LeafBConfig)
+		err := SetupLeafRedistributeConnected(infra.LeafAConfig, infra.LeafBConfig)
+		Expect(err).NotTo(HaveOccurred())
 
-		err := Updater.CleanButUnderlay()
+		err = Updater.CleanButUnderlay()
 		Expect(err).NotTo(HaveOccurred())
 		l2VniRedWithGateway := l2VniRed.DeepCopy()
 		l2VniRedWithGateway.Spec.L2GatewayIPs = tc.l2GatewayIPs
@@ -142,10 +99,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		DeferCleanup(func() {
-			removeLeafPrefixes(infra.LeafAConfig)
-			removeLeafPrefixes(infra.LeafBConfig)
-			dumpIfFails(cs)
-			err := Updater.CleanButUnderlay()
+			err := CleanupTestAfterEach(cs, infra.LeafAConfig, infra.LeafBConfig)
 			Expect(err).NotTo(HaveOccurred())
 			err = k8s.DeleteNamespace(cs, testNamespace)
 			Expect(err).NotTo(HaveOccurred())
