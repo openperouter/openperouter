@@ -128,7 +128,7 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 
 			validateFRRK8sSessionForHostSession(vni.Name, *vni.Spec.HostSession, Established, frrk8sPods...)
 
-			status.ExpectSuccessfulStatus(Updater.Client())
+			status.ExpectSuccessfulStatus(Updater.Client(), HostMode)
 
 			By("deleting the vni removes the session with the host")
 			err = Updater.Client().Delete(context.Background(), &vni)
@@ -136,7 +136,7 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 
 			validateFRRK8sSessionForHostSession(vni.Name, *vni.Spec.HostSession, !Established, frrk8sPods...)
 
-			status.ExpectSuccessfulStatus(Updater.Client())
+			status.ExpectSuccessfulStatus(Updater.Client(), HostMode)
 		})
 	})
 
@@ -175,7 +175,7 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 
 			validateFRRK8sSessionForHostSession(l3Passthrough.Name, l3Passthrough.Spec.HostSession, Established, frrk8sPods...)
 
-			status.ExpectSuccessfulStatus(Updater.Client())
+			status.ExpectSuccessfulStatus(Updater.Client(), HostMode)
 
 			By("deleting the vni removes the session with the host")
 			err = Updater.Client().Delete(context.Background(), &l3Passthrough)

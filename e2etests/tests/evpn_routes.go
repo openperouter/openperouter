@@ -132,7 +132,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("confirming L3VNI configurations are successful")
-			status.ExpectSuccessfulStatus(Updater.Client())
+			status.ExpectSuccessfulStatus(Updater.Client(), HostMode)
 		})
 
 		It("receives type 5 routes from the fabric", func() {
@@ -224,7 +224,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("confirming L3VNI and FRR configurations are successful")
-			status.ExpectSuccessfulStatus(Updater.Client())
+			status.ExpectSuccessfulStatus(Updater.Client(), HostMode)
 
 			validateFRRK8sSessionForHostSession(vniRed.Name, *vniRed.Spec.HostSession, Established, frrk8sPods...)
 			validateFRRK8sSessionForHostSession(vniBlue.Name, *vniBlue.Spec.HostSession, Established, frrk8sPods...)

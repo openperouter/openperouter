@@ -147,7 +147,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		By("confirming L2VNI and L3VNI configurations are successful")
-		status.ExpectSuccessfulStatus(Updater.Client())
+		status.ExpectSuccessfulStatus(Updater.Client(), HostMode)
 
 		_, err = k8s.CreateNamespace(cs, testNamespace)
 		Expect(err).NotTo(HaveOccurred())

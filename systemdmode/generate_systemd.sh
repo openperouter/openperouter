@@ -94,7 +94,9 @@ podman create --pod=controllerpod --name=controller \
 	--pid=host \
 	-t "$ROUTER_IMAGE" \
 	--loglevel debug --frrconfig /etc/perouter/frr/frr.conf --pid-path /etc/perouter/frr/frr.pid --reloader-socket /etc/perouter/frr/frr.socket \
-	--mode host --nodename "NODENAME"
+	--mode host \
+	--nodename "NODENAME" \
+	--namespace openperouter-system
 
 # Generate systemd unit files for both pods
 podman generate systemd --new --files --name routerpod
@@ -106,8 +108,8 @@ podman generate systemd --new --files --name controllerpod
 echo "Replacing temporary paths with actual host paths..."
 sed -i "s|${TEMP_BASE}||g" container-controller.service container-reloader.service
 
-# Use the hostname systemd expansion %H inside the unit to configure the 
-# nodename, we may need to improve this mechanism for scenarios where ndename 
+# Use the hostname systemd expansion %H inside the unit to configure the
+# nodename, we may need to improve this mechanism for scenarios where ndename
 # is not the hostname
 sed -i 's|NODENAME|%H|g' container-controller.service container-reloader.service
 

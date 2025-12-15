@@ -411,7 +411,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			ginkgo.By("confirming underlay status is failed due to non-existent NIC")
-			status.ExpectResourceFailure(Updater.Client(), "Underlay", resources.Underlays[0].Name)
+			status.ExpectResourceFailure(Updater.Client(), "Underlay", resources.Underlays[0].Name, HostMode)
 
 			ginkgo.By("waiting for the routers to be rolled out again")
 			Eventually(func() error {
@@ -435,7 +435,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			ginkgo.By("confirming IPv6-only L3VNI configuration is successful")
-			status.ExpectSuccessfulStatus(Updater.Client())
+			status.ExpectSuccessfulStatus(Updater.Client(), HostMode)
 
 			for _, p := range routerPods {
 				ginkgo.By(fmt.Sprintf("validating IPv6-only VNI for pod %s", p.Name))
@@ -475,7 +475,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			ginkgo.By("confirming dual-stack L3VNI configuration is successful")
-			status.ExpectSuccessfulStatus(Updater.Client())
+			status.ExpectSuccessfulStatus(Updater.Client(), HostMode)
 
 			for _, p := range routerPods {
 				ginkgo.By(fmt.Sprintf("validating dual-stack VNI for pod %s", p.Name))
@@ -753,7 +753,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			ginkgo.By("confirming L2VNI configuration is successful")
-			status.ExpectSuccessfulStatus(Updater.Client())
+			status.ExpectSuccessfulStatus(Updater.Client(), HostMode)
 
 			for _, p := range routerPods {
 				ginkgo.By(fmt.Sprintf("validating VNI for pod %s", p.Name))

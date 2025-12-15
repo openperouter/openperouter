@@ -12,8 +12,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// getControllerNodes returns nodes that have running controller pods
-func getControllerNodes(k8sClient client.Client) []corev1.Node {
+// getControllerNodes returns nodes that should have running controllers
+// In pod mode: finds nodes with running controller pods
+// In systemd mode: returns all nodes (controllers are expected on all nodes)
+func getControllerNodes(k8sClient client.Client, hostMode bool) []corev1.Node {
 	// Get all nodes
 	nodeList := &corev1.NodeList{}
 	err := k8sClient.List(context.Background(), nodeList)
@@ -21,7 +23,12 @@ func getControllerNodes(k8sClient client.Client) []corev1.Node {
 		return []corev1.Node{}
 	}
 
-	// Get controller pods to find which nodes have controllers
+	if hostMode {
+		// In systemd mode, expect controllers on all nodes
+		return nodeList.Items
+	}
+
+	// Pod mode: Get controller pods to find which nodes have controllers
 	podList := &corev1.PodList{}
 	err = k8sClient.List(context.Background(), podList, client.InNamespace("openperouter-system"),
 		client.MatchingLabels{"app": "controller"})
@@ -58,12 +65,12 @@ func getStatusList(k8sClient client.Client) *v1alpha1.RouterNodeConfigurationSta
 
 // getStableStatusList returns RouterNodeConfigurationStatus list with validation
 // Returns the status list only when controller nodes and statuses are properly matched
-func getStableStatusList(k8sClient client.Client) (*v1alpha1.RouterNodeConfigurationStatusList, error) {
-	controllerNodes := getControllerNodes(k8sClient)
+func getStableStatusList(k8sClient client.Client, hostMode bool) (*v1alpha1.RouterNodeConfigurationStatusList, error) {
+	controllerNodes := getControllerNodes(k8sClient, hostMode)
 	statusList := getStatusList(k8sClient)
 
 	if len(controllerNodes) == 0 {
-		return nil, fmt.Errorf("expected at least one controller pod to be running")
+		return nil, fmt.Errorf("expected at least one controller to be running")
 	}
 
 	if len(statusList.Items) != len(controllerNodes) {
@@ -75,9 +82,9 @@ func getStableStatusList(k8sClient client.Client) (*v1alpha1.RouterNodeConfigura
 }
 
 // ExpectSuccessfulStatus verifies that all nodes have successful status (no failed resources)
-func ExpectSuccessfulStatus(k8sClient client.Client) {
+func ExpectSuccessfulStatus(k8sClient client.Client, hostMode bool) {
 	Eventually(func() error {
-		statusList, err := getStableStatusList(k8sClient)
+		statusList, err := getStableStatusList(k8sClient, hostMode)
 		if err != nil {
 			return err
 		}
@@ -91,9 +98,9 @@ func ExpectSuccessfulStatus(k8sClient client.Client) {
 }
 
 // ExpectResourceFailure verifies that a specific resource failure is reported in status
-func ExpectResourceFailure(k8sClient client.Client, resourceKind, resourceName string) {
+func ExpectResourceFailure(k8sClient client.Client, resourceKind, resourceName string, hostMode bool) {
 	Eventually(func() error {
-		statusList, err := getStableStatusList(k8sClient)
+		statusList, err := getStableStatusList(k8sClient, hostMode)
 		if err != nil {
 			return err
 		}

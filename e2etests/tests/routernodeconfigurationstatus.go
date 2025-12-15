@@ -30,17 +30,35 @@ func getStatusList(k8sClient client.Client) *v1alpha1.RouterNodeConfigurationSta
 	return statusList
 }
 
-// Helper function to get nodes where the router controller daemonset is running
-func getControllerNodes(k8sClient client.Client) []string {
+// Helper function to get nodes where controllers should be running
+// In pod mode: finds nodes with running controller pods
+// In systemd mode: returns all nodes (controllers are expected on all nodes)
+func getControllerNodes(k8sClient client.Client, hostMode bool) []string {
+	if hostMode {
+		// In systemd mode, expect controllers on all nodes
+		nodeList := &corev1.NodeList{}
+		err := k8sClient.List(context.Background(), nodeList)
+		Expect(err).NotTo(HaveOccurred())
+
+		var nodeNames []string
+		for _, node := range nodeList.Items {
+			nodeNames = append(nodeNames, node.Name)
+		}
+		return nodeNames
+	}
+
+	// Pod mode: Get controller pods to find which nodes have controllers
 	podList := &corev1.PodList{}
 	err := k8sClient.List(context.Background(), podList,
 		client.InNamespace(openperouter.Namespace),
-		client.MatchingLabels{"app": "router"})
+		client.MatchingLabels{"app": "controller"})
 	Expect(err).NotTo(HaveOccurred())
 
 	controllerNodes := make(map[string]bool)
 	for _, pod := range podList.Items {
-		controllerNodes[pod.Spec.NodeName] = true
+		if pod.Status.Phase == corev1.PodRunning {
+			controllerNodes[pod.Spec.NodeName] = true
+		}
 	}
 
 	var nodeNames []string
@@ -81,12 +99,12 @@ func setToSlice(set map[string]bool) []string {
 }
 
 // Helper function to get stabilized RouterNodeConfigurationStatus
-func getStabilizedStatusList(k8sClient client.Client) (*v1alpha1.RouterNodeConfigurationStatusList, error) {
-	controllerNodes := getControllerNodes(k8sClient)
+func getStabilizedStatusList(k8sClient client.Client, hostMode bool) (*v1alpha1.RouterNodeConfigurationStatusList, error) {
+	controllerNodes := getControllerNodes(k8sClient, hostMode)
 	statusList := getStatusList(k8sClient)
 
 	if len(controllerNodes) == 0 {
-		return nil, fmt.Errorf("expected at least one controller pod to be running")
+		return nil, fmt.Errorf("expected at least one controller to be running")
 	}
 
 	if len(statusList.Items) != len(controllerNodes) {
@@ -123,11 +141,11 @@ var _ = Describe("RouterNodeConfigurationStatus CRD", func() {
 			// Wait for RouterNodeConfigurationStatus resources to be created automatically
 			// by the controller for nodes where the controller daemonset is scheduled
 			Eventually(func() error {
-				controllerNodes := getControllerNodes(k8sClient)
+				controllerNodes := getControllerNodes(k8sClient, HostMode)
 				statusList := getStatusList(k8sClient)
 
 				if len(controllerNodes) == 0 {
-					return fmt.Errorf("expected at least one controller pod to be running")
+					return fmt.Errorf("expected at least one controller to be running")
 				}
 
 				// Convert to sets
@@ -170,7 +188,7 @@ var _ = Describe("RouterNodeConfigurationStatus CRD", func() {
 
 			Eventually(func() error {
 				// Get stable status list with validation
-				statusList, err := getStabilizedStatusList(k8sClient)
+				statusList, err := getStabilizedStatusList(k8sClient, HostMode)
 				if err != nil {
 					return err
 				}
@@ -218,7 +236,7 @@ var _ = Describe("RouterNodeConfigurationStatus CRD", func() {
 			// Validate RouterNodeConfigurationStatus resources have proper owner references to Node resources
 			Eventually(func() error {
 				// Get stable status list with validation
-				statusList, err := getStabilizedStatusList(k8sClient)
+				statusList, err := getStabilizedStatusList(k8sClient, HostMode)
 				if err != nil {
 					return err
 				}
@@ -283,7 +301,7 @@ var _ = Describe("RouterNodeConfigurationStatus CRD", func() {
 
 			// Step 2: Status failed
 			By("confirming underlay status is failed")
-			status.ExpectResourceFailure(k8sClient, "Underlay", invalidUnderlay.Name)
+			status.ExpectResourceFailure(k8sClient, "Underlay", invalidUnderlay.Name, HostMode)
 
 			// Step 3: Fix it
 			fixedUnderlay := invalidUnderlay.DeepCopy()
@@ -299,7 +317,7 @@ var _ = Describe("RouterNodeConfigurationStatus CRD", func() {
 
 			// Step 4: Status OK
 			By("confirming underlay status is now OK")
-			status.ExpectSuccessfulStatus(k8sClient)
+			status.ExpectSuccessfulStatus(k8sClient, HostMode)
 
 			// Step 5: Create an invalid L2VNI (nonexistent bridge)
 			invalidL2VNI := v1alpha1.L2VNI{
@@ -330,7 +348,7 @@ var _ = Describe("RouterNodeConfigurationStatus CRD", func() {
 
 			// Step 6: Status failed
 			By("confirming L2VNI status is failed")
-			status.ExpectResourceFailure(k8sClient, "L2VNI", invalidL2VNI.Name)
+			status.ExpectResourceFailure(k8sClient, "L2VNI", invalidL2VNI.Name, HostMode)
 
 			// Step 7: Remove it
 			By("removing the failing L2VNI")
@@ -339,7 +357,7 @@ var _ = Describe("RouterNodeConfigurationStatus CRD", func() {
 
 			// Step 8: Status OK
 			By("confirming status is OK after removing L2VNI")
-			status.ExpectSuccessfulStatus(k8sClient)
+			status.ExpectSuccessfulStatus(k8sClient, HostMode)
 		})
 	})
 })

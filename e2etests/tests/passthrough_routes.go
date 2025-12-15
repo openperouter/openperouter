@@ -112,7 +112,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("confirming L3Passthrough and FRR configurations are successful")
-			status.ExpectSuccessfulStatus(Updater.Client())
+			status.ExpectSuccessfulStatus(Updater.Client(), HostMode)
 
 			validateFRRK8sSessionForHostSession(passthrough.Name, passthrough.Spec.HostSession, Established, frrk8sPods...)
 		})

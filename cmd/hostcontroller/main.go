@@ -132,8 +132,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	flag.Parse()
-
 	// Initialize OVS socket path for the hostnetwork package
 	hostnetwork.OVSSocketPath = args.ovsSocketPath
 
@@ -308,25 +306,20 @@ func validateParameters(mode string, hostModeParams hostModeParameters, k8sModeP
 		return fmt.Errorf("invalid mode %q, must be '%s' or '%s'", mode, modeK8s, modeHost)
 	}
 
+	if k8sModeParams.nodeName == "" {
+		return fmt.Errorf("nodename is required")
+	}
+	if k8sModeParams.namespace == "" {
+		return fmt.Errorf("namespace is required")
+	}
+
 	if mode == modeK8s {
 		if hostModeParams.hostContainerPidPath != "" {
 			return fmt.Errorf("pid-path should not be set in %s mode", modeK8s)
 		}
-		if k8sModeParams.nodeName == "" {
-			return fmt.Errorf("nodename is required in %s mode", modeK8s)
-		}
-		if k8sModeParams.namespace == "" {
-			return fmt.Errorf("namespace is required in %s mode", modeK8s)
-		}
 	}
 
 	if mode == modeHost {
-		if k8sModeParams.nodeName == "" {
-			return fmt.Errorf("nodename is required in %s mode", modeHost)
-		}
-		if k8sModeParams.namespace != "" {
-			return fmt.Errorf("namespace should not be set in %s mode", modeHost)
-		}
 		if hostModeParams.hostContainerPidPath == "" {
 			return fmt.Errorf("pid-path is required in %s mode", modeHost)
 		}
