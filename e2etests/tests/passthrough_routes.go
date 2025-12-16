@@ -19,6 +19,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
+	"github.com/openperouter/openperouter/e2etests/pkg/status"
 	"github.com/openperouter/openperouter/e2etests/pkg/url"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -109,6 +110,9 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 				FRRConfigurations: append(frrK8sConfigRed, frrK8sConfigBlue...),
 			})
 			Expect(err).NotTo(HaveOccurred())
+
+			By("confirming L3Passthrough and FRR configurations are successful")
+			status.ExpectSuccessfulStatus(Updater.Client(), HostMode)
 
 			validateFRRK8sSessionForHostSession(passthrough.Name, passthrough.Spec.HostSession, Established, frrk8sPods...)
 		})

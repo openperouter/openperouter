@@ -243,9 +243,15 @@ func setupWebhook(mgr manager.Manager, logger *slog.Logger) error {
 
 	webhooks.Logger = logger
 	webhooks.WebhookClient = mgr.GetAPIReader()
-	webhooks.ValidateL3VNIs = conversion.ValidateL3VNIs
-	webhooks.ValidateL2VNIs = conversion.ValidateL2VNIs
-	webhooks.ValidateUnderlays = conversion.ValidateUnderlays
+	webhooks.ValidateL3VNIs = func(l3vnis []v1alpha1.L3VNI) error {
+		return conversion.ValidateL3VNIs(l3vnis, &conversion.NoOpStatusReporter{})
+	}
+	webhooks.ValidateL2VNIs = func(l2vnis []v1alpha1.L2VNI) error {
+		return conversion.ValidateL2VNIs(l2vnis, &conversion.NoOpStatusReporter{})
+	}
+	webhooks.ValidateUnderlays = func(underlays []v1alpha1.Underlay) error {
+		return conversion.ValidateUnderlays(underlays, &conversion.NoOpStatusReporter{})
+	}
 	webhooks.ValidateL3Passthroughs = conversion.ValidatePassthrough
 
 	if err := webhooks.SetupL3VNI(mgr); err != nil {

@@ -242,7 +242,7 @@ func TestValidateHostSessions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateHostSessions(tt.l3VNIs, tt.l3Passthrough)
+			err := ValidateHostSessions(tt.l3VNIs, tt.l3Passthrough, &NoOpStatusReporter{})
 			if tt.wantErr && err == nil {
 				t.Errorf("ValidateHostSessions() expected error but got none")
 			}
