@@ -84,22 +84,20 @@ func serveReload(args Args) error {
 		return fmt.Errorf("failed to listen on unix socket %s: %w", args.unixSocket, err)
 	}
 
-	unixMux := http.NewServeMux()
-	unixMux.HandleFunc("/", reloadHandler(args.frrConfigPath))
-	unixServer := &http.Server{
-		Handler:           unixMux,
-		ReadHeaderTimeout: 3 * time.Second,
-	}
+	const unixSocket = ""
+	const defaultTimeout = 1 * time.Second
+	unixServer := newServer(
+		unixSocket,
+		defaultTimeout,
+		handlerConfig{pattern: "/", handler: reloadHandler(args.frrConfigPath)},
+	)
 
-	// Mux for the TCP health server (health probes only)
-	healthMux := http.NewServeMux()
-	healthMux.HandleFunc("/healthz", health())
-	healthMux.HandleFunc("/readyz", health())
-	healthServer := &http.Server{
-		Addr:              args.bindAddress,
-		Handler:           healthMux,
-		ReadHeaderTimeout: 3 * time.Second,
-	}
+	healthServer := newServer(
+		args.bindAddress,
+		defaultTimeout,
+		handlerConfig{pattern: "/healthz", handler: health()},
+		handlerConfig{pattern: "/readyz", handler: health()},
+	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -180,5 +178,22 @@ func health() func(w http.ResponseWriter, req *http.Request) {
 		if err != nil {
 			slog.Info("health check write failed", "error", err)
 		}
+	}
+}
+
+type handlerConfig struct {
+	pattern string
+	handler func(http.ResponseWriter, *http.Request)
+}
+
+func newServer(addr string, timeout time.Duration, handlers ...handlerConfig) *http.Server {
+	mux := http.NewServeMux()
+	for _, h := range handlers {
+		mux.HandleFunc(h.pattern, h.handler)
+	}
+	return &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: timeout,
 	}
 }
