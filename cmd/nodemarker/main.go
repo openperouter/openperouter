@@ -32,6 +32,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -72,6 +73,7 @@ func main() {
 		secureMetrics                 bool
 		enableHTTP2                   bool
 		tlsOpts                       []func(*tls.Config)
+		probeAddr                     string
 		namespace                     string
 		logLevel                      string
 		webhookMode                   string
@@ -87,6 +89,7 @@ func main() {
 		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
 	flag.BoolVar(&args.enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	flag.StringVar(&args.probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.StringVar(&args.namespace, "namespace", "",
 		"The namespace to watch for resources. Leave empty for all namespaces.")
 	flag.StringVar(&args.logLevel, "loglevel", "info", "Set the logging level (debug, info, warn, error).")
@@ -133,9 +136,10 @@ func main() {
 	}
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:  scheme,
-		Cache:   cache.Options{},
-		Metrics: metricsServerOptions,
+		Scheme:                 scheme,
+		Cache:                  cache.Options{},
+		Metrics:                metricsServerOptions,
+		HealthProbeBindAddress: args.probeAddr,
 		WebhookServer: webhook.NewServer(
 			webhook.Options{
 				Port:    args.webhookPort,
@@ -188,6 +192,15 @@ func main() {
 			webhooks.SetupHealth(mgr)
 		}
 	}()
+
+	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
+		setupLog.Error(err, "unable to set up health check")
+		os.Exit(1)
+	}
+	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
+		setupLog.Error(err, "unable to set up ready check")
+		os.Exit(1)
+	}
 
 	setupLog.Info("starting manager")
 
