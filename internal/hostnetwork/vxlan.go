@@ -48,7 +48,6 @@ func checkVXLanConfigured(vxLan *netlink.Vxlan, bridgeIndex, loopbackIndex int, 
 	if vxLan.Port != params.VXLanPort {
 		return fmt.Errorf("port is not one coming from params: %d, %d", vxLan.Port, params.VXLanPort)
 	}
-
 	if vxLan.Learning {
 		return fmt.Errorf("learning is enabled")
 	}
@@ -68,27 +67,29 @@ func checkVXLanConfigured(vxLan *netlink.Vxlan, bridgeIndex, loopbackIndex int, 
 }
 
 func createVXLan(params VNIParams, bridge *netlink.Bridge) (*netlink.Vxlan, error) {
-	loopback, err := netlink.LinkByName(UnderlayLoopback)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get loopback by name: %w", err)
+	if params.VTEPInterface == "" {
+		params.VTEPInterface = UnderlayLoopback
 	}
-
-	vxlanName := vxLanNameFromVNI(params.VNI)
-
+	vtepInterface, err := net.InterfaceByName(params.VTEPInterface)
+	if err != nil {
+		return nil, fmt.Errorf("failed looking for vtep interface %s: %w", params.VTEPInterface, err)
+	}
 	vtepIP, _, err := net.ParseCIDR(params.VTEPIP)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse vtep ip %v: %w", params.VTEPIP, err)
 	}
+	vxlanName := vxLanNameFromVNI(params.VNI)
 
-	toCreate := &netlink.Vxlan{LinkAttrs: netlink.LinkAttrs{
-		Name:        vxlanName,
-		MasterIndex: bridge.Index,
-	},
+	toCreate := &netlink.Vxlan{
+		LinkAttrs: netlink.LinkAttrs{
+			Name:        vxlanName,
+			MasterIndex: bridge.Index,
+		},
 		VxlanId:      params.VNI,
 		Port:         params.VXLanPort,
 		Learning:     false,
 		SrcAddr:      vtepIP,
-		VtepDevIndex: loopback.Attrs().Index,
+		VtepDevIndex: vtepInterface.Index,
 	}
 
 	link, err := netlink.LinkByName(vxlanName)
@@ -102,7 +103,7 @@ func createVXLan(params VNIParams, bridge *netlink.Bridge) (*netlink.Vxlan, erro
 		return nil, fmt.Errorf("failed to get vxlan link by name %s: %w", vxlanName, err)
 	}
 	vxlan, ok := link.(*netlink.Vxlan)
-	if ok && checkVXLanConfigured(vxlan, bridge.Index, loopback.Attrs().Index, params) == nil {
+	if ok && checkVXLanConfigured(vxlan, bridge.Index, vtepInterface.Index, params) == nil {
 		return vxlan, nil
 	}
 	if err := netlink.LinkDel(link); err != nil {

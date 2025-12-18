@@ -134,16 +134,6 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 	logger.Debug("using config", "l3vnis", l3vnis.Items, "l2vnis", l2vnis.Items, "underlays", underlays.Items, "l3passthrough", l3passthrough.Items)
-	apiConfig := conversion.ApiConfigData{
-		NodeIndex:          nodeIndex,
-		UnderlayFromMultus: r.UnderlayFromMultus,
-		Underlays:          filteredUnderlays,
-		LogLevel:           r.LogLevel,
-		L3VNIs:             filteredL3VNIs,
-		L2VNIs:             filteredL2VNIs,
-		L3Passthrough:      filteredL3Passthrough,
-	}
-
 	router, err := r.RouterProvider.New(ctx)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get router pod instance: %w", err)
@@ -153,6 +143,18 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to retrieve target namespace: %w", err)
 	}
+
+	apiConfig := conversion.ApiConfigData{
+		NodeIndex:          nodeIndex,
+		TargetNS:           targetNS,
+		UnderlayFromMultus: r.UnderlayFromMultus,
+		Underlays:          filteredUnderlays,
+		LogLevel:           r.LogLevel,
+		L3VNIs:             filteredL3VNIs,
+		L2VNIs:             filteredL2VNIs,
+		L3Passthrough:      filteredL3Passthrough,
+	}
+
 	canReconcile, err := router.CanReconcile(ctx)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to check if router can be reconciled: %w", err)

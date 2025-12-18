@@ -47,8 +47,23 @@ func validateUnderlay(underlay *v1alpha1.Underlay) error {
 	}
 
 	if underlay.Spec.EVPN != nil {
-		if _, _, err := net.ParseCIDR(underlay.Spec.EVPN.VTEPCIDR); err != nil {
-			return fmt.Errorf("invalid vtep CIDR format for underlay %s: %s - %w", underlay.Name, underlay.Spec.EVPN.VTEPCIDR, err)
+		hasVTEPCIDR := underlay.Spec.EVPN.VTEPCIDR != ""
+		hasVTEPInterface := underlay.Spec.EVPN.VTEPInterface != ""
+
+		if hasVTEPCIDR == hasVTEPInterface {
+			return fmt.Errorf("underlay %s: exactly one of vtepcidr or vtepInterface must be specified", underlay.Name)
+		}
+
+		if hasVTEPCIDR {
+			if _, _, err := net.ParseCIDR(underlay.Spec.EVPN.VTEPCIDR); err != nil {
+				return fmt.Errorf("invalid vtep CIDR format for underlay %s: %s - %w", underlay.Name, underlay.Spec.EVPN.VTEPCIDR, err)
+			}
+		}
+
+		if hasVTEPInterface {
+			if err := isValidInterfaceName(underlay.Spec.EVPN.VTEPInterface); err != nil {
+				return fmt.Errorf("invalid vtep interface name for underlay %s: %s - %w", underlay.Name, underlay.Spec.EVPN.VTEPInterface, err)
+			}
 		}
 	}
 

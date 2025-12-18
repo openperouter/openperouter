@@ -28,7 +28,8 @@ type UnderlayParams struct {
 }
 
 type UnderlayEVPNParams struct {
-	VtepIP string `json:"vtep_ip"`
+	VtepIP        string `json:"vtep_ip"`
+	VtepInterface string `json:"vtep_interface"`
 }
 
 func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
@@ -53,8 +54,11 @@ func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
 	if params.EVPN == nil {
 		return nil
 	}
-	if err := createLoopback(ctx, ns, params.EVPN.VtepIP); err != nil {
-		return err
+	if params.EVPN.VtepInterface == "" || params.EVPN.VtepInterface == UnderlayLoopback {
+		if err := ensureLoopback(ctx, ns, params.EVPN.VtepIP); err != nil {
+			return err
+		}
+		params.EVPN.VtepInterface = UnderlayLoopback
 	}
 
 	return nil
@@ -66,7 +70,7 @@ func (e UnderlayExistsError) Error() string {
 	return string(e)
 }
 
-func createLoopback(ctx context.Context, ns netns.NsHandle, vtepIP string) error {
+func ensureLoopback(ctx context.Context, ns netns.NsHandle, vtepIP string) error {
 	slog.DebugContext(ctx, "setup underlay", "step", "creating loopback interface")
 	defer slog.DebugContext(ctx, "setup underlay", "step", "loopback interface created")
 
@@ -78,13 +82,17 @@ func createLoopback(ctx context.Context, ns netns.NsHandle, vtepIP string) error
 			if err := netlink.LinkAdd(loopback); err != nil {
 				return fmt.Errorf("assignVTEPToLoopback: failed to create loopback underlay - %w", err)
 			}
+
+			loopback, err = netlink.LinkByName(UnderlayLoopback)
+			if err != nil {
+				return fmt.Errorf("assignVTEPToLoopback: failed to find loopback underlay after creating it- %w", err)
+			}
 		}
 
 		err = assignIPToInterface(loopback, vtepIP)
 		if err != nil {
 			return err
 		}
-
 		return nil
 	}); err != nil {
 		return err
@@ -190,4 +198,36 @@ func findInterfaceWithIP(ns netns.NsHandle, ip string) (string, error) {
 	}
 	slog.Debug("returning not found")
 	return "", nil
+}
+
+// InterfaceIPsForNamespace returns the addresses of the specified
+// interface in the given namespace.
+func InterfaceIPsForNamespace(namespace, ifaceName string) ([]netlink.Addr, error) {
+	ns, err := netns.GetFromPath(namespace)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get network namespace %s: %w", namespace, err)
+	}
+	defer func() {
+		if err := ns.Close(); err != nil {
+			slog.Error("InterfaceIPsForNamespace: failed to close namespace", "error", err, "namespace", namespace)
+		}
+	}()
+
+	var addrs []netlink.Addr
+	err = netnamespace.In(ns, func() error {
+		link, err := netlink.LinkByName(ifaceName)
+		if err != nil {
+			return fmt.Errorf("failed to find interface %s: %w", ifaceName, err)
+		}
+
+		addrs, err = netlink.AddrList(link, netlink.FAMILY_ALL)
+		if err != nil {
+			return fmt.Errorf("failed to get addresses for interface %s: %w", ifaceName, err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return addrs, nil
 }
