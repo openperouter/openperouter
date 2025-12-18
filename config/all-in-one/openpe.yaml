@@ -569,14 +569,31 @@ spec:
                 minimum: 1
                 type: integer
               evpn:
+                description: EVPNConfig contains EVPN-VXLAN configuration for the
+                  underlay.
                 properties:
-                  vtepcidr:
-                    description: VTEPCIDR is CIDR to be used to assign IPs to the
-                      local VTEP on each node.
+                  vtepInterface:
+                    description: |-
+                      VTEPInterface is the name of an existing interface to use as the VTEP source.
+                      The interface must already have an IP address configured that will be used
+                      as the VTEP IP. Mutually exclusive with VTEPCIDR.
+                      The ToR must advertise the interface IP into the fabric underlay
+                      (e.g. via redistribute connected) so that the VTEP address is reachable
+                      from other leaves.
+                    maxLength: 15
+                    pattern: ^[a-zA-Z][a-zA-Z0-9._-]*$
                     type: string
-                required:
-                - vtepcidr
+                  vtepcidr:
+                    description: |-
+                      VTEPCIDR is CIDR to be used to assign IPs to the local VTEP on each node.
+                      A loopback interface will be created with an IP derived from this CIDR.
+                      Mutually exclusive with VTEPInterface.
+                    type: string
                 type: object
+                x-kubernetes-validations:
+                - message: exactly one of vtepcidr or vtepInterface must be specified
+                  rule: (self.?vtepcidr.orValue("") != "") != (self.?vtepInterface.orValue("")
+                    != "")
               neighbors:
                 description: Neighbors is the list of external neighbors to peer with.
                 items:
