@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
@@ -27,7 +28,8 @@ type UnderlayParams struct {
 }
 
 type UnderlayEVPNParams struct {
-	VtepIP string `json:"vtep_ip"`
+	VtepIP        string `json:"vtep_ip"`
+	VtepInterface string `json:"vtep_interface"`
 }
 
 func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
@@ -52,8 +54,11 @@ func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
 	if params.EVPN == nil {
 		return nil
 	}
-	if err := createLoopback(ctx, ns, params.EVPN.VtepIP); err != nil {
-		return err
+	if params.EVPN.VtepInterface == "" || params.EVPN.VtepInterface == UnderlayLoopback {
+		if err := ensureLoopback(ctx, ns, params.EVPN.VtepIP); err != nil {
+			return err
+		}
+		params.EVPN.VtepInterface = UnderlayLoopback
 	}
 
 	return nil
@@ -65,10 +70,9 @@ func (e UnderlayExistsError) Error() string {
 	return string(e)
 }
 
-func createLoopback(ctx context.Context, ns netns.NsHandle, vtepIP string) error {
+func ensureLoopback(ctx context.Context, ns netns.NsHandle, vtepIP string) error {
 	slog.DebugContext(ctx, "setup underlay", "step", "creating loopback interface")
 	defer slog.DebugContext(ctx, "setup underlay", "step", "loopback interface created")
-
 	if err := inNamespace(ns, func() error {
 		loopback, err := netlink.LinkByName(UnderlayLoopback)
 		if errors.As(err, &netlink.LinkNotFoundError{}) {
@@ -77,13 +81,17 @@ func createLoopback(ctx context.Context, ns netns.NsHandle, vtepIP string) error
 			if err := netlink.LinkAdd(loopback); err != nil {
 				return fmt.Errorf("assignVTEPToLoopback: failed to create loopback underlay - %w", err)
 			}
+
+			loopback, err = netlink.LinkByName(UnderlayLoopback)
+			if err != nil {
+				return fmt.Errorf("assignVTEPToLoopback: failed to find loopback underlay after creating it- %w", err)
+			}
 		}
 
 		err = assignIPToInterface(loopback, vtepIP)
 		if err != nil {
 			return err
 		}
-
 		return nil
 	}); err != nil {
 		return err
@@ -189,4 +197,62 @@ func findInterfaceWithIP(ns netns.NsHandle, ip string) (string, error) {
 	}
 	slog.Debug("returning not found")
 	return "", nil
+}
+
+func InterfaceByCIDRForNamespace(namespace, cidr string) (*net.Interface, *net.IPNet, error) {
+	_, ipNet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to parse cidr %s: %w", cidr, err)
+	}
+	ns, err := netns.GetFromPath(namespace)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get network namespace %s: %w", namespace, err)
+	}
+	defer func() {
+		if err := ns.Close(); err != nil {
+			slog.Error("interfaceByCIDRForNamespace: failed to close namespace", "error", err, "namespace", namespace)
+		}
+	}()
+
+	var (
+		foundInterface *net.Interface
+		foundIPNet     *net.IPNet
+	)
+	err = inNamespace(ns, func() error {
+		ifaces, err := net.Interfaces()
+		if err != nil {
+			return fmt.Errorf("failed to get interfaces: %w", err)
+		}
+
+		for _, iface := range ifaces {
+			addrs, err := iface.Addrs()
+			if err != nil {
+				return fmt.Errorf("failed to get interface address: %w", err)
+			}
+
+			for _, addr := range addrs {
+				var ip net.IP
+				switch v := addr.(type) {
+				case *net.IPNet:
+					ip = v.IP
+				case *net.IPAddr:
+					ip = v.IP
+				}
+
+				if ip != nil && ipNet.Contains(ip) {
+					foundIPNet = &net.IPNet{
+						IP:   ip,
+						Mask: ipNet.Mask,
+					}
+					foundInterface = &iface
+					break
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to find interface for cidr: %w", err)
+	}
+	return foundInterface, foundIPNet, nil
 }
