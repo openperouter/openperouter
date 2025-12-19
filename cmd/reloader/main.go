@@ -53,7 +53,8 @@ func main() {
 	flag.StringVar(&args.unixSocket, "unixsocket", "", "Unix socket path to listen on")
 	flag.StringVar(&args.logLevel, "loglevel", "info", "The log level of the process")
 	flag.StringVar(&args.frrConfigPath, "frrconfig", "/etc/frr/frr.conf", "The path the frr configuration is at")
-	flag.DurationVar(&args.vtyshTimeout, "vtysh-timeout", vtysh.DefaultTimeout, "Timeout for vtysh commands used in health checks")
+	flag.DurationVar(&args.vtyshTimeout, "vtysh-timeout", vtysh.DefaultTimeout,
+		"Timeout for vtysh commands used in health checks")
 	flag.Parse()
 
 	_, err := logging.New(args.logLevel)
