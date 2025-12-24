@@ -1,0 +1,63 @@
+name: kind
+topology:
+  nodes:
+    # Spine - Route Reflector
+    spine:
+      kind: linux
+      image: quay.io/frrouting/frr:10.2.1
+      binds:
+        - ../frrcommon/daemons:/etc/frr/daemons
+        - ../frrcommon/vtysh.conf:/etc/frr/vtysh.conf
+        - spine/frr.conf:/etc/frr/frr.conf
+
+    # On-prem leaf for kind cluster
+    leafkind:
+      kind: linux
+      image: quay.io/frrouting/frr:10.2.1
+      binds:
+        - ../frrcommon/daemons:/etc/frr/daemons
+        - ../frrcommon/vtysh.conf:/etc/frr/vtysh.conf
+        - leafkind/frr.conf:/etc/frr/frr.conf
+
+    # GCP leaf (peers with GCP workers over VPN)
+    leafgcp:
+      kind: linux
+      image: frr-vpn:latest
+      network-mode: host
+      binds:
+        - ../frrcommon/daemons:/etc/frr/daemons
+        - ../frrcommon/vtysh.conf:/etc/frr/vtysh.conf
+        - leafgcp/frr.conf:/etc/frr/frr.conf
+        - leafgcp/start-vpn.sh:/usr/local/bin/start-vpn.sh
+      env:
+        VPN_REMOTE_IP: 34.16.52.245
+        VPN_LOCAL_IP: 79.116.24.173
+        VPN_SECRET: RdRTEpoYc/2E44SSIv3bfwGsN0PkNuBP
+
+    # Bridge for kind cluster nodes
+    leafkind-switch:
+      kind: bridge
+
+    # Kind cluster definition
+    pe-kind:
+      kind: k8s-kind
+      startup-config: ../pe-kind-configuration-registry.yaml
+
+    # External container references (created by kind)
+    pe-kind-control-plane:
+      kind: ext-container
+
+    pe-kind-worker:
+      kind: ext-container
+
+  links:
+    # Spine connections
+    - endpoints: ["leafkind:eth1", "spine:eth1"]
+    - endpoints: ["leafgcp:eth1", "spine:eth2"]
+
+    # leafkind to switch
+    - endpoints: ["leafkind:toswitch", "leafkind-switch:leaf"]
+
+    # Kind nodes to switch
+    - endpoints: ["pe-kind-control-plane:toswitch", "leafkind-switch:kindctrl"]
+    - endpoints: ["pe-kind-worker:toswitch", "leafkind-switch:kindworker"]

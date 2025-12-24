@@ -1,0 +1,36 @@
+---
+leafkind-switch:
+    username: 
+    password: 
+    platform: bridge
+    hostname: 
+pe-kind-control-plane:
+    username: 
+    password: 
+    platform: ext-container
+    hostname: 172.18.0.3
+pe-kind-worker:
+    username: 
+    password: 
+    platform: ext-container
+    hostname: 172.18.0.4
+pe-kind:
+    username: 
+    password: 
+    platform: k8s-kind
+    hostname: 172.18.0.4
+leafgcp:
+    username: 
+    password: 
+    platform: linux
+    hostname: 
+leafkind:
+    username: 
+    password: 
+    platform: linux
+    hostname: 172.20.20.2
+spine:
+    username: 
+    password: 
+    platform: linux
+    hostname: 172.20.20.3

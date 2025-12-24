@@ -1,0 +1,317 @@
+{
+  "name": "kind",
+  "type": "clab",
+  "clab": {
+    "config": {
+      "prefix": "clab",
+      "mgmt": {
+        "network": "clab",
+        "bridge": "br-65faf9cf58f3",
+        "ipv4-subnet": "172.20.20.0/24",
+        "ipv4-gw": "172.20.20.1",
+        "ipv6-subnet": "3fff:172:20:20::/64",
+        "ipv6-gw": "3fff:172:20:20::1",
+        "mtu": 1500,
+        "external-access": true
+      }
+    }
+  },
+  "ssh-pub-keys": [],
+  "nodes": {
+    "leafgcp": {
+      "index": "0",
+      "shortname": "leafgcp",
+      "longname": "clab-kind-leafgcp",
+      "fqdn": "leafgcp.kind.io",
+      "group": "",
+      "labdir": "/home/ellorent/Documents/cnv/upstream/openperouter/clab/hybrid/clab-kind/leafgcp",
+      "kind": "linux",
+      "image": "frr-vpn:latest",
+      "mgmt-net": "",
+      "mgmt-intf": "",
+      "mgmt-ipv4-address": "",
+      "mgmt-ipv4-prefix-length": 0,
+      "mgmt-ipv6-address": "",
+      "mgmt-ipv6-prefix-length": 0,
+      "mac-address": "",
+      "labels": {
+        "clab-mgmt-net-bridge": "br-65faf9cf58f3",
+        "clab-node-group": "",
+        "clab-node-kind": "linux",
+        "clab-node-lab-dir": "/home/ellorent/Documents/cnv/upstream/openperouter/clab/hybrid/clab-kind/leafgcp",
+        "clab-node-longname": "clab-kind-leafgcp",
+        "clab-node-name": "leafgcp",
+        "clab-node-type": "",
+        "clab-owner": "",
+        "clab-topo-file": "/home/ellorent/Documents/cnv/upstream/openperouter/clab/hybrid/kind.clab.yml",
+        "containerlab": "kind"
+      },
+      "port-bindings": [
+      ]
+    },
+    "leafkind": {
+      "index": "1",
+      "shortname": "leafkind",
+      "longname": "clab-kind-leafkind",
+      "fqdn": "leafkind.kind.io",
+      "group": "",
+      "labdir": "/home/ellorent/Documents/cnv/upstream/openperouter/clab/hybrid/clab-kind/leafkind",
+      "kind": "linux",
+      "image": "quay.io/frrouting/frr:10.2.1",
+      "mgmt-net": "",
+      "mgmt-intf": "",
+      "mgmt-ipv4-address": "172.20.20.2",
+      "mgmt-ipv4-prefix-length": 24,
+      "mgmt-ipv6-address": "3fff:172:20:20::2",
+      "mgmt-ipv6-prefix-length": 64,
+      "mac-address": "",
+      "labels": {
+        "clab-mgmt-net-bridge": "br-65faf9cf58f3",
+        "clab-node-group": "",
+        "clab-node-kind": "linux",
+        "clab-node-lab-dir": "/home/ellorent/Documents/cnv/upstream/openperouter/clab/hybrid/clab-kind/leafkind",
+        "clab-node-longname": "clab-kind-leafkind",
+        "clab-node-name": "leafkind",
+        "clab-node-type": "",
+        "clab-owner": "",
+        "clab-topo-file": "/home/ellorent/Documents/cnv/upstream/openperouter/clab/hybrid/kind.clab.yml",
+        "containerlab": "kind"
+      },
+      "port-bindings": [
+      ]
+    },
+    "leafkind-switch": {
+      "index": "2",
+      "shortname": "leafkind-switch",
+      "longname": "clab-kind-leafkind-switch",
+      "fqdn": "leafkind-switch.kind.io",
+      "group": "",
+      "labdir": "/home/ellorent/Documents/cnv/upstream/openperouter/clab/hybrid/clab-kind/leafkind-switch",
+      "kind": "bridge",
+      "image": "",
+      "mgmt-net": "",
+      "mgmt-intf": "",
+      "mgmt-ipv4-address": "",
+      "mgmt-ipv4-prefix-length": 0,
+      "mgmt-ipv6-address": "",
+      "mgmt-ipv6-prefix-length": 0,
+      "mac-address": "",
+      "labels": {
+        "clab-mgmt-net-bridge": "br-65faf9cf58f3",
+        "clab-node-group": "",
+        "clab-node-kind": "bridge",
+        "clab-node-lab-dir": "/home/ellorent/Documents/cnv/upstream/openperouter/clab/hybrid/clab-kind/leafkind-switch",
+        "clab-node-longname": "clab-kind-leafkind-switch",
+        "clab-node-name": "leafkind-switch",
+        "clab-node-type": "",
+        "clab-owner": "",
+        "clab-topo-file": "/home/ellorent/Documents/cnv/upstream/openperouter/clab/hybrid/kind.clab.yml",
+        "containerlab": "kind"
+      },
+      "port-bindings": [
+      ]
+    },
+    "pe-kind": {
+      "index": "3",
+      "shortname": "pe-kind",
+      "longname": "clab-kind-pe-kind",
+      "fqdn": "pe-kind.kind.io",
+      "group": "",
+      "labdir": "/home/ellorent/Documents/cnv/upstream/openperouter/clab/hybrid/clab-kind/pe-kind",
+      "kind": "k8s-kind",
+      "image": "",
+      "mgmt-net": "",
+      "mgmt-intf": "",
+      "mgmt-ipv4-address": "172.18.0.4",
+      "mgmt-ipv4-prefix-length": 16,
+      "mgmt-ipv6-address": "fc00:f853:ccd:e793::4",
+      "mgmt-ipv6-prefix-length": 64,
+      "mac-address": "",
+      "labels": {
+        "clab-mgmt-net-bridge": "br-65faf9cf58f3",
+        "clab-node-group": "",
+        "clab-node-kind": "k8s-kind",
+        "clab-node-lab-dir": "/home/ellorent/Documents/cnv/upstream/openperouter/clab/hybrid/clab-kind/pe-kind",
+        "clab-node-longname": "clab-kind-pe-kind",
+        "clab-node-name": "pe-kind",
+        "clab-node-type": "",
+        "clab-owner": "",
+        "clab-topo-file": "/home/ellorent/Documents/cnv/upstream/openperouter/clab/hybrid/kind.clab.yml",
+        "containerlab": "kind"
+      },
+      "port-bindings": [
+      ]
+    },
+    "pe-kind-control-plane": {
+      "index": "4",
+      "shortname": "pe-kind-control-plane",
+      "longname": "pe-kind-control-plane",
+      "fqdn": "pe-kind-control-plane.kind.io",
+      "group": "",
+      "labdir": "/home/ellorent/Documents/cnv/upstream/openperouter/clab/hybrid/clab-kind/pe-kind-control-plane",
+      "kind": "ext-container",
+      "image": "",
+      "mgmt-net": "",
+      "mgmt-intf": "",
+      "mgmt-ipv4-address": "172.18.0.3",
+      "mgmt-ipv4-prefix-length": 16,
+      "mgmt-ipv6-address": "fc00:f853:ccd:e793::3",
+      "mgmt-ipv6-prefix-length": 64,
+      "mac-address": "",
+      "labels": {
+        "clab-mgmt-net-bridge": "br-65faf9cf58f3",
+        "clab-node-group": "",
+        "clab-node-kind": "ext-container",
+        "clab-node-lab-dir": "/home/ellorent/Documents/cnv/upstream/openperouter/clab/hybrid/clab-kind/pe-kind-control-plane",
+        "clab-node-longname": "pe-kind-control-plane",
+        "clab-node-name": "pe-kind-control-plane",
+        "clab-node-type": "",
+        "clab-owner": "",
+        "clab-topo-file": "/home/ellorent/Documents/cnv/upstream/openperouter/clab/hybrid/kind.clab.yml",
+        "containerlab": "kind"
+      },
+      "port-bindings": [
+        {
+          "host-ip": "127.0.0.1",
+          "host-port": 43991,
+          "port": 6443,
+          "protocol": "tcp"
+        }
+      ]
+    },
+    "pe-kind-worker": {
+      "index": "5",
+      "shortname": "pe-kind-worker",
+      "longname": "pe-kind-worker",
+      "fqdn": "pe-kind-worker.kind.io",
+      "group": "",
+      "labdir": "/home/ellorent/Documents/cnv/upstream/openperouter/clab/hybrid/clab-kind/pe-kind-worker",
+      "kind": "ext-container",
+      "image": "",
+      "mgmt-net": "",
+      "mgmt-intf": "",
+      "mgmt-ipv4-address": "172.18.0.4",
+      "mgmt-ipv4-prefix-length": 16,
+      "mgmt-ipv6-address": "fc00:f853:ccd:e793::4",
+      "mgmt-ipv6-prefix-length": 64,
+      "mac-address": "",
+      "labels": {
+        "clab-mgmt-net-bridge": "br-65faf9cf58f3",
+        "clab-node-group": "",
+        "clab-node-kind": "ext-container",
+        "clab-node-lab-dir": "/home/ellorent/Documents/cnv/upstream/openperouter/clab/hybrid/clab-kind/pe-kind-worker",
+        "clab-node-longname": "pe-kind-worker",
+        "clab-node-name": "pe-kind-worker",
+        "clab-node-type": "",
+        "clab-owner": "",
+        "clab-topo-file": "/home/ellorent/Documents/cnv/upstream/openperouter/clab/hybrid/kind.clab.yml",
+        "containerlab": "kind"
+      },
+      "port-bindings": [
+      ]
+    },
+    "spine": {
+      "index": "6",
+      "shortname": "spine",
+      "longname": "clab-kind-spine",
+      "fqdn": "spine.kind.io",
+      "group": "",
+      "labdir": "/home/ellorent/Documents/cnv/upstream/openperouter/clab/hybrid/clab-kind/spine",
+      "kind": "linux",
+      "image": "quay.io/frrouting/frr:10.2.1",
+      "mgmt-net": "",
+      "mgmt-intf": "",
+      "mgmt-ipv4-address": "172.20.20.3",
+      "mgmt-ipv4-prefix-length": 24,
+      "mgmt-ipv6-address": "3fff:172:20:20::3",
+      "mgmt-ipv6-prefix-length": 64,
+      "mac-address": "",
+      "labels": {
+        "clab-mgmt-net-bridge": "br-65faf9cf58f3",
+        "clab-node-group": "",
+        "clab-node-kind": "linux",
+        "clab-node-lab-dir": "/home/ellorent/Documents/cnv/upstream/openperouter/clab/hybrid/clab-kind/spine",
+        "clab-node-longname": "clab-kind-spine",
+        "clab-node-name": "spine",
+        "clab-node-type": "",
+        "clab-owner": "",
+        "clab-topo-file": "/home/ellorent/Documents/cnv/upstream/openperouter/clab/hybrid/kind.clab.yml",
+        "containerlab": "kind"
+      },
+      "port-bindings": [
+      ]
+    }
+  },
+  "links": [
+    {
+      "a": {
+        "node": "leafkind",
+        "interface": "eth1",
+        "mac": "aa:c1:ab:b6:b2:bb",
+        "peer": "z"
+      },
+      "z": {
+        "node": "spine",
+        "interface": "eth1",
+        "mac": "aa:c1:ab:dc:25:2a",
+        "peer": "a"
+      }
+    },
+    {
+      "a": {
+        "node": "leafgcp",
+        "interface": "eth1",
+        "mac": "aa:c1:ab:5e:a6:4a",
+        "peer": "z"
+      },
+      "z": {
+        "node": "spine",
+        "interface": "eth2",
+        "mac": "aa:c1:ab:b1:ec:b7",
+        "peer": "a"
+      }
+    },
+    {
+      "a": {
+        "node": "leafkind",
+        "interface": "toswitch",
+        "mac": "aa:c1:ab:5c:1d:fe",
+        "peer": "z"
+      },
+      "z": {
+        "node": "leafkind-switch",
+        "interface": "leaf",
+        "mac": "aa:c1:ab:5d:81:15",
+        "peer": "a"
+      }
+    },
+    {
+      "a": {
+        "node": "pe-kind-control-plane",
+        "interface": "toswitch",
+        "mac": "aa:c1:ab:44:fe:c9",
+        "peer": "z"
+      },
+      "z": {
+        "node": "leafkind-switch",
+        "interface": "kindctrl",
+        "mac": "aa:c1:ab:e0:68:d5",
+        "peer": "a"
+      }
+    },
+    {
+      "a": {
+        "node": "pe-kind-worker",
+        "interface": "toswitch",
+        "mac": "aa:c1:ab:fd:41:90",
+        "peer": "z"
+      },
+      "z": {
+        "node": "leafkind-switch",
+        "interface": "kindworker",
+        "mac": "aa:c1:ab:ab:81:bb",
+        "peer": "a"
+      }
+    }
+  ]
+}
