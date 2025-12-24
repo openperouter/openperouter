@@ -175,6 +175,8 @@ spec:
           {{- toYaml . | nindent 12 }}
         {{- end }}
       - name: reloader
+        securityContext:
+          privileged: true
         image: {{ .Values.openperouter.frr.image.repository }}:{{ .Values.openperouter.frr.image.tag }}
         {{- if .Values.openperouter.image.pullPolicy }}
         imagePullPolicy: {{ .Values.openperouter.image.pullPolicy }}

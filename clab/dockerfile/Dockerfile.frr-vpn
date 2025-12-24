@@ -1,0 +1,19 @@
+FROM quay.io/frrouting/frr:10.2.1
+
+# Install strongSwan and dependencies
+RUN apk update && apk add --no-cache \
+    strongswan \
+    iptables \
+    ip6tables \
+    iproute2 \
+    curl \
+    tcpdump \
+    bind-tools
+
+# Create directories
+RUN mkdir -p /etc/swanctl/conf.d /var/log
+
+# Enable services
+RUN rc-update add frr default || true
+
+CMD ["/usr/local/bin/start-vpn.sh"]

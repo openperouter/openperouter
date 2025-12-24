@@ -10,6 +10,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/executor"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
 
+	corev1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 )
 
@@ -55,6 +56,20 @@ func Get(cs clientset.Interface, hostMode bool) (Routers, error) {
 	}
 
 	return routerPodmans{routers: routers}, nil
+}
+
+func RouterPodsForNodes(cs clientset.Interface, nodes map[string]bool) ([]*corev1.Pod, error) {
+	routerPods, err := k8s.PodsForLabel(cs, Namespace, routerLabelSelector)
+	if err != nil {
+		return nil, err
+	}
+	filteredRouterPods := []*corev1.Pod{}
+	for _, p := range routerPods {
+		if nodes[p.Spec.NodeName] {
+			filteredRouterPods = append(filteredRouterPods, p)
+		}
+	}
+	return filteredRouterPods, nil
 }
 
 // DaemonsetRolled checks if routers have been rolled/restarted by comparing old and new state

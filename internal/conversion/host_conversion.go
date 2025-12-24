@@ -65,22 +65,35 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig ApiConfigData) (H
 		return res, nil
 	}
 
-	vtepIP, err := ipam.VTEPIp(underlay.Spec.EVPN.VTEPCIDR, nodeIndex)
+	foundInterface, foundInterfaceIPNet, err := hostnetwork.InterfaceByCIDRForNamespace(targetNS, underlay.Spec.EVPN.VTEPCIDR)
 	if err != nil {
-		return res, fmt.Errorf("failed to get vtep ip, cidr %s, nodeIntex %d", underlay.Spec.EVPN.VTEPCIDR, nodeIndex)
+		return res, fmt.Errorf("failed finding if there is an interface with ip on cider: %w", err)
 	}
-	res.Underlay.EVPN = &hostnetwork.UnderlayEVPNParams{
-		VtepIP: vtepIP.String(),
+
+	if foundInterface != nil {
+		res.Underlay.EVPN = &hostnetwork.UnderlayEVPNParams{
+			VtepIP:        foundInterfaceIPNet.String(),
+			VtepInterface: foundInterface.Name,
+		}
+	} else {
+		vtepIP, err := ipam.VTEPIp(underlay.Spec.EVPN.VTEPCIDR, nodeIndex)
+		if err != nil {
+			return res, fmt.Errorf("failed to get vtep ip, cidr %s, nodeIntex %d", underlay.Spec.EVPN.VTEPCIDR, nodeIndex)
+		}
+		res.Underlay.EVPN = &hostnetwork.UnderlayEVPNParams{
+			VtepIP: vtepIP.String(),
+		}
 	}
 
 	for _, vni := range apiConfig.L3VNIs {
 		v := hostnetwork.L3VNIParams{
 			VNIParams: hostnetwork.VNIParams{
-				VRF:       vni.Spec.VRF,
-				TargetNS:  targetNS,
-				VTEPIP:    vtepIP.String(),
-				VNI:       int(vni.Spec.VNI),
-				VXLanPort: int(vni.Spec.VXLanPort),
+				VRF:           vni.Spec.VRF,
+				TargetNS:      targetNS,
+				VTEPIP:        res.Underlay.EVPN.VtepIP,
+				VTEPInterface: res.Underlay.EVPN.VtepInterface,
+				VNI:           int(vni.Spec.VNI),
+				VXLanPort:     int(vni.Spec.VXLanPort),
 			},
 		}
 		if vni.Spec.HostSession == nil {
@@ -107,11 +120,12 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig ApiConfigData) (H
 	for _, l2vni := range apiConfig.L2VNIs {
 		vni := hostnetwork.L2VNIParams{
 			VNIParams: hostnetwork.VNIParams{
-				VRF:       l2vni.VRFName(),
-				TargetNS:  targetNS,
-				VTEPIP:    vtepIP.String(),
-				VNI:       int(l2vni.Spec.VNI),
-				VXLanPort: int(l2vni.Spec.VXLanPort),
+				VRF:           l2vni.VRFName(),
+				TargetNS:      targetNS,
+				VTEPIP:        res.Underlay.EVPN.VtepIP,
+				VTEPInterface: res.Underlay.EVPN.VtepInterface,
+				VNI:           int(l2vni.Spec.VNI),
+				VXLanPort:     int(l2vni.Spec.VXLanPort),
 			},
 		}
 		if len(l2vni.Spec.L2GatewayIPs) > 0 {

@@ -17,11 +17,12 @@ import (
 )
 
 type VNIParams struct {
-	VRF       string `json:"vrf"`
-	TargetNS  string `json:"targetns"`
-	VTEPIP    string `json:"vtepip"`
-	VNI       int    `json:"vni"`
-	VXLanPort int    `json:"vxlanport"`
+	VRF           string `json:"vrf"`
+	TargetNS      string `json:"targetns"`
+	VTEPIP        string `json:"vtepip"`
+	VTEPInterface string `json:"vtepiface"`
+	VNI           int    `json:"vni"`
+	VXLanPort     int    `json:"vxlanport"`
 }
 
 type L3VNIParams struct {
@@ -250,7 +251,6 @@ func setupVNI(ctx context.Context, params VNIParams) error {
 	}()
 
 	if err := inNamespace(ns, func() error {
-
 		slog.DebugContext(ctx, "setting up vrf", "vrf", params.VRF)
 		vrf, err := setupVRF(params.VRF)
 		if err != nil {
