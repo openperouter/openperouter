@@ -7,8 +7,8 @@
 #   SKIP_OVS_MOUNT   - Set to "true" to skip OVS mount when Open vSwitch is not installed
 #
 # Example usage:
-#   ./generate_systemd.sh                    # Generate with OVS mount
-#   SKIP_OVS_MOUNT=true ./generate_systemd.sh  # Generate without OVS mount
+#   ./generate_systemd.sh                          # Generate with OVS mount, use hostname
+#   SKIP_OVS_MOUNT=true ./generate_systemd.sh      # Generate without OVS mount
 
 set -euo pipefail
 
@@ -62,7 +62,7 @@ podman create --pod=routerpod --name=frr \
 	-v=frrconfig:/etc/frr:Z \
 	--entrypoint=/bin/bash \
 	"$FRR_IMAGE" \
-	-c "for i in {1..10}; do test -f /etc/frr/daemons && break || sleep 5; done && chmod -R a+rw /var/run/frr && /sbin/tini -- /usr/lib/frr/docker-start & attempts=0; until [[ -f /etc/frr/frr.log || \$attempts -eq 60 ]]; do sleep 1; attempts=\$(( \$attempts + 1 )); done; tail -f /etc/frr/frr.log"
+-c "(for i in {1..30}; do test -f /etc/frr/copier_finished && break || sleep 5; done; test -f /etc/frr/copier_finished) || exit 1; chmod -R a+rw /var/run/frr && /sbin/tini -- /usr/lib/frr/docker-start & attempts=0; until [[ -f /etc/frr/frr.log || \$attempts -eq 60 ]]; do sleep 1; attempts=\$(( \$attempts + 1 )); done; tail -f /etc/frr/frr.log"
 
 podman create --pod=routerpod --name=reloader \
 	-v=frrconfig:/etc/frr:Z \
@@ -71,15 +71,15 @@ podman create --pod=routerpod --name=reloader \
 	-v=reloader:/etc/frr_reloader:Z \
 	--entrypoint=/bin/bash \
 	"$FRR_IMAGE" \
-	-c "for i in {1..10}; do test -f /etc/frr_reloader/reloader && break || sleep 5; done && /etc/frr_reloader/reloader --frrconfig=/etc/perouter/frr.conf --loglevel=debug --unixsocket /etc/perouter/frr.socket"
+-c "(for i in {1..30}; do test -f /etc/frr_reloader/copier_finished && break || sleep 5; done; test -f /etc/frr_reloader/copier_finished) || exit 1; /etc/frr_reloader/reloader --frrconfig=/etc/perouter/frr.conf --loglevel=debug --unixsocket /etc/perouter/frr.socket"
 
 podman create --pod=routerpod --name=copier \
 	-v=frrconfig:/etc/frr:Z \
 	-v=reloader:/etc/frr_reloader:Z \
 	--entrypoint=/bin/sh \
 	"$ROUTER_IMAGE" \
-	-c "cp -rLf /usr/share/openperouter/frr/* /etc/frr && chmod -R a+rw /etc/frr && \
-	 cp /reloader /etc/frr_reloader/reloader && chmod -R a+rw /etc/frr_reloader && sleep infinity"
+	-c "cp -rLf /usr/share/openperouter/frr/* /etc/frr && chmod -R a+rw /etc/frr && touch /etc/frr/copier_finished && \
+	 cp /reloader /etc/frr_reloader/reloader && chmod -R a+rw /etc/frr_reloader && touch /etc/frr_reloader/copier_finished && sleep infinity"
 
 
 podman pod create --name=controllerpod
@@ -106,7 +106,7 @@ podman create --pod=controllerpod --name=controller \
 	--pid=host \
 	-t "$ROUTER_IMAGE" \
 	--loglevel debug --frrconfig /etc/perouter/frr/frr.conf --pid-path /etc/perouter/frr/frr.pid --reloader-socket /etc/perouter/frr/frr.socket \
-	--mode host
+	--mode host --nodename "NODENAME"
 
 # Generate systemd unit files for both pods
 podman generate systemd --new --files --name routerpod
@@ -117,6 +117,11 @@ podman generate systemd --new --files --name controllerpod
 # and /tmp/tmp.XXXXX/var/lib/openperouter to /var/lib/openperouter
 echo "Replacing temporary paths with actual host paths..."
 sed -i "s|${TEMP_BASE}||g" container-controller.service container-reloader.service
+
+# Use the hostname systemd expansion %H inside the unit to configure the 
+# nodename, we may need to improve this mechanism for scenarios where ndename 
+# is not the hostname
+sed -i 's|NODENAME|%H|g' container-controller.service container-reloader.service
 
 # Clean up the temporary pods and containers
 # The --new flag ensures systemd units will create/remove them on start/stop

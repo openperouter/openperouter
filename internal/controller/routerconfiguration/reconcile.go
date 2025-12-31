@@ -23,6 +23,10 @@ func Reconcile(ctx context.Context, apiConfig conversion.ApiConfigData, frrConfi
 		return fmt.Errorf("failed to validate l2vnis: %w", err)
 	}
 
+	if err := conversion.ValidatePassthroughs(apiConfig.L3Passthrough); err != nil {
+		return fmt.Errorf("failed to validate l3passthrough: %w", err)
+	}
+
 	if err := conversion.ValidateHostSessions(apiConfig.L3VNIs, apiConfig.L3Passthrough); err != nil {
 		return fmt.Errorf("failed to validate host sessions: %w", err)
 	}

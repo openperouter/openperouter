@@ -22,6 +22,12 @@ import (
 
 // UnderlaySpec defines the desired state of Underlay.
 type UnderlaySpec struct {
+	// NodeSelector specifies which nodes this Underlay applies to.
+	// If empty or not specified, applies to all nodes (backward compatible).
+	// Multiple Underlays with overlapping node selectors will be rejected.
+	// +optional
+	NodeSelector *metav1.LabelSelector `json:"nodeSelector,omitempty"`
+
 	// ASN is the local AS number to use for the session with the TOR switch.
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=4294967295
