@@ -62,7 +62,7 @@ podman create --pod=routerpod --name=frr \
 	-v=frrconfig:/etc/frr:Z \
 	--entrypoint=/bin/bash \
 	"$FRR_IMAGE" \
-	-c "for i in {1..10}; do test -f /etc/frr/daemons && break || sleep 5; done && chmod -R a+rw /var/run/frr && /sbin/tini -- /usr/lib/frr/docker-start & attempts=0; until [[ -f /etc/frr/frr.log || \$attempts -eq 60 ]]; do sleep 1; attempts=\$(( \$attempts + 1 )); done; tail -f /etc/frr/frr.log"
+-c "(for i in {1..30}; do test -f /etc/frr/copier_finished && break || sleep 5; done; test -f /etc/frr/copier_finished) || exit 1; chmod -R a+rw /var/run/frr && /sbin/tini -- /usr/lib/frr/docker-start & attempts=0; until [[ -f /etc/frr/frr.log || \$attempts -eq 60 ]]; do sleep 1; attempts=\$(( \$attempts + 1 )); done; tail -f /etc/frr/frr.log"
 
 podman create --pod=routerpod --name=reloader \
 	-v=frrconfig:/etc/frr:Z \
@@ -71,15 +71,15 @@ podman create --pod=routerpod --name=reloader \
 	-v=reloader:/etc/frr_reloader:Z \
 	--entrypoint=/bin/bash \
 	"$FRR_IMAGE" \
-	-c "for i in {1..10}; do test -f /etc/frr_reloader/reloader && break || sleep 5; done && /etc/frr_reloader/reloader --frrconfig=/etc/perouter/frr.conf --loglevel=debug --unixsocket /etc/perouter/frr.socket"
+-c "(for i in {1..30}; do test -f /etc/frr_reloader/copier_finished && break || sleep 5; done; test -f /etc/frr_reloader/copier_finished) || exit 1; /etc/frr_reloader/reloader --frrconfig=/etc/perouter/frr.conf --loglevel=debug --unixsocket /etc/perouter/frr.socket"
 
 podman create --pod=routerpod --name=copier \
 	-v=frrconfig:/etc/frr:Z \
 	-v=reloader:/etc/frr_reloader:Z \
 	--entrypoint=/bin/sh \
 	"$ROUTER_IMAGE" \
-	-c "cp -rLf /usr/share/openperouter/frr/* /etc/frr && chmod -R a+rw /etc/frr && \
-	 cp /reloader /etc/frr_reloader/reloader && chmod -R a+rw /etc/frr_reloader && sleep infinity"
+	-c "cp -rLf /usr/share/openperouter/frr/* /etc/frr && chmod -R a+rw /etc/frr && touch /etc/frr/copier_finished && \
+	 cp /reloader /etc/frr_reloader/reloader && chmod -R a+rw /etc/frr_reloader && touch /etc/frr_reloader/copier_finished && sleep infinity"
 
 
 podman pod create --name=controllerpod
