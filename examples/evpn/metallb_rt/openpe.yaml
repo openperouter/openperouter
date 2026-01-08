@@ -1,0 +1,52 @@
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: L3VNI
+metadata:
+  name: red
+  namespace: openperouter-system
+spec:
+  vrf: red
+  hostsession:
+    asn: 64514
+    hostasn: 64515
+    localcidr:
+      ipv4: 192.169.10.0/24
+  vni: 100
+  importRTs:
+    - 65000:100
+    - 65001:100
+  exportRTs:
+    - 65000:100
+    - 65001:100
+---
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: L3VNI
+metadata:
+  name: blue
+  namespace: openperouter-system
+spec:
+  vrf: blue
+  hostsession:
+    asn: 64514
+    hostasn: 64515
+    localcidr:
+      ipv4: 192.169.11.0/24
+  vni: 200
+  importRTs:
+    - 65000:200
+  exportRTs:
+    - 65000:200
+---
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: Underlay
+metadata:
+  name: underlay
+  namespace: openperouter-system
+spec:
+  asn: 64514
+  evpn:
+    vtepcidr:  100.65.0.0/24
+  nics:
+    - toswitch
+  neighbors:
+    - asn: 64512
+      address: 192.168.11.2

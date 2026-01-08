@@ -54,6 +54,8 @@ type L3VNIConfig struct {
 	VRF             string
 	VNI             int
 	RouterID        string
+	ExportRTs       []string
+	ImportRTs       []string
 }
 
 type BFDProfile struct {

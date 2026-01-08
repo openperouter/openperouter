@@ -417,6 +417,10 @@ publish-website: ## Build and publish the website to gh-pages branch
 demo-metallb:
 	examples/evpn/metallb/prepare.sh
 	
+.PHONY: demo-metallb-evpn-rt
+demo-metallb-rt:
+	examples/evpn/metallb_rt/prepare.sh
+	
 .PHONY: demo-l2-evpn
 demo-l2:
 	examples/evpn/layer2/prepare.sh
