@@ -8,4 +8,5 @@ spec:
   vrf: red
   hostmaster:
     type: ovs-bridge
-    autocreate: true
+    ovsBridge:
+      autoCreate: true

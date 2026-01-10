@@ -48,26 +48,53 @@ spec:
                   enslaved manually (or by some other means). This is useful if another controller
                   is leveraging the host interface for the VNI.
                 properties:
-                  autocreate:
-                    default: false
-                    description: |-
-                      If true, the interface will be created automatically if not present.
-                      The name of the bridge is of the form br-hs-<VNI>.
-                    type: boolean
-                  name:
-                    description: Name of the host interface. Must match VRF name validation
-                      if set.
-                    maxLength: 15
-                    pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
-                    type: string
+                  linuxBridge:
+                    description: LinuxBridge configuration. Must be set when Type
+                      is "linux-bridge".
+                    properties:
+                      autoCreate:
+                        default: false
+                        description: |-
+                          AutoCreate determines if the bridge should be created automatically.
+                          When true, the bridge is created with name br-hs-<VNI>.
+                        type: boolean
+                      name:
+                        description: Name of the Linux bridge interface.
+                        maxLength: 15
+                        pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
+                        type: string
+                    type: object
+                  ovsBridge:
+                    description: OVSBridge configuration. Must be set when Type is
+                      "ovs-bridge".
+                    properties:
+                      autoCreate:
+                        default: false
+                        description: |-
+                          AutoCreate determines if the OVS bridge should be created automatically.
+                          When true, the bridge is created with name br-hs-<VNI>.
+                        type: boolean
+                      name:
+                        description: Name of the OVS bridge interface.
+                        maxLength: 15
+                        pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
+                        type: string
+                    type: object
                   type:
-                    description: Type of the host interface. Supports linux bridge
-                      or OVS bridge.
+                    description: 'Type of the host interface. Supported values: "linux-bridge",
+                      "ovs-bridge".'
                     enum:
                     - linux-bridge
                     - ovs-bridge
                     type: string
+                required:
+                - type
                 type: object
+                x-kubernetes-validations:
+                - message: 'type/config mismatch: ''linux-bridge'' requires linuxBridge
+                    field, ''ovs-bridge'' requires ovsBridge field'
+                  rule: (self.type == 'linux-bridge' && has(self.linuxBridge) && !has(self.ovsBridge))
+                    || (self.type == 'ovs-bridge' && has(self.ovsBridge) && !has(self.linuxBridge))
               l2gatewayips:
                 description: |-
                   L2GatewayIPs is a list of IP addresses in CIDR notation to be used for the L2 gateway. When this is set, the
