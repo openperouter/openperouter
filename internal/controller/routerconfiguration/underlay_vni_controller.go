@@ -22,6 +22,7 @@ import (
 	"log/slog"
 	"time"
 
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -31,6 +32,7 @@ import (
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/conversion"
+	"github.com/openperouter/openperouter/internal/filter"
 	"github.com/openperouter/openperouter/internal/frrconfig"
 	v1 "k8s.io/api/core/v1"
 )
@@ -96,6 +98,36 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
+	node := &v1.Node{}
+	if err := r.Get(ctx, client.ObjectKey{Name: r.MyNode}, node); err != nil {
+		slog.Error("failed to get node", "node", r.MyNode, "error", err)
+		return ctrl.Result{}, err
+	}
+
+	// Filter resources by node selector
+	filteredUnderlays, err := filter.UnderlaysForNode(node, underlays.Items)
+	if err != nil {
+		slog.Error("failed to filter underlays for node", "node", r.MyNode, "error", err)
+		return ctrl.Result{}, err
+	}
+
+	filteredL3VNIs, err := filter.L3VNIsForNode(node, l3vnis.Items)
+	if err != nil {
+		slog.Error("failed to filter l3vnis for node", "node", r.MyNode, "error", err)
+		return ctrl.Result{}, err
+	}
+
+	filteredL2VNIs, err := filter.L2VNIsForNode(node, l2vnis.Items)
+	if err != nil {
+		slog.Error("failed to filter l2vnis for node", "node", r.MyNode, "error", err)
+		return ctrl.Result{}, err
+	}
+
+	filteredL3Passthrough, err := filter.L3PassthroughsForNode(node, l3passthrough.Items)
+	if err != nil {
+		slog.Error("failed to filter l3passthrough for node", "node", r.MyNode, "error", err)
+		return ctrl.Result{}, err
+	}
 	nodeIndex, err := r.RouterProvider.NodeIndex(ctx)
 	if err != nil {
 		slog.Error("failed to get node index", "error", err)
@@ -105,11 +137,11 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	apiConfig := conversion.ApiConfigData{
 		NodeIndex:          nodeIndex,
 		UnderlayFromMultus: r.UnderlayFromMultus,
-		Underlays:          underlays.Items,
+		Underlays:          filteredUnderlays,
 		LogLevel:           r.LogLevel,
-		L3VNIs:             l3vnis.Items,
-		L2VNIs:             l2vnis.Items,
-		L3Passthrough:      l3passthrough.Items,
+		L3VNIs:             filteredL3VNIs,
+		L2VNIs:             filteredL2VNIs,
+		L3Passthrough:      filteredL3Passthrough,
 	}
 
 	router, err := r.RouterProvider.New(ctx)
@@ -166,14 +198,20 @@ func (r *PERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		default:
 			return true
 		}
-
 	})
 
 	filterUpdates := predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			switch o := e.ObjectNew.(type) {
 			case *v1.Node:
-				return false
+				// Only reconcile if this is our node and labels changed
+				if o.Name != r.MyNode {
+					return false
+				}
+				old := e.ObjectOld.(*v1.Node)
+				oldLabels := labels.Set(old.Labels)
+				newLabels := labels.Set(o.Labels)
+				return !labels.Equals(oldLabels, newLabels)
 			case *v1.Pod: // handle only status updates
 				old := e.ObjectOld.(*v1.Pod)
 				if PodIsReady(old) != PodIsReady(o) {
@@ -190,6 +228,7 @@ func (r *PERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.Underlay{}).
+		Watches(&v1.Node{}, &handler.EnqueueRequestForObject{}).
 		Watches(&v1.Pod{}, &handler.EnqueueRequestForObject{}).
 		Watches(&v1alpha1.L3VNI{}, &handler.EnqueueRequestForObject{}).
 		Watches(&v1alpha1.L2VNI{}, &handler.EnqueueRequestForObject{}).

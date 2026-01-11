@@ -90,6 +90,55 @@ spec:
                 x-kubernetes-validations:
                 - message: L2GatewayIPs cannot be changed
                   rule: self == oldSelf
+              nodeSelector:
+                description: |-
+                  NodeSelector specifies which nodes this L2VNI applies to.
+                  If empty or not specified, applies to all nodes.
+                  Multiple L2VNIs can match the same node.
+                properties:
+                  matchExpressions:
+                    description: matchExpressions is a list of label selector requirements.
+                      The requirements are ANDed.
+                    items:
+                      description: |-
+                        A label selector requirement is a selector that contains values, a key, and an operator that
+                        relates the key and values.
+                      properties:
+                        key:
+                          description: key is the label key that the selector applies
+                            to.
+                          type: string
+                        operator:
+                          description: |-
+                            operator represents a key's relationship to a set of values.
+                            Valid operators are In, NotIn, Exists and DoesNotExist.
+                          type: string
+                        values:
+                          description: |-
+                            values is an array of string values. If the operator is In or NotIn,
+                            the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                            the values array must be empty. This array is replaced during a strategic
+                            merge patch.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  matchLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                      map is equivalent to an element of matchExpressions, whose key field is "key", the
+                      operator is "In", and the values array contains only "value". The requirements are ANDed.
+                    type: object
+                type: object
+                x-kubernetes-map-type: atomic
               vni:
                 description: VNI is the VXLan VNI to be used
                 format: int32
@@ -208,6 +257,55 @@ spec:
                 - hostasn
                 - localcidr
                 type: object
+              nodeSelector:
+                description: |-
+                  NodeSelector specifies which nodes this L3Passthrough applies to.
+                  If empty or not specified, applies to all nodes.
+                  Multiple L3Passthrough with overlapping node selectors will be rejected.
+                properties:
+                  matchExpressions:
+                    description: matchExpressions is a list of label selector requirements.
+                      The requirements are ANDed.
+                    items:
+                      description: |-
+                        A label selector requirement is a selector that contains values, a key, and an operator that
+                        relates the key and values.
+                      properties:
+                        key:
+                          description: key is the label key that the selector applies
+                            to.
+                          type: string
+                        operator:
+                          description: |-
+                            operator represents a key's relationship to a set of values.
+                            Valid operators are In, NotIn, Exists and DoesNotExist.
+                          type: string
+                        values:
+                          description: |-
+                            values is an array of string values. If the operator is In or NotIn,
+                            the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                            the values array must be empty. This array is replaced during a strategic
+                            merge patch.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  matchLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                      map is equivalent to an element of matchExpressions, whose key field is "key", the
+                      operator is "In", and the values array contains only "value". The requirements are ANDed.
+                    type: object
+                type: object
+                x-kubernetes-map-type: atomic
             type: object
           status:
             description: L3PassthroughStatus defines the observed state of L3Passthrough.
@@ -307,6 +405,55 @@ spec:
                 - hostasn
                 - localcidr
                 type: object
+              nodeSelector:
+                description: |-
+                  NodeSelector specifies which nodes this L3VNI applies to.
+                  If empty or not specified, applies to all nodes.
+                  Multiple L3VNIs can match the same node.
+                properties:
+                  matchExpressions:
+                    description: matchExpressions is a list of label selector requirements.
+                      The requirements are ANDed.
+                    items:
+                      description: |-
+                        A label selector requirement is a selector that contains values, a key, and an operator that
+                        relates the key and values.
+                      properties:
+                        key:
+                          description: key is the label key that the selector applies
+                            to.
+                          type: string
+                        operator:
+                          description: |-
+                            operator represents a key's relationship to a set of values.
+                            Valid operators are In, NotIn, Exists and DoesNotExist.
+                          type: string
+                        values:
+                          description: |-
+                            values is an array of string values. If the operator is In or NotIn,
+                            the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                            the values array must be empty. This array is replaced during a strategic
+                            merge patch.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  matchLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                      map is equivalent to an element of matchExpressions, whose key field is "key", the
+                      operator is "In", and the values array contains only "value". The requirements are ANDed.
+                    type: object
+                type: object
+                x-kubernetes-map-type: atomic
               vni:
                 description: VNI is the VXLan VNI to be used
                 format: int32
@@ -541,6 +688,55 @@ spec:
                   pattern: ^[a-zA-Z][a-zA-Z0-9._-]*$
                   type: string
                 type: array
+              nodeSelector:
+                description: |-
+                  NodeSelector specifies which nodes this Underlay applies to.
+                  If empty or not specified, applies to all nodes (backward compatible).
+                  Multiple Underlays with overlapping node selectors will be rejected.
+                properties:
+                  matchExpressions:
+                    description: matchExpressions is a list of label selector requirements.
+                      The requirements are ANDed.
+                    items:
+                      description: |-
+                        A label selector requirement is a selector that contains values, a key, and an operator that
+                        relates the key and values.
+                      properties:
+                        key:
+                          description: key is the label key that the selector applies
+                            to.
+                          type: string
+                        operator:
+                          description: |-
+                            operator represents a key's relationship to a set of values.
+                            Valid operators are In, NotIn, Exists and DoesNotExist.
+                          type: string
+                        values:
+                          description: |-
+                            values is an array of string values. If the operator is In or NotIn,
+                            the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                            the values array must be empty. This array is replaced during a strategic
+                            merge patch.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  matchLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                      map is equivalent to an element of matchExpressions, whose key field is "key", the
+                      operator is "In", and the values array contains only "value". The requirements are ANDed.
+                    type: object
+                type: object
+                x-kubernetes-map-type: atomic
               routeridcidr:
                 default: 10.0.0.0/24
                 description: RouterIDCIDR is the ipv4 cidr to be used to assign a
@@ -986,7 +1182,27 @@ spec:
               fieldPath: metadata.namespace
         image: quay.io/openperouter/router:main
         imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /healthz
+            port: 9081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+          timeoutSeconds: 1
         name: controller
+        ports:
+        - containerPort: 9081
+          name: health
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /readyz
+            port: 9081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 1
         resources:
           limits:
             cpu: 500m
@@ -1109,7 +1325,27 @@ spec:
         - /etc/frr_reloader/reloader
         image: quay.io/frrouting/frr:10.2.1
         imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /healthz
+            port: 9080
+          initialDelaySeconds: 15
+          periodSeconds: 20
+          timeoutSeconds: 1
         name: reloader
+        ports:
+        - containerPort: 9080
+          name: health
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /readyz
+            port: 9080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 1
         volumeMounts:
         - mountPath: /etc/frr
           name: frrconfig

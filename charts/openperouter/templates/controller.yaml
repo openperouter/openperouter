@@ -47,6 +47,9 @@ spec:
         {{- with .Values.openperouter.logLevel }}
         - --loglevel={{ . }}
         {{- end }}
+        {{- with .Values.openperouter.controller.healthProbePort }}
+        - --health-probe-bind-address=:{{ . }}
+        {{- end }}
         {{- if eq .Values.openperouter.cri "containerd" }}
         - --crisocket=/containerd.sock
         {{- end }}
@@ -75,6 +78,26 @@ spec:
         imagePullPolicy: {{ .Values.openperouter.image.pullPolicy }}
         {{- end }}
         name: controller
+        ports:
+        - containerPort: {{ .Values.openperouter.controller.healthProbePort | default 9081 }}
+          name: health
+          protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: {{ .Values.openperouter.controller.healthProbePort | default 9081 }}
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 1
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: {{ .Values.openperouter.controller.healthProbePort | default 9081 }}
+          initialDelaySeconds: 15
+          periodSeconds: 20
+          timeoutSeconds: 1
+          failureThreshold: 3
         {{- with .Values.openperouter.controller.resources }}
         resources:
           {{- toYaml . | nindent 10 }}

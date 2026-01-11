@@ -7,8 +7,8 @@
 #   SKIP_OVS_MOUNT   - Set to "true" to skip OVS mount when Open vSwitch is not installed
 #
 # Example usage:
-#   ./generate_systemd.sh                    # Generate with OVS mount
-#   SKIP_OVS_MOUNT=true ./generate_systemd.sh  # Generate without OVS mount
+#   ./generate_systemd.sh                          # Generate with OVS mount, use hostname
+#   SKIP_OVS_MOUNT=true ./generate_systemd.sh      # Generate without OVS mount
 
 set -euo pipefail
 
@@ -106,7 +106,7 @@ podman create --pod=controllerpod --name=controller \
 	--pid=host \
 	-t "$ROUTER_IMAGE" \
 	--loglevel debug --frrconfig /etc/perouter/frr/frr.conf --pid-path /etc/perouter/frr/frr.pid --reloader-socket /etc/perouter/frr/frr.socket \
-	--mode host
+	--mode host --nodename "NODENAME"
 
 # Generate systemd unit files for both pods
 podman generate systemd --new --files --name routerpod
@@ -117,6 +117,11 @@ podman generate systemd --new --files --name controllerpod
 # and /tmp/tmp.XXXXX/var/lib/openperouter to /var/lib/openperouter
 echo "Replacing temporary paths with actual host paths..."
 sed -i "s|${TEMP_BASE}||g" container-controller.service container-reloader.service
+
+# Use the hostname systemd expansion %H inside the unit to configure the 
+# nodename, we may need to improve this mechanism for scenarios where ndename 
+# is not the hostname
+sed -i 's|NODENAME|%H|g' container-controller.service container-reloader.service
 
 # Clean up the temporary pods and containers
 # The --new flag ensures systemd units will create/remove them on start/stop

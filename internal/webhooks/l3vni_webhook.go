@@ -11,13 +11,12 @@ import (
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/conversion"
 	v1 "k8s.io/api/admission/v1"
+	corev1 "k8s.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
-
-var ValidateL3VNIs func(l3vnis []v1alpha1.L3VNI) error
 
 const (
 	l3vniValidationWebhookPath = "/validate-openperouter-io-v1alpha1-l3vni"
@@ -128,7 +127,12 @@ func validateL3VNI(l3vni *v1alpha1.L3VNI) error {
 		toValidate = append(toValidate, *l3vni.DeepCopy())
 	}
 
-	if err := ValidateL3VNIs(toValidate); err != nil {
+	nodeList := &corev1.NodeList{}
+	if err := WebhookClient.List(context.Background(), nodeList, &client.ListOptions{}); err != nil {
+		return fmt.Errorf("failed to get existing Node objects when validating L3VNI: %w", err)
+	}
+
+	if err := conversion.ValidateL3VNIsForNodes(nodeList.Items, toValidate); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
 	}
 
@@ -136,7 +140,7 @@ func validateL3VNI(l3vni *v1alpha1.L3VNI) error {
 	if err != nil {
 		return err
 	}
-	if err := conversion.ValidateHostSessions(toValidate, l3passthroughs.Items); err != nil {
+	if err := conversion.ValidateHostSessionsForNodes(nodeList.Items, toValidate, l3passthroughs.Items); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
 	}
 	return nil

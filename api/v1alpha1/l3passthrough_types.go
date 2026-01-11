@@ -21,6 +21,12 @@ import (
 )
 
 type L3PassthroughSpec struct {
+	// NodeSelector specifies which nodes this L3Passthrough applies to.
+	// If empty or not specified, applies to all nodes.
+	// Multiple L3Passthrough with overlapping node selectors will be rejected.
+	// +optional
+	NodeSelector *metav1.LabelSelector `json:"nodeSelector,omitempty"`
+
 	// HostSession is the configuration for the host session.
 	HostSession HostSession `json:"hostsession,omitempty"`
 }

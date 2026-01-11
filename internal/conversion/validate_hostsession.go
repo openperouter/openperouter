@@ -5,12 +5,32 @@ package conversion
 import (
 	"fmt"
 
+	corev1 "k8s.io/api/core/v1"
+
 	v1alpha1 "github.com/openperouter/openperouter/api/v1alpha1"
+	"github.com/openperouter/openperouter/internal/filter"
 )
 
 type hostSessionInfo struct {
 	v1alpha1.HostSession
 	name string
+}
+
+func ValidateHostSessionsForNodes(nodes []corev1.Node, l3VNIs []v1alpha1.L3VNI, l3Passthrough []v1alpha1.L3Passthrough) error {
+	for _, node := range nodes {
+		filteredL3VNIs, err := filter.L3VNIsForNode(&node, l3VNIs)
+		if err != nil {
+			return fmt.Errorf("failed to filter L3 VNIs for node %q: %w", node.Name, err)
+		}
+		filteredL3Passthroughs, err := filter.L3PassthroughsForNode(&node, l3Passthrough)
+		if err != nil {
+			return fmt.Errorf("failed to filter L3 Passthrough for node %q: %w", node.Name, err)
+		}
+		if err := ValidateHostSessions(filteredL3VNIs, filteredL3Passthroughs); err != nil {
+			return fmt.Errorf("failed to validate host sessions for node %q: %w", node.Name, err)
+		}
+	}
+	return nil
 }
 
 func ValidateHostSessions(l3VNIs []v1alpha1.L3VNI, l3Passthrough []v1alpha1.L3Passthrough) error {

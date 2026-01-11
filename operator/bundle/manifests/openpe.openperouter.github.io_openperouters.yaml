@@ -39,6 +39,13 @@ spec:
           spec:
             description: OpenPERouterSpec defines the desired state of OpenPERouter
             properties:
+              healthProbePort:
+                default: 9081
+                description: 'HealthProbePort specifies the port for the controller''s
+                  health and readiness probes. (default: 9081)'
+                maximum: 65535
+                minimum: 1
+                type: integer
               logLevel:
                 description: |-
                   Define the verbosity of the controller and the router logging.

@@ -131,6 +131,11 @@ func patchChartValues(envConfig envconfig.EnvConfig, crdConfig *operatorapi.Open
 	if crdConfig.Spec.OVSRunDir != "" {
 		openperouterValues["ovsRunDir"] = crdConfig.Spec.OVSRunDir
 	}
+	if crdConfig.Spec.HealthProbePort != 0 {
+		openperouterValues["controller"] = map[string]interface{}{
+			"healthProbePort": crdConfig.Spec.HealthProbePort,
+		}
+	}
 
 	valuesMap["openperouter"] = openperouterValues
 

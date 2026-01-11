@@ -33,18 +33,22 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/openperouter/openperouter/internal/frr/liveness"
+	"github.com/openperouter/openperouter/internal/frr/vtysh"
 	"github.com/openperouter/openperouter/internal/frrconfig"
 	"github.com/openperouter/openperouter/internal/logging"
 )
 
 type Args struct {
-	unixSocket    string
-	logLevel      string
+	bindAddress   string
 	frrConfigPath string
+	logLevel      string
+	unixSocket    string
 }
 
 func main() {
 	args := Args{}
+	flag.StringVar(&args.bindAddress, "bindaddress", "0.0.0.0:9080", "The address the reloader endpoint binds to. ")
 	flag.StringVar(&args.unixSocket, "unixsocket", "", "Unix socket path to listen on")
 	flag.StringVar(&args.logLevel, "loglevel", "info", "The log level of the process")
 	flag.StringVar(&args.frrConfigPath, "frrconfig", "/etc/frr/frr.conf", "The path the frr configuration is at")
@@ -63,6 +67,7 @@ func main() {
 	build, _ := debug.ReadBuildInfo()
 	slog.Info("version", "version", build.Main.Version)
 	slog.Info("arguments", "args", fmt.Sprintf("%+v", args))
+	slog.Info("listening", "address", args.bindAddress)
 
 	if err := serveReload(args); err != nil {
 		log.Fatal(err)
@@ -79,11 +84,17 @@ func serveReload(args Args) error {
 		return fmt.Errorf("failed to listen on unix socket %s: %w", args.unixSocket, err)
 	}
 
-	http.HandleFunc("/", reloadHandler(args.frrConfigPath))
+	unixServer := newServer(
+		[]handlerConfig{{pattern: "/", handler: reloadHandler(args.frrConfigPath)}},
+	)
 
-	server := &http.Server{
-		ReadHeaderTimeout: 3 * time.Second,
-	}
+	healthServer := newServer(
+		[]handlerConfig{
+			{pattern: "/healthz", handler: health()},
+			{pattern: "/readyz", handler: health()},
+		},
+		withEndpoint(args.bindAddress),
+	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -91,7 +102,14 @@ func serveReload(args Args) error {
 	serverErr := make(chan error, 1)
 	go func() {
 		slog.Info("starting reloader server", "socket", args.unixSocket)
-		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
+		if err := unixServer.Serve(listener); err != nil && err != http.ErrServerClosed {
+			serverErr <- err
+		}
+	}()
+
+	go func() {
+		slog.Info("starting health server", "address", args.bindAddress)
+		if err := healthServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			serverErr <- err
 		}
 	}()
@@ -103,8 +121,11 @@ func serveReload(args Args) error {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		if err := server.Shutdown(shutdownCtx); err != nil {
-			slog.Error("error during server shutdown", "error", err)
+		if err := unixServer.Shutdown(shutdownCtx); err != nil {
+			slog.Error("error during unix server shutdown", "error", err)
+		}
+		if err := healthServer.Shutdown(shutdownCtx); err != nil {
+			slog.Error("error during health server shutdown", "error", err)
 		}
 
 		if err := os.Remove(args.unixSocket); err != nil {
@@ -134,5 +155,57 @@ func reloadHandler(frrConfigPath string) func(w http.ResponseWriter, req *http.R
 		}
 		w.WriteHeader(http.StatusOK)
 		slog.Info("reload handler", "event", "reload successful")
+	}
+}
+
+func health() func(w http.ResponseWriter, req *http.Request) {
+	return func(w http.ResponseWriter, req *http.Request) {
+		if req.Method != http.MethodGet {
+			http.Error(w, "invalid method", http.StatusMethodNotAllowed)
+			return
+		}
+
+		if err := liveness.PingFrr(vtysh.Run); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		_, err := w.Write([]byte("ok"))
+		if err != nil {
+			slog.Info("health check write failed", "error", err)
+		}
+	}
+}
+
+type handlerConfig struct {
+	pattern string
+	handler func(http.ResponseWriter, *http.Request)
+}
+
+type serverOption func(*http.Server)
+
+func newServer(handlers []handlerConfig, opts ...serverOption) *http.Server {
+	const defaultTimeout = 1 * time.Second
+
+	mux := http.NewServeMux()
+	for _, h := range handlers {
+		mux.HandleFunc(h.pattern, h.handler)
+	}
+
+	server := &http.Server{
+		Handler:           mux,
+		ReadHeaderTimeout: defaultTimeout,
+	}
+
+	for _, opt := range opts {
+		opt(server)
+	}
+	return server
+}
+
+func withEndpoint(addr string) serverOption {
+	return func(server *http.Server) {
+		server.Addr = addr
 	}
 }

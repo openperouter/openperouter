@@ -62,21 +62,34 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
-        {{- if .Values.webhook.enabled }}
         ports:
+        {{- if .Values.webhook.enabled }}
           - containerPort: 9443
             name: webhook-server
+            protocol: TCP
+        {{- end }}
+          - containerPort: 8081
+            name: health
             protocol: TCP
         readinessProbe:
           httpGet:
             path: /readyz
-            port: webhook-server
-            scheme: HTTPS
+            port: health
+            scheme: HTTP
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 1
+          failureThreshold: 3
         livenessProbe:
           httpGet:
             path: /healthz
-            port: webhook-server
-            scheme: HTTPS
+            port: health
+            scheme: HTTP
+          initialDelaySeconds: 15
+          periodSeconds: 20
+          timeoutSeconds: 1
+          failureThreshold: 3
+        {{- if .Values.webhook.enabled }}
         volumeMounts:
         - name: cert
           mountPath: /tmp/k8s-webhook-server/serving-certs

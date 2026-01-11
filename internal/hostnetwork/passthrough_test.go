@@ -139,14 +139,18 @@ func validatePassthrough(g Gomega, params PassthroughParams, testNS netns.NsHand
 	vethHasIPs(g, PassthroughNames.HostSide, params.HostVeth.HostIPv4, params.HostVeth.HostIPv6)
 
 	_ = inNamespace(testNS, func() error {
-		vethHasIPs(g, PassthroughNames.NamespaceSide, params.HostVeth.NSIPv4, params.HostVeth.NSIPv6)
+		validatePassthroughInNamespace(g, params)
 		return nil
 	})
 }
 
+func validatePassthroughInNamespace(g Gomega, params PassthroughParams) {
+	vethHasIPs(g, PassthroughNames.NamespaceSide, params.HostVeth.NSIPv4, params.HostVeth.NSIPv6)
+}
+
 func vethHasIPs(g Gomega, linkName, ipv4, ipv6 string) {
 	link, err := netlink.LinkByName(linkName)
-	g.Expect(err).NotTo(HaveOccurred(), "passthrough link not found", linkName)
+	g.Expect(err).NotTo(HaveOccurred(), "passthrough link not found %q", linkName)
 
 	g.Expect(link.Attrs().OperState).To(BeEquivalentTo(netlink.OperUp))
 
@@ -165,11 +169,15 @@ func vethHasIPs(g Gomega, linkName, ipv4, ipv6 string) {
 
 func validatePassthroughRemoved(g Gomega, testNS netns.NsHandle) {
 	_, err := netlink.LinkByName(PassthroughNames.HostSide)
-	g.Expect(errors.As(err, &netlink.LinkNotFoundError{})).To(BeTrue(), "host passthrough link should be deleted", PassthroughNames.HostSide)
+	g.Expect(errors.As(err, &netlink.LinkNotFoundError{})).To(BeTrue(), "host passthrough link %q should be deleted", PassthroughNames.HostSide)
 
 	_ = inNamespace(testNS, func() error {
-		_, err := netlink.LinkByName(PassthroughNames.NamespaceSide)
-		g.Expect(errors.As(err, &netlink.LinkNotFoundError{})).To(BeTrue(), "namespace passthrough link should be deleted", PassthroughNames.NamespaceSide)
+		validatePassthroughRemovedInNamespace(g)
 		return nil
 	})
+}
+
+func validatePassthroughRemovedInNamespace(g Gomega) {
+	_, err := netlink.LinkByName(PassthroughNames.NamespaceSide)
+	g.Expect(errors.As(err, &netlink.LinkNotFoundError{})).To(BeTrue(), "namespace passthrough link %q should be deleted", PassthroughNames.NamespaceSide)
 }

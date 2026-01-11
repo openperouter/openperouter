@@ -239,7 +239,7 @@ var _ = Describe("Webhooks", func() {
 					VXLanPort:    4789,
 					L2GatewayIPs: []string{"2001:db8::1/64", "2001:db9::1/64"},
 				},
-			}, `validation failed: invalid l2gatewayips for vni "l2-two-ipv6" = [2001:db8::1/64 2001:db9::1/64]: IPFamilyForAddresses: same address family ["2001:db8::1" "2001:db9::1"]`),
+			}, `invalid l2gatewayips for vni "l2-two-ipv6" = [2001:db8::1/64 2001:db9::1/64]: IPFamilyForAddresses: same address family ["2001:db8::1" "2001:db9::1"]`),
 		)
 
 		It("should allow creating an L2VNI with valid IPv4 address", func() {
