@@ -1,0 +1,45 @@
+---
+# Rack 1 nodes connect to ToR 1
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: Underlay
+metadata:
+  name: underlay-rack-1
+  namespace: openperouter-system
+spec:
+  nodeSelector:
+    matchLabels:
+      topology.kubernetes.io/rack: rack-1
+  asn: 64512
+  evpn:
+    vtepcidr: 100.65.1.0/24
+  nics:
+    - toswitch
+  neighbors:
+    - asn: 64500
+      address: 192.168.1.254  # ToR switch for rack 1
+      bfd:
+        receiveInterval: 300
+        transmitInterval: 300
+---
+# Rack 2 nodes connect to ToR 2
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: Underlay
+metadata:
+  name: underlay-rack-2
+  namespace: openperouter-system
+spec:
+  nodeSelector:
+    matchLabels:
+      topology.kubernetes.io/rack: rack-2
+  asn: 64512
+  evpn:
+    vtepcidr: 100.65.2.0/24
+  nics:
+    - toswitch
+  neighbors:
+    - asn: 64500
+      address: 192.168.2.254  # ToR switch for rack 2
+      bfd:
+        receiveInterval: 300
+        transmitInterval: 300
+

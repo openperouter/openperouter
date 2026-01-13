@@ -1,0 +1,41 @@
+---
+# For Dell servers with specific NIC naming
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: Underlay
+metadata:
+  name: underlay-dell-hardware
+  namespace: openperouter-system
+spec:
+  nodeSelector:
+    matchLabels:
+      hardware.vendor: dell
+  asn: 64512
+  evpn:
+    vtepcidr: 100.65.0.0/24
+  nics:
+    - eno1
+    - eno2
+  neighbors:
+    - asn: 64500
+      address: 192.168.10.1
+---
+# For HP servers with different NIC naming
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: Underlay
+metadata:
+  name: underlay-hp-hardware
+  namespace: openperouter-system
+spec:
+  nodeSelector:
+    matchLabels:
+      hardware.vendor: hp
+  asn: 64512
+  evpn:
+    vtepcidr: 100.65.0.0/24
+  nics:
+    - em1
+    - em2
+  neighbors:
+    - asn: 64500
+      address: 192.168.10.1
+

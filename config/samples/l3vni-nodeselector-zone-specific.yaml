@@ -1,0 +1,37 @@
+---
+# L3VNI for us-east-1a
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: L3VNI
+metadata:
+  name: tenant-b-east
+  namespace: openperouter-system
+spec:
+  nodeSelector:
+    matchLabels:
+      topology.kubernetes.io/zone: us-east-1a
+  vrf: tenant-b
+  vni: 6001
+  hostsession:
+    asn: 64512
+    hostasn: 64601
+    localcidr:
+      ipv4: 192.169.3.0/24
+---
+# L3VNI for us-west-1a
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: L3VNI
+metadata:
+  name: tenant-b-west
+  namespace: openperouter-system
+spec:
+  nodeSelector:
+    matchLabels:
+      topology.kubernetes.io/zone: us-west-1a
+  vrf: tenant-b
+  vni: 6002
+  hostsession:
+    asn: 64513
+    hostasn: 64601
+    localcidr:
+      ipv4: 192.169.4.0/24
+
