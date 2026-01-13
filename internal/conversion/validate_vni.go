@@ -65,9 +65,9 @@ func ValidateL2VNIs(l2Vnis []v1alpha1.L2VNI) error {
 
 	// Perform L2-specific validation (HostMaster and L2GatewayIPs validation)
 	for _, vni := range l2Vnis {
-		if vni.Spec.HostMaster != nil && vni.Spec.HostMaster.Name != "" {
-			if err := isValidInterfaceName(vni.Spec.HostMaster.Name); err != nil {
-				return fmt.Errorf("invalid hostmaster name for vni %s: %s - %w", vni.Name, vni.Spec.HostMaster.Name, err)
+		if vni.Spec.HostMaster != nil {
+			if err := validateHostMaster(vni.Name, vni.Spec.HostMaster); err != nil {
+				return err
 			}
 		}
 		if len(vni.Spec.L2GatewayIPs) > 0 {
@@ -178,5 +178,31 @@ func isValidCIDR(cidr string) error {
 	if _, _, err := net.ParseCIDR(cidr); err != nil {
 		return fmt.Errorf("invalid CIDR: %s - %w", cidr, err)
 	}
+	return nil
+}
+
+func validateHostMaster(vniName string, hostConfig *v1alpha1.HostMaster) error {
+	var name string
+	switch hostConfig.Type {
+	case v1alpha1.LinuxBridge:
+		if hostConfig.LinuxBridge != nil {
+			name = hostConfig.LinuxBridge.Name
+		}
+	case v1alpha1.OVSBridge:
+		if hostConfig.OVSBridge != nil {
+			name = hostConfig.OVSBridge.Name
+		}
+	default:
+		return fmt.Errorf("invalid hostmaster type %q", hostConfig.Type)
+	}
+
+	if name == "" {
+		return nil
+	}
+
+	if err := isValidInterfaceName(name); err != nil {
+		return fmt.Errorf("invalid hostmaster name for vni %s: %s - %w", vniName, name, err)
+	}
+
 	return nil
 }

@@ -22,7 +22,8 @@ spec:
   vrf: red
   hostmaster:
     type: linux-bridge
-    autocreate: true
+    linuxBridge:
+      autoCreate: true
   l2gatewayips: ["192.170.1.1/24"]
 ---
 apiVersion: openpe.openperouter.github.io/v1alpha1

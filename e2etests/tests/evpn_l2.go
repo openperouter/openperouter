@@ -43,7 +43,10 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		},
 	}
 
-	const linuxBridgeHostAttachment = "linux-bridge"
+	const (
+		linuxBridgeHostAttachment = "linux-bridge"
+		ovsBridgeHostAttachment   = "ovs-bridge"
+	)
 	l2VniRed := v1alpha1.L2VNI{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "red110",
@@ -53,8 +56,10 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			VRF: ptr.To("red"),
 			VNI: 110,
 			HostMaster: &v1alpha1.HostMaster{
-				AutoCreate: true,
-				Type:       linuxBridgeHostAttachment,
+				Type: linuxBridgeHostAttachment,
+				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
+					AutoCreate: true,
+				},
 			},
 		},
 	}
@@ -226,8 +231,10 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			hostBRedIPs:  []string{infra.HostBRedIPv4},
 			nadMaster:    "br-hs-110",
 			hostMaster: v1alpha1.HostMaster{
-				AutoCreate: true,
-				Type:       linuxBridgeHostAttachment,
+				Type: linuxBridgeHostAttachment,
+				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
+					AutoCreate: true,
+				},
 			},
 		}),
 		Entry("for dual stack", testCase{
@@ -238,8 +245,10 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			hostBRedIPs:  []string{infra.HostBRedIPv4, infra.HostBRedIPv6},
 			nadMaster:    "br-hs-110",
 			hostMaster: v1alpha1.HostMaster{
-				AutoCreate: true,
-				Type:       linuxBridgeHostAttachment,
+				Type: linuxBridgeHostAttachment,
+				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
+					AutoCreate: true,
+				},
 			},
 		}),
 		Entry("for single stack ipv6", testCase{
@@ -250,8 +259,10 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			hostBRedIPs:  []string{infra.HostBRedIPv6},
 			nadMaster:    "br-hs-110",
 			hostMaster: v1alpha1.HostMaster{
-				AutoCreate: true,
-				Type:       linuxBridgeHostAttachment,
+				Type: linuxBridgeHostAttachment,
+				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
+					AutoCreate: true,
+				},
 			},
 		}),
 		Entry("OVS bridge autocreate for single stack ipv4", testCase{
@@ -262,8 +273,10 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			hostBRedIPs:  []string{infra.HostBRedIPv4},
 			nadMaster:    "br-hs-110",
 			hostMaster: v1alpha1.HostMaster{
-				AutoCreate: true,
-				Type:       "ovs-bridge",
+				Type: ovsBridgeHostAttachment,
+				OVSBridge: &v1alpha1.OVSBridgeConfig{
+					AutoCreate: true,
+				},
 			},
 		}),
 		Entry("OVS bridge autocreate for dual stack", testCase{
@@ -274,8 +287,10 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			hostBRedIPs:  []string{infra.HostBRedIPv4, infra.HostBRedIPv6},
 			nadMaster:    "br-hs-110",
 			hostMaster: v1alpha1.HostMaster{
-				AutoCreate: true,
-				Type:       "ovs-bridge",
+				Type:       ovsBridgeHostAttachment,
+				OVSBridge: &v1alpha1.OVSBridgeConfig{
+					AutoCreate: true,
+				},
 			},
 		}),
 		Entry("OVS bridge autocreate for single stack ipv6", testCase{
@@ -286,8 +301,10 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			hostBRedIPs:  []string{infra.HostBRedIPv6},
 			nadMaster:    "br-hs-110",
 			hostMaster: v1alpha1.HostMaster{
-				AutoCreate: true,
-				Type:       "ovs-bridge",
+				Type:       ovsBridgeHostAttachment,
+				OVSBridge: &v1alpha1.OVSBridgeConfig{
+					AutoCreate: true,
+				},
 			},
 		}),
 		Entry("OVS bridge existing for single stack ipv4", testCase{
@@ -298,9 +315,11 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			hostBRedIPs:  []string{infra.HostBRedIPv4},
 			nadMaster:    preExistingOVSBridge,
 			hostMaster: v1alpha1.HostMaster{
-				Name:       preExistingOVSBridge,
-				AutoCreate: false,
-				Type:       "ovs-bridge",
+				Type: ovsBridgeHostAttachment,
+				OVSBridge: &v1alpha1.OVSBridgeConfig{
+					Name:       preExistingOVSBridge,
+					AutoCreate: false,
+				},
 			},
 		}),
 		Entry("OVS bridge existing for dual stack", testCase{
@@ -311,9 +330,11 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			hostBRedIPs:  []string{infra.HostBRedIPv4, infra.HostBRedIPv6},
 			nadMaster:    preExistingOVSBridge,
 			hostMaster: v1alpha1.HostMaster{
-				Name:       preExistingOVSBridge,
-				AutoCreate: false,
-				Type:       "ovs-bridge",
+				Type: ovsBridgeHostAttachment,
+				OVSBridge: &v1alpha1.OVSBridgeConfig{
+					Name:       preExistingOVSBridge,
+					AutoCreate: false,
+				},
 			},
 		}),
 		Entry("OVS bridge existing for single stack ipv6", testCase{
@@ -324,9 +345,11 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			hostBRedIPs:  []string{infra.HostBRedIPv6},
 			nadMaster:    preExistingOVSBridge,
 			hostMaster: v1alpha1.HostMaster{
-				Name:       preExistingOVSBridge,
-				AutoCreate: false,
-				Type:       "ovs-bridge",
+				Type: ovsBridgeHostAttachment,
+				OVSBridge: &v1alpha1.OVSBridgeConfig{
+					Name:       preExistingOVSBridge,
+					AutoCreate: false,
+				},
 			},
 		}),
 	)

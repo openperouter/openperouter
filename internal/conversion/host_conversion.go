@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/openperouter/openperouter/internal/ipam"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func APItoHostConfig(nodeIndex int, targetNS string, apiConfig ApiConfigData) (HostConfigData, error) {
@@ -119,10 +121,32 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig ApiConfigData) (H
 			copy(vni.L2GatewayIPs, l2vni.Spec.L2GatewayIPs)
 		}
 		if l2vni.Spec.HostMaster != nil {
+			var name string
+			var autoCreate bool
+
+			switch l2vni.Spec.HostMaster.Type {
+			case v1alpha1.LinuxBridge:
+				if l2vni.Spec.HostMaster.LinuxBridge != nil {
+					name = l2vni.Spec.HostMaster.LinuxBridge.Name
+					autoCreate = l2vni.Spec.HostMaster.LinuxBridge.AutoCreate
+				}
+			case v1alpha1.OVSBridge:
+				if l2vni.Spec.HostMaster.OVSBridge != nil {
+					name = l2vni.Spec.HostMaster.OVSBridge.Name
+					autoCreate = l2vni.Spec.HostMaster.OVSBridge.AutoCreate
+				}
+			default:
+				return HostConfigData{}, fmt.Errorf(
+					"unknown host master type %q for L2VNI %s",
+					l2vni.Spec.HostMaster.Type,
+					client.ObjectKeyFromObject(&l2vni),
+				)
+			}
+
 			vni.HostMaster = &hostnetwork.HostMaster{
-				Name:       l2vni.Spec.HostMaster.Name,
+				Name:       name,
 				Type:       l2vni.Spec.HostMaster.Type,
-				AutoCreate: l2vni.Spec.HostMaster.AutoCreate,
+				AutoCreate: autoCreate,
 			}
 		}
 

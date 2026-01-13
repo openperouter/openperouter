@@ -65,13 +65,14 @@ spec:
   vrf: red
   hostmaster:
     type: linux-bridge
-    autocreate: true
+    linuxBridge:
+      autoCreate: true
   l2gatewayips: ["192.170.1.1/24"]
 ```
 
 **Configuration Notes:**
 
-- **`l2gatewayips` field**: Allows each pod to have the same default gateway and be able to send traffic to the outer L3 domain
+- **`l2gatewayip` field**: Allows each pod to have the same default gateway and be able to send traffic to the outer L3 domain
 - **hostmaster.autocreate**: Instructs OpenPERouter to create a bridge local to the node that can be used to access the L2 domain
 
 ### Network Attachment Definition

@@ -73,8 +73,9 @@ metadata:
   namespace: openperouter-system
 spec:
   hostmaster:
-    autocreate: true
     type: linux-bridge
+    linuxBridge:
+      autoCreate: true
   l2gatewayips: ["192.170.1.1/24"]
   vni: 110
   vrf: red
@@ -85,7 +86,7 @@ spec:
 
 - The L2VNI references the L3VNI via the `vrf: red` field, enabling routed traffic
 - `hostmaster.autocreate: true` creates a `br-hs-110` bridge on the host
-- `l2gatewayips` defines the gateway IP(s) for the VM subnet
+- `l2gatewayip` defines the gateway IP for the VM subnet
 
 ### 2. Network Attachment Definition
 
@@ -260,7 +261,7 @@ The ping should continue working throughout the migration process.
 ### Common Issues
 
 1. **Bridge not created**: Verify the L2VNI has `hostmaster.autocreate: true`
-2. **VM cannot reach gateway**: Check that the VM's IP is in the same subnet as `l2gatewayips`
+2. **VM cannot reach gateway**: Check that the VM's IP is in the same subnet as `l2gatewayip`
 3. **No VM-to-VM connectivity**: Ensure both VMs are connected to the same bridge (`br-hs-110`)
 
 ### Debug Commands
