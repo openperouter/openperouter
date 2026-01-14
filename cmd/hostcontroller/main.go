@@ -26,6 +26,7 @@ import (
 	"runtime/debug"
 	"time"
 
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/client-go/rest"
@@ -168,6 +169,13 @@ func main() {
 			ByObject: map[client.Object]cache.ByObject{
 				&corev1.Node{}: {
 					Field: fields.Set{"metadata.name": k8sModeParams.nodeName}.AsSelector(),
+				},
+				&corev1.Pod{}: {
+					Label: labels.SelectorFromSet(labels.Set{"app": "router"}),
+					Field: fields.Set{
+						"spec.nodeName":      k8sModeParams.nodeName,
+						"metadata.namespace": k8sModeParams.namespace,
+					}.AsSelector(),
 				},
 			},
 		},
