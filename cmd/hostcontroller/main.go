@@ -26,6 +26,8 @@ import (
 	"runtime/debug"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/client-go/rest"
@@ -167,7 +169,16 @@ func main() {
 		Cache: cache.Options{
 			ByObject: map[client.Object]cache.ByObject{
 				&corev1.Node{}: {
-					Field: fields.Set{"metadata.name": k8sModeParams.nodeName}.AsSelector(),
+					Field:     fields.Set{"metadata.name": k8sModeParams.nodeName}.AsSelector(),
+					Transform: cache.TransformStripManagedFields(),
+				},
+				&corev1.Pod{}: {
+					Label: labels.SelectorFromSet(labels.Set{"app": "router"}),
+					Field: fields.Set{
+						"spec.nodeName":      k8sModeParams.nodeName,
+						"metadata.namespace": k8sModeParams.namespace,
+					}.AsSelector(),
+					Transform: pruneIrrelevantPodData,
 				},
 			},
 		},
@@ -309,4 +320,37 @@ func validateParameters(mode string, hostModeParams hostModeParameters, k8sModeP
 	}
 
 	return nil
+}
+
+func pruneIrrelevantPodData(obj interface{}) (interface{}, error) {
+	oldPod, ok := obj.(*corev1.Pod)
+	if !ok {
+		return obj, nil
+	}
+
+	newPod := &corev1.Pod{
+		TypeMeta: oldPod.TypeMeta,
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      oldPod.Name,
+			Namespace: oldPod.Namespace,
+			UID:       oldPod.UID,
+		},
+		Spec: corev1.PodSpec{
+			NodeName: oldPod.Spec.NodeName,
+		},
+	}
+
+	if oldPod.Labels != nil {
+		newPod.Labels = make(map[string]string, len(oldPod.Labels))
+		for k, v := range oldPod.Labels {
+			newPod.Labels[k] = v
+		}
+	}
+
+	if oldPod.Status.Conditions != nil {
+		newPod.Status.Conditions = make([]corev1.PodCondition, len(oldPod.Status.Conditions))
+		copy(newPod.Status.Conditions, oldPod.Status.Conditions)
+	}
+
+	return newPod, nil
 }
