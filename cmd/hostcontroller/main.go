@@ -169,6 +169,12 @@ func main() {
 				&corev1.Node{}: {
 					Field: fields.Set{"metadata.name": k8sModeParams.nodeName}.AsSelector(),
 				},
+				&corev1.Pod{}: {
+					Field: fields.Set{
+						"spec.nodeName":      k8sModeParams.nodeName,
+						"metadata.namespace": k8sModeParams.namespace,
+					}.AsSelector(),
+				},
 			},
 		},
 	})
