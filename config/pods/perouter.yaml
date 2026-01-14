@@ -28,7 +28,7 @@ spec:
         securityContext:
           capabilities:
             add: ["NET_ADMIN", "NET_RAW", "SYS_ADMIN", "NET_BIND_SERVICE"]
-        image: quay.io/frrouting/frr:10.2.1
+        image: router:latest
         imagePullPolicy: IfNotPresent
         env:
           - name: TINI_SUBREAPER
@@ -53,9 +53,9 @@ spec:
             done
             tail -f /etc/frr/frr.log
       - name: reloader
-        image: quay.io/frrouting/frr:10.2.1
+        image: router:latest
         imagePullPolicy: IfNotPresent
-        command: ["/etc/frr_reloader/reloader"]
+        command: ["/reloader"]
         args:
         - "--frrconfig=/etc/perouter/frr.conf"
         - "--loglevel=debug"
@@ -67,8 +67,6 @@ spec:
             mountPath: /var/run/frr
           - name: frrsharedconfig
             mountPath: /etc/perouter
-          - name: reloader
-            mountPath: /etc/frr_reloader
         ports:
         - containerPort: 9080
           name: health
@@ -102,8 +100,6 @@ spec:
         - name: frr-startup
           configMap:
             name: frr-startup
-        - name: reloader
-          emptyDir: {}
         - name: frrsharedconfig
           hostPath:
             path: /etc/perouter/frr
@@ -113,7 +109,7 @@ spec:
       initContainers:
         # Copies the initial config files with the right permissions to the shared volume.
         - name: cp-frr-files
-          image: quay.io/frrouting/frr:10.2.1
+          image: router:latest
           imagePullPolicy: IfNotPresent
           command: ["/bin/sh", "-c", "cp -rLf /tmp/frr/* /etc/frr/"]
           volumeMounts:
@@ -121,14 +117,6 @@ spec:
               mountPath: /tmp/frr
             - name: frrconfig
               mountPath: /etc/frr
-        # Copies the reloader to the shared volume between the k8s-frr controller and reloader.
-        - name: cp-reloader
-          image: router:latest
-          imagePullPolicy: IfNotPresent
-          command: ["/cp-tool", "/reloader", "/etc/frr_reloader/reloader"]
-          volumeMounts:
-            - name: reloader
-              mountPath: /etc/frr_reloader
       serviceAccountName: perouter
       terminationGracePeriodSeconds: 10
       shareProcessNamespace: true

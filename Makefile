@@ -87,7 +87,6 @@ build: manifests generate fmt vet ## Build manager binary.
 	go build -o bin/controller ./cmd/hostcontroller
 	go build -o bin/hostbridge ./cmd/hostbridge
 	go build -o bin/nodemarker ./cmd/nodemarker
-	go build -o bin/cp-tool ./cmd/cp-tool
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.

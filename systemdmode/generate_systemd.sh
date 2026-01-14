@@ -3,7 +3,7 @@
 # Generate systemd unit files for OpenPerouter pods
 #
 # Environment variables:
-#   IMAGE            - Router and FRR image (default: quay.io/openperouter/router:main)
+#   IMAGE            - Router image (default: quay.io/openperouter/router:main)
 #   SKIP_OVS_MOUNT   - Set to "true" to skip OVS mount when Open vSwitch is not installed
 #
 # Example usage:
@@ -13,7 +13,6 @@
 set -euo pipefail
 
 ROUTER_IMAGE="${IMAGE:-quay.io/openperouter/router:main}"
-FRR_IMAGE="${IMAGE:-quay.io/frrouting/frr:10.2.1}"
 
 # Set to "true" to skip OVS mount (useful when Open vSwitch is not installed)
 SKIP_OVS_MOUNT="${SKIP_OVS_MOUNT:-false}"
@@ -53,33 +52,22 @@ trap cleanup EXIT
 # Clean up any existing pods/containers first
 podman pod rm -f routerpod controllerpod 2>/dev/null || true
 
-podman pod create --share=+pid --name=routerpod 
+podman pod create --share=+pid --name=routerpod
 podman create --pod=routerpod --name=frr \
 	--pidfile=/etc/perouter/frr/frr.pid \
 	--cap-add=CAP_NET_BIND_SERVICE,CAP_NET_ADMIN,CAP_NET_RAW,CAP_SYS_ADMIN \
 	-e TINI_SUBREAPER=true \
 	-v=frr-sockets:/var/run/frr:Z \
-	-v=frrconfig:/etc/frr:Z \
 	--entrypoint=/bin/bash \
-	"$FRR_IMAGE" \
-	-c "for i in {1..10}; do test -f /etc/frr/daemons && break || sleep 5; done && chmod -R a+rw /var/run/frr && /sbin/tini -- /usr/lib/frr/docker-start & attempts=0; until [[ -f /etc/frr/frr.log || \$attempts -eq 60 ]]; do sleep 1; attempts=\$(( \$attempts + 1 )); done; tail -f /etc/frr/frr.log"
+	"$ROUTER_IMAGE" \
+	-c "chmod -R a+rw /var/run/frr && /sbin/tini -- /usr/lib/frr/docker-start & attempts=0; until [[ -f /etc/frr/frr.log || \$attempts -eq 60 ]]; do sleep 1; attempts=\$(( \$attempts + 1 )); done; tail -f /etc/frr/frr.log"
 
 podman create --pod=routerpod --name=reloader \
-	-v=frrconfig:/etc/frr:Z \
 	-v=frr-sockets:/var/run/frr:Z \
 	-v="${TEMP_BASE}/etc/perouter/frr":/etc/perouter:Z \
-	-v=reloader:/etc/frr_reloader:Z \
-	--entrypoint=/bin/bash \
-	"$FRR_IMAGE" \
-	-c "for i in {1..10}; do test -f /etc/frr_reloader/reloader && break || sleep 5; done && /etc/frr_reloader/reloader --frrconfig=/etc/perouter/frr.conf --loglevel=debug --unixsocket /etc/perouter/frr.socket"
-
-podman create --pod=routerpod --name=copier \
-	-v=frrconfig:/etc/frr:Z \
-	-v=reloader:/etc/frr_reloader:Z \
-	--entrypoint=/bin/sh \
+	--entrypoint=/reloader \
 	"$ROUTER_IMAGE" \
-	-c "cp -rLf /usr/share/openperouter/frr/* /etc/frr && chmod -R a+rw /etc/frr && \
-	 cp /reloader /etc/frr_reloader/reloader && chmod -R a+rw /etc/frr_reloader && sleep infinity"
+	--frrconfig=/etc/perouter/frr.conf --loglevel=debug --unixsocket /etc/perouter/frr.socket
 
 
 podman pod create --name=controllerpod

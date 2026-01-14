@@ -247,26 +247,26 @@
             "properties": {
               "image": {
                 "type": "object",
-                "description": "Configuration for the FRR image.",
+                "description": "Configuration for the image used for the FRR container.",
                 "properties": {
                   "repository": {
                     "type": "string",
-                    "description": "The repository for the FRR image.",
-                    "default": "quay.io/frrouting/frr"
+                    "description": "The repository for the image image used for the FRR container.",
+                    "default": "quay.io/openperouter/router"
                   },
                   "tag": {
                     "type": "string",
-                    "description": "The tag for the FRR image.",
-                    "default": "10.2.1"
+                    "description": "The tag for the image used for the FRR container.",
+                    "default": "main"
                   },
                   "pullPolicy": {
                     "type": "string",
-                    "description": "The pull policy for the FRR image."
+                    "description": "The pull policy for the image used for the FRR container."
                   }
                 },
                 "default": {
-                  "repository": "quay.io/frrouting/frr",
-                  "tag": "10.2.1"
+                  "repository": "quay.io/openperouter/router",
+                  "tag": "main"
                 }
               },
               "resources": {
@@ -376,10 +376,6 @@
             "resources": {}
           },
           "frr": {
-            "image": {
-              "repository": "quay.io/frrouting/frr",
-              "tag": "10.2.1"
-            },
             "resources": {},
             "reloader": {}
           },

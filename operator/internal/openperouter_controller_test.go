@@ -42,18 +42,16 @@ var _ = Describe("OpenPERouter Controller", func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 		controllerImage := "quay.io/openperouter/router:test"
-		frrImage := "quay.io/frrouting/frr:test"
 		It("should successfully reconcile the resource", func() {
 			controllerContainers := map[string]string{
 				"controller": controllerImage,
 			}
 			routerContainers := map[string]string{
-				"frr":      frrImage,
-				"reloader": frrImage,
+				"frr":      controllerImage,
+				"reloader": controllerImage,
 			}
 			routerInitContainers := map[string]string{
-				"cp-frr-files": frrImage,
-				"cp-reloader":  controllerImage,
+				"cp-frr-files": controllerImage,
 			}
 			nodemarkerContainers := map[string]string{
 				"nodemarker": controllerImage,

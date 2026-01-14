@@ -43,11 +43,9 @@ load_image_to_node() {
 update_and_restart_routerpod() {
     local NODE="$1"
     local ROUTER_IMAGE="quay.io/openperouter/router:main"
-    local FRR_IMAGE="quay.io/frrouting/frr:10.2.1"
 
     log_info "  Updating routerpod images..."
     load_image_to_node "$NODE" "$ROUTER_IMAGE"
-    load_image_to_node "$NODE" "$FRR_IMAGE"
 
     log_info "  Restarting routerpod services..."
     $CONTAINER_ENGINE_CLI exec "$NODE" systemctl restart pod-routerpod.service || log_warn "Failed to restart pod-routerpod.service on $NODE"

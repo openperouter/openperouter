@@ -1,3 +1,5 @@
+ARG FRR_IMAGE=quay.io/frrouting/frr:10.2.1
+
 # Build the manager binary
 FROM golang:1.24.9 AS builder
 
@@ -29,23 +31,23 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
   && \
   CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -o controller ./cmd/hostcontroller \
   && \
-  CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -o cp-tool ./cmd/cp-tool \
-  && \
   CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -o nodemarker ./cmd/nodemarker \
   && \
   CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -o hostbridge ./cmd/hostbridge \
   && \
   CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -o operatorbinary ./operator
 
-FROM alpine:3.20
+FROM ${FRR_IMAGE}
 WORKDIR /
 COPY --from=builder /go/openperouter/reloader .
 COPY --from=builder /go/openperouter/controller .
 COPY --from=builder /go/openperouter/hostbridge .
-COPY --from=builder /go/openperouter/cp-tool .
 COPY --from=builder /go/openperouter/nodemarker .
 COPY --from=builder /go/openperouter/operatorbinary ./operator
 COPY operator/bindata bindata
-COPY systemdmode/frrconfig /usr/share/openperouter/frr
+# Copy FRR startup configuration to the default location
+COPY systemdmode/frrconfig/daemons /etc/frr/daemons
+COPY systemdmode/frrconfig/vtysh.conf /etc/frr/vtysh.conf
+COPY systemdmode/frrconfig/frr.conf /etc/frr/frr.conf
 
 ENTRYPOINT ["/controller"]

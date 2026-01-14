@@ -68,7 +68,7 @@ var defaultEnvConfig = envconfig.EnvConfig{
 		Tag:  "test",
 	},
 	FRRImage: envconfig.ImageInfo{
-		Repo: "quay.io/frrouting/frr",
+		Repo: "quay.io/openperouter/router",
 		Tag:  "test",
 	},
 	MetricsPort:    7472,

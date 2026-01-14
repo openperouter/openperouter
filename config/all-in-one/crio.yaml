@@ -1332,7 +1332,7 @@ spec:
         env:
         - name: TINI_SUBREAPER
           value: "true"
-        image: quay.io/frrouting/frr:10.2.1
+        image: quay.io/openperouter/router:main
         imagePullPolicy: IfNotPresent
         name: frr
         securityContext:
@@ -1352,8 +1352,8 @@ spec:
         - --loglevel=debug
         - --unixsocket=/etc/perouter/reload.sock
         command:
-        - /etc/frr_reloader/reloader
-        image: quay.io/frrouting/frr:10.2.1
+        - /reloader
+        image: quay.io/openperouter/router:main
         imagePullPolicy: IfNotPresent
         livenessProbe:
           failureThreshold: 3
@@ -1383,14 +1383,12 @@ spec:
           name: frr-sockets
         - mountPath: /etc/perouter
           name: frrsharedconfig
-        - mountPath: /etc/frr_reloader
-          name: reloader
       initContainers:
       - command:
         - /bin/sh
         - -c
         - cp -rLf /tmp/frr/* /etc/frr/
-        image: quay.io/frrouting/frr:10.2.1
+        image: quay.io/openperouter/router:main
         imagePullPolicy: IfNotPresent
         name: cp-frr-files
         volumeMounts:
@@ -1398,16 +1396,6 @@ spec:
           name: frr-startup
         - mountPath: /etc/frr
           name: frrconfig
-      - command:
-        - /cp-tool
-        - /reloader
-        - /etc/frr_reloader/reloader
-        image: quay.io/openperouter/router:main
-        imagePullPolicy: IfNotPresent
-        name: cp-reloader
-        volumeMounts:
-        - mountPath: /etc/frr_reloader
-          name: reloader
       serviceAccountName: perouter
       shareProcessNamespace: true
       terminationGracePeriodSeconds: 10
@@ -1424,8 +1412,6 @@ spec:
       - configMap:
           name: frr-startup
         name: frr-startup
-      - emptyDir: {}
-        name: reloader
       - hostPath:
           path: /etc/perouter/frr
           type: DirectoryOrCreate
