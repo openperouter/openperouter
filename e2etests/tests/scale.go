@@ -131,6 +131,11 @@ var _ = Describe("VNI Scale Tests", Ordered, Label("scale"), func() {
 			l2VNICount: 100,
 			l3VNICount: 0,
 		}),
+		Entry("L2VNI only: 1000 VNIs, linux-bridge", scaleTestCase{
+			hostMaster: v1alpha1.LinuxBridge,
+			l2VNICount: 1000,
+			l3VNICount: 0,
+		}),
 		// L2VNI only tests - OVS Bridge
 		Entry("L2VNI only: 1 VNI, ovs-bridge", scaleTestCase{
 			hostMaster: v1alpha1.OVSBridge,
@@ -160,6 +165,11 @@ var _ = Describe("VNI Scale Tests", Ordered, Label("scale"), func() {
 		Entry("L2VNI only: 100 VNIs, ovs-bridge", scaleTestCase{
 			hostMaster: v1alpha1.OVSBridge,
 			l2VNICount: 100,
+			l3VNICount: 0,
+		}),
+		Entry("L2VNI only: 1000 VNIs, ovs-bridge", scaleTestCase{
+			hostMaster: v1alpha1.OVSBridge,
+			l2VNICount: 1000,
 			l3VNICount: 0,
 		}),
 		// L3VNI with L2VNI tests - Linux Bridge
@@ -193,6 +203,11 @@ var _ = Describe("VNI Scale Tests", Ordered, Label("scale"), func() {
 			l2VNICount: 100,
 			l3VNICount: 100,
 		}),
+		Entry("L3VNI+L2VNI: 1000 pairs, linux-bridge", scaleTestCase{
+			hostMaster: v1alpha1.LinuxBridge,
+			l2VNICount: 1000,
+			l3VNICount: 1000,
+		}),
 		// L3VNI with L2VNI tests - OVS Bridge
 		Entry("L3VNI+L2VNI: 1 pair, ovs-bridge", scaleTestCase{
 			hostMaster: v1alpha1.OVSBridge,
@@ -223,6 +238,11 @@ var _ = Describe("VNI Scale Tests", Ordered, Label("scale"), func() {
 			hostMaster: v1alpha1.OVSBridge,
 			l2VNICount: 100,
 			l3VNICount: 100,
+		}),
+		Entry("L3VNI+L2VNI: 1000 pairs, ovs-bridge", scaleTestCase{
+			hostMaster: v1alpha1.OVSBridge,
+			l2VNICount: 1000,
+			l3VNICount: 1000,
 		}),
 	)
 })
