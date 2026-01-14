@@ -167,7 +167,8 @@ func main() {
 		Cache: cache.Options{
 			ByObject: map[client.Object]cache.ByObject{
 				&corev1.Node{}: {
-					Field: fields.Set{"metadata.name": k8sModeParams.nodeName}.AsSelector(),
+					Field:     fields.Set{"metadata.name": k8sModeParams.nodeName}.AsSelector(),
+					Transform: cache.TransformStripManagedFields(),
 				},
 				&corev1.Pod{}: {
 					Field: fields.Set{
