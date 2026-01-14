@@ -39,6 +39,7 @@ spec:
 | `evpn.vtepcidr` | string | CIDR block for VTEP IP allocation | Yes |
 | `nics` | array | List of network interface names to move to router namespace | Yes |
 | `neighbors` | array | List of BGP neighbors to peer with | Yes |
+| `nodeSelector` | object | Label selector to target specific nodes (applies to all nodes if omitted) | No |
 
 ### VTEP IP Allocation
 
@@ -81,6 +82,7 @@ spec:
 | `hostsession.asn` | integer | Router ASN for BGP session with host | Yes |
 | `hostsession.hostasn` | integer | Host ASN for BGP session | Yes |
 | `hostsession.localcidr` | string | CIDR for veth pair IP allocation | Yes |
+| `nodeSelector` | object | Label selector to target specific nodes (applies to all nodes if omitted) | No |
 
 ### Multiple VNIs Example
 
@@ -144,6 +146,7 @@ L2VNIs provide Layer 2 connectivity across nodes using EVPN tunnels. Unlike L3VN
 | `hostmaster.linuxBridge.name` | string | Name of the Linux bridge to attach to (if not auto-creating) | No |
 | `hostmaster.ovsBridge.autoCreate` | boolean | Whether to automatically create an OVS bridge | No |
 | `hostmaster.ovsBridge.name` | string | Name of the OVS bridge to attach to (if not auto-creating) | No |
+| `nodeSelector` | object | Label selector to target specific nodes (applies to all nodes if omitted) | No |
 
 ### L2VNI Example
 
@@ -172,6 +175,17 @@ When you create or update VNI configurations, OpenPERouter automatically:
 4. **Optionally creates a bridge on the host**: if hostmaster.autocreate is set to `true`
 5. **Optionally connects the host veth to the bridge on the host**: if hostmaster.autocreate is set to `true` or name
 is set
+
+## Per-Node Configuration
+
+All EVPN resources (Underlay with EVPN, L3VNI, and L2VNI) support the optional `nodeSelector` field, which allows you to target specific configurations to specific nodes. This is useful for:
+
+- Multi-rack deployments with different VNIs per rack
+- Multi-datacenter clusters with zone-specific configurations
+- Selective deployment to worker nodes only
+- Hardware-specific configurations
+
+For detailed information and examples, see the [Node Selector Configuration]({{< ref "node-selector.md" >}}) documentation.
 
 ## API Reference
 
