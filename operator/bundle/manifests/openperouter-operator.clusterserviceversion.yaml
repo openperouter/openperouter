@@ -4,7 +4,7 @@ metadata:
   annotations:
     alm-examples: '[]'
     capabilities: Basic Install
-    createdAt: "2026-01-13T13:22:06Z"
+    createdAt: "2026-01-14T15:29:07Z"
     operators.operatorframework.io/builder: operator-sdk-v1.41.1
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
   name: openperouter-operator.v0.0.0
@@ -189,9 +189,6 @@ spec:
                 imagePullPolicy: IfNotPresent
                 name: operator
                 resources:
-                  limits:
-                    cpu: 500m
-                    memory: 128Mi
                   requests:
                     cpu: 10m
                     memory: 64Mi

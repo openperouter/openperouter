@@ -296,10 +296,16 @@ $(APIDOCSGEN): $(LOCALBIN)
 	test -s $(LOCALBIN)/crd-ref-docs || \
 	GOBIN=$(LOCALBIN) go install github.com/elastic/crd-ref-docs@$(APIDOCSGEN_VERSION)
 
-.PHONY: e2etests 
+.PHONY: e2etests
 e2etests: ginkgo kubectl build-validator create-export-logs
-	$(GINKGO) -v $(GINKGO_ARGS) --timeout=3h ./e2etests -- --kubectl=$(KUBECTL) $(TEST_ARGS) --hostvalidator $(VALIDATOR_PATH) --reporterpath=${KIND_EXPORT_LOGS} 
+	$(GINKGO) -v $(GINKGO_ARGS) --label-filter="!scale" --timeout=3h ./e2etests -- --kubectl=$(KUBECTL) $(TEST_ARGS) --hostvalidator $(VALIDATOR_PATH) --reporterpath=${KIND_EXPORT_LOGS}
 
+.PHONY: scale-tests
+scale-tests: ginkgo kubectl build-validator create-export-logs ## Run VNI scale tests
+	$(GINKGO) -v --label-filter="scale" --timeout=3h ./e2etests -- \
+		--kubectl=$(KUBECTL) $(TEST_ARGS) \
+		--hostvalidator $(VALIDATOR_PATH) \
+		--reporterpath=${KIND_EXPORT_LOGS}
 
 .PHONY: clab-cluster
 clab-cluster: kind-node-image-build
