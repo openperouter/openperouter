@@ -13,10 +13,8 @@ spec:
   vni: 100
   importRTs:
     - 65000:100
-    - 65001:100
   exportRTs:
     - 65000:100
-    - 65001:100
 ---
 apiVersion: openpe.openperouter.github.io/v1alpha1
 kind: L3VNI

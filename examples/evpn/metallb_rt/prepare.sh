@@ -30,28 +30,17 @@ wait_for_pods metallb-system app.kubernetes.io/name=metallb
 apply_manifests_with_retries metallb.yaml openpe.yaml workload.yaml
 
 
-docker exec clab-kind-leafA vtysh -c "conf t" \
-  -c 'router bgp 64520 vrf red' \
-  -c 'address-family l2vpn evpn' \
-  -c 'route-target import 65000:100' \
-  -c 'route-target export 65000:100' \
-  -c 'exit-address-family' \
-  -c 'exit' \
-  -c 'router bgp 64520 vrf blue' \
-  -c 'address-family l2vpn evpn' \
-  -c 'route-target import 65000:200' \
-  -c 'route-target export 65000:200' \
-  -c 'exit-address-family'
-
-docker exec clab-kind-leafB vtysh -c "conf t" \
-  -c 'router bgp 64520 vrf red' \
-  -c 'address-family l2vpn evpn' \
-  -c 'route-target import 65000:100' \
-  -c 'route-target export 65000:100' \
-  -c 'exit-address-family' \
-  -c 'exit' \
-  -c 'router bgp 64520 vrf blue' \
-  -c 'address-family l2vpn evpn' \
-  -c 'route-target import 65000:200' \
-  -c 'route-target export 65000:200' \
-  -c 'exit-address-family'
+for LEAF in clab-kind-leafA clab-kind-leafB; do  
+  docker exec "$LEAF" vtysh -c "conf t" \
+    -c 'router bgp 64520 vrf red' \
+    -c 'address-family l2vpn evpn' \
+    -c 'route-target import 65000:100' \
+    -c 'route-target export 65000:100' \
+    -c 'exit-address-family' \
+    -c 'exit' \
+    -c 'router bgp 64520 vrf blue' \
+    -c 'address-family l2vpn evpn' \
+    -c 'route-target import 65000:200' \
+    -c 'route-target export 65000:200' \
+    -c 'exit-address-family'
+done

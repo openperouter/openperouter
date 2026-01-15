@@ -50,13 +50,13 @@ type L3VNISpec struct {
 	HostSession *HostSession `json:"hostsession,omitempty"`
 
 	// ExportRT is the Route Target to be used for exporting routes.
+	// RouteTarget defines a BGP Extended Community for route filtering.
 	// +optional
-	// +kubebuilder:validation:items:Pattern=`^((([0-9]{1,10})|((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)):(6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5]?[0-9]{1,4}|0))$`
 	ExportRTs []string `json:"exportRTs,omitempty"`
 
 	// ImportRT is the Route Target to be used for importing routes.
+	// RouteTarget defines a BGP Extended Community for route filtering.
 	// +optional
-	// +kubebuilder:validation:items:Pattern=`^((([0-9]{1,10})|((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)):(6553[0-5]|655[0-2][0-9]|65[0-4][0-9]{2}|6[0-4][0-9]{3}|[1-5]?[0-9]{1,4}|0))$`
 	ImportRTs []string `json:"importRTs,omitempty"`
 }
 
