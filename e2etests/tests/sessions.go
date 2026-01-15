@@ -31,37 +31,19 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 	nodes := []corev1.Node{}
 
 	BeforeAll(func() {
-		err := Updater.CleanAll()
+		var err error
+		cs, routers, err = SetupTestWithUnderlay()
 		Expect(err).NotTo(HaveOccurred())
 
-		cs = k8sclient.New()
-		routers, err = openperouter.Get(cs, HostMode)
-		Expect(err).NotTo(HaveOccurred())
 		frrk8sPods, err = frrk8s.Pods(cs)
 		Expect(err).NotTo(HaveOccurred())
 		nodesItems, err := cs.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		nodes = nodesItems.Items
-
-		err = Updater.Update(config.Resources{
-			Underlays: []v1alpha1.Underlay{
-				infra.Underlay,
-			},
-		})
-		Expect(err).NotTo(HaveOccurred())
 	})
 
 	AfterAll(func() {
-		err := Updater.CleanAll()
-		Expect(err).NotTo(HaveOccurred())
-		By("waiting for the router pod to rollout after removing the underlay")
-		Eventually(func() error {
-			newRouters, err := openperouter.Get(cs, HostMode)
-			if err != nil {
-				return err
-			}
-			return openperouter.DaemonsetRolled(routers, newRouters)
-		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
+		Expect(CleanupTestWithRolloutWait(cs, routers)).To(Succeed())
 	})
 
 	BeforeEach(func() {
