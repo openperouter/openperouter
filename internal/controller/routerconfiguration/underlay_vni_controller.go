@@ -135,13 +135,10 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 	logger.Debug("using config", "l3vnis", l3vnis.Items, "l2vnis", l2vnis.Items, "underlays", underlays.Items, "l3passthrough", l3passthrough.Items)
 	apiConfig := conversion.ApiConfigData{
-		NodeIndex:          nodeIndex,
-		UnderlayFromMultus: r.UnderlayFromMultus,
-		Underlays:          filteredUnderlays,
-		LogLevel:           r.LogLevel,
-		L3VNIs:             filteredL3VNIs,
-		L2VNIs:             filteredL2VNIs,
-		L3Passthrough:      filteredL3Passthrough,
+		Underlays:     filteredUnderlays,
+		L3VNIs:        filteredL3VNIs,
+		L2VNIs:        filteredL2VNIs,
+		L3Passthrough: filteredL3Passthrough,
 	}
 
 	router, err := r.RouterProvider.New(ctx)
@@ -164,7 +161,7 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	updater := frrconfig.UpdaterForSocket(r.FRRReloadSocket, r.FRRConfigPath)
 
-	err = Reconcile(ctx, apiConfig, r.FRRConfigPath, targetNS, updater)
+	err = Reconcile(ctx, apiConfig, r.UnderlayFromMultus, nodeIndex, r.LogLevel, r.FRRConfigPath, targetNS, updater)
 	if nonRecoverableHostError(err) {
 		if err := router.HandleNonRecoverableError(ctx); err != nil {
 			slog.Error("failed to handle non recoverable error", "error", err)

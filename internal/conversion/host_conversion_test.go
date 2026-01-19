@@ -364,15 +364,13 @@ func TestAPItoHostConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			apiConfig := ApiConfigData{
-				UnderlayFromMultus: tt.underlayFromMultus,
-				NodeIndex:          tt.nodeIndex,
-				Underlays:          tt.underlays,
-				L3VNIs:             tt.vnis,
-				L2VNIs:             tt.l2vnis,
-				L3Passthrough:      tt.l3Passthrough,
+				Underlays:     tt.underlays,
+				L3VNIs:        tt.vnis,
+				L2VNIs:        tt.l2vnis,
+				L3Passthrough: tt.l3Passthrough,
 			}
 
-			gotHostConfig, err := APItoHostConfig(tt.nodeIndex, tt.targetNS, apiConfig)
+			gotHostConfig, err := APItoHostConfig(tt.nodeIndex, tt.targetNS, tt.underlayFromMultus, apiConfig)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("APItoHostConfig() error = %v, wantErr %v", err, tt.wantErr)
 				return
