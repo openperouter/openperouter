@@ -40,6 +40,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
+	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/go-logr/logr"
 	"github.com/openperouter/openperouter/api/static"
@@ -162,93 +163,51 @@ func main() {
 	setupLog.Info("version", "version", build.Main.Version)
 	setupLog.Info("arguments", "args", fmt.Sprintf("%+v", args))
 
-	/* TODO: to be used for the metrics endpoints while disabiling
-	http2
-	tlsOpts = append(tlsOpts, func(c *tls.Config) {
-		setupLog.Info("disabling http/2")
-		c.NextProtos = []string{"http/1.1"}
-	})*/
+	// Setup signal handler once for the entire process
+	ctx := ctrl.SetupSignalHandler()
 
-	k8sConfig, err := waitForKubernetes(context.Background(), hostModeParams.k8sWaitInterval)
-	if err != nil {
-		setupLog.Error(err, "failed to connect to kubernetes api server")
-		os.Exit(1)
-	}
-
-	mgr, err := ctrl.NewManager(k8sConfig, ctrl.Options{
-		Scheme:                 scheme,
-		HealthProbeBindAddress: args.probeAddr,
-		// Restrict client cache/informer to events for the node running this pod.
-		// On large clusters, not doing so can overload the API server for daemonsets
-		// since nodes receive frequent updates in some environments.
-		Cache: cache.Options{
-			ByObject: map[client.Object]cache.ByObject{
-				&corev1.Node{}: {
-					Field:     fields.Set{"metadata.name": k8sModeParams.nodeName}.AsSelector(),
-					Transform: cache.TransformStripManagedFields(),
-				},
-				&corev1.Pod{}: {
-					Label: labels.SelectorFromSet(labels.Set{"app": "router"}),
-					Field: fields.Set{
-						"spec.nodeName":      k8sModeParams.nodeName,
-						"metadata.namespace": k8sModeParams.namespace,
-					}.AsSelector(),
-				},
-			},
-		},
-	})
-	if err != nil {
-		setupLog.Error(err, "unable to start manager")
-		os.Exit(1)
-	}
-
-	podRuntime, err := pods.NewRuntime(k8sModeParams.criSocket, 5*time.Minute)
-	if err != nil {
-		setupLog.Error(err, "connect to crio")
-		os.Exit(1)
-	}
-
-	var routerProvider routerconfiguration.RouterProvider
-	var nodeName string
-	switch args.mode {
-	case modeK8s:
-		nodeName = k8sModeParams.nodeName
-		routerProvider = &routerconfiguration.RouterPodProvider{
-			FRRConfigPath: args.frrConfigPath,
-			PodRuntime:    podRuntime,
-			Client:        mgr.GetClient(),
-			Node:          nodeName,
-		}
-		podRuntime, err := pods.NewRuntime(k8sModeParams.criSocket, 5*time.Minute)
+	if args.mode == modeK8s {
+		// K8s mode: setup k8s-based reconciler and start
+		k8sConfig, err := config.GetConfig()
 		if err != nil {
-			setupLog.Error(err, "failed to load the static configuration file")
+			setupLog.Error(err, "unable to get kubernetes config")
 			os.Exit(1)
 		}
-		// In host mode, the node name is passed via --nodename parameter
-		nodeName = k8sModeParams.nodeName
-		routerProvider = &routerconfiguration.RouterHostProvider{
-			FRRConfigPath:     args.frrConfigPath,
-			RouterPidFilePath: hostModeParams.hostContainerPidPath,
-			CurrentNodeIndex:  hostConfig.NodeIndex,
-			SystemdSocketPath: hostModeParams.systemdSocketPath,
+		// runK8sConfigReconciler is blocking so when running in k8s mode we should stop here
+		if err := runK8sConfigReconciler(
+			ctx, args, hostModeParams, k8sModeParams, nodeConfig, k8sConfig, logger, args.probeAddr,
+		); err != nil {
+			setupLog.Error(err, "failed to enable k8s reconciler")
+			os.Exit(1)
 		}
 		return
 	}
 
 	// host mode: run the host reconciler and keep polling until the k8s api is available.
 
-	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
-		setupLog.Error(err, "unable to set up health check")
-		os.Exit(1)
-	}
-	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
-		setupLog.Error(err, "unable to set up ready check")
-		os.Exit(1)
-	}
+	// Wait for K8s API and create second manager when available
+	go func() {
+		setupLog.Info("waiting for kubernetes API")
+		k8sConfig, err := waitForKubernetes(context.Background(), hostModeParams.k8sWaitInterval)
+		if err != nil {
+			setupLog.Error(err, "failed to connect to kubernetes API, will continue with static config only")
+			return
+		}
 
-	setupLog.Info("starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
-		setupLog.Error(err, "problem running manager")
+		setupLog.Info("kubernetes API is now available, creating second manager for API-based controller")
+
+		if err := runK8sConfigReconciler(
+			ctx, args, hostModeParams, k8sModeParams, nodeConfig, k8sConfig, logger, "",
+		); err != nil {
+			setupLog.Error(err, "failed to enable k8s reconciler")
+			return
+		}
+	}()
+
+	// Host mode: create static manager first, then wait for k8s in background
+	setupLog.Info("creating static-only manager for host mode")
+	if err := runStaticConfigReconciler(ctx, args, hostModeParams, nodeConfig, logger, args.probeAddr); err != nil {
+		setupLog.Error(err, "failed to run static config reconciler")
 		os.Exit(1)
 	}
 }
@@ -298,9 +257,6 @@ func validateParameters(args parameters, hostModeParams hostModeParameters, k8sM
 	}
 
 	if args.mode == modeK8s {
-		if args.nodeName == "" {
-			return fmt.Errorf("nodename is required in %s mode", modeK8s)
-		}
 		if hostModeParams.hostContainerPidPath != "" {
 			return fmt.Errorf("pid-path should not be set in %s mode", modeK8s)
 		}
@@ -342,5 +298,153 @@ func overrideHostMode(args *parameters, nodeConfig static.NodeConfig) error {
 		return fmt.Errorf("failed to get hostname: %w", err)
 	}
 	setupLog.Info("nodename not provided, using hostname", "nodename", args.nodeName)
+	return nil
+}
+
+func runK8sConfigReconciler(ctx context.Context,
+	args parameters,
+	hostModeParams hostModeParameters,
+	k8sModeParams k8sModeParameters,
+	nodeConfig *static.NodeConfig,
+	k8sConfig *rest.Config,
+	logger *slog.Logger,
+	probeAddr string) error {
+
+	mgr, err := ctrl.NewManager(k8sConfig, ctrl.Options{
+		Scheme:                 scheme,
+		HealthProbeBindAddress: probeAddr,
+		// Restrict client cache/informer to events for the node running this pod.
+		// On large clusters, not doing so can overload the API server for daemonsets
+		// since nodes receive frequent updates in some environments.
+		Cache: cache.Options{
+			ByObject: map[client.Object]cache.ByObject{
+				&corev1.Node{}: {
+					Field:     fields.Set{"metadata.name": args.nodeName}.AsSelector(),
+					Transform: cache.TransformStripManagedFields(),
+				},
+				&corev1.Pod{}: {
+					Label: labels.SelectorFromSet(labels.Set{"app": "router"}),
+					Field: fields.Set{
+						"spec.nodeName":      args.nodeName,
+						"metadata.namespace": k8sModeParams.namespace,
+					}.AsSelector(),
+				},
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("unable to start manager: %w", err)
+	}
+
+	var routerProvider routerconfiguration.RouterProvider
+	routerProvider = &routerconfiguration.RouterHostProvider{
+		FRRConfigPath:     args.frrConfigPath,
+		RouterPidFilePath: hostModeParams.hostContainerPidPath,
+		CurrentNodeIndex:  nodeConfig.NodeIndex,
+		SystemdSocketPath: hostModeParams.systemdSocketPath,
+	}
+	if args.mode == modeK8s {
+		podRuntime, err := pods.NewRuntime(k8sModeParams.criSocket, 5*time.Minute)
+		if err != nil {
+			setupLog.Error(err, "connect to crio")
+			os.Exit(1)
+		}
+		routerProvider = &routerconfiguration.RouterPodProvider{
+			FRRConfigPath: args.frrConfigPath,
+			PodRuntime:    podRuntime,
+			Client:        mgr.GetClient(),
+			Node:          args.nodeName,
+		}
+	}
+
+	apiReconciler := &routerconfiguration.PERouterReconciler{
+		Client:          mgr.GetClient(),
+		Scheme:          mgr.GetScheme(),
+		LogLevel:        args.logLevel,
+		Logger:          logger,
+		MyNode:          args.nodeName,
+		FRRReloadSocket: args.reloaderSocket,
+		FRRConfigPath:   args.frrConfigPath,
+		RouterProvider:  routerProvider,
+	}
+	if args.mode == modeHost {
+		apiReconciler.StaticConfigDir = hostModeParams.configurationDir
+		apiReconciler.NodeConfigPath = hostModeParams.nodeConfigPath
+	}
+	if args.mode == modeK8s {
+		apiReconciler.MyNamespace = k8sModeParams.namespace
+		apiReconciler.UnderlayFromMultus = args.underlayFromMultus
+	}
+
+	if err := apiReconciler.SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to create controller: %w", err)
+	}
+
+	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
+		return fmt.Errorf("unable to set up health check: %w", err)
+	}
+	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
+		return fmt.Errorf("unable to set up ready check: %w", err)
+	}
+
+	setupLog.Info("starting manager")
+	if err := mgr.Start(ctx); err != nil {
+		return fmt.Errorf("problem running manager: %w", err)
+	}
+	return nil
+}
+
+func runStaticConfigReconciler(ctx context.Context,
+	args parameters,
+	hostModeParams hostModeParameters,
+	nodeConfig *static.NodeConfig,
+	logger *slog.Logger,
+	probeAddr string) error {
+	mgr, err := ctrl.NewManager(&rest.Config{}, ctrl.Options{
+		Scheme:                 scheme,
+		HealthProbeBindAddress: probeAddr,
+		LeaderElection:         false,
+		Metrics: server.Options{
+			BindAddress: "0", // disable metrics
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("unable to start static manager: %w", err)
+	}
+
+	staticRouterProvider := &routerconfiguration.RouterHostProvider{
+		FRRConfigPath:     args.frrConfigPath,
+		RouterPidFilePath: hostModeParams.hostContainerPidPath,
+		CurrentNodeIndex:  nodeConfig.NodeIndex,
+		SystemdSocketPath: hostModeParams.systemdSocketPath,
+	}
+
+	staticReconciler := &routerconfiguration.StaticConfigReconciler{
+		Scheme:          mgr.GetScheme(),
+		Logger:          logger,
+		NodeIndex:       nodeConfig.NodeIndex,
+		LogLevel:        args.logLevel,
+		FRRConfigPath:   args.frrConfigPath,
+		FRRReloadSocket: args.reloaderSocket,
+		RouterProvider:  staticRouterProvider,
+		ConfigDir:       hostModeParams.configurationDir,
+	}
+	if err = staticReconciler.SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to create controller: %w", err)
+	}
+
+	// +kubebuilder:scaffold:builder
+
+	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
+		return fmt.Errorf("unable to set up health check: %w", err)
+	}
+	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
+		return fmt.Errorf("unable to set up ready check: %w", err)
+	}
+
+	setupLog.Info("starting manager")
+	if err := mgr.Start(ctx); err != nil {
+		return fmt.Errorf("problem running manager: %w", err)
+	}
 	return nil
 }
