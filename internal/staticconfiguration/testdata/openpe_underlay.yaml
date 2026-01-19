@@ -1,0 +1,16 @@
+underlays:
+  - asn: 64514
+    nics:
+      - toswitch
+      - eth0
+    neighbors:
+      - asn: 64512
+        address: "192.168.11.2"
+      - asn: 64512
+        address: "192.168.11.3"
+        bfd:
+          receiveInterval: 300
+          transmitInterval: 300
+          detectMultiplier: 3
+    evpn:
+      vtepCIDR: "100.65.0.0/24"
