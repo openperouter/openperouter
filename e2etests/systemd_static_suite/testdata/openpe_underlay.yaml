@@ -1,0 +1,9 @@
+underlays:
+  - asn: 64514
+    nics:
+      - toswitch
+    neighbors:
+      - asn: 64512
+        address: "192.168.11.2"
+    evpn:
+      vtepCIDR: "100.65.0.0/24"
