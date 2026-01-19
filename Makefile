@@ -182,6 +182,15 @@ deploy-hostmode: export KUSTOMIZE_LAYER=hostmode
 deploy-hostmode: kind deploy-cluster setup-hostmode deploy-controller ## Deploy cluster and controller in hostmode, then setup systemd services.
 	./systemdmode/deploy.sh $(KIND_CLUSTER_NAME)
 
+.PHONY: setup-hostmode-boot
+setup-hostmode-boot: ## Setup node configuration for hostmode with static config files.
+	NODE_CONFIG_DIR=e2etests/systemd_static_suite/testdata ./systemdmode/setup_node_config.sh $(KIND_CLUSTER_NAME)
+
+.PHONY: deploy-hostmode-boot
+deploy-hostmode-boot: export KUSTOMIZE_LAYER=hostmode
+deploy-hostmode-boot: kind deploy-cluster setup-hostmode-boot ## Deploy cluster in hostmode with static config, without deploying controller (boot mode).
+	./systemdmode/deploy.sh $(KIND_CLUSTER_NAME)
+
 .PHONY: deploy-multi
 deploy-multi: kind deploy-multi-cluster deploy-controller-multi ## Deploy cluster and controller.
 
@@ -296,9 +305,18 @@ $(APIDOCSGEN): $(LOCALBIN)
 	test -s $(LOCALBIN)/crd-ref-docs || \
 	GOBIN=$(LOCALBIN) go install github.com/elastic/crd-ref-docs@$(APIDOCSGEN_VERSION)
 
-.PHONY: e2etests 
+.PHONY: e2etests
 e2etests: ginkgo kubectl build-validator create-export-logs
-	$(GINKGO) -v $(GINKGO_ARGS) --timeout=3h ./e2etests -- --kubectl=$(KUBECTL) $(TEST_ARGS) --hostvalidator $(VALIDATOR_PATH) --reporterpath=${KIND_EXPORT_LOGS} 
+	$(GINKGO) -v $(GINKGO_ARGS) --timeout=3h ./e2etests/suite -- --kubectl=$(KUBECTL) $(TEST_ARGS) --hostvalidator $(VALIDATOR_PATH) --reporterpath=${KIND_EXPORT_LOGS}
+
+.PHONY: e2etests-hostmode-boot
+e2etests-hostmode-boot: ginkgo kubectl build-validator create-export-logs ## Run e2e tests for hostmode boot scenario (static config first, then K8s API).
+	@echo "=== Running systemd_static_suite tests (static config only) ==="
+	$(GINKGO) -v $(GINKGO_ARGS) --timeout=3h ./e2etests/systemd_static_suite -- --kubectl=$(KUBECTL) $(TEST_ARGS)
+	@echo "=== Deploying controller to enable K8s API ==="
+	$(MAKE) deploy-controller KUSTOMIZE_LAYER=hostmode
+	@echo "=== Running passthrough tests (with K8s API available) ==="
+	$(GINKGO) -v $(GINKGO_ARGS) --timeout=3h --label-filter='passthrough' ./e2etests/suite -- --kubectl=$(KUBECTL) $(TEST_ARGS) --skip-underlay-passthrough --systemdmode --hostvalidator $(VALIDATOR_PATH) --reporterpath=${KIND_EXPORT_LOGS} 
 
 
 .PHONY: clab-cluster
