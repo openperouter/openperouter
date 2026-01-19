@@ -103,8 +103,8 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 			return openperouter.DaemonsetRolled(routers, newRouters)
 		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 
-		removeLeafPrefixes(infra.LeafAConfig)
-		removeLeafPrefixes(infra.LeafBConfig)
+		Expect(infra.LeafAConfig.RemovePrefixes()).To(Succeed())
+		Expect(infra.LeafBConfig.RemovePrefixes()).To(Succeed())
 	})
 
 	Context("Type 2 Route Persistence with Silent Workload", func() {
