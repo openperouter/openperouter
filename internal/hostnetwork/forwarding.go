@@ -49,3 +49,58 @@ func EnsureIPv6Forwarding(namespace string) error {
 	}
 	return nil
 }
+
+// EnsureArpAccept enables arp_accept on all interfaces in the target namespace.
+// This allows the kernel to create neighbor entries from received Gratuitous ARP packets,
+// which is critical for fast EVPN MAC/IP route advertisement during VM migrations.
+// Without this, the kernel ignores GARP packets and FRR cannot advertise MAC/IP routes
+// until a regular ARP exchange occurs (which can take 20+ seconds).
+func EnsureArpAccept(namespace string) error {
+	ns, err := netns.GetFromPath(namespace)
+	if err != nil {
+		return fmt.Errorf("failed to get network namespace %s: %w", namespace, err)
+	}
+	defer func() {
+		if err := ns.Close(); err != nil {
+			slog.Error("ensureArpAccept: failed to close namespace", "error", err, "namespace", namespace)
+		}
+	}()
+
+	err = inNamespace(ns, func() error {
+		// Set arp_accept on "all" interface - this affects all current interfaces
+		allPath := "/proc/sys/net/ipv4/conf/all/arp_accept"
+		data, err := os.ReadFile(allPath)
+		if err != nil {
+			return fmt.Errorf("failed to read %s: %w", allPath, err)
+		}
+		currentValue := strings.TrimSpace(string(data))
+
+		if currentValue != "1" {
+			if err := os.WriteFile(allPath, []byte("1"), 0644); err != nil {
+				return fmt.Errorf("failed to write to %s: %w", allPath, err)
+			}
+			slog.Info("arp_accept enabled on all interfaces", "namespace", namespace)
+		}
+
+		// Set arp_accept on "default" interface - this affects newly created interfaces
+		defaultPath := "/proc/sys/net/ipv4/conf/default/arp_accept"
+		data, err = os.ReadFile(defaultPath)
+		if err != nil {
+			return fmt.Errorf("failed to read %s: %w", defaultPath, err)
+		}
+		currentValue = strings.TrimSpace(string(data))
+
+		if currentValue != "1" {
+			if err := os.WriteFile(defaultPath, []byte("1"), 0644); err != nil {
+				return fmt.Errorf("failed to write to %s: %w", defaultPath, err)
+			}
+			slog.Info("arp_accept enabled on default interface", "namespace", namespace)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to ensure arp_accept: %w", err)
+	}
+	return nil
+}

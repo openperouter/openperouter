@@ -56,6 +56,11 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 		return fmt.Errorf("failed to ensure IPv6 forwarding: %w", err)
 	}
 
+	slog.InfoContext(ctx, "ensuring arp_accept enabled")
+	if err := hostnetwork.EnsureArpAccept(config.targetNamespace); err != nil {
+		return fmt.Errorf("failed to ensure arp_accept: %w", err)
+	}
+
 	slog.InfoContext(ctx, "setting up underlay")
 	if err := hostnetwork.SetupUnderlay(ctx, hostConfig.Underlay); err != nil {
 		return fmt.Errorf("failed to setup underlay: %w", err)
