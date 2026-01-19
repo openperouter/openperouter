@@ -1,0 +1,7 @@
+bgppassthrough:
+  hostsession:
+    asn: 64514
+    hostASN: 64517
+    localCIDR:
+      ipv4: "192.169.100.0/24"
+      ipv6: "2001:db8:100::/64"
