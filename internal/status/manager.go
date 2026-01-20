@@ -62,7 +62,12 @@ type StatusManager struct {
 	nodeName       string
 	namespace      string
 
-	// Cache of failed resources for status aggregation
+	// nowFunc returns the current time; can be overridden for testing
+	nowFunc func() time.Time
+
+	// Cache of failed resources for status aggregation.
+	// Protected by mutex since PERouterReconciler may write status updates
+	// while RouterNodeConfigurationStatusReconciler reads the summary.
 	failedResourceCacheMutex sync.RWMutex
 	failedResourceCache      map[string]*failedResourceCacheEntry // key: "kind:name"
 }
@@ -74,6 +79,7 @@ func NewStatusManager(updateChannel chan event.GenericEvent, nodeName, namespace
 		nodeName:                 nodeName,
 		namespace:                namespace,
 		logger:                   logger,
+		nowFunc:                  time.Now,
 		failedResourceCacheMutex: sync.RWMutex{},
 		failedResourceCache:      make(map[string]*failedResourceCacheEntry),
 	}
@@ -85,95 +91,90 @@ func NewStatusManager(updateChannel chan event.GenericEvent, nodeName, namespace
 }
 
 // ReportResourceSuccess implements StatusReporter interface
-func (er *StatusManager) ReportResourceSuccess(kind ResourceKind, resourceName string) {
-	// Remove any previous failure from cache
-	er.failedResourceCacheMutex.Lock()
-	key := string(kind) + ":" + resourceName
-	delete(er.failedResourceCache, key)
-	er.failedResourceCacheMutex.Unlock()
+func (sm *StatusManager) ReportResourceSuccess(kind ResourceKind, resourceName string) {
+	sm.failedResourceCacheMutex.Lock()
+	key := fmt.Sprintf("%s:%s", kind, resourceName)
+	delete(sm.failedResourceCache, key)
+	sm.failedResourceCacheMutex.Unlock()
 
-	// Trigger reconciliation
-	er.sendTriggerEvent()
+	sm.sendTriggerEvent()
 
-	er.logger.Debug("reported success",
+	sm.logger.Debug("reported success",
 		"kind", kind,
 		"resource", resourceName)
 }
 
 // ReportResourceFailure implements StatusReporter interface
-func (er *StatusManager) ReportResourceFailure(kind ResourceKind, resourceName string, err error) {
+func (sm *StatusManager) ReportResourceFailure(kind ResourceKind, resourceName string, err error) {
 	errorMessage := fmt.Sprintf("failed: %v", err)
 
-	// Store failure in cache
-	er.failedResourceCacheMutex.Lock()
-	key := string(kind) + ":" + resourceName
-	er.failedResourceCache[key] = &failedResourceCacheEntry{
+	sm.failedResourceCacheMutex.Lock()
+	key := fmt.Sprintf("%s:%s", kind, resourceName)
+	sm.failedResourceCache[key] = &failedResourceCacheEntry{
 		ResourceKind: kind,
 		ResourceName: resourceName,
 		ErrorMessage: errorMessage,
-		Timestamp:    time.Now(),
+		Timestamp:    sm.nowFunc(),
 	}
-	er.failedResourceCacheMutex.Unlock()
+	sm.failedResourceCacheMutex.Unlock()
 
-	// Trigger reconciliation
-	er.sendTriggerEvent()
+	sm.sendTriggerEvent()
 
-	er.logger.Debug("reported failure",
+	sm.logger.Debug("reported failure",
 		"kind", kind,
 		"resource", resourceName,
 		"error", err)
 }
 
 // ReportResourceRemoved implements StatusReporter interface
-func (er *StatusManager) ReportResourceRemoved(kind ResourceKind, resourceName string) {
-	// Remove any failure entry from cache
-	er.failedResourceCacheMutex.Lock()
-	key := string(kind) + ":" + resourceName
-	_, existed := er.failedResourceCache[key]
-	delete(er.failedResourceCache, key)
-	er.failedResourceCacheMutex.Unlock()
+func (sm *StatusManager) ReportResourceRemoved(kind ResourceKind, resourceName string) {
+	sm.failedResourceCacheMutex.Lock()
+	key := fmt.Sprintf("%s:%s", kind, resourceName)
+	_, existed := sm.failedResourceCache[key]
+	delete(sm.failedResourceCache, key)
+	sm.failedResourceCacheMutex.Unlock()
 
-	// Trigger reconciliation only if the resource was actually in the cache
 	if existed {
-		er.sendTriggerEvent()
-		er.logger.Debug("reported resource removal",
+		sm.sendTriggerEvent()
+		sm.logger.Debug("reported resource removal",
 			"kind", kind,
 			"resource", resourceName)
 	}
 }
 
 // sendTriggerEvent sends a minimal trigger event for reconciliation
-func (er *StatusManager) sendTriggerEvent() {
+func (sm *StatusManager) sendTriggerEvent() {
 	event := event.GenericEvent{
 		Object: &triggerEvent{
 			TypeMeta: metav1.TypeMeta{
-				Kind:       "StatusTrigger",
+				Kind: "StatusTrigger",
+				// Internal-only API version used as a marker for trigger events.
+				// This is not a real API - it's only used to satisfy the TypeMeta requirement.
 				APIVersion: "internal.status.openperouter.io/v1",
 			},
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      er.nodeName,
-				Namespace: er.namespace,
+				Name:      sm.nodeName,
+				Namespace: sm.namespace,
 			},
 		},
 	}
 
 	select {
-	case er.triggerChannel <- event:
+	case sm.triggerChannel <- event:
 	default:
-		er.logger.Warn("status update channel full, dropping event", "node", er.nodeName)
+		sm.logger.Warn("status update channel full, dropping event", "node", sm.nodeName)
 	}
 }
 
 // GetStatusSummary returns aggregated status information for controllers
-func (er *StatusManager) GetStatusSummary() StatusSummary {
-	er.failedResourceCacheMutex.RLock()
-	defer er.failedResourceCacheMutex.RUnlock()
+func (sm *StatusManager) GetStatusSummary() StatusSummary {
+	sm.failedResourceCacheMutex.RLock()
+	defer sm.failedResourceCacheMutex.RUnlock()
 
-	failedResources := make([]FailedResourceInfo, 0, len(er.failedResourceCache))
+	failedResources := make([]FailedResourceInfo, 0, len(sm.failedResourceCache))
 	var latestUpdate time.Time
 
-	// Convert the cache to the expected status format and find the latest update timestamp
-	for _, failedEntry := range er.failedResourceCache {
+	for _, failedEntry := range sm.failedResourceCache {
 		if failedEntry.Timestamp.After(latestUpdate) {
 			latestUpdate = failedEntry.Timestamp
 		}
@@ -191,9 +192,9 @@ func (er *StatusManager) GetStatusSummary() StatusSummary {
 	}
 }
 
-// GetChannel returns the update channel for controller-runtime integration
-func (er *StatusManager) GetChannel() chan event.GenericEvent {
-	return er.triggerChannel
+// GetConnection returns the update channel for controller-runtime integration
+func (sm *StatusManager) GetConnection() chan event.GenericEvent {
+	return sm.triggerChannel
 }
 
 // Compile-time interface checks

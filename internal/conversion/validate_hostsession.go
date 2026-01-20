@@ -20,7 +20,7 @@ type hostSessionInfo struct {
 
 // Name returns a human-readable name constructed from resourceKind and resourceName
 func (h hostSessionInfo) Name() string {
-	return string(h.resourceKind) + " " + h.resourceName
+	return fmt.Sprintf("%s %s", h.resourceKind, h.resourceName)
 }
 
 func ValidateHostSessionsForNodes(nodes []corev1.Node, l3VNIs []v1alpha1.L3VNI, l3Passthrough []v1alpha1.L3Passthrough) error {

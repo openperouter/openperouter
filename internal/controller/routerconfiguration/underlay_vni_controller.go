@@ -182,12 +182,6 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
-	// NOTE: All resources should be already set as success by now. But just for a good measure, if we got this far, everything should be confirmed as well.
-	r.reportUnderlayConfigurationSuccess(underlays.Items)
-	r.reportL2VNIConfigurationSuccess(l2vnis.Items)
-	r.reportL3VNIConfigurationSuccess(l3vnis.Items)
-	r.reportL3PassthroughConfigurationSuccess(l3passthrough.Items)
-
 	return ctrl.Result{}, nil
 }
 
@@ -276,74 +270,47 @@ func setPodNodeNameIndex(mgr ctrl.Manager) error {
 	return nil
 }
 
-func (r *PERouterReconciler) reportUnderlayConfigurationSuccess(underlays []v1alpha1.Underlay) {
-	for _, underlay := range underlays {
-		r.StatusReporter.ReportResourceSuccess(status.UnderlayKind, underlay.Name)
-	}
-}
-
-func (r *PERouterReconciler) reportL2VNIConfigurationSuccess(l2vnis []v1alpha1.L2VNI) {
-	for _, l2vni := range l2vnis {
-		r.StatusReporter.ReportResourceSuccess(status.L2VNIKind, l2vni.Name)
-	}
-}
-
-func (r *PERouterReconciler) reportL3VNIConfigurationSuccess(l3vnis []v1alpha1.L3VNI) {
-	for _, l3vni := range l3vnis {
-		r.StatusReporter.ReportResourceSuccess(status.L3VNIKind, l3vni.Name)
-	}
-}
-
-func (r *PERouterReconciler) reportL3PassthroughConfigurationSuccess(l3passthroughs []v1alpha1.L3Passthrough) {
-	for _, l3passthrough := range l3passthroughs {
-		r.StatusReporter.ReportResourceSuccess(status.L3PassthroughKind, l3passthrough.Name)
-	}
-}
-
 func (r *PERouterReconciler) cleanupRemovedFailedResources(
 	underlays []v1alpha1.Underlay,
 	l3vnis []v1alpha1.L3VNI,
 	l2vnis []v1alpha1.L2VNI,
 	l3passthrough []v1alpha1.L3Passthrough,
 ) {
-	// Build sets of current resources for fast lookup
-	currentUnderlays := make(map[string]bool)
+	currentUnderlays := make(map[string]struct{})
 	for _, underlay := range underlays {
-		currentUnderlays[underlay.Name] = true
+		currentUnderlays[underlay.Name] = struct{}{}
 	}
 
-	currentL3VNIs := make(map[string]bool)
+	currentL3VNIs := make(map[string]struct{})
 	for _, l3vni := range l3vnis {
-		currentL3VNIs[l3vni.Name] = true
+		currentL3VNIs[l3vni.Name] = struct{}{}
 	}
 
-	currentL2VNIs := make(map[string]bool)
+	currentL2VNIs := make(map[string]struct{})
 	for _, l2vni := range l2vnis {
-		currentL2VNIs[l2vni.Name] = true
+		currentL2VNIs[l2vni.Name] = struct{}{}
 	}
 
-	currentL3Passthroughs := make(map[string]bool)
+	currentL3Passthroughs := make(map[string]struct{})
 	for _, passthrough := range l3passthrough {
-		currentL3Passthroughs[passthrough.Name] = true
+		currentL3Passthroughs[passthrough.Name] = struct{}{}
 	}
 
-	// Get current failed resources and check if they still exist
 	if statusReader, ok := r.StatusReporter.(status.StatusReader); ok {
 		statusSummary := statusReader.GetStatusSummary()
 		for _, failedResource := range statusSummary.FailedResources {
 			var exists bool
 			switch failedResource.Kind {
 			case status.UnderlayKind:
-				exists = currentUnderlays[failedResource.Name]
+				_, exists = currentUnderlays[failedResource.Name]
 			case status.L3VNIKind:
-				exists = currentL3VNIs[failedResource.Name]
+				_, exists = currentL3VNIs[failedResource.Name]
 			case status.L2VNIKind:
-				exists = currentL2VNIs[failedResource.Name]
+				_, exists = currentL2VNIs[failedResource.Name]
 			case status.L3PassthroughKind:
-				exists = currentL3Passthroughs[failedResource.Name]
+				_, exists = currentL3Passthroughs[failedResource.Name]
 			}
 
-			// If the failed resource no longer exists, report it as removed
 			if !exists {
 				r.StatusReporter.ReportResourceRemoved(failedResource.Kind, failedResource.Name)
 			}

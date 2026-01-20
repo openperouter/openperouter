@@ -62,6 +62,6 @@ type StatusReader interface {
 	// GetStatusSummary returns aggregated status information
 	GetStatusSummary() StatusSummary
 
-	// GetChannel returns the update channel for controller-runtime integration
-	GetChannel() chan event.GenericEvent
+	// GetConnection returns the update channel for controller-runtime integration
+	GetConnection() chan event.GenericEvent
 }

@@ -18,7 +18,7 @@ func ValidatePassthroughsForNodes(nodes []corev1.Node, underlays []v1alpha1.L3Pa
 		if err != nil {
 			return fmt.Errorf("failed to filter underlays for node %q: %w", node.Name, err)
 		}
-		if err := ValidatePassthroughs(filteredPassThroughs); err != nil {
+		if err := ValidatePassthroughs(filteredPassThroughs, &NoOpStatusReporter{}); err != nil {
 			return fmt.Errorf("failed to validate underlays for node %q: %w", node.Name, err)
 		}
 	}

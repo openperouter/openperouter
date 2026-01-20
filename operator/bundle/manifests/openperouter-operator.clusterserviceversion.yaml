@@ -4,7 +4,7 @@ metadata:
   annotations:
     alm-examples: '[]'
     capabilities: Basic Install
-    createdAt: "2025-12-12T15:28:34Z"
+    createdAt: "2026-01-20T15:32:26Z"
     operators.operatorframework.io/builder: operator-sdk-v1.41.1
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
   name: openperouter-operator.v0.0.0
@@ -186,7 +186,7 @@ spec:
                 - name: CONTROLLER_IMAGE
                   value: quay.io/openperouter/router:main
                 - name: FRR_IMAGE
-                  value: quay.io/frrouting/frr:10.2.1
+                  value: quay.io/openperouter/router:main
                 - name: KUBE_RBAC_PROXY_IMAGE
                   value: quay.io/brancz/kube-rbac-proxy:v0.11.0
                 - name: DEPLOY_KUBE_RBAC_PROXIES

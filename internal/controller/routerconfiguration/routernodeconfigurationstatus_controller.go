@@ -17,11 +17,12 @@ limitations under the License.
 package routerconfiguration
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"log/slog"
 	"reflect"
-	"time"
+	"slices"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -37,6 +38,14 @@ import (
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/status"
+)
+
+// Condition type constants for RouterNodeConfigurationStatus
+const (
+	ConditionTypeReady    = "Ready"
+	ConditionTypeDegraded = "Degraded"
+	ReasonConfigFailed    = "ConfigurationFailed"
+	ReasonConfigSuccess   = "ConfigurationSuccessful"
 )
 
 // RouterNodeConfigurationStatusReconciler reconciles a RouterNodeConfigurationStatus object
@@ -78,20 +87,11 @@ func (r *RouterNodeConfigurationStatusReconciler) Reconcile(ctx context.Context,
 		if err := r.createRouterNodeStatus(ctx, &routerNodeConfigurationStatus); err != nil {
 			return ctrl.Result{}, err
 		}
-		// Re-fetch the created resource to get the updated object with proper metadata
-		if err := r.Get(ctx, types.NamespacedName{
-			Name:      r.MyNode,
-			Namespace: r.MyNamespace,
-		}, &routerNodeConfigurationStatus); err != nil {
-			logger.Error("failed to re-fetch created RouterNodeConfigurationStatus", "error", err)
-			return ctrl.Result{}, err
-		}
+		return ctrl.Result{}, nil // Status already set in createRouterNodeStatus
 	}
 
-	// Build status from shared state
 	newStatus := r.buildStatus()
 
-	// Only patch if status has changed
 	if !r.statusEqual(routerNodeConfigurationStatus.Status, newStatus) {
 		patch := client.MergeFrom(routerNodeConfigurationStatus.DeepCopy())
 		routerNodeConfigurationStatus.Status = newStatus
@@ -133,51 +133,21 @@ func (r *RouterNodeConfigurationStatusReconciler) createRouterNodeStatus(ctx con
 		return err
 	}
 
+	// Set initial status immediately after creation to minimize race window
+	routerNodeStatus.Status = r.buildStatus()
+	if err := r.Status().Update(ctx, routerNodeStatus); err != nil {
+		r.Logger.Error("failed to set initial status", "error", err)
+		return err
+	}
+
 	r.Logger.Info("successfully created RouterNodeConfigurationStatus", "name", routerNodeStatus.Name)
 	return nil
 }
 
-// buildConditions creates Ready and Degraded conditions based on failure status
-func (r *RouterNodeConfigurationStatusReconciler) buildConditions(failedCount int) []metav1.Condition {
-	now := metav1.Now()
-
-	readyCondition := metav1.Condition{
-		Type:               "Ready",
-		LastTransitionTime: now,
-	}
-
-	degradedCondition := metav1.Condition{
-		Type:               "Degraded",
-		LastTransitionTime: now,
-	}
-
-	if failedCount > 0 {
-		readyCondition.Status = metav1.ConditionFalse
-		readyCondition.Reason = "ConfigurationFailed"
-		readyCondition.Message = "Some OpenPERouter configurations failed"
-
-		degradedCondition.Status = metav1.ConditionTrue
-		degradedCondition.Reason = "ConfigurationFailed"
-		degradedCondition.Message = r.buildFailureMessageFromCount(failedCount)
-	} else {
-		readyCondition.Status = metav1.ConditionTrue
-		readyCondition.Reason = "ConfigurationSuccessful"
-		readyCondition.Message = "All OpenPERouter configurations are successful"
-
-		degradedCondition.Status = metav1.ConditionFalse
-		degradedCondition.Reason = "ConfigurationSuccessful"
-		degradedCondition.Message = "All configurations are healthy"
-	}
-
-	return []metav1.Condition{readyCondition, degradedCondition}
-}
-
 // buildStatus creates the status from StatusReader's shared state
 func (r *RouterNodeConfigurationStatusReconciler) buildStatus() v1alpha1.RouterNodeConfigurationStatusStatus {
-	// Get aggregated status summary from StatusReader
 	statusSummary := r.StatusReader.GetStatusSummary()
 
-	// Convert to v1alpha1 FailedResource format
 	failedResources := make([]v1alpha1.FailedResource, len(statusSummary.FailedResources))
 	for i, failed := range statusSummary.FailedResources {
 		failedResources[i] = v1alpha1.FailedResource{
@@ -187,17 +157,48 @@ func (r *RouterNodeConfigurationStatusReconciler) buildStatus() v1alpha1.RouterN
 		}
 	}
 
-	// Always set LastUpdateTime to now since we're updating the status
-	lastUpdate := &metav1.Time{Time: time.Now()}
-
-	// Build conditions
-	conditions := r.buildConditions(len(failedResources))
+	now := metav1.Now()
+	lastUpdate := &metav1.Time{Time: now.Time}
+	conditions := r.buildConditions(len(failedResources), now)
 
 	return v1alpha1.RouterNodeConfigurationStatusStatus{
 		LastUpdateTime:  lastUpdate,
 		FailedResources: failedResources,
 		Conditions:      conditions,
 	}
+}
+
+// buildConditions creates Ready and Degraded conditions based on failure status
+func (r *RouterNodeConfigurationStatusReconciler) buildConditions(failedCount int, now metav1.Time) []metav1.Condition {
+	readyCondition := metav1.Condition{
+		Type:               ConditionTypeReady,
+		LastTransitionTime: now,
+	}
+
+	degradedCondition := metav1.Condition{
+		Type:               ConditionTypeDegraded,
+		LastTransitionTime: now,
+	}
+
+	if failedCount > 0 {
+		readyCondition.Status = metav1.ConditionFalse
+		readyCondition.Reason = ReasonConfigFailed
+		readyCondition.Message = "Some OpenPERouter configurations failed"
+
+		degradedCondition.Status = metav1.ConditionTrue
+		degradedCondition.Reason = ReasonConfigFailed
+		degradedCondition.Message = r.buildFailureMessageFromCount(failedCount)
+	} else {
+		readyCondition.Status = metav1.ConditionTrue
+		readyCondition.Reason = ReasonConfigSuccess
+		readyCondition.Message = "All OpenPERouter configurations are successful"
+
+		degradedCondition.Status = metav1.ConditionFalse
+		degradedCondition.Reason = ReasonConfigSuccess
+		degradedCondition.Message = "All configurations are healthy"
+	}
+
+	return []metav1.Condition{readyCondition, degradedCondition}
 }
 
 // buildFailureMessageFromCount creates a descriptive failure message
@@ -226,6 +227,18 @@ func (r *RouterNodeConfigurationStatusReconciler) statusEqual(a, b v1alpha1.Rout
 		bCopy.Conditions[i].LastTransitionTime = metav1.Time{}
 	}
 
+	// Sort FailedResources for deterministic comparison since map iteration order is random
+	sortFailedResources := func(resources []v1alpha1.FailedResource) {
+		slices.SortFunc(resources, func(x, y v1alpha1.FailedResource) int {
+			if c := cmp.Compare(x.Kind, y.Kind); c != 0 {
+				return c
+			}
+			return cmp.Compare(x.Name, y.Name)
+		})
+	}
+	sortFailedResources(aCopy.FailedResources)
+	sortFailedResources(bCopy.FailedResources)
+
 	return reflect.DeepEqual(aCopy, bCopy)
 }
 
@@ -248,8 +261,11 @@ func (r *RouterNodeConfigurationStatusReconciler) SetupWithManager(mgr ctrl.Mana
 		WithEventFilter(nodeFilter).
 		Named("routernodeconfigurationstatus")
 
+	// WatchesRawSource connects the StatusManager's channel to trigger reconciliation.
+	// This channel is used internally by StatusManager to notify of status changes.
+	// The nodeFilter predicate above only applies to the primary For() watch, not this channel.
 	ctrlBuilder = ctrlBuilder.WatchesRawSource(
-		source.Channel(r.StatusReader.GetChannel(), &handler.EnqueueRequestForObject{}),
+		source.Channel(r.StatusReader.GetConnection(), &handler.EnqueueRequestForObject{}),
 	)
 
 	return ctrlBuilder.Complete(r)
