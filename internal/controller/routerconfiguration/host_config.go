@@ -58,6 +58,8 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 		sysctl.IPv6Forwarding(),
 		sysctl.ArpAcceptAll(),
 		sysctl.ArpAcceptDefault(),
+		sysctl.AcceptUntrackedNADefault(),
+		sysctl.AcceptUntrackedNAAll(),
 	); err != nil {
 		return fmt.Errorf("failed to ensure sysctls: %w", err)
 	}
