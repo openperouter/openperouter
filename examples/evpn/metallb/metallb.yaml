@@ -76,12 +76,12 @@ spec:
     routers:
     - asn: 64515
       neighbors:
-      - address: 192.169.10.0
+      - address: 192.169.10.1
         asn: 64514
         toReceive:
           allowed:
             mode: all
-      - address: 192.169.11.0
+      - address: 192.169.11.1
         asn: 64514
         toReceive:
           allowed:
