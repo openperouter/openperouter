@@ -1,5 +1,7 @@
 #!/bin/bash
 
+KIND_BIN="${KIND_BIN:-kind}"
+
 apply_manifests_with_retries() {
   local manifests=("$@")
   for manifest in "${manifests[@]}"; do

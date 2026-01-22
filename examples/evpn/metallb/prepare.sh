@@ -3,7 +3,7 @@ set -euo pipefail
 set -x
 CURRENT_PATH=$(dirname "$0")
 
-source "${CURRENT_PATH}/../common.sh"
+source "${CURRENT_PATH}/../../common.sh"
 
 DEMO_MODE=true make deploy
 export KUBECONFIG=$(pwd)/bin/kubeconfig
@@ -26,6 +26,8 @@ helm install metallb metallb/metallb --namespace metallb-system --set frrk8s.ext
 
 wait_for_pods metallb-system app.kubernetes.io/name=metallb
 
+docker image pull nginx:1.25
+${KIND_BIN} --name pe-kind load docker-image nginx:1.25
 
 apply_manifests_with_retries metallb.yaml openpe.yaml workload.yaml
 

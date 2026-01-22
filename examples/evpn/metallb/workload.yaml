@@ -38,15 +38,15 @@ spec:
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: green
+  name: blue
   labels:
-    name: green
+    name: blue
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: nginx-service-green
-  namespace: green
+  name: nginx-service-blue
+  namespace: blue
   labels:
     app: nginx
 spec:
@@ -63,7 +63,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: nginx-deployment
-  namespace: green
+  namespace: blue
   labels:
     app: nginx
 spec:
