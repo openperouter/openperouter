@@ -12,6 +12,7 @@ import (
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/filter"
 	"github.com/openperouter/openperouter/internal/ipfamily"
+	"github.com/openperouter/openperouter/internal/status"
 )
 
 var interfaceNameRegexp *regexp.Regexp
@@ -26,16 +27,16 @@ func ValidateL3VNIsForNodes(nodes []corev1.Node, underlays []v1alpha1.L3VNI) err
 		if err != nil {
 			return fmt.Errorf("failed to filter underlays for node %q: %w", node.Name, err)
 		}
-		if err := ValidateL3VNIs(filteredL3VNIs); err != nil {
+		if err := ValidateL3VNIs(filteredL3VNIs, &NoOpStatusReporter{}); err != nil {
 			return fmt.Errorf("failed to validate underlays for node %q: %w", node.Name, err)
 		}
 	}
 	return nil
 }
 
-func ValidateL3VNIs(l3Vnis []v1alpha1.L3VNI) error {
+func ValidateL3VNIs(l3Vnis []v1alpha1.L3VNI, statusReporter status.StatusReporter) error {
 	vnis := vnisFromL3VNIs(l3Vnis)
-	if err := validateVNIs(vnis); err != nil {
+	if err := validateVNIs(vnis, status.L3VNIKind, statusReporter); err != nil {
 		return err
 	}
 	return nil
@@ -47,33 +48,35 @@ func ValidateL2VNIsForNodes(nodes []corev1.Node, underlays []v1alpha1.L2VNI) err
 		if err != nil {
 			return fmt.Errorf("failed to filter underlays for node %q: %w", node.Name, err)
 		}
-		if err := ValidateL2VNIs(filteredL2VNIs); err != nil {
+		if err := ValidateL2VNIs(filteredL2VNIs, &NoOpStatusReporter{}); err != nil {
 			return fmt.Errorf("failed to validate underlays for node %q: %w", node.Name, err)
 		}
 	}
 	return nil
 }
 
-func ValidateL2VNIs(l2Vnis []v1alpha1.L2VNI) error {
+func ValidateL2VNIs(l2Vnis []v1alpha1.L2VNI, statusReporter status.StatusReporter) error {
 	// Convert L2VNIs to vni structs
 	vnis := vnisFromL2VNIs(l2Vnis)
 
 	// Perform common validation
-	if err := validateVNIs(vnis); err != nil {
+	if err := validateVNIs(vnis, status.L2VNIKind, statusReporter); err != nil {
 		return err
 	}
 
 	// Perform L2-specific validation (HostMaster and L2GatewayIPs validation)
 	for _, vni := range l2Vnis {
 		if vni.Spec.HostMaster != nil {
-			if err := validateHostMaster(vni.Name, vni.Spec.HostMaster); err != nil {
+			if err := validateHostMaster(vni.Name, vni.Spec.HostMaster, statusReporter); err != nil {
 				return err
 			}
 		}
 		if len(vni.Spec.L2GatewayIPs) > 0 {
 			_, err := ipfamily.ForCIDRStrings(vni.Spec.L2GatewayIPs...)
 			if err != nil {
-				return fmt.Errorf("invalid l2gatewayips for vni %q = %v: %w", vni.Name, vni.Spec.L2GatewayIPs, err)
+				validationErr := fmt.Errorf("invalid l2gatewayips for vni %q = %v: %w", vni.Name, vni.Spec.L2GatewayIPs, err)
+				statusReporter.ReportResourceFailure(status.L2VNIKind, vni.Name, validationErr)
+				return validationErr
 			}
 		}
 	}
@@ -115,23 +118,29 @@ func vnisFromL2VNIs(l2vnis []v1alpha1.L2VNI) []vni {
 }
 
 // validateVNIs performs common validation logic for VNIs
-func validateVNIs(vnis []vni) error {
+func validateVNIs(vnis []vni, kind status.ResourceKind, statusReporter status.StatusReporter) error {
 	existingVrfs := map[string]string{} // a map between the given VRF and the VNI instance it's configured in
 	existingVNIs := map[uint32]string{} // a map between the given VNI number and the VNI instance it's configured in
 
 	for _, vni := range vnis {
 		if err := isValidInterfaceName(vni.vrfName); err != nil {
-			return fmt.Errorf("invalid vrf name for vni %s: %s - %w", vni.name, vni.vrfName, err)
+			validationErr := fmt.Errorf("invalid vrf name for vni %s: %s - %w", vni.name, vni.vrfName, err)
+			statusReporter.ReportResourceFailure(kind, vni.name, validationErr)
+			return validationErr
 		}
 		existing, ok := existingVrfs[vni.vrfName]
 		if ok {
-			return fmt.Errorf("duplicate vrf %s: %s - %s", vni.vrfName, existing, vni.name)
+			validationErr := fmt.Errorf("duplicate vrf %s: %s - %s", vni.vrfName, existing, vni.name)
+			statusReporter.ReportResourceFailure(kind, vni.name, validationErr)
+			return validationErr
 		}
 		existingVrfs[vni.vrfName] = vni.name
 
 		existingVNI, ok := existingVNIs[vni.vni]
 		if ok {
-			return fmt.Errorf("duplicate vni %d:%s - %s", vni.vni, existingVNI, vni.name)
+			validationErr := fmt.Errorf("duplicate vni %d:%s - %s", vni.vni, existingVNI, vni.name)
+			statusReporter.ReportResourceFailure(kind, vni.name, validationErr)
+			return validationErr
 		}
 		existingVNIs[vni.vni] = vni.name
 	}
@@ -181,7 +190,7 @@ func isValidCIDR(cidr string) error {
 	return nil
 }
 
-func validateHostMaster(vniName string, hostConfig *v1alpha1.HostMaster) error {
+func validateHostMaster(vniName string, hostConfig *v1alpha1.HostMaster, statusReporter status.StatusReporter) error {
 	var name string
 	switch hostConfig.Type {
 	case v1alpha1.LinuxBridge:
@@ -193,7 +202,9 @@ func validateHostMaster(vniName string, hostConfig *v1alpha1.HostMaster) error {
 			name = hostConfig.OVSBridge.Name
 		}
 	default:
-		return fmt.Errorf("invalid hostmaster type %q", hostConfig.Type)
+		err := fmt.Errorf("invalid hostmaster type %q", hostConfig.Type)
+		statusReporter.ReportResourceFailure(status.L2VNIKind, vniName, err)
+		return err
 	}
 
 	if name == "" {
@@ -201,7 +212,9 @@ func validateHostMaster(vniName string, hostConfig *v1alpha1.HostMaster) error {
 	}
 
 	if err := isValidInterfaceName(name); err != nil {
-		return fmt.Errorf("invalid hostmaster name for vni %s: %s - %w", vniName, name, err)
+		validationErr := fmt.Errorf("invalid hostmaster name for vni %s: %s - %w", vniName, name, err)
+		statusReporter.ReportResourceFailure(status.L2VNIKind, vniName, validationErr)
+		return validationErr
 	}
 
 	return nil

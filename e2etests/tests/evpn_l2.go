@@ -21,6 +21,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
+	"github.com/openperouter/openperouter/e2etests/pkg/status"
 	"github.com/openperouter/openperouter/e2etests/pkg/url"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -144,6 +145,9 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			},
 		})
 		Expect(err).NotTo(HaveOccurred())
+
+		By("confirming L2VNI and L3VNI configurations are successful")
+		status.ExpectSuccessfulStatus(Updater.Client(), HostMode)
 
 		_, err = k8s.CreateNamespace(cs, testNamespace)
 		Expect(err).NotTo(HaveOccurred())

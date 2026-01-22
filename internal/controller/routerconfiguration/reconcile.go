@@ -8,26 +8,28 @@ import (
 
 	"github.com/openperouter/openperouter/internal/conversion"
 	"github.com/openperouter/openperouter/internal/frr"
+	"github.com/openperouter/openperouter/internal/status"
 )
 
-func Reconcile(ctx context.Context, apiConfig conversion.ApiConfigData, frrConfigPath, targetNamespace string, updater frr.ConfigUpdater) error {
-	if err := conversion.ValidateUnderlays(apiConfig.Underlays); err != nil {
+func Reconcile(ctx context.Context, apiConfig conversion.ApiConfigData, frrConfigPath, targetNamespace string, updater frr.ConfigUpdater, statusReporter status.StatusReporter) error {
+
+	if err := conversion.ValidateUnderlays(apiConfig.Underlays, statusReporter); err != nil {
 		return fmt.Errorf("failed to validate underlays: %w", err)
 	}
 
-	if err := conversion.ValidateL3VNIs(apiConfig.L3VNIs); err != nil {
+	if err := conversion.ValidateL3VNIs(apiConfig.L3VNIs, statusReporter); err != nil {
 		return fmt.Errorf("failed to validate l3vnis: %w", err)
 	}
 
-	if err := conversion.ValidateL2VNIs(apiConfig.L2VNIs); err != nil {
+	if err := conversion.ValidateL2VNIs(apiConfig.L2VNIs, statusReporter); err != nil {
 		return fmt.Errorf("failed to validate l2vnis: %w", err)
 	}
 
-	if err := conversion.ValidatePassthroughs(apiConfig.L3Passthrough); err != nil {
+	if err := conversion.ValidatePassthroughs(apiConfig.L3Passthrough, statusReporter); err != nil {
 		return fmt.Errorf("failed to validate l3passthrough: %w", err)
 	}
 
-	if err := conversion.ValidateHostSessions(apiConfig.L3VNIs, apiConfig.L3Passthrough); err != nil {
+	if err := conversion.ValidateHostSessions(apiConfig.L3VNIs, apiConfig.L3Passthrough, statusReporter); err != nil {
 		return fmt.Errorf("failed to validate host sessions: %w", err)
 	}
 
@@ -40,6 +42,7 @@ func Reconcile(ctx context.Context, apiConfig conversion.ApiConfigData, frrConfi
 	}
 
 	if err := configureInterfaces(ctx, interfacesConfiguration{
+		StatusReporter:  statusReporter,
 		targetNamespace: targetNamespace,
 		ApiConfigData:   apiConfig,
 	}); err != nil {

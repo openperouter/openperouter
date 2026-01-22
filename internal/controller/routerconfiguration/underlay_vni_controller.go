@@ -34,6 +34,8 @@ import (
 	"github.com/openperouter/openperouter/internal/conversion"
 	"github.com/openperouter/openperouter/internal/filter"
 	"github.com/openperouter/openperouter/internal/frrconfig"
+	"github.com/openperouter/openperouter/internal/k8s"
+	"github.com/openperouter/openperouter/internal/status"
 	v1 "k8s.io/api/core/v1"
 )
 
@@ -48,6 +50,7 @@ type PERouterReconciler struct {
 	FRRConfigPath      string
 	FRRReloadSocket    string
 	RouterProvider     RouterProvider
+	StatusReporter     status.StatusReporter
 }
 
 type requestKey string
@@ -133,6 +136,7 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		slog.Error("failed to get node index", "error", err)
 		return ctrl.Result{}, err
 	}
+
 	logger.Debug("using config", "l3vnis", l3vnis.Items, "l2vnis", l2vnis.Items, "underlays", underlays.Items, "l3passthrough", l3passthrough.Items)
 	apiConfig := conversion.ApiConfigData{
 		NodeIndex:          nodeIndex,
@@ -164,7 +168,9 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	updater := frrconfig.UpdaterForSocket(r.FRRReloadSocket, r.FRRConfigPath)
 
-	err = Reconcile(ctx, apiConfig, r.FRRConfigPath, targetNS, updater)
+	r.cleanupRemovedFailedResources(underlays.Items, l3vnis.Items, l2vnis.Items, l3passthrough.Items)
+
+	err = Reconcile(ctx, apiConfig, r.FRRConfigPath, targetNS, updater, r.StatusReporter)
 	if nonRecoverableHostError(err) {
 		if err := router.HandleNonRecoverableError(ctx); err != nil {
 			slog.Error("failed to handle non recoverable error", "error", err)
@@ -181,6 +187,10 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *PERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if r.StatusReporter == nil {
+		return fmt.Errorf("StatusReporter is required but not set")
+	}
+
 	filterNonRouterPods := predicate.NewPredicateFuncs(func(object client.Object) bool {
 		switch o := object.(type) {
 		case *v1.Pod:
@@ -214,7 +224,7 @@ func (r *PERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				return !labels.Equals(oldLabels, newLabels)
 			case *v1.Pod: // handle only status updates
 				old := e.ObjectOld.(*v1.Pod)
-				if PodIsReady(old) != PodIsReady(o) {
+				if k8s.PodIsReady(old) != k8s.PodIsReady(o) {
 					return true
 				}
 				return false
@@ -258,4 +268,52 @@ func setPodNodeNameIndex(mgr ctrl.Manager) error {
 		return fmt.Errorf("failed to set node indexer %w", err)
 	}
 	return nil
+}
+
+func (r *PERouterReconciler) cleanupRemovedFailedResources(
+	underlays []v1alpha1.Underlay,
+	l3vnis []v1alpha1.L3VNI,
+	l2vnis []v1alpha1.L2VNI,
+	l3passthrough []v1alpha1.L3Passthrough,
+) {
+	currentUnderlays := make(map[string]struct{})
+	for _, underlay := range underlays {
+		currentUnderlays[underlay.Name] = struct{}{}
+	}
+
+	currentL3VNIs := make(map[string]struct{})
+	for _, l3vni := range l3vnis {
+		currentL3VNIs[l3vni.Name] = struct{}{}
+	}
+
+	currentL2VNIs := make(map[string]struct{})
+	for _, l2vni := range l2vnis {
+		currentL2VNIs[l2vni.Name] = struct{}{}
+	}
+
+	currentL3Passthroughs := make(map[string]struct{})
+	for _, passthrough := range l3passthrough {
+		currentL3Passthroughs[passthrough.Name] = struct{}{}
+	}
+
+	if statusReader, ok := r.StatusReporter.(status.StatusReader); ok {
+		statusSummary := statusReader.GetStatusSummary()
+		for _, failedResource := range statusSummary.FailedResources {
+			var exists bool
+			switch failedResource.Kind {
+			case status.UnderlayKind:
+				_, exists = currentUnderlays[failedResource.Name]
+			case status.L3VNIKind:
+				_, exists = currentL3VNIs[failedResource.Name]
+			case status.L2VNIKind:
+				_, exists = currentL2VNIs[failedResource.Name]
+			case status.L3PassthroughKind:
+				_, exists = currentL3Passthroughs[failedResource.Name]
+			}
+
+			if !exists {
+				r.StatusReporter.ReportResourceRemoved(failedResource.Kind, failedResource.Name)
+			}
+		}
+	}
 }

@@ -3,3 +3,4 @@ resources:
 - bases/openpe.openperouter.github.io_l3vnis.yaml
 - bases/openpe.openperouter.github.io_l2vnis.yaml
 - bases/openpe.openperouter.github.io_l3passthroughs.yaml
+- bases/openpe.openperouter.github.io_routernodeconfigurationstatuses.yaml

@@ -134,6 +134,32 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - openpe.openperouter.github.io
+  resources:
+  - routernodeconfigurationstatuses
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - openpe.openperouter.github.io
+  resources:
+  - routernodeconfigurationstatuses/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - openpe.openperouter.github.io
+  resources:
+  - routernodeconfigurationstatuses/status
+  verbs:
+  - get
+  - patch
+  - update
 {{- if .Values.webhook.enabled }}
 - apiGroups:
   - admissionregistration.k8s.io

@@ -140,7 +140,7 @@ func TestValidateVNIs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateL3VNIs(tt.vnis)
+			err := ValidateL3VNIs(tt.vnis, &NoOpStatusReporter{})
 			if (err != nil) != tt.wantErr {
 				t.Errorf("validateL3VNIs() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -376,7 +376,7 @@ func TestValidateL2VNIs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateL2VNIs(tt.vnis)
+			err := ValidateL2VNIs(tt.vnis, &NoOpStatusReporter{})
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ValidateL2VNIs() error = %v, wantErr %v", err, tt.wantErr)
 			}

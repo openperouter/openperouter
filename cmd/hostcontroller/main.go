@@ -40,6 +40,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 
 	"github.com/go-logr/logr"
@@ -49,6 +50,7 @@ import (
 	"github.com/openperouter/openperouter/internal/logging"
 	"github.com/openperouter/openperouter/internal/pods"
 	"github.com/openperouter/openperouter/internal/staticconfiguration"
+	"github.com/openperouter/openperouter/internal/status"
 	"github.com/openperouter/openperouter/internal/systemdctl"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	// +kubebuilder:scaffold:imports
@@ -130,8 +132,6 @@ func main() {
 		fmt.Printf("validation error: %v\n", err)
 		os.Exit(1)
 	}
-
-	flag.Parse()
 
 	// Initialize OVS socket path for the hostnetwork package
 	hostnetwork.OVSSocketPath = args.ovsSocketPath
@@ -219,6 +219,15 @@ func main() {
 		}
 	}
 
+	// Setup status reporting infrastructure
+	statusUpdateTriggerChannel := make(chan event.GenericEvent, 100)
+	statusManager := status.NewStatusManager(
+		statusUpdateTriggerChannel,
+		k8sModeParams.nodeName,
+		k8sModeParams.namespace,
+		logger,
+	)
+
 	if err = (&routerconfiguration.PERouterReconciler{
 		Client:             mgr.GetClient(),
 		Scheme:             mgr.GetScheme(),
@@ -230,8 +239,21 @@ func main() {
 		FRRReloadSocket:    args.reloaderSocket,
 		RouterProvider:     routerProvider,
 		UnderlayFromMultus: args.underlayFromMultus,
+		StatusReporter:     statusManager,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Underlay")
+		os.Exit(1)
+	}
+
+	if err = (&routerconfiguration.RouterNodeConfigurationStatusReconciler{
+		Client:       mgr.GetClient(),
+		Scheme:       mgr.GetScheme(),
+		MyNode:       k8sModeParams.nodeName,
+		MyNamespace:  k8sModeParams.namespace,
+		Logger:       logger,
+		StatusReader: statusManager,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "RouterNodeConfigurationStatus")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
@@ -293,25 +315,20 @@ func validateParameters(mode string, hostModeParams hostModeParameters, k8sModeP
 		return fmt.Errorf("invalid mode %q, must be '%s' or '%s'", mode, modeK8s, modeHost)
 	}
 
+	if k8sModeParams.nodeName == "" {
+		return fmt.Errorf("nodename is required")
+	}
+	if k8sModeParams.namespace == "" {
+		return fmt.Errorf("namespace is required")
+	}
+
 	if mode == modeK8s {
 		if hostModeParams.hostContainerPidPath != "" {
 			return fmt.Errorf("pid-path should not be set in %s mode", modeK8s)
 		}
-		if k8sModeParams.nodeName == "" {
-			return fmt.Errorf("nodename is required in %s mode", modeK8s)
-		}
-		if k8sModeParams.namespace == "" {
-			return fmt.Errorf("namespace is required in %s mode", modeK8s)
-		}
 	}
 
 	if mode == modeHost {
-		if k8sModeParams.nodeName == "" {
-			return fmt.Errorf("nodename is required in %s mode", modeHost)
-		}
-		if k8sModeParams.namespace != "" {
-			return fmt.Errorf("namespace should not be set in %s mode", modeHost)
-		}
 		if hostModeParams.hostContainerPidPath == "" {
 			return fmt.Errorf("pid-path is required in %s mode", modeHost)
 		}
