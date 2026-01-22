@@ -201,7 +201,7 @@ func SetupL2VNI(ctx context.Context, params L2VNIParams) error {
 		if err != nil {
 			return fmt.Errorf("could not find peer veth %s in namespace %s: %w", vethNames.NamespaceSide, params.TargetNS, err)
 		}
-		name := bridgeName(params.VNI)
+		name := BridgeName(params.VNI)
 		bridge, err := netlink.LinkByName(name)
 		if err != nil {
 			return fmt.Errorf("could not find bridge %s in namespace %s: %w", name, params.TargetNS, err)

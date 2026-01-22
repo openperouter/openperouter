@@ -16,7 +16,7 @@ import (
 // setup bridge creates the bridge if not exists, and it enslaves it to the provided
 // vrf.
 func setupBridge(params VNIParams, vrf *netlink.Vrf) (*netlink.Bridge, error) {
-	name := bridgeName(params.VNI)
+	name := BridgeName(params.VNI)
 	bridge, err := createBridge(name, vrf.Index)
 	if err != nil {
 		return nil, err
@@ -96,7 +96,8 @@ func setBridgeFixedMacAddress(bridge netlink.Link, vni int) error {
 
 const bridgePrefix = "br-pe-"
 
-func bridgeName(vni int) string {
+// BridgeName returns the PE bridge name for a given VNI.
+func BridgeName(vni int) string {
 	return fmt.Sprintf("%s%d", bridgePrefix, vni)
 }
 

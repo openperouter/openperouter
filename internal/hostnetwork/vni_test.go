@@ -548,8 +548,8 @@ func validateL2VNI(g Gomega, params L2VNIParams) {
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(hasNoIP).To(BeTrue(), "host leg does have ip")
 
-	bridgeLink, err := netlink.LinkByName(bridgeName(params.VNI))
-	g.Expect(err).NotTo(HaveOccurred(), "bridge not found", bridgeName(params.VNI))
+	bridgeLink, err := netlink.LinkByName(BridgeName(params.VNI))
+	g.Expect(err).NotTo(HaveOccurred(), "bridge not found", BridgeName(params.VNI))
 	g.Expect(peLegLink.Attrs().MasterIndex).To(Equal(bridgeLink.Attrs().Index))
 	if len(params.L2GatewayIPs) > 0 {
 		for _, ip := range params.L2GatewayIPs {
@@ -586,8 +586,8 @@ func validateVNI(g Gomega, params VNIParams) {
 	vrf := vrfLink.(*netlink.Vrf)
 	g.Expect(vrf.OperState).To(BeEquivalentTo(netlink.OperUp))
 
-	bridgeLink, err := netlink.LinkByName(bridgeName(params.VNI))
-	g.Expect(err).NotTo(HaveOccurred(), "bridge not found", bridgeName(params.VNI))
+	bridgeLink, err := netlink.LinkByName(BridgeName(params.VNI))
+	g.Expect(err).NotTo(HaveOccurred(), "bridge not found", BridgeName(params.VNI))
 
 	bridge := bridgeLink.(*netlink.Bridge)
 	g.Expect(bridge.OperState).To(BeEquivalentTo(netlink.OperUp))
@@ -630,7 +630,7 @@ func checkLinkExists(g Gomega, name string) {
 func validateVNIIsNotConfigured(g Gomega, params VNIParams) {
 	checkLinkdeleted(g, vxLanNameFromVNI(params.VNI))
 	checkLinkdeleted(g, params.VRF)
-	checkLinkdeleted(g, bridgeName(params.VNI))
+	checkLinkdeleted(g, BridgeName(params.VNI))
 
 	vethNames := vethNamesFromVNI(params.VNI)
 	checkLinkdeleted(g, vethNames.NamespaceSide)
