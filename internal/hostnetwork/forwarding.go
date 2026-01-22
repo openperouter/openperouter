@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/openperouter/openperouter/internal/netnamespace"
 	"github.com/vishvananda/netns"
 )
 
@@ -24,7 +25,7 @@ func EnsureIPv6Forwarding(namespace string) error {
 		}
 	}()
 
-	err = inNamespace(ns, func() error {
+	err = netnamespace.In(ns, func() error {
 		// Read current value from sysfs
 		data, err := os.ReadFile("/proc/sys/net/ipv6/conf/all/forwarding")
 		if err != nil {
@@ -66,7 +67,7 @@ func EnsureArpAccept(namespace string) error {
 		}
 	}()
 
-	err = inNamespace(ns, func() error {
+	err = netnamespace.In(ns, func() error {
 		// Set arp_accept on "all" interface - this affects all current interfaces
 		allPath := "/proc/sys/net/ipv4/conf/all/arp_accept"
 		data, err := os.ReadFile(allPath)

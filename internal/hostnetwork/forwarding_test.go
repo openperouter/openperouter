@@ -9,6 +9,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/openperouter/openperouter/internal/netnamespace"
 	"github.com/vishvananda/netns"
 )
 
@@ -30,7 +31,7 @@ var _ = Describe("EnsureIPv6Forwarding", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			var output string
-			err = inNamespace(ns, func() error {
+			err = netnamespace.In(ns, func() error {
 				out, err := exec.Command("sysctl", "-n", "net.ipv6.conf.all.forwarding").CombinedOutput()
 				output = string(out)
 				return err
@@ -47,7 +48,7 @@ var _ = Describe("EnsureIPv6Forwarding", func() {
 
 		BeforeEach(func() {
 			ns = createTestNS(testNS)
-			err := inNamespace(ns, func() error {
+			err := netnamespace.In(ns, func() error {
 				_, setErr := exec.Command("sysctl", "-w", "net.ipv6.conf.all.forwarding=1").CombinedOutput()
 				return setErr
 			})
@@ -63,7 +64,7 @@ var _ = Describe("EnsureIPv6Forwarding", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			var output string
-			err = inNamespace(ns, func() error {
+			err = netnamespace.In(ns, func() error {
 				out, err := exec.Command("sysctl", "-n", "net.ipv6.conf.all.forwarding").CombinedOutput()
 				output = string(out)
 				return err
@@ -93,7 +94,7 @@ var _ = Describe("EnsureArpAccept", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			var allOutput, defaultOutput string
-			err = inNamespace(ns, func() error {
+			err = netnamespace.In(ns, func() error {
 				out, err := exec.Command("sysctl", "-n", "net.ipv4.conf.all.arp_accept").CombinedOutput()
 				if err != nil {
 					return err
@@ -120,7 +121,7 @@ var _ = Describe("EnsureArpAccept", func() {
 
 		BeforeEach(func() {
 			ns = createTestNS(testNS)
-			err := inNamespace(ns, func() error {
+			err := netnamespace.In(ns, func() error {
 				_, setErr := exec.Command("sysctl", "-w", "net.ipv4.conf.all.arp_accept=1").CombinedOutput()
 				if setErr != nil {
 					return setErr
@@ -140,7 +141,7 @@ var _ = Describe("EnsureArpAccept", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			var allOutput, defaultOutput string
-			err = inNamespace(ns, func() error {
+			err = netnamespace.In(ns, func() error {
 				out, err := exec.Command("sysctl", "-n", "net.ipv4.conf.all.arp_accept").CombinedOutput()
 				if err != nil {
 					return err

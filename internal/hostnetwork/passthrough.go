@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/openperouter/openperouter/internal/netnamespace"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 )
@@ -49,7 +50,7 @@ func SetupPassthrough(ctx context.Context, params PassthroughParams) error {
 		return fmt.Errorf("failed to assign IPs to host veth: %w", err)
 	}
 
-	if err := inNamespace(ns, func() error {
+	if err := netnamespace.In(ns, func() error {
 		peVeth, err := netlink.LinkByName(PassthroughNames.NamespaceSide)
 		if err != nil {
 			return fmt.Errorf("could not find peer veth %s in namespace %s: %w", PassthroughNames.NamespaceSide, params.TargetNS, err)
@@ -81,7 +82,7 @@ func RemovePassthrough(targetNS string) error {
 		}
 	}()
 
-	if err := inNamespace(ns, func() error {
+	if err := netnamespace.In(ns, func() error {
 		if err := removeLinkByName(PassthroughNames.NamespaceSide); err != nil {
 			return fmt.Errorf("remove namespace-side veth leg: %w", err)
 		}
