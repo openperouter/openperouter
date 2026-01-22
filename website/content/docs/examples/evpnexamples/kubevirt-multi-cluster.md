@@ -42,7 +42,7 @@ machines are connected to this bridge via Multus secondary interfaces of type
 > ```
 
 The full example can be found in the
-[project repository](https://github.com/openperouter/openperouter/examples/evpn/multi-cluster)
+[project repository](https://github.com/openperouter/openperouter/tree/main/examples/evpn/multi-cluster)
 and can be deployed by running:
 
 ```bash
@@ -333,8 +333,8 @@ in cluster B.
 It also has a dedicated migration network set up in both clusters, which
 happens to be implemented using an L2 VNI ! You can find links to the network
 manifests below:
-- [NAD](/examples/evpn/multi-cluster/cluster-a-migration-nad.yaml)
-- [L2VNI](/examples/evpn/multi-cluster/cluster-a-migration-l2vni.yaml)
+- [NAD](https://github.com/openperouter/openperouter/tree/main/examples/evpn/multi-cluster/cluster-a-migration-nad.yaml)
+- [L2VNI](https://github.com/openperouter/openperouter/tree/main/examples/evpn/multi-cluster/cluster-a-migration-l2vni.yaml)
 
 ### Preparing the VM to be migrated
 
