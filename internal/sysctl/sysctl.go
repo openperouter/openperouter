@@ -55,6 +55,14 @@ func Ensure(namespace string, sysctls ...Sysctl) error {
 	return nil
 }
 
+// IPv4Forwarding returns the sysctl definition for enabling IPv4 forwarding.
+func IPv4Forwarding() Sysctl {
+	return Sysctl{
+		Path:        "net/ipv4/conf/all/forwarding",
+		Description: "IPv4 forwarding",
+	}
+}
+
 // IPv6Forwarding returns the sysctl definition for enabling IPv6 forwarding.
 func IPv6Forwarding() Sysctl {
 	return Sysctl{
