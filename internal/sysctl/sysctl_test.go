@@ -1,5 +1,8 @@
 // SPDX-License-Identifier:Apache-2.0
 
+//go:build runasroot
+// +build runasroot
+
 package sysctl
 
 import (
@@ -15,6 +18,23 @@ import (
 	"github.com/openperouter/openperouter/internal/netnamespace"
 	"github.com/vishvananda/netns"
 )
+
+func readSysctl(ns netns.NsHandle, name string) (string, error) {
+	var output string
+	err := netnamespace.In(ns, func() error {
+		out, err := exec.Command("sysctl", "-n", name).CombinedOutput()
+		output = strings.TrimSpace(string(out))
+		return err
+	})
+	return output, err
+}
+
+func setSysctl(ns netns.NsHandle, name, value string) error {
+	return netnamespace.In(ns, func() error {
+		_, err := exec.Command("sysctl", "-w", fmt.Sprintf("%s=%s", name, value)).CombinedOutput()
+		return err
+	})
+}
 
 func createTestNS(testNs string) netns.NsHandle {
 	runtime.LockOSThread()
@@ -38,156 +58,34 @@ func cleanTest(namespace string) {
 	}
 }
 
-var _ = Describe("EnsureIPv6Forwarding", func() {
-	Context("when IPv6 forwarding is disabled", func() {
-		testNS := "test-ipv6-forwarding"
-		var ns netns.NsHandle
+var _ = Describe("Ensure", func() {
+	DescribeTable("should enable sysctls",
+		func(testNS string, sysctls []Sysctl, preEnable bool) {
+			ns := createTestNS(testNS)
+			defer cleanTest(testNS)
 
-		BeforeEach(func() {
-			cleanTest(testNS)
-			ns = createTestNS(testNS)
-		})
-
-		AfterEach(func() {
-			cleanTest(testNS)
-		})
-
-		It("should enable IPv6 forwarding", func() {
-			err := EnsureIPv6Forwarding(fmt.Sprintf("/var/run/netns/%s", testNS))
-			Expect(err).NotTo(HaveOccurred())
-
-			var output string
-			err = netnamespace.In(ns, func() error {
-				out, err := exec.Command("sysctl", "-n", "net.ipv6.conf.all.forwarding").CombinedOutput()
-				output = string(out)
-				return err
-			})
-			Expect(err).NotTo(HaveOccurred())
-
-			Expect(strings.TrimSpace(output)).To(Equal("1"))
-		})
-	})
-
-	Context("when IPv6 forwarding is already enabled", func() {
-		testNS := "test-ipv6-forwarding-already"
-		var ns netns.NsHandle
-
-		BeforeEach(func() {
-			cleanTest(testNS)
-			ns = createTestNS(testNS)
-			err := netnamespace.In(ns, func() error {
-				_, setErr := exec.Command("sysctl", "-w", "net.ipv6.conf.all.forwarding=1").CombinedOutput()
-				return setErr
-			})
-			Expect(err).NotTo(HaveOccurred())
-		})
-
-		AfterEach(func() {
-			cleanTest(testNS)
-		})
-
-		It("should not change the forwarding setting", func() {
-			err := EnsureIPv6Forwarding(fmt.Sprintf("/var/run/netns/%s", testNS))
-			Expect(err).NotTo(HaveOccurred())
-
-			var output string
-			err = netnamespace.In(ns, func() error {
-				out, err := exec.Command("sysctl", "-n", "net.ipv6.conf.all.forwarding").CombinedOutput()
-				output = string(out)
-				return err
-			})
-			Expect(err).NotTo(HaveOccurred())
-
-			Expect(strings.TrimSpace(output)).To(Equal("1"))
-		})
-	})
-})
-
-var _ = Describe("EnsureArpAccept", func() {
-	Context("when arp_accept is disabled", func() {
-		testNS := "test-arp-accept"
-		var ns netns.NsHandle
-
-		BeforeEach(func() {
-			cleanTest(testNS)
-			ns = createTestNS(testNS)
-		})
-
-		AfterEach(func() {
-			cleanTest(testNS)
-		})
-
-		It("should enable arp_accept on all and default", func() {
-			err := EnsureArpAccept(fmt.Sprintf("/var/run/netns/%s", testNS))
-			Expect(err).NotTo(HaveOccurred())
-
-			var allOutput, defaultOutput string
-			err = netnamespace.In(ns, func() error {
-				out, err := exec.Command("sysctl", "-n", "net.ipv4.conf.all.arp_accept").CombinedOutput()
-				if err != nil {
-					return err
+			if preEnable {
+				for _, s := range sysctls {
+					sysctlName := strings.ReplaceAll(s.Path, "/", ".")
+					Expect(setSysctl(ns, sysctlName, "1")).To(Succeed())
 				}
-				allOutput = string(out)
+			}
 
-				out, err = exec.Command("sysctl", "-n", "net.ipv4.conf.default.arp_accept").CombinedOutput()
-				if err != nil {
-					return err
-				}
-				defaultOutput = string(out)
-				return nil
-			})
+			err := Ensure(fmt.Sprintf("/var/run/netns/%s", testNS), sysctls...)
 			Expect(err).NotTo(HaveOccurred())
 
-			Expect(strings.TrimSpace(allOutput)).To(Equal("1"))
-			Expect(strings.TrimSpace(defaultOutput)).To(Equal("1"))
-		})
-	})
-
-	Context("when arp_accept is already enabled", func() {
-		testNS := "test-arp-accept-already"
-		var ns netns.NsHandle
-
-		BeforeEach(func() {
-			cleanTest(testNS)
-			ns = createTestNS(testNS)
-			err := netnamespace.In(ns, func() error {
-				_, setErr := exec.Command("sysctl", "-w", "net.ipv4.conf.all.arp_accept=1").CombinedOutput()
-				if setErr != nil {
-					return setErr
-				}
-				_, setErr = exec.Command("sysctl", "-w", "net.ipv4.conf.default.arp_accept=1").CombinedOutput()
-				return setErr
-			})
-			Expect(err).NotTo(HaveOccurred())
-		})
-
-		AfterEach(func() {
-			cleanTest(testNS)
-		})
-
-		It("should not change the arp_accept setting", func() {
-			err := EnsureArpAccept(fmt.Sprintf("/var/run/netns/%s", testNS))
-			Expect(err).NotTo(HaveOccurred())
-
-			var allOutput, defaultOutput string
-			err = netnamespace.In(ns, func() error {
-				out, err := exec.Command("sysctl", "-n", "net.ipv4.conf.all.arp_accept").CombinedOutput()
-				if err != nil {
-					return err
-				}
-				allOutput = string(out)
-
-				out, err = exec.Command("sysctl", "-n", "net.ipv4.conf.default.arp_accept").CombinedOutput()
-				if err != nil {
-					return err
-				}
-				defaultOutput = string(out)
-				return nil
-			})
-			Expect(err).NotTo(HaveOccurred())
-
-			Expect(strings.TrimSpace(allOutput)).To(Equal("1"))
-			Expect(strings.TrimSpace(defaultOutput)).To(Equal("1"))
-		})
-	})
+			for _, s := range sysctls {
+				sysctlName := strings.ReplaceAll(s.Path, "/", ".")
+				val, err := readSysctl(ns, sysctlName)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(val).To(Equal("1"), "sysctl %s should be enabled", sysctlName)
+			}
+		},
+		Entry("IPv6 forwarding when disabled", "test-ipv6-fwd", []Sysctl{IPv6Forwarding()}, false),
+		Entry("IPv6 forwarding when already enabled", "test-ipv6-fwd-pre", []Sysctl{IPv6Forwarding()}, true),
+		Entry("arp_accept all when disabled", "test-arp-all", []Sysctl{ArpAcceptAll()}, false),
+		Entry("arp_accept all when already enabled", "test-arp-all-pre", []Sysctl{ArpAcceptAll()}, true),
+		Entry("arp_accept default when disabled", "test-arp-def", []Sysctl{ArpAcceptDefault()}, false),
+		Entry("arp_accept default when already enabled", "test-arp-def-pre", []Sysctl{ArpAcceptDefault()}, true),
+	)
 })
