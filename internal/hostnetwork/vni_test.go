@@ -13,6 +13,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/openperouter/openperouter/internal/netnamespace"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 )
@@ -56,7 +57,7 @@ var _ = Describe("L3 VNI configuration", func() {
 		Eventually(func(g Gomega) {
 			validateL3HostLeg(g, params)
 
-			_ = inNamespace(testNS, func() error {
+			_ = netnamespace.In(testNS, func() error {
 				validateL3VNI(g, params)
 				return nil
 			})
@@ -84,7 +85,7 @@ var _ = Describe("L3 VNI configuration", func() {
 		Eventually(func(g Gomega) {
 			validateL3HostLeg(g, params)
 
-			_ = inNamespace(testNS, func() error {
+			_ = netnamespace.In(testNS, func() error {
 				validateL3VNI(g, params)
 				return nil
 			})
@@ -114,7 +115,7 @@ var _ = Describe("L3 VNI configuration", func() {
 		Eventually(func(g Gomega) {
 			validateL3HostLeg(g, params)
 
-			_ = inNamespace(testNS, func() error {
+			_ = netnamespace.In(testNS, func() error {
 				validateL3VNI(g, params)
 				return nil
 			})
@@ -156,7 +157,7 @@ var _ = Describe("L3 VNI configuration", func() {
 
 			Eventually(func(g Gomega) {
 				validateL3HostLeg(g, p)
-				_ = inNamespace(testNS, func() error {
+				_ = netnamespace.In(testNS, func() error {
 					validateL3VNI(g, p)
 					return nil
 				})
@@ -173,7 +174,7 @@ var _ = Describe("L3 VNI configuration", func() {
 		By("checking remaining L3VNIs")
 		Eventually(func(g Gomega) {
 			validateL3HostLeg(g, remaining)
-			_ = inNamespace(testNS, func() error {
+			_ = netnamespace.In(testNS, func() error {
 				validateL3VNI(g, remaining)
 				return nil
 			})
@@ -183,7 +184,7 @@ var _ = Describe("L3 VNI configuration", func() {
 		vethNames := vethNamesFromVNI(toDelete.VNI)
 		Eventually(func(g Gomega) {
 			checkLinkdeleted(g, vethNames.HostSide)
-			_ = inNamespace(testNS, func() error {
+			_ = netnamespace.In(testNS, func() error {
 				validateVNIIsNotConfigured(g, toDelete.VNIParams)
 				return nil
 			})
@@ -214,7 +215,7 @@ var _ = Describe("L3 VNI configuration", func() {
 		Eventually(func(g Gomega) {
 			validateL3HostLeg(g, params)
 
-			_ = inNamespace(testNS, func() error {
+			_ = netnamespace.In(testNS, func() error {
 				validateL3VNI(g, params)
 				return nil
 			})
@@ -237,7 +238,7 @@ var _ = Describe("L3 VNI configuration", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
-			_ = inNamespace(testNS, func() error {
+			_ = netnamespace.In(testNS, func() error {
 				validateVNI(g, params.VNIParams)
 				return nil
 			})
@@ -286,7 +287,7 @@ var _ = Describe("L2 VNI configuration", func() {
 		Eventually(func(g Gomega) {
 			validateL2HostLeg(g, params)
 
-			_ = inNamespace(testNS, func() error {
+			_ = netnamespace.In(testNS, func() error {
 				validateL2VNI(g, params)
 				return nil
 			})
@@ -302,7 +303,7 @@ var _ = Describe("L2 VNI configuration", func() {
 			checkLinkdeleted(g, vethNames.HostSide)
 			checkLinkExists(g, bridgeName)
 
-			_ = inNamespace(testNS, func() error {
+			_ = netnamespace.In(testNS, func() error {
 				validateVNIIsNotConfigured(g, params.VNIParams)
 				return nil
 			})
@@ -346,7 +347,7 @@ var _ = Describe("L2 VNI configuration", func() {
 
 			Eventually(func(g Gomega) {
 				validateL2HostLeg(g, p)
-				_ = inNamespace(testNS, func() error {
+				_ = netnamespace.In(testNS, func() error {
 					validateL2VNI(g, p)
 					return nil
 				})
@@ -364,7 +365,7 @@ var _ = Describe("L2 VNI configuration", func() {
 
 		Eventually(func(g Gomega) {
 			validateL2HostLeg(g, remaining)
-			_ = inNamespace(testNS, func() error {
+			_ = netnamespace.In(testNS, func() error {
 				validateL2VNI(g, remaining)
 				return nil
 			})
@@ -375,7 +376,7 @@ var _ = Describe("L2 VNI configuration", func() {
 		Eventually(func(g Gomega) {
 			checkLinkdeleted(g, vethNames.HostSide)
 			checkHostBridgedeleted(g, toDelete)
-			_ = inNamespace(testNS, func() error {
+			_ = netnamespace.In(testNS, func() error {
 				validateVNIIsNotConfigured(g, toDelete.VNIParams)
 				return nil
 			})
@@ -394,7 +395,7 @@ var _ = Describe("L2 VNI configuration", func() {
 			Eventually(func(g Gomega) {
 				validateL2HostLeg(g, params)
 
-				_ = inNamespace(testNS, func() error {
+				_ = netnamespace.In(testNS, func() error {
 					validateL2VNI(g, params)
 					return nil
 				})
@@ -644,7 +645,7 @@ func checkAddrGenModeNone(l netlink.Link) bool {
 }
 
 func setupLoopback(ns netns.NsHandle) {
-	_ = inNamespace(ns, func() error {
+	_ = netnamespace.In(ns, func() error {
 		_, err := netlink.LinkByName(UnderlayLoopback)
 		if errors.As(err, &netlink.LinkNotFoundError{}) {
 			loopback := &netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: UnderlayLoopback}}

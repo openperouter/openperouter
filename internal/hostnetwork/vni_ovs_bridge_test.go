@@ -11,6 +11,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/openperouter/openperouter/internal/netnamespace"
 	libovsclient "github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
@@ -43,7 +44,7 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 
 		Eventually(func(g Gomega) {
 			validateL2HostLeg(g, params)
-			_ = inNamespace(testNS, func() error {
+			_ = netnamespace.In(testNS, func() error {
 				validateL2VNI(g, params)
 				return nil
 			})
@@ -58,7 +59,7 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 		Eventually(func(g Gomega) {
 			checkLinkdeleted(g, vethNames.HostSide)
 			checkOVSHostBridgeDeleted(g, params)
-			_ = inNamespace(testNS, func() error {
+			_ = netnamespace.In(testNS, func() error {
 				validateVNIIsNotConfigured(g, params.VNIParams)
 				return nil
 			})
@@ -171,7 +172,7 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 
 		Eventually(func(g Gomega) {
 			validateL2HostLeg(g, params)
-			_ = inNamespace(testNS, func() error {
+			_ = netnamespace.In(testNS, func() error {
 				validateL2VNI(g, params)
 				return nil
 			})
