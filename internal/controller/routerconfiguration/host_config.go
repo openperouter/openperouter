@@ -10,6 +10,7 @@ import (
 
 	"github.com/openperouter/openperouter/internal/conversion"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
+	"github.com/openperouter/openperouter/internal/sysctl"
 )
 
 type interfacesConfiguration struct {
@@ -52,12 +53,12 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 	}
 
 	slog.InfoContext(ctx, "ensuring IPv6 forwarding")
-	if err := hostnetwork.EnsureIPv6Forwarding(config.targetNamespace); err != nil {
+	if err := sysctl.EnsureIPv6Forwarding(config.targetNamespace); err != nil {
 		return fmt.Errorf("failed to ensure IPv6 forwarding: %w", err)
 	}
 
 	slog.InfoContext(ctx, "ensuring arp_accept enabled")
-	if err := hostnetwork.EnsureArpAccept(config.targetNamespace); err != nil {
+	if err := sysctl.EnsureArpAccept(config.targetNamespace); err != nil {
 		return fmt.Errorf("failed to ensure arp_accept: %w", err)
 	}
 

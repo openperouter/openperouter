@@ -1,10 +1,13 @@
 // SPDX-License-Identifier:Apache-2.0
 
-package hostnetwork
+package sysctl
 
 import (
+	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -13,12 +16,35 @@ import (
 	"github.com/vishvananda/netns"
 )
 
+func createTestNS(testNs string) netns.NsHandle {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	currentNs, err := netns.Get()
+	Expect(err).NotTo(HaveOccurred())
+
+	newNs, err := netns.NewNamed(testNs)
+	Expect(err).NotTo(HaveOccurred())
+
+	err = netns.Set(currentNs)
+	Expect(err).NotTo(HaveOccurred())
+	return newNs
+}
+
+func cleanTest(namespace string) {
+	err := netns.DeleteNamed(namespace)
+	if !errors.Is(err, os.ErrNotExist) {
+		Expect(err).NotTo(HaveOccurred())
+	}
+}
+
 var _ = Describe("EnsureIPv6Forwarding", func() {
 	Context("when IPv6 forwarding is disabled", func() {
 		testNS := "test-ipv6-forwarding"
 		var ns netns.NsHandle
 
 		BeforeEach(func() {
+			cleanTest(testNS)
 			ns = createTestNS(testNS)
 		})
 
@@ -47,6 +73,7 @@ var _ = Describe("EnsureIPv6Forwarding", func() {
 		var ns netns.NsHandle
 
 		BeforeEach(func() {
+			cleanTest(testNS)
 			ns = createTestNS(testNS)
 			err := netnamespace.In(ns, func() error {
 				_, setErr := exec.Command("sysctl", "-w", "net.ipv6.conf.all.forwarding=1").CombinedOutput()
@@ -82,6 +109,7 @@ var _ = Describe("EnsureArpAccept", func() {
 		var ns netns.NsHandle
 
 		BeforeEach(func() {
+			cleanTest(testNS)
 			ns = createTestNS(testNS)
 		})
 
@@ -120,6 +148,7 @@ var _ = Describe("EnsureArpAccept", func() {
 		var ns netns.NsHandle
 
 		BeforeEach(func() {
+			cleanTest(testNS)
 			ns = createTestNS(testNS)
 			err := netnamespace.In(ns, func() error {
 				_, setErr := exec.Command("sysctl", "-w", "net.ipv4.conf.all.arp_accept=1").CombinedOutput()
