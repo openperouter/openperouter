@@ -55,6 +55,7 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 	slog.InfoContext(ctx, "ensuring sysctls")
 	if err := sysctl.Ensure(
 		config.targetNamespace,
+		sysctl.IPv4Forwarding(),
 		sysctl.IPv6Forwarding(),
 		sysctl.ArpAcceptAll(),
 		sysctl.ArpAcceptDefault(),
