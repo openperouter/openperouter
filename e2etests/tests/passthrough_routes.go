@@ -124,8 +124,8 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		It("translates BGP incoming routes as BGP routes", func() {
 
 			By("advertising routes from both leaves")
-			changeLeafPrefixes(infra.LeafAConfig, leafADefaultPrefixes, emptyPrefixes, emptyPrefixes)
-			changeLeafPrefixes(infra.LeafBConfig, leafBDefaultPrefixes, emptyPrefixes, emptyPrefixes)
+			changeLeafPrefixes(infra.LeafAConfig, leafADefaultPrefixes, emptyPrefixes, emptyPrefixes, emptyRouteTargets, emptyRouteTargets)
+			changeLeafPrefixes(infra.LeafBConfig, leafBDefaultPrefixes, emptyPrefixes, emptyPrefixes, emptyRouteTargets, emptyRouteTargets)
 
 			By("checking routes are propagated via BGP")
 
@@ -135,8 +135,8 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			}
 
 			By("removing routes from the leaf B")
-			changeLeafPrefixes(infra.LeafAConfig, leafADefaultPrefixes, emptyPrefixes, emptyPrefixes)
-			changeLeafPrefixes(infra.LeafBConfig, emptyPrefixes, emptyPrefixes, emptyPrefixes)
+			changeLeafPrefixes(infra.LeafAConfig, leafADefaultPrefixes, emptyPrefixes, emptyPrefixes, emptyRouteTargets, emptyRouteTargets)
+			changeLeafPrefixes(infra.LeafBConfig, emptyPrefixes, emptyPrefixes, emptyPrefixes, emptyRouteTargets, emptyRouteTargets)
 
 			By("checking routes are propagated via BGP")
 
@@ -154,8 +154,8 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 
 		BeforeAll(func() {
 			By("setting redistribute connected on leaves")
-			redistributeConnectedForLeaf(infra.LeafAConfig)
-			redistributeConnectedForLeaf(infra.LeafBConfig)
+			redistributeConnectedForLeaf(infra.LeafAConfig, emptyRouteTargets, emptyRouteTargets)
+			redistributeConnectedForLeaf(infra.LeafBConfig, emptyRouteTargets, emptyRouteTargets)
 
 			By("Creating the test namespace")
 			_, err := k8s.CreateNamespace(cs, testNamespace)

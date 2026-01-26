@@ -7,9 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/netip"
-	"strconv"
-	"strings"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/conversion"
@@ -110,62 +107,6 @@ func validateL3VNIDelete(_ *v1alpha1.L3VNI) error {
 	return nil
 }
 
-func validateRouteTarget(rt string) error {
-	rt_param := strings.Split(rt, ":")
-	if len(rt_param) != 2 {
-		return fmt.Errorf("RT format must have ASN:MN or IPv4Address:MN: %s", rt)
-	}
-
-	addr, err := netip.ParseAddr(rt_param[0])
-	if err != nil {
-		asn, err := strconv.ParseUint(rt_param[0], 10, 32)
-		if err != nil {
-			return fmt.Errorf("RT format must have ASN:MN %s", rt)
-		}
-		local, err := strconv.ParseUint(rt_param[1], 10, 32)
-		if err != nil {
-			return fmt.Errorf("RT format must have ASN:MN where MN is a number: %s", rt)
-		}
-		if asn <= 65535 {
-			if local > 4294967295 {
-				return fmt.Errorf("RT format with 2-byte ASN must have ASN:MN where MN <= 4294967295: %s", rt)
-			}
-		} else {
-			if local > 65535 {
-				return fmt.Errorf("RT format with 4-byte ASN must have ASN:MN where MN <= 65535: %s", rt)
-			}
-		}
-	} else {
-		if !addr.Is4() {
-			return fmt.Errorf("invalid route target IP address (only IPv4 supported): %s", rt)
-		}
-		local, err := strconv.ParseUint(rt_param[1], 10, 32)
-		if err != nil {
-			return fmt.Errorf("RT format must have A.B.C.D:MN where MN <= 65535: %s", rt)
-		}
-		if local > 65535 {
-			return fmt.Errorf("RT format must have A.B.C.D:MN where MN <= 65535: %s", rt)
-		}
-	}
-
-	return nil
-}
-
-func validateRouteTargets(l3vnispec v1alpha1.L3VNISpec) error {
-	for _, rt := range l3vnispec.ExportRTs {
-		if err := validateRouteTarget(rt); err != nil {
-			return err
-		}
-	}
-	for _, rt := range l3vnispec.ImportRTs {
-		if err := validateRouteTarget(rt); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 func validateL3VNI(l3vni *v1alpha1.L3VNI) error {
 	existingL3VNIs, err := getL3VNIs()
 	if err != nil {
@@ -186,8 +127,7 @@ func validateL3VNI(l3vni *v1alpha1.L3VNI) error {
 		toValidate = append(toValidate, *l3vni.DeepCopy())
 	}
 
-	// Validate Route Targets
-	if err := validateRouteTargets(l3vni.Spec); err != nil {
+	if err := conversion.ValidateRouteTargets(l3vni.Spec); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
 	}
 

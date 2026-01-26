@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net"
 	"regexp"
+	"strconv"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 
@@ -202,6 +204,67 @@ func validateHostMaster(vniName string, hostConfig *v1alpha1.HostMaster) error {
 
 	if err := isValidInterfaceName(name); err != nil {
 		return fmt.Errorf("invalid hostmaster name for vni %s: %s - %w", vniName, name, err)
+	}
+
+	return nil
+}
+
+func validateRouteTargetIsIPv4(value string) bool {
+	addr := net.ParseIP(value)
+	if addr == nil || addr.To4() == nil {
+		return false
+	}
+	return true
+}
+
+func validateRouteTarget(rt string) error {
+	rt_param := strings.Split(rt, ":")
+	if len(rt_param) != 2 {
+		return fmt.Errorf("RT format must have ASN:MN or IPv4Address:MN: %s", rt)
+	}
+
+	addr := validateRouteTargetIsIPv4(rt_param[0])
+	if !addr {
+		asn, err := strconv.ParseUint(rt_param[0], 10, 32)
+		if err != nil {
+			return fmt.Errorf("RT format must have ASN:MN %s", rt)
+		}
+		local, err := strconv.ParseUint(rt_param[1], 10, 32)
+		if err != nil {
+			return fmt.Errorf("RT format must have ASN:MN where MN is a number: %s", rt)
+		}
+		if asn <= 65535 {
+			if local > 4294967295 {
+				return fmt.Errorf("RT format with 2-byte ASN must have ASN:MN where MN <= 4294967295: %s", rt)
+			}
+		} else {
+			if local > 65535 {
+				return fmt.Errorf("RT format with 4-byte ASN must have ASN:MN where MN <= 65535: %s", rt)
+			}
+		}
+	} else {
+		local, err := strconv.ParseUint(rt_param[1], 10, 32)
+		if err != nil {
+			return fmt.Errorf("RT format must have A.B.C.D:MN where MN <= 65535: %s", rt)
+		}
+		if local > 65535 {
+			return fmt.Errorf("RT format must have A.B.C.D:MN where MN <= 65535: %s", rt)
+		}
+	}
+
+	return nil
+}
+
+func ValidateRouteTargets(l3vnispec v1alpha1.L3VNISpec) error {
+	for _, rt := range l3vnispec.ExportRTs {
+		if err := validateRouteTarget(rt); err != nil {
+			return err
+		}
+	}
+	for _, rt := range l3vnispec.ImportRTs {
+		if err := validateRouteTarget(rt); err != nil {
+			return err
+		}
 	}
 
 	return nil

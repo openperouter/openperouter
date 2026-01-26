@@ -56,6 +56,25 @@ func (e *EVPNData) ContainsType5RouteForVNI(prefix string, vtep string, vni int)
 	return false
 }
 
+func (e *EVPNData) ContainsType5RouteForRT(prefix string, vtep string, rt []string) bool {
+	for _, entry := range e.Entries {
+		for _, prefixEntry := range entry.Prefixes {
+			for _, path := range prefixEntry.Paths {
+				routePrefix := fmt.Sprintf("%s/%d", path.IP, path.IPLen)
+				if routePrefix == prefix {
+					for _, n := range path.Nexthops {
+						if n.IP == vtep &&
+							findRouteTargetFromExtendedCommunity(path.ExtendedCommunity.String, rt) {
+							return true
+						}
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
 type RdEntry struct {
 	RD       string            `json:"rd"`
 	Prefixes map[string]Prefix `json:"-"` // handled manually
@@ -152,4 +171,20 @@ func vniFromExtendedCommunity(extendedCommunity string) int {
 		panic("error getting vni from " + extendedCommunity)
 	}
 	return vni
+}
+
+func findRouteTargetFromExtendedCommunity(extendedCommunity string, routeTargets []string) bool {
+	// extended community looks like: "RT:64514:200 ET:8 Rmac:22:2e:e4:41:7f:5c"
+
+	parts := strings.Split(extendedCommunity, " ")
+	for part := range parts {
+		for _, routeTarget := range routeTargets {
+			routeTargetValue := "RT:" + routeTarget
+			if parts[part] == routeTargetValue {
+				return true
+			}
+		}
+	}
+
+	return false
 }
