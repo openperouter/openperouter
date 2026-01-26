@@ -10,6 +10,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/openperouter/openperouter/internal/netnamespace"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 )
@@ -138,7 +139,7 @@ var _ = Describe("Passthrough configuration", func() {
 func validatePassthrough(g Gomega, params PassthroughParams, testNS netns.NsHandle) {
 	vethHasIPs(g, PassthroughNames.HostSide, params.HostVeth.HostIPv4, params.HostVeth.HostIPv6)
 
-	_ = inNamespace(testNS, func() error {
+	_ = netnamespace.In(testNS, func() error {
 		validatePassthroughInNamespace(g, params)
 		return nil
 	})
@@ -171,7 +172,7 @@ func validatePassthroughRemoved(g Gomega, testNS netns.NsHandle) {
 	_, err := netlink.LinkByName(PassthroughNames.HostSide)
 	g.Expect(errors.As(err, &netlink.LinkNotFoundError{})).To(BeTrue(), "host passthrough link %q should be deleted", PassthroughNames.HostSide)
 
-	_ = inNamespace(testNS, func() error {
+	_ = netnamespace.In(testNS, func() error {
 		validatePassthroughRemovedInNamespace(g)
 		return nil
 	})

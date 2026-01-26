@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/openperouter/openperouter/internal/netnamespace"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netlink/nl"
 	"github.com/vishvananda/netns"
@@ -121,7 +122,7 @@ func moveInterfaceToNamespace(ctx context.Context, intf string, ns netns.NsHandl
 	slog.DebugContext(ctx, "move intf to namespace", "intf", intf, "namespace", ns.String())
 	defer slog.DebugContext(ctx, "move intf to namespace end", "intf", intf, "namespace", ns.String())
 
-	err := inNamespace(ns, func() error {
+	err := netnamespace.In(ns, func() error {
 		_, err := netlink.LinkByName(intf)
 		if err != nil {
 			return fmt.Errorf("moveInterfaceToNamespace: Failed to find link %s: %w", intf, err)
@@ -132,7 +133,7 @@ func moveInterfaceToNamespace(ctx context.Context, intf string, ns netns.NsHandl
 		slog.DebugContext(ctx, "intf is already in namespace", "intf", intf, "namespace", ns.String())
 		return nil
 	}
-	var nsError setNamespaceError
+	var nsError netnamespace.SetNamespaceError
 	if errors.As(err, &nsError) {
 		return fmt.Errorf("moveInterfaceToNamespace: Failed to execute in ns %s: %w", intf, err)
 	}
@@ -152,7 +153,7 @@ func moveInterfaceToNamespace(ctx context.Context, intf string, ns netns.NsHandl
 	if err != nil {
 		return fmt.Errorf("moveInterfaceToNamespace: Failed to move %s to network namespace %s: %w", link.Attrs().Name, ns.String(), err)
 	}
-	if err := inNamespace(ns, func() error {
+	if err := netnamespace.In(ns, func() error {
 		nsLink, err := netlink.LinkByName(intf)
 		if err != nil {
 			return fmt.Errorf("moveInterfaceToNamespace: Failed to get link by name %s up in network namespace %s: %w", intf, ns.String(), err)

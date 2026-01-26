@@ -13,6 +13,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/openperouter/openperouter/internal/netnamespace"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 )
@@ -172,7 +173,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 })
 
 func validateUnderlayInNS(g Gomega, ns netns.NsHandle, params UnderlayParams) {
-	_ = inNamespace(ns, func() error {
+	_ = netnamespace.In(ns, func() error {
 		validateUnderlay(g, params, externalInterfaceIP)
 		return nil
 	})

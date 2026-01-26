@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/openperouter/openperouter/internal/netnamespace"
 	libovsclient "github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
@@ -108,7 +109,7 @@ func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
 		return fmt.Errorf("failed to assign IPs to host veth: %w", err)
 	}
 
-	if err := inNamespace(ns, func() error {
+	if err := netnamespace.In(ns, func() error {
 		peVeth, err := netlink.LinkByName(vethNames.NamespaceSide)
 		if err != nil {
 			return fmt.Errorf("could not find peer veth %s in namespace %s: %w", vethNames.NamespaceSide, params.TargetNS, err)
@@ -195,7 +196,7 @@ func SetupL2VNI(ctx context.Context, params L2VNIParams) error {
 		}
 	}
 
-	if err := inNamespace(ns, func() error {
+	if err := netnamespace.In(ns, func() error {
 		peVeth, err := netlink.LinkByName(vethNames.NamespaceSide)
 		if err != nil {
 			return fmt.Errorf("could not find peer veth %s in namespace %s: %w", vethNames.NamespaceSide, params.TargetNS, err)
@@ -249,7 +250,7 @@ func setupVNI(ctx context.Context, params VNIParams) error {
 		}
 	}()
 
-	if err := inNamespace(ns, func() error {
+	if err := netnamespace.In(ns, func() error {
 
 		slog.DebugContext(ctx, "setting up vrf", "vrf", params.VRF)
 		vrf, err := setupVRF(params.VRF)
@@ -329,7 +330,7 @@ func RemoveNonConfiguredVNIs(targetNS string, params []VNIParams) error {
 		}
 	}()
 
-	if err := inNamespace(ns, func() error {
+	if err := netnamespace.In(ns, func() error {
 		links, err := netlink.LinkList()
 		if err != nil {
 			return fmt.Errorf("remove non configured vnis: failed to list links: %w", err)

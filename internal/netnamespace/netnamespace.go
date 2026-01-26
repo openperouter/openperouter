@@ -1,6 +1,6 @@
 // SPDX-License-Identifier:Apache-2.0
 
-package hostnetwork
+package netnamespace
 
 import (
 	"fmt"
@@ -10,15 +10,14 @@ import (
 	"github.com/vishvananda/netns"
 )
 
-type setNamespaceError string
+type SetNamespaceError string
 
-func (i setNamespaceError) Error() string {
+func (i SetNamespaceError) Error() string {
 	return string(i)
 }
 
-// inNamespace execs the provided function in the given network
-// namespace.
-func inNamespace(ns netns.NsHandle, execInNamespace func() error) error {
+// In execs the provided function in the given network namespace.
+func In(ns netns.NsHandle, execInNamespace func() error) error {
 	// required as a change of context might wake up the goroutine
 	// in a different thread.
 	runtime.LockOSThread()
@@ -35,7 +34,7 @@ func inNamespace(ns netns.NsHandle, execInNamespace func() error) error {
 	}()
 
 	if err := netns.Set(ns); err != nil {
-		return setNamespaceError(fmt.Sprintf("failed to set current network namespace to %s", ns.String()))
+		return SetNamespaceError(fmt.Sprintf("failed to set current network namespace to %s", ns.String()))
 	}
 
 	defer func() {

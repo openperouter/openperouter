@@ -10,6 +10,7 @@ import (
 
 	"github.com/openperouter/openperouter/internal/conversion"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
+	"github.com/openperouter/openperouter/internal/sysctl"
 )
 
 type interfacesConfiguration struct {
@@ -51,9 +52,14 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 		return fmt.Errorf("failed to convert config to host configuration: %w", err)
 	}
 
-	slog.InfoContext(ctx, "ensuring IPv6 forwarding")
-	if err := hostnetwork.EnsureIPv6Forwarding(config.targetNamespace); err != nil {
-		return fmt.Errorf("failed to ensure IPv6 forwarding: %w", err)
+	slog.InfoContext(ctx, "ensuring sysctls")
+	if err := sysctl.Ensure(
+		config.targetNamespace,
+		sysctl.IPv6Forwarding(),
+		sysctl.ArpAcceptAll(),
+		sysctl.ArpAcceptDefault(),
+	); err != nil {
+		return fmt.Errorf("failed to ensure sysctls: %w", err)
 	}
 
 	slog.InfoContext(ctx, "setting up underlay")

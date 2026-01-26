@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/openperouter/openperouter/internal/netnamespace"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 )
@@ -50,7 +51,7 @@ func setupNamespacedVeth(ctx context.Context, vethNames VethNames, namespace str
 	}
 
 	// Let's try to look into the namespace
-	err = inNamespace(targetNS, func() error {
+	err = netnamespace.In(targetNS, func() error {
 		namespaceSideLink, err := netlink.LinkByName(vethNames.NamespaceSide)
 		if err != nil {
 			return err
@@ -84,7 +85,7 @@ func setupNamespacedVeth(ctx context.Context, vethNames VethNames, namespace str
 	}
 	slog.DebugContext(ctx, "pe leg moved to ns", "pe veth", nsSide.Attrs().Name)
 
-	if err := inNamespace(targetNS, func() error {
+	if err := netnamespace.In(targetNS, func() error {
 		nsSideLink, err := netlink.LinkByName(vethNames.NamespaceSide)
 		if err != nil {
 			return err

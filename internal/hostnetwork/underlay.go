@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/openperouter/openperouter/internal/netnamespace"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 )
@@ -69,7 +70,7 @@ func createLoopback(ctx context.Context, ns netns.NsHandle, vtepIP string) error
 	slog.DebugContext(ctx, "setup underlay", "step", "creating loopback interface")
 	defer slog.DebugContext(ctx, "setup underlay", "step", "loopback interface created")
 
-	if err := inNamespace(ns, func() error {
+	if err := netnamespace.In(ns, func() error {
 		loopback, err := netlink.LinkByName(UnderlayLoopback)
 		if errors.As(err, &netlink.LinkNotFoundError{}) {
 			slog.DebugContext(ctx, "setup underlay", "step", "creating loopback interface")
@@ -117,7 +118,7 @@ func moveUnderlayInterface(ctx context.Context, underlayInterface string, ns net
 		return err
 	}
 
-	if err := inNamespace(ns, func() error {
+	if err := netnamespace.In(ns, func() error {
 		underlay, err := netlink.LinkByName(underlayInterface)
 		if err != nil {
 			return fmt.Errorf("failed to get underlay nic by name %s: %w", underlayInterface, err)
@@ -161,7 +162,7 @@ func HasUnderlayInterface(namespace string) (bool, error) {
 // in the given network ns.
 func findInterfaceWithIP(ns netns.NsHandle, ip string) (string, error) {
 	res := ""
-	err := inNamespace(ns, func() error {
+	err := netnamespace.In(ns, func() error {
 		links, err := netlink.LinkList()
 		if err != nil {
 			return fmt.Errorf("failed to list links: %w", err)
