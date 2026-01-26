@@ -20,7 +20,7 @@ deploy_containerlab() {
             --pid="host" \
             -v $(pwd):$(pwd) \
             -w $(pwd) \
-            ghcr.io/srl-labs/clab:0.67.0 /usr/bin/clab deploy --reconfigure --topo $CLAB_TOPOLOGY
+            "ghcr.io/srl-labs/clab:$CLAB_VERSION" /usr/bin/clab deploy --reconfigure --topo "$CLAB_TOPOLOGY"
     else
         # We weren't able to run clab with podman in podman, installing it and running it
         # from the host.
