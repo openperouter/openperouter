@@ -1,0 +1,39 @@
+---
+# Underlay for datacenter-east nodes
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: Underlay
+metadata:
+  name: underlay-dc-east
+  namespace: openperouter-system
+spec:
+  nodeSelector:
+    matchLabels:
+      topology.kubernetes.io/zone: us-east-1a
+  asn: 64512
+  evpn:
+    vtepcidr: 100.65.0.0/24
+  nics:
+    - eth1
+  neighbors:
+    - asn: 64500
+      address: 192.168.10.1  # ToR switch in DC East
+---
+# Underlay for datacenter-west nodes
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: Underlay
+metadata:
+  name: underlay-dc-west
+  namespace: openperouter-system
+spec:
+  nodeSelector:
+    matchLabels:
+      topology.kubernetes.io/zone: us-west-1a
+  asn: 64513
+  evpn:
+    vtepcidr: 100.66.0.0/24
+  nics:
+    - eth1
+  neighbors:
+    - asn: 64501
+      address: 192.168.20.1  # ToR switch in DC West
+

@@ -1,0 +1,33 @@
+---
+# L3Passthrough for DMZ nodes
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: L3Passthrough
+metadata:
+  name: dmz-passthrough
+  namespace: openperouter-system
+spec:
+  nodeSelector:
+    matchLabels:
+      security-zone: dmz
+  hostsession:
+    asn: 64512
+    hostasn: 64710
+    localcidr:
+      ipv4: 192.169.21.0/24
+---
+# L3Passthrough for internal nodes
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: L3Passthrough
+metadata:
+  name: internal-passthrough
+  namespace: openperouter-system
+spec:
+  nodeSelector:
+    matchLabels:
+      security-zone: internal
+  hostsession:
+    asn: 64512
+    hostasn: 64720
+    localcidr:
+      ipv4: 192.169.22.0/24
+

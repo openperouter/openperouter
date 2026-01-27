@@ -1,0 +1,55 @@
+---
+# Tenant A VNI on worker nodes
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: L3VNI
+metadata:
+  name: tenant-a-vni
+  namespace: openperouter-system
+spec:
+  nodeSelector:
+    matchLabels:
+      node-role.kubernetes.io/worker: ""
+  vrf: tenant-a
+  vni: 5001
+  hostsession:
+    asn: 64512
+    hostasn: 64600
+    localcidr:
+      ipv4: 192.169.5.0/24
+---
+# Tenant B VNI on the same worker nodes
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: L3VNI
+metadata:
+  name: tenant-b-vni
+  namespace: openperouter-system
+spec:
+  nodeSelector:
+    matchLabels:
+      node-role.kubernetes.io/worker: ""
+  vrf: tenant-b
+  vni: 5002
+  hostsession:
+    asn: 64512
+    hostasn: 64601
+    localcidr:
+      ipv4: 192.169.6.0/24
+---
+# Tenant C VNI on the same worker nodes
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: L3VNI
+metadata:
+  name: tenant-c-vni
+  namespace: openperouter-system
+spec:
+  nodeSelector:
+    matchLabels:
+      node-role.kubernetes.io/worker: ""
+  vrf: tenant-c
+  vni: 5003
+  hostsession:
+    asn: 64512
+    hostasn: 64602
+    localcidr:
+      ipv4: 192.169.7.0/24
+
