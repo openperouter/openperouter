@@ -5,8 +5,6 @@ package tests
 import (
 	"context"
 	"fmt"
-	"net"
-	"strings"
 	"time"
 
 	frrk8sapi "github.com/metallb/frr-k8s/api/v1beta1"
@@ -30,13 +28,9 @@ import (
 )
 
 var (
-	// NOTE: we can't advertise any ip via EVPN from the leaves, they
-	// must be reacheable otherwise FRR will skip them.
-	leafAVRFRedPrefixes  = []string{"192.168.20.0/24", "2001:db8:20::/64"}
-	leafAVRFBluePrefixes = []string{"192.168.21.0/24", "2001:db8:21::/64"}
-	leafBVRFRedPrefixes  = []string{"192.169.20.0/24", "2001:db8:169:20::/64"}
-	leafBVRFBluePrefixes = []string{"192.169.21.0/24", "2001:db8:169:21::/64"}
-	emptyPrefixes        = []string{}
+	emptyRouteTargets = infra.RouteTargets{}
+	redRouteTargets   = infra.RouteTargets{ImportRTs: []string{"65000:1000"}, ExportRTs: []string{"65000:1000"}}
+	blueRouteTargets  = infra.RouteTargets{ImportRTs: []string{"65000:2000"}, ExportRTs: []string{"65000:2000"}}
 )
 
 var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
@@ -58,7 +52,9 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 					IPv6: "2001:db8:1::/64",
 				},
 			},
-			VNI: 100,
+			VNI:       100,
+			ExportRTs: redRouteTargets.ExportRTs,
+			ImportRTs: redRouteTargets.ImportRTs,
 		},
 	}
 
@@ -77,7 +73,9 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 					IPv6: "2001:db8:2::/64",
 				},
 			},
-			VNI: 200,
+			VNI:       200,
+			ExportRTs: blueRouteTargets.ExportRTs,
+			ImportRTs: blueRouteTargets.ImportRTs,
 		},
 	}
 
@@ -96,6 +94,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 				infra.Underlay,
 			},
 		})
+
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -128,13 +127,14 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 					vniBlue,
 				},
 			})
+			changeLeafPrefixes(infra.LeafAConfig, []string{}, []string{}, []string{}, redRouteTargets, blueRouteTargets)
+			changeLeafPrefixes(infra.LeafBConfig, []string{}, []string{}, []string{}, redRouteTargets, blueRouteTargets)
 			Expect(err).NotTo(HaveOccurred())
-
 		})
 
 		It("receives type 5 routes from the fabric", func() {
 			Contains := true
-			checkRouteFromLeaf := func(leaf infra.Leaf, vni v1alpha1.L3VNI, mustContain bool, prefixes []string) {
+			checkRouteFromLeaf := func(leaf infra.Leaf, vni v1alpha1.L3VNI, mustContain bool, prefixes []string, rt infra.RouteTargets) {
 				By(fmt.Sprintf("checking routes from leaf %s on vni %s, mustContain %v %v", leaf.Name, vni.Name, mustContain, prefixes))
 				Eventually(func() error {
 					for exec := range routers.GetExecutors() {
@@ -143,10 +143,10 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 							return fmt.Errorf("failed to get EVPN info from %s: %w", exec.Name(), err)
 						}
 						for _, prefix := range prefixes {
-							if mustContain && !evpn.ContainsType5RouteForVNI(prefix, leaf.VTEPIP, int(vni.Spec.VNI)) {
+							if mustContain && !evpn.ContainsType5RouteForRT(prefix, leaf.VTEPIP, rt.ExportRTs) {
 								return fmt.Errorf("type5 route for %s - %s not found in %v in router %s", prefix, leaf.VTEPIP, evpn, exec.Name())
 							}
-							if !mustContain && evpn.ContainsType5RouteForVNI(prefix, leaf.VTEPIP, int(vni.Spec.VNI)) {
+							if !mustContain && evpn.ContainsType5RouteForRT(prefix, leaf.VTEPIP, rt.ExportRTs) {
 								return fmt.Errorf("type5 route for %s - %s found in %v in router %s", prefix, leaf.VTEPIP, evpn, exec.Name())
 							}
 						}
@@ -156,44 +156,44 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			}
 
 			By("announcing type 5 routes on VNI 100 from leafA")
-			changeLeafPrefixes(infra.LeafAConfig, emptyPrefixes, leafAVRFRedPrefixes, emptyPrefixes, emptyRouteTargets, emptyRouteTargets)
-			checkRouteFromLeaf(infra.LeafAConfig, vniRed, Contains, leafAVRFRedPrefixes)
-			checkRouteFromLeaf(infra.LeafAConfig, vniBlue, !Contains, leafAVRFBluePrefixes)
-			checkRouteFromLeaf(infra.LeafBConfig, vniRed, !Contains, leafBVRFRedPrefixes)
-			checkRouteFromLeaf(infra.LeafBConfig, vniBlue, !Contains, leafBVRFBluePrefixes)
+			changeLeafPrefixes(infra.LeafAConfig, emptyPrefixes, leafAVRFRedPrefixes, emptyPrefixes, redRouteTargets, blueRouteTargets)
+			checkRouteFromLeaf(infra.LeafAConfig, vniRed, Contains, leafAVRFRedPrefixes, redRouteTargets)
+			checkRouteFromLeaf(infra.LeafAConfig, vniBlue, !Contains, leafAVRFBluePrefixes, blueRouteTargets)
+			checkRouteFromLeaf(infra.LeafBConfig, vniRed, !Contains, leafBVRFRedPrefixes, redRouteTargets)
+			checkRouteFromLeaf(infra.LeafBConfig, vniBlue, !Contains, leafBVRFBluePrefixes, blueRouteTargets)
 
 			By("announcing type5 route on VNI 200 from leafA")
-			changeLeafPrefixes(infra.LeafAConfig, emptyPrefixes, leafAVRFRedPrefixes, leafAVRFBluePrefixes, emptyRouteTargets, emptyRouteTargets)
-			checkRouteFromLeaf(infra.LeafAConfig, vniRed, Contains, leafAVRFRedPrefixes)
-			checkRouteFromLeaf(infra.LeafAConfig, vniBlue, Contains, leafAVRFBluePrefixes)
-			checkRouteFromLeaf(infra.LeafBConfig, vniRed, !Contains, leafBVRFRedPrefixes)
-			checkRouteFromLeaf(infra.LeafBConfig, vniBlue, !Contains, leafBVRFBluePrefixes)
+			changeLeafPrefixes(infra.LeafAConfig, emptyPrefixes, leafAVRFRedPrefixes, leafAVRFBluePrefixes, redRouteTargets, blueRouteTargets)
+			checkRouteFromLeaf(infra.LeafAConfig, vniRed, Contains, leafAVRFRedPrefixes, redRouteTargets)
+			checkRouteFromLeaf(infra.LeafAConfig, vniBlue, Contains, leafAVRFBluePrefixes, blueRouteTargets)
+			checkRouteFromLeaf(infra.LeafBConfig, vniRed, !Contains, leafBVRFRedPrefixes, redRouteTargets)
+			checkRouteFromLeaf(infra.LeafBConfig, vniBlue, !Contains, leafBVRFBluePrefixes, blueRouteTargets)
 
 			By("announcing type5 route on both VNIs from leafB")
-			changeLeafPrefixes(infra.LeafBConfig, emptyPrefixes, leafBVRFRedPrefixes, leafBVRFBluePrefixes, emptyRouteTargets, emptyRouteTargets)
-			checkRouteFromLeaf(infra.LeafAConfig, vniRed, Contains, leafAVRFRedPrefixes)
-			checkRouteFromLeaf(infra.LeafAConfig, vniBlue, Contains, leafAVRFBluePrefixes)
-			checkRouteFromLeaf(infra.LeafBConfig, vniRed, Contains, leafBVRFRedPrefixes)
-			checkRouteFromLeaf(infra.LeafBConfig, vniBlue, Contains, leafBVRFBluePrefixes)
+			changeLeafPrefixes(infra.LeafBConfig, emptyPrefixes, leafBVRFRedPrefixes, leafBVRFBluePrefixes, redRouteTargets, blueRouteTargets)
+			checkRouteFromLeaf(infra.LeafAConfig, vniRed, Contains, leafAVRFRedPrefixes, redRouteTargets)
+			checkRouteFromLeaf(infra.LeafAConfig, vniBlue, Contains, leafAVRFBluePrefixes, blueRouteTargets)
+			checkRouteFromLeaf(infra.LeafBConfig, vniRed, Contains, leafBVRFRedPrefixes, redRouteTargets)
+			checkRouteFromLeaf(infra.LeafBConfig, vniBlue, Contains, leafBVRFBluePrefixes, blueRouteTargets)
 
 			By("removing a route from leafA on vni 100")
-			changeLeafPrefixes(infra.LeafAConfig, emptyPrefixes, emptyPrefixes, leafAVRFBluePrefixes, emptyRouteTargets, emptyRouteTargets)
-			checkRouteFromLeaf(infra.LeafAConfig, vniRed, !Contains, leafAVRFRedPrefixes)
-			checkRouteFromLeaf(infra.LeafAConfig, vniBlue, Contains, leafAVRFBluePrefixes)
-			checkRouteFromLeaf(infra.LeafBConfig, vniRed, Contains, leafBVRFRedPrefixes)
-			checkRouteFromLeaf(infra.LeafBConfig, vniBlue, Contains, leafBVRFBluePrefixes)
+			changeLeafPrefixes(infra.LeafAConfig, emptyPrefixes, emptyPrefixes, leafAVRFBluePrefixes, redRouteTargets, blueRouteTargets)
+			checkRouteFromLeaf(infra.LeafAConfig, vniRed, !Contains, leafAVRFRedPrefixes, redRouteTargets)
+			checkRouteFromLeaf(infra.LeafAConfig, vniBlue, Contains, leafAVRFBluePrefixes, blueRouteTargets)
+			checkRouteFromLeaf(infra.LeafBConfig, vniRed, Contains, leafBVRFRedPrefixes, redRouteTargets)
+			checkRouteFromLeaf(infra.LeafBConfig, vniBlue, Contains, leafBVRFBluePrefixes, blueRouteTargets)
 
 			By("removing a route from leafA on vni 200")
-			changeLeafPrefixes(infra.LeafAConfig, emptyPrefixes, emptyPrefixes, emptyPrefixes, emptyRouteTargets, emptyRouteTargets)
-			checkRouteFromLeaf(infra.LeafAConfig, vniRed, !Contains, leafAVRFRedPrefixes)
-			checkRouteFromLeaf(infra.LeafAConfig, vniBlue, !Contains, leafAVRFBluePrefixes)
-			checkRouteFromLeaf(infra.LeafBConfig, vniRed, Contains, leafBVRFRedPrefixes)
-			checkRouteFromLeaf(infra.LeafBConfig, vniBlue, Contains, leafBVRFBluePrefixes)
+			changeLeafPrefixes(infra.LeafAConfig, emptyPrefixes, emptyPrefixes, emptyPrefixes, redRouteTargets, blueRouteTargets)
+			checkRouteFromLeaf(infra.LeafAConfig, vniRed, !Contains, leafAVRFRedPrefixes, redRouteTargets)
+			checkRouteFromLeaf(infra.LeafAConfig, vniBlue, !Contains, leafAVRFBluePrefixes, blueRouteTargets)
+			checkRouteFromLeaf(infra.LeafBConfig, vniRed, Contains, leafBVRFRedPrefixes, redRouteTargets)
+			checkRouteFromLeaf(infra.LeafBConfig, vniBlue, Contains, leafBVRFBluePrefixes, blueRouteTargets)
 		})
 
 	})
 
-	Context("with vnis and frr-k8s", func() {
+	Context("with vnis_rt and frr-k8s", func() {
 		ShouldExist := true
 		frrk8sPods := []*corev1.Pod{}
 		frrK8sConfigRed, err := frrk8s.ConfigFromHostSession(*vniRed.Spec.HostSession, vniRed.Name)
@@ -234,8 +234,8 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 
 		It("translates EVPN incoming routes as BGP routes", func() {
 			By("advertising routes from the leaves for VRF Red - VNI 100")
-			changeLeafPrefixes(infra.LeafAConfig, emptyPrefixes, leafAVRFRedPrefixes, emptyPrefixes, emptyRouteTargets, emptyRouteTargets)
-			changeLeafPrefixes(infra.LeafBConfig, emptyPrefixes, leafBVRFRedPrefixes, emptyPrefixes, emptyRouteTargets, emptyRouteTargets)
+			changeLeafPrefixes(infra.LeafAConfig, emptyPrefixes, leafAVRFRedPrefixes, emptyPrefixes, redRouteTargets, blueRouteTargets)
+			changeLeafPrefixes(infra.LeafBConfig, emptyPrefixes, leafBVRFRedPrefixes, emptyPrefixes, redRouteTargets, blueRouteTargets)
 
 			By("checking routes are propagated via BGP")
 
@@ -245,8 +245,8 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			}
 
 			By("advertising also routes from the leaves for VRF Blue - VNI 200")
-			changeLeafPrefixes(infra.LeafAConfig, emptyPrefixes, leafAVRFRedPrefixes, leafAVRFBluePrefixes, emptyRouteTargets, emptyRouteTargets)
-			changeLeafPrefixes(infra.LeafBConfig, emptyPrefixes, leafBVRFRedPrefixes, leafBVRFBluePrefixes, emptyRouteTargets, emptyRouteTargets)
+			changeLeafPrefixes(infra.LeafAConfig, emptyPrefixes, leafAVRFRedPrefixes, leafAVRFBluePrefixes, redRouteTargets, blueRouteTargets)
+			changeLeafPrefixes(infra.LeafBConfig, emptyPrefixes, leafBVRFRedPrefixes, leafBVRFBluePrefixes, redRouteTargets, blueRouteTargets)
 
 			By("checking routes are propagated via BGP")
 
@@ -258,8 +258,8 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			}
 
 			By("removing routes from the leaves for VRF Blue - VNI 200")
-			changeLeafPrefixes(infra.LeafAConfig, emptyPrefixes, leafAVRFRedPrefixes, emptyPrefixes, emptyRouteTargets, emptyRouteTargets)
-			changeLeafPrefixes(infra.LeafBConfig, emptyPrefixes, leafBVRFRedPrefixes, emptyPrefixes, emptyRouteTargets, emptyRouteTargets)
+			changeLeafPrefixes(infra.LeafAConfig, emptyPrefixes, leafAVRFRedPrefixes, emptyPrefixes, redRouteTargets, blueRouteTargets)
+			changeLeafPrefixes(infra.LeafBConfig, emptyPrefixes, leafBVRFRedPrefixes, emptyPrefixes, redRouteTargets, blueRouteTargets)
 
 			By("checking routes are propagated via BGP")
 
@@ -279,8 +279,8 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 
 		BeforeAll(func() {
 			By("setting redistribute connected on leaves")
-			redistributeConnectedForLeaf(infra.LeafAConfig, emptyRouteTargets, emptyRouteTargets)
-			redistributeConnectedForLeaf(infra.LeafBConfig, emptyRouteTargets, emptyRouteTargets)
+			redistributeConnectedForLeaf(infra.LeafAConfig, redRouteTargets, blueRouteTargets)
+			redistributeConnectedForLeaf(infra.LeafBConfig, redRouteTargets, blueRouteTargets)
 
 			By("Creating the test namespace")
 			_, err := k8s.CreateNamespace(cs, testNamespace)
@@ -419,34 +419,3 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		)
 	})
 })
-
-func getPodIPByFamily(pod *corev1.Pod, family ipfamily.Family) (string, error) {
-	for _, podIP := range pod.Status.PodIPs {
-		ip := net.ParseIP(podIP.IP)
-		if ip == nil {
-			continue
-		}
-		if ipfamily.ForAddress(ip) == family {
-			return podIP.IP, nil
-		}
-	}
-	return "", fmt.Errorf("no %s IP found for pod %s", family, pod.Name)
-}
-
-func extractClientIP(res string) (string, error) {
-	res = strings.TrimSpace(res)
-
-	if strings.HasPrefix(res, "[") {
-		endBracket := strings.Index(res, "]")
-		if endBracket != -1 {
-			return res[1:endBracket], nil
-		}
-	}
-
-	if strings.Contains(res, ":") {
-		parts := strings.Split(res, ":")
-		return parts[0], nil
-	}
-
-	return "", fmt.Errorf("invalid response format: no client IP found in response: %s", res)
-}
