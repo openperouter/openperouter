@@ -2,9 +2,19 @@
 
 package static
 
+import (
+	"github.com/openperouter/openperouter/api/v1alpha1"
+)
+
+type NodeConfig struct {
+	NodeIndex int    `json:"nodeIndex"`
+	NodeName  string `json:"nodeName"`
+	LogLevel  string `json:"logLevel"`
+}
+
 type PERouterConfig struct {
-	// Node Index is the index assigned to this node. It is used
-	// to generate IPs from the CIDRs provided by the user and meant to be
-	// assigned at deployment time with a different value on each node.
-	NodeIndex int `yaml:"nodeIndex"`
+	Underlays      []v1alpha1.UnderlaySpec    `yaml:"underlays"`
+	L2VNIs         []v1alpha1.L2VNISpec       `yaml:"l2vnis"`
+	L3VNIs         []v1alpha1.L3VNISpec       `yaml:"l3vnis"`
+	BGPPassthrough v1alpha1.L3PassthroughSpec `yaml:"bgppassthrough"`
 }

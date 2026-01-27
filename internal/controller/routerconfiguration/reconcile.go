@@ -10,7 +10,7 @@ import (
 	"github.com/openperouter/openperouter/internal/frr"
 )
 
-func Reconcile(ctx context.Context, apiConfig conversion.ApiConfigData, frrConfigPath, targetNamespace string, updater frr.ConfigUpdater) error {
+func Reconcile(ctx context.Context, apiConfig conversion.ApiConfigData, underlayFromMultus bool, nodeIndex int, logLevel, frrConfigPath, targetNamespace string, updater frr.ConfigUpdater) error {
 	if err := conversion.ValidateUnderlays(apiConfig.Underlays); err != nil {
 		return fmt.Errorf("failed to validate underlays: %w", err)
 	}
@@ -35,13 +35,17 @@ func Reconcile(ctx context.Context, apiConfig conversion.ApiConfigData, frrConfi
 		configFile:    frrConfigPath,
 		updater:       updater,
 		ApiConfigData: apiConfig,
+		nodeIndex:     nodeIndex,
+		logLevel:      logLevel,
 	}); err != nil {
 		return fmt.Errorf("failed to reload frr config: %w", err)
 	}
 
 	if err := configureInterfaces(ctx, interfacesConfiguration{
-		targetNamespace: targetNamespace,
-		ApiConfigData:   apiConfig,
+		targetNamespace:    targetNamespace,
+		ApiConfigData:      apiConfig,
+		nodeIndex:          nodeIndex,
+		underlayFromMultus: underlayFromMultus,
 	}); err != nil {
 		return fmt.Errorf("failed to configure the host: %w", err)
 	}

@@ -32,7 +32,7 @@ var (
 	leafBDefaultPrefixes = []string{"192.170.21.0/24"}
 )
 
-var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
+var _ = Describe("Routes between bgp and the fabric", Label("passthrough"), Ordered, func() {
 	var cs clientset.Interface
 	var routers openperouter.Routers
 
@@ -63,6 +63,9 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 
 		routers.Dump(GinkgoWriter)
 
+		if SkipUnderlayPassthrough {
+			return
+		}
 		err = Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{
 				infra.Underlay,
@@ -72,6 +75,12 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 	})
 
 	AfterAll(func() {
+		if SkipUnderlayPassthrough {
+			err := Updater.CleanButUnderlay()
+			Expect(err).NotTo(HaveOccurred())
+			return
+		}
+
 		err := Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
 		By("waiting for the router pod to rollout after removing the underlay")
@@ -117,15 +126,15 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			dumpIfFails(cs)
 			err := Updater.CleanButUnderlay()
 			Expect(err).NotTo(HaveOccurred())
-			removeLeafPrefixes(infra.LeafAConfig)
-			removeLeafPrefixes(infra.LeafBConfig)
+			Expect(infra.LeafAConfig.RemovePrefixes()).To(Succeed())
+			Expect(infra.LeafBConfig.RemovePrefixes()).To(Succeed())
 		})
 
 		It("translates BGP incoming routes as BGP routes", func() {
 
 			By("advertising routes from both leaves")
-			changeLeafPrefixes(infra.LeafAConfig, leafADefaultPrefixes, emptyPrefixes, emptyPrefixes)
-			changeLeafPrefixes(infra.LeafBConfig, leafBDefaultPrefixes, emptyPrefixes, emptyPrefixes)
+			Expect(infra.LeafAConfig.ChangePrefixes(leafADefaultPrefixes, emptyPrefixes, emptyPrefixes)).To(Succeed())
+			Expect(infra.LeafBConfig.ChangePrefixes(leafBDefaultPrefixes, emptyPrefixes, emptyPrefixes)).To(Succeed())
 
 			By("checking routes are propagated via BGP")
 
@@ -135,8 +144,8 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			}
 
 			By("removing routes from the leaf B")
-			changeLeafPrefixes(infra.LeafAConfig, leafADefaultPrefixes, emptyPrefixes, emptyPrefixes)
-			changeLeafPrefixes(infra.LeafBConfig, emptyPrefixes, emptyPrefixes, emptyPrefixes)
+			Expect(infra.LeafAConfig.ChangePrefixes(leafADefaultPrefixes, emptyPrefixes, emptyPrefixes)).To(Succeed())
+			Expect(infra.LeafBConfig.ChangePrefixes(emptyPrefixes, emptyPrefixes, emptyPrefixes)).To(Succeed())
 
 			By("checking routes are propagated via BGP")
 
@@ -211,8 +220,8 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 
 			err = Updater.CleanButUnderlay()
 			Expect(err).NotTo(HaveOccurred())
-			removeLeafPrefixes(infra.LeafAConfig)
-			removeLeafPrefixes(infra.LeafBConfig)
+			Expect(infra.LeafAConfig.RemovePrefixes()).To(Succeed())
+			Expect(infra.LeafBConfig.RemovePrefixes()).To(Succeed())
 		})
 
 		AfterEach(func() {
