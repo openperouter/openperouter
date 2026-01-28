@@ -11,13 +11,16 @@ import (
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/frr"
+	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/openperouter/openperouter/internal/ipam"
 	"github.com/openperouter/openperouter/internal/ipfamily"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 )
 
-const defaultRouterIDCidr = "10.0.0.0/24"
+const (
+	defaultRouterIDCidr = "10.0.0.0/24"
+)
 
 type FRREmptyConfigError string
 
@@ -86,12 +89,12 @@ func APItoFRR(config ApiConfigData) (frr.Config, error) {
 		}, nil
 	}
 
-	vtepIP, err := ipam.VTEPIp(underlay.Spec.EVPN.VTEPCIDR, config.NodeIndex)
+	vtepIPStr, err := vtepIPForConfig(underlay.Spec.EVPN, config.TargetNS, config.NodeIndex)
 	if err != nil {
-		return frr.Config{}, fmt.Errorf("failed to get vtep ip, cidr %s, nodeIntex %d", underlay.Spec.EVPN.VTEPCIDR, config.NodeIndex)
+		return frr.Config{}, fmt.Errorf("failed to get vtep ip: %w", err)
 	}
 	underlayConfig.EVPN = &frr.UnderlayEvpn{
-		VTEP: vtepIP.String(),
+		VTEP: vtepIPStr,
 	}
 
 	vniConfigs := []frr.L3VNIConfig{}
@@ -353,4 +356,45 @@ func routerIDFromUnderlay(underlay v1alpha1.Underlay, nodeIndex int) (string, er
 		return "", fmt.Errorf("failed to get router id, cidr %s, nodeIndex %d: %w", underlay.Spec.RouterIDCIDR, nodeIndex, err)
 	}
 	return routerID, nil
+}
+
+// vtepIPForConfig returns the VTEP IP string for the given EVPN config.
+// If VTEPInterface is set, it looks up the IP from the interface.
+// Otherwise, it calculates the IP from VTEPCIDR.
+func vtepIPForConfig(evpn *v1alpha1.EVPNConfig, targetNS string, nodeIndex int) (string, error) {
+	if evpn.VTEPCIDR != "" {
+		vtepIP, err := ipam.VTEPIp(evpn.VTEPCIDR, nodeIndex)
+		if err != nil {
+			return "", fmt.Errorf("failed to get vtep ip, cidr %s, nodeIndex %d: %w", evpn.VTEPCIDR, nodeIndex, err)
+		}
+		return vtepIP.String(), nil
+	} else if evpn.VTEPInterface != "" {
+		return vtepCIDRFromInterface(targetNS, evpn.VTEPInterface)
+	}
+
+	return "", fmt.Errorf("missing vtep CIDR or Interface a Underlay config")
+}
+
+func vtepCIDRFromInterface(targetNS, iface string) (string, error) {
+	addrs, err := hostnetwork.InterfaceIPsForNamespace(targetNS, iface)
+	if err != nil {
+		return "", fmt.Errorf("failed to get IPs for vtep interface %s: %w", iface, err)
+	}
+	if len(addrs) == 0 {
+		return "", fmt.Errorf("missing addresses to configure vtep at interface %q on network namespace %q", iface, targetNS)
+	}
+	var selectedIPNet *net.IPNet // FIXME: Add support for ipv6, right now we just use the first ipv4
+	for _, addr := range addrs {
+		addrFamily := ipfamily.ForCIDR(addr.IPNet)
+		if addrFamily == ipfamily.IPv4 {
+			selectedIPNet = addr.IPNet
+			// Add the /32 submask to do unicast advertising
+			selectedIPNet.Mask = net.CIDRMask(32, 32)
+			break
+		}
+	}
+	if selectedIPNet == nil {
+		return "", fmt.Errorf("missing ipv4 addresse to configure vtep at interface %q on network namespace %q", iface, targetNS)
+	}
+	return selectedIPNet.String(), nil
 }
