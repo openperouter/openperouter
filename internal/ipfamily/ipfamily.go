@@ -5,6 +5,7 @@ package ipfamily // import "go.universe.tf/metallb/internal/ipfamily"
 import (
 	"fmt"
 	"net"
+	"strings"
 
 	v1 "k8s.io/api/core/v1"
 )
@@ -106,4 +107,11 @@ func ForService(svc *v1.Service) (Family, error) {
 	// fallback to clusterip if clusterips are not set
 	addresses := []string{svc.Spec.ClusterIP}
 	return ForAddresses(addresses...)
+}
+
+// StripCIDRMask removes the CIDR mask from an IP address string.
+// e.g., "192.168.1.1/24" -> "192.168.1.1"
+func StripCIDRMask(ipCIDR string) string {
+	parts := strings.SplitN(ipCIDR, "/", 2)
+	return parts[0]
 }
