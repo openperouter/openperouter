@@ -21,6 +21,11 @@ const (
 	DefaultRefreshPeriod = 60 * time.Second
 )
 
+// StartOptions configures optional parameters for BridgeRefresher.
+type StartOptions struct {
+	RefreshPeriod time.Duration // Override DefaultRefreshPeriod (for testing)
+}
+
 // BridgeRefresher manages neighbor refresh for an L2VNI bridge.
 // It periodically sends ARP probes to STALE neighbors to prevent
 // EVPN Type-2 routes from being withdrawn. The ARP replies also
@@ -39,6 +44,12 @@ type BridgeRefresher struct {
 // The refresher runs in the background and periodically sends ARP probes
 // to STALE neighbors to prevent route withdrawal.
 func Start(ctx context.Context, params hostnetwork.L2VNIParams) (*BridgeRefresher, error) {
+	return StartWithOptions(ctx, params, StartOptions{})
+}
+
+// StartWithOptions creates a BridgeRefresher with custom options.
+// This allows tests to use a shorter refresh period.
+func StartWithOptions(ctx context.Context, params hostnetwork.L2VNIParams, opts StartOptions) (*BridgeRefresher, error) {
 	gatewayIPs, err := parseGatewayIPs(params.L2GatewayIPs)
 	if err != nil {
 		return nil, err
@@ -48,11 +59,16 @@ func Start(ctx context.Context, params hostnetwork.L2VNIParams) (*BridgeRefreshe
 			"vni", params.VNI)
 	}
 
+	refreshPeriod := DefaultRefreshPeriod
+	if opts.RefreshPeriod > 0 {
+		refreshPeriod = opts.RefreshPeriod
+	}
+
 	refresher := &BridgeRefresher{
 		bridgeName:    bridgeName(params.VNI),
 		namespace:     params.TargetNS,
 		gatewayIPs:    gatewayIPs,
-		refreshPeriod: DefaultRefreshPeriod,
+		refreshPeriod: refreshPeriod,
 	}
 
 	ctx, refresher.cancel = context.WithCancel(ctx)
