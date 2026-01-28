@@ -14,6 +14,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/openperouter/openperouter/internal/netnamespace"
+	"github.com/openperouter/openperouter/internal/testutils"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 )
@@ -38,6 +39,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 	})
 
 	BeforeEach(func() {
+		testutils.SkipUnlessPrivileged()
 		cleanTest(underlayTestNS)
 
 		toMove := &netlink.Dummy{
