@@ -28,7 +28,7 @@ func StartForVNI(ctx context.Context, params hostnetwork.L2VNIParams) error {
 		delete(activeRefreshers, params.VNI)
 	}
 
-	refresher, err := New(params)
+	refresher, err := New(params, StartOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to create refresher for VNI %d: %w", params.VNI, err)
 	}
