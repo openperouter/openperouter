@@ -9,6 +9,7 @@ import (
 
 type ApiConfigData struct {
 	NodeIndex          int
+	TargetNS           string
 	UnderlayFromMultus bool
 	Underlays          []v1alpha1.Underlay
 	L3VNIs             []v1alpha1.L3VNI

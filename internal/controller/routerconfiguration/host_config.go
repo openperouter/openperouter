@@ -42,6 +42,7 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 	apiConfig := conversion.ApiConfigData{
 		UnderlayFromMultus: config.UnderlayFromMultus,
 		NodeIndex:          config.NodeIndex,
+		TargetNS:           config.targetNamespace,
 		Underlays:          config.Underlays,
 		L3VNIs:             config.L3VNIs,
 		L2VNIs:             config.L2VNIs,

@@ -76,8 +76,8 @@ vet: ## Run go vet against code.
 
 .PHONY: test
 test: fmt vet envtest ## Run tests.
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v e2etest) -coverprofile cover.out
-	sudo -E sh -c "umask 0; PATH=${GOPATH}/bin:$(pwd)/bin:${PATH} go test -tags=runasroot -v -race ./internal/hostnetwork"
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test -v $$(go list ./... | grep -v e2etest) -coverprofile cover.out
+	sudo -E sh -c "umask 0; PATH=${GOPATH}/bin:$(pwd)/bin:${PATH} go test -v -race $$(grep -rl 'SkipUnlessPrivileged' --include='*_test.go' . | xargs -n1 dirname | sort -u | tr '\n' ' ') "
 
 ##@ Build
 
