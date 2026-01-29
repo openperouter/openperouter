@@ -44,8 +44,11 @@ func (e *EVPNData) ContainsType5RouteForVNI(prefix string, vtep string, vni int)
 				routePrefix := fmt.Sprintf("%s/%d", path.IP, path.IPLen)
 				if routePrefix == prefix {
 					for _, n := range path.Nexthops {
-						if n.IP == vtep &&
-							vniFromExtendedCommunity(path.ExtendedCommunity.String) == vni {
+						pathVNIs, err := vnisFromExtendedCommunity(path.ExtendedCommunity.String)
+						if err != nil {
+							continue
+						}
+						if n.IP == vtep && containsVNI(pathVNIs, vni) {
 							return true
 						}
 					}
@@ -54,6 +57,76 @@ func (e *EVPNData) ContainsType5RouteForVNI(prefix string, vtep string, vni int)
 		}
 	}
 	return false
+}
+
+// ContainsType2MACIPRouteForVNI checks if a Type 2 MAC+IP route exists for the given VNI.
+// Type 2 routes have RouteType == 2 and include both MAC and IP information.
+// The ip parameter should be the bare IP address (e.g., "192.168.1.10").
+func (e *EVPNData) ContainsType2MACIPRouteForVNI(ip string, vtep string, vni int) bool {
+	for _, entry := range e.Entries {
+		for _, prefixEntry := range entry.Prefixes {
+			for _, path := range prefixEntry.Paths {
+				if path.RouteType != 2 {
+					continue
+				}
+				// Type 2 routes with IP have IPLen > 0
+				if path.IPLen == 0 {
+					continue
+				}
+				if path.IP == ip {
+					for _, n := range path.Nexthops {
+						pathVNIs, err := vnisFromExtendedCommunity(path.ExtendedCommunity.String)
+						if err != nil {
+							continue
+						}
+						if n.IP == vtep && containsVNI(pathVNIs, vni) {
+							return true
+						}
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+// ContainsType2MACRouteForVNI checks if a Type 2 MAC-only route exists for the given VNI.
+// Type 2 MAC-only routes have RouteType == 2 and IPLen == 0.
+// The mac parameter should be the MAC address (e.g., "02:00:00:00:00:01").
+func (e *EVPNData) ContainsType2MACRouteForVNI(mac string, vtep string, vni int) bool {
+	for _, entry := range e.Entries {
+		for prefixKey, prefixEntry := range entry.Prefixes {
+			for _, path := range prefixEntry.Paths {
+				if path.RouteType != 2 {
+					continue
+				}
+				// Type 2 MAC-only routes have IPLen == 0
+				if path.IPLen != 0 {
+					continue
+				}
+				// The MAC is embedded in the prefix key
+				// Format: [2]:[ESI]:[EthTag]:[MACLen]:[MAC]:[IPLen]:[IP]
+				if strings.Contains(strings.ToLower(prefixKey), strings.ToLower(mac)) {
+					for _, n := range path.Nexthops {
+						pathVNIs, err := vnisFromExtendedCommunity(path.ExtendedCommunity.String)
+						if err != nil {
+							continue
+						}
+						if n.IP == vtep && containsVNI(pathVNIs, vni) {
+							return true
+						}
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+// ContainsType2RouteForVNI checks if any Type 2 route exists for the given IP and VNI.
+// This is a convenience wrapper that checks for MAC+IP routes.
+func (e *EVPNData) ContainsType2RouteForVNI(ip string, vtep string, vni int) bool {
+	return e.ContainsType2MACIPRouteForVNI(ip, vtep, vni)
 }
 
 type RdEntry struct {
@@ -139,17 +212,48 @@ func parseL2VPNEVPN(data []byte) (EVPNData, error) {
 	return res, nil
 }
 
-func vniFromExtendedCommunity(extendedCommunity string) int {
-	// extended community looks like: "RT:64514:200 ET:8 Rmac:22:2e:e4:41:7f:5c"
+func vnisFromExtendedCommunity(extendedCommunity string) ([]int, error) {
+	// extended community can look like:
+	// "RT:64514:200 ET:8 Rmac:22:2e:e4:41:7f:5c"
+	// or with multiple RTs:
+	// "RT:64514:100 RT:64514:110 ET:8 Rmac:f6:5f:31:5a:33:a2"
+
+	if extendedCommunity == "" {
+		return nil, fmt.Errorf("empty extended community string")
+	}
 
 	parts := strings.Split(extendedCommunity, " ")
-	rtPart := parts[0]
-	rtValues := strings.Split(rtPart, ":")
-
-	vniValueStr := rtValues[2]
-	vni, err := strconv.Atoi(vniValueStr)
-	if err != nil {
-		panic("error getting vni from " + extendedCommunity)
+	if len(parts) == 0 {
+		return nil, fmt.Errorf("no parts found in extended community: %s", extendedCommunity)
 	}
-	return vni
+
+	var vnis []int
+	for _, part := range parts {
+		if !strings.HasPrefix(part, "RT:") {
+			continue
+		}
+		rtValues := strings.Split(part, ":")
+		if len(rtValues) < 3 {
+			continue
+		}
+		vni, err := strconv.Atoi(rtValues[2])
+		if err != nil {
+			continue
+		}
+		vnis = append(vnis, vni)
+	}
+
+	if len(vnis) == 0 {
+		return nil, fmt.Errorf("no VNIs found in extended community: %s", extendedCommunity)
+	}
+	return vnis, nil
+}
+
+func containsVNI(vnis []int, vni int) bool {
+	for _, v := range vnis {
+		if v == vni {
+			return true
+		}
+	}
+	return false
 }
