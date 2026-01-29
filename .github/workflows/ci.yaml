@@ -211,6 +211,17 @@ jobs:
           IMG_REPO=$IMG_REPO make $MAKE_RULE
           if [ ${{ matrix.deployment }} = "operator" ]; then IMG_REPO="quay.io/openperouter" make load-on-kind; kubectl apply -f operator/config/samples/openperouter.yaml; sleep 5; kubectl -n openperouter-system wait --for=condition=Ready pods -l "component in (controller,router,nodemarker)" --timeout 300s; fi
 
+      - name: Start spine EVPN route logging
+        run: |
+          mkdir -p /tmp/kind_logs
+          # Log spine EVPN Type 2 routes every 10 seconds during tests
+          (while true; do
+            echo "=== $(date -Iseconds) ===" >> /tmp/kind_logs/spine-evpn-routes.log
+            docker exec clab-kind-spine vtysh -c "show bgp l2vpn evpn" 2>&1 >> /tmp/kind_logs/spine-evpn-routes.log || true
+            sleep 10
+          done) &
+          echo $! > /tmp/spine_evpn_logger.pid
+
       - name: Run e2e tests
         run: |
           if [ ${{ matrix.deployment }} = "systemdmode" ]; then
@@ -219,10 +230,29 @@ jobs:
           fi
           make e2etests
 
+      - name: Stop spine EVPN route logging
+        if: always()
+        run: |
+          if [ -f /tmp/spine_evpn_logger.pid ]; then
+            kill $(cat /tmp/spine_evpn_logger.pid) 2>/dev/null || true
+            rm /tmp/spine_evpn_logger.pid
+          fi
+          # Capture final EVPN state
+          echo "=== FINAL STATE $(date -Iseconds) ===" >> /tmp/kind_logs/spine-evpn-routes.log
+          docker exec clab-kind-spine vtysh -c "show bgp l2vpn evpn" 2>&1 >> /tmp/kind_logs/spine-evpn-routes.log || true
+
       - name: Export kind logs
         if: ${{ failure() }}
         run:
           make kind-export-logs
+
+      - name: Upload spine EVPN routes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spine-evpn-routes-${{ matrix.deployment }}
+          path: /tmp/kind_logs/spine-evpn-routes.log
+          if-no-files-found: ignore
 
       - name: Collect Logs
         if: ${{ failure() }}
