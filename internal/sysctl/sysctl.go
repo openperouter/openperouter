@@ -91,3 +91,28 @@ func ArpAcceptDefault() Sysctl {
 		Description: "arp_accept on new interfaces",
 	}
 }
+
+// AcceptUntrackedNAAll returns the sysctl definition for enabling accept_untracked_na.
+// This is the IPv6 equivalent of arp_accept - it allows the kernel to create neighbor entries
+// from received unsolicited Neighbor Advertisement packets, which is critical for fast EVPN
+// MAC/IP route advertisement during VM migrations with IPv6.
+// Note: This sysctl is only available on kernels >= 5.18.
+func AcceptUntrackedNAAll() Sysctl {
+	return Sysctl{
+		Path:        "net/ipv6/conf/all/accept_untracked_na",
+		Description: "accept_untracked_na on all interfaces",
+	}
+}
+
+// AcceptUntrackedNADefault returns the sysctl definition for enabling accept_untracked_na on
+// newly created interfaces. This ensures that any new interface will inherit the setting.
+// This is the IPv6 equivalent of arp_accept - it allows the kernel to create neighbor entries
+// from received unsolicited Neighbor Advertisement packets, which is critical for fast EVPN
+// MAC/IP route advertisement during VM migrations with IPv6.
+// Note: This sysctl is only available on kernels >= 5.18.
+func AcceptUntrackedNADefault() Sysctl {
+	return Sysctl{
+		Path:        "net/ipv6/conf/default/accept_untracked_na",
+		Description: "accept_untracked_na on new interfaces",
+	}
+}
