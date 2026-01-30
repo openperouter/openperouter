@@ -14,6 +14,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/openperouter/openperouter/internal/netnamespace"
+	"github.com/openperouter/openperouter/internal/testutils"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 )
@@ -28,6 +29,7 @@ var _ = Describe("L3 VNI configuration", func() {
 	var testNS netns.NsHandle
 
 	BeforeEach(func() {
+		testutils.TestRequireRoot()
 		cleanTest(testNSName)
 		testNS = createTestNS(testNSName)
 		setupLoopback(testNS)
@@ -256,6 +258,7 @@ var _ = Describe("L2 VNI configuration", func() {
 	const bridgeName = "testbridge"
 
 	BeforeEach(func() {
+		testutils.TestRequireRoot()
 		cleanTest(testNSName)
 		testNS = createTestNS(testNSName)
 		setupLoopback(testNS)

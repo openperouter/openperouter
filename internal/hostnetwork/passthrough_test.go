@@ -11,6 +11,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/openperouter/openperouter/internal/netnamespace"
+	"github.com/openperouter/openperouter/internal/testutils"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 )
@@ -25,6 +26,7 @@ var _ = Describe("Passthrough configuration", func() {
 	var testNS netns.NsHandle
 
 	BeforeEach(func() {
+		testutils.TestRequireRoot()
 		cleanTest(testPassthroughNSName)
 		testNS = createTestNS(testPassthroughNSName)
 		setupLoopback(testNS)

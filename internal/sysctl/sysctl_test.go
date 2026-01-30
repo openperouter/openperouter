@@ -1,8 +1,5 @@
 // SPDX-License-Identifier:Apache-2.0
 
-//go:build runasroot
-// +build runasroot
-
 package sysctl
 
 import (
@@ -16,6 +13,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/openperouter/openperouter/internal/netnamespace"
+	"github.com/openperouter/openperouter/internal/testutils"
 	"github.com/vishvananda/netns"
 )
 
@@ -59,6 +57,10 @@ func cleanTest(namespace string) {
 }
 
 var _ = Describe("Ensure", func() {
+	BeforeEach(func() {
+		testutils.TestRequireRoot()
+	})
+
 	DescribeTable("should enable sysctls",
 		func(testNS string, sysctls []Sysctl, preEnable bool) {
 			ns := createTestNS(testNS)
