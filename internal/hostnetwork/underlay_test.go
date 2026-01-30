@@ -228,14 +228,8 @@ func cleanTest(namespace string) {
 		Expect(err).NotTo(HaveOccurred())
 	}
 
-	// Clean up OVS bridges BEFORE deleting veths
-	// This ensures OVS can properly detach ports that reference the veth devices
-	cleanupOVSBridges()
-
 	links, err := netlink.LinkList()
-	if err != nil {
-		Expect(err).NotTo(HaveOccurred())
-	}
+	Expect(err).NotTo(HaveOccurred())
 	for _, l := range links {
 		if strings.HasPrefix(l.Attrs().Name, "test") ||
 			strings.HasPrefix(l.Attrs().Name, PEVethPrefix) ||

@@ -73,6 +73,8 @@ jobs:
 
   unit-tests:
     runs-on: ubuntu-22.04
+    needs:
+      - build-test-images
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -97,6 +99,15 @@ jobs:
           sudo systemctl enable openvswitch-switch
           sudo ovs-vsctl show
           sudo test -S /var/run/openvswitch/db.sock
+
+      - name: Download kind-node-openperouter image
+        uses: actions/download-artifact@v4
+        with:
+          name: image-tar-kind-node-openperouter
+          path: /tmp
+
+      - name: Load kind-node-openperouter image
+        run: docker load -i /tmp/kind-node-openperouter.tar
 
       - name: Unit Tests
         run: |
@@ -138,6 +149,24 @@ jobs:
           name: image-tar-openperouter
           path: /tmp/openperouter.tar
 
+      - name: Build kind-node-openperouter image
+        uses: docker/build-push-action@v5
+        with:
+          context: hack/kind-node-image
+          file: hack/kind-node-image/Dockerfile
+          build-args: |
+            KIND_NODE_VERSION=v1.32.2
+          tags: quay.io/openperouter/kind-node-openperouter:v1.32.2
+          outputs: type=docker,dest=/tmp/kind-node-openperouter.tar
+          cache-from: type=gha,scope=kind-node-openperouter
+          cache-to: type=gha,mode=max,scope=kind-node-openperouter
+      - name: Upload kind-node-openperouter artifact
+        uses: actions/upload-artifact@v4
+        with:
+          retention-days: 1
+          name: image-tar-kind-node-openperouter
+          path: /tmp/kind-node-openperouter.tar
+
   e2etests:
     runs-on: ubuntu-22.04
     env:
@@ -176,30 +205,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install linux-modules-extra-$(uname -r)
 
-      - name: Setup docker buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build kind-node-openperouter image
-        uses: docker/build-push-action@v5
-        with:
-          context: hack/kind-node-image
-          file: hack/kind-node-image/Dockerfile
-          build-args: |
-            KIND_NODE_VERSION=v1.32.2
-          tags: quay.io/openperouter/kind-node-openperouter:v1.32.2
-          load: true
-          cache-from: type=gha,scope=kind-node-openperouter
-          cache-to: type=gha,mode=max,scope=kind-node-openperouter
-
       - name: Download openperouter image
         uses: actions/download-artifact@v4
         with:
           path: image
 
-      - name: Load image
+      - name: Load images
         working-directory: image
         run: |
           docker load -i image-tar-openperouter/openperouter.tar
+          docker load -i image-tar-kind-node-openperouter/kind-node-openperouter.tar
 
       - name: Deploy the cluster
         run: |
