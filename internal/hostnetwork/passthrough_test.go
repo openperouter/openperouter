@@ -27,7 +27,7 @@ var _ = Describe("Passthrough configuration", func() {
 	BeforeEach(func() {
 		cleanTest(testPassthroughNSName)
 		testNS = createTestNS(testPassthroughNSName)
-		setupLoopback(testNS)
+		Expect(setupLoopback(testNS)).To(Succeed())
 	})
 	AfterEach(func() {
 		cleanTest(testPassthroughNSName)

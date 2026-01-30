@@ -4,30 +4,78 @@ package hostnetwork
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"os/exec"
+	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/openperouter/openperouter/internal/hostnetwork/ovssandbox"
 	"github.com/openperouter/openperouter/internal/netnamespace"
 	libovsclient "github.com/ovn-kubernetes/libovsdb/client"
+	"github.com/ovn-kubernetes/libovsdb/model"
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
+	"k8s.io/apimachinery/pkg/util/wait"
 )
 
-var _ = Describe("L2 VNI configuration with OVS bridges", func() {
+const testBridgeName = "myovsbr"
+
+var _ = Describe("L2 VNI configuration with OVS bridges", Ordered, func() {
 	var testNS netns.NsHandle
+	var sandbox *ovssandbox.Sandbox
+
+	BeforeAll(func() {
+		var err error
+		ctx := context.Background()
+
+		By("Starting OVS sandbox container")
+		sandbox, err = ovssandbox.New(ctx, ovssandbox.Config{})
+		Expect(err).NotTo(HaveOccurred(), "Failed to start OVS sandbox")
+
+		By("Configuring OVS socket path to use sandbox")
+		OVSSocketPath = sandbox.OVSDBSocketURI
+
+		GinkgoWriter.Printf("OVS sandbox started, socket: %s\n", OVSSocketPath)
+	})
+
+	AfterAll(func() {
+		if sandbox != nil {
+			By("Stopping OVS sandbox container")
+			Expect(sandbox.Cleanup(context.Background())).To(Succeed())
+		}
+	})
 
 	BeforeEach(func() {
-		cleanTest(testNSName)
-		testNS = createTestNS(testNSName)
-		setupLoopback(testNS)
+		// Create test namespace inside container's network namespace
+		err := sandbox.InNetNS(func() error {
+			_ = netns.DeleteNamed(testNSName)
+			var err error
+			testNS, err = netns.NewNamed(testNSName)
+			if err != nil {
+				return err
+			}
+			return setupLoopback(testNS)
+		})
+		Expect(err).NotTo(HaveOccurred())
 	})
 
 	AfterEach(func() {
-		cleanTest(testNSName)
+		// Clean up test namespace and resources inside container's network namespace
+		_ = sandbox.InNetNS(func() error {
+			if testNS != 0 {
+				_ = testNS.Close()
+			}
+
+			Expect(cleanupOVSBridges()).To(Succeed())
+
+			cleanTest(testNSName)
+			return nil
+		})
 	})
 
 	It("should work with a single L2VNI using auto-created OVS bridge", func() {
@@ -39,61 +87,80 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 			HostMaster: &HostMaster{Type: OVSBridgeLinkType, AutoCreate: true},
 		}
 
-		err := SetupL2VNI(context.Background(), params)
+		err := sandbox.InNetNS(func() error {
+			return SetupL2VNI(context.Background(), params)
+		})
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
-			validateL2HostLeg(g, params)
-			_ = netnamespace.In(testNS, func() error {
-				validateL2VNI(g, params)
+			_ = sandbox.InNetNS(func() error {
+				validateL2HostLeg(g, params)
+				_ = netnamespace.In(testNS, func() error {
+					validateL2VNI(g, params)
+					return nil
+				})
 				return nil
 			})
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 
 		By("removing the VNI")
-		err = RemoveNonConfiguredVNIs(testNSPath(), []VNIParams{})
+		err = sandbox.InNetNS(func() error {
+			return RemoveNonConfiguredVNIs(testNSPath(), []VNIParams{})
+		})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("checking the VNI and OVS bridge are removed")
 		vethNames := vethNamesFromVNI(params.VNI)
 		Eventually(func(g Gomega) {
-			checkLinkdeleted(g, vethNames.HostSide)
-			checkOVSHostBridgeDeleted(g, params)
-			_ = netnamespace.In(testNS, func() error {
-				validateVNIIsNotConfigured(g, params.VNIParams)
+			_ = sandbox.InNetNS(func() error {
+				checkLinkdeleted(g, vethNames.HostSide)
+				checkOVSHostBridgeDeleted(g, params)
+				_ = netnamespace.In(testNS, func() error {
+					validateVNIIsNotConfigured(g, params.VNIParams)
+					return nil
+				})
 				return nil
 			})
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 	})
 
 	It("should work with a single L2VNI using pre-existing named OVS bridge", func() {
-		const bridgeName = "test-ovs-br"
-		Expect(createOVSBridge(bridgeName)).To(Succeed(), "must pre-provision an OVS bridge")
+		err := sandbox.InNetNS(func() error {
+			return createOVSBridge(testBridgeName)
+		})
+		Expect(err).To(Succeed(), "must pre-provision an OVS bridge")
 
 		params := L2VNIParams{
 			VNIParams: VNIParams{
 				VRF: "testred", TargetNS: testNSPath(),
 				VTEPIP: "192.170.0.9/32", VNI: 100, VXLanPort: 4789,
 			},
-			HostMaster: &HostMaster{Type: OVSBridgeLinkType, Name: bridgeName},
+			HostMaster: &HostMaster{Type: OVSBridgeLinkType, Name: testBridgeName},
 		}
 
-		err := SetupL2VNI(context.Background(), params)
+		err = sandbox.InNetNS(func() error {
+			return SetupL2VNI(context.Background(), params)
+		})
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
-			validateL2HostLeg(g, params)
-			checkOVSBridgeExists(g, bridgeName)
-			checkVethAttachedToOVSBridge(g, bridgeName, vethNamesFromVNI(params.VNI).HostSide)
+			_ = sandbox.InNetNS(func() error {
+				validateL2HostLeg(g, params)
+				checkOVSBridgeExists(g, testBridgeName)
+				checkVethAttachedToOVSBridge(g, testBridgeName, vethNamesFromVNI(params.VNI).HostSide)
+				return nil
+			})
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 
 		By("removing the VNI")
-		err = RemoveNonConfiguredVNIs(testNSPath(), []VNIParams{})
+		err = sandbox.InNetNS(func() error {
+			return RemoveNonConfiguredVNIs(testNSPath(), []VNIParams{})
+		})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("checking the bridge persists (user-managed)")
 		Eventually(func(g Gomega) {
-			checkOVSBridgeExists(g, bridgeName) // Bridge should still exist
+			checkOVSBridgeExists(g, testBridgeName) // Bridge should still exist (OVSDB check, no namespace needed)
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 	})
 
@@ -114,18 +181,26 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 			HostMaster: &HostMaster{Type: OVSBridgeLinkType, AutoCreate: true},
 		}
 
-		err := SetupL2VNI(context.Background(), params1)
-		Expect(err).NotTo(HaveOccurred())
-		err = SetupL2VNI(context.Background(), params2)
+		err := sandbox.InNetNS(func() error {
+			if err := SetupL2VNI(context.Background(), params1); err != nil {
+				return err
+			}
+			return SetupL2VNI(context.Background(), params2)
+		})
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
-			validateL2HostLeg(g, params1)
-			validateL2HostLeg(g, params2)
+			_ = sandbox.InNetNS(func() error {
+				validateL2HostLeg(g, params1)
+				validateL2HostLeg(g, params2)
+				return nil
+			})
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 
 		By("removing VNI 100, keeping VNI 101")
-		err = RemoveNonConfiguredVNIs(testNSPath(), []VNIParams{params2.VNIParams})
+		err = sandbox.InNetNS(func() error {
+			return RemoveNonConfiguredVNIs(testNSPath(), []VNIParams{params2.VNIParams})
+		})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("checking VNI 100 removed, VNI 101 persists")
@@ -144,15 +219,22 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 			HostMaster: &HostMaster{Type: OVSBridgeLinkType, AutoCreate: true},
 		}
 
-		err := SetupL2VNI(context.Background(), params)
+		err := sandbox.InNetNS(func() error {
+			return SetupL2VNI(context.Background(), params)
+		})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("calling SetupL2VNI a second time")
-		err = SetupL2VNI(context.Background(), params)
+		err = sandbox.InNetNS(func() error {
+			return SetupL2VNI(context.Background(), params)
+		})
 		Expect(err).NotTo(HaveOccurred(), "second SetupL2VNI should be idempotent")
 
 		Eventually(func(g Gomega) {
-			validateL2HostLeg(g, params)
+			_ = sandbox.InNetNS(func() error {
+				validateL2HostLeg(g, params)
+				return nil
+			})
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 	})
 
@@ -167,13 +249,18 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 			HostMaster:   &HostMaster{Type: OVSBridgeLinkType, AutoCreate: true},
 		}
 
-		err := SetupL2VNI(context.Background(), params)
+		err := sandbox.InNetNS(func() error {
+			return SetupL2VNI(context.Background(), params)
+		})
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
-			validateL2HostLeg(g, params)
-			_ = netnamespace.In(testNS, func() error {
-				validateL2VNI(g, params)
+			_ = sandbox.InNetNS(func() error {
+				validateL2HostLeg(g, params)
+				_ = netnamespace.In(testNS, func() error {
+					validateL2VNI(g, params)
+					return nil
+				})
 				return nil
 			})
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
@@ -290,13 +377,7 @@ func ovsBridgeHasPort(bridgeName, portName string) (bool, error) {
 	if err != nil {
 		return false, nil // Port doesn't exist
 	}
-
-	for _, portUUID := range bridge.Ports {
-		if portUUID == port.UUID {
-			return true, nil
-		}
-	}
-	return false, nil
+	return slices.Contains(bridge.Ports, port.UUID), nil
 }
 
 // waitForOVSInterface waits for an OVS interface to appear using netlink notifications
@@ -326,18 +407,78 @@ func waitForOVSInterface(name string) error {
 	}
 }
 
-// cleanupOVSBridges removes all test OVS bridges
-func cleanupOVSBridges() {
-	cmd := exec.Command("ovs-vsctl", "list-br")
-	output, err := cmd.Output()
+// cleanupOVSBridges removes all test OVS bridges using the OVSDB client
+// and waits for their interfaces to be removed from netlink.
+func cleanupOVSBridges() error {
+	ctx := context.Background()
+	ovs, err := NewOVSClient(ctx)
 	if err != nil {
-		return // OVS not available
+		return err // OVS not available
+	}
+	defer ovs.Close()
+
+	// Start monitoring to get bridge list
+	_, err = ovs.Monitor(ctx, ovs.NewMonitor(
+		libovsclient.WithTable(&OpenVSwitch{}),
+		libovsclient.WithTable(&Bridge{}),
+	))
+	if err != nil {
+		return err
 	}
 
-	bridges := strings.Split(strings.TrimSpace(string(output)), "\n")
+	// List all bridges
+	var bridges []Bridge
+	if err := ovs.List(ctx, &bridges); err != nil {
+		return err
+	}
+
+	// Delete test bridges and collect their names
+	var errs []error
 	for _, br := range bridges {
-		if strings.HasPrefix(br, "br-hs-") || strings.HasPrefix(br, "test-ovs-") {
-			_ = exec.Command("ovs-vsctl", "del-br", br).Run()
+		if strings.HasPrefix(br.Name, "br-hs-") || strings.HasPrefix(br.Name, testBridgeName) {
+			if err := deleteOVSBridge(ctx, ovs, &br); err != nil {
+				errs = append(errs, err)
+			}
 		}
 	}
+	return errors.Join(errs...)
+}
+
+func deleteOVSBridge(ctx context.Context, ovs libovsclient.Client, br *Bridge) error {
+	// Remove bridge from Open_vSwitch table, relying on garbage collection
+	// to remove the bridge row and its ports.
+	ovsRow := &OpenVSwitch{}
+	ops, err := ovs.WhereCache(func(*OpenVSwitch) bool { return true }).
+		Mutate(ovsRow, model.Mutation{
+			Field:   &ovsRow.Bridges,
+			Mutator: ovsdb.MutateOperationDelete,
+			Value:   []string{br.UUID},
+		})
+	if err != nil {
+		return fmt.Errorf("failed to create mutate operation: %w", err)
+	}
+
+	reply, err := ovs.Transact(ctx, ops...)
+	if err != nil {
+		return fmt.Errorf("transaction failed: %w", err)
+	}
+
+	if _, err := ovsdb.CheckOperationResults(reply, ops); err != nil {
+		return fmt.Errorf("operation failed: %w", err)
+	}
+
+	// Wait for deleted bridge interfaces to disappear from netlink, if we don't do so
+	// calling netlink again may fail with operation interrupted (ovs is doing netlink ops in parallel)
+	if err := wait.PollUntilContextTimeout(context.Background(), 50*time.Millisecond, 500*time.Millisecond, true, func(ctx context.Context) (bool, error) {
+		_, err := netlink.LinkByName(br.Name)
+		if err != nil {
+			return true, nil // Interface removed
+		}
+		return false, nil // Keep polling
+	}); err != nil {
+		return err
+	}
+
+	slog.Debug("deleted OVS bridge", "name", br.Name)
+	return nil
 }
