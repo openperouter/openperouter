@@ -30,7 +30,7 @@ var _ = Describe("L3 VNI configuration", func() {
 	BeforeEach(func() {
 		cleanTest(testNSName)
 		testNS = createTestNS(testNSName)
-		setupLoopback(testNS)
+		Expect(setupLoopback(testNS)).To(Succeed())
 	})
 	AfterEach(func() {
 		cleanTest(testNSName)
@@ -258,7 +258,7 @@ var _ = Describe("L2 VNI configuration", func() {
 	BeforeEach(func() {
 		cleanTest(testNSName)
 		testNS = createTestNS(testNSName)
-		setupLoopback(testNS)
+		Expect(setupLoopback(testNS)).To(Succeed())
 		createLinuxBridge(bridgeName)
 	})
 	AfterEach(func() {
@@ -644,8 +644,8 @@ func checkAddrGenModeNone(l netlink.Link) bool {
 	return strings.Trim(string(addrGenMode), "\n") == "1"
 }
 
-func setupLoopback(ns netns.NsHandle) {
-	_ = netnamespace.In(ns, func() error {
+func setupLoopback(ns netns.NsHandle) error {
+	return netnamespace.In(ns, func() error {
 		_, err := netlink.LinkByName(UnderlayLoopback)
 		if errors.As(err, &netlink.LinkNotFoundError{}) {
 			loopback := &netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: UnderlayLoopback}}
