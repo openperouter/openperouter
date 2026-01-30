@@ -5,6 +5,7 @@ package infra
 import (
 	"bytes"
 	"html/template"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -147,4 +148,58 @@ func UpdateLeafKindConfig(nodes []corev1.Node, enableBFD bool) error {
 	}
 
 	return LeafKindConfig.ReloadConfig(configString)
+}
+
+// ChangePrefixes updates the leaf configuration with the given prefixes for each VRF.
+func (l Leaf) ChangePrefixes(defaultPrefixes, redPrefixes, bluePrefixes []string) error {
+	defaultIPv4, defaultIPv6 := SeparateIPFamilies(defaultPrefixes)
+	redIPv4, redIPv6 := SeparateIPFamilies(redPrefixes)
+	blueIPv4, blueIPv6 := SeparateIPFamilies(bluePrefixes)
+
+	leafConfiguration := LeafConfiguration{
+		Leaf: l,
+		Default: Addresses{
+			IPV4: defaultIPv4,
+			IPV6: defaultIPv6,
+		},
+		Red: Addresses{
+			IPV4: redIPv4,
+			IPV6: redIPv6,
+		},
+		Blue: Addresses{
+			IPV4: blueIPv4,
+			IPV6: blueIPv6,
+		},
+	}
+	config, err := LeafConfigToFRR(leafConfiguration)
+	if err != nil {
+		return err
+	}
+	return l.ReloadConfig(config)
+}
+
+// RemovePrefixes removes all prefixes from the leaf configuration.
+func (l Leaf) RemovePrefixes() error {
+	return l.ChangePrefixes([]string{}, []string{}, []string{})
+}
+
+// SeparateIPFamilies separates a slice of CIDR prefixes into IPv4 and IPv6 slices
+func SeparateIPFamilies(prefixes []string) ([]string, []string) {
+	var ipv4Prefixes []string
+	var ipv6Prefixes []string
+
+	for _, prefix := range prefixes {
+		_, ipNet, err := net.ParseCIDR(prefix)
+		if err != nil {
+			continue
+		}
+
+		if ipNet.IP.To4() != nil {
+			ipv4Prefixes = append(ipv4Prefixes, prefix)
+		} else {
+			ipv6Prefixes = append(ipv6Prefixes, prefix)
+		}
+	}
+
+	return ipv4Prefixes, ipv6Prefixes
 }
