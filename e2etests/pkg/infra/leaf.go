@@ -54,10 +54,16 @@ type LeafKindConfiguration struct {
 	Neighbors []string
 }
 
+type RouteTargets struct {
+	ImportRTs []string
+	ExportRTs []string
+}
+
 type Addresses struct {
 	RedistributeConnected bool
 	IPV4                  []string
 	IPV6                  []string
+	RouteTargets          RouteTargets
 }
 
 type Leaf struct {

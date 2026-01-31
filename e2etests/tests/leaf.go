@@ -9,7 +9,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/infra"
 )
 
-func changeLeafPrefixes(leaf infra.Leaf, defaultPrefixes, redPrefixes, bluePrefixes []string) {
+func changeLeafPrefixes(leaf infra.Leaf, defaultPrefixes, redPrefixes, bluePrefixes []string, redRTs, blueRTs infra.RouteTargets) {
 	defaultIPv4, defaultIPv6 := separateIPFamilies(defaultPrefixes)
 	redIPv4, redIPv6 := separateIPFamilies(redPrefixes)
 	blueIPv4, blueIPv6 := separateIPFamilies(bluePrefixes)
@@ -21,12 +21,14 @@ func changeLeafPrefixes(leaf infra.Leaf, defaultPrefixes, redPrefixes, bluePrefi
 			IPV6: defaultIPv6,
 		},
 		Red: infra.Addresses{
-			IPV4: redIPv4,
-			IPV6: redIPv6,
+			IPV4:         redIPv4,
+			IPV6:         redIPv6,
+			RouteTargets: redRTs,
 		},
 		Blue: infra.Addresses{
-			IPV4: blueIPv4,
-			IPV6: blueIPv6,
+			IPV4:         blueIPv4,
+			IPV6:         blueIPv6,
+			RouteTargets: blueRTs,
 		},
 	}
 	config, err := infra.LeafConfigToFRR(leafConfiguration)
@@ -36,17 +38,19 @@ func changeLeafPrefixes(leaf infra.Leaf, defaultPrefixes, redPrefixes, bluePrefi
 }
 
 func removeLeafPrefixes(leaf infra.Leaf) {
-	changeLeafPrefixes(leaf, []string{}, []string{}, []string{})
+	changeLeafPrefixes(leaf, []string{}, []string{}, []string{}, infra.RouteTargets{}, infra.RouteTargets{})
 }
 
-func redistributeConnectedForLeaf(leaf infra.Leaf) {
+func redistributeConnectedForLeaf(leaf infra.Leaf, redRTs, blueRTs infra.RouteTargets) {
 	leafConfiguration := infra.LeafConfiguration{
 		Leaf: leaf,
 		Red: infra.Addresses{
 			RedistributeConnected: true,
+			RouteTargets:          redRTs,
 		},
 		Blue: infra.Addresses{
 			RedistributeConnected: true,
+			RouteTargets:          blueRTs,
 		},
 		Default: infra.Addresses{
 			RedistributeConnected: true,

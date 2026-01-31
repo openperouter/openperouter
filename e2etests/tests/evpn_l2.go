@@ -126,8 +126,8 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 	}
 	DescribeTable("should create two pods connected to the l2 overlay", func(tc testCase) {
 		By("setting redistribute connected on leaves")
-		redistributeConnectedForLeaf(infra.LeafAConfig)
-		redistributeConnectedForLeaf(infra.LeafBConfig)
+		redistributeConnectedForLeaf(infra.LeafAConfig, emptyRouteTargets, emptyRouteTargets)
+		redistributeConnectedForLeaf(infra.LeafBConfig, emptyRouteTargets, emptyRouteTargets)
 
 		err := Updater.CleanButUnderlay()
 		Expect(err).NotTo(HaveOccurred())
@@ -287,7 +287,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			hostBRedIPs:  []string{infra.HostBRedIPv4, infra.HostBRedIPv6},
 			nadMaster:    "br-hs-110",
 			hostMaster: v1alpha1.HostMaster{
-				Type:       ovsBridgeHostAttachment,
+				Type: ovsBridgeHostAttachment,
 				OVSBridge: &v1alpha1.OVSBridgeConfig{
 					AutoCreate: true,
 				},
@@ -301,7 +301,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			hostBRedIPs:  []string{infra.HostBRedIPv6},
 			nadMaster:    "br-hs-110",
 			hostMaster: v1alpha1.HostMaster{
-				Type:       ovsBridgeHostAttachment,
+				Type: ovsBridgeHostAttachment,
 				OVSBridge: &v1alpha1.OVSBridgeConfig{
 					AutoCreate: true,
 				},
