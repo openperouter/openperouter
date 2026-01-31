@@ -118,6 +118,94 @@ func PodForNode(cs clientset.Interface, nodeName string) (*corev1.Pod, error) {
 	return &pods.Items[0], nil
 }
 
+// ConfigFromHostSessionForAllNodes creates FRRConfigurations for all nodes in the cluster.
+// In container mode (hostMode=false): Creates configs WITHOUT nodeSelector that apply to all pods.
+//   This allows any frr-k8s pod to connect to router pods via cluster networking.
+// In systemd mode (hostMode=true): Creates per-node configs WITH nodeSelector.
+//   This ensures each frr-k8s pod only connects to its local router on the same node.
+func ConfigFromHostSessionForAllNodes(cs clientset.Interface, hostsession v1alpha1.HostSession, name string, hostMode bool) ([]frrk8sapi.FRRConfiguration, error) {
+	if hostsession.LocalCIDR.IPv4 == "" && hostsession.LocalCIDR.IPv6 == "" {
+		return nil, fmt.Errorf("LocalCIDR is required for HostSession %s", name)
+	}
+
+	// In container mode, use the original approach: configs without nodeSelector
+	if !hostMode {
+		return ConfigFromHostSession(hostsession, name)
+	}
+
+	// In systemd mode, create per-node configs with nodeSelector
+	nodes, err := k8s.GetNodes(cs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get nodes: %w", err)
+	}
+
+	var allConfigs []frrk8sapi.FRRConfiguration
+
+	for _, node := range nodes {
+		nodeSelector := map[string]string{
+			"kubernetes.io/hostname": node.Name,
+		}
+
+		if hostsession.LocalCIDR.IPv4 != "" {
+			config, err := createFRRConfigForNode(hostsession, name, hostsession.LocalCIDR.IPv4, ipfamily.IPv4, &node, WithNodeSelector(nodeSelector))
+			if err != nil {
+				return nil, fmt.Errorf("failed to create IPv4 config for node %s: %w", node.Name, err)
+			}
+			allConfigs = append(allConfigs, config)
+		}
+
+		if hostsession.LocalCIDR.IPv6 != "" {
+			config, err := createFRRConfigForNode(hostsession, name, hostsession.LocalCIDR.IPv6, ipfamily.IPv6, &node, WithNodeSelector(nodeSelector))
+			if err != nil {
+				return nil, fmt.Errorf("failed to create IPv6 config for node %s: %w", node.Name, err)
+			}
+			allConfigs = append(allConfigs, config)
+		}
+	}
+
+	return allConfigs, nil
+}
+
+func createFRRConfigForNode(hostsession v1alpha1.HostSession, name, cidr string, family ipfamily.Family, node *corev1.Node, tweak ...func(*frrk8sapi.FRRConfiguration)) (frrk8sapi.FRRConfiguration, error) {
+	// All routers use the same IP from RouterIPFromCIDR
+	// The nodeSelector ensures frr-k8s pod talks to the router on its own node
+	routerIP, err := openperouter.RouterIPFromCIDR(cidr)
+	if err != nil {
+		return frrk8sapi.FRRConfiguration{}, err
+	}
+
+	config := frrk8sapi.FRRConfiguration{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name + "-" + node.Name + "-" + string(family),
+			Namespace: Namespace,
+		},
+		Spec: frrk8sapi.FRRConfigurationSpec{
+			BGP: frrk8sapi.BGPConfig{
+				Routers: []frrk8sapi.Router{
+					{
+						ASN: hostsession.HostASN,
+						Neighbors: []frrk8sapi.Neighbor{
+							{
+								ASN:     hostsession.ASN,
+								Address: routerIP,
+								ToReceive: frrk8sapi.Receive{
+									Allowed: frrk8sapi.AllowedInPrefixes{
+										Mode: frrk8sapi.AllowAll,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	for _, t := range tweak {
+		t(&config)
+	}
+	return config, nil
+}
+
 func createFRRConfig(hostsession v1alpha1.HostSession, name, cidr string, family ipfamily.Family, tweak ...func(*frrk8sapi.FRRConfiguration)) (frrk8sapi.FRRConfiguration, error) {
 	routerIP, err := openperouter.RouterIPFromCIDR(cidr)
 	if err != nil {
