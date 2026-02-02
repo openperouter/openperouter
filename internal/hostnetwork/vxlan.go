@@ -27,7 +27,7 @@ func setupVXLan(params VNIParams, bridge *netlink.Bridge) error {
 		return fmt.Errorf("failed to set neigh suppression for %s: %w", vxlan.Name, err)
 	}
 
-	if err = netlink.LinkSetUp(vxlan); err != nil {
+	if err = linkSetUp(vxlan); err != nil {
 		return fmt.Errorf("could not set link up for vxlan %s: %v", vxlan.Name, err)
 	}
 

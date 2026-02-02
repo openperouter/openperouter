@@ -17,7 +17,7 @@ func setupVRF(name string) (*netlink.Vrf, error) {
 		return nil, err
 	}
 
-	err = netlink.LinkSetUp(vrf)
+	err = linkSetUp(vrf)
 	if err != nil {
 		return nil, fmt.Errorf("could not set link up for VRF %s: %v", name, err)
 	}

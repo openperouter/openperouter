@@ -28,7 +28,7 @@ func createHostBridge(vni int) (netlink.Link, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not find host bridge %s: %w", name, err)
 	}
-	if err := netlink.LinkSetUp(bridge); err != nil {
+	if err := linkSetUp(bridge); err != nil {
 		return nil, fmt.Errorf("could not set host bridge %s up: %w", name, err)
 	}
 
