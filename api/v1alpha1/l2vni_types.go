@@ -67,7 +67,7 @@ type L2VNISpec struct {
 }
 
 // LinuxBridgeConfig contains configuration for Linux bridge type.
-// +kubebuilder:validation:xvalidation:rule="(self.name != '' && self.autoCreate == false) || (self.name == '' && self.autoCreate == true)",message="either name must be set or autoCreate must be true, but not both."
+// +kubebuilder:validation:XValidation:rule="(self.?name.orValue(\"\") == \"\") == self.autoCreate",message="either name must be set or autoCreate must be true, but not both."
 type LinuxBridgeConfig struct {
 	// Name of the Linux bridge interface.
 	// +kubebuilder:validation:Pattern=`^[a-zA-Z][a-zA-Z0-9_-]*$`
@@ -83,7 +83,7 @@ type LinuxBridgeConfig struct {
 }
 
 // OVSBridgeConfig contains configuration for OVS bridge type.
-// +kubebuilder:validation:xvalidation:rule="(self.name != '' && self.autoCreate == false) || (self.name == '' && self.autoCreate == true)",message="either name must be set or autoCreate must be true, but not both."
+// +kubebuilder:validation:XValidation:rule="(self.?name.orValue(\"\") == \"\") == self.autoCreate",message="either name must be set or autoCreate must be true, but not both."
 type OVSBridgeConfig struct {
 	// Name of the OVS bridge interface.
 	// +kubebuilder:validation:Pattern=`^[a-zA-Z][a-zA-Z0-9_-]*$`

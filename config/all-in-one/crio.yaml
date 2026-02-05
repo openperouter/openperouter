@@ -73,6 +73,10 @@ spec:
                         pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
                         type: string
                     type: object
+                    x-kubernetes-validations:
+                    - message: either name must be set or autoCreate must be true,
+                        but not both.
+                      rule: (self.?name.orValue("") == "") == self.autoCreate
                   ovsBridge:
                     description: OVSBridge configuration. Must be set when Type is
                       "ovs-bridge".
@@ -89,6 +93,10 @@ spec:
                         pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
                         type: string
                     type: object
+                    x-kubernetes-validations:
+                    - message: either name must be set or autoCreate must be true,
+                        but not both.
+                      rule: (self.?name.orValue("") == "") == self.autoCreate
                   type:
                     description: 'Type of the host interface. Supported values: "linux-bridge",
                       "ovs-bridge".'
