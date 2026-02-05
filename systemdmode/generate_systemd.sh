@@ -95,7 +95,8 @@ podman create --pod=controllerpod --name=controller \
 	--uts=host \
 	-t "$ROUTER_IMAGE" \
 	--frrconfig /etc/perouter/frr/frr.conf --pid-path /etc/perouter/frr/frr.pid --reloader-socket /etc/perouter/frr/frr.socket \
-	--mode host
+	--mode host \
+	--namespace openperouter-system
 
 # Generate systemd unit files for both pods
 podman generate systemd --new --files --name routerpod
