@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -55,6 +56,15 @@ func (r *StaticConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	router, err := r.RouterProvider.New(ctx)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get router instance: %w", err)
+	}
+
+	canReconcile, err := router.CanReconcile(ctx)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("canReconcile error: %w", err)
+	}
+	if !canReconcile {
+		logger.Info("router not ready for reconciliation, will retry", "retryAfter", "10s")
+		return ctrl.Result{Requeue: true, RequeueAfter: 2 * time.Second}, nil
 	}
 
 	targetNS, err := router.TargetNS(ctx)
