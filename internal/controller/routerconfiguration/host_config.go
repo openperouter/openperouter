@@ -10,6 +10,7 @@ import (
 
 	"github.com/openperouter/openperouter/internal/conversion"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
+	"github.com/openperouter/openperouter/internal/hostnetwork/bridgerefresh"
 	"github.com/openperouter/openperouter/internal/sysctl"
 )
 
@@ -81,6 +82,9 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 		if err := hostnetwork.SetupL2VNI(ctx, vni); err != nil {
 			return fmt.Errorf("failed to setup vni: %w", err)
 		}
+		if err := bridgerefresh.StartForVNI(ctx, vni); err != nil {
+			return fmt.Errorf("failed to start bridge refresher for vni %d: %w", vni.VNI, err)
+		}
 	}
 
 	slog.InfoContext(ctx, "setting up passthrough")
@@ -101,6 +105,7 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 	if err := hostnetwork.RemoveNonConfiguredVNIs(config.targetNamespace, toCheck); err != nil {
 		return fmt.Errorf("failed to remove deleted vnis: %w", err)
 	}
+	bridgerefresh.StopForRemovedVNIs(hostConfig.L2VNIs)
 
 	if len(apiConfig.L3Passthrough) == 0 {
 		if err := hostnetwork.RemovePassthrough(config.targetNamespace); err != nil {

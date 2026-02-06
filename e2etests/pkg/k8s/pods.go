@@ -206,3 +206,37 @@ func podConditionStatus(p *corev1.Pod, condition corev1.PodConditionType) corev1
 
 	return corev1.ConditionUnknown
 }
+
+// CreateSilentPod creates a pod using busybox that sleeps indefinitely and doesn't generate network traffic.
+// This is useful for testing scenarios where we need a workload that is mostly silent on the network
+// but can still execute commands (like ping) when needed.
+func CreateSilentPod(cs clientset.Interface, podName, namespace string, modifiers ...PodModifier) (*corev1.Pod, error) {
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      podName,
+			Namespace: namespace,
+		},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{
+				{
+					Name:    "busybox",
+					Image:   "busybox:1.36",
+					Command: []string{"sleep", "infinity"},
+				},
+			},
+		},
+	}
+	for _, modifier := range modifiers {
+		modifier(pod)
+	}
+
+	pod, err := cs.CoreV1().Pods(namespace).Create(context.Background(), pod, metav1.CreateOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create silent pod %s: %w", podName, err)
+	}
+	res, err := waitForPodReady(cs, pod)
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
+}

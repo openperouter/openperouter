@@ -120,7 +120,7 @@ func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
 			return fmt.Errorf("could not find vrf %s in namespace %s: %w", params.VRF, params.TargetNS, err)
 		}
 
-		err = netlink.LinkSetMaster(peVeth, vrf)
+		err = linkSetMaster(peVeth, vrf)
 		if err != nil {
 			return fmt.Errorf("failed to set vrf %s as master of pe veth %s: %w", params.VRF, peVeth.Attrs().Name, err)
 		}
@@ -188,7 +188,7 @@ func SetupL2VNI(ctx context.Context, params L2VNIParams) error {
 			if err != nil {
 				return fmt.Errorf("SetupL2VNI: failed to get host master for VRF %s: %w", params.VRF, err)
 			}
-			if err := netlink.LinkSetMaster(hostVeth, master); err != nil {
+			if err := linkSetMaster(hostVeth, master); err != nil {
 				return fmt.Errorf("failed to set host master %s as master of host veth %s: %w", master.Attrs().Name, hostVeth.Attrs().Name, err)
 			}
 		default:
@@ -201,12 +201,12 @@ func SetupL2VNI(ctx context.Context, params L2VNIParams) error {
 		if err != nil {
 			return fmt.Errorf("could not find peer veth %s in namespace %s: %w", vethNames.NamespaceSide, params.TargetNS, err)
 		}
-		name := bridgeName(params.VNI)
+		name := BridgeName(params.VNI)
 		bridge, err := netlink.LinkByName(name)
 		if err != nil {
 			return fmt.Errorf("could not find bridge %s in namespace %s: %w", name, params.TargetNS, err)
 		}
-		if err := netlink.LinkSetMaster(peVeth, bridge); err != nil {
+		if err := linkSetMaster(peVeth, bridge); err != nil {
 			return fmt.Errorf("failed to set bridge %s as master of pe veth %s: %w", name, peVeth.Attrs().Name, err)
 		}
 		if len(params.L2GatewayIPs) > 0 {
