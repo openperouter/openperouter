@@ -31,7 +31,7 @@ mkdir -p "${TEMP_BASE}/run/containerd"
 mkdir -p "${TEMP_BASE}/run/netns"
 mkdir -p "${TEMP_BASE}/etc/perouter/frr"
 mkdir -p "${TEMP_BASE}/var/lib/hostbridge"
-mkdir -p "${TEMP_BASE}/var/lib/openperouter"
+mkdir -p "${TEMP_BASE}/var/lib/openperouter/configs"
 mkdir -p "${TEMP_BASE}/proc"
 mkdir -p "${TEMP_BASE}/run/dbus"
 
@@ -92,9 +92,11 @@ podman create --pod=controllerpod --name=controller \
 	--network=host \
 	--cap-add=CAP_NET_BIND_SERVICE,CAP_NET_ADMIN,CAP_NET_RAW,CAP_SYS_ADMIN \
 	--pid=host \
+	--uts=host \
 	-t "$ROUTER_IMAGE" \
-	--loglevel debug --frrconfig /etc/perouter/frr/frr.conf --pid-path /etc/perouter/frr/frr.pid --reloader-socket /etc/perouter/frr/frr.socket \
-	--mode host --nodename "NODENAME"
+	--frrconfig /etc/perouter/frr/frr.conf --pid-path /etc/perouter/frr/frr.pid --reloader-socket /etc/perouter/frr/frr.socket \
+	--mode host \
+	--namespace openperouter-system
 
 # Generate systemd unit files for both pods
 podman generate systemd --new --files --name routerpod
@@ -105,11 +107,6 @@ podman generate systemd --new --files --name controllerpod
 # and /tmp/tmp.XXXXX/var/lib/openperouter to /var/lib/openperouter
 echo "Replacing temporary paths with actual host paths..."
 sed -i "s|${TEMP_BASE}||g" container-controller.service container-reloader.service
-
-# Use the hostname systemd expansion %H inside the unit to configure the 
-# nodename, we may need to improve this mechanism for scenarios where ndename 
-# is not the hostname
-sed -i 's|NODENAME|%H|g' container-controller.service container-reloader.service
 
 # Clean up the temporary pods and containers
 # The --new flag ensures systemd units will create/remove them on start/stop

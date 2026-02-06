@@ -152,8 +152,8 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		DeferCleanup(func() {
-			removeLeafPrefixes(infra.LeafAConfig)
-			removeLeafPrefixes(infra.LeafBConfig)
+			Expect(infra.LeafAConfig.RemovePrefixes()).To(Succeed())
+			Expect(infra.LeafBConfig.RemovePrefixes()).To(Succeed())
 			dumpIfFails(cs)
 			err := Updater.CleanButUnderlay()
 			Expect(err).NotTo(HaveOccurred())
@@ -287,7 +287,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			hostBRedIPs:  []string{infra.HostBRedIPv4, infra.HostBRedIPv6},
 			nadMaster:    "br-hs-110",
 			hostMaster: v1alpha1.HostMaster{
-				Type:       ovsBridgeHostAttachment,
+				Type: ovsBridgeHostAttachment,
 				OVSBridge: &v1alpha1.OVSBridgeConfig{
 					AutoCreate: true,
 				},
@@ -301,7 +301,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			hostBRedIPs:  []string{infra.HostBRedIPv6},
 			nadMaster:    "br-hs-110",
 			hostMaster: v1alpha1.HostMaster{
-				Type:       ovsBridgeHostAttachment,
+				Type: ovsBridgeHostAttachment,
 				OVSBridge: &v1alpha1.OVSBridgeConfig{
 					AutoCreate: true,
 				},

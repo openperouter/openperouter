@@ -29,7 +29,7 @@ func main() {
 		outputPath     = flag.String("output-path", "/shared", "Path to write credentials")
 		k8sPort        = flag.Int("k8s-port", 443, "Kubernetes API server port")
 		apiServer      = flag.String("api-server", "", "Kubernetes API server address (if empty, will be resolved)")
-		hostConfigPath = flag.String("config-path", "/etc/openperouter/config.yaml", "Path to static configuration file")
+		hostConfigPath = flag.String("config-path", "/etc/openperouter/node-config.yaml", "Path to static configuration file")
 	)
 	flag.Parse()
 

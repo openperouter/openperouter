@@ -15,7 +15,9 @@ import (
 )
 
 type interfacesConfiguration struct {
-	targetNamespace string
+	targetNamespace    string
+	underlayFromMultus bool
+	nodeIndex          int
 	conversion.ApiConfigData
 }
 
@@ -41,14 +43,12 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 	slog.InfoContext(ctx, "configure interface start", "namespace", config.targetNamespace)
 	defer slog.InfoContext(ctx, "configure interface end", "namespace", config.targetNamespace)
 	apiConfig := conversion.ApiConfigData{
-		UnderlayFromMultus: config.UnderlayFromMultus,
-		NodeIndex:          config.NodeIndex,
-		Underlays:          config.Underlays,
-		L3VNIs:             config.L3VNIs,
-		L2VNIs:             config.L2VNIs,
-		L3Passthrough:      config.L3Passthrough,
+		Underlays:     config.Underlays,
+		L3VNIs:        config.L3VNIs,
+		L2VNIs:        config.L2VNIs,
+		L3Passthrough: config.L3Passthrough,
 	}
-	hostConfig, err := conversion.APItoHostConfig(config.NodeIndex, config.targetNamespace, apiConfig)
+	hostConfig, err := conversion.APItoHostConfig(config.nodeIndex, config.targetNamespace, config.underlayFromMultus, apiConfig)
 	if err != nil {
 		return fmt.Errorf("failed to convert config to host configuration: %w", err)
 	}

@@ -1,0 +1,15 @@
+l2vnis:
+  - vrf: storage
+    vni: 300
+    vxlanport: 4789
+    hostmaster:
+      type: linux-bridge
+      linuxBridge:
+        name: br-storage
+  - vrf: management
+    vni: 400
+    vxlanport: 4789
+    hostmaster:
+      type: ovs-bridge
+      ovsBridge:
+        name: ovsbr0

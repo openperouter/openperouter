@@ -636,13 +636,11 @@ func TestAPItoFRR(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			apiConfig := ApiConfigData{
-				NodeIndex:     tt.nodeIndex,
 				Underlays:     tt.underlays,
 				L3VNIs:        tt.vnis,
 				L3Passthrough: tt.l3Passthrough,
-				LogLevel:      tt.logLevel,
 			}
-			got, err := APItoFRR(apiConfig)
+			got, err := APItoFRR(apiConfig, tt.nodeIndex, tt.logLevel)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("APItoFRR() error = %v, wantErr %v", err, tt.wantErr)
 				return
