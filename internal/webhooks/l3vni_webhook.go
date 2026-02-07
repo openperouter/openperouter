@@ -127,10 +127,6 @@ func validateL3VNI(l3vni *v1alpha1.L3VNI) error {
 		toValidate = append(toValidate, *l3vni.DeepCopy())
 	}
 
-	if err := conversion.ValidateRouteTargets(l3vni.Spec); err != nil {
-		return fmt.Errorf("validation failed: %w", err)
-	}
-
 	nodeList := &corev1.NodeList{}
 	if err := WebhookClient.List(context.Background(), nodeList, &client.ListOptions{}); err != nil {
 		return fmt.Errorf("failed to get existing Node objects when validating L3VNI: %w", err)
