@@ -1,0 +1,17 @@
+l3vnis:
+  - vrf: red
+    hostSession:
+      asn: 64514
+      hostASN: 64515
+      localCIDR:
+        ipv4: "192.169.10.0/24"
+        ipv6: "2001:db8:1::/64"
+    vni: 100
+  - vrf: blue
+    hostSession:
+      asn: 64514
+      hostASN: 64516
+      localCIDR:
+        ipv4: "192.169.11.0/24"
+        ipv6: "2001:db8:2::/64"
+    vni: 200

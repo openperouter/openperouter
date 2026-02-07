@@ -36,6 +36,7 @@ spec:
 | `asn` | integer | Local ASN for BGP sessions | Yes |
 | `nics` | array | List of network interface names to move to router namespace | Yes |
 | `neighbors` | array | List of BGP neighbors to peer with | Yes |
+| `nodeSelector` | object | Label selector to target specific nodes (applies to all nodes if omitted) | No |
 
 **Note**: Unlike EVPN mode, passthrough mode does not require an `evpn` field in the underlay configuration since no VTEP IP allocation is needed.
 
@@ -67,6 +68,7 @@ spec:
 | `hostsession.hostasn` | integer | Host ASN for BGP session | Yes |
 | `hostsession.localcidr.ipv4` | string | IPv4 CIDR for veth pair IP allocation | No |
 | `hostsession.localcidr.ipv6` | string | IPv6 CIDR for veth pair IP allocation | No |
+| `nodeSelector` | object | Label selector to target specific nodes (applies to all nodes if omitted) | No |
 
 ### Dual Stack Configuration
 
@@ -106,6 +108,16 @@ When you create or update L3Passthrough configurations, OpenPERouter automatical
    - Host side: Second IP in the CIDR (e.g., `192.169.10.2`)
 3. **Establishes BGP Session**: Opens BGP session between router and host using the specified ASNs
 4. **Configures Route Advertisement**: Sets up route advertisement for both IPv4 and IPv6 address families
+
+## Per-Node Configuration
+
+L3Passthrough resources support the optional `nodeSelector` field, which allows you to target specific configurations to specific nodes. This is useful for:
+
+- Configuring passthrough only on edge nodes
+- Security zone-based configurations
+- Selective deployment based on node roles or capabilities
+
+For detailed information and examples, see the [Node Selector Configuration]({{< ref "node-selector.md" >}}) documentation.
 
 ## API Reference
 

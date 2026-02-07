@@ -1,0 +1,19 @@
+# L2VNI for worker nodes only
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: L2VNI
+metadata:
+  name: app-network
+  namespace: openperouter-system
+spec:
+  nodeSelector:
+    matchLabels:
+      node-role.kubernetes.io/worker: ""
+  vni: 10100
+  vxlanport: 4789
+  hostmaster:
+    type: linux-bridge
+    linuxBridge:
+      autoCreate: true
+  l2gatewayips:
+    - 10.100.0.1/24
+

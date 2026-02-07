@@ -24,10 +24,10 @@ const (
 
 // annotateCurrentNode adds the node index annotation to the current node based on
 // the content of the static configuration file.
-func annotateCurrentNode(ctx context.Context, configPath, nodeName string) error {
-	config, err := staticconfiguration.ReadFromFile(configPath)
+func annotateCurrentNode(ctx context.Context, nodeConfigPath, nodeName string) error {
+	nodeConfig, err := staticconfiguration.ReadNodeConfig(nodeConfigPath)
 	if err != nil {
-		return fmt.Errorf("failed to read static configuration from %s: %w", configPath, err)
+		return fmt.Errorf("failed to read node configuration from %s: %w", nodeConfigPath, err)
 	}
 
 	k8sConfig, err := rest.InClusterConfig()
@@ -44,7 +44,7 @@ func annotateCurrentNode(ctx context.Context, configPath, nodeName string) error
 	patchData := map[string]interface{}{
 		"metadata": map[string]interface{}{
 			"annotations": map[string]string{
-				OpenpeNodeIndex: strconv.Itoa(config.NodeIndex),
+				OpenpeNodeIndex: strconv.Itoa(nodeConfig.NodeIndex),
 			},
 		},
 	}

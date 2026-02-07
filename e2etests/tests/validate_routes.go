@@ -10,6 +10,7 @@ import (
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/e2etests/pkg/executor"
 	"github.com/openperouter/openperouter/e2etests/pkg/frr"
+	"github.com/openperouter/openperouter/e2etests/pkg/infra"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 
 	corev1 "k8s.io/api/core/v1"
@@ -21,7 +22,7 @@ func checkBGPPrefixesForHostSession(frrk8s *corev1.Pod, hostSession v1alpha1.Hos
 		ipv4Routes, ipv6Routes, err := frr.BGPRoutesFor(exec)
 		Expect(err).NotTo(HaveOccurred())
 
-		ipv4Prefixes, ipv6Prefixes := separateIPFamilies(prefixes)
+		ipv4Prefixes, ipv6Prefixes := infra.SeparateIPFamilies(prefixes)
 
 		if err := checkPrefixesForIPFamily(frrk8s, ipv4Prefixes, hostSession.LocalCIDR.IPv4, "IPv4", shouldExist, ipv4Routes); err != nil {
 			return err

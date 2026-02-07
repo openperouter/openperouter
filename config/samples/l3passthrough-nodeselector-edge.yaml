@@ -1,0 +1,16 @@
+# L3Passthrough for edge nodes
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: L3Passthrough
+metadata:
+  name: edge-passthrough
+  namespace: openperouter-system
+spec:
+  nodeSelector:
+    matchLabels:
+      node-role.kubernetes.io/edge: ""
+  hostsession:
+    asn: 64512
+    hostasn: 64700
+    localcidr:
+      ipv4: 192.169.20.0/24
+

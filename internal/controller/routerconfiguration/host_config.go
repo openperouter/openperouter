@@ -10,11 +10,14 @@ import (
 
 	"github.com/openperouter/openperouter/internal/conversion"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
+	"github.com/openperouter/openperouter/internal/hostnetwork/bridgerefresh"
 	"github.com/openperouter/openperouter/internal/sysctl"
 )
 
 type interfacesConfiguration struct {
-	targetNamespace string
+	targetNamespace    string
+	underlayFromMultus bool
+	nodeIndex          int
 	conversion.ApiConfigData
 }
 
@@ -40,14 +43,12 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 	slog.InfoContext(ctx, "configure interface start", "namespace", config.targetNamespace)
 	defer slog.InfoContext(ctx, "configure interface end", "namespace", config.targetNamespace)
 	apiConfig := conversion.ApiConfigData{
-		UnderlayFromMultus: config.UnderlayFromMultus,
-		NodeIndex:          config.NodeIndex,
-		Underlays:          config.Underlays,
-		L3VNIs:             config.L3VNIs,
-		L2VNIs:             config.L2VNIs,
-		L3Passthrough:      config.L3Passthrough,
+		Underlays:     config.Underlays,
+		L3VNIs:        config.L3VNIs,
+		L2VNIs:        config.L2VNIs,
+		L3Passthrough: config.L3Passthrough,
 	}
-	hostConfig, err := conversion.APItoHostConfig(config.NodeIndex, config.targetNamespace, apiConfig)
+	hostConfig, err := conversion.APItoHostConfig(config.nodeIndex, config.targetNamespace, config.underlayFromMultus, apiConfig)
 	if err != nil {
 		return fmt.Errorf("failed to convert config to host configuration: %w", err)
 	}
@@ -55,9 +56,12 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 	slog.InfoContext(ctx, "ensuring sysctls")
 	if err := sysctl.Ensure(
 		config.targetNamespace,
+		sysctl.IPv4Forwarding(),
 		sysctl.IPv6Forwarding(),
 		sysctl.ArpAcceptAll(),
 		sysctl.ArpAcceptDefault(),
+		sysctl.AcceptUntrackedNADefault(),
+		sysctl.AcceptUntrackedNAAll(),
 	); err != nil {
 		return fmt.Errorf("failed to ensure sysctls: %w", err)
 	}
@@ -77,6 +81,9 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 		slog.InfoContext(ctx, "setting up L2VNI", "vni", vni.VNI)
 		if err := hostnetwork.SetupL2VNI(ctx, vni); err != nil {
 			return fmt.Errorf("failed to setup vni: %w", err)
+		}
+		if err := bridgerefresh.StartForVNI(ctx, vni); err != nil {
+			return fmt.Errorf("failed to start bridge refresher for vni %d: %w", vni.VNI, err)
 		}
 	}
 
@@ -98,6 +105,7 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 	if err := hostnetwork.RemoveNonConfiguredVNIs(config.targetNamespace, toCheck); err != nil {
 		return fmt.Errorf("failed to remove deleted vnis: %w", err)
 	}
+	bridgerefresh.StopForRemovedVNIs(hostConfig.L2VNIs)
 
 	if len(apiConfig.L3Passthrough) == 0 {
 		if err := hostnetwork.RemovePassthrough(config.targetNamespace); err != nil {

@@ -152,8 +152,8 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		DeferCleanup(func() {
-			removeLeafPrefixes(infra.LeafAConfig)
-			removeLeafPrefixes(infra.LeafBConfig)
+			Expect(infra.LeafAConfig.RemovePrefixes()).To(Succeed())
+			Expect(infra.LeafBConfig.RemovePrefixes()).To(Succeed())
 			dumpIfFails(cs)
 			err := Updater.CleanButUnderlay()
 			Expect(err).NotTo(HaveOccurred())

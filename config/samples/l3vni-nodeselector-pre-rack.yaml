@@ -1,0 +1,39 @@
+---
+# L3VNI for rack-1 nodes
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: L3VNI
+metadata:
+  name: tenant-a-rack-1
+  namespace: openperouter-system
+spec:
+  nodeSelector:
+    matchLabels:
+      topology.kubernetes.io/rack: rack-1
+  vrf: tenant-a
+  vni: 5001
+  vxlanport: 4789
+  hostsession:
+    asn: 64512
+    hostasn: 64600
+    localcidr:
+      ipv4: 192.169.1.0/24
+---
+# L3VNI for rack-2 nodes
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: L3VNI
+metadata:
+  name: tenant-a-rack-2
+  namespace: openperouter-system
+spec:
+  nodeSelector:
+    matchLabels:
+      topology.kubernetes.io/rack: rack-2
+  vrf: tenant-a
+  vni: 5002
+  vxlanport: 4789
+  hostsession:
+    asn: 64512
+    hostasn: 64600
+    localcidr:
+      ipv4: 192.169.2.0/24
+

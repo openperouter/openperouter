@@ -40,6 +40,13 @@ spec:
 | `asn` | integer | Local ASN for BGP sessions | Yes |
 | `nics` | array | List of network interface names to move to router namespace | Yes |
 | `neighbors` | array | List of BGP neighbors to peer with | Yes |
+| `nodeSelector` | object | Label selector to target specific nodes (applies to all nodes if omitted) | No |
+
+### Per-Node Configuration
+
+The Underlay resource supports an optional `nodeSelector` field that allows you to target specific configurations to specific nodes. This is useful for multi-rack deployments, multi-datacenter clusters, or heterogeneous hardware environments.
+
+For detailed information and examples, see the [Node Selector Configuration]({{< ref "node-selector.md" >}}) documentation.
 
 ### Alternative: Multus Network for Top of Rack Connectivity
 

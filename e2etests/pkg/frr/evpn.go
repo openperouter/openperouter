@@ -35,22 +35,71 @@ type EVPNData struct {
 	TotalPrefix      int       `json:"totalPrefix"`
 }
 
-// ContainsType5Route tells if the given prefix is received as type 5 route
+// ContainsType5RouteForVNI tells if the given prefix is received as type 5 route
 // with the given vtep as next hop.
 func (e *EVPNData) ContainsType5RouteForVNI(prefix string, vtep string, vni int) bool {
+	for _, path := range e.allPaths() {
+		routePrefix := fmt.Sprintf("%s/%d", path.IP, path.IPLen)
+		if routePrefix == prefix && pathHasVTEPAndVNI(path, vtep, vni) {
+			return true
+		}
+	}
+	return false
+}
+
+// ContainsType2MACIPRouteForVNI checks if a Type 2 MAC+IP route exists for the given VNI.
+// Type 2 routes have RouteType == 2 and include both MAC and IP information.
+// The ip parameter should be the bare IP address (e.g., "192.168.1.10").
+func (e *EVPNData) ContainsType2MACIPRouteForVNI(ip string, vtep string, vni int) bool {
+	isType2MACIPRoute := func(p Path) bool {
+		return p.RouteType == 2 && p.IPLen > 0
+	}
+	for _, path := range e.matchingPaths(isType2MACIPRoute) {
+		if path.IP == ip && pathHasVTEPAndVNI(path, vtep, vni) {
+			return true
+		}
+	}
+	return false
+}
+
+// allPaths returns a flat slice of paths from all entries and prefixes.
+func (e *EVPNData) allPaths() []Path {
+	var paths []Path
 	for _, entry := range e.Entries {
 		for _, prefixEntry := range entry.Prefixes {
 			for _, path := range prefixEntry.Paths {
-				routePrefix := fmt.Sprintf("%s/%d", path.IP, path.IPLen)
-				if routePrefix == prefix {
-					for _, n := range path.Nexthops {
-						if n.IP == vtep &&
-							vniFromExtendedCommunity(path.ExtendedCommunity.String) == vni {
-							return true
-						}
-					}
+				paths = append(paths, path)
+			}
+		}
+	}
+	return paths
+}
+
+// matchingPaths returns a flat slice of paths from all entries and prefixes that match the predicate.
+// If predicate is nil, all paths are returned.
+func (e *EVPNData) matchingPaths(predicate func(Path) bool) []Path {
+	var paths []Path
+	for _, entry := range e.Entries {
+		for _, prefixEntry := range entry.Prefixes {
+			for _, path := range prefixEntry.Paths {
+				if predicate == nil || predicate(path) {
+					paths = append(paths, path)
 				}
 			}
+		}
+	}
+	return paths
+}
+
+// pathHasVTEPAndVNI checks if a path has the given VTEP as a nexthop and the given VNI in its extended community.
+func pathHasVTEPAndVNI(path Path, vtep string, vni int) bool {
+	pathVNIs, err := vnisFromExtendedCommunity(path.ExtendedCommunity.String)
+	if err != nil {
+		return false
+	}
+	for _, n := range path.Nexthops {
+		if n.IP == vtep && containsVNI(pathVNIs, vni) {
+			return true
 		}
 	}
 	return false
@@ -158,19 +207,50 @@ func parseL2VPNEVPN(data []byte) (EVPNData, error) {
 	return res, nil
 }
 
-func vniFromExtendedCommunity(extendedCommunity string) int {
-	// extended community looks like: "RT:64514:200 ET:8 Rmac:22:2e:e4:41:7f:5c"
+func vnisFromExtendedCommunity(extendedCommunity string) ([]int, error) {
+	// extended community can look like:
+	// "RT:64514:200 ET:8 Rmac:22:2e:e4:41:7f:5c"
+	// or with multiple RTs:
+	// "RT:64514:100 RT:64514:110 ET:8 Rmac:f6:5f:31:5a:33:a2"
+
+	if extendedCommunity == "" {
+		return nil, fmt.Errorf("empty extended community string")
+	}
 
 	parts := strings.Split(extendedCommunity, " ")
-	rtPart := parts[0]
-	rtValues := strings.Split(rtPart, ":")
-
-	vniValueStr := rtValues[2]
-	vni, err := strconv.Atoi(vniValueStr)
-	if err != nil {
-		panic("error getting vni from " + extendedCommunity)
+	if len(parts) == 0 {
+		return nil, fmt.Errorf("no parts found in extended community: %s", extendedCommunity)
 	}
-	return vni
+
+	var vnis []int
+	for _, part := range parts {
+		if !strings.HasPrefix(part, "RT:") {
+			continue
+		}
+		rtValues := strings.Split(part, ":")
+		if len(rtValues) < 3 {
+			continue
+		}
+		vni, err := strconv.Atoi(rtValues[2])
+		if err != nil {
+			continue
+		}
+		vnis = append(vnis, vni)
+	}
+
+	if len(vnis) == 0 {
+		return nil, fmt.Errorf("no VNIs found in extended community: %s", extendedCommunity)
+	}
+	return vnis, nil
+}
+
+func containsVNI(vnis []int, vni int) bool {
+	for _, v := range vnis {
+		if v == vni {
+			return true
+		}
+	}
+	return false
 }
 
 func findRouteTargetFromExtendedCommunity(extendedCommunity string, routeTargets []string) bool {

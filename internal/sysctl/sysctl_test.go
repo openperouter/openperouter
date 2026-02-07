@@ -81,6 +81,8 @@ var _ = Describe("Ensure", func() {
 				Expect(val).To(Equal("1"), "sysctl %s should be enabled", sysctlName)
 			}
 		},
+		Entry("IPv4 forwarding when disabled", "test-ipv4-fwd", []Sysctl{IPv4Forwarding()}, false),
+		Entry("IPv4 forwarding when already enabled", "test-ipv4-fwd-pre", []Sysctl{IPv4Forwarding()}, true),
 		Entry("IPv6 forwarding when disabled", "test-ipv6-fwd", []Sysctl{IPv6Forwarding()}, false),
 		Entry("IPv6 forwarding when already enabled", "test-ipv6-fwd-pre", []Sysctl{IPv6Forwarding()}, true),
 		Entry("arp_accept all when disabled", "test-arp-all", []Sysctl{ArpAcceptAll()}, false),

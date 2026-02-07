@@ -25,7 +25,7 @@ func (e FRREmptyConfigError) Error() string {
 	return string(e)
 }
 
-func APItoFRR(config ApiConfigData) (frr.Config, error) {
+func APItoFRR(config ApiConfigData, nodeIndex int, logLevel string) (frr.Config, error) {
 	if len(config.Underlays) > 1 {
 		return frr.Config{}, errors.New("multiple underlays defined")
 	}
@@ -53,7 +53,7 @@ func APItoFRR(config ApiConfigData) (frr.Config, error) {
 		}
 	}
 
-	routerID, err := routerIDFromUnderlay(underlay, config.NodeIndex)
+	routerID, err := routerIDFromUnderlay(underlay, nodeIndex)
 	if err != nil {
 		return frr.Config{}, fmt.Errorf("failed to get routerID: %w", err)
 	}
@@ -66,7 +66,7 @@ func APItoFRR(config ApiConfigData) (frr.Config, error) {
 
 	var passthroughConfig *frr.PassthroughConfig
 	if len(config.L3Passthrough) > 0 {
-		passthrough, err := passthroughToFRR(config.L3Passthrough[0], config.NodeIndex)
+		passthrough, err := passthroughToFRR(config.L3Passthrough[0], nodeIndex)
 		if err != nil {
 			return frr.Config{}, fmt.Errorf("failed to translate passthrough to frr: %w", err)
 		}
@@ -81,14 +81,14 @@ func APItoFRR(config ApiConfigData) (frr.Config, error) {
 			Underlay:    underlayConfig,
 			Passthrough: passthroughConfig,
 			BFDProfiles: bfdProfiles,
-			Loglevel:    config.LogLevel,
+			Loglevel:    logLevel,
 			VNIs:        []frr.L3VNIConfig{},
 		}, nil
 	}
 
-	vtepIP, err := ipam.VTEPIp(underlay.Spec.EVPN.VTEPCIDR, config.NodeIndex)
+	vtepIP, err := ipam.VTEPIp(underlay.Spec.EVPN.VTEPCIDR, nodeIndex)
 	if err != nil {
-		return frr.Config{}, fmt.Errorf("failed to get vtep ip, cidr %s, nodeIntex %d", underlay.Spec.EVPN.VTEPCIDR, config.NodeIndex)
+		return frr.Config{}, fmt.Errorf("failed to get vtep ip, cidr %s, nodeIntex %d", underlay.Spec.EVPN.VTEPCIDR, nodeIndex)
 	}
 	underlayConfig.EVPN = &frr.UnderlayEvpn{
 		VTEP: vtepIP.String(),
@@ -96,7 +96,7 @@ func APItoFRR(config ApiConfigData) (frr.Config, error) {
 
 	vniConfigs := []frr.L3VNIConfig{}
 	for _, vni := range config.L3VNIs {
-		frrVNI, err := l3vniToFRR(vni, routerID, underlay.Spec.ASN, config.NodeIndex)
+		frrVNI, err := l3vniToFRR(vni, routerID, underlay.Spec.ASN, nodeIndex)
 		if err != nil {
 			return frr.Config{}, fmt.Errorf("failed to translate vni to frr: %w, vni %v", err, vni)
 		}
@@ -108,7 +108,7 @@ func APItoFRR(config ApiConfigData) (frr.Config, error) {
 		VNIs:        vniConfigs,
 		Passthrough: passthroughConfig,
 		BFDProfiles: bfdProfiles,
-		Loglevel:    config.LogLevel,
+		Loglevel:    logLevel,
 	}, nil
 }
 

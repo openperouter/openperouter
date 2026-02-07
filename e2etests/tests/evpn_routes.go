@@ -117,8 +117,8 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			dumpIfFails(cs)
 			err := Updater.CleanButUnderlay()
 			Expect(err).NotTo(HaveOccurred())
-			removeLeafPrefixes(infra.LeafAConfig)
-			removeLeafPrefixes(infra.LeafBConfig)
+			Expect(infra.LeafAConfig.RemovePrefixes()).To(Succeed())
+			Expect(infra.LeafBConfig.RemovePrefixes()).To(Succeed())
 		})
 
 		BeforeEach(func() {
@@ -156,35 +156,35 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			}
 
 			By("announcing type 5 routes on VNI 100 from leafA")
-			changeLeafPrefixes(infra.LeafAConfig, emptyPrefixes, leafAVRFRedPrefixes, emptyPrefixes, emptyRouteTargets, emptyRouteTargets)
+			Expect(infra.LeafAConfig.ChangePrefixes(emptyPrefixes, leafAVRFRedPrefixes, emptyPrefixes, emptyRouteTargets, emptyRouteTargets)).To(Succeed())
 			checkRouteFromLeaf(infra.LeafAConfig, vniRed, Contains, leafAVRFRedPrefixes)
 			checkRouteFromLeaf(infra.LeafAConfig, vniBlue, !Contains, leafAVRFBluePrefixes)
 			checkRouteFromLeaf(infra.LeafBConfig, vniRed, !Contains, leafBVRFRedPrefixes)
 			checkRouteFromLeaf(infra.LeafBConfig, vniBlue, !Contains, leafBVRFBluePrefixes)
 
 			By("announcing type5 route on VNI 200 from leafA")
-			changeLeafPrefixes(infra.LeafAConfig, emptyPrefixes, leafAVRFRedPrefixes, leafAVRFBluePrefixes, emptyRouteTargets, emptyRouteTargets)
+			Expect(infra.LeafAConfig.ChangePrefixes(emptyPrefixes, leafAVRFRedPrefixes, leafAVRFBluePrefixes, emptyRouteTargets, emptyRouteTargets)).To(Succeed())
 			checkRouteFromLeaf(infra.LeafAConfig, vniRed, Contains, leafAVRFRedPrefixes)
 			checkRouteFromLeaf(infra.LeafAConfig, vniBlue, Contains, leafAVRFBluePrefixes)
 			checkRouteFromLeaf(infra.LeafBConfig, vniRed, !Contains, leafBVRFRedPrefixes)
 			checkRouteFromLeaf(infra.LeafBConfig, vniBlue, !Contains, leafBVRFBluePrefixes)
 
 			By("announcing type5 route on both VNIs from leafB")
-			changeLeafPrefixes(infra.LeafBConfig, emptyPrefixes, leafBVRFRedPrefixes, leafBVRFBluePrefixes, emptyRouteTargets, emptyRouteTargets)
+			Expect(infra.LeafBConfig.ChangePrefixes(emptyPrefixes, leafBVRFRedPrefixes, leafBVRFBluePrefixes, emptyRouteTargets, emptyRouteTargets)).To(Succeed())
 			checkRouteFromLeaf(infra.LeafAConfig, vniRed, Contains, leafAVRFRedPrefixes)
 			checkRouteFromLeaf(infra.LeafAConfig, vniBlue, Contains, leafAVRFBluePrefixes)
 			checkRouteFromLeaf(infra.LeafBConfig, vniRed, Contains, leafBVRFRedPrefixes)
 			checkRouteFromLeaf(infra.LeafBConfig, vniBlue, Contains, leafBVRFBluePrefixes)
 
 			By("removing a route from leafA on vni 100")
-			changeLeafPrefixes(infra.LeafAConfig, emptyPrefixes, emptyPrefixes, leafAVRFBluePrefixes, emptyRouteTargets, emptyRouteTargets)
+			Expect(infra.LeafAConfig.ChangePrefixes(emptyPrefixes, emptyPrefixes, leafAVRFBluePrefixes, emptyRouteTargets, emptyRouteTargets)).To(Succeed())
 			checkRouteFromLeaf(infra.LeafAConfig, vniRed, !Contains, leafAVRFRedPrefixes)
 			checkRouteFromLeaf(infra.LeafAConfig, vniBlue, Contains, leafAVRFBluePrefixes)
 			checkRouteFromLeaf(infra.LeafBConfig, vniRed, Contains, leafBVRFRedPrefixes)
 			checkRouteFromLeaf(infra.LeafBConfig, vniBlue, Contains, leafBVRFBluePrefixes)
 
 			By("removing a route from leafA on vni 200")
-			changeLeafPrefixes(infra.LeafAConfig, emptyPrefixes, emptyPrefixes, emptyPrefixes, emptyRouteTargets, emptyRouteTargets)
+			Expect(infra.LeafAConfig.ChangePrefixes(emptyPrefixes, emptyPrefixes, emptyPrefixes, emptyRouteTargets, emptyRouteTargets)).To(Succeed())
 			checkRouteFromLeaf(infra.LeafAConfig, vniRed, !Contains, leafAVRFRedPrefixes)
 			checkRouteFromLeaf(infra.LeafAConfig, vniBlue, !Contains, leafAVRFBluePrefixes)
 			checkRouteFromLeaf(infra.LeafBConfig, vniRed, Contains, leafBVRFRedPrefixes)
@@ -228,14 +228,14 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			dumpIfFails(cs)
 			err := Updater.CleanButUnderlay()
 			Expect(err).NotTo(HaveOccurred())
-			removeLeafPrefixes(infra.LeafAConfig)
-			removeLeafPrefixes(infra.LeafBConfig)
+			Expect(infra.LeafAConfig.RemovePrefixes()).To(Succeed())
+			Expect(infra.LeafBConfig.RemovePrefixes()).To(Succeed())
 		})
 
 		It("translates EVPN incoming routes as BGP routes", func() {
 			By("advertising routes from the leaves for VRF Red - VNI 100")
-			changeLeafPrefixes(infra.LeafAConfig, emptyPrefixes, leafAVRFRedPrefixes, emptyPrefixes, emptyRouteTargets, emptyRouteTargets)
-			changeLeafPrefixes(infra.LeafBConfig, emptyPrefixes, leafBVRFRedPrefixes, emptyPrefixes, emptyRouteTargets, emptyRouteTargets)
+			Expect(infra.LeafAConfig.ChangePrefixes(emptyPrefixes, leafAVRFRedPrefixes, emptyPrefixes, emptyRouteTargets, emptyRouteTargets)).To(Succeed())
+			Expect(infra.LeafBConfig.ChangePrefixes(emptyPrefixes, leafBVRFRedPrefixes, emptyPrefixes, emptyRouteTargets, emptyRouteTargets)).To(Succeed())
 
 			By("checking routes are propagated via BGP")
 
@@ -245,8 +245,8 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			}
 
 			By("advertising also routes from the leaves for VRF Blue - VNI 200")
-			changeLeafPrefixes(infra.LeafAConfig, emptyPrefixes, leafAVRFRedPrefixes, leafAVRFBluePrefixes, emptyRouteTargets, emptyRouteTargets)
-			changeLeafPrefixes(infra.LeafBConfig, emptyPrefixes, leafBVRFRedPrefixes, leafBVRFBluePrefixes, emptyRouteTargets, emptyRouteTargets)
+			Expect(infra.LeafAConfig.ChangePrefixes(emptyPrefixes, leafAVRFRedPrefixes, leafAVRFBluePrefixes, emptyRouteTargets, emptyRouteTargets)).To(Succeed())
+			Expect(infra.LeafBConfig.ChangePrefixes(emptyPrefixes, leafBVRFRedPrefixes, leafBVRFBluePrefixes, emptyRouteTargets, emptyRouteTargets)).To(Succeed())
 
 			By("checking routes are propagated via BGP")
 
@@ -258,8 +258,8 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			}
 
 			By("removing routes from the leaves for VRF Blue - VNI 200")
-			changeLeafPrefixes(infra.LeafAConfig, emptyPrefixes, leafAVRFRedPrefixes, emptyPrefixes, emptyRouteTargets, emptyRouteTargets)
-			changeLeafPrefixes(infra.LeafBConfig, emptyPrefixes, leafBVRFRedPrefixes, emptyPrefixes, emptyRouteTargets, emptyRouteTargets)
+			Expect(infra.LeafAConfig.ChangePrefixes(emptyPrefixes, leafAVRFRedPrefixes, emptyPrefixes, emptyRouteTargets, emptyRouteTargets)).To(Succeed())
+			Expect(infra.LeafBConfig.ChangePrefixes(emptyPrefixes, leafBVRFRedPrefixes, emptyPrefixes, emptyRouteTargets, emptyRouteTargets)).To(Succeed())
 
 			By("checking routes are propagated via BGP")
 
@@ -339,8 +339,8 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 
 			err = Updater.CleanButUnderlay()
 			Expect(err).NotTo(HaveOccurred())
-			removeLeafPrefixes(infra.LeafAConfig)
-			removeLeafPrefixes(infra.LeafBConfig)
+			Expect(infra.LeafAConfig.RemovePrefixes()).To(Succeed())
+			Expect(infra.LeafBConfig.RemovePrefixes()).To(Succeed())
 		})
 
 		AfterEach(func() {
