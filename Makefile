@@ -75,9 +75,10 @@ vet: ## Run go vet against code.
 	go vet ./...
 
 .PHONY: test
-test: fmt vet envtest ## Run tests.
+test: fmt vet envtest $(LOCALBIN) ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v e2etest) -coverprofile cover.out
-	sudo -E sh -c "umask 0; PATH=${GOPATH}/bin:$(pwd)/bin:${PATH} go test -tags=runasroot -v -race ./internal/hostnetwork"
+	go test -tags=runasroot -c -race -o $(LOCALBIN)/hostnetwork.test ./internal/hostnetwork
+	$(CONTAINER_ENGINE) run --rm --privileged -v $$(pwd):/src -w /src --entrypoint /src/hack/integration_tests.sh $(KIND_NODE_IMG)
 
 ##@ Build
 
