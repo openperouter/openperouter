@@ -372,6 +372,10 @@ checkuncommitted:
 bumpall: bumplicense manifests
 	go mod tidy
 
+.PHONY: bump-k8s-deps
+bump-k8s-deps: ## Bump all k8s.io and sigs.k8s.io dependencies (K8S_VERSION=v0.34.0 or omit for latest)
+	hack/bump_k8s_deps.sh $(K8S_VERSION)
+
 KIND_EXPORT_LOGS ?=/tmp/kind_logs
 
 .PHONY: kind-export-logs
