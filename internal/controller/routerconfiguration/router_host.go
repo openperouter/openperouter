@@ -18,11 +18,11 @@ import (
 )
 
 type RouterHostProvider struct {
-	FRRConfigPath          string
-	RouterPidFilePath      string
-	CurrentNodeIndex       int
-	SystemdSocketPath      string
-	RouterHealthCheckPort  int
+	FRRConfigPath         string
+	RouterPidFilePath     string
+	CurrentNodeIndex      int
+	SystemdSocketPath     string
+	RouterHealthCheckPort int
 }
 
 var _ RouterProvider = (*RouterHostProvider)(nil)
@@ -64,11 +64,11 @@ func (r *RouterHostContainer) HandleNonRecoverableError(ctx context.Context) err
 	if err != nil {
 		return fmt.Errorf("failed to create systemd client %w", err)
 	}
-	slog.Info("restarting router systemd unit", "unit", "pod-routerpod.service")
-	if err := client.Restart(ctx, "pod-routerpod.service"); err != nil {
+	slog.Info("restarting router systemd unit", "unit", "routerpod-pod.service")
+	if err := client.Restart(ctx, "routerpod-pod.service"); err != nil {
 		return fmt.Errorf("failed to restart routerpod service")
 	}
-	slog.Info("router systemd unit restarted", "unit", "pod-routerpod.service")
+	slog.Info("router systemd unit restarted", "unit", "routerpod-pod.service")
 
 	return nil
 }
@@ -78,7 +78,7 @@ func (r *RouterHostContainer) CanReconcile(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("failed to create systemd client %w", err)
 	}
-	isActive, err := client.IsActive("pod-routerpod.service")
+	isActive, err := client.IsActive("routerpod-pod.service")
 	if err != nil {
 		return false, fmt.Errorf("failed to check if router pod service is active")
 	}
@@ -89,7 +89,7 @@ func (r *RouterHostContainer) CanReconcile(ctx context.Context) (bool, error) {
 
 	targetNS, err := r.TargetNS(ctx)
 	if err != nil {
-		slog.Info("failed to get router target namespace", "error", err)
+		slog.Error("failed to get router target namespace", "error", err)
 		return false, nil
 	}
 
@@ -146,7 +146,7 @@ func (r *RouterHostContainer) CanReconcile(ctx context.Context) (bool, error) {
 		return false, nil
 	}
 	if healthCheckErr != nil {
-		slog.Info("router health check failed", "error", healthCheckErr)
+		slog.Error("router health check failed", "error", healthCheckErr)
 		return false, nil
 	}
 
