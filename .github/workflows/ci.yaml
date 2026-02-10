@@ -267,6 +267,7 @@ jobs:
           elif [ ${{ matrix.deployment }} = "hostmode-boot" ]; then
             make e2etests-hostmode-boot
           else
+            export GINKGO_ARGS="--label-filter='!systemdmode'"
             make e2etests
           fi
 
