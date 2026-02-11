@@ -47,4 +47,12 @@ echo "OVS is ready"
 ovs-vsctl show
 
 umask 0
-exec /src/bin/hostnetwork.test -test.v
+shift # skip container image name
+for test_bin in "$@"; do
+    echo "Running $test_bin..."
+    if "$test_bin" -help 2>&1 | grep -q ginkgo; then
+        "$test_bin" -test.v -ginkgo.v
+    else
+        "$test_bin" -test.v
+    fi
+done

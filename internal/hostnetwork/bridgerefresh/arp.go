@@ -43,7 +43,7 @@ func (r *BridgeRefresher) sendARPProbe(targetIP net.IP, targetMAC net.HardwareAd
 	if ipfamily.ForAddress(targetIP) != ipfamily.IPv4 {
 		return fmt.Errorf("target IP %s is not IPv4", targetIP)
 	}
-	targetAddr, ok := netip.AddrFromSlice(targetIP)
+	targetAddr, ok := netip.AddrFromSlice(targetIP.To4())
 	if !ok {
 		return fmt.Errorf("failed to convert target IP %s to netip.Addr", targetIP)
 	}

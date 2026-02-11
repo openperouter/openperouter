@@ -77,8 +77,13 @@ vet: ## Run go vet against code.
 .PHONY: test
 test: fmt vet envtest $(LOCALBIN) ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v e2etest) -coverprofile cover.out
-	go test -tags=runasroot -c -race -o $(LOCALBIN)/hostnetwork.test ./internal/hostnetwork
-	$(CONTAINER_ENGINE) run --rm --privileged -v $$(pwd):/src -w /src --entrypoint /src/hack/integration_tests.sh $(KIND_NODE_IMG)
+	@RUNASROOT_TESTS=""; \
+	for pkg in $$(grep -rl "//go:build runasroot" --include="*_test.go" . | xargs -I{} dirname {} | sort -u); do \
+		name=$$(basename $$pkg); \
+		go test -tags=runasroot -c -race -o $(LOCALBIN)/$$name.test $$pkg; \
+		RUNASROOT_TESTS="$$RUNASROOT_TESTS /src/bin/$$name.test"; \
+	done; \
+	$(CONTAINER_ENGINE) run --rm --privileged -v $$(pwd):/src -w /src --entrypoint /src/hack/integration_tests.sh $(KIND_NODE_IMG) $$RUNASROOT_TESTS
 
 ##@ Build
 
