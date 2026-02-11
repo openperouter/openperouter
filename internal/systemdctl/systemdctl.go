@@ -77,6 +77,7 @@ func (c *Client) runSystemctl(ctx context.Context, args ...string) error {
 
 	// Use nsenter to run systemctl in the host's mount, UTS, IPC, and net namespaces
 	// Since we're already running with --pid=host, we can use PID 1
+	//nolint:prealloc
 	cmdArgs := []string{
 		"-t", c.hostPID,
 		"-m", "-u", "-i", "-n",
