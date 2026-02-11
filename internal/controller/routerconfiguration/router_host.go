@@ -18,11 +18,11 @@ import (
 )
 
 type RouterHostProvider struct {
-	FRRConfigPath          string
-	RouterPidFilePath      string
-	CurrentNodeIndex       int
-	SystemdSocketPath      string
-	RouterHealthCheckPort  int
+	FRRConfigPath         string
+	RouterPidFilePath     string
+	CurrentNodeIndex      int
+	SystemdSocketPath     string
+	RouterHealthCheckPort int
 }
 
 var _ RouterProvider = (*RouterHostProvider)(nil)

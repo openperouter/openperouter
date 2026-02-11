@@ -213,9 +213,9 @@ func TestReadRouterConfigsFromFiles(t *testing.T) {
 		t.Fatalf("expected 4 config files, got %d", len(configs))
 	}
 
-	var underlays []v1alpha1.UnderlaySpec
-	var l3vnis []v1alpha1.L3VNISpec
-	var l2vnis []v1alpha1.L2VNISpec
+	underlays := make([]v1alpha1.UnderlaySpec, 0, len(configs))
+	l3vnis := make([]v1alpha1.L3VNISpec, 0, len(configs))
+	l2vnis := make([]v1alpha1.L2VNISpec, 0, len(configs))
 	var bgpPassthrough *v1alpha1.L3PassthroughSpec
 
 	for _, cfg := range configs {
