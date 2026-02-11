@@ -3,6 +3,7 @@
 package sysctl
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -14,8 +15,9 @@ import (
 
 // Sysctl represents a sysctl setting to be enabled.
 type Sysctl struct {
-	Path        string // The sysctl path under /proc/sys/
-	Description string // Human-readable description for logging
+	Path               string // The sysctl path under /proc/sys/
+	Description        string // Human-readable description for logging
+	UnsupportedWarning string // If non-empty, log this warning and skip instead of failing when the sysctl is not supported
 }
 
 // Ensure enables the given sysctls in the target namespace.
@@ -36,6 +38,10 @@ func Ensure(namespace string, sysctls ...Sysctl) error {
 			path := "/proc/sys/" + s.Path
 			data, err := os.ReadFile(path)
 			if err != nil {
+				if s.UnsupportedWarning != "" && errors.Is(err, os.ErrNotExist) {
+					slog.Warn("skipping unsupported sysctl", "path", s.Path, "description", s.Description, "warning", s.UnsupportedWarning)
+					continue
+				}
 				return fmt.Errorf("failed to read %s: %w", path, err)
 			}
 			currentValue := strings.TrimSpace(string(data))
@@ -99,8 +105,9 @@ func ArpAcceptDefault() Sysctl {
 // Note: This sysctl is only available on kernels >= 5.18.
 func AcceptUntrackedNAAll() Sysctl {
 	return Sysctl{
-		Path:        "net/ipv6/conf/all/accept_untracked_na",
-		Description: "accept_untracked_na on all interfaces",
+		Path:               "net/ipv6/conf/all/accept_untracked_na",
+		Description:        "accept_untracked_na on all interfaces",
+		UnsupportedWarning: "Check if kernel is >= 5.18",
 	}
 }
 
@@ -112,7 +119,8 @@ func AcceptUntrackedNAAll() Sysctl {
 // Note: This sysctl is only available on kernels >= 5.18.
 func AcceptUntrackedNADefault() Sysctl {
 	return Sysctl{
-		Path:        "net/ipv6/conf/default/accept_untracked_na",
-		Description: "accept_untracked_na on new interfaces",
+		Path:               "net/ipv6/conf/default/accept_untracked_na",
+		Description:        "accept_untracked_na on new interfaces",
+		UnsupportedWarning: "Check if kernel is >= 5.18",
 	}
 }
