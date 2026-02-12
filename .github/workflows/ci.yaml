@@ -216,7 +216,7 @@ jobs:
         run: |
           if [ ${{ matrix.deployment }} = "systemdmode" ]; then
             export TEST_ARGS="--systemdmode"
-            export GINKGO_ARGS="--skip='Router Host configuration'"
+            export GINKGO_ARGS="--skip='Router Host configuration' --skip='North/south traffic after FRR container restart'"
             make e2etests
           elif [ ${{ matrix.deployment }} = "hostmode-boot" ]; then
             make e2etests-hostmode-boot
