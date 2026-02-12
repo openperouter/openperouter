@@ -1,0 +1,25 @@
+# frr-sockets.volume
+# OpenPERouter FRR Sockets Volume
+#
+# Named Podman volume for FRR Unix sockets.
+# This volume is shared between the FRR and reloader containers to enable
+# communication via Unix domain sockets.
+
+[Unit]
+Description=OpenPERouter FRR Sockets Volume
+Documentation=https://github.com/openperouter
+
+[Volume]
+# Named volume name - will create Podman volume named "frr-sockets"
+VolumeName=frr-sockets
+
+# Volume driver (default is local)
+# Driver=local
+
+# Volume labels (optional)
+# Label=app=openperouter
+# Label=component=frr
+
+[Install]
+# Automatically enable this volume at boot
+WantedBy=default.target

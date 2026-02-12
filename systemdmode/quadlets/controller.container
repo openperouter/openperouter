@@ -1,0 +1,102 @@
+# controller.container
+# OpenPERouter Controller Container
+#
+# This container runs the OpenPERouter controller with full host system access.
+# It manages router configuration, network namespaces, and Kubernetes integration.
+# Requires privileged mode and extensive host filesystem access.
+
+[Unit]
+Description=OpenPERouter Controller Container
+Documentation=https://github.com/openperouter
+
+[Container]
+# Container image - update this line to change versions
+Image=quay.io/openperouter/router:main
+
+# Pod association - creates automatic dependency on controllerpod-pod.service
+Pod=controllerpod.pod
+
+# Container name within the pod
+ContainerName=controller
+
+# Network capabilities (same as FRR for network operations)
+AddCapability=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_ADMIN
+
+# Host networking mode - controller needs host network access
+# Quadlet native directive for --network=host
+Network=host
+
+# Host filesystem volume mounts
+# Controller requires extensive host access for:
+# - Container runtime integration (containerd)
+# - Network namespace manipulation
+# - FRR configuration management
+# - Kubernetes API access
+# - System DBus communication
+# - Optional OVS integration
+
+# Containerd socket - for interacting with container runtime API
+Volume=/run/containerd/containerd.sock:/run/containerd/containerd.sock:rshared
+
+# Network namespaces - for moving interfaces between namespaces
+Volume=/run/netns:/run/netns:rshared
+
+# FRR configuration - controller writes config, reloader reads
+Volume=/etc/perouter/frr:/etc/perouter/frr:rshared
+
+# Host bridge state - kubeconfig and shared state
+Volume=/var/lib/hostbridge:/shared:rshared
+
+# Static configuration - read-only access
+Volume=/var/lib/openperouter:/etc/openperouter:ro
+
+# Host proc filesystem - read-only access for process inspection
+Volume=/proc:/hostproc:ro
+
+# System DBus socket - for systemd and system integration
+Volume=/run/dbus/system_bus_socket:/host/dbus/system_bus_socket:rw
+
+# Open vSwitch socket directory - for OVS integration
+# NOTE: This mount is OPTIONAL. If OVS is not installed, comment out this line.
+# To disable OVS mount: Add a '#' at the beginning of the line below.
+Volume=/var/run/openvswitch:/var/run/openvswitch:rshared
+
+# Environment variables
+Environment=KUBECONFIG=/shared/kubeconfig
+
+# Additional Podman arguments for privileged access
+# Note: Using PodmanArgs because quadlet has no native directives for these flags
+# --privileged - Full container privilege (required for network namespace manipulation)
+# --pid=host   - Access host PID namespace (required for FRR process management)
+# --uts=host   - Access host UTS namespace (required for hostname resolution)
+PodmanArgs=--privileged
+PodmanArgs=--pid=host
+PodmanArgs=--uts=host
+
+# Controller command-line arguments
+Exec=--frrconfig /etc/perouter/frr/frr.conf --pid-path /etc/perouter/frr/frr.pid --reloader-socket /etc/perouter/frr/frr.socket --mode host --namespace openperouter-system
+
+# Health check - kill container if controller stops responding,
+# systemd Restart=on-failure handles restart
+HealthCmd=wget -qO- http://127.0.0.1:9081/healthz || exit 1
+HealthInterval=20s
+HealthTimeout=5s
+HealthRetries=3
+HealthOnFailure=kill
+
+[Service]
+# Restart policy - restart container if it fails
+Restart=on-failure
+
+# Timeout for stopping the container
+TimeoutStopSec=70
+
+# Pre-start commands - create required host directories if they don't exist
+# These commands run before the container starts
+ExecStartPre=/usr/bin/mkdir -p /etc/perouter/frr
+ExecStartPre=/usr/bin/mkdir -p /var/lib/hostbridge
+ExecStartPre=/usr/bin/mkdir -p /var/lib/openperouter
+
+[Install]
+# Automatically enable this container at boot
+WantedBy=default.target

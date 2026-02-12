@@ -1,0 +1,67 @@
+# frr.container
+# OpenPERouter FRR Container
+#
+# Runs the FRR (Free Range Routing) daemon providing BGP/EVPN functionality.
+# This container requires elevated capabilities for network management.
+
+[Unit]
+Description=OpenPERouter FRR Container
+Documentation=https://github.com/openperouter
+
+[Container]
+# Container image - update this line to change versions
+# Can be updated via deployment script: sed -i 's|^Image=.*|Image=NEW_IMAGE|' frr.container
+Image=quay.io/openperouter/router:main
+
+# Pod association - creates automatic dependency on routerpod-pod.service
+Pod=routerpod.pod
+
+# Container name within the pod
+ContainerName=frr
+
+# Network capabilities required for routing functionality
+# CAP_NET_BIND_SERVICE - Bind to privileged ports (BGP 179)
+# CAP_NET_ADMIN       - Configure network interfaces and routes
+# CAP_NET_RAW         - Use RAW and PACKET sockets
+# CAP_SYS_ADMIN       - Various system administration operations
+AddCapability=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_ADMIN
+
+# Environment variables passed to container
+Environment=TINI_SUBREAPER=true
+
+# Volume mounts
+# Named volume for FRR sockets - shared with reloader container
+# :Z = Private SELinux label (unique to this container/pod)
+Volume=frr-sockets.volume:/var/run/frr:Z
+
+# Additional Podman arguments not yet supported by native quadlet directives
+# --pidfile - Create PID file for controller integration
+PodmanArgs=--pidfile=/etc/perouter/frr/frr.pid
+
+# Override container entrypoint
+Entrypoint=/bin/bash
+
+# Container startup command
+# This complex command does the following:
+# 1. Changes permissions on /var/run/frr for socket access
+# 2. Starts FRR via tini process supervisor in background
+# 3. Waits up to 60 seconds for FRR to create its log file
+# 4. Tails the FRR log to keep the container running
+#
+# Note: $$ escaping is required to prevent systemd variable expansion
+# Shell variables must use $$ syntax (e.g., $$attempts not $attempts)
+Exec=-c "chmod -R a+rw /var/run/frr && /sbin/tini -- /usr/lib/frr/docker-start & attempts=0; until [[ -f /etc/frr/frr.log || $$attempts -eq 60 ]]; do sleep 1; attempts=$$(( $$attempts + 1 )); done; tail -f /etc/frr/frr.log"
+
+[Service]
+# Restart policy - restart container if it fails
+Restart=on-failure
+
+# Timeout for stopping the container
+TimeoutStopSec=70
+
+# Pre-start commands - create required host directories if they don't exist
+ExecStartPre=/usr/bin/mkdir -p /etc/perouter/frr
+
+[Install]
+# Automatically enable this container at boot
+WantedBy=default.target

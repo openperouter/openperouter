@@ -54,6 +54,6 @@ load_local_image_to_kind() {
 load_image_to_kind() {
     local image_tag=$1
     local file_name=$2
-    ${CONTAINER_ENGINE_CLI} image pull ${image_tag}
+    ${CONTAINER_ENGINE_CLI} image pull --platform linux/amd64 ${image_tag}
     load_local_image_to_kind ${image_tag} ${file_name}
 }
