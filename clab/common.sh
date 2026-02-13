@@ -46,14 +46,17 @@ load_local_image_to_kind() {
     local file_name=$2
     local temp_file="/tmp/${file_name}.tar"
     sudo rm -f ${temp_file} || true
+    # Use kind load docker-image to avoid multi-platform manifest issues
+    ${KIND_COMMAND} load docker-image ${image_tag} --name ${KIND_CLUSTER_NAME}
+    # Save image for podman loading on nodes
     ${CONTAINER_ENGINE_CLI} save -o ${temp_file} ${image_tag}
-    ${KIND_COMMAND} load image-archive ${temp_file} --name ${KIND_CLUSTER_NAME}
     load_image_to_podman_on_nodes ${image_tag} ${file_name}
 }
 
 load_image_to_kind() {
     local image_tag=$1
     local file_name=$2
-    ${CONTAINER_ENGINE_CLI} image pull ${image_tag}
+    # Explicitly pull single platform to avoid multi-platform manifest issues with kind load
+    ${CONTAINER_ENGINE_CLI} image pull --platform linux/amd64 ${image_tag}
     load_local_image_to_kind ${image_tag} ${file_name}
 }
