@@ -1,7 +1,7 @@
 # Custom Kind Node Image with OpenVSwitch
 # Based on official kindest/node image with OVS pre-installed for OpenPERouter
 
-ARG KIND_NODE_VERSION=v1.31.4
+ARG KIND_NODE_VERSION=v1.32.2
 FROM kindest/node:${KIND_NODE_VERSION}
 
 # Re-declare ARG to make it available after FROM
