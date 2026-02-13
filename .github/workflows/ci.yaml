@@ -227,6 +227,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install linux-modules-extra-$(uname -r)
 
+      - name: Disable containerd image store
+        run: |
+          sudo bash -c 'cat > /etc/docker/daemon.json << EOF
+          {
+            "features": {
+              "containerd-snapshotter": false
+            }
+          }
+          EOF'
+          sudo systemctl restart docker
+          docker info -f '{{ .DriverStatus }}'
+
       - name: Download kind-node-openperouter image
         uses: actions/download-artifact@v4
         with:
