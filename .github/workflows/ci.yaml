@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   static-security-analysis:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     env:
       GO111MODULE: on
     steps:
@@ -37,7 +37,7 @@ jobs:
           go-version-file: go.mod
 
   check-generated:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     if: github.actor != 'dependabot[bot]'
     steps:
       - name: Checkout Source
@@ -64,7 +64,7 @@ jobs:
         run: make checkuncommitted
 
   commitlint:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -72,7 +72,7 @@ jobs:
       - uses: wagoid/commitlint-github-action@v5
 
   build-kind-node-image:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     outputs:
       kind-node-version: ${{ steps.kind_version.outputs.version }}
     steps:
@@ -109,7 +109,7 @@ jobs:
           path: /tmp/kind-node-openperouter.tar
 
   unit-tests:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     needs: build-kind-node-image
     steps:
       - name: Checkout
@@ -163,7 +163,7 @@ jobs:
           git diff --exit-code -I'^    createdAt: ' operator/bundle
 
   build-test-images:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: true
     steps:
@@ -189,7 +189,7 @@ jobs:
           path: /tmp/openperouter.tar
 
   e2etests:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     env:
       NODE_IMAGE: quay.io/openperouter/kind-node-openperouter:${{ needs.build-kind-node-image.outputs.kind-node-version }}
     needs:
