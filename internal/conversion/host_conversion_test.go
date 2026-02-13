@@ -72,6 +72,8 @@ func TestAPItoHostConfig(t *testing.T) {
 			wantUnderlay: hostnetwork.UnderlayParams{
 				UnderlayInterface: "eth0",
 				TargetNS:          "namespace",
+				NicMode:           "dedicated",
+				NeighborIPs:       []string{},
 				EVPN: &hostnetwork.UnderlayEVPNParams{
 					VtepIP: "10.0.0.0/32",
 				},
@@ -110,6 +112,8 @@ func TestAPItoHostConfig(t *testing.T) {
 			wantUnderlay: hostnetwork.UnderlayParams{
 				UnderlayInterface: "eth0",
 				TargetNS:          "namespace",
+				NicMode:           "dedicated",
+				NeighborIPs:       []string{},
 				EVPN: &hostnetwork.UnderlayEVPNParams{
 					VtepIP: "10.0.0.0/32",
 				},
@@ -148,6 +152,8 @@ func TestAPItoHostConfig(t *testing.T) {
 			wantUnderlay: hostnetwork.UnderlayParams{
 				UnderlayInterface: "eth0",
 				TargetNS:          "namespace",
+				NicMode:           "dedicated",
+				NeighborIPs:       []string{},
 				EVPN: &hostnetwork.UnderlayEVPNParams{
 					VtepIP: "10.0.0.0/32",
 				},
@@ -188,6 +194,8 @@ func TestAPItoHostConfig(t *testing.T) {
 			wantUnderlay: hostnetwork.UnderlayParams{
 				UnderlayInterface: "eth0",
 				TargetNS:          "namespace",
+				NicMode:           "dedicated",
+				NeighborIPs:       []string{},
 				EVPN: &hostnetwork.UnderlayEVPNParams{
 					VtepIP: "10.0.0.0/32",
 				},
@@ -223,6 +231,8 @@ func TestAPItoHostConfig(t *testing.T) {
 			wantUnderlay: hostnetwork.UnderlayParams{
 				UnderlayInterface: "eth0",
 				TargetNS:          "namespace",
+				NicMode:           "dedicated",
+				NeighborIPs:       []string{},
 				EVPN: &hostnetwork.UnderlayEVPNParams{
 					VtepIP: "10.0.0.0/32",
 				},
@@ -258,6 +268,8 @@ func TestAPItoHostConfig(t *testing.T) {
 			wantUnderlay: hostnetwork.UnderlayParams{
 				UnderlayInterface: "eth0",
 				TargetNS:          "namespace",
+				NicMode:           "dedicated",
+				NeighborIPs:       []string{},
 				EVPN: &hostnetwork.UnderlayEVPNParams{
 					VtepIP: "10.0.0.0/32",
 				},
@@ -291,6 +303,8 @@ func TestAPItoHostConfig(t *testing.T) {
 			wantUnderlay: hostnetwork.UnderlayParams{
 				UnderlayInterface: "eth0",
 				TargetNS:          "namespace",
+				NicMode:           "dedicated",
+				NeighborIPs:       []string{},
 			},
 			wantL3VNIParams: []hostnetwork.L3VNIParams{},
 			wantL2VNIParams: []hostnetwork.L2VNIParams{},
@@ -322,6 +336,8 @@ func TestAPItoHostConfig(t *testing.T) {
 			wantUnderlay: hostnetwork.UnderlayParams{
 				UnderlayInterface: "eth0",
 				TargetNS:          "namespace",
+				NicMode:           "dedicated",
+				NeighborIPs:       []string{},
 			},
 			wantL3VNIParams: []hostnetwork.L3VNIParams{},
 			wantL2VNIParams: []hostnetwork.L2VNIParams{},
@@ -350,6 +366,8 @@ func TestAPItoHostConfig(t *testing.T) {
 			wantUnderlay: hostnetwork.UnderlayParams{
 				UnderlayInterface: "",
 				TargetNS:          "namespace",
+				NicMode:           "dedicated",
+				NeighborIPs:       []string{},
 				EVPN: &hostnetwork.UnderlayEVPNParams{
 					VtepIP: "10.0.0.0/32",
 				},

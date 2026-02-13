@@ -33,8 +33,22 @@ func APItoHostConfig(nodeIndex int, targetNS string, underlayFromMultus bool, ap
 		return res, fmt.Errorf("underlay interface must be specified when Multus is not enabled")
 	}
 
+	nicMode := string(underlay.Spec.NicMode)
+	if nicMode == "" {
+		nicMode = "dedicated"
+	}
+
+	neighborIPs := make([]string, 0, len(underlay.Spec.Neighbors))
+	for _, n := range underlay.Spec.Neighbors {
+		if n.Address != "" {
+			neighborIPs = append(neighborIPs, n.Address)
+		}
+	}
+
 	res.Underlay = hostnetwork.UnderlayParams{
-		TargetNS: targetNS,
+		TargetNS:    targetNS,
+		NicMode:     nicMode,
+		NeighborIPs: neighborIPs,
 	}
 	if len(underlay.Spec.Nics) > 0 {
 		res.Underlay.UnderlayInterface = underlay.Spec.Nics[0]

@@ -25,6 +25,13 @@ type UnderlayParams struct {
 	UnderlayInterface string              `json:"underlay_interface"`
 	TargetNS          string              `json:"target_ns"`
 	EVPN              *UnderlayEVPNParams `json:"evpn"`
+	NicMode           string              `json:"nic_mode"`
+	NeighborIPs       []string            `json:"neighbor_ips"`
+}
+
+var SharedUnderlayVethNames = VethNames{
+	HostSide:      "ul-host",
+	NamespaceSide: "ul-pe",
 }
 
 type UnderlayEVPNParams struct {
@@ -34,6 +41,11 @@ type UnderlayEVPNParams struct {
 func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
 	slog.DebugContext(ctx, "setup underlay", "params", params)
 	defer slog.DebugContext(ctx, "setup underlay done")
+
+	if params.NicMode == "shared" {
+		return SetupSharedUnderlay(ctx, params)
+	}
+
 	ns, err := netns.GetFromPath(params.TargetNS)
 	if err != nil {
 		return fmt.Errorf("setupUnderlay: Failed to find network namespace %s: %w", params.TargetNS, err)

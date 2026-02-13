@@ -20,6 +20,17 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// NicMode defines how the physical NIC is used for underlay connectivity.
+type NicMode string
+
+const (
+	// NicModeDedicated moves the NIC into the router pod namespace (default).
+	NicModeDedicated NicMode = "dedicated"
+	// NicModeShared keeps the NIC in the host namespace and uses eBPF TC programs
+	// to steer specific traffic to/from the router pod via a veth pair.
+	NicModeShared NicMode = "shared"
+)
+
 // UnderlaySpec defines the desired state of Underlay.
 type UnderlaySpec struct {
 	// NodeSelector specifies which nodes this Underlay applies to.
@@ -50,6 +61,14 @@ type UnderlaySpec struct {
 	Nics []string `json:"nics,omitempty"`
 
 	EVPN *EVPNConfig `json:"evpn,omitempty"`
+
+	// NicMode controls how the physical NIC is used for underlay connectivity.
+	// "dedicated" (default) moves the NIC into the router pod namespace.
+	// "shared" keeps the NIC in the host namespace and uses eBPF to steer traffic.
+	// +kubebuilder:default="dedicated"
+	// +kubebuilder:validation:Enum=dedicated;shared
+	// +optional
+	NicMode NicMode `json:"nicMode,omitempty"`
 }
 
 // EVPNConfig contains EVPN-VXLAN configuration for the underlay.

@@ -209,6 +209,16 @@ spec:
                     rule: '!has(self.hostasn) || self.hostasn != self.asn'
                 minItems: 1
                 type: array
+              nicMode:
+                default: dedicated
+                description: |-
+                  NicMode controls how the physical NIC is used for underlay connectivity.
+                  "dedicated" (default) moves the NIC into the router pod namespace.
+                  "shared" keeps the NIC in the host namespace and uses eBPF to steer traffic.
+                enum:
+                - dedicated
+                - shared
+                type: string
               nics:
                 description: |-
                   Nics is the list of physical nics to move under the PERouter namespace to connect

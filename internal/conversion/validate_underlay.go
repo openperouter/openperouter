@@ -76,5 +76,15 @@ func validateUnderlay(underlay *v1alpha1.Underlay) error {
 			return fmt.Errorf("invalid nic name for underlay %s: %s - %w", underlay.Name, n, err)
 		}
 	}
+
+	if underlay.Spec.NicMode == v1alpha1.NicModeShared {
+		if len(underlay.Spec.Nics) != 1 {
+			return fmt.Errorf("underlay %s: shared NIC mode requires exactly one NIC", underlay.Name)
+		}
+		if len(underlay.Spec.Neighbors) == 0 {
+			return fmt.Errorf("underlay %s: shared NIC mode requires at least one neighbor", underlay.Name)
+		}
+	}
+
 	return nil
 }

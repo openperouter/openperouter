@@ -87,6 +87,10 @@ test: fmt vet envtest $(LOCALBIN) ## Run tests.
 
 ##@ Build
 
+.PHONY: generate-bpf
+generate-bpf: ## Generate eBPF Go bindings from C programs.
+	go generate ./internal/hostnetwork/bpf/...
+
 .PHONY: build
 build: manifests generate fmt vet ## Build manager binary.
 	go build -o bin/reloader ./cmd/reloader
@@ -310,6 +314,21 @@ crd-ref-docs: $(APIDOCSGEN) ## Download the api-doc-gen tool locally if necessar
 $(APIDOCSGEN): $(LOCALBIN)
 	test -s $(LOCALBIN)/crd-ref-docs || \
 	GOBIN=$(LOCALBIN) go install github.com/elastic/crd-ref-docs@$(APIDOCSGEN_VERSION)
+
+RETIS_DATA ?= /tmp/retis-shared-nic
+
+.PHONY: retis-collect
+retis-collect: ## Collect retis traces for shared NIC eBPF debugging (Ctrl-C to stop).
+	RETIS_DATA=$(RETIS_DATA) CONTAINER_ENGINE=$(CONTAINER_ENGINE) hack/retis-collect.sh
+
+.PHONY: retis-inspect
+retis-inspect: ## Inspect collected retis traces (sorted events).
+	RETIS_DATA=$(RETIS_DATA) CONTAINER_ENGINE=$(CONTAINER_ENGINE) hack/retis-inspect.sh sort
+
+.PHONY: retis-pcap
+retis-pcap: ## Convert retis traces to pcap for Wireshark.
+	RETIS_DATA=$(RETIS_DATA) CONTAINER_ENGINE=$(CONTAINER_ENGINE) hack/retis-inspect.sh pcap --output /data/retis.pcap
+	@echo "pcap written to $(RETIS_DATA)/retis.pcap"
 
 .PHONY: e2etests
 e2etests: ginkgo kubectl build-validator create-export-logs

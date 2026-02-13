@@ -187,6 +187,53 @@ func TestValidateUnderlay(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name: "shared mode with one NIC and neighbors",
+			underlay: v1alpha1.Underlay{
+				Spec: v1alpha1.UnderlaySpec{
+					EVPN: &v1alpha1.EVPNConfig{
+						VTEPCIDR: "192.168.1.0/24",
+					},
+					Nics:    []string{"eth0"},
+					ASN:     65001,
+					NicMode: v1alpha1.NicModeShared,
+					Neighbors: []v1alpha1.Neighbor{
+						{ASN: 65002, Address: "10.0.0.1"},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "shared mode with no NICs",
+			underlay: v1alpha1.Underlay{
+				Spec: v1alpha1.UnderlaySpec{
+					EVPN: &v1alpha1.EVPNConfig{
+						VTEPCIDR: "192.168.1.0/24",
+					},
+					NicMode: v1alpha1.NicModeShared,
+					ASN:     65001,
+					Neighbors: []v1alpha1.Neighbor{
+						{ASN: 65002, Address: "10.0.0.1"},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "shared mode with no neighbors",
+			underlay: v1alpha1.Underlay{
+				Spec: v1alpha1.UnderlaySpec{
+					EVPN: &v1alpha1.EVPNConfig{
+						VTEPCIDR: "192.168.1.0/24",
+					},
+					Nics:    []string{"eth0"},
+					NicMode: v1alpha1.NicModeShared,
+					ASN:     65001,
+				},
+			},
+			wantErr: true,
+		},
+		{
 			name: "both vtepcidr and vtepInterface specified",
 			underlay: v1alpha1.Underlay{
 				Spec: v1alpha1.UnderlaySpec{

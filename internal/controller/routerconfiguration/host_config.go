@@ -107,6 +107,21 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 	}
 	bridgerefresh.StopForRemovedVNIs(hostConfig.L2VNIs)
 
+	// In shared NIC mode, update the eBPF VNI map so VXLAN traffic for
+	// the currently configured VNIs is steered to the router pod.
+	if hostConfig.Underlay.NicMode == "shared" {
+		allVNIs := make([]uint32, 0, len(hostConfig.L3VNIs)+len(hostConfig.L2VNIs))
+		for _, vni := range hostConfig.L3VNIs {
+			allVNIs = append(allVNIs, uint32(vni.VNI))
+		}
+		for _, vni := range hostConfig.L2VNIs {
+			allVNIs = append(allVNIs, uint32(vni.VNI))
+		}
+		if err := hostnetwork.UpdateSharedUnderlayVNIs(allVNIs); err != nil {
+			return fmt.Errorf("failed to update shared underlay VNI map: %w", err)
+		}
+	}
+
 	if len(apiConfig.L3Passthrough) == 0 {
 		if err := hostnetwork.RemovePassthrough(config.targetNamespace); err != nil {
 			return fmt.Errorf("failed to remove passthrough: %w", err)
