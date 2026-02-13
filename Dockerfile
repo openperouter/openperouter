@@ -1,4 +1,4 @@
-ARG FRR_IMAGE=quay.io/frrouting/frr:10.2.1
+ARG FRR_IMAGE=quay.io/frrouting/frr:10.5.1
 
 # Build the manager binary
 FROM golang:1.25.7 AS builder
