@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -39,6 +40,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
@@ -46,6 +48,7 @@ import (
 	"github.com/openperouter/openperouter/api/static"
 	periov1alpha1 "github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/controller/routerconfiguration"
+	"github.com/openperouter/openperouter/internal/filewatcher"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/openperouter/openperouter/internal/logging"
 	"github.com/openperouter/openperouter/internal/pods"
@@ -201,29 +204,41 @@ func runHostMode(
 		os.Exit(1)
 	}
 
-	// Wait for K8s API and create second manager when available
+	staticControllerCtx, stopStaticReconciler := context.WithCancel(ctx)
+	defer stopStaticReconciler()
+
 	go func() {
-		logger.Info("waiting for kubernetes API")
-		k8sConfig, err := waitForKubernetes(context.Background(), hostModeParams.k8sWaitInterval)
-		if err != nil {
-			logger.Error("failed to connect to kubernetes API, will continue with static config only", "error", err)
+		logger.Info("creating static configuration controller for host mode")
+		err := runStaticConfigReconciler(
+			staticControllerCtx, args, hostModeParams, nodeConfig, logger, args.probeAddr,
+		)
+		if errors.Is(err, context.Canceled) {
+			logger.Info("static config reconciler stopped (API became available)")
 			return
 		}
-
-		logger.Info("kubernetes API is now available, creating k8s configuration controller")
-
-		if err := runK8sConfigReconcilerHostMode(
-			ctx, args, hostModeParams, nodeConfig, k8sConfig, logger,
-		); err != nil {
-			logger.Error("failed to enable k8s reconciler", "error", err)
-			return
+		if err != nil {
+			logger.Error("failed to run static config reconciler", "error", err)
 		}
 	}()
 
-	// Host mode: create static manager first, then wait for k8s in background
-	logger.Info("creating static configuration controller for host mode")
-	if err := runStaticConfigReconciler(ctx, args, hostModeParams, nodeConfig, logger, args.probeAddr); err != nil {
-		logger.Error("failed to run static config reconciler", "error", err)
+	// Wait for K8s API in main thread (blocking)
+	logger.Info("waiting for kubernetes API")
+	k8sConfig, err := waitForKubernetes(ctx, hostModeParams.k8sWaitInterval)
+	if err != nil {
+		logger.Error("failed to connect to kubernetes API, will continue with static config only", "error", err)
+		<-ctx.Done()
+		return
+	}
+
+	logger.Info("kubernetes API is now available, stopping static reconciler and starting k8s reconciler")
+
+	stopStaticReconciler()
+
+	// Start API reconciler in main thread (blocking) - keeps process alive
+	if err := runK8sConfigReconcilerHostMode(
+		ctx, args, hostModeParams, nodeConfig, k8sConfig, logger,
+	); err != nil {
+		logger.Error("failed to enable k8s reconciler", "error", err)
 		os.Exit(1)
 	}
 }
@@ -248,6 +263,9 @@ func runK8sConfigReconcilerHostMode(ctx context.Context,
 		RouterHealthCheckPort: hostModeParams.routerHealthCheckPort,
 	}
 
+	// Create trigger channel for file watcher
+	triggerChan := make(chan event.GenericEvent, 1)
+
 	apiReconciler := &routerconfiguration.PERouterReconciler{
 		Client:          mgr.GetClient(),
 		Scheme:          mgr.GetScheme(),
@@ -259,10 +277,21 @@ func runK8sConfigReconcilerHostMode(ctx context.Context,
 		RouterProvider:  routerProvider,
 		StaticConfigDir: hostModeParams.configurationDir,
 		NodeConfigPath:  hostModeParams.nodeConfigPath,
+		TriggerChan:     triggerChan,
 	}
 
 	if err := apiReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create controller: %w", err)
+	}
+
+	// Setup file watcher to trigger API reconciler on static file changes
+	fw, err := filewatcher.New(hostModeParams.configurationDir, triggerChan, logger)
+	if err != nil {
+		return fmt.Errorf("unable to create file watcher for API reconciler: %w", err)
+	}
+
+	if err := fw.Start(ctx); err != nil {
+		return fmt.Errorf("unable to start file watcher for API reconciler: %w", err)
 	}
 
 	setupLog.Info("starting manager")
@@ -359,6 +388,16 @@ func runStaticConfigReconciler(ctx context.Context,
 	}
 	if err = staticReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create controller: %w", err)
+	}
+
+	// Setup file watcher for static configuration changes
+	fw, err := filewatcher.New(hostModeParams.configurationDir, staticReconciler.TriggerChan, logger)
+	if err != nil {
+		return fmt.Errorf("unable to create file watcher: %w", err)
+	}
+
+	if err := fw.Start(ctx); err != nil {
+		return fmt.Errorf("unable to start file watcher: %w", err)
 	}
 
 	// +kubebuilder:scaffold:builder

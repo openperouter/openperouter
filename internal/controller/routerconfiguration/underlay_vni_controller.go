@@ -30,6 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/conversion"
@@ -52,6 +53,9 @@ type PERouterReconciler struct {
 	StaticConfigDir    string
 	NodeConfigPath     string
 	RouterProvider     RouterProvider
+
+	// TriggerChan receives events from FileWatcher (in host mode)
+	TriggerChan chan event.GenericEvent
 }
 
 type requestKey string
@@ -269,7 +273,8 @@ func (r *PERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if err := setPodNodeNameIndex(mgr); err != nil {
 		return err
 	}
-	return ctrl.NewControllerManagedBy(mgr).
+
+	builder := ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.Underlay{}).
 		Watches(&v1.Node{}, &handler.EnqueueRequestForObject{}).
 		Watches(&v1.Pod{}, &handler.EnqueueRequestForObject{}).
@@ -278,8 +283,14 @@ func (r *PERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(&v1alpha1.L3Passthrough{}, &handler.EnqueueRequestForObject{}).
 		WithEventFilter(filterNonRouterPods).
 		WithEventFilter(filterUpdates).
-		Named("routercontroller").
-		Complete(r)
+		Named("routercontroller")
+
+	// In host mode, watch for file system events via TriggerChan
+	if r.TriggerChan != nil {
+		builder = builder.WatchesRawSource(source.Channel(r.TriggerChan, &handler.EnqueueRequestForObject{}))
+	}
+
+	return builder.Complete(r)
 }
 
 func setPodNodeNameIndex(mgr ctrl.Manager) error {
