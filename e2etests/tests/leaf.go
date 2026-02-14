@@ -7,14 +7,16 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/infra"
 )
 
-func redistributeConnectedForLeaf(leaf infra.Leaf) {
+func redistributeConnectedForLeaf(leaf infra.Leaf, redRTs, blueRTs infra.RouteTargets) {
 	leafConfiguration := infra.LeafConfiguration{
 		Leaf: leaf,
 		Red: infra.Addresses{
 			RedistributeConnected: true,
+			RouteTargets:          redRTs,
 		},
 		Blue: infra.Addresses{
 			RedistributeConnected: true,
+			RouteTargets:          blueRTs,
 		},
 		Default: infra.Addresses{
 			RedistributeConnected: true,

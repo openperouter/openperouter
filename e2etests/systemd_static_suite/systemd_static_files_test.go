@@ -56,14 +56,15 @@ var _ = Describe("Static configuration", Ordered, func() {
 
 		It("receives type 5 routes from the fabric", func() {
 			emptyPrefixes := []string{}
+			emptyRouteTargets := infra.RouteTargets{}
 			leafAVRFRedPrefixes := []string{"192.168.20.0/24", "2001:db8:20::/64"}
 
 			By("announcing type 5 routes on VNI 100 from leafA")
-			Expect(infra.LeafAConfig.ChangePrefixes(emptyPrefixes, leafAVRFRedPrefixes, emptyPrefixes)).To(Succeed())
+			Expect(infra.LeafAConfig.ChangePrefixes(emptyPrefixes, leafAVRFRedPrefixes, emptyPrefixes, emptyRouteTargets, emptyRouteTargets)).To(Succeed())
 			checkRouteFromLeaf(infra.LeafAConfig, routers, vniRed, mustContain, leafAVRFRedPrefixes)
 
 			By("removing a route from leafA on vni 100")
-			Expect(infra.LeafAConfig.ChangePrefixes(emptyPrefixes, emptyPrefixes, emptyPrefixes)).To(Succeed())
+			Expect(infra.LeafAConfig.ChangePrefixes(emptyPrefixes, emptyPrefixes, emptyPrefixes, emptyRouteTargets, emptyRouteTargets)).To(Succeed())
 		})
 	})
 	// TODO Create vni blue with the api server
