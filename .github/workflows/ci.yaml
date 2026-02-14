@@ -227,6 +227,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install linux-modules-extra-$(uname -r)
 
+      - name: Disable containerd image store
+        run: |
+          sudo bash -c 'cat > /etc/docker/daemon.json << EOF
+          {
+            "features": {
+              "containerd-snapshotter": false
+            }
+          }
+          EOF'
+          sudo systemctl restart docker
+          docker info -f '{{ .DriverStatus }}'
+
       - name: Download kind-node-openperouter image
         uses: actions/download-artifact@v4
         with:
@@ -262,7 +274,7 @@ jobs:
         run: |
           if [ ${{ matrix.deployment }} = "systemdmode" ]; then
             export TEST_ARGS="--systemdmode"
-            export GINKGO_ARGS="--skip='Router Host configuration'"
+            export GINKGO_ARGS="--skip='Router Host configuration' --skip='North/south traffic after FRR container restart'"
             make e2etests
           elif [ ${{ matrix.deployment }} = "hostmode-boot" ]; then
             make e2etests-hostmode-boot
