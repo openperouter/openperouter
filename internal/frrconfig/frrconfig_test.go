@@ -55,6 +55,7 @@ func TestReload(t *testing.T) {
 // helper function that redirects the execution to a mock process implemented by
 // TestHelperProcess
 func fakeExecCommand(name string, args ...string) *exec.Cmd {
+	//nolint:prealloc
 	cs := []string{"-test.run=TestFakeReloadHelper", "--"}
 	cs = append(cs, args...)
 	env := []string{
