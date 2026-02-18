@@ -73,6 +73,12 @@ helm install openperouter ./charts/openperouter \
 
 This will add the annotation `k8s.v1.cni.cncf.io/networks: macvlan-conf` to the router pods.
 
+## Sysctl Configuration
+
+OpenPERouter automatically tunes several kernel sysctl settings inside the router's network namespace (IP forwarding, ARP accept, IPv6 Neighbor Advertisement accept). Some of these settings require a minimum kernel version.
+
+For the full list of sysctls and kernel requirements, see the [Sysctl Configuration]({{< ref "sysctl.md" >}}) documentation.
+
 #### Using Kustomize
 
 Alternatively, you can use kustomize to add the annotation to the router pod:
