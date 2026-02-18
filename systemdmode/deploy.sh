@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SYSTEMD_UNIT_DIR="/etc/systemd/system"
+QUADLET_DIR="/etc/containers/systemd"
 
 source "$SCRIPT_DIR/../clab/common.sh"
 
@@ -48,7 +48,7 @@ update_and_restart_routerpod() {
     load_image_to_node "$NODE" "$ROUTER_IMAGE"
 
     log_info "  Restarting routerpod services..."
-    $CONTAINER_ENGINE_CLI exec "$NODE" systemctl restart pod-routerpod.service || log_warn "Failed to restart pod-routerpod.service on $NODE"
+    $CONTAINER_ENGINE_CLI exec "$NODE" systemctl restart routerpod-pod.service || log_warn "Failed to restart routerpod-pod.service on $NODE"
 }
 
 update_and_restart_controllerpod() {
@@ -59,7 +59,7 @@ update_and_restart_controllerpod() {
     load_image_to_node "$NODE" "$ROUTER_IMAGE"
 
     log_info "  Restarting controllerpod services..."
-    $CONTAINER_ENGINE_CLI exec "$NODE" systemctl restart pod-controllerpod.service || log_warn "Failed to restart pod-controllerpod.service on $NODE"
+    $CONTAINER_ENGINE_CLI exec "$NODE" systemctl restart controllerpod-pod.service || log_warn "Failed to restart controllerpod-pod.service on $NODE"
 }
 
 if [[ $# -lt 1 ]]; then
@@ -80,30 +80,25 @@ fi
 for NODE in $NODES; do
     log_info "Deploying to node: $NODE"
 
-    for service_file in "$SCRIPT_DIR"/pod-*.service "$SCRIPT_DIR"/container-*.service; do
-        if [[ -f "$service_file" ]]; then
-            SERVICE_NAME=$(basename "$service_file")
-            log_info "    Copying $SERVICE_NAME"
-            $CONTAINER_ENGINE_CLI cp "$service_file" "$NODE:$SYSTEMD_UNIT_DIR/$SERVICE_NAME"
+    log_info "  Creating quadlet directory..."
+    $CONTAINER_ENGINE_CLI exec "$NODE" mkdir -p "$QUADLET_DIR"
+
+    for quadlet_file in "$SCRIPT_DIR"/quadlets/*.pod "$SCRIPT_DIR"/quadlets/*.container "$SCRIPT_DIR"/quadlets/*.volume; do
+        if [[ -f "$quadlet_file" ]]; then
+            QUADLET_NAME=$(basename "$quadlet_file")
+            log_info "    Copying $QUADLET_NAME"
+            $CONTAINER_ENGINE_CLI cp "$quadlet_file" "$NODE:$QUADLET_DIR/$QUADLET_NAME"
         fi
     done
 
-    $CONTAINER_ENGINE_CLI exec "$NODE" mkdir -p /etc/perouter/frr
-    $CONTAINER_ENGINE_CLI exec "$NODE" mkdir -p /var/lib/hostbridge
-
-    log_info "  Reloading systemd daemon..."
+    log_info "  Reloading systemd daemon (triggers quadlet generation)..."
     $CONTAINER_ENGINE_CLI exec "$NODE" systemctl daemon-reload
 
-    if $CONTAINER_ENGINE_CLI exec "$NODE" systemctl is-active --quiet pod-controllerpod.service; then
-        log_info "  Detected running pods - updating images and restarting..."
-        update_and_restart_routerpod "$NODE"
-        update_and_restart_controllerpod "$NODE"
-    else
-        update_and_restart_routerpod "$NODE"
-        update_and_restart_controllerpod "$NODE"
-    fi
+    log_info "  Updating images and (re)starting pods..."
+    update_and_restart_routerpod "$NODE"
+    update_and_restart_controllerpod "$NODE"
 
-    $CONTAINER_ENGINE_CLI exec "$NODE" systemctl enable pod-routerpod.service pod-controllerpod.service || log_warn "Failed to enable services on $NODE"
+    log_info "  Services enabled automatically via quadlet [Install] sections"
 
     echo ""
 done
@@ -113,7 +108,13 @@ log_info "Deployment complete! Showing service status for all nodes:"
 echo ""
 
 for NODE in $NODES; do
-    $CONTAINER_ENGINE_CLI exec "$NODE" systemctl status pod-routerpod.service --no-pager -l 2>&1 || true
-    $CONTAINER_ENGINE_CLI exec "$NODE" systemctl status pod-controllerpod.service --no-pager -l 2>&1 || true
+    log_info "Status for $NODE:"
+    $CONTAINER_ENGINE_CLI exec "$NODE" systemctl status routerpod-pod.service --no-pager -l 2>&1 || true
+    echo ""
+    $CONTAINER_ENGINE_CLI exec "$NODE" systemctl status controllerpod-pod.service --no-pager -l 2>&1 || true
+    echo ""
+    log_info "Running containers on $NODE:"
+    $CONTAINER_ENGINE_CLI exec "$NODE" podman ps --format "table {{.Names}}\t{{.Status}}\t{{.Image}}" 2>&1 || true
+    echo ""
 done
 
