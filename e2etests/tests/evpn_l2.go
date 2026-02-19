@@ -121,29 +121,65 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 	)
 	type testCase struct {
 		firstPodIPs, secondPodIPs, hostARedIPs, hostBRedIPs, l2GatewayIPs []string
-		hostMaster                                                        v1alpha1.HostMaster // Allow specifying custom HostMaster config
-		nadMaster                                                         string              // Bridge name for NAD (defaults to "br-hs-110")
+		hostMaster                                                        v1alpha1.HostMaster  // Allow specifying custom HostMaster config
+		nadMaster                                                         string               // Bridge name for NAD (defaults to "br-hs-110")
+		underlay                                                          *v1alpha1.EVPNConfig // Optional custom underlay evpn config (e.g., vtepInterface instead of vtepCIDR)
+		reachabilityTimeout                                               time.Duration        // Timeout for reachability checks (defaults to 5s, use longer for cold-start scenarios like vtepInterface)
 	}
 	DescribeTable("should create two pods connected to the l2 overlay", func(tc testCase) {
 		By("setting redistribute connected on leaves")
 		redistributeConnectedForLeaf(infra.LeafAConfig)
 		redistributeConnectedForLeaf(infra.LeafBConfig)
 
-		err := Updater.CleanButUnderlay()
+		nodes, err := k8s.GetNodes(cs)
 		Expect(err).NotTo(HaveOccurred())
+		Expect(len(nodes)).To(BeNumerically(">=", 2), "Expected at least 2 nodes, but got fewer")
+
+		if tc.underlay != nil && tc.underlay.VTEPInterface != "" {
+			By("setting redistribute connected on leaf kind for vtepInterface")
+			// This is needed if we use vtepInterface since
+			// openperouter is not going to advertise the
+			// address there, that address is supose to be
+			// advertised by the network fabric
+			redistributeConnectedForLeafKind(nodes)
+			err = Updater.CleanAll()
+		} else {
+			err = Updater.CleanButUnderlay()
+		}
+		Expect(err).NotTo(HaveOccurred())
+
 		l2VniRedWithGateway := l2VniRed.DeepCopy()
 		l2VniRedWithGateway.Spec.L2GatewayIPs = tc.l2GatewayIPs
 		l2VniRedWithGateway.Spec.HostMaster = &tc.hostMaster
 
-		err = Updater.Update(config.Resources{
+		resources := config.Resources{
 			L3VNIs: []v1alpha1.L3VNI{
 				vniRed,
 			},
 			L2VNIs: []v1alpha1.L2VNI{
 				*l2VniRedWithGateway,
 			},
-		})
+		}
+		if tc.underlay != nil {
+			underlay := infra.Underlay
+			underlay.Spec.EVPN = tc.underlay
+			resources.Underlays = []v1alpha1.Underlay{underlay}
+		}
+		oldRouters, err := openperouter.Get(cs, HostMode)
 		Expect(err).NotTo(HaveOccurred())
+		err = Updater.Update(resources)
+		Expect(err).NotTo(HaveOccurred())
+
+		if tc.underlay != nil {
+			By("waiting for the router pods to rollout after changing the underlay")
+			Eventually(func() error {
+				newRouters, err := openperouter.Get(cs, HostMode)
+				if err != nil {
+					return err
+				}
+				return openperouter.DaemonsetRolled(oldRouters, newRouters)
+			}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
+		}
 
 		_, err = k8s.CreateNamespace(cs, testNamespace)
 		Expect(err).NotTo(HaveOccurred())
@@ -154,16 +190,26 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		DeferCleanup(func() {
 			Expect(infra.LeafAConfig.RemovePrefixes()).To(Succeed())
 			Expect(infra.LeafBConfig.RemovePrefixes()).To(Succeed())
+			if tc.underlay != nil && tc.underlay.VTEPInterface != "" {
+				resetLeafKindConfig(nodes)
+			}
 			dumpIfFails(cs)
-			err := Updater.CleanButUnderlay()
-			Expect(err).NotTo(HaveOccurred())
-			err = k8s.DeleteNamespace(cs, testNamespace)
+			if tc.underlay != nil {
+				err := Updater.CleanAll()
+				Expect(err).NotTo(HaveOccurred())
+				err = Updater.Update(config.Resources{
+					Underlays: []v1alpha1.Underlay{
+						infra.Underlay,
+					},
+				})
+				Expect(err).NotTo(HaveOccurred())
+			} else {
+				err := Updater.CleanButUnderlay()
+				Expect(err).NotTo(HaveOccurred())
+			}
+			err := k8s.DeleteNamespace(cs, testNamespace)
 			Expect(err).NotTo(HaveOccurred())
 		})
-
-		nodes, err := k8s.GetNodes(cs)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(len(nodes)).To(BeNumerically(">=", 2), "Expected at least 2 nodes, but got fewer")
 
 		By("creating the pods")
 		firstPod, err = k8s.CreateAgnhostPod(cs, "pod1", testNamespace, k8s.WithNad(nad.Name, testNamespace, tc.firstPodIPs), k8s.OnNode(nodes[0].Name))
@@ -175,6 +221,10 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		Expect(removeGatewayFromPod(firstPod)).To(Succeed())
 		Expect(removeGatewayFromPod(secondPod)).To(Succeed())
 
+		reachabilityTimeout := 5 * time.Second
+		if tc.reachabilityTimeout != 0 {
+			reachabilityTimeout = tc.reachabilityTimeout
+		}
 		checkPodIsReacheable := func(exec executor.Executor, from, to string) {
 			GinkgoHelper()
 			const port = "8090"
@@ -188,7 +238,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 				g.Expect(err).ToNot(HaveOccurred())
 				return clientIP
 			}).
-				WithTimeout(5*time.Second).
+				WithTimeout(reachabilityTimeout).
 				WithPolling(time.Second).
 				Should(Equal(from), "curl should return the expected clientip")
 		}
@@ -350,6 +400,24 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 					Name:       preExistingOVSBridge,
 					AutoCreate: false,
 				},
+			},
+		}),
+		Entry("vtepInterface for single stack ipv4", testCase{
+			l2GatewayIPs:        []string{"192.171.24.1/24"},
+			firstPodIPs:         []string{"192.171.24.2/24"},
+			secondPodIPs:        []string{"192.171.24.3/24"},
+			hostARedIPs:         []string{infra.HostARedIPv4},
+			hostBRedIPs:         []string{infra.HostBRedIPv4},
+			nadMaster:           "br-hs-110",
+			reachabilityTimeout: 40 * time.Second, // Longer timeout: pod restart requires veth recreation + BGP EVPN cold-start convergence
+			hostMaster: v1alpha1.HostMaster{
+				Type: linuxBridgeHostAttachment,
+				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
+					AutoCreate: true,
+				},
+			},
+			underlay: &v1alpha1.EVPNConfig{
+				VTEPInterface: "toswitch",
 			},
 		}),
 	)

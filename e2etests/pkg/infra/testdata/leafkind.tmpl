@@ -36,6 +36,9 @@ router bgp 64512
 
  !
  address-family ipv4 unicast
+{{- if .RedistributeConnected }}
+  redistribute connected
+{{- end }}
   neighbor 192.168.1.4 activate
 {{- range .Neighbors }}
   neighbor {{ . }} activate
