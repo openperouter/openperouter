@@ -13,6 +13,8 @@ import (
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/vishvananda/netlink"
+
+	"github.com/openperouter/openperouter/internal/ovsmodel"
 )
 
 const (
@@ -21,42 +23,9 @@ const (
 
 var OVSSocketPath = defaultOVSSocketPath
 
-// Bridge model represents a row in the Bridge table
-type Bridge struct {
-	UUID        string            `ovsdb:"_uuid"`
-	Name        string            `ovsdb:"name"`
-	Ports       []string          `ovsdb:"ports"`
-	ExternalIds map[string]string `ovsdb:"external_ids"`
-}
-
-// Port model represents a row in the Port table
-type Port struct {
-	UUID       string   `ovsdb:"_uuid"`
-	Name       string   `ovsdb:"name"`
-	Interfaces []string `ovsdb:"interfaces"`
-}
-
-// Interface model represents a row in the Interface table
-type Interface struct {
-	UUID string `ovsdb:"_uuid"`
-	Name string `ovsdb:"name"`
-	Type string `ovsdb:"type"`
-}
-
-// OpenVSwitch model represents a row in the Open_vSwitch table
-type OpenVSwitch struct {
-	UUID    string   `ovsdb:"_uuid"`
-	Bridges []string `ovsdb:"bridges"`
-}
-
 // NewOVSClient creates a new OVS database client
 func NewOVSClient(ctx context.Context) (libovsclient.Client, error) {
-	dbModel, err := model.NewClientDBModel("Open_vSwitch", map[string]model.Model{
-		"Open_vSwitch": &OpenVSwitch{},
-		"Bridge":       &Bridge{},
-		"Port":         &Port{},
-		"Interface":    &Interface{},
-	})
+	dbModel, err := ovsmodel.FullDatabaseModel()
 	if err != nil {
 		return nil, fmt.Errorf("failed to build OVS DB model: %w", err)
 	}
@@ -77,7 +46,7 @@ func NewOVSClient(ctx context.Context) (libovsclient.Client, error) {
 
 // EnsureBridge ensures an OVS bridge exists, creating it if necessary
 func EnsureBridge(ctx context.Context, ovs libovsclient.Client, bridgeName string) (string, error) {
-	br := &Bridge{Name: bridgeName}
+	br := &ovsmodel.Bridge{Name: bridgeName}
 	err := ovs.Get(ctx, br)
 	if err == nil {
 		return br.UUID, nil
@@ -87,10 +56,10 @@ func EnsureBridge(ctx context.Context, ovs libovsclient.Client, bridgeName strin
 	}
 
 	namedUUID := "new_bridge"
-	br = &Bridge{
+	br = &ovsmodel.Bridge{
 		UUID:        namedUUID,
 		Name:        bridgeName,
-		ExternalIds: map[string]string{"created-by": "openperouter"},
+		ExternalIDs: map[string]string{"created-by": "openperouter"},
 	}
 
 	insertOp, err := ovs.Create(br)
@@ -98,8 +67,8 @@ func EnsureBridge(ctx context.Context, ovs libovsclient.Client, bridgeName strin
 		return "", fmt.Errorf("failed to create bridge insert operation: %w", err)
 	}
 
-	ovsRow := &OpenVSwitch{}
-	mutateOp, err := ovs.WhereCache(func(*OpenVSwitch) bool { return true }).
+	ovsRow := &ovsmodel.OpenvSwitch{}
+	mutateOp, err := ovs.WhereCache(func(*ovsmodel.OpenvSwitch) bool { return true }).
 		Mutate(ovsRow, model.Mutation{
 			Field:   &ovsRow.Bridges,
 			Mutator: ovsdb.MutateOperationInsert,
@@ -151,10 +120,10 @@ func ensureOVSBridgeAndAttachWithClient(ctx context.Context, ovs libovsclient.Cl
 	// Cache for indexed operations
 	if _, err := ovs.Monitor(ctx,
 		ovs.NewMonitor(
-			libovsclient.WithTable(&OpenVSwitch{}),
-			libovsclient.WithTable(&Bridge{}),
-			libovsclient.WithTable(&Port{}),
-			libovsclient.WithTable(&Interface{}),
+			libovsclient.WithTable(&ovsmodel.OpenvSwitch{}),
+			libovsclient.WithTable(&ovsmodel.Bridge{}),
+			libovsclient.WithTable(&ovsmodel.Port{}),
+			libovsclient.WithTable(&ovsmodel.Interface{}),
 		),
 	); err != nil {
 		return fmt.Errorf("failed to setup monitor: %w", err)
@@ -188,7 +157,7 @@ func ensureOVSBridgeAndAttachWithClient(ctx context.Context, ovs libovsclient.Cl
 }
 
 func ensurePortAttachedToBridge(ctx context.Context, ovs libovsclient.Client, bridgeUUID, interfaceName string) error {
-	iface := &Interface{Name: interfaceName}
+	iface := &ovsmodel.Interface{Name: interfaceName}
 	interfaceUUID := ""
 	err := ovs.Get(ctx, iface)
 	if err != nil && !errors.Is(err, libovsclient.ErrNotFound) {
@@ -198,7 +167,7 @@ func ensurePortAttachedToBridge(ctx context.Context, ovs libovsclient.Client, br
 		interfaceUUID = iface.UUID
 	}
 
-	port := &Port{Name: interfaceName}
+	port := &ovsmodel.Port{Name: interfaceName}
 	portUUID := ""
 	err = ovs.Get(ctx, port)
 	if err != nil && !errors.Is(err, libovsclient.ErrNotFound) {
@@ -208,7 +177,7 @@ func ensurePortAttachedToBridge(ctx context.Context, ovs libovsclient.Client, br
 		portUUID = port.UUID
 	}
 
-	bridge := &Bridge{UUID: bridgeUUID}
+	bridge := &ovsmodel.Bridge{UUID: bridgeUUID}
 	if err := ovs.Get(ctx, bridge); err != nil {
 		return fmt.Errorf("failed to get bridge: %w", err)
 	}
@@ -227,7 +196,7 @@ func ensurePortAttachedToBridge(ctx context.Context, ovs libovsclient.Client, br
 	interfaceNamedUUID := interfaceUUID
 	if interfaceUUID == "" {
 		interfaceOp, err := ovs.Create(
-			&Interface{
+			&ovsmodel.Interface{
 				UUID: "new_interface",
 				Name: interfaceName,
 				Type: "system", // system type for regular interfaces
@@ -243,7 +212,7 @@ func ensurePortAttachedToBridge(ctx context.Context, ovs libovsclient.Client, br
 	portNamedUUID := portUUID
 	if portUUID == "" {
 		portOp, err := ovs.Create(
-			&Port{
+			&ovsmodel.Port{
 				UUID:       "new_port",
 				Name:       interfaceName,
 				Interfaces: []string{interfaceNamedUUID},
@@ -289,7 +258,7 @@ func ensurePortAttachedToBridge(ctx context.Context, ovs libovsclient.Client, br
 // This creates the Linux network interface that can be used as a master for macvlan/ipvlan.
 func ensureInternalPortForBridge(ctx context.Context, ovs libovsclient.Client, bridgeUUID, bridgeName string) error {
 	// Check if internal port already exists
-	iface := &Interface{Name: bridgeName}
+	iface := &ovsmodel.Interface{Name: bridgeName}
 	err := ovs.Get(ctx, iface)
 	if err == nil {
 		slog.Debug("internal port already exists for bridge", "name", bridgeName, "UUID", iface.UUID)
@@ -300,7 +269,7 @@ func ensureInternalPortForBridge(ctx context.Context, ovs libovsclient.Client, b
 	}
 	slog.Debug("bridge management port does not exist; must create it", "name", bridgeName)
 
-	port := &Port{Name: bridgeName}
+	port := &ovsmodel.Port{Name: bridgeName}
 	err = ovs.Get(ctx, port)
 	if err == nil {
 		slog.Debug("internal port already exists for bridge", "name", bridgeName, "UUID", port.UUID)
@@ -318,7 +287,7 @@ func ensureInternalPortForBridge(ctx context.Context, ovs libovsclient.Client, b
 
 	// Create internal interface (this creates the Linux interface)
 	interfaceOp, err := ovs.Create(
-		&Interface{
+		&ovsmodel.Interface{
 			UUID: interfaceNamedUUID,
 			Name: bridgeName,
 			Type: "internal", // internal type creates a Linux interface
@@ -331,7 +300,7 @@ func ensureInternalPortForBridge(ctx context.Context, ovs libovsclient.Client, b
 
 	// Create port for the internal interface
 	portOp, err := ovs.Create(
-		&Port{
+		&ovsmodel.Port{
 			UUID:       portNamedUUID,
 			Name:       bridgeName,
 			Interfaces: []string{interfaceNamedUUID},
@@ -343,7 +312,7 @@ func ensureInternalPortForBridge(ctx context.Context, ovs libovsclient.Client, b
 	operations = append(operations, portOp...)
 
 	// Attach the internal port to the bridge
-	bridge := &Bridge{UUID: bridgeUUID}
+	bridge := &ovsmodel.Bridge{UUID: bridgeUUID}
 	if err := ovs.Get(ctx, bridge); err != nil {
 		return fmt.Errorf("failed to get bridge: %w", err)
 	}
