@@ -12,6 +12,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/openperouter/openperouter/internal/netnamespace"
+	"github.com/openperouter/openperouter/internal/vswitchd"
 	libovsclient "github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
@@ -218,10 +219,10 @@ func createOVSBridge(name string) error {
 	defer ovs.Close()
 
 	_, err = ovs.Monitor(ctx, ovs.NewMonitor(
-		libovsclient.WithTable(&OpenVSwitch{}),
-		libovsclient.WithTable(&Bridge{}),
-		libovsclient.WithTable(&Port{}),
-		libovsclient.WithTable(&Interface{}),
+		libovsclient.WithTable(&vswitchd.OpenvSwitch{}),
+		libovsclient.WithTable(&vswitchd.Bridge{}),
+		libovsclient.WithTable(&vswitchd.Port{}),
+		libovsclient.WithTable(&vswitchd.Interface{}),
 	))
 	if err != nil {
 		return err
@@ -241,7 +242,7 @@ func createOVSBridge(name string) error {
 }
 
 // getOVSBridge retrieves an OVS bridge by name, returns error if not found
-func getOVSBridge(name string) (*Bridge, error) {
+func getOVSBridge(name string) (*vswitchd.Bridge, error) {
 	ctx := context.Background()
 	ovs, err := NewOVSClient(ctx)
 	if err != nil {
@@ -249,12 +250,12 @@ func getOVSBridge(name string) (*Bridge, error) {
 	}
 	defer ovs.Close()
 
-	_, err = ovs.Monitor(ctx, ovs.NewMonitor(libovsclient.WithTable(&Bridge{})))
+	_, err = ovs.Monitor(ctx, ovs.NewMonitor(libovsclient.WithTable(&vswitchd.Bridge{})))
 	if err != nil {
 		return nil, err
 	}
 
-	bridge := &Bridge{Name: name}
+	bridge := &vswitchd.Bridge{Name: name}
 	err = ovs.Get(ctx, bridge)
 	if err != nil {
 		return nil, err
@@ -272,20 +273,20 @@ func ovsBridgeHasPort(bridgeName, portName string) (bool, error) {
 	defer ovs.Close()
 
 	_, err = ovs.Monitor(ctx, ovs.NewMonitor(
-		libovsclient.WithTable(&Bridge{}),
-		libovsclient.WithTable(&Port{}),
+		libovsclient.WithTable(&vswitchd.Bridge{}),
+		libovsclient.WithTable(&vswitchd.Port{}),
 	))
 	if err != nil {
 		return false, err
 	}
 
-	bridge := &Bridge{Name: bridgeName}
+	bridge := &vswitchd.Bridge{Name: bridgeName}
 	err = ovs.Get(ctx, bridge)
 	if err != nil {
 		return false, err
 	}
 
-	port := &Port{Name: portName}
+	port := &vswitchd.Port{Name: portName}
 	err = ovs.Get(ctx, port)
 	if err != nil {
 		return false, nil // Port doesn't exist
