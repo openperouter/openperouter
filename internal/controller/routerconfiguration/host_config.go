@@ -33,6 +33,11 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 		return fmt.Errorf("failed to check if target namespace %s has underlay: %w", config.targetNamespace, err)
 	}
 	if hasAlreadyUnderlay && len(config.Underlays) == 0 {
+		slog.InfoContext(ctx, "underlay removed, cleaning up VNIs")
+		if err := hostnetwork.RemoveNonConfiguredVNIs(config.targetNamespace, []hostnetwork.VNIParams{}); err != nil {
+			slog.Warn("failed to remove vnis after underlay removal", "err", err)
+		}
+		bridgerefresh.StopForRemovedVNIs(nil)
 		return UnderlayRemovedError{}
 	}
 
