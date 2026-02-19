@@ -73,6 +73,16 @@ router bgp {{ .ASN }} vrf {{ .VRF }}
   address-family l2vpn evpn
     advertise ipv4 unicast
     advertise ipv6 unicast
+    {{- if .ExportRTs }}
+    {{- range .ExportRTs }}
+    route-target export {{ . }}
+    {{- end }}
+    {{- end }}
+    {{- if .ImportRTs }}
+    {{- range .ImportRTs }}
+    route-target import {{ . }}
+    {{- end }}
+    {{- end }}
   exit-address-family
 exit
 {{- end }}

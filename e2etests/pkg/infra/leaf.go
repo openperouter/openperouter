@@ -55,10 +55,16 @@ type LeafKindConfiguration struct {
 	Neighbors []string
 }
 
+type RouteTargets struct {
+	ImportRTs []string
+	ExportRTs []string
+}
+
 type Addresses struct {
 	RedistributeConnected bool
 	IPV4                  []string
 	IPV6                  []string
+	RouteTargets          RouteTargets
 }
 
 type Leaf struct {
@@ -151,7 +157,7 @@ func UpdateLeafKindConfig(nodes []corev1.Node, enableBFD bool) error {
 }
 
 // ChangePrefixes updates the leaf configuration with the given prefixes for each VRF.
-func (l Leaf) ChangePrefixes(defaultPrefixes, redPrefixes, bluePrefixes []string) error {
+func (l Leaf) ChangePrefixes(defaultPrefixes, redPrefixes, bluePrefixes []string, redRTs, blueRTs RouteTargets) error {
 	defaultIPv4, defaultIPv6 := SeparateIPFamilies(defaultPrefixes)
 	redIPv4, redIPv6 := SeparateIPFamilies(redPrefixes)
 	blueIPv4, blueIPv6 := SeparateIPFamilies(bluePrefixes)
@@ -163,12 +169,14 @@ func (l Leaf) ChangePrefixes(defaultPrefixes, redPrefixes, bluePrefixes []string
 			IPV6: defaultIPv6,
 		},
 		Red: Addresses{
-			IPV4: redIPv4,
-			IPV6: redIPv6,
+			IPV4:         redIPv4,
+			IPV6:         redIPv6,
+			RouteTargets: redRTs,
 		},
 		Blue: Addresses{
-			IPV4: blueIPv4,
-			IPV6: blueIPv6,
+			IPV4:         blueIPv4,
+			IPV6:         blueIPv6,
+			RouteTargets: blueRTs,
 		},
 	}
 	config, err := LeafConfigToFRR(leafConfiguration)
@@ -180,7 +188,7 @@ func (l Leaf) ChangePrefixes(defaultPrefixes, redPrefixes, bluePrefixes []string
 
 // RemovePrefixes removes all prefixes from the leaf configuration.
 func (l Leaf) RemovePrefixes() error {
-	return l.ChangePrefixes([]string{}, []string{}, []string{})
+	return l.ChangePrefixes([]string{}, []string{}, []string{}, RouteTargets{}, RouteTargets{})
 }
 
 // SeparateIPFamilies separates a slice of CIDR prefixes into IPv4 and IPv6 slices
