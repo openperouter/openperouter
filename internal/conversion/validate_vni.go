@@ -85,7 +85,7 @@ func ValidateL2VNIs(l2Vnis []v1alpha1.L2VNI) error {
 }
 
 // vni holds VNI validation data
-type vni struct {
+type VNI struct {
 	name      string
 	vni       uint32
 	vrfName   string
@@ -94,10 +94,10 @@ type vni struct {
 }
 
 // vnisFromL3VNIs converts L3VNIs to vni slice
-func vnisFromL3VNIs(l3vnis []v1alpha1.L3VNI) []vni {
-	result := make([]vni, len(l3vnis))
+func vnisFromL3VNIs(l3vnis []v1alpha1.L3VNI) []VNI {
+	result := make([]VNI, len(l3vnis))
 	for i, l3vni := range l3vnis {
-		result[i] = vni{
+		result[i] = VNI{
 			name:      l3vni.Name,
 			vni:       l3vni.Spec.VNI,
 			vrfName:   l3vni.Spec.VRF,
@@ -109,10 +109,10 @@ func vnisFromL3VNIs(l3vnis []v1alpha1.L3VNI) []vni {
 }
 
 // vnisFromL2VNIs converts L2VNIs to vni slice
-func vnisFromL2VNIs(l2vnis []v1alpha1.L2VNI) []vni {
-	result := make([]vni, len(l2vnis))
+func vnisFromL2VNIs(l2vnis []v1alpha1.L2VNI) []VNI {
+	result := make([]VNI, len(l2vnis))
 	for i, l2vni := range l2vnis {
-		result[i] = vni{
+		result[i] = VNI{
 			name:    l2vni.Name,
 			vni:     l2vni.Spec.VNI,
 			vrfName: l2vni.VRFName(),
@@ -122,7 +122,7 @@ func vnisFromL2VNIs(l2vnis []v1alpha1.L2VNI) []vni {
 }
 
 // validateVNIs performs common validation logic for VNIs
-func validateVNIs(vnis []vni) error {
+func validateVNIs(vnis []VNI) error {
 	existingVrfs := map[string]string{} // a map between the given VRF and the VNI instance it's configured in
 	existingVNIs := map[uint32]string{} // a map between the given VNI number and the VNI instance it's configured in
 
@@ -256,7 +256,7 @@ func validateRouteTargetIsIPv4(value string) bool {
 	return err == nil && addr == ipfamily.IPv4
 }
 
-func ValidateRouteTargets(vni vni) error {
+func ValidateRouteTargets(vni VNI) error {
 	for _, rt := range vni.exportRTs {
 		if err := validateRouteTarget(rt); err != nil {
 			return err
