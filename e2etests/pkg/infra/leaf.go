@@ -156,8 +156,17 @@ func UpdateLeafKindConfig(nodes []corev1.Node, enableBFD bool) error {
 	return LeafKindConfig.ReloadConfig(configString)
 }
 
+func (l Leaf) Configure(LeafConfig LeafConfiguration) error {
+	LeafConfig.Leaf = l
+	config, err := LeafConfigToFRR(LeafConfig)
+	if err != nil {
+		return err
+	}
+	return l.ReloadConfig(config)
+}
+
 // ChangePrefixes updates the leaf configuration with the given prefixes for each VRF.
-func (l Leaf) ChangePrefixes(defaultPrefixes, redPrefixes, bluePrefixes []string, redRTs, blueRTs RouteTargets) error {
+func (l Leaf) ChangePrefixes(defaultPrefixes, redPrefixes, bluePrefixes []string) error {
 	defaultIPv4, defaultIPv6 := SeparateIPFamilies(defaultPrefixes)
 	redIPv4, redIPv6 := SeparateIPFamilies(redPrefixes)
 	blueIPv4, blueIPv6 := SeparateIPFamilies(bluePrefixes)
@@ -169,14 +178,12 @@ func (l Leaf) ChangePrefixes(defaultPrefixes, redPrefixes, bluePrefixes []string
 			IPV6: defaultIPv6,
 		},
 		Red: Addresses{
-			IPV4:         redIPv4,
-			IPV6:         redIPv6,
-			RouteTargets: redRTs,
+			IPV4: redIPv4,
+			IPV6: redIPv6,
 		},
 		Blue: Addresses{
-			IPV4:         blueIPv4,
-			IPV6:         blueIPv6,
-			RouteTargets: blueRTs,
+			IPV4: blueIPv4,
+			IPV6: blueIPv6,
 		},
 	}
 	config, err := LeafConfigToFRR(leafConfiguration)
@@ -188,7 +195,7 @@ func (l Leaf) ChangePrefixes(defaultPrefixes, redPrefixes, bluePrefixes []string
 
 // RemovePrefixes removes all prefixes from the leaf configuration.
 func (l Leaf) RemovePrefixes() error {
-	return l.ChangePrefixes([]string{}, []string{}, []string{}, RouteTargets{}, RouteTargets{})
+	return l.ChangePrefixes([]string{}, []string{}, []string{})
 }
 
 // SeparateIPFamilies separates a slice of CIDR prefixes into IPv4 and IPv6 slices

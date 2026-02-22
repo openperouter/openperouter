@@ -126,8 +126,8 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 	}
 	DescribeTable("should create two pods connected to the l2 overlay", func(tc testCase) {
 		By("setting redistribute connected on leaves")
-		redistributeConnectedForLeaf(infra.LeafAConfig, emptyRouteTargets, emptyRouteTargets)
-		redistributeConnectedForLeaf(infra.LeafBConfig, emptyRouteTargets, emptyRouteTargets)
+		redistributeConnectedForLeaf(infra.LeafAConfig)
+		redistributeConnectedForLeaf(infra.LeafBConfig)
 
 		err := Updater.CleanButUnderlay()
 		Expect(err).NotTo(HaveOccurred())

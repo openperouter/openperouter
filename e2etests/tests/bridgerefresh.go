@@ -87,8 +87,8 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 		Expect(err).NotTo(HaveOccurred())
 
 		By("setting redistribute connected on leaves")
-		redistributeConnectedForLeaf(infra.LeafAConfig, emptyRouteTargets, emptyRouteTargets)
-		redistributeConnectedForLeaf(infra.LeafBConfig, emptyRouteTargets, emptyRouteTargets)
+		redistributeConnectedForLeaf(infra.LeafAConfig)
+		redistributeConnectedForLeaf(infra.LeafBConfig)
 	})
 
 	AfterAll(func() {

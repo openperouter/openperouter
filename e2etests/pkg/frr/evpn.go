@@ -113,7 +113,7 @@ func (e *EVPNData) ContainsType5RouteForRT(prefix string, vtep string, rt []stri
 				if routePrefix == prefix {
 					for _, n := range path.Nexthops {
 						if n.IP == vtep &&
-							findRouteTargetFromExtendedCommunity(path.ExtendedCommunity.String, rt) {
+							routeTargetFromExtendedCommunity(path.ExtendedCommunity.String, rt) {
 							return true
 						}
 					}
@@ -253,9 +253,7 @@ func containsVNI(vnis []int, vni int) bool {
 	return false
 }
 
-func findRouteTargetFromExtendedCommunity(extendedCommunity string, routeTargets []string) bool {
-	// extended community looks like: "RT:64514:200 ET:8 Rmac:22:2e:e4:41:7f:5c"
-
+func routeTargetFromExtendedCommunity(extendedCommunity string, routeTargets []string) bool {
 	parts := strings.Split(extendedCommunity, " ")
 	for part := range parts {
 		for _, routeTarget := range routeTargets {

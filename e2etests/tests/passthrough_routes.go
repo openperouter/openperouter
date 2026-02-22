@@ -133,8 +133,8 @@ var _ = Describe("Routes between bgp and the fabric", Label("passthrough"), Orde
 		It("translates BGP incoming routes as BGP routes", func() {
 
 			By("advertising routes from both leaves")
-			Expect(infra.LeafAConfig.ChangePrefixes(leafADefaultPrefixes, emptyPrefixes, emptyPrefixes, emptyRouteTargets, emptyRouteTargets)).To(Succeed())
-			Expect(infra.LeafBConfig.ChangePrefixes(leafBDefaultPrefixes, emptyPrefixes, emptyPrefixes, emptyRouteTargets, emptyRouteTargets)).To(Succeed())
+			Expect(infra.LeafAConfig.ChangePrefixes(leafADefaultPrefixes, emptyPrefixes, emptyPrefixes)).To(Succeed())
+			Expect(infra.LeafBConfig.ChangePrefixes(leafBDefaultPrefixes, emptyPrefixes, emptyPrefixes)).To(Succeed())
 
 			By("checking routes are propagated via BGP")
 
@@ -144,8 +144,8 @@ var _ = Describe("Routes between bgp and the fabric", Label("passthrough"), Orde
 			}
 
 			By("removing routes from the leaf B")
-			Expect(infra.LeafAConfig.ChangePrefixes(leafADefaultPrefixes, emptyPrefixes, emptyPrefixes, emptyRouteTargets, emptyRouteTargets)).To(Succeed())
-			Expect(infra.LeafBConfig.ChangePrefixes(emptyPrefixes, emptyPrefixes, emptyPrefixes, emptyRouteTargets, emptyRouteTargets)).To(Succeed())
+			Expect(infra.LeafAConfig.ChangePrefixes(leafADefaultPrefixes, emptyPrefixes, emptyPrefixes)).To(Succeed())
+			Expect(infra.LeafBConfig.ChangePrefixes(emptyPrefixes, emptyPrefixes, emptyPrefixes)).To(Succeed())
 
 			By("checking routes are propagated via BGP")
 
@@ -163,8 +163,8 @@ var _ = Describe("Routes between bgp and the fabric", Label("passthrough"), Orde
 
 		BeforeAll(func() {
 			By("setting redistribute connected on leaves")
-			redistributeConnectedForLeaf(infra.LeafAConfig, emptyRouteTargets, emptyRouteTargets)
-			redistributeConnectedForLeaf(infra.LeafBConfig, emptyRouteTargets, emptyRouteTargets)
+			redistributeConnectedForLeaf(infra.LeafAConfig)
+			redistributeConnectedForLeaf(infra.LeafBConfig)
 
 			By("Creating the test namespace")
 			_, err := k8s.CreateNamespace(cs, testNamespace)
