@@ -1,0 +1,28 @@
+# controllerpod.pod
+# OpenPERouter Controller Pod
+#
+# This pod contains the OpenPERouter controller that manages configuration,
+# network namespaces, and Kubernetes integration.
+
+[Unit]
+Description=OpenPERouter Controller Pod
+Documentation=https://github.com/openperouter
+Wants=network-online.target
+After=network-online.target
+
+[Pod]
+# Pod name - will create Podman pod named "systemd-controllerpod"
+PodName=controllerpod
+
+# No namespace sharing needed for controller (default isolation)
+
+[Service]
+# Restart policy - restart pod if it fails
+Restart=on-failure
+
+# Timeout for stopping the pod
+TimeoutStopSec=70
+
+[Install]
+# Automatically enable this pod at boot
+WantedBy=default.target

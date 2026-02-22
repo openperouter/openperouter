@@ -78,7 +78,10 @@ const (
 
 var macHeader = []byte{0x00, 0xF3}
 
-func setBridgeFixedMacAddress(bridge netlink.Link, vni int) error {
+// ensureBridgeFixedMacAddress sets a deterministic MAC address on the bridge based on the VNI.
+// It is idempotent: if the MAC is already correct, it skips the update to avoid
+// unnecessary RTM_NEWLINK events that can cause FRR to flush neighbor entries.
+func ensureBridgeFixedMacAddress(bridge netlink.Link, vni int) error {
 	macAddress := make([]byte, macSize)
 
 	buf := new(bytes.Buffer)
@@ -88,6 +91,11 @@ func setBridgeFixedMacAddress(bridge netlink.Link, vni int) error {
 	}
 	copy(macAddress, macHeader)
 	copy(macAddress[2:], buf.Bytes())
+
+	if bytes.Equal(bridge.Attrs().HardwareAddr, macAddress) {
+		return nil
+	}
+
 	if err := netlink.LinkSetHardwareAddr(bridge, macAddress); err != nil {
 		return fmt.Errorf("failed to set mac address to bridge %s %x: %w", bridge.Attrs().Name, macAddress, err)
 	}

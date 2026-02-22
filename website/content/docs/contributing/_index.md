@@ -117,9 +117,39 @@ This will run the e2e test suite against your local environment.
 
 ## Changes in the config
 
-The master is `config`. Changes in crds are reflected in the operator via `make bundle`, in the 
+The master is `config`. Changes in crds are reflected in the operator via `make bundle`, in the
 all in one manifests via `make generate-all-in-one`, in the helm chart via `make generate`.
 Finally, running `make bundle` updates the operator manifests.
+
+## Updating Dependencies
+
+### Kubernetes Dependencies
+
+To update all k8s.io and sigs.k8s.io dependencies to a specific version:
+
+```bash
+make bump-k8s-deps K8S_VERSION=v0.35.0
+```
+
+Or omit the version to automatically fetch and use the latest:
+
+```bash
+make bump-k8s-deps
+```
+
+### Go Version
+
+To update the Go version across all files (go.mod, Dockerfile, etc):
+
+```bash
+make bump-go-version GO_VERSION=1.25.7
+```
+
+Or omit the version to automatically fetch and use the latest:
+
+```bash
+make bump-go-version
+```
 
 ## Commit Messages
 

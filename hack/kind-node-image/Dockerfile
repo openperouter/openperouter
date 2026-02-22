@@ -1,7 +1,7 @@
 # Custom Kind Node Image with OpenVSwitch
 # Based on official kindest/node image with OVS pre-installed for OpenPERouter
 
-ARG KIND_NODE_VERSION=v1.31.4
+ARG KIND_NODE_VERSION=v1.32.2
 FROM kindest/node:${KIND_NODE_VERSION}
 
 # Re-declare ARG to make it available after FROM
@@ -40,22 +40,29 @@ RUN mkdir -p /etc/systemd/system/kubelet.service.d && \
     printf "[Unit]\nAfter=ovsdb-server.service ovs-vswitchd.service\nRequires=ovsdb-server.service ovs-vswitchd.service\n" \
     > /etc/systemd/system/kubelet.service.d/10-ovs-dependency.conf
 
-RUN apt-get install -y curl gnupg2 software-properties-common && \
-    mkdir -p /etc/apt/keyrings && \
-    curl -fsSL https://download.opensuse.org/repositories/devel:kubic:libcontainers:unstable/xUbuntu_22.04/Release.key | gpg --dearmor -o /etc/apt/keyrings/devel_kubic_libcontainers_unstable.gpg && \
-    echo "deb [signed-by=/etc/apt/keyrings/devel_kubic_libcontainers_unstable.gpg] https://download.opensuse.org/repositories/devel:kubic:libcontainers:unstable/xUbuntu_22.04/ /" > /etc/apt/sources.list.d/devel:kubic:libcontainers:unstable.list && \
-    apt-get update && \
-    apt-get install -y podman && \
+# Add Debian Testing repository for Podman 5.x
+RUN printf 'Types: deb\nURIs: http://deb.debian.org/debian\nSuites: testing\nComponents: main\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\n' \
+    > /etc/apt/sources.list.d/debian-testing.sources
+
+# Pin testing to low priority so only explicitly requested packages are pulled from it
+RUN printf "Package: *\nPin: release a=testing\nPin-Priority: 100\n" \
+    > /etc/apt/preferences.d/testing.pref
+
+RUN apt-get update -y && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -t testing \
+    -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" \
+    podman && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-RUN mkdir -p /var/lib/containers
 
 # Add labels for image identification and metadata
 LABEL org.opencontainers.image.source="https://github.com/openperouter/openperouter" \
-      org.opencontainers.image.description="Kind node image with OpenVSwitch and Podman pre-installed for OpenPERouter" \
+      org.opencontainers.image.description="Kind node image with OpenVSwitch and Podman 5.x pre-installed for OpenPERouter quadlet support" \
       org.opencontainers.image.vendor="OpenPERouter" \
       ovs.version="ubuntu-default" \
+      podman.version="5.x-debian-testing" \
+      podman.quadlet.support="true" \
       kind.base.version="${KIND_NODE_VERSION}"
 
 # Note: We rely on systemd to start OVS services automatically (enabled above)

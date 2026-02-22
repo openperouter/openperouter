@@ -611,7 +611,7 @@ func TestRoutes(t *testing.T) {
 		t.Fatalf("Routes for 192.168.10.0/32 not found")
 	}
 
-	ips := make([]net.IP, 0)
+	ips := make([]net.IP, 0, len(ipRoutes.NextHops))
 	ips = append(ips, ipRoutes.NextHops...)
 
 	sort.Slice(ips, func(i, j int) bool {

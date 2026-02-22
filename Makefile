@@ -75,9 +75,15 @@ vet: ## Run go vet against code.
 	go vet ./...
 
 .PHONY: test
-test: fmt vet envtest ## Run tests.
+test: fmt vet envtest $(LOCALBIN) ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v e2etest) -coverprofile cover.out
-	sudo -E sh -c "umask 0; PATH=${GOPATH}/bin:$(pwd)/bin:${PATH} go test -tags=runasroot -v -race ./internal/hostnetwork"
+	@RUNASROOT_TESTS=""; \
+	for pkg in $$(grep -rl "//go:build runasroot" --include="*_test.go" . | xargs -I{} dirname {} | sort -u); do \
+		name=$$(basename $$pkg); \
+		go test -tags=runasroot -c -race -o $(LOCALBIN)/$$name.test $$pkg; \
+		RUNASROOT_TESTS="$$RUNASROOT_TESTS /src/bin/$$name.test"; \
+	done; \
+	$(CONTAINER_ENGINE) run --rm --privileged -v $$(pwd):/src -w /src --entrypoint /src/hack/integration_tests.sh $(KIND_NODE_IMG) $$RUNASROOT_TESTS
 
 ##@ Build
 
@@ -371,6 +377,14 @@ checkuncommitted:
 .PHONY: bumpall
 bumpall: bumplicense manifests
 	go mod tidy
+
+.PHONY: bump-k8s-deps
+bump-k8s-deps: ## Bump all k8s.io and sigs.k8s.io dependencies (K8S_VERSION=v0.34.0 or omit for latest)
+	hack/bump_k8s_deps.sh $(K8S_VERSION)
+
+.PHONY: bump-go-version
+bump-go-version: ## Bump Go version across the project (GO_VERSION=1.25.7 or omit for latest)
+	hack/bump_go_version.sh $(GO_VERSION)
 
 KIND_EXPORT_LOGS ?=/tmp/kind_logs
 

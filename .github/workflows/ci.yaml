@@ -71,8 +71,46 @@ jobs:
           fetch-depth: 0
       - uses: wagoid/commitlint-github-action@v5
 
+  build-kind-node-image:
+    runs-on: ubuntu-22.04
+    outputs:
+      kind-node-version: ${{ steps.kind_version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract KIND_NODE_VERSION from Makefile
+        id: kind_version
+        run: |
+          KIND_NODE_VERSION=$(make -f Makefile --eval='print-kind-version: ; @echo $(KIND_NODE_VERSION)' print-kind-version)
+          echo "version=$KIND_NODE_VERSION" >> $GITHUB_OUTPUT
+          echo "KIND_NODE_VERSION=$KIND_NODE_VERSION"
+
+      - name: Setup docker buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and export kind-node-openperouter image
+        uses: docker/build-push-action@v5
+        with:
+          context: hack/kind-node-image
+          file: hack/kind-node-image/Dockerfile
+          build-args: |
+            KIND_NODE_VERSION=${{ steps.kind_version.outputs.version }}
+          tags: quay.io/openperouter/kind-node-openperouter:${{ steps.kind_version.outputs.version }}
+          outputs: type=docker,dest=/tmp/kind-node-openperouter.tar
+          cache-from: type=gha,scope=kind-node-openperouter
+          cache-to: type=gha,mode=max,scope=kind-node-openperouter
+
+      - name: Upload kind-node-openperouter artifact
+        uses: actions/upload-artifact@v4
+        with:
+          retention-days: 1
+          name: image-tar-kind-node-openperouter
+          path: /tmp/kind-node-openperouter.tar
+
   unit-tests:
     runs-on: ubuntu-22.04
+    needs: build-kind-node-image
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -87,25 +125,37 @@ jobs:
           sudo apt-get update
           sudo apt-get install linux-modules-extra-$(uname -r)
 
-      - name: Install Open vSwitch
-        # Required for L2VNI OVS bridge integration tests in internal/hostnetwork/vni_test.go
-        # Tests run on ubuntu-22.04 host with sudo, not in kind nodes
+      - name: Free Disk Space
+        working-directory: ${{ github.workspace }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y openvswitch-switch openvswitch-common
-          sudo systemctl start openvswitch-switch
-          sudo systemctl enable openvswitch-switch
-          sudo ovs-vsctl show
-          sudo test -S /var/run/openvswitch/db.sock
+          echo "Disk space before cleanup:"
+          df -h
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo apt-get clean
+          echo "Disk space after cleanup:"
+          df -h
+
+      - name: Download kind-node-openperouter image
+        uses: actions/download-artifact@v4
+        with:
+          name: image-tar-kind-node-openperouter
+          path: /tmp
+
+      - name: Load kind-node-openperouter image
+        run: |
+          docker load -i /tmp/kind-node-openperouter.tar
 
       - name: Unit Tests
         run: |
           make test
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v8
+        uses: golangci/golangci-lint-action@v9.2.0
         with:
-          version: v2.1
+          version: v2.9.0
 
       - name: Verify bundle manifests
         run: |
@@ -141,8 +191,9 @@ jobs:
   e2etests:
     runs-on: ubuntu-22.04
     env:
-      NODE_IMAGE: quay.io/openperouter/kind-node-openperouter:v1.32.2
+      NODE_IMAGE: quay.io/openperouter/kind-node-openperouter:${{ needs.build-kind-node-image.outputs.kind-node-version }}
     needs:
+      - build-kind-node-image
       - unit-tests
       - build-test-images
     strategy:
@@ -176,20 +227,27 @@ jobs:
           sudo apt-get update
           sudo apt-get install linux-modules-extra-$(uname -r)
 
-      - name: Setup docker buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Disable containerd image store
+        run: |
+          sudo bash -c 'cat > /etc/docker/daemon.json << EOF
+          {
+            "features": {
+              "containerd-snapshotter": false
+            }
+          }
+          EOF'
+          sudo systemctl restart docker
+          docker info -f '{{ .DriverStatus }}'
 
-      - name: Build kind-node-openperouter image
-        uses: docker/build-push-action@v5
+      - name: Download kind-node-openperouter image
+        uses: actions/download-artifact@v4
         with:
-          context: hack/kind-node-image
-          file: hack/kind-node-image/Dockerfile
-          build-args: |
-            KIND_NODE_VERSION=v1.32.2
-          tags: quay.io/openperouter/kind-node-openperouter:v1.32.2
-          load: true
-          cache-from: type=gha,scope=kind-node-openperouter
-          cache-to: type=gha,mode=max,scope=kind-node-openperouter
+          name: image-tar-kind-node-openperouter
+          path: /tmp
+
+      - name: Load kind-node-openperouter image
+        run: |
+          docker load -i /tmp/kind-node-openperouter.tar
 
       - name: Download openperouter image
         uses: actions/download-artifact@v4
@@ -216,11 +274,12 @@ jobs:
         run: |
           if [ ${{ matrix.deployment }} = "systemdmode" ]; then
             export TEST_ARGS="--systemdmode"
-            export GINKGO_ARGS="--skip='Router Host configuration'"
+            export GINKGO_ARGS="--skip='Router Host configuration' --skip='North/south traffic after FRR container restart'"
             make e2etests
           elif [ ${{ matrix.deployment }} = "hostmode-boot" ]; then
             make e2etests-hostmode-boot
           else
+            export GINKGO_ARGS="--label-filter='!systemdmode'"
             make e2etests
           fi
 

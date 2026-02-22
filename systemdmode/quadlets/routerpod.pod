@@ -1,0 +1,33 @@
+# routerpod.pod
+# OpenPERouter FRR Router Pod
+#
+# This pod contains the FRR routing daemon and configuration reloader containers.
+# PID namespace sharing is enabled to allow the reloader to signal FRR processes.
+
+[Unit]
+Description=OpenPERouter FRR Router Pod
+Documentation=https://github.com/openperouter
+Wants=network-online.target
+After=network-online.target
+
+[Pod]
+# Pod name - will create Podman pod named "systemd-routerpod"
+PodName=routerpod
+
+# PID namespace sharing - required for FRR process management
+# The reloader needs to see FRR processes to signal configuration reloads
+# Note: Using PodmanArgs because quadlet has no native PodShare= directive
+# The + prefix adds PID to default shared namespaces (net, ipc, uts)
+PodmanArgs=--share=+pid
+
+[Service]
+# Restart policy - restart pod if it fails
+Restart=on-failure
+
+# Timeout for stopping the pod
+TimeoutStopSec=70
+
+[Install]
+# Automatically enable this pod at boot
+# The systemd-generator will create the necessary symlinks
+WantedBy=default.target

@@ -90,4 +90,31 @@ var _ = Describe("Ensure", func() {
 		Entry("arp_accept default when disabled", "test-arp-def", []Sysctl{ArpAcceptDefault()}, false),
 		Entry("arp_accept default when already enabled", "test-arp-def-pre", []Sysctl{ArpAcceptDefault()}, true),
 	)
+
+	It("should skip optional sysctl when proc file does not exist", func() {
+		testNS := "test-optional-skip"
+		_ = createTestNS(testNS)
+		defer cleanTest(testNS)
+
+		s := Sysctl{
+			Path:               "net/ipv6/conf/all/nonexistent_sysctl",
+			Description:        "nonexistent sysctl with UnsupportedWarning",
+			UnsupportedWarning: "expected to be skipped",
+		}
+		err := Ensure(fmt.Sprintf("/var/run/netns/%s", testNS), s)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("should fail for non-optional sysctl when proc file does not exist", func() {
+		testNS := "test-nonoptional-fail"
+		_ = createTestNS(testNS)
+		defer cleanTest(testNS)
+
+		s := Sysctl{
+			Path:        "net/ipv6/conf/all/nonexistent_sysctl",
+			Description: "nonexistent sysctl without UnsupportedWarning",
+		}
+		err := Ensure(fmt.Sprintf("/var/run/netns/%s", testNS), s)
+		Expect(err).To(HaveOccurred())
+	})
 })
