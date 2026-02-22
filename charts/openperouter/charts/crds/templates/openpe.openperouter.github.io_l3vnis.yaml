@@ -43,7 +43,7 @@ spec:
             properties:
               exportRTs:
                 description: |-
-                  ExportRT is the Route Target to be used for exporting routes.
+                  ExportRTs are the Route Targets to be used for exporting routes.
                   RouteTarget defines a BGP Extended Community for route filtering.
                 items:
                   type: string
@@ -97,7 +97,7 @@ spec:
                 type: object
               importRTs:
                 description: |-
-                  ImportRT is the Route Target to be used for importing routes.
+                  ImportRTs are the Route Targets to be used for importing routes.
                   RouteTarget defines a BGP Extended Community for route filtering.
                 items:
                   type: string
