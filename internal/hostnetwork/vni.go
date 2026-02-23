@@ -278,6 +278,12 @@ func setupVNI(ctx context.Context, params VNIParams) error {
 	return nil
 }
 
+// RemoveAllVNIs removes from the target namespace the bridges / VRFs / veths
+// for all VNIs.
+func RemoveAllVNIs(targetNS string) error {
+	return RemoveNonConfiguredVNIs(targetNS, []VNIParams{})
+}
+
 // RemoveNonConfiguredVNIs removes from the target namespace the
 // leftovers corresponding to VNIs that are not configured anymore.
 func RemoveNonConfiguredVNIs(targetNS string, params []VNIParams) error {

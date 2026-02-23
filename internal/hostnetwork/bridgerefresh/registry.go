@@ -67,6 +67,11 @@ func StopAll() {
 	slog.Info("stopped all bridge refreshers")
 }
 
+// StopAllVNIs stops refreshers for all VNIs.
+func StopAllVNIs() {
+	StopForRemovedVNIs(nil)
+}
+
 // StopForRemovedVNIs stops refreshers for VNIs that are no longer configured.
 func StopForRemovedVNIs(configuredVNIs []hostnetwork.L2VNIParams) {
 	mu.Lock()
