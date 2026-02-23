@@ -434,6 +434,7 @@ func removeOVSBridgesForVNIs(ctx context.Context, vnis map[int]bool) error {
 	}
 
 	deleteErrors := []error{}
+	var ops []ovsdb.Operation
 	for _, bridge := range bridges {
 		slog.Debug("checking OVS bridge for cleanup", "name", bridge.Name, "uuid", bridge.UUID, "external_ids", bridge.ExternalIDs)
 
@@ -466,15 +467,6 @@ func removeOVSBridgesForVNIs(ctx context.Context, vnis map[int]bool) error {
 
 		slog.Info("deleting auto-created OVS bridge", "name", bridge.Name, "vni", vni, "uuid", bridge.UUID)
 
-		portOps, err := removeAllPortsFromBridge(ctx, ovs, bridge)
-		if err != nil {
-			deleteErrors = append(deleteErrors, err)
-			continue
-		}
-		// +2 for the OVS table mutation and the bridge delete operation
-		ops := make([]ovsdb.Operation, 0, len(portOps)+2)
-		ops = append(ops, portOps...)
-
 		// Remove the bridge from the OpenVSwitch table's bridges array
 		ovsRow := &ovsmodel.OpenvSwitch{}
 		removeFromOVSOp, err := ovs.WhereCache(func(*ovsmodel.OpenvSwitch) bool { return true }).
@@ -497,23 +489,22 @@ func removeOVSBridgesForVNIs(ctx context.Context, vnis map[int]bool) error {
 			continue
 		}
 		ops = append(ops, deleteOps...)
+	}
 
-		_, err = ovs.Transact(ctx, ops...)
+	if len(ops) > 0 {
+		txResult, err := ovs.Transact(ctx, ops...)
 		if err != nil {
-			deleteErrors = append(deleteErrors, fmt.Errorf("failed to delete OVS bridge %s: %w", bridge.Name, err))
-			slog.Error("failed to delete OVS bridge", "name", bridge.Name, "error", err)
+			deleteErrors = append(deleteErrors, fmt.Errorf("failed to delete OVS bridges: %w", err))
+			slog.Error("failed to batch-delete OVS bridges", "error", err)
+		} else if _, err := ovsdb.CheckOperationResults(txResult, ops); err != nil {
+			deleteErrors = append(deleteErrors, fmt.Errorf("OVS bridge deletion operations failed: %w", err))
+			slog.Error("OVS bridge deletion operations failed", "error", err)
 		} else {
-			slog.Info("successfully deleted auto-created OVS bridge", "name", bridge.Name, "vni", vni)
+			slog.Info("successfully deleted auto-created OVS bridges")
 		}
 	}
 
 	return errors.Join(deleteErrors...)
-}
-
-// removeAllPortsFromBridge generates OVSDB operations to detach and delete ALL
-// ports from an OVS bridge. Ports that cannot be fetched are silently skipped.
-func removeAllPortsFromBridge(ctx context.Context, ovs libovsclient.Client, bridge ovsmodel.Bridge) ([]ovsdb.Operation, error) {
-	return removePortsFromBridge(ctx, ovs, bridge, nil)
 }
 
 // removePortsFromBridge generates OVSDB operations to detach and delete ports
