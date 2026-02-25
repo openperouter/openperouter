@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/openperouter/openperouter/internal/netnamespace"
+	"github.com/openperouter/openperouter/internal/ovsmodel"
 	libovsclient "github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
@@ -278,6 +279,12 @@ func setupVNI(ctx context.Context, params VNIParams) error {
 	return nil
 }
 
+// RemoveAllVNIs removes from the target namespace the bridges / VRFs / veths
+// for all VNIs.
+func RemoveAllVNIs(targetNS string) error {
+	return RemoveNonConfiguredVNIs(targetNS, []VNIParams{})
+}
+
 // RemoveNonConfiguredVNIs removes from the target namespace the
 // leftovers corresponding to VNIs that are not configured anymore.
 func RemoveNonConfiguredVNIs(targetNS string, params []VNIParams) error {
@@ -413,25 +420,25 @@ func removeOVSBridgesForVNIs(ctx context.Context, vnis map[int]bool) error {
 	defer ovs.Close()
 
 	if _, err := ovs.Monitor(ctx, ovs.NewMonitor(
-		libovsclient.WithTable(&OpenVSwitch{}),
-		libovsclient.WithTable(&Bridge{}),
-		libovsclient.WithTable(&Port{}),
-		libovsclient.WithTable(&Interface{}),
+		libovsclient.WithTable(&ovsmodel.OpenvSwitch{}),
+		libovsclient.WithTable(&ovsmodel.Bridge{}),
+		libovsclient.WithTable(&ovsmodel.Port{}),
+		libovsclient.WithTable(&ovsmodel.Interface{}),
 	)); err != nil {
 		return fmt.Errorf("failed to setup OVS monitor: %w", err)
 	}
 
-	var bridges []Bridge
+	var bridges []ovsmodel.Bridge
 	if err := ovs.List(ctx, &bridges); err != nil {
 		return fmt.Errorf("failed to list OVS bridges: %w", err)
 	}
 
 	deleteErrors := []error{}
 	for _, bridge := range bridges {
-		slog.Debug("checking OVS bridge for cleanup", "name", bridge.Name, "uuid", bridge.UUID, "external_ids", bridge.ExternalIds)
+		slog.Debug("checking OVS bridge for cleanup", "name", bridge.Name, "uuid", bridge.UUID, "external_ids", bridge.ExternalIDs)
 
 		// Only delete bridges we auto-created (have our external_id marker)
-		createdBy, hasMarker := bridge.ExternalIds["created-by"]
+		createdBy, hasMarker := bridge.ExternalIDs["created-by"]
 		if !hasMarker || createdBy != "openperouter" {
 			slog.Debug("skipping bridge - not created by us", "name", bridge.Name, "has_marker", hasMarker, "created_by", createdBy)
 			continue // Not auto-created by us, skip
@@ -459,7 +466,7 @@ func removeOVSBridgesForVNIs(ctx context.Context, vnis map[int]bool) error {
 		// First, remove all ports from the bridge
 		if len(bridge.Ports) > 0 {
 			slog.Debug("removing ports from bridge before deletion", "name", bridge.Name, "port_count", len(bridge.Ports))
-			bridgeToMutate := &Bridge{UUID: bridge.UUID}
+			bridgeToMutate := &ovsmodel.Bridge{UUID: bridge.UUID}
 			mutateOp, err := ovs.Where(bridgeToMutate).Mutate(bridgeToMutate, model.Mutation{
 				Field:   &bridgeToMutate.Ports,
 				Mutator: ovsdb.MutateOperationDelete,
@@ -473,7 +480,7 @@ func removeOVSBridgesForVNIs(ctx context.Context, vnis map[int]bool) error {
 
 			// Delete each port and its interfaces
 			for _, portUUID := range bridge.Ports {
-				port := &Port{UUID: portUUID}
+				port := &ovsmodel.Port{UUID: portUUID}
 				deleteOp, err := ovs.Where(port).Delete()
 				if err != nil {
 					deleteErrors = append(deleteErrors, fmt.Errorf("failed to create delete op for port %s: %w", portUUID, err))
@@ -484,8 +491,8 @@ func removeOVSBridgesForVNIs(ctx context.Context, vnis map[int]bool) error {
 		}
 
 		// Remove the bridge from the OpenVSwitch table's bridges array
-		ovsRow := &OpenVSwitch{}
-		removeFromOVSOp, err := ovs.WhereCache(func(*OpenVSwitch) bool { return true }).
+		ovsRow := &ovsmodel.OpenvSwitch{}
+		removeFromOVSOp, err := ovs.WhereCache(func(*ovsmodel.OpenvSwitch) bool { return true }).
 			Mutate(ovsRow, model.Mutation{
 				Field:   &ovsRow.Bridges,
 				Mutator: ovsdb.MutateOperationDelete,
@@ -498,7 +505,7 @@ func removeOVSBridgesForVNIs(ctx context.Context, vnis map[int]bool) error {
 		ops = append(ops, removeFromOVSOp...)
 
 		// Finally, delete the bridge
-		bridgeToDelete := &Bridge{UUID: bridge.UUID}
+		bridgeToDelete := &ovsmodel.Bridge{UUID: bridge.UUID}
 		deleteOps, err := ovs.Where(bridgeToDelete).Delete()
 		if err != nil {
 			deleteErrors = append(deleteErrors, fmt.Errorf("failed to create delete op for bridge %s: %w", bridge.Name, err))
