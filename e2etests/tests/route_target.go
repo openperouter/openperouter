@@ -146,8 +146,8 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			dumpIfFails(cs)
 			err := Updater.CleanButUnderlay()
 			Expect(err).NotTo(HaveOccurred())
-			Expect(infra.LeafAConfig.RemovePrefixes()).To(Succeed())
-			Expect(infra.LeafBConfig.RemovePrefixes()).To(Succeed())
+			Expect(infra.LeafAConfig.Configure(infra.EmptyLeafConfig)).To(Succeed())
+			Expect(infra.LeafBConfig.Configure(infra.EmptyLeafConfig)).To(Succeed())
 		})
 
 		It("translates EVPN incoming routes as BGP routes", func() {

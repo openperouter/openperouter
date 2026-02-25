@@ -41,6 +41,23 @@ var (
 	LeafKindConfig = LeafKind{
 		Container: KindLeafContainer,
 	}
+
+	EmptyLeafConfig = LeafConfiguration{
+		Default: Addresses{
+			IPV4: []string{},
+			IPV6: []string{},
+		},
+		Red: Addresses{
+			IPV4:         []string{},
+			IPV6:         []string{},
+			RouteTargets: RouteTargets{},
+		},
+		Blue: Addresses{
+			IPV4:         []string{},
+			IPV6:         []string{},
+			RouteTargets: RouteTargets{},
+		},
+	}
 )
 
 type LeafConfiguration struct {
