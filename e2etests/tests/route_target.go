@@ -33,7 +33,7 @@ var (
 	blueRouteTargets       = infra.RouteTargets{ImportRTs: []string{"65000:2000"}, ExportRTs: []string{"65000:2000"}}
 )
 
-var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
+var _ = Describe("Routes with RT between bgp and the fabric", Ordered, func() {
 	var cs clientset.Interface
 	var routers openperouter.Routers
 

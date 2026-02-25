@@ -98,12 +98,12 @@ func TestBasicWithRT(t *testing.T) {
 				ToAdvertiseIPv4: []string{
 					"192.169.10.2/24",
 				},
-				ExportRTs: []string{"65000:1000"},
-				ImportRTs: []string{"65000:1000"},
+				ExportRTs: []string{"65000:1000", "10.0.0.1:1000"},
+				ImportRTs: []string{"65000:1000", "10.0.0.1:1000"},
 			},
 		},
 	}
-	if err := ApplyConfig(context.TODO(), &config, updater); err != nil {
+	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
@@ -192,12 +192,12 @@ func TestDualStackWithRT(t *testing.T) {
 				ToAdvertiseIPv6: []string{
 					"2001:db8::2/64",
 				},
-				ExportRTs: []string{"65000:1000"},
-				ImportRTs: []string{"65000:1000"},
+				ExportRTs: []string{"65000:1000", "10.0.0.1:1000"},
+				ImportRTs: []string{"65000:1000", "10.0.0.1:1000"},
 			},
 		},
 	}
-	if err := ApplyConfig(context.TODO(), &config, updater); err != nil {
+	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 

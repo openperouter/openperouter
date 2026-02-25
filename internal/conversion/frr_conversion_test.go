@@ -451,7 +451,7 @@ func TestAPItoFRR(t *testing.T) {
 				VNIs: []frr.L3VNIConfig{
 					{
 						ASN:      65000,
-						VNI:      200,
+						VNI:      0,
 						VRF:      "vrf1",
 						RouterID: "10.0.0.1",
 					},
