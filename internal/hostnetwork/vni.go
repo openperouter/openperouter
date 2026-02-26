@@ -437,11 +437,16 @@ func removeOVSBridgesForVNIs(ctx context.Context, vnis map[int]bool) error {
 	for _, bridge := range bridges {
 		slog.Debug("checking OVS bridge for cleanup", "name", bridge.Name, "uuid", bridge.UUID, "external_ids", bridge.ExternalIDs)
 
-		// Only delete bridges we auto-created (have our external_id marker)
 		createdBy, hasMarker := bridge.ExternalIDs["created-by"]
-		if !hasMarker || createdBy != "openperouter" {
-			slog.Debug("skipping bridge - not created by us", "name", bridge.Name, "has_marker", hasMarker, "created_by", createdBy)
-			continue // Not auto-created by us, skip
+		managedByUs := hasMarker && createdBy == "openperouter"
+
+		if !managedByUs {
+			// For non-managed bridges, only detach our veth ports for removed VNIs.
+			// vnis is the set of VNIs we want to keep; ports for any other VNI are removed.
+			if err := detachOurPortsFromBridge(ctx, ovs, bridge, vnis); err != nil {
+				deleteErrors = append(deleteErrors, err)
+			}
+			continue
 		}
 
 		vni, err := vniFromHostBridgeName(bridge.Name)
@@ -461,34 +466,14 @@ func removeOVSBridgesForVNIs(ctx context.Context, vnis map[int]bool) error {
 
 		slog.Info("deleting auto-created OVS bridge", "name", bridge.Name, "vni", vni, "uuid", bridge.UUID)
 
-		var ops []ovsdb.Operation
-
-		// First, remove all ports from the bridge
-		if len(bridge.Ports) > 0 {
-			slog.Debug("removing ports from bridge before deletion", "name", bridge.Name, "port_count", len(bridge.Ports))
-			bridgeToMutate := &ovsmodel.Bridge{UUID: bridge.UUID}
-			mutateOp, err := ovs.Where(bridgeToMutate).Mutate(bridgeToMutate, model.Mutation{
-				Field:   &bridgeToMutate.Ports,
-				Mutator: ovsdb.MutateOperationDelete,
-				Value:   bridge.Ports,
-			})
-			if err != nil {
-				deleteErrors = append(deleteErrors, fmt.Errorf("failed to create port removal op for bridge %s: %w", bridge.Name, err))
-				continue
-			}
-			ops = append(ops, mutateOp...)
-
-			// Delete each port and its interfaces
-			for _, portUUID := range bridge.Ports {
-				port := &ovsmodel.Port{UUID: portUUID}
-				deleteOp, err := ovs.Where(port).Delete()
-				if err != nil {
-					deleteErrors = append(deleteErrors, fmt.Errorf("failed to create delete op for port %s: %w", portUUID, err))
-					continue
-				}
-				ops = append(ops, deleteOp...)
-			}
+		portOps, err := removeAllPortsFromBridge(ctx, ovs, bridge)
+		if err != nil {
+			deleteErrors = append(deleteErrors, err)
+			continue
 		}
+		// +2 for the OVS table mutation and the bridge delete operation
+		ops := make([]ovsdb.Operation, 0, len(portOps)+2)
+		ops = append(ops, portOps...)
 
 		// Remove the bridge from the OpenVSwitch table's bridges array
 		ovsRow := &ovsmodel.OpenvSwitch{}
@@ -523,6 +508,90 @@ func removeOVSBridgesForVNIs(ctx context.Context, vnis map[int]bool) error {
 	}
 
 	return errors.Join(deleteErrors...)
+}
+
+// removeAllPortsFromBridge generates OVSDB operations to detach and delete ALL
+// ports from an OVS bridge. Ports that cannot be fetched are silently skipped.
+func removeAllPortsFromBridge(ctx context.Context, ovs libovsclient.Client, bridge ovsmodel.Bridge) ([]ovsdb.Operation, error) {
+	return removePortsFromBridge(ctx, ovs, bridge, nil)
+}
+
+// removePortsFromBridge generates OVSDB operations to detach and delete ports
+// from an OVS bridge. If filter is nil, all ports are removed. If filter is
+// provided, each port is fetched and only ports for which filter returns true
+// are included. Ports that cannot be fetched are silently skipped.
+func removePortsFromBridge(ctx context.Context, ovs libovsclient.Client, bridge ovsmodel.Bridge, filter func(*ovsmodel.Port) bool) ([]ovsdb.Operation, error) {
+	var matchingUUIDs []string
+	for _, portUUID := range bridge.Ports {
+		if filter != nil {
+			port := &ovsmodel.Port{UUID: portUUID}
+			if err := ovs.Get(ctx, port); err != nil {
+				if errors.Is(err, libovsclient.ErrNotFound) {
+					continue
+				}
+				return nil, fmt.Errorf("failed to get port %s from bridge %s: %w", portUUID, bridge.Name, err)
+			}
+			if !filter(port) {
+				continue
+			}
+		}
+		matchingUUIDs = append(matchingUUIDs, portUUID)
+	}
+
+	if len(matchingUUIDs) == 0 {
+		return nil, nil
+	}
+
+	var ops []ovsdb.Operation
+	bridgeToMutate := &ovsmodel.Bridge{UUID: bridge.UUID}
+	mutateOp, err := ovs.Where(bridgeToMutate).Mutate(bridgeToMutate, model.Mutation{
+		Field:   &bridgeToMutate.Ports,
+		Mutator: ovsdb.MutateOperationDelete,
+		Value:   matchingUUIDs,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create port removal op for bridge %s: %w", bridge.Name, err)
+	}
+	ops = append(ops, mutateOp...)
+
+	for _, portUUID := range matchingUUIDs {
+		port := &ovsmodel.Port{UUID: portUUID}
+		deleteOp, err := ovs.Where(port).Delete()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create delete op for port %s: %w", portUUID, err)
+		}
+		ops = append(ops, deleteOp...)
+	}
+
+	return ops, nil
+}
+
+// detachOurPortsFromBridge removes openperouter-managed veth ports from a
+// non-managed OVS bridge for VNIs that are no longer configured.
+func detachOurPortsFromBridge(ctx context.Context, ovs libovsclient.Client, bridge ovsmodel.Bridge, configuredVNIs map[int]bool) error {
+	filter := func(port *ovsmodel.Port) bool {
+		if !strings.HasPrefix(port.Name, HostVethPrefix) {
+			return false
+		}
+		vni, err := vniFromHostVeth(port.Name)
+		if err != nil {
+			return false
+		}
+		return !configuredVNIs[vni]
+	}
+
+	ops, err := removePortsFromBridge(ctx, ovs, bridge, filter)
+	if err != nil {
+		return err
+	}
+	if len(ops) == 0 {
+		return nil
+	}
+	slog.Info("detaching veth ports from non-managed OVS bridge", "bridge", bridge.Name)
+	if _, err := ovs.Transact(ctx, ops...); err != nil {
+		return fmt.Errorf("failed to detach ports from bridge %s: %w", bridge.Name, err)
+	}
+	return nil
 }
 
 func hostMaster(vni int, m HostMaster) (netlink.Link, error) {
