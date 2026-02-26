@@ -395,6 +395,22 @@ jobs:
           path: /tmp/kind_logs/scale-test-report.json
           retention-days: 30
 
+      - name: Generate scale test plots
+        if: always()
+        run: |
+          python3 -m pip install --quiet matplotlib
+          python3 hack/plot_scale_metrics.py \
+            --input /tmp/kind_logs/scale-test-report.json \
+            --output-dir /tmp/kind_logs/plots
+
+      - name: Upload scale test plots
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: scale-test-plots
+          path: /tmp/kind_logs/plots/
+          retention-days: 30
+
       - name: Export kind logs
         if: ${{ failure() }}
         run:
