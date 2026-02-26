@@ -293,3 +293,131 @@ jobs:
         uses: ./.github/workflows/composite/collectlogs
         with:
           artifact-name: kind-logs-${{ matrix.deployment }}
+
+  scale-tests:
+    runs-on: ubuntu-22.04
+    env:
+      NODE_IMAGE: quay.io/openperouter/kind-node-openperouter:v1.32.2
+    needs:
+      - unit-tests
+      - build-test-images
+
+    steps:
+      - name: Free Disk Space
+        working-directory: ${{ github.workspace }}
+        run: |
+          echo "Disk space before cleanup:"
+          df -h
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo apt-get clean
+          echo "Disk space after cleanup:"
+          df -h
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: "go.mod"
+          cache: true
+
+      - name: Install kernel modules
+        run: |
+          sudo apt-get update
+          sudo apt-get install linux-modules-extra-$(uname -r)
+
+      - name: Disable containerd image store
+        run: |
+          sudo bash -c 'cat > /etc/docker/daemon.json << EOF
+          {
+            "features": {
+              "containerd-snapshotter": false
+            }
+          }
+          EOF'
+          sudo systemctl restart docker
+          docker info -f '{{ .DriverStatus }}'
+
+      - name: Setup docker buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build kind-node-openperouter image
+        uses: docker/build-push-action@v5
+        with:
+          context: hack/kind-node-image
+          file: hack/kind-node-image/Dockerfile
+          build-args: |
+            KIND_NODE_VERSION=v1.32.2
+          tags: quay.io/openperouter/kind-node-openperouter:v1.32.2
+          load: true
+          cache-from: type=gha,scope=kind-node-openperouter
+          cache-to: type=gha,mode=max,scope=kind-node-openperouter
+
+      - name: Download openperouter image
+        uses: actions/download-artifact@v4
+        with:
+          path: image
+
+      - name: Load image
+        working-directory: image
+        run: |
+          docker load -i image-tar-openperouter/openperouter.tar
+
+      - name: Deploy the cluster
+        run: |
+          make deploy
+
+      - name: Install metrics-server
+        env:
+          KUBECONFIG: bin/kubeconfig
+        run: |
+          kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+          kubectl patch -n kube-system deployment metrics-server --type=json \
+            -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
+          # Wait for deployment rollout to complete (not just any pod ready)
+          # This ensures the patched pod is fully running, not the original pre-patch pod
+          kubectl -n kube-system rollout status deployment/metrics-server --timeout=300s
+          # Give metrics-server time to collect initial metrics
+          sleep 60
+
+      - name: Run scale tests
+        run: |
+          make scale-tests
+
+      - name: Upload scale test report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: scale-test-report
+          path: /tmp/kind_logs/scale-test-report.json
+          retention-days: 30
+
+      - name: Generate scale test plots
+        if: always()
+        run: |
+          python3 -m pip install --quiet matplotlib
+          python3 hack/plot_scale_metrics.py \
+            --input /tmp/kind_logs/scale-test-report.json \
+            --output-dir /tmp/kind_logs/plots
+
+      - name: Upload scale test plots
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: scale-test-plots
+          path: /tmp/kind_logs/plots/
+          retention-days: 30
+
+      - name: Export kind logs
+        if: ${{ failure() }}
+        run:
+          make kind-export-logs
+
+      - name: Collect Logs
+        if: ${{ failure() }}
+        uses: ./.github/workflows/composite/collectlogs
+        with:
+          artifact-name: kind-logs-scale-tests

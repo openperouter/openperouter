@@ -1148,9 +1148,6 @@ spec:
             port: webhook-server
             scheme: HTTPS
         resources:
-          limits:
-            cpu: 500m
-            memory: 128Mi
           requests:
             cpu: 10m
             memory: 64Mi
@@ -1239,9 +1236,6 @@ spec:
           periodSeconds: 10
           timeoutSeconds: 1
         resources:
-          limits:
-            cpu: 500m
-            memory: 128Mi
           requests:
             cpu: 10m
             memory: 64Mi
