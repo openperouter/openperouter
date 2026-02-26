@@ -41,6 +41,13 @@ spec:
           spec:
             description: L3VNISpec defines the desired state of VNI.
             properties:
+              exportRTs:
+                description: |-
+                  ExportRTs are the Route Targets to be used for exporting routes.
+                  RouteTarget defines a BGP Extended Community for route filtering.
+                items:
+                  type: string
+                type: array
               hostsession:
                 description: HostSession is the configuration for the host session.
                 properties:
@@ -88,6 +95,13 @@ spec:
                 - hostasn
                 - localcidr
                 type: object
+              importRTs:
+                description: |-
+                  ImportRTs are the Route Targets to be used for importing routes.
+                  RouteTarget defines a BGP Extended Community for route filtering.
+                items:
+                  type: string
+                type: array
               nodeSelector:
                 description: |-
                   NodeSelector specifies which nodes this L3VNI applies to.

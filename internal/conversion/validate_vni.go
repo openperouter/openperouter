@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net"
 	"regexp"
+	"strconv"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 
@@ -30,6 +32,7 @@ func ValidateL3VNIsForNodes(nodes []corev1.Node, underlays []v1alpha1.L3VNI) err
 			return fmt.Errorf("failed to validate underlays for node %q: %w", node.Name, err)
 		}
 	}
+
 	return nil
 }
 
@@ -82,30 +85,34 @@ func ValidateL2VNIs(l2Vnis []v1alpha1.L2VNI) error {
 }
 
 // vni holds VNI validation data
-type vni struct {
-	name    string
-	vni     uint32
-	vrfName string
+type VNI struct {
+	name      string
+	vni       uint32
+	vrfName   string
+	exportRTs []string
+	importRTs []string
 }
 
 // vnisFromL3VNIs converts L3VNIs to vni slice
-func vnisFromL3VNIs(l3vnis []v1alpha1.L3VNI) []vni {
-	result := make([]vni, len(l3vnis))
+func vnisFromL3VNIs(l3vnis []v1alpha1.L3VNI) []VNI {
+	result := make([]VNI, len(l3vnis))
 	for i, l3vni := range l3vnis {
-		result[i] = vni{
-			name:    l3vni.Name,
-			vni:     l3vni.Spec.VNI,
-			vrfName: l3vni.Spec.VRF,
+		result[i] = VNI{
+			name:      l3vni.Name,
+			vni:       l3vni.Spec.VNI,
+			vrfName:   l3vni.Spec.VRF,
+			exportRTs: l3vni.Spec.ExportRTs,
+			importRTs: l3vni.Spec.ImportRTs,
 		}
 	}
 	return result
 }
 
 // vnisFromL2VNIs converts L2VNIs to vni slice
-func vnisFromL2VNIs(l2vnis []v1alpha1.L2VNI) []vni {
-	result := make([]vni, len(l2vnis))
+func vnisFromL2VNIs(l2vnis []v1alpha1.L2VNI) []VNI {
+	result := make([]VNI, len(l2vnis))
 	for i, l2vni := range l2vnis {
-		result[i] = vni{
+		result[i] = VNI{
 			name:    l2vni.Name,
 			vni:     l2vni.Spec.VNI,
 			vrfName: l2vni.VRFName(),
@@ -115,7 +122,7 @@ func vnisFromL2VNIs(l2vnis []v1alpha1.L2VNI) []vni {
 }
 
 // validateVNIs performs common validation logic for VNIs
-func validateVNIs(vnis []vni) error {
+func validateVNIs(vnis []VNI) error {
 	existingVrfs := map[string]string{} // a map between the given VRF and the VNI instance it's configured in
 	existingVNIs := map[uint32]string{} // a map between the given VNI number and the VNI instance it's configured in
 
@@ -134,6 +141,10 @@ func validateVNIs(vnis []vni) error {
 			return fmt.Errorf("duplicate vni %d:%s - %s", vni.vni, existingVNI, vni.name)
 		}
 		existingVNIs[vni.vni] = vni.name
+
+		if err := ValidateRouteTargets(vni); err != nil {
+			return fmt.Errorf("invalid route targets for vni %s: %w", vni.name, err)
+		}
 	}
 
 	return nil
@@ -202,6 +213,59 @@ func validateHostMaster(vniName string, hostConfig *v1alpha1.HostMaster) error {
 
 	if err := isValidInterfaceName(name); err != nil {
 		return fmt.Errorf("invalid hostmaster name for vni %s: %s - %w", vniName, name, err)
+	}
+
+	return nil
+}
+
+func validateRouteTarget(rt string) error {
+	rt_param := strings.Split(rt, ":")
+	if len(rt_param) != 2 {
+		return fmt.Errorf("RT format must have ASN:MN or IPv4Address:MN: %s", rt)
+	}
+
+	if validateRouteTargetIsIPv4(rt_param[0]) {
+		local, err := strconv.ParseUint(rt_param[1], 10, 32)
+		if err != nil {
+			return fmt.Errorf("RT format must have A.B.C.D:MN where MN <= 65535: %s", rt)
+		}
+		if local > 65535 {
+			return fmt.Errorf("RT format must have A.B.C.D:MN where MN <= 65535: %s", rt)
+		}
+	} else {
+		asn, err := strconv.ParseUint(rt_param[0], 10, 32)
+		if err != nil {
+			return fmt.Errorf("RT format must have ASN:MN %s", rt)
+		}
+		local, err := strconv.ParseUint(rt_param[1], 10, 32)
+		if err != nil {
+			return fmt.Errorf("RT format must have ASN:MN where MN is a number: %s", rt)
+		}
+		if asn <= 65535 && local > 4294967295 {
+			return fmt.Errorf("RT format with 2-byte ASN must have ASN:MN where MN <= 4294967295: %s", rt)
+		} else if asn > 4294967295 || local > 65535 {
+			return fmt.Errorf("RT format with 4-byte ASN must have ASN:MN where MN <= 65535: %s", rt)
+		}
+	}
+
+	return nil
+}
+
+func validateRouteTargetIsIPv4(value string) bool {
+	addr, err := ipfamily.ForAddresses(value)
+	return err == nil && addr == ipfamily.IPv4
+}
+
+func ValidateRouteTargets(vni VNI) error {
+	for _, rt := range vni.exportRTs {
+		if err := validateRouteTarget(rt); err != nil {
+			return err
+		}
+	}
+	for _, rt := range vni.importRTs {
+		if err := validateRouteTarget(rt); err != nil {
+			return err
+		}
 	}
 
 	return nil

@@ -48,6 +48,16 @@ type L3VNISpec struct {
 	// HostSession is the configuration for the host session.
 	// +optional
 	HostSession *HostSession `json:"hostsession,omitempty"`
+
+	// ExportRTs are the Route Targets to be used for exporting routes.
+	// RouteTarget defines a BGP Extended Community for route filtering.
+	// +optional
+	ExportRTs []string `json:"exportRTs,omitempty"`
+
+	// ImportRTs are the Route Targets to be used for importing routes.
+	// RouteTarget defines a BGP Extended Community for route filtering.
+	// +optional
+	ImportRTs []string `json:"importRTs,omitempty"`
 }
 
 // L3VNIStatus defines the observed state of L3VNI.

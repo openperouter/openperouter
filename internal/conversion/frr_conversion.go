@@ -155,10 +155,11 @@ func l3vniToFRR(vni v1alpha1.L3VNI, routerID string, underlayASN uint32, nodeInd
 	if vni.Spec.HostSession == nil { // no neighbor, just the vni / vrf
 		return []frr.L3VNIConfig{
 			{
-				VNI:      int(vni.Spec.VNI),
-				VRF:      vni.Spec.VRF,
-				ASN:      underlayASN, // Since there is no session, the ASN is arbitrary
-				RouterID: routerID,
+				VRF:       vni.Spec.VRF,
+				ASN:       underlayASN, // Since there is no session, the ASN is arbitrary
+				RouterID:  routerID,
+				ExportRTs: vni.Spec.ExportRTs,
+				ImportRTs: vni.Spec.ImportRTs,
 			},
 		}, nil
 	}
@@ -210,6 +211,8 @@ func createVNIConfig(vni v1alpha1.L3VNI, hostIP net.IP, mask net.IPMask, routerI
 		VRF:           vni.Spec.VRF,
 		RouterID:      routerID,
 		LocalNeighbor: vniNeighbor,
+		ExportRTs:     vni.Spec.ExportRTs,
+		ImportRTs:     vni.Spec.ImportRTs,
 	}
 
 	ipFamily := ipfamily.ForAddress(hostIP)
