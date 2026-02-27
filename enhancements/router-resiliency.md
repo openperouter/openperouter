@@ -220,6 +220,248 @@ starts:
 3. **FRR starts later** - enters the netns, finds everything already set up,
    starts routing
 
+The following sequence diagrams illustrate how systemd, the controller, FRR,
+and the BGP peers interact across the three key lifecycle scenarios.
+
+#### Initial Boot Sequence
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant systemd
+    participant netns as Named Netns<br/>/var/run/netns/perouter
+    participant ctrl as Controller<br/>(DaemonSet or Quadlet)
+    participant k8s as K8s API
+    participant reloader as Reloader<br/>(routerpod pod)
+    participant frr as FRR<br/>(routerpod pod)
+    participant tor as ToR Switch<br/>(BGP Peer)
+    participant hostBGP as Host BGP Speaker<br/>(frr-k8s / Calico)
+
+    Note over systemd: Node boots
+
+    rect rgb(20, 40, 70)
+        Note right of systemd: Phase 1: Named Netns Creation
+        systemd->>netns: ip netns add perouter<br/>(perouter-netns.service, oneshot)
+        activate netns
+        Note over netns: Bind mount created at<br/>/var/run/netns/perouter<br/>Persists independently of any process
+    end
+
+    rect rgb(20, 55, 35)
+        Note right of systemd: Phase 2: Controller Starts
+        systemd->>ctrl: Start controllerpod-pod.service<br/>(or K8s schedules DaemonSet pod)
+        activate ctrl
+        ctrl->>k8s: List Underlay, L3VNI, L2VNI,<br/>L3Passthrough CRDs
+        k8s-->>ctrl: CRD specs (filtered by node selector)
+
+        ctrl->>netns: RouterNamedNSProvider.CanReconcile()<br/>Check /var/run/netns/perouter exists
+        netns-->>ctrl: Netns exists, ready to configure
+
+        Note over ctrl,netns: Pre-configure interfaces before FRR starts
+
+        ctrl->>netns: SetupUnderlay()<br/>Move physical NIC (eth1) into netns
+        ctrl->>netns: Create lound dummy interface<br/>Assign VTEP IP (e.g. 100.65.0.X/32)
+        ctrl->>netns: SetupL3VNI() for each L3VNI:<br/>Create VRF, bridge, VXLAN,<br/>veth pair (pe-side in netns, host-side in host)
+        ctrl->>netns: SetupL2VNI() for each L2VNI:<br/>Create VRF, bridge, VXLAN,<br/>veth pair, host-side bridge (br-hs-{vni})
+        ctrl->>netns: SetupPassthrough() if configured:<br/>Create veth pair for host BGP connectivity
+
+        Note over ctrl: All interfaces ready in netns<br/>before FRR starts
+    end
+
+    rect rgb(70, 45, 15)
+        Note right of systemd: Phase 3: FRR Container Starts
+        systemd->>frr: Start routerpod-pod.service<br/>Network=ns:/var/run/netns/perouter
+        activate frr
+        Note over frr: Podman joins named netns<br/>FRR finds all interfaces already configured
+
+        systemd->>reloader: Start reloader container<br/>(same pod, same netns)
+        activate reloader
+        reloader-->>reloader: Listen on Unix socket<br/>/etc/perouter/frr.socket<br/>Health endpoint :9080/healthz
+    end
+
+    rect rgb(55, 25, 60)
+        Note right of systemd: Phase 4: FRR Configuration & BGP Sessions
+        ctrl->>ctrl: APItoFRR(): generate FRR config<br/>from CRD specs + nodeIndex
+        ctrl->>reloader: POST config via Unix socket<br/>/etc/perouter/frr.socket
+        reloader->>reloader: frr-reload.py --test (validate)
+        reloader->>frr: frr-reload.py --reload (apply)
+        reloader-->>ctrl: HTTP 200 OK
+
+        frr->>frr: zebra discovers existing interfaces<br/>(VRFs, bridges, VXLANs, veths, lound)
+        frr->>tor: BGP OPEN (underlay session)<br/>ASN 64514, capabilities: EVPN, GR
+        tor-->>frr: BGP OPEN (accept)
+        frr->>tor: EVPN Type-5 routes (L3VNI prefixes)<br/>EVPN Type-2 routes (MAC/IP for L2VNI)
+        tor-->>frr: EVPN routes from fabric
+
+        frr->>hostBGP: BGP OPEN (host session via veth)<br/>Per-L3VNI and/or passthrough sessions
+        hostBGP-->>frr: BGP OPEN (accept)
+        hostBGP->>frr: Host routes (CNI, services, VIPs)
+        frr->>hostBGP: VNI routes from EVPN fabric
+    end
+
+    Note over netns,frr: System fully operational<br/>Data plane forwarding, control plane converged
+```
+
+#### FRR Container Crash & Recovery
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant kernel as Kernel<br/>(Data Plane)
+    participant netns as Named Netns<br/>/var/run/netns/perouter
+    participant systemd
+    participant ctrl as Controller
+    participant reloader as Reloader
+    participant frr as FRR
+    participant tor as ToR Switch
+    participant hostBGP as Host BGP Speaker
+
+    Note over kernel,hostBGP: System running normally — traffic flowing
+
+    rect rgb(70, 25, 25)
+        Note right of frr: FRR Process Dies
+        frr->>frr: CRASH (segfault / OOM / kill)
+        Note over reloader,frr: routerpod-pod.service exits<br/>Both FRR and reloader are gone
+
+        Note over tor: BGP session drops<br/>(TCP RST or hold timer expiry)
+        Note over hostBGP: BGP session drops
+
+        tor->>tor: BGP Graceful Restart activated<br/>Preserve stale routes for restart-time (120s)<br/>Mark routes as stale, keep forwarding
+        hostBGP->>hostBGP: BGP Graceful Restart activated<br/>Preserve stale routes, keep forwarding
+    end
+
+    rect rgb(20, 55, 35)
+        Note right of kernel: Data Plane Continues (zero disruption)
+        Note over netns: Named netns persists!<br/>Held by bind mount, not by FRR process
+        Note over kernel,netns: All kernel state intact in netns:
+        Note over kernel: VRFs, bridges, VXLAN interfaces<br/>Veth pairs (pe ↔ host)<br/>Underlay NIC (eth1), lound (VTEP)<br/>Kernel routing tables (installed by zebra)<br/>Bridge FDB entries<br/>ARP/neighbor entries<br/>IP addresses on all interfaces
+
+        kernel->>kernel: Continue forwarding packets<br/>using existing routes and FDB<br/>VXLAN encap/decap still works<br/>Inter-VRF routing still works
+    end
+
+    rect rgb(70, 45, 15)
+        Note right of systemd: Systemd Fast Restart (~1-2s)
+        systemd->>systemd: Detect unit failure<br/>RestartSec=1
+        systemd->>frr: Restart routerpod-pod.service<br/>Network=ns:/var/run/netns/perouter
+        activate frr
+        systemd->>reloader: Restart reloader (same pod)
+        activate reloader
+        Note over frr: FRR re-enters the SAME named netns<br/>All interfaces already present and UP
+    end
+
+    rect rgb(20, 40, 70)
+        Note right of frr: FRR Recovery (~2-5s)
+        frr->>frr: Read /etc/frr/frr.conf<br/>Start zebra, bgpd, bfdd, staticd
+        frr->>frr: zebra discovers existing interfaces<br/>VRFs, bridges, VXLANs all found intact
+        frr->>frr: preserve-fw-state: do NOT flush<br/>existing kernel routes
+        reloader-->>reloader: Health endpoint :9080 ready
+    end
+
+    rect rgb(55, 25, 60)
+        Note right of frr: BGP Session Re-establishment (~3-10s)
+        frr->>tor: BGP OPEN with GR capability<br/>Indicates restart, requests route preservation
+        tor-->>frr: BGP OPEN (accept restart)
+        tor->>tor: Clear stale flag on preserved routes
+        frr->>tor: Re-advertise EVPN routes<br/>(same routes as before crash)
+        tor-->>frr: Send current fabric routes
+
+        frr->>hostBGP: BGP OPEN with GR capability
+        hostBGP-->>frr: BGP OPEN (accept restart)
+        hostBGP->>hostBGP: Clear stale flag on preserved routes
+        frr->>hostBGP: Re-advertise VNI routes
+        hostBGP->>frr: Re-send host routes
+    end
+
+    rect rgb(40, 45, 50)
+        Note right of ctrl: Controller Observes Recovery
+        ctrl->>ctrl: CanReconcile() returns true<br/>(systemd unit active + health check passes)
+        ctrl->>ctrl: Normal reconciliation resumes<br/>No interface re-creation needed<br/>(everything survived in netns)
+    end
+
+    Note over kernel,hostBGP: Full recovery complete<br/>Data plane: 0s outage<br/>Control plane: ~7-22s outage (bridged by GR)
+```
+
+#### Reconfiguration (New L2VNI CRD Created)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant user as Operator
+    participant k8s as K8s API
+    participant ctrl as Controller
+    participant netns as Named Netns<br/>/var/run/netns/perouter
+    participant hostNS as Host Netns
+    participant reloader as Reloader
+    participant frr as FRR<br/>(zebra / bgpd)
+    participant tor as ToR Switch
+
+    Note over user,tor: System running with existing L3VNI config
+
+    rect rgb(20, 40, 70)
+        Note right of user: CRD Creation
+        user->>k8s: kubectl apply -f l2vni-100.yaml<br/>VNI: 100, VRF: l2vni-100<br/>L2 Gateway: 10.100.0.1/24<br/>Host bridge: br-hs-100 (linux-bridge)
+    end
+
+    rect rgb(70, 45, 15)
+        Note right of ctrl: Watch Event & Reconciliation Trigger
+        k8s-->>ctrl: L2VNI watch event (CREATE)
+        ctrl->>k8s: List all CRDs:<br/>Underlays, L3VNIs, L2VNIs, L3Passthroughs
+        k8s-->>ctrl: Full config (includes new L2VNI-100)
+        ctrl->>ctrl: Filter CRDs by node selector<br/>Merge with static config (if any)
+        ctrl->>ctrl: Validate all resources<br/>(VNI uniqueness, IP formats, VRF names)
+    end
+
+    rect rgb(20, 55, 35)
+        Note right of ctrl: Readiness Check
+        ctrl->>ctrl: RouterNamedNSProvider.CanReconcile()<br/>Check /var/run/netns/perouter exists
+        ctrl->>reloader: Health check :9080/healthz
+        reloader-->>ctrl: 200 OK (FRR is running and healthy)
+    end
+
+    rect rgb(55, 25, 60)
+        Note right of ctrl: Interface Configuration in Router Netns
+        ctrl->>netns: setupVNI(VNI=100):<br/>1. netlink.LinkAdd(VRF "l2vni-100")<br/>2. netlink.LinkAdd(Bridge "br-pe-100")<br/>3. netlink.LinkAdd(VXLAN "vxlan-100"<br/>   VNI=100, VTEP=lound IP)<br/>4. Enslave vxlan-100 → br-pe-100<br/>5. Link set all UP
+
+        ctrl->>ctrl: setupNamespacedVeth():<br/>Create veth pair<br/>vni-100-ns ↔ vni-100-host
+
+        ctrl->>netns: Move vni-100-ns into router netns<br/>Assign IP to vni-100-ns<br/>Enslave vni-100-ns → br-pe-100<br/>Assign L2 gateway IP 10.100.0.1/24<br/>to br-pe-100
+
+        ctrl->>hostNS: Keep vni-100-host in host netns<br/>Assign IP to vni-100-host<br/>Create host bridge br-hs-100<br/>(if autoCreate=true)<br/>Enslave vni-100-host → br-hs-100
+
+        ctrl->>ctrl: Start BridgeRefresher(L2VNI-100)<br/>Periodic ARP probes every 60s<br/>from 10.100.0.1 on br-pe-100<br/>to refresh EVPN Type-2 routes
+    end
+
+    rect rgb(55, 50, 20)
+        Note right of ctrl: FRR Configuration Update
+        ctrl->>ctrl: APItoFRR(): regenerate full FRR config<br/>(underlay + all L3VNIs + passthrough)
+        Note over ctrl: L2VNIs are data-plane only,<br/>no FRR BGP config needed for L2.<br/>EVPN auto-discovers VXLANs via zebra.
+
+        ctrl->>reloader: POST updated config via Unix socket<br/>/etc/perouter/frr.socket
+        reloader->>reloader: Write /etc/perouter/frr.conf
+        reloader->>reloader: frr-reload.py --test (validate)
+        reloader->>frr: frr-reload.py --reload (apply delta)
+        reloader-->>ctrl: HTTP 200 OK
+    end
+
+    rect rgb(20, 40, 70)
+        Note right of frr: FRR Discovers New VXLAN
+        frr->>frr: zebra detects new vxlan-100 interface<br/>in VRF l2vni-100
+        frr->>frr: EVPN auto-associates VNI 100<br/>with the VXLAN interface
+        frr->>tor: EVPN Type-3 (IMET): advertise<br/>BUM replication for VNI 100
+        frr->>tor: EVPN Type-2: advertise local<br/>MAC/IP entries from br-pe-100 FDB
+        tor-->>frr: EVPN Type-2/3 from remote VTEPs<br/>for VNI 100
+        frr->>frr: zebra installs remote FDB entries<br/>into br-pe-100 (VXLAN tunnel MACs)
+    end
+
+    rect rgb(40, 45, 50)
+        Note right of ctrl: Cleanup
+        ctrl->>ctrl: RemoveNonConfigured():<br/>Compare existing VNIs vs desired config<br/>Remove VNIs no longer in any CRD<br/>Stop their BridgeRefreshers
+    end
+
+    Note over hostNS: Workload pods can now attach to br-hs-100<br/>via Multus NetworkAttachmentDefinition<br/>(macvlan/bridge on br-hs-100)
+
+    Note over user,tor: L2VNI-100 fully operational<br/>Workload ↔ br-hs-100 ↔ veth ↔ br-pe-100 ↔ vxlan-100 ↔ fabric
+```
+
 ### What Survives an FRR Container Death
 
 When FRR dies, the kernel state in the named netns is completely preserved:
