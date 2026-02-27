@@ -599,6 +599,15 @@ func validateVNI(g Gomega, params VNIParams) {
 
 	err = checkVXLanConfigured(vxlan, bridge.Index, loopback.Attrs().Index, params)
 	g.Expect(err).NotTo(HaveOccurred())
+
+	ok, err := hasUnreachableDefaultRoute(int(vrf.Table), netlink.FAMILY_V4)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(ok).To(BeTrue())
+
+	ok, err = hasUnreachableDefaultRoute(int(vrf.Table), netlink.FAMILY_V6)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(ok).To(BeTrue())
+
 }
 
 func validateVethForVNI(g Gomega, params VNIParams) {
