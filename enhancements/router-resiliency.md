@@ -9,10 +9,10 @@ NIC, and the VTEP loopback. The kernel could keep forwarding packets with its
 existing FDB and routing entries, but the ephemeral netns wipes everything.
 
 This enhancement proposes decoupling the data plane from the FRR container by
-running the router inside a **persistent named network namespace** managed by
-systemd. Traffic continues flowing when the router container crashes or
-restarts, and the control plane recovers within seconds via BGP Graceful
-Restart.
+running the router inside a **persistent named network namespace**. The netns
+is held open by a bind mount, independent of any container or process lifetime.
+Traffic continues flowing when the router container crashes or restarts, and
+the control plane recovers within seconds via BGP Graceful Restart.
 
 ## Motivation
 
@@ -50,10 +50,32 @@ Restart.
 ### Overview
 
 Replace the ephemeral pod-owned network namespace with a **persistent named
-network namespace** (`/var/run/netns/perouter`) created by a systemd oneshot
-unit at boot. The FRR container (running as a Podman quadlet) joins this
-namespace instead of getting its own. When FRR dies, the bind-mounted namespace
-persists, keeping all kernel networking state alive.
+network namespace** (`/var/run/netns/perouter`) created at boot and held open
+by a bind mount. The FRR process runs inside this namespace; when FRR dies, the
+bind-mounted namespace persists, keeping all kernel networking state alive —
+VRFs, bridges, VXLANs, routes, FDB entries, and the underlay NIC all survive.
+
+### Router pod deployment model
+The persistent named netns is the **core idea** of this proposal. It is
+orthogonal to how the FRR container is deployed, which can be in any of the
+following alternatives:
+
+- **Podman quadlet**: a systemd oneshot creates the netns; the FRR container
+  joins it via `Network=ns:/var/run/netns/perouter`. Systemd manages the
+  lifecycle.
+- **Kubernetes hostNetwork pod**: a privileged init container (or a DaemonSet
+  sidecar) creates the named netns; the FRR container uses `nsenter` to run
+  inside it. The pod runs with `hostNetwork: true` but FRR itself operates in
+  the named netns.
+- **Kubernetes pod with CRI netns binding**: the pod's own netns is bind-mounted
+  to a well-known path at creation time, decoupling the netns lifetime from the
+  pod lifetime.
+
+The deployment model affects how the container is managed and restarted, but
+the resilience properties — persistent data plane, BGP Graceful Restart
+bridging the control plane gap — are the same in all cases. The trade-offs
+between these options are discussed in
+[Router Deployment Model](#router-deployment-model).
 
 ### Architecture
 
@@ -130,7 +152,6 @@ recovery procedure — delete the namespace and restart the router service — t
 deterministically rebuilds the entire data plane from scratch without requiring
 node reboot or CRD re-creation.
 
->>>>>>> a40b2e4 (enhancement: add netns rebuild recovery section to resiliency proposal)
 ### Risks and Mitigations
 
 | Risk | Mitigation |
@@ -779,6 +800,127 @@ The data path is unchanged:
 Workload Pod → macvlan on br-hs-{vni} (host netns) →
   veth → bridge in named netns → vxlan → underlay → remote VTEP
 ```
+
+### Router Deployment Model
+
+The persistent named netns provides the same resilience guarantees regardless
+of how FRR is deployed. The deployment model determines how the container is
+managed, restarted, and how it enters the named netns. Each option has
+different trade-offs around Kubernetes integration, operational tooling, and
+underlay provisioning.
+
+#### Option A: Podman Quadlet
+
+FRR runs as a Podman container managed by systemd. The quadlet's
+`Network=ns:/var/run/netns/perouter` directive tells Podman to run the
+container inside the named netns. A systemd oneshot unit creates the netns at
+boot, before the FRR unit starts.
+
+**Pros:**
+
+- **Native systemd lifecycle**: `RestartSec=1`, `WatchdogSec`, and systemd
+  dependency ordering give fast, reliable restarts with no Kubernetes API
+  involvement.
+- **No Kubernetes dependency for the data plane**: the router starts at boot
+  via systemd, even before kubelet or the API server are available. This
+  enables boot-time routing for infrastructure nodes.
+- **Simple netns joining**: `Network=ns:` is a first-class Podman feature — no
+  `nsenter` wrapper, no privileged init containers.
+- **Drain-safe**: `kubectl drain` does not touch the router. Traffic continues
+  flowing while workload pods are being drained/migrated.
+- **Existing implementation**: OpenPERouter already ships quadlet definitions
+  under `systemdmode/quadlets/`.
+
+**Cons:**
+
+- **No Multus underlay**: the router is not a K8s pod, so Multus CNI cannot
+  attach interfaces to it. The controller must replicate the underlay
+  provisioning (e.g. creating a macvlan from the physical NIC and moving it
+  into the netns).
+- **Out-of-band management**: operators need SSH or equivalent access to run
+  `systemctl` commands; standard `kubectl` tooling does not apply.
+- **No K8s-native observability**: no pod status, events, or resource metrics
+  from kubelet. Monitoring relies on systemd journal, node-level exporters,
+  or custom health checks.
+
+#### Option B: Kubernetes hostNetwork Pod
+
+FRR runs as a container in a K8s DaemonSet pod with `hostNetwork: true`. An
+init container creates the named netns (if not already present), and the FRR
+container's entrypoint wraps the actual process with
+`nsenter --net=/var/run/netns/perouter`. The pod requires `privileged: true`
+or `CAP_SYS_ADMIN` for the `nsenter` call.
+
+**Pros:**
+
+- **Standard K8s lifecycle**: managed by a DaemonSet controller, with pod
+  status, events, resource requests/limits, and rolling updates via the K8s
+  API.
+- **Multus underlay support**: as a K8s pod, the router can receive its
+  underlay interface via a Multus `NetworkAttachmentDefinition`, preserving
+  the current deployment model for environments that rely on it.
+- **Familiar operational tooling**: `kubectl logs`, `kubectl describe pod`,
+  `kubectl rollout restart` all work as expected.
+- **K8s-native observability**: pod metrics, liveness/readiness probes, and
+  events are all available.
+
+**Cons:**
+
+- **Requires nsenter wrapper**: the FRR entrypoint must be wrapped to switch
+  into the named netns. This adds a layer of indirection and requires
+  privileged security context.
+- **K8s API dependency**: if the API server is unavailable, the DaemonSet
+  controller cannot reconcile the pod. Existing pods continue running, but
+  crashed pods may not be restarted until the API recovers (kubelet can
+  restart containers within a pod, but cannot recreate deleted pods without
+  the API server).
+- **Drain interaction**: `kubectl drain` will evict the router pod. This must
+  be mitigated with a `PodDisruptionBudget` or by tolerating the
+  `node.kubernetes.io/unschedulable` taint.
+- **Init container ordering**: the named netns must exist before FRR starts.
+  This requires either a host-level systemd unit (hybrid approach) or a
+  privileged init container that creates the netns — adding complexity.
+
+#### Option C: Kubernetes Pod with CRI Netns Binding
+
+The pod runs with its own CRI-created network namespace, but a hook or init
+container bind-mounts that netns to `/var/run/netns/perouter` so it persists
+beyond the pod lifecycle. When the pod is recreated, it detects the existing
+bind mount and joins the surviving netns instead of getting a new one.
+
+**Pros:**
+
+- **No nsenter wrapper**: FRR runs in the pod's netns natively; no entrypoint
+  modification needed.
+- **Standard K8s pod lifecycle**: same benefits as Option B (DaemonSet, kubectl,
+  observability).
+- **Multus underlay support**: same as Option B.
+
+**Cons:**
+
+- **CRI-level complexity**: requires coordination between the pod lifecycle and
+  the bind mount. If the pod is deleted and recreated, the new pod must detect
+  and join the existing netns rather than creating a new one. This is not a
+  standard CRI workflow and may require a custom runtime hook or OCI hook.
+- **Fragile lifecycle coupling**: if the bind mount is lost (e.g. `/var/run`
+  cleared on reboot) but the pod still runs with an ephemeral netns, the
+  system silently loses resilience without any visible error.
+- **Less proven**: this approach has limited precedent in production
+  environments compared to quadlets or hostNetwork pods.
+
+#### Comparison
+
+| Aspect | Podman Quadlet | hostNetwork Pod | CRI Netns Binding |
+|--------|---------------|-----------------|-------------------|
+| **Netns joining** | `Network=ns:` (native) | `nsenter` wrapper | OCI/CRI hook |
+| **K8s API dependency** | None | DaemonSet controller | DaemonSet controller |
+| **Multus underlay** | No (controller-provisioned) | Yes | Yes |
+| **kubectl tooling** | No (`systemctl`) | Yes | Yes |
+| **Privileged required** | Container capabilities | `CAP_SYS_ADMIN` / privileged | Depends on hook |
+| **Drain behavior** | Unaffected | Evicted (needs PDB) | Evicted (needs PDB) |
+| **Boot-time routing** | Yes (systemd) | No (needs API server) | No (needs API server) |
+| **Implementation maturity** | Existing quadlets | Requires nsenter wrapper | Requires custom hook |
+| **Observability** | systemd journal | K8s pod metrics/events | K8s pod metrics/events |
 
 ### Controller Deployment Options
 
