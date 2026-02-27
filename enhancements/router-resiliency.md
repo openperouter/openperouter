@@ -121,6 +121,16 @@ As a developer, I want the router's network namespace to be a well-known path
 (`ip netns exec perouter ...`) without needing to discover a pod PID or netns
 inode.
 
+#### Story 4: Recovery from Out-of-Sync Namespace
+
+As a support engineer troubleshooting a node where the router namespace has
+drifted out of sync with the desired configuration (e.g. due to a controller
+bug, a partial failure, or manual intervention), I want a single, well-known
+recovery procedure — delete the namespace and restart the router service — that
+deterministically rebuilds the entire data plane from scratch without requiring
+node reboot or CRD re-creation.
+
+>>>>>>> a40b2e4 (enhancement: add netns rebuild recovery section to resiliency proposal)
 ### Risks and Mitigations
 
 | Risk | Mitigation |
@@ -129,6 +139,7 @@ inode.
 | FRR restarts too quickly before interfaces are ready | Interfaces persist in the named netns; FRR always finds them ready |
 | BGP Graceful Restart not supported by all peers | GR is widely supported (FRR, BIRD, Cisco, Arista); document peer requirements |
 | `lound` dummy interface never set to UP state (existing bug) | Fix `createLoopback()` in `internal/hostnetwork/underlay.go` to call `netlink.LinkSetUp(lound)` |
+| Router netns drifts out of sync with desired config (controller bug, partial failure, manual interference) | The system is designed for full netns teardown and rebuild: `ip netns delete perouter` + `systemctl restart perouter-netns.service routerpod-pod.service` deterministically recreates a correct state. The controller detects the empty netns and re-provisions all interfaces from CRD state. See [Recovery from a Deleted or Emptied Namespace](#recovery-from-a-deleted-or-emptied-namespace). |
 
 ## Design Details
 
@@ -535,6 +546,204 @@ bfd
 
 This gives FRR 15 seconds to restart before BFD declares the session down.
 
+### Recovery from a Deleted or Emptied Namespace
+
+In production, the most common support remedy for an out-of-sync node is to
+trash the router namespace and let the system rebuild it. This can happen when:
+
+- A controller bug leaves stale interfaces or misconfigured VRFs in the netns.
+- A partial failure (e.g. OOM during reconciliation) leaves the netns half
+  configured.
+- Manual debugging (`ip link delete`, `ip netns exec ... ip route flush`)
+  leaves the netns in an inconsistent state.
+- An underlay change triggers `HandleNonRecoverableError`, which needs to
+  rebuild the namespace from scratch.
+
+The design must ensure this is a **safe, deterministic, single-command
+operation** that always converges to the correct state.
+
+#### Recovery Procedure
+
+The operator runs:
+
+```bash
+# Delete the netns (destroys all interfaces, routes, FDB inside it)
+ip netns delete perouter
+
+# Restart the netns service and the router pod
+systemctl restart perouter-netns.service routerpod-pod.service
+```
+
+Or equivalently, `HandleNonRecoverableError` can perform this programmatically
+when it detects an unrecoverable divergence.
+
+#### Why This Works
+
+Deleting the named netns destroys all kernel objects inside it — VRFs, bridges,
+VXLANs, veth endpoints (which also destroys the host-side peer), the underlay
+NIC (returned to the host netns), and the `lound` dummy interface. This is a
+clean slate. The system then follows the exact same boot sequence as a fresh
+start:
+
+1. `perouter-netns.service` creates a new empty netns
+2. The controller detects the empty netns via `CanReconcile()` and runs a full
+   reconciliation — re-creating all interfaces from CRD state
+3. The FRR container re-enters the new netns, finds interfaces configured by
+   the controller, and re-establishes BGP sessions
+
+The controller is already idempotent — it creates interfaces only if they don't
+exist, and `RemoveNonConfigured()` cleans up anything not in the desired state.
+An empty netns is simply the extreme case: nothing exists, everything gets
+created.
+
+#### Controller Detection
+
+The controller must detect that the netns was deleted and recreated (or
+emptied). Two mechanisms:
+
+1. **Netns inode change**: the controller can cache the netns inode
+   (`stat /var/run/netns/perouter`) and detect when it changes, indicating the
+   old netns was deleted and a new one created.
+2. **Missing underlay marker**: the controller already identifies an existing
+   underlay by the marker IP `172.16.1.1/32`. If this marker is absent, the
+   controller knows the netns is fresh and runs full setup including underlay
+   provisioning.
+
+Both approaches trigger a full reconciliation cycle, which is safe because
+interface creation is idempotent.
+
+#### HandleNonRecoverableError Extension
+
+The existing `HandleNonRecoverableError` in host mode restarts
+`routerpod-pod.service`. For the named netns model, it can optionally also
+recreate the netns:
+
+```go
+func (r *RouterNamedNSContainer) HandleNonRecoverableError(ctx context.Context) error {
+    slog.Info("recreating router namespace", "path", r.manager.NamespacePath)
+
+    // Delete the netns (destroys all kernel objects inside it)
+    if err := exec.Command("ip", "netns", "delete", "perouter").Run(); err != nil {
+        slog.Warn("netns delete failed (may already be gone)", "error", err)
+    }
+
+    // Restart the netns service (recreates the empty netns)
+    client, err := systemdctl.NewClient()
+    if err != nil {
+        return fmt.Errorf("failed to create systemd client: %w", err)
+    }
+    if err := client.Restart(ctx, "perouter-netns.service"); err != nil {
+        return fmt.Errorf("failed to restart netns service: %w", err)
+    }
+
+    // Restart the router pod (FRR re-enters the new netns)
+    if err := client.Restart(ctx, "routerpod-pod.service"); err != nil {
+        return fmt.Errorf("failed to restart router service: %w", err)
+    }
+
+    return nil
+}
+```
+
+#### Sequence Diagram: Namespace Deletion and Rebuild
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant op as Operator /<br/>HandleNonRecoverableError
+    participant systemd
+    participant netns as Named Netns<br/>/var/run/netns/perouter
+    participant ctrl as Controller
+    participant k8s as K8s API
+    participant reloader as Reloader
+    participant frr as FRR
+    participant tor as ToR Switch
+    participant hostBGP as Host BGP Speaker
+
+    Note over op,hostBGP: System in out-of-sync state<br/>(stale interfaces, wrong IPs, partial config)
+
+    rect rgb(70, 25, 25)
+        Note right of op: Phase 1: Tear Down
+        op->>netns: ip netns delete perouter
+        Note over netns: All kernel objects destroyed:<br/>VRFs, bridges, VXLANs, veths, lound<br/>Underlay NIC returned to host netns
+        Note over tor: BGP sessions drop<br/>(underlay NIC gone)
+        Note over hostBGP: BGP sessions drop<br/>(veth peers destroyed)
+        tor->>tor: Graceful Restart activated<br/>Preserve stale routes
+        hostBGP->>hostBGP: Graceful Restart activated<br/>Preserve stale routes
+    end
+
+    rect rgb(20, 40, 70)
+        Note right of op: Phase 2: Recreate Empty Netns
+        op->>systemd: systemctl restart<br/>perouter-netns.service
+        systemd->>netns: ip netns add perouter
+        activate netns
+        Note over netns: Fresh empty netns created<br/>New inode, no interfaces
+    end
+
+    rect rgb(70, 45, 15)
+        Note right of op: Phase 3: Restart FRR
+        op->>systemd: systemctl restart<br/>routerpod-pod.service
+        systemd->>frr: Start FRR container<br/>Network=ns:/var/run/netns/perouter
+        activate frr
+        systemd->>reloader: Start reloader container
+        activate reloader
+        Note over frr: FRR enters new empty netns<br/>No interfaces yet — waits for controller
+    end
+
+    rect rgb(20, 55, 35)
+        Note right of ctrl: Phase 4: Controller Full Reconciliation
+        ctrl->>ctrl: Detect netns change<br/>(inode changed or underlay marker absent)
+        ctrl->>k8s: List all CRDs:<br/>Underlays, L3VNIs, L2VNIs, L3Passthroughs
+        k8s-->>ctrl: Full desired config
+
+        ctrl->>netns: SetupUnderlay():<br/>Move physical NIC into new netns<br/>Create lound with VTEP IP
+        ctrl->>netns: SetupL3VNI() for each L3VNI:<br/>Create VRF, bridge, VXLAN, veth
+        ctrl->>netns: SetupL2VNI() for each L2VNI:<br/>Create VRF, bridge, VXLAN, veth,<br/>host-side bridge
+        ctrl->>netns: SetupPassthrough() if configured
+
+        Note over ctrl: All interfaces recreated from<br/>CRD state — guaranteed correct
+    end
+
+    rect rgb(55, 25, 60)
+        Note right of ctrl: Phase 5: FRR Configuration & BGP Recovery
+        ctrl->>reloader: POST full FRR config via Unix socket
+        reloader->>frr: frr-reload.py --reload
+        reloader-->>ctrl: HTTP 200 OK
+
+        frr->>frr: zebra discovers all interfaces
+        frr->>tor: BGP OPEN with GR capability
+        tor-->>frr: BGP OPEN (accept restart)
+        tor->>tor: Clear stale routes
+        frr->>tor: Advertise EVPN routes
+        tor-->>frr: Fabric routes
+
+        frr->>hostBGP: BGP OPEN with GR capability
+        hostBGP-->>frr: BGP OPEN (accept restart)
+        frr->>hostBGP: VNI routes
+        hostBGP->>frr: Host routes
+    end
+
+    Note over op,hostBGP: System fully rebuilt from CRD state<br/>Guaranteed consistent — no stale artifacts
+```
+
+#### Recovery Timeline (Namespace Rebuild)
+
+| Phase | Duration | What happens |
+|-------|----------|-------------|
+| Netns deletion | <1s | All kernel objects destroyed, clean slate |
+| Netns recreation | <1s | `ip netns add perouter` |
+| FRR restart | ~1-2s | Container re-enters new netns |
+| Controller reconciliation | ~2-5s | Full interface re-creation from CRDs |
+| FRR init + BGP recovery | ~5-15s | Config reload, session re-establishment |
+| **Total outage** | **~10-25s** | |
+| **Data plane outage** | **~10-25s** | Full outage (netns was destroyed) |
+
+Unlike an FRR-only crash (0s data plane outage), a namespace rebuild **does
+cause a data plane disruption** — this is the expected trade-off. The operator
+is deliberately choosing to sacrifice continuity in exchange for a guaranteed
+return to a correct state. This is strictly better than the current situation
+where recovery from an out-of-sync state may require a full node reboot.
+
 ### Multus Integration
 
 There are two distinct Multus use cases. They behave differently with this
@@ -643,6 +852,13 @@ If you need to explicitly stop the router during decommissioning, use
   - Data plane traffic continues flowing during the FRR outage.
   - FRR re-enters the netns and re-establishes BGP sessions.
   - BGP Graceful Restart preserves routes at peers during the outage window.
+- **Namespace rebuild tests**: Delete the netns while the system is running and
+  verify:
+  - The controller detects the empty/new netns and runs full reconciliation.
+  - All interfaces are recreated correctly from CRD state.
+  - FRR re-enters the new netns and re-establishes BGP sessions.
+  - No stale artifacts remain from the previous namespace.
+  - `HandleNonRecoverableError` can perform the full rebuild programmatically.
 - **Lifecycle tests**: Verify `perouter-netns.service` creates and cleans up
   the netns correctly on boot and shutdown.
 - **Upgrade tests**: Restart the FRR container with a new image version and
