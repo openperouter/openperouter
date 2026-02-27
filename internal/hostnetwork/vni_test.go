@@ -568,8 +568,12 @@ func validateL2VNI(g Gomega, params L2VNIParams) {
 }
 
 func validateVNI(g Gomega, params VNIParams) {
-	loopback, err := netlink.LinkByName(UnderlayLoopback)
-	g.Expect(err).NotTo(HaveOccurred(), "loopback not found", UnderlayLoopback)
+	vtepDevName := UnderlayLoopback
+	if params.VTEPInterface != "" {
+		vtepDevName = params.VTEPInterface
+	}
+	vtepDev, err := netlink.LinkByName(vtepDevName)
+	g.Expect(err).NotTo(HaveOccurred(), "vtep device not found %q", vtepDevName)
 
 	vxlanLink, err := netlink.LinkByName(vxLanNameFromVNI(params.VNI))
 	g.Expect(err).NotTo(HaveOccurred(), "vxlan link not found %q", vxLanNameFromVNI(params.VNI))
@@ -597,7 +601,7 @@ func validateVNI(g Gomega, params VNIParams) {
 	addrGenModeNone = checkAddrGenModeNone(bridge)
 	g.Expect(addrGenModeNone).To(BeTrue())
 
-	err = checkVXLanConfigured(vxlan, bridge.Index, loopback.Attrs().Index, params)
+	err = checkVXLanConfigured(vxlan, bridge.Index, vtepDev.Attrs().Index, params)
 	g.Expect(err).NotTo(HaveOccurred())
 }
 
