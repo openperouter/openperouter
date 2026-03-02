@@ -59,7 +59,8 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `vtepcidr` _string_ | VTEPCIDR is CIDR to be used to assign IPs to the local VTEP on each node. |  |  |
+| `vtepcidr` _string_ | VTEPCIDR is CIDR to be used to assign IPs to the local VTEP on each node.<br />A loopback interface will be created with an IP derived from this CIDR.<br />Mutually exclusive with VTEPInterface. |  |  |
+| `vtepInterface` _string_ | VTEPInterface is the name of an existing interface to use as the VTEP source.<br />The interface must already have an IP address configured that will be used<br />as the VTEP IP. Mutually exclusive with VTEPCIDR.<br />The ToR must advertise the interface IP into the fabric underlay<br />(e.g. via redistribute connected) so that the VTEP address is reachable<br />from other leaves. |  | MaxLength: 15 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9._-]*$` <br /> |
 
 
 #### HostMaster
