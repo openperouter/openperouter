@@ -315,7 +315,7 @@ $(APIDOCSGEN): $(LOCALBIN)
 
 .PHONY: e2etests
 e2etests: ginkgo kubectl build-validator create-export-logs
-	$(GINKGO) -v $(GINKGO_ARGS) --timeout=3h ./e2etests/suite -- --kubectl=$(KUBECTL) $(TEST_ARGS) --hostvalidator $(VALIDATOR_PATH) --reporterpath=${KIND_EXPORT_LOGS}
+	$(GINKGO) -v $(GINKGO_ARGS) --label-filter="!scale" --timeout=3h ./e2etests/suite -- --kubectl=$(KUBECTL) $(TEST_ARGS) --hostvalidator $(VALIDATOR_PATH) --reporterpath=${KIND_EXPORT_LOGS}
 
 .PHONY: e2etests-hostmode-boot
 e2etests-hostmode-boot: ginkgo kubectl build-validator create-export-logs ## Run e2e tests for hostmode boot scenario (static config first, then K8s API).
@@ -324,8 +324,14 @@ e2etests-hostmode-boot: ginkgo kubectl build-validator create-export-logs ## Run
 	@echo "=== Deploying controller to enable K8s API ==="
 	$(MAKE) deploy-controller KUSTOMIZE_LAYER=hostmode
 	@echo "=== Running passthrough tests (with K8s API available) ==="
-	$(GINKGO) -v $(GINKGO_ARGS) --timeout=3h --label-filter='passthrough' ./e2etests/suite -- --kubectl=$(KUBECTL) $(TEST_ARGS) --skip-underlay-passthrough --systemdmode --hostvalidator $(VALIDATOR_PATH) --reporterpath=${KIND_EXPORT_LOGS} 
+	$(GINKGO) -v $(GINKGO_ARGS) --label-filter="!scale" --timeout=3h --label-filter='passthrough' ./e2etests/suite -- --kubectl=$(KUBECTL) $(TEST_ARGS) --skip-underlay-passthrough --systemdmode --hostvalidator $(VALIDATOR_PATH) --reporterpath=${KIND_EXPORT_LOGS}
 
+.PHONY: scale-tests
+scale-tests: ginkgo kubectl build-validator create-export-logs ## Run VNI scale tests
+	$(GINKGO) -v --label-filter="scale" --timeout=3h ./e2etests/suite -- \
+		--kubectl=$(KUBECTL) $(TEST_ARGS) \
+		--hostvalidator $(VALIDATOR_PATH) \
+		--reporterpath=${KIND_EXPORT_LOGS}
 
 .PHONY: clab-cluster
 clab-cluster: kind-node-image-build
