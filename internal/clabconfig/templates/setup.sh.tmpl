@@ -1,0 +1,24 @@
+#!/bin/bash
+
+# Avoid losing IPv6 address after enslaving to VRF
+sysctl -w net.ipv6.conf.all.keep_addr_on_down=1
+
+# VTEP IP
+ip addr add {{.VTEPIP}}/32 dev lo
+{{range $vrf := .SortedVRFs}}
+# VRF: {{$vrf.Name}}
+ip link add {{$vrf.Name}} type vrf table {{$vrf.TableID}}
+{{- range $vrf.Interfaces}}
+ip link set {{.}} master {{$vrf.Name}}
+{{- end}}
+ip link set {{$vrf.Name}} up
+
+ip link add br{{$vrf.BridgeID}} type bridge
+ip link set br{{$vrf.BridgeID}} master {{$vrf.Name}} addrgenmode none
+ip link set br{{$vrf.BridgeID}} addr {{$vrf.MACAddress}}
+ip link add vni{{$vrf.VNI}} type vxlan local {{$.VTEPIP}} dstport 4789 id {{$vrf.VNI}} nolearning
+ip link set vni{{$vrf.VNI}} master br{{$vrf.BridgeID}} addrgenmode none
+ip link set vni{{$vrf.VNI}} type bridge_slave neigh_suppress on learning off
+ip link set vni{{$vrf.VNI}} up
+ip link set br{{$vrf.BridgeID}} up
+{{end}}
