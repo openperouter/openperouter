@@ -10,9 +10,14 @@ toc: true
 
 ## Underlay Configuration
 
-In addition to the configuration described in the [underlay configuration section]({{< ref "configuration/#underlay-configuration" >}}), the VTEP IP allocation strategy must be provided (**Note the evpn field**).
+In addition to the configuration described in the [underlay configuration section]({{< ref "configuration/#underlay-configuration" >}}), the VTEP (Virtual Tunnel End Point) source must be configured via the `evpn` field. There are two mutually exclusive options:
 
-### Basic Underlay Configuration
+- **`vtepcidr`**: OpenPERouter creates a loopback interface and allocates a unique VTEP IP per node from the given CIDR. OpenPERouter advertises the VTEP IP into the fabric via BGP.
+- **`vtepInterface`**: OpenPERouter uses an existing interface (and its IP) as the VTEP source. The ToR is responsible for advertising the interface IP into the fabric (e.g. via `redistribute connected`).
+
+Exactly one of the two must be specified.
+
+### Using vtepcidr
 
 ```yaml
 apiVersion: openpe.openperouter.github.io/v1alpha1
@@ -31,24 +36,46 @@ spec:
       address: 192.168.11.2
 ```
 
-### Configuration Fields
-
-| Field | Type | Description | Required |
-|-------|------|-------------|----------|
-| `asn` | integer | Local ASN for BGP sessions | Yes |
-| `evpn.vtepcidr` | string | CIDR block for VTEP IP allocation | Yes |
-| `nics` | array | List of network interface names to move to router namespace | Yes |
-| `neighbors` | array | List of BGP neighbors to peer with | Yes |
-| `nodeSelector` | object | Label selector to target specific nodes (applies to all nodes if omitted) | No |
-
-### VTEP IP Allocation
-
-The `evpn.vtepcidr` field defines the IP range used for VTEP (Virtual Tunnel End Point) addresses. OpenPERouter automatically assigns a unique VTEP IP to each node from this range. For example, with `100.65.0.0/24`:
+The `evpn.vtepcidr` field defines the IP range used for VTEP addresses. OpenPERouter automatically assigns a unique VTEP IP to each node from this range. For example, with `100.65.0.0/24`:
 
 - Node 1: `100.65.0.1`
 - Node 2: `100.65.0.2`
 - Node 3: `100.65.0.3`
 - etc.
+
+A loopback interface is created inside the router namespace with the allocated IP, and OpenPERouter advertises the VTEP IP to the fabric over the BGP underlay session.
+
+### Using vtepInterface
+
+```yaml
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: Underlay
+metadata:
+  name: underlay
+  namespace: openperouter-system
+spec:
+  asn: 64514
+  evpn:
+    vtepInterface: toswitch
+  nics:
+    - toswitch
+  neighbors:
+    - asn: 64512
+      address: 192.168.11.2
+```
+
+When `vtepInterface` is set, OpenPERouter uses the specified interface's IP as the VXLan VTEP. The interface must already have an IP address configured; the first IPv4 address found on the interface is used as the VTEP IP.
+
+### Configuration Fields
+
+| Field | Type | Description | Required |
+|-------|------|-------------|----------|
+| `asn` | integer | Local ASN for BGP sessions | Yes |
+| `evpn.vtepcidr` | string | CIDR block for VTEP IP allocation. Mutually exclusive with `vtepInterface`. | Yes (one of `vtepcidr` / `vtepInterface`) |
+| `evpn.vtepInterface` | string | Name of an existing interface to use as VTEP source. Mutually exclusive with `vtepcidr`. | Yes (one of `vtepcidr` / `vtepInterface`) |
+| `nics` | array | List of network interface names to move to router namespace | Yes |
+| `neighbors` | array | List of BGP neighbors to peer with | Yes |
+| `nodeSelector` | object | Label selector to target specific nodes (applies to all nodes if omitted) | No |
 
 ## L3 VNI Configuration
 
