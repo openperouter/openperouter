@@ -29,10 +29,6 @@ the control plane recovers within seconds via BGP Graceful Restart.
   queries or PID file parsing.
 - **Decoupled interface provisioning**: the controller can pre-configure
   interfaces before FRR starts, rather than waiting for pod readiness.
-- **Preserve the Multus underlay option**: the current deployment model supports
-  underlay connectivity via either moving a physical NIC or via Multus
-  `NetworkAttachmentDefinition`. The preferred proposal retains compatibility
-  with both approaches (see [Multus Integration](#multus-integration)).
 
 ### Non-Goals
 
@@ -81,7 +77,7 @@ between these options are discussed in
 │                                                                 │
 │  ┌──────────────────────────────────────┐                       │
 │  │  Named Netns: /var/run/netns/perouter│  ◄── persists across  │
-│  │  (created by systemd oneshot at boot)│      container death  │
+│  │  (created by the controller)         │      container death  │
 │  │                                      │                       │
 │  │  ┌─────────┐  ┌──────────┐           │                       │
 │  │  │ lound   │  │ eth1     │           │                       │
@@ -107,10 +103,11 @@ between these options are discussed in
 │  │  eth0 / CNI interfaces (K8s pod networking)         │        │
 │  └─────────────────────────────────────────────────────┘        │
 │                                                                 │
-│  Systemd Units:                                                 │
-│  ├─ perouter-netns.service  (oneshot, creates named netns)      │
-│  ├─ routerpod-pod.service   (FRR + reloader, joins named netns) │
-│  └─ controllerpod-pod.service (or K8s DaemonSet)                │
+│  Components:                                                    │
+│  ├─ Controller (K8s DaemonSet)                                  │
+│  │    creates netns, provisions interfaces, manages FRR config  │
+│  └─ FRR + Reloader (Quadlet or hostNetwork Pod)                 │
+│       joins named netns, runs routing daemons                   │
 │                                                                 │
 │  K8s Workload Pods (unchanged):                                 │
 │  ├─ Pod A ── eth0 (CNI) + net1 (Multus macvlan → br-hs-100)     │
@@ -128,18 +125,11 @@ control plane recovers automatically within seconds.
 
 #### Story 2: Router Software Upgrade
 
-As a cluster operator, I want to restart the FRR container for a version
-upgrade without tearing down VXLAN tunnels or VRFs, so that existing traffic
-flows are not interrupted during the upgrade.
+As a cluster operator, I want to upgrade the OpenPERouter bits (controller,
+router, etc) for a version upgrade without tearing down VXLAN tunnels or VRFs,
+so that existing traffic flows are not interrupted during the upgrade.
 
-#### Story 3: Simplified Debugging
-
-As a developer, I want the router's network namespace to be a well-known path
-(`/var/run/netns/perouter`) so I can inspect it with standard tools
-(`ip netns exec perouter ...`) without needing to discover a pod PID or netns
-inode.
-
-#### Story 4: Recovery from Out-of-Sync Namespace
+#### Story 3: Recovery from Out-of-Sync Namespace
 
 As a support engineer troubleshooting a node where the router namespace has
 drifted out of sync with the desired configuration (e.g. due to a controller
@@ -152,50 +142,77 @@ node reboot or CRD re-creation.
 
 | Risk | Mitigation |
 |------|------------|
-| Named netns is not cleaned up on node shutdown | `perouter-netns.service` has `ExecStop=ip netns delete perouter`; netns is also cleaned on reboot since `/var/run` is a tmpfs |
+| Named netns is not cleaned up on node shutdown | `/var/run` is a tmpfs, so the bind mount is automatically removed on reboot. The controller can also explicitly delete the netns during graceful shutdown. |
 | FRR restarts too quickly before interfaces are ready | Interfaces persist in the named netns; FRR always finds them ready |
 | BGP Graceful Restart not supported by all peers | GR is widely supported (FRR, BIRD, Cisco, Arista); document peer requirements |
-| Router netns drifts out of sync with desired config (controller bug, partial failure, manual interference) | The system is designed for full netns teardown and rebuild: `ip netns delete perouter` + `systemctl restart perouter-netns.service routerpod-pod.service` deterministically recreates a correct state. The controller detects the empty netns and re-provisions all interfaces from CRD state. See [Recovery from a Deleted or Emptied Namespace](#recovery-from-a-deleted-or-emptied-namespace). |
+| Router netns drifts out of sync with desired config (controller bug, partial failure, manual interference) | The system is designed for full netns teardown and rebuild: `ip netns delete perouter` followed by a restart of the router process deterministically recreates a correct state. The controller detects the missing netns, recreates it, and re-provisions all interfaces from CRD state. See [Recovery from a Deleted or Emptied Namespace](#recovery-from-a-deleted-or-emptied-namespace). |
 
 ## Design Details
 
 ### Named Netns Lifecycle
 
-A systemd oneshot unit creates the namespace at boot:
+The controller pod is responsible for creating and managing the well-known
+network namespace (`/var/run/netns/perouter`). This is a natural fit because
+the controller already provisions all interfaces inside the netns — it simply
+adds namespace creation as the first step in its reconciliation loop.
 
-```ini
-# perouter-netns.service
-[Unit]
-Description=Create persistent PE router network namespace
-Before=routerpod-pod.service
+On startup, the controller checks whether `/var/run/netns/perouter` exists. If
+not, it creates it:
 
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-ExecStart=/usr/sbin/ip netns add perouter
-ExecStop=/usr/sbin/ip netns delete perouter
+```go
+func (r *RouterNamedNSProvider) EnsureNamespace(ctx context.Context) error {
+    if _, err := os.Stat(r.NamespacePath); err == nil {
+        return nil // netns already exists
+    }
 
-[Install]
-WantedBy=multi-user.target
+    runtime.LockOSThread()
+    defer runtime.UnlockOSThread()
+
+    // Create a new network namespace
+    newNS, err := netns.New()
+    if err != nil {
+        return fmt.Errorf("failed to create netns: %w", err)
+    }
+    defer newNS.Close()
+
+    // Bind-mount it to the well-known path so it persists
+    if err := os.MkdirAll(filepath.Dir(r.NamespacePath), 0o755); err != nil {
+        return fmt.Errorf("failed to create netns directory: %w", err)
+    }
+    f, err := os.OpenFile(r.NamespacePath, os.O_CREATE|os.O_EXCL, 0o444)
+    if err != nil {
+        return fmt.Errorf("failed to create netns mount point: %w", err)
+    }
+    f.Close()
+
+    src := fmt.Sprintf("/proc/self/fd/%d", int(newNS))
+    if err := unix.Mount(src, r.NamespacePath, "", unix.MS_BIND, ""); err != nil {
+        os.Remove(r.NamespacePath)
+        return fmt.Errorf("failed to bind-mount netns: %w", err)
+    }
+
+    slog.Info("created persistent network namespace", "path", r.NamespacePath)
+    return nil
+}
 ```
 
 This creates `/var/run/netns/perouter` — a bind mount that holds the netns open
 independently of any process. It persists until explicitly deleted or the node
-reboots.
+reboots (since `/var/run` is a tmpfs).
 
-### FRR Quadlet Configuration
+Having the controller own the netns lifecycle has several advantages:
 
-The key change in `frr.container`:
-
-```ini
-[Container]
-# Join the persistent named netns instead of getting an ephemeral one:
-Network=ns:/var/run/netns/perouter
-```
-
-When the container starts, Podman runs it inside `/var/run/netns/perouter`.
-When the container dies, the netns stays. When systemd restarts the container,
-it re-enters the same netns with all interfaces intact.
+- **Single owner**: the same component that creates interfaces inside the netns
+  also creates the netns itself. There is no ordering dependency on a separate
+  systemd unit.
+- **Works in all deployment models**: whether the controller runs as a K8s
+  DaemonSet or a Podman quadlet, it creates the netns the same way. No
+  host-level systemd units are required.
+- **Idempotent**: `EnsureNamespace` is safe to call on every reconciliation
+  loop — it is a no-op if the netns already exists.
+- **Recovery-aware**: after a namespace deletion (manual or via
+  `HandleNonRecoverableError`), the controller detects the missing netns on its
+  next reconciliation and recreates it automatically.
 
 ### Controller Netns Discovery
 
@@ -238,51 +255,48 @@ func (r *RouterNamedNSProvider) CanReconcile(ctx context.Context) (bool, error) 
 
 ### Decoupled Lifecycle Sequence
 
-With a named netns, the controller can pre-configure interfaces before FRR
-starts:
+With a named netns, the controller can create the namespace and pre-configure
+interfaces before FRR starts:
 
-1. **Boot** - `perouter-netns.service` creates the netns
-2. **Controller starts** - immediately configures interfaces in the netns
-   (VRFs, bridges, VXLANs, veths, underlay NIC)
-3. **FRR starts later** - enters the netns, finds everything already set up,
-   starts routing
+1. **Controller starts** - creates the named netns via `EnsureNamespace()`,
+   then configures interfaces in it (VRFs, bridges, VXLANs, veths, underlay
+   NIC)
+2. **FRR starts** - attempts to enter the netns. If the controller has not yet
+   created it, the router pod crash-loops until the netns is ready. Once
+   available, FRR enters the netns, finds everything already set up, and starts
+   routing
 
-The following sequence diagrams illustrate how systemd, the controller, FRR,
-and the BGP peers interact across the three key lifecycle scenarios.
+The following sequence diagrams illustrate how the controller, FRR, and the
+BGP peers interact across the three key lifecycle scenarios.
 
 #### Initial Boot Sequence
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant systemd
     participant netns as Named Netns<br/>/var/run/netns/perouter
-    participant ctrl as Controller<br/>(DaemonSet or Quadlet)
+    participant ctrl as Controller<br/>(K8s DaemonSet)
     participant k8s as K8s API
-    participant reloader as Reloader<br/>(routerpod pod)
-    participant frr as FRR<br/>(routerpod pod)
+    participant reloader as Reloader<br/>(routerpod)
+    participant frr as FRR<br/>(routerpod)
     participant tor as ToR Switch<br/>(BGP Peer)
     participant hostBGP as Host BGP Speaker<br/>(frr-k8s / Calico)
 
-    Note over systemd: Node boots
+    Note over ctrl: Node boots, K8s schedules<br/>controller DaemonSet pod
 
     rect rgb(20, 40, 70)
-        Note right of systemd: Phase 1: Named Netns Creation
-        systemd->>netns: ip netns add perouter<br/>(perouter-netns.service, oneshot)
+        Note right of ctrl: Phase 1: Controller Creates Named Netns
+        activate ctrl
+        ctrl->>k8s: List Underlay, L3VNI, L2VNI,<br/>L3Passthrough CRDs
+        k8s-->>ctrl: CRD specs (filtered by node selector)
+
+        ctrl->>netns: EnsureNamespace():<br/>Create netns + bind mount
         activate netns
         Note over netns: Bind mount created at<br/>/var/run/netns/perouter<br/>Persists independently of any process
     end
 
     rect rgb(20, 55, 35)
-        Note right of systemd: Phase 2: Controller Starts
-        systemd->>ctrl: Start controllerpod-pod.service<br/>(or K8s schedules DaemonSet pod)
-        activate ctrl
-        ctrl->>k8s: List Underlay, L3VNI, L2VNI,<br/>L3Passthrough CRDs
-        k8s-->>ctrl: CRD specs (filtered by node selector)
-
-        ctrl->>netns: RouterNamedNSProvider.CanReconcile()<br/>Check /var/run/netns/perouter exists
-        netns-->>ctrl: Netns exists, ready to configure
-
+        Note right of ctrl: Phase 2: Controller Provisions Interfaces
         Note over ctrl,netns: Pre-configure interfaces before FRR starts
 
         ctrl->>netns: SetupUnderlay()<br/>Move physical NIC (eth1) into netns
@@ -295,19 +309,19 @@ sequenceDiagram
     end
 
     rect rgb(70, 45, 15)
-        Note right of systemd: Phase 3: FRR Container Starts
-        systemd->>frr: Start routerpod-pod.service<br/>Network=ns:/var/run/netns/perouter
+        Note right of frr: Phase 3: FRR + Reloader Start
+        Note over frr: Router pod may have been crash-looping<br/>waiting for netns to appear — now succeeds
+        frr->>netns: Enter named netns<br/>(Network=ns: or nsenter)
         activate frr
-        Note over frr: Podman joins named netns<br/>FRR finds all interfaces already configured
+        Note over frr: FRR finds all interfaces<br/>already configured by controller
 
-        systemd->>reloader: Start reloader container<br/>(same pod, same netns)
         activate reloader
         reloader-->>reloader: Listen on Unix socket<br/>/etc/perouter/frr.socket<br/>Health endpoint :9080/healthz
     end
 
     rect rgb(55, 25, 60)
-        Note right of systemd: Phase 4: FRR Configuration & BGP Sessions
-        ctrl->>ctrl: APItoFRR(): generate FRR config<br/>from CRD specs + nodeIndex
+        Note right of ctrl: Phase 4: FRR Configuration & BGP Sessions
+        ctrl->>ctrl: APItoFRR(): generate FRR config<br/>from CRD specs + nodeIndex<br/>New netns → omit preserve-fw-state
         ctrl->>reloader: POST config via Unix socket<br/>/etc/perouter/frr.socket
         reloader->>reloader: frr-reload.py --test (validate)
         reloader->>frr: frr-reload.py --reload (apply)
@@ -335,8 +349,7 @@ sequenceDiagram
     autonumber
     participant kernel as Kernel<br/>(Data Plane)
     participant netns as Named Netns<br/>/var/run/netns/perouter
-    participant systemd
-    participant ctrl as Controller
+    participant ctrl as Controller<br/>(K8s DaemonSet)
     participant reloader as Reloader
     participant frr as FRR
     participant tor as ToR Switch
@@ -347,7 +360,7 @@ sequenceDiagram
     rect rgb(70, 25, 25)
         Note right of frr: FRR Process Dies
         frr->>frr: CRASH (segfault / OOM / kill)
-        Note over reloader,frr: routerpod-pod.service exits<br/>Both FRR and reloader are gone
+        Note over reloader,frr: Router pod exits<br/>Both FRR and reloader are gone
 
         Note over tor: BGP session drops<br/>(TCP RST or hold timer expiry)
         Note over hostBGP: BGP session drops
@@ -366,11 +379,10 @@ sequenceDiagram
     end
 
     rect rgb(70, 45, 15)
-        Note right of systemd: Systemd Fast Restart (~1-2s)
-        systemd->>systemd: Detect unit failure<br/>RestartSec=1
-        systemd->>frr: Restart routerpod-pod.service<br/>Network=ns:/var/run/netns/perouter
+        Note right of frr: Router Pod Restart (~1-2s)
+        Note over frr: Kubelet or systemd detects failure<br/>and restarts the router pod
+        frr->>netns: Re-enter named netns<br/>(Network=ns: or nsenter)
         activate frr
-        systemd->>reloader: Restart reloader (same pod)
         activate reloader
         Note over frr: FRR re-enters the SAME named netns<br/>All interfaces already present and UP
     end
@@ -379,7 +391,7 @@ sequenceDiagram
         Note right of frr: FRR Recovery (~2-5s)
         frr->>frr: Read /etc/frr/frr.conf<br/>Start zebra, bgpd, bfdd, staticd
         frr->>frr: zebra discovers existing interfaces<br/>VRFs, bridges, VXLANs all found intact
-        frr->>frr: preserve-fw-state: do NOT flush<br/>existing kernel routes
+        frr->>frr: preserve-fw-state enabled<br/>(existing netns — kernel routes are valid,<br/>do NOT flush)
         reloader-->>reloader: Health endpoint :9080 ready
     end
 
@@ -400,7 +412,7 @@ sequenceDiagram
 
     rect rgb(40, 45, 50)
         Note right of ctrl: Controller Observes Recovery
-        ctrl->>ctrl: CanReconcile() returns true<br/>(systemd unit active + health check passes)
+        ctrl->>ctrl: CanReconcile() returns true<br/>(netns exists + health check passes)
         ctrl->>ctrl: Normal reconciliation resumes<br/>No interface re-creation needed<br/>(everything survived in netns)
     end
 
@@ -524,29 +536,59 @@ time to restart and re-establish sessions without data plane disruption.
 
 ### BGP Graceful Restart Configuration
 
+The FRR configuration for Graceful Restart depends on whether the router is
+recovering into an **existing** netns (FRR crash) or a **new** netns (namespace
+rebuild).
+
+#### FRR Crash Recovery (existing netns)
+
+When FRR restarts into the same named netns, all kernel routes and FDB entries
+are still intact. The controller generates the config with `preserve-fw-state`
+so that FRR does not flush these valid kernel routes on startup:
+
 ```
 router bgp 64514
   bgp graceful-restart
   bgp graceful-restart preserve-fw-state
-  bgp graceful-restart stalepath-time 30
+  bgp graceful-restart stalepath-time 120
   bgp graceful-restart restart-time 120
 ```
 
 Peers preserve routes for up to 120s (restart-time) while FRR recovers.
-`preserve-fw-state` tells FRR not to flush kernel routes on restart.
+`preserve-fw-state` tells FRR not to flush kernel routes on restart — this is
+correct because the data plane state in the netns is still valid.
 
-### Systemd Fast Restart
+#### Namespace Rebuild Recovery (new netns)
 
-```ini
-[Service]
-Restart=always
-RestartSec=1
-WatchdogSec=10
+When the netns was deleted and recreated, the old kernel routes are gone. If
+`preserve-fw-state` were enabled in this scenario, FRR would tell its peers
+that the old (now broken) routes are still valid, and peers would keep
+forwarding traffic into a black hole until the stale path timer expires. The
+controller **must not** set `preserve-fw-state` when it detects a new netns:
+
+```
+router bgp 64514
+  bgp graceful-restart
+  bgp graceful-restart stalepath-time 120
+  bgp graceful-restart restart-time 120
 ```
 
-Systemd restarts FRR within 1 second of failure. With a named netns, FRR
-re-enters the existing netns, discovers existing interfaces, and begins
-re-establishing BGP sessions.
+Without `preserve-fw-state`, FRR flushes any stale kernel routes on startup
+and peers withdraw stale routes as soon as the BGP session re-establishes,
+allowing traffic to reconverge quickly on valid paths.
+
+#### How the Controller Decides
+
+The controller tracks whether the netns is new (just created by
+`EnsureNamespace()`) or existing (already present when reconciliation started).
+It passes this state to `APItoFRR()` when generating the FRR configuration:
+
+- **Existing netns** → include `preserve-fw-state`
+- **New netns** → omit `preserve-fw-state`
+
+After FRR has fully converged and re-established all BGP sessions, subsequent
+reconciliation loops generate the config with `preserve-fw-state` again, since
+the netns is no longer new.
 
 ### BFD Timer Tuning
 
@@ -580,17 +622,19 @@ operation** that always converges to the correct state.
 
 #### Recovery Procedure
 
-The operator runs:
+The operator deletes the netns to force a clean slate:
 
 ```bash
 # Delete the netns (destroys all interfaces, routes, FDB inside it)
 ip netns delete perouter
-
-# Restart the netns service and the router pod
-systemctl restart perouter-netns.service routerpod-pod.service
 ```
 
-Or equivalently, `HandleNonRecoverableError` can perform this programmatically
+No further manual steps are required. On the next reconciliation loop, the
+controller detects the missing netns, recreates it via `EnsureNamespace()`,
+re-provisions all interfaces from CRD state, and restarts the FRR process.
+The recovery is fully automatic once the netns is removed.
+
+Equivalently, `HandleNonRecoverableError` can perform this programmatically
 when it detects an unrecoverable divergence.
 
 #### Why This Works
@@ -598,14 +642,14 @@ when it detects an unrecoverable divergence.
 Deleting the named netns destroys all kernel objects inside it — VRFs, bridges,
 VXLANs, veth endpoints (which also destroys the host-side peer), the underlay
 NIC (returned to the host netns), and the `lound` dummy interface. This is a
-clean slate. The system then follows the exact same boot sequence as a fresh
-start:
+clean slate. The system then follows the exact same sequence as a fresh start:
 
-1. `perouter-netns.service` creates a new empty netns
-2. The controller detects the empty netns via `CanReconcile()` and runs a full
-   reconciliation — re-creating all interfaces from CRD state
-3. The FRR container re-enters the new netns, finds interfaces configured by
-   the controller, and re-establishes BGP sessions
+1. The controller detects the missing netns and calls `EnsureNamespace()` to
+   create a new empty netns
+2. The controller runs a full reconciliation — re-creating all interfaces from
+   CRD state
+3. The controller restarts the FRR process, which enters the new netns, finds
+   interfaces configured by the controller, and re-establishes BGP sessions
 
 The controller is already idempotent — it creates interfaces only if they don't
 exist, and `RemoveNonConfigured()` cleans up anything not in the desired state.
@@ -614,47 +658,38 @@ created.
 
 #### Controller Detection
 
-The controller must detect that the netns was deleted and recreated (or
-emptied). Two mechanisms:
-
-1. **Netns inode change**: the controller can cache the netns inode
-   (`stat /var/run/netns/perouter`) and detect when it changes, indicating the
-   old netns was deleted and a new one created.
-2. **Missing underlay marker**: the controller already identifies an existing
-   underlay by the marker IP `172.16.1.1/32`. If this marker is absent, the
-   controller knows the netns is fresh and runs full setup including underlay
-   provisioning.
-
-Both approaches trigger a full reconciliation cycle, which is safe because
-interface creation is idempotent.
+The controller calls `EnsureNamespace()` on every reconciliation loop. If
+`/var/run/netns/perouter` does not exist, the controller recreates it. After
+that, the normal reconciliation logic compares the data plane objects in the
+netns against the desired VNI configuration from the Kubernetes API and
+reconstructs any missing interfaces. No special detection heuristic is needed
+— the existing idempotent reconciliation handles both a completely empty netns
+and a partially degraded one the same way.
 
 #### HandleNonRecoverableError Extension
 
-The existing `HandleNonRecoverableError` in host mode restarts
-`routerpod-pod.service`. For the named netns model, it can optionally also
-recreate the netns:
+The existing `HandleNonRecoverableError` restarts the FRR process. For the
+named netns model, it can optionally also recreate the netns:
 
 ```go
-func (r *RouterNamedNSContainer) HandleNonRecoverableError(ctx context.Context) error {
-    slog.Info("recreating router namespace", "path", r.manager.NamespacePath)
+func (r *RouterNamedNSProvider) HandleNonRecoverableError(ctx context.Context) error {
+    slog.Info("recreating router namespace", "path", r.NamespacePath)
 
     // Delete the netns (destroys all kernel objects inside it)
     if err := exec.Command("ip", "netns", "delete", "perouter").Run(); err != nil {
         slog.Warn("netns delete failed (may already be gone)", "error", err)
     }
 
-    // Restart the netns service (recreates the empty netns)
-    client, err := systemdctl.NewClient()
-    if err != nil {
-        return fmt.Errorf("failed to create systemd client: %w", err)
-    }
-    if err := client.Restart(ctx, "perouter-netns.service"); err != nil {
-        return fmt.Errorf("failed to restart netns service: %w", err)
+    // Recreate the netns (the controller owns this)
+    if err := r.EnsureNamespace(ctx); err != nil {
+        return fmt.Errorf("failed to recreate netns: %w", err)
     }
 
-    // Restart the router pod (FRR re-enters the new netns)
-    if err := client.Restart(ctx, "routerpod-pod.service"); err != nil {
-        return fmt.Errorf("failed to restart router service: %w", err)
+    // Restart the FRR process so it enters the new netns.
+    // The mechanism is deployment-specific: systemd restart for quadlets,
+    // pod deletion for K8s DaemonSets (kubelet recreates the pod).
+    if err := r.restartRouter(ctx); err != nil {
+        return fmt.Errorf("failed to restart router: %w", err)
     }
 
     return nil
@@ -667,7 +702,6 @@ func (r *RouterNamedNSContainer) HandleNonRecoverableError(ctx context.Context) 
 sequenceDiagram
     autonumber
     participant op as Operator /<br/>HandleNonRecoverableError
-    participant systemd
     participant netns as Named Netns<br/>/var/run/netns/perouter
     participant ctrl as Controller
     participant k8s as K8s API
@@ -689,26 +723,15 @@ sequenceDiagram
     end
 
     rect rgb(20, 40, 70)
-        Note right of op: Phase 2: Recreate Empty Netns
-        op->>systemd: systemctl restart<br/>perouter-netns.service
-        systemd->>netns: ip netns add perouter
+        Note right of ctrl: Phase 2: Controller Recreates Netns
+        ctrl->>ctrl: Detect missing netns<br/>(/var/run/netns/perouter gone)
+        ctrl->>netns: EnsureNamespace():<br/>Create new netns + bind mount
         activate netns
         Note over netns: Fresh empty netns created<br/>New inode, no interfaces
     end
 
-    rect rgb(70, 45, 15)
-        Note right of op: Phase 3: Restart FRR
-        op->>systemd: systemctl restart<br/>routerpod-pod.service
-        systemd->>frr: Start FRR container<br/>Network=ns:/var/run/netns/perouter
-        activate frr
-        systemd->>reloader: Start reloader container
-        activate reloader
-        Note over frr: FRR enters new empty netns<br/>No interfaces yet — waits for controller
-    end
-
     rect rgb(20, 55, 35)
-        Note right of ctrl: Phase 4: Controller Full Reconciliation
-        ctrl->>ctrl: Detect netns change<br/>(inode changed or underlay marker absent)
+        Note right of ctrl: Phase 3: Controller Full Reconciliation
         ctrl->>k8s: List all CRDs:<br/>Underlays, L3VNIs, L2VNIs, L3Passthroughs
         k8s-->>ctrl: Full desired config
 
@@ -720,21 +743,33 @@ sequenceDiagram
         Note over ctrl: All interfaces recreated from<br/>CRD state — guaranteed correct
     end
 
+    rect rgb(70, 45, 15)
+        Note right of ctrl: Phase 4: Restart FRR
+        ctrl->>ctrl: restartRouter():<br/>Restart FRR process<br/>(systemd or pod recreation)
+        ctrl->>frr: FRR enters new netns
+        activate frr
+        ctrl->>reloader: Reloader starts
+        activate reloader
+        Note over frr: FRR finds all interfaces<br/>already configured by controller
+    end
+
     rect rgb(55, 25, 60)
         Note right of ctrl: Phase 5: FRR Configuration & BGP Recovery
+        ctrl->>ctrl: APItoFRR(): new netns detected<br/>→ omit preserve-fw-state<br/>(old routes are gone, peers must withdraw stale paths)
         ctrl->>reloader: POST full FRR config via Unix socket
         reloader->>frr: frr-reload.py --reload
         reloader-->>ctrl: HTTP 200 OK
 
-        frr->>frr: zebra discovers all interfaces
+        frr->>frr: zebra discovers all interfaces<br/>Flush any stale kernel routes<br/>(preserve-fw-state not set)
         frr->>tor: BGP OPEN with GR capability
         tor-->>frr: BGP OPEN (accept restart)
-        tor->>tor: Clear stale routes
-        frr->>tor: Advertise EVPN routes
+        tor->>tor: Withdraw stale routes<br/>(old paths no longer valid)
+        frr->>tor: Advertise EVPN routes<br/>(fresh routes from new netns)
         tor-->>frr: Fabric routes
 
         frr->>hostBGP: BGP OPEN with GR capability
         hostBGP-->>frr: BGP OPEN (accept restart)
+        hostBGP->>hostBGP: Withdraw stale routes
         frr->>hostBGP: VNI routes
         hostBGP->>frr: Host routes
     end
@@ -747,9 +782,9 @@ sequenceDiagram
 | Phase | Duration | What happens |
 |-------|----------|-------------|
 | Netns deletion | <1s | All kernel objects destroyed, clean slate |
-| Netns recreation | <1s | `ip netns add perouter` |
-| FRR restart | ~1-2s | Container re-enters new netns |
+| Netns recreation | <1s | Controller calls `EnsureNamespace()` |
 | Controller reconciliation | ~2-5s | Full interface re-creation from CRDs |
+| FRR restart | ~1-2s | FRR process re-enters new netns |
 | FRR init + BGP recovery | ~5-15s | Config reload, session re-establishment |
 | **Total outage** | **~10-25s** | |
 | **Data plane outage** | **~10-25s** | Full outage (netns was destroyed) |
@@ -771,18 +806,11 @@ The router pod can optionally receive its underlay interface via a Multus
 `NetworkAttachmentDefinition`, as an alternative to the controller moving a
 physical NIC.
 
-With the quadlet approach, the router is no longer a K8s pod, so Multus CNI
-cannot attach interfaces to it directly. However, the controller can create a
-macvlan/ipvlan interface from the physical NIC and move it into the named netns
-for a similar (if less flexible) user experience.
-
-**The Multus underlay option is preserved as a deployment choice.** Users who
-prefer the Multus-based underlay for its integration with existing CNI
-workflows can continue using the K8s DaemonSet deployment model (Option A
-below). Users who prefer the quadlet model get equivalent functionality via
-controller-created macvlan (or ipvlan) interfaces. This flexibility is a benefit
-of the proposal: operators choose the deployment model that fits their
-environment without losing underlay configuration options.
+With either the quadlet, and the host networked approaches, the router cannot
+integrate with Multus CNI, meaning Multus cannot attach interfaces to it
+directly. However, the controller can create a macvlan/ipvlan interface from
+the physical NIC and move it into the named netns for a similar (if less
+flexible) user experience.
 
 #### Multus for Workload Pods (L2VNI Secondary Interfaces)
 
@@ -796,6 +824,9 @@ Workload Pod → macvlan on br-hs-{vni} (host netns) →
   veth → bridge in named netns → vxlan → underlay → remote VTEP
 ```
 
+**NOTE:** if the network namespace is deleted as part of a remediation
+procedure the workloads will be affected (the data-plane was removed).
+
 ### Router Deployment Model
 
 The persistent named netns provides the same resilience guarantees regardless
@@ -804,12 +835,33 @@ managed, restarted, and how it enters the named netns. Each option has
 different trade-offs around Kubernetes integration, operational tooling, and
 underlay provisioning.
 
+**Note on Multus underlay:** Neither deployment model supports Multus for
+underlay connectivity. Both options run the router outside of the standard CNI
+chain (quadlet is not a K8s pod; hostNetwork pods skip CNI entirely), so Multus
+cannot attach interfaces to the router. In all cases, the controller provisions
+the underlay directly — e.g. moving the physical NIC or creating a
+macvlan/ipvlan interface and placing it into the named netns.
+
 #### Option A: Podman Quadlet
 
 FRR runs as a Podman container managed by systemd. The quadlet's
 `Network=ns:/var/run/netns/perouter` directive tells Podman to run the
-container inside the named netns. A systemd oneshot unit creates the netns at
-boot, before the FRR unit starts.
+container inside the named netns. The controller creates the netns as part of
+its reconciliation loop, before FRR starts.
+
+##### FRR Quadlet Configuration
+
+The key change in `frr.container`:
+
+```ini
+[Container]
+# Join the persistent named netns instead of getting an ephemeral one:
+Network=ns:/var/run/netns/perouter
+```
+
+When the container starts, Podman runs it inside `/var/run/netns/perouter`.
+When the container dies, the netns stays. When systemd restarts the container,
+it re-enters the same netns with all interfaces intact.
 
 **Pros:**
 
@@ -828,10 +880,6 @@ boot, before the FRR unit starts.
 
 **Cons:**
 
-- **No Multus underlay**: the router is not a K8s pod, so Multus CNI cannot
-  attach interfaces to it. The controller must replicate the underlay
-  provisioning (e.g. creating a macvlan from the physical NIC and moving it
-  into the netns).
 - **Out-of-band management**: operators need SSH or equivalent access to run
   `systemctl` commands; standard `kubectl` tooling does not apply.
 - **No K8s-native observability**: no pod status, events, or resource metrics
@@ -840,11 +888,19 @@ boot, before the FRR unit starts.
 
 #### Option B: Kubernetes hostNetwork Pod
 
-FRR runs as a container in a K8s DaemonSet pod with `hostNetwork: true`. An
-init container creates the named netns (if not already present), and the FRR
+FRR runs as a container in a K8s DaemonSet pod with `hostNetwork: true`. The
+controller creates the named netns as part of its reconciliation loop — the
+same component that already provisions interfaces, routes, and FDB entries
+inside the netns also ensures the netns exists before populating it. The FRR
 container's entrypoint wraps the actual process with
 `nsenter --net=/var/run/netns/perouter`. The pod requires `privileged: true`
 or `CAP_SYS_ADMIN` for the `nsenter` call.
+
+Because the controller owns the netns lifecycle, the FRR pod does not need
+init containers. The controller creates the netns, provisions interfaces, and
+only then does the FRR container enter it via `nsenter`. If the netns does not
+yet exist when FRR starts, the container simply fails and kubelet restarts it
+— by which time the controller has created the netns.
 
 **Pros:**
 
@@ -855,13 +911,14 @@ or `CAP_SYS_ADMIN` for the `nsenter` call.
   `kubectl rollout restart` all work as expected.
 - **K8s-native observability**: pod metrics, liveness/readiness probes, and
   events are all available.
+- **No init containers**: the controller creates the netns, eliminating the
+  need for privileged init containers or host-level systemd units to
+  bootstrap the namespace.
+- **Drain interaction**: the network namespace where the data-plane is
+  configured will survive a node drain.
 
 **Cons:**
 
-- **No Multus underlay**: `hostNetwork: true` pods skip the CNI chain
-  entirely, so Multus is never invoked and cannot attach interfaces. Like
-  Option A, the controller must provision the underlay directly (e.g.
-  creating a macvlan from the physical NIC and moving it into the netns).
 - **Requires nsenter wrapper**: the FRR entrypoint must be wrapped to switch
   into the named netns. This adds a layer of indirection and requires
   privileged security context.
@@ -870,61 +927,35 @@ or `CAP_SYS_ADMIN` for the `nsenter` call.
   crashed pods may not be restarted until the API recovers (kubelet can
   restart containers within a pod, but cannot recreate deleted pods without
   the API server).
-- **Init container ordering**: the named netns must exist before FRR starts.
-  This requires either a host-level systemd unit (hybrid approach) or a
-  privileged init container that creates the netns — adding complexity.
-- **Drain interaction**: the network namespace where the data-plane is
-  configured will survive a node drain.
+- **Controller ordering**: the controller must create the netns before FRR
+  can enter it. If the controller is slow to start or its reconciliation is
+  delayed, the FRR container will crash-loop until the netns appears. This
+  is self-healing (kubelet retries with backoff) but may delay initial
+  convergence.
 
 #### Comparison
 
-| Aspect | Podman Quadlet | hostNetwork Pod |
-|--------|---------------|-----------------|
-| **Netns joining** | `Network=ns:` (native) | `nsenter` wrapper |
-| **K8s API dependency** | None | DaemonSet controller |
-| **Multus underlay** | No (controller-provisioned) | No (hostNetwork skips CNI) |
-| **kubectl tooling** | No (`systemctl`) | Yes |
-| **Privileged required** | Container capabilities | `CAP_SYS_ADMIN` / privileged |
-| **Drain behavior** | Unaffected | Unaffected (DaemonSet ignored by drain) |
-| **Boot-time routing** | Yes (systemd) | No (needs API server) |
-| **Implementation maturity** | Existing quadlets | Requires nsenter wrapper |
-| **Observability** | systemd journal | K8s pod metrics/events |
+| Aspect | Podman Quadlet | hostNetwork Pod                                    |
+|--------|---------------|----------------------------------------------------|
+| **Netns joining** | `Network=ns:` (native) | `nsenter` wrapper                                  |
+| **K8s API dependency** | None | DaemonSet controller                               |
+| **kubectl tooling** | No (`systemctl`) | Yes                                                |
+| **Privileged required** | Container capabilities | `CAP_SYS_ADMIN` / privileged                       |
+| **Drain behavior** | Unaffected | Unaffected (net namespace survives the node drain) |
+| **Boot-time routing** | Yes (systemd) | No (needs API server)                              |
+| **Implementation maturity** | Existing quadlets | Requires nsenter wrapper                           |
+| **Observability** | systemd journal | K8s pod metrics/events                             |
 
-### Controller Deployment Options
+#### Recommendation
 
-The controller needs access to CRDs (K8s API). Two options:
+We recommend **Option B (Kubernetes hostNetwork Pod)** for simplicity. It keeps
+both the controller and the router within the Kubernetes lifecycle, giving
+operators a single management plane (`kubectl`) for all components. The
+`nsenter` wrapper is straightforward to implement, and the controller already
+handles netns creation and interface provisioning regardless of the deployment
+model.
 
-#### Option A: Controller Stays as a K8s DaemonSet
-
-- Watches CRDs natively via controller-runtime
-- Targets `/run/netns/perouter` instead of discovering a pod's netns via CRI
-- Already mounts `/run/netns` from the host
-- No CRI socket needed anymore (simpler)
-- Hybrid: K8s control plane, quadlet data plane
-- **Preserves Multus underlay support** for environments that prefer it
-
-#### Option B: Controller Is Also a Quadlet
-
-- Uses the host kubeconfig to talk to the K8s API
-- Already works in host mode today (`runHostMode()` in
-  `cmd/hostcontroller/main.go`)
-- Can start with static config and transition to K8s when the API is available
-- Full independence from K8s for data plane
-
-Option A is simpler for Kubernetes-first deployments. Option B gives full
-independence — the router works even before the K8s API is available
-(boot-time routing).
-
-### Node Drain and Lifecycle
-
-Since the router is a quadlet (not a K8s pod), `kubectl drain` does not touch
-it. This is **desirable** — the router keeps forwarding traffic while workload
-pods are being drained/migrated. The data plane stays up during maintenance.
-
-If you need to explicitly stop the router during decommissioning, use
-`systemctl stop routerpod-pod.service` on the node.
-
-### Recovery Timeline
+### Recovery Timeline (router restart)
 
 | Phase | Duration | What happens |
 |-------|----------|-------------|
@@ -941,15 +972,15 @@ If you need to explicitly stop the router during decommissioning, use
 
 | Component | Current | Proposed | Effort |
 |-----------|---------|----------|--------|
-| Netns creation | Implicit (pod/container lifecycle) | Explicit systemd oneshot | New file |
-| `frr.container` quadlet | Own netns | `Network=ns:/var/run/netns/perouter` | One line change |
+| Netns creation | Implicit (pod/container lifecycle) | Controller creates via `EnsureNamespace()` | New `RouterProvider` method |
+| Router pod | Own netns | `hostNetwork: true` + `nsenter` into named netns | nsenter wrapper |
 | Controller netns discovery | CRI query or PID file | Well-known path | New `RouterProvider` impl (trivial) |
 | Interface configuration | Waits for pod ready | Can pre-configure netns | Logic simplification |
-| Multus for underlay | Optional (annotation) | Optional (controller-created macvlan or Multus via DaemonSet) | Minor refactor |
+| Multus for underlay | Optional (annotation) | Controller-provisioned (macvlan/ipvlan) | Minor refactor |
 | Multus for workloads | Via host bridges | Unchanged | None |
-| Cluster CNI interface | Created but unused | Not created | Cleaner |
-| Health monitoring | K8s probes | Quadlet `HealthCmd` | Already exists for controller |
-| `HandleNonRecoverableError` | Delete pod / restart systemd unit | Restart systemd unit + optionally recreate netns | Minor |
+| Cluster CNI interface | Created but unused | Not created (hostNetwork) | Cleaner |
+| Health monitoring | K8s probes | K8s probes (hostNetwork pod) | Unchanged |
+| `HandleNonRecoverableError` | Delete pod | Delete netns + `EnsureNamespace()` + restart router | Minor |
 
 ### Test Plan
 
@@ -989,7 +1020,6 @@ If you need to explicitly stop the router during decommissioning, use
 - BFD timer tuning integrated into the FRR configuration template.
 - Controller pre-configures interfaces before FRR starts.
 - Full resilience test suite.
-- `lound` LinkSetUp bug fix.
 
 #### GA
 
