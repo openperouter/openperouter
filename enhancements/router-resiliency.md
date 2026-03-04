@@ -968,6 +968,57 @@ model.
 | **Total control plane outage** | **~7-22s** | |
 | **Data plane outage** | **0s** | Kernel forwarding never stopped |
 
+### Upgrade Behavior
+
+#### Node Upgrade (OS / Kernel)
+
+A node upgrade typically requires a reboot. Since `/var/run` is a tmpfs, the
+reboot destroys the named netns and all kernel state inside it. This is
+equivalent to a fresh boot — the system follows the initial boot sequence:
+
+1. The controller DaemonSet pod starts and calls `EnsureNamespace()` to create
+   a new netns.
+2. The controller provisions all interfaces from CRD state.
+3. The router pod enters the netns, FRR starts, and re-establishes BGP
+   sessions.
+
+Before the reboot, the node is drained: pods are evicted and VMs are live
+migrated to other nodes. Because workloads are moved off the node before the
+reboot, **applications running on those workloads are not impacted** by the
+router's data plane outage.
+
+#### OpenPERouter FRR Component Upgrade
+
+When the FRR container image is updated (e.g. via a DaemonSet rolling update),
+the router pod is terminated and recreated with the new image. The named netns
+persists through this process because it is held by a bind mount, not by the
+router pod. This behaves identically to the FRR crash recovery scenario:
+
+1. The old router pod is terminated — BGP sessions drop, but the named netns
+   and all kernel state (VRFs, bridges, VXLANs, routes, FDB) survive.
+2. The new router pod starts and enters the existing netns via `nsenter`.
+3. FRR discovers all interfaces intact, reads its configuration, and
+   re-establishes BGP sessions.
+4. The controller detects the existing netns and generates the FRR config with
+   `preserve-fw-state`, so kernel routes are not flushed.
+
+**Data plane outage: 0s.** The kernel continues forwarding with existing routes
+and FDB entries while FRR restarts. BGP Graceful Restart bridges the control
+plane gap (~7-22s).
+
+This makes FRR version upgrades a routine, non-disruptive operation — the same
+resilience guarantees that protect against crashes also protect against planned
+restarts.
+
+#### Controller Upgrade
+
+When the controller DaemonSet is updated, the controller pod is replaced. The
+named netns and the router pod are unaffected — the controller does not own any
+runtime state that would be lost. On startup, the new controller calls
+`EnsureNamespace()` (no-op, netns exists), runs a normal reconciliation loop,
+and resumes managing the router. There is no data plane or control plane
+disruption.
+
 ### Changes Required
 
 | Component | Current | Proposed | Effort |
