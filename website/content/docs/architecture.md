@@ -33,7 +33,7 @@ The router pod runs as a Daemonset to allow VPN connectivity to every node.
 The router pod runs [FRR](https://frrouting.org/) in a dedicated network namespace and is responsible for:
 
 - **BGP Sessions**: Establishing and maintaining BGP sessions with external routers and host components
-- **VPN Route Processing**: Handling handling L3VPNs route advertisement and reception (for example, EVPN type 5 routes)
+- **VPN Route Processing**: Handling L3VPNs route advertisement and reception (for example, EVPN type 5 routes)
 - **VPN Encapsulation**: Managing tunnel encapsulation and decapsulation of the VPN of choice
 - **Route Translation**: Converting between BGP routes and L3 VPN routes
 - **Network Namespace Management**: Operating in an isolated network namespace for security and isolation
