@@ -42,18 +42,20 @@ load_image_to_podman_on_nodes() {
 }
 
 load_local_image_to_kind() {
-    local image_tag=$1
-    local file_name=$2
+    local image_tag="$1"
+    local file_name="$2"
+    local platform="$3"
     local temp_file="/tmp/${file_name}.tar"
-    sudo rm -f ${temp_file} || true
-    ${CONTAINER_ENGINE_CLI} save -o ${temp_file} ${image_tag}
-    ${KIND_COMMAND} load image-archive ${temp_file} --name ${KIND_CLUSTER_NAME}
-    load_image_to_podman_on_nodes ${image_tag} ${file_name}
+    sudo rm -f "${temp_file}" || true
+    ${CONTAINER_ENGINE_CLI} save --platform "${platform}" -o "${temp_file}" "${image_tag}"
+    ${KIND_COMMAND} load image-archive "${temp_file}" --name "${KIND_CLUSTER_NAME}"
+    load_image_to_podman_on_nodes "${image_tag}" "${file_name}"
 }
 
 load_image_to_kind() {
-    local image_tag=$1
-    local file_name=$2
-    ${CONTAINER_ENGINE_CLI} image pull --platform linux/amd64 ${image_tag}
-    load_local_image_to_kind ${image_tag} ${file_name}
+    local image_tag="$1"
+    local file_name="$2"
+    local platform="$3"
+    ${CONTAINER_ENGINE_CLI} image pull --platform "${platform}" "${image_tag}"
+    load_local_image_to_kind "${image_tag}" "${file_name}" "${platform}"
 }
