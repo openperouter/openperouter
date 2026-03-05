@@ -129,8 +129,13 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		redistributeConnectedForLeaf(infra.LeafAConfig)
 		redistributeConnectedForLeaf(infra.LeafBConfig)
 
-		err := Updater.CleanButUnderlay()
+		nodes, err := k8s.GetNodes(cs)
 		Expect(err).NotTo(HaveOccurred())
+		Expect(len(nodes)).To(BeNumerically(">=", 2), "Expected at least 2 nodes, but got fewer")
+
+		err = Updater.CleanButUnderlay()
+		Expect(err).NotTo(HaveOccurred())
+
 		l2VniRedWithGateway := l2VniRed.DeepCopy()
 		l2VniRedWithGateway.Spec.L2GatewayIPs = tc.l2GatewayIPs
 		l2VniRedWithGateway.Spec.HostMaster = &tc.hostMaster
@@ -160,10 +165,6 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			err = k8s.DeleteNamespace(cs, testNamespace)
 			Expect(err).NotTo(HaveOccurred())
 		})
-
-		nodes, err := k8s.GetNodes(cs)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(len(nodes)).To(BeNumerically(">=", 2), "Expected at least 2 nodes, but got fewer")
 
 		By("creating the pods")
 		firstPod, err = k8s.CreateAgnhostPod(cs, "pod1", testNamespace, k8s.WithNad(nad.Name, testNamespace, tc.firstPodIPs), k8s.OnNode(nodes[0].Name))
@@ -353,6 +354,108 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			},
 		}),
 	)
+
+	It("should create two pods connected to the l2 overlay with vtepInterface", func() {
+		const (
+			firstPodIP  = "192.171.24.2"
+			secondPodIP = "192.171.24.3"
+		)
+
+		nodes, err := k8s.GetNodes(cs)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(len(nodes)).To(BeNumerically(">=", 2), "Expected at least 2 nodes, but got fewer")
+
+		By("setting redistribute connected on leaf kind for vtepInterface")
+		// This is needed if we use vtepInterface since
+		// openperouter is not going to advertise the
+		// address there, that address is supposed to be
+		// advertised by the network fabric
+		redistributeConnectedForLeafKind(nodes)
+
+		err = Updater.CleanAll()
+		Expect(err).NotTo(HaveOccurred())
+
+		l2VniRedWithGateway := l2VniRed.DeepCopy()
+		l2VniRedWithGateway.Spec.VRF = nil
+		l2VniRedWithGateway.Spec.L2GatewayIPs = []string{"192.171.24.1/24"}
+		l2VniRedWithGateway.Spec.HostMaster = &v1alpha1.HostMaster{
+			Type: linuxBridgeHostAttachment,
+			LinuxBridge: &v1alpha1.LinuxBridgeConfig{
+				AutoCreate: true,
+			},
+		}
+
+		underlay := infra.Underlay
+		underlay.Spec.EVPN = &v1alpha1.EVPNConfig{
+			VTEPInterface: "toswitch",
+		}
+
+		oldRouters, err := openperouter.Get(cs, HostMode)
+		Expect(err).NotTo(HaveOccurred())
+		err = Updater.Update(config.Resources{
+			Underlays: []v1alpha1.Underlay{underlay},
+			L2VNIs: []v1alpha1.L2VNI{
+				*l2VniRedWithGateway,
+			},
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("waiting for the router pods to rollout after changing the underlay")
+		Eventually(func() error {
+			newRouters, err := openperouter.Get(cs, HostMode)
+			if err != nil {
+				return err
+			}
+			return openperouter.DaemonsetRolled(oldRouters, newRouters)
+		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
+
+		_, err = k8s.CreateNamespace(cs, testNamespace)
+		Expect(err).NotTo(HaveOccurred())
+
+		nad, err = k8s.CreateMacvlanNad("110", testNamespace, "br-hs-110", []string{"192.171.24.1/24"})
+		Expect(err).NotTo(HaveOccurred())
+
+		DeferCleanup(func() {
+			resetLeafKindConfig(nodes)
+			dumpIfFails(cs)
+			err := Updater.CleanAll()
+			Expect(err).NotTo(HaveOccurred())
+			err = Updater.Update(config.Resources{
+				Underlays: []v1alpha1.Underlay{
+					infra.Underlay,
+				},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			err = k8s.DeleteNamespace(cs, testNamespace)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		By("creating the pods")
+		firstPod, err = k8s.CreateAgnhostPod(cs, "pod1", testNamespace, k8s.WithNad(nad.Name, testNamespace, []string{firstPodIP + "/24"}), k8s.OnNode(nodes[0].Name))
+		Expect(err).NotTo(HaveOccurred())
+		secondPod, err = k8s.CreateAgnhostPod(cs, "pod2", testNamespace, k8s.WithNad(nad.Name, testNamespace, []string{secondPodIP + "/24"}), k8s.OnNode(nodes[1].Name))
+		Expect(err).NotTo(HaveOccurred())
+
+		By("removing the default gateway via the primary interface")
+		Expect(removeGatewayFromPod(firstPod)).To(Succeed())
+		Expect(removeGatewayFromPod(secondPod)).To(Succeed())
+
+		By("checking pod to pod reachability across nodes")
+		podExecutor := executor.ForPod(firstPod.Namespace, firstPod.Name, "agnhost")
+		hostPort := net.JoinHostPort(secondPodIP, "8090")
+		urlStr := url.Format("http://%s/clientip", hostPort)
+		// Longer timeout: pod restart requires veth recreation + BGP EVPN cold-start convergence
+		Eventually(func(g Gomega) string {
+			res, err := podExecutor.Exec("curl", "-sS", urlStr)
+			g.Expect(err).ToNot(HaveOccurred(), "curl %s failed: %s", hostPort, res)
+			clientIP, _, err := net.SplitHostPort(res)
+			g.Expect(err).ToNot(HaveOccurred())
+			return clientIP
+		}).
+			WithTimeout(40*time.Second).
+			WithPolling(time.Second).
+			Should(Equal(firstPodIP), "curl should return the expected clientip")
+	})
 })
 
 func removeGatewayFromPod(pod *corev1.Pod) error {

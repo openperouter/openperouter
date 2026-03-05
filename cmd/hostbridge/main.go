@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/openperouter/openperouter/internal/hostcredentials"
+	"github.com/openperouter/openperouter/internal/version"
 )
 
 type Config struct {
@@ -43,6 +44,7 @@ func main() {
 		NodeName:       nodeName,
 	}
 
+	slog.Info("version", "version", version.Version())
 	slog.Info("Starting hostbridge with configuration", "config", config)
 
 	ctx := context.Background()

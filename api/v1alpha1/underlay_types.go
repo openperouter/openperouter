@@ -52,10 +52,25 @@ type UnderlaySpec struct {
 	EVPN *EVPNConfig `json:"evpn,omitempty"`
 }
 
+// EVPNConfig contains EVPN-VXLAN configuration for the underlay.
+// +kubebuilder:validation:XValidation:rule="(self.?vtepcidr.orValue(\"\") != \"\") != (self.?vtepInterface.orValue(\"\") != \"\")",message="exactly one of vtepcidr or vtepInterface must be specified"
 type EVPNConfig struct {
 	// VTEPCIDR is CIDR to be used to assign IPs to the local VTEP on each node.
-	// +required
+	// A loopback interface will be created with an IP derived from this CIDR.
+	// Mutually exclusive with VTEPInterface.
+	// +optional
 	VTEPCIDR string `json:"vtepcidr,omitempty"`
+
+	// VTEPInterface is the name of an existing interface to use as the VTEP source.
+	// The interface must already have an IP address configured that will be used
+	// as the VTEP IP. Mutually exclusive with VTEPCIDR.
+	// The ToR must advertise the interface IP into the fabric underlay
+	// (e.g. via redistribute connected) so that the VTEP address is reachable
+	// from other leaves.
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z][a-zA-Z0-9._-]*$`
+	// +kubebuilder:validation:MaxLength=15
+	// +optional
+	VTEPInterface string `json:"vtepInterface,omitempty"`
 }
 
 // UnderlayStatus defines the observed state of Underlay.

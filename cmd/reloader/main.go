@@ -29,7 +29,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"runtime/debug"
 	"syscall"
 	"time"
 
@@ -37,6 +36,7 @@ import (
 	"github.com/openperouter/openperouter/internal/frr/vtysh"
 	"github.com/openperouter/openperouter/internal/frrconfig"
 	"github.com/openperouter/openperouter/internal/logging"
+	"github.com/openperouter/openperouter/internal/version"
 )
 
 type Args struct {
@@ -64,8 +64,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	build, _ := debug.ReadBuildInfo()
-	slog.Info("version", "version", build.Main.Version)
+	slog.Info("version", "version", version.Version())
 	slog.Info("arguments", "args", fmt.Sprintf("%+v", args))
 	slog.Info("listening", "address", args.bindAddress)
 
