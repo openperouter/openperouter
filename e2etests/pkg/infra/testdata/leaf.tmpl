@@ -73,6 +73,14 @@ router bgp 64520 vrf red
  address-family l2vpn evpn
   advertise ipv4 unicast
   advertise ipv6 unicast
+  {{- if .Red.RouteTargets }}
+  {{- range .Red.RouteTargets.ImportRTs }}
+  route-target import {{ . }}
+  {{- end }}
+  {{- range .Red.RouteTargets.ExportRTs }}
+  route-target export {{ . }}
+  {{- end }}
+  {{- end }}
  exit-address-family
 exit
 !
@@ -99,6 +107,14 @@ router bgp 64520 vrf blue
  address-family l2vpn evpn
   advertise ipv4 unicast
   advertise ipv6 unicast
+  {{- if .Blue.RouteTargets }}
+  {{- range .Blue.RouteTargets.ImportRTs }}
+  route-target import {{ . }}
+  {{- end }}
+  {{- range .Blue.RouteTargets.ExportRTs }}
+  route-target export {{ . }}
+  {{- end }}
+  {{- end }}
  exit-address-family
 exit
 !
