@@ -20,6 +20,7 @@ Package v1alpha1 contains API Schema definitions for the openpe v1alpha1 API gro
 - [L2VNI](#l2vni)
 - [L3Passthrough](#l3passthrough)
 - [L3VNI](#l3vni)
+- [RawFRRConfig](#rawfrrconfig)
 - [Underlay](#underlay)
 
 
@@ -50,7 +51,7 @@ _Appears in:_
 
 
 
-
+EVPNConfig contains EVPN-VXLAN configuration for the underlay.
 
 
 
@@ -59,7 +60,8 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `vtepcidr` _string_ | VTEPCIDR is CIDR to be used to assign IPs to the local VTEP on each node. |  |  |
+| `vtepcidr` _string_ | VTEPCIDR is CIDR to be used to assign IPs to the local VTEP on each node.<br />A loopback interface will be created with an IP derived from this CIDR.<br />Mutually exclusive with VTEPInterface. |  |  |
+| `vtepInterface` _string_ | VTEPInterface is the name of an existing interface to use as the VTEP source.<br />The interface must already have an IP address configured that will be used<br />as the VTEP IP. Mutually exclusive with VTEPCIDR.<br />The ToR must advertise the interface IP into the fabric underlay<br />(e.g. via redistribute connected) so that the VTEP address is reachable<br />from other leaves. |  | MaxLength: 15 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9._-]*$` <br /> |
 
 
 #### HostMaster
@@ -75,9 +77,9 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `name` _string_ | Name of the host interface. Must match VRF name validation if set. |  | MaxLength: 15 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9_-]*$` <br /> |
-| `type` _string_ | Type of the host interface. Currently only "bridge" is supported. |  | Enum: [bridge] <br /> |
-| `autocreate` _boolean_ | If true, the interface will be created automatically if not present.<br />The name of the bridge is of the form br-hs-<VNI>. | false |  |
+| `type` _string_ | Type of the host interface. Supported values: "linux-bridge", "ovs-bridge". |  | Enum: [linux-bridge ovs-bridge] <br />Required: {} <br /> |
+| `linuxBridge` _[LinuxBridgeConfig](#linuxbridgeconfig)_ | LinuxBridge configuration. Must be set when Type is "linux-bridge". |  |  |
+| `ovsBridge` _[OVSBridgeConfig](#ovsbridgeconfig)_ | OVSBridge configuration. Must be set when Type is "ovs-bridge". |  |  |
 
 
 #### HostSession
@@ -133,11 +135,12 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
+| `nodeSelector` _[LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#labelselector-v1-meta)_ | NodeSelector specifies which nodes this L2VNI applies to.<br />If empty or not specified, applies to all nodes.<br />Multiple L2VNIs can match the same node. |  |  |
 | `vrf` _string_ | VRF is the name of the linux VRF to be used inside the PERouter namespace.<br />The field is optional, if not set it the name of the VNI instance will be used. |  | MaxLength: 15 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9_-]*$` <br /> |
 | `vni` _integer_ | VNI is the VXLan VNI to be used |  | Maximum: 4.294967295e+09 <br />Minimum: 0 <br /> |
 | `vxlanport` _integer_ | VXLanPort is the port to be used for VXLan encapsulation. | 4789 |  |
 | `hostmaster` _[HostMaster](#hostmaster)_ | HostMaster is the interface on the host the veth should be enslaved to.<br />If not set, the host veth will not be enslaved to any interface and it must be<br />enslaved manually (or by some other means). This is useful if another controller<br />is leveraging the host interface for the VNI. |  |  |
-| `l2gatewayip` _string_ | L2GatewayIP is the IP address to be used for the L2 gateway. When this is set, the<br />bridge the veths are enslaved to will be configured with this IP address, effectively<br />acting as a distributed gateway for the VNI. |  |  |
+| `l2gatewayips` _string array_ | L2GatewayIPs is a list of IP addresses in CIDR notation to be used for the L2 gateway. When this is set, the<br />bridge the veths are enslaved to will be configured with these IP addresses, effectively<br />acting as a distributed gateway for the VNI. This allows for dual-stack (IPv4 and IPv6) support.<br />Maximum of 2 addresses are allowed. If 2 addresses are provided, one must be IPv4 and one must be IPv6. |  | MaxItems: 2 <br /> |
 
 
 #### L2VNIStatus
@@ -186,6 +189,7 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
+| `nodeSelector` _[LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#labelselector-v1-meta)_ | NodeSelector specifies which nodes this L3Passthrough applies to.<br />If empty or not specified, applies to all nodes.<br />Multiple L3Passthrough with overlapping node selectors will be rejected. |  |  |
 | `hostsession` _[HostSession](#hostsession)_ | HostSession is the configuration for the host session. |  |  |
 
 
@@ -235,7 +239,8 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `vrf` _string_ | VRF is the name of the linux VRF to be used inside the PERouter namespace.<br />The field is optional, if not set it the name of the VNI instance will be used. |  | MaxLength: 15 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9_-]*$` <br /> |
+| `nodeSelector` _[LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#labelselector-v1-meta)_ | NodeSelector specifies which nodes this L3VNI applies to.<br />If empty or not specified, applies to all nodes.<br />Multiple L3VNIs can match the same node. |  |  |
+| `vrf` _string_ | VRF is the name of the linux VRF to be used inside the PERouter namespace. |  | MaxLength: 15 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9_-]*$` <br />Required: {} <br /> |
 | `vni` _integer_ | VNI is the VXLan VNI to be used |  | Maximum: 4.294967295e+09 <br />Minimum: 0 <br /> |
 | `vxlanport` _integer_ | VXLanPort is the port to be used for VXLan encapsulation. | 4789 |  |
 | `hostsession` _[HostSession](#hostsession)_ | HostSession is the configuration for the host session. |  |  |
@@ -252,6 +257,23 @@ L3VNIStatus defines the observed state of L3VNI.
 _Appears in:_
 - [L3VNI](#l3vni)
 
+
+
+#### LinuxBridgeConfig
+
+
+
+LinuxBridgeConfig contains configuration for Linux bridge type.
+
+
+
+_Appears in:_
+- [HostMaster](#hostmaster)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `name` _string_ | Name of the Linux bridge interface. |  | MaxLength: 15 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9_-]*$` <br /> |
+| `autoCreate` _boolean_ | AutoCreate determines if the bridge should be created automatically.<br />When true, the bridge is created with name br-hs-<VNI>. | false |  |
 
 
 #### LocalCIDRConfig
@@ -297,6 +319,73 @@ _Appears in:_
 | `bfd` _[BFDSettings](#bfdsettings)_ | BFD defines the BFD configuration for the BGP session. |  |  |
 
 
+#### OVSBridgeConfig
+
+
+
+OVSBridgeConfig contains configuration for OVS bridge type.
+
+
+
+_Appears in:_
+- [HostMaster](#hostmaster)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `name` _string_ | Name of the OVS bridge interface. |  | MaxLength: 15 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9_-]*$` <br /> |
+| `autoCreate` _boolean_ | AutoCreate determines if the OVS bridge should be created automatically.<br />When true, the bridge is created with name br-hs-<VNI>. | false |  |
+
+
+#### RawFRRConfig
+
+
+
+RawFRRConfig is the Schema for the rawfrrconfigs API.
+
+
+
+
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `apiVersion` _string_ | `openpe.openperouter.github.io/v1alpha1` | | |
+| `kind` _string_ | `RawFRRConfig` | | |
+| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
+| `spec` _[RawFRRConfigSpec](#rawfrrconfigspec)_ |  |  |  |
+| `status` _[RawFRRConfigStatus](#rawfrrconfigstatus)_ |  |  |  |
+
+
+#### RawFRRConfigSpec
+
+
+
+RawFRRConfigSpec defines the desired state of RawFRRConfig.
+
+
+
+_Appears in:_
+- [RawFRRConfig](#rawfrrconfig)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `nodeSelector` _[LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#labelselector-v1-meta)_ | NodeSelector specifies which nodes this RawFRRConfig applies to.<br />If empty or not specified, applies to all nodes. |  |  |
+| `priority` _integer_ | Priority controls the ordering of raw config snippets in the rendered FRR configuration.<br />Lower values are rendered first. Snippets with the same priority have undefined order. | 0 | Minimum: 0 <br /> |
+| `rawConfig` _string_ | RawConfig is the raw FRR configuration text to append to the rendered configuration.<br />WARNING: This feature is intended for advanced use cases. No validation of FRR syntax<br />is performed at admission time; invalid configuration will cause FRR reload failures. |  | MinLength: 1 <br /> |
+
+
+#### RawFRRConfigStatus
+
+
+
+RawFRRConfigStatus defines the observed state of RawFRRConfig.
+
+
+
+_Appears in:_
+- [RawFRRConfig](#rawfrrconfig)
+
+
+
 #### Underlay
 
 
@@ -329,6 +418,7 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
+| `nodeSelector` _[LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#labelselector-v1-meta)_ | NodeSelector specifies which nodes this Underlay applies to.<br />If empty or not specified, applies to all nodes (backward compatible).<br />Multiple Underlays with overlapping node selectors will be rejected. |  |  |
 | `asn` _integer_ | ASN is the local AS number to use for the session with the TOR switch. |  | Maximum: 4.294967295e+09 <br />Minimum: 1 <br /> |
 | `routeridcidr` _string_ | RouterIDCIDR is the ipv4 cidr to be used to assign a different routerID on each node. | 10.0.0.0/24 |  |
 | `neighbors` _[Neighbor](#neighbor) array_ | Neighbors is the list of external neighbors to peer with. |  | MinItems: 1 <br /> |

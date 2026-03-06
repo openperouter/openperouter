@@ -12,6 +12,121 @@ import (
 	"github.com/openperouter/openperouter/internal/filter"
 )
 
+func TestFilterRawFRRConfigsForNode(t *testing.T) {
+	tests := []struct {
+		name          string
+		nodeLabels    map[string]string
+		rawConfigs    []v1alpha1.RawFRRConfig
+		expectedCount int
+		expectedNames []string
+	}{
+		{
+			name:       "nil selector matches all",
+			nodeLabels: map[string]string{"rack": "rack-1"},
+			rawConfigs: []v1alpha1.RawFRRConfig{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "raw-all"},
+					Spec:       v1alpha1.RawFRRConfigSpec{RawConfig: "test config"},
+				},
+			},
+			expectedCount: 1,
+			expectedNames: []string{"raw-all"},
+		},
+		{
+			name:       "matching selector",
+			nodeLabels: map[string]string{"kubernetes.io/hostname": "node-1"},
+			rawConfigs: []v1alpha1.RawFRRConfig{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "raw-node-1"},
+					Spec: v1alpha1.RawFRRConfigSpec{
+						NodeSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{"kubernetes.io/hostname": "node-1"},
+						},
+						RawConfig: "test config",
+					},
+				},
+			},
+			expectedCount: 1,
+			expectedNames: []string{"raw-node-1"},
+		},
+		{
+			name:       "non-matching selector",
+			nodeLabels: map[string]string{"kubernetes.io/hostname": "node-1"},
+			rawConfigs: []v1alpha1.RawFRRConfig{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "raw-node-2"},
+					Spec: v1alpha1.RawFRRConfigSpec{
+						NodeSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{"kubernetes.io/hostname": "node-2"},
+						},
+						RawConfig: "test config",
+					},
+				},
+			},
+			expectedCount: 0,
+			expectedNames: []string{},
+		},
+		{
+			name:       "mixed selectors filter correctly",
+			nodeLabels: map[string]string{"rack": "rack-1"},
+			rawConfigs: []v1alpha1.RawFRRConfig{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "raw-matching"},
+					Spec: v1alpha1.RawFRRConfigSpec{
+						NodeSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{"rack": "rack-1"},
+						},
+						RawConfig: "matching config",
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "raw-non-matching"},
+					Spec: v1alpha1.RawFRRConfigSpec{
+						NodeSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{"rack": "rack-2"},
+						},
+						RawConfig: "non-matching config",
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "raw-all-nodes"},
+					Spec:       v1alpha1.RawFRRConfigSpec{RawConfig: "all nodes config"},
+				},
+			},
+			expectedCount: 2,
+			expectedNames: []string{"raw-matching", "raw-all-nodes"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			node := &corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: tt.nodeLabels,
+				},
+			}
+
+			filtered, err := filter.RawFRRConfigsForNode(node, tt.rawConfigs)
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+			if len(filtered) != tt.expectedCount {
+				t.Errorf("expected %d raw configs, got %d", tt.expectedCount, len(filtered))
+			}
+
+			for i, expectedName := range tt.expectedNames {
+				if i >= len(filtered) {
+					t.Errorf("missing expected raw config: %s", expectedName)
+					continue
+				}
+				if filtered[i].Name != expectedName {
+					t.Errorf("expected raw config name %s, got %s", expectedName, filtered[i].Name)
+				}
+			}
+		})
+	}
+}
+
 func TestFilterUnderlaysForNode(t *testing.T) {
 	tests := []struct {
 		name          string

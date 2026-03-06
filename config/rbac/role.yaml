@@ -74,3 +74,17 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - openpe.openperouter.github.io
+  resources:
+  - rawfrrconfigs
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - openpe.openperouter.github.io
+  resources:
+  - rawfrrconfigs/status
+  verbs:
+  - get

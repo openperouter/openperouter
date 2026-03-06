@@ -13,8 +13,9 @@ type NodeConfig struct {
 }
 
 type PERouterConfig struct {
-	Underlays      []v1alpha1.UnderlaySpec    `yaml:"underlays"`
-	L2VNIs         []v1alpha1.L2VNISpec       `yaml:"l2vnis"`
-	L3VNIs         []v1alpha1.L3VNISpec       `yaml:"l3vnis"`
-	BGPPassthrough v1alpha1.L3PassthroughSpec `yaml:"bgppassthrough"`
+	Underlays      []v1alpha1.UnderlaySpec     `yaml:"underlays"`
+	L2VNIs         []v1alpha1.L2VNISpec        `yaml:"l2vnis"`
+	L3VNIs         []v1alpha1.L3VNISpec        `yaml:"l3vnis"`
+	BGPPassthrough v1alpha1.L3PassthroughSpec  `yaml:"bgppassthrough"`
+	RawFRRConfigs  []v1alpha1.RawFRRConfigSpec `yaml:"rawfrrconfigs"`
 }

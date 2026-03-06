@@ -12,7 +12,7 @@ toc: true
 
 Node selectors enable you to target specific OpenPERouter configurations to specific nodes in your cluster. This allows you to support heterogeneous cluster topologies including multi-datacenter, multi-rack, and mixed-hardware environments.
 
-All OpenPERouter Custom Resource Definitions (Underlay, L3VNI, L2VNI, and L3Passthrough) support the optional `nodeSelector` field.
+All OpenPERouter Custom Resource Definitions (Underlay, L3VNI, L2VNI, L3Passthrough, and RawFRRConfig) support the optional `nodeSelector` field.
 
 ### When to Use Node Selectors
 

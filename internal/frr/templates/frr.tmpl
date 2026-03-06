@@ -76,3 +76,6 @@ router bgp {{ .ASN }} vrf {{ .VRF }}
   exit-address-family
 exit
 {{- end }}
+{{- range .RawConfig }}
+{{ .Config }}
+{{- end }}
