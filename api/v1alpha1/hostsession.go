@@ -12,11 +12,12 @@ type HostSession struct {
 	// +required
 	ASN uint32 `json:"asn,omitempty"`
 
-	// ASN is the expected AS number for a BGP speaking component running in
-	// the default network namespace. If not set, the ASN field is going to be used.
+	// HostASN is the expected AS number for a BGP speaking component running in
+	// the default network namespace. If not set, or if set to 0, the remote-as is going to be
+	// set to "external".
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:validation:Maximum=4294967295
-	// +required
+	// +optional
 	HostASN uint32 `json:"hostasn,omitempty"`
 
 	// LocalCIDR is the CIDR configuration for the veth pair

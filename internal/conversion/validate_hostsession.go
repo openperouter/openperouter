@@ -8,6 +8,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	v1alpha1 "github.com/openperouter/openperouter/api/v1alpha1"
+	"github.com/openperouter/openperouter/internal/asn"
 	"github.com/openperouter/openperouter/internal/filter"
 )
 
@@ -48,8 +49,9 @@ func ValidateHostSessions(l3VNIs []v1alpha1.L3VNI, l3Passthrough []v1alpha1.L3Pa
 	existingCIDRsV4 := map[string]string{}
 	existingCIDRsV6 := map[string]string{}
 	for _, s := range hostSessions {
-		if s.HostASN == s.ASN {
-			return fmt.Errorf("%s local ASN %d must be different from remote ASN %d", s.name, s.HostASN, s.ASN)
+		if !asn.Parse(s.HostASN).IsExternalTo(s.ASN) {
+			return fmt.Errorf("%q HostASN must be external to local ASN %d "+
+				"(HostASN is %d, must be different or set to 0 for external)", s.name, s.ASN, s.HostASN)
 		}
 		if s.LocalCIDR.IPv4 != "" {
 			if err := validateCIDR(s, s.LocalCIDR.IPv4, existingCIDRsV4); err != nil {

@@ -9,6 +9,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
+	"github.com/openperouter/openperouter/internal/asn"
 	"github.com/openperouter/openperouter/internal/filter"
 )
 
@@ -41,8 +42,10 @@ func validateUnderlay(underlay *v1alpha1.Underlay) error {
 	}
 
 	for _, neighbor := range underlay.Spec.Neighbors {
-		if underlay.Spec.ASN == neighbor.ASN {
-			return fmt.Errorf("underlay %s local ASN %d must be different from remote ASN %d", underlay.Name, underlay.Spec.ASN, neighbor.ASN)
+		if !asn.Parse(neighbor.ASN).IsExternalTo(underlay.Spec.ASN) {
+			return fmt.Errorf("underlay %q neighbor ASN must be external to local ASN %d "+
+				"(neighbor ASN is %d, must be different or set to 0 for external)",
+				underlay.Name, underlay.Spec.ASN, neighbor.ASN)
 		}
 	}
 

@@ -21,7 +21,7 @@ import (
 )
 
 // L3VNISpec defines the desired state of VNI.
-// +kubebuilder:validation:XValidation:rule="!has(self.hostsession) || self.hostsession.hostasn != self.hostsession.asn",message="hostASN must be different from asn"
+// +kubebuilder:validation:XValidation:rule="!has(self.hostsession) || !has(self.hostsession.hostasn) || self.hostsession.hostasn != self.hostsession.asn",message="HostSession.HostASN must be external to HostSession.ASN"
 type L3VNISpec struct {
 	// NodeSelector specifies which nodes this L3VNI applies to.
 	// If empty or not specified, applies to all nodes.

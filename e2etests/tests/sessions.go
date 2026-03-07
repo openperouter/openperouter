@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	frrk8sapi "github.com/metallb/frr-k8s/api/v1beta1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/openperouter/openperouter/api/v1alpha1"
@@ -20,6 +21,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/utils/ptr"
 )
@@ -135,6 +137,63 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 		})
 	})
 
+	Context("with a l3 vni without HostASN", func() {
+		vni := v1alpha1.L3VNI{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "red",
+				Namespace: openperouter.Namespace,
+			},
+			Spec: v1alpha1.L3VNISpec{
+				VRF: "red",
+				HostSession: &v1alpha1.HostSession{
+					ASN: 64514,
+					LocalCIDR: v1alpha1.LocalCIDRConfig{
+						IPv4: "192.169.10.0/24",
+					},
+				},
+				VNI: 100,
+			},
+		}
+		BeforeEach(func() {
+			err := Updater.Update(config.Resources{
+				L3VNIs: []v1alpha1.L3VNI{
+					vni,
+				},
+			})
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("establishes a session with the host and then removes it when deleting the vni", func() {
+			frrConfig, err := frrk8s.ConfigFromHostSession(*vni.Spec.HostSession, vni.Name, func(config *frrk8sapi.FRRConfiguration) {
+				for j := range config.Spec.BGP.Routers {
+					config.Spec.BGP.Routers[j].ASN = 64515
+					// Tweak the ConnectTime of the FRR K8s side - we need to do this because FRR changes are debounced,
+					// so if an FRR peer is deleted, then recreated in quick succession, the same session remains up on
+					// the FRR-K8s side and FRR-K8s will only try to reconnect after the default 120 seconds.
+					// Setting 1 second here does 2 things: set the upper limit for ConnectTime to 1s, but due to the
+					// reconfiguration FRR-K8s will actually more likely reconnect immediately as soon as the debouncer
+					// reloads.
+					for k := range config.Spec.BGP.Routers[j].Neighbors {
+						config.Spec.BGP.Routers[j].Neighbors[k].ConnectTime = &v1.Duration{Duration: time.Second * 1}
+					}
+				}
+			})
+			Expect(err).ToNot(HaveOccurred())
+			err = Updater.Update(config.Resources{
+				FRRConfigurations: frrConfig,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			validateFRRK8sSessionForHostSession(vni.Name, *vni.Spec.HostSession, Established, frrk8sPods...)
+
+			By("deleting the vni removes the session with the host")
+			err = Updater.Client().Delete(context.Background(), &vni)
+			Expect(err).NotTo(HaveOccurred())
+
+			validateFRRK8sSessionForHostSession(vni.Name, *vni.Spec.HostSession, !Established, frrk8sPods...)
+		})
+	})
+
 	Context("with a l3 passthrough", func() {
 		l3Passthrough := v1alpha1.L3Passthrough{
 			ObjectMeta: metav1.ObjectMeta{
@@ -178,6 +237,62 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 		})
 	})
 
+	Context("with a l3 passthrough without HostASN", func() {
+		l3Passthrough := v1alpha1.L3Passthrough{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "red",
+				Namespace: openperouter.Namespace,
+			},
+			Spec: v1alpha1.L3PassthroughSpec{
+				HostSession: v1alpha1.HostSession{
+					ASN: 64514,
+					LocalCIDR: v1alpha1.LocalCIDRConfig{
+						IPv4: "192.169.10.0/24",
+					},
+				},
+			},
+		}
+		BeforeEach(func() {
+			err := Updater.Update(config.Resources{
+				L3Passthrough: []v1alpha1.L3Passthrough{
+					l3Passthrough,
+				},
+			})
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("establishes a session with the host and then removes it when deleting the vni", func() {
+			frrConfig, err := frrk8s.ConfigFromHostSession(l3Passthrough.Spec.HostSession, l3Passthrough.Name,
+				func(config *frrk8sapi.FRRConfiguration) {
+					for j := range config.Spec.BGP.Routers {
+						config.Spec.BGP.Routers[j].ASN = 64515
+						// Tweak the ConnectTime of the FRR K8s side - we need to do this because FRR changes are debounced,
+						// so if an FRR peer is deleted, then recreated in quick succession, the same session remains up on
+						// the FRR-K8s side and FRR-K8s will only try to reconnect after the default 120 seconds.
+						// Setting 1 second here does 2 things: set the upper limit for ConnectTime to 1s, but due to the
+						// reconfiguration FRR-K8s will actually more likely reconnect immediately as soon as the debouncer
+						// reloads.
+						for k := range config.Spec.BGP.Routers[j].Neighbors {
+							config.Spec.BGP.Routers[j].Neighbors[k].ConnectTime = &v1.Duration{Duration: time.Second}
+						}
+					}
+				})
+			Expect(err).ToNot(HaveOccurred())
+			err = Updater.Update(config.Resources{
+				FRRConfigurations: frrConfig,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			validateFRRK8sSessionForHostSession(l3Passthrough.Name, l3Passthrough.Spec.HostSession, Established, frrk8sPods...)
+
+			By("deleting the vni removes the session with the host")
+			err = Updater.Client().Delete(context.Background(), &l3Passthrough)
+			Expect(err).NotTo(HaveOccurred())
+
+			validateFRRK8sSessionForHostSession(l3Passthrough.Name, l3Passthrough.Spec.HostSession, !Established, frrk8sPods...)
+		})
+	})
+
 	// This test must be the last of the ordered describe as it will remove the underlay
 	It("deleting the underlay removes the session with the tor", func() {
 		validateTORSession()
@@ -192,6 +307,69 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 			validateSessionDownForNeigh(exec, neighborIP)
 		}
+	})
+})
+
+var _ = Describe("Underlay external configuration", Ordered, func() {
+	var cs clientset.Interface
+	var routers openperouter.Routers
+	nodes := []corev1.Node{}
+
+	BeforeAll(func() {
+		err := Updater.CleanAll()
+		Expect(err).NotTo(HaveOccurred())
+
+		cs = k8sclient.New()
+		routers, err = openperouter.Get(cs, HostMode)
+		Expect(err).NotTo(HaveOccurred())
+		nodesItems, err := cs.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		nodes = nodesItems.Items
+	})
+
+	AfterAll(func() {
+		By("waiting for the router pod to rollout after removing the underlay")
+		Eventually(func() error {
+			newRouters, err := openperouter.Get(cs, HostMode)
+			if err != nil {
+				return err
+			}
+			return openperouter.DaemonsetRolled(routers, newRouters)
+		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
+	})
+
+	BeforeEach(func() {
+		err := Updater.CleanAll()
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	AfterEach(func() {
+		dumpIfFails(cs)
+		err := Updater.CleanAll()
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	validateTORSession := func() {
+		exec := executor.ForContainer(infra.KindLeaf)
+		Eventually(func() error {
+			for _, node := range nodes {
+				neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
+				Expect(err).NotTo(HaveOccurred())
+				validateSessionWithNeighbor(infra.KindLeaf, node.Name, exec, neighborIP, Established)
+			}
+			return nil
+		}, time.Minute, time.Second).ShouldNot(HaveOccurred())
+	}
+	It("peers with the tor", func() {
+		underlay := *infra.Underlay.DeepCopy()
+		underlay.Spec.Neighbors[0].ASN = 0
+		err := Updater.Update(config.Resources{
+			Underlays: []v1alpha1.Underlay{
+				underlay,
+			},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		validateTORSession()
 	})
 })
 
