@@ -23,6 +23,7 @@ load_images_to_clusters() {
         "gcr.io/kubebuilder/kube-rbac-proxy:v0.13.1 rbacproxy"
         "quay.io/metallb/frr-k8s:v0.0.17 frrk8s"
     )
+    local platform="linux/$($(which go) env GOARCH)"
 
     for cluster_name in "${CLUSTER_NAMES[@]}"; do
         echo "Loading images to cluster ${cluster_name}"
@@ -34,12 +35,12 @@ load_images_to_clusters() {
         for image_info in "${images[@]}"; do
             local image_tag=$(echo $image_info | cut -d' ' -f1)
             local file_name=$(echo $image_info | cut -d' ' -f2)
-            echo "Loading $image_tag to cluster $KIND_CLUSTER_NAME"
+            echo "Loading $image_tag (platform $platform) to cluster $KIND_CLUSTER_NAME"
 
             if [[ ${#CLUSTER_NAMES[@]} -eq 1 ]]; then
-                load_image_to_kind "$image_tag" "${file_name}"
+                load_image_to_kind "$image_tag" "${file_name}" "${platform}"
             else
-                load_image_to_kind "$image_tag" "${file_name}-${cluster_name}"
+                load_image_to_kind "$image_tag" "${file_name}-${cluster_name}" "${platform}"
             fi
         done
     done
