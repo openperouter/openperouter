@@ -17,7 +17,9 @@ import (
 	"k8s.io/utils/ptr"
 )
 
-const defaultRouterIDCidr = "10.0.0.0/24"
+const (
+	defaultRouterIDCidr = "10.0.0.0/24"
+)
 
 type FRREmptyConfigError string
 
@@ -86,12 +88,13 @@ func APItoFRR(config ApiConfigData, nodeIndex int, logLevel string) (frr.Config,
 		}, nil
 	}
 
-	vtepIP, err := ipam.VTEPIp(underlay.Spec.EVPN.VTEPCIDR, nodeIndex)
-	if err != nil {
-		return frr.Config{}, fmt.Errorf("failed to get vtep ip, cidr %s, nodeIntex %d", underlay.Spec.EVPN.VTEPCIDR, nodeIndex)
-	}
-	underlayConfig.EVPN = &frr.UnderlayEvpn{
-		VTEP: vtepIP.String(),
+	underlayConfig.EVPN = &frr.UnderlayEvpn{}
+	if underlay.Spec.EVPN.VTEPCIDR != "" {
+		vtepIP, err := ipam.VTEPIp(underlay.Spec.EVPN.VTEPCIDR, nodeIndex)
+		if err != nil {
+			return frr.Config{}, fmt.Errorf("failed to get vtep ip, cidr %s, nodeIndex %d: %w", underlay.Spec.EVPN.VTEPCIDR, nodeIndex, err)
+		}
+		underlayConfig.EVPN.VTEP = vtepIP.String()
 	}
 
 	vniConfigs := []frr.L3VNIConfig{}

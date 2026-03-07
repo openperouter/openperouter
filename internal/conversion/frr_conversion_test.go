@@ -631,6 +631,45 @@ func TestAPItoFRR(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name:      "vtepInterface sets EVPN with empty VTEP",
+			nodeIndex: 0,
+			underlays: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						ASN: 65000,
+						EVPN: &v1alpha1.EVPNConfig{
+							VTEPInterface: "eth1",
+						},
+						RouterIDCIDR: "10.0.0.0/24",
+						Neighbors:    []v1alpha1.Neighbor{{Address: "192.168.1.1", ASN: 65001}},
+					},
+				},
+			},
+			vnis:          []v1alpha1.L3VNI{},
+			l3Passthrough: []v1alpha1.L3Passthrough{},
+			logLevel:      "debug",
+			want: frr.Config{
+				Underlay: frr.UnderlayConfig{
+					MyASN:    65000,
+					EVPN:     &frr.UnderlayEvpn{},
+					RouterID: "10.0.0.1",
+					Neighbors: []frr.NeighborConfig{
+						{
+							Name:         "65001@192.168.1.1",
+							ASN:          65001,
+							Addr:         "192.168.1.1",
+							IPFamily:     ipfamily.IPv4,
+							EBGPMultiHop: false,
+						},
+					},
+				},
+				VNIs:        []frr.L3VNIConfig{},
+				BFDProfiles: []frr.BFDProfile{},
+				Loglevel:    "debug",
+			},
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -645,7 +684,10 @@ func TestAPItoFRR(t *testing.T) {
 				t.Errorf("APItoFRR() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if !tt.wantErr && !cmp.Equal(got, tt.want) {
+			if tt.wantErr {
+				return
+			}
+			if !cmp.Equal(got, tt.want) {
 				t.Errorf("APItoFRR() = %v, diff %s", got, cmp.Diff(got, tt.want))
 			}
 		})

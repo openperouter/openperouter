@@ -69,7 +69,7 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 
 	It("should work with a single L2VNI using pre-existing named OVS bridge", func() {
 		const bridgeName = "test-ovs-br"
-		Expect(createOVSBridge(bridgeName)).To(Succeed(), "must pre-provision an OVS bridge")
+		Expect(createExternalOVSBridge(bridgeName)).To(Succeed(), "must pre-provision an OVS bridge")
 
 		params := L2VNIParams{
 			VNIParams: VNIParams{
@@ -92,9 +92,16 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 		err = RemoveNonConfiguredVNIs(testNSPath(), []VNIParams{})
 		Expect(err).NotTo(HaveOccurred())
 
-		By("checking the bridge persists (user-managed)")
+		By("checking the bridge persists but veth is cleaned up")
+		vethNames := vethNamesFromVNI(params.VNI)
 		Eventually(func(g Gomega) {
 			checkOVSBridgeExists(g, bridgeName) // Bridge should still exist
+			checkLinkdeleted(g, vethNames.HostSide)
+			checkVethNotAttachedToOVSBridge(g, bridgeName, vethNames.HostSide)
+			_ = netnamespace.In(testNS, func() error {
+				validateVNIIsNotConfigured(g, params.VNIParams)
+				return nil
+			})
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 	})
 
@@ -209,38 +216,6 @@ func checkVethAttachedToOVSBridge(g Gomega, bridgeName, vethName string) {
 	g.Expect(hasPort).To(BeTrue(), "veth %s should be attached to OVS bridge %s", vethName, bridgeName)
 }
 
-// createOVSBridge creates an OVS bridge for testing
-func createOVSBridge(name string) error {
-	ctx := context.Background()
-	ovs, err := NewOVSClient(ctx)
-	if err != nil {
-		return err
-	}
-	defer ovs.Close()
-
-	_, err = ovs.Monitor(ctx, ovs.NewMonitor(
-		libovsclient.WithTable(&ovsmodel.OpenvSwitch{}),
-		libovsclient.WithTable(&ovsmodel.Bridge{}),
-		libovsclient.WithTable(&ovsmodel.Port{}),
-		libovsclient.WithTable(&ovsmodel.Interface{}),
-	))
-	if err != nil {
-		return err
-	}
-
-	bridgeUUID, err := EnsureBridge(ctx, ovs, name)
-	if err != nil {
-		return err
-	}
-
-	err = ensureInternalPortForBridge(ctx, ovs, bridgeUUID, name)
-	if err != nil {
-		return err
-	}
-
-	return waitForOVSInterface(name)
-}
-
 // getOVSBridge retrieves an OVS bridge by name, returns error if not found
 func getOVSBridge(name string) (*ovsmodel.Bridge, error) {
 	ctx := context.Background()
@@ -325,6 +300,23 @@ func waitForOVSInterface(name string) error {
 			return fmt.Errorf("timeout waiting for OVS interface %s to appear", name)
 		}
 	}
+}
+
+// checkVethNotAttachedToOVSBridge validates that a veth port has been removed from an OVS bridge
+func checkVethNotAttachedToOVSBridge(g Gomega, bridgeName, vethName string) {
+	hasPort, err := ovsBridgeHasPort(bridgeName, vethName)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(hasPort).To(BeFalse(), "veth %s should not be attached to OVS bridge %s after cleanup", vethName, bridgeName)
+}
+
+// createExternalOVSBridge creates an OVS bridge without the "created-by: openperouter"
+// marker, simulating a bridge provisioned by the user externally.
+func createExternalOVSBridge(name string) error {
+	cmd := exec.Command("ovs-vsctl", "add-br", name)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("ovs-vsctl add-br %s failed: %s: %w", name, string(out), err)
+	}
+	return waitForOVSInterface(name)
 }
 
 // cleanupOVSBridges removes all test OVS bridges

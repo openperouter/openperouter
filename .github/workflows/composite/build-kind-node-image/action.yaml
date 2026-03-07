@@ -1,0 +1,40 @@
+name: "build-kind-node-image"
+description: "Build the kind-node-openperouter image and upload as artifact"
+
+outputs:
+  kind-node-version:
+    description: "The KIND_NODE_VERSION extracted from the Makefile"
+    value: ${{ steps.kind_version.outputs.version }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Extract KIND_NODE_VERSION from Makefile
+      id: kind_version
+      shell: bash
+      run: |
+        KIND_NODE_VERSION=$(make -f Makefile --eval='print-kind-version: ; @echo $(KIND_NODE_VERSION)' print-kind-version)
+        echo "version=$KIND_NODE_VERSION" >> $GITHUB_OUTPUT
+        echo "KIND_NODE_VERSION=$KIND_NODE_VERSION"
+
+    - name: Setup docker buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build and export kind-node-openperouter image
+      uses: docker/build-push-action@v5
+      with:
+        context: hack/kind-node-image
+        file: hack/kind-node-image/Dockerfile
+        build-args: |
+          KIND_NODE_VERSION=${{ steps.kind_version.outputs.version }}
+        tags: quay.io/openperouter/kind-node-openperouter:${{ steps.kind_version.outputs.version }}
+        outputs: type=docker,dest=/tmp/kind-node-openperouter.tar
+        cache-from: type=gha,scope=kind-node-openperouter
+        cache-to: type=gha,mode=max,scope=kind-node-openperouter
+
+    - name: Upload kind-node-openperouter artifact
+      uses: actions/upload-artifact@v4
+      with:
+        retention-days: 1
+        name: image-tar-kind-node-openperouter
+        path: /tmp/kind-node-openperouter.tar

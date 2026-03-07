@@ -1198,6 +1198,69 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 		})
 	})
 
+	ginkgo.Context("Underlay with vtepInterface", func() {
+		underlayWithVTEPInterface := v1alpha1.Underlay{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "underlay",
+				Namespace: openperouter.Namespace,
+			},
+			Spec: v1alpha1.UnderlaySpec{
+				ASN:  64514,
+				Nics: []string{"toswitch"},
+				Neighbors: []v1alpha1.Neighbor{
+					{
+						ASN:     64517,
+						Address: "192.168.11.2",
+					},
+				},
+				EVPN: &v1alpha1.EVPNConfig{
+					VTEPInterface: "toswitch",
+				},
+			},
+		}
+
+		l2vni := v1alpha1.L2VNI{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "vtepif-l2",
+				Namespace: openperouter.Namespace,
+			},
+			Spec: v1alpha1.L2VNISpec{
+				VNI: 500,
+			},
+		}
+
+		ginkgo.It("is applied correctly using the moved nic as vtep source", func() {
+			Expect(Updater.Update(config.Resources{
+				Underlays: []v1alpha1.Underlay{
+					underlayWithVTEPInterface,
+				},
+				L2VNIs: []v1alpha1.L2VNI{
+					l2vni,
+				},
+			})).To(Succeed())
+
+			for _, p := range routerPods {
+				ginkgo.By(fmt.Sprintf("validating Underlay with vtepInterface for pod %s", p.Name))
+
+				validateConfig(underlayParams{
+					UnderlayInterface: "toswitch",
+					EVPN: &evpnParams{
+						VtepInterface: "toswitch",
+					},
+				}, underlayConfiguredTestSelector, p)
+
+				ginkgo.By(fmt.Sprintf("validating L2 VNI uses vtepInterface for pod %s", p.Name))
+
+				validateConfig(l2vniParams{
+					VRF:           l2vni.Name,
+					VNI:           l2vni.Spec.VNI,
+					VXLanPort:     4789,
+					VTEPInterface: "toswitch",
+				}, l2VNIConfiguredTestSelector, p)
+			}
+		})
+	})
+
 	ginkgo.Context("L3Passthrough", func() {
 		ginkgo.It("works with node selectors", func() {
 			nodeSelectorPassthrough := &metav1.LabelSelector{
@@ -1320,11 +1383,12 @@ type veth struct {
 }
 
 type l2vniParams struct {
-	VRF          string   `json:"vrf"`
-	VTEPIP       string   `json:"vtepip"`
-	VNI          uint32   `json:"vni"`
-	VXLanPort    int      `json:"vxlanport"`
-	L2GatewayIPs []string `json:"l2gatewayips,omitempty"`
+	VRF           string   `json:"vrf"`
+	VTEPIP        string   `json:"vtepip"`
+	VTEPInterface string   `json:"vtepiface"`
+	VNI           uint32   `json:"vni"`
+	VXLanPort     int      `json:"vxlanport"`
+	L2GatewayIPs  []string `json:"l2gatewayips,omitempty"`
 }
 
 type underlayParams struct {
@@ -1333,7 +1397,8 @@ type underlayParams struct {
 }
 
 type evpnParams struct {
-	VtepIP string `json:"vtep_ip"`
+	VtepIP        string `json:"vtep_ip"`
+	VtepInterface string `json:"vtep_interface"`
 }
 
 func validateConfig[T any](config T, test string, pod *corev1.Pod) {

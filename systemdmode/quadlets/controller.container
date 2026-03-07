@@ -28,15 +28,11 @@ Network=host
 
 # Host filesystem volume mounts
 # Controller requires extensive host access for:
-# - Container runtime integration (containerd)
 # - Network namespace manipulation
 # - FRR configuration management
 # - Kubernetes API access
 # - System DBus communication
 # - Optional OVS integration
-
-# Containerd socket - for interacting with container runtime API
-Volume=/run/containerd/containerd.sock:/run/containerd/containerd.sock:rshared
 
 # Network namespaces - for moving interfaces between namespaces
 Volume=/run/netns:/run/netns:rshared

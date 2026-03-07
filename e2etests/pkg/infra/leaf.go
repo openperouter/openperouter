@@ -68,8 +68,9 @@ type LeafConfiguration struct {
 }
 
 type LeafKindConfiguration struct {
-	EnableBFD bool
-	Neighbors []string
+	EnableBFD             bool
+	RedistributeConnected bool
+	Neighbors             []string
 }
 
 type RouteTargets struct {
