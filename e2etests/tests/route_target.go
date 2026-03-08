@@ -11,6 +11,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/e2etests/pkg/config"
+	"github.com/openperouter/openperouter/e2etests/pkg/frr"
 	"github.com/openperouter/openperouter/e2etests/pkg/frrk8s"
 	"github.com/openperouter/openperouter/e2etests/pkg/infra"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
@@ -21,16 +22,12 @@ import (
 )
 
 var (
-	leafAVRFRedV4Prefixes  = []string{"192.168.20.0/24"}
-	leafAVRFRedV6Prefixes  = []string{"2001:db8:20::/64"}
-	leafAVRFBlueV4Prefixes = []string{"192.168.21.0/24"}
-	leafAVRFBlueV6Prefixes = []string{"2001:db8:21::/64"}
-	leafBVRFRedV4Prefixes  = []string{"192.169.20.0/24"}
-	leafBVRFRedV6Prefixes  = []string{"2001:db8:169:20::/64"}
-	leafBVRFBlueV4Prefixes = []string{"192.169.21.0/24"}
-	leafBVRFBlueV6Prefixes = []string{"2001:db8:169:21::/64"}
-	redRouteTargets        = infra.RouteTargets{ImportRTs: []string{"65000:1000"}, ExportRTs: []string{"65000:1000"}}
-	blueRouteTargets       = infra.RouteTargets{ImportRTs: []string{"65000:2000"}, ExportRTs: []string{"65000:2000"}}
+	leafAVRFRedV4Prefixes, leafAVRFRedV6Prefixes   = infra.SeparateIPFamilies(leafAVRFRedPrefixes)
+	leafAVRFBlueV4Prefixes, leafAVRFBlueV6Prefixes = infra.SeparateIPFamilies(leafAVRFBluePrefixes)
+	leafBVRFRedV4Prefixes, leafBVRFRedV6Prefixes   = infra.SeparateIPFamilies(leafBVRFRedPrefixes)
+	leafBVRFBlueV4Prefixes, leafBVRFBlueV6Prefixes = infra.SeparateIPFamilies(leafBVRFBluePrefixes)
+	redRouteTargets                                = infra.RouteTargets{ImportRTs: []string{"65000:1000"}, ExportRTs: []string{"65000:1000"}}
+	blueRouteTargets                               = infra.RouteTargets{ImportRTs: []string{"65000:2000"}, ExportRTs: []string{"65000:2000"}}
 )
 
 var _ = Describe("Routes with RT between bgp and the fabric", Ordered, func() {
@@ -152,6 +149,28 @@ var _ = Describe("Routes with RT between bgp and the fabric", Ordered, func() {
 
 		It("translates EVPN incoming routes as BGP routes", func() {
 			By("advertising routes from the leaves for VRF Red - VNI 100")
+			Contains := true
+			checkRouteAndRTsFromLeaf := func(leaf infra.Leaf, vni v1alpha1.L3VNI, mustContain bool, prefixes []string, routeTargets []string) {
+				By(fmt.Sprintf("checking routes from leaf %s on vni %s, mustContain %v %v", leaf.Name, vni.Name, mustContain, prefixes))
+				Eventually(func() error {
+					for exec := range routers.GetExecutors() {
+						evpn, err := frr.EVPNInfo(exec)
+						if err != nil {
+							return fmt.Errorf("failed to get EVPN info from %s: %w", exec.Name(), err)
+						}
+						for _, prefix := range prefixes {
+							if mustContain && !evpn.ContainsType5RouteWithRT(prefix, leaf.VTEPIP, int(vni.Spec.VNI), routeTargets) {
+								return fmt.Errorf("type5 route for %s - %s not found in %v in router %s", prefix, leaf.VTEPIP, evpn, exec.Name())
+							}
+							if !mustContain && evpn.ContainsType5RouteWithRT(prefix, leaf.VTEPIP, int(vni.Spec.VNI), routeTargets) {
+								return fmt.Errorf("type5 route for %s - %s found in %v in router %s", prefix, leaf.VTEPIP, evpn, exec.Name())
+							}
+						}
+					}
+					return nil
+				}, 3*time.Minute, time.Second).WithOffset(1).ShouldNot(HaveOccurred())
+			}
+
 			leafAConfig := infra.LeafConfiguration{
 				Red: infra.Addresses{
 					IPV4:         leafAVRFRedV4Prefixes,
@@ -176,6 +195,12 @@ var _ = Describe("Routes with RT between bgp and the fabric", Ordered, func() {
 				checkBGPPrefixesForHostSession(frrk8s, *vniRed.Spec.HostSession, leafBVRFRedPrefixes, ShouldExist)
 			}
 
+			By("checking routes are propagated as EVPN type 5 routes with correct route-targets")
+			checkRouteAndRTsFromLeaf(infra.LeafAConfig, vniRed, Contains, leafAVRFRedPrefixes, vniRed.Spec.ImportRTs)
+			checkRouteAndRTsFromLeaf(infra.LeafAConfig, vniBlue, !Contains, leafAVRFBluePrefixes, vniBlue.Spec.ImportRTs)
+			checkRouteAndRTsFromLeaf(infra.LeafBConfig, vniRed, Contains, leafBVRFRedPrefixes, vniRed.Spec.ImportRTs)
+			checkRouteAndRTsFromLeaf(infra.LeafBConfig, vniBlue, !Contains, leafBVRFBluePrefixes, vniBlue.Spec.ImportRTs)
+
 			By("advertising also routes from the leaves for VRF Blue - VNI 200")
 			leafAConfig.Blue = infra.Addresses{
 				IPV4:         leafAVRFBlueV4Prefixes,
@@ -187,10 +212,14 @@ var _ = Describe("Routes with RT between bgp and the fabric", Ordered, func() {
 				IPV6:         leafBVRFBlueV6Prefixes,
 				RouteTargets: blueRouteTargets,
 			}
-			fmt.Printf("Leaf A config: %+v\n", leafAConfig)
-			fmt.Printf("Leaf B config: %+v\n", leafBConfig)
 			Expect(infra.LeafAConfig.Configure(leafAConfig)).To(Succeed())
 			Expect(infra.LeafBConfig.Configure(leafBConfig)).To(Succeed())
+
+			By("checking routes are propagated as EVPN type 5 routes with correct route-targets")
+			checkRouteAndRTsFromLeaf(infra.LeafAConfig, vniRed, Contains, leafAVRFRedPrefixes, vniRed.Spec.ImportRTs)
+			checkRouteAndRTsFromLeaf(infra.LeafAConfig, vniBlue, Contains, leafAVRFBluePrefixes, vniBlue.Spec.ImportRTs)
+			checkRouteAndRTsFromLeaf(infra.LeafBConfig, vniRed, Contains, leafBVRFRedPrefixes, vniRed.Spec.ImportRTs)
+			checkRouteAndRTsFromLeaf(infra.LeafBConfig, vniBlue, Contains, leafBVRFBluePrefixes, vniBlue.Spec.ImportRTs)
 
 			By("checking routes are propagated via BGP")
 
