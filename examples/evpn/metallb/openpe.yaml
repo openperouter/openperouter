@@ -21,7 +21,6 @@ spec:
   vrf: blue
   hostsession:
     asn: 64514
-    hostasn: 64515
     localcidr:
       ipv4: 192.169.11.0/24
   vni: 200
