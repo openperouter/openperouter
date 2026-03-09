@@ -5,7 +5,9 @@ MULTUS_VERSION=${MULTUS_VERSION:-"v4.2.1"}
 CNI_PLUGINS_VERSION=${CNI_PLUGINS_VERSION:-"v1.7.1"}
 KIND_CLUSTER_NAME=${KIND_CLUSTER_NAME:-"pe-kind"}
 
-kubectl apply -k $(dirname ${BASH_SOURCE[0]})
+kubectl apply -k $(dirname ${BASH_SOURCE[0]}) --dry-run=client -o yaml | \
+    sed 's#gcr.io/kubebuilder/kube-rbac-proxy#registry.k8s.io/kubebuilder/kube-rbac-proxy#g' | \
+    oc apply -f -
 kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/refs/tags/${MULTUS_VERSION}/deployments/multus-daemonset.yml
 
 sleep 2s

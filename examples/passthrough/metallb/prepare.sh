@@ -22,7 +22,15 @@ metadata:
 EOF
 
 # deploy metallb with frr-k8s as external backend
-helm install metallb metallb/metallb --namespace metallb-system --set frrk8s.external=true --set frrk8s.namespace=frr-k8s-system --set speaker.ignoreExcludeLB=true --set speaker.frr.enabled=false --set frr-k8s.prometheus.serviceMonitor.enabled=false
+helm install metallb metallb/metallb \
+    --namespace metallb-system \
+    --set frrk8s.external=true \
+    --set frrk8s.namespace=frr-k8s-system \
+    --set speaker.ignoreExcludeLB=true \
+    --set speaker.frr.enabled=false \
+    --set frr-k8s.prometheus.serviceMonitor.enabled=false | \
+    sed 's#gcr.io/kubebuilder/kube-rbac-proxy#registry.k8s.io/kubebuilder/kube-rbac-proxy#g' | \
+    oc apply -f -
 
 wait_for_pods metallb-system app.kubernetes.io/name=metallb
 
