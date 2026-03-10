@@ -644,6 +644,33 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 			wantErr: true,
 			errMsg:  "local ASN",
 		},
+		{
+			name: "neighbor having ASN 0 (type external)",
+			nodes: []corev1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:   "node-1",
+						Labels: map[string]string{"rack": "rack-1"},
+					},
+				},
+			},
+			underlays: []v1alpha1.Underlay{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "underlay-rack-1"},
+					Spec: v1alpha1.UnderlaySpec{
+						NodeSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{"rack": "rack-1"},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{ASN: 0},
+						},
+						Nics: []string{"eth0"},
+					},
+				},
+			},
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {
