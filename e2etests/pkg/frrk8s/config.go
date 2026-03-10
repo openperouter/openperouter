@@ -5,6 +5,7 @@ package frrk8s
 import (
 	"context"
 	"fmt"
+	"time"
 
 	frrk8sapi "github.com/metallb/frr-k8s/api/v1beta1"
 	"github.com/openperouter/openperouter/api/v1alpha1"
@@ -143,6 +144,14 @@ func createFRRConfig(hostsession v1alpha1.HostSession, name, cidr string, family
 										Mode: frrk8sapi.AllowAll,
 									},
 								},
+								// Tweak the ConnectTime of the FRR-K8s side - we need to do this because:
+								// - FRR changes are debounced, so if an FRR peer is deleted, then recreated in quick
+								//   succession, the same session remains up on FRR-K8s.
+								// - By default, FRR-K8s does not listen on port 179 and thus does not accept new
+								//   connections from the OpenPERouter. Only FRR-K8s can initiate a connection.
+								// - FRR-K8s will only try to reconnect after the ConnectTime (default 120 seconds).
+								// For futher details, see https://github.com/openperouter/openperouter/issues/263
+								ConnectTime: &metav1.Duration{Duration: time.Second},
 							},
 						},
 					},
