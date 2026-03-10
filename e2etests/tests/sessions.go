@@ -21,7 +21,6 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/utils/ptr"
 )
@@ -167,15 +166,6 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 			frrConfig, err := frrk8s.ConfigFromHostSession(*vni.Spec.HostSession, vni.Name, func(config *frrk8sapi.FRRConfiguration) {
 				for j := range config.Spec.BGP.Routers {
 					config.Spec.BGP.Routers[j].ASN = 64515
-					// Tweak the ConnectTime of the FRR K8s side - we need to do this because FRR changes are debounced,
-					// so if an FRR peer is deleted, then recreated in quick succession, the same session remains up on
-					// the FRR-K8s side and FRR-K8s will only try to reconnect after the default 120 seconds.
-					// Setting 1 second here does 2 things: set the upper limit for ConnectTime to 1s, but due to the
-					// reconfiguration FRR-K8s will actually more likely reconnect immediately as soon as the debouncer
-					// reloads.
-					for k := range config.Spec.BGP.Routers[j].Neighbors {
-						config.Spec.BGP.Routers[j].Neighbors[k].ConnectTime = &v1.Duration{Duration: time.Second * 1}
-					}
 				}
 			})
 			Expect(err).ToNot(HaveOccurred())
@@ -266,15 +256,6 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 				func(config *frrk8sapi.FRRConfiguration) {
 					for j := range config.Spec.BGP.Routers {
 						config.Spec.BGP.Routers[j].ASN = 64515
-						// Tweak the ConnectTime of the FRR K8s side - we need to do this because FRR changes are debounced,
-						// so if an FRR peer is deleted, then recreated in quick succession, the same session remains up on
-						// the FRR-K8s side and FRR-K8s will only try to reconnect after the default 120 seconds.
-						// Setting 1 second here does 2 things: set the upper limit for ConnectTime to 1s, but due to the
-						// reconfiguration FRR-K8s will actually more likely reconnect immediately as soon as the debouncer
-						// reloads.
-						for k := range config.Spec.BGP.Routers[j].Neighbors {
-							config.Spec.BGP.Routers[j].Neighbors[k].ConnectTime = &v1.Duration{Duration: time.Second}
-						}
 					}
 				})
 			Expect(err).ToNot(HaveOccurred())
