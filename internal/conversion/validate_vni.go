@@ -38,6 +38,16 @@ func ValidateL3VNIs(l3Vnis []v1alpha1.L3VNI) error {
 	if err := validateVNIs(vnis); err != nil {
 		return err
 	}
+
+	existingVrfs := map[string]string{} // a map between the given VRF and the VNI instance it's configured in
+	for _, vni := range vnis {
+		existing, ok := existingVrfs[vni.vrfName]
+		if ok {
+			return fmt.Errorf("duplicate vrf %s: %s - %s", vni.vrfName, existing, vni.name)
+		}
+		existingVrfs[vni.vrfName] = vni.name
+	}
+
 	return nil
 }
 
@@ -116,18 +126,12 @@ func vnisFromL2VNIs(l2vnis []v1alpha1.L2VNI) []vni {
 
 // validateVNIs performs common validation logic for VNIs
 func validateVNIs(vnis []vni) error {
-	existingVrfs := map[string]string{} // a map between the given VRF and the VNI instance it's configured in
 	existingVNIs := map[uint32]string{} // a map between the given VNI number and the VNI instance it's configured in
 
 	for _, vni := range vnis {
 		if err := isValidInterfaceName(vni.vrfName); err != nil {
 			return fmt.Errorf("invalid vrf name for vni %s: %s - %w", vni.name, vni.vrfName, err)
 		}
-		existing, ok := existingVrfs[vni.vrfName]
-		if ok {
-			return fmt.Errorf("duplicate vrf %s: %s - %s", vni.vrfName, existing, vni.name)
-		}
-		existingVrfs[vni.vrfName] = vni.name
 
 		existingVNI, ok := existingVNIs[vni.vni]
 		if ok {

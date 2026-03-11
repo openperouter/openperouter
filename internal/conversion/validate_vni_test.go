@@ -194,7 +194,7 @@ func TestValidateL2VNIs(t *testing.T) {
 					Status: v1alpha1.L2VNIStatus{},
 				},
 			},
-			wantErr: true,
+			wantErr: false,
 		},
 		{
 			name: "duplicate VNI",
