@@ -51,14 +51,14 @@ func ValidateL3VNIs(l3Vnis []v1alpha1.L3VNI) error {
 	return nil
 }
 
-func ValidateL2VNIsForNodes(nodes []corev1.Node, underlays []v1alpha1.L2VNI) error {
+func ValidateL2VNIsForNodes(nodes []corev1.Node, l2vnis []v1alpha1.L2VNI) error {
 	for _, node := range nodes {
-		filteredL2VNIs, err := filter.L2VNIsForNode(&node, underlays)
+		filteredL2VNIs, err := filter.L2VNIsForNode(&node, l2vnis)
 		if err != nil {
-			return fmt.Errorf("failed to filter underlays for node %q: %w", node.Name, err)
+			return fmt.Errorf("failed to filter l2vnis for node %q: %w", node.Name, err)
 		}
 		if err := ValidateL2VNIs(filteredL2VNIs); err != nil {
-			return fmt.Errorf("failed to validate underlays for node %q: %w", node.Name, err)
+			return fmt.Errorf("failed to validate l2vnis for node %q: %w", node.Name, err)
 		}
 	}
 	return nil
