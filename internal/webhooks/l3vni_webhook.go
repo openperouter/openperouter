@@ -143,6 +143,15 @@ func validateL3VNI(l3vni *v1alpha1.L3VNI) error {
 	if err := conversion.ValidateHostSessionsForNodes(nodeList.Items, toValidate, l3passthroughs.Items); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
 	}
+
+	toValidateL2, err := getL2VNIs()
+	if err != nil {
+		return err
+	}
+	if err := conversion.ValidateVRFsForNodes(nodeList.Items, toValidateL2.Items, toValidate); err != nil {
+		return fmt.Errorf("validation failed: %w", err)
+	}
+
 	return nil
 }
 

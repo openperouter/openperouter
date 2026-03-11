@@ -3,6 +3,9 @@
 package conversion
 
 import (
+	"fmt"
+	"net"
+	"strings"
 	"testing"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
@@ -89,30 +92,6 @@ func TestValidateVNIs(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "duplicate VRF name",
-			vnis: []v1alpha1.L3VNI{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
-					Spec: v1alpha1.L3VNISpec{
-						VNI:         1001,
-						VRF:         "vni1",
-						HostSession: &v1alpha1.HostSession{ASN: 65001, HostASN: 65002, LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "192.168.1.0/24"}},
-					},
-					Status: v1alpha1.L3VNIStatus{},
-				},
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni2"},
-					Spec: v1alpha1.L3VNISpec{
-						VNI:         1002,
-						HostSession: &v1alpha1.HostSession{ASN: 65003, HostASN: 65004, LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "192.168.2.0/24"}},
-						VRF:         "vni1",
-					},
-					Status: v1alpha1.L3VNIStatus{},
-				},
-			},
-			wantErr: true,
-		},
-		{
 			name: "duplicate VNI",
 			vnis: []v1alpha1.L3VNI{
 				{
@@ -194,7 +173,7 @@ func TestValidateL2VNIs(t *testing.T) {
 					Status: v1alpha1.L2VNIStatus{},
 				},
 			},
-			wantErr: true,
+			wantErr: false,
 		},
 		{
 			name: "duplicate VNI",
@@ -357,7 +336,6 @@ func TestValidateL2VNIs(t *testing.T) {
 			},
 			wantErr: true,
 		},
-
 		{
 			name: "invalid L2GatewayIPs CIDR",
 			vnis: []v1alpha1.L2VNI{
@@ -379,6 +357,233 @@ func TestValidateL2VNIs(t *testing.T) {
 			err := ValidateL2VNIs(tt.vnis)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ValidateL2VNIs() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateVRFs(t *testing.T) {
+	tests := []struct {
+		name       string
+		l2vnis     []v1alpha1.L2VNI
+		l3vnis     []v1alpha1.L3VNI
+		wantErrStr string
+	}{
+		{
+			name: "overlapping L2GatewayIPs CIDR in different VRFs",
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI:          1001,
+						VRF:          ptr.To("test"),
+						L2GatewayIPs: []string{"192.168.1.0/24"},
+					},
+					Status: v1alpha1.L2VNIStatus{},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI:          1002,
+						VRF:          ptr.To("test2"),
+						L2GatewayIPs: []string{"192.168.1.128/25"},
+					},
+					Status: v1alpha1.L2VNIStatus{},
+				},
+			},
+		},
+		{
+			name: "overlapping L2GatewayIPs CIDR in same VRF",
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI:          1001,
+						VRF:          ptr.To("test"),
+						L2GatewayIPs: []string{"192.168.1.0/24"},
+					},
+					Status: v1alpha1.L2VNIStatus{},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI:          1002,
+						VRF:          ptr.To("test"),
+						L2GatewayIPs: []string{"192.168.1.128/25"},
+					},
+					Status: v1alpha1.L2VNIStatus{},
+				},
+			},
+			wantErrStr: "subnet overlap in VRF \"test\": IPNet 192.168.1.128/25 (L2VNI test/vni2) overlaps with IPNet 192.168.1.0/24 (L2VNI test/vni1)",
+		},
+		{
+			name: "l3VNI and L2GatewayIPs CIDR overlap in same VRF",
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI:          1002,
+						VRF:          ptr.To("vni1"),
+						L2GatewayIPs: []string{"192.168.1.128/25"},
+					},
+					Status: v1alpha1.L2VNIStatus{},
+				},
+			},
+			l3vnis: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
+					Spec: v1alpha1.L3VNISpec{
+						VNI:         1001,
+						VRF:         "vni1",
+						HostSession: &v1alpha1.HostSession{ASN: 65001, HostASN: 65002, LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "192.168.1.0/24"}},
+					},
+					Status: v1alpha1.L3VNIStatus{},
+				},
+			},
+			wantErrStr: "subnet overlap in VRF \"vni1\": IPNet 192.168.1.128/25 (L2VNI test/vni2) overlaps with IPNet 192.168.1.0/24 (L3VNI test/vni1)",
+		},
+		{
+			name: "l3VNI and L2GatewayIPs CIDR overlap in different VRFs",
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI:          1002,
+						VRF:          ptr.To("test"),
+						L2GatewayIPs: []string{"192.168.1.128/25"},
+					},
+					Status: v1alpha1.L2VNIStatus{},
+				},
+			},
+			l3vnis: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
+					Spec: v1alpha1.L3VNISpec{
+						VNI:         1001,
+						VRF:         "vni1",
+						HostSession: &v1alpha1.HostSession{ASN: 65001, HostASN: 65002, LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "192.168.1.0/24"}},
+					},
+					Status: v1alpha1.L3VNIStatus{},
+				},
+			},
+		},
+		{
+			name: "more than one L3VNI in the same VRF",
+			l3vnis: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
+					Spec: v1alpha1.L3VNISpec{
+						VNI:         1001,
+						VRF:         "vni1",
+						HostSession: &v1alpha1.HostSession{ASN: 65001, HostASN: 65002, LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "192.168.1.0/24"}},
+					},
+					Status: v1alpha1.L3VNIStatus{},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
+					Spec: v1alpha1.L3VNISpec{
+						VNI:         1002,
+						HostSession: &v1alpha1.HostSession{ASN: 65003, HostASN: 65004, LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "192.168.2.0/24"}},
+						VRF:         "vni1",
+					},
+					Status: v1alpha1.L3VNIStatus{},
+				},
+			},
+			wantErrStr: "more than one L3VNI detected in VRF \"vni1\": test/vni1 - test/vni2",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateVRFs(tt.l2vnis, tt.l3vnis)
+			if tt.wantErrStr == "" && err != nil {
+				t.Errorf("ValidateVRFs() no error expected but got error = %q", err)
+			}
+			if tt.wantErrStr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErrStr)) {
+				t.Errorf("ValidateVRFs() error expected but got error = %q, wantErr %q", err, tt.wantErrStr)
+			}
+		})
+	}
+}
+
+func TestHasSubnetOverlap(t *testing.T) {
+	tests := []struct {
+		name            string
+		ipNets          []string
+		wantErrContains string
+	}{
+		{
+			name:   "no overlap - different subnets",
+			ipNets: []string{"192.168.1.0/24", "192.168.2.0/24", "192.168.3.0/24"},
+		},
+		{
+			name:   "no overlap - IPv6 different subnets",
+			ipNets: []string{"2001:db8::/64", "2001:db9::/64"},
+		},
+		{
+			name:            "overlap - one subnet contains another",
+			ipNets:          []string{"192.168.0.0/16", "192.168.1.0/24"},
+			wantErrContains: "IPNet 192.168.1.0/24 (element 1) overlaps with IPNet 192.168.0.0/16 (element 0)",
+		},
+		{
+			name:            "overlap - one subnet contains another - ordered the other way",
+			ipNets:          []string{"192.168.1.0/24", "192.168.0.0/16"},
+			wantErrContains: "IPNet 192.168.1.0/24 (element 0) overlaps with IPNet 192.168.0.0/16 (element 1)",
+		},
+		{
+			name:            "overlap - IPv6 one subnet contains another",
+			ipNets:          []string{"2001:db8::/32", "2001:db8:1::/64"},
+			wantErrContains: "IPNet 2001:db8:1::/64 (element 1) overlaps with IPNet 2001:db8::/32 (element 0)",
+		},
+		{
+			name:            "overlap - identical subnets",
+			ipNets:          []string{"192.168.1.0/24", "192.168.1.0/24"},
+			wantErrContains: "IPNet 192.168.1.0/24 (element 1) overlaps with IPNet 192.168.1.0/24 (element 0)",
+		},
+		{
+			name:            "overlap - multiple subnets with both overlapping",
+			ipNets:          []string{"192.168.1.0/24", "192.168.2.0/24", "192.168.0.0/16"},
+			wantErrContains: "IPNet 192.168.1.0/24 (element 0) overlaps with IPNet 192.168.0.0/16 (element 2)",
+		},
+		{
+			name:            "overlap - multiple subnets inside a larget subnet",
+			ipNets:          []string{"192.168.0.0/16", "192.168.1.0/24", "192.168.2.0/24", "192.168.3.0/24"},
+			wantErrContains: "IPNet 192.168.1.0/24 (element 1) overlaps with IPNet 192.168.0.0/16 (element 0)",
+		},
+		{
+			name:   "single subnet - no overlap",
+			ipNets: []string{"192.168.1.0/24"},
+		},
+		{
+			name:   "empty slice - no overlap",
+			ipNets: []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			vniSubnets := make(vniSubnetsList, len(tt.ipNets))
+			for i, cidr := range tt.ipNets {
+				_, ipnet, err := net.ParseCIDR(cidr)
+				if err != nil {
+					t.Fatalf("failed to parse CIDR %s: %v", cidr, err)
+				}
+				vniSubnets[i] = vniSubnet{
+					vrfName: "test",
+					source:  fmt.Sprintf("element %d", i),
+					subnet:  ipnet,
+				}
+			}
+
+			err := vniSubnets.sort().hasSubnetOverlap()
+			if tt.wantErrContains != "" {
+				if err == nil {
+					t.Errorf("hasIPOverlap() error = nil, want error containing %q", tt.wantErrContains)
+				} else if !strings.Contains(err.Error(), tt.wantErrContains) {
+					t.Errorf("hasIPOverlap() error = %v, want error containing %q", err, tt.wantErrContains)
+				}
+			} else if err != nil {
+				t.Errorf("hasIPOverlap() error = %v, want nil", err)
 			}
 		})
 	}
