@@ -62,6 +62,9 @@ spec:
         {{- with .Values.openperouter.ovsSocketPath }}
         - --ovssocket={{ . }}
         {{- end }}
+        {{- if .Values.openperouter.namedNetns }}
+        - --named-netns=true
+        {{- end }}
         command:
         - /controller
         env:
@@ -122,7 +125,7 @@ spec:
           subPath: crio.sock
         {{- end }}
         - mountPath: /run/netns
-          mountPropagation: HostToContainer
+          mountPropagation: {{ if .Values.openperouter.namedNetns }}Bidirectional{{ else }}HostToContainer{{ end }}
           name: runns
         - mountPath: /etc/frr/
           mountPropagation: HostToContainer

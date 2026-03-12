@@ -203,6 +203,10 @@ deploy-hostmode-boot: export KUSTOMIZE_LAYER=hostmode
 deploy-hostmode-boot: kind deploy-cluster setup-hostmode-boot ## Deploy cluster in hostmode with static config, without deploying controller (boot mode).
 	./systemdmode/deploy.sh $(KIND_CLUSTER_NAME)
 
+.PHONY: deploy-namednetns
+deploy-namednetns: export KUSTOMIZE_LAYER=namednetns
+deploy-namednetns: kind deploy-cluster deploy-controller ## Deploy cluster and controller with persistent named netns.
+
 .PHONY: deploy-multi
 deploy-multi: kind deploy-multi-cluster deploy-controller-multi ## Deploy cluster and controller.
 
@@ -405,6 +409,7 @@ generate-all-in-one: manifests kustomize ## Create manifests
 
 	$(KUSTOMIZE) build config/default > config/all-in-one/openpe.yaml
 	$(KUSTOMIZE) build config/crio > config/all-in-one/crio.yaml
+	$(KUSTOMIZE) build config/namednetns > config/all-in-one/openpe-namednetns.yaml
 
 .PHONY: helm-docs
 helm-docs:
