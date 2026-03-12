@@ -184,6 +184,15 @@ func parseRoutes(vtyshRes string) (BGPRoutes, error) {
 	return res, nil
 }
 
+// RunningConfig returns the full FRR running configuration.
+func RunningConfig(exec executor.Executor) (string, error) {
+	output, err := exec.Exec("vtysh", "-c", "show running-config")
+	if err != nil {
+		return "", fmt.Errorf("failed to get running config: %w", err)
+	}
+	return output, nil
+}
+
 // GetBFDPeers returns the BFD peers.
 func GetBFDPeers(exec executor.Executor) (BFDPeers, error) {
 	output, err := exec.Exec("vtysh", "-c", "show bfd peers json")

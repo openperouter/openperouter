@@ -38,6 +38,13 @@ func L3PassthroughsForNode(node *corev1.Node, l3passthroughs []v1alpha1.L3Passth
 	})
 }
 
+// RawFRRConfigsForNode returns RawFRRConfigs that match the given node's labels.
+func RawFRRConfigsForNode(node *corev1.Node, rawFRRConfigs []v1alpha1.RawFRRConfig) ([]v1alpha1.RawFRRConfig, error) {
+	return filterForNode(node, rawFRRConfigs, func(r v1alpha1.RawFRRConfig) *metav1.LabelSelector {
+		return r.Spec.NodeSelector
+	})
+}
+
 // filterForNode is a generic function that filters items based on node label selectors.
 // It takes a selector function that extracts the NodeSelector from each item.
 func filterForNode[T any](node *corev1.Node, items []T, getSelector func(T) *metav1.LabelSelector) ([]T, error) {

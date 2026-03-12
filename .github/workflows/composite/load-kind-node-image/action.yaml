@@ -1,0 +1,16 @@
+name: "load-kind-node-image"
+description: "Download and load the kind-node-openperouter image from artifact"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Download kind-node-openperouter image
+      uses: actions/download-artifact@v4
+      with:
+        name: image-tar-kind-node-openperouter
+        path: /tmp
+
+    - name: Load kind-node-openperouter image
+      shell: bash
+      run: |
+        docker load -i /tmp/kind-node-openperouter.tar

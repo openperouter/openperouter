@@ -70,6 +70,26 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
+      path: /validate-openperouter-io-v1alpha1-rawfrrconfig
+  failurePolicy: Fail
+  name: rawfrrconfigvalidationwebhook.openperouter.io
+  rules:
+  - apiGroups:
+    - openpe.openperouter.github.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - rawfrrconfigs
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
       path: /validate-openperouter-io-v1alpha1-underlay
   failurePolicy: Fail
   name: underlayvalidationwebhook.openperouter.io

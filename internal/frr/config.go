@@ -19,6 +19,11 @@ var (
 	templates embed.FS
 )
 
+type RawFRRSnippet struct {
+	Priority int
+	Config   string
+}
+
 type Config struct {
 	Loglevel    string
 	Hostname    string
@@ -26,6 +31,7 @@ type Config struct {
 	VNIs        []L3VNIConfig
 	Passthrough *PassthroughConfig
 	BFDProfiles []BFDProfile
+	RawConfig   []RawFRRSnippet
 }
 
 type UnderlayConfig struct {

@@ -355,13 +355,40 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		}),
 	)
 
-	It("should create two pods connected to the l2 overlay with vtepInterface", func() {
-		const (
-			firstPodIP  = "192.171.24.2"
-			secondPodIP = "192.171.24.3"
-		)
+})
 
-		nodes, err := k8s.GetNodes(cs)
+var _ = Describe("Routes between bgp and the fabric - vtepInterface", func() {
+	const (
+		testNamespace             = "test-namespace"
+		linuxBridgeHostAttachment = "linux-bridge"
+		firstPodIP                = "192.171.24.2"
+		secondPodIP               = "192.171.24.3"
+	)
+
+	var (
+		cs        clientset.Interface
+		routers   openperouter.Routers
+		nodes     []corev1.Node
+		firstPod  *corev1.Pod
+		secondPod *corev1.Pod
+		nad       nad.NetworkAttachmentDefinition
+	)
+
+	l2VniRed := v1alpha1.L2VNI{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "red110",
+			Namespace: openperouter.Namespace,
+		},
+		Spec: v1alpha1.L2VNISpec{
+			VNI: 110,
+		},
+	}
+
+	BeforeEach(func() {
+		cs = k8sclient.New()
+		var err error
+
+		nodes, err = k8s.GetNodes(cs)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(len(nodes)).To(BeNumerically(">=", 2), "Expected at least 2 nodes, but got fewer")
 
@@ -371,9 +398,6 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		// address there, that address is supposed to be
 		// advertised by the network fabric
 		redistributeConnectedForLeafKind(nodes)
-
-		err = Updater.CleanAll()
-		Expect(err).NotTo(HaveOccurred())
 
 		l2VniRedWithGateway := l2VniRed.DeepCopy()
 		l2VniRedWithGateway.Spec.VRF = nil
@@ -390,8 +414,9 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			VTEPInterface: "toswitch",
 		}
 
-		oldRouters, err := openperouter.Get(cs, HostMode)
+		routers, err = openperouter.Get(cs, HostMode)
 		Expect(err).NotTo(HaveOccurred())
+
 		err = Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{underlay},
 			L2VNIs: []v1alpha1.L2VNI{
@@ -400,37 +425,35 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		})
 		Expect(err).NotTo(HaveOccurred())
 
-		By("waiting for the router pods to rollout after changing the underlay")
-		Eventually(func() error {
-			newRouters, err := openperouter.Get(cs, HostMode)
-			if err != nil {
-				return err
-			}
-			return openperouter.DaemonsetRolled(oldRouters, newRouters)
-		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
-
 		_, err = k8s.CreateNamespace(cs, testNamespace)
 		Expect(err).NotTo(HaveOccurred())
 
 		nad, err = k8s.CreateMacvlanNad("110", testNamespace, "br-hs-110", []string{"192.171.24.1/24"})
 		Expect(err).NotTo(HaveOccurred())
+	})
 
-		DeferCleanup(func() {
-			resetLeafKindConfig(nodes)
-			dumpIfFails(cs)
-			err := Updater.CleanAll()
-			Expect(err).NotTo(HaveOccurred())
-			err = Updater.Update(config.Resources{
-				Underlays: []v1alpha1.Underlay{
-					infra.Underlay,
-				},
-			})
-			Expect(err).NotTo(HaveOccurred())
-			err = k8s.DeleteNamespace(cs, testNamespace)
-			Expect(err).NotTo(HaveOccurred())
-		})
+	AfterEach(func() {
+		resetLeafKindConfig(nodes)
+		dumpIfFails(cs)
+		err := Updater.CleanAll()
+		Expect(err).NotTo(HaveOccurred())
 
+		By("waiting for the router pod to rollout after removing the underlay")
+		Eventually(func() error {
+			newRouters, err := openperouter.Get(cs, HostMode)
+			if err != nil {
+				return err
+			}
+			return openperouter.DaemonsetRolled(routers, newRouters)
+		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
+
+		err = k8s.DeleteNamespace(cs, testNamespace)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("should create two pods connected to the l2 overlay with vtepInterface", func() {
 		By("creating the pods")
+		var err error
 		firstPod, err = k8s.CreateAgnhostPod(cs, "pod1", testNamespace, k8s.WithNad(nad.Name, testNamespace, []string{firstPodIP + "/24"}), k8s.OnNode(nodes[0].Name))
 		Expect(err).NotTo(HaveOccurred())
 		secondPod, err = k8s.CreateAgnhostPod(cs, "pod2", testNamespace, k8s.WithNad(nad.Name, testNamespace, []string{secondPodIP + "/24"}), k8s.OnNode(nodes[1].Name))

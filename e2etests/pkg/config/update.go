@@ -19,6 +19,7 @@ type Resources struct {
 	L3VNIs            []v1alpha1.L3VNI         `json:"l3vnis"`
 	L2VNIs            []v1alpha1.L2VNI         `json:"l2vnis"`
 	L3Passthrough     []v1alpha1.L3Passthrough `json:"l3passthrough"`
+	RawFRRConfigs     []v1alpha1.RawFRRConfig  `json:"rawfrrconfigs"`
 	FRRConfigurations []frrk8sv1beta1.FRRConfiguration
 }
 
@@ -84,6 +85,11 @@ func (o Updater) Update(r Resources) error {
 		oldValues[key] = l3Passthrough.DeepCopy()
 		key++
 	}
+	for _, rawFRRConfig := range r.RawFRRConfigs {
+		objects[key] = rawFRRConfig.DeepCopy()
+		oldValues[key] = rawFRRConfig.DeepCopy()
+		key++
+	}
 	for _, frrConfig := range r.FRRConfigurations {
 		objects[key] = frrConfig.DeepCopy()
 		oldValues[key] = frrConfig.DeepCopy()
@@ -108,6 +114,9 @@ func (o Updater) Update(r Resources) error {
 				toChange.Spec = *old.Spec.DeepCopy()
 			case *v1alpha1.L3Passthrough:
 				old := oldValues[i].(*v1alpha1.L3Passthrough)
+				toChange.Spec = *old.Spec.DeepCopy()
+			case *v1alpha1.RawFRRConfig:
+				old := oldValues[i].(*v1alpha1.RawFRRConfig)
 				toChange.Spec = *old.Spec.DeepCopy()
 			case *frrk8sv1beta1.FRRConfiguration:
 				old := oldValues[i].(*frrk8sv1beta1.FRRConfiguration)
@@ -148,6 +157,10 @@ func (o Updater) CleanButUnderlay() error {
 		return err
 	}
 	if err := o.cli.DeleteAllOf(context.Background(), &v1alpha1.L3Passthrough{},
+		client.InNamespace(o.namespace)); err != nil {
+		return err
+	}
+	if err := o.cli.DeleteAllOf(context.Background(), &v1alpha1.RawFRRConfig{},
 		client.InNamespace(o.namespace)); err != nil {
 		return err
 	}

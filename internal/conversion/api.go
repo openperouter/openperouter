@@ -12,6 +12,7 @@ type ApiConfigData struct {
 	L3VNIs        []v1alpha1.L3VNI
 	L2VNIs        []v1alpha1.L2VNI
 	L3Passthrough []v1alpha1.L3Passthrough
+	RawFRRConfigs []v1alpha1.RawFRRConfig
 }
 
 type HostConfigData struct {
@@ -37,6 +38,7 @@ func MergeAPIConfigs(configs ...ApiConfigData) (ApiConfigData, error) {
 		merged.L3VNIs = append(merged.L3VNIs, config.L3VNIs...)
 		merged.L2VNIs = append(merged.L2VNIs, config.L2VNIs...)
 		merged.L3Passthrough = append(merged.L3Passthrough, config.L3Passthrough...)
+		merged.RawFRRConfigs = append(merged.RawFRRConfigs, config.RawFRRConfigs...)
 	}
 
 	return merged, nil

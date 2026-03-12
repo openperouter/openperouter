@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"sort"
 	"time"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
@@ -78,6 +79,8 @@ func APItoFRR(config ApiConfigData, nodeIndex int, logLevel string) (frr.Config,
 	if len(config.L3VNIs) > 0 && underlay.Spec.EVPN == nil {
 		return frr.Config{}, fmt.Errorf("EVPN configuration is required when L3 VNIs are defined")
 	}
+	rawSnippets := rawConfigSnippets(config.RawFRRConfigs)
+
 	if underlay.Spec.EVPN == nil {
 		return frr.Config{
 			Underlay:    underlayConfig,
@@ -85,6 +88,7 @@ func APItoFRR(config ApiConfigData, nodeIndex int, logLevel string) (frr.Config,
 			BFDProfiles: bfdProfiles,
 			Loglevel:    logLevel,
 			VNIs:        []frr.L3VNIConfig{},
+			RawConfig:   rawSnippets,
 		}, nil
 	}
 
@@ -112,7 +116,25 @@ func APItoFRR(config ApiConfigData, nodeIndex int, logLevel string) (frr.Config,
 		Passthrough: passthroughConfig,
 		BFDProfiles: bfdProfiles,
 		Loglevel:    logLevel,
+		RawConfig:   rawSnippets,
 	}, nil
+}
+
+func rawConfigSnippets(rawFRRConfigs []v1alpha1.RawFRRConfig) []frr.RawFRRSnippet {
+	if len(rawFRRConfigs) == 0 {
+		return nil
+	}
+	snippets := make([]frr.RawFRRSnippet, 0, len(rawFRRConfigs))
+	for _, rc := range rawFRRConfigs {
+		snippets = append(snippets, frr.RawFRRSnippet{
+			Priority: rc.Spec.Priority,
+			Config:   rc.Spec.RawConfig,
+		})
+	}
+	sort.SliceStable(snippets, func(i, j int) bool {
+		return snippets[i].Priority < snippets[j].Priority
+	})
+	return snippets
 }
 
 func passthroughToFRR(passthrough v1alpha1.L3Passthrough, nodeIndex int) (*frr.PassthroughConfig, error) {

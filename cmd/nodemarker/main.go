@@ -272,5 +272,9 @@ func setupWebhook(mgr manager.Manager, logger *slog.Logger) error {
 		logger.Error("unable to create the webook", "error", err, "webhook", "L3Passthroughs")
 		return err
 	}
+	if err := webhooks.SetupRawFRRConfig(mgr); err != nil {
+		logger.Error("unable to create the webook", "error", err, "webhook", "RawFRRConfigs")
+		return err
+	}
 	return nil
 }

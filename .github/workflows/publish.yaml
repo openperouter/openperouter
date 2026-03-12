@@ -12,8 +12,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  build-kind-node-image:
+    runs-on: ubuntu-22.04
+    outputs:
+      kind-node-version: ${{ steps.build.outputs.kind-node-version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build kind-node-openperouter image
+        id: build
+        uses: ./.github/workflows/composite/build-kind-node-image
+
   unit-tests:
     runs-on: ubuntu-22.04
+    needs: build-kind-node-image
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -27,6 +39,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install linux-modules-extra-$(uname -r)
+
+      - name: Load kind-node-openperouter image
+        uses: ./.github/workflows/composite/load-kind-node-image
 
       - name: Install Open vSwitch
         # Required for L2VNI OVS bridge integration tests in internal/hostnetwork/vni_test.go

@@ -74,39 +74,13 @@ jobs:
   build-kind-node-image:
     runs-on: ubuntu-22.04
     outputs:
-      kind-node-version: ${{ steps.kind_version.outputs.version }}
+      kind-node-version: ${{ steps.build.outputs.kind-node-version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Extract KIND_NODE_VERSION from Makefile
-        id: kind_version
-        run: |
-          KIND_NODE_VERSION=$(make -f Makefile --eval='print-kind-version: ; @echo $(KIND_NODE_VERSION)' print-kind-version)
-          echo "version=$KIND_NODE_VERSION" >> $GITHUB_OUTPUT
-          echo "KIND_NODE_VERSION=$KIND_NODE_VERSION"
-
-      - name: Setup docker buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build and export kind-node-openperouter image
-        uses: docker/build-push-action@v5
-        with:
-          context: hack/kind-node-image
-          file: hack/kind-node-image/Dockerfile
-          build-args: |
-            KIND_NODE_VERSION=${{ steps.kind_version.outputs.version }}
-          tags: quay.io/openperouter/kind-node-openperouter:${{ steps.kind_version.outputs.version }}
-          outputs: type=docker,dest=/tmp/kind-node-openperouter.tar
-          cache-from: type=gha,scope=kind-node-openperouter
-          cache-to: type=gha,mode=max,scope=kind-node-openperouter
-
-      - name: Upload kind-node-openperouter artifact
-        uses: actions/upload-artifact@v4
-        with:
-          retention-days: 1
-          name: image-tar-kind-node-openperouter
-          path: /tmp/kind-node-openperouter.tar
+      - name: Build kind-node-openperouter image
+        id: build
+        uses: ./.github/workflows/composite/build-kind-node-image
 
   unit-tests:
     runs-on: ubuntu-22.04
@@ -138,15 +112,8 @@ jobs:
           echo "Disk space after cleanup:"
           df -h
 
-      - name: Download kind-node-openperouter image
-        uses: actions/download-artifact@v4
-        with:
-          name: image-tar-kind-node-openperouter
-          path: /tmp
-
       - name: Load kind-node-openperouter image
-        run: |
-          docker load -i /tmp/kind-node-openperouter.tar
+        uses: ./.github/workflows/composite/load-kind-node-image
 
       - name: Unit Tests
         run: |
@@ -239,15 +206,8 @@ jobs:
           sudo systemctl restart docker
           docker info -f '{{ .DriverStatus }}'
 
-      - name: Download kind-node-openperouter image
-        uses: actions/download-artifact@v4
-        with:
-          name: image-tar-kind-node-openperouter
-          path: /tmp
-
       - name: Load kind-node-openperouter image
-        run: |
-          docker load -i /tmp/kind-node-openperouter.tar
+        uses: ./.github/workflows/composite/load-kind-node-image
 
       - name: Download openperouter image
         uses: actions/download-artifact@v4

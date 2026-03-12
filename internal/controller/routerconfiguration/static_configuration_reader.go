@@ -90,10 +90,25 @@ func staticConfigToAPIConfig(staticConfig *static.PERouterConfig) conversion.Api
 		}
 	}
 
+	rawFRRConfigs := make([]v1alpha1.RawFRRConfig, len(staticConfig.RawFRRConfigs))
+	for i, spec := range staticConfig.RawFRRConfigs {
+		rawFRRConfigs[i] = v1alpha1.RawFRRConfig{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "RawFRRConfig",
+				APIVersion: "openpe.openperouter.github.io/v1alpha1",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name: fmt.Sprintf("static-rawfrrconfig-%d", i),
+			},
+			Spec: spec,
+		}
+	}
+
 	return conversion.ApiConfigData{
 		Underlays:     underlays,
 		L3VNIs:        l3vnis,
 		L2VNIs:        l2vnis,
 		L3Passthrough: l3passthrough,
+		RawFRRConfigs: rawFRRConfigs,
 	}
 }

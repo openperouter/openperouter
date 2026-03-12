@@ -74,6 +74,8 @@ type requestKey string
 // +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l3passthroughs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l3passthroughs/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l3passthroughs/finalizers,verbs=update
+// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=rawfrrconfigs,verbs=get;list;watch
+// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=rawfrrconfigs/status,verbs=get
 
 func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := r.Logger.With("controller", "RouterConfiguration", "request", req.String())
@@ -183,6 +185,12 @@ func (r *PERouterReconciler) getConfigFromAPI(ctx context.Context, logger *slog.
 		return conversion.ApiConfigData{}, err
 	}
 
+	var rawFRRConfigs v1alpha1.RawFRRConfigList
+	if err := r.List(ctx, &rawFRRConfigs); err != nil {
+		slog.Error("failed to list rawfrrconfigs", "error", err)
+		return conversion.ApiConfigData{}, err
+	}
+
 	node := &v1.Node{}
 	if err := r.Get(ctx, client.ObjectKey{Name: r.MyNode}, node); err != nil {
 		slog.Error("failed to get node", "node", r.MyNode, "error", err)
@@ -214,13 +222,24 @@ func (r *PERouterReconciler) getConfigFromAPI(ctx context.Context, logger *slog.
 		return conversion.ApiConfigData{}, err
 	}
 
-	logger.Debug("using config", "l3vnis", l3vnis.Items, "l2vnis", l2vnis.Items, "underlays", underlays.Items, "l3passthrough", l3passthrough.Items)
+	filteredRawFRRConfigs, err := filter.RawFRRConfigsForNode(node, rawFRRConfigs.Items)
+	if err != nil {
+		slog.Error("failed to filter rawfrrconfigs for node", "node", r.MyNode, "error", err)
+		return conversion.ApiConfigData{}, err
+	}
+
+	if len(filteredRawFRRConfigs) > 0 {
+		logger.Info("RawFRRConfig is applied, but please note that this feature is for experimentation only and not supported")
+	}
+
+	logger.Debug("using config", "l3vnis", l3vnis.Items, "l2vnis", l2vnis.Items, "underlays", underlays.Items, "l3passthrough", l3passthrough.Items, "rawfrrconfigs", rawFRRConfigs.Items)
 
 	apiConfig := conversion.ApiConfigData{
 		Underlays:     filteredUnderlays,
 		L3VNIs:        filteredL3VNIs,
 		L2VNIs:        filteredL2VNIs,
 		L3Passthrough: filteredL3Passthrough,
+		RawFRRConfigs: filteredRawFRRConfigs,
 	}
 
 	return apiConfig, nil
@@ -281,6 +300,7 @@ func (r *PERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(&v1alpha1.L3VNI{}, &handler.EnqueueRequestForObject{}).
 		Watches(&v1alpha1.L2VNI{}, &handler.EnqueueRequestForObject{}).
 		Watches(&v1alpha1.L3Passthrough{}, &handler.EnqueueRequestForObject{}).
+		Watches(&v1alpha1.RawFRRConfig{}, &handler.EnqueueRequestForObject{}).
 		WithEventFilter(filterNonRouterPods).
 		WithEventFilter(filterUpdates).
 		Named("routercontroller")

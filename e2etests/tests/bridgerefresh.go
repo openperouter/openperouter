@@ -73,18 +73,18 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 		Expect(Updater.CleanAll()).To(Succeed())
 
 		cs = k8sclient.New()
-		var err error
-		routers, err = openperouter.Get(cs, HostMode)
-		Expect(err).NotTo(HaveOccurred())
 
-		routers.Dump(ginkgo.GinkgoWriter)
-
-		err = Updater.Update(config.Resources{
+		err := Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{
 				infra.Underlay,
 			},
 		})
 		Expect(err).NotTo(HaveOccurred())
+
+		routers, err = openperouter.Get(cs, HostMode)
+		Expect(err).NotTo(HaveOccurred())
+
+		routers.Dump(ginkgo.GinkgoWriter)
 
 		By("setting redistribute connected on leaves")
 		redistributeConnectedForLeaf(infra.LeafAConfig)
@@ -174,9 +174,12 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 			vtepIPOnly := ipfamily.StripCIDRMask(vtepIP)
 			podIPOnly := ipfamily.StripCIDRMask(silentPodIP)
 
-			By("Verifying Type 2 MAC+IP route appears initially")
-			Eventually(func() error {
-				for exec := range routers.GetExecutors() {
+			allRoutersContainsExpectedType2MACIPRoute := func() error {
+				currentRouters, err := openperouter.Get(cs, HostMode)
+				if err != nil {
+					return err
+				}
+				for exec := range currentRouters.GetExecutors() {
 					evpn, err := frr.EVPNInfo(exec)
 					if err != nil {
 						return fmt.Errorf("failed to get EVPN info from %s: %w", exec.Name(), err)
@@ -186,29 +189,18 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 					}
 				}
 				return nil
-			}, 3*time.Minute, 5*time.Second).ShouldNot(HaveOccurred())
+			}
+			By("Verifying Type 2 MAC+IP route appears initially")
+			Eventually(allRoutersContainsExpectedType2MACIPRoute, 3*time.Minute, 5*time.Second).
+				ShouldNot(HaveOccurred(), "should initially contain type 2 MAC+IP route")
 
 			By("Verifying Type 2 routes persist for 90 seconds (route NOT withdrawn)")
 			// without BridgeRefresher, the neighbor entry would go
 			// STALE -> DELETE after gc_stale_time, causing the Type 2 route
 			// to be withdrawn. With BridgeRefresher, ARP probes keep the neighbor
 			// alive and the route persists.
-			Consistently(func() error {
-				for exec := range routers.GetExecutors() {
-					evpn, err := frr.EVPNInfo(exec)
-					if err != nil {
-						return fmt.Errorf("failed to get EVPN info from %s: %w", exec.Name(), err)
-					}
-					if !evpn.ContainsType2MACIPRouteForVNI(podIPOnly, vtepIPOnly, l2VNI) {
-						return fmt.Errorf(
-							"type 2 MAC+IP route for %s was WITHDRAWN from router %s - BridgeRefresher may not be working",
-							podIPOnly,
-							exec.Name(),
-						)
-					}
-				}
-				return nil
-			}, 90*time.Second, 10*time.Second).ShouldNot(HaveOccurred())
+			Consistently(allRoutersContainsExpectedType2MACIPRoute, 90*time.Second, 10*time.Second).
+				ShouldNot(HaveOccurred(), "should not WITHDRAWN type 2 MAC+IP route, BridgeRefresher may not be working")
 
 			By("Type 2 route persisted successfully - BridgeRefresher is working")
 		})
