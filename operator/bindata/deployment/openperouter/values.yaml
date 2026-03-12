@@ -63,6 +63,9 @@ openperouter:
     resources: {}
     reloader:
       resources: {}
+  # -- If true, use a persistent named network namespace (/var/run/netns/perouter)
+  # instead of the router pod's netns. Enables data plane resilience across pod restarts.
+  namedNetns: false
   cri: "containerd" # cri to bind its socket, can be containerd or crio.
   # -- OVS database socket path. Defaults to standard OVS location if not specified.
   ovsSocketPath: ""

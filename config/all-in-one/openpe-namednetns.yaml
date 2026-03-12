@@ -1,0 +1,1689 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: openperouter
+    control-plane: controller-manager
+    pod-security.kubernetes.io/enforce: privileged
+  name: openperouter-system
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  name: l2vnis.openpe.openperouter.github.io
+spec:
+  group: openpe.openperouter.github.io
+  names:
+    kind: L2VNI
+    listKind: L2VNIList
+    plural: l2vnis
+    singular: l2vni
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          L2VNI represents a VXLan VNI to receive EVPN type 2 routes
+          from.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: L2VNISpec defines the desired state of VNI.
+            properties:
+              hostmaster:
+                description: |-
+                  HostMaster is the interface on the host the veth should be enslaved to.
+                  If not set, the host veth will not be enslaved to any interface and it must be
+                  enslaved manually (or by some other means). This is useful if another controller
+                  is leveraging the host interface for the VNI.
+                properties:
+                  linuxBridge:
+                    description: LinuxBridge configuration. Must be set when Type
+                      is "linux-bridge".
+                    properties:
+                      autoCreate:
+                        default: false
+                        description: |-
+                          AutoCreate determines if the bridge should be created automatically.
+                          When true, the bridge is created with name br-hs-<VNI>.
+                        type: boolean
+                      name:
+                        description: Name of the Linux bridge interface.
+                        maxLength: 15
+                        pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
+                        type: string
+                    type: object
+                    x-kubernetes-validations:
+                    - message: either name must be set or autoCreate must be true,
+                        but not both.
+                      rule: (self.?name.orValue("") == "") == self.autoCreate
+                  ovsBridge:
+                    description: OVSBridge configuration. Must be set when Type is
+                      "ovs-bridge".
+                    properties:
+                      autoCreate:
+                        default: false
+                        description: |-
+                          AutoCreate determines if the OVS bridge should be created automatically.
+                          When true, the bridge is created with name br-hs-<VNI>.
+                        type: boolean
+                      name:
+                        description: Name of the OVS bridge interface.
+                        maxLength: 15
+                        pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
+                        type: string
+                    type: object
+                    x-kubernetes-validations:
+                    - message: either name must be set or autoCreate must be true,
+                        but not both.
+                      rule: (self.?name.orValue("") == "") == self.autoCreate
+                  type:
+                    description: 'Type of the host interface. Supported values: "linux-bridge",
+                      "ovs-bridge".'
+                    enum:
+                    - linux-bridge
+                    - ovs-bridge
+                    type: string
+                required:
+                - type
+                type: object
+                x-kubernetes-validations:
+                - message: 'type/config mismatch: ''linux-bridge'' requires linuxBridge
+                    field, ''ovs-bridge'' requires ovsBridge field'
+                  rule: (self.type == 'linux-bridge' && has(self.linuxBridge) && !has(self.ovsBridge))
+                    || (self.type == 'ovs-bridge' && has(self.ovsBridge) && !has(self.linuxBridge))
+              l2gatewayips:
+                description: |-
+                  L2GatewayIPs is a list of IP addresses in CIDR notation to be used for the L2 gateway. When this is set, the
+                  bridge the veths are enslaved to will be configured with these IP addresses, effectively
+                  acting as a distributed gateway for the VNI. This allows for dual-stack (IPv4 and IPv6) support.
+                  Maximum of 2 addresses are allowed. If 2 addresses are provided, one must be IPv4 and one must be IPv6.
+                items:
+                  type: string
+                maxItems: 2
+                type: array
+                x-kubernetes-validations:
+                - message: L2GatewayIPs cannot be changed
+                  rule: self == oldSelf
+              nodeSelector:
+                description: |-
+                  NodeSelector specifies which nodes this L2VNI applies to.
+                  If empty or not specified, applies to all nodes.
+                  Multiple L2VNIs can match the same node.
+                properties:
+                  matchExpressions:
+                    description: matchExpressions is a list of label selector requirements.
+                      The requirements are ANDed.
+                    items:
+                      description: |-
+                        A label selector requirement is a selector that contains values, a key, and an operator that
+                        relates the key and values.
+                      properties:
+                        key:
+                          description: key is the label key that the selector applies
+                            to.
+                          type: string
+                        operator:
+                          description: |-
+                            operator represents a key's relationship to a set of values.
+                            Valid operators are In, NotIn, Exists and DoesNotExist.
+                          type: string
+                        values:
+                          description: |-
+                            values is an array of string values. If the operator is In or NotIn,
+                            the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                            the values array must be empty. This array is replaced during a strategic
+                            merge patch.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  matchLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                      map is equivalent to an element of matchExpressions, whose key field is "key", the
+                      operator is "In", and the values array contains only "value". The requirements are ANDed.
+                    type: object
+                type: object
+                x-kubernetes-map-type: atomic
+              vni:
+                description: VNI is the VXLan VNI to be used
+                format: int32
+                maximum: 4294967295
+                minimum: 0
+                type: integer
+              vrf:
+                description: |-
+                  VRF is the name of the linux VRF to be used inside the PERouter namespace.
+                  The field is optional, if not set it the name of the VNI instance will be used.
+                maxLength: 15
+                pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
+                type: string
+              vxlanport:
+                default: 4789
+                description: VXLanPort is the port to be used for VXLan encapsulation.
+                format: int32
+                type: integer
+            type: object
+          status:
+            description: VNIStatus defines the observed state of VNI.
+            type: object
+        required:
+        - metadata
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  name: l3passthroughs.openpe.openperouter.github.io
+spec:
+  group: openpe.openperouter.github.io
+  names:
+    kind: L3Passthrough
+    listKind: L3PassthroughList
+    plural: l3passthroughs
+    singular: l3passthrough
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          L3Passthrough represents a session with the host which is not encapsulated and
+          takes part to the bgp fabric.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              hostsession:
+                description: HostSession is the configuration for the host session.
+                properties:
+                  asn:
+                    description: |-
+                      ASN is the local AS number to use to establish a BGP session with
+                      the default namespace.
+                    format: int32
+                    maximum: 4294967295
+                    minimum: 1
+                    type: integer
+                  hostasn:
+                    description: |-
+                      ASN is the expected AS number for a BGP speaking component running in
+                      the default network namespace. If not set, the ASN field is going to be used.
+                    format: int32
+                    maximum: 4294967295
+                    minimum: 0
+                    type: integer
+                  localcidr:
+                    description: |-
+                      LocalCIDR is the CIDR configuration for the veth pair
+                      to connect with the default namespace. The interface under
+                      the PERouter side is going to use the first IP of the cidr on all the nodes.
+                      At least one of IPv4 or IPv6 must be provided.
+                    properties:
+                      ipv4:
+                        description: |-
+                          IPv4 is the IPv4 CIDR to be used for the veth pair
+                          to connect with the default namespace. The interface under
+                          the PERouter side is going to use the first IP of the cidr on all the nodes.
+                        type: string
+                      ipv6:
+                        description: |-
+                          IPv6 is the IPv6 CIDR to be used for the veth pair
+                          to connect with the default namespace. The interface under
+                          the PERouter side is going to use the first IP of the cidr on all the nodes.
+                        type: string
+                    type: object
+                    x-kubernetes-validations:
+                    - message: LocalCIDR can't be changed
+                      rule: self == oldSelf
+                required:
+                - asn
+                - hostasn
+                - localcidr
+                type: object
+              nodeSelector:
+                description: |-
+                  NodeSelector specifies which nodes this L3Passthrough applies to.
+                  If empty or not specified, applies to all nodes.
+                  Multiple L3Passthrough with overlapping node selectors will be rejected.
+                properties:
+                  matchExpressions:
+                    description: matchExpressions is a list of label selector requirements.
+                      The requirements are ANDed.
+                    items:
+                      description: |-
+                        A label selector requirement is a selector that contains values, a key, and an operator that
+                        relates the key and values.
+                      properties:
+                        key:
+                          description: key is the label key that the selector applies
+                            to.
+                          type: string
+                        operator:
+                          description: |-
+                            operator represents a key's relationship to a set of values.
+                            Valid operators are In, NotIn, Exists and DoesNotExist.
+                          type: string
+                        values:
+                          description: |-
+                            values is an array of string values. If the operator is In or NotIn,
+                            the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                            the values array must be empty. This array is replaced during a strategic
+                            merge patch.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  matchLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                      map is equivalent to an element of matchExpressions, whose key field is "key", the
+                      operator is "In", and the values array contains only "value". The requirements are ANDed.
+                    type: object
+                type: object
+                x-kubernetes-map-type: atomic
+            type: object
+          status:
+            description: L3PassthroughStatus defines the observed state of L3Passthrough.
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  name: l3vnis.openpe.openperouter.github.io
+spec:
+  group: openpe.openperouter.github.io
+  names:
+    kind: L3VNI
+    listKind: L3VNIList
+    plural: l3vnis
+    singular: l3vni
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          L3VNI represents a VXLan L3VNI to receive EVPN type 5 routes
+          from.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: L3VNISpec defines the desired state of VNI.
+            properties:
+              hostsession:
+                description: HostSession is the configuration for the host session.
+                properties:
+                  asn:
+                    description: |-
+                      ASN is the local AS number to use to establish a BGP session with
+                      the default namespace.
+                    format: int32
+                    maximum: 4294967295
+                    minimum: 1
+                    type: integer
+                  hostasn:
+                    description: |-
+                      ASN is the expected AS number for a BGP speaking component running in
+                      the default network namespace. If not set, the ASN field is going to be used.
+                    format: int32
+                    maximum: 4294967295
+                    minimum: 0
+                    type: integer
+                  localcidr:
+                    description: |-
+                      LocalCIDR is the CIDR configuration for the veth pair
+                      to connect with the default namespace. The interface under
+                      the PERouter side is going to use the first IP of the cidr on all the nodes.
+                      At least one of IPv4 or IPv6 must be provided.
+                    properties:
+                      ipv4:
+                        description: |-
+                          IPv4 is the IPv4 CIDR to be used for the veth pair
+                          to connect with the default namespace. The interface under
+                          the PERouter side is going to use the first IP of the cidr on all the nodes.
+                        type: string
+                      ipv6:
+                        description: |-
+                          IPv6 is the IPv6 CIDR to be used for the veth pair
+                          to connect with the default namespace. The interface under
+                          the PERouter side is going to use the first IP of the cidr on all the nodes.
+                        type: string
+                    type: object
+                    x-kubernetes-validations:
+                    - message: LocalCIDR can't be changed
+                      rule: self == oldSelf
+                required:
+                - asn
+                - hostasn
+                - localcidr
+                type: object
+              nodeSelector:
+                description: |-
+                  NodeSelector specifies which nodes this L3VNI applies to.
+                  If empty or not specified, applies to all nodes.
+                  Multiple L3VNIs can match the same node.
+                properties:
+                  matchExpressions:
+                    description: matchExpressions is a list of label selector requirements.
+                      The requirements are ANDed.
+                    items:
+                      description: |-
+                        A label selector requirement is a selector that contains values, a key, and an operator that
+                        relates the key and values.
+                      properties:
+                        key:
+                          description: key is the label key that the selector applies
+                            to.
+                          type: string
+                        operator:
+                          description: |-
+                            operator represents a key's relationship to a set of values.
+                            Valid operators are In, NotIn, Exists and DoesNotExist.
+                          type: string
+                        values:
+                          description: |-
+                            values is an array of string values. If the operator is In or NotIn,
+                            the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                            the values array must be empty. This array is replaced during a strategic
+                            merge patch.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  matchLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                      map is equivalent to an element of matchExpressions, whose key field is "key", the
+                      operator is "In", and the values array contains only "value". The requirements are ANDed.
+                    type: object
+                type: object
+                x-kubernetes-map-type: atomic
+              vni:
+                description: VNI is the VXLan VNI to be used
+                format: int32
+                maximum: 4294967295
+                minimum: 0
+                type: integer
+              vrf:
+                description: VRF is the name of the linux VRF to be used inside the
+                  PERouter namespace.
+                maxLength: 15
+                pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
+                type: string
+              vxlanport:
+                default: 4789
+                description: VXLanPort is the port to be used for VXLan encapsulation.
+                format: int32
+                type: integer
+            required:
+            - vrf
+            type: object
+            x-kubernetes-validations:
+            - message: hostASN must be different from asn
+              rule: '!has(self.hostsession) || self.hostsession.hostasn != self.hostsession.asn'
+          status:
+            description: L3VNIStatus defines the observed state of L3VNI.
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  name: rawfrrconfigs.openpe.openperouter.github.io
+spec:
+  group: openpe.openperouter.github.io
+  names:
+    kind: RawFRRConfig
+    listKind: RawFRRConfigList
+    plural: rawfrrconfigs
+    singular: rawfrrconfig
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: RawFRRConfig is the Schema for the rawfrrconfigs API.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: RawFRRConfigSpec defines the desired state of RawFRRConfig.
+            properties:
+              nodeSelector:
+                description: |-
+                  NodeSelector specifies which nodes this RawFRRConfig applies to.
+                  If empty or not specified, applies to all nodes.
+                properties:
+                  matchExpressions:
+                    description: matchExpressions is a list of label selector requirements.
+                      The requirements are ANDed.
+                    items:
+                      description: |-
+                        A label selector requirement is a selector that contains values, a key, and an operator that
+                        relates the key and values.
+                      properties:
+                        key:
+                          description: key is the label key that the selector applies
+                            to.
+                          type: string
+                        operator:
+                          description: |-
+                            operator represents a key's relationship to a set of values.
+                            Valid operators are In, NotIn, Exists and DoesNotExist.
+                          type: string
+                        values:
+                          description: |-
+                            values is an array of string values. If the operator is In or NotIn,
+                            the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                            the values array must be empty. This array is replaced during a strategic
+                            merge patch.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  matchLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                      map is equivalent to an element of matchExpressions, whose key field is "key", the
+                      operator is "In", and the values array contains only "value". The requirements are ANDed.
+                    type: object
+                type: object
+                x-kubernetes-map-type: atomic
+              priority:
+                default: 0
+                description: |-
+                  Priority controls the ordering of raw config snippets in the rendered FRR configuration.
+                  Lower values are rendered first. Snippets with the same priority have undefined order.
+                minimum: 0
+                type: integer
+              rawConfig:
+                description: |-
+                  RawConfig is the raw FRR configuration text to append to the rendered configuration.
+                  WARNING: This feature is intended for advanced use cases. No validation of FRR syntax
+                  is performed at admission time; invalid configuration will cause FRR reload failures.
+                minLength: 1
+                type: string
+            required:
+            - rawConfig
+            type: object
+          status:
+            description: RawFRRConfigStatus defines the observed state of RawFRRConfig.
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  name: underlays.openpe.openperouter.github.io
+spec:
+  group: openpe.openperouter.github.io
+  names:
+    kind: Underlay
+    listKind: UnderlayList
+    plural: underlays
+    singular: underlay
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Underlay is the Schema for the underlays API.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: UnderlaySpec defines the desired state of Underlay.
+            properties:
+              asn:
+                description: ASN is the local AS number to use for the session with
+                  the TOR switch.
+                format: int32
+                maximum: 4294967295
+                minimum: 1
+                type: integer
+              evpn:
+                description: EVPNConfig contains EVPN-VXLAN configuration for the
+                  underlay.
+                properties:
+                  vtepInterface:
+                    description: |-
+                      VTEPInterface is the name of an existing interface to use as the VTEP source.
+                      The interface must already have an IP address configured that will be used
+                      as the VTEP IP. Mutually exclusive with VTEPCIDR.
+                      The ToR must advertise the interface IP into the fabric underlay
+                      (e.g. via redistribute connected) so that the VTEP address is reachable
+                      from other leaves.
+                    maxLength: 15
+                    pattern: ^[a-zA-Z][a-zA-Z0-9._-]*$
+                    type: string
+                  vtepcidr:
+                    description: |-
+                      VTEPCIDR is CIDR to be used to assign IPs to the local VTEP on each node.
+                      A loopback interface will be created with an IP derived from this CIDR.
+                      Mutually exclusive with VTEPInterface.
+                    type: string
+                type: object
+                x-kubernetes-validations:
+                - message: exactly one of vtepcidr or vtepInterface must be specified
+                  rule: (self.?vtepcidr.orValue("") != "") != (self.?vtepInterface.orValue("")
+                    != "")
+              neighbors:
+                description: Neighbors is the list of external neighbors to peer with.
+                items:
+                  description: Neighbor represents a BGP Neighbor we want FRR to connect
+                    to.
+                  properties:
+                    address:
+                      description: Address is the IP address to establish the session
+                        with.
+                      type: string
+                    asn:
+                      description: ASN is the AS number to use for the local end of
+                        the session.
+                      format: int32
+                      maximum: 4294967295
+                      minimum: 1
+                      type: integer
+                    bfd:
+                      description: BFD defines the BFD configuration for the BGP session.
+                      properties:
+                        detectMultiplier:
+                          description: |-
+                            Configures the detection multiplier to determine
+                            packet loss. The remote transmission interval will be multiplied
+                            by this value to determine the connection loss detection timer.
+                          format: int32
+                          maximum: 255
+                          minimum: 2
+                          type: integer
+                        echoInterval:
+                          description: |-
+                            Configures the minimal echo receive transmission
+                            interval that this system is capable of handling in milliseconds.
+                            Defaults to 50ms
+                          format: int32
+                          maximum: 60000
+                          minimum: 10
+                          type: integer
+                        echoMode:
+                          description: |-
+                            Enables or disables the echo transmission mode.
+                            This mode is disabled by default, and not supported on multi
+                            hops setups.
+                          type: boolean
+                        minimumTtl:
+                          description: |-
+                            For multi hop sessions only: configure the minimum
+                            expected TTL for an incoming BFD control packet.
+                          format: int32
+                          maximum: 254
+                          minimum: 1
+                          type: integer
+                        passiveMode:
+                          description: |-
+                            Mark session as passive: a passive session will not
+                            attempt to start the connection and will wait for control packets
+                            from peer before it begins replying.
+                          type: boolean
+                        receiveInterval:
+                          description: |-
+                            The minimum interval that this system is capable of
+                            receiving control packets in milliseconds.
+                            Defaults to 300ms.
+                          format: int32
+                          maximum: 60000
+                          minimum: 10
+                          type: integer
+                        transmitInterval:
+                          description: |-
+                            The minimum transmission interval (less jitter)
+                            that this system wants to use to send BFD control packets in
+                            milliseconds. Defaults to 300ms
+                          format: int32
+                          maximum: 60000
+                          minimum: 10
+                          type: integer
+                      type: object
+                    connectTime:
+                      description: Requested BGP connect time, controls how long BGP
+                        waits between connection attempts to a neighbor.
+                      type: string
+                      x-kubernetes-validations:
+                      - message: connect time should be between 1 seconds to 65535
+                        rule: duration(self).getSeconds() >= 1 && duration(self).getSeconds()
+                          <= 65535
+                      - message: connect time should contain a whole number of seconds
+                        rule: duration(self).getMilliseconds() % 1000 == 0
+                    ebgpMultiHop:
+                      description: EBGPMultiHop indicates if the BGPPeer is multi-hops
+                        away.
+                      type: boolean
+                    holdTime:
+                      description: |-
+                        HoldTime is the requested BGP hold time, per RFC4271.
+                        Defaults to 180s.
+                      type: string
+                    hostasn:
+                      description: |-
+                        ASN is the expected AS number for a BGP speaking component running in
+                        the default network namespace. If not set, the ASN field is going to be used.
+                      format: int32
+                      maximum: 4294967295
+                      minimum: 0
+                      type: integer
+                    keepaliveTime:
+                      description: |-
+                        KeepaliveTime is the requested BGP keepalive time, per RFC4271.
+                        Defaults to 60s.
+                      type: string
+                    password:
+                      description: |-
+                        Password to be used for establishing the BGP session.
+                        Password and PasswordSecret are mutually exclusive.
+                      type: string
+                    passwordSecret:
+                      description: |-
+                        PasswordSecret is name of the authentication secret for the neighbor.
+                        the secret must be of type "kubernetes.io/basic-auth", and created in the
+                        same namespace as the perouter daemon. The password is stored in the
+                        secret as the key "password".
+                        Password and PasswordSecret are mutually exclusive.
+                      type: string
+                    port:
+                      description: |-
+                        Port is the port to dial when establishing the session.
+                        Defaults to 179.
+                      maximum: 16384
+                      minimum: 0
+                      type: integer
+                  required:
+                  - address
+                  type: object
+                  x-kubernetes-validations:
+                  - message: hostASN must be different from asn for eBGP
+                    rule: '!has(self.hostasn) || self.hostasn != self.asn'
+                minItems: 1
+                type: array
+              nics:
+                description: |-
+                  Nics is the list of physical nics to move under the PERouter namespace to connect
+                  to external routers. This field is optional when using Multus networks for TOR connectivity.
+                items:
+                  maxLength: 15
+                  pattern: ^[a-zA-Z][a-zA-Z0-9._-]*$
+                  type: string
+                type: array
+              nodeSelector:
+                description: |-
+                  NodeSelector specifies which nodes this Underlay applies to.
+                  If empty or not specified, applies to all nodes (backward compatible).
+                  Multiple Underlays with overlapping node selectors will be rejected.
+                properties:
+                  matchExpressions:
+                    description: matchExpressions is a list of label selector requirements.
+                      The requirements are ANDed.
+                    items:
+                      description: |-
+                        A label selector requirement is a selector that contains values, a key, and an operator that
+                        relates the key and values.
+                      properties:
+                        key:
+                          description: key is the label key that the selector applies
+                            to.
+                          type: string
+                        operator:
+                          description: |-
+                            operator represents a key's relationship to a set of values.
+                            Valid operators are In, NotIn, Exists and DoesNotExist.
+                          type: string
+                        values:
+                          description: |-
+                            values is an array of string values. If the operator is In or NotIn,
+                            the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                            the values array must be empty. This array is replaced during a strategic
+                            merge patch.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  matchLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                      map is equivalent to an element of matchExpressions, whose key field is "key", the
+                      operator is "In", and the values array contains only "value". The requirements are ANDed.
+                    type: object
+                type: object
+                x-kubernetes-map-type: atomic
+              routeridcidr:
+                default: 10.0.0.0/24
+                description: RouterIDCIDR is the ipv4 cidr to be used to assign a
+                  different routerID on each node.
+                type: string
+            required:
+            - asn
+            type: object
+          status:
+            description: UnderlayStatus defines the observed state of Underlay.
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: openperouter
+  name: controller
+  namespace: openperouter-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: openperouter
+  name: perouter
+  namespace: openperouter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: openperouter
+  name: controller-role
+  namespace: openperouter-system
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: openperouter
+  name: perouter-role
+  namespace: openperouter-system
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: controller-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - delete
+  - get
+  - list
+  - watch
+- apiGroups:
+  - admissionregistration.k8s.io
+  resources:
+  - validatingwebhookconfigurations
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - admissionregistration.k8s.io
+  resourceNames:
+  - openpe-validating-webhook-configuration
+  resources:
+  - validatingwebhookconfigurations
+  verbs:
+  - update
+- apiGroups:
+  - openpe.openperouter.github.io
+  resources:
+  - l2vnis
+  - l3passthroughs
+  - l3vnis
+  - underlays
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - openpe.openperouter.github.io
+  resources:
+  - l2vnis/finalizers
+  - l3passthroughs/finalizers
+  - l3vnis/finalizers
+  - underlays/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - openpe.openperouter.github.io
+  resources:
+  - l2vnis/status
+  - l3passthroughs/status
+  - l3vnis/status
+  - underlays/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - openpe.openperouter.github.io
+  resources:
+  - rawfrrconfigs
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - openpe.openperouter.github.io
+  resources:
+  - rawfrrconfigs/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: openperouter
+  name: controller-rolebinding
+  namespace: openperouter-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: controller-role
+subjects:
+- kind: ServiceAccount
+  name: controller
+  namespace: openperouter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: openperouter
+  name: perouter-rolebinding
+  namespace: openperouter-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: perouter-role
+subjects:
+- kind: ServiceAccount
+  name: perouter
+  namespace: openperouter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: openperouter
+  name: controller-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: controller-role
+subjects:
+- kind: ServiceAccount
+  name: controller
+  namespace: openperouter-system
+---
+apiVersion: v1
+data:
+  daemons: |
+    # This file tells the frr package which daemons to start.
+    #
+    # Sample configurations for these daemons can be found in
+    # /usr/share/doc/frr/examples/.
+    #
+    # ATTENTION:
+    #
+    # When activating a daemon for the first time, a config file, even if it is
+    # empty, has to be present *and* be owned by the user and group "frr", else
+    # the daemon will not be started by /etc/init.d/frr. The permissions should
+    # be u=rw,g=r,o=.
+    # When using "vtysh" such a config file is also needed. It should be owned by
+    # group "frrvty" and set to ug=rw,o= though. Check /etc/pam.d/frr, too.
+    #
+    # The watchfrr and zebra daemons are always started.
+    #
+    bgpd=yes
+    ospfd=no
+    ospf6d=no
+    ripd=no
+    ripngd=no
+    isisd=no
+    pimd=no
+    ldpd=no
+    nhrpd=no
+    eigrpd=no
+    babeld=no
+    sharpd=no
+    pbrd=no
+    bfdd=yes
+    fabricd=no
+    vrrpd=no
+
+    #
+    # If this option is set the /etc/init.d/frr script automatically loads
+    # the config via "vtysh -b" when the servers are started.
+    # Check /etc/pam.d/frr if you intend to use "vtysh"!
+    #
+    vtysh_enable=yes
+    zebra_options="  -A 127.0.0.1 -s 90000000 --limit-fds 100000"
+    bgpd_options="   -A 127.0.0.1 --limit-fds 100000"
+    ospfd_options="  -A 127.0.0.1"
+    ospf6d_options=" -A ::1"
+    ripd_options="   -A 127.0.0.1"
+    ripngd_options=" -A ::1"
+    isisd_options="  -A 127.0.0.1"
+    pimd_options="   -A 127.0.0.1"
+    ldpd_options="   -A 127.0.0.1"
+    nhrpd_options="  -A 127.0.0.1"
+    eigrpd_options=" -A 127.0.0.1"
+    babeld_options=" -A 127.0.0.1"
+    sharpd_options=" -A 127.0.0.1"
+    pbrd_options="   -A 127.0.0.1"
+    staticd_options="-A 127.0.0.1 --limit-fds 100000"
+    bfdd_options="   -A 127.0.0.1 --limit-fds 100000"
+    fabricd_options="-A 127.0.0.1"
+    vrrpd_options="  -A 127.0.0.1"
+
+    # configuration profile
+    #
+    #frr_profile="traditional"
+    #frr_profile="datacenter"
+
+    #
+    # This is the maximum number of FD's that will be available.
+    # Upon startup this is read by the control files and ulimit
+    # is called. Uncomment and use a reasonable value for your
+    # setup if you are expecting a large number of peers in
+    # say BGP.
+    MAX_FDS=100000
+
+    # The list of daemons to watch is automatically generated by the init script.
+    #watchfrr_options=""
+
+    # for debugging purposes, you can specify a "wrap" command to start instead
+    # of starting the daemon directly, e.g. to use valgrind on ospfd:
+    #   ospfd_wrap="/usr/bin/valgrind"
+    # or you can use "all_wrap" for all daemons, e.g. to use perf record:
+    #   all_wrap="/usr/bin/perf record --call-graph -"
+    # the normal daemon command is added to this at the end.
+  frr.conf: |
+    ! This file gets overriden the first time the speaker renders a config.
+    ! So anything configured here is only temporary.
+    frr version 8.0
+    frr defaults traditional
+    hostname Router
+    line vty
+    log file /etc/frr/frr.log informational
+  vtysh.conf: |
+    service integrated-vtysh-config
+kind: ConfigMap
+metadata:
+  name: frr-startup
+  namespace: openperouter-system
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: openpe-webhook-server-cert
+  namespace: openperouter-system
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: openpe-webhook-service
+  namespace: openperouter-system
+spec:
+  ports:
+  - port: 443
+    targetPort: webhook-server
+  selector:
+    component: nodemarker
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/component: nodemarker
+    app.kubernetes.io/created-by: nodemarker
+    app.kubernetes.io/instance: nodemarker
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: nodemarker
+    app.kubernetes.io/part-of: nodemarker
+    component: nodemarker
+  name: nodemarker
+  namespace: openperouter-system
+spec:
+  selector:
+    matchLabels:
+      control-plane: nodemarker
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: nodemarker
+      labels:
+        app: nodemarker
+        component: nodemarker
+        control-plane: nodemarker
+    spec:
+      containers:
+      - args:
+        - --loglevel=debug
+        - --namespace=$(NAMESPACE)
+        - --webhookmode=enabled
+        command:
+        - /nodemarker
+        env:
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        image: quay.io/openperouter/router:main
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: webhook-server
+            scheme: HTTPS
+        name: nodemarker
+        ports:
+        - containerPort: 9443
+          name: webhook-server
+          protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: webhook-server
+            scheme: HTTPS
+        resources:
+          limits:
+            cpu: 500m
+            memory: 128Mi
+          requests:
+            cpu: 10m
+            memory: 64Mi
+        volumeMounts:
+        - mountPath: /tmp/k8s-webhook-server/serving-certs
+          name: cert
+          readOnly: true
+      serviceAccountName: controller
+      tolerations:
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/master
+        operator: Exists
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/control-plane
+        operator: Exists
+      volumes:
+      - name: cert
+        secret:
+          defaultMode: 420
+          secretName: openpe-webhook-server-cert
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  labels:
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/created-by: controller
+    app.kubernetes.io/instance: controller
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: controller
+    app.kubernetes.io/part-of: controller
+    control-plane: controller
+  name: controller
+  namespace: openperouter-system
+spec:
+  selector:
+    matchLabels:
+      control-plane: controller
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: controller
+      labels:
+        app: controller
+        control-plane: controller
+    spec:
+      containers:
+      - args:
+        - --nodename=$(NODE_NAME)
+        - --loglevel=debug
+        - --namespace=$(NAMESPACE)
+        - --frrconfig=/etc/frr/frr.conf
+        - --reloader-socket=/etc/frr/reload.sock
+        - --named-netns=true
+        command:
+        - /controller
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        image: quay.io/openperouter/router:main
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /healthz
+            port: 9081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+          timeoutSeconds: 1
+        name: controller
+        ports:
+        - containerPort: 9081
+          name: health
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /readyz
+            port: 9081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 1
+        resources:
+          limits:
+            cpu: 500m
+            memory: 128Mi
+          requests:
+            cpu: 10m
+            memory: 64Mi
+        securityContext:
+          capabilities:
+            add:
+            - NET_ADMIN
+            - NET_RAW
+            - SYS_ADMIN
+            - NET_BIND_SERVICE
+          privileged: true
+        volumeMounts:
+        - mountPath: /run/netns
+          mountPropagation: Bidirectional
+          name: runns
+        - mountPath: /containerd.sock
+          name: varrun
+          subPath: containerd.sock
+        - mountPath: /etc/frr/
+          mountPropagation: HostToContainer
+          name: frr-config
+        - mountPath: /var/run/openvswitch
+          mountPropagation: HostToContainer
+          name: ovs-var-run
+        - mountPath: /var/run/frr
+          name: frr-sockets
+      hostNetwork: true
+      hostPID: true
+      serviceAccountName: controller
+      tolerations:
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/master
+        operator: Exists
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/control-plane
+        operator: Exists
+      volumes:
+      - hostPath:
+          path: /run/netns
+        name: runns
+      - hostPath:
+          path: /run/containerd
+        name: varrun
+      - hostPath:
+          path: /etc/perouter/frr
+          type: DirectoryOrCreate
+        name: frr-config
+      - hostPath:
+          path: /var/run/openvswitch
+        name: ovs-var-run
+      - hostPath:
+          path: /var/run/openperouter/frr
+          type: DirectoryOrCreate
+        name: frr-sockets
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  labels:
+    app.kubernetes.io/component: router
+    app.kubernetes.io/created-by: router
+    app.kubernetes.io/instance: router
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: router
+    app.kubernetes.io/part-of: router
+    control-plane: router
+  name: router
+  namespace: openperouter-system
+spec:
+  selector:
+    matchLabels:
+      control-plane: router
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: router
+      labels:
+        app: router
+        control-plane: router
+    spec:
+      containers:
+      - command:
+        - /bin/sh
+        - -c
+        - |
+          until [ -e /var/run/netns/perouter ]; do
+            echo "Waiting for named netns /var/run/netns/perouter..."
+            sleep 1
+          done
+          nsenter --net=/var/run/netns/perouter /sbin/tini -- /usr/lib/frr/docker-start &
+          attempts=0
+          until [[ -f /etc/frr/frr.log || $attempts -eq 60 ]]; do
+            sleep 1
+            attempts=$(( $attempts + 1 ))
+          done
+          tail -f /etc/frr/frr.log
+        env:
+        - name: TINI_SUBREAPER
+          value: "true"
+        image: quay.io/openperouter/router:main
+        imagePullPolicy: IfNotPresent
+        name: frr
+        securityContext:
+          capabilities:
+            add:
+            - NET_ADMIN
+            - NET_RAW
+            - SYS_ADMIN
+            - NET_BIND_SERVICE
+            - SYS_PTRACE
+        volumeMounts:
+        - mountPath: /var/run/frr
+          name: frr-sockets
+        - mountPath: /etc/frr
+          name: frrconfig
+        - mountPath: /var/run/netns
+          mountPropagation: HostToContainer
+          name: netns
+      - args:
+        - --frrconfig=/etc/perouter/frr.conf
+        - --loglevel=debug
+        - --unixsocket=/etc/perouter/reload.sock
+        command:
+        - /reloader
+        image: quay.io/openperouter/router:main
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /healthz
+            port: 9080
+          initialDelaySeconds: 15
+          periodSeconds: 20
+          timeoutSeconds: 1
+        name: reloader
+        ports:
+        - containerPort: 9080
+          name: health
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /readyz
+            port: 9080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 1
+        volumeMounts:
+        - mountPath: /etc/frr
+          name: frrconfig
+        - mountPath: /var/run/frr
+          name: frr-sockets
+        - mountPath: /etc/perouter
+          name: frrsharedconfig
+      hostNetwork: true
+      initContainers:
+      - command:
+        - /bin/sh
+        - -c
+        - cp -rLf /tmp/frr/* /etc/frr/
+        image: quay.io/openperouter/router:main
+        imagePullPolicy: IfNotPresent
+        name: cp-frr-files
+        volumeMounts:
+        - mountPath: /tmp/frr
+          name: frr-startup
+        - mountPath: /etc/frr
+          name: frrconfig
+      serviceAccountName: perouter
+      shareProcessNamespace: true
+      terminationGracePeriodSeconds: 10
+      tolerations:
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/master
+        operator: Exists
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/control-plane
+        operator: Exists
+      volumes:
+      - hostPath:
+          path: /var/run/netns
+        name: netns
+      - emptyDir: {}
+        name: frr-sockets
+      - configMap:
+          name: frr-startup
+        name: frr-startup
+      - hostPath:
+          path: /etc/perouter/frr
+          type: DirectoryOrCreate
+        name: frrsharedconfig
+      - emptyDir: {}
+        name: frrconfig
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: openpe-validating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: openpe-webhook-service
+      namespace: openperouter-system
+      path: /validate-openperouter-io-v1alpha1-l2vni
+  failurePolicy: Fail
+  name: l2vnivalidationwebhook.openperouter.io
+  rules:
+  - apiGroups:
+    - openpe.openperouter.github.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - l2vnis
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: openpe-webhook-service
+      namespace: openperouter-system
+      path: /validate-openperouter-io-v1alpha1-l3passthrough
+  failurePolicy: Fail
+  name: l3passthroughvalidationwebhook.openperouter.io
+  rules:
+  - apiGroups:
+    - openpe.openperouter.github.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - l3passthroughs
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: openpe-webhook-service
+      namespace: openperouter-system
+      path: /validate-openperouter-io-v1alpha1-l3vni
+  failurePolicy: Fail
+  name: l3vnivalidationwebhook.openperouter.io
+  rules:
+  - apiGroups:
+    - openpe.openperouter.github.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - l3vnis
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: openpe-webhook-service
+      namespace: openperouter-system
+      path: /validate-openperouter-io-v1alpha1-rawfrrconfig
+  failurePolicy: Fail
+  name: rawfrrconfigvalidationwebhook.openperouter.io
+  rules:
+  - apiGroups:
+    - openpe.openperouter.github.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - rawfrrconfigs
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: openpe-webhook-service
+      namespace: openperouter-system
+      path: /validate-openperouter-io-v1alpha1-underlay
+  failurePolicy: Fail
+  name: underlayvalidationwebhook.openperouter.io
+  rules:
+  - apiGroups:
+    - openpe.openperouter.github.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - underlays
+  sideEffects: None
