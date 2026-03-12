@@ -92,6 +92,8 @@ TimeoutStopSec=70
 ExecStartPre=/usr/bin/mkdir -p /etc/perouter/frr
 ExecStartPre=/usr/bin/mkdir -p /var/lib/hostbridge
 ExecStartPre=/usr/bin/mkdir -p /var/lib/openperouter
+ExecStartPre=/usr/bin/mkdir -p /var/run/openvswitch
+
 
 [Install]
 # Automatically enable this container at boot
