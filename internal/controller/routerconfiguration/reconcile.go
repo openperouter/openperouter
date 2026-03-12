@@ -19,7 +19,7 @@ func Reconcile(ctx context.Context, apiConfig conversion.ApiConfigData, underlay
 		return fmt.Errorf("failed to validate l3vnis: %w", err)
 	}
 
-	if err := conversion.ValidateL2VNIs(apiConfig.L2VNIs); err != nil {
+	if err := conversion.ValidateL2VNIs(apiConfig.L2VNIs, apiConfig.L3VNIs); err != nil {
 		return fmt.Errorf("failed to validate l2vnis: %w", err)
 	}
 

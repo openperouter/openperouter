@@ -107,18 +107,23 @@ func validateL2VNI(l2vni *v1alpha1.L2VNI) error {
 		return err
 	}
 
-	toValidate := make([]v1alpha1.L2VNI, 0, len(existingL2VNIs.Items))
+	toValidateL2 := make([]v1alpha1.L2VNI, 0, len(existingL2VNIs.Items))
 	found := false
 	for _, existingL2VNI := range existingL2VNIs.Items {
 		if existingL2VNI.Name == l2vni.Name && existingL2VNI.Namespace == l2vni.Namespace {
-			toValidate = append(toValidate, *l2vni.DeepCopy())
+			toValidateL2 = append(toValidateL2, *l2vni.DeepCopy())
 			found = true
 			continue
 		}
-		toValidate = append(toValidate, existingL2VNI)
+		toValidateL2 = append(toValidateL2, existingL2VNI)
 	}
 	if !found {
-		toValidate = append(toValidate, *l2vni.DeepCopy())
+		toValidateL2 = append(toValidateL2, *l2vni.DeepCopy())
+	}
+
+	toValidateL3, err := getL3VNIs()
+	if err != nil {
+		return err
 	}
 
 	nodeList := &corev1.NodeList{}
@@ -126,7 +131,7 @@ func validateL2VNI(l2vni *v1alpha1.L2VNI) error {
 		return fmt.Errorf("failed to get existing Node objects when validating L2VNI: %w", err)
 	}
 
-	if err := conversion.ValidateL2VNIsForNodes(nodeList.Items, toValidate); err != nil {
+	if err := conversion.ValidateL2VNIsForNodes(nodeList.Items, toValidateL2, toValidateL3.Items); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
 	}
 	return nil
