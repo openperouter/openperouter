@@ -91,35 +91,35 @@ func (h *Chart) Objects(envConfig envconfig.EnvConfig, crdConfig *operatorapi.Op
 	return objs, nil
 }
 
-func patchChartValues(envConfig envconfig.EnvConfig, crdConfig *operatorapi.OpenPERouter, valuesMap map[string]interface{}) {
+func patchChartValues(envConfig envconfig.EnvConfig, crdConfig *operatorapi.OpenPERouter, valuesMap map[string]any) {
 	cri := ContainerRuntimeContainerd
 	if envConfig.IsOpenshift {
 		cri = ContainerRuntimeCrio
 	}
-	openperouterValues := map[string]interface{}{
+	openperouterValues := map[string]any{
 		"logLevel":                logLevelValue(crdConfig),
 		"multusNetworkAnnotation": crdConfig.Spec.MultusNetworkAnnotation,
 		"runOnMaster":             crdConfig.Spec.RunOnMaster,
-		"image": map[string]interface{}{
+		"image": map[string]any{
 			"repository": envConfig.ControllerImage.Repo,
 			"tag":        envConfig.ControllerImage.Tag,
 		},
-		"serviceAccounts": map[string]interface{}{
+		"serviceAccounts": map[string]any{
 			"create": false,
-			"controller": map[string]interface{}{
+			"controller": map[string]any{
 				"name": "controller",
 			},
-			"perouter": map[string]interface{}{
+			"perouter": map[string]any{
 				"name": "perouter",
 			},
 		},
-		"frr": map[string]interface{}{
-			"image": map[string]interface{}{
+		"frr": map[string]any{
+			"image": map[string]any{
 				"repository": envConfig.FRRImage.Repo,
 				"tag":        envConfig.FRRImage.Tag,
 			},
 		},
-		"crds": map[string]interface{}{
+		"crds": map[string]any{
 			"enabled": false,
 		},
 		"cri": cri,
@@ -132,14 +132,14 @@ func patchChartValues(envConfig envconfig.EnvConfig, crdConfig *operatorapi.Open
 		openperouterValues["ovsRunDir"] = crdConfig.Spec.OVSRunDir
 	}
 	if crdConfig.Spec.HealthProbePort != 0 {
-		openperouterValues["controller"] = map[string]interface{}{
+		openperouterValues["controller"] = map[string]any{
 			"healthProbePort": crdConfig.Spec.HealthProbePort,
 		}
 	}
 
 	valuesMap["openperouter"] = openperouterValues
 
-	valuesMap["webhook"] = map[string]interface{}{
+	valuesMap["webhook"] = map[string]any{
 		"enabled": false,
 	}
 }

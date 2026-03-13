@@ -26,8 +26,8 @@ func PingFrr(frrCli vtysh.Cli) error {
 		"zebra":    {},
 	}
 
-	runningDaemons := strings.Fields(res)
-	for _, d := range runningDaemons {
+	runningDaemons := strings.FieldsSeq(res)
+	for d := range runningDaemons {
 		delete(expected, d)
 	}
 	if len(expected) > 0 {

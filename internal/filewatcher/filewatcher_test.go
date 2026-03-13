@@ -29,8 +29,7 @@ func TestFileWatcherEventDetection(t *testing.T) {
 		t.Fatalf("failed to create file watcher: %v", err)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	err = fw.Start(ctx)
 	if err != nil {
@@ -90,8 +89,7 @@ func TestFileWatcherDebouncing(t *testing.T) {
 		t.Fatalf("failed to create file watcher: %v", err)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	err = fw.Start(ctx)
 	if err != nil {
@@ -101,8 +99,8 @@ func TestFileWatcherDebouncing(t *testing.T) {
 	testFile := filepath.Join(tmpDir, "debounce-test.yaml")
 
 	// Make rapid successive changes (5 changes within 200ms)
-	for i := 0; i < 5; i++ {
-		err = os.WriteFile(testFile, []byte(fmt.Sprintf("content-%d", i)), 0644)
+	for i := range 5 {
+		err = os.WriteFile(testFile, fmt.Appendf(nil, "content-%d", i), 0644)
 		if err != nil {
 			t.Fatalf("failed to write test file iteration %d: %v", i, err)
 		}

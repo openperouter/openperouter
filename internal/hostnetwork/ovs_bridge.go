@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	libovsclient "github.com/ovn-kubernetes/libovsdb/client"
@@ -183,11 +184,9 @@ func ensurePortAttachedToBridge(ctx context.Context, ovs libovsclient.Client, br
 	}
 
 	if portUUID != "" {
-		for _, existingPortUUID := range bridge.Ports {
-			if existingPortUUID == portUUID {
-				slog.Debug("port already attached to bridge", "port", interfaceName, "bridge", bridge.Name)
-				return nil
-			}
+		if slices.Contains(bridge.Ports, portUUID) {
+			slog.Debug("port already attached to bridge", "port", interfaceName, "bridge", bridge.Name)
+			return nil
 		}
 	}
 

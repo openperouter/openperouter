@@ -3,6 +3,8 @@
 package helm
 
 import (
+	"maps"
+
 	"github.com/pkg/errors"
 	uns "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -171,9 +173,7 @@ func mergeAnnotations(current, updated *uns.Unstructured) {
 		curAnnotations = map[string]string{}
 	}
 
-	for k, v := range updatedAnnotations {
-		curAnnotations[k] = v
-	}
+	maps.Copy(curAnnotations, updatedAnnotations)
 
 	if len(curAnnotations) != 0 {
 		updated.SetAnnotations(curAnnotations)
@@ -190,9 +190,7 @@ func mergeLabels(current, updated *uns.Unstructured) {
 		curLabels = map[string]string{}
 	}
 
-	for k, v := range updatedLabels {
-		curLabels[k] = v
-	}
+	maps.Copy(curLabels, updatedLabels)
 
 	if len(curLabels) != 0 {
 		updated.SetLabels(curLabels)

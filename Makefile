@@ -68,6 +68,10 @@ generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and
 	./hack/update-modelgen.sh
 	./hack/bumplicense.sh
 
+.PHONY: fix
+fix: ## Run go fix against code.
+	@go fix $(shell go list ./... | grep -vE 'internal/ovsmodel')
+
 .PHONY: fmt
 fmt: ## Run go fmt against code.
 	go fmt ./...

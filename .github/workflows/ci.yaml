@@ -53,6 +53,7 @@ jobs:
           make bumplicense
           make manifests
           make generate
+          make fix
           make generate-all-in-one
           # make api-docs
           make checkuncommitted
