@@ -67,6 +67,15 @@ func APItoFRR(config ApiConfigData, nodeIndex int, logLevel string) (frr.Config,
 		Neighbors: underlayNeighbors,
 	}
 
+	if underlay.Spec.GracefulRestart != nil {
+		restartTime := ptr.Deref(underlay.Spec.GracefulRestart.RestartTime, 120)
+		stalePathTime := ptr.Deref(underlay.Spec.GracefulRestart.StalePathTime, 360)
+		underlayConfig.GracefulRestart = &frr.GracefulRestart{
+			RestartTime:   restartTime,
+			StalePathTime: stalePathTime,
+		}
+	}
+
 	var passthroughConfig *frr.PassthroughConfig
 	if len(config.L3Passthrough) > 0 {
 		passthrough, err := passthroughToFRR(config.L3Passthrough[0], nodeIndex)
