@@ -60,6 +60,9 @@ spec:
         - "--frrconfig=/etc/perouter/frr.conf"
         - "--loglevel=debug"
         - "--unixsocket=/etc/perouter/reload.sock"
+        securityContext: 
+          seLinuxOptions:
+            type: spc_t
         volumeMounts:
           - name: frrconfig
             mountPath: /etc/frr
