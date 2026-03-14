@@ -88,6 +88,20 @@ spec:
                 - hostasn
                 - localcidr
                 type: object
+              exportRTs:
+                description: |-
+                  ExportRTs are the Route Targets to be used for exporting routes.
+                  RouteTarget defines a BGP Extended Community for route filtering.
+                items:
+                  type: string
+                type: array
+              importRTs:
+                description: |-
+                  ImportRTs are the Route Targets to be used for importing routes.
+                  RouteTarget defines a BGP Extended Community for route filtering.
+                items:
+                  type: string
+                type: array
               nodeSelector:
                 description: |-
                   NodeSelector specifies which nodes this L3VNI applies to.
