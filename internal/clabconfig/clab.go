@@ -12,8 +12,8 @@ import (
 
 // ClabTopology represents the top-level containerlab topology file.
 type ClabTopology struct {
-	Name     string               `yaml:"name"`
-	Topology ClabTopologySection  `yaml:"topology"`
+	Name     string              `yaml:"name"`
+	Topology ClabTopologySection `yaml:"topology"`
 }
 
 // ClabTopologySection contains the nodes and links of a topology.

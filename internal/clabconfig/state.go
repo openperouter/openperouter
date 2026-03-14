@@ -5,6 +5,7 @@ package clabconfig
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"regexp"
 	"sort"
@@ -30,14 +31,14 @@ type TopologyState struct {
 
 // NodeState holds the state for a single node in the topology.
 type NodeState struct {
-	Name           string                    `json:"name"`
-	MatchedPattern string                    `json:"matchedPattern"`
-	Role           string                    `json:"role"`
-	RouterID       string                    `json:"routerID"`
-	VTEPIP         string                    `json:"vtepIP,omitempty"`
+	Name           string                     `json:"name"`
+	MatchedPattern string                     `json:"matchedPattern"`
+	Role           string                     `json:"role"`
+	RouterID       string                     `json:"routerID"`
+	VTEPIP         string                     `json:"vtepIP,omitempty"`
 	Interfaces     map[string]*InterfaceState `json:"interfaces"`
-	VRFs           map[string]*VRFState      `json:"vrfs,omitempty"`
-	BGP            *BGPState                 `json:"bgp"`
+	VRFs           map[string]*VRFState       `json:"vrfs,omitempty"`
+	BGP            *BGPState                  `json:"bgp"`
 }
 
 // InterfaceState holds the state for a single interface.
@@ -276,6 +277,107 @@ func (s *TopologyState) FindIPOwner(ip string) (nodeName, iface string, err erro
 		}
 	}
 	return "", "", fmt.Errorf("no interface found with IP containing %q", ip)
+}
+
+// StripCIDR removes the prefix length from a CIDR string, e.g. "1.2.3.4/31" → "1.2.3.4".
+func StripCIDR(addr string) string {
+	if i := strings.Index(addr, "/"); i >= 0 {
+		return addr[:i]
+	}
+	return addr
+}
+
+// GetPeerIP returns the IP address of the peer end of a point-to-point link.
+// Given nodeName and peerName, it finds the IP that peerName has on the link facing nodeName.
+// This is useful for finding IPs of nodes not in state.Nodes (e.g., host nodes).
+func (s *TopologyState) GetPeerIP(nodeName, peerName string, family IPFamily) (string, error) {
+	// If peer is in Nodes, look up its interface facing nodeName directly
+	if peer, ok := s.Nodes[peerName]; ok {
+		for _, iface := range peer.Interfaces {
+			if iface.PeerNode == nodeName {
+				switch family {
+				case IPv4:
+					if iface.IPv4 == "" {
+						return "", fmt.Errorf("no IPv4 address on %s interface facing %s", peerName, nodeName)
+					}
+					return iface.IPv4, nil
+				case IPv6:
+					if iface.IPv6 == "" {
+						return "", fmt.Errorf("no IPv6 address on %s interface facing %s", peerName, nodeName)
+					}
+					return iface.IPv6, nil
+				}
+			}
+		}
+	}
+
+	// Peer is not in Nodes (e.g., a host node). Compute from the node's own IP.
+	nodeObj, ok := s.Nodes[nodeName]
+	if !ok {
+		return "", fmt.Errorf("node %q not found", nodeName)
+	}
+	for _, iface := range nodeObj.Interfaces {
+		if iface.PeerNode == peerName {
+			switch family {
+			case IPv4:
+				if iface.IPv4 == "" {
+					return "", fmt.Errorf("no IPv4 address on %s interface facing %s", nodeName, peerName)
+				}
+				return otherIP(iface.IPv4), nil
+			case IPv6:
+				if iface.IPv6 == "" {
+					return "", fmt.Errorf("no IPv6 address on %s interface facing %s", nodeName, peerName)
+				}
+				return otherIP(iface.IPv6), nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("no link found between %s and %s", nodeName, peerName)
+}
+
+// otherIP computes the other address in a /31 or /127 subnet.
+// Given "192.168.1.0/31", returns "192.168.1.1/31".
+func otherIP(cidr string) string {
+	ip, ipNet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return cidr
+	}
+	ipBytes := ip.To16()
+	if ipBytes == nil {
+		return cidr
+	}
+	ipBytes[len(ipBytes)-1] ^= 1
+	ones, _ := ipNet.Mask.Size()
+	return fmt.Sprintf("%s/%d", ipBytes.String(), ones)
+}
+
+// GetBroadcastMemberIP returns the IP address of a specific member in a broadcast network.
+func (s *TopologyState) GetBroadcastMemberIP(switchName, nodeName string, family IPFamily) (string, error) {
+	for _, bn := range s.BroadcastNetworks {
+		if bn.SwitchName == switchName {
+			for _, member := range bn.Members {
+				if member.NodeName == nodeName {
+					switch family {
+					case IPv4:
+						if member.IPv4 == "" {
+							return "", fmt.Errorf("no IPv4 address for %s in broadcast network %s", nodeName, switchName)
+						}
+						return member.IPv4, nil
+					case IPv6:
+						if member.IPv6 == "" {
+							return "", fmt.Errorf("no IPv6 address for %s in broadcast network %s", nodeName, switchName)
+						}
+						return member.IPv6, nil
+					default:
+						return "", fmt.Errorf("unknown IP family %d", family)
+					}
+				}
+			}
+			return "", fmt.Errorf("node %q not found in broadcast network %q", nodeName, switchName)
+		}
+	}
+	return "", fmt.Errorf("broadcast network %q not found", switchName)
 }
 
 // GetNodesByPattern returns a sorted list of node names matching the given regex pattern.

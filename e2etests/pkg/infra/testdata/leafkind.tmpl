@@ -20,15 +20,15 @@ debug bfd network
 debug bfd peer
 debug bfd zebra
 
-router bgp 64512
+router bgp {{ .ASN }}
  no bgp ebgp-requires-policy
  no bgp network import-check
  no bgp default ipv4-unicast
 
- neighbor 192.168.1.4 remote-as 64612
+ neighbor {{ .SpineAddress }} remote-as {{ .SpineASN }}
 
 {{- range .Neighbors }}
- neighbor {{ . }} remote-as 64514
+ neighbor {{ . }} remote-as {{ $.KindNodeASN }}
 {{- if $.EnableBFD }}
  neighbor {{ . }} bfd
 {{- end }}
@@ -39,14 +39,14 @@ router bgp 64512
 {{- if .RedistributeConnected }}
   redistribute connected
 {{- end }}
-  neighbor 192.168.1.4 activate
+  neighbor {{ .SpineAddress }} activate
 {{- range .Neighbors }}
   neighbor {{ . }} activate
 {{- end }}
  exit-address-family
  !
  address-family l2vpn evpn
-  neighbor 192.168.1.4 activate
+  neighbor {{ .SpineAddress }} activate
 {{- range .Neighbors }}
   neighbor {{ . }} activate
 {{- end }}
@@ -54,5 +54,4 @@ router bgp 64512
   advertise-svi-ip
  exit-address-family
 exit
-! 
-
+!

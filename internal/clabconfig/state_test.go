@@ -589,6 +589,214 @@ func TestFindIPOwner(t *testing.T) {
 	}
 }
 
+func TestStripCIDR(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"192.168.1.0/31", "192.168.1.0"},
+		{"10.0.0.1/32", "10.0.0.1"},
+		{"fd00::1/127", "fd00::1"},
+		{"1.2.3.4", "1.2.3.4"},
+		{"", ""},
+	}
+
+	for _, tt := range tests {
+		got := StripCIDR(tt.input)
+		if got != tt.want {
+			t.Errorf("StripCIDR(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestGetPeerIP(t *testing.T) {
+	state := &TopologyState{
+		TopologyName: "test",
+		Nodes: map[string]*NodeState{
+			"leaf1": {
+				Name: "leaf1",
+				Interfaces: map[string]*InterfaceState{
+					"eth1": {
+						Name:          "eth1",
+						PeerNode:      "spine1",
+						PeerInterface: "eth1",
+						IPv4:          "10.0.0.1/31",
+						IPv6:          "fd00::1/127",
+					},
+					"ethred": {
+						Name:          "ethred",
+						PeerNode:      "hostA_red",
+						PeerInterface: "eth1",
+						IPv4:          "192.168.20.0/31",
+						IPv6:          "fd00:20::0/127",
+					},
+				},
+			},
+			"spine1": {
+				Name: "spine1",
+				Interfaces: map[string]*InterfaceState{
+					"eth1": {
+						Name:          "eth1",
+						PeerNode:      "leaf1",
+						PeerInterface: "eth1",
+						IPv4:          "10.0.0.0/31",
+						IPv6:          "fd00::/127",
+					},
+				},
+			},
+		},
+		Links: []LinkState{
+			{NodeA: "leaf1", InterfaceA: "ethred", NodeB: "hostA_red", InterfaceB: "eth1", IPv4Subnet: "192.168.20.0/31", IPv6Subnet: "fd00:20::/127"},
+		},
+	}
+
+	tests := []struct {
+		name      string
+		nodeName  string
+		peerName  string
+		family    IPFamily
+		want      string
+		wantErr   bool
+		errSubstr string
+	}{
+		{
+			name:     "peer in Nodes - spine1 facing leaf1",
+			nodeName: "leaf1",
+			peerName: "spine1",
+			family:   IPv4,
+			want:     "10.0.0.0/31",
+		},
+		{
+			name:     "peer in Nodes - spine1 facing leaf1 IPv6",
+			nodeName: "leaf1",
+			peerName: "spine1",
+			family:   IPv6,
+			want:     "fd00::/127",
+		},
+		{
+			name:     "peer NOT in Nodes - hostA_red IPv4",
+			nodeName: "leaf1",
+			peerName: "hostA_red",
+			family:   IPv4,
+			want:     "192.168.20.1/31",
+		},
+		{
+			name:     "peer NOT in Nodes - hostA_red IPv6",
+			nodeName: "leaf1",
+			peerName: "hostA_red",
+			family:   IPv6,
+			want:     "fd00:20::1/127",
+		},
+		{
+			name:      "no link found",
+			nodeName:  "leaf1",
+			peerName:  "nonexistent",
+			family:    IPv4,
+			wantErr:   true,
+			errSubstr: "no link found",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := state.GetPeerIP(tt.nodeName, tt.peerName, tt.family)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got nil")
+				}
+				if !strings.Contains(err.Error(), tt.errSubstr) {
+					t.Fatalf("error %q does not contain %q", err.Error(), tt.errSubstr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGetBroadcastMemberIP(t *testing.T) {
+	state := &TopologyState{
+		BroadcastNetworks: []BroadcastNetwork{
+			{
+				SwitchName: "leafkind-switch",
+				IPv4Subnet: "192.168.11.0/24",
+				IPv6Subnet: "fd00:11::/112",
+				Members: []BroadcastMember{
+					{NodeName: "leafkind", InterfaceName: "toswitch", IPv4: "192.168.11.1", IPv6: "fd00:11::1"},
+					{NodeName: "pe-kind-control-plane", InterfaceName: "toswitch", IPv4: "192.168.11.2", IPv6: "fd00:11::2"},
+				},
+			},
+		},
+	}
+
+	tests := []struct {
+		name       string
+		switchName string
+		nodeName   string
+		family     IPFamily
+		want       string
+		wantErr    bool
+		errSubstr  string
+	}{
+		{
+			name:       "leafkind IPv4",
+			switchName: "leafkind-switch",
+			nodeName:   "leafkind",
+			family:     IPv4,
+			want:       "192.168.11.1",
+		},
+		{
+			name:       "control-plane IPv6",
+			switchName: "leafkind-switch",
+			nodeName:   "pe-kind-control-plane",
+			family:     IPv6,
+			want:       "fd00:11::2",
+		},
+		{
+			name:       "switch not found",
+			switchName: "nonexistent",
+			nodeName:   "leafkind",
+			family:     IPv4,
+			wantErr:    true,
+			errSubstr:  "not found",
+		},
+		{
+			name:       "node not in switch",
+			switchName: "leafkind-switch",
+			nodeName:   "nonexistent",
+			family:     IPv4,
+			wantErr:    true,
+			errSubstr:  "not found",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := state.GetBroadcastMemberIP(tt.switchName, tt.nodeName, tt.family)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got nil")
+				}
+				if !strings.Contains(err.Error(), tt.errSubstr) {
+					t.Fatalf("error %q does not contain %q", err.Error(), tt.errSubstr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestGetNodesByPattern(t *testing.T) {
 	state := testTopology()
 

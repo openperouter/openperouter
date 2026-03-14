@@ -25,12 +25,12 @@ vrf blue
  vni 200
 exit-vrf
 !
-router bgp 64520
+router bgp {{ .Leaf.ASN }}
  no bgp ebgp-requires-policy
  no bgp network import-check
  no bgp default ipv4-unicast
 
- neighbor {{ .Leaf.SpineAddress }} remote-as 64612
+ neighbor {{ .Leaf.SpineAddress }} remote-as {{ .Leaf.SpineASN }}
  !
  address-family ipv4 unicast
   neighbor {{ .Leaf.SpineAddress }} activate
@@ -50,7 +50,7 @@ router bgp 64520
  exit-address-family
 exit
 !
-router bgp 64520 vrf red
+router bgp {{ .Leaf.ASN }} vrf red
  !
  address-family ipv4 unicast
    {{ if .Red.RedistributeConnected }}
@@ -76,7 +76,7 @@ router bgp 64520 vrf red
  exit-address-family
 exit
 !
-router bgp 64520 vrf blue
+router bgp {{ .Leaf.ASN }} vrf blue
  !
  address-family ipv4 unicast
    {{ if .Blue.RedistributeConnected }}

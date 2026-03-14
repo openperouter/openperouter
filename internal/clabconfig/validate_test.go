@@ -30,12 +30,12 @@ func loadTestFixtures(t *testing.T) (*ClabTopology, *EnvironmentConfig) {
 
 func TestValidate(t *testing.T) {
 	tests := []struct {
-		name            string
-		modifyClab      func(*ClabTopology)
-		modifyConfig    func(*EnvironmentConfig)
-		wantErr         string
-		wantWarnings    []string
-		wantNoWarnings  bool
+		name           string
+		modifyClab     func(*ClabTopology)
+		modifyConfig   func(*EnvironmentConfig)
+		wantErr        string
+		wantWarnings   []string
+		wantNoWarnings bool
 	}{
 		{
 			name: "valid config from fixtures",

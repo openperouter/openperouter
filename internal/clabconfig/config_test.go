@@ -47,10 +47,10 @@ nodes:
 `
 
 	tests := []struct {
-		name      string
-		setup     func(t *testing.T) string
-		wantErr   bool
-		validate  func(t *testing.T, cfg *EnvironmentConfig)
+		name     string
+		setup    func(t *testing.T) string
+		wantErr  bool
+		validate func(t *testing.T, cfg *EnvironmentConfig)
 	}{
 		{
 			name: "valid config",
