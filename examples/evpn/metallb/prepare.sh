@@ -26,8 +26,10 @@ helm install metallb metallb/metallb --namespace metallb-system --set frrk8s.ext
 
 wait_for_pods metallb-system app.kubernetes.io/name=metallb
 
-docker image pull nginx:1.25
-${KIND_BIN} --name pe-kind load docker-image nginx:1.25
+image_tag="nginx:1.25"
+platform="linux/$($(which go) env GOARCH)"
+echo "Loading $image_tag (platform $platform) to cluster $KIND_CLUSTER_NAME"
+load_image_to_kind "${image_tag}" nginx "${platform}"
 
 apply_manifests_with_retries metallb.yaml openpe.yaml workload.yaml
 

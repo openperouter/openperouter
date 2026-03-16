@@ -30,6 +30,12 @@ SHELL = /usr/bin/env bash -o pipefail
 # file to deploy. It defauls to the single cluster variant
 CLAB_TOPOLOGY_FILE ?= singlecluster/kind.clab.yml
 
+ARCH:=$(shell go env GOARCH)
+ifeq ($(ARCH),)
+$(error Failed to detect arch)
+endif
+PLATFORM=linux/$(ARCH)
+
 .PHONY: all
 all: build
 
@@ -351,12 +357,12 @@ clean: kind ## Shutdown and clean up kind cluster(s) and containerlab topology.
 
 .PHONY: load-on-kind
 load-on-kind: ## Load the docker image into the kind cluster.
-	KIND=$(KIND) bash -c 'source clab/common.sh && load_local_image_to_kind ${IMG} router'
+	KIND=$(KIND) bash -c 'source clab/common.sh && load_local_image_to_kind "${IMG}" router "$(PLATFORM)"'
 
 .PHONY: load-on-multi-cluster
 load-on-multi-cluster: ## Load the docker image into both kind clusters.
-	KIND=$(KIND) bash -c 'export KIND_CLUSTER_NAME=pe-kind-a && source clab/common.sh && load_local_image_to_kind ${IMG} router-a'
-	KIND=$(KIND) bash -c 'export KIND_CLUSTER_NAME=pe-kind-b && source clab/common.sh && load_local_image_to_kind ${IMG} router-b'
+	KIND=$(KIND) bash -c 'export KIND_CLUSTER_NAME=pe-kind-a && source clab/common.sh && load_local_image_to_kind "${IMG}" router-a "$(PLATFORM)"'
+	KIND=$(KIND) bash -c 'export KIND_CLUSTER_NAME=pe-kind-b && source clab/common.sh && load_local_image_to_kind "${IMG}" router-b "$(PLATFORM)"'
 
 ##@ Kind Node Image
 
