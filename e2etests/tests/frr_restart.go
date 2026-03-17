@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"strings"
 	"time"
 
 	"github.com/onsi/ginkgo/v2"
@@ -164,15 +163,7 @@ var _ = Describe("North/south traffic after FRR container restart", Ordered, fun
 		frrExec := executor.ForPod(openperouter.Namespace, routerPod.Name, "frr")
 
 		By("killing the FRR container entrypoint process")
-		psOut, err := frrExec.Exec("pgrep", "-f", "/sbin/tini -- /usr/lib/frr/docker-start")
-
-		Expect(err).NotTo(HaveOccurred(), "failed to find FRR entrypoint PID")
-		pids := strings.Split(strings.TrimSpace(psOut), "\n")
-		Expect(pids).NotTo(BeEmpty(), "FRR entrypoint PID should not be empty")
-		frrPID := strings.TrimSpace(pids[0])
-		var output string
-		output, err = frrExec.Exec("kill", frrPID)
-		Expect(err).NotTo(HaveOccurred(), "failed to kill FRR process %q: %v", frrPID, output)
+		killFRREntrypoint(frrExec)
 
 		By("waiting for the FRR container to restart and become ready")
 		Eventually(func(g Gomega) []v1.PodCondition {
