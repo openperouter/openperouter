@@ -74,6 +74,17 @@ func APItoFRR(config ApiConfigData, nodeIndex int, logLevel string) (frr.Config,
 			RestartTime:   restartTime,
 			StalePathTime: stalePathTime,
 		}
+		// With named-netns GR, the new FRR pod starts while the old pod's
+		// FRR orphan processes keep the BGP session alive (for up to
+		// terminationGracePeriodSeconds). A short connect-retry timer lets
+		// the new bgpd quickly take over as soon as the old one is killed,
+		// limiting the route-withdrawal window to at most one retry interval.
+		const grConnectRetrySeconds = uint64(5)
+		for i := range underlayNeighbors {
+			if underlayNeighbors[i].ConnectTime == nil {
+				underlayNeighbors[i].ConnectTime = ptr.To(grConnectRetrySeconds)
+			}
+		}
 	}
 
 	var passthroughConfig *frr.PassthroughConfig

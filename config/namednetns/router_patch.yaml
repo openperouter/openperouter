@@ -39,3 +39,22 @@ spec:
         - name: netns
           hostPath:
             path: /var/run/netns
+      initContainers:
+        # Override the init container to also copy the persistent frr.conf (if present)
+        # so FRR starts with the correct BGP + Graceful-Restart config immediately on restart.
+        - name: cp-frr-files
+          command:
+            - /bin/sh
+            - -c
+            - |
+              cp -rLf /tmp/frr/* /etc/frr/
+              if [ -f /etc/perouter/frr.conf ]; then
+                cp /etc/perouter/frr.conf /etc/frr/frr.conf
+              fi
+          volumeMounts:
+            - name: frr-startup
+              mountPath: /tmp/frr
+            - name: frrconfig
+              mountPath: /etc/frr
+            - name: frrsharedconfig
+              mountPath: /etc/perouter
