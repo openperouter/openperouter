@@ -45,7 +45,7 @@ data:
     # Check /etc/pam.d/frr if you intend to use "vtysh"!
     #
     vtysh_enable=yes
-    zebra_options="  -A 127.0.0.1 -s 90000000 --limit-fds 100000"
+    zebra_options="  -A 127.0.0.1 -s 90000000 --limit-fds 100000{{- if .Values.openperouter.namedNetns }} -K 60{{- end }}"
     bgpd_options="   -A 127.0.0.1 --limit-fds 100000"
     ospfd_options="  -A 127.0.0.1"
     ospf6d_options=" -A ::1"
@@ -274,17 +274,34 @@ spec:
         {{- end }}
       initContainers:
         # Copies the initial config files with the right permissions to the shared volume.
+        # In named-netns mode, if a persistent frr.conf already exists (written by the
+        # controller in a previous lifecycle), copy it over the basic startup config so
+        # FRR starts with the correct BGP + Graceful-Restart config immediately on restart
+        # instead of waiting for the controller to push it again.
         - name: cp-frr-files
           image: {{ .Values.openperouter.image.repository }}:{{ .Values.openperouter.image.tag | default .Chart.AppVersion }}
           {{- if .Values.openperouter.image.pullPolicy }}
           imagePullPolicy: {{ .Values.openperouter.image.pullPolicy }}
           {{- end }}
-          command: ["/bin/sh", "-c", "cp -rLf /tmp/frr/* /etc/frr/"]
+          command:
+            - /bin/sh
+            - -c
+            - |
+              cp -rLf /tmp/frr/* /etc/frr/
+              {{- if .Values.openperouter.namedNetns }}
+              if [ -f /etc/perouter/frr.conf ]; then
+                cp /etc/perouter/frr.conf /etc/frr/frr.conf
+              fi
+              {{- end }}
           volumeMounts:
             - name: frr-startup
               mountPath: /tmp/frr
             - name: frrconfig
               mountPath: /etc/frr
+            {{- if .Values.openperouter.namedNetns }}
+            - name: frrsharedconfig
+              mountPath: /etc/perouter
+            {{- end }}
       terminationGracePeriodSeconds: 10
       shareProcessNamespace: true
 {{- end }}

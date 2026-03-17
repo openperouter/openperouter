@@ -5,7 +5,7 @@ CURRENT_PATH=$(dirname "$0")
 
 source "${CURRENT_PATH}/../../common.sh"
 
-DEMO_MODE=true make deploy
+DEMO_MODE=true make deploy-namednetns
 export KUBECONFIG=$(pwd)/bin/kubeconfig
 
 kubectl apply -f https://github.com/kubevirt/kubevirt/releases/download/v1.5.2/kubevirt-operator.yaml
