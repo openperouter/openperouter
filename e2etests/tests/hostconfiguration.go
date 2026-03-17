@@ -1421,7 +1421,7 @@ type evpnParams struct {
 func validateConfig[T any](config T, test string, pod *corev1.Pod) {
 	fileToValidate := sendConfigToValidate(pod, config)
 	Eventually(func() error {
-		exec := executor.ForPod(pod.Namespace, pod.Name, "frr")
+		exec := executorForRouterPod(pod)
 		res, err := exec.Exec("/validatehost", "--ginkgo.focus", test, "--paramsfile", fileToValidate)
 		if err != nil {
 			return fmt.Errorf("failed to validate test %s : %s %w", test, res, err)
@@ -1431,6 +1431,15 @@ func validateConfig[T any](config T, test string, pod *corev1.Pod) {
 		WithTimeout(6 * time.Second).
 		WithPolling(time.Second).
 		ShouldNot(HaveOccurred())
+}
+
+const namedNetnsPath = "/var/run/netns/perouter"
+
+// executorForRouterPod returns the right executor for the router pod's frr container.
+// In named-netns mode, kubectl exec enters the pod's own network namespace, but FRR
+// and host interfaces live in the named netns, so we wrap with nsenter.
+func executorForRouterPod(pod *corev1.Pod) executor.Executor {
+	return executor.ForPodInNamedNetns(pod.Namespace, pod.Name, "frr", namedNetnsPath)
 }
 
 func ensureValidator(cs clientset.Interface, pod *corev1.Pod) {
