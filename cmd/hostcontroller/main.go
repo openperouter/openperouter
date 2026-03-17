@@ -120,7 +120,12 @@ func main() {
 	flag.StringVar(&args.nodeName, "nodename", "", "The name of the node the controller runs on")
 	flag.StringVar(&args.namespace, "namespace", "", "The namespace the controller runs in")
 	flag.StringVar(&k8sModeParams.criSocket, "crisocket", "/containerd.sock", "the location of the cri socket")
-	flag.BoolVar(&k8sModeParams.namedNetns, "named-netns", false, "use a persistent named network namespace instead of the router pod's netns")
+	flag.BoolVar(
+		&k8sModeParams.namedNetns,
+		"named-netns",
+		false,
+		"use a persistent named network namespace instead of the router pod's netns",
+	)
 
 	flag.DurationVar(&hostModeParams.k8sWaitInterval, "k8s-wait-timeout", time.Minute,
 		"K8s API server waiting interval time")
