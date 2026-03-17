@@ -28,7 +28,9 @@ func TestEnsureNamespace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("namespace should exist after EnsureNamespace(): %v", err)
 	}
-	ns.Close()
+	if ns.Close() != nil {
+		t.Fatalf("namespace should close after EnsureNamespace(): %v", err)
+	}
 
 	// Second call should be idempotent (no error)
 	if err := EnsureNamespace(); err != nil {
