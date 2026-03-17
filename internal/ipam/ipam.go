@@ -102,7 +102,7 @@ func cidrElem(pool *net.IPNet, index int) (*net.IPNet, error) {
 // sliceCIDR returns the ith block of len size for the given cidr.
 func sliceCIDR(pool *net.IPNet, index, size int) ([]net.IPNet, error) {
 	res := []net.IPNet{}
-	for i := 0; i < size; i++ {
+	for i := range size {
 		ipIndex := size*index + i
 		ip, err := gocidr.Host(pool, ipIndex)
 		if err != nil {

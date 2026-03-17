@@ -72,11 +72,9 @@ func New(params hostnetwork.L2VNIParams, opts StartOptions) (*BridgeRefresher, e
 // to STALE neighbors to prevent route withdrawal.
 func (r *BridgeRefresher) Start(ctx context.Context) {
 	ctx, r.cancel = context.WithCancel(ctx)
-	r.wg.Add(1)
-	go func() {
-		defer r.wg.Done()
+	r.wg.Go(func() {
 		r.run(ctx)
-	}()
+	})
 
 	slog.Info("started bridge refresher", "bridge", r.bridgeName, "vni", r.vni)
 }

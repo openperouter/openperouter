@@ -94,7 +94,7 @@ func (n *NeighborConfig) ID() string {
 
 // templateConfig uses the template library to template
 // 'globalConfigTemplate' using 'data'.
-func templateConfig(data interface{}) (string, error) {
+func templateConfig(data any) (string, error) {
 	counterMap := map[string]int{}
 	t, err := template.New("frr.tmpl").Funcs(
 		template.FuncMap{
@@ -104,11 +104,11 @@ func templateConfig(data interface{}) (string, error) {
 				counterMap[counterName] = counter
 				return counter
 			},
-			"dict": func(values ...interface{}) (map[string]interface{}, error) {
+			"dict": func(values ...any) (map[string]any, error) {
 				if len(values)%2 != 0 {
 					return nil, errors.New("invalid dict call, expecting even number of args")
 				}
-				dict := make(map[string]interface{}, len(values)/2)
+				dict := make(map[string]any, len(values)/2)
 				for i := 0; i < len(values); i += 2 {
 					key, ok := values[i].(string)
 					if !ok {

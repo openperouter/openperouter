@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"slices"
 	"strings"
 	"time"
 
@@ -267,10 +268,8 @@ func ovsBridgeHasPort(bridgeName, portName string) (bool, error) {
 		return false, nil // Port doesn't exist
 	}
 
-	for _, portUUID := range bridge.Ports {
-		if portUUID == port.UUID {
-			return true, nil
-		}
+	if slices.Contains(bridge.Ports, port.UUID) {
+		return true, nil
 	}
 	return false, nil
 }
@@ -327,8 +326,8 @@ func cleanupOVSBridges() {
 		return // OVS not available
 	}
 
-	bridges := strings.Split(strings.TrimSpace(string(output)), "\n")
-	for _, br := range bridges {
+	bridges := strings.SplitSeq(strings.TrimSpace(string(output)), "\n")
+	for br := range bridges {
 		if strings.HasPrefix(br, "br-hs-") || strings.HasPrefix(br, "test-ovs-") {
 			_ = exec.Command("ovs-vsctl", "del-br", br).Run()
 		}

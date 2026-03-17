@@ -241,7 +241,7 @@ func ParseBFDPeers(vtyshRes string) ([]BFDPeer, error) {
 }
 
 func ParseVRFs(vtyshRes string) ([]string, error) {
-	vrfs := map[string]interface{}{}
+	vrfs := map[string]any{}
 	err := json.Unmarshal([]byte(vtyshRes), &vrfs)
 	if err != nil {
 		return nil, errors.Join(err, errors.New("parseVRFs: failed to parse vtysh response"))

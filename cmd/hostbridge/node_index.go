@@ -41,8 +41,8 @@ func annotateCurrentNode(ctx context.Context, nodeConfigPath, nodeName string) e
 	}
 
 	// Create the patch for adding the annotation
-	patchData := map[string]interface{}{
-		"metadata": map[string]interface{}{
+	patchData := map[string]any{
+		"metadata": map[string]any{
 			"annotations": map[string]string{
 				OpenpeNodeIndex: strconv.Itoa(nodeConfig.NodeIndex),
 			},
