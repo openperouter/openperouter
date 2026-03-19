@@ -4,7 +4,6 @@ package bridgerefresh
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"net"
 	"sync"
@@ -27,15 +26,15 @@ type StartOptions struct {
 }
 
 // BridgeRefresher manages neighbor refresh for an L2VNI bridge.
-// It periodically sends ARP probes to STALE neighbors to prevent
-// EVPN Type-2 routes from being withdrawn. The ARP replies also
-// refresh FDB entries as a side effect.
+// It periodically sends ICMP pings to STALE neighbors to prevent
+// EVPN Type-2 routes from being withdrawn and to force STALE neighbors
+// to FAILED state in case the entry is really STALE.
 type BridgeRefresher struct {
-	bridgeName    string   // e.g., "br-pe-110"
-	namespace     string   // Path to network namespace
-	gatewayIPs    []net.IP // L2 gateway IPs (source for ARP probes)
-	refreshPeriod time.Duration
-	vni           int
+	bridgeName     string // e.g., "br-pe-110"
+	namespace      string // Path to network namespace
+	refreshPeriod  time.Duration
+	vni            int
+	hasIPv4Gateway bool
 
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
@@ -44,27 +43,32 @@ type BridgeRefresher struct {
 // New creates a new BridgeRefresher for an L2VNI.
 // Call Start to begin the refresh loop.
 func New(params hostnetwork.L2VNIParams, opts StartOptions) (*BridgeRefresher, error) {
-	gatewayIPs, err := parseGatewayIPs(params.L2GatewayIPs)
-	if err != nil {
-		return nil, err
-	}
-	if len(gatewayIPs) == 0 {
-		slog.Debug("no gateway IPs configured, bridge refresher will skip ARP probes",
-			"vni", params.VNI)
-	}
-
 	refreshPeriod := DefaultRefreshPeriod
 	if opts.RefreshPeriod > 0 {
 		refreshPeriod = opts.RefreshPeriod
 	}
 
 	refresher := &BridgeRefresher{
-		bridgeName:    hostnetwork.BridgeName(params.VNI),
-		namespace:     params.TargetNS,
-		gatewayIPs:    gatewayIPs,
-		refreshPeriod: refreshPeriod,
+		bridgeName:     hostnetwork.BridgeName(params.VNI),
+		namespace:      params.TargetNS,
+		refreshPeriod:  refreshPeriod,
+		vni:            params.VNI,
+		hasIPv4Gateway: hasIPv4Gateway(params.L2GatewayIPs),
 	}
 	return refresher, nil
+}
+
+func hasIPv4Gateway(gatewayIPs []string) bool {
+	for _, ipStr := range gatewayIPs {
+		ip, _, err := net.ParseCIDR(ipStr)
+		if err != nil {
+			continue
+		}
+		if ipfamily.ForAddress(ip) == ipfamily.IPv4 {
+			return true
+		}
+	}
+	return false
 }
 
 // Start begins the refresh loop.
@@ -122,10 +126,10 @@ func (r *BridgeRefresher) refresh() {
 	}
 }
 
-// refreshStaleNeighbors sends ARP probes to STALE neighbors.
+// refreshStaleNeighbors sends ICMP pings to STALE neighbors.
 func (r *BridgeRefresher) refreshStaleNeighbors() {
-	if len(r.gatewayIPs) == 0 {
-		return // No gateway IPs, can't send ARP probes
+	if !r.hasIPv4Gateway {
+		return
 	}
 
 	neighbors, err := r.listStaleNeighbors()
@@ -135,29 +139,12 @@ func (r *BridgeRefresher) refreshStaleNeighbors() {
 	}
 
 	for _, neigh := range neighbors {
-		if err := r.sendARPProbe(neigh.IP, neigh.HardwareAddr); err != nil {
-			slog.Debug("failed to send ARP probe", "ip", neigh.IP, "mac", neigh.HardwareAddr, "error", err)
+		if err := r.sendPing(neigh.IP); err != nil {
+			slog.Debug("failed to ping neighbor", "ip", neigh.IP, "bridge", r.bridgeName, "error", err)
 		}
 	}
 
 	if len(neighbors) > 0 {
-		slog.Debug("sent ARP probes to stale neighbors", "bridge", r.bridgeName, "count", len(neighbors))
+		slog.Debug("pinged stale neighbors", "bridge", r.bridgeName, "count", len(neighbors))
 	}
-}
-
-// parseGatewayIPs parses L2 gateway IP strings (in CIDR format) into net.IP addresses.
-// It filters for IPv4 addresses only, as ARP is IPv4-specific.
-func parseGatewayIPs(ipStrs []string) ([]net.IP, error) {
-	var ips []net.IP
-	for _, ipStr := range ipStrs {
-		ip, _, err := net.ParseCIDR(ipStr)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse gateway IP %q: %w", ipStr, err)
-		}
-		// Only include IPv4 addresses for ARP
-		if ipfamily.ForAddress(ip) == ipfamily.IPv4 {
-			ips = append(ips, ip.To4())
-		}
-	}
-	return ips, nil
 }
