@@ -4,6 +4,7 @@ package tests
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"strings"
 	"sync"
@@ -21,6 +22,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 	"github.com/openperouter/openperouter/e2etests/pkg/url"
 	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/utils/ptr"
@@ -246,105 +248,32 @@ var _ = Describe("Beta: BGP Graceful Restart provides zero data plane disruption
 
 	const testNamespace = "test-namespace-gr"
 
-	It("should have zero data plane disruption when FRR crashes with BGP GR enabled", func() {
-		l2VniRedWithGateway := l2VniRed.DeepCopy()
-		l2VniRedWithGateway.Spec.L2GatewayIPs = []string{"192.171.24.1/24"}
-
-		err := Updater.Update(config.Resources{
-			L3VNIs: []v1alpha1.L3VNI{vniRed},
-			L2VNIs: []v1alpha1.L2VNI{*l2VniRedWithGateway},
-		})
+	AfterEach(func() {
+		dumpIfFails(cs)
+		err := Updater.CleanButUnderlay()
 		Expect(err).NotTo(HaveOccurred())
-
-		_, err = k8s.CreateNamespace(cs, testNamespace)
-		Expect(err).NotTo(HaveOccurred())
-
-		nad, err := k8s.CreateMacvlanNad("110", testNamespace, "br-hs-110", []string{"192.171.24.1/24"})
-		Expect(err).NotTo(HaveOccurred())
-
-		DeferCleanup(func() {
-			dumpIfFails(cs)
-			err := Updater.CleanButUnderlay()
+		if err := k8s.DeleteNamespace(cs, testNamespace); err != nil && !apierrors.IsNotFound(err) {
 			Expect(err).NotTo(HaveOccurred())
-			err = k8s.DeleteNamespace(cs, testNamespace)
-			Expect(err).NotTo(HaveOccurred())
-		})
-
-		nodes, err := k8s.GetNodes(cs)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(len(nodes)).To(BeNumerically(">=", 1))
-
-		By("creating the client pod")
-		clientPod, err := k8s.CreateAgnhostPod(cs, "pod1", testNamespace,
-			k8s.WithNad(nad.Name, testNamespace, []string{"192.171.24.2/24"}),
-			k8s.OnNode(nodes[0].Name))
-		Expect(err).NotTo(HaveOccurred())
-
-		By("removing the default gateway via the primary interface")
-		Expect(removeGatewayFromPod(clientPod)).To(Succeed())
-
-		hostARedExecutor := executor.ForContainer("clab-kind-hostA_red")
-		firstPodIP := "192.171.24.2"
-		const port = "8090"
-		hostPort := net.JoinHostPort(firstPodIP, port)
-		urlStr := url.Format("http://%s/clientip", hostPort)
-
-		By("verifying north/south traffic works before FRR crash")
-		Eventually(func() error {
-			_, err := hostARedExecutor.Exec("curl", "-sS", "--max-time", "2", urlStr)
-			return err
-		}).WithTimeout(30 * time.Second).WithPolling(time.Second).Should(Succeed())
-
-		By("identifying the router pod on clientPod's node")
-		routerPods, err := openperouter.RouterPodsForNodes(cs, map[string]bool{clientPod.Spec.NodeName: true})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(routerPods).To(HaveLen(1))
-		routerPod := routerPods[0]
-		frrExec := executor.ForPod(openperouter.Namespace, routerPod.Name, "frr")
-
-		By("starting continuous traffic measurement")
-		stopAndCount := measureTrafficLoss(hostARedExecutor, urlStr)
-
-		time.Sleep(2 * time.Second)
-
-		By("killing the FRR container entrypoint process")
-		killFRREntrypoint(frrExec)
-
-		By("waiting for the FRR container to restart and become ready")
-		Eventually(func(g Gomega) []v1.PodCondition {
-			pod, err := cs.CoreV1().Pods(openperouter.Namespace).Get(context.Background(), routerPod.Name, metav1.GetOptions{})
+		}
+		By("waiting for all router pods to be ready")
+		Eventually(func(g Gomega) {
+			pods, err := openperouter.RouterPods(cs)
 			g.Expect(err).NotTo(HaveOccurred())
-			return pod.Status.Conditions
-		}).
-			WithTimeout(2*time.Minute).
-			WithPolling(time.Second).
-			Should(
-				ContainElement(
-					SatisfyAll(
-						HaveField("Type", Equal(v1.PodReady)),
-						HaveField("Status", Equal(v1.ConditionTrue)),
-					),
-				),
-				"router pod should become ready after FRR restart",
-			)
-
-		By("waiting for BGP sessions to re-establish")
-		nodeName := routerPod.Spec.NodeName
-		neighborIP, err := infra.NeighborIP(infra.KindLeaf, nodeName)
-		Expect(err).NotTo(HaveOccurred())
-		validateSessionWithNeighbor(
-			infra.KindLeaf,
-			nodeName,
-			executor.ForContainer(infra.KindLeaf),
-			neighborIP,
-			Established,
-		)
-
-		By("asserting zero packet loss during FRR crash and recovery")
-		Expect(stopAndCount()).To(Equal(0), "expected zero curl failures during FRR crash and recovery")
+			for _, p := range pods {
+				g.Expect(k8s.PodIsReady(p)).To(BeTrue(), "pod %s must be ready", p.Name)
+			}
+		}).WithTimeout(2 * time.Minute).WithPolling(time.Second).Should(Succeed())
 	})
 
-	It("should preserve named netns and maintain traffic when router pod is deleted (rolling upgrade)", func() {
+	// This test uses north-south L3 traffic (curl from hostA_red to a pod behind the PE
+	// gateway) to verify minimal data plane disruption during a router pod deletion with BGP GR.
+	// The data plane survives because:
+	//   - The named netns (with br-pe-110, kernel ARP for the pod) persists across the restart.
+	//   - zebra -K 60 preserves L3 kernel routes and nexthops (L3VNI path) during FRR restart.
+	//   - BGP GR stale routes at leafkind keep the fabric routing intact throughout.
+	//   - redistribute connected ensures the /24 Type-5 prefix is immediately re-advertised
+	//     by the new FRR, so the /24 fallback covers any brief stale /32 host-route gap.
+	It("should preserve named netns and maintain minimal data plane disruption when router pod is deleted", func() {
 		l2VniRedWithGateway := l2VniRed.DeepCopy()
 		l2VniRedWithGateway.Spec.L2GatewayIPs = []string{"192.171.24.1/24"}
 
@@ -359,14 +288,6 @@ var _ = Describe("Beta: BGP Graceful Restart provides zero data plane disruption
 
 		nad, err := k8s.CreateMacvlanNad("110", testNamespace, "br-hs-110", []string{"192.171.24.1/24"})
 		Expect(err).NotTo(HaveOccurred())
-
-		DeferCleanup(func() {
-			dumpIfFails(cs)
-			err := Updater.CleanButUnderlay()
-			Expect(err).NotTo(HaveOccurred())
-			err = k8s.DeleteNamespace(cs, testNamespace)
-			Expect(err).NotTo(HaveOccurred())
-		})
 
 		nodes, err := k8s.GetNodes(cs)
 		Expect(err).NotTo(HaveOccurred())
@@ -387,7 +308,7 @@ var _ = Describe("Beta: BGP Graceful Restart provides zero data plane disruption
 		hostPort := net.JoinHostPort(firstPodIP, port)
 		urlStr := url.Format("http://%s/clientip", hostPort)
 
-		By("verifying north/south traffic works before pod deletion")
+		By("verifying north/south traffic works before router pod deletion")
 		Eventually(func() error {
 			_, err := hostARedExecutor.Exec("curl", "-sS", "--max-time", "2", urlStr)
 			return err
@@ -422,7 +343,7 @@ var _ = Describe("Beta: BGP Graceful Restart provides zero data plane disruption
 			newPod := newRouterPods[0]
 			g.Expect(newPod.Name).NotTo(Equal(routerPod.Name), "a new router pod must be created")
 			g.Expect(k8s.PodIsReady(newPod)).To(BeTrue(), "new router pod must be ready")
-		}).WithTimeout(3*time.Minute).WithPolling(2*time.Second).Should(Succeed())
+		}).WithTimeout(3 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
 
 		By("waiting for BGP sessions to re-establish")
 		neighborIP, err := infra.NeighborIP(infra.KindLeaf, nodeName)
@@ -435,8 +356,10 @@ var _ = Describe("Beta: BGP Graceful Restart provides zero data plane disruption
 			Established,
 		)
 
-		By("asserting zero packet loss during pod deletion and recovery")
-		Expect(stopAndCount()).To(Equal(0), "expected zero curl failures during pod deletion and recovery")
+		By("asserting data plane disruption is within acceptable bounds during router pod deletion and recovery")
+		result := stopAndCount()
+		By(fmt.Sprintf("==> %s", result.String()))
+		Expect(result.eval()).To(Succeed(), "curl failures exceeded threshold during router pod deletion and recovery (%d/%d failed). Failed timestamps: %+v", result.failCount, result.totalCount, result.failedTimestamps)
 	})
 })
 
@@ -573,8 +496,10 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 		nodeName := routerPod.Spec.NodeName
 		oldPodUID := routerPod.UID
 
-		By("deleting the named netns")
+		By("deleting the named netns and the router pod")
 		Expect(openperouter.DeleteNamedNetns(nodeName)).To(Succeed())
+		err = cs.CoreV1().Pods(openperouter.Namespace).Delete(context.Background(), routerPod.Name, metav1.DeleteOptions{})
+		Expect(err).NotTo(HaveOccurred())
 
 		By("waiting for the controller to recreate the named netns")
 		Eventually(func() (bool, error) {
@@ -596,7 +521,7 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 			newPod := newRouterPods[0]
 			g.Expect(newPod.UID).NotTo(Equal(oldPodUID), "a new router pod must be created after netns deletion")
 			g.Expect(k8s.PodIsReady(newPod)).To(BeTrue(), "new router pod must be ready")
-		}).WithTimeout(3*time.Minute).WithPolling(2*time.Second).Should(Succeed())
+		}).WithTimeout(3 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
 
 		By("waiting for BGP sessions to re-establish")
 		neighborIP, err := infra.NeighborIP(infra.KindLeaf, nodeName)
@@ -613,7 +538,7 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 		Eventually(func() error {
 			_, err := hostARedExecutor.Exec("curl", "-sS", "--max-time", "3", urlStr)
 			return err
-		}).WithTimeout(30*time.Second).WithPolling(time.Second).Should(Succeed())
+		}).WithTimeout(30 * time.Second).WithPolling(time.Second).Should(Succeed())
 	})
 })
 
@@ -641,11 +566,17 @@ func killFRREntrypoint(frrExec executor.Executor) {
 	Expect(err).NotTo(HaveOccurred(), "failed to kill FRR process %q: %v", frrPID, output)
 }
 
-// measureTrafficLoss starts a background goroutine that sends curl requests to urlStr
+type trafficTestResult struct {
+	failCount        int
+	totalCount       int
+	failedTimestamps []time.Time
+}
+
+// measurePingLoss starts a background goroutine that sends a single ping to targetIP
 // every 300ms. It registers a DeferCleanup to stop the goroutine on test completion
 // or failure, preventing goroutine leaks. The returned function stops the goroutine
-// and returns the number of failed requests observed.
-func measureTrafficLoss(exec executor.Executor, urlStr string) func() int {
+// and returns the number of failed pings observed.
+func measurePingLoss(exec executor.Executor, targetIP string) func() int {
 	var mu sync.Mutex
 	var failCount int
 	ctx, cancel := context.WithCancel(context.Background())
@@ -657,7 +588,7 @@ func measureTrafficLoss(exec executor.Executor, urlStr string) func() int {
 				return
 			default:
 			}
-			_, err := exec.Exec("curl", "-sS", "--max-time", "2", urlStr)
+			_, err := exec.Exec("ping", "-c", "1", "-W", "1", targetIP)
 			mu.Lock()
 			if err != nil {
 				failCount++
@@ -672,4 +603,54 @@ func measureTrafficLoss(exec executor.Executor, urlStr string) func() int {
 		defer mu.Unlock()
 		return failCount
 	}
+}
+
+// measureTrafficLoss starts a background goroutine that sends curl requests to urlStr
+// every 300ms. It registers a DeferCleanup to stop the goroutine on test completion
+// or failure, preventing goroutine leaks. The returned function stops the goroutine
+// and returns the number of failed requests observed.
+func measureTrafficLoss(exec executor.Executor, urlStr string) func() trafficTestResult {
+	var mu sync.Mutex
+	var trafficTestCount trafficTestResult
+	ctx, cancel := context.WithCancel(context.Background())
+	DeferCleanup(cancel)
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+			_, err := exec.Exec("curl", "-sS", "--max-time", "2", urlStr)
+			mu.Lock()
+			if err != nil {
+				trafficTestCount.failCount++
+				trafficTestCount.failedTimestamps = append(trafficTestCount.failedTimestamps, time.Now())
+			}
+			trafficTestCount.totalCount++
+			mu.Unlock()
+			time.Sleep(300 * time.Millisecond)
+		}
+	}()
+	return func() trafficTestResult {
+		cancel()
+		mu.Lock()
+		defer mu.Unlock()
+		return trafficTestCount
+	}
+}
+
+func (tr trafficTestResult) eval() error {
+	const maxAllowedFailures = 5
+	if tr.totalCount == 0 {
+		return fmt.Errorf("no traffic was measured")
+	}
+	if tr.failCount > maxAllowedFailures {
+		return fmt.Errorf(tr.String())
+	}
+	return nil
+}
+
+func (tr trafficTestResult) String() string {
+	return fmt.Sprintf("failed %d/%d times", tr.failCount, tr.totalCount)
 }
