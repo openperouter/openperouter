@@ -324,8 +324,6 @@ var _ = Describe("Beta: BGP Graceful Restart provides zero data plane disruption
 		By("starting continuous traffic measurement")
 		stopAndCount := measureTrafficLoss(hostARedExecutor, urlStr)
 
-		time.Sleep(2 * time.Second)
-
 		By("deleting the router pod")
 		err = cs.CoreV1().Pods(openperouter.Namespace).Delete(context.Background(), routerPod.Name, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
@@ -357,6 +355,120 @@ var _ = Describe("Beta: BGP Graceful Restart provides zero data plane disruption
 		)
 
 		By("asserting data plane disruption is within acceptable bounds during router pod deletion and recovery")
+		result := stopAndCount()
+		By(fmt.Sprintf("==> %s", result.String()))
+		Expect(result.eval()).To(Succeed(), "curl failures exceeded threshold during router pod deletion and recovery (%d/%d failed). Failed timestamps: %+v", result.failCount, result.totalCount, result.failedTimestamps)
+	})
+
+	// This test verifies East-West stretched L2 traffic resilience between two pods on
+	// different nodes. Traffic flows pod-to-pod through the EVPN VXLAN fabric (no gateway,
+	// pure L2). BGP GR and zebra -K 60 ensure that FDB entries (MAC→VTEP mappings) on the
+	// client's PE survive the server's router pod restart, keeping traffic flowing with
+	// minimal disruption.
+	It("should maintain stretched L2 traffic across nodes with minimal disruption when a router pod is deleted", func() {
+		err := Updater.Update(config.Resources{
+			L3VNIs: []v1alpha1.L3VNI{vniRed},
+			L2VNIs: []v1alpha1.L2VNI{l2VniRed},
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = k8s.CreateNamespace(cs, testNamespace)
+		Expect(err).NotTo(HaveOccurred())
+
+		// No gateway IPs: pure L2 pod-to-pod. The kernel adds a connected subnet route
+		// for 192.171.24.0/24 via the macvlan NIC automatically; no default route injection
+		// or removeGatewayFromPod needed.
+		nad, err := k8s.CreateMacvlanNad("110", testNamespace, "br-hs-110", nil)
+		Expect(err).NotTo(HaveOccurred())
+
+		nodes, err := k8s.GetNodes(cs)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(len(nodes)).To(BeNumerically(">=", 2), "stretched L2 test requires at least 2 nodes")
+
+		const (
+			serverIP = "192.171.24.2"
+			clientIP = "192.171.24.3"
+			subnet   = "/24"
+			port     = "8090"
+		)
+
+		By("creating the server pod on node 0")
+		serverPod, err := k8s.CreateAgnhostPod(cs, "server", testNamespace,
+			k8s.WithNad(nad.Name, testNamespace, []string{serverIP + subnet}),
+			k8s.OnNode(nodes[0].Name))
+		Expect(err).NotTo(HaveOccurred())
+
+		By("creating the client pod on node 1")
+		clientPod, err := k8s.CreateAgnhostPod(cs, "client", testNamespace,
+			k8s.WithNad(nad.Name, testNamespace, []string{clientIP + subnet}),
+			k8s.OnNode(nodes[1].Name))
+		Expect(err).NotTo(HaveOccurred())
+
+		clientExec := executor.ForPod(clientPod.Namespace, clientPod.Name, "agnhost")
+		hostPort := net.JoinHostPort(serverIP, port)
+		urlStr := url.Format("http://%s/clientip", hostPort)
+
+		DeferCleanup(func() {
+			if !ginkgo.CurrentSpecReport().Failed() {
+				return
+			}
+			leafExec := executor.ForContainer(infra.KindLeaf)
+			out, err := leafExec.Exec("vtysh", "-c", "show bgp l2vpn evpn route type macip")
+			if err != nil {
+				ginkgo.GinkgoWriter.Printf("failed to dump leafkind Type-2 routes: %v\n", err)
+			} else {
+				ginkgo.GinkgoWriter.Printf("=== leafkind Type-2 EVPN routes ===\n%s\n", out)
+			}
+			out, err = leafExec.Exec("vtysh", "-c", "show evpn mac vni all")
+			if err != nil {
+				ginkgo.GinkgoWriter.Printf("failed to dump leafkind EVPN MACs: %v\n", err)
+			} else {
+				ginkgo.GinkgoWriter.Printf("=== leafkind EVPN MACs ===\n%s\n", out)
+			}
+		})
+
+		By("verifying stretched L2 traffic works before router pod deletion")
+		Eventually(func() error {
+			_, err := clientExec.Exec("curl", "-sS", "--max-time", "2", urlStr)
+			return err
+		}).WithTimeout(2 * time.Minute).WithPolling(time.Second).Should(Succeed())
+
+		By("identifying the router pod on the server's node")
+		routerPods, err := openperouter.RouterPodsForNodes(cs, map[string]bool{serverPod.Spec.NodeName: true})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(routerPods).To(HaveLen(1))
+		routerPod := routerPods[0]
+		nodeName := routerPod.Spec.NodeName
+
+		By("starting continuous traffic measurement")
+		stopAndCount := measureTrafficLoss(clientExec, urlStr)
+
+		By("deleting the router pod on the server's node")
+		err = cs.CoreV1().Pods(openperouter.Namespace).Delete(context.Background(), routerPod.Name, metav1.DeleteOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("waiting for a new router pod to become ready")
+		Eventually(func(g Gomega) {
+			newRouterPods, err := openperouter.RouterPodsForNodes(cs, map[string]bool{nodeName: true})
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(newRouterPods).To(HaveLen(1))
+			newPod := newRouterPods[0]
+			g.Expect(newPod.Name).NotTo(Equal(routerPod.Name), "a new router pod must be created")
+			g.Expect(k8s.PodIsReady(newPod)).To(BeTrue(), "new router pod must be ready")
+		}).WithTimeout(3 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
+
+		By("waiting for BGP sessions to re-establish")
+		neighborIP, err := infra.NeighborIP(infra.KindLeaf, nodeName)
+		Expect(err).NotTo(HaveOccurred())
+		validateSessionWithNeighbor(
+			infra.KindLeaf,
+			nodeName,
+			executor.ForContainer(infra.KindLeaf),
+			neighborIP,
+			Established,
+		)
+
+		By("asserting stretched L2 disruption is within acceptable bounds during router pod deletion and recovery")
 		result := stopAndCount()
 		By(fmt.Sprintf("==> %s", result.String()))
 		Expect(result.eval()).To(Succeed(), "curl failures exceeded threshold during router pod deletion and recovery (%d/%d failed). Failed timestamps: %+v", result.failCount, result.totalCount, result.failedTimestamps)
