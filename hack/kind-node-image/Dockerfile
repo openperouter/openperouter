@@ -7,11 +7,12 @@ FROM kindest/node:${KIND_NODE_VERSION}
 # Re-declare ARG to make it available after FROM
 ARG KIND_NODE_VERSION
 
-# Install OpenVSwitch packages
+# Install OpenVSwitch packages and iputils-ping (needed by BridgeRefresher)
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y \
         openvswitch-switch \
-        openvswitch-common 
+        openvswitch-common \
+        iputils-ping
 
 # Create necessary OVS directories
 RUN mkdir -p /var/run/openvswitch /var/log/openvswitch /etc/openvswitch
