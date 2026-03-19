@@ -49,7 +49,7 @@ The hybrid approach combines three strategies:
 
 1. **Pre-emptive Semantic Validation** - Validate before applying:
    - Interface existence on the node
-   - VNI conflicts (unique per node, different between L2/L3 in same VRF)
+   - VNI conflicts (VNI IDs must be unique per node across both L2 and L3)
    - Route target overlaps
    - Dependency tree ordering
    - L3VNI dependency: must have either a healthy L2VNI in the same VRF **or** a `HostSession` configured
@@ -100,16 +100,24 @@ There are two types of L3VNIs:
 
 ### FRR Configuration Strategy
 
-The system uses incremental FRR configuration, generating and applying the configuration for each resource group in the dependency tree in order:
+The system separates **validation** (per-resource, following dependency order) from **FRR application** (once per reconcile, with the full set of valid resources).
 
-1. **Underlay**: Generate and apply the Underlay configuration. If this fails, leave existing FRR config as-is and stop.
-2. **First L2VNI**: Generate and apply its configuration (host interfaces).
-3. **Corresponding L3VNI** (if one exists for this L2VNI's VRF and hasn't been applied yet): Generate and apply its FRR configuration.
-4. **Next L2VNI**: Generate and apply, then its corresponding L3VNI if applicable.
-5. **Repeat** until all resource groups are processed.
-6. **Remaining L3VNIs** whose VRF has no healthy L2VNI are marked as `DependencyFailed`.
+**Validation phase** — follows the dependency tree in order:
 
-Each step generates the configuration for that resource and applies it incrementally via `frr-reload.py`. If a resource fails validation or application, it is marked as failed, previously applied resources remain in place, and processing continues with the next resource group.
+1. **Underlay**: Validate. If it fails, mark as failed, leave existing FRR config as-is, and stop.
+2. **Each L2VNI**: Validate (interface exists, VNI unique). If valid, add to the valid set.
+3. **L3VNI for the VRF (without HostSession)** (if one exists for this L2VNI's VRF and hasn't been validated yet): Validate and add to the valid set.
+4. **Each L3VNI with HostSession**: Validate independently (depends only on Underlay). If valid, add to the valid set.
+5. **Remaining L3VNIs without HostSession** whose VRF has no healthy L2VNI are marked as `DependencyFailed`.
+
+**Application phase** — runs once after validation completes:
+
+- Generate a single complete FRR config containing the Underlay plus all valid L2VNIs and L3VNIs.
+- Apply via a single `frr-reload.py` call.
+
+**Cleanup of previously-applied resources** is automatic: `frr-reload.py` diffs the running FRR config against the desired config and removes anything absent from the desired config. A resource that was applied in a previous reconcile but is now invalid (e.g., its interface was removed, or a VNI conflict appeared) will simply be absent from the new desired config, so `frr-reload.py` will remove it from FRR without any explicit tracking.
+
+If a resource fails validation or application, it is marked as failed, and processing continues. On the next reconcile cycle, the resource is re-validated from scratch.
 
 **Example traversal** (given the dependency tree above):
 
@@ -118,10 +126,11 @@ Step 1: Underlay (EVPN)
 Step 2: L2VNI-A (VRF: red)
 Step 3: L3VNI-D (VRF: red)         ← first healthy L2VNI for VRF "red" exists
 Step 4: L2VNI-B (VRF: blue)
-Step 5: L2VNI-F (VRF: red)         ← VRF "red" L3VNI already applied, skip L3VNI
+Step 5: L2VNI-F (VRF: red)         ← VRF "red" L3VNI already validated, skip
 Step 6: L2VNI-E (VRF: purple)
+Step 7: L3VNI-G (HostSession)      ← validated independently, depends only on Underlay
 ---
-L3VNI-C (VRF: green)               ← DependencyFailed: no L2VNI for VRF "green"
+L3VNI-C (VRF: green)               ← DependencyFailed: no L2VNI for VRF "green", no HostSession
 ```
 
 **Rationale:**
@@ -134,13 +143,30 @@ L3VNI-C (VRF: green)               ← DependencyFailed: no L2VNI for VRF "green
 
 #### Underlay Failure
 
-If Underlay fails validation, leave the router configuration as-is. Do not attempt to remove VNIs or clean up FRR config. "Broken is broken." This simplifies implementation and avoids cascading removal complexity.
+If Underlay fails validation, leave the existing FRR config entirely as-is — do not push the new (invalid) desired config, and do not remove the old config. This means existing BGP sessions and VNIs remain in place even if the Underlay spec is now invalid.
+
+This applies equally whether the failure is permanent (e.g., required interface missing from the node) or transient (e.g., reloader socket not yet available). In both cases the controller marks the Underlay as `ValidationFailed`, reports it in the status, and retries on the next reconcile.
+
+**When the operator changes an Underlay field and the new config fails validation**: the old config stays in FRR. The status reports the failure. When the issue is resolved, the next reconcile will push the updated config.
+
+Do not attempt to remove VNIs or clean up FRR config on Underlay failure. This simplifies implementation and avoids cascading removal complexity.
 
 #### L2VNI/L3VNI Failures
 
 - Use different failure reasons: `ValidationFailed` vs `DependencyFailed`
 - Clear `DependencyFailed` automatically when dependency recovers
 - Provide clear status messages indicating the root cause
+
+#### ApplicationFailed
+
+Since a single `frr-reload.py` call applies the entire valid resource set, a failure at application time is global — we cannot know which subset of resources FRR accepted. When the reload call fails:
+
+- All resources that were in the valid set are marked as `ApplicationFailed` in the status
+- FRR's running config is left unchanged from before the call (frr-reload.py is transactional: it either applies all changes or none)
+- The controller retries on the next reconcile cycle with the same valid set
+- If the failure is persistent, the operator can inspect the reloader logs for the root cause
+
+`ApplicationFailed` is expected to be rare (reloader process crash, socket error). `ValidationFailed` and `DependencyFailed` are the common cases and are handled per-resource.
 
 #### Recovery
 
@@ -160,7 +186,6 @@ All configuration elements are processed together as a single configuration unit
 
 ```go
 type RouterNodeConfigurationStatusStatus struct {
-    LastUpdateTime   *metav1.Time       `json:"lastUpdateTime,omitempty"`
     FailedResources  []FailedResource   `json:"failedResources,omitempty"`
     Conditions       []metav1.Condition `json:"conditions,omitempty"`
 }
@@ -224,7 +249,7 @@ metadata:
     name: worker-1
     uid: "12345678-1234-1234-1234-123456789abc"
 status:
-  lastUpdateTime: "2025-01-15T10:30:00Z"
+
   conditions:
   - type: Ready
     status: "True"
@@ -246,7 +271,7 @@ metadata:
     name: worker-2
     uid: "87654321-4321-4321-4321-cba987654321"
 status:
-  lastUpdateTime: "2025-01-15T10:30:00Z"
+
   failedResources:
     - kind: L2VNI
       name: tenant-network-a
@@ -286,7 +311,7 @@ metadata:
     name: worker-3
     uid: "abcdef12-3456-7890-abcd-ef1234567890"
 status:
-  lastUpdateTime: "2025-01-15T10:30:00Z"
+
   failedResources:
     - kind: Underlay
       name: production-underlay
@@ -351,29 +376,31 @@ control-1     True    False      5m
 The OpenPERouter controller creates and manages RouterNodeConfigurationStatus resources:
 
 1. **Creation**: Creates one RouterNodeConfigurationStatus per node when any OpenPERouter configuration is applied
-2. **Level-driven updates**: Uses a level-driven pattern where local status is updated and a message is sent via go channel to the controller. The controller reads the internal status and updates the CRD only when status changes, avoiding scattered status updates across the codebase
-3. **Timestamp tracking**: Sets `lastUpdateTime` when configuration status changes
-4. **Status reporting**: Reports configuration results through standard Kubernetes conditions for all OpenPERouter resources on the node
+2. **End-of-reconcile updates**: At the end of each reconcile, the controller computes the full status struct (conditions + failedResources) from the reconcile results, compares it with the current CRD status, and patches the CRD only if the status changed. This keeps status updates co-located with reconcile logic and avoids scattered update calls or concurrent channel complexity.
+3. **Status reporting**: Reports configuration results through standard Kubernetes conditions for all OpenPERouter resources on the node
 
 #### Reconciliation with Resilience
 
 The controller follows this flow during reconciliation:
 
 1. **Build dependency tree**: Identify all Underlay, L2VNI, and L3VNI resources targeting this node
-2. **Validate and apply Underlay**: If Underlay fails validation, mark it as failed, leave existing FRR config as-is, and stop
+2. **Validate Underlay**: If it fails, mark as failed, leave existing FRR config as-is, and stop
 3. **For each L2VNI in order**:
    - Validate the L2VNI (interface exists, VNI unique)
-   - If valid, generate and apply its configuration incrementally
-   - If a corresponding L3VNI exists for this VRF (and hasn't been applied yet), validate and apply it
+   - If valid, add to the valid set
+   - If a corresponding L3VNI without HostSession exists for this VRF (and hasn't been validated yet), validate and add to the valid set
    - If invalid, mark as failed and continue with the next L2VNI
-4. **Mark remaining L3VNIs** whose VRF has no healthy L2VNI as `DependencyFailed`
-5. **Update status**: Record failed resources with reasons, update conditions
+4. **For each L3VNI with HostSession**: Validate independently (depends only on Underlay, not on any L2VNI); if valid, add to the valid set
+5. **Mark remaining L3VNIs without HostSession** whose VRF has no healthy L2VNI as `DependencyFailed`
+6. **Apply once**: Generate a single complete FRR config from the valid set and call `frr-reload.py` once; if the call fails, mark all resources in the valid set as `ApplicationFailed`
+7. **Update status**: Record failed resources with reasons, update conditions
 
 **Key behaviors:**
 - Failed resources are re-validated on every reconcile cycle
 - Failure status is cleared automatically when validation passes
 - `DependencyFailed` entries are cleared when the dependency recovers
 - Multiple L2VNIs can share the same VRF; L3VNI is satisfied if any L2VNI with that VRF is healthy
+- Previously-applied resources that become invalid are automatically removed from FRR: since the desired config only includes valid resources, `frr-reload.py`'s diff removes anything no longer present
 
 #### RBAC Requirements
 
@@ -486,6 +513,12 @@ The skip-failed approach was selected for OpenPERouter because:
 
 ## Implementation Plan
 
+### Prerequisite: Multiple L2VNIs per VRF (issue #222)
+
+The dependency model requires that multiple L2VNIs can share the same VRF (rule 6 in the dependency tree). The current codebase has a bug where a second L2VNI for the same VRF overwrites the first. This must be fixed before any phase begins, as the validation logic in Phase 2 depends on correctly enumerating all L2VNIs per VRF when resolving L3VNI dependencies.
+
+**Deliverable:** Fix https://github.com/openperouter/openperouter/issues/222 — multiple L2VNIs with the same VRF are additive, not replacement.
+
 ### Phase 1: RouterNodeConfigurationStatus CRD Creation
 
 Introduce the RouterNodeConfigurationStatus CRD and basic resource lifecycle management.
@@ -506,26 +539,26 @@ Implement pre-emptive semantic validation and failed resource tracking.
 - Failed resource tracking with reasons
 - Multiple L2VNIs per VRF support (fix existing bug https://github.com/openperouter/openperouter/issues/222)
 
-### Phase 3: Status Reporting via Go Channels
+### Phase 3: Status Reporting
 
-Implement the level-driven pattern for status updates using Go channels to populate the RouterNodeConfigurationStatus with actual configuration results.
+Compute and persist the RouterNodeConfigurationStatus at the end of each reconcile based on the reconcile results.
 
 **Deliverables:**
-- Internal status aggregation mechanism
-- Go channel-based status communication pattern
+- Status struct computation at reconcile end (conditions + failedResources)
+- Patch CRD status only when it differs from the current state (avoid spurious writes)
 - Standard Kubernetes conditions (Ready, Degraded)
 - FailedResources detailed reporting
-- Integration with existing Underlay, L2VNI, and L3VNI controllers
 
-### Phase 4: Incremental FRR Config Generation
+### Phase 4: FRR Config Generation with Valid Resource Set
 
-Implement incremental FRR configuration generation following the dependency tree traversal order.
+Implement FRR configuration generation: validate per resource following dependency order, then apply once with the full valid set.
 
 **Deliverables:**
-- Incremental config generation per resource group (Underlay → L2VNI → L3VNI)
-- Per-step `frr-reload.py` validation and application
+- Per-resource validation following dependency tree order (Underlay → L2VNI → L3VNI)
+- Single complete FRR config generation from the valid resource set per reconcile
+- Single `frr-reload.py` call per reconcile (diff-based application removes previously-applied resources that are now invalid)
 - Underlay failure handling (leave config as-is, stop processing)
-- Host interface application per L2VNI
+- Host interface application per valid L2VNI
 - Automatic retry of failed resources on each reconcile cycle
 
 ## Benefits and Trade-offs
@@ -547,7 +580,7 @@ Implement incremental FRR configuration generation following the dependency tree
 | Trade-off | Description |
 |-----------|-------------|
 | **Increased Complexity** | More code paths, state machines, harder to reason about |
-| **FRR Incremental Application Overhead** | Multiple `frr-reload.py` invocations per reconcile (one per resource group) |
+| **Single frr-reload.py per reconcile** | One reload call per reconcile regardless of resource count; diff-based so previously-applied invalid resources are cleaned up automatically |
 | **Status Update Load** | More Kubernetes API calls for status updates per node |
 | **Partial State** | System can be in "partially configured" state (may confuse operators) |
 | **Testing Complexity** | Many more failure scenarios and state combinations to test |
