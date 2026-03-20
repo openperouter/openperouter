@@ -222,9 +222,9 @@ jobs:
 
       - name: Deploy the cluster
         run: |
-          MAKE_RULE="deploy"
+          MAKE_RULE="deploy-namednetns"
           IMG_REPO="quay.io/openperouter"
-          if [ ${{ matrix.deployment }} = "helm" ]; then MAKE_RULE="deploy-helm"; fi
+          if [ ${{ matrix.deployment }} = "helm" ]; then MAKE_RULE="deploy-helm"; export HELM_ARGS="--set openperouter.namedNetns=true"; fi
           if [ ${{ matrix.deployment }} = "systemdmode" ]; then MAKE_RULE="deploy-hostmode"; fi
           if [ ${{ matrix.deployment }} = "hostmode-boot" ]; then MAKE_RULE="deploy-hostmode-boot"; fi
           if [ ${{ matrix.deployment }} = "operator" ]; then MAKE_RULE="deploy-operator-with-olm"; IMG_REPO="localhost:5000"; export USE_HTTP=--use-http; export TLS_VERIFY=false; export KUBECONFIG=bin/kubeconfig; fi
@@ -241,6 +241,7 @@ jobs:
             make e2etests-hostmode-boot
           else
             export GINKGO_ARGS="--label-filter='!systemdmode'"
+            export TEST_ARGS="--named-ns"
             make e2etests
           fi
 
