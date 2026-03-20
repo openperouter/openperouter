@@ -305,6 +305,8 @@ spec:
             - name: frrsharedconfig
               mountPath: /etc/perouter
             {{- end }}
+      {{- if .Values.openperouter.namedNetns }}
       terminationGracePeriodSeconds: 10
       shareProcessNamespace: true
+      {{- end }}
 {{- end }}
