@@ -54,10 +54,10 @@ The hybrid approach combines three strategies:
    - Dependency tree ordering
    - L3VNI dependency: must have either a healthy L2VNI in the same VRF **or** a `HostSession` configured
 
-2. **Incremental/Isolated Application** - Apply per resource group:
-   - Each L2VNI independently
-   - L3VNIs with `HostSession`: applied independently after the Underlay (no L2VNI dependency)
-   - L3VNIs without `HostSession`: applied after a healthy L2VNI in the same VRF succeeds
+2. **Single Application** - Apply once with all valid resources:
+   - After validation completes, generate a single FRR config containing the Underlay plus all valid L3VNIs and L2VNIs
+   - Apply via a single `frr-reload.py` call
+   - Resources that failed validation are excluded; `frr-reload.py`'s diff removes them from FRR automatically
 
 3. **Failed Resource Tracking** - Mark and skip failed resources:
    - Failed L2VNIs are recorded and skipped
@@ -69,33 +69,34 @@ The hybrid approach combines three strategies:
 ```
                               Underlay (EVPN)
                                     |
-       +----------+-----------+-----+-----+-----------+-----------+-----------+
-       |          |           |           |           |           |           |
-    L2VNI-A    L2VNI-B     L2VNI-F     L3VNI-C     L3VNI-D     L2VNI-E     L3VNI-G
-   (VRF: red) (VRF: blue) (VRF: red) (VRF: green) (VRF: red)  (VRF: purple) (VRF: mgmt)
-                                      [!! ERROR]                            [HostSession]
-       |                      |                       |
-       +----------------------+-----------------------+
-                              |
-                   L3VNI-D depends on VRF "red" existing
-                   (satisfied by L2VNI-A or L2VNI-F)
-
-                   L3VNI-C has no L2VNI for VRF "green" and no HostSession → DependencyFailed
-                   L3VNI-G has HostSession → no L2VNI dependency
+       +-------------+------------------+---------+--------+---------------+
+       |             |                  |         |        |               |
+    L3VNI-D       L3VNI-C            L3VNI-G      |     L3VNI-B            |
+  (VRF: red)   (VRF: green)        (VRF: mgmt)    |   (VRF: blue)          |
+      /  \     [!! No L2VNIs,     [HostSession]   |   [HostSession]        |
+     /    \     no HostSession →                  |                        |
+    /      \    DependencyFailed]                 |                        |
+   /        \                                     |                        |
+  /          \                                    |                        |
+L2VNI-A    L2VNI-F                             L2VNI-E                  L2VNI-H
+(VRF: red)(VRF: red)                         (VRF: purple)            (VRF: not set,
+                                             [!! No matching           defaults to
+                                              L3VNI →                  "L2VNI-H")
+                                              DependencyFailed]
 ```
 
-There are two types of L3VNIs:
+L3VNI is the **root of the VRF**: it defines the VRF routing domain. L2VNIs attach to a VRF by referencing the same VRF name as an L3VNI. There are two types of L3VNIs:
 
-- **L3VNI with L2VNI dependency** (e.g., L3VNI-D): No `HostSession` configured. Depends on at least one healthy L2VNI in the same VRF to provide the VRF routing domain.
+- **L3VNI with L2VNI dependency** (e.g., L3VNI-D): No `HostSession` configured. Depends on at least one healthy L2VNI in the same VRF to provide L2 bridging in the VRF. An L3VNI without HostSession and without any L2VNI referencing its VRF is `DependencyFailed`.
 - **L3VNI with HostSession** (e.g., L3VNI-G): Has `HostSession` configured, which establishes a BGP session with the host via a veth pair. Operates independently of L2VNIs — only depends on the Underlay.
 
 **Dependency Rules:**
 1. Underlay with EVPN is the root dependency for all VNIs
-2. All L2VNIs depend on Underlay (can exist standalone)
-3. All L3VNIs depend on Underlay
-4. L3VNI without `HostSession` depends on VRF existence — satisfied if *any* L2VNI with the same VRF exists
+2. All L3VNIs depend on Underlay
+3. All L2VNIs depend on a valid L3VNI with the same VRF name — an L2VNI referencing a VRF with no matching L3VNI is `DependencyFailed`
+4. L3VNI without `HostSession` requires at least one healthy L2VNI referencing its VRF — otherwise `DependencyFailed`
 5. L3VNI with `HostSession` has no L2VNI dependency (only depends on Underlay)
-6. Multiple L2VNIs can share the same VRF
+6. Multiple L2VNIs can share the same VRF (same L3VNI)
 7. VNI IDs must be unique per node (across both L2 and L3)
 
 ### FRR Configuration Strategy
@@ -105,10 +106,9 @@ The system separates **validation** (per-resource, following dependency order) f
 **Validation phase** — follows the dependency tree in order:
 
 1. **Underlay**: Validate. If it fails, mark as failed, leave existing FRR config as-is, and stop.
-2. **Each L2VNI**: Validate (interface exists, VNI unique). If valid, add to the valid set.
-3. **L3VNI for the VRF (without HostSession)** (if one exists for this L2VNI's VRF and hasn't been validated yet): Validate and add to the valid set.
-4. **Each L3VNI with HostSession**: Validate independently (depends only on Underlay). If valid, add to the valid set.
-5. **Remaining L3VNIs without HostSession** whose VRF has no healthy L2VNI are marked as `DependencyFailed`.
+2. **Each L3VNI**: Validate independently (VRF/VNI uniqueness, HostSession fields). If valid, add to the valid L3VNI set.
+3. **Each L2VNI**: Check that its VRF matches a valid L3VNI; if not, mark as `DependencyFailed`. Otherwise validate (interface exists, VNI unique) and add to the valid set.
+4. **Each L3VNI without HostSession** that has no healthy L2VNI referencing its VRF is marked as `DependencyFailed`.
 
 **Application phase** — runs once after validation completes:
 
@@ -123,14 +123,17 @@ If a resource fails validation or application, it is marked as failed, and proce
 
 ```
 Step 1: Underlay (EVPN)
-Step 2: L2VNI-A (VRF: red)
-Step 3: L3VNI-D (VRF: red)         ← first healthy L2VNI for VRF "red" exists
-Step 4: L2VNI-B (VRF: blue)
-Step 5: L2VNI-F (VRF: red)         ← VRF "red" L3VNI already validated, skip
-Step 6: L2VNI-E (VRF: purple)
-Step 7: L3VNI-G (HostSession)      ← validated independently, depends only on Underlay
+Step 2: L3VNI-D (VRF: red)         ← valid, added to valid L3VNI set
+Step 3: L3VNI-C (VRF: green)       ← valid individually, added to valid L3VNI set
+Step 4: L3VNI-G (VRF: mgmt)        ← valid, has HostSession
+Step 5: L3VNI-B (VRF: blue)        ← valid, has HostSession
+Step 6: L2VNI-A (VRF: red)         ← L3VNI-D exists for VRF "red" → valid
+Step 7: L2VNI-F (VRF: red)         ← L3VNI-D exists for VRF "red" → valid
+Step 8: L2VNI-E (VRF: purple)      ← no L3VNI for VRF "purple" → DependencyFailed
+Step 9: L2VNI-H (VRF: not set,     ← VRF defaults to "L2VNI-H"; L3VNI exists for
+         defaults to "L2VNI-H")      VRF "L2VNI-H" → valid
 ---
-L3VNI-C (VRF: green)               ← DependencyFailed: no L2VNI for VRF "green", no HostSession
+L3VNI-C (VRF: green)               ← DependencyFailed: no HostSession, no L2VNI for VRF "green"
 ```
 
 **Rationale:**
@@ -383,23 +386,23 @@ The OpenPERouter controller creates and manages RouterNodeConfigurationStatus re
 
 The controller follows this flow during reconciliation:
 
-1. **Build dependency tree**: Identify all Underlay, L2VNI, and L3VNI resources targeting this node
+1. **Build resource list**: Identify all Underlay, L3VNI, and L2VNI resources targeting this node
 2. **Validate Underlay**: If it fails, mark as failed, leave existing FRR config as-is, and stop
-3. **For each L2VNI in order**:
-   - Validate the L2VNI (interface exists, VNI unique)
-   - If valid, add to the valid set
-   - If a corresponding L3VNI without HostSession exists for this VRF (and hasn't been validated yet), validate and add to the valid set
-   - If invalid, mark as failed and continue with the next L2VNI
-4. **For each L3VNI with HostSession**: Validate independently (depends only on Underlay, not on any L2VNI); if valid, add to the valid set
-5. **Mark remaining L3VNIs without HostSession** whose VRF has no healthy L2VNI as `DependencyFailed`
-6. **Apply once**: Generate a single complete FRR config from the valid set and call `frr-reload.py` once; if the call fails, mark all resources in the valid set as `ApplicationFailed`
+3. **For each L3VNI**: Validate independently (VRF/VNI uniqueness, HostSession fields); if valid, add to the valid L3VNI set; if invalid, mark as `ValidationFailed` and continue
+4. **For each L2VNI**:
+   - Check that its VRF matches a valid L3VNI; if not, mark as `DependencyFailed` and continue
+   - Validate the L2VNI (interface exists, VNI unique); if invalid, mark as `ValidationFailed` and continue
+   - If valid, add to the valid L2VNI set
+5. **For each L3VNI without HostSession** that has no healthy L2VNI referencing its VRF: mark as `DependencyFailed`
+6. **Apply once**: Generate a single complete FRR config from the valid L3VNI and L2VNI sets and call `frr-reload.py` once; if the call fails, mark all resources in the valid set as `ApplicationFailed`
 7. **Update status**: Record failed resources with reasons, update conditions
 
 **Key behaviors:**
 - Failed resources are re-validated on every reconcile cycle
 - Failure status is cleared automatically when validation passes
 - `DependencyFailed` entries are cleared when the dependency recovers
-- Multiple L2VNIs can share the same VRF; L3VNI is satisfied if any L2VNI with that VRF is healthy
+- Multiple L2VNIs can share the same VRF; an L3VNI without HostSession is satisfied if any valid L2VNI references its VRF
+- An L2VNI whose referenced L3VNI later passes validation will be re-evaluated on the next reconcile
 - Previously-applied resources that become invalid are automatically removed from FRR: since the desired config only includes valid resources, `frr-reload.py`'s diff removes anything no longer present
 
 #### RBAC Requirements
@@ -535,7 +538,7 @@ Implement pre-emptive semantic validation and failed resource tracking.
 **Deliverables:**
 - Interface existence validation
 - VNI uniqueness validation (per node, across L2/L3)
-- Dependency tree builder (Underlay → L2VNI → L3VNI)
+- Dependency tree builder (Underlay → L3VNI → L2VNI)
 - Failed resource tracking with reasons
 - Multiple L2VNIs per VRF support (fix existing bug https://github.com/openperouter/openperouter/issues/222)
 
@@ -554,7 +557,7 @@ Compute and persist the RouterNodeConfigurationStatus at the end of each reconci
 Implement FRR configuration generation: validate per resource following dependency order, then apply once with the full valid set.
 
 **Deliverables:**
-- Per-resource validation following dependency tree order (Underlay → L2VNI → L3VNI)
+- Per-resource validation following dependency tree order (Underlay → L3VNI → L2VNI)
 - Single complete FRR config generation from the valid resource set per reconcile
 - Single `frr-reload.py` call per reconcile (diff-based application removes previously-applied resources that are now invalid)
 - Underlay failure handling (leave config as-is, stop processing)
