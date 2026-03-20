@@ -1,0 +1,6 @@
+resources:
+- ../default
+patchesStrategicMerge:
+  - controller_patch.yaml
+  - router_patch.yaml
+  - frr-cm-patch.yaml

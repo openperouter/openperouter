@@ -708,6 +708,33 @@ spec:
                 - message: exactly one of vtepcidr or vtepInterface must be specified
                   rule: (self.?vtepcidr.orValue("") != "") != (self.?vtepInterface.orValue("")
                     != "")
+              gracefulRestart:
+                description: |-
+                  GracefulRestart configures BGP Graceful Restart behaviour.
+                  When set, FRR advertises GR capability and preserves forwarding
+                  state across restarts so that peers keep stale routes active.
+                  Omit to disable graceful restart.
+                properties:
+                  restartTime:
+                    default: 120
+                    description: |-
+                      RestartTime is the time in seconds that the restarting router
+                      requests its peers to preserve routes. Peers will wait this long
+                      before removing stale routes.
+                    format: int32
+                    maximum: 4095
+                    minimum: 1
+                    type: integer
+                  stalePathTime:
+                    default: 360
+                    description: |-
+                      StalePathTime is the time in seconds that stale paths from a
+                      restarting peer are retained locally.
+                    format: int32
+                    maximum: 4095
+                    minimum: 1
+                    type: integer
+                type: object
               neighbors:
                 description: Neighbors is the list of external neighbors to peer with.
                 items:

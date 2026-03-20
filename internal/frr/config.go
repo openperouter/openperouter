@@ -34,11 +34,17 @@ type Config struct {
 	RawConfig   []RawFRRSnippet
 }
 
+type GracefulRestart struct {
+	RestartTime   uint32
+	StalePathTime uint32
+}
+
 type UnderlayConfig struct {
-	MyASN     uint32
-	RouterID  string
-	Neighbors []NeighborConfig
-	EVPN      *UnderlayEvpn
+	MyASN           uint32
+	RouterID        string
+	Neighbors       []NeighborConfig
+	EVPN            *UnderlayEvpn
+	GracefulRestart *GracefulRestart
 }
 
 type UnderlayEvpn struct {

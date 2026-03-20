@@ -160,6 +160,56 @@ func HasUnderlayInterface(namespace string) (bool, error) {
 	return underlayInterface != "", nil
 }
 
+// RemoveUnderlay removes the underlay state from the named network namespace:
+// it strips the special marker address from the underlay NIC (so HasUnderlayInterface
+// returns false on the next reconcile) and deletes the VTEP loopback (lound).
+func RemoveUnderlay(targetNS string) error {
+	ns, err := netns.GetFromPath(targetNS)
+	if err != nil {
+		return fmt.Errorf("RemoveUnderlay: failed to find network namespace %s: %w", targetNS, err)
+	}
+	defer func() {
+		if err := ns.Close(); err != nil {
+			slog.Error("failed to close namespace", "namespace", targetNS, "error", err)
+		}
+	}()
+
+	return netnamespace.In(ns, func() error {
+		links, err := netlink.LinkList()
+		if err != nil {
+			return fmt.Errorf("failed to list links: %w", err)
+		}
+		for _, l := range links {
+			hasIP, err := interfaceHasIP(l, underlayInterfaceSpecialAddr)
+			if err != nil {
+				return err
+			}
+			if hasIP {
+				addr, err := netlink.ParseAddr(underlayInterfaceSpecialAddr)
+				if err != nil {
+					return fmt.Errorf("failed to parse underlay marker addr: %w", err)
+				}
+				if err := netlink.AddrDel(l, addr); err != nil {
+					return fmt.Errorf("failed to remove underlay marker from %s: %w", l.Attrs().Name, err)
+				}
+				break
+			}
+		}
+
+		lound, err := netlink.LinkByName(UnderlayLoopback)
+		if err != nil {
+			if errors.As(err, &netlink.LinkNotFoundError{}) {
+				return nil
+			}
+			return fmt.Errorf("failed to find %s: %w", UnderlayLoopback, err)
+		}
+		if err := netlink.LinkDel(lound); err != nil {
+			return fmt.Errorf("failed to delete %s: %w", UnderlayLoopback, err)
+		}
+		return nil
+	})
+}
+
 // findInterfaceWithIP retrieves the interface assigned to the given ip
 // in the given network ns.
 func findInterfaceWithIP(ns netns.NsHandle, ip string) (string, error) {

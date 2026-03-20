@@ -85,7 +85,8 @@ type hostModeParameters struct {
 }
 
 type k8sModeParameters struct {
-	criSocket string
+	criSocket  string
+	namedNetns bool
 }
 
 type parameters struct {
@@ -119,6 +120,12 @@ func main() {
 	flag.StringVar(&args.nodeName, "nodename", "", "The name of the node the controller runs on")
 	flag.StringVar(&args.namespace, "namespace", "", "The namespace the controller runs in")
 	flag.StringVar(&k8sModeParams.criSocket, "crisocket", "/containerd.sock", "the location of the cri socket")
+	flag.BoolVar(
+		&k8sModeParams.namedNetns,
+		"named-netns",
+		false,
+		"use a persistent named network namespace instead of the router pod's netns",
+	)
 
 	flag.DurationVar(&hostModeParams.k8sWaitInterval, "k8s-wait-timeout", time.Minute,
 		"K8s API server waiting interval time")
@@ -316,15 +323,25 @@ func runK8sConfigReconciler(ctx context.Context,
 		return fmt.Errorf("unable to start manager: %w", err)
 	}
 
-	podRuntime, err := pods.NewRuntime(k8sModeParams.criSocket, 5*time.Minute)
-	if err != nil {
-		return fmt.Errorf("failed to connect to crio: %w", err)
-	}
-	routerProvider := &routerconfiguration.RouterPodProvider{
-		FRRConfigPath: args.frrConfigPath,
-		PodRuntime:    podRuntime,
-		Client:        mgr.GetClient(),
-		Node:          args.nodeName,
+	var routerProvider routerconfiguration.RouterProvider
+	if k8sModeParams.namedNetns {
+		routerProvider = &routerconfiguration.RouterNamedNSProvider{
+			FRRConfigPath:   args.frrConfigPath,
+			FRRReloadSocket: args.reloaderSocket,
+			Client:          mgr.GetClient(),
+			Node:            args.nodeName,
+		}
+	} else {
+		podRuntime, err := pods.NewRuntime(k8sModeParams.criSocket, 5*time.Minute)
+		if err != nil {
+			return fmt.Errorf("failed to connect to crio: %w", err)
+		}
+		routerProvider = &routerconfiguration.RouterPodProvider{
+			FRRConfigPath: args.frrConfigPath,
+			PodRuntime:    podRuntime,
+			Client:        mgr.GetClient(),
+			Node:          args.nodeName,
+		}
 	}
 
 	apiReconciler := &routerconfiguration.PERouterReconciler{
