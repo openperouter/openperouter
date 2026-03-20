@@ -133,7 +133,7 @@ var _ = Describe("Webhooks", func() {
 						},
 					},
 				},
-			}, "hostASN must be different from asn"),
+			}, "HostSession.HostASN must be external to HostSession.ASN"),
 		)
 	})
 
@@ -486,7 +486,7 @@ var _ = Describe("Webhooks", func() {
 						},
 					},
 				},
-			}, "local ASN 65000 must be different from remote ASN 65000"),
+			}, "neighbor ASN must be external to local ASN 65000"),
 		)
 	})
 
@@ -642,7 +642,7 @@ var _ = Describe("Webhooks", func() {
 						HostASN: 65040,
 					},
 				},
-			}, "must be different from remote ASN"),
+			}, "HostASN must be external to local ASN 65040"),
 		)
 	})
 

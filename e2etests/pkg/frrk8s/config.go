@@ -5,6 +5,7 @@ package frrk8s
 import (
 	"context"
 	"fmt"
+	"time"
 
 	frrk8sapi "github.com/metallb/frr-k8s/api/v1beta1"
 	"github.com/openperouter/openperouter/api/v1alpha1"
@@ -13,6 +14,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 )
 
@@ -143,6 +145,14 @@ func createFRRConfig(hostsession v1alpha1.HostSession, name, cidr string, family
 										Mode: frrk8sapi.AllowAll,
 									},
 								},
+								// Tweak the ConnectTime of the FRR K8s side - we need to do this because FRR changes
+								// are debounced, so if an FRR peer is deleted, then recreated in quick succession,
+								// the same session remains up on the FRR-K8s side and FRR-K8s will only try to reconnect
+								// after the default 120 seconds. Further investigation is needed as to why the
+								// session stays in Active even when a new OpenPERouter session comes up and if we
+								// should make it a general recommendation that FRR-K8S ConnectTime should be configured
+								// as 1 second.
+								ConnectTime: &v1.Duration{Duration: time.Second},
 							},
 						},
 					},
