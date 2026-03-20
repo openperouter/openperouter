@@ -10,7 +10,7 @@ import (
 )
 
 // listStaleNeighbors returns all STALE IPv4 neighbors on the bridge.
-// These neighbors are about to be garbage collected and need ARP probes
+// These neighbors are about to be garbage collected and need pings
 // to refresh them and prevent EVPN Type-2 route withdrawal.
 func (r *BridgeRefresher) listStaleNeighbors() ([]netlink.Neigh, error) {
 	bridge, err := netlink.LinkByName(r.bridgeName)
@@ -31,7 +31,7 @@ func (r *BridgeRefresher) listStaleNeighbors() ([]netlink.Neigh, error) {
 			continue
 		}
 
-		// Skip entries without MAC address (can't send unicast ARP)
+		// Skip entries without MAC address as they won't generate type 2 routes
 		if len(neigh.HardwareAddr) == 0 {
 			continue
 		}

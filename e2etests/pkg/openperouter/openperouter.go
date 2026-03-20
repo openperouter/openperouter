@@ -72,6 +72,25 @@ func RouterPodsForNodes(cs clientset.Interface, nodes map[string]bool) ([]*corev
 	return filteredRouterPods, nil
 }
 
+// ExecutorForNode returns the RouterExecutor running on the given node.
+func ExecutorForNode(routers Routers, nodeName string) (RouterExecutor, error) {
+	switch r := routers.(type) {
+	case routerPods:
+		for _, pod := range r.pods {
+			if pod.Spec.NodeName == nodeName {
+				return routerPod{pod}, nil
+			}
+		}
+	case routerPodmans:
+		for _, router := range r.routers {
+			if router.nodeName == nodeName {
+				return router, nil
+			}
+		}
+	}
+	return nil, fmt.Errorf("no router found on node %s", nodeName)
+}
+
 // DaemonsetRolled checks if routers have been rolled/restarted by comparing old and new state
 // For routerPods: checks if pods were deleted and recreated (names changed)
 // For routerPodmans: checks if pods were restarted (PIDs changed)
