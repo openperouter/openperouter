@@ -249,6 +249,11 @@ jobs:
         run:
           make kind-export-logs
 
+      - name: Collect veth monitor logs
+        if: ${{ failure() }}
+        run: |
+          cp /tmp/check_veths.log /tmp/kind_logs/check_veths.log 2>/dev/null || true
+
       - name: Collect Logs
         if: ${{ failure() }}
         uses: ./.github/workflows/composite/collectlogs

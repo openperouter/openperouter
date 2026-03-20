@@ -4,6 +4,10 @@ set -u
 
 source common.sh
 
+# Override set -e from common.sh: the monitoring loop must survive
+# individual command failures and retry on the next iteration.
+set +e
+
 function veth_exists {
     ip link show "$1" &> /dev/null
     return $?
@@ -22,9 +26,14 @@ function ensure_veth {
   CONTAINER_SIDE_IP=$4
 
   TEMP_PEER_NAME="${PEER_NAME}_temp"
-
   if ! veth_exists "$VETH_NAME"; then
     echo "Veth $VETH_NAME not there, recreating"
+
+    # Clean up stale interfaces from previous failed attempts
+    "$CONTAINER_ENGINE_CLI" exec "$CONTAINER_NAME" ip link delete "$PEER_NAME" 2>/dev/null || true
+    "$CONTAINER_ENGINE_CLI" exec "$CONTAINER_NAME" ip link delete "$TEMP_PEER_NAME" 2>/dev/null || true
+    ip link delete "$TEMP_PEER_NAME" 2>/dev/null || true
+
     ip link add "$VETH_NAME" type veth peer name "$TEMP_PEER_NAME"
     echo "Veth $VETH_NAME not there, recreated"
     pid=$("$CONTAINER_ENGINE_CLI" inspect -f '{{.State.Pid}}' "$CONTAINER_NAME")
@@ -37,11 +46,10 @@ function ensure_veth {
     ip link set "$VETH_NAME" address "$MAC_ADDR"
     echo "Veth $VETH_NAME setting ip"
     "$CONTAINER_ENGINE_CLI" exec "$CONTAINER_NAME" ip address add $CONTAINER_SIDE_IP dev "$TEMP_PEER_NAME"
-    "$CONTAINER_ENGINE_CLI" exec "$CONTAINER_NAME" ip link set "$TEMP_PEER_NAME" up
     "$CONTAINER_ENGINE_CLI" exec "$CONTAINER_NAME" ip link set "$TEMP_PEER_NAME" name "$PEER_NAME"
     MAC_ADDR="02:ed:$[RANDOM%10]$[RANDOM%10]:$[RANDOM%10]$[RANDOM%10]:$[RANDOM%10]$[RANDOM%10]:$[RANDOM%10]$[RANDOM%10]"
-
     "$CONTAINER_ENGINE_CLI" exec "$CONTAINER_NAME" ip link set "$PEER_NAME" address "$MAC_ADDR"
+    "$CONTAINER_ENGINE_CLI" exec "$CONTAINER_NAME" ip link set "$PEER_NAME" up
   fi
 }
 
