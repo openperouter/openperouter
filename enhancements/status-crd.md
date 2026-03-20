@@ -41,7 +41,7 @@ Currently, operators must inspect controller logs to understand the state of Ope
 
 ## Configuration Resilience Approach
 
-To address [issue #213](https://github.com/openperouter/openperouter/issues/213), this enhancement adopts a hybrid approach combining pre-emptive semantic validation, incremental application, and failed resource tracking.
+To address [issue #213](https://github.com/openperouter/openperouter/issues/213), this enhancement adopts a hybrid approach combining pre-emptive semantic validation, single-apply with the valid resource set, and failed resource tracking.
 
 ### Overview
 
@@ -138,9 +138,9 @@ L3VNI-C (VRF: green)               ← DependencyFailed: no HostSession, no L2VN
 
 **Rationale:**
 - Natural alignment with the dependency tree traversal order
-- Failed resources don't affect previously applied resources
-- Each step can be validated independently before application
-- Rollback granularity: only the failed resource is skipped, not the entire config
+- Validation is per-resource: a failure in one does not stop others from being validated
+- Single apply at the end: only resources that passed validation are included in the FRR config
+- Failure isolation: only the failed resource is excluded, not the entire config
 
 ### Failure Handling
 
@@ -183,7 +183,7 @@ Since a single `frr-reload.py` call applies the entire valid resource set, a fai
 
 The core status reporting mechanism uses a separate CR instance for each node to report the overall configuration result. This design follows established patterns from kubernetes-nmstate and frr-k8s.
 
-All configuration elements are processed together as a single configuration unit per node. Conflicts between CRDs or missing dependencies affect the entire configuration, making it essential to report the overall result.
+Each node has one RouterNodeConfigurationStatus resource that reports the outcome of every resource processed during reconciliation — both those that succeeded and those that failed — making it the single source of truth for configuration health on that node.
 
 #### API Structure
 
@@ -203,7 +203,7 @@ type FailedResource struct {
 
 **Failure Reasons:**
 - `ValidationFailed`: Resource failed pre-emptive semantic validation (e.g., interface not found, VNI conflict)
-- `DependencyFailed`: Resource's dependency failed (e.g., L3VNI's VRF has no healthy L2VNI)
+- `DependencyFailed`: Resource's dependency is unmet (e.g., L3VNI without HostSession has no healthy L2VNI referencing its VRF, or an L2VNI references a VRF with no matching L3VNI)
 - `ApplicationFailed`: Resource passed validation but failed during FRR application
 
 #### Node Association via Owner References
