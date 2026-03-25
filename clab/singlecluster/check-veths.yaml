@@ -5,11 +5,11 @@ interfaces:
   right:
     container: "pe-kind-control-plane"
     name: "toswitch"
-    ips: ["192.168.11.3/24"]
+    ips: ["192.168.11.3/24", "2001:db8:11::3/64"]
 - left:
     bridge: "leafkind-switch"
     name: "kindworker"
   right:
     container: "pe-kind-worker"
     name: "toswitch"
-    ips: ["192.168.11.4/24"]
+    ips: ["192.168.11.4/24", "2001:db8:11::4/64"]
