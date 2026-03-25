@@ -270,12 +270,13 @@ func neighborToFRR(n v1alpha1.Neighbor) (*frr.NeighborConfig, error) {
 	}
 
 	res := &frr.NeighborConfig{
-		Name:         neighName,
-		ASN:          asn,
-		Addr:         n.Address,
-		Port:         n.Port,
-		IPFamily:     neighborFamily,
-		EBGPMultiHop: n.EBGPMultiHop,
+		Name:            neighName,
+		ASN:             asn,
+		Addr:            n.Address,
+		Port:            n.Port,
+		IPFamily:        ipfamily.IPv4,
+		EBGPMultiHop:    n.EBGPMultiHop,
+		ExtendedNexthop: neighborFamily != ipfamily.IPv4,
 	}
 	res.HoldTime, res.KeepaliveTime, err = parseTimers(n.HoldTime, n.KeepaliveTime)
 	if err != nil {
