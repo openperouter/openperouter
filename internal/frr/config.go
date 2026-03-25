@@ -86,6 +86,11 @@ type NeighborConfig struct {
 	BFDProfile    string
 	EBGPMultiHop  bool
 	IPFamily      ipfamily.Family
+	// Allow bgp to negotiate the extended-nexthop capability with its peer. If you are peering over a v6 LL address
+	// then this capability is turned on automatically.
+	// If you are peering over a v6 Global Address then turning on this command will allow BGP to install v4 routes
+	// with v6 nexthops if you do not have v4 configured on interfaces.
+	ExtendedNexthop bool
 }
 
 func (n *NeighborConfig) ID() string {
