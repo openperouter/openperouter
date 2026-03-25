@@ -27,16 +27,16 @@ setup_veth_monitoring() {
         if [[ ${#CLUSTER_NAMES[@]} -eq 1 && "${CLUSTER_NAMES[0]}" == "pe-kind" ]]; then
             # Single cluster mode
             sudo -E ./check_veths.sh \
-                kindctrlpl:toswitch:pe-kind-control-plane:192.168.11.3/24 \
-                kindworker:toswitch:pe-kind-worker:192.168.11.4/24 2>&1 \
+                "kindctrlpl;toswitch;pe-kind-control-plane;192.168.11.3/24,2001:db8:11::3/64" \
+                "kindworker;toswitch;pe-kind-worker;192.168.11.4/24,2001:db8:11::4/64" 2>&1 \
                 | awk '{print strftime("%Y-%m-%dT%H:%M:%S"), $0; fflush()}' > "$CHECK_VETHS_LOG" &
         else
             # Multi-cluster mode
             sudo -E ./check_veths.sh \
-                kindctrlpla:toswitch:pe-kind-a-control-plane:192.168.11.3/24 \
-                kindworkera:toswitch:pe-kind-a-worker:192.168.11.4/24 \
-                kindctrlplb:toswitch:pe-kind-b-control-plane:192.168.12.3/24 \
-                kindworkerb:toswitch:pe-kind-b-worker:192.168.12.4/24 2>&1 \
+                "kindctrlpla;toswitch;pe-kind-a-control-plane;192.168.11.3/24,2001:db8:11::3/64" \
+                "kindworkera;toswitch;pe-kind-a-worker;192.168.11.4/24,2001:db8:11::4/64" \
+                "kindctrlplb;toswitch;pe-kind-b-control-plane;192.168.12.3/24,2001:db8:12::3/64" \
+                "kindworkerb;toswitch;pe-kind-b-worker;192.168.12.4/24,2001:db8:12::4/64" 2>&1 \
                 | awk '{print strftime("%Y-%m-%dT%H:%M:%S"), $0; fflush()}' > "$CHECK_VETHS_LOG" &
         fi
     else
