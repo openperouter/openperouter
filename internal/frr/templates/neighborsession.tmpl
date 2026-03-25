@@ -23,4 +23,7 @@
 {{- if  mustDisableConnectedCheck .neighbor.IPFamily .routerASN .neighbor.ASN .neighbor.EBGPMultiHop }}
   neighbor {{.neighbor.Addr}} disable-connected-check
 {{- end }}
+{{- if .neighbor.ExtendedNexthop }}
+  neighbor {{.neighbor.Addr}} capability extended-nexthop
+{{- end }}
 {{- end -}}
