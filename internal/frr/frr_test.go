@@ -262,9 +262,10 @@ func TestIPv6Only(t *testing.T) {
 			RouterID: "10.0.0.1",
 			Neighbors: []NeighborConfig{
 				{
-					ASN:      64512,
-					Addr:     "2001:db8::2",
-					IPFamily: ipfamily.IPv6,
+					ASN:             64512,
+					Addr:            "2001:db8::2",
+					IPFamily:        ipfamily.IPv4,
+					ExtendedNexthop: true,
 				},
 			},
 		},

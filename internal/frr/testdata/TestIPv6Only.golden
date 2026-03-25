@@ -17,8 +17,9 @@ router bgp 64512
   
   
   
+  neighbor 2001:db8::2 capability extended-nexthop
 
-  address-family ipv6 unicast
+  address-family ipv4 unicast
     neighbor 2001:db8::2 activate
     neighbor 2001:db8::2 allowas-in
   exit-address-family
