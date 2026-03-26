@@ -11,6 +11,7 @@ import (
 	"runtime"
 
 	"github.com/openperouter/openperouter/e2etests/pkg/frr"
+	"github.com/openperouter/openperouter/e2etests/pkg/ipfamily"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -70,9 +71,16 @@ type LeafConfiguration struct {
 type LeafKindConfiguration struct {
 	EnableBFD             bool
 	RedistributeConnected bool
-	Neighbors             []string
+	Neighbors             []Neighbor
 	NextHopSelf           bool
 	PERouterASN           uint32
+	AddressFamily         ipfamily.Family
+}
+
+// Neighbor represents a BGP neighbor with its name (IP address or interface) and type.
+type Neighbor struct {
+	Name        string
+	IsInterface bool
 }
 
 type RouteTargets struct {
@@ -153,21 +161,24 @@ const EnableBFD = true
 
 // UpdateLeafKindConfig updates the leafkind configuration file with the given configuration.
 // It takes nodes and automatically builds the neighbors list from their IPs.
-func UpdateLeafKindConfig(nodes []corev1.Node, enableBFD bool) error {
-	neighbors := []string{}
+// The behavior can be modified via options.
+func UpdateLeafKindConfig(nodes []corev1.Node, config LeafKindConfiguration) error {
+	if config.AddressFamily == "" {
+		config.AddressFamily = ipfamily.IPv4
+	}
+	if config.PERouterASN == 0 {
+		config.PERouterASN = 64514
+	}
+
+	neighbors := []Neighbor{}
 	for _, node := range nodes {
-		neighborIP, err := NeighborIP(KindLeaf, node.Name)
+		neighbor, err := NeighborForFamily(KindLeaf, node.Name, config.AddressFamily)
 		if err != nil {
 			return err
 		}
-		neighbors = append(neighbors, neighborIP)
+		neighbors = append(neighbors, neighbor)
 	}
-
-	config := LeafKindConfiguration{
-		PERouterASN: 64514,
-		EnableBFD:   enableBFD,
-		Neighbors:   neighbors,
-	}
+	config.Neighbors = neighbors
 
 	configString, err := LeafKindConfigToFRR(config)
 	if err != nil {

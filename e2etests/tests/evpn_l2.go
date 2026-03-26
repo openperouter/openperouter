@@ -374,12 +374,12 @@ var _ = Describe("Routes between bgp and the fabric - vtepInterface", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(len(nodes)).To(BeNumerically(">=", 2), "Expected at least 2 nodes, but got fewer")
 
-		By("setting redistribute connected on leaf kind for vtepInterface")
+		By("setting LeafKind configuration with redistribute connected on leaf kind for vtepInterface")
 		// This is needed if we use vtepInterface since
 		// openperouter is not going to advertise the
 		// address there, that address is supposed to be
 		// advertised by the network fabric
-		redistributeConnectedForLeafKind(nodes)
+		Expect(infra.UpdateLeafKindConfig(nodes, infra.LeafKindConfiguration{RedistributeConnected: true})).To(Succeed())
 
 		l2VniRedWithGateway := l2VniRed.DeepCopy()
 		l2VniRedWithGateway.Spec.VRF = nil
@@ -415,7 +415,7 @@ var _ = Describe("Routes between bgp and the fabric - vtepInterface", func() {
 	})
 
 	AfterEach(func() {
-		resetLeafKindConfig(nodes)
+		Expect(infra.UpdateLeafKindConfig(nodes, infra.LeafKindConfiguration{})).To(Succeed())
 		dumpIfFails(cs)
 		err := Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
