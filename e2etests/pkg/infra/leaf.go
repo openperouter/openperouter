@@ -11,6 +11,7 @@ import (
 	"runtime"
 
 	"github.com/openperouter/openperouter/e2etests/pkg/frr"
+	"github.com/openperouter/openperouter/e2etests/pkg/ipfamily"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -53,7 +54,13 @@ type LeafConfiguration struct {
 type LeafKindConfiguration struct {
 	EnableBFD             bool
 	RedistributeConnected bool
-	Neighbors             []string
+	Neighbors             []Neighbor
+}
+
+// Neighbor represents a BGP neighbor with its name (IP address or interface) and type.
+type Neighbor struct {
+	Name        string
+	IsInterface bool
 }
 
 type Addresses struct {
@@ -128,19 +135,28 @@ const EnableBFD = true
 
 // UpdateLeafKindConfig updates the leafkind configuration file with the given configuration.
 // It takes nodes and automatically builds the neighbors list from their IPs.
-func UpdateLeafKindConfig(nodes []corev1.Node, enableBFD bool) error {
-	neighbors := []string{}
+// The behavior can be modified via options.
+func UpdateLeafKindConfig(nodes []corev1.Node, optionFuncs ...optionFunc) error {
+	options := optionsStruct{
+		af: ipfamily.IPv4,
+	}
+	for _, optionFunc := range optionFuncs {
+		optionFunc(&options)
+	}
+
+	neighbors := []Neighbor{}
 	for _, node := range nodes {
-		neighborIP, err := NeighborIP(KindLeaf, node.Name)
+		neighbor, err := NeighborForFamily(KindLeaf, node.Name, options.af)
 		if err != nil {
 			return err
 		}
-		neighbors = append(neighbors, neighborIP)
+		neighbors = append(neighbors, neighbor)
 	}
 
 	config := LeafKindConfiguration{
-		EnableBFD: enableBFD,
-		Neighbors: neighbors,
+		RedistributeConnected: options.redistributeConnected,
+		EnableBFD:             options.enableBFD,
+		Neighbors:             neighbors,
 	}
 
 	configString, err := LeafKindConfigToFRR(config)
@@ -149,6 +165,35 @@ func UpdateLeafKindConfig(nodes []corev1.Node, enableBFD bool) error {
 	}
 
 	return LeafKindConfig.ReloadConfig(configString)
+}
+
+type optionsStruct struct {
+	enableBFD             bool
+	redistributeConnected bool
+	af                    ipfamily.Family
+}
+
+type optionFunc func(*optionsStruct)
+
+// WithEnableBFD returns an option function that enables BFD for the leaf configuration.
+func WithEnableBFD() optionFunc {
+	return func(opt *optionsStruct) {
+		opt.enableBFD = true
+	}
+}
+
+// WithRedistributeConnected returns an option function that enables redistribution of connected routes.
+func WithRedistributeConnected() optionFunc {
+	return func(opt *optionsStruct) {
+		opt.redistributeConnected = true
+	}
+}
+
+// WithIPFamily returns an option function that sets the IP address family for the leaf configuration.
+func WithIPFamily(af ipfamily.Family) optionFunc {
+	return func(opt *optionsStruct) {
+		opt.af = af
+	}
 }
 
 // ChangePrefixes updates the leaf configuration with the given prefixes for each VRF.
