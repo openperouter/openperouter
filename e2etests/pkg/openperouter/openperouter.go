@@ -22,6 +22,7 @@ const (
 type Routers interface {
 	Dump(writer io.Writer)
 	GetExecutors() iter.Seq[RouterExecutor]
+	ExecutorForNode(nodeName string) (RouterExecutor, error)
 }
 
 type RouterExecutor interface {
@@ -70,6 +71,11 @@ func RouterPodsForNodes(cs clientset.Interface, nodes map[string]bool) ([]*corev
 		}
 	}
 	return filteredRouterPods, nil
+}
+
+// ExecutorForNode returns the RouterExecutor running on the given node.
+func ExecutorForNode(routers Routers, nodeName string) (RouterExecutor, error) {
+	return routers.ExecutorForNode(nodeName)
 }
 
 // DaemonsetRolled checks if routers have been rolled/restarted by comparing old and new state

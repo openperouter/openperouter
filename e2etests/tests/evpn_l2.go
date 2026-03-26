@@ -176,24 +176,6 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		Expect(removeGatewayFromPod(firstPod)).To(Succeed())
 		Expect(removeGatewayFromPod(secondPod)).To(Succeed())
 
-		checkPodIsReacheable := func(exec executor.Executor, from, to string) {
-			GinkgoHelper()
-			const port = "8090"
-			hostPort := net.JoinHostPort(to, port)
-			urlStr := url.Format("http://%s/clientip", hostPort)
-			Eventually(func(g Gomega) string {
-				By(fmt.Sprintf("trying to hit %s from %s", to, from))
-				res, err := exec.Exec("curl", "-sS", urlStr)
-				g.Expect(err).ToNot(HaveOccurred(), "curl %s failed: %s", hostPort, res)
-				clientIP, _, err := net.SplitHostPort(res)
-				g.Expect(err).ToNot(HaveOccurred())
-				return clientIP
-			}).
-				WithTimeout(5*time.Second).
-				WithPolling(time.Second).
-				Should(Equal(from), "curl should return the expected clientip")
-		}
-
 		podExecutor := executor.ForPod(firstPod.Namespace, firstPod.Name, "agnhost")
 		secondPodExecutor := executor.ForPod(secondPod.Namespace, secondPod.Name, "agnhost")
 		hostARedExecutor := executor.ForContainer("clab-kind-hostA_red")
@@ -220,7 +202,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			for i, fromIP := range test.fromIPs {
 				from := discardAddressLength(fromIP)
 				to := discardAddressLength(test.toIPs[i])
-				checkPodIsReacheable(test.exec, from, to)
+				checkPodIsReachable(test.exec, from, to)
 			}
 		}
 	},

@@ -8,9 +8,9 @@ lastmod: "2026-03-03T10:00:00+02:00"
 toc: true
 ---
 
-{{% alert context="warning" %}}
+{{< hint warning >}}
 **Experimental - Not Supported**: The `RawFRRConfig` CRD is provided for experimentation and advanced debugging purposes only. It is not supported and may be removed or changed without notice in future releases. Use at your own risk.
-{{% /alert %}}
+{{< /hint >}}
 
 ## Overview
 

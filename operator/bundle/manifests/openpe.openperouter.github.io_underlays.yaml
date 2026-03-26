@@ -54,7 +54,7 @@ spec:
                     description: |-
                       VTEPInterface is the name of an existing interface to use as the VTEP source.
                       The interface must already have an IP address configured that will be used
-                      as the VTEP IP. Mutually exclusive with VTEPCIDR.
+                      as the VTEP IP. Mutually exclusive with vtepcidr.
                       The ToR must advertise the interface IP into the fabric underlay
                       (e.g. via redistribute connected) so that the VTEP address is reachable
                       from other leaves.
@@ -65,7 +65,7 @@ spec:
                     description: |-
                       VTEPCIDR is CIDR to be used to assign IPs to the local VTEP on each node.
                       A loopback interface will be created with an IP derived from this CIDR.
-                      Mutually exclusive with VTEPInterface.
+                      Mutually exclusive with vtepInterface.
                     type: string
                 type: object
                 x-kubernetes-validations:

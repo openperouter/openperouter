@@ -13,6 +13,7 @@ Please refer to our comprehensive contributing guide at [website/content/docs/co
 Also see [Claude.md](../Claude.md) for detailed Go style guidelines including:
 
 - Code readability and "line of sight" principles
+- Line length guidelines (120 character limit)
 - Package organization best practices
 - Error handling patterns
 - Dependency management

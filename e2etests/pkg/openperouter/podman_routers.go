@@ -46,6 +46,15 @@ func (r routerPodmans) Dump(writer io.Writer) {
 	}
 }
 
+func (r routerPodmans) ExecutorForNode(nodeName string) (RouterExecutor, error) {
+	for _, router := range r.routers {
+		if router.nodeName == nodeName {
+			return router, nil
+		}
+	}
+	return nil, fmt.Errorf("no router found on node %s", nodeName)
+}
+
 func podmanRolled(oldRouters, newRouters routerPodmans) error {
 	// Check same number of routers
 	if len(newRouters.routers) != len(oldRouters.routers) {

@@ -51,6 +51,7 @@ RUN printf "Package: *\nPin: release a=testing\nPin-Priority: 100\n" \
 RUN apt-get update -y && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y -t testing \
     -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" \
+    -o Dpkg::Options::="--force-overwrite" \
     podman && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*

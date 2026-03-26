@@ -33,7 +33,7 @@ The router pod runs as a Daemonset to allow VPN connectivity to every node.
 The router pod runs [FRR](https://frrouting.org/) in a dedicated network namespace and is responsible for:
 
 - **BGP Sessions**: Establishing and maintaining BGP sessions with external routers and host components
-- **VPN Route Processing**: Handling handling L3VPNs route advertisement and reception (for example, EVPN type 5 routes)
+- **VPN Route Processing**: Handling L3VPNs route advertisement and reception (for example, EVPN type 5 routes)
 - **VPN Encapsulation**: Managing tunnel encapsulation and decapsulation of the VPN of choice
 - **Route Translation**: Converting between BGP routes and L3 VPN routes
 - **Network Namespace Management**: Operating in an isolated network namespace for security and isolation
@@ -118,3 +118,48 @@ The node labeler persists the assigned index as a Kubernetes node label, making 
 
 - **Consistency**: Each node maintains its assigned index even after pod rescheduling
 - **Deterministic Allocation**: VTEP IPs and CIDRs are allocated based on the persistent index
+
+## Systemd Mode Architecture
+
+In systemd mode, the controller and router run directly on the host as Podman containers managed by systemd, instead of running as pods inside Kubernetes. As soon as Kubernetes is running, a host bridge pod provides the controller running on the host the credentials required to fetch additional configuration from the API server.
+
+<!-- Image: High-level view of a node in systemd mode. Show the host with the controller and router (FRR) running as Podman containers, the static config files on disk, and the hostbridge pod inside the Kubernetes cluster connected to the host via a shared volume. Show the overlay network (VXLAN tunnels) going out to external routers / other nodes. -->
+![](/images/systemd_architecture_hostbridge.svg)
+
+This enables OpenPERouter to start at boot time and provide overlay network connectivity before the Kubernetes cluster is available. The network established by OpenPERouter can then be used as the underlay for Kubernetes itself.
+
+### Two-Stage Boot Process
+
+The systemd mode follows a two-stage boot process to transition from a standalone configuration to full integration with the Kubernetes API.
+
+#### Stage 1: Static Configuration
+
+At boot time, OpenPERouter starts and processes the static configuration files from `/var/lib/openperouter/configs/`. This establishes the overlay network using only the local file-based configuration. During this stage:
+
+- The controller reads and merges all `openpe_*.yaml` files
+- Network interfaces, VRFs, VXLAN tunnels, and BGP sessions are configured
+- The overlay network becomes operational
+- Changes to the configuration files are watched and trigger a reconciliation cycle, allowing updates without restarting the service
+
+![](/images/systemd_architecture_host_only.svg)
+
+#### Stage 2: API Server Integration
+
+Once the Kubernetes API server becomes reachable (through the hostbridge pod exporting credentials to the host), OpenPERouter connects to it and starts reconciling Kubernetes Custom Resources. At this point:
+
+- Configuration from the API server is merged with the static file-based configuration
+- Both sources are reconciled together into a single FRR configuration
+- Changes from either source (file updates or CR changes) trigger a new reconciliation
+- The static configuration remains active, ensuring the base overlay survives API server unavailability
+
+![](/images/systemd_architecture_host_and_k8s.svg)
+
+### Host Components
+
+In systemd mode, the components that normally run as pods inside the cluster run directly on the host:
+
+- **Controller**: Runs as a Podman container on the host, reads static configuration files and (when available) connects to the Kubernetes API
+- **Router (FRR)**: Runs as a Podman container on the host in a dedicated network namespace
+- **Hostbridge**: The only component that still runs as a Kubernetes pod. It is the component that provides access to the Kubernetes API by exporting API server credentials and the node configuration to the host via a shared volume. Without the hostbridge, stage 2 cannot start and the controller operates exclusively from static configuration
+
+The node index, which in pod mode is assigned by the node labeler, is instead provided via the static `node-config.yaml` file on each host.

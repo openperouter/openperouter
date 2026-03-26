@@ -74,6 +74,13 @@ func Process(data string) error {
 }
 ```
 
+### Code Readability: Line Length
+
+Limit line length to 120 characters whenever possible:
+- Break long function calls, struct definitions, and statements into multiple lines
+- Use appropriate indentation for continuation lines
+- Prioritize readability over strict adherence when necessary
+
 ### Package Organization
 
 **Naming:**

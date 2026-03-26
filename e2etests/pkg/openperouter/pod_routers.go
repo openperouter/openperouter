@@ -63,6 +63,15 @@ func (r routerPods) Dump(writer io.Writer) {
 	}
 }
 
+func (r routerPods) ExecutorForNode(nodeName string) (RouterExecutor, error) {
+	for _, pod := range r.pods {
+		if pod.Spec.NodeName == nodeName {
+			return routerPod{pod}, nil
+		}
+	}
+	return nil, fmt.Errorf("no router found on node %s", nodeName)
+}
+
 func daemonsetPodRolled(oldRouters, newRouters routerPods) error {
 	oldPodsNames := []string{}
 	for _, p := range oldRouters.pods {

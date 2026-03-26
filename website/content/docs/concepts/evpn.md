@@ -22,9 +22,11 @@ Both overlay types can coexist and interoperate, enabling flexible network desig
 
 ### VTEP IP Assignment
 
-Each OpenPERouter instance is assigned a unique VTEP (Virtual Tunnel End Point) IP address from a configured CIDR range. This VTEP IP serves as the identifier for the router within the fabric.
+Each OpenPERouter instance requires a unique IP address to use as the VXLan VTEP (Virtual Tunnel End Point). This address must be reachable from every other VTEP in the network.
 
-OpenPERouter establishes a BGP session with the fabric, advertising its VTEP IP to other routers. The VPN address family is enabled on this session, allowing the exchange of EVPN routes required for overlay connectivity.
+OpenPERouter can either assign a VTEP IP to its loopback interface or use the IP of an existing interface that is already reachable through the fabric underlay. See the [EVPN configuration page]({{< ref "configuration/evpn" >}}) for details on how to configure each mode.
+
+OpenPERouter establishes a BGP session with the fabric with the VPN address family enabled, allowing the exchange of EVPN routes required for overlay connectivity.
 
 ![](/images/openpebgpfabric.png)
 
