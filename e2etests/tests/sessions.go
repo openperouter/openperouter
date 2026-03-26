@@ -217,7 +217,7 @@ var _ = Describe("Underlay BFD Configuration", Ordered, func() {
 		}
 
 		// Enable BFD on leafkind
-		err = infra.UpdateLeafKindConfig(nodes, true)
+		err = infra.UpdateLeafKindConfig(nodes, infra.LeafKindConfiguration{EnableBFD: true})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -235,7 +235,7 @@ var _ = Describe("Underlay BFD Configuration", Ordered, func() {
 			return openperouter.DaemonsetRolled(routers, newRouters)
 		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 
-		err = infra.UpdateLeafKindConfig(nodes, false)
+		err = infra.UpdateLeafKindConfig(nodes, infra.LeafKindConfiguration{})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
