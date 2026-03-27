@@ -715,9 +715,15 @@ spec:
                     to.
                   properties:
                     address:
-                      description: Address is the IP address to establish the session
-                        with.
+                      description: |-
+                        Address is the IP address to establish the session with. The IP address
+                        can be either IPv4 or IPv6.
+                      maxLength: 39
+                      minLength: 1
                       type: string
+                      x-kubernetes-validations:
+                      - message: Address must be a valid IPv4 or IPv6 address
+                        rule: isIP(self)
                     asn:
                       description: ASN is the AS number to use for the local end of
                         the session.
@@ -812,6 +818,17 @@ spec:
                       maximum: 4294967295
                       minimum: 0
                       type: integer
+                    interface:
+                      description: Interface is the interface name for BGP unnumbered
+                        sessions. The session will be established via IPv6 link locals.
+                      maxLength: 15
+                      minLength: 1
+                      type: string
+                      x-kubernetes-validations:
+                      - message: Interface must not contain /, :, or whitespace
+                        rule: self.matches('^[^\\/:\\s]+$')
+                      - message: Interface cannot be . or ..
+                        rule: self != '.' && self != '..'
                     keepaliveTime:
                       description: |-
                         KeepaliveTime is the requested BGP keepalive time, per RFC4271.
@@ -837,12 +854,14 @@ spec:
                       maximum: 16384
                       minimum: 0
                       type: integer
-                  required:
-                  - address
                   type: object
                   x-kubernetes-validations:
                   - message: hostASN must be different from asn for eBGP
                     rule: '!has(self.hostasn) || self.hostasn != self.asn'
+                  - message: Either a valid Address or Interface name must be provided
+                      for Neighbor
+                    rule: has(self.address) || has(self.interface)
+                maxItems: 1000
                 minItems: 1
                 type: array
               nics:
