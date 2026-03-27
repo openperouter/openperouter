@@ -77,6 +77,7 @@ type NeighborConfig struct {
 	Name          string
 	ASN           uint32
 	Addr          string
+	Interface     string
 	Port          *uint16
 	HoldTime      *uint64
 	KeepaliveTime *uint64
@@ -94,7 +95,10 @@ type NeighborConfig struct {
 }
 
 func (n *NeighborConfig) ID() string {
-	return n.Addr
+	if n.Addr != "" {
+		return n.Addr
+	}
+	return n.Interface
 }
 
 // templateConfig uses the template library to template
@@ -132,6 +136,9 @@ func templateConfig(data any) (string, error) {
 			},
 			"activateNeighborFor": func(ipFamily string, neighbourFamily ipfamily.Family) bool {
 				return string(neighbourFamily) == ipFamily
+			},
+			"neighborID": func(n NeighborConfig) string {
+				return n.ID()
 			},
 		}).ParseFS(templates, "templates/*")
 	if err != nil {
