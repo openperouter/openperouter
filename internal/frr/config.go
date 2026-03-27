@@ -77,6 +77,8 @@ type NeighborConfig struct {
 	Name          string
 	ASN           uint32
 	Addr          string
+	Interface     string
+	ID            string
 	Port          *uint16
 	HoldTime      *uint64
 	KeepaliveTime *uint64
@@ -91,10 +93,6 @@ type NeighborConfig struct {
 	// If you are peering over a v6 Global Address then turning on this command will allow BGP to install v4 routes
 	// with v6 nexthops if you do not have v4 configured on interfaces.
 	ExtendedNexthop bool
-}
-
-func (n *NeighborConfig) ID() string {
-	return n.Addr
 }
 
 // templateConfig uses the template library to template
