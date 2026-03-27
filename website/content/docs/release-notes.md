@@ -10,7 +10,6 @@ toc: true
 
 ## Release Notes
 
-
 ## Release v0.1.0
 
 ### New Features
@@ -45,6 +44,7 @@ toc: true
 - Support L3VNI on CRI-O by enabling always ipv4 ip forwarding (#212, @qinqon)
 - Sysctl: accept_untracked_na is now skipped with a warning on kernels < 5.18 instead of blocking host configuration. (#231, @qinqon)
 - Update Go from 1.24.0 to 1.24.9 and refresh dependency tree to resolve security vulnerabilities (#166, @qinqon)
+- It is now possible to attach multiple L2VNIs to the same IP-VRF for as long as their subnets do not overlap with the L3VNI and other L2VNIs in the same VRF. (#265, @andreaskaris)
 
 ### Other (Cleanup or Flake)
 - Delete all unused bridges in a single OVSDB transaction. Do not dettach ports of managed bridges before deletion. (#240, @maiqueb)
