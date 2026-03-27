@@ -162,6 +162,7 @@ func passthroughToFRR(passthrough v1alpha1.L3Passthrough, nodeIndex int) (*frr.P
 		res.LocalNeighborV4 = &frr.NeighborConfig{
 			ASN:  passthrough.Spec.HostSession.HostASN,
 			Addr: vethIPs.Ipv4.HostSide.IP.String(),
+			ID:   vethIPs.Ipv4.HostSide.IP.String(),
 		}
 		ipnet := net.IPNet{
 			IP:   vethIPs.Ipv4.HostSide.IP,
@@ -174,6 +175,7 @@ func passthroughToFRR(passthrough v1alpha1.L3Passthrough, nodeIndex int) (*frr.P
 		res.LocalNeighborV6 = &frr.NeighborConfig{
 			ASN:  passthrough.Spec.HostSession.HostASN,
 			Addr: vethIPs.Ipv6.HostSide.IP.String(),
+			ID:   vethIPs.Ipv6.HostSide.IP.String(),
 		}
 
 		ipnet := net.IPNet{
@@ -230,6 +232,7 @@ func l3vniToFRR(vni v1alpha1.L3VNI, routerID string, underlayASN uint32, nodeInd
 func createVNIConfig(vni v1alpha1.L3VNI, hostIP net.IP, mask net.IPMask, routerID string) frr.L3VNIConfig {
 	vniNeighbor := &frr.NeighborConfig{
 		Addr: hostIP.String(),
+		ID:   hostIP.String(),
 	}
 	vniNeighbor.ASN = vni.Spec.HostSession.ASN
 	if vni.Spec.HostSession.HostASN != 0 {
@@ -266,24 +269,38 @@ func createVNIConfig(vni v1alpha1.L3VNI, hostIP net.IP, mask net.IPMask, routerI
 }
 
 func neighborToFRR(n v1alpha1.Neighbor) (*frr.NeighborConfig, error) {
-	neighborFamily, err := ipfamily.ForAddresses(n.Address)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find ipfamily for %s, %w", n.Address, err)
-	}
-
 	if n.ASN == 0 {
-		return nil, fmt.Errorf("neighbor %s does not have ASN", n.Address)
+		return nil, fmt.Errorf("neighbor %s does not have ASN", neighborID(n))
 	}
 
 	res := &frr.NeighborConfig{
-		Name:            neighborName(n),
-		ASN:             n.ASN,
-		Addr:            n.Address,
-		Port:            n.Port,
-		IPFamily:        ipfamily.IPv4,
-		EBGPMultiHop:    n.EBGPMultiHop,
-		ExtendedNexthop: neighborFamily != ipfamily.IPv4,
+		Name:         neighborName(n),
+		ASN:          n.ASN,
+		Port:         n.Port,
+		IPFamily:     ipfamily.IPv4,
+		EBGPMultiHop: n.EBGPMultiHop,
 	}
+
+	switch {
+	case n.Address == "" && n.Interface == "":
+		return nil, fmt.Errorf("either a neighbor Address or an Interface must be configured")
+	case n.Address != "" && n.Interface != "":
+		return nil, fmt.Errorf("neighbor Address and neighbor Interface are mutually exclusive")
+	case n.Address != "":
+		neighborFamily, err := ipfamily.ForAddresses(n.Address)
+		if err != nil {
+			return nil, fmt.Errorf("failed to find ipfamily for %s, %w", n.Address, err)
+		}
+		res.ExtendedNexthop = neighborFamily != ipfamily.IPv4
+		res.Addr = n.Address
+		res.ID = n.Address
+	case n.Interface != "":
+		res.ExtendedNexthop = true
+		res.Interface = n.Interface
+		res.ID = n.Interface
+	}
+
+	var err error
 	res.HoldTime, res.KeepaliveTime, err = parseTimers(n.HoldTime, n.KeepaliveTime)
 	if err != nil {
 		return nil, fmt.Errorf("invalid timers for neighbor %s, err: %w", neighborName(n), err)
@@ -334,12 +351,19 @@ func bfdProfileForNeighbor(n v1alpha1.Neighbor) *frr.BFDProfile {
 	return bfdProfile
 }
 
+func neighborID(n v1alpha1.Neighbor) string {
+	if n.Address != "" {
+		return n.Address
+	}
+	return n.Interface
+}
+
 func bfdProfileNameForNeighbor(n v1alpha1.Neighbor) string {
-	return fmt.Sprintf("neighbor-%s", n.Address)
+	return fmt.Sprintf("neighbor-%s", neighborID(n))
 }
 
 func neighborName(n v1alpha1.Neighbor) string {
-	return fmt.Sprintf("%d@%s", n.ASN, n.Address)
+	return fmt.Sprintf("%d@%s", n.ASN, neighborID(n))
 }
 
 func parseTimers(ht, ka *metav1.Duration) (*uint64, *uint64, error) {
