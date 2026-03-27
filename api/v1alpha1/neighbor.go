@@ -7,6 +7,7 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 // Neighbor represents a BGP Neighbor we want FRR to connect to.
 // +kubebuilder:validation:XValidation:rule="has(self.asn) || has(self.type)",message="either ASN or Type must be set"
 // +kubebuilder:validation:XValidation:rule="!has(self.asn) || !has(self.type)",message="ASN and Type cannot be set together"
+// +kubebuilder:validation:XValidation:rule="has(self.address) || has(self.interface)",message="Either a valid Address or Interface name must be provided for Neighbor"
 type Neighbor struct {
 	// ASN is the AS number of the neighbor. Either ASN or Type must be set.
 	// +kubebuilder:validation:Minimum=1
@@ -24,7 +25,16 @@ type Neighbor struct {
 	// +kubebuilder:validation:XValidation:rule="isIP(self)",message="Address must be a valid IPv4 or IPv6 address"
 	// +kubebuilder:validation:MaxLength:=39
 	// +kubebuilder:validation:MinLength:=1
-	Address string `json:"address"`
+	// +optional
+	Address string `json:"address,omitempty"`
+
+	// Interface is the interface name for BGP unnumbered sessions. The session will be established via IPv6 link locals.
+	// +kubebuilder:validation:XValidation:rule=`self.matches('^[^\\/:\\s]+$')`,message="Interface must not contain /, :, or whitespace"
+	// +kubebuilder:validation:XValidation:rule=`self != '.' && self != '..'`,message="Interface cannot be . or .."
+	// +kubebuilder:validation:MaxLength:=15
+	// +kubebuilder:validation:MinLength:=1
+	// +optional
+	Interface string `json:"interface,omitempty"` // https://regex101.com/r/RlniVP/2 see kernel bool dev_valid_name(...)
 
 	// Port is the port to dial when establishing the session.
 	// Defaults to 179.
