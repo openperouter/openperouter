@@ -94,7 +94,7 @@ L3VNI is the **root of the VRF**: it defines the VRF routing domain. L2VNIs atta
 
 **Dependency Rules:**
 1. Underlay with EVPN is the root dependency for all VNIs
-2. All L3VNIs depend on Underlay
+2. All L3VNIs and L2VNIs depend on Underlay
 3. L2VNIs **with an explicit VRF** depend on a valid L3VNI with the same VRF name — an L2VNI referencing a VRF with no matching L3VNI is `DependencyFailed`
 4. L2VNIs **without `spec.vrf`** are disconnected overlays — they only depend on the Underlay, not on any L3VNI (see [issue #280](https://github.com/openperouter/openperouter/issues/280)). Setting `l2gatewayips` on a disconnected L2VNI is rejected at validation time (`ValidationFailed`)
 5. L3VNI without `HostSession` requires at least one healthy L2VNI referencing its VRF — otherwise `DependencyFailed`
@@ -140,7 +140,7 @@ L3VNI-C (VRF: green)               ← DependencyFailed: no HostSession, no L2VN
 ```
 
 **Rationale:**
-- Natural alignment with the dependency tree traversal order
+- Natural alignment with the sequence of dependencies
 - Validation is per-resource: a failure in one does not stop others from being validated
 - Single apply at the end: only resources that passed validation are included in the FRR config
 - Failure isolation: only the failed resource is excluded, not the entire config
@@ -323,7 +323,6 @@ metadata:
     name: worker-3
     uid: "abcdef12-3456-7890-abcd-ef1234567890"
 status:
-
   failedResources:
     - kind: Underlay
       name: production-underlay
@@ -585,26 +584,3 @@ Implement FRR configuration generation: validate per resource following dependen
 - Host interface application per valid L2VNI
 - Automatic retry of failed resources on each reconcile cycle
 
-## Benefits and Trade-offs
-
-### Benefits
-
-| Benefit | Description |
-|---------|-------------|
-| **Partial Failure Isolation** | One failing VNI does not block all others from being configured |
-| **Clear Dependency Visibility** | Tree structure makes dependencies explicit and debuggable |
-| **Status Transparency** | Users see exactly what is working and what failed |
-| **Graceful Degradation** | System continues operating with valid resources |
-| **Better Debugging** | Failed resource records provide failure history with reasons |
-| **Incremental Recovery** | Fix one resource, it gets applied in next reconcile cycle |
-| **Prevents Cascading Failures** | L3VNI failure doesn't affect sibling VRFs |
-
-### Trade-offs
-
-| Trade-off | Description |
-|-----------|-------------|
-| **Increased Complexity** | More code paths, state machines, harder to reason about |
-| **Single frr-reload.py per reconcile** | One reload call per reconcile regardless of resource count; diff-based so previously-applied invalid resources are cleaned up automatically |
-| **Status Update Load** | More Kubernetes API calls for status updates per node |
-| **Partial State** | System can be in "partially configured" state (may confuse operators) |
-| **Testing Complexity** | Many more failure scenarios and state combinations to test |
