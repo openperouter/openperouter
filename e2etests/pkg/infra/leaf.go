@@ -4,6 +4,7 @@ package infra
 
 import (
 	"bytes"
+	"fmt"
 	"html/template"
 	"net"
 	"os"
@@ -14,34 +15,78 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-const (
-	HostARedIPv4     = "192.168.20.2"
-	HostABlueIPv4    = "192.168.21.2"
-	HostADefaultIPv4 = "192.168.22.2"
-	HostBRedIPv4     = "192.169.20.2"
-	HostBBlueIPv4    = "192.169.21.2"
+var (
+	HostARedIPv4     string
+	HostABlueIPv4    string
+	HostADefaultIPv4 string
+	HostBRedIPv4     string
+	HostBBlueIPv4    string
 
-	HostARedIPv6  = "2001:db8:20::2"
-	HostABlueIPv6 = "2001:db8:21::2"
-	HostBRedIPv6  = "2001:db8:169:20::2"
-	HostBBlueIPv6 = "2001:db8:169:21::2"
+	HostARedIPv6  string
+	HostABlueIPv6 string
+	HostBRedIPv6  string
+	HostBBlueIPv6 string
 )
 
 var (
+	LeafAConfig    Leaf
+	LeafBConfig    Leaf
+	LeafKindConfig LeafKind
+)
+
+func init() {
+	topo := Topology()
+
+	mustPeerIP := func(node, peer string, family IPFamily) string {
+		ip, err := topo.GetPeerIP(node, peer, family)
+		if err != nil {
+			panic(fmt.Sprintf("topology: %v", err))
+		}
+		return stripCIDR(ip)
+	}
+
+	mustLinkIP := func(node, peer string, family IPFamily) string {
+		ip, err := topo.GetLinkIP(node, peer, family)
+		if err != nil {
+			panic(fmt.Sprintf("topology: %v", err))
+		}
+		return stripCIDR(ip)
+	}
+
+	// Host IPs are the peer end of leaf interfaces
+	HostARedIPv4 = mustPeerIP("leafA", "hostA_red", IPv4)
+	HostABlueIPv4 = mustPeerIP("leafA", "hostA_blue", IPv4)
+	HostADefaultIPv4 = mustPeerIP("leafA", "hostA_default", IPv4)
+	HostBRedIPv4 = mustPeerIP("leafB", "hostB_red", IPv4)
+	HostBBlueIPv4 = mustPeerIP("leafB", "hostB_blue", IPv4)
+
+	HostARedIPv6 = mustPeerIP("leafA", "hostA_red", IPv6)
+	HostABlueIPv6 = mustPeerIP("leafA", "hostA_blue", IPv6)
+	HostBRedIPv6 = mustPeerIP("leafB", "hostB_red", IPv6)
+	HostBBlueIPv6 = mustPeerIP("leafB", "hostB_blue", IPv6)
+
+	// Leaf configurations
+	leafA := topo.Nodes["leafA"]
+	leafB := topo.Nodes["leafB"]
+
 	LeafAConfig = Leaf{
-		VTEPIP:       "100.64.0.1",
-		SpineAddress: "192.168.1.0",
+		VTEPIP:       leafA.VTEPIP,
+		SpineAddress: mustLinkIP("spine", "leafA", IPv4),
+		ASN:          leafA.BGP.ASN,
+		SpineASN:     leafA.BGP.Peers[0].ASN,
 		Container:    LeafAContainer,
 	}
 	LeafBConfig = Leaf{
-		VTEPIP:       "100.64.0.2",
-		SpineAddress: "192.168.1.2",
+		VTEPIP:       leafB.VTEPIP,
+		SpineAddress: mustLinkIP("spine", "leafB", IPv4),
+		ASN:          leafB.BGP.ASN,
+		SpineASN:     leafB.BGP.Peers[0].ASN,
 		Container:    LeafBContainer,
 	}
 	LeafKindConfig = LeafKind{
 		Container: KindLeafContainer,
 	}
-)
+}
 
 type LeafConfiguration struct {
 	Leaf
@@ -51,8 +96,13 @@ type LeafConfiguration struct {
 }
 
 type LeafKindConfiguration struct {
-	EnableBFD             bool
 	RedistributeConnected bool
+	Neighbors             []string
+	ASN                   uint32
+	SpineAddress          string
+	SpineASN              uint32
+	KindNodeASN           uint32
+	EnableBFD             bool
 	Neighbors             []string
 }
 
@@ -65,6 +115,8 @@ type Addresses struct {
 type Leaf struct {
 	VTEPIP       string
 	SpineAddress string
+	ASN          uint32
+	SpineASN     uint32
 	frr.Container
 }
 
@@ -129,6 +181,8 @@ const EnableBFD = true
 // UpdateLeafKindConfig updates the leafkind configuration file with the given configuration.
 // It takes nodes and automatically builds the neighbors list from their IPs.
 func UpdateLeafKindConfig(nodes []corev1.Node, enableBFD bool) error {
+	topo := Topology()
+
 	neighbors := []string{}
 	for _, node := range nodes {
 		neighborIP, err := NeighborIP(KindLeaf, node.Name)
@@ -138,9 +192,15 @@ func UpdateLeafKindConfig(nodes []corev1.Node, enableBFD bool) error {
 		neighbors = append(neighbors, neighborIP)
 	}
 
+	leafkind := topo.Nodes["leafkind"]
+
 	config := LeafKindConfiguration{
-		EnableBFD: enableBFD,
-		Neighbors: neighbors,
+		ASN:          leafkind.BGP.ASN,
+		SpineAddress: stripCIDR(leafkind.BGP.Peers[0].IPv4Address),
+		SpineASN:     leafkind.BGP.Peers[0].ASN,
+		KindNodeASN:  64514,
+		EnableBFD:    enableBFD,
+		Neighbors:    neighbors,
 	}
 
 	configString, err := LeafKindConfigToFRR(config)

@@ -1,0 +1,36 @@
+log file /etc/frr/frr.log debug
+
+debug zebra events
+debug bgp zebra
+debug zebra nht
+debug bgp neighbor-events
+debug bgp updates
+debug bgp keepalives
+debug bgp nht
+debug bfd network
+debug bfd peer
+debug bfd zebra
+
+!
+router bgp {{.BGP.ASN}}
+ no bgp ebgp-requires-policy
+ no bgp network import-check
+ no bgp default ipv4-unicast
+
+{{range .BGP.Peers}}
+ neighbor {{.IPv4Address}} remote-as {{.ASN}}
+{{end}}
+ !
+ address-family ipv4 unicast
+{{range .BGP.Peers}}
+  neighbor {{.IPv4Address}} activate
+{{end}}
+ exit-address-family
+ !
+ address-family l2vpn evpn
+{{range .BGP.Peers}}
+  neighbor {{.IPv4Address}} activate
+{{end}}
+ exit-address-family
+exit
+!

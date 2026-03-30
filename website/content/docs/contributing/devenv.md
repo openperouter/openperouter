@@ -44,6 +44,38 @@ with ASN `64514`.
 More details, including the IP addresses of all the nodes involved,
 can be found on the project [readme](https://github.com/openperouter/openperouter/tree/main/clab).
 
+## Declarative topology configuration
+
+The FRR configurations and setup scripts for each node in the development environment are generated
+from two source files using the `clab-config` tool:
+
+- **`kind.clab.yml`** -- the containerlab topology file that defines nodes, links, and interface names.
+- **`environment-config.yaml`** -- a declarative file that describes IP ranges, BGP parameters, VRFs, and node roles.
+
+Both files live side-by-side under a topology directory (e.g. `clab/singlecluster/`).
+
+### Regenerating configs with `clab-config apply`
+
+After editing `environment-config.yaml` or `kind.clab.yml`, regenerate the per-node configuration by running:
+
+```bash
+make build-clab-config
+
+bin/clab-config apply \
+  --clab clab/singlecluster/kind.clab.yml \
+  --config clab/singlecluster/environment-config.yaml \
+  --output-dir clab/singlecluster
+```
+
+This produces a directory per node (containing `frr.conf` and optional `setup.sh`) plus a
+`topology-state.json` that can be inspected with `clab-config summary` or `clab-config query`.
+
+### Creating a new topology variation
+
+To create a new topology, add a directory under `clab/` with its own `kind.clab.yml` and
+`environment-config.yaml`, then run `clab-config apply` pointing at those files. The
+`clab/multicluster/` directory is an existing example of a second topology.
+
 ## Veth recreation
 
 The development environment faces a significant issue:

@@ -1,0 +1,60 @@
+# Environment configuration for the multicluster topology.
+# Used with: clab-config apply --clab kind.clab.yml --config environment-config.yaml
+
+ipRanges:
+  pointToPoint:
+    ipv4: "192.168.1.0/24"
+    ipv6: "fd00:1::/112"
+  broadcast:
+    ipv4: "192.168.11.0/16"
+    ipv6: "fd00:11::/48"
+  vtep: "100.64.0.0/24"
+  routerID: "10.255.0.0/24"
+
+nodes:
+  - pattern: "leaf[AB]"
+    role: edge-leaf
+    vrfs:
+      red:
+        vni: 100
+        interfaces:
+          - ethred
+        redistributeConnected: true
+      blue:
+        vni: 200
+        interfaces:
+          - ethblue
+        redistributeConnected: true
+    bgp:
+      asn: 64520
+      peers:
+        - pattern: "spine"
+          evpnEnabled: true
+          bfdEnabled: true
+
+  - pattern: "spine"
+    role: transit
+    bgp:
+      asn: 64612
+      peers:
+        - pattern: "leaf.*"
+          evpnEnabled: true
+          bfdEnabled: true
+
+  - pattern: "leafkind-a"
+    role: transit
+    bgp:
+      asn: 64512
+      peers:
+        - pattern: "spine"
+          evpnEnabled: true
+          bfdEnabled: true
+
+  - pattern: "leafkind-b"
+    role: transit
+    bgp:
+      asn: 64516
+      peers:
+        - pattern: "spine"
+          evpnEnabled: true
+          bfdEnabled: true
