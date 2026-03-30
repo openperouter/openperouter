@@ -186,6 +186,9 @@ spec:
         {{- with .Values.openperouter.logLevel }}
         - --loglevel={{ . }}
         {{- end }}
+        securityContext: 
+          seLinuxOptions:
+            type: spc_t
         volumeMounts:
           - name: frrconfig
             mountPath: /etc/frr

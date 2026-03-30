@@ -11,6 +11,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/utils/ptr"
 )
 
 var _ = Describe("Webhooks", func() {
@@ -137,6 +138,55 @@ var _ = Describe("Webhooks", func() {
 		)
 	})
 
+	Context("when L2VNI is created before L3VNI with overlap", func() {
+		It("should fail", func() {
+			l2vni1 := v1alpha1.L2VNI{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-l2vni-1",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.L2VNISpec{
+					VRF:          ptr.To("test-vrf-1"),
+					VNI:          200,
+					VXLanPort:    4789,
+					L2GatewayIPs: []string{"10.0.0.1/25"},
+				},
+			}
+			By("creating the L2VNI")
+			err := Updater.Update(config.Resources{
+				L2VNIs: []v1alpha1.L2VNI{l2vni1},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			l3vni1 := v1alpha1.L3VNI{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-vni-1",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.L3VNISpec{
+					VRF: "test-vrf-1",
+					HostSession: &v1alpha1.HostSession{
+						ASN: 65001,
+						LocalCIDR: v1alpha1.LocalCIDRConfig{
+							IPv4: "10.0.0.0/24",
+							IPv6: "2000::1/64",
+						},
+						HostASN: 65002,
+					},
+					VNI:       100,
+					VXLanPort: 4789,
+				},
+			}
+			By("creating the L3VNI")
+			err = Updater.Update(config.Resources{
+				L3VNIs: []v1alpha1.L3VNI{l3vni1},
+			})
+			Expect(err).To(MatchError(ContainSubstring((`subnet overlap in VRF "test-vrf-1": IPNet 10.0.0.0/24 ` +
+				`(L3VNI openperouter-system/test-vni-1) overlaps with IPNet 10.0.0.0/25 ` +
+				`(L2VNI openperouter-system/test-l2vni-1)`))))
+		})
+	})
+
 	Context("when L2VNIs webhooks are enabled", func() {
 		BeforeEach(func() {
 			l2vni1 := v1alpha1.L2VNI{
@@ -154,17 +204,42 @@ var _ = Describe("Webhooks", func() {
 				L2VNIs: []v1alpha1.L2VNI{l2vni1},
 			})
 			Expect(err).NotTo(HaveOccurred())
+
+			l3vni1 := v1alpha1.L3VNI{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-vni-1",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.L3VNISpec{
+					VRF: "test-vrf-1",
+					HostSession: &v1alpha1.HostSession{
+						ASN: 65001,
+						LocalCIDR: v1alpha1.LocalCIDRConfig{
+							IPv4: "10.0.0.0/24",
+							IPv6: "2000::1/64",
+						},
+						HostASN: 65002,
+					},
+					VNI:       100,
+					VXLanPort: 4789,
+				},
+			}
+			By("creating the first L3VNI")
+			err = Updater.Update(config.Resources{
+				L3VNIs: []v1alpha1.L3VNI{l3vni1},
+			})
+			Expect(err).NotTo(HaveOccurred())
 		})
 
 		DescribeTable("the webhook should block",
-			func(l2vni v1alpha1.L2VNI, expectedError string) {
+			func(l2vnis []v1alpha1.L2VNI, expectedError string) {
 				err := Updater.Update(config.Resources{
-					L2VNIs: []v1alpha1.L2VNI{l2vni},
+					L2VNIs: l2vnis,
 				})
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring(expectedError))
 			},
-			Entry("when trying to create an L2VNI with the same VNI as an existing one", v1alpha1.L2VNI{
+			Entry("when trying to create an L2VNI with the same VNI as an existing one", []v1alpha1.L2VNI{{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-l2vni-2",
 					Namespace: openperouter.Namespace,
@@ -173,8 +248,8 @@ var _ = Describe("Webhooks", func() {
 					VNI:       200, // Same VNI as l2vni1
 					VXLanPort: 4789,
 				},
-			}, "duplicate vni"),
-			Entry("when trying to create an L2VNI with an invalid IPv4 address", v1alpha1.L2VNI{
+			}}, "duplicate vni"),
+			Entry("when trying to create an L2VNI with an invalid IPv4 address", []v1alpha1.L2VNI{{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "l2-invalid-ip4",
 					Namespace: openperouter.Namespace,
@@ -184,8 +259,8 @@ var _ = Describe("Webhooks", func() {
 					VXLanPort:    4789,
 					L2GatewayIPs: []string{"not-an-ip-address"},
 				},
-			}, `invalid l2gatewayips for vni "l2-invalid-ip4" = [not-an-ip-address]: invalid cidr: invalid CIDR address: not-an-ip-address`),
-			Entry("when trying to create an L2VNI with an invalid format in L2GatewayIP", v1alpha1.L2VNI{
+			}}, `invalid l2gatewayips for vni "l2-invalid-ip4" = [not-an-ip-address]: invalid cidr: invalid CIDR address: not-an-ip-address`),
+			Entry("when trying to create an L2VNI with an invalid format in L2GatewayIP", []v1alpha1.L2VNI{{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "l2-bad-format",
 					Namespace: openperouter.Namespace,
@@ -195,8 +270,8 @@ var _ = Describe("Webhooks", func() {
 					VXLanPort:    4789,
 					L2GatewayIPs: []string{"256.256.256.256/24"},
 				},
-			}, `invalid l2gatewayips for vni "l2-bad-format" = [256.256.256.256/24]: invalid cidr: invalid CIDR address: 256.256.256.256/24`),
-			Entry("when trying to create an L2VNI with mixed valid and invalid IPs", v1alpha1.L2VNI{
+			}}, `invalid l2gatewayips for vni "l2-bad-format" = [256.256.256.256/24]: invalid cidr: invalid CIDR address: 256.256.256.256/24`),
+			Entry("when trying to create an L2VNI with mixed valid and invalid IPs", []v1alpha1.L2VNI{{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "l2-mixed-ips",
 					Namespace: openperouter.Namespace,
@@ -206,8 +281,8 @@ var _ = Describe("Webhooks", func() {
 					VXLanPort:    4789,
 					L2GatewayIPs: []string{"192.168.1.1/24", "invalid-ip"},
 				},
-			}, `invalid l2gatewayips for vni "l2-mixed-ips" = [192.168.1.1/24 invalid-ip]: invalid cidr: invalid CIDR address: invalid-ip`),
-			Entry("when trying to create an L2VNI with more than 2 IPs", v1alpha1.L2VNI{
+			}}, `invalid l2gatewayips for vni "l2-mixed-ips" = [192.168.1.1/24 invalid-ip]: invalid cidr: invalid CIDR address: invalid-ip`),
+			Entry("when trying to create an L2VNI with more than 2 IPs", []v1alpha1.L2VNI{{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "l2-too-many",
 					Namespace: openperouter.Namespace,
@@ -217,8 +292,8 @@ var _ = Describe("Webhooks", func() {
 					VXLanPort:    4789,
 					L2GatewayIPs: []string{"192.168.1.1/24", "2001:db8::1/64", "10.0.0.1/24"},
 				},
-			}, "Too many"),
-			Entry("when trying to create an L2VNI with 2 IPv4 addresses", v1alpha1.L2VNI{
+			}}, "Too many"),
+			Entry("when trying to create an L2VNI with 2 IPv4 addresses", []v1alpha1.L2VNI{{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "l2-two-ipv4",
 					Namespace: openperouter.Namespace,
@@ -228,8 +303,8 @@ var _ = Describe("Webhooks", func() {
 					VXLanPort:    4789,
 					L2GatewayIPs: []string{"192.168.1.1/24", "10.0.0.1/24"},
 				},
-			}, `invalid l2gatewayips for vni "l2-two-ipv4" = [192.168.1.1/24 10.0.0.1/24]: IPFamilyForAddresses: same address family ["192.168.1.1" "10.0.0.1"]`),
-			Entry("when trying to create an L2VNI with 2 IPv6 addresses", v1alpha1.L2VNI{
+			}}, `invalid l2gatewayips for vni "l2-two-ipv4" = [192.168.1.1/24 10.0.0.1/24]: IPFamilyForAddresses: same address family ["192.168.1.1" "10.0.0.1"]`),
+			Entry("when trying to create an L2VNI with 2 IPv6 addresses", []v1alpha1.L2VNI{{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "l2-two-ipv6",
 					Namespace: openperouter.Namespace,
@@ -239,7 +314,91 @@ var _ = Describe("Webhooks", func() {
 					VXLanPort:    4789,
 					L2GatewayIPs: []string{"2001:db8::1/64", "2001:db9::1/64"},
 				},
-			}, `invalid l2gatewayips for vni "l2-two-ipv6" = [2001:db8::1/64 2001:db9::1/64]: IPFamilyForAddresses: same address family ["2001:db8::1" "2001:db9::1"]`),
+			}}, `invalid l2gatewayips for vni "l2-two-ipv6" = [2001:db8::1/64 2001:db9::1/64]: IPFamilyForAddresses: same address family ["2001:db8::1" "2001:db9::1"]`),
+			Entry("when trying to create an L2VNI with overlapping IPv4 address", []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "first",
+						Namespace: openperouter.Namespace,
+					},
+					Spec: v1alpha1.L2VNISpec{
+						VNI:          207,
+						VRF:          ptr.To("test-vrf-1"),
+						VXLanPort:    4789,
+						L2GatewayIPs: []string{"192.168.123.1/24", "2000:0:0:123::1/64"},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "second",
+						Namespace: openperouter.Namespace,
+					},
+					Spec: v1alpha1.L2VNISpec{
+						VNI:          208,
+						VRF:          ptr.To("test-vrf-1"),
+						VXLanPort:    4789,
+						L2GatewayIPs: []string{"192.168.123.1/24"},
+					},
+				},
+			}, `subnet overlap in VRF "test-vrf-1": IPNet 192.168.123.0/24 (L2VNI openperouter-system/second) `+
+				`overlaps with IPNet 192.168.123.0/24 (L2VNI openperouter-system/first)`),
+			Entry("when trying to create an L2VNI with overlapping IPv6 address", []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "first",
+						Namespace: openperouter.Namespace,
+					},
+					Spec: v1alpha1.L2VNISpec{
+						VNI:          209,
+						VRF:          ptr.To("test-vrf-1"),
+						VXLanPort:    4789,
+						L2GatewayIPs: []string{"192.168.123.1/24", "2000:0:0:123::1/64"},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "second",
+						Namespace: openperouter.Namespace,
+					},
+					Spec: v1alpha1.L2VNISpec{
+						VNI:          210,
+						VRF:          ptr.To("test-vrf-1"),
+						VXLanPort:    4789,
+						L2GatewayIPs: []string{"2000:0:0:123::1:1/112"},
+					},
+				},
+			}, `subnet overlap in VRF "test-vrf-1": IPNet 2000::123:0:0:1:0/112 (L2VNI openperouter-system/second) `+
+				`overlaps with IPNet 2000:0:0:123::/64 (L2VNI openperouter-system/first)`),
+			Entry("when trying to create an L2VNI with IPv4 address that overlaps with L3VNI", []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "first",
+						Namespace: openperouter.Namespace,
+					},
+					Spec: v1alpha1.L2VNISpec{
+						VNI:          207,
+						VRF:          ptr.To("test-vrf-1"),
+						VXLanPort:    4789,
+						L2GatewayIPs: []string{"10.0.0.1/24"},
+					},
+				},
+			}, `subnet overlap in VRF "test-vrf-1": IPNet 10.0.0.0/24 (L3VNI openperouter-system/test-vni-1) `+
+				`overlaps with IPNet 10.0.0.0/24 (L2VNI openperouter-system/first)`),
+			Entry("when trying to create an L2VNI with IPv6 address that overlaps with L3VNI", []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "first",
+						Namespace: openperouter.Namespace,
+					},
+					Spec: v1alpha1.L2VNISpec{
+						VNI:          207,
+						VRF:          ptr.To("test-vrf-1"),
+						VXLanPort:    4789,
+						L2GatewayIPs: []string{"2000::2/64"},
+					},
+				},
+			}, `subnet overlap in VRF "test-vrf-1": IPNet 2000::/64 (L3VNI openperouter-system/test-vni-1) `+
+				`overlaps with IPNet 2000::/64 (L2VNI openperouter-system/first)`),
 		)
 
 		It("should allow creating an L2VNI with valid IPv4 address", func() {
