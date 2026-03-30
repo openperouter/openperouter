@@ -20,27 +20,21 @@ setup_veth_monitoring() {
     pushd "$(dirname $(readlink -f $0))/.."
 
     # Check if monitoring is already running to avoid duplicates
-    if ! pgrep -f check_veths.sh | xargs -r ps -p | grep -q pe-kind; then
+    if pgrep -f check_veths.go | xargs -r ps -p | grep -q pe-kind; then
+        echo "Veth monitoring already running"
+    else
         echo "Starting veth monitoring"
 
         CHECK_VETHS_LOG="/tmp/check_veths.log"
         if [[ ${#CLUSTER_NAMES[@]} -eq 1 && "${CLUSTER_NAMES[0]}" == "pe-kind" ]]; then
             # Single cluster mode
-            sudo -E ./check_veths.sh \
-                kindctrlpl:toswitch:pe-kind-control-plane:192.168.11.3/24 \
-                kindworker:toswitch:pe-kind-worker:192.168.11.4/24 2>&1 \
-                | awk '{print strftime("%Y-%m-%dT%H:%M:%S"), $0; fflush()}' > "$CHECK_VETHS_LOG" &
+            sudo -E "$(which go)" run tools/check_veths/*.go -f singlecluster/check-veths.yaml  2>&1 | \
+              awk '{print strftime("%Y-%m-%dT%H:%M:%S"), $0; fflush()}' > "$CHECK_VETHS_LOG" &
         else
             # Multi-cluster mode
-            sudo -E ./check_veths.sh \
-                kindctrlpla:toswitch:pe-kind-a-control-plane:192.168.11.3/24 \
-                kindworkera:toswitch:pe-kind-a-worker:192.168.11.4/24 \
-                kindctrlplb:toswitch:pe-kind-b-control-plane:192.168.12.3/24 \
-                kindworkerb:toswitch:pe-kind-b-worker:192.168.12.4/24 2>&1 \
-                | awk '{print strftime("%Y-%m-%dT%H:%M:%S"), $0; fflush()}' > "$CHECK_VETHS_LOG" &
+            sudo -E "$(which go)" run tools/check_veths/*.go -f multicluster/check-veths.yaml 2>&1 | \
+              awk '{print strftime("%Y-%m-%dT%H:%M:%S"), $0; fflush()}' > "$CHECK_VETHS_LOG" &
         fi
-    else
-        echo "Veth monitoring already running"
     fi
 
     # Give some time for the monitoring to start
