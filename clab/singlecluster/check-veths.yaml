@@ -1,0 +1,15 @@
+interfaces:
+- left:
+    bridge: "leafkind-switch"
+    name: "kindctrlpl"
+  right:
+    container: "pe-kind-control-plane"
+    name: "toswitch"
+    ips: ["192.168.11.3/24"]
+- left:
+    bridge: "leafkind-switch"
+    name: "kindworker"
+  right:
+    container: "pe-kind-worker"
+    name: "toswitch"
+    ips: ["192.168.11.4/24"]
