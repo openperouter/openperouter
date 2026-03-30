@@ -580,7 +580,7 @@ endif
 # Build a catalog image by adding bundle images to an empty catalog using the operator package manager tool, 'opm'.
 # This recipe invokes 'opm' in 'semver' bundle add mode. For more information on add modes, see:
 # https://github.com/operator-framework/community-operators/blob/7f1438c/docs/packaging-operator.md#updating-your-existing-operator
-USE_HTTP ?= ""
+USE_HTTP ?=
 .PHONY: catalog-build
 catalog-build: opm ## Build a catalog image.
 	$(OPM) index add --container-tool $(CONTAINER_ENGINE) --mode semver --tag $(CATALOG_IMG) --bundles $(BUNDLE_IMGS) $(FROM_INDEX_OPT) $(USE_HTTP)
