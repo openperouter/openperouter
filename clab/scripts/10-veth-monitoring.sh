@@ -27,6 +27,8 @@ setup_veth_monitoring() {
         if [[ ${#CLUSTER_NAMES[@]} -eq 1 && "${CLUSTER_NAMES[0]}" == "pe-kind" ]]; then
             # Single cluster mode
             sudo -E $(which go) run tools/check_veths/check_veths.go \
+                '{"container":"clab-kind-leafkind", "name":"tokindworker"}' '{"container":"pe-kind-worker", "name":"toleafkind"}' \
+                '{"container":"clab-kind-leafkind", "name":"tokindctrlpl"}' '{"container":"pe-kind-control-plane", "name":"toleafkind"}' \
                 '{"bridge":"leafkind-switch", "name":"kindctrlpl"}' '{"container":"pe-kind-control-plane", "name":"toswitch", "ips": ["192.168.11.3/24", "2001:db8:11::3/64"]}' \
                 '{"bridge":"leafkind-switch", "name":"kindworker"}' '{"container":"pe-kind-worker", "name":"toswitch", "ips": ["192.168.11.4/24", "2001:db8:11::4/64"]}' 2>&1 \
                 | awk '{print strftime("%Y-%m-%dT%H:%M:%S"), $0; fflush()}' > "$CHECK_VETHS_LOG" &
