@@ -55,10 +55,16 @@ The hybrid approach combines three strategies:
    - L3VNI dependency: must have either a healthy L2VNI in the same VRF **or** a `HostSession` configured
    - Disconnected L2VNI constraints: `l2gatewayips` rejected when `spec.vrf` is not set ([issue #280](https://github.com/openperouter/openperouter/issues/280))
 
-2. **Single Application** - Apply once with all valid resources:
-   - After validation completes, generate a single FRR config containing the Underlay plus all valid L3VNIs and L2VNIs
-   - Apply via a single `frr-reload.py` call
-   - Resources that failed validation are excluded; `frr-reload.py`'s diff removes them from FRR automatically
+2. **Application** - Two complementary mechanisms:
+
+   **Netlink (incremental, per-VRF):** The controller provisions netlink resources (VRFs, bridges, VXLANs, veths) in the router namespace incrementally. Each VRF and its associated resources are provisioned independently:
+   - L2VNI + L3VNI in the same VRF
+   - L3VNI only (e.g., with HostSession, no L2VNIs)
+   - L2VNI only — disconnected overlay without VRF or gateway IPs (east-west L2 forwarding only)
+
+   A failure provisioning one VRF's netlink resources does not affect other VRFs.
+
+   **FRR configuration (single application):** After validation completes, generate a single FRR config containing the Underlay plus all valid L3VNIs and L2VNIs. Apply via a single `frr-reload.py` call. Resources that failed validation are excluded from the generated config.
 
 3. **Failed Resource Tracking** - Mark and skip failed resources:
    - Failed L2VNIs are recorded and skipped
@@ -119,9 +125,9 @@ The system separates **validation** (per-resource, following dependency order) f
 - Generate a single complete FRR config containing the Underlay plus all valid L2VNIs and L3VNIs.
 - Apply via a single `frr-reload.py` call.
 
-**Cleanup of previously-applied resources** is automatic: `frr-reload.py` diffs the running FRR config against the desired config and removes anything absent from the desired config. A resource that was applied in a previous reconcile but is now invalid (e.g., its interface was removed, or a VNI conflict appeared) will simply be absent from the new desired config, so `frr-reload.py` will remove it from FRR without any explicit tracking.
-
 If a resource fails validation or application, it is marked as failed, and processing continues. On the next reconcile cycle, the resource is re-validated from scratch.
+
+**Note on previously-applied resources:** A resource that was valid in a previous reconcile but is now invalid (e.g., its interface was removed, or a VNI conflict appeared) will be excluded from the new desired FRR config. However, the controller does **not** attempt to remove it from FRR's running config — doing so risks bricking the router if the removal fails. The stale config remains in FRR until the user fixes the resource (triggering a new valid config) or removes it entirely.
 
 **Example traversal** (given the dependency tree above):
 
@@ -406,8 +412,14 @@ The controller follows this flow during reconciliation:
    - Validate the L2VNI (VNI unique); if invalid, mark as `ValidationFailed` and continue
    - If valid, add to the valid L2VNI set — no L3VNI dependency check needed
 6. **For each L3VNI without HostSession** that has no healthy L2VNI referencing its VRF: mark as `DependencyFailed`
-7. **Apply once**: Generate a single complete FRR config from the valid L3VNI and L2VNI sets and call `frr-reload.py` once; if the call fails, mark all resources in the valid set as `ApplicationFailed`
-8. **Update status**: Record failed resources with reasons, update conditions
+7. **Provision netlink resources (incremental, per-VRF)**: For each valid VRF group, provision the netlink resources (VRF device, bridges, VXLANs, veths) in the router namespace independently:
+   - L2VNI + L3VNI in the same VRF
+   - L3VNI only (e.g., with HostSession)
+   - L2VNI only (disconnected overlay, no VRF or gateway IPs)
+
+   A failure provisioning one VRF's netlink resources marks those resources as `ApplicationFailed` but does not affect other VRFs.
+8. **Generate and apply FRR config (single application)**: Generate a single complete FRR config from the valid L3VNI and L2VNI sets (those that also passed netlink provisioning) and call `frr-reload.py` once; if the call fails, mark all resources in the valid set as `ApplicationFailed`
+9. **Update status**: Record failed resources with reasons, update conditions
 
 **Key behaviors:**
 - Failed resources are re-validated on every reconcile cycle
@@ -415,7 +427,8 @@ The controller follows this flow during reconciliation:
 - `DependencyFailed` entries are cleared when the dependency recovers
 - Multiple L2VNIs can share the same VRF; an L3VNI without HostSession is satisfied if any valid L2VNI references its VRF
 - An L2VNI whose referenced L3VNI later passes validation will be re-evaluated on the next reconcile
-- Previously-applied resources that become invalid are automatically removed from FRR: since the desired config only includes valid resources, `frr-reload.py`'s diff removes anything no longer present
+- Netlink provisioning is per-VRF: a failure in one VRF does not block others
+- Previously-applied resources that become invalid are excluded from the desired FRR config but **not** actively removed from FRR's running config (to avoid bricking the router if the removal fails)
 
 #### RBAC Requirements
 
@@ -572,15 +585,15 @@ Compute and persist the RouterNodeConfigurationStatus at the end of each reconci
 - Standard Kubernetes conditions (Ready, Degraded)
 - FailedResources detailed reporting
 
-### Phase 4: FRR Config Generation with Valid Resource Set
+### Phase 4: Netlink Provisioning and FRR Config Generation with Valid Resource Set
 
-Implement FRR configuration generation: validate per resource following dependency order, then apply once with the full valid set.
+Implement incremental netlink provisioning and FRR configuration generation: validate per resource following dependency order, provision netlink per-VRF, then apply FRR config once with the full valid set.
 
 **Deliverables:**
 - Per-resource validation following dependency tree order (Underlay → L3VNI → L2VNI)
-- Single complete FRR config generation from the valid resource set per reconcile
-- Single `frr-reload.py` call per reconcile (diff-based application removes previously-applied resources that are now invalid)
+- Incremental netlink provisioning per-VRF (VRF device, bridges, VXLANs, veths); failure in one VRF does not block others
+- Single complete FRR config generation from the valid resource set per reconcile (only resources that also passed netlink provisioning)
+- Single `frr-reload.py` call per reconcile with valid resources only (stale config from previously-valid resources is left in FRR until the user fixes or removes the resource)
 - Underlay failure handling (leave config as-is, stop processing)
-- Host interface application per valid L2VNI
 - Automatic retry of failed resources on each reconcile cycle
 
