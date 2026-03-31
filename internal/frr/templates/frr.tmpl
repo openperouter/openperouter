@@ -74,6 +74,13 @@ router bgp {{ .ASN }} vrf {{ .VRF }}
 
   {{- if .LocalNeighbor }}
   {{ template "localneighbor" . }}
+  {{- else }}
+  address-family ipv4 unicast
+    redistribute connected
+  exit-address-family
+  address-family ipv6 unicast
+    redistribute connected
+  exit-address-family
   {{- end }}
 
   address-family l2vpn evpn

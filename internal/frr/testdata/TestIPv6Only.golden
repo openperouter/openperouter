@@ -41,12 +41,14 @@ router bgp 64512 vrf red
   neighbor 2001:db8::2 remote-as 64512
 
   address-family ipv4 unicast
+    redistribute connected
     neighbor 2001:db8::2 activate
     neighbor 2001:db8::2 route-map allowall in
     neighbor 2001:db8::2 route-map allowall out
   exit-address-family
 
   address-family ipv6 unicast
+    redistribute connected
     network 2001:db8::2/64
     neighbor 2001:db8::2 activate
     neighbor 2001:db8::2 route-map allowall in

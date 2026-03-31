@@ -2,6 +2,7 @@
   neighbor {{ .LocalNeighbor.Addr }} remote-as {{ .LocalNeighbor.ASN }}
 
   address-family ipv4 unicast
+    redistribute connected
   {{- range .ToAdvertiseIPv4 }}
     network {{ . }}
   {{- end }}
@@ -11,6 +12,7 @@
   exit-address-family
 
   address-family ipv6 unicast
+    redistribute connected
   {{- range .ToAdvertiseIPv6 }}
     network {{ . }}
   {{- end }}
