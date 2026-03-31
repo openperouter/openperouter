@@ -43,3 +43,15 @@ func EnsureNamespace() error {
 	slog.Info("named netns created successfully", "path", NamedNSPath)
 	return nil
 }
+
+// DeleteNamespace removes the named network namespace "perouter".
+// This is used during non-recoverable errors so the next pod starts
+// with a clean namespace rebuilt from scratch by the controller.
+func DeleteNamespace() error {
+	slog.Info("deleting named netns", "path", NamedNSPath)
+	out, err := exec.Command("ip", "netns", "delete", "perouter").CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to delete named netns: %w, output: %s", err, string(out))
+	}
+	return nil
+}

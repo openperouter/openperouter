@@ -98,6 +98,14 @@ func (r *RouterNamedNS) CanReconcile(_ context.Context) (bool, error) {
 }
 
 func (r *RouterNamedNS) HandleNonRecoverableError(ctx context.Context) error {
+	// Delete the named netns so the next pod starts with a clean namespace
+	// rebuilt from scratch by the controller. Without this, the persistent
+	// netns retains stale state (e.g. old underlay NIC) causing the new pod
+	// to hit the same non-recoverable error in a loop.
+	if err := netnamespace.DeleteNamespace(); err != nil {
+		slog.Warn("failed to delete named netns during non-recoverable cleanup", "error", err)
+	}
+
 	if r.pod == nil {
 		slog.Info("no router pod reference, skipping pod deletion")
 		return nil
