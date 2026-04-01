@@ -46,6 +46,25 @@ func redistributeConnectedForLeafKind(nodes []corev1.Node) {
 	Expect(err).NotTo(HaveOccurred())
 }
 
+func ibgpForLeafKind(nodes []corev1.Node) {
+	neighbors := []string{}
+	for _, node := range nodes {
+		neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
+		Expect(err).NotTo(HaveOccurred())
+		neighbors = append(neighbors, neighborIP)
+	}
+
+	config := infra.LeafKindConfiguration{
+		IBGP:      true,
+		Neighbors: neighbors,
+	}
+
+	configString, err := infra.LeafKindConfigToFRR(config)
+	Expect(err).NotTo(HaveOccurred())
+	err = infra.LeafKindConfig.ReloadConfig(configString)
+	Expect(err).NotTo(HaveOccurred())
+}
+
 func resetLeafKindConfig(nodes []corev1.Node) {
 	err := infra.UpdateLeafKindConfig(nodes, false)
 	Expect(err).NotTo(HaveOccurred())
