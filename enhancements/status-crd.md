@@ -52,8 +52,9 @@ The hybrid approach combines three strategies:
    - VNI conflicts (VNI IDs must be unique per node across both L2 and L3)
    - Route target overlaps
    - Dependency tree ordering
-   - L3VNI dependency: must have either a healthy L2VNI in the same VRF **or** a `HostSession` configured
+   - L2VNI dependency: an L2VNI with `spec.vrf` or `l2gatewayips` must have a healthy L3VNI in the same VRF; an L2VNI without either is a disconnected overlay and has no L3VNI dependency
    - Disconnected L2VNI constraints: `l2gatewayips` rejected when `spec.vrf` is not set ([issue #280](https://github.com/openperouter/openperouter/issues/280))
+   - **Note:** An L3VNI without `HostSession` that is not referenced by any L2VNI is useless but harmless — it is still provisioned (creates an empty VRF), not rejected
 
 2. **Application** - Two complementary mechanisms:
 
@@ -80,10 +81,10 @@ The hybrid approach combines three strategies:
        |             |                  |         |        |               |
     L3VNI-D       L3VNI-C            L3VNI-G      |     L3VNI-B            |
   (VRF: red)   (VRF: green)        (VRF: mgmt)    |   (VRF: blue)          |
-      /  \     [!! No L2VNIs,     [HostSession]   |   [HostSession]        |
+      /  \     [No L2VNIs,        [HostSession]   |   [HostSession]        |
      /    \     no HostSession →                  |                        |
-    /      \    DependencyFailed]                 |                        |
-   /        \                                     |                        |
+    /      \    useless but                       |                        |
+   /        \   harmless]                         |                        |
   /          \                                    |                        |
 L2VNI-A    L2VNI-F                             L2VNI-E                  L2VNI-H
 (VRF: red)(VRF: red)                         (VRF: purple)            (VRF: not set →
@@ -95,15 +96,16 @@ L2VNI-A    L2VNI-F                             L2VNI-E                  L2VNI-H
 
 L3VNI is the **root of the VRF**: it defines the VRF routing domain. L2VNIs attach to a VRF by referencing the same VRF name as an L3VNI. L2VNIs without an explicit VRF are **disconnected overlays** — they provide east-west L2 forwarding only and have no L3VNI dependency (see [issue #280](https://github.com/openperouter/openperouter/issues/280)). There are two types of L3VNIs:
 
-- **L3VNI with L2VNI dependency** (e.g., L3VNI-D): No `HostSession` configured. Depends on at least one healthy L2VNI in the same VRF to provide L2 bridging in the VRF. An L3VNI without HostSession and without any L2VNI referencing its VRF is `DependencyFailed`.
 - **L3VNI with HostSession** (e.g., L3VNI-G): Has `HostSession` configured, which establishes a BGP session with the host via a veth pair. Operates independently of L2VNIs — only depends on the Underlay.
+- **L3VNI without HostSession** (e.g., L3VNI-D): No `HostSession` configured. Intended to be referenced by L2VNIs in the same VRF to provide L3 routing for the VRF. An L3VNI without HostSession that is not referenced by any L2VNI is **useless but harmless** — it is still provisioned (creates an empty VRF), not rejected.
+- **L3VNI without HostSession and without L2VNIs** (e.g., L3VNI-C): Still valid and provisioned. It creates an empty VRF with no L2 bridging. This is harmless and not worth rejecting — the operator may simply not have created the L2VNIs yet.
 
 **Dependency Rules:**
 1. Underlay with EVPN is the root dependency for all VNIs
 2. All L3VNIs and L2VNIs depend on Underlay
-3. L2VNIs **with an explicit VRF** depend on a valid L3VNI with the same VRF name — an L2VNI referencing a VRF with no matching L3VNI is `DependencyFailed`
+3. L2VNIs **with `spec.vrf` or `l2gatewayips`** depend on a valid L3VNI with the same VRF name — an L2VNI referencing a VRF with no matching L3VNI is `DependencyFailed`
 4. L2VNIs **without `spec.vrf`** are disconnected overlays — they only depend on the Underlay, not on any L3VNI (see [issue #280](https://github.com/openperouter/openperouter/issues/280)). Setting `l2gatewayips` on a disconnected L2VNI is rejected at validation time (`ValidationFailed`)
-5. L3VNI without `HostSession` requires at least one healthy L2VNI referencing its VRF — otherwise `DependencyFailed`
+5. L3VNI without `HostSession` and without any L2VNI referencing its VRF is **useless but harmless** — it is still provisioned, not rejected
 6. L3VNI with `HostSession` has no L2VNI dependency (only depends on Underlay)
 7. Multiple L2VNIs can share the same VRF (same L3VNI)
 8. VNI IDs must be unique per node (across both L2 and L3)
@@ -118,7 +120,8 @@ The system separates **validation** (per-resource, following dependency order) f
 2. **Each L3VNI**: Validate independently (VRF/VNI uniqueness, HostSession fields). If valid, add to the valid L3VNI set.
 3. **Each L2VNI with explicit VRF**: Check that its VRF matches a valid L3VNI; if not, mark as `DependencyFailed`. Otherwise validate (interface exists, VNI unique) and add to the valid set.
 4. **Each L2VNI without `spec.vrf`** (disconnected overlay): Validate that `l2gatewayips` is not set (reject with `ValidationFailed` if present). Otherwise validate (VNI unique) and add to the valid set — no L3VNI dependency required.
-5. **Each L3VNI without HostSession** that has no healthy L2VNI referencing its VRF is marked as `DependencyFailed`.
+
+**Note:** An L3VNI without `HostSession` that has no L2VNI referencing its VRF is useless but harmless — it is still included in the valid set (creates an empty VRF).
 
 **Application phase** — runs once after validation completes:
 
@@ -134,15 +137,13 @@ If a resource fails validation or application, it is marked as failed, and proce
 ```
 Step 1: Underlay (EVPN)
 Step 2: L3VNI-D (VRF: red)         ← valid, added to valid L3VNI set
-Step 3: L3VNI-C (VRF: green)       ← valid individually, added to valid L3VNI set
+Step 3: L3VNI-C (VRF: green)       ← valid, no L2VNIs reference VRF "green" but harmless (empty VRF)
 Step 4: L3VNI-G (VRF: mgmt)        ← valid, has HostSession
 Step 5: L3VNI-B (VRF: blue)        ← valid, has HostSession
 Step 6: L2VNI-A (VRF: red)         ← L3VNI-D exists for VRF "red" → valid
 Step 7: L2VNI-F (VRF: red)         ← L3VNI-D exists for VRF "red" → valid
 Step 8: L2VNI-E (VRF: purple)      ← no L3VNI for VRF "purple" → DependencyFailed
 Step 9: L2VNI-H (VRF: not set)     ← disconnected overlay, no L3VNI dependency needed → valid
----
-L3VNI-C (VRF: green)               ← DependencyFailed: no HostSession, no L2VNI for VRF "green"
 ```
 
 **Rationale:**
@@ -167,7 +168,7 @@ Do not attempt to remove VNIs or clean up FRR config on Underlay failure. This s
 
 - Use different failure reasons: `ValidationFailed` vs `DependencyFailed`
 - `ValidationFailed` examples: VNI conflict, interface not found, `l2gatewayips` set on a disconnected L2VNI (no `spec.vrf`)
-- `DependencyFailed` examples: L2VNI with explicit VRF has no matching L3VNI, L3VNI without HostSession has no L2VNIs in its VRF
+- `DependencyFailed` examples: L2VNI with explicit VRF has no matching L3VNI
 - Clear `DependencyFailed` automatically when dependency recovers
 - Provide clear status messages indicating the root cause
 
@@ -214,7 +215,7 @@ type FailedResource struct {
 
 **Failure Reasons:**
 - `ValidationFailed`: Resource failed pre-emptive semantic validation (e.g., interface not found, VNI conflict)
-- `DependencyFailed`: Resource's dependency is unmet (e.g., L3VNI without HostSession has no healthy L2VNI referencing its VRF, or an L2VNI references a VRF with no matching L3VNI)
+- `DependencyFailed`: Resource's dependency is unmet (e.g., an L2VNI with `spec.vrf` references a VRF with no matching L3VNI)
 - `ApplicationFailed`: Resource passed validation but failed during FRR application
 
 #### Node Association via Owner References
@@ -299,10 +300,10 @@ status:
       name: isolated-segment
       reason: ValidationFailed
       message: "l2gatewayips cannot be set on a disconnected L2VNI (no spec.vrf)"
-    - kind: L3VNI
-      name: tenant-l3
+    - kind: L2VNI
+      name: orphan-network
       reason: DependencyFailed
-      message: "No healthy L2VNI exists for VRF 'tenant'"
+      message: "No L3VNI exists for VRF 'tenant'"
   conditions:
   - type: Ready
     status: "False"
@@ -411,21 +412,21 @@ The controller follows this flow during reconciliation:
    - If `l2gatewayips` is set, mark as `ValidationFailed` (gateway requires a VRF) and continue
    - Validate the L2VNI (VNI unique); if invalid, mark as `ValidationFailed` and continue
    - If valid, add to the valid L2VNI set — no L3VNI dependency check needed
-6. **For each L3VNI without HostSession** that has no healthy L2VNI referencing its VRF: mark as `DependencyFailed`
-7. **Provision netlink resources (incremental, per-VRF)**: For each valid VRF group, provision the netlink resources (VRF device, bridges, VXLANs, veths) in the router namespace independently:
+6. **Provision netlink resources (incremental, per-VRF)**: For each valid VRF group, provision the netlink resources (VRF device, bridges, VXLANs, veths) in the router namespace independently:
    - L2VNI + L3VNI in the same VRF
    - L3VNI only (e.g., with HostSession)
    - L2VNI only (disconnected overlay, no VRF or gateway IPs)
 
    A failure provisioning one VRF's netlink resources marks those resources as `ApplicationFailed` but does not affect other VRFs.
-8. **Generate and apply FRR config (single application)**: Generate a single complete FRR config from the valid L3VNI and L2VNI sets (those that also passed netlink provisioning) and call `frr-reload.py` once; if the call fails, mark all resources in the valid set as `ApplicationFailed`
-9. **Update status**: Record failed resources with reasons, update conditions
+7. **Generate and apply FRR config (single application)**: Generate a single complete FRR config from the valid L3VNI and L2VNI sets (those that also passed netlink provisioning) and call `frr-reload.py` once; if the call fails, mark all resources in the valid set as `ApplicationFailed`
+8. **Update status**: Record failed resources with reasons, update conditions
 
 **Key behaviors:**
 - Failed resources are re-validated on every reconcile cycle
 - Failure status is cleared automatically when validation passes
 - `DependencyFailed` entries are cleared when the dependency recovers
-- Multiple L2VNIs can share the same VRF; an L3VNI without HostSession is satisfied if any valid L2VNI references its VRF
+- Multiple L2VNIs can share the same VRF (same L3VNI)
+- An L3VNI without HostSession and without any L2VNIs is useless but harmless — still provisioned as an empty VRF
 - An L2VNI whose referenced L3VNI later passes validation will be re-evaluated on the next reconcile
 - Netlink provisioning is per-VRF: a failure in one VRF does not block others
 - Previously-applied resources that become invalid are excluded from the desired FRR config but **not** actively removed from FRR's running config (to avoid bricking the router if the removal fails)
