@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"strings"
+	"regexp"
 
 	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -23,10 +23,10 @@ import (
 
 func dumpIfFails(cs clientset.Interface) {
 	if ginkgo.CurrentSpecReport().Failed() {
-		dumpBGPInfo(ReportPath, ginkgo.CurrentSpecReport().LeafNodeText, cs, infra.LeafA, infra.LeafB, infra.KindLeaf)
-		k8s.DumpInfo(K8sReporter, ginkgo.CurrentSpecReport().LeafNodeText)
+		dumpBGPInfo(ReportPath, ginkgo.CurrentSpecReport().FullText(), cs, infra.LeafA, infra.LeafB, infra.KindLeaf)
+		k8s.DumpInfo(K8sReporter, ginkgo.CurrentSpecReport().FullText())
 		if HostMode {
-			dumpPodmanInfo(cs, ReportPath, ginkgo.CurrentSpecReport().LeafNodeText)
+			dumpPodmanInfo(cs, ReportPath, ginkgo.CurrentSpecReport().FullText())
 		}
 	}
 }
@@ -136,7 +136,9 @@ func DumpPods(name string, pods []*corev1.Pod) {
 }
 
 func createTestOutput(basePath, testName string) (string, error) {
-	testPath := path.Join(basePath, strings.ReplaceAll(testName, " ", "-"))
+	nonAlphanumeric := regexp.MustCompile(`[^a-zA-Z0-9]+`)
+	sanitizedName := nonAlphanumeric.ReplaceAllString(testName, "_")
+	testPath := path.Join(basePath, sanitizedName)
 	err := os.Mkdir(testPath, 0755)
 	if err != nil && !errors.Is(err, os.ErrExist) {
 		return "", fmt.Errorf("failed to create test dir: %w", err)

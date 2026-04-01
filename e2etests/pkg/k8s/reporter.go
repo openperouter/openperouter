@@ -4,11 +4,10 @@ package k8s
 
 import (
 	"log"
-	"strings"
+	"regexp"
 	"time"
 
 	frrk8sv1beta1 "github.com/metallb/frr-k8s/api/v1beta1"
-	"github.com/onsi/ginkgo/v2"
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openshift-kni/k8sreporter"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -55,6 +54,7 @@ func InitReporter(kubeconfig, path string, namespaces ...string) *k8sreporter.Ku
 }
 
 func DumpInfo(reporter *k8sreporter.KubernetesReporter, testName string) {
-	testNameNoSpaces := strings.ReplaceAll(ginkgo.CurrentSpecReport().LeafNodeText, " ", "-")
+	nonAlphanumeric := regexp.MustCompile(`[^a-zA-Z0-9]+`)
+	testNameNoSpaces := nonAlphanumeric.ReplaceAllString(testName, "_")
 	reporter.Dump(10*time.Minute, testNameNoSpaces)
 }
