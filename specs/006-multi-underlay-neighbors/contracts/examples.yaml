@@ -1,0 +1,326 @@
+# Underlay Configuration Examples
+
+# ============================================================================
+# Example 1: Single Interface, Single Neighbor (Backward Compatible)
+# ============================================================================
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: Underlay
+metadata:
+  name: underlay-single
+  namespace: default
+spec:
+  asn: 65001
+  routerIDCIDR: "10.0.0.0/24"
+
+  # Single neighbor (existing behavior)
+  neighbors:
+  - asn: 65002
+    address: "192.168.1.1"
+    port: 179
+
+  # Single interface (existing behavior)
+  nics:
+  - "eth0"
+
+  evpn:
+    vtepcidr: "10.100.0.0/24"
+
+---
+# ============================================================================
+# Example 2: Multiple Interfaces, Single Neighbor (Redundant Paths)
+# ============================================================================
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: Underlay
+metadata:
+  name: underlay-multi-interface
+  namespace: default
+spec:
+  nodeSelector:
+    matchLabels:
+      rack: "rack-1"
+
+  asn: 65001
+  routerIDCIDR: "10.0.1.0/24"
+
+  neighbors:
+  - asn: 65002
+    address: "192.168.1.1"
+    port: 179
+    bfd:
+      enabled: true
+      minRx: 300
+      minTx: 300
+      multiplier: 3
+
+  # Multiple interfaces for redundancy
+  nics:
+  - "eth1"
+  - "eth2"
+  - "eth3"
+
+  evpn:
+    vtepInterface: "lo0"
+
+---
+# ============================================================================
+# Example 3: Single Interface, Multiple Neighbors (Multi-ToR)
+# ============================================================================
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: Underlay
+metadata:
+  name: underlay-multi-neighbor
+  namespace: default
+spec:
+  asn: 65001
+
+  # Multiple neighbors to different ToR switches
+  neighbors:
+  - asn: 65002
+    address: "192.168.1.1"
+    port: 179
+    password: "tor1-secret"
+
+  - asn: 65002
+    address: "192.168.1.2"
+    port: 179
+    password: "tor2-secret"
+
+  - asn: 65003
+    address: "192.168.2.1"
+    port: 179
+    ebgpMultihop: 2
+
+  nics:
+  - "eth0"
+
+  evpn:
+    vtepcidr: "10.100.0.0/24"
+
+---
+# ============================================================================
+# Example 4: Multiple Interfaces, Multiple Neighbors (Full Multi-Entity)
+# ============================================================================
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: Underlay
+metadata:
+  name: underlay-full-multi
+  namespace: default
+spec:
+  nodeSelector:
+    matchLabels:
+      role: "edge"
+
+  asn: 65001
+  routerIDCIDR: "10.0.2.0/24"
+
+  # Multiple neighbors across multiple ToRs
+  neighbors:
+  - asn: 65002
+    address: "192.168.1.1"
+    port: 179
+    bfd:
+      enabled: true
+      minRx: 300
+      minTx: 300
+      multiplier: 3
+
+  - asn: 65002
+    address: "192.168.1.2"
+    port: 179
+    bfd:
+      enabled: true
+      minRx: 300
+      minTx: 300
+      multiplier: 3
+
+  - asn: 65003
+    address: "192.168.2.1"
+    port: 179
+
+  - asn: 65003
+    address: "192.168.2.2"
+    port: 179
+
+  # Multiple interfaces for different paths
+  nics:
+  - "eth1"  # Primary path to TOR-1
+  - "eth2"  # Primary path to TOR-2
+  - "eth3"  # Backup path to TOR-1
+
+  evpn:
+    vtepcidr: "10.100.0.0/24"
+
+---
+# ============================================================================
+# Example 5: Multiple Neighbors with Host ASN (FRR-K8s Integration)
+# ============================================================================
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: Underlay
+metadata:
+  name: underlay-host-asn
+  namespace: default
+spec:
+  asn: 65001
+
+  neighbors:
+  # External ToR neighbor
+  - asn: 65002
+    address: "192.168.1.1"
+
+  # Host namespace BGP speaker (FRR-K8s/Calico/MetalLB)
+  - asn: 65001
+    hostASN: 64512  # Different ASN for host namespace
+    address: "10.0.0.1"
+
+  # Another ToR neighbor
+  - asn: 65003
+    address: "192.168.2.1"
+
+  nics:
+  - "eth0"
+  - "eth1"
+
+  evpn:
+    vtepcidr: "10.100.0.0/24"
+
+---
+# ============================================================================
+# Example 6: No NICs (Multus-based connectivity)
+# ============================================================================
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: Underlay
+metadata:
+  name: underlay-multus
+  namespace: default
+spec:
+  asn: 65001
+
+  neighbors:
+  - asn: 65002
+    address: "192.168.1.1"
+  - asn: 65002
+    address: "192.168.1.2"
+
+  # Empty nics - using Multus network attachments instead
+  nics: []
+
+  evpn:
+    vtepInterface: "net1"  # Multus-provided interface
+
+---
+# ============================================================================
+# Example 7: Invalid - Duplicate Neighbor Address (Will Be Rejected)
+# ============================================================================
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: Underlay
+metadata:
+  name: underlay-invalid-duplicate-neighbor
+  namespace: default
+spec:
+  asn: 65001
+
+  neighbors:
+  - asn: 65002
+    address: "192.168.1.1"  # Duplicate address
+  - asn: 65003
+    address: "192.168.1.1"  # INVALID: Same address as above
+
+  nics:
+  - "eth0"
+
+  evpn:
+    vtepcidr: "10.100.0.0/24"
+
+---
+# ============================================================================
+# Example 8: Invalid - Duplicate NIC (Will Be Rejected)
+# ============================================================================
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: Underlay
+metadata:
+  name: underlay-invalid-duplicate-nic
+  namespace: default
+spec:
+  asn: 65001
+
+  neighbors:
+  - asn: 65002
+    address: "192.168.1.1"
+
+  nics:
+  - "eth0"
+  - "eth1"
+  - "eth0"  # INVALID: Duplicate interface name
+
+  evpn:
+    vtepcidr: "10.100.0.0/24"
+
+---
+# ============================================================================
+# Example 9: Invalid - ASN Conflict (Will Be Rejected)
+# ============================================================================
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: Underlay
+metadata:
+  name: underlay-invalid-asn-conflict
+  namespace: default
+spec:
+  asn: 65001  # Local ASN
+
+  neighbors:
+  - asn: 65001  # INVALID: Same as local ASN (iBGP not supported in underlay)
+    address: "192.168.1.1"
+
+  nics:
+  - "eth0"
+
+  evpn:
+    vtepcidr: "10.100.0.0/24"
+
+---
+# ============================================================================
+# Example 10: Migration from Single to Multi (Update Scenario)
+# ============================================================================
+
+# BEFORE (existing config):
+# apiVersion: openpe.openperouter.github.io/v1alpha1
+# kind: Underlay
+# metadata:
+#   name: underlay-to-migrate
+#   namespace: default
+# spec:
+#   asn: 65001
+#   neighbors:
+#   - asn: 65002
+#     address: "192.168.1.1"
+#   nics:
+#   - "eth0"
+#   evpn:
+#     vtepcidr: "10.100.0.0/24"
+
+# AFTER (updated to add more neighbors/interfaces):
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: Underlay
+metadata:
+  name: underlay-to-migrate
+  namespace: default
+spec:
+  asn: 65001
+
+  # Added new neighbors (hot-applied, no restart)
+  neighbors:
+  - asn: 65002
+    address: "192.168.1.1"  # Existing neighbor
+  - asn: 65002
+    address: "192.168.1.2"  # NEW: Added neighbor
+  - asn: 65003
+    address: "192.168.2.1"  # NEW: Added neighbor
+
+  # Added new interfaces (hot-applied, no restart)
+  nics:
+  - "eth0"  # Existing interface
+  - "eth1"  # NEW: Added interface
+  - "eth2"  # NEW: Added interface
+
+  evpn:
+    vtepcidr: "10.100.0.0/24"
