@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	frrk8sapi "github.com/metallb/frr-k8s/api/v1beta1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/openperouter/openperouter/api/v1alpha1"
@@ -132,6 +133,209 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 		})
 	})
 
+	Context("with a l3 vni without HostASN and with HostType external", func() {
+		vni := v1alpha1.L3VNI{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "red",
+				Namespace: openperouter.Namespace,
+			},
+			Spec: v1alpha1.L3VNISpec{
+				VRF: "red",
+				HostSession: &v1alpha1.HostSession{
+					ASN:      64514,
+					HostType: "external",
+					LocalCIDR: v1alpha1.LocalCIDRConfig{
+						IPv4: "192.169.10.0/24",
+					},
+				},
+				VNI: 100,
+			},
+		}
+		BeforeEach(func() {
+			err := Updater.Update(config.Resources{
+				L3VNIs: []v1alpha1.L3VNI{
+					vni,
+				},
+			})
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("establishes a session with the host and then removes it when deleting the vni", func() {
+			frrConfig, err := frrk8s.ConfigFromHostSession(*vni.Spec.HostSession, vni.Name, func(config *frrk8sapi.FRRConfiguration) {
+				for j := range config.Spec.BGP.Routers {
+					config.Spec.BGP.Routers[j].ASN = 64515
+				}
+			})
+			Expect(err).ToNot(HaveOccurred())
+			err = Updater.Update(config.Resources{
+				FRRConfigurations: frrConfig,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			validateFRRK8sSessionForHostSession(vni.Name, *vni.Spec.HostSession, Established, frrk8sPods...)
+
+			By("deleting the vni removes the session with the host")
+			err = Updater.Client().Delete(context.Background(), &vni)
+			Expect(err).NotTo(HaveOccurred())
+
+			validateFRRK8sSessionForHostSession(vni.Name, *vni.Spec.HostSession, !Established, frrk8sPods...)
+		})
+	})
+
+	Context("with a l3 vni without HostASN and with HostType internal", func() {
+		vni := v1alpha1.L3VNI{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "red",
+				Namespace: openperouter.Namespace,
+			},
+			Spec: v1alpha1.L3VNISpec{
+				VRF: "red",
+				HostSession: &v1alpha1.HostSession{
+					ASN:      64514,
+					HostType: "internal",
+					LocalCIDR: v1alpha1.LocalCIDRConfig{
+						IPv4: "192.169.10.0/24",
+					},
+				},
+				VNI: 100,
+			},
+		}
+		BeforeEach(func() {
+			err := Updater.Update(config.Resources{
+				L3VNIs: []v1alpha1.L3VNI{
+					vni,
+				},
+			})
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("establishes a session with the host and then removes it when deleting the vni", func() {
+			frrConfig, err := frrk8s.ConfigFromHostSession(*vni.Spec.HostSession, vni.Name, func(config *frrk8sapi.FRRConfiguration) {
+				for j := range config.Spec.BGP.Routers {
+					config.Spec.BGP.Routers[j].ASN = 64514
+				}
+			})
+			Expect(err).ToNot(HaveOccurred())
+			err = Updater.Update(config.Resources{
+				FRRConfigurations: frrConfig,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			validateFRRK8sSessionForHostSession(vni.Name, *vni.Spec.HostSession, Established, frrk8sPods...)
+
+			By("deleting the vni removes the session with the host")
+			err = Updater.Client().Delete(context.Background(), &vni)
+			Expect(err).NotTo(HaveOccurred())
+
+			validateFRRK8sSessionForHostSession(vni.Name, *vni.Spec.HostSession, !Established, frrk8sPods...)
+		})
+	})
+
+	Context("with a l3 vni with HostASN the same as FRR ASN (iBGP)", func() {
+		vni := v1alpha1.L3VNI{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "red",
+				Namespace: openperouter.Namespace,
+			},
+			Spec: v1alpha1.L3VNISpec{
+				VRF: "red",
+				HostSession: &v1alpha1.HostSession{
+					ASN:     64514,
+					HostASN: 64514,
+					LocalCIDR: v1alpha1.LocalCIDRConfig{
+						IPv4: "192.169.10.0/24",
+					},
+				},
+				VNI: 100,
+			},
+		}
+		BeforeEach(func() {
+			err := Updater.Update(config.Resources{
+				L3VNIs: []v1alpha1.L3VNI{
+					vni,
+				},
+			})
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("establishes a session with the host and then removes it when deleting the vni", func() {
+			frrConfig, err := frrk8s.ConfigFromHostSession(*vni.Spec.HostSession, vni.Name, func(config *frrk8sapi.FRRConfiguration) {
+				for j := range config.Spec.BGP.Routers {
+					config.Spec.BGP.Routers[j].ASN = 64514
+				}
+			})
+			Expect(err).ToNot(HaveOccurred())
+			err = Updater.Update(config.Resources{
+				FRRConfigurations: frrConfig,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			validateFRRK8sSessionForHostSession(vni.Name, *vni.Spec.HostSession, Established, frrk8sPods...)
+
+			By("deleting the vni removes the session with the host")
+			err = Updater.Client().Delete(context.Background(), &vni)
+			Expect(err).NotTo(HaveOccurred())
+
+			validateFRRK8sSessionForHostSession(vni.Name, *vni.Spec.HostSession, !Established, frrk8sPods...)
+		})
+	})
+
+	Context("with a l3 vni without HostASN and without HostType", func() {
+		It("fails", func() {
+			vni := v1alpha1.L3VNI{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "red",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.L3VNISpec{
+					VRF: "red",
+					HostSession: &v1alpha1.HostSession{
+						ASN: 64514,
+						LocalCIDR: v1alpha1.LocalCIDRConfig{
+							IPv4: "192.169.10.0/24",
+						},
+					},
+					VNI: 100,
+				},
+			}
+			err := Updater.Update(config.Resources{
+				L3VNIs: []v1alpha1.L3VNI{
+					vni,
+				},
+			})
+			Expect(err).To(HaveOccurred())
+		})
+	})
+
+	Context("with a l3 vni with both HostASN and HostType", func() {
+		It("fails", func() {
+			vni := v1alpha1.L3VNI{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "red",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.L3VNISpec{
+					VRF: "red",
+					HostSession: &v1alpha1.HostSession{
+						ASN:      64514,
+						HostASN:  100,
+						HostType: "internal",
+						LocalCIDR: v1alpha1.LocalCIDRConfig{
+							IPv4: "192.169.10.0/24",
+						},
+					},
+					VNI: 100,
+				},
+			}
+			err := Updater.Update(config.Resources{
+				L3VNIs: []v1alpha1.L3VNI{
+					vni,
+				},
+			})
+			Expect(err).To(HaveOccurred())
+		})
+	})
+
 	Context("with a l3 passthrough", func() {
 		l3Passthrough := v1alpha1.L3Passthrough{
 			ObjectMeta: metav1.ObjectMeta{
@@ -175,6 +379,150 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 		})
 	})
 
+	Context("with a l3 passthrough without HostASN and with HostType external", func() {
+		l3Passthrough := v1alpha1.L3Passthrough{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "red",
+				Namespace: openperouter.Namespace,
+			},
+			Spec: v1alpha1.L3PassthroughSpec{
+				HostSession: v1alpha1.HostSession{
+					ASN:      64514,
+					HostType: "external",
+					LocalCIDR: v1alpha1.LocalCIDRConfig{
+						IPv4: "192.169.10.0/24",
+					},
+				},
+			},
+		}
+		BeforeEach(func() {
+			err := Updater.Update(config.Resources{
+				L3Passthrough: []v1alpha1.L3Passthrough{
+					l3Passthrough,
+				},
+			})
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("establishes a session with the host and then removes it when deleting the vni", func() {
+			frrConfig, err := frrk8s.ConfigFromHostSession(l3Passthrough.Spec.HostSession, l3Passthrough.Name,
+				func(config *frrk8sapi.FRRConfiguration) {
+					for j := range config.Spec.BGP.Routers {
+						config.Spec.BGP.Routers[j].ASN = 64515
+					}
+				})
+			Expect(err).ToNot(HaveOccurred())
+			err = Updater.Update(config.Resources{
+				FRRConfigurations: frrConfig,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			validateFRRK8sSessionForHostSession(l3Passthrough.Name, l3Passthrough.Spec.HostSession, Established, frrk8sPods...)
+
+			By("deleting the vni removes the session with the host")
+			err = Updater.Client().Delete(context.Background(), &l3Passthrough)
+			Expect(err).NotTo(HaveOccurred())
+
+			validateFRRK8sSessionForHostSession(l3Passthrough.Name, l3Passthrough.Spec.HostSession, !Established, frrk8sPods...)
+		})
+	})
+
+	Context("with a l3 passthrough without HostASN and with HostType internal", func() {
+		l3Passthrough := v1alpha1.L3Passthrough{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "red",
+				Namespace: openperouter.Namespace,
+			},
+			Spec: v1alpha1.L3PassthroughSpec{
+				HostSession: v1alpha1.HostSession{
+					ASN:      64514,
+					HostType: "internal",
+					LocalCIDR: v1alpha1.LocalCIDRConfig{
+						IPv4: "192.169.10.0/24",
+					},
+				},
+			},
+		}
+		BeforeEach(func() {
+			err := Updater.Update(config.Resources{
+				L3Passthrough: []v1alpha1.L3Passthrough{
+					l3Passthrough,
+				},
+			})
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("establishes a session with the host and then removes it when deleting the vni", func() {
+			frrConfig, err := frrk8s.ConfigFromHostSession(l3Passthrough.Spec.HostSession, l3Passthrough.Name,
+				func(config *frrk8sapi.FRRConfiguration) {
+					for j := range config.Spec.BGP.Routers {
+						config.Spec.BGP.Routers[j].ASN = 64514
+					}
+				})
+			Expect(err).ToNot(HaveOccurred())
+			err = Updater.Update(config.Resources{
+				FRRConfigurations: frrConfig,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			validateFRRK8sSessionForHostSession(l3Passthrough.Name, l3Passthrough.Spec.HostSession, Established, frrk8sPods...)
+
+			By("deleting the vni removes the session with the host")
+			err = Updater.Client().Delete(context.Background(), &l3Passthrough)
+			Expect(err).NotTo(HaveOccurred())
+
+			validateFRRK8sSessionForHostSession(l3Passthrough.Name, l3Passthrough.Spec.HostSession, !Established, frrk8sPods...)
+		})
+	})
+
+	Context("with a l3 passthrough with HostASN the same as FRR ASN (iBGP)", func() {
+		l3Passthrough := v1alpha1.L3Passthrough{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "red",
+				Namespace: openperouter.Namespace,
+			},
+			Spec: v1alpha1.L3PassthroughSpec{
+				HostSession: v1alpha1.HostSession{
+					ASN:     64514,
+					HostASN: 64514,
+					LocalCIDR: v1alpha1.LocalCIDRConfig{
+						IPv4: "192.169.10.0/24",
+					},
+				},
+			},
+		}
+		BeforeEach(func() {
+			err := Updater.Update(config.Resources{
+				L3Passthrough: []v1alpha1.L3Passthrough{
+					l3Passthrough,
+				},
+			})
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("establishes a session with the host and then removes it when deleting the vni", func() {
+			frrConfig, err := frrk8s.ConfigFromHostSession(l3Passthrough.Spec.HostSession, l3Passthrough.Name,
+				func(config *frrk8sapi.FRRConfiguration) {
+					for j := range config.Spec.BGP.Routers {
+						config.Spec.BGP.Routers[j].ASN = 64514
+					}
+				})
+			Expect(err).ToNot(HaveOccurred())
+			err = Updater.Update(config.Resources{
+				FRRConfigurations: frrConfig,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			validateFRRK8sSessionForHostSession(l3Passthrough.Name, l3Passthrough.Spec.HostSession, Established, frrk8sPods...)
+
+			By("deleting the vni removes the session with the host")
+			err = Updater.Client().Delete(context.Background(), &l3Passthrough)
+			Expect(err).NotTo(HaveOccurred())
+
+			validateFRRK8sSessionForHostSession(l3Passthrough.Name, l3Passthrough.Spec.HostSession, !Established, frrk8sPods...)
+		})
+	})
+
 	// This test must be the last of the ordered describe as it will remove the underlay
 	It("deleting the underlay removes the session with the tor", func() {
 		validateTORSession()
@@ -189,6 +537,119 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 			validateSessionDownForNeigh(exec, neighborIP)
 		}
+	})
+})
+
+var _ = Describe("Underlay external and internal configuration", Ordered, func() {
+	var cs clientset.Interface
+	var routers openperouter.Routers
+	nodes := []corev1.Node{}
+
+	BeforeAll(func() {
+		err := Updater.CleanAll()
+		Expect(err).NotTo(HaveOccurred())
+
+		cs = k8sclient.New()
+		routers, err = openperouter.Get(cs, HostMode)
+		Expect(err).NotTo(HaveOccurred())
+		nodesItems, err := cs.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		nodes = nodesItems.Items
+	})
+
+	AfterAll(func() {
+		By("waiting for the router pod to rollout after removing the underlay")
+		Eventually(func() error {
+			newRouters, err := openperouter.Get(cs, HostMode)
+			if err != nil {
+				return err
+			}
+			return openperouter.DaemonsetRolled(routers, newRouters)
+		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
+	})
+
+	BeforeEach(func() {
+		err := Updater.CleanAll()
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	AfterEach(func() {
+		dumpIfFails(cs)
+		err := Updater.CleanAll()
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	validateTORSession := func() {
+		exec := executor.ForContainer(infra.KindLeaf)
+		for _, node := range nodes {
+			neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
+			Expect(err).NotTo(HaveOccurred())
+			validateSessionWithNeighbor(infra.KindLeaf, node.Name, exec, neighborIP, Established)
+		}
+	}
+
+	It("peers with the tor with BGP external", func() {
+		underlay := *infra.Underlay.DeepCopy()
+		underlay.Spec.Neighbors[0].ASN = 0
+		underlay.Spec.Neighbors[0].Type = "external"
+		err := Updater.Update(config.Resources{
+			Underlays: []v1alpha1.Underlay{
+				underlay,
+			},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		validateTORSession()
+	})
+
+	It("peers with the tor with BGP internal", func() {
+		underlay := *infra.Underlay.DeepCopy()
+		underlay.Spec.ASN = 64512
+		underlay.Spec.Neighbors[0].ASN = 0
+		underlay.Spec.Neighbors[0].Type = "internal"
+		err := Updater.Update(config.Resources{
+			Underlays: []v1alpha1.Underlay{
+				underlay,
+			},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		validateTORSession()
+	})
+
+	It("peers with the tor with iBGP with ASN number", func() {
+		underlay := *infra.Underlay.DeepCopy()
+		underlay.Spec.Neighbors[0].ASN = 64512
+		underlay.Spec.Neighbors[0].Type = ""
+		err := Updater.Update(config.Resources{
+			Underlays: []v1alpha1.Underlay{
+				underlay,
+			},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		validateTORSession()
+	})
+
+	It("rejects resource when neither neighbor ASN nor Type are specified", func() {
+		underlay := *infra.Underlay.DeepCopy()
+		underlay.Spec.Neighbors[0].ASN = 0
+		underlay.Spec.Neighbors[0].Type = ""
+		err := Updater.Update(config.Resources{
+			Underlays: []v1alpha1.Underlay{
+				underlay,
+			},
+		})
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("rejects resource when both neighbor ASN and Type are specified", func() {
+		underlay := *infra.Underlay.DeepCopy()
+		underlay.Spec.Neighbors[0].ASN = 100
+		underlay.Spec.Neighbors[0].Type = "external"
+		err := Updater.Update(config.Resources{
+			Underlays: []v1alpha1.Underlay{
+				underlay,
+			},
+		})
+		Expect(err).To(HaveOccurred())
 	})
 })
 

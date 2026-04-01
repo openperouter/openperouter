@@ -36,8 +36,29 @@ func redistributeConnectedForLeafKind(nodes []corev1.Node) {
 	}
 
 	config := infra.LeafKindConfiguration{
+		PERouterASN:           64514,
 		RedistributeConnected: true,
 		Neighbors:             neighbors,
+	}
+
+	configString, err := infra.LeafKindConfigToFRR(config)
+	Expect(err).NotTo(HaveOccurred())
+	err = infra.LeafKindConfig.ReloadConfig(configString)
+	Expect(err).NotTo(HaveOccurred())
+}
+
+func ibgpForLeafKind(nodes []corev1.Node) {
+	neighbors := []string{}
+	for _, node := range nodes {
+		neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
+		Expect(err).NotTo(HaveOccurred())
+		neighbors = append(neighbors, neighborIP)
+	}
+
+	config := infra.LeafKindConfiguration{
+		PERouterASN: 64512,
+		NextHopSelf: true,
+		Neighbors:   neighbors,
 	}
 
 	configString, err := infra.LeafKindConfigToFRR(config)

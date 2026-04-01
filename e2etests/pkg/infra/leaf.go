@@ -71,6 +71,8 @@ type LeafKindConfiguration struct {
 	EnableBFD             bool
 	RedistributeConnected bool
 	Neighbors             []string
+	NextHopSelf           bool
+	PERouterASN           uint32
 }
 
 type RouteTargets struct {
@@ -162,8 +164,9 @@ func UpdateLeafKindConfig(nodes []corev1.Node, enableBFD bool) error {
 	}
 
 	config := LeafKindConfiguration{
-		EnableBFD: enableBFD,
-		Neighbors: neighbors,
+		PERouterASN: 64514,
+		EnableBFD:   enableBFD,
+		Neighbors:   neighbors,
 	}
 
 	configString, err := LeafKindConfigToFRR(config)
