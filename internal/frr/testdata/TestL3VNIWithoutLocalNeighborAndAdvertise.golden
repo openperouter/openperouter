@@ -37,12 +37,6 @@ router bgp 64512 vrf red
   no bgp network import-check
   no bgp default ipv4-unicast
   bgp router-id 10.0.0.1
-  address-family ipv4 unicast
-    redistribute connected
-  exit-address-family
-  address-family ipv6 unicast
-    redistribute connected
-  exit-address-family
 
   address-family l2vpn evpn
     advertise ipv4 unicast

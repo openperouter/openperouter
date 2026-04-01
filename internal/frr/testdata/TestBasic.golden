@@ -41,7 +41,6 @@ router bgp 64512 vrf red
   neighbor 192.168.1.2 remote-as 64512
 
   address-family ipv4 unicast
-    redistribute connected
     network 192.169.10.2/24
     neighbor 192.168.1.2 activate
     neighbor 192.168.1.2 route-map allowall in
@@ -49,7 +48,6 @@ router bgp 64512 vrf red
   exit-address-family
 
   address-family ipv6 unicast
-    redistribute connected
     neighbor 192.168.1.2 activate
     neighbor 192.168.1.2 route-map allowall in
     neighbor 192.168.1.2 route-map allowall out

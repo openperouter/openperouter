@@ -121,11 +121,18 @@ func APItoFRR(config ApiConfigData, nodeIndex int, logLevel string) (frr.Config,
 		underlayConfig.EVPN.VTEP = vtepIP.String()
 	}
 
+	vrfsWithL2Gateway := vrfsWithL2Gateways(config.L2VNIs)
+
 	vniConfigs := []frr.L3VNIConfig{}
 	for _, vni := range config.L3VNIs {
 		frrVNI, err := l3vniToFRR(vni, routerID, underlay.Spec.ASN, nodeIndex)
 		if err != nil {
 			return frr.Config{}, fmt.Errorf("failed to translate vni to frr: %w, vni %v", err, vni)
+		}
+		for i := range frrVNI {
+			if _, ok := vrfsWithL2Gateway[frrVNI[i].VRF]; ok {
+				frrVNI[i].RedistributeConnected = true
+			}
 		}
 		vniConfigs = append(vniConfigs, frrVNI...)
 	}
@@ -385,6 +392,16 @@ func durationToUint64(value time.Duration) (uint64, error) {
 		return 0, fmt.Errorf("cannot convert negative value to uint64: %d", value)
 	}
 	return uint64(value), nil // #nosec G115
+}
+
+func vrfsWithL2Gateways(l2vnis []v1alpha1.L2VNI) map[string]struct{} {
+	res := make(map[string]struct{})
+	for _, l2vni := range l2vnis {
+		if len(l2vni.Spec.L2GatewayIPs) > 0 {
+			res[l2vni.VRFName()] = struct{}{}
+		}
+	}
+	return res
 }
 
 func routerIDFromUnderlay(underlay v1alpha1.Underlay, nodeIndex int) (string, error) {

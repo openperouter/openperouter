@@ -59,13 +59,14 @@ type PassthroughConfig struct {
 }
 
 type L3VNIConfig struct {
-	ASN             uint32
-	ToAdvertiseIPv4 []string
-	ToAdvertiseIPv6 []string
-	LocalNeighbor   *NeighborConfig
-	VRF             string
-	VNI             int
-	RouterID        string
+	ASN                    uint32
+	ToAdvertiseIPv4        []string
+	ToAdvertiseIPv6        []string
+	LocalNeighbor          *NeighborConfig
+	VRF                    string
+	VNI                    int
+	RouterID               string
+	RedistributeConnected  bool
 }
 
 type BFDProfile struct {

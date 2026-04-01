@@ -74,7 +74,7 @@ router bgp {{ .ASN }} vrf {{ .VRF }}
 
   {{- if .LocalNeighbor }}
   {{ template "localneighbor" . }}
-  {{- else }}
+  {{- else if .RedistributeConnected }}
   address-family ipv4 unicast
     redistribute connected
   exit-address-family
