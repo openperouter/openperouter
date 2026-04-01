@@ -110,9 +110,9 @@ L3VNI is the **root of the VRF**: it defines the VRF routing domain. L2VNIs atta
 7. Multiple L2VNIs can share the same VRF (same L3VNI)
 8. VNI IDs must be unique per node (across both L2 and L3)
 
-### FRR Configuration Strategy
+### Reconciliation Strategy
 
-The system separates **validation** (per-resource, following dependency order) from **FRR application** (once per reconcile, with the full set of valid resources).
+The system separates **validation** (per-resource, following dependency order), **netlink provisioning** (incremental, per-VRF), and **FRR application** (once per reconcile, with the full set of valid resources).
 
 **Validation phase** — follows the dependency tree in order:
 
@@ -127,8 +127,6 @@ The system separates **validation** (per-resource, following dependency order) f
 
 - Generate a single complete FRR config containing the Underlay plus all valid L2VNIs and L3VNIs.
 - Apply via a single `frr-reload.py` call.
-
-If a resource fails validation or application, it is marked as failed, and processing continues. On the next reconcile cycle, the resource is re-validated from scratch.
 
 **Note on previously-applied resources:** A resource that was valid in a previous reconcile but is now invalid (e.g., its interface was removed, or a VNI conflict appeared) will be excluded from the new desired FRR config. However, the controller does **not** attempt to remove it from FRR's running config — doing so risks bricking the router if the removal fails. The stale config remains in FRR until the user fixes the resource (triggering a new valid config) or removes it entirely.
 
@@ -160,11 +158,13 @@ If Underlay fails validation, leave the existing FRR config entirely as-is — d
 
 This applies equally whether the failure is permanent (e.g., required interface missing from the node) or transient (e.g., reloader socket not yet available). In both cases the controller marks the Underlay as `ValidationFailed`, reports it in the status, and retries on the next reconcile.
 
-**When the operator changes an Underlay field and the new config fails validation**: the old config stays in FRR. The status reports the failure. When the issue is resolved, the next reconcile will push the updated config.
+**When the operator changes an Underlay field and the new config fails validation**: the old config stays both in FRR and in the router's network namespace. The status reports the failure. When the issue is resolved, the next reconcile will push the updated config.
 
 Do not attempt to remove VNIs or clean up FRR config on Underlay failure. This simplifies implementation and avoids cascading removal complexity.
 
 #### L2VNI/L3VNI Failures
+
+Beyond validation, L2VNI and L3VNI resources can fail at two distinct application stages with different blast radius. Netlink provisioning (VRFs, bridges, VXLANs, veths) is incremental and scoped to a single VRF — a failure only affects the resources in that VRF group (or the individual disconnected overlay for L2VNIs without `spec.vrf`), leaving other VRFs intact. FRR configuration application, on the other hand, is a single atomic `frr-reload.py` call covering all valid resources — a failure here is global and cannot be attributed to any individual VNI.
 
 - Use different failure reasons: `ValidationFailed` vs `DependencyFailed`
 - `ValidationFailed` examples: VNI conflict, interface not found, `l2gatewayips` set on a disconnected L2VNI (no `spec.vrf`)
@@ -172,16 +172,24 @@ Do not attempt to remove VNIs or clean up FRR config on Underlay failure. This s
 - Clear `DependencyFailed` automatically when dependency recovers
 - Provide clear status messages indicating the root cause
 
-#### ApplicationFailed
+#### OverlayAttachmentFailed
 
-Since a single `frr-reload.py` call applies the entire valid resource set, a failure at application time is global — we cannot know which subset of resources FRR accepted. When the reload call fails:
+Netlink provisioning (VRFs, bridges, VXLANs, veths) is incremental and per-VRF. When provisioning a VRF's netlink resources in the router namespace fails:
 
-- All resources that were in the valid set are marked as `ApplicationFailed` in the status
+- The resources belonging to that VRF group are marked as `OverlayAttachmentFailed` in the status
+- Other VRF groups are unaffected and continue to be provisioned
+- The controller retries on the next reconcile cycle
+
+#### FrrConfigurationFailed
+
+Since a single `frr-reload.py` call applies the entire valid resource set, a failure at FRR application time is global — we cannot attribute it to any individual resource. When the reload call fails:
+
+- A single `FrrConfiguration` entry is added to `failedResources` with reason `FrrConfigurationFailed` (kind: `FrrConfiguration`, name: the node name)
 - FRR's running config is left unchanged from before the call (frr-reload.py is transactional: it either applies all changes or none)
 - The controller retries on the next reconcile cycle with the same valid set
 - If the failure is persistent, the operator can inspect the reloader logs for the root cause
 
-`ApplicationFailed` is expected to be rare (reloader process crash, socket error). `ValidationFailed` and `DependencyFailed` are the common cases and are handled per-resource.
+`FrrConfigurationFailed` is expected to be rare (reloader process crash, socket error). `OverlayAttachmentFailed` is uncommon but more granular (per-VRF). `ValidationFailed` and `DependencyFailed` are the common cases and are handled per-resource.
 
 #### Recovery
 
@@ -206,9 +214,9 @@ type RouterNodeConfigurationStatusStatus struct {
 }
 
 type FailedResource struct {
-    Kind      string `json:"kind"`             // "Underlay", "L2VNI", "L3VNI"
+    Kind      string `json:"kind"`             // "Underlay", "L2VNI", "L3VNI", "FrrConfiguration"
     Name      string `json:"name"`
-    Reason    string `json:"reason"`           // "ValidationFailed", "DependencyFailed", "ApplicationFailed"
+    Reason    string `json:"reason"`           // "ValidationFailed", "DependencyFailed", "OverlayAttachmentFailed", "FrrConfigurationFailed"
     Message   string `json:"message,omitempty"`
 }
 ```
@@ -216,7 +224,8 @@ type FailedResource struct {
 **Failure Reasons:**
 - `ValidationFailed`: Resource failed pre-emptive semantic validation (e.g., interface not found, VNI conflict)
 - `DependencyFailed`: Resource's dependency is unmet (e.g., an L2VNI with `spec.vrf` references a VRF with no matching L3VNI)
-- `ApplicationFailed`: Resource passed validation but failed during FRR application
+- `OverlayAttachmentFailed`: Resource passed validation but failed during netlink provisioning of the networking logical infrastructure (VRFs, bridges, VXLANs, veths) in the router namespace
+- `FrrConfigurationFailed`: Resource passed validation and netlink provisioning but the FRR configuration application (`frr-reload.py`) failed
 
 #### Node Association via Owner References
 
@@ -244,7 +253,7 @@ When configuration failures occur, the `failedResources` field provides detailed
 
 - **Kind**: The type of OpenPERouter resource that failed (`Underlay`, `L2VNI`, or `L3VNI`)
 - **Name**: The name of the specific resource instance
-- **Reason**: Why the resource failed (`ValidationFailed`, `DependencyFailed`, `ApplicationFailed`)
+- **Reason**: Why the resource failed (`ValidationFailed`, `DependencyFailed`, `OverlayAttachmentFailed`, `FrrConfigurationFailed`)
 - **Message**: Detailed error description explaining the failure reason
 
 This structured approach allows operators to quickly identify problematic resources without parsing log files, and enables monitoring systems to create targeted alerts for specific failure types. Failed resources are automatically retried on each reconcile cycle and cleared when validation passes.
@@ -314,6 +323,74 @@ status:
     status: "True"
     reason: ConfigurationFailed
     message: "Some resources failed to configure"
+    lastTransitionTime: "2025-01-15T10:30:00Z"
+```
+
+**Overlay Attachment Failed (netlink provisioning failure, per-VRF scope):**
+```yaml
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: RouterNodeConfigurationStatus
+metadata:
+  name: worker-4
+  namespace: openperouter-system
+  ownerReferences:
+  - apiVersion: v1
+    kind: Node
+    name: worker-4
+    uid: "11111111-2222-3333-4444-555555555555"
+status:
+
+  failedResources:
+    - kind: L3VNI
+      name: production-l3
+      reason: OverlayAttachmentFailed
+      message: "Failed to create VRF device 'red' in router namespace: operation not permitted"
+    - kind: L2VNI
+      name: tenant-network-a
+      reason: OverlayAttachmentFailed
+      message: "Failed to create VXLAN interface for VNI 100 in router namespace: device or resource busy"
+  conditions:
+  - type: Ready
+    status: "False"
+    reason: ConfigurationFailed
+    message: "2 resources failed, other resources applied successfully"
+    lastTransitionTime: "2025-01-15T10:30:00Z"
+  - type: Degraded
+    status: "True"
+    reason: ConfigurationFailed
+    message: "Some resources failed to configure"
+    lastTransitionTime: "2025-01-15T10:30:00Z"
+```
+
+**FRR Configuration Failed (global scope, affects all valid resources):**
+```yaml
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: RouterNodeConfigurationStatus
+metadata:
+  name: worker-5
+  namespace: openperouter-system
+  ownerReferences:
+  - apiVersion: v1
+    kind: Node
+    name: worker-5
+    uid: "22222222-3333-4444-5555-666666666666"
+status:
+
+  failedResources:
+    - kind: FrrConfiguration
+      name: worker-5
+      reason: FrrConfigurationFailed
+      message: "frr-reload.py failed: unable to connect to reloader socket"
+  conditions:
+  - type: Ready
+    status: "False"
+    reason: ConfigurationFailed
+    message: "FRR configuration application failed"
+    lastTransitionTime: "2025-01-15T10:30:00Z"
+  - type: Degraded
+    status: "True"
+    reason: ConfigurationFailed
+    message: "FRR configuration application failed"
     lastTransitionTime: "2025-01-15T10:30:00Z"
 ```
 
@@ -417,8 +494,8 @@ The controller follows this flow during reconciliation:
    - L3VNI only (e.g., with HostSession)
    - L2VNI only (disconnected overlay, no VRF or gateway IPs)
 
-   A failure provisioning one VRF's netlink resources marks those resources as `ApplicationFailed` but does not affect other VRFs.
-7. **Generate and apply FRR config (single application)**: Generate a single complete FRR config from the valid L3VNI and L2VNI sets (those that also passed netlink provisioning) and call `frr-reload.py` once; if the call fails, mark all resources in the valid set as `ApplicationFailed`
+   A failure provisioning one VRF's netlink resources marks those resources as `OverlayAttachmentFailed` but does not affect other VRFs.
+7. **Generate and apply FRR config (single application)**: Generate a single complete FRR config from the valid L3VNI and L2VNI sets (those that also passed netlink provisioning) and call `frr-reload.py` once; if the call fails, add a single `FrrConfiguration` entry to `failedResources` with reason `FrrConfigurationFailed`
 8. **Update status**: Record failed resources with reasons, update conditions
 
 **Key behaviors:**
