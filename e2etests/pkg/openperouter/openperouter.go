@@ -14,6 +14,8 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 )
 
+var NamedNSMode bool
+
 const (
 	Namespace           = "openperouter-system"
 	routerLabelSelector = "app=router"

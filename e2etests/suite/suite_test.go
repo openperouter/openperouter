@@ -61,6 +61,7 @@ var _ = ginkgo.BeforeSuite(func() {
 	updater, err = config.UpdaterForCRs(clientconfig, openperouter.Namespace)
 	Expect(err).NotTo(HaveOccurred())
 	tests.Updater = updater
+	openperouter.NamedNSMode = tests.NamedNSMode
 	kubeconfig := os.Getenv("KUBECONFIG")
 	if kubeconfig == "" {
 		ginkgo.Fail("KUBECONFIG not set")

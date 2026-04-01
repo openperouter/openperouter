@@ -30,7 +30,12 @@ type routerPod struct {
 	*corev1.Pod
 }
 
+const namedNetnsPath = "/var/run/netns/perouter"
+
 func (r routerPod) Exec(cmd string, args ...string) (string, error) {
+	if NamedNSMode {
+		return executor.ForPodInNamedNetns(r.Namespace, r.Name(), "frr", namedNetnsPath).Exec(cmd, args...)
+	}
 	return executor.ForPod(r.Namespace, r.Name(), "frr").Exec(cmd, args...)
 }
 
