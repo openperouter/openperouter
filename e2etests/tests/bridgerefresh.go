@@ -71,18 +71,21 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 	}
 
 	BeforeAll(func() {
+		cs = k8sclient.New()
+		oldRouters, err := openperouter.Get(cs, HostMode)
+		Expect(err).NotTo(HaveOccurred())
+
 		Expect(Updater.CleanAll()).To(Succeed())
 
-		cs = k8sclient.New()
+		By("waiting for router pods to roll after CleanAll")
+		routers, err = openperouter.WaitForRolledRouters(cs, HostMode, oldRouters, 2*time.Minute)
+		Expect(err).NotTo(HaveOccurred())
 
-		err := Updater.Update(config.Resources{
+		err = Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{
 				infra.Underlay,
 			},
 		})
-		Expect(err).NotTo(HaveOccurred())
-
-		routers, err = openperouter.Get(cs, HostMode)
 		Expect(err).NotTo(HaveOccurred())
 
 		routers.Dump(ginkgo.GinkgoWriter)

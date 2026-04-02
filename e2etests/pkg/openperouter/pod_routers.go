@@ -19,7 +19,7 @@ func RouterPods(cs clientset.Interface) ([]*corev1.Pod, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve pods %w", err)
 	}
-	return pods, nil
+	return filterRunningPods(pods), nil
 }
 
 type routerPods struct {

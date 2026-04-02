@@ -65,11 +65,15 @@ var _ = Describe("Alpha: Named netns and kernel objects survive FRR crash", Orde
 			Skip("named-ns mode is not enabled; skip alpha resiliency tests")
 		}
 
-		err := Updater.CleanAll()
+		cs = k8sclient.New()
+		oldRouters, err := openperouter.Get(cs, HostMode)
 		Expect(err).NotTo(HaveOccurred())
 
-		cs = k8sclient.New()
-		routers, err = openperouter.Get(cs, HostMode)
+		err = Updater.CleanAll()
+		Expect(err).NotTo(HaveOccurred())
+
+		By("waiting for router pods to roll after CleanAll")
+		routers, err = openperouter.WaitForRolledRouters(cs, HostMode, oldRouters, 2*time.Minute)
 		Expect(err).NotTo(HaveOccurred())
 
 		routers.Dump(ginkgo.GinkgoWriter)
@@ -215,11 +219,15 @@ var _ = Describe("Beta: BGP Graceful Restart provides zero data plane disruption
 			StalePathTime: &stalePathTime,
 		}
 
-		err := Updater.CleanAll()
+		cs = k8sclient.New()
+		oldRouters, err := openperouter.Get(cs, HostMode)
 		Expect(err).NotTo(HaveOccurred())
 
-		cs = k8sclient.New()
-		routers, err = openperouter.Get(cs, HostMode)
+		err = Updater.CleanAll()
+		Expect(err).NotTo(HaveOccurred())
+
+		By("waiting for router pods to roll after CleanAll")
+		routers, err = openperouter.WaitForRolledRouters(cs, HostMode, oldRouters, 2*time.Minute)
 		Expect(err).NotTo(HaveOccurred())
 
 		routers.Dump(ginkgo.GinkgoWriter)
@@ -521,11 +529,15 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 			StalePathTime: &stalePathTime,
 		}
 
-		err := Updater.CleanAll()
+		cs = k8sclient.New()
+		oldRouters, err := openperouter.Get(cs, HostMode)
 		Expect(err).NotTo(HaveOccurred())
 
-		cs = k8sclient.New()
-		routers, err = openperouter.Get(cs, HostMode)
+		err = Updater.CleanAll()
+		Expect(err).NotTo(HaveOccurred())
+
+		By("waiting for router pods to roll after CleanAll")
+		routers, err = openperouter.WaitForRolledRouters(cs, HostMode, oldRouters, 2*time.Minute)
 		Expect(err).NotTo(HaveOccurred())
 
 		routers.Dump(ginkgo.GinkgoWriter)
@@ -593,6 +605,19 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 		const port = "8090"
 		hostPort := net.JoinHostPort(firstPodIP, port)
 		urlStr := url.Format("http://%s/clientip", hostPort)
+
+		By("waiting for BGP sessions to establish before traffic check")
+		for _, nodeName := range []string{nodes[0].Name} {
+			neighborIP, err := infra.NeighborIP(infra.KindLeaf, nodeName)
+			Expect(err).NotTo(HaveOccurred())
+			validateSessionWithNeighbor(
+				infra.KindLeaf,
+				nodeName,
+				executor.ForContainer(infra.KindLeaf),
+				neighborIP,
+				Established,
+			)
+		}
 
 		By("verifying traffic works before netns deletion")
 		Eventually(func() error {
