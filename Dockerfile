@@ -1,4 +1,4 @@
-ARG FRR_IMAGE=quay.io/frrouting/frr:10.5.1
+ARG FRR_IMAGE=quay.io/frrouting/frr:10.6.0
 
 # Build the manager binary
 FROM golang:1.25.7 AS builder
@@ -49,5 +49,7 @@ COPY operator/bindata bindata
 COPY systemdmode/frrconfig/daemons /etc/frr/daemons
 COPY systemdmode/frrconfig/vtysh.conf /etc/frr/vtysh.conf
 COPY systemdmode/frrconfig/frr.conf /etc/frr/frr.conf
+
+RUN apk add gdb
 
 ENTRYPOINT ["/controller"]
