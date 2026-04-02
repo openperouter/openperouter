@@ -30,6 +30,7 @@ func handleFlags() {
 	flag.StringVar(&tests.ValidatorPath, "hostvalidator", "hostvalidator", "the path for the hostvalidator binary")
 	flag.StringVar(&tests.ReportPath, "reporterpath", "/tmp", "the path for the reporter")
 	flag.BoolVar(&tests.HostMode, "systemdmode", false, "tells if openperouter is running on the host")
+	flag.BoolVar(&tests.NamedNSMode, "named-ns", false, "tells if openperouter uses the persistent named netns model")
 	flag.BoolVar(&tests.SkipUnderlayPassthrough, "skip-underlay-passthrough", false, "skip creating underlay in passthrough tests")
 	flag.Parse()
 }
@@ -60,6 +61,7 @@ var _ = ginkgo.BeforeSuite(func() {
 	updater, err = config.UpdaterForCRs(clientconfig, openperouter.Namespace)
 	Expect(err).NotTo(HaveOccurred())
 	tests.Updater = updater
+	openperouter.NamedNSMode = tests.NamedNSMode
 	kubeconfig := os.Getenv("KUBECONFIG")
 	if kubeconfig == "" {
 		ginkgo.Fail("KUBECONFIG not set")

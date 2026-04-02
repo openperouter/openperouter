@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: controller
+  namespace: system
+spec:
+  template:
+    spec:
+      containers:
+        - name: controller
+          volumeMounts:
+          - mountPath: /run/netns
+            name: runns
+            mountPropagation: Bidirectional
+          args:
+          - "--nodename=$(NODE_NAME)"
+          - "--loglevel=debug"
+          - "--namespace=$(NAMESPACE)"
+          - "--frrconfig=/etc/frr/frr.conf"
+          - "--reloader-socket=/etc/frr/reload.sock"
+          - "--named-netns=true"

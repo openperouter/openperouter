@@ -30,6 +30,7 @@ spec:
   asn: 64518
   evpn:
     vtepcidr: 100.65.1.0/24
+  gracefulRestart: {}
   routeridcidr: 10.0.1.0/24
   nics:
     - toswitch

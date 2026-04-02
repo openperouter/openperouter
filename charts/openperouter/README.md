@@ -42,6 +42,7 @@ Kubernetes: `>= 1.19.0-0`
 | openperouter.labels | object | `{}` |  |
 | openperouter.logLevel | string | `"info"` | Controller log level. Must be one of: `debug`, `info`, `warn` or `error`. |
 | openperouter.multusNetworkAnnotation | string | `""` | Multus network annotation to be added to router pods |
+| openperouter.namedNetns | bool | `true` | If true, use a persistent named network namespace (/var/run/netns/perouter) instead of the router pod's netns. Enables data plane resilience across pod restarts. |
 | openperouter.nodemarker.resources | object | `{}` |  |
 | openperouter.ovsRunDir | string | `"/var/run/openvswitch"` | OVS run directory to mount. This is the directory containing the OVS socket. |
 | openperouter.ovsSocketPath | string | `""` | OVS database socket path. Defaults to standard OVS location if not specified. |

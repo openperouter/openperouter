@@ -239,7 +239,7 @@ jobs:
 
       - name: Deploy the cluster
         run: |
-          MAKE_RULE="deploy"
+          MAKE_RULE="deploy-namednetns"
           IMG_REPO="quay.io/openperouter"
           if [ ${{ matrix.deployment }} = "helm" ]; then MAKE_RULE="deploy-helm"; fi
           if [ ${{ matrix.deployment }} = "systemdmode" ]; then MAKE_RULE="deploy-hostmode"; fi
@@ -258,6 +258,7 @@ jobs:
             make e2etests-hostmode-boot
           else
             export GINKGO_ARGS="--label-filter='!systemdmode'"
+            export TEST_ARGS="--named-ns"
             make e2etests
           fi
 

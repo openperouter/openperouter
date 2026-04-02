@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	frrk8sv1beta1 "github.com/metallb/frr-k8s/api/v1beta1"
 	. "github.com/onsi/ginkgo/v2"
@@ -108,11 +109,15 @@ var _ = Describe("Hybrid mode: static files and API configuration", Label("syste
 	BeforeAll(func() {
 		var err error
 
+		cs = k8sclient.New()
+		oldRouters, err := openperouter.Get(cs, HostMode)
+		Expect(err).NotTo(HaveOccurred())
+
 		err = Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
 
-		cs = k8sclient.New()
-		routers, err = openperouter.Get(cs, HostMode)
+		By("waiting for router pods to roll after CleanAll")
+		routers, err = openperouter.WaitForRolledRouters(cs, HostMode, oldRouters, 2*time.Minute)
 		Expect(err).NotTo(HaveOccurred())
 
 		routers.Dump(GinkgoWriter)

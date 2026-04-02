@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: router
+  namespace: system
+spec:
+  template:
+    spec:
+      hostNetwork: true
+      containers:
+        - name: frr
+          securityContext:
+            capabilities:
+              add: ["NET_ADMIN", "NET_RAW", "SYS_ADMIN", "NET_BIND_SERVICE", "SYS_PTRACE"]
+          volumeMounts:
+            - name: frr-sockets
+              mountPath: /var/run/frr
+            - name: frrconfig
+              mountPath: /etc/frr
+            - name: netns
+              mountPath: /var/run/netns
+              mountPropagation: HostToContainer
+          command:
+            - /bin/sh
+            - -c
+            - |
+              until [ -e /var/run/netns/perouter ]; do
+                echo "Waiting for named netns /var/run/netns/perouter..."
+                sleep 1
+              done
+              nsenter --net=/var/run/netns/perouter /sbin/tini -- /usr/lib/frr/docker-start &
+              attempts=0
+              until [[ -f /etc/frr/frr.log || $attempts -eq 60 ]]; do
+                sleep 1
+                attempts=$(( $attempts + 1 ))
+              done
+              tail -f /etc/frr/frr.log
+      volumes:
+        - name: netns
+          hostPath:
+            path: /var/run/netns
+      initContainers:
+        # Override the init container to also copy the persistent frr.conf (if present)
+        # so FRR starts with the correct BGP + Graceful-Restart config immediately on restart.
+        - name: cp-frr-files
+          command:
+            - /bin/sh
+            - -c
+            - |
+              cp -rLf /tmp/frr/* /etc/frr/
+              if [ -f /etc/perouter/frr.conf ]; then
+                cp /etc/perouter/frr.conf /etc/frr/frr.conf
+              fi
+          volumeMounts:
+            - name: frr-startup
+              mountPath: /tmp/frr
+            - name: frrconfig
+              mountPath: /etc/frr
+            - name: frrsharedconfig
+              mountPath: /etc/perouter
