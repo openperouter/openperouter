@@ -3,7 +3,7 @@ topology:
   groups:
     frr:
       kind: linux
-      image: quay.io/frrouting/frr:10.2.1
+      image: quay.io/frrouting/frr:10.5.1
       binds:
         - ../frrcommon/daemons:/etc/frr/daemons
         - ../frrcommon/vtysh.conf:/etc/frr/vtysh.conf
