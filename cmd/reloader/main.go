@@ -165,6 +165,7 @@ func health() func(w http.ResponseWriter, req *http.Request) {
 		}
 
 		if err := liveness.PingFrr(vtysh.Run); err != nil {
+			slog.Error("health check ping frr", "error", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
