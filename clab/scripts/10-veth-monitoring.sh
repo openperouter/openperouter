@@ -20,23 +20,25 @@ setup_veth_monitoring() {
     pushd "$(dirname $(readlink -f $0))/.."
 
     # Check if monitoring is already running to avoid duplicates
-    if ! pgrep -f check_veths.sh | xargs -r ps -p | grep -q pe-kind; then
+    if ! pgrep -f check_veths.go | xargs -r ps -p | grep -q pe-kind; then
         echo "Starting veth monitoring"
 
         CHECK_VETHS_LOG="/tmp/check_veths.log"
         if [[ ${#CLUSTER_NAMES[@]} -eq 1 && "${CLUSTER_NAMES[0]}" == "pe-kind" ]]; then
             # Single cluster mode
-            sudo -E ./check_veths.sh \
-                kindctrlpl:toswitch:pe-kind-control-plane:192.168.11.3/24 \
-                kindworker:toswitch:pe-kind-worker:192.168.11.4/24 2>&1 \
+            sudo -E $(which go) run tools/check_veths/check_veths.go \
+                '{"container":"clab-kind-leafkind", "name":"tokindworker"}' '{"container":"pe-kind-worker", "name":"toleafkind"}' \
+                '{"container":"clab-kind-leafkind", "name":"tokindctrlpl"}' '{"container":"pe-kind-control-plane", "name":"toleafkind"}' \
+                '{"bridge":"leafkind-switch", "name":"kindctrlpl"}' '{"container":"pe-kind-control-plane", "name":"toswitch", "ips": ["192.168.11.3/24", "2001:db8:11::3/64"]}' \
+                '{"bridge":"leafkind-switch", "name":"kindworker"}' '{"container":"pe-kind-worker", "name":"toswitch", "ips": ["192.168.11.4/24", "2001:db8:11::4/64"]}' 2>&1 \
                 | awk '{print strftime("%Y-%m-%dT%H:%M:%S"), $0; fflush()}' > "$CHECK_VETHS_LOG" &
         else
             # Multi-cluster mode
-            sudo -E ./check_veths.sh \
-                kindctrlpla:toswitch:pe-kind-a-control-plane:192.168.11.3/24 \
-                kindworkera:toswitch:pe-kind-a-worker:192.168.11.4/24 \
-                kindctrlplb:toswitch:pe-kind-b-control-plane:192.168.12.3/24 \
-                kindworkerb:toswitch:pe-kind-b-worker:192.168.12.4/24 2>&1 \
+            sudo -E $(which go) run tools/check_veths/check_veths.go \
+                '{"bridge":"leafkind-switch", "name":"kindctrlpla"}' '{"container":"pe-kind-a-control-plane", "name":"toswitch", "ips": ["192.168.11.3/24", "2001:db8:11::3/64"]}' \
+                '{"bridge":"leafkind-switch", "name":"kindworkera"}' '{"container":"pe-kind-a-worker", "name":"toswitch", "ips": ["192.168.11.4/24", "2001:db8:11::4/64"]}' \
+                '{"bridge":"leafkind-switch", "name":"kindctrlplb"}' '{"container":"pe-kind-b-control-plane", "name":"toswitch", "ips": ["192.168.12.3/24", "2001:db8:12::3/64"]}' \
+                '{"bridge":"leafkind-switch", "name":"kindworkerb"}' '{"container":"pe-kind-b-worker", "name":"toswitch", "ips": ["192.168.12.4/24", "2001:db8:12::4/64"]}' 2>&1 \
                 | awk '{print strftime("%Y-%m-%dT%H:%M:%S"), $0; fflush()}' > "$CHECK_VETHS_LOG" &
         fi
     else

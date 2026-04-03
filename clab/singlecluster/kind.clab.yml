@@ -76,3 +76,6 @@ topology:
     - endpoints: ["leafkind:toswitch", "leafkind-switch:leaf2"]
     - endpoints: ["pe-kind-control-plane:toswitch", "leafkind-switch:kindctrlpl"]
     - endpoints: ["pe-kind-worker:toswitch", "leafkind-switch:kindworker"]
+    # Point to point links for IPv6 unnumbered BGP sessions.
+    - endpoints: ["leafkind:tokindworker", "pe-kind-worker:toleafkind"]
+    - endpoints: ["leafkind:tokindctrlpl", "pe-kind-control-plane:toleafkind"]

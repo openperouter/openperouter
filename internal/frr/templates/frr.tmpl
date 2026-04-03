@@ -46,7 +46,7 @@ router bgp {{ .Underlay.MyASN }}
 {{- template "neighborsession" dict "neighbor" $n "routerASN" $.Underlay.MyASN -}}
 {{- end }}
 {{- range $n := .Underlay.Neighbors }}
-{{- template "neighborenableipfamily" . -}}
+{{- template "neighborenableipfamily" dict "neighbor" $n -}}
 {{end }}
 
 {{- if .Passthrough }}
