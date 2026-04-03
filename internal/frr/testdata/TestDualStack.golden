@@ -13,7 +13,7 @@ router bgp 64512
   no bgp network import-check
   no bgp default ipv4-unicast
   bgp router-id 10.0.0.1
-  neighbor 192.168.1.2 remote-as 64512
+  neighbor 192.168.1.2 remote-as 64513
   
   
   
@@ -38,7 +38,7 @@ router bgp 64512 vrf red
   no bgp default ipv4-unicast
   bgp router-id 10.0.0.1
   
-  neighbor 192.168.1.2 remote-as 64512
+  neighbor 192.168.1.2 remote-as 64513
 
   address-family ipv4 unicast
     network 192.169.10.2/24

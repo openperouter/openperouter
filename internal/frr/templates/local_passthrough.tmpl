@@ -12,9 +12,12 @@
     neighbor {{ .Passthrough.LocalNeighborV4.Addr }} activate
     neighbor {{ .Passthrough.LocalNeighborV4.Addr }} route-map allowall in
     neighbor {{ .Passthrough.LocalNeighborV4.Addr }} route-map allowall out
+  {{- if .Passthrough.LocalNeighborV4.NextHopSelf }}
+    neighbor {{ .Passthrough.LocalNeighborV4.Addr }} next-hop-self force
+  {{- end }}
   exit-address-family
 
-{{- template "neighborenableipfamily" .Passthrough.LocalNeighborV4 }}
+{{- template "neighborenableipfamily" dict "neighbor" .Passthrough.LocalNeighborV4 "routerASN" .Underlay.MyASN -}}
 {{- end -}}
 
 {{- if .Passthrough.LocalNeighborV6 }}
@@ -29,8 +32,11 @@
     neighbor {{ .Passthrough.LocalNeighborV6.Addr }} activate
     neighbor {{ .Passthrough.LocalNeighborV6.Addr }} route-map allowall in
     neighbor {{ .Passthrough.LocalNeighborV6.Addr }} route-map allowall out
+  {{- if .Passthrough.LocalNeighborV6.NextHopSelf }}
+    neighbor {{ .Passthrough.LocalNeighborV6.Addr }} next-hop-self force
+  {{- end }}
   exit-address-family
-{{- template "neighborenableipfamily" .Passthrough.LocalNeighborV6 }}
+{{- template "neighborenableipfamily" dict "neighbor" .Passthrough.LocalNeighborV6 "routerASN" .Underlay.MyASN -}}
 {{- end -}}
 {{- end }}
 

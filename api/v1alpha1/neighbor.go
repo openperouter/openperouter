@@ -19,6 +19,10 @@ type Neighbor struct {
 	// +optional
 	Type string `json:"type,omitempty"`
 
+	// NextHopSelf forces the next-hop to be set to this router, for eBGP and iBGP alike.
+	// +optional
+	NextHopSelf bool `json:"nexthopself,omitempty"`
+
 	// Address is the IP address to establish the session with.
 	Address string `json:"address"`
 

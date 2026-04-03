@@ -8,6 +8,9 @@
     neighbor {{ .LocalNeighbor.Addr }} activate
     neighbor {{ .LocalNeighbor.Addr }} route-map allowall in
     neighbor {{ .LocalNeighbor.Addr }} route-map allowall out
+  {{- if .LocalNeighbor.NextHopSelf }}
+    neighbor {{ .LocalNeighbor.Addr }} next-hop-self force
+  {{- end }}
   exit-address-family
 
   address-family ipv6 unicast
@@ -17,5 +20,8 @@
     neighbor {{ .LocalNeighbor.Addr }} activate
     neighbor {{ .LocalNeighbor.Addr }} route-map allowall in
     neighbor {{ .LocalNeighbor.Addr }} route-map allowall out
+  {{- if .LocalNeighbor.NextHopSelf }}
+    neighbor {{ .LocalNeighbor.Addr }} next-hop-self force
+  {{- end }}
   exit-address-family
 {{- end -}}

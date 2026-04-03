@@ -27,6 +27,10 @@ type HostSession struct {
 	// +optional
 	HostType string `json:"hosttype,omitempty"`
 
+	// NextHopSelf forces the next-hop to be set to this router, for eBGP and iBGP alike.
+	// +optional
+	NextHopSelf bool `json:"nexthopself,omitempty"`
+
 	// LocalCIDR is the CIDR configuration for the veth pair
 	// to connect with the default namespace. The interface under
 	// the PERouter side is going to use the first IP of the cidr on all the nodes.

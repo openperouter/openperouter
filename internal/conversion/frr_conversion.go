@@ -270,6 +270,7 @@ func neighborToFRR(n v1alpha1.Neighbor) (*frr.NeighborConfig, error) {
 		Port:         n.Port,
 		IPFamily:     neighborFamily,
 		EBGPMultiHop: n.EBGPMultiHop,
+		NextHopSelf:  n.NextHopSelf,
 	}
 	res.HoldTime, res.KeepaliveTime, err = parseTimers(n.HoldTime, n.KeepaliveTime)
 	if err != nil {

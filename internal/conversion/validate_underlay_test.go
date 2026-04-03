@@ -689,7 +689,7 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 						},
 						ASN: 65001,
 						Neighbors: []v1alpha1.Neighbor{
-							{ASN: 0, Type: "internal"},
+							{ASN: 0, Type: "internal", NextHopSelf: true},
 						},
 						Nics: []string{"eth0"},
 					},

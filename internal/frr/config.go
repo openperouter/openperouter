@@ -86,6 +86,7 @@ type NeighborConfig struct {
 	BFDProfile    string
 	EBGPMultiHop  bool
 	IPFamily      ipfamily.Family
+	NextHopSelf   bool
 }
 
 func (n *NeighborConfig) ID() string {
@@ -124,6 +125,9 @@ func templateConfig(data any) (string, error) {
 					return true
 				}
 				return false
+			},
+			"isEBGP": func(myASN uint32, peerASN PeerASN) bool {
+				return peerASN.IsExternalTo(myASN)
 			},
 			"activateNeighborFor": func(ipFamily string, neighbourFamily ipfamily.Family) bool {
 				return string(neighbourFamily) == ipFamily
