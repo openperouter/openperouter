@@ -81,6 +81,18 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			},
 		})
 		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() {
+			err := Updater.CleanAll()
+			Expect(err).NotTo(HaveOccurred())
+			By("waiting for the router pod to rollout after removing the underlay")
+			Eventually(func() error {
+				newRouters, err := openperouter.Get(cs, HostMode)
+				if err != nil {
+					return err
+				}
+				return openperouter.DaemonsetRolled(routers, newRouters)
+			}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
+		})
 
 		// Create pre-existing OVS bridges on Kind nodes for testing
 		nodes := []string{infra.KindControlPlane, infra.KindWorker}
@@ -90,27 +102,16 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			_, err = exec.Exec("ovs-vsctl", "add-br", preExistingOVSBridge)
 			Expect(err).NotTo(HaveOccurred())
 		}
-	})
 
-	AfterAll(func() {
-		err := Updater.CleanAll()
-		Expect(err).NotTo(HaveOccurred())
-		By("waiting for the router pod to rollout after removing the underlay")
-		Eventually(func() error {
-			newRouters, err := openperouter.Get(cs, HostMode)
-			if err != nil {
-				return err
+		DeferCleanup(func() {
+			// Clean up pre-existing OVS bridges
+			nodes := []string{infra.KindControlPlane, infra.KindWorker}
+			for _, nodeName := range nodes {
+				exec := executor.ForContainer(nodeName)
+				_, err = exec.Exec("ovs-vsctl", "--if-exists", "del-br", preExistingOVSBridge)
+				Expect(err).NotTo(HaveOccurred())
 			}
-			return openperouter.DaemonsetRolled(routers, newRouters)
-		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
-
-		// Clean up pre-existing OVS bridges
-		nodes := []string{infra.KindControlPlane, infra.KindWorker}
-		for _, nodeName := range nodes {
-			exec := executor.ForContainer(nodeName)
-			_, err = exec.Exec("ovs-vsctl", "--if-exists", "del-br", preExistingOVSBridge)
-			Expect(err).NotTo(HaveOccurred())
-		}
+		})
 	})
 
 	const testNamespace = "test-namespace"
