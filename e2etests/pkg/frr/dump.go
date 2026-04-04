@@ -25,6 +25,13 @@ func RawDump(exec executor.Executor) (string, error) {
 	}
 	res += out
 
+	res += "####### BGP Summary\n"
+	out, err = exec.Exec("vtysh", "-c", "show bgp vrf all summary")
+	if err != nil {
+		allerrs = errors.Join(allerrs, fmt.Errorf("\nFailed exec show bgp summary: %w", err))
+	}
+	res += out
+
 	res += "####### BGP Neighbors\n"
 	out, err = exec.Exec("vtysh", "-c", "show bgp vrf all neighbor")
 	if err != nil {
@@ -56,12 +63,17 @@ func RawDump(exec executor.Executor) (string, error) {
 	res += "####### Network setup for host\n"
 	out, err = exec.Exec("bash", "-c", "ip -6 route; ip -4 route")
 	if err != nil {
-		allerrs = errors.Join(allerrs, fmt.Errorf("\nFailed exec to print network setup: %v", err))
+		allerrs = errors.Join(allerrs, fmt.Errorf("\nFailed exec to print ip route info: %w", err))
 	}
 	res += out
 	out, err = exec.Exec("bash", "-c", "ip l")
 	if err != nil {
-		allerrs = errors.Join(allerrs, fmt.Errorf("\nFailed exec to print network setup: %v", err))
+		allerrs = errors.Join(allerrs, fmt.Errorf("\nFailed exec to print ip link info: %w", err))
+	}
+	res += out
+	out, err = exec.Exec("bash", "-c", "ip address")
+	if err != nil {
+		allerrs = errors.Join(allerrs, fmt.Errorf("\nFailed exec to print ip address info: %w", err))
 	}
 	res += out
 
