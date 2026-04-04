@@ -54,6 +54,7 @@ type LeafKindConfiguration struct {
 	EnableBFD             bool
 	RedistributeConnected bool
 	Neighbors             []string
+	IBGP                  bool
 }
 
 type Addresses struct {

@@ -28,7 +28,11 @@ router bgp 64512
  neighbor 192.168.1.4 remote-as 64612
 
 {{- range .Neighbors }}
+{{- if $.IBGP }}
+ neighbor {{ . }} remote-as 64512
+{{- else }}
  neighbor {{ . }} remote-as 64514
+{{- end }}
 {{- if $.EnableBFD }}
  neighbor {{ . }} bfd
 {{- end }}
@@ -42,6 +46,9 @@ router bgp 64512
   neighbor 192.168.1.4 activate
 {{- range .Neighbors }}
   neighbor {{ . }} activate
+{{- if $.IBGP }}
+  neighbor {{ . }} next-hop-self force 
+{{- end }}
 {{- end }}
  exit-address-family
  !
