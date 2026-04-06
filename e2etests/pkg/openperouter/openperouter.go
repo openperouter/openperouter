@@ -96,6 +96,48 @@ func ExecutorForNode(routers Routers, nodeName string) (RouterExecutor, error) {
 	return routers.ExecutorForNode(nodeName)
 }
 
+// WaitForReadyRouters waits until router pods (or podman containers) are
+// present and ready, then returns them. Use this in BeforeAll after CleanAll
+// when you only need pods to be stable — not necessarily replaced by new ones.
+func WaitForReadyRouters(cs clientset.Interface, hostMode bool, timeout time.Duration) (Routers, error) {
+	deadline := time.After(timeout)
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-deadline:
+			return nil, fmt.Errorf("timed out waiting for ready router pods after %s", timeout)
+		case <-ticker.C:
+			r, err := Get(cs, hostMode)
+			if err != nil {
+				continue
+			}
+			if err := allReady(r); err != nil {
+				continue
+			}
+			return r, nil
+		}
+	}
+}
+
+// allReady returns nil if every router in r is ready.
+func allReady(r Routers) error {
+	switch rr := r.(type) {
+	case routerPods:
+		for _, p := range rr.pods {
+			if !k8s.PodIsReady(p) {
+				return fmt.Errorf("pod %s is not ready", p.Name)
+			}
+		}
+		return nil
+	case routerPodmans:
+		return nil // podman routers have no readiness concept here
+	default:
+		return fmt.Errorf("unknown router type: %T", r)
+	}
+}
+
 // WaitForRolledRouters waits for the DaemonSet rollout to complete after an
 // operation that triggers pod recreation (e.g. CleanAll), then returns the
 // new set of ready routers. oldRouters is the snapshot captured before the

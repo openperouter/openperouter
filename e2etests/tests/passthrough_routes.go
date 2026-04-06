@@ -55,14 +55,12 @@ var _ = Describe("Routes between bgp and the fabric", Label("passthrough"), Orde
 
 	BeforeAll(func() {
 		cs = k8sclient.New()
-		oldRouters, err := openperouter.Get(cs, HostMode)
+
+		err := Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
 
-		err = Updater.CleanAll()
-		Expect(err).NotTo(HaveOccurred())
-
-		By("waiting for router pods to roll after CleanAll")
-		routers, err = openperouter.WaitForRolledRouters(cs, HostMode, oldRouters, 2*time.Minute)
+		By("waiting for router pods to be ready after CleanAll")
+		routers, err = openperouter.WaitForReadyRouters(cs, HostMode, 2*time.Minute)
 		Expect(err).NotTo(HaveOccurred())
 
 		routers.Dump(GinkgoWriter)
