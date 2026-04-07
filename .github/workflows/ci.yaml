@@ -51,12 +51,8 @@ jobs:
           cache: true
       - name: Check Generated
         run: |
-          make bumplicense
-          make manifests
-          make generate
+          make generate-all-ci
           make fix
-          make generate-all-in-one
-          # make api-docs
           make checkuncommitted
 
       - name: Helm doc generate
