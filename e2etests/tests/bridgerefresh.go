@@ -72,12 +72,8 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 
 	BeforeAll(func() {
 		cs = k8sclient.New()
-
-		Expect(Updater.CleanAll()).To(Succeed())
-
-		By("waiting for router pods to be ready after CleanAll")
 		var err error
-		routers, err = openperouter.WaitForReadyRouters(cs, HostMode, 2*time.Minute)
+		routers, err = openperouter.Get(cs, HostMode)
 		Expect(err).NotTo(HaveOccurred())
 
 		err = Updater.Update(config.Resources{

@@ -66,12 +66,8 @@ var _ = Describe("Alpha: Named netns and kernel objects survive FRR crash", Orde
 		}
 
 		cs = k8sclient.New()
-
-		err := Updater.CleanAll()
-		Expect(err).NotTo(HaveOccurred())
-
-		By("waiting for router pods to be ready after CleanAll")
-		routers, err = openperouter.WaitForReadyRouters(cs, HostMode, 2*time.Minute)
+		var err error
+		routers, err = openperouter.Get(cs, HostMode)
 		Expect(err).NotTo(HaveOccurred())
 
 		routers.Dump(ginkgo.GinkgoWriter)
@@ -218,12 +214,8 @@ var _ = Describe("Beta: BGP Graceful Restart provides zero data plane disruption
 		}
 
 		cs = k8sclient.New()
-
-		err := Updater.CleanAll()
-		Expect(err).NotTo(HaveOccurred())
-
-		By("waiting for router pods to be ready after CleanAll")
-		routers, err = openperouter.WaitForReadyRouters(cs, HostMode, 2*time.Minute)
+		var err error
+		routers, err = openperouter.Get(cs, HostMode)
 		Expect(err).NotTo(HaveOccurred())
 
 		routers.Dump(ginkgo.GinkgoWriter)
@@ -526,12 +518,8 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 		}
 
 		cs = k8sclient.New()
-
-		err := Updater.CleanAll()
-		Expect(err).NotTo(HaveOccurred())
-
-		By("waiting for router pods to be ready after CleanAll")
-		routers, err = openperouter.WaitForReadyRouters(cs, HostMode, 2*time.Minute)
+		var err error
+		routers, err = openperouter.Get(cs, HostMode)
 		Expect(err).NotTo(HaveOccurred())
 
 		routers.Dump(ginkgo.GinkgoWriter)

@@ -6,6 +6,7 @@ import (
 	"flag"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -67,6 +68,13 @@ var _ = ginkgo.BeforeSuite(func() {
 		ginkgo.Fail("KUBECONFIG not set")
 	}
 	tests.K8sReporter = k8s.InitReporter(kubeconfig, tests.ReportPath, openperouter.Namespace, frrk8s.Namespace)
+
+	// Defensive guard: wipe any CRs left by a previous interrupted run so
+	// every test suite starts from a known-clean state.
+	Expect(updater.CleanAll()).To(Succeed())
+	cs := k8sclient.New()
+	_, err = openperouter.WaitForReadyRouters(cs, tests.HostMode, 2*time.Minute)
+	Expect(err).NotTo(HaveOccurred())
 })
 
 var _ = ginkgo.AfterSuite(func() {
