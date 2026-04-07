@@ -77,14 +77,11 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 
 	validateTORSession := func() {
 		exec := executor.ForContainer(infra.KindLeaf)
-		Eventually(func() error {
-			for _, node := range nodes {
-				neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
-				Expect(err).NotTo(HaveOccurred())
-				validateSessionWithNeighbor(infra.KindLeaf, node.Name, exec, neighborIP, Established)
-			}
-			return nil
-		}, time.Minute, time.Second).ShouldNot(HaveOccurred())
+		for _, node := range nodes {
+			neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
+			Expect(err).NotTo(HaveOccurred())
+			validateSessionWithNeighbor(infra.KindLeaf, node.Name, exec, neighborIP, Established)
+		}
 	}
 	It("peers with the tor", func() {
 		validateTORSession()
