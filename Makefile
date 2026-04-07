@@ -398,6 +398,9 @@ KIND_EXPORT_LOGS ?=/tmp/kind_logs
 kind-export-logs: create-export-logs
 	$(LOCALBIN)/kind export logs --name ${KIND_CLUSTER_NAME} ${KIND_EXPORT_LOGS}
 
+.PHONY: generate-all
+generate-all: generate manifests generate-all-in-one helm-docs ## Generate all code, manifests, and documentation.
+
 .PHONY: generate-all-in-one
 generate-all-in-one: manifests kustomize ## Create manifests
 	cd config/pods && $(KUSTOMIZE) edit set image controller=${IMG}
