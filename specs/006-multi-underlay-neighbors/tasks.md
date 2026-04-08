@@ -191,11 +191,11 @@ Repository root:
 
 **Purpose**: Improvements that affect multiple user stories and final quality checks
 
-- [ ] T066 [P] Update CRD schema documentation in api/v1alpha1/underlay_types.go comments
+- [X] T066 [P] Update CRD schema documentation in api/v1alpha1/underlay_types.go comments
 - [ ] T067 [P] Update API contracts examples with multi-entity scenarios in specs/006-multi-underlay-neighbors/contracts/examples.yaml
-- [ ] T068 [P] Run `make manifests` to regenerate CRD YAML
-- [ ] T069 [P] Run `make generate` to update generated code
-- [ ] T070 Run unit tests: `go test ./internal/conversion/... ./internal/webhooks/...`
+- [X] T068 [P] Run `make manifests` to regenerate CRD YAML
+- [X] T069 [P] Run `make generate` to update generated code
+- [X] T070 Run unit tests: `go test ./internal/conversion/... ./internal/webhooks/...`
 - [ ] T071 Run E2E test suite: `make e2e-test`
 - [ ] T072 Verify backward compatibility: deploy single-interface/neighbor config and test
 - [ ] T073 Performance test: submit config with 10 interfaces and 20 neighbors, verify <2s validation
