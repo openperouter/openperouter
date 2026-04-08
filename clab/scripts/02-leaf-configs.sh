@@ -15,26 +15,20 @@ generate_leaf_configs() {
     go build -o generate_leaf_config/generate_leafkind generate_leaf_config/common.go generate_leaf_config/generate_leafkind.go
 
     # Build the command with redistribute parameter (disabled by default)
-    REDISTRIBUTE_FLAG=""
+    local redistribute_args=()
     if [[ "${DEMO_MODE:-false}" == "true" ]]; then
-        REDISTRIBUTE_FLAG="-redistribute-connected-from-vrfs -redistribute-connected-from-default"
         echo "Enabling redistribute connected from VRFs (demo mode)"
+        redistribute_args+=(-redistribute-connected-from-vrfs -redistribute-connected-from-default)
     else
         echo "Disabling redistribute connected from VRFs (default)"
     fi
 
     # Generate configs for original leafs only
-    # leafA neighbors with spine at 192.168.1.0 and advertises 100.64.0.1/32
-    rm -f ../leafA/frr.conf
-    ./generate_leaf_config/generate_leaf \
-        -leaf leafA -neighbor 192.168.1.0 -network 100.64.0.1/32 $REDISTRIBUTE_FLAG \
-        -template generate_leaf_config/frr_template/frr.conf.template
-
-    # leafB neighbors with spine at 192.168.1.2 and advertises 100.64.0.2/32
-    rm -f ../leafB/frr.conf
-    ./generate_leaf_config/generate_leaf \
-        -leaf leafB -neighbor 192.168.1.2 -network 100.64.0.2/32 $REDISTRIBUTE_FLAG \
-        -template generate_leaf_config/frr_template/frr.conf.template
+    if [[ "${SRV6:-false}" == "true" ]]; then
+        generate_leaf_configs_srv6 "${redistribute_args[@]}"
+    else
+        generate_leaf_configs_evpn "${redistribute_args[@]}"
+    fi
 
     # Generate configs for leafkind switches
     # leafkind1: ASN 64512, spine at 192.168.1.4, listen ranges 192.168.11.0/24 (IPv4) and 2001:db8:11::/64 (IPv6)
@@ -52,6 +46,42 @@ generate_leaf_configs() {
         -template generate_leaf_config/frr_template/leafkind.conf.template
 
     popd
+}
+
+generate_leaf_configs_srv6() {
+    rm -f ../leafA/frr.conf
+    ./generate_leaf_config/generate_leaf \
+        -leaf leafA \
+        -router-id 100.64.0.1 \
+        -update-source "2001:db8:1234::1" \
+        -srv6-prefix fd00:0:10::/48 \
+        -isis-net "49.0001.0000.0000.0001.00" \
+        "$@" \
+        -template generate_leaf_config/frr_template/frr.srv6.conf.template
+
+    rm -f ../leafB/frr.conf
+    ./generate_leaf_config/generate_leaf \
+        -leaf leafB \
+        -router-id 100.64.0.2 \
+        -update-source "2001:db8:1234::2" \
+        -srv6-prefix fd00:0:11::/48 \
+        -isis-net "49.0001.0000.0000.0002.00" \
+        "$@" \
+        -template generate_leaf_config/frr_template/frr.srv6.conf.template
+}
+
+generate_leaf_configs_evpn() {
+    # leafA neighbors with spine at 192.168.1.0 and advertises 100.64.0.1/32
+    rm -f ../leafA/frr.conf
+    ./generate_leaf_config/generate_leaf \
+        -leaf leafA -neighbor 192.168.1.0 -network 100.64.0.1/32 "$@" \
+        -template generate_leaf_config/frr_template/frr.conf.template
+
+    # leafB neighbors with spine at 192.168.1.2 and advertises 100.64.0.2/32
+    rm -f ../leafB/frr.conf
+    ./generate_leaf_config/generate_leaf \
+        -leaf leafB -neighbor 192.168.1.2 -network 100.64.0.2/32 "$@" \
+        -template generate_leaf_config/frr_template/frr.conf.template
 }
 
 generate_leaf_configs

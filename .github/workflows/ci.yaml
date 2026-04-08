@@ -203,6 +203,7 @@ jobs:
       fail-fast: false
       matrix:
         deployment: [manifests, helm, operator, systemdmode, hostmode-boot]
+        network: [evpn, srv6]
     steps:
       - name: Free Disk Space
         working-directory: ${{ github.workspace }}
@@ -259,6 +260,7 @@ jobs:
         run: |
           MAKE_RULE="deploy"
           IMG_REPO="quay.io/openperouter"
+          if [ "${{ matrix.network }}" = "srv6" ]; then export SRV6=true; fi
           if [ ${{ matrix.deployment }} = "helm" ]; then MAKE_RULE="deploy-helm"; fi
           if [ ${{ matrix.deployment }} = "systemdmode" ]; then MAKE_RULE="deploy-hostmode"; fi
           if [ ${{ matrix.deployment }} = "hostmode-boot" ]; then MAKE_RULE="deploy-hostmode-boot"; fi
@@ -268,14 +270,19 @@ jobs:
 
       - name: Run e2e tests
         run: |
+          export GINKGO_ARGS="--skip='SRV6'"
+          if [ "${{ matrix.network }}" = "srv6" ]; then
+            export GINKGO_ARGS="--focus='SRV6'"
+          fi
+
           if [ ${{ matrix.deployment }} = "systemdmode" ]; then
             export TEST_ARGS="--systemdmode"
-            export GINKGO_ARGS="--skip='Router Host configuration' --skip='North/south traffic after FRR container restart' --skip='Alpha: Named netns' --skip='Beta: Named netns'"
+            export GINKGO_ARGS="${GINKGO_ARGS} --skip='Router Host configuration' --skip='North/south traffic after FRR container restart' --skip='Alpha: Named netns' --skip='Beta: Named netns'"
             make e2etests
           elif [ ${{ matrix.deployment }} = "hostmode-boot" ]; then
             make e2etests-hostmode-boot
           else
-            export GINKGO_ARGS="--label-filter='!systemdmode'"
+            export GINKGO_ARGS="${GINKGO_ARGS} --label-filter='!systemdmode'"
             make e2etests
           fi
 
