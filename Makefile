@@ -365,8 +365,13 @@ parse-scale-report: ## Parse scale test JSON report and print summary tables.
 
 .PHONY: clab-cluster
 clab-cluster: kind-node-image-build kubectl
-	KUBECONFIG_PATH=$(KUBECONFIG_PATH) KIND=$(KIND) KUBECTL=$(KUBECTL) CLAB_TOPOLOGY=$(CLAB_TOPOLOGY_FILE) \
-	  KIND_EXPORT_LOGS=$(KIND_EXPORT_LOGS) COREDUMP=$(COREDUMP) clab/setup.sh
+	KUBECONFIG_PATH=$(KUBECONFIG_PATH) \
+	  KIND=$(KIND) \
+	  KUBECTL=$(KUBECTL) \
+	  CLAB_TOPOLOGY=$(CLAB_TOPOLOGY_FILE) \
+	  KIND_EXPORT_LOGS=$(KIND_EXPORT_LOGS) \
+	  COREDUMP=$(COREDUMP) \
+	  clab/setup.sh
 	@echo 'kind cluster created, to use it please'
 	@echo 'export KUBECONFIG=${KUBECONFIG_PATH}'
 
@@ -514,6 +519,14 @@ demo-metallb:
 .PHONY: demo-l2-evpn
 demo-l2:
 	examples/evpn/layer2/prepare.sh
+
+.PHONY: demo-metallb-l3vpn
+demo-metallb-l3vpn:
+	examples/l3vpn/metallb/prepare.sh
+
+.PHONY: demo-metallb-l3vpn-l2vni
+demo-metallb-l3vpn-l2vni:
+	examples/l3vpn/layer2/prepare.sh
 
 .PHONY: demo-calico-evpn
 demo-calico:
