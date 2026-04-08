@@ -1,0 +1,48 @@
+ipRanges:
+  pointToPoint:
+    ipv4: "10.0.0.0/24"
+    ipv6: "fd01::/112"
+  broadcast:
+    ipv4: "172.16.0.0/16"
+    ipv6: "fd01:11::/48"
+  vtep: "100.65.0.0/24"
+  routerID: "10.254.0.0/24"
+
+nodes:
+  - pattern: "leaf[AB]"
+    role: edge-leaf
+    evpnEnabled: true
+    vrfs:
+      green:
+        redistributeConnected: true
+        interfaces:
+          - ethred
+        vni: 300
+      yellow:
+        redistributeConnected: true
+        interfaces:
+          - ethred
+        vni: 400
+    bgp:
+      asn: 65100
+      peers:
+        - pattern: "spine"
+          evpnEnabled: true
+          bfdEnabled: true
+
+  - pattern: "spine"
+    role: transit
+    bgp:
+      asn: 65200
+      peers:
+        - pattern: "leaf.*"
+          evpnEnabled: true
+          bfdEnabled: true
+
+  - pattern: "leafkind"
+    role: transit
+    bgp:
+      asn: 65300
+      peers:
+        - pattern: "spine"
+          evpnEnabled: true

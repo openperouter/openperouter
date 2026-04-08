@@ -34,18 +34,62 @@ var (
 var links linksForRouters
 
 func init() {
+	topo := Topology()
+
 	links = linksForRouters{
 		nodes: map[string]node{},
 	}
-	links.Add("clab-kind-leafkind", "pe-kind-control-plane", "192.168.11.2", "192.168.11.3")
-	links.Add("clab-kind-leafkind", "pe-kind-worker", "192.168.11.2", "192.168.11.4")
-	links.Add("clab-kind-leafkind", "clab-kind-spine", "192.168.1.5", "192.168.1.4")
-	links.Add("clab-kind-leafA", "clab-kind-spine", "192.168.1.1", "192.168.1.0")
-	links.Add("clab-kind-leafB", "clab-kind-spine", "192.168.1.3", "192.168.1.2")
-	links.Add("clab-kind-leafA", "clab-kind-hostA_red", "192.168.20.1", HostARedIPv4)
-	links.Add("clab-kind-leafA", "clab-kind-hostA_blue", "192.168.21.1", HostABlueIPv4)
-	links.Add("clab-kind-leafB", "clab-kind-hostB_red", "192.169.20.1", HostBRedIPv4)
-	links.Add("clab-kind-leafB", "clab-kind-hostB_blue", "192.169.21.1", HostBBlueIPv4)
+
+	// Point-to-point links
+	for _, link := range topo.Links {
+		nodeAContainer := ContainerName(link.NodeA)
+		nodeBContainer := ContainerName(link.NodeB)
+
+		var ipA, ipB string
+
+		// Get nodeA's IP
+		if nodeA, ok := topo.Nodes[link.NodeA]; ok {
+			if iface, ok := nodeA.Interfaces[link.InterfaceA]; ok {
+				ipA = stripCIDR(iface.IPv4)
+			}
+		}
+
+		// Get nodeB's IP: either from Nodes or computed as the other end of the /31
+		if nodeB, ok := topo.Nodes[link.NodeB]; ok {
+			if iface, ok := nodeB.Interfaces[link.InterfaceB]; ok {
+				ipB = stripCIDR(iface.IPv4)
+			}
+		} else if ipA != "" {
+			// nodeB is not in Nodes (e.g., a host); compute peer IP
+			if nodeA, ok := topo.Nodes[link.NodeA]; ok {
+				if iface, ok := nodeA.Interfaces[link.InterfaceA]; ok {
+					ipB = stripCIDR(otherIP(iface.IPv4))
+				}
+			}
+		}
+
+		if ipA != "" && ipB != "" {
+			links.Add(nodeAContainer, nodeBContainer, ipA, ipB)
+		}
+	}
+
+	// Broadcast network links: add pairwise links between all members
+	for _, bn := range topo.BroadcastNetworks {
+		for i, memberA := range bn.Members {
+			for j, memberB := range bn.Members {
+				if i >= j {
+					continue
+				}
+				containerA := ContainerName(memberA.NodeName)
+				containerB := ContainerName(memberB.NodeName)
+				ipA := stripCIDR(memberA.IPv4)
+				ipB := stripCIDR(memberB.IPv4)
+				if ipA != "" && ipB != "" {
+					links.Add(containerA, containerB, ipA, ipB)
+				}
+			}
+		}
+	}
 }
 
 type linksForRouters struct {

@@ -100,6 +100,10 @@ build: manifests generate fmt vet ## Build manager binary.
 	go build -o bin/hostbridge ./cmd/hostbridge
 	go build -o bin/nodemarker ./cmd/nodemarker
 
+.PHONY: build-clab-config
+build-clab-config: fmt vet ## Build clab-config topology configuration tool.
+	go build -o bin/clab-config ./cmd/clab-config
+
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
 	go run ./cmd/main.go
