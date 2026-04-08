@@ -29,22 +29,27 @@ func ValidateUnderlays(underlays []v1alpha1.Underlay) error {
 	if len(underlays) == 0 {
 		return nil
 	}
-	for i := range underlays {
-		if err := validateUnderlay(&underlays[i]); err != nil {
+	for _, underlay := range underlays {
+		if err := validateUnderlay(underlay); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func validateUnderlay(underlay *v1alpha1.Underlay) error {
+func validateUnderlay(underlay v1alpha1.Underlay) error {
 	if underlay.Spec.ASN == 0 {
 		return fmt.Errorf("underlay %s must have a valid ASN", underlay.Name)
 	}
 
-	// Validate at least one neighbor or one nic is specified
-	if len(underlay.Spec.Neighbors) == 0 && len(underlay.Spec.Nics) == 0 {
-		return fmt.Errorf("underlay %s must have at least one neighbor or one nic configured", underlay.Name)
+	// Validate at least one neighbor is specified
+	if len(underlay.Spec.Neighbors) == 0 {
+		return fmt.Errorf("underlay %s must have at least one neighbor configured", underlay.Name)
+	}
+
+	// Validate at least one nic is specified
+	if len(underlay.Spec.Nics) == 0 {
+		return fmt.Errorf("underlay %s must have at least one nic configured", underlay.Name)
 	}
 
 	// Validate neighbor uniqueness
