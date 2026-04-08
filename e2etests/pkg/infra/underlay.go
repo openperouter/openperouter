@@ -8,6 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// Underlay is the multi-session configuration with multiple interfaces and neighbors
 var Underlay = v1alpha1.Underlay{
 	ObjectMeta: metav1.ObjectMeta{
 		Name:      "underlay",
@@ -15,11 +16,23 @@ var Underlay = v1alpha1.Underlay{
 	},
 	Spec: v1alpha1.UnderlaySpec{
 		ASN:  64514,
-		Nics: []string{"toswitch"},
+		Nics: []string{"toswitch", "toswitch2"},
 		Neighbors: []v1alpha1.Neighbor{
 			{
 				ASN:     64512,
 				Address: "192.168.11.2",
+			},
+			{
+				ASN:     64512,
+				Address: "192.168.11.3",
+			},
+			{
+				ASN:     64513,
+				Address: "192.168.12.2",
+			},
+			{
+				ASN:     64513,
+				Address: "192.168.12.3",
 			},
 		},
 		EVPN: &v1alpha1.EVPNConfig{

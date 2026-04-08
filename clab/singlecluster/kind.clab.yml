@@ -27,6 +27,10 @@ topology:
       group: frr
       binds:
         - leafkind/frr.conf:/etc/frr/frr.conf
+    leafkind2:
+      group: frr
+      binds:
+        - leafkind2/frr.conf:/etc/frr/frr.conf
     spine:
       group: frr
       binds:
@@ -56,6 +60,9 @@ topology:
     leafkind-switch:
       kind: bridge
 
+    leafkind2-switch:
+      kind: bridge
+
     pe-kind:
       kind: k8s-kind
       startup-config: ../pe-kind-configuration-registry.yaml
@@ -68,11 +75,15 @@ topology:
     - endpoints: ["leafA:eth1", "spine:eth1"]
     - endpoints: ["leafB:eth1", "spine:eth2"]
     - endpoints: ["leafkind:eth1", "spine:eth3"]
+    - endpoints: ["leafkind2:eth1", "spine:eth4"]
     - endpoints: ["leafA:ethred", "hostA_red:eth1"]
     - endpoints: ["leafA:ethdefault", "hostA_default:eth1"]
     - endpoints: ["leafA:ethblue", "hostA_blue:eth1"]
     - endpoints: ["leafB:ethred", "hostB_red:eth1"]
     - endpoints: ["leafB:ethblue", "hostB_blue:eth1"]
-    - endpoints: ["leafkind:toswitch", "leafkind-switch:leaf2"]
+    - endpoints: ["leafkind:toswitch", "leafkind-switch:leaf1"]
+    - endpoints: ["leafkind2:toswitch2", "leafkind2-switch:leaf2"]
     - endpoints: ["pe-kind-control-plane:toswitch", "leafkind-switch:kindctrlpl"]
     - endpoints: ["pe-kind-worker:toswitch", "leafkind-switch:kindworker"]
+    - endpoints: ["pe-kind-control-plane:toswitch2", "leafkind2-switch:kindctrlpl2"]
+    - endpoints: ["pe-kind-worker:toswitch2", "leafkind2-switch:kindworker2"]

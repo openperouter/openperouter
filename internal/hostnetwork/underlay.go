@@ -22,9 +22,9 @@ const (
 const underlayInterfaceSpecialAddr = "172.16.1.1/32"
 
 type UnderlayParams struct {
-	UnderlayInterface string              `json:"underlay_interface"`
-	TargetNS          string              `json:"target_ns"`
-	EVPN              *UnderlayEVPNParams `json:"evpn"`
+	UnderlayInterfaces []string            `json:"underlay_interfaces"`
+	TargetNS           string              `json:"target_ns"`
+	EVPN               *UnderlayEVPNParams `json:"evpn"`
 }
 
 type UnderlayEVPNParams struct {
@@ -44,8 +44,8 @@ func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
 		}
 	}()
 
-	if params.UnderlayInterface != "" {
-		if err := moveUnderlayInterface(ctx, params.UnderlayInterface, ns); err != nil {
+	for _, underlayInterface := range params.UnderlayInterfaces {
+		if err := moveUnderlayInterface(ctx, underlayInterface, ns); err != nil {
 			return err
 		}
 	}
