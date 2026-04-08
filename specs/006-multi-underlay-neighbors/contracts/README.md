@@ -306,8 +306,10 @@ metadata:
 ### 5. Test in Dev Before Production
 
 - Deploy in dev namespace first
+- Run new single-session E2E test to validate baseline connectivity (1 interface, 1 neighbor)
+- Verify L3 data plane connectivity from both leaf nodes to pod (ping test)
+- Run transformed multi-session E2E tests with multiple interfaces/neighbors
 - Validate all BGP sessions establish
-- Verify data plane connectivity
 - Test hot-add/remove scenarios
 - Then promote to production
 

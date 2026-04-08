@@ -182,9 +182,20 @@ func requiresRestart(old, new *Underlay) bool {
 name: multi-underlay-test
 topology:
   nodes:
-    router1:
+    # Two leaf nodes simulate external hosts for L3 connectivity testing
+    leaf1:
       kind: linux
       image: frrouting/frr:latest
+    leaf2:
+      kind: linux
+      image: frrouting/frr:latest
+      
+    # Kind node runs Kubernetes cluster with OpenPERouter
+    kind:
+      kind: linux
+      image: kindest/node:latest
+      
+    # Multiple TOR switches for redundancy
     tor1:
       kind: linux  
       image: frrouting/frr:latest
@@ -193,19 +204,37 @@ topology:
       image: frrouting/frr:latest
       
   links:
-    # Multiple interfaces from router1 to different TORs
-    - endpoints: ["router1:eth1", "tor1:eth1"]
-    - endpoints: ["router1:eth2", "tor2:eth1"]
-    - endpoints: ["router1:eth3", "tor1:eth2"]  # Redundant path
+    # Leaf nodes to TOR connections (external network)
+    - endpoints: ["leaf1:eth1", "tor1:eth3"]
+    - endpoints: ["leaf1:eth2", "tor2:eth3"]
+    - endpoints: ["leaf2:eth1", "tor1:eth4"]
+    - endpoints: ["leaf2:eth2", "tor2:eth4"]
+    
+    # Kind node (OpenPERouter) to TOR connections (multiple interfaces)
+    # All kind nodes connect to both leafs via TORs
+    - endpoints: ["kind:eth1", "tor1:eth1"]
+    - endpoints: ["kind:eth2", "tor2:eth1"]
+    - endpoints: ["kind:eth3", "tor1:eth2"]  # Redundant path to TOR1
 ```
 
 **E2E Test Scenarios**:
-1. Deploy topology with 3 interfaces, 4 neighbors
-2. Verify all BGP sessions establish
-3. Verify data plane connectivity across each interface
-4. Add new interface/neighbor dynamically
-5. Verify no restart occurred (check container uptime)
-6. Remove neighbor, verify cleanup
+
+**New Single-Session Test** (baseline validation):
+1. Use existing containerlab topology with 2 leaf nodes, kind, and multiple TOR nodes
+2. Configure single interface and single neighbor to TOR
+3. Verify BGP session establishes
+4. Verify L3 connectivity: ping from both leaf nodes to pod in kind cluster
+5. Validate routing tables on leafs show route to pod network via TOR
+
+**Transformed Existing Tests to Multi-Session** (full feature validation):
+1. Use existing containerlab topology with 2 leaf nodes, kind, and multiple TOR nodes
+2. Configure 3 interfaces and 4 neighbors (multi-interface multi-neighbor)
+3. Verify all BGP sessions establish across all TORs
+4. Verify L3 data plane connectivity from both leaf nodes to pod across all interface paths
+5. Add new interface/neighbor dynamically (hot-apply test)
+6. Verify no restart occurred (check container uptime)
+7. Verify new sessions establish and L3 connectivity maintained from both leafs
+8. Remove neighbor, verify cleanup and remaining connectivity still works
 
 **Implementation Approach**:
 - Create new `.clab.yml` files in `clab/` directory for multi-interface scenarios
@@ -259,7 +288,9 @@ topology:
 | FRR Config | Iterate neighbors, generate per-neighbor config | No FRR template changes needed |
 | Multiple Interfaces | Move all interfaces to namespace via netlink | Update host conversion to loop Nics array |
 | Hot-Reload | Restart for structural, hot-apply for additive | Add decision logic in reconciler |
-| E2E Testing | Containerlab multi-link topologies | New .clab.yml files and Ginkgo tests |
+| E2E Testing | Containerlab with 2 leaf nodes, transform existing tests to multi-session, add one new single-session test | Update existing .clab.yml topology, refactor existing test files to multi-session, add new singlesession.go, add L3 ping validation |
+| L3 Connectivity | Validate external host to pod ping from both leaf nodes in all tests | Add 2 leaf nodes to topology (all kind nodes connect to both), validate routing |
+| Test Strategy | One new single-session test + transform all existing tests to multi-session | One new test file (singlesession.go), update existing test files to use multi-neighbor/interface configs |
 | Backward Compat | Single-entity configs are valid subsets | No migration needed |
 
 **Next Steps**: Proceed to Phase 1 (data model and contracts definition)

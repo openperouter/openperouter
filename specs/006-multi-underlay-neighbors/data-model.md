@@ -375,8 +375,10 @@ for _, nic := range underlay.Spec.Nics {
 
 **Testing**:
 - Existing single-interface configs must pass all tests unchanged
-- E2E test: Deploy old single-interface YAML, verify works
-- E2E test: Update single→multi, verify smooth transition
+- New E2E single-session test: Deploy single-interface/neighbor config, verify BGP session and L3 connectivity from both leaf nodes to pod (ping)
+- Transformed E2E multi-session tests: Deploy multi-interface/multi-neighbor configs, verify all sessions establish
+- E2E multi-session tests: Update single→multi, verify smooth transition and all paths functional
+- All E2E tests use containerlab topology with 2 leaf nodes (all kind nodes connect to both leafs) for L3 connectivity validation
 
 ---
 

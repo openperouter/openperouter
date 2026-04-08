@@ -92,11 +92,12 @@ Development and QA teams need to validate multi-interface and multi-neighbor con
 
 **Acceptance Scenarios**:
 
-1. **Given** a CI environment with containerlab or equivalent, **When** an E2E test deploys a topology with 3 interfaces and 4 neighbors, **Then** all interfaces come up and all neighbor relationships establish successfully
-2. **Given** a development environment, **When** a developer runs E2E tests locally for multi-interface scenarios, **Then** the tests complete successfully with real network connectivity verification
-3. **Given** an E2E test suite, **When** tests validate data plane connectivity across all configured interfaces, **Then** traffic flows correctly through each interface path
-4. **Given** E2E tests for configuration changes, **When** tests verify restart vs. no-restart scenarios, **Then** the behavior matches the documented restart requirements
-5. **Given** the CI pipeline, **When** a pull request includes multi-interface/neighbor changes, **Then** E2E tests automatically validate the changes work in a realistic topology
+1. **Given** a CI environment with containerlab topology including 2 leaf nodes, kind node, and TOR nodes, **When** existing E2E tests deploy multi-session configurations with 3 interfaces and 4 neighbors, **Then** all interfaces come up and all neighbor relationships establish successfully
+2. **Given** a containerlab topology with 2 leaf nodes (all kind nodes connect to both leafs), **When** a new single-session E2E test validates one session to the TOR, **Then** the BGP session establishes and L3 connectivity works (external host from either leaf can ping pod)
+3. **Given** a development environment, **When** a developer runs E2E tests locally for multi-interface scenarios, **Then** the tests complete successfully with real network connectivity verification
+4. **Given** an E2E test suite, **When** tests validate L3 data plane connectivity from external hosts (2 leaf nodes) to pod across all configured interfaces, **Then** traffic flows correctly through each interface path and ping succeeds
+5. **Given** E2E tests for configuration changes, **When** tests verify restart vs. no-restart scenarios, **Then** the behavior matches the documented restart requirements
+6. **Given** the CI pipeline, **When** a pull request includes multi-interface/neighbor changes, **Then** E2E tests automatically validate both single-session and multi-session scenarios work in realistic topologies
 
 ---
 
@@ -118,6 +119,10 @@ Development and QA teams need to validate multi-interface and multi-neighbor con
 - What happens when E2E tests experience network connectivity issues during multi-interface testing?
 - How do E2E tests validate correct interface selection for traffic flows in multi-path scenarios?
 - How do E2E tests clean up test topologies to avoid state pollution between test runs?
+- How do E2E tests with leaf nodes verify L3 connectivity from external host to pod?
+- What happens if L3 ping test fails - how is routing debugged in the test topology?
+- How are single-session tests differentiated from multi-session tests in the E2E suite?
+- How does the containerlab topology ensure leaf node connectivity to kind cluster pods?
 
 ## Requirements *(mandatory)*
 
@@ -142,16 +147,18 @@ Development and QA teams need to validate multi-interface and multi-neighbor con
 - **FR-017**: System MUST support hot-applying runtime additions of interfaces and neighbors without restart
 - **FR-018**: System MUST require restart only for initial setup or structural changes (e.g., removing all interfaces/neighbors, major topology reconfigurations)
 - **FR-019**: Configuration responses MUST inform users whether the change will take effect immediately or requires restart
-- **FR-020**: End-to-end tests MUST validate multi-interface configurations in realistic network topologies
-- **FR-021**: End-to-end tests MUST validate multi-neighbor configurations with actual peer connectivity
-- **FR-022**: End-to-end tests MUST validate combined scenarios with multiple interfaces and multiple neighbors
-- **FR-023**: CI environment MUST support running end-to-end tests with multi-interface and multi-neighbor topologies
-- **FR-024**: Development environment MUST support local testing of multi-interface and multi-neighbor scenarios
-- **FR-025**: End-to-end tests MUST verify data plane connectivity across all configured interfaces and neighbors
-- **FR-026**: End-to-end tests MUST validate restart vs. no-restart scenarios for configuration changes
-- **FR-027**: System MUST support many-to-many relationships between interfaces and neighbors (each neighbor can use any interface, multiple neighbors can share an interface)
-- **FR-028**: API MUST reject configuration requests with zero interfaces and zero neighbors with a clear validation error indicating at least one entity is required
-- **FR-029**: System MUST handle concurrent configuration updates via Kubernetes reconciliation loops, ensuring changes are queued and applied sequentially
+- **FR-020**: End-to-end tests MUST validate multi-interface configurations in realistic network topologies including 2 leaf nodes, kind nodes, and TOR nodes (all kind nodes connect to both leafs)
+- **FR-021**: Existing end-to-end tests MUST be transformed to validate multi-neighbor configurations with actual peer connectivity (multi-session)
+- **FR-022**: Existing end-to-end tests MUST validate combined scenarios with multiple interfaces and multiple neighbors (multi-session tests)
+- **FR-023**: A new single-session end-to-end test MUST validate baseline scenario with one neighbor to TOR
+- **FR-024**: End-to-end tests MUST verify L3 data plane connectivity from external hosts (both leaf nodes) to pod (ping test)
+- **FR-025**: CI environment MUST support running end-to-end tests with containerlab topologies including 2 leaf nodes
+- **FR-026**: Development environment MUST support local testing of multi-interface and multi-neighbor scenarios
+- **FR-027**: End-to-end tests MUST verify data plane connectivity across all configured interfaces and neighbors
+- **FR-028**: End-to-end tests MUST validate restart vs. no-restart scenarios for configuration changes
+- **FR-029**: System MUST support many-to-many relationships between interfaces and neighbors (each neighbor can use any interface, multiple neighbors can share an interface)
+- **FR-030**: API MUST reject configuration requests with zero interfaces and zero neighbors with a clear validation error indicating at least one entity is required
+- **FR-031**: System MUST handle concurrent configuration updates via Kubernetes reconciliation loops, ensuring changes are queued and applied sequentially
 
 ### Key Entities
 
@@ -171,10 +178,12 @@ Development and QA teams need to validate multi-interface and multi-neighbor con
 - **SC-007**: Zero production incidents related to multi-entity configuration validation after deployment
 - **SC-008**: Users receive clear feedback about whether their configuration change requires a restart before the change is applied
 - **SC-009**: Configuration changes that can be applied without restart are documented and consistently applied across all scenarios
-- **SC-010**: E2E tests achieve 100% coverage of multi-interface and multi-neighbor configuration scenarios
+- **SC-010**: E2E tests achieve 100% coverage of both single-session and multi-session configuration scenarios
 - **SC-011**: E2E tests run successfully in CI environment for every pull request affecting interface or neighbor configuration
-- **SC-012**: E2E tests verify data plane connectivity for all configured interfaces within test execution time
+- **SC-012**: E2E tests verify L3 data plane connectivity from external host to pod for all configured interfaces within test execution time
 - **SC-013**: Development environment supports running full E2E test suite locally with consistent results to CI
+- **SC-014**: Single-session E2E tests validate basic connectivity with one TOR neighbor
+- **SC-015**: Multi-session E2E tests validate all interfaces and neighbors establish and maintain connectivity
 
 ## Assumptions
 
@@ -192,13 +201,18 @@ Development and QA teams need to validate multi-interface and multi-neighbor con
 - Restart is required only for initial setup or structural changes (e.g., removing all entities, major reconfigurations)
 - Users value service continuity and prefer configuration changes that avoid restarts when safe and feasible
 - Hot-apply capability for runtime additions provides operational efficiency while maintaining system stability
-- CI environment has containerlab or equivalent network topology simulation capability
+- CI environment has containerlab 0.74.1+ with support for complex topologies including 2 leaf nodes, kind nodes, and TOR nodes
 - Development environment can replicate CI network testing capabilities for local validation
-- E2E tests can create realistic multi-node network topologies with multiple connections between nodes
+- E2E tests can create realistic multi-node network topologies with 2 leaf nodes, kind clusters, and multiple TOR connections
+- Containerlab topology includes 2 leaf nodes for external host simulation with all kind nodes connecting to both leafs
 - Test environments have sufficient resources (CPU, memory, network interfaces) to support multi-interface and multi-neighbor scenarios
-- E2E test execution time remains reasonable (under 10 minutes per test suite) even with complex topologies
+- E2E test execution time remains reasonable (under 10 minutes per test suite) even with complex topologies including 2 leaf nodes
 - Network simulation tools support the required number of interfaces and neighbors for comprehensive testing
 - E2E tests can reliably verify data plane connectivity and routing behavior in automated fashion
+- L3 connectivity from external hosts (both leaf nodes) to pod can be validated via ping in containerlab topology
+- Existing E2E tests will be transformed to multi-session tests using the updated topology
+- One new single-session test will be added for baseline validation
+- All kind nodes connect to both leaf nodes for redundancy and multi-path testing
 - System uses Kubernetes for configuration management with reconciliation loops handling state changes
 - Kubernetes reconciliation naturally provides queueing and sequential processing of configuration updates
 - Declarative configuration model means users specify desired state and system reconciles to achieve it

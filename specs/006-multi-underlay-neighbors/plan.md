@@ -89,14 +89,16 @@ internal/
 
 e2etests/
 ├── tests/
-│   ├── webhooks.go           # E2E webhook validation tests
-│   ├── sessions.go           # BGP session tests (add multi-neighbor tests)
-│   └── hostconfiguration.go  # Multi-interface E2E tests
+│   ├── webhooks.go           # E2E webhook validation tests (TRANSFORM to multi-session)
+│   ├── sessions.go           # BGP session tests (TRANSFORM to multi-session)
+│   ├── singlesession.go      # NEW: Single-session baseline test (1 neighbor to TOR)
+│   ├── hostconfiguration.go  # Multi-interface E2E tests (TRANSFORM to multi-session)
+│   └── ...                   # Other existing tests (TRANSFORM to multi-session)
 └── pkg/
     └── frrk8s/               # FRR-K8s integration helpers
 
 clab/
-└── *.clab.yml                # Containerlab topology definitions for E2E tests
+└── *.clab.yml                # UPDATE existing topology: add 2nd leaf node, all kind nodes connect to both leafs
 ```
 
 **Structure Decision**: Kubernetes Operator project with standard controller-runtime layout. Changes span CRD definitions (api/), validation/conversion logic (internal/conversion, internal/webhooks), reconciliation (internal/controller), and E2E tests (e2etests/ with containerlab topologies in clab/).

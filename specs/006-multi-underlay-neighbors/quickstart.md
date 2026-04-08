@@ -176,38 +176,65 @@ kubectl get underlay test-backward-compat
 
 ## E2E Testing with Containerlab
 
+### Test Strategy Overview
+
+**Single-Session Test** (new test - baseline validation):
+- Purpose: Validate basic functionality with minimal complexity
+- Topology: Same as multi-session (2 leaf nodes + kind + multiple TOR nodes)
+- Config: 1 interface, 1 neighbor (minimal configuration)
+- Validates: BGP session establishment, L3 connectivity from both leafs to pod
+- File: `e2etests/tests/singlesession.go` (NEW)
+
+**Multi-Session Tests** (transformed existing tests):
+- Purpose: Validate multi-interface and multi-neighbor scenarios
+- Topology: Same topology (2 leaf nodes + kind + multiple TOR nodes)
+- Config: 3 interfaces, 4 neighbors (full multi-entity configuration)
+- Validates: All sessions establish, hot-apply, L3 connectivity from both leafs across all paths
+- Files: `sessions.go`, `webhooks.go`, `hostconfiguration.go` (TRANSFORMED)
+
 ### Setup Containerlab Topology
 
-Create a multi-interface test topology:
+Update existing topology to add 2nd leaf node (all kind nodes connect to both leafs):
 
 ```bash
-# Create topology file
+# Update existing topology file (e.g., kind.clab.yml)
 cat > test-topology.clab.yml <<EOF
 name: multi-underlay-e2e
 topology:
   nodes:
-    router:
+    # Two leaf nodes simulate external hosts
+    leaf1:
       kind: linux
-      image: ghcr.io/openperouter/openperouter:dev
-      
-    tor1:
+      image: frrouting/frr:latest
+    leaf2:
       kind: linux
       image: frrouting/frr:latest
       
+    # Kind cluster running OpenPERouter
+    kind:
+      kind: linux
+      image: kindest/node:latest
+      
+    # TOR switches
+    tor1:
+      kind: linux
+      image: frrouting/frr:latest
     tor2:
       kind: linux
       image: frrouting/frr:latest
       
-    tor3:
-      kind: linux
-      image: frrouting/frr:latest
-      
   links:
-    # Multiple links from router to different TORs
-    - endpoints: ["router:eth1", "tor1:eth1"]
-    - endpoints: ["router:eth2", "tor2:eth1"]
-    - endpoints: ["router:eth3", "tor3:eth1"]
-    - endpoints: ["router:eth4", "tor1:eth2"]  # Redundant path to TOR1
+    # Leaf nodes to TOR connections (external network)
+    # All kind nodes connect to both leafs via TORs
+    - endpoints: ["leaf1:eth1", "tor1:eth3"]
+    - endpoints: ["leaf1:eth2", "tor2:eth3"]
+    - endpoints: ["leaf2:eth1", "tor1:eth4"]
+    - endpoints: ["leaf2:eth2", "tor2:eth4"]
+    
+    # Kind to TOR connections (underlay interfaces)
+    - endpoints: ["kind:eth1", "tor1:eth1"]
+    - endpoints: ["kind:eth2", "tor2:eth1"]
+    - endpoints: ["kind:eth3", "tor1:eth2"]  # Redundant path
 EOF
 
 # Deploy topology
@@ -220,17 +247,19 @@ sudo containerlab inspect -t test-topology.clab.yml
 ### Run E2E Test Suite
 
 ```bash
-# Run full E2E test suite
+# Run full E2E test suite (all tests now use 2-leaf topology)
 make e2e-test
 
-# Run specific test for multi-neighbor
-go test ./e2etests/tests -v -run TestMultiNeighbor
+# Run NEW single-session baseline test (1 interface, 1 neighbor)
+go test ./e2etests/tests -v -run TestSingleSession
 
-# Run specific test for multi-interface
-go test ./e2etests/tests -v -run TestMultiInterface
+# Run TRANSFORMED multi-session tests (existing tests now multi-neighbor/interface)
+go test ./e2etests/tests -v -run TestMultiNeighbor      # Now uses 4 neighbors
+go test ./e2etests/tests -v -run TestMultiInterface     # Now uses 3 interfaces
+go test ./e2etests/tests -v -run TestMultiUnderlayFull  # Combined multi-entity
+go test ./e2etests/tests -v -run TestSessions           # Now tests multiple sessions
 
-# Run combined multi-entity test
-go test ./e2etests/tests -v -run TestMultiUnderlayFull
+# All tests now include L3 connectivity validation from both leaf nodes
 ```
 
 ### Manual E2E Verification
@@ -275,10 +304,27 @@ kubectl exec -it deployment/openperouter-router -- ip link show
 kubectl exec -it deployment/openperouter-router -- vtysh -c "show bgp neighbors" | grep "BGP state"
 # Should show "Established" for all 3 neighbors
 
-# Test data plane connectivity
+# Test BGP neighbor connectivity (underlay)
 kubectl exec -it deployment/openperouter-router -- ping -c 3 192.168.1.1
 kubectl exec -it deployment/openperouter-router -- ping -c 3 192.168.2.1
 kubectl exec -it deployment/openperouter-router -- ping -c 3 192.168.3.1
+
+# Test L3 data plane connectivity (both leaf nodes to pod)
+# Get pod IP in kind cluster
+POD_IP=$(kubectl get pod -l app=test-pod -o jsonpath='{.items[0].status.podIP}')
+
+# Ping from leaf1 to pod
+sudo containerlab exec -t multi-underlay-e2e leaf1 ping -c 3 $POD_IP
+# Should succeed - validates full L3 path through TOR and OpenPERouter
+
+# Ping from leaf2 to pod
+sudo containerlab exec -t multi-underlay-e2e leaf2 ping -c 3 $POD_IP
+# Should also succeed - validates redundancy
+
+# Check routing tables on both leafs
+sudo containerlab exec -t multi-underlay-e2e leaf1 ip route
+sudo containerlab exec -t multi-underlay-e2e leaf2 ip route
+# Both should show routes to pod network via TORs
 ```
 
 ## Unit Testing Key Components
