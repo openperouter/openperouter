@@ -1,0 +1,36 @@
+{{ define "isis"}}
+router isis {{ .isisconf.Name }}
+{{- range .isisconf.Net }}
+  net {{ . }}
+{{- end }}
+{{- if eq .isisconf.Type 1 }}
+  is-type level-1
+{{- else if eq .isisconf.Type 2 }}
+  is-type level-2-only
+{{- else }}
+  is-type level-1-2
+{{- end }}
+{{- if .segmentrouting }}
+  segment-routing srv6
+    locator {{ .segmentrouting.Locator.Name }}
+  exit
+{{- end }}
+exit
+!
+interface lound
+  ip router isis {{ $.isisconf.Name }}
+  ipv6 router isis {{ $.isisconf.Name }}
+  isis passive
+!
+{{- range $interfaceConfig := .isisconf.Interfaces }}
+interface {{ $interfaceConfig.Name }}
+{{- if $interfaceConfig.IPv4 }}
+  ip router isis {{ $.isisconf.Name }}
+{{- end }}
+{{- if $interfaceConfig.IPv6 }}
+  ipv6 router isis {{ $.isisconf.Name }}
+{{- end }}
+exit
+!
+{{- end }}
+{{- end }}

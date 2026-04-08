@@ -74,6 +74,20 @@ func staticConfigToAPIConfig(staticConfig *static.PERouterConfig) conversion.Api
 		}
 	}
 
+	l3vpns := make([]v1alpha1.L3VPN, len(staticConfig.L3VPNs))
+	for i, spec := range staticConfig.L3VPNs {
+		l3vpns[i] = v1alpha1.L3VPN{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "L3VNI",
+				APIVersion: "openpe.openperouter.github.io/v1alpha1",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name: fmt.Sprintf("static-l3vpn-%d", i),
+			},
+			Spec: spec,
+		}
+	}
+
 	var l3passthrough []v1alpha1.L3Passthrough
 	if staticConfig.BGPPassthrough.HostSession.ASN > 0 {
 		l3passthrough = []v1alpha1.L3Passthrough{
@@ -108,6 +122,7 @@ func staticConfigToAPIConfig(staticConfig *static.PERouterConfig) conversion.Api
 		Underlays:     underlays,
 		L3VNIs:        l3vnis,
 		L2VNIs:        l2vnis,
+		L3VPNs:        l3vpns,
 		L3Passthrough: l3passthrough,
 		RawFRRConfigs: rawFRRConfigs,
 	}

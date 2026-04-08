@@ -129,6 +129,65 @@ func IPsInCIDR(pool string) (uint64, error) {
 	return gocidr.AddressCount(ipNet), nil
 }
 
+// OffsetIPv6Prefix adds nodeIndex to the network portion of an IPv6 prefix.
+// For example, with prefix "fd00:0:11::/48", nodeIndex 2, and prefixLen 48,
+// it returns "fd00:0:13::/48" (0x11 + 2 = 0x13).
+// Note: written by Claude, verify.
+func OffsetIPv6Prefix(prefix string, nodeIndex, prefixLen int) (string, error) {
+	ip, ipNet, err := net.ParseCIDR(prefix)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse prefix %s: %w", prefix, err)
+	}
+
+	if ip.To4() != nil {
+		return "", fmt.Errorf("prefix %s is not IPv6", prefix)
+	}
+
+	ipBytes := ip.To16()
+	if ipBytes == nil {
+		return "", fmt.Errorf("failed to convert IP to IPv6")
+	}
+
+	// Calculate how many bytes and bits we need to modify
+	numBytes := prefixLen / 8
+	remainingBits := prefixLen % 8
+
+	// Convert the network portion to a big integer and add nodeIndex
+	var networkValue uint64 = 0
+	for i := 0; i < numBytes && i < 8; i++ {
+		networkValue = (networkValue << 8) | uint64(ipBytes[i])
+	}
+
+	// Handle remaining bits if prefixLen is not a multiple of 8
+	if remainingBits > 0 && numBytes < 8 {
+		networkValue = (networkValue << uint(remainingBits)) | (uint64(ipBytes[numBytes]) >> uint(8-remainingBits))
+	}
+
+	// Add the node index
+	networkValue += uint64(nodeIndex)
+
+	// Write the value back to the IP bytes
+	if remainingBits > 0 && numBytes < 8 {
+		// Extract the remaining bits and put them back
+		mask := byte((1 << uint(8-remainingBits)) - 1)
+		hostPortion := ipBytes[numBytes] & mask
+		ipBytes[numBytes] = byte((networkValue&((1<<uint(remainingBits))-1))<<uint(8-remainingBits)) | hostPortion
+		networkValue >>= uint(remainingBits)
+		numBytes--
+	}
+
+	// Write back the full bytes
+	for i := numBytes - 1; i >= 0; i-- {
+		ipBytes[i] = byte(networkValue & 0xff)
+		networkValue >>= 8
+	}
+
+	// Get the original prefix length from the input
+	ones, _ := ipNet.Mask.Size()
+
+	return fmt.Sprintf("%s/%d", net.IP(ipBytes).String(), ones), nil
+}
+
 // vethIPsForFamily returns the host side and PE side IPs for a given pool and index.
 func vethIPsForFamily(pool string, index int) (VethIPsForFamily, error) {
 	_, cidr, err := net.ParseCIDR(pool)

@@ -7,14 +7,23 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/openperouter/openperouter/internal/sysctl"
 	"github.com/vishvananda/netlink"
 )
 
 // setupVRF creates a new VRF and sets it up.
-func setupVRF(name string) (*netlink.Vrf, error) {
+func setupVRF(name string, strictMode bool) (*netlink.Vrf, error) {
 	vrf, err := createVRF(name)
 	if err != nil {
 		return nil, err
+	}
+
+	if strictMode {
+		// We need to do this as close to VRF creation as possible to minimize the risk of rejected "B>r"
+		// routes in BGP.
+		if err := sysctl.Ensure(sysctl.EnableVRFStrictMode()); err != nil {
+			return nil, fmt.Errorf("failed to ensure VRF strict mode after adding VRF %s: %w", name, err)
+		}
 	}
 
 	err = linkSetUp(vrf)

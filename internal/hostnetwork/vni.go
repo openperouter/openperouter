@@ -254,8 +254,10 @@ func setupVNI(ctx context.Context, params VNIParams) error {
 
 	if err := netnamespace.In(ns, func() error {
 
+		// TBD: VRF strict mode is needed when using SRV6; currently, we implicitly suppose
+		// that if the VXLanPort is 0 --> SRV6.
 		slog.DebugContext(ctx, "setting up vrf", "vrf", params.VRF)
-		vrf, err := setupVRF(params.VRF)
+		vrf, err := setupVRF(params.VRF, params.VXLanPort == 0)
 		if err != nil {
 			return err
 		}
@@ -266,10 +268,12 @@ func setupVNI(ctx context.Context, params VNIParams) error {
 			return err
 		}
 
-		slog.DebugContext(ctx, "setting up vxlan")
-		err = setupVXLan(params, bridge)
-		if err != nil {
-			return err
+		if params.VXLanPort > 0 {
+			slog.DebugContext(ctx, "setting up vxlan")
+			err = setupVXLan(params, bridge)
+			if err != nil {
+				return err
+			}
 		}
 
 		return nil

@@ -63,12 +63,17 @@ func APItoHostConfig(nodeIndex int, targetNS string, underlayFromMultus bool, ap
 		return res, fmt.Errorf("underlay EVPN configuration is required when L3 or L2 VNIs are defined")
 	}
 
-	if underlay.Spec.EVPN == nil {
+	if underlay.Spec.SRV6 == nil && (len(apiConfig.L3VPNs) > 0) {
+		return res, fmt.Errorf("underlay SRV6 configuration is required when L3 VPNs are defined")
+	}
+
+	if underlay.Spec.EVPN == nil && underlay.Spec.SRV6 == nil {
 		return res, nil
 	}
 
+	// L3VNI
 	res.Underlay.EVPN = &hostnetwork.UnderlayEVPNParams{}
-	if underlay.Spec.EVPN.VTEPCIDR != "" {
+	if underlay.Spec.EVPN != nil && underlay.Spec.EVPN.VTEPCIDR != "" {
 		vtepIP, err := ipam.VTEPIp(underlay.Spec.EVPN.VTEPCIDR, nodeIndex)
 		if err != nil {
 			return res, fmt.Errorf("failed to get vtep ip, cidr %s, nodeIndex %d: %w", underlay.Spec.EVPN.VTEPCIDR, nodeIndex, err)
@@ -107,6 +112,7 @@ func APItoHostConfig(nodeIndex int, targetNS string, underlayFromMultus bool, ap
 		res.L3VNIs = append(res.L3VNIs, v)
 	}
 
+	// L2VNI
 	res.L2VNIs = []hostnetwork.L2VNIParams{}
 	for _, l2vni := range apiConfig.L2VNIs {
 		vni := hostnetwork.L2VNIParams{
@@ -154,6 +160,45 @@ func APItoHostConfig(nodeIndex int, targetNS string, underlayFromMultus bool, ap
 		}
 
 		res.L2VNIs = append(res.L2VNIs, vni)
+	}
+
+	// L3VPN
+	if underlay.Spec.SRV6 != nil && underlay.Spec.SRV6.Source.CIDR != "" {
+		vtepIP, err := ipam.VTEPIp(underlay.Spec.SRV6.Source.CIDR, nodeIndex)
+		if err != nil {
+			return res, fmt.Errorf("failed to get vtep ip, cidr %s, nodeIndex %d: %w", underlay.Spec.SRV6.Source.CIDR, nodeIndex, err)
+		}
+		res.Underlay.EVPN.VtepIP = vtepIP.String()
+	}
+
+	for _, vni := range apiConfig.L3VPNs {
+		v := hostnetwork.L3VNIParams{
+			VNIParams: hostnetwork.VNIParams{
+				VRF:           vni.Spec.VRF,
+				TargetNS:      targetNS,
+				VTEPIP:        res.Underlay.EVPN.VtepIP,
+				VTEPInterface: underlay.Spec.SRV6.Source.Interface,
+				VNI:           int(vni.Spec.RouteDistinguisherSuffix),
+			},
+		}
+		if vni.Spec.HostSession == nil {
+			res.L3VNIs = append(res.L3VNIs, v)
+			continue
+		}
+
+		vethIPs, err := ipam.VethIPsFromPool(vni.Spec.HostSession.LocalCIDR.IPv4, vni.Spec.HostSession.LocalCIDR.IPv6, nodeIndex)
+		if err != nil {
+			return res, fmt.Errorf("failed to get veth ips, cidr %v, nodeIndex %d", vni.Spec.HostSession.LocalCIDR, nodeIndex)
+		}
+
+		v.HostVeth = &hostnetwork.Veth{
+			HostIPv4: ipNetToString(vethIPs.Ipv4.HostSide),
+			NSIPv4:   ipNetToString(vethIPs.Ipv4.PeSide),
+			HostIPv6: ipNetToString(vethIPs.Ipv6.HostSide),
+			NSIPv6:   ipNetToString(vethIPs.Ipv6.PeSide),
+		}
+
+		res.L3VNIs = append(res.L3VNIs, v)
 	}
 
 	return res, nil

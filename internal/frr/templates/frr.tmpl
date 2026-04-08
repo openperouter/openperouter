@@ -43,7 +43,7 @@ router bgp {{ .Underlay.MyASN }}
   bgp router-id {{ .Underlay.RouterID }}
 
 {{- range $n := .Underlay.Neighbors }}
-{{- template "neighborsession" dict "neighbor" $n "routerASN" $.Underlay.MyASN -}}
+{{- template "neighborsession" dict "neighbor" $n "routerASN" $.Underlay.MyASN "segmentrouting" $.Underlay.SegmentRouting -}}
 {{- end }}
 {{- range $n := .Underlay.Neighbors }}
 {{- template "neighborenableipfamily" . -}}
@@ -56,27 +56,27 @@ router bgp {{ .Underlay.MyASN }}
 {{- if .Underlay.EVPN }}
 {{- template "underlayevpn" . -}}
 {{- end }}
+{{- if .Underlay.SegmentRouting }}
+{{- template "underlayl3vpn" . -}}
+{{- end }}
 exit
 !
 {{- end }}
 
-{{- range .VNIs }}
-router bgp {{ .ASN }} vrf {{ .VRF }}
-  no bgp ebgp-requires-policy
-  no bgp network import-check
-  no bgp default ipv4-unicast
-  bgp router-id {{ .RouterID }}
-
-  {{- if .LocalNeighbor }}
-  {{ template "localneighbor" . }}
-  {{- end }}
-
-  address-family l2vpn evpn
-    advertise ipv4 unicast
-    advertise ipv6 unicast
-  exit-address-family
-exit
+{{- range $n := .VNIs }}
+{{- template "vni" dict "vni" $n -}}
+{{- end }}
+{{- range $n := .VPNs }}
+{{- template "vpn" dict "vpn" $n -}}
 {{- end }}
 {{- range .RawConfig }}
 {{ .Config }}
+{{- end }}
+
+{{- range $n := .Underlay.ISIS }}
+{{- template "isis" dict "isisconf" $n "segmentrouting" $.Underlay.SegmentRouting -}}
+{{- end }}
+
+{{- if .Underlay.SegmentRouting }}
+{{- template "segmentrouting" .Underlay.SegmentRouting -}}
 {{- end }}

@@ -20,6 +20,7 @@ func TestAPItoFRR(t *testing.T) {
 		nodeIndex     int
 		underlays     []v1alpha1.Underlay
 		vnis          []v1alpha1.L3VNI
+		vpns          []v1alpha1.L3VPN
 		l3Passthrough []v1alpha1.L3Passthrough
 		logLevel      string
 		want          frr.Config
@@ -69,6 +70,7 @@ func TestAPItoFRR(t *testing.T) {
 					},
 				},
 				VNIs:        []frr.L3VNIConfig{},
+				VPNs:        []frr.L3VPNConfig{},
 				BFDProfiles: []frr.BFDProfile{},
 				Loglevel:    "debug",
 			},
@@ -138,6 +140,7 @@ func TestAPItoFRR(t *testing.T) {
 						ToAdvertiseIPv6: []string{},
 					},
 				},
+				VPNs:        []frr.L3VPNConfig{},
 				BFDProfiles: []frr.BFDProfile{},
 				Loglevel:    "debug",
 			},
@@ -207,6 +210,7 @@ func TestAPItoFRR(t *testing.T) {
 						ToAdvertiseIPv6: []string{"2001:db8::2/128"},
 					},
 				},
+				VPNs:        []frr.L3VPNConfig{},
 				BFDProfiles: []frr.BFDProfile{},
 				Loglevel:    "debug",
 			},
@@ -289,6 +293,7 @@ func TestAPItoFRR(t *testing.T) {
 						ToAdvertiseIPv6: []string{"2001:db8::2/128"},
 					},
 				},
+				VPNs:        []frr.L3VPNConfig{},
 				BFDProfiles: []frr.BFDProfile{},
 				Loglevel:    "debug",
 			},
@@ -344,6 +349,7 @@ func TestAPItoFRR(t *testing.T) {
 					},
 				},
 				VNIs: []frr.L3VNIConfig{},
+				VPNs: []frr.L3VPNConfig{},
 				BFDProfiles: []frr.BFDProfile{
 					{
 						Name:             "neighbor-192.168.1.100",
@@ -400,6 +406,7 @@ func TestAPItoFRR(t *testing.T) {
 					},
 				},
 				VNIs:        []frr.L3VNIConfig{},
+				VPNs:        []frr.L3VPNConfig{},
 				BFDProfiles: []frr.BFDProfile{},
 				Loglevel:    "debug",
 			},
@@ -456,6 +463,7 @@ func TestAPItoFRR(t *testing.T) {
 						RouterID: "10.0.0.1",
 					},
 				},
+				VPNs:        []frr.L3VPNConfig{},
 				BFDProfiles: []frr.BFDProfile{},
 				Loglevel:    "debug",
 			},
@@ -525,6 +533,7 @@ func TestAPItoFRR(t *testing.T) {
 						ToAdvertiseIPv6: []string{},
 					},
 				},
+				VPNs:        []frr.L3VPNConfig{},
 				BFDProfiles: []frr.BFDProfile{},
 				Loglevel:    "debug",
 			},
@@ -560,6 +569,7 @@ func TestAPItoFRR(t *testing.T) {
 					},
 				},
 				VNIs:        []frr.L3VNIConfig{},
+				VPNs:        []frr.L3VPNConfig{},
 				BFDProfiles: []frr.BFDProfile{},
 				Loglevel:    "debug",
 			},
@@ -626,6 +636,7 @@ func TestAPItoFRR(t *testing.T) {
 					ToAdvertiseIPv6: []string{"2001:db8::2/128"},
 				},
 				VNIs:        []frr.L3VNIConfig{},
+				VPNs:        []frr.L3VPNConfig{},
 				BFDProfiles: []frr.BFDProfile{},
 				Loglevel:    "debug",
 			},
@@ -665,6 +676,421 @@ func TestAPItoFRR(t *testing.T) {
 					},
 				},
 				VNIs:        []frr.L3VNIConfig{},
+				VPNs:        []frr.L3VPNConfig{},
+				BFDProfiles: []frr.BFDProfile{},
+				Loglevel:    "debug",
+			},
+			wantErr: false,
+		},
+		{
+			name:      "ISIS",
+			nodeIndex: 0,
+			underlays: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						ASN:          65000,
+						RouterIDCIDR: "10.0.0.0/24",
+						Neighbors:    []v1alpha1.Neighbor{{Address: "192.168.1.1", ASN: 65001}},
+						ISIS: []v1alpha1.ISISConfig{
+							{
+								Name: "ISIS",
+								Net:  []v1alpha1.ISISNet{"49.0001.0002.0003.0004.00"},
+								Type: 1,
+								Interfaces: []v1alpha1.ISISInterface{
+									{Name: "eth0", IPv4: true, IPv6: true},
+									{Name: "eth1", IPv4: false, IPv6: true},
+								},
+							},
+							{
+								Name: "ISIS2",
+								Net:  []v1alpha1.ISISNet{"49.0001.0002.0003.0004.00"},
+								Interfaces: []v1alpha1.ISISInterface{
+									{Name: "eth0", IPv4: true, IPv6: true},
+									{Name: "eth1", IPv4: false, IPv6: true},
+								},
+							},
+						},
+					},
+				},
+			},
+			l3Passthrough: []v1alpha1.L3Passthrough{},
+			logLevel:      "debug",
+			want: frr.Config{
+				Underlay: frr.UnderlayConfig{
+					MyASN: 65000,
+					ISIS: []frr.UnderlayISIS{
+						{
+							Name: "ISIS",
+							Net:  []frr.ISISNet{frr.MustParseISISNet("49.0001.0002.0003.0004.00")},
+							Type: 1,
+							Interfaces: []frr.ISISInterface{
+								{Name: "eth0", IPv4: true, IPv6: true},
+								{Name: "eth1", IPv4: false, IPv6: true},
+							},
+						},
+						{
+							Name: "ISIS2",
+							Net:  []frr.ISISNet{frr.MustParseISISNet("49.0001.0002.0003.0004.00")},
+							Type: 0,
+							Interfaces: []frr.ISISInterface{
+								{Name: "eth0", IPv4: true, IPv6: true},
+								{Name: "eth1", IPv4: false, IPv6: true},
+							},
+						},
+					},
+					RouterID: "10.0.0.1",
+					Neighbors: []frr.NeighborConfig{
+						{
+							Name:         "65001@192.168.1.1",
+							ASN:          65001,
+							Addr:         "192.168.1.1",
+							IPFamily:     ipfamily.IPv4,
+							EBGPMultiHop: false,
+						},
+					},
+				},
+				Passthrough: nil,
+				VNIs:        []frr.L3VNIConfig{},
+				VPNs:        []frr.L3VPNConfig{},
+				BFDProfiles: []frr.BFDProfile{},
+				Loglevel:    "debug",
+			},
+			wantErr: false,
+		},
+		{
+			name:      "ISIS without interface configuration",
+			nodeIndex: 0,
+			underlays: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						ASN:          65000,
+						RouterIDCIDR: "10.0.0.0/24",
+						Neighbors:    []v1alpha1.Neighbor{{Address: "192.168.1.1", ASN: 65001}},
+						ISIS: []v1alpha1.ISISConfig{
+							{
+								Name: "ISIS",
+								Net:  []v1alpha1.ISISNet{"49.0001.0002.0003.0004.00"},
+								Type: 2,
+							},
+						},
+					},
+				},
+			},
+			l3Passthrough: []v1alpha1.L3Passthrough{},
+			logLevel:      "debug",
+			want: frr.Config{
+				Underlay: frr.UnderlayConfig{
+					MyASN: 65000,
+					ISIS: []frr.UnderlayISIS{
+						{
+							Name:       "ISIS",
+							Net:        []frr.ISISNet{frr.MustParseISISNet("49.0001.0002.0003.0004.00")},
+							Type:       2,
+							Interfaces: []frr.ISISInterface{},
+						},
+					},
+					RouterID: "10.0.0.1",
+					Neighbors: []frr.NeighborConfig{
+						{
+							Name:         "65001@192.168.1.1",
+							ASN:          65001,
+							Addr:         "192.168.1.1",
+							IPFamily:     ipfamily.IPv4,
+							EBGPMultiHop: false,
+						},
+					},
+				},
+				Passthrough: nil,
+				VNIs:        []frr.L3VNIConfig{},
+				VPNs:        []frr.L3VPNConfig{},
+				BFDProfiles: []frr.BFDProfile{},
+				Loglevel:    "debug",
+			},
+			wantErr: false,
+		},
+		{
+			name:      "ISIS name unset",
+			nodeIndex: 0,
+			underlays: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						ASN:          65000,
+						RouterIDCIDR: "10.0.0.0/24",
+						Neighbors:    []v1alpha1.Neighbor{{Address: "192.168.1.1", ASN: 65001}},
+						ISIS: []v1alpha1.ISISConfig{
+							{
+								Net:  []v1alpha1.ISISNet{"49.0001.0002.0003.0004.00"},
+								Type: 1,
+								Interfaces: []v1alpha1.ISISInterface{
+									{Name: "eth0", IPv4: true, IPv6: true},
+									{Name: "eth1", IPv4: false, IPv6: true},
+								},
+							},
+						},
+					},
+				},
+			},
+			l3Passthrough: []v1alpha1.L3Passthrough{},
+			logLevel:      "debug",
+			want:          frr.Config{},
+			wantErr:       true,
+		},
+		{
+			name:      "ISIS invalid net",
+			nodeIndex: 0,
+			underlays: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						ASN:          65000,
+						RouterIDCIDR: "10.0.0.0/24",
+						Neighbors:    []v1alpha1.Neighbor{{Address: "192.168.1.1", ASN: 65001}},
+						ISIS: []v1alpha1.ISISConfig{
+							{
+								Name: "ISIS",
+								Net:  []v1alpha1.ISISNet{"49.0001.0002.0003.0004.000"},
+								Type: 1,
+								Interfaces: []v1alpha1.ISISInterface{
+									{Name: "eth0", IPv4: true, IPv6: true},
+									{Name: "eth1", IPv4: false, IPv6: true},
+								},
+							},
+						},
+					},
+				},
+			},
+			l3Passthrough: []v1alpha1.L3Passthrough{},
+			logLevel:      "debug",
+			want:          frr.Config{},
+			wantErr:       true,
+		},
+		{
+			name:      "ISIS net unset",
+			nodeIndex: 0,
+			underlays: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						ASN:          65000,
+						RouterIDCIDR: "10.0.0.0/24",
+						Neighbors:    []v1alpha1.Neighbor{{Address: "192.168.1.1", ASN: 65001}},
+						ISIS: []v1alpha1.ISISConfig{
+							{
+								Name: "ISIS",
+								Type: 1,
+								Interfaces: []v1alpha1.ISISInterface{
+									{Name: "eth0", IPv4: true, IPv6: true},
+									{Name: "eth1", IPv4: false, IPv6: true},
+								},
+							},
+						},
+					},
+				},
+			},
+			l3Passthrough: []v1alpha1.L3Passthrough{},
+			logLevel:      "debug",
+			want:          frr.Config{},
+			wantErr:       true,
+		},
+		{
+			name:      "ISIS duplicate interface names",
+			nodeIndex: 0,
+			underlays: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						ASN:          65000,
+						RouterIDCIDR: "10.0.0.0/24",
+						Neighbors:    []v1alpha1.Neighbor{{Address: "192.168.1.1", ASN: 65001}},
+						ISIS: []v1alpha1.ISISConfig{
+							{
+								Name: "ISIS",
+								Net:  []v1alpha1.ISISNet{"49.0001.0002.0003.0004.00"},
+								Type: 1,
+								Interfaces: []v1alpha1.ISISInterface{
+									{Name: "eth0", IPv4: true, IPv6: true},
+									{Name: "eth0", IPv4: false, IPv6: true},
+								},
+							},
+						},
+					},
+				},
+			},
+			l3Passthrough: []v1alpha1.L3Passthrough{},
+			logLevel:      "debug",
+			want:          frr.Config{},
+			wantErr:       true,
+		},
+		{
+			name:      "ISIS invalid type",
+			nodeIndex: 0,
+			underlays: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						ASN:          65000,
+						RouterIDCIDR: "10.0.0.0/24",
+						Neighbors:    []v1alpha1.Neighbor{{Address: "192.168.1.1", ASN: 65001}},
+						ISIS: []v1alpha1.ISISConfig{
+							{
+								Name: "ISIS",
+								Net:  []v1alpha1.ISISNet{"49.0001.0002.0003.0004.00"},
+								Type: 3,
+								Interfaces: []v1alpha1.ISISInterface{
+									{Name: "eth0", IPv4: true, IPv6: true},
+									{Name: "eth1", IPv4: false, IPv6: true},
+								},
+							},
+						},
+					},
+				},
+			},
+			l3Passthrough: []v1alpha1.L3Passthrough{},
+			logLevel:      "debug",
+			want:          frr.Config{},
+			wantErr:       true,
+		},
+		{
+			name:      "ISIS duplicate process names",
+			nodeIndex: 0,
+			underlays: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						ASN:          65000,
+						RouterIDCIDR: "10.0.0.0/24",
+						Neighbors:    []v1alpha1.Neighbor{{Address: "192.168.1.1", ASN: 65001}},
+						ISIS: []v1alpha1.ISISConfig{
+							{
+								Name: "ISIS1",
+								Net:  []v1alpha1.ISISNet{"49.0001.0002.0003.0004.00"},
+								Interfaces: []v1alpha1.ISISInterface{
+									{Name: "eth0", IPv4: true, IPv6: true},
+									{Name: "eth1", IPv4: false, IPv6: true},
+								},
+							},
+							{
+								Name: "ISIS1",
+								Net:  []v1alpha1.ISISNet{"49.0001.0002.0003.0004.00"},
+								Interfaces: []v1alpha1.ISISInterface{
+									{Name: "eth0", IPv4: true, IPv6: true},
+									{Name: "eth1", IPv4: false, IPv6: true},
+								},
+							},
+						},
+					},
+				},
+			},
+			l3Passthrough: []v1alpha1.L3Passthrough{},
+			logLevel:      "debug",
+			want:          frr.Config{},
+			wantErr:       true,
+		},
+		{
+			name:      "SRV6 dual-stack",
+			nodeIndex: 0,
+			underlays: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						ASN:          65000,
+						RouterIDCIDR: "10.0.0.0/24",
+						Neighbors:    []v1alpha1.Neighbor{{Address: "192.168.1.1", ASN: 65001}},
+						ISIS: []v1alpha1.ISISConfig{
+							{
+								Name: "ISIS",
+								Net:  []v1alpha1.ISISNet{"49.0001.0002.0003.0004.00"},
+								Type: 1,
+								Interfaces: []v1alpha1.ISISInterface{
+									{Name: "eth0", IPv4: true, IPv6: true},
+								},
+							},
+						},
+						SRV6: &v1alpha1.SRV6Config{
+							Source: v1alpha1.SRV6Source{
+								CIDR: "2001:db8:1234:5678::/64",
+							},
+							Locator: v1alpha1.SRV6Locator{
+								Name:   "MAIN",
+								Prefix: "fd00:0:32::/48",
+								Format: "usid-f3216",
+							},
+						},
+					},
+				},
+			},
+			vpns: []v1alpha1.L3VPN{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+					Spec: v1alpha1.L3VPNSpec{
+						HostSession: &v1alpha1.HostSession{
+							ASN: 65000,
+							LocalCIDR: v1alpha1.LocalCIDRConfig{
+								IPv4: "192.168.2.0/24",
+								IPv6: "2001:db8::/64",
+							},
+							HostASN: 65001,
+						},
+						VRF:                      "vrf1",
+						RouteTarget:              "65000:100",
+						RouteDistinguisherSuffix: 100,
+					},
+				},
+			},
+			logLevel: "debug",
+			want: frr.Config{
+				Underlay: frr.UnderlayConfig{
+					MyASN: 65000,
+					ISIS: []frr.UnderlayISIS{
+						{
+							Name: "ISIS",
+							Net:  []frr.ISISNet{frr.MustParseISISNet("49.0001.0002.0003.0004.00")},
+							Type: 1,
+							Interfaces: []frr.ISISInterface{
+								{Name: "eth0", IPv4: true, IPv6: true},
+							},
+						},
+					},
+					RouterID: "10.0.0.1",
+					Neighbors: []frr.NeighborConfig{
+						{
+							Name:         "65001@192.168.1.1",
+							ASN:          65001,
+							Addr:         "192.168.1.1",
+							IPFamily:     ipfamily.None,
+							EBGPMultiHop: false,
+						},
+					},
+					SegmentRouting: &frr.UnderlaySegmentRouting{
+						SourceAddress: "2001:db8:1234:5678::",
+						Locator: frr.SRV6Locator{
+							Name:     "MAIN",
+							Prefix:   "fd00:0:32::/48",
+							BlockLen: 32,
+							NodeLen:  16,
+							Behavior: "usid",
+							Format:   "usid-f3216",
+						},
+					},
+				},
+				Passthrough: nil,
+				VNIs:        []frr.L3VNIConfig{},
+				VPNs: []frr.L3VPNConfig{
+					{
+						ASN:                65000,
+						ToAdvertiseIPv4:    []string{"192.168.2.2/32"},
+						ToAdvertiseIPv6:    []string{},
+						LocalNeighbor:      &frr.NeighborConfig{ASN: 65001, Addr: "192.168.2.2"},
+						VRF:                "vrf1",
+						RouteTarget:        "65000:100",
+						RouteDistinguisher: "10.0.0.1:100",
+						RouterID:           "10.0.0.1",
+					},
+					{
+						ASN:                65000,
+						ToAdvertiseIPv4:    []string{},
+						ToAdvertiseIPv6:    []string{"2001:db8::2/128"},
+						LocalNeighbor:      &frr.NeighborConfig{ASN: 65001, Addr: "2001:db8::2"},
+						VRF:                "vrf1",
+						RouteTarget:        "65000:100",
+						RouteDistinguisher: "10.0.0.1:100",
+						RouterID:           "10.0.0.1",
+					},
+				},
 				BFDProfiles: []frr.BFDProfile{},
 				Loglevel:    "debug",
 			},
@@ -678,6 +1104,7 @@ func TestAPItoFRR(t *testing.T) {
 				Underlays:     tt.underlays,
 				L3VNIs:        tt.vnis,
 				L3Passthrough: tt.l3Passthrough,
+				L3VPNs:        tt.vpns,
 			}
 			got, err := APItoFRR(apiConfig, tt.nodeIndex, tt.logLevel)
 			if (err != nil) != tt.wantErr {
