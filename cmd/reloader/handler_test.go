@@ -8,21 +8,22 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/openperouter/openperouter/internal/frr/vtysh"
 	"github.com/openperouter/openperouter/internal/frrconfig"
 )
 
 func TestHandler(t *testing.T) {
-	reloadSucceeds := func(_ string) error {
+	reloadSucceeds := func(_, _, _ string) error {
 		return nil
 	}
 
-	reloadFails := func(_ string) error {
+	reloadFails := func(_, _, _ string) error {
 		return errors.New("failed")
 	}
 
 	tests := []struct {
 		name       string
-		reloadMock func(string) error
+		reloadMock func(string, string, string) error
 		method     string
 		httpStatus int
 	}{
@@ -54,7 +55,8 @@ func TestHandler(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
 			req, _ := http.NewRequest(tc.method, "/", nil)
-			handler := http.HandlerFunc(reloadHandler("/etc/frr/frr.conf"))
+			handler := http.HandlerFunc(
+				reloadHandler("/etc/frr/frr.conf", frrconfig.DefaultReloaderPath, vtysh.DefaultVtyshPath))
 
 			handler.ServeHTTP(w, req)
 			res := w.Result()

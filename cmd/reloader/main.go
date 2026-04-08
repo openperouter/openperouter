@@ -42,8 +42,10 @@ import (
 type Args struct {
 	bindAddress   string
 	frrConfigPath string
+	frrReloadPath string
 	logLevel      string
 	unixSocket    string
+	vtyshPath     string
 }
 
 func main() {
@@ -52,6 +54,9 @@ func main() {
 	flag.StringVar(&args.unixSocket, "unixsocket", "", "Unix socket path to listen on")
 	flag.StringVar(&args.logLevel, "loglevel", "info", "The log level of the process")
 	flag.StringVar(&args.frrConfigPath, "frrconfig", "/etc/frr/frr.conf", "The path the frr configuration is at")
+	flag.StringVar(&args.frrReloadPath, "frrreloadpath",
+		frrconfig.DefaultReloaderPath, "The path to the frr-reload.py script")
+	flag.StringVar(&args.vtyshPath, "vtyshpath", vtysh.DefaultVtyshPath, "The path to the vtysh binary")
 	flag.Parse()
 
 	_, err := logging.New(args.logLevel)
@@ -84,13 +89,14 @@ func serveReload(args Args) error {
 	}
 
 	unixServer := newServer(
-		[]handlerConfig{{pattern: "/", handler: reloadHandler(args.frrConfigPath)}},
+		[]handlerConfig{{pattern: "/", handler: reloadHandler(args.frrConfigPath, args.frrReloadPath, args.vtyshPath)}},
 	)
 
+	vtyshCli := vtysh.NewCli(args.vtyshPath)
 	healthServer := newServer(
 		[]handlerConfig{
-			{pattern: "/healthz", handler: health()},
-			{pattern: "/readyz", handler: health()},
+			{pattern: "/healthz", handler: health(vtyshCli)},
+			{pattern: "/readyz", handler: health(vtyshCli)},
 		},
 		withEndpoint(args.bindAddress),
 	)
@@ -140,14 +146,14 @@ func serveReload(args Args) error {
 
 var updateConfig = frrconfig.Update
 
-func reloadHandler(frrConfigPath string) func(w http.ResponseWriter, req *http.Request) {
+func reloadHandler(frrConfigPath, frrReloadPath, vtyshPath string) func(w http.ResponseWriter, req *http.Request) {
 	return func(w http.ResponseWriter, req *http.Request) {
 		if req.Method != http.MethodPost {
 			http.Error(w, "invalid method", http.StatusBadRequest)
 			return
 		}
 		slog.Info("reload handler", "event", "received request")
-		err := updateConfig(frrConfigPath)
+		err := updateConfig(frrConfigPath, frrReloadPath, vtyshPath)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -157,14 +163,14 @@ func reloadHandler(frrConfigPath string) func(w http.ResponseWriter, req *http.R
 	}
 }
 
-func health() func(w http.ResponseWriter, req *http.Request) {
+func health(vtyshCli vtysh.Cli) func(w http.ResponseWriter, req *http.Request) {
 	return func(w http.ResponseWriter, req *http.Request) {
 		if req.Method != http.MethodGet {
 			http.Error(w, "invalid method", http.StatusMethodNotAllowed)
 			return
 		}
 
-		if err := liveness.PingFrr(vtysh.Run); err != nil {
+		if err := liveness.PingFrr(vtyshCli); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}

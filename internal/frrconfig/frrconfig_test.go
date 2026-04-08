@@ -35,7 +35,7 @@ func TestReload(t *testing.T) {
 
 	for tc, params := range tests {
 		t.Run(fmt.Sprintf("reload %s", tc), func(t *testing.T) {
-			err := Update(tc)
+			err := Update(tc, DefaultReloaderPath, "/usr/bin/vtysh")
 			if (params.failReload || params.failValidate) && err == nil {
 				t.Fatalf("expecting failure, got no error")
 			}
@@ -83,17 +83,21 @@ func TestFakeReloadHelper(t *testing.T) {
 		}
 		args = args[1:]
 	}
-	if len(args) != 3 {
-		fmt.Printf("expecting 3 args, got %v", args)
+	if len(args) != 5 {
+		fmt.Printf("expecting 5 args, got %v", args)
 		os.Exit(1)
 	}
 
-	if !reflect.DeepEqual(args[0], reloaderPath) {
-		fmt.Println("expected to be called with -c reloader args", args)
+	if !reflect.DeepEqual(args[0], DefaultReloaderPath) {
+		fmt.Println("expected to be called with reloader path as first arg", args)
 		os.Exit(1)
 	}
-	action, _ := strings.CutPrefix(args[1], "--")
-	path := args[2]
+	if args[1] != "--bindir" {
+		fmt.Println("expected --bindir as second arg", args)
+		os.Exit(1)
+	}
+	action, _ := strings.CutPrefix(args[3], "--")
+	path := args[4]
 
 	params, ok := tests[path]
 	if !ok {
