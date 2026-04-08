@@ -88,6 +88,12 @@ func TestValidateUnderlay(t *testing.T) {
 					},
 					Nics: []string{},
 					ASN:  65001,
+					Neighbors: []v1alpha1.Neighbor{
+						{
+							ASN:     65002,
+							Address: "192.168.1.1",
+						},
+					},
 				},
 			},
 			wantErr: false,
@@ -101,6 +107,12 @@ func TestValidateUnderlay(t *testing.T) {
 					},
 					Nics: nil,
 					ASN:  65001,
+					Neighbors: []v1alpha1.Neighbor{
+						{
+							ASN:     65002,
+							Address: "192.168.1.1",
+						},
+					},
 				},
 			},
 			wantErr: false,
@@ -114,9 +126,15 @@ func TestValidateUnderlay(t *testing.T) {
 					},
 					Nics: []string{"eth0", "eth1"},
 					ASN:  65001,
+					Neighbors: []v1alpha1.Neighbor{
+						{
+							ASN:     65002,
+							Address: "192.168.1.1",
+						},
+					},
 				},
 			},
-			wantErr: true,
+			wantErr: false,
 		},
 		{
 			name: "same local and remote ASN",

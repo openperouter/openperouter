@@ -143,11 +143,11 @@ Repository root:
 
 ### Implementation for User Story 3
 
-- [ ] T046 [US3] Test combined multi-interface multi-neighbor validation in internal/webhooks/underlay_webhook.go
-- [ ] T047 [US3] Verify atomic update behavior (all or nothing) for combined multi-entity requests in internal/webhooks/underlay_webhook.go
-- [ ] T048 [US3] Test FRR configuration generation with combined multi-interface multi-neighbor scenario in internal/conversion/frr_conversion.go
-- [ ] T049 [US3] Test host network configuration with combined multi-interface multi-neighbor scenario in internal/conversion/host_conversion.go
-- [ ] T050 [US3] Verify partial update rejection when some entities valid, others invalid in internal/webhooks/underlay_webhook.go
+- [X] T046 [US3] Test combined multi-interface multi-neighbor validation in internal/webhooks/underlay_webhook.go
+- [X] T047 [US3] Verify atomic update behavior (all or nothing) for combined multi-entity requests in internal/webhooks/underlay_webhook.go
+- [X] T048 [US3] Test FRR configuration generation with combined multi-interface multi-neighbor scenario in internal/conversion/frr_conversion.go
+- [X] T049 [US3] Test host network configuration with combined multi-interface multi-neighbor scenario in internal/conversion/host_conversion.go
+- [X] T050 [US3] Verify partial update rejection when some entities valid, others invalid in internal/webhooks/underlay_webhook.go
 
 **Checkpoint**: Complete multi-interface multi-neighbor configurations work end-to-end (E2E coverage provided by transformed tests in Phase 5)
 
