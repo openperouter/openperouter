@@ -87,3 +87,18 @@ router bgp 64520 vrf blue
  exit-address-family
 exit
 ! 
+{{- if ne .ISISNet "" }}
+interface eth1
+  ipv6 router isis ISIS
+exit
+!
+interface lo
+  ipv6 router isis ISIS
+  isis passive
+!
+router isis ISIS
+  is-type level-1
+  net {{ .ISISNet }}
+exit
+!
+{{- end }}

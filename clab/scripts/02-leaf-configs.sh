@@ -23,12 +23,14 @@ generate_leaf_configs() {
     sudo rm ../leafA/frr.conf || true
     go run generate_leaf_config/generate_leaf_config.go \
         -leaf leafA -neighbor 192.168.1.0 -network 100.64.0.1/32 $REDISTRIBUTE_FLAG \
+        -isis-net "49.0001.0000.0000.0001.00" \
         -template generate_leaf_config/frr_template/frr.conf.template
 
     # leafB neighbors with spine at 192.168.1.2 and advertises 100.64.0.2/32
     sudo rm ../leafB/frr.conf || true
     go run generate_leaf_config/generate_leaf_config.go \
         -leaf leafB -neighbor 192.168.1.2 -network 100.64.0.2/32 $REDISTRIBUTE_FLAG \
+        -isis-net "49.0001.0000.0000.0002.00" \
         -template generate_leaf_config/frr_template/frr.conf.template
 
     popd
