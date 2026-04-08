@@ -20,13 +20,13 @@ generate_leaf_configs() {
 
     # Generate configs for original leafs only
     # leafA neighbors with spine at 192.168.1.0 and advertises 100.64.0.1/32
-    sudo rm ../leafA/frr.conf || true
+    rm -f ../leafA/frr.conf
     go run generate_leaf_config/generate_leaf_config.go \
         -leaf leafA -neighbor 192.168.1.0 -network 100.64.0.1/32 $REDISTRIBUTE_FLAG \
         -template generate_leaf_config/frr_template/frr.conf.template
 
     # leafB neighbors with spine at 192.168.1.2 and advertises 100.64.0.2/32
-    sudo rm ../leafB/frr.conf || true
+    rm -f ../leafB/frr.conf
     go run generate_leaf_config/generate_leaf_config.go \
         -leaf leafB -neighbor 192.168.1.2 -network 100.64.0.2/32 $REDISTRIBUTE_FLAG \
         -template generate_leaf_config/frr_template/frr.conf.template
