@@ -40,3 +40,5 @@ ip link set vni200 type bridge_slave neigh_suppress on learning off
 ip link set vni200 up
 ip link set br200 up
 
+# SRV6
+ip address add dev lo 2001:db8:1234::1/128

@@ -16,6 +16,7 @@ type LeafConfig struct {
 	NetworkToAdvertise               string
 	RedistributeConnectedFromVRFs    bool
 	RedistributeConnectedFromDefault bool
+	ISISNet                          string
 }
 
 func main() {
@@ -23,6 +24,7 @@ func main() {
 		leafName                      = flag.String("leaf", "", "Leaf name (e.g., leafA, leafB)")
 		neighborIP                    = flag.String("neighbor", "", "Neighbor IP address")
 		networkToAdvertise            = flag.String("network", "", "Network to advertise (CIDR format)")
+		isisNet                       = flag.String("isis-net", "", "ISIS net address")
 		redistributeConnectedFromVRFs = flag.Bool("redistribute-connected-from-vrfs", false,
 			"Add redistribute connected to VRF address families")
 		redistributeConnectedDefault = flag.Bool("redistribute-connected-from-default", false,
@@ -58,6 +60,7 @@ func main() {
 		NetworkToAdvertise:               *networkToAdvertise,
 		RedistributeConnectedFromVRFs:    *redistributeConnectedFromVRFs,
 		RedistributeConnectedFromDefault: *redistributeConnectedDefault,
+		ISISNet:                          *isisNet,
 	}
 
 	if err := os.MkdirAll(*outputDir, 0755); err != nil {
