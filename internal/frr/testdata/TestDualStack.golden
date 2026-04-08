@@ -32,6 +32,8 @@ router bgp 64512
     advertise-all-vni
     advertise-svi-ip
   exit-address-family
+exit
+!
 router bgp 64512 vrf red
   no bgp ebgp-requires-policy
   no bgp network import-check
