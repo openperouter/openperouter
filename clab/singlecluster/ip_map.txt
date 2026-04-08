@@ -36,3 +36,11 @@ clab-kind-leafB,ethblue,192.169.21.1/24
 clab-kind-leafB,ethblue,2001:db8:169:21::1/64
 clab-kind-hostB_blue,eth1,192.169.21.2/24
 clab-kind-hostB_blue,eth1,2001:db8:169:21::2/64
+clab-kind-leafSRV6,ethred,192.170.20.1/24
+clab-kind-leafSRV6,ethred,2001:db8:170:20::1/64
+clab-kind-hostSRV6_red,eth1,192.170.20.2/24
+clab-kind-hostSRV6_red,eth1,2001:db8:170:20::2/64
+clab-kind-leafSRV6,ethblue,192.170.21.1/24
+clab-kind-leafSRV6,ethblue,2001:db8:170:21::1/64
+clab-kind-hostSRV6_blue,eth1,192.170.21.2/24
+clab-kind-hostSRV6_blue,eth1,2001:db8:170:21::2/64
