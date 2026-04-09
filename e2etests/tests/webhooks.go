@@ -612,6 +612,9 @@ var _ = Describe("Webhooks", func() {
 					EVPN: &v1alpha1.EVPNConfig{
 						VTEPCIDR: "notacidr",
 					},
+					Neighbors: []v1alpha1.Neighbor{
+						{ASN: 65001, Address: "192.168.1.1"},
+					},
 				},
 			}, "invalid vtep CIDR"),
 			Entry("when trying to create an underlay with a neighbor with the same ASN", v1alpha1.Underlay{
@@ -687,6 +690,9 @@ var _ = Describe("Webhooks", func() {
 					EVPN: &v1alpha1.EVPNConfig{
 						VTEPCIDR: "192.168.1.0/24",
 					},
+					Neighbors: []v1alpha1.Neighbor{
+						{ASN: 65001, Address: "192.168.1.1"},
+					},
 				},
 			}
 			By("creating the first underlay")
@@ -717,6 +723,9 @@ var _ = Describe("Webhooks", func() {
 							EVPN: &v1alpha1.EVPNConfig{
 								VTEPCIDR: "192.168.2.0/24",
 							},
+							Neighbors: []v1alpha1.Neighbor{
+								{ASN: 65002, Address: "192.168.2.1"},
+							},
 						},
 					},
 				},
@@ -734,6 +743,9 @@ var _ = Describe("Webhooks", func() {
 							Nics: []string{"nic1"},
 							EVPN: &v1alpha1.EVPNConfig{
 								VTEPCIDR: "notacidr",
+							},
+							Neighbors: []v1alpha1.Neighbor{
+								{ASN: 65001, Address: "192.168.1.1"},
 							},
 						},
 					},
