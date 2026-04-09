@@ -35,3 +35,5 @@ router bgp 64512
     advertise-all-vni
     advertise-svi-ip
   exit-address-family
+exit
+!

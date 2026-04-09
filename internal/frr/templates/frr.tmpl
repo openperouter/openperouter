@@ -56,7 +56,8 @@ router bgp {{ .Underlay.MyASN }}
 {{- if .Underlay.EVPN }}
 {{- template "underlayevpn" . -}}
 {{- end }}
-
+exit
+!
 {{- end }}
 
 {{- range .VNIs }}
