@@ -176,155 +176,303 @@ kubectl get underlay test-backward-compat
 
 ## E2E Testing with Containerlab
 
+The E2E test suite validates multi-interface and multi-neighbor functionality using containerlab to create a realistic network topology with multiple leaf switches, ToR switches, and a Kind Kubernetes cluster.
+
 ### Test Strategy Overview
 
-**Single-Session Test** (new test - baseline validation):
-- Purpose: Validate basic functionality with minimal complexity
-- Topology: Same as multi-session (2 leaf nodes + kind + multiple TOR nodes)
-- Config: 1 interface, 1 neighbor (minimal configuration)
-- Validates: BGP session establishment, L3 connectivity from both leafs to pod
-- File: `e2etests/tests/singlesession.go` (NEW)
+The test suite uses a dual-leaf topology that mirrors production datacenter deployments:
 
-**Multi-Session Tests** (transformed existing tests):
-- Purpose: Validate multi-interface and multi-neighbor scenarios
-- Topology: Same topology (2 leaf nodes + kind + multiple TOR nodes)
-- Config: 3 interfaces, 4 neighbors (full multi-entity configuration)
-- Validates: All sessions establish, hot-apply, L3 connectivity from both leafs across all paths
-- Files: `sessions.go`, `webhooks.go`, `hostconfiguration.go` (TRANSFORMED)
+**Topology Architecture**:
+- **2 Leaf Nodes** (leafA, leafB): Simulate external hosts/networks
+- **2 ToR Switches** (leafkind, leafkind2): Provide BGP underlay connectivity
+- **Kind Cluster**: Runs OpenPERouter and test workloads
+- **Spine Switch**: Provides leaf-to-leaf connectivity
+- **Test Hosts**: Validate L3 connectivity across VRFs
 
-### Setup Containerlab Topology
+**Test Categories**:
 
-Update existing topology to add 2nd leaf node (all kind nodes connect to both leafs):
+1. **Single-Session Tests** (baseline validation):
+   - Purpose: Validate basic functionality with minimal complexity
+   - Config: 1 interface, 1 neighbor
+   - Validates: BGP session establishment, basic L3 connectivity
+   
+2. **Multi-Session Tests** (full multi-entity validation):
+   - Purpose: Validate production-like configurations
+   - Config: 2 interfaces, 4 neighbors (matches production topology)
+   - Validates: All BGP sessions establish, L3 connectivity from both leafs, multi-path routing
 
-```bash
-# Update existing topology file (e.g., kind.clab.yml)
-cat > test-topology.clab.yml <<EOF
-name: multi-underlay-e2e
+### Understanding the Containerlab Topology
+
+The actual E2E topology is defined in `/home/fpaoline/openperouter1/clab/singlecluster/kind.clab.yml`:
+
+```yaml
 topology:
   nodes:
-    # Two leaf nodes simulate external hosts
-    leaf1:
-      kind: linux
-      image: frrouting/frr:latest
-    leaf2:
-      kind: linux
-      image: frrouting/frr:latest
-      
-    # Kind cluster running OpenPERouter
-    kind:
-      kind: linux
-      image: kindest/node:latest
-      
-    # TOR switches
-    tor1:
-      kind: linux
-      image: frrouting/frr:latest
-    tor2:
-      kind: linux
-      image: frrouting/frr:latest
-      
-  links:
-    # Leaf nodes to TOR connections (external network)
-    # All kind nodes connect to both leafs via TORs
-    - endpoints: ["leaf1:eth1", "tor1:eth3"]
-    - endpoints: ["leaf1:eth2", "tor2:eth3"]
-    - endpoints: ["leaf2:eth1", "tor1:eth4"]
-    - endpoints: ["leaf2:eth2", "tor2:eth4"]
+    # Leaf switches - simulate external hosts/DC fabric
+    leafA: FRR router (AS varies per test)
+    leafB: FRR router (AS varies per test)
     
-    # Kind to TOR connections (underlay interfaces)
-    - endpoints: ["kind:eth1", "tor1:eth1"]
-    - endpoints: ["kind:eth2", "tor2:eth1"]
-    - endpoints: ["kind:eth3", "tor1:eth2"]  # Redundant path
-EOF
+    # ToR switches - BGP neighbors for OpenPERouter
+    leafkind: FRR router, peers with kind cluster via toswitch
+    leafkind2: FRR router, peers with kind cluster via toswitch2
+    
+    # Spine - connects all leaves together
+    spine: FRR router, provides leaf-to-leaf connectivity
+    
+    # Kind cluster - runs OpenPERouter
+    pe-kind: Kind cluster (control-plane + worker nodes)
+    
+    # Test hosts - validate L3 connectivity
+    hostA_default, hostA_red, hostA_blue: Connected to leafA
+    hostB_red, hostB_blue: Connected to leafB
 
-# Deploy topology
-sudo containerlab deploy -t test-topology.clab.yml
-
-# Verify topology
-sudo containerlab inspect -t test-topology.clab.yml
+  links:
+    # Underlay connectivity (Kind <-> ToRs)
+    - pe-kind nodes connect to both leafkind and leafkind2 via bridges
+    - Each kind node has toswitch (-> leafkind) and toswitch2 (-> leafkind2)
+    
+    # Fabric connectivity (ToRs <-> Spine <-> External Leafs)
+    - All leaf switches connect to spine
+    - Creates full-mesh reachability
 ```
 
-### Run E2E Test Suite
+**Key Topology Features**:
+- **Dual-homing**: Kind nodes connect to BOTH ToR switches for redundancy
+- **Multi-path**: Traffic can flow through either leafkind or leafkind2
+- **Full L3 validation**: External hosts can reach pods via EVPN/VXLAN
+
+### Running E2E Tests Locally
+
+#### Prerequisites
 
 ```bash
-# Run full E2E test suite (all tests now use 2-leaf topology)
+# Install containerlab 0.74.1+
+bash -c "$(curl -sL https://get.containerlab.dev)"
+containerlab version  # Should be >= 0.74.1
+
+# Ensure Docker is running
+docker ps
+
+# Install Kind
+GO111MODULE=on go install sigs.k8s.io/kind@latest
+```
+
+#### Deploy Test Environment
+
+```bash
+# Navigate to project root
+cd /home/fpaoline/openperouter1
+
+# Deploy containerlab topology (creates Kind cluster + network fabric)
+cd clab/singlecluster
+sudo containerlab deploy -t kind.clab.yml
+
+# Wait for topology to be ready (can take 2-3 minutes)
+sudo containerlab inspect -t kind.clab.yml
+
+# Verify Kind cluster is accessible
+export KUBECONFIG=~/.kube/config
+kubectl config use-context kind-kind
+kubectl get nodes
+# Should show: pe-kind-control-plane and pe-kind-worker
+```
+
+#### Run E2E Test Suite
+
+```bash
+# Return to project root
+cd /home/fpaoline/openperouter1
+
+# Run full E2E suite
 make e2e-test
 
-# Run NEW single-session baseline test (1 interface, 1 neighbor)
-go test ./e2etests/tests -v -run TestSingleSession
+# Or run specific test suites:
 
-# Run TRANSFORMED multi-session tests (existing tests now multi-neighbor/interface)
-go test ./e2etests/tests -v -run TestMultiNeighbor      # Now uses 4 neighbors
-go test ./e2etests/tests -v -run TestMultiInterface     # Now uses 3 interfaces
-go test ./e2etests/tests -v -run TestMultiUnderlayFull  # Combined multi-entity
-go test ./e2etests/tests -v -run TestSessions           # Now tests multiple sessions
+# Test multi-session BGP establishment (4 neighbors)
+go test ./e2etests/tests -v -run TestSessions -timeout 10m
 
-# All tests now include L3 connectivity validation from both leaf nodes
+# Test webhook validation (duplicate detection, ASN conflicts)
+go test ./e2etests/tests -v -run TestWebhooks -timeout 5m
+
+# Test L3 connectivity from external hosts
+go test ./e2etests/tests -v -run TestL3Connectivity -timeout 10m
 ```
 
-### Manual E2E Verification
+#### Understanding Test Configurations
 
-```bash
-# Deploy Underlay with multiple interfaces/neighbors
-kubectl apply -f - <<EOF
+The tests use the following Underlay configuration (from `e2etests/pkg/infra/underlay.go`):
+
+```yaml
 apiVersion: openpe.openperouter.github.io/v1alpha1
 kind: Underlay
 metadata:
-  name: e2e-multi-test
-  namespace: default
+  name: underlay
+  namespace: openperouter-system
 spec:
-  asn: 65001
-  neighbors:
-  - asn: 65002
-    address: "192.168.1.1"
-  - asn: 65003
-    address: "192.168.2.1"
-  - asn: 65004
-    address: "192.168.3.1"
+  asn: 64514  # Kind cluster ASN
+  
+  # Two physical interfaces for dual-homing
   nics:
-  - "eth1"
-  - "eth2"
-  - "eth3"
+  - "toswitch"   # Connects to leafkind
+  - "toswitch2"  # Connects to leafkind2
+  
+  # Four BGP neighbors (2 per ToR)
+  neighbors:
+  - asn: 64512
+    address: "192.168.11.2"  # leafkind neighbor 1
+  - asn: 64512
+    address: "192.168.11.3"  # leafkind neighbor 2
+  - asn: 64513
+    address: "192.168.12.2"  # leafkind2 neighbor 1
+  - asn: 64513
+    address: "192.168.12.3"  # leafkind2 neighbor 2
+  
   evpn:
-    vtepcidr: "10.100.0.0/24"
-EOF
+    vtepcidr: "100.65.0.0/24"
+```
 
-# Wait for reconciliation
-kubectl wait --for=condition=Ready underlay/e2e-multi-test --timeout=60s
+This configuration validates:
+- Multiple NICs (2 interfaces)
+- Multiple neighbors (4 BGP sessions)
+- Different ASNs (64512 and 64513)
+- EVPN/VXLAN data plane
 
-# Check FRR BGP status
-kubectl exec -it deployment/openperouter-router -- vtysh -c "show bgp summary"
-# Should show 3 neighbors
+### Manual E2E Verification
 
-# Check interfaces in namespace
-kubectl exec -it deployment/openperouter-router -- ip link show
-# Should show eth1, eth2, eth3 in router namespace
+Once the containerlab topology is deployed, you can manually verify multi-interface/neighbor functionality:
 
-# Verify BGP sessions established
-kubectl exec -it deployment/openperouter-router -- vtysh -c "show bgp neighbors" | grep "BGP state"
-# Should show "Established" for all 3 neighbors
+#### Step 1: Verify BGP Sessions
 
-# Test BGP neighbor connectivity (underlay)
-kubectl exec -it deployment/openperouter-router -- ping -c 3 192.168.1.1
-kubectl exec -it deployment/openperouter-router -- ping -c 3 192.168.2.1
-kubectl exec -it deployment/openperouter-router -- ping -c 3 192.168.3.1
+```bash
+# Get router pod name
+ROUTER_POD=$(kubectl get pod -n openperouter-system -l app=router -o jsonpath='{.items[0].metadata.name}')
 
-# Test L3 data plane connectivity (both leaf nodes to pod)
-# Get pod IP in kind cluster
-POD_IP=$(kubectl get pod -l app=test-pod -o jsonpath='{.items[0].status.podIP}')
+# Check BGP summary - should show 4 neighbors
+kubectl exec -n openperouter-system $ROUTER_POD -- vtysh -c "show bgp summary"
 
-# Ping from leaf1 to pod
-sudo containerlab exec -t multi-underlay-e2e leaf1 ping -c 3 $POD_IP
-# Should succeed - validates full L3 path through TOR and OpenPERouter
+# Expected output shows:
+# Neighbor        V AS    MsgRcvd MsgSent State
+# 192.168.11.2    4 64512 ...     ...     Established
+# 192.168.11.3    4 64512 ...     ...     Established
+# 192.168.12.2    4 64513 ...     ...     Established
+# 192.168.12.3    4 64513 ...     ...     Established
 
-# Ping from leaf2 to pod
-sudo containerlab exec -t multi-underlay-e2e leaf2 ping -c 3 $POD_IP
-# Should also succeed - validates redundancy
+# Check detailed neighbor information
+kubectl exec -n openperouter-system $ROUTER_POD -- vtysh -c "show bgp neighbors" | grep "BGP state"
+# All should show "BGP state = Established"
+```
 
-# Check routing tables on both leafs
-sudo containerlab exec -t multi-underlay-e2e leaf1 ip route
-sudo containerlab exec -t multi-underlay-e2e leaf2 ip route
-# Both should show routes to pod network via TORs
+#### Step 2: Verify Interfaces Moved to Router Namespace
+
+```bash
+# Check interfaces in router namespace
+kubectl exec -n openperouter-system $ROUTER_POD -- ip link show
+
+# Should see both toswitch and toswitch2 interfaces
+# Example output:
+# 5: toswitch@if6: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 ...
+# 7: toswitch2@if8: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 ...
+
+# Verify IP addresses on underlay interfaces
+kubectl exec -n openperouter-system $ROUTER_POD -- ip addr show toswitch
+kubectl exec -n openperouter-system $ROUTER_POD -- ip addr show toswitch2
+```
+
+#### Step 3: Verify EVPN/VXLAN Setup
+
+```bash
+# Check VTEP interface (loopback with allocated IP)
+kubectl exec -n openperouter-system $ROUTER_POD -- ip addr show lo
+
+# Should show IP from vtepcidr range (e.g., 100.65.0.1/24)
+
+# Check EVPN routes
+kubectl exec -n openperouter-system $ROUTER_POD -- vtysh -c "show bgp l2vpn evpn"
+
+# Check VXLAN interfaces
+kubectl exec -n openperouter-system $ROUTER_POD -- ip link show type vxlan
+```
+
+#### Step 4: Test Underlay Connectivity
+
+```bash
+# Ping BGP neighbors from router namespace
+kubectl exec -n openperouter-system $ROUTER_POD -- ping -c 3 192.168.11.2
+kubectl exec -n openperouter-system $ROUTER_POD -- ping -c 3 192.168.11.3
+kubectl exec -n openperouter-system $ROUTER_POD -- ping -c 3 192.168.12.2
+kubectl exec -n openperouter-system $ROUTER_POD -- ping -c 3 192.168.12.3
+
+# All should succeed
+```
+
+#### Step 5: Test L3 Data Plane (End-to-End Connectivity)
+
+```bash
+# Create a test pod to validate routing
+kubectl run test-pod --image=nicolaka/netshoot --command -- sleep 3600
+
+# Get pod IP
+POD_IP=$(kubectl get pod test-pod -o jsonpath='{.status.podIP}')
+echo "Test pod IP: $POD_IP"
+
+# Ping pod from external host on leafA (via EVPN overlay)
+sudo containerlab exec -t kind clab-kind-hostA_default ping -c 3 $POD_IP
+
+# Expected: Success (validates full path: hostA -> leafA -> spine -> leafkind -> OpenPERouter -> pod)
+
+# Ping pod from external host on leafB (different leaf)
+sudo containerlab exec -t kind clab-kind-hostB_red ping -c 3 $POD_IP
+
+# Expected: Success (validates redundancy via leafB -> spine -> leafkind2 -> OpenPERouter -> pod)
+
+# Trace route to see path
+sudo containerlab exec -t kind clab-kind-hostA_default traceroute $POD_IP
+```
+
+#### Step 6: Verify Multi-Path Routing
+
+```bash
+# Check FRR routing table - should show multiple paths
+kubectl exec -n openperouter-system $ROUTER_POD -- vtysh -c "show ip route"
+
+# Check EVPN routes learned from both ToRs
+kubectl exec -n openperouter-system $ROUTER_POD -- vtysh -c "show bgp l2vpn evpn route"
+
+# Verify both ToRs have learned routes
+sudo containerlab exec -t kind clab-kind-leafkind vtysh -c "show bgp l2vpn evpn"
+sudo containerlab exec -t kind clab-kind-leafkind2 vtysh -c "show bgp l2vpn evpn"
+```
+
+#### Step 7: Test Configuration Updates (Hot-Apply)
+
+```bash
+# Check router pod uptime before update
+kubectl exec -n openperouter-system $ROUTER_POD -- uptime
+
+# Add a fifth neighbor (should be hot-applied without restart)
+kubectl patch underlay underlay -n openperouter-system --type merge -p '
+spec:
+  neighbors:
+  - asn: 64512
+    address: "192.168.11.2"
+  - asn: 64512
+    address: "192.168.11.3"
+  - asn: 64513
+    address: "192.168.12.2"
+  - asn: 64513
+    address: "192.168.12.3"
+  - asn: 64514
+    address: "192.168.13.2"
+'
+
+# Wait a few seconds for reconciliation
+sleep 10
+
+# Check uptime again - should NOT have reset (hot-apply worked)
+kubectl exec -n openperouter-system $ROUTER_POD -- uptime
+
+# Verify new neighbor appears in BGP config
+kubectl exec -n openperouter-system $ROUTER_POD -- vtysh -c "show running-config" | grep neighbor
 ```
 
 ## Unit Testing Key Components
@@ -449,66 +597,339 @@ kubectl exec -it deployment/openperouter-router -- vtysh -c "show bgp summary"
 # Should now show 4 neighbors
 ```
 
-## Common Issues and Solutions
+## Troubleshooting Guide
 
-### Issue 1: Webhook Denies Valid Config
+### Common Issues and Solutions
 
-**Symptom**: Webhook rejects multi-entity config even though it looks valid
+#### Issue 1: BGP Sessions Stuck in "Idle" or "Connect" State
 
-**Debug**:
+**Symptom**: `show bgp summary` shows neighbors in Idle/Connect state instead of Established
+
+**Debug Steps**:
 ```bash
-# Check webhook logs
-kubectl logs -n openperouter-system deployment/openperouter-webhook
+# Check BGP daemon logs
+kubectl exec -n openperouter-system $ROUTER_POD -- cat /var/log/frr/bgpd.log | tail -50
 
-# Look for specific validation error
+# Look for connection errors like:
+# - "Connection refused"
+# - "Network unreachable"
+# - "No route to host"
+
+# Test basic IP connectivity to neighbor
+kubectl exec -n openperouter-system $ROUTER_POD -- ping -c 3 192.168.11.2
+
+# Check if interface is UP
+kubectl exec -n openperouter-system $ROUTER_POD -- ip link show toswitch
+
+# Verify neighbor is actually listening on BGP port
+kubectl exec -n openperouter-system $ROUTER_POD -- nc -zv 192.168.11.2 179
 ```
 
-**Solution**: Ensure uniqueness constraints met (no duplicate addresses/nics)
+**Common Causes & Solutions**:
 
-### Issue 2: FRR Config Not Generated Correctly
+1. **Interface not UP**: Ensure NIC names match actual interfaces on the node
+   ```bash
+   # Check what interfaces exist on worker node
+   kubectl debug node/pe-kind-worker -it --image=nicolaka/netshoot -- ip link
+   ```
 
-**Symptom**: FRR config shows only one neighbor despite multiple in spec
+2. **IP addressing issue**: Verify ToR and router have IPs in same subnet
+   ```bash
+   # Check IP on ToR side
+   sudo containerlab exec -t kind clab-kind-leafkind ip addr show toswitch
+   
+   # Check IP on router side
+   kubectl exec -n openperouter-system $ROUTER_POD -- ip addr show toswitch
+   ```
 
-**Debug**:
+3. **Firewall blocking BGP**: Check for iptables rules blocking TCP 179
+   ```bash
+   sudo iptables -L -n | grep 179
+   ```
+
+4. **Neighbor not configured**: Verify ToR switch has matching BGP config
+   ```bash
+   sudo containerlab exec -t kind clab-kind-leafkind vtysh -c "show running-config"
+   ```
+
+#### Issue 2: Webhook Validation Rejecting Valid Configuration
+
+**Symptom**: `kubectl apply` fails with validation error
+
+**Debug Steps**:
 ```bash
-# Check conversion logic
-kubectl logs -f deployment/openperouter-controller-manager | grep "converting underlay"
+# View webhook logs
+kubectl logs -n openperouter-system deployment/openperouter-webhook --tail=100
 
-# Inspect generated config
-kubectl exec deployment/openperouter-router -- cat /etc/frr/frr.conf
+# Check for specific validation errors:
+# - "duplicate neighbor address"
+# - "duplicate nic name"
+# - "local ASN must be different from remote ASN"
+# - "at least one neighbor required"
+# - "at least one nic required"
+
+# Verify your YAML has unique values
+kubectl apply -f underlay.yaml --dry-run=server -v=8
 ```
 
-**Solution**: Check `frr_conversion.go` neighbor iteration loop
+**Common Causes & Solutions**:
 
-### Issue 3: Interfaces Not Moved to Namespace
+1. **Duplicate neighbor addresses**: Each neighbor must have unique IP
+   ```yaml
+   # WRONG
+   neighbors:
+   - asn: 64512
+     address: "192.168.11.2"
+   - asn: 64513
+     address: "192.168.11.2"  # Duplicate!
+   
+   # CORRECT
+   neighbors:
+   - asn: 64512
+     address: "192.168.11.2"
+   - asn: 64513
+     address: "192.168.12.2"  # Different IP
+   ```
 
-**Symptom**: Interfaces remain in host namespace
+2. **ASN conflict**: Local ASN must differ from all neighbor ASNs
+   ```yaml
+   # WRONG
+   spec:
+     asn: 64514
+     neighbors:
+     - asn: 64514  # Same as local!
+   
+   # CORRECT
+   spec:
+     asn: 64514
+     neighbors:
+     - asn: 64512  # Different ASN
+   ```
 
-**Debug**:
+3. **Empty neighbors/nics**: At least one of each required
+   ```yaml
+   # WRONG
+   neighbors: []
+   
+   # CORRECT
+   neighbors:
+   - asn: 64512
+     address: "192.168.11.2"
+   ```
+
+#### Issue 3: Interfaces Not Appearing in Router Namespace
+
+**Symptom**: `ip link show` in router pod doesn't show expected NICs
+
+**Debug Steps**:
 ```bash
-# Check host conversion logs
-kubectl logs -f deployment/openperouter-controller-manager | grep "moving interface"
+# Check controller logs for interface movement errors
+kubectl logs -n openperouter-system deployment/openperouter-controller-manager | grep -i "interface\|nic"
 
-# Verify interface exists on host
-ip link show eth1
+# Look for errors like:
+# - "failed to move interface"
+# - "interface not found"
+# - "interface already in namespace"
+
+# Check if interface exists on host
+kubectl debug node/pe-kind-worker -it --image=nicolaka/netshoot -- ip link show
+
+# Check if interface is already in another namespace
+kubectl debug node/pe-kind-worker -it --image=nicolaka/netshoot -- ip netns list
 ```
 
-**Solution**: Check `host_conversion.go` interface iteration, verify interface names correct
+**Common Causes & Solutions**:
 
-### Issue 4: BGP Sessions Not Establishing
+1. **Typo in NIC name**: Verify exact interface name (case-sensitive)
+   ```bash
+   # List actual interfaces on node
+   kubectl debug node/pe-kind-worker -it --image=nicolaka/netshoot -- ip link
+   ```
 
-**Symptom**: BGP neighbors show "Idle" or "Connect" state
+2. **Interface doesn't exist**: Node may not have that interface
+   - Solution: Update Underlay spec with correct interface names
 
-**Debug**:
+3. **Interface name validation failed**: Must match pattern `^[a-zA-Z][a-zA-Z0-9._-]*$`
+   ```yaml
+   # WRONG
+   nics:
+   - "1eth"  # Starts with number
+   
+   # CORRECT
+   nics:
+   - "eth1"
+   ```
+
+#### Issue 4: L3 Connectivity Fails (External Host Can't Reach Pod)
+
+**Symptom**: Ping from external host to pod fails
+
+**Debug Steps**:
 ```bash
-# Check FRR logs
-kubectl exec deployment/openperouter-router -- cat /var/log/frr/bgpd.log
+# Verify BGP sessions are established (prerequisite)
+kubectl exec -n openperouter-system $ROUTER_POD -- vtysh -c "show bgp summary"
 
-# Check connectivity
-kubectl exec deployment/openperouter-router -- ping 192.168.1.1
+# Check if EVPN routes are being advertised
+kubectl exec -n openperouter-system $ROUTER_POD -- vtysh -c "show bgp l2vpn evpn"
+
+# Verify VTEP interface has IP
+kubectl exec -n openperouter-system $ROUTER_POD -- ip addr show lo | grep inet
+
+# Check if external host has route to pod network
+sudo containerlab exec -t kind clab-kind-hostA_default ip route
+
+# Test connectivity at each hop:
+# 1. External host -> leaf
+sudo containerlab exec -t kind clab-kind-hostA_default ping -c 1 <leaf_IP>
+
+# 2. Leaf -> ToR
+sudo containerlab exec -t kind clab-kind-leafA ping -c 1 <tor_IP>
+
+# 3. ToR -> OpenPERouter
+sudo containerlab exec -t kind clab-kind-leafkind ping -c 1 <vtep_IP>
+
+# 4. OpenPERouter -> Pod
+kubectl exec -n openperouter-system $ROUTER_POD -- ping -c 1 <pod_IP>
 ```
 
-**Solution**: Verify network connectivity, check firewall rules, verify neighbor IPs
+**Common Causes & Solutions**:
+
+1. **EVPN not configured**: Missing L3VNI or L2VNI configuration
+   ```bash
+   kubectl get l3vni -n openperouter-system
+   # Should show at least one VNI
+   ```
+
+2. **Routes not propagated**: Check spine switch is propagating routes
+   ```bash
+   sudo containerlab exec -t kind clab-kind-spine vtysh -c "show ip route"
+   ```
+
+3. **VRF misconfiguration**: Verify VRF and VNI settings match across config
+   ```bash
+   kubectl exec -n openperouter-system $ROUTER_POD -- ip vrf list
+   ```
+
+#### Issue 5: Containerlab Topology Fails to Deploy
+
+**Symptom**: `containerlab deploy` exits with error
+
+**Debug Steps**:
+```bash
+# Check containerlab version
+containerlab version
+# Must be >= 0.74.1 for group support
+
+# Validate topology file syntax
+sudo containerlab inspect -t kind.clab.yml
+
+# Check Docker is running
+docker ps
+
+# View detailed error messages
+sudo containerlab deploy -t kind.clab.yml --debug
+```
+
+**Common Causes & Solutions**:
+
+1. **Old containerlab version**: Upgrade to 0.74.1+
+   ```bash
+   bash -c "$(curl -sL https://get.containerlab.dev)"
+   ```
+
+2. **Port conflicts**: Another service using required ports
+   ```bash
+   # Check for port conflicts
+   sudo ss -tlnp | grep -E ':(179|6443|2379)'
+   ```
+
+3. **Insufficient permissions**: Must run with sudo
+   ```bash
+   sudo containerlab deploy -t kind.clab.yml
+   ```
+
+#### Issue 6: E2E Tests Fail with Timeout
+
+**Symptom**: `go test ./e2etests/tests` fails with timeout errors
+
+**Debug Steps**:
+```bash
+# Increase test timeout
+go test ./e2etests/tests -v -timeout 30m
+
+# Check if topology is fully deployed
+sudo containerlab inspect -t kind.clab.yml
+
+# Verify all containers are running
+docker ps -a | grep clab-kind
+
+# Check Kind cluster is accessible
+kubectl get nodes
+
+# View test output for specific failure point
+go test ./e2etests/tests -v -run TestSessions 2>&1 | tee test.log
+```
+
+**Common Causes & Solutions**:
+
+1. **Slow system**: Increase timeout in test flags
+   ```bash
+   go test ./e2etests/tests -timeout 20m
+   ```
+
+2. **BGP convergence delay**: Tests may need to wait longer for BGP
+   - Check test code for hardcoded sleep values
+
+3. **Resource constraints**: Ensure sufficient CPU/memory
+   ```bash
+   # Check system resources
+   free -h
+   top
+   ```
+
+### General Debugging Tips
+
+#### Enable Debug Logging
+
+```bash
+# Controller debug logs
+kubectl set env -n openperouter-system deployment/openperouter-controller-manager LOG_LEVEL=debug
+
+# Watch logs in real-time
+kubectl logs -n openperouter-system deployment/openperouter-controller-manager -f
+```
+
+#### Inspect FRR Configuration
+
+```bash
+# View generated FRR config
+kubectl exec -n openperouter-system $ROUTER_POD -- cat /etc/frr/frr.conf
+
+# Expected multi-neighbor config:
+# router bgp 64514
+#   neighbor 192.168.11.2 remote-as 64512
+#   neighbor 192.168.11.3 remote-as 64512
+#   neighbor 192.168.12.2 remote-as 64513
+#   neighbor 192.168.12.3 remote-as 64513
+
+# View running config (may differ from file if hot-applied)
+kubectl exec -n openperouter-system $ROUTER_POD -- vtysh -c "show running-config"
+```
+
+#### Clean Up and Restart
+
+```bash
+# Destroy containerlab topology
+cd clab/singlecluster
+sudo containerlab destroy -t kind.clab.yml --cleanup
+
+# Redeploy from scratch
+sudo containerlab deploy -t kind.clab.yml
+
+# Delete and recreate Underlay resource
+kubectl delete underlay underlay -n openperouter-system
+kubectl apply -f underlay.yaml
+```
 
 ## Performance Testing
 
