@@ -19,6 +19,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 	"github.com/openperouter/openperouter/e2etests/pkg/url"
+	frrk8sapi "github.com/metallb/frr-k8s/api/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -56,6 +57,7 @@ var vniRedSingleSession = v1alpha1.L3VNI{
 			HostASN: 64515,
 			LocalCIDR: v1alpha1.LocalCIDRConfig{
 				IPv4: "192.169.10.0/24",
+				IPv6: "2001:db8:169:10::/64",
 			},
 		},
 		VNI: 100,
@@ -69,7 +71,6 @@ var _ = Describe("Single Session Baseline", Ordered, func() {
 
 	const testNamespace = "single-session-test"
 	var testPod *corev1.Pod
-	var podNode *corev1.Node
 
 	BeforeAll(func() {
 		err := Updater.CleanAll()
@@ -98,12 +99,12 @@ var _ = Describe("Single Session Baseline", Ordered, func() {
 		testPod, err = k8s.CreateAgnhostPod(cs, "test-pod", testNamespace)
 		Expect(err).NotTo(HaveOccurred())
 
-		podNode, err = cs.CoreV1().Nodes().Get(context.Background(), testPod.Spec.NodeName, metav1.GetOptions{})
+		_, err = cs.CoreV1().Nodes().Get(context.Background(), testPod.Spec.NodeName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("Creating L3VNI and advertising pod IP via FRR-K8s")
 		nodeSelector := k8s.NodeSelectorForPod(testPod)
-		var frrK8sConfigForPod []config.FRRConfiguration
+		var frrK8sConfigForPod []frrk8sapi.FRRConfiguration
 
 		for _, podIP := range testPod.Status.PodIPs {
 			var cidrSuffix = "/32"
