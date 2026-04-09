@@ -708,6 +708,68 @@ spec:
                 - message: exactly one of vtepcidr or vtepInterface must be specified
                   rule: (self.?vtepcidr.orValue("") != "") != (self.?vtepInterface.orValue("")
                     != "")
+              isis:
+                description: ISIS holds the ISIS configurations for the underlay,
+                  one per ISIS process.
+                items:
+                  description: ISISConfig contains ISIS configuration for the underlay.
+                  properties:
+                    interfaces:
+                      description: Interfaces holds ISIS interface level configuration.
+                      items:
+                        description: ISISInterface holds ISIS interface level configuration.
+                        properties:
+                          ipv4:
+                            description: ipv4 isis <name> enabled
+                            type: boolean
+                          ipv6:
+                            description: ipv6 isis <name> enabled
+                            type: boolean
+                          name:
+                            description: Name of the interface that these settings
+                              shall apply to.
+                            maxLength: 15
+                            minLength: 1
+                            type: string
+                            x-kubernetes-validations:
+                            - message: Interface must not contain /, :, or whitespace
+                              rule: self.matches('^[^\\/:\\s]+$')
+                            - message: Interface cannot be . or ..
+                              rule: self != '.' && self != '..'
+                        required:
+                        - name
+                        type: object
+                      maxItems: 1000
+                      type: array
+                    name:
+                      description: Name holds the name of the ISIS process.
+                      type: string
+                    net:
+                      description: Net holds the ISIS net address.
+                      items:
+                        description: ISISNet represents a single ISIS net address.
+                        maxLength: 25
+                        minLength: 25
+                        type: string
+                        x-kubernetes-validations:
+                        - message: Provided net address must match canonical format
+                          rule: self.matches('^[0-9a-f]{2}\\.([0-9a-f]{4}\\.){4}[0-9a-f]{2}$')
+                      maxItems: 3
+                      type: array
+                    type:
+                      description: Type configures the ISIS type, system wide. It
+                        defaults to level-1-2 unless specified otherwise.
+                      enum:
+                      - 1
+                      - 2
+                      format: int32
+                      type: integer
+                  required:
+                  - name
+                  - net
+                  type: object
+                maxItems: 10
+                type: array
               neighbors:
                 description: Neighbors is the list of external neighbors to peer with.
                 items:
@@ -908,9 +970,81 @@ spec:
                 description: RouterIDCIDR is the ipv4 cidr to be used to assign a
                   different routerID on each node.
                 type: string
+              srv6:
+                description: SRV6 holds the SRV6 configuration.
+                properties:
+                  locator:
+                    description: Locator defines the locator for this SRV6 VPN.
+                    properties:
+                      format:
+                        description: Format specifies the format of the locator. Defaults
+                          to usid-f3216
+                        enum:
+                        - usid-f3216
+                        type: string
+                      name:
+                        description: Name of the Locator.
+                        maxLength: 15
+                        minLength: 1
+                        pattern: ^[a-zA-Z][a-zA-Z0-9._-]*$
+                        type: string
+                      prefix:
+                        description: Prefix is CIDR to be used for the locator.
+                        maxLength: 43
+                        minLength: 1
+                        type: string
+                        x-kubernetes-validations:
+                        - message: prefix must be an IPv6 CIDR
+                          rule: isCIDR(self) && cidr(self).ip().family() == 6
+                    required:
+                    - name
+                    type: object
+                  source:
+                    description: Source specifies the source for the SRV6 VPN.
+                    properties:
+                      cidr:
+                        description: |-
+                          CIDR to assign IPs to the local VTEP on each node from.
+                          The IPv6 address will be assigned to the loopback interface.
+                          Mutually exclusive with interface.
+                        maxLength: 43
+                        minLength: 1
+                        type: string
+                        x-kubernetes-validations:
+                        - message: cidr must be an IPv6 CIDR
+                          rule: isCIDR(self) && cidr(self).ip().family() == 6
+                      interface:
+                        description: |-
+                          Interface is the name of an existing interface to use as the VTEP source.
+                          The interface must already have an IP address configured that will be used
+                          as the VTEP IP. Mutually exclusive with cidr.
+                          The ToR must advertise the interface IP into the fabric underlay
+                          (e.g. via redistribute connected) so that the VTEP address is reachable
+                          from other leaves.
+                        maxLength: 15
+                        minLength: 1
+                        type: string
+                        x-kubernetes-validations:
+                        - message: interface must not contain /, :, or whitespace
+                          rule: self.matches('^[^\\/:\\s]+$')
+                        - message: interface cannot be . or ..
+                          rule: self != '.' && self != '..'
+                    type: object
+                    x-kubernetes-validations:
+                    - message: exactly one of cidr or interface must be specified
+                      rule: has(self.cidr) || has(self.interface)
+                    - message: exactly one of cidr or interface must be specified
+                      rule: '!has(self.cidr) || !has(self.interface)'
+                required:
+                - locator
+                - source
+                type: object
             required:
             - asn
             type: object
+            x-kubernetes-validations:
+            - message: cannot have both EVPN and SRV6 VPN at the same time
+              rule: '!has(self.evpn) || !has(self.srv6)'
           status:
             description: UnderlayStatus defines the observed state of Underlay.
             type: object
@@ -1639,6 +1773,26 @@ webhooks:
     - UPDATE
     resources:
     - l3vnis
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: openpe-webhook-service
+      namespace: openperouter-system
+      path: /validate-openperouter-io-v1alpha1-l3vpn
+  failurePolicy: Fail
+  name: l3vpnsvalidationwebhook.openperouter.io
+  rules:
+  - apiGroups:
+    - openpe.openperouter.github.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - l3vpns
   sideEffects: None
 - admissionReviewVersions:
   - v1
