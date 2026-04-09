@@ -27,6 +27,7 @@ var _ = Describe("L3 VNI configuration", func() {
 		cleanTest(testNSName)
 		testNS = createTestNS(testNSName)
 		setupLoopback(testNS)
+		setupUnderlayDummy(testNS)
 	})
 	AfterEach(func() {
 		cleanTest(testNSName)
@@ -256,6 +257,7 @@ var _ = Describe("L2 VNI configuration", func() {
 		cleanTest(testNSName)
 		testNS = createTestNS(testNSName)
 		setupLoopback(testNS)
+		setupUnderlayDummy(testNS)
 		createLinuxBridge(bridgeName)
 	})
 	AfterEach(func() {
@@ -416,6 +418,7 @@ func validateL3HostLeg(g Gomega, params L3VNIParams) {
 	g.Expect(err).NotTo(HaveOccurred(), "host side not found", vethNames.HostSide)
 
 	g.Expect(hostLegLink.Attrs().OperState).To(BeEquivalentTo(netlink.OperUp))
+	g.Expect(hostLegLink.Attrs().MTU).To(Equal(1500-VXLanOverhead), "host veth MTU mismatch")
 
 	// Check IPv4 address if provided
 	if params.HostVeth.HostIPv4 != "" {
@@ -438,6 +441,7 @@ func validateL2HostLeg(g Gomega, params L2VNIParams) {
 	g.Expect(err).NotTo(HaveOccurred(), "host side not found", vethNames.HostSide)
 
 	g.Expect(hostLegLink.Attrs().OperState).To(BeEquivalentTo(netlink.OperUp))
+	g.Expect(hostLegLink.Attrs().MTU).To(Equal(1500-VXLanOverhead), "host veth MTU mismatch")
 	hasNoIP, err := interfaceHasNoIP(hostLegLink, netlink.FAMILY_V4)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(hasNoIP).To(BeTrue(), "host leg does have ip")
@@ -549,6 +553,10 @@ func validateVNI(g Gomega, params VNIParams) {
 
 	err = checkVXLanConfigured(vxlan, bridge.Index, loopback.Attrs().Index, params)
 	g.Expect(err).NotTo(HaveOccurred())
+
+	expectedMTU := 1500 - VXLanOverhead
+	g.Expect(bridge.Attrs().MTU).To(Equal(expectedMTU), "bridge MTU mismatch")
+	g.Expect(vxlan.Attrs().MTU).To(Equal(expectedMTU), "vxlan MTU mismatch")
 }
 
 func validateVethForVNI(g Gomega, params VNIParams) {
@@ -556,6 +564,7 @@ func validateVethForVNI(g Gomega, params VNIParams) {
 	peLegLink, err := netlink.LinkByName(vethNames.NamespaceSide)
 	g.Expect(err).NotTo(HaveOccurred(), "veth pe side not found", vethNames.NamespaceSide)
 	g.Expect(peLegLink.Attrs().OperState).To(BeEquivalentTo(netlink.OperUp))
+	g.Expect(peLegLink.Attrs().MTU).To(Equal(1500-VXLanOverhead), "PE veth MTU mismatch")
 }
 
 func checkHostBridgedeleted(g Gomega, params L2VNIParams) {
@@ -602,6 +611,19 @@ func setupLoopback(ns netns.NsHandle) {
 			err = netlink.LinkAdd(loopback)
 			Expect(err).NotTo(HaveOccurred(), "failed to create loopback", UnderlayLoopback)
 		}
+		return nil
+	})
+}
+
+func setupUnderlayDummy(ns netns.NsHandle) {
+	_ = inNamespace(ns, func() error {
+		dummy := &netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: "testunderlay"}}
+		err := netlink.LinkAdd(dummy)
+		Expect(err).NotTo(HaveOccurred(), "failed to create underlay dummy")
+		err = assignIPToInterface(dummy, underlayInterfaceSpecialAddr)
+		Expect(err).NotTo(HaveOccurred(), "failed to assign underlay IP")
+		err = netlink.LinkSetUp(dummy)
+		Expect(err).NotTo(HaveOccurred(), "failed to set underlay dummy up")
 		return nil
 	})
 }

@@ -22,10 +22,10 @@ type VethNames struct {
 const VethLinkType = "veth"
 
 // setupVeth sets up a veth pair with the provided names and one leg in the
-// given namespace.
+// given namespace. If mtu is greater than zero, it sets the MTU on both legs.
 
-func setupNamespacedVeth(ctx context.Context, vethNames VethNames, namespace string) error {
-	slog.DebugContext(ctx, "setupNamespacedVeth", "hostSide", vethNames.HostSide, "nsSide", vethNames.NamespaceSide)
+func setupNamespacedVeth(ctx context.Context, vethNames VethNames, namespace string, mtu int) error {
+	slog.DebugContext(ctx, "setupNamespacedVeth", "hostSide", vethNames.HostSide, "nsSide", vethNames.NamespaceSide, "mtu", mtu)
 	defer slog.DebugContext(ctx, "end setupNamespacedVeth", "hostSide", vethNames.HostSide, "nsSide", vethNames.NamespaceSide)
 
 	targetNS, err := netns.GetFromName(namespace)
@@ -45,6 +45,12 @@ func setupNamespacedVeth(ctx context.Context, vethNames VethNames, namespace str
 	if err != nil {
 		return fmt.Errorf("could not create veth for %s - %s: %w", vethNames.HostSide, vethNames.NamespaceSide, err)
 	}
+	if mtu > 0 {
+		if err = netlink.LinkSetMTU(hostSide, mtu); err != nil {
+			return fmt.Errorf("could not set MTU %d for host leg %s: %w", mtu, hostSide.Attrs().Name, err)
+		}
+	}
+
 	if err = netlink.LinkSetUp(hostSide); err != nil {
 		return fmt.Errorf("could not set link up for host leg %s: %v", hostSide.Attrs().Name, err)
 	}
@@ -56,6 +62,11 @@ func setupNamespacedVeth(ctx context.Context, vethNames VethNames, namespace str
 			return err
 		}
 		slog.DebugContext(ctx, "pe leg already in ns", "pe veth", namespaceSideLink.Attrs().Name)
+		if mtu > 0 {
+			if err := netlink.LinkSetMTU(namespaceSideLink, mtu); err != nil {
+				return fmt.Errorf("could not set MTU %d for namespace leg %s: %w", mtu, vethNames.NamespaceSide, err)
+			}
+		}
 		return nil
 	})
 	if err != nil && !errors.As(err, &netlink.LinkNotFoundError{}) { // real error
@@ -88,6 +99,11 @@ func setupNamespacedVeth(ctx context.Context, vethNames VethNames, namespace str
 		nsSideLink, err := netlink.LinkByName(vethNames.NamespaceSide)
 		if err != nil {
 			return err
+		}
+		if mtu > 0 {
+			if err := netlink.LinkSetMTU(nsSideLink, mtu); err != nil {
+				return fmt.Errorf("could not set MTU %d for namespace leg %s: %w", mtu, vethNames.NamespaceSide, err)
+			}
 		}
 		err = netlink.LinkSetUp(nsSideLink)
 		if err != nil {

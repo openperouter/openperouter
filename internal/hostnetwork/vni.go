@@ -69,7 +69,8 @@ func (e NotRouterInterfaceError) Error() string {
 // VXLan interface, and moves the veth to the VRF corresponding
 // to the L3 routing domain, exposing it to the default host namespace.
 func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
-	if err := setupVNI(ctx, params.VNIParams); err != nil {
+	mtu, err := setupVNI(ctx, params.VNIParams)
+	if err != nil {
 		return fmt.Errorf("SetupL3VNI: failed to setup VNI: %w", err)
 	}
 	slog.DebugContext(ctx, "setting up l3 VNI", "params", params)
@@ -80,7 +81,7 @@ func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
 		return nil
 	}
 	vethNames := vethNamesFromVNI(params.VNI)
-	if err := setupNamespacedVeth(ctx, vethNames, params.TargetNS); err != nil {
+	if err := setupNamespacedVeth(ctx, vethNames, params.TargetNS, mtu); err != nil {
 		return fmt.Errorf("SetupL3VNI: failed to setup VNI veth: %w", err)
 	}
 
@@ -137,11 +138,12 @@ func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
 // VXLan interface, and enslaves the veth leg to the bridge,
 // exposing the L2 domain to the default host namespace.
 func SetupL2VNI(ctx context.Context, params L2VNIParams) error {
-	if err := setupVNI(ctx, params.VNIParams); err != nil {
+	mtu, err := setupVNI(ctx, params.VNIParams)
+	if err != nil {
 		return fmt.Errorf("SetupL2VNI: failed to setup VNI: %w", err)
 	}
 	vethNames := vethNamesFromVNI(params.VNI)
-	if err := setupNamespacedVeth(ctx, vethNames, params.TargetNS); err != nil {
+	if err := setupNamespacedVeth(ctx, vethNames, params.TargetNS, mtu); err != nil {
 		return fmt.Errorf("SetupL2VNI: failed to setup VNI veth: %w", err)
 	}
 
@@ -210,14 +212,14 @@ func SetupL2VNI(ctx context.Context, params L2VNIParams) error {
 // - a linux Bridge enslaved to the given VRF
 // - a VXLan interface enslaved to the given VRF
 //
-// Additionally, it creates a veth pair and moves one leg in the target
-// namespace.
-func setupVNI(ctx context.Context, params VNIParams) error {
+// It returns the MTU to be used for the veth entry points, which is
+// the underlay interface MTU minus the VXLan overhead.
+func setupVNI(ctx context.Context, params VNIParams) (int, error) {
 	slog.DebugContext(ctx, "setting up VNI", "params", params)
 	defer slog.DebugContext(ctx, "end setting up VNI", "params", params)
 	ns, err := netns.GetFromName(params.TargetNS)
 	if err != nil {
-		return fmt.Errorf("SetupVNI: Failed to get network namespace %s: %w", params.TargetNS, err)
+		return 0, fmt.Errorf("SetupVNI: Failed to get network namespace %s: %w", params.TargetNS, err)
 	}
 	defer func() {
 		if err := ns.Close(); err != nil {
@@ -225,7 +227,20 @@ func setupVNI(ctx context.Context, params VNIParams) error {
 		}
 	}()
 
+	var mtu int
 	if err := inNamespace(ns, func() error {
+		underlayMTU, err := getUnderlayMTU()
+		if err != nil {
+			return err
+		}
+		overhead := VXLanOverhead
+		if strings.Contains(params.VTEPIP, ":") {
+			overhead = VXLanIPv6Overhead
+		}
+		mtu = underlayMTU - overhead
+		if mtu <= 0 {
+			return fmt.Errorf("calculated MTU %d is invalid (underlay MTU %d, overhead %d)", mtu, underlayMTU, overhead)
+		}
 
 		slog.DebugContext(ctx, "setting up vrf", "vrf", params.VRF)
 		vrf, err := setupVRF(params.VRF)
@@ -233,24 +248,24 @@ func setupVNI(ctx context.Context, params VNIParams) error {
 			return err
 		}
 
-		slog.DebugContext(ctx, "setting up bridge")
-		bridge, err := setupBridge(params, vrf)
+		slog.DebugContext(ctx, "setting up bridge", "mtu", mtu)
+		bridge, err := setupBridge(params, vrf, mtu)
 		if err != nil {
 			return err
 		}
 
-		slog.DebugContext(ctx, "setting up vxlan")
-		err = setupVXLan(params, bridge)
+		slog.DebugContext(ctx, "setting up vxlan", "mtu", mtu)
+		err = setupVXLan(params, bridge, mtu)
 		if err != nil {
 			return err
 		}
 
 		return nil
 	}); err != nil {
-		return err
+		return 0, err
 	}
 
-	return nil
+	return mtu, nil
 }
 
 // RemoveNonConfiguredVNIs removes from the target namespace the

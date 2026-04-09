@@ -13,8 +13,8 @@ import (
 )
 
 // setupVXLan sets up a vxlan interface corresponding to the provided
-// vniParams.
-func setupVXLan(params VNIParams, bridge *netlink.Bridge) error {
+// vniParams. If mtu is greater than zero, it sets the MTU on the vxlan interface.
+func setupVXLan(params VNIParams, bridge *netlink.Bridge, mtu int) error {
 	vxlan, err := createVXLan(params, bridge)
 	if err != nil {
 		return err
@@ -25,6 +25,12 @@ func setupVXLan(params VNIParams, bridge *netlink.Bridge) error {
 	}
 	if err := setNeighSuppression(vxlan); err != nil {
 		return fmt.Errorf("failed to set neigh suppression for %s: %w", vxlan.Name, err)
+	}
+
+	if mtu > 0 {
+		if err := netlink.LinkSetMTU(vxlan, mtu); err != nil {
+			return fmt.Errorf("failed to set MTU %d on vxlan %s: %w", mtu, vxlan.Name, err)
+		}
 	}
 
 	if err = netlink.LinkSetUp(vxlan); err != nil {
@@ -114,6 +120,9 @@ func createVXLan(params VNIParams, bridge *netlink.Bridge) (*netlink.Vxlan, erro
 	}
 	return toCreate, nil
 }
+
+const VXLanOverhead = 50
+const VXLanIPv6Overhead = 70
 
 const vniPrefix = "vni"
 

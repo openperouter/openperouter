@@ -135,6 +135,25 @@ func moveUnderlayInterface(ctx context.Context, underlayInterface string, ns net
 	return nil
 }
 
+// getUnderlayMTU returns the MTU of the underlay interface.
+// Must be called from within the target namespace where the underlay interface resides.
+func getUnderlayMTU() (int, error) {
+	addrs, err := netlink.AddrList(nil, netlink.FAMILY_ALL)
+	if err != nil {
+		return 0, fmt.Errorf("getUnderlayMTU: failed to list addresses: %w", err)
+	}
+	for _, a := range addrs {
+		if a.IPNet.String() == underlayInterfaceSpecialAddr {
+			link, err := netlink.LinkByIndex(a.LinkIndex)
+			if err != nil {
+				return 0, fmt.Errorf("getUnderlayMTU: failed to get link by index %d: %w", a.LinkIndex, err)
+			}
+			return link.Attrs().MTU, nil
+		}
+	}
+	return 0, fmt.Errorf("getUnderlayMTU: underlay interface not found")
+}
+
 // HasUnderlayInterface returns true if the given network
 // namespace already has a configured underlay interface.
 func HasUnderlayInterface(namespace string) (bool, error) {

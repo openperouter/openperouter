@@ -14,8 +14,8 @@ import (
 )
 
 // setup bridge creates the bridge if not exists, and it enslaves it to the provided
-// vrf.
-func setupBridge(params VNIParams, vrf *netlink.Vrf) (*netlink.Bridge, error) {
+// vrf. If mtu is greater than zero, it sets the MTU on the bridge.
+func setupBridge(params VNIParams, vrf *netlink.Vrf, mtu int) (*netlink.Bridge, error) {
 	name := bridgeName(params.VNI)
 	bridge, err := createBridge(name, vrf.Index)
 	if err != nil {
@@ -27,10 +27,17 @@ func setupBridge(params VNIParams, vrf *netlink.Vrf) (*netlink.Bridge, error) {
 		return nil, fmt.Errorf("failed to set addr_gen_mode to 1 for %s: %w", bridge.Name, err)
 	}
 
+	if mtu > 0 {
+		if err := netlink.LinkSetMTU(bridge, mtu); err != nil {
+			return nil, fmt.Errorf("failed to set MTU %d on bridge %s: %w", mtu, name, err)
+		}
+	}
+
 	err = netlink.LinkSetUp(bridge)
 	if err != nil {
 		return nil, fmt.Errorf("could not set link up for bridge %s: %v", name, err)
 	}
+
 	return bridge, nil
 }
 
