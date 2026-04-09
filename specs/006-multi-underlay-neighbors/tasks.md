@@ -117,12 +117,12 @@ Repository root:
 
 ### Transform Existing Tests to Multi-Session (Multi-NIC AND Multi-Neighbor)
 
-- [ ] T036 [P] [US5] Update sessions test to use multi-nic and multi-neighbor configuration (3 interfaces, 4 neighbors) in e2etests/tests/sessions_test.go
-- [ ] T037 [P] [US5] Update hostconfiguration test to use multi-nic and multi-neighbor configuration in e2etests/tests/hostconfiguration_test.go
-- [ ] T038 [P] [US5] Update webhooks test to validate multi-nic and multi-neighbor configurations in e2etests/tests/webhooks_test.go
-- [ ] T039 [US5] Add L3 connectivity validation from both leaf nodes to all transformed tests in e2etests/tests/*.go
-- [ ] T040 [US5] Verify data plane connectivity across all configured interfaces in transformed tests in e2etests/tests/*.go
-- [ ] T041 [US5] Add test case for verifying all BGP sessions establish across multiple TORs in e2etests/tests/sessions_test.go
+- [X] T036 [P] [US5] Update sessions test to use multi-nic and multi-neighbor configuration (3 interfaces, 4 neighbors) in e2etests/tests/sessions_test.go
+- [X] T037 [P] [US5] Update hostconfiguration test to use multi-nic and multi-neighbor configuration in e2etests/tests/hostconfiguration_test.go
+- [X] T038 [P] [US5] Update webhooks test to validate multi-nic and multi-neighbor configurations in e2etests/tests/webhooks_test.go
+- [X] T039 [US5] Add L3 connectivity validation from both leaf nodes to all transformed tests in e2etests/tests/*.go
+- [X] T040 [US5] Verify data plane connectivity across all configured interfaces in transformed tests in e2etests/tests/*.go
+- [X] T041 [US5] Add test case for verifying all BGP sessions establish across multiple TORs in e2etests/tests/sessions_test.go
 
 ### E2E Test Execution and Validation
 
@@ -192,15 +192,15 @@ Repository root:
 **Purpose**: Improvements that affect multiple user stories and final quality checks
 
 - [X] T066 [P] Update CRD schema documentation in api/v1alpha1/underlay_types.go comments
-- [ ] T067 [P] Update API contracts examples with multi-entity scenarios in specs/006-multi-underlay-neighbors/contracts/examples.yaml
+- [X] T067 [P] Update API contracts examples with multi-entity scenarios in specs/006-multi-underlay-neighbors/contracts/examples.yaml
 - [X] T068 [P] Run `make manifests` to regenerate CRD YAML
 - [X] T069 [P] Run `make generate` to update generated code
 - [X] T070 Run unit tests: `go test ./internal/conversion/... ./internal/webhooks/...`
 - [ ] T071 Run E2E test suite: `make e2e-test`
 - [ ] T072 Verify backward compatibility: deploy single-interface/neighbor config and test
 - [ ] T073 Performance test: submit config with 10 interfaces and 20 neighbors, verify <2s validation
-- [ ] T074 [P] Update user-facing documentation at website/ with multi-entity examples
-- [ ] T075 [P] Update quickstart.md with final test commands and topology details
+- [X] T074 [P] Update user-facing documentation at website/ with multi-entity examples
+- [X] T075 [P] Update quickstart.md with final test commands and topology details
 - [ ] T076 Code review and cleanup: remove dead code, add comments where needed
 - [ ] T077 Final validation: run complete quickstart.md workflow
 
