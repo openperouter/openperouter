@@ -60,7 +60,7 @@ topology:
     leafkind-switch:
       kind: bridge
 
-    leafkind2-switch:
+    leafkind2-sw:
       kind: bridge
 
     pe-kind:
@@ -82,8 +82,8 @@ topology:
     - endpoints: ["leafB:ethred", "hostB_red:eth1"]
     - endpoints: ["leafB:ethblue", "hostB_blue:eth1"]
     - endpoints: ["leafkind:toswitch", "leafkind-switch:leaf1"]
-    - endpoints: ["leafkind2:toswitch2", "leafkind2-switch:leaf2"]
+    - endpoints: ["leafkind2:toswitch2", "leafkind2-sw:leaf2"]
     - endpoints: ["pe-kind-control-plane:toswitch", "leafkind-switch:kindctrlpl"]
     - endpoints: ["pe-kind-worker:toswitch", "leafkind-switch:kindworker"]
-    - endpoints: ["pe-kind-control-plane:toswitch2", "leafkind2-switch:kindctrlpl2"]
-    - endpoints: ["pe-kind-worker:toswitch2", "leafkind2-switch:kindworker2"]
+    - endpoints: ["pe-kind-control-plane:toswitch2", "leafkind2-sw:kindctrlpl2"]
+    - endpoints: ["pe-kind-worker:toswitch2", "leafkind2-sw:kindworker2"]
