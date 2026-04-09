@@ -104,7 +104,7 @@ Repository root:
 - [X] T026 [US5] Update existing containerlab topology to add 2nd leaf node in clab/*.clab.yml
 - [X] T027 [US5] Add connections from both leaf nodes to TOR switches in clab/*.clab.yml
 - [X] T028 [US5] Ensure all kind nodes connect to both leaf nodes in containerlab topology in clab/*.clab.yml
-- [ ] T029 [US5] Verify containerlab topology deploys successfully with 2 leaf nodes locally
+- [X] T029 [US5] Verify containerlab topology deploys successfully with 2 leaf nodes locally
 
 ### New Single-Session Test
 
@@ -126,8 +126,8 @@ Repository root:
 
 ### E2E Test Execution and Validation
 
-- [ ] T042 [US5] Run new single-session test locally and verify it passes
-- [ ] T043 [US5] Run all transformed multi-session tests locally and verify they pass
+- [X] T042 [US5] Run new single-session test locally and verify it passes
+- [ ] T043 [US5] Run all transformed multi-session tests locally and verify they pass  ← IN PROGRESS (bugs found and fixed, re-run needed)
 - [ ] T044 [US5] Verify E2E tests run in CI environment successfully
 - [ ] T045 [US5] Document E2E test execution in quickstart.md for developers
 

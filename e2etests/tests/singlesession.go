@@ -91,6 +91,10 @@ var _ = Describe("Single Session Baseline", Ordered, func() {
 		})
 		Expect(err).NotTo(HaveOccurred())
 
+		By("Enabling redistribute connected on leaf switches for L3 connectivity")
+		redistributeConnectedForLeaf(infra.LeafAConfig)
+		redistributeConnectedForLeaf(infra.LeafBConfig)
+
 		By("Creating the test namespace")
 		_, err = k8s.CreateNamespace(cs, testNamespace)
 		Expect(err).NotTo(HaveOccurred())
@@ -140,6 +144,10 @@ var _ = Describe("Single Session Baseline", Ordered, func() {
 		By("Deleting the test namespace")
 		err := k8s.DeleteNamespace(cs, testNamespace)
 		Expect(err).NotTo(HaveOccurred())
+
+		By("Restoring leaf switch configuration")
+		Expect(infra.LeafAConfig.RemovePrefixes()).To(Succeed())
+		Expect(infra.LeafBConfig.RemovePrefixes()).To(Succeed())
 
 		err = Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())

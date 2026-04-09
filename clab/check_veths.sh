@@ -24,6 +24,7 @@ function ensure_veth {
   PEER_NAME=$2
   CONTAINER_NAME=$3
   CONTAINER_SIDE_IP=$4
+  BRIDGE_NAME=${5:-leafkind-switch}
 
   TEMP_PEER_NAME="${PEER_NAME}_temp"
   if ! veth_exists "$VETH_NAME"; then
@@ -40,7 +41,7 @@ function ensure_veth {
     ip link set "$TEMP_PEER_NAME" netns "$pid"
     ip link set "$VETH_NAME" up
 
-    ip link set "$VETH_NAME" master leafkind-switch
+    ip link set "$VETH_NAME" master "$BRIDGE_NAME"
 
     MAC_ADDR="02:ed:$[RANDOM%10]$[RANDOM%10]:$[RANDOM%10]$[RANDOM%10]:$[RANDOM%10]$[RANDOM%10]:$[RANDOM%10]$[RANDOM%10]"
     ip link set "$VETH_NAME" address "$MAC_ADDR"
@@ -65,13 +66,14 @@ for node in "${nodes[@]}"; do
     peer_name="${node_parts[1]}"
     container_name="${node_parts[2]}"
     container_side_ip="${node_parts[3]}"
+    bridge_name="${node_parts[4]:-}"
 
     if ! container_exists "$container_name"; then
       echo "Container $container_name does not exist. Exiting."
       exit 1
     fi
 
-    ensure_veth $veth_name $peer_name $container_name $container_side_ip
+    ensure_veth $veth_name $peer_name $container_name $container_side_ip $bridge_name
 done
 sleep 5s
 done
