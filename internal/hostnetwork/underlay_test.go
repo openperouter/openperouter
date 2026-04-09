@@ -73,7 +73,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 			},
 			TargetNS: underlayTestNSPath(),
 		}
-		err := SetupUnderlay(context.Background(), params)
+		_, err := SetupUnderlay(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -89,9 +89,9 @@ var _ = Describe("Underlay configuration should work when", func() {
 			},
 			TargetNS: underlayTestNSPath(),
 		}
-		err := SetupUnderlay(context.Background(), params)
+		_, err := SetupUnderlay(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
-		err = SetupUnderlay(context.Background(), params)
+		_, err = SetupUnderlay(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -107,7 +107,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 			},
 			TargetNS: underlayTestNSPath(),
 		}
-		err := SetupUnderlay(context.Background(), params)
+		_, err := SetupUnderlay(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 		Eventually(func(g Gomega) {
 			validateUnderlayInNS(g, testNs, params)
@@ -115,7 +115,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 
 		params.UnderlayInterface = underlayTestInterfaceEdit
 
-		err = SetupUnderlay(context.Background(), params)
+		_, err = SetupUnderlay(context.Background(), params)
 		u := UnderlayExistsError("")
 		Expect(errors.As(err, &u)).To(BeTrue())
 	})
@@ -128,7 +128,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 			},
 			TargetNS: underlayTestNSPath(),
 		}
-		err := SetupUnderlay(context.Background(), params)
+		_, err := SetupUnderlay(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -137,7 +137,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 
 		params.EVPN.VtepIP = "192.168.1.2/32"
 
-		err = SetupUnderlay(context.Background(), params)
+		_, err = SetupUnderlay(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -150,7 +150,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 			UnderlayInterface: underlayTestInterface,
 			TargetNS:          underlayTestNSPath(),
 		}
-		err := SetupUnderlay(context.Background(), params)
+		_, err := SetupUnderlay(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -163,7 +163,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 			UnderlayInterface: "",
 			TargetNS:          underlayTestNSPath(),
 		}
-		err := SetupUnderlay(context.Background(), params)
+		_, err := SetupUnderlay(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {

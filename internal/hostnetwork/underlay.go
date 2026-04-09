@@ -31,12 +31,15 @@ type UnderlayEVPNParams struct {
 	VtepIP string `json:"vtep_ip"`
 }
 
-func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
+// SetupUnderlay configures the underlay interface in the target namespace.
+// It returns the MTU of the underlay interface (0 when in Multus mode where
+// no interface is explicitly moved).
+func SetupUnderlay(ctx context.Context, params UnderlayParams) (int, error) {
 	slog.DebugContext(ctx, "setup underlay", "params", params)
 	defer slog.DebugContext(ctx, "setup underlay done")
 	ns, err := netns.GetFromPath(params.TargetNS)
 	if err != nil {
-		return fmt.Errorf("setupUnderlay: Failed to find network namespace %s: %w", params.TargetNS, err)
+		return 0, fmt.Errorf("setupUnderlay: Failed to find network namespace %s: %w", params.TargetNS, err)
 	}
 	defer func() {
 		if err := ns.Close(); err != nil {
@@ -44,23 +47,25 @@ func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
 		}
 	}()
 
+	var mtu int
 	if params.UnderlayInterface != "" {
-		if err := moveUnderlayInterface(ctx, params.UnderlayInterface, ns); err != nil {
-			return err
+		mtu, err = moveUnderlayInterface(ctx, params.UnderlayInterface, ns)
+		if err != nil {
+			return 0, err
 		}
 	}
 
 	if params.EVPN == nil {
-		return nil
+		return mtu, nil
 	}
 
 	if params.EVPN.VtepIP != "" {
 		if err := ensureLoopback(ctx, ns, params.EVPN.VtepIP); err != nil {
-			return err
+			return 0, err
 		}
 	}
 
-	return nil
+	return mtu, nil
 }
 
 type UnderlayExistsError string
@@ -96,30 +101,42 @@ func ensureLoopback(ctx context.Context, ns netns.NsHandle, vtepIP string) error
 }
 
 // moveUnderlayInterface moves the interface to be used for the underlay connectivity in
-// the given namespace.
-func moveUnderlayInterface(ctx context.Context, underlayInterface string, ns netns.NsHandle) error {
+// the given namespace. It returns the MTU of the underlay interface.
+func moveUnderlayInterface(ctx context.Context, underlayInterface string, ns netns.NsHandle) (int, error) {
 	currentUnderlayInterface, err := findInterfaceWithIP(ns, underlayInterfaceSpecialAddr)
 	if err != nil {
-		return fmt.Errorf("failed to get old underlay interface %w", err)
+		return 0, fmt.Errorf("failed to get old underlay interface %w", err)
 	}
 
 	if currentUnderlayInterface != "" && currentUnderlayInterface == underlayInterface { // nothing to do
 		slog.DebugContext(ctx, "move underlay", "event", "underlay nic already set")
-		return nil
+		var mtu int
+		if err := netnamespace.In(ns, func() error {
+			l, err := netlink.LinkByName(underlayInterface)
+			if err != nil {
+				return fmt.Errorf("failed to get underlay link %s: %w", underlayInterface, err)
+			}
+			mtu = l.Attrs().MTU
+			return nil
+		}); err != nil {
+			return 0, err
+		}
+		return mtu, nil
 	}
 
 	if currentUnderlayInterface != "" && currentUnderlayInterface != underlayInterface { // need to move the old one back
 		slog.DebugContext(ctx, "move underlay", "event", "different underlay nic found, removing", "old", currentUnderlayInterface, "new", underlayInterface)
 		// given the tricky nature of the operation, better error and let the caller delete the namespace and start the machinery from scratch.
 		// moving the underlay is a destructive operation anyway.
-		return UnderlayExistsError(fmt.Sprintf("existing underlay found: %s, new is %s", currentUnderlayInterface, underlayInterface))
+		return 0, UnderlayExistsError(fmt.Sprintf("existing underlay found: %s, new is %s", currentUnderlayInterface, underlayInterface))
 	}
 
 	err = moveInterfaceToNamespace(ctx, underlayInterface, ns)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
+	var mtu int
 	if err := netnamespace.In(ns, func() error {
 		underlay, err := netlink.LinkByName(underlayInterface)
 		if err != nil {
@@ -133,11 +150,12 @@ func moveUnderlayInterface(ctx context.Context, underlayInterface string, ns net
 		if err := netlink.LinkSetUp(underlay); err != nil {
 			return fmt.Errorf("could not set link up for VRF %s: %v", underlay.Attrs().Name, err)
 		}
+		mtu = underlay.Attrs().MTU
 		return nil
 	}); err != nil {
-		return err
+		return 0, err
 	}
-	return nil
+	return mtu, nil
 }
 
 // HasUnderlayInterface returns true if the given network
