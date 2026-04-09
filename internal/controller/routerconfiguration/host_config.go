@@ -72,9 +72,18 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 	}
 
 	slog.InfoContext(ctx, "setting up underlay")
-	if err := hostnetwork.SetupUnderlay(ctx, hostConfig.Underlay); err != nil {
+	underlayLink, err := hostnetwork.SetupUnderlay(ctx, hostConfig.Underlay)
+	if err != nil {
 		return fmt.Errorf("failed to setup underlay: %w", err)
 	}
+
+	for i := range hostConfig.L3VNIs {
+		hostConfig.L3VNIs[i].UnderlayMTU = underlayLink.Attrs().MTU
+	}
+	for i := range hostConfig.L2VNIs {
+		hostConfig.L2VNIs[i].UnderlayMTU = underlayLink.Attrs().MTU
+	}
+
 	for _, vni := range hostConfig.L3VNIs {
 		slog.InfoContext(ctx, "setting up VNI", "vni", vni.VRF)
 		if err := hostnetwork.SetupL3VNI(ctx, vni); err != nil {
