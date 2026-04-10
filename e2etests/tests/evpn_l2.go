@@ -124,6 +124,16 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		hostMaster                                                        v1alpha1.HostMaster // Allow specifying custom HostMaster config
 		nadMaster                                                         string              // Bridge name for NAD (defaults to "br-hs-110")
 	}
+	AfterEach(func() {
+		Expect(infra.LeafAConfig.RemovePrefixes()).To(Succeed())
+		Expect(infra.LeafBConfig.RemovePrefixes()).To(Succeed())
+		dumpIfFails(cs)
+		err := Updater.CleanButUnderlay()
+		Expect(err).NotTo(HaveOccurred())
+		err = k8s.DeleteNamespace(cs, testNamespace)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
 	DescribeTable("should create two pods connected to the l2 overlay", func(tc testCase) {
 		By("setting redistribute connected on leaves")
 		redistributeConnectedForLeaf(infra.LeafAConfig)
@@ -155,16 +165,6 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 
 		nad, err = k8s.CreateMacvlanNad("110", testNamespace, tc.nadMaster, tc.l2GatewayIPs)
 		Expect(err).NotTo(HaveOccurred())
-
-		DeferCleanup(func() {
-			Expect(infra.LeafAConfig.RemovePrefixes()).To(Succeed())
-			Expect(infra.LeafBConfig.RemovePrefixes()).To(Succeed())
-			dumpIfFails(cs)
-			err := Updater.CleanButUnderlay()
-			Expect(err).NotTo(HaveOccurred())
-			err = k8s.DeleteNamespace(cs, testNamespace)
-			Expect(err).NotTo(HaveOccurred())
-		})
 
 		By("creating the pods")
 		firstPod, err = k8s.CreateAgnhostPod(cs, "pod1", testNamespace, k8s.WithNad(nad.Name, testNamespace, tc.firstPodIPs), k8s.OnNode(nodes[0].Name))
