@@ -41,6 +41,23 @@ var (
 	LeafKindConfig = LeafKind{
 		Container: KindLeafContainer,
 	}
+
+	EmptyLeafConfig = LeafConfiguration{
+		Default: Addresses{
+			IPV4: []string{},
+			IPV6: []string{},
+		},
+		Red: Addresses{
+			IPV4:         []string{},
+			IPV6:         []string{},
+			RouteTargets: RouteTargets{},
+		},
+		Blue: Addresses{
+			IPV4:         []string{},
+			IPV6:         []string{},
+			RouteTargets: RouteTargets{},
+		},
+	}
 )
 
 type LeafConfiguration struct {
@@ -56,10 +73,16 @@ type LeafKindConfiguration struct {
 	Neighbors             []string
 }
 
+type RouteTargets struct {
+	ImportRTs []string
+	ExportRTs []string
+}
+
 type Addresses struct {
 	RedistributeConnected bool
 	IPV4                  []string
 	IPV6                  []string
+	RouteTargets          RouteTargets
 }
 
 type Leaf struct {
@@ -149,6 +172,15 @@ func UpdateLeafKindConfig(nodes []corev1.Node, enableBFD bool) error {
 	}
 
 	return LeafKindConfig.ReloadConfig(configString)
+}
+
+func (l Leaf) Configure(LeafConfig LeafConfiguration) error {
+	LeafConfig.Leaf = l
+	config, err := LeafConfigToFRR(LeafConfig)
+	if err != nil {
+		return err
+	}
+	return l.ReloadConfig(config)
 }
 
 // ChangePrefixes updates the leaf configuration with the given prefixes for each VRF.

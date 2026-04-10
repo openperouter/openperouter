@@ -1,0 +1,138 @@
+{
+  "freeTextAnnotations": [],
+  "freeShapeAnnotations": [],
+  "trafficRateAnnotations": [],
+  "groupStyleAnnotations": [],
+  "networkNodeAnnotations": [],
+  "nodeAnnotations": [
+    {
+      "id": "leafA",
+      "position": {
+        "x": 400,
+        "y": 240
+      }
+    },
+    {
+      "id": "leafB",
+      "position": {
+        "x": 720,
+        "y": 180
+      }
+    },
+    {
+      "id": "leafkind-a",
+      "position": {
+        "x": 340,
+        "y": 160
+      }
+    },
+    {
+      "id": "leafkind-b",
+      "position": {
+        "x": 540,
+        "y": 380
+      }
+    },
+    {
+      "id": "spine",
+      "position": {
+        "x": 540,
+        "y": 180
+      }
+    },
+    {
+      "id": "hostA_default",
+      "position": {
+        "x": 340,
+        "y": 60
+      }
+    },
+    {
+      "id": "hostA_red",
+      "position": {
+        "x": 440,
+        "y": 60
+      }
+    },
+    {
+      "id": "hostB_red",
+      "position": {
+        "x": 880,
+        "y": 140
+      }
+    },
+    {
+      "id": "hostA_blue",
+      "position": {
+        "x": 560,
+        "y": 280
+      }
+    },
+    {
+      "id": "hostB_blue",
+      "position": {
+        "x": 840,
+        "y": 300
+      }
+    },
+    {
+      "id": "leafkind-sw-a",
+      "position": {
+        "x": 160,
+        "y": 200
+      }
+    },
+    {
+      "id": "leafkind-sw-b",
+      "position": {
+        "x": 540,
+        "y": 560
+      }
+    },
+    {
+      "id": "pe-kind-a",
+      "position": {
+        "x": 20,
+        "y": 660
+      }
+    },
+    {
+      "id": "pe-kind-b",
+      "position": {
+        "x": 360,
+        "y": 840
+      }
+    },
+    {
+      "id": "pe-kind-a-control-plane",
+      "position": {
+        "x": 40,
+        "y": 340
+      }
+    },
+    {
+      "id": "pe-kind-b-control-plane",
+      "position": {
+        "x": 520,
+        "y": 700
+      }
+    },
+    {
+      "id": "pe-kind-a-worker",
+      "position": {
+        "x": 160,
+        "y": 380
+      }
+    },
+    {
+      "id": "pe-kind-b-worker",
+      "position": {
+        "x": 680,
+        "y": 660
+      }
+    }
+  ],
+  "edgeAnnotations": [],
+  "aliasEndpointAnnotations": [],
+  "viewerSettings": {}
+}
