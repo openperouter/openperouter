@@ -28,7 +28,9 @@ setup_veth_monitoring() {
             # Single cluster mode
             sudo -E ./check_veths.sh \
                 kindctrlpl:toswitch:pe-kind-control-plane:192.168.11.3/24 \
-                kindworker:toswitch:pe-kind-worker:192.168.11.4/24 2>&1 \
+                kindworker:toswitch:pe-kind-worker:192.168.11.4/24 \
+                kindctrlpl2:toswitch2:pe-kind-control-plane:192.168.12.3/24:leafkind2-sw \
+                kindworker2:toswitch2:pe-kind-worker:192.168.12.4/24:leafkind2-sw 2>&1 \
                 | awk '{print strftime("%Y-%m-%dT%H:%M:%S"), $0; fflush()}' > "$CHECK_VETHS_LOG" &
         else
             # Multi-cluster mode

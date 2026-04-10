@@ -32,18 +32,46 @@ func ValidateUnderlays(underlays []v1alpha1.Underlay) error {
 	if len(underlays) > 1 {
 		return fmt.Errorf("can't have more than one underlay per node")
 	}
-	return validateUnderlay(&underlays[0])
+	for _, underlay := range underlays {
+		if err := validateUnderlay(underlay); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-func validateUnderlay(underlay *v1alpha1.Underlay) error {
+func validateUnderlay(underlay v1alpha1.Underlay) error {
 	if underlay.Spec.ASN == 0 {
 		return fmt.Errorf("underlay %s must have a valid ASN", underlay.Name)
 	}
 
+	// Validate at least one neighbor is specified
+	if len(underlay.Spec.Neighbors) == 0 {
+		return fmt.Errorf("underlay %s must have at least one neighbor configured", underlay.Name)
+	}
+
+	// Note: Nics can be empty when using Multus networks.
+	// The runtime check in APItoHostConfig enforces NIC presence when Multus is not enabled.
+
+	// Validate neighbor uniqueness
+	neighborAddresses := make(map[string]bool)
 	for _, neighbor := range underlay.Spec.Neighbors {
 		if underlay.Spec.ASN == neighbor.ASN {
-			return fmt.Errorf("underlay %s local ASN %d must be different from remote ASN %d", underlay.Name, underlay.Spec.ASN, neighbor.ASN)
+			return fmt.Errorf("underlay %s local ASN %d must be different from remote ASN %d for neighbor %s", underlay.Name, underlay.Spec.ASN, neighbor.ASN, neighbor.Address)
 		}
+		if neighborAddresses[neighbor.Address] {
+			return fmt.Errorf("underlay %s has duplicate neighbor address: %s", underlay.Name, neighbor.Address)
+		}
+		neighborAddresses[neighbor.Address] = true
+	}
+
+	// Validate nic uniqueness
+	nicNames := make(map[string]bool)
+	for _, nic := range underlay.Spec.Nics {
+		if nicNames[nic] {
+			return fmt.Errorf("underlay %s has duplicate nic name: %s", underlay.Name, nic)
+		}
+		nicNames[nic] = true
 	}
 
 	if underlay.Spec.EVPN != nil {
@@ -65,10 +93,6 @@ func validateUnderlay(underlay *v1alpha1.Underlay) error {
 				return fmt.Errorf("invalid vtep interface name %q for underlay %q: %w", underlay.Name, underlay.Spec.EVPN.VTEPInterface, err)
 			}
 		}
-	}
-
-	if len(underlay.Spec.Nics) > 1 {
-		return fmt.Errorf("underlay %s can only have one nic, found %d", underlay.Name, len(underlay.Spec.Nics))
 	}
 
 	for _, n := range underlay.Spec.Nics {

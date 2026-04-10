@@ -76,17 +76,21 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 	})
 
 	validateTORSession := func() {
-		exec := executor.ForContainer(infra.KindLeaf)
-		Eventually(func() error {
-			for _, node := range nodes {
-				neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
-				Expect(err).NotTo(HaveOccurred())
-				validateSessionWithNeighbor(infra.KindLeaf, node.Name, exec, neighborIP, Established)
-			}
-			return nil
-		}, time.Minute, time.Second).ShouldNot(HaveOccurred())
+		// Validate sessions with both leaf nodes
+		leaves := []string{infra.KindLeaf, infra.KindLeaf2}
+		for _, leaf := range leaves {
+			exec := executor.ForContainer(leaf)
+			Eventually(func() error {
+				for _, node := range nodes {
+					neighborIP, err := infra.NeighborIP(leaf, node.Name)
+					Expect(err).NotTo(HaveOccurred())
+					validateSessionWithNeighbor(leaf, node.Name, exec, neighborIP, Established)
+				}
+				return nil
+			}, time.Minute, time.Second).ShouldNot(HaveOccurred())
+		}
 	}
-	It("peers with the tor", func() {
+	It("peers with both TOR switches", func() {
 		validateTORSession()
 	})
 
@@ -179,18 +183,22 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 	})
 
 	// This test must be the last of the ordered describe as it will remove the underlay
-	It("deleting the underlay removes the session with the tor", func() {
+	It("deleting the underlay removes the session with both TOR switches", func() {
 		validateTORSession()
 
-		By("deleting the vni removes the session with the host")
+		By("deleting the underlay removes the session with the TOR switches")
 		err := Updater.Client().Delete(context.Background(), &infra.Underlay)
 		Expect(err).NotTo(HaveOccurred())
 
-		exec := executor.ForContainer(infra.KindLeaf)
-		for _, node := range nodes {
-			neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
-			Expect(err).NotTo(HaveOccurred())
-			validateSessionDownForNeigh(exec, neighborIP)
+		// Validate sessions are down on both leaf nodes
+		leaves := []string{infra.KindLeaf, infra.KindLeaf2}
+		for _, leaf := range leaves {
+			exec := executor.ForContainer(leaf)
+			for _, node := range nodes {
+				neighborIP, err := infra.NeighborIP(leaf, node.Name)
+				Expect(err).NotTo(HaveOccurred())
+				validateSessionDownForNeigh(exec, neighborIP)
+			}
 		}
 	})
 })

@@ -22,9 +22,9 @@ const (
 const underlayInterfaceSpecialAddr = "172.16.1.1/32"
 
 type UnderlayParams struct {
-	UnderlayInterface string              `json:"underlay_interface"`
-	TargetNS          string              `json:"target_ns"`
-	EVPN              *UnderlayEVPNParams `json:"evpn"`
+	UnderlayInterfaces []string            `json:"underlay_interfaces"`
+	TargetNS           string              `json:"target_ns"`
+	EVPN               *UnderlayEVPNParams `json:"evpn"`
 }
 
 type UnderlayEVPNParams struct {
@@ -44,8 +44,28 @@ func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
 		}
 	}()
 
-	if params.UnderlayInterface != "" {
-		if err := moveUnderlayInterface(ctx, params.UnderlayInterface, ns); err != nil {
+	// Check if there's an existing underlay interface that's not in the new list.
+	// This means the underlay configuration changed and requires a pod restart.
+	existingIface, err := findInterfaceWithIP(ns, underlayInterfaceSpecialAddr)
+	if err != nil {
+		return fmt.Errorf("failed to check existing underlay interface: %w", err)
+	}
+	if existingIface != "" {
+		found := false
+		for _, iface := range params.UnderlayInterfaces {
+			if iface == existingIface {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return UnderlayExistsError(fmt.Sprintf(
+				"existing underlay found: %s, new interfaces are %v", existingIface, params.UnderlayInterfaces))
+		}
+	}
+
+	for _, underlayInterface := range params.UnderlayInterfaces {
+		if err := moveUnderlayInterface(ctx, underlayInterface, ns); err != nil {
 			return err
 		}
 	}
@@ -87,6 +107,9 @@ func ensureLoopback(ctx context.Context, ns netns.NsHandle, vtepIP string) error
 		if err != nil {
 			return err
 		}
+		if err := netlink.LinkSetUp(loopback); err != nil {
+			return fmt.Errorf("ensureLoopback: failed to bring up %s: %w", UnderlayLoopback, err)
+		}
 		return nil
 	}); err != nil {
 		return err
@@ -98,24 +121,9 @@ func ensureLoopback(ctx context.Context, ns netns.NsHandle, vtepIP string) error
 // moveUnderlayInterface moves the interface to be used for the underlay connectivity in
 // the given namespace.
 func moveUnderlayInterface(ctx context.Context, underlayInterface string, ns netns.NsHandle) error {
-	currentUnderlayInterface, err := findInterfaceWithIP(ns, underlayInterfaceSpecialAddr)
-	if err != nil {
-		return fmt.Errorf("failed to get old underlay interface %w", err)
-	}
-
-	if currentUnderlayInterface != "" && currentUnderlayInterface == underlayInterface { // nothing to do
-		slog.DebugContext(ctx, "move underlay", "event", "underlay nic already set")
-		return nil
-	}
-
-	if currentUnderlayInterface != "" && currentUnderlayInterface != underlayInterface { // need to move the old one back
-		slog.DebugContext(ctx, "move underlay", "event", "different underlay nic found, removing", "old", currentUnderlayInterface, "new", underlayInterface)
-		// given the tricky nature of the operation, better error and let the caller delete the namespace and start the machinery from scratch.
-		// moving the underlay is a destructive operation anyway.
-		return UnderlayExistsError(fmt.Sprintf("existing underlay found: %s, new is %s", currentUnderlayInterface, underlayInterface))
-	}
-
-	err = moveInterfaceToNamespace(ctx, underlayInterface, ns)
+	// Check if this specific interface is already in the target namespace.
+	// With multiple underlay interfaces, each is moved independently.
+	err := moveInterfaceToNamespace(ctx, underlayInterface, ns)
 	if err != nil {
 		return err
 	}
@@ -126,9 +134,17 @@ func moveUnderlayInterface(ctx context.Context, underlayInterface string, ns net
 			return fmt.Errorf("failed to get underlay nic by name %s: %w", underlayInterface, err)
 		}
 
-		// we assign a special address so we we can detect if an interface was already moved.
-		if err := assignIPToInterface(underlay, underlayInterfaceSpecialAddr); err != nil {
-			return err
+		// we assign a special address so we can detect if an interface was already moved.
+		// With multiple underlay interfaces only the first one gets the marker IP, to avoid
+		// conflicts when the same address cannot be assigned to multiple interfaces.
+		nsHasMarkerIP, err := namespaceHasIP(ns, underlayInterfaceSpecialAddr)
+		if err != nil {
+			return fmt.Errorf("failed to check marker IP in namespace: %w", err)
+		}
+		if !nsHasMarkerIP {
+			if err := assignIPToInterface(underlay, underlayInterfaceSpecialAddr); err != nil {
+				return err
+			}
 		}
 		if err := netlink.LinkSetUp(underlay); err != nil {
 			return fmt.Errorf("could not set link up for VRF %s: %v", underlay.Attrs().Name, err)
@@ -138,6 +154,29 @@ func moveUnderlayInterface(ctx context.Context, underlayInterface string, ns net
 		return err
 	}
 	return nil
+}
+
+// namespaceHasIP returns true if any interface in the given namespace has the specified IP.
+func namespaceHasIP(ns netns.NsHandle, ip string) (bool, error) {
+	result := false
+	err := netnamespace.In(ns, func() error {
+		links, err := netlink.LinkList()
+		if err != nil {
+			return fmt.Errorf("failed to list links: %w", err)
+		}
+		for _, l := range links {
+			has, err := interfaceHasIP(l, ip)
+			if err != nil {
+				return err
+			}
+			if has {
+				result = true
+				return nil
+			}
+		}
+		return nil
+	})
+	return result, err
 }
 
 // HasUnderlayInterface returns true if the given network

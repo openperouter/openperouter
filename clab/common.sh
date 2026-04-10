@@ -47,7 +47,12 @@ load_local_image_to_kind() {
     local temp_file="/tmp/${file_name}.tar"
     sudo rm -f ${temp_file} || true
     ${CONTAINER_ENGINE_CLI} save -o ${temp_file} ${image_tag}
-    ${KIND_COMMAND} load image-archive ${temp_file} --name ${KIND_CLUSTER_NAME}
+    # Load into each kind node's containerd directly (without --all-platforms which causes digest mismatch)
+    local nodes=$(${KIND_COMMAND} get nodes --name ${KIND_CLUSTER_NAME})
+    for node in $nodes; do
+        echo "Loading ${image_tag} into containerd on node: $node"
+        ${CONTAINER_ENGINE_CLI} exec --privileged -i ${node} ctr --namespace=k8s.io images import --snapshotter=overlayfs - < ${temp_file}
+    done
     load_image_to_podman_on_nodes ${image_tag} ${file_name}
 }
 
