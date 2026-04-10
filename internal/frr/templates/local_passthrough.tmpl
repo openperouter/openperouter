@@ -2,35 +2,35 @@
 
 {{- if .Passthrough.LocalNeighborV4 }}
 
-  neighbor {{ .Passthrough.LocalNeighborV4.Addr }} remote-as {{ .Passthrough.LocalNeighborV4.ASN }}
+  neighbor {{ neighborID .Passthrough.LocalNeighborV4 }} remote-as {{ .Passthrough.LocalNeighborV4.ASN }}
 
   address-family ipv4 unicast
   {{/* the ToAdvertiseIPv4 addresses are intended to be advertised to the fabric */}}
   {{- range .Passthrough.ToAdvertiseIPv4 }}
     network {{ . }}
   {{- end }}
-    neighbor {{ .Passthrough.LocalNeighborV4.Addr }} activate
-    neighbor {{ .Passthrough.LocalNeighborV4.Addr }} route-map allowall in
-    neighbor {{ .Passthrough.LocalNeighborV4.Addr }} route-map allowall out
+    neighbor {{ neighborID .Passthrough.LocalNeighborV4 }} activate
+    neighbor {{ neighborID .Passthrough.LocalNeighborV4 }} route-map allowall in
+    neighbor {{ neighborID .Passthrough.LocalNeighborV4 }} route-map allowall out
   exit-address-family
 
-{{- template "neighborenableipfamily" .Passthrough.LocalNeighborV4 }}
+{{- template "neighborenableipfamily" dict "neighbor" .Passthrough.LocalNeighborV4 -}}
 {{- end -}}
 
 {{- if .Passthrough.LocalNeighborV6 }}
 
-  neighbor {{ .Passthrough.LocalNeighborV6.Addr }} remote-as {{ .Passthrough.LocalNeighborV6.ASN }}
+  neighbor {{ neighborID .Passthrough.LocalNeighborV6 }} remote-as {{ .Passthrough.LocalNeighborV6.ASN }}
 
   address-family ipv6 unicast
   {{/* the ToAdvertiseIPv6 addresses are intended to be advertised to the fabric */}}
   {{- range .Passthrough.ToAdvertiseIPv6 }}
     network {{ . }}
   {{- end }}
-    neighbor {{ .Passthrough.LocalNeighborV6.Addr }} activate
-    neighbor {{ .Passthrough.LocalNeighborV6.Addr }} route-map allowall in
-    neighbor {{ .Passthrough.LocalNeighborV6.Addr }} route-map allowall out
+    neighbor {{ neighborID .Passthrough.LocalNeighborV6 }} activate
+    neighbor {{ neighborID .Passthrough.LocalNeighborV6 }} route-map allowall in
+    neighbor {{ neighborID .Passthrough.LocalNeighborV6 }} route-map allowall out
   exit-address-family
-{{- template "neighborenableipfamily" .Passthrough.LocalNeighborV6 }}
+{{- template "neighborenableipfamily" dict "neighbor" .Passthrough.LocalNeighborV6 -}}
 {{- end -}}
 {{- end }}
 

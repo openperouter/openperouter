@@ -5,9 +5,9 @@
   exit-address-family
 {{ end }}
   address-family l2vpn evpn
-{{- range .Underlay.Neighbors }}
-    neighbor {{ .Addr }} activate
-    neighbor {{ .Addr }} allowas-in 
+{{- range $n := .Underlay.Neighbors }}
+    neighbor {{ neighborID $n }} activate
+    neighbor {{ neighborID $n }} allowas-in 
 {{- end }}
     advertise-all-vni
     advertise-svi-ip
