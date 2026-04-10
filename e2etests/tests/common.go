@@ -12,5 +12,6 @@ var (
 	K8sReporter             *k8sreporter.KubernetesReporter
 	ReportPath              string
 	HostMode                bool
+	NamedNSMode             bool
 	SkipUnderlayPassthrough bool
 )

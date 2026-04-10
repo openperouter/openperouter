@@ -19,7 +19,7 @@ func RouterPods(cs clientset.Interface) ([]*corev1.Pod, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve pods %w", err)
 	}
-	return pods, nil
+	return filterRunningPods(pods), nil
 }
 
 type routerPods struct {
@@ -30,7 +30,12 @@ type routerPod struct {
 	*corev1.Pod
 }
 
+const namedNetnsPath = "/var/run/netns/perouter"
+
 func (r routerPod) Exec(cmd string, args ...string) (string, error) {
+	if NamedNSMode {
+		return executor.ForPodInNamedNetns(r.Namespace, r.Name(), "frr", namedNetnsPath).Exec(cmd, args...)
+	}
 	return executor.ForPod(r.Namespace, r.Name(), "frr").Exec(cmd, args...)
 }
 

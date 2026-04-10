@@ -108,9 +108,6 @@ var _ = Describe("Hybrid mode: static files and API configuration", Label("syste
 	BeforeAll(func() {
 		var err error
 
-		err = Updater.CleanAll()
-		Expect(err).NotTo(HaveOccurred())
-
 		cs = k8sclient.New()
 		routers, err = openperouter.Get(cs, HostMode)
 		Expect(err).NotTo(HaveOccurred())

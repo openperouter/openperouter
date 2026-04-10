@@ -54,10 +54,8 @@ var _ = Describe("Routes between bgp and the fabric", Label("passthrough"), Orde
 	}
 
 	BeforeAll(func() {
-		err := Updater.CleanAll()
-		Expect(err).NotTo(HaveOccurred())
-
 		cs = k8sclient.New()
+		var err error
 		routers, err = openperouter.Get(cs, HostMode)
 		Expect(err).NotTo(HaveOccurred())
 

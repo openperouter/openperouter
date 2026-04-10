@@ -6,6 +6,7 @@ import (
 	"flag"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -30,6 +31,7 @@ func handleFlags() {
 	flag.StringVar(&tests.ValidatorPath, "hostvalidator", "hostvalidator", "the path for the hostvalidator binary")
 	flag.StringVar(&tests.ReportPath, "reporterpath", "/tmp", "the path for the reporter")
 	flag.BoolVar(&tests.HostMode, "systemdmode", false, "tells if openperouter is running on the host")
+	flag.BoolVar(&tests.NamedNSMode, "named-ns", false, "tells if openperouter uses the persistent named netns model")
 	flag.BoolVar(&tests.SkipUnderlayPassthrough, "skip-underlay-passthrough", false, "skip creating underlay in passthrough tests")
 	flag.Parse()
 }
@@ -60,11 +62,19 @@ var _ = ginkgo.BeforeSuite(func() {
 	updater, err = config.UpdaterForCRs(clientconfig, openperouter.Namespace)
 	Expect(err).NotTo(HaveOccurred())
 	tests.Updater = updater
+	openperouter.NamedNSMode = tests.NamedNSMode
 	kubeconfig := os.Getenv("KUBECONFIG")
 	if kubeconfig == "" {
 		ginkgo.Fail("KUBECONFIG not set")
 	}
 	tests.K8sReporter = k8s.InitReporter(kubeconfig, tests.ReportPath, openperouter.Namespace, frrk8s.Namespace)
+
+	// Defensive guard: wipe any CRs left by a previous interrupted run so
+	// every test suite starts from a known-clean state.
+	Expect(updater.CleanAll()).To(Succeed())
+	cs := k8sclient.New()
+	_, err = openperouter.WaitForReadyRouters(cs, tests.HostMode, 2*time.Minute)
+	Expect(err).NotTo(HaveOccurred())
 })
 
 var _ = ginkgo.AfterSuite(func() {

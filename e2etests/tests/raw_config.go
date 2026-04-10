@@ -26,6 +26,16 @@ var _ = Describe("RawFRRConfig", Ordered, func() {
 
 	BeforeAll(func() {
 		cs = k8sclient.New()
+
+		By("waiting for all router pods to be ready")
+		Eventually(func(g Gomega) {
+			pods, err := openperouter.RouterPods(cs)
+			g.Expect(err).NotTo(HaveOccurred())
+			for _, p := range pods {
+				g.Expect(k8s.PodIsReady(p)).To(BeTrue(), "pod %s must be ready", p.Name)
+			}
+		}).WithTimeout(2 * time.Minute).WithPolling(time.Second).Should(Succeed())
+
 		var err error
 		routers, err = openperouter.Get(cs, HostMode)
 		Expect(err).NotTo(HaveOccurred())
