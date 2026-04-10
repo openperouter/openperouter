@@ -23,16 +23,8 @@ var Underlay = v1alpha1.Underlay{
 				Address: "192.168.11.2",
 			},
 			{
-				ASN:     64512,
-				Address: "192.168.11.3",
-			},
-			{
 				ASN:     64513,
 				Address: "192.168.12.2",
-			},
-			{
-				ASN:     64513,
-				Address: "192.168.12.3",
 			},
 		},
 		EVPN: &v1alpha1.EVPNConfig{

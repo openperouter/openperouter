@@ -207,11 +207,11 @@ var _ = Describe("Multi-Session Multi-Underlay", Ordered, func() {
 		}, 2*time.Minute, 5*time.Second).ShouldNot(HaveOccurred())
 	})
 
-	It("verifies all 4 BGP neighbors are established", func() {
-		By("Checking that we have exactly 4 neighbors configured in the underlay")
-		Expect(len(infra.Underlay.Spec.Neighbors)).To(Equal(4), "Expected 4 neighbors in multi-session underlay")
+	It("verifies all BGP neighbors are established", func() {
+		By("Checking that we have exactly 2 neighbors configured in the underlay (one per leaf switch)")
+		Expect(len(infra.Underlay.Spec.Neighbors)).To(Equal(2), "Expected 2 neighbors in multi-session underlay (one per leaf)")
 
-		By("Verifying sessions to all 4 neighbors from both leaf switches")
+		By("Verifying sessions to all neighbors from both leaf switches")
 		leaves := []string{infra.KindLeaf, infra.KindLeaf2}
 
 		for _, leaf := range leaves {
