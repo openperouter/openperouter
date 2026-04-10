@@ -44,6 +44,26 @@ func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
 		}
 	}()
 
+	// Check if there's an existing underlay interface that's not in the new list.
+	// This means the underlay configuration changed and requires a pod restart.
+	existingIface, err := findInterfaceWithIP(ns, underlayInterfaceSpecialAddr)
+	if err != nil {
+		return fmt.Errorf("failed to check existing underlay interface: %w", err)
+	}
+	if existingIface != "" {
+		found := false
+		for _, iface := range params.UnderlayInterfaces {
+			if iface == existingIface {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return UnderlayExistsError(fmt.Sprintf(
+				"existing underlay found: %s, new interfaces are %v", existingIface, params.UnderlayInterfaces))
+		}
+	}
+
 	for _, underlayInterface := range params.UnderlayInterfaces {
 		if err := moveUnderlayInterface(ctx, underlayInterface, ns); err != nil {
 			return err
