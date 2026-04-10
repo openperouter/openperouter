@@ -44,9 +44,14 @@ func APItoFRR(config ApiConfigData, nodeIndex int, logLevel string) (frr.Config,
 	underlayNeighbors := []frr.NeighborConfig{}
 	bfdProfiles := []frr.BFDProfile{}
 	for _, n := range underlay.Spec.Neighbors {
-		frrNeigh, err := neighborToFRR(n)
+		neighName, err := neighborName(n)
 		if err != nil {
-			return frr.Config{}, fmt.Errorf("failed to translate underlay neighbor %s to frr, err: %w", neighborName(n), err)
+			return frr.Config{}, fmt.Errorf("could not generate neighbor name, err: %w", err)
+		}
+
+		frrNeigh, err := neighborToFRR(n, neighName)
+		if err != nil {
+			return frr.Config{}, fmt.Errorf("failed to translate underlay neighbor %s to frr, err: %w", neighName, err)
 		}
 
 		bfdProfile := bfdProfileForNeighbor(n)
@@ -147,10 +152,17 @@ func passthroughToFRR(passthrough v1alpha1.L3Passthrough, nodeIndex int) (*frr.P
 		ToAdvertiseIPv4: []string{},
 		ToAdvertiseIPv6: []string{},
 	}
+	asn, err := frr.NewPeerASN(
+		passthrough.Spec.HostSession.HostASN,
+		passthrough.Spec.HostSession.HostType,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("could not parse passthrough HostSession, err: %w", err)
+	}
 
 	if vethIPs.Ipv4.HostSide.IP != nil {
 		res.LocalNeighborV4 = &frr.NeighborConfig{
-			ASN:  passthrough.Spec.HostSession.HostASN,
+			ASN:  asn,
 			Addr: vethIPs.Ipv4.HostSide.IP.String(),
 		}
 		ipnet := net.IPNet{
@@ -162,7 +174,7 @@ func passthroughToFRR(passthrough v1alpha1.L3Passthrough, nodeIndex int) (*frr.P
 	}
 	if vethIPs.Ipv6.HostSide.IP != nil {
 		res.LocalNeighborV6 = &frr.NeighborConfig{
-			ASN:  passthrough.Spec.HostSession.HostASN,
+			ASN:  asn,
 			Addr: vethIPs.Ipv6.HostSide.IP.String(),
 		}
 
@@ -195,15 +207,23 @@ func l3vniToFRR(vni v1alpha1.L3VNI, routerID string, underlayASN uint32, nodeInd
 
 	var configs []frr.L3VNIConfig
 
+	hostASN, err := frr.NewPeerASN(
+		vni.Spec.HostSession.HostASN,
+		vni.Spec.HostSession.HostType,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("could not parse HostSession, err: %w", err)
+	}
+
 	// Create IPv4 neighbor if IPv4 IP is available
 	if veths.Ipv4.HostSide.IP != nil {
-		config := createVNIConfig(vni, veths.Ipv4.HostSide.IP, net.CIDRMask(32, 32), routerID)
+		config := createVNIConfig(vni, veths.Ipv4.HostSide.IP, net.CIDRMask(32, 32), routerID, hostASN)
 		configs = append(configs, config)
 	}
 
 	// Create IPv6 neighbor if IPv6 IP is available
 	if veths.Ipv6.HostSide.IP != nil {
-		config := createVNIConfig(vni, veths.Ipv6.HostSide.IP, net.CIDRMask(128, 128), routerID)
+		config := createVNIConfig(vni, veths.Ipv6.HostSide.IP, net.CIDRMask(128, 128), routerID, hostASN)
 		configs = append(configs, config)
 	}
 
@@ -215,13 +235,10 @@ func l3vniToFRR(vni v1alpha1.L3VNI, routerID string, underlayASN uint32, nodeInd
 }
 
 // createVNIConfig creates a VNI configuration for a specific IP family
-func createVNIConfig(vni v1alpha1.L3VNI, hostIP net.IP, mask net.IPMask, routerID string) frr.L3VNIConfig {
+func createVNIConfig(vni v1alpha1.L3VNI, hostIP net.IP, mask net.IPMask, routerID string, hostASN frr.PeerASN) frr.L3VNIConfig {
 	vniNeighbor := &frr.NeighborConfig{
 		Addr: hostIP.String(),
-	}
-	vniNeighbor.ASN = vni.Spec.HostSession.ASN
-	if vni.Spec.HostSession.HostASN != 0 {
-		vniNeighbor.ASN = vni.Spec.HostSession.HostASN
+		ASN:  hostASN,
 	}
 
 	ipnet := net.IPNet{
@@ -251,19 +268,19 @@ func createVNIConfig(vni v1alpha1.L3VNI, hostIP net.IP, mask net.IPMask, routerI
 	return config
 }
 
-func neighborToFRR(n v1alpha1.Neighbor) (*frr.NeighborConfig, error) {
+func neighborToFRR(n v1alpha1.Neighbor, neighName string) (*frr.NeighborConfig, error) {
 	neighborFamily, err := ipfamily.ForAddresses(n.Address)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find ipfamily for %s, %w", n.Address, err)
 	}
 
-	if n.ASN == 0 {
-		return nil, fmt.Errorf("neighbor %s does not have ASN", n.Address)
+	asn, err := frr.NewPeerASN(n.ASN, n.Type)
+	if err != nil {
+		return nil, fmt.Errorf("could not parse neighbor configuration, err: %w", err)
 	}
-
 	res := &frr.NeighborConfig{
-		Name:         neighborName(n),
-		ASN:          n.ASN,
+		Name:         neighName,
+		ASN:          asn,
 		Addr:         n.Address,
 		Port:         n.Port,
 		IPFamily:     neighborFamily,
@@ -271,7 +288,7 @@ func neighborToFRR(n v1alpha1.Neighbor) (*frr.NeighborConfig, error) {
 	}
 	res.HoldTime, res.KeepaliveTime, err = parseTimers(n.HoldTime, n.KeepaliveTime)
 	if err != nil {
-		return nil, fmt.Errorf("invalid timers for neighbor %s, err: %w", neighborName(n), err)
+		return nil, fmt.Errorf("invalid timers for neighbor %s, err: %w", neighName, err)
 	}
 
 	if n.ConnectTime != nil {
@@ -323,8 +340,12 @@ func bfdProfileNameForNeighbor(n v1alpha1.Neighbor) string {
 	return fmt.Sprintf("neighbor-%s", n.Address)
 }
 
-func neighborName(n v1alpha1.Neighbor) string {
-	return fmt.Sprintf("%d@%s", n.ASN, n.Address)
+func neighborName(n v1alpha1.Neighbor) (string, error) {
+	asn, err := frr.NewPeerASN(n.ASN, n.Type)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s@%s", asn, n.Address), nil
 }
 
 func parseTimers(ht, ka *metav1.Duration) (*uint64, *uint64, error) {

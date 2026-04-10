@@ -117,24 +117,6 @@ var _ = Describe("Webhooks", func() {
 					},
 				},
 			}, "invalid local CIDR"),
-			Entry("when trying to create a VNI with the same local and remote ASN", v1alpha1.L3VNI{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-vni-4",
-					Namespace: openperouter.Namespace,
-				},
-				Spec: v1alpha1.L3VNISpec{
-					VRF:       "test-vrf-4",
-					VNI:       102,
-					VXLanPort: 4789,
-					HostSession: &v1alpha1.HostSession{
-						ASN:     65001,
-						HostASN: 65001,
-						LocalCIDR: v1alpha1.LocalCIDRConfig{
-							IPv4: "10.0.2.0/24",
-						},
-					},
-				},
-			}, "hostASN must be different from asn"),
 		)
 	})
 
@@ -627,25 +609,6 @@ var _ = Describe("Webhooks", func() {
 					},
 				},
 			}, "invalid vtep CIDR"),
-			Entry("when trying to create an underlay with a neighbor with the same ASN", v1alpha1.Underlay{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "underlay",
-					Namespace: openperouter.Namespace,
-				},
-				Spec: v1alpha1.UnderlaySpec{
-					ASN:  65000,
-					Nics: []string{"nic1"},
-					EVPN: &v1alpha1.EVPNConfig{
-						VTEPCIDR: "192.168.1.0/24",
-					},
-					Neighbors: []v1alpha1.Neighbor{
-						{
-							ASN:     65000,
-							Address: "192.168.1.1",
-						},
-					},
-				},
-			}, "local ASN 65000 must be different from remote ASN 65000"),
 		)
 	})
 
@@ -787,21 +750,6 @@ var _ = Describe("Webhooks", func() {
 					},
 				},
 			}, "invalid local CIDR"),
-			Entry("when trying to create an L3Passthrough with the same local and remote ASN", v1alpha1.L3Passthrough{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-passthrough-4",
-					Namespace: openperouter.Namespace,
-				},
-				Spec: v1alpha1.L3PassthroughSpec{
-					HostSession: v1alpha1.HostSession{
-						ASN: 65040,
-						LocalCIDR: v1alpha1.LocalCIDRConfig{
-							IPv4: "10.40.0.0/24",
-						},
-						HostASN: 65040,
-					},
-				},
-			}, "must be different from remote ASN"),
 		)
 	})
 

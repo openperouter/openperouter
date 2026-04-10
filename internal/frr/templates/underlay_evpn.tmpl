@@ -7,7 +7,9 @@
   address-family l2vpn evpn
 {{- range .Underlay.Neighbors }}
     neighbor {{ .Addr }} activate
-    neighbor {{ .Addr }} allowas-in 
+{{- if isEBGP $.Underlay.MyASN .ASN }}
+    neighbor {{ .Addr }} allowas-in
+{{- end }}
 {{- end }}
     advertise-all-vni
     advertise-svi-ip
