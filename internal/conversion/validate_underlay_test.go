@@ -110,7 +110,7 @@ func TestValidateUnderlay(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "zero nics",
+			name: "zero nics (valid for Multus)",
 			underlay: v1alpha1.Underlay{
 				Spec: v1alpha1.UnderlaySpec{
 					EVPN: &v1alpha1.EVPNConfig{
@@ -126,10 +126,10 @@ func TestValidateUnderlay(t *testing.T) {
 					},
 				},
 			},
-			wantErr: true,
+			wantErr: false,
 		},
 		{
-			name: "valid underlay with no nics",
+			name: "nil nics (valid for Multus)",
 			underlay: v1alpha1.Underlay{
 				Spec: v1alpha1.UnderlaySpec{
 					EVPN: &v1alpha1.EVPNConfig{
@@ -145,7 +145,7 @@ func TestValidateUnderlay(t *testing.T) {
 					},
 				},
 			},
-			wantErr: true,
+			wantErr: false,
 		},
 		{
 			name: "more than one nic",

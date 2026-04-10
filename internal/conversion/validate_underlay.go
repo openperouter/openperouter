@@ -50,10 +50,8 @@ func validateUnderlay(underlay v1alpha1.Underlay) error {
 		return fmt.Errorf("underlay %s must have at least one neighbor configured", underlay.Name)
 	}
 
-	// Validate at least one nic is specified
-	if len(underlay.Spec.Nics) == 0 {
-		return fmt.Errorf("underlay %s must have at least one nic configured", underlay.Name)
-	}
+	// Note: Nics can be empty when using Multus networks.
+	// The runtime check in APItoHostConfig enforces NIC presence when Multus is not enabled.
 
 	// Validate neighbor uniqueness
 	neighborAddresses := make(map[string]bool)
