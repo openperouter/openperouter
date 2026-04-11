@@ -377,8 +377,10 @@ bumplicense:
 	hack/bumplicense.sh
 
 .PHONY: checkuncommitted
+CSV_FILE = operator/bundle/manifests/openperouter-operator.clusterserviceversion.yaml
 checkuncommitted:
-	git diff --exit-code
+	git diff --exit-code -I'^    createdAt: ' -- $(CSV_FILE)
+	git diff --exit-code -- ':!$(CSV_FILE)'
 
 .PHONY: bumpall
 bumpall: bumplicense manifests
@@ -397,6 +399,9 @@ KIND_EXPORT_LOGS ?=/tmp/kind_logs
 .PHONY: kind-export-logs
 kind-export-logs: create-export-logs
 	$(LOCALBIN)/kind export logs --name ${KIND_CLUSTER_NAME} ${KIND_EXPORT_LOGS}
+
+.PHONY: generate-all
+generate-all: generate manifests generate-all-in-one helm-docs api-docs bundle ## Generate all code, manifests, and documentation.
 
 .PHONY: generate-all-in-one
 generate-all-in-one: manifests kustomize ## Create manifests
