@@ -222,6 +222,38 @@ var _ = Describe("L3 VNI configuration", func() {
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 	})
 
+	It("should set veth MTU when UnderlayMTU is configured", func() {
+		params := L3VNIParams{
+			VNIParams: VNIParams{
+				VRF:         "testred",
+				TargetNS:    testNSPath(),
+				VTEPIP:      "192.170.0.9/32",
+				VNI:         100,
+				VXLanPort:   4789,
+				UnderlayMTU: 1500,
+			},
+			HostVeth: &Veth{
+				HostIPv4: "192.168.9.1/32",
+				NSIPv4:   "192.168.9.0/32",
+			},
+		}
+
+		err := SetupL3VNI(context.Background(), params)
+		Expect(err).NotTo(HaveOccurred())
+
+		expectedMTU := params.UnderlayMTU - VXLanOverhead
+		Eventually(func(g Gomega) {
+			validateL3HostLeg(g, params)
+			validateVethMTU(g, params.VNIParams, expectedMTU)
+
+			_ = netnamespace.In(testNS, func() error {
+				validateL3VNI(g, params)
+				validateNSVethMTU(g, params.VNIParams, expectedMTU)
+				return nil
+			})
+		}, 30*time.Second, 1*time.Second).Should(Succeed())
+	})
+
 	It("should configure VXLAN and VRF when HostVeth is nil", func() {
 		params := L3VNIParams{
 			VNIParams: VNIParams{
@@ -444,6 +476,39 @@ var _ = Describe("L2 VNI configuration", func() {
 			},
 		}),
 	)
+
+	It("should set veth MTU when UnderlayMTU is configured", func() {
+		params := L2VNIParams{
+			VNIParams: VNIParams{
+				VRF:         "testred",
+				TargetNS:    testNSPath(),
+				VTEPIP:      "192.170.0.9/32",
+				VNI:         100,
+				VXLanPort:   4789,
+				UnderlayMTU: 9000,
+			},
+			L2GatewayIPs: []string{"192.168.1.0/24"},
+			HostMaster: &HostMaster{
+				Name: bridgeName,
+				Type: BridgeLinkType,
+			},
+		}
+
+		err := SetupL2VNI(context.Background(), params)
+		Expect(err).NotTo(HaveOccurred())
+
+		expectedMTU := params.UnderlayMTU - VXLanOverhead
+		Eventually(func(g Gomega) {
+			validateL2HostLeg(g, params)
+			validateVethMTU(g, params.VNIParams, expectedMTU)
+
+			_ = netnamespace.In(testNS, func() error {
+				validateL2VNI(g, params)
+				validateNSVethMTU(g, params.VNIParams, expectedMTU)
+				return nil
+			})
+		}, 30*time.Second, 1*time.Second).Should(Succeed())
+	})
 })
 
 func validateL3HostLeg(g Gomega, params L3VNIParams) {
@@ -685,4 +750,20 @@ func validateBridgeMacAddress(g Gomega, bridge netlink.Link, vni int) {
 	actualMac := bridge.Attrs().HardwareAddr
 	g.Expect(actualMac).NotTo(BeNil(), "bridge should have a MAC address")
 	g.Expect(actualMac).To(Equal(expectedMac), "bridge MAC address should be %v for VNI %d", expectedMac, vni)
+}
+
+func validateVethMTU(g Gomega, params VNIParams, expectedMTU int) {
+	vethNames := vethNamesFromVNI(params.VNI)
+	hostLeg, err := netlink.LinkByName(vethNames.HostSide)
+	g.Expect(err).NotTo(HaveOccurred(), "host veth not found %q", vethNames.HostSide)
+	g.Expect(hostLeg.Attrs().MTU).To(Equal(expectedMTU),
+		"host veth MTU should be %d, got %d", expectedMTU, hostLeg.Attrs().MTU)
+}
+
+func validateNSVethMTU(g Gomega, params VNIParams, expectedMTU int) {
+	vethNames := vethNamesFromVNI(params.VNI)
+	peLeg, err := netlink.LinkByName(vethNames.NamespaceSide)
+	g.Expect(err).NotTo(HaveOccurred(), "pe veth not found %q", vethNames.NamespaceSide)
+	g.Expect(peLeg.Attrs().MTU).To(Equal(expectedMTU),
+		"pe veth MTU should be %d, got %d", expectedMTU, peLeg.Attrs().MTU)
 }
