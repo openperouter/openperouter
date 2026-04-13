@@ -10,6 +10,7 @@ import (
 
 	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/openperouter/openperouter/internal/netnamespace"
+	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 )
 
@@ -24,14 +25,16 @@ type StartOptions struct {
 }
 
 // BridgeRefresher manages neighbor refresh for an L2VNI bridge.
-// It periodically sends ICMP pings to STALE neighbors to prevent
-// EVPN Type-2 routes from being withdrawn and to force STALE neighbors
-// to FAILED state in case the entry is really STALE.
+// It reacts to netlink neighbor notifications and also periodically
+// sends ICMP pings to STALE neighbors to prevent EVPN Type-2 routes
+// from being withdrawn and to force STALE neighbors to FAILED state
+// in case the entry is really STALE.
 type BridgeRefresher struct {
 	bridgeName    string // e.g., "br-pe-110"
 	namespace     string // Path to network namespace
 	refreshPeriod time.Duration
 	vni           int
+	bridgeIndex   int // cached link index for filtering netlink events
 
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
@@ -73,19 +76,48 @@ func (r *BridgeRefresher) Stop() {
 	slog.Info("stopped bridge refresher", "bridge", r.bridgeName)
 }
 
-// run is the main refresh loop.
+// run is the main refresh loop. It subscribes to netlink neighbor
+// notifications for immediate reaction to STALE transitions, with
+// periodic polling as a fallback.
 func (r *BridgeRefresher) run(ctx context.Context) {
 	ticker := time.NewTicker(r.refreshPeriod)
 	defer ticker.Stop()
 
+	neighCh, stopNetlinkListener := r.subscribeNeighborUpdates()
+
 	for {
 		select {
 		case <-ctx.Done():
+			stopNetlinkListener()
 			return
 		case <-ticker.C:
 			r.refresh()
+		case update, ok := <-neighCh:
+			if !ok {
+				slog.Error("neighbor subscription closed unexpectedly", "bridge", r.bridgeName)
+				neighCh = nil
+				continue
+			}
+			if r.isRelevantNeighUpdate(update) {
+				r.refresh()
+			}
 		}
 	}
+}
+
+// isRelevantNeighUpdate returns true if the update is a STALE transition
+// on this refresher's bridge that warrants an immediate refresh.
+func (r *BridgeRefresher) isRelevantNeighUpdate(update netlink.NeighUpdate) bool {
+	if update.LinkIndex != r.bridgeIndex {
+		return false
+	}
+	if update.State&netlink.NUD_STALE == 0 {
+		return false
+	}
+	if update.IP == nil || update.IP.IsLinkLocalUnicast() {
+		return false
+	}
+	return true
 }
 
 // refresh performs a single refresh cycle.
@@ -111,6 +143,8 @@ func (r *BridgeRefresher) refresh() {
 
 // refreshStaleNeighbors sends ICMP pings to all STALE neighbors on the bridge.
 func (r *BridgeRefresher) refreshStaleNeighbors() {
+	slog.Debug("refreshing stale neighbors", "bridge", r.bridgeName)
+
 	neighbors, err := r.listStaleNeighbors()
 	if err != nil {
 		slog.Debug("failed to list stale neighbors", "bridge", r.bridgeName, "error", err)
@@ -118,12 +152,9 @@ func (r *BridgeRefresher) refreshStaleNeighbors() {
 	}
 
 	for _, neigh := range neighbors {
+		slog.Debug("pinging stale neighbor", "ip", neigh.IP, "bridge", r.bridgeName)
 		if err := r.sendPing(neigh.IP); err != nil {
 			slog.Debug("failed to ping neighbor", "ip", neigh.IP, "bridge", r.bridgeName, "error", err)
 		}
-	}
-
-	if len(neighbors) > 0 {
-		slog.Debug("pinged stale neighbors", "bridge", r.bridgeName, "count", len(neighbors))
 	}
 }
