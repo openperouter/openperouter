@@ -774,3 +774,124 @@ func TestAPItoFRRRawConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestAPItoFRRRawConfigWithoutUnderlay(t *testing.T) {
+	rawConfigs := []v1alpha1.RawFRRConfig{
+		{
+			Spec: v1alpha1.RawFRRConfigSpec{
+				Priority:  10,
+				RawConfig: "ip prefix-list test seq 10 permit 10.0.0.0/8",
+			},
+		},
+		{
+			Spec: v1alpha1.RawFRRConfigSpec{
+				Priority:  5,
+				RawConfig: "route-map test permit 10",
+			},
+		},
+	}
+
+	wantConfig := frr.Config{
+		Loglevel: "debug",
+		RawConfig: []frr.RawFRRSnippet{
+			{Priority: 5, Config: "route-map test permit 10"},
+			{Priority: 10, Config: "ip prefix-list test seq 10 permit 10.0.0.0/8"},
+		},
+	}
+
+	tests := []struct {
+		name          string
+		l3VNIs        []v1alpha1.L3VNI
+		l3Passthrough []v1alpha1.L3Passthrough
+	}{
+		{
+			name: "raw config only",
+		},
+		{
+			name: "raw config with L3VNIs ignores VNIs",
+			l3VNIs: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+					Spec: v1alpha1.L3VNISpec{
+						HostSession: &v1alpha1.HostSession{
+							ASN: 65000,
+							LocalCIDR: v1alpha1.LocalCIDRConfig{
+								IPv4: "192.168.2.0/24",
+							},
+							HostASN: 65001,
+						},
+						VRF: "vrf1",
+						VNI: 200,
+					},
+				},
+			},
+		},
+		{
+			name: "raw config with L3Passthrough ignores passthrough",
+			l3Passthrough: []v1alpha1.L3Passthrough{
+				{
+					Spec: v1alpha1.L3PassthroughSpec{
+						HostSession: v1alpha1.HostSession{
+							HostASN: 65001,
+							ASN:     65000,
+							LocalCIDR: v1alpha1.LocalCIDRConfig{
+								IPv4: "192.168.2.0/24",
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "raw config with both L3VNIs and L3Passthrough ignores both",
+			l3VNIs: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+					Spec: v1alpha1.L3VNISpec{
+						HostSession: &v1alpha1.HostSession{
+							ASN: 65000,
+							LocalCIDR: v1alpha1.LocalCIDRConfig{
+								IPv4: "192.168.2.0/24",
+							},
+							HostASN: 65001,
+						},
+						VRF: "vrf1",
+						VNI: 200,
+					},
+				},
+			},
+			l3Passthrough: []v1alpha1.L3Passthrough{
+				{
+					Spec: v1alpha1.L3PassthroughSpec{
+						HostSession: v1alpha1.HostSession{
+							HostASN: 65001,
+							ASN:     65000,
+							LocalCIDR: v1alpha1.LocalCIDRConfig{
+								IPv4: "192.168.2.0/24",
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			apiConfig := ApiConfigData{
+				Underlays:     []v1alpha1.Underlay{},
+				RawFRRConfigs: rawConfigs,
+				L3VNIs:        tt.l3VNIs,
+				L3Passthrough: tt.l3Passthrough,
+			}
+			got, err := APItoFRR(apiConfig, 0, "debug")
+			if err != nil {
+				t.Fatalf("APItoFRR() unexpected error: %v", err)
+			}
+
+			if !cmp.Equal(got, wantConfig) {
+				t.Errorf("APItoFRR() diff: %s", cmp.Diff(got, wantConfig))
+			}
+		})
+	}
+}
