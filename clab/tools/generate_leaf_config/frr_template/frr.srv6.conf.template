@@ -1,0 +1,139 @@
+log file /etc/frr/frr.log debug
+
+debug zebra events
+debug zebra vxlan
+debug bgp zebra
+debug zebra events
+debug zebra nht
+debug zebra kernel
+debug zebra rib
+debug zebra nexthop
+debug bgp neighbor-events
+debug bgp updates
+debug bgp keepalives
+debug bgp nht
+debug bgp zebra
+debug bfd network
+debug bfd peer
+debug bfd zebra
+
+ip nht resolve-via-default
+ipv6 nht resolve-via-default
+ipv6 forwarding
+
+vrf red
+ vni 100
+exit-vrf
+!
+vrf blue
+ vni 200
+exit-vrf
+!
+router bgp 64520
+ bgp router-id {{ .RouterID }}
+ no bgp ebgp-requires-policy
+ no bgp network import-check
+ no bgp default ipv4-unicast
+ !
+ neighbor PE peer-group
+ neighbor PE remote-as 64514
+ neighbor PE update-source {{ .UpdateSource }}
+ neighbor PE capability extended-nexthop
+ neighbor PE ebgp-multihop
+ bgp listen range 2001:db8:1234:5678::/64 peer-group PE
+ !
+ segment-routing srv6
+  locator MAIN
+ exit
+ !
+ address-family ipv4 vpn
+  neighbor PE activate
+  neighbor PE next-hop-self
+ exit-address-family
+exit
+!
+router bgp 64520 vrf red
+ bgp router-id {{ .RouterID }}
+ sid vpn per-vrf export auto
+ !
+ address-family ipv4 unicast
+{{- if .RedistributeConnectedFromVRFs }}
+  redistribute connected
+{{- end }}
+  rd vpn export 100.64.0.1:100
+  rt vpn both 64514:100
+  export vpn
+  import vpn
+ exit-address-family
+ !
+ address-family ipv6 unicast
+{{- if .RedistributeConnectedFromVRFs }}
+  redistribute connected
+{{- end }}
+  rd vpn export {{ .RouterID }}:100
+  rt vpn both 64514:100
+  export vpn
+  import vpn
+ exit-address-family
+ !
+exit
+!
+router bgp 64520 vrf blue
+ bgp router-id {{ .RouterID }}
+ sid vpn per-vrf export auto
+ !
+ address-family ipv4 unicast
+{{- if .RedistributeConnectedFromVRFs }}
+  redistribute connected
+{{- end }}
+  rd vpn export 100.64.0.1:200
+  rt vpn both 64514:200
+  export vpn
+  import vpn
+ exit-address-family
+ !
+ address-family ipv6 unicast
+{{- if .RedistributeConnectedFromVRFs }}
+  redistribute connected
+{{- end }}
+  rd vpn export {{ .RouterID }}:200
+  rt vpn both 64514:200
+  export vpn
+  import vpn
+ exit-address-family
+ !
+exit
+! 
+interface eth1
+ ipv6 router isis ISIS
+exit
+!
+interface lo
+ ipv6 router isis ISIS
+ isis passive
+!
+router isis ISIS
+ is-type level-1
+ net {{ .ISISNet }}
+ segment-routing srv6
+  locator MAIN
+ exit
+exit
+!
+segment-routing
+ srv6
+  encapsulation
+   source-address {{ .UpdateSource }}
+  exit
+  locators
+   locator MAIN
+    prefix {{ .SRV6Prefix }} block-len 32 node-len 16
+    behavior usid
+    format usid-f3216
+   exit
+   !
+  exit
+  !
+ exit
+ !
+exit
