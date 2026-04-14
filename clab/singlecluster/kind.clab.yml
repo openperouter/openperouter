@@ -10,7 +10,7 @@ topology:
     agnhost:
       kind: linux
       image: "k8s.gcr.io/e2e-test-images/agnhost:2.40"
-      cmd: netexec --http-port=8090    
+      cmd: netexec --http-port=8090
 
   nodes:
     leafA:
@@ -23,10 +23,14 @@ topology:
       binds:
         - ../leafB/frr.conf:/etc/frr/frr.conf
         - ../leafB/setup.sh:/setup.sh
-    leafkind:
+    leafkind1:
       group: frr
       binds:
-        - leafkind/frr.conf:/etc/frr/frr.conf
+        - leafkind1/frr.conf:/etc/frr/frr.conf
+    leafkind2:
+      group: frr
+      binds:
+        - leafkind2/frr.conf:/etc/frr/frr.conf
     spine:
       group: frr
       binds:
@@ -53,7 +57,10 @@ topology:
       binds:
         - ../hostB_blue/setup.sh:/setup.sh
 
-    leafkind-switch:
+    leafkind1-sw:
+      kind: bridge
+
+    leafkind2-sw:
       kind: bridge
 
     pe-kind:
@@ -67,12 +74,17 @@ topology:
   links:
     - endpoints: ["leafA:eth1", "spine:eth1"]
     - endpoints: ["leafB:eth1", "spine:eth2"]
-    - endpoints: ["leafkind:eth1", "spine:eth3"]
+    - endpoints: ["leafkind1:eth1", "spine:eth3"]
+    - endpoints: ["leafkind2:eth1", "spine:eth4"]
     - endpoints: ["leafA:ethred", "hostA_red:eth1"]
     - endpoints: ["leafA:ethdefault", "hostA_default:eth1"]
     - endpoints: ["leafA:ethblue", "hostA_blue:eth1"]
     - endpoints: ["leafB:ethred", "hostB_red:eth1"]
     - endpoints: ["leafB:ethblue", "hostB_blue:eth1"]
-    - endpoints: ["leafkind:toswitch", "leafkind-switch:leaf2"]
-    - endpoints: ["pe-kind-control-plane:toswitch", "leafkind-switch:kindctrlpl"]
-    - endpoints: ["pe-kind-worker:toswitch", "leafkind-switch:kindworker"]
+    - endpoints: ["leafkind1:toswitch", "leafkind1-sw:leaf1"]
+    - endpoints: ["leafkind2:toswitch2", "leafkind2-sw:leaf2"]
+    # All kind nodes connect to both leaf switches for redundancy
+    - endpoints: ["pe-kind-control-plane:toswitch", "leafkind1-sw:kindctrlpl1"]
+    - endpoints: ["pe-kind-worker:toswitch", "leafkind1-sw:kindworker1"]
+    - endpoints: ["pe-kind-control-plane:toswitch2", "leafkind2-sw:kindctrlpl2"]
+    - endpoints: ["pe-kind-worker:toswitch2", "leafkind2-sw:kindworker2"]
