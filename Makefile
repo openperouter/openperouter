@@ -30,6 +30,9 @@ SHELL = /usr/bin/env bash -o pipefail
 # file to deploy. It defauls to the single cluster variant
 CLAB_TOPOLOGY_FILE ?= singlecluster/kind.clab.yml
 
+# Deploy lab with SRV6 configuration.
+SRV6 ?= false
+
 .PHONY: all
 all: build
 
@@ -333,7 +336,7 @@ e2etests-hostmode-boot: ginkgo kubectl build-validator create-export-logs ## Run
 
 .PHONY: clab-cluster
 clab-cluster: kind-node-image-build
-	KUBECONFIG_PATH=$(KUBECONFIG_PATH) KIND=$(KIND) CLAB_TOPOLOGY=$(CLAB_TOPOLOGY_FILE) clab/setup.sh
+	KUBECONFIG_PATH=$(KUBECONFIG_PATH) KIND=$(KIND) CLAB_TOPOLOGY=$(CLAB_TOPOLOGY_FILE) SRV6=$(SRV6) clab/setup.sh
 	@echo 'kind cluster created, to use it please'
 	@echo 'export KUBECONFIG=${KUBECONFIG_PATH}'
 
@@ -470,6 +473,10 @@ demo-metallb:
 .PHONY: demo-l2-evpn
 demo-l2:
 	examples/evpn/layer2/prepare.sh
+
+.PHONY: demo-metallb-l3vpn
+demo-metallb-l3vpn:
+	examples/l3vpn/metallb/prepare.sh
 
 .PHONY: demo-calico-evpn
 demo-calico:
