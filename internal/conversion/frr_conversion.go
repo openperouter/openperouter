@@ -32,11 +32,22 @@ func APItoFRR(config ApiConfigData, nodeIndex int, logLevel string) (frr.Config,
 	if len(config.Underlays) > 1 {
 		return frr.Config{}, errors.New("multiple underlays defined")
 	}
-	if len(config.Underlays) == 0 {
-		return frr.Config{}, FRREmptyConfigError("no underlays provided")
-	}
 	if len(config.L3Passthrough) > 1 {
 		return frr.Config{}, errors.New("multiple passthrough defined, can have only one")
+	}
+
+	rawSnippets := rawConfigSnippets(config.RawFRRConfigs)
+	// if we have raw config, we apply it regardless of the rest of the configuration
+	if len(rawSnippets) > 0 && len(config.Underlays) == 0 {
+		slog.Info("no underlay provided, applying raw configuration only")
+		return frr.Config{
+			Loglevel:  logLevel,
+			RawConfig: rawSnippets,
+		}, nil
+	}
+
+	if len(config.Underlays) == 0 {
+		return frr.Config{}, FRREmptyConfigError("no underlays provided")
 	}
 
 	underlay := config.Underlays[0]
@@ -79,7 +90,6 @@ func APItoFRR(config ApiConfigData, nodeIndex int, logLevel string) (frr.Config,
 	if len(config.L3VNIs) > 0 && underlay.Spec.EVPN == nil {
 		return frr.Config{}, fmt.Errorf("EVPN configuration is required when L3 VNIs are defined")
 	}
-	rawSnippets := rawConfigSnippets(config.RawFRRConfigs)
 
 	if underlay.Spec.EVPN == nil {
 		return frr.Config{
