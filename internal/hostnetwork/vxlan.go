@@ -139,7 +139,7 @@ func findFirstInterfaceIPv4Address(iface *net.Interface) (net.IP, error) {
 		return nil, fmt.Errorf("failed to get addresses: %w", err)
 	}
 	for _, addr := range addrs {
-		if addr.String() == underlayInterfaceSpecialAddr {
+		if IsUnderlayMarkerIP(addr.String()) {
 			continue
 		}
 		var ip net.IP
