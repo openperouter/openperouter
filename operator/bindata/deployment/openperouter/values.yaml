@@ -63,6 +63,23 @@ openperouter:
     resources: {}
     reloader:
       resources: {}
+  # grout contains configuration for the optional grout DPDK dataplane sidecar.
+  # When enabled, grout runs alongside FRR and accelerates L3 forwarding via
+  # DPDK. FRR's dplane_grout module syncs routes automatically to grout.
+  grout:
+    # -- Enable grout sidecar for DPDK-accelerated L3 routing
+    enabled: false
+    image:
+      repository: quay.io/grout/grout
+      tag: "0.15.0"
+      pullPolicy: ""
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "250m"
+      limits:
+        memory: "1Gi"
+        cpu: "500m"
   cri: "containerd" # cri to bind its socket, can be containerd or crio.
   # -- OVS database socket path. Defaults to standard OVS location if not specified.
   ovsSocketPath: ""

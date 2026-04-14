@@ -45,7 +45,11 @@ data:
     # Check /etc/pam.d/frr if you intend to use "vtysh"!
     #
     vtysh_enable=yes
+    {{- if .Values.openperouter.grout.enabled }}
+    zebra_options="  -A 127.0.0.1 -s 90000000 --limit-fds 100000 -M dplane_grout"
+    {{- else }}
     zebra_options="  -A 127.0.0.1 -s 90000000 --limit-fds 100000"
+    {{- end }}
     bgpd_options="   -A 127.0.0.1 --limit-fds 100000"
     ospfd_options="  -A 127.0.0.1"
     ospf6d_options=" -A ::1"
@@ -151,11 +155,19 @@ spec:
         env:
           - name: TINI_SUBREAPER
             value: "true"
+          {{- if .Values.openperouter.grout.enabled }}
+          - name: GROUT_SOCK_PATH
+            value: "/var/run/grout/grout.sock"
+          {{- end }}
         volumeMounts:
           - name: frr-sockets
             mountPath: /var/run/frr
           - name: frrconfig
             mountPath: /etc/frr
+          {{- if .Values.openperouter.grout.enabled }}
+          - name: grout-socket
+            mountPath: /var/run/grout
+          {{- end }}
         # The command is FRR's default entrypoint & waiting for the log file to appear and tailing it.
         # If the log file isn't created in 60 seconds the tail fails and the container is restarted.
         # This workaround is needed to have the frr logs as part of kubectl logs -c frr < k8s-frr-podname >.
@@ -220,6 +232,59 @@ spec:
         resources:
           {{- toYaml . | nindent 12 }}
         {{- end }}
+      {{- if .Values.openperouter.grout.enabled }}
+      - name: grout
+        securityContext:
+          privileged: true
+        image: "{{ .Values.openperouter.grout.image.repository }}:{{ .Values.openperouter.grout.image.tag }}"
+        {{- if .Values.openperouter.grout.image.pullPolicy }}
+        imagePullPolicy: {{ .Values.openperouter.grout.image.pullPolicy }}
+        {{- end }}
+        env:
+          - name: GROUT_SOCK_PATH
+            value: "/var/run/grout/grout.sock"
+        command: [ grout ]
+        args:
+        - --test-mode
+        - --socket-mode
+        - "0666"
+        {{- if eq .Values.openperouter.logLevel "debug" }}
+        - --verbose
+        {{- end }}
+        volumeMounts:
+          - name: grout-socket
+            mountPath: /var/run/grout
+        {{- with .Values.openperouter.grout.resources }}
+        resources:
+          {{- toYaml . | nindent 12 }}
+        {{- end }}
+        startupProbe:
+          exec:
+            command:
+              - /bin/sh
+              - -c
+              - "test -S ${GROUT_SOCK_PATH}"
+          initialDelaySeconds: 2
+          periodSeconds: 5
+          failureThreshold: 12
+        readinessProbe:
+          exec:
+            command:
+              - /bin/sh
+              - -c
+              - "test -S ${GROUT_SOCK_PATH}"
+          periodSeconds: 10
+        livenessProbe:
+          exec:
+            command:
+              - grcli
+              - -e
+              - --socket
+              - /var/run/grout/grout.sock
+              - graph
+              - show
+          periodSeconds: 30
+      {{- end }}
       tolerations:
       {{- if .Values.openperouter.runOnMaster }}
       - effect: NoSchedule
@@ -247,6 +312,12 @@ spec:
             type: DirectoryOrCreate
         - name: frrconfig
           emptyDir: {}
+        {{- if .Values.openperouter.grout.enabled }}
+        - name: grout-socket
+          hostPath:
+            path: /var/run/openperouter/grout
+            type: DirectoryOrCreate
+        {{- end }}
       initContainers:
         # Copies the initial config files with the right permissions to the shared volume.
         - name: cp-frr-files

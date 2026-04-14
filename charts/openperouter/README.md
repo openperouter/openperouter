@@ -35,6 +35,14 @@ Kubernetes: `>= 1.19.0-0`
 | openperouter.frr.image.tag | string | `""` |  |
 | openperouter.frr.reloader.resources | object | `{}` |  |
 | openperouter.frr.resources | object | `{}` |  |
+| openperouter.grout.enabled | bool | `false` | Enable grout sidecar for DPDK-accelerated L3 routing |
+| openperouter.grout.image.pullPolicy | string | `""` |  |
+| openperouter.grout.image.repository | string | `"quay.io/grout/grout"` |  |
+| openperouter.grout.image.tag | string | `"0.15.0"` |  |
+| openperouter.grout.resources.limits.cpu | string | `"500m"` |  |
+| openperouter.grout.resources.limits.memory | string | `"1Gi"` |  |
+| openperouter.grout.resources.requests.cpu | string | `"250m"` |  |
+| openperouter.grout.resources.requests.memory | string | `"512Mi"` |  |
 | openperouter.hostmode | bool | `false` | If true, enables host mode deployment: deploys hostbridge DaemonSet instead of router and controller, and configures nodemarker to run in webhook-only mode |
 | openperouter.image.pullPolicy | string | `""` |  |
 | openperouter.image.repository | string | `"quay.io/openperouter/router"` |  |

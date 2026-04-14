@@ -336,6 +336,87 @@
               "reloader": {}
             }
           },
+          "grout": {
+            "type": "object",
+            "description": "Configuration for the optional grout DPDK dataplane sidecar.",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "description": "Enable grout sidecar for DPDK-accelerated L3 routing.",
+                "default": false
+              },
+              "image": {
+                "type": "object",
+                "description": "Configuration for the grout container image.",
+                "properties": {
+                  "repository": {
+                    "type": "string",
+                    "description": "The repository for the grout container image.",
+                    "default": "quay.io/openperouter/openperouter"
+                  },
+                  "tag": {
+                    "type": "string",
+                    "description": "The tag for the grout container image."
+                  },
+                  "pullPolicy": {
+                    "type": "string",
+                    "description": "The pull policy for the grout container image."
+                  }
+                },
+                "default": {
+                  "repository": "quay.io/openperouter/openperouter"
+                }
+              },
+              "resources": {
+                "type": "object",
+                "description": "Resource requests and limits for the grout container.",
+                "properties": {
+                  "limits": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": [
+                        "string",
+                        "integer"
+                      ]
+                    }
+                  },
+                  "requests": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": [
+                        "string",
+                        "integer"
+                      ]
+                    }
+                  }
+                },
+                "default": {}
+              },
+              "logLevel": {
+                "type": "string",
+                "description": "Grout log level. Must be one of: `emerg`, `alert`, `crit`, `err`, `warning`, `notice`, `info` or `debug`.",
+                "enum": [
+                  "emerg",
+                  "alert",
+                  "crit",
+                  "err",
+                  "warning",
+                  "notice",
+                  "info",
+                  "debug"
+                ],
+                "default": "info"
+              }
+            },
+            "default": {
+              "enabled": false,
+              "image": {
+                "repository": "quay.io/openperouter/openperouter"
+              },
+              "logLevel": "info",
+              "initScript": ""
+            }
+          },
           "cri": {
             "type": "string",
             "description": "cri to bind its socket, can be containerd or crio.",
@@ -378,6 +459,14 @@
           "frr": {
             "resources": {},
             "reloader": {}
+          },
+          "grout": {
+            "enabled": false,
+            "image": {
+              "repository": "quay.io/openperouter/openperouter"
+            },
+            "logLevel": "info",
+            "initScript": ""
           },
           "cri": "containerd"
         }
