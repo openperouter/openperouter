@@ -38,9 +38,50 @@ spec:
 | Field | Type | Description | Required |
 |-------|------|-------------|----------|
 | `asn` | integer | Local ASN for BGP sessions | Yes |
-| `nics` | array | List of network interface names to move to router namespace | Yes |
-| `neighbors` | array | List of BGP neighbors to peer with | Yes |
+| `nics` | array | List of network interface names to move to router namespace (minimum 1) | Yes |
+| `neighbors` | array | List of BGP neighbors to peer with (minimum 1) | Yes |
 | `nodeSelector` | object | Label selector to target specific nodes (applies to all nodes if omitted) | No |
+
+### Multiple Interfaces and Neighbors
+
+OpenPERouter supports configuring multiple physical network interfaces and multiple BGP neighbors for production deployments with redundancy and multi-path networking.
+
+**Example with multiple neighbors and interfaces**:
+
+```yaml
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: Underlay
+metadata:
+  name: underlay
+  namespace: openperouter-system
+spec:
+  asn: 64514
+  
+  # Multiple interfaces for redundancy
+  nics:
+    - toswitch
+    - toswitch2
+  
+  # Multiple neighbors for dual-ToR setup
+  neighbors:
+    - asn: 64512
+      address: 192.168.11.2
+    - asn: 64512
+      address: 192.168.11.3
+    - asn: 64513
+      address: 192.168.12.2
+    - asn: 64513
+      address: 192.168.12.3
+```
+
+**Validation requirements**:
+- At least one neighbor must be configured
+- At least one NIC must be configured (unless using Multus)
+- Neighbor addresses must be unique
+- NIC names must be unique
+- Local ASN must differ from all neighbor ASNs
+
+For detailed information, examples, and best practices, see the [Multiple Interfaces and Neighbors]({{< ref "multi-underlay.md" >}}) documentation.
 
 ### Per-Node Configuration
 

@@ -17,6 +17,8 @@ In addition to the configuration described in the [underlay configuration sectio
 
 Exactly one of the two must be specified.
 
+**Note**: OpenPERouter supports multiple underlay interfaces and multiple BGP neighbors for production deployments. The VTEP configuration works identically regardless of how many interfaces or neighbors are configured. See [Multiple Interfaces and Neighbors]({{< ref "multi-underlay.md" >}}) for details.
+
 ### Using vtepcidr
 
 ```yaml
