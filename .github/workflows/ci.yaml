@@ -173,6 +173,32 @@ jobs:
           name: image-tar-openperouter
           path: /tmp/openperouter.tar
 
+  build-grout-images:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: true
+    steps:
+      - name: Code checkout
+        uses: actions/checkout@v4
+      - name: Setup docker buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and export the image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          tags: quay.io/openperouter/router:grout
+          file: Dockerfile.grout
+          outputs: type=docker,dest=/tmp/openperouter-grout.tar
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Upload openperouter artifact
+        uses: actions/upload-artifact@v4
+        with:
+          retention-days: 1
+          name: image-tar-openperouter-grout
+          path: /tmp/openperouter-grout.tar
+
   e2etests:
     runs-on: ubuntu-22.04
     env:
@@ -181,10 +207,11 @@ jobs:
       - build-kind-node-image
       - unit-tests
       - build-test-images
+      - build-grout-images
     strategy:
       fail-fast: false
       matrix:
-        deployment: [manifests, helm, operator, systemdmode, hostmode-boot]
+        deployment: [manifests, helm, operator, systemdmode, hostmode-boot, helm-grout]
     steps:
       - name: Free Disk Space
         working-directory: ${{ github.workspace }}
@@ -236,12 +263,14 @@ jobs:
         working-directory: image
         run: |
           docker load -i image-tar-openperouter/openperouter.tar
+          docker load -i image-tar-openperouter-grout/openperouter-grout.tar
 
       - name: Deploy the cluster
         run: |
           MAKE_RULE="deploy"
           IMG_REPO="quay.io/openperouter"
           if [ ${{ matrix.deployment }} = "helm" ]; then MAKE_RULE="deploy-helm"; fi
+          if [ ${{ matrix.deployment }} = "helm-grout" ]; then MAKE_RULE="grout-deploy-helm"; fi
           if [ ${{ matrix.deployment }} = "systemdmode" ]; then MAKE_RULE="deploy-hostmode"; fi
           if [ ${{ matrix.deployment }} = "hostmode-boot" ]; then MAKE_RULE="deploy-hostmode-boot"; fi
           if [ ${{ matrix.deployment }} = "operator" ]; then MAKE_RULE="deploy-operator-with-olm"; IMG_REPO="localhost:5000"; export USE_HTTP=--use-http; export TLS_VERIFY=false; export KUBECONFIG=bin/kubeconfig; fi
@@ -256,6 +285,8 @@ jobs:
             make e2etests
           elif [ ${{ matrix.deployment }} = "hostmode-boot" ]; then
             make e2etests-hostmode-boot
+          elif [ ${{ matrix.deployment }} = "helm-grout" ]; then
+            make e2etests GINKGO_ARGS="--label-filter=passthrough"
           else
             export GINKGO_ARGS="--label-filter='!systemdmode'"
             make e2etests
