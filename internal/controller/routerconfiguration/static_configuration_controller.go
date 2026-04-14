@@ -27,6 +27,8 @@ type StaticConfigReconciler struct {
 	LogLevel        string
 	FRRConfigPath   string
 	FRRReloadSocket string
+	GroutEnabled    bool
+	GroutSocketPath string
 	RouterProvider  RouterProvider
 	ConfigDir       string
 
@@ -74,7 +76,7 @@ func (r *StaticConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	updater := frrconfig.UpdaterForSocket(r.FRRReloadSocket, r.FRRConfigPath)
 
-	err = Reconcile(ctx, apiConfig, false, r.NodeIndex, r.LogLevel, r.FRRConfigPath, targetNS, updater)
+	err = Reconcile(ctx, apiConfig, false, r.GroutEnabled, r.GroutSocketPath, r.NodeIndex, r.LogLevel, r.FRRConfigPath, targetNS, updater)
 	if nonRecoverableHostError(err) {
 		if err := router.HandleNonRecoverableError(ctx); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to handle non recoverable error: %w", err)
