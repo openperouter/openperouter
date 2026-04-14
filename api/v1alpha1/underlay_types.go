@@ -39,7 +39,10 @@ type UnderlaySpec struct {
 	// +optional
 	RouterIDCIDR string `json:"routeridcidr,omitempty"`
 
-	// Neighbors is the list of external neighbors to peer with.
+	// Neighbors is the list of external BGP neighbors to peer with.
+	// Multiple neighbors are supported for connecting to multiple TOR switches
+	// or establishing redundant BGP sessions. Each neighbor address must be unique.
+	// At least one neighbor is required.
 	// +kubebuilder:validation:MinItems=1
 	Neighbors []Neighbor `json:"neighbors,omitempty"`
 
