@@ -5,7 +5,7 @@
 set -euo pipefail
 
 # Configuration - can be overridden via environment variables
-KIND_NODE_VERSION="${KIND_NODE_VERSION:-v1.32.2}"
+KIND_NODE_VERSION="${KIND_NODE_VERSION:-v1.32.11}"
 IMG_REPO="${IMG_REPO:-quay.io/openperouter}"
 IMG_NAME="${IMG_NAME:-kind-node-openperouter}"
 IMG_TAG="${IMG_TAG:-${KIND_NODE_VERSION}}"

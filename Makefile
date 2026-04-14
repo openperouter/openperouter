@@ -159,7 +159,7 @@ KUSTOMIZE_VERSION ?= v5.0.0
 CONTROLLER_TOOLS_VERSION ?= v0.19.0
 KUBECTL_VERSION ?= v1.27.0
 GINKGO_VERSION ?= $(shell go list -m -f '{{.Version}}' github.com/onsi/ginkgo/v2)
-KIND_VERSION ?= v0.27.0
+KIND_VERSION ?= v0.31.0
 KIND_CLUSTER_NAME ?= pe-kind
 HELM_VERSION ?= v3.12.3
 HELM_DOCS_VERSION ?= v1.10.0
@@ -167,7 +167,7 @@ APIDOCSGEN_VERSION ?= v0.3.0
 HUGO_VERSION ?= v0.147.8
 
 # Kind node image configuration
-KIND_NODE_VERSION ?= v1.32.2
+KIND_NODE_VERSION ?= v1.32.11
 KIND_NODE_IMG_REPO ?= quay.io/openperouter
 KIND_NODE_IMG_NAME ?= kind-node-openperouter
 KIND_NODE_IMG_TAG ?= $(KIND_NODE_VERSION)

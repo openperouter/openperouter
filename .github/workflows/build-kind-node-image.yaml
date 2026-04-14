@@ -14,9 +14,9 @@ on:
   workflow_dispatch:
     inputs:
       kind_version:
-        description: 'Kind node version to use as base (e.g., v1.32.2)'
+        description: 'Kind node version to use as base (e.g., v1.32.11)'
         required: false
-        default: 'v1.32.2'
+        default: 'v1.32.11'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -47,7 +47,7 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "version=${{ github.event.inputs.kind_version }}" >> $GITHUB_OUTPUT
           else
-            echo "version=v1.32.2" >> $GITHUB_OUTPUT
+            echo "version=v1.32.11" >> $GITHUB_OUTPUT
           fi
 
       - name: Build image for platform
