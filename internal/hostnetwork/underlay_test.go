@@ -196,7 +196,7 @@ func validateUnderlay(g Gomega, params UnderlayParams, interfaceIPs ...string) {
 			for _, ip := range interfaceIPs {
 				validateIP(g, l, ip)
 			}
-			validateIP(g, l, underlayInterfaceSpecialAddr)
+			validateIP(g, l, UnderlayInterfaceSpecialAddr)
 		}
 
 	}

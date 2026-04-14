@@ -19,7 +19,7 @@ const (
 
 // used to identify the interface moved into the network ns to serve
 // the underlay
-const underlayInterfaceSpecialAddr = "172.16.1.1/32"
+const UnderlayInterfaceSpecialAddr = "172.16.1.1/32"
 
 type UnderlayParams struct {
 	UnderlayInterface string              `json:"underlay_interface"`
@@ -45,7 +45,7 @@ func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
 	}()
 
 	if params.UnderlayInterface != "" {
-		if err := moveUnderlayInterface(ctx, params.UnderlayInterface, ns); err != nil {
+		if err := MoveUnderlayInterface(ctx, params.UnderlayInterface, ns); err != nil {
 			return err
 		}
 	}
@@ -97,8 +97,8 @@ func ensureLoopback(ctx context.Context, ns netns.NsHandle, vtepIP string) error
 
 // moveUnderlayInterface moves the interface to be used for the underlay connectivity in
 // the given namespace.
-func moveUnderlayInterface(ctx context.Context, underlayInterface string, ns netns.NsHandle) error {
-	currentUnderlayInterface, err := findInterfaceWithIP(ns, underlayInterfaceSpecialAddr)
+func MoveUnderlayInterface(ctx context.Context, underlayInterface string, ns netns.NsHandle) error {
+	currentUnderlayInterface, err := findInterfaceWithIP(ns, UnderlayInterfaceSpecialAddr)
 	if err != nil {
 		return fmt.Errorf("failed to get old underlay interface %w", err)
 	}
@@ -127,7 +127,7 @@ func moveUnderlayInterface(ctx context.Context, underlayInterface string, ns net
 		}
 
 		// we assign a special address so we we can detect if an interface was already moved.
-		if err := assignIPToInterface(underlay, underlayInterfaceSpecialAddr); err != nil {
+		if err := assignIPToInterface(underlay, UnderlayInterfaceSpecialAddr); err != nil {
 			return err
 		}
 		if err := netlink.LinkSetUp(underlay); err != nil {
@@ -153,7 +153,7 @@ func HasUnderlayInterface(namespace string) (bool, error) {
 		}
 	}()
 
-	underlayInterface, err := findInterfaceWithIP(ns, underlayInterfaceSpecialAddr)
+	underlayInterface, err := findInterfaceWithIP(ns, UnderlayInterfaceSpecialAddr)
 	if err != nil {
 		return false, fmt.Errorf("failed to get old underlay interface %w", err)
 	}
