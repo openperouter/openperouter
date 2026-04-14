@@ -36,7 +36,8 @@ func redistributeConnectedForLeafKind(nodes []corev1.Node) {
 	}
 
 	config := infra.LeafKindConfiguration{
-		PERouterASN:           64514,
+		PERouterASN:           uint32(infra.LeafKindConfig.ASN),
+		SpinePeerAddress:      infra.LeafKindConfig.SpinePeerAddress,
 		RedistributeConnected: true,
 		Neighbors:             neighbors,
 	}
@@ -68,6 +69,6 @@ func ibgpForLeafKind(nodes []corev1.Node) {
 }
 
 func resetLeafKindConfig(nodes []corev1.Node) {
-	err := infra.UpdateLeafKindConfig(nodes, false)
+	err := infra.LeafKindConfig.UpdateConfig(nodes, false)
 	Expect(err).NotTo(HaveOccurred())
 }
