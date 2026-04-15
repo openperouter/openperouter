@@ -35,7 +35,11 @@ The development environment uses kind and containerlab. Details can be found in 
 
 ## Go Style Guidelines
 
-You can run `make lint` to run the go linter against the codebase.
+You can run `make lint` to run the go linter against the codebase. This includes
+the [kube-api-linter](https://sigs.k8s.io/kube-api-linter) plugin, which validates
+that API types under `api/` follow Kubernetes API conventions (lowercase field
+descriptions, proper markers, correct use of optional/required pointers, etc.).
+The linter plugin is configured in `.custom-gcl.yml` and `.golangci.yml`.
 
 ### Code Readability: Line of Sight
 
