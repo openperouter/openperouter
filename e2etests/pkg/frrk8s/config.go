@@ -15,6 +15,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/utils/ptr"
 )
 
 var (
@@ -25,21 +26,23 @@ var (
 // ConfigFromHostSession converts a HostSession object to FRRConfiguration objects.
 // Returns a slice with one configuration for each IP family (IPv4 and/or IPv6).
 func ConfigFromHostSession(hostsession v1alpha1.HostSession, name string, tweak ...func(*frrk8sapi.FRRConfiguration)) ([]frrk8sapi.FRRConfiguration, error) {
-	if hostsession.LocalCIDR.IPv4 == "" && hostsession.LocalCIDR.IPv6 == "" {
+	ipv4CIDR := ptr.Deref(hostsession.LocalCIDR.IPv4, "")
+	ipv6CIDR := ptr.Deref(hostsession.LocalCIDR.IPv6, "")
+	if ipv4CIDR == "" && ipv6CIDR == "" {
 		return nil, fmt.Errorf("LocalCIDR is required for HostSession %s", name)
 	}
 
 	var configs []frrk8sapi.FRRConfiguration
-	if hostsession.LocalCIDR.IPv4 != "" {
-		config, err := createFRRConfig(hostsession, name, hostsession.LocalCIDR.IPv4, ipfamily.IPv4, tweak...)
+	if ipv4CIDR != "" {
+		config, err := createFRRConfig(hostsession, name, ipv4CIDR, ipfamily.IPv4, tweak...)
 		if err != nil {
 			return nil, err
 		}
 		configs = append(configs, config)
 	}
 
-	if hostsession.LocalCIDR.IPv6 != "" {
-		config, err := createFRRConfig(hostsession, name, hostsession.LocalCIDR.IPv6, ipfamily.IPv6, tweak...)
+	if ipv6CIDR != "" {
+		config, err := createFRRConfig(hostsession, name, ipv6CIDR, ipfamily.IPv6, tweak...)
 		if err != nil {
 			return nil, err
 		}
@@ -56,23 +59,25 @@ func ConfigFromHostSession(hostsession v1alpha1.HostSession, name string, tweak 
 // ConfigFromHostSessionForIPFamily converts a HostSession object to FRRConfiguration objects for a specific IP family.
 // Returns a slice with one configuration for the specified IP family.
 func ConfigFromHostSessionForIPFamily(hostsession v1alpha1.HostSession, name string, family ipfamily.Family, tweak ...func(*frrk8sapi.FRRConfiguration)) (*frrk8sapi.FRRConfiguration, error) {
-	if hostsession.LocalCIDR.IPv4 == "" && hostsession.LocalCIDR.IPv6 == "" {
+	ipv4CIDR := ptr.Deref(hostsession.LocalCIDR.IPv4, "")
+	ipv6CIDR := ptr.Deref(hostsession.LocalCIDR.IPv6, "")
+	if ipv4CIDR == "" && ipv6CIDR == "" {
 		return nil, fmt.Errorf("LocalCIDR is required for HostSession %s", name)
 	}
 	if family == ipfamily.IPv4 {
-		if hostsession.LocalCIDR.IPv4 == "" {
+		if ipv4CIDR == "" {
 			return nil, fmt.Errorf("IPv4 CIDR not provided for HostSession %s", name)
 		}
-		res, err := createFRRConfig(hostsession, name, hostsession.LocalCIDR.IPv4, family, tweak...)
+		res, err := createFRRConfig(hostsession, name, ipv4CIDR, family, tweak...)
 		if err != nil {
 			return nil, err
 		}
 		return &res, nil
 	}
-	if hostsession.LocalCIDR.IPv6 == "" {
+	if ipv6CIDR == "" {
 		return nil, fmt.Errorf("IPv6 CIDR not provided for HostSession %s", name)
 	}
-	res, err := createFRRConfig(hostsession, name, hostsession.LocalCIDR.IPv6, family, tweak...)
+	res, err := createFRRConfig(hostsession, name, ipv6CIDR, family, tweak...)
 	if err != nil {
 		return nil, err
 	}
@@ -134,10 +139,10 @@ func createFRRConfig(hostsession v1alpha1.HostSession, name, cidr string, family
 			BGP: frrk8sapi.BGPConfig{
 				Routers: []frrk8sapi.Router{
 					{
-						ASN: hostsession.HostASN,
+						ASN: uint32(ptr.Deref(hostsession.HostASN, 0)), // #nosec G115
 						Neighbors: []frrk8sapi.Neighbor{
 							{
-								ASN:     hostsession.ASN,
+								ASN:     uint32(hostsession.ASN), // #nosec G115
 								Address: routerIP,
 								ToReceive: frrk8sapi.Receive{
 									Allowed: frrk8sapi.AllowedInPrefixes{

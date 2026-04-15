@@ -38,8 +38,8 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			Namespace: openperouter.Namespace,
 		},
 		Spec: v1alpha1.L3VNISpec{
-			VRF: "red",
-			VNI: 100,
+			VRF: ptr.To("red"),
+			VNI: ptr.To(int64(100)),
 		},
 	}
 
@@ -52,13 +52,13 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			Name:      "red110",
 			Namespace: openperouter.Namespace,
 		},
-		Spec: v1alpha1.L2VNISpec{
+		Spec: &v1alpha1.L2VNISpec{
 			VRF: ptr.To("red"),
-			VNI: 110,
+			VNI: ptr.To(int64(110)),
 			HostMaster: &v1alpha1.HostMaster{
 				Type: linuxBridgeHostAttachment,
 				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
-					AutoCreate: true,
+					AutoCreate: ptr.To(true),
 				},
 			},
 		},
@@ -216,7 +216,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			hostMaster: v1alpha1.HostMaster{
 				Type: linuxBridgeHostAttachment,
 				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
-					AutoCreate: true,
+					AutoCreate: ptr.To(true),
 				},
 			},
 		}),
@@ -230,7 +230,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			hostMaster: v1alpha1.HostMaster{
 				Type: linuxBridgeHostAttachment,
 				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
-					AutoCreate: true,
+					AutoCreate: ptr.To(true),
 				},
 			},
 		}),
@@ -244,7 +244,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			hostMaster: v1alpha1.HostMaster{
 				Type: linuxBridgeHostAttachment,
 				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
-					AutoCreate: true,
+					AutoCreate: ptr.To(true),
 				},
 			},
 		}),
@@ -258,7 +258,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			hostMaster: v1alpha1.HostMaster{
 				Type: ovsBridgeHostAttachment,
 				OVSBridge: &v1alpha1.OVSBridgeConfig{
-					AutoCreate: true,
+					AutoCreate: ptr.To(true),
 				},
 			},
 		}),
@@ -272,7 +272,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			hostMaster: v1alpha1.HostMaster{
 				Type: ovsBridgeHostAttachment,
 				OVSBridge: &v1alpha1.OVSBridgeConfig{
-					AutoCreate: true,
+					AutoCreate: ptr.To(true),
 				},
 			},
 		}),
@@ -286,7 +286,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			hostMaster: v1alpha1.HostMaster{
 				Type: ovsBridgeHostAttachment,
 				OVSBridge: &v1alpha1.OVSBridgeConfig{
-					AutoCreate: true,
+					AutoCreate: ptr.To(true),
 				},
 			},
 		}),
@@ -300,8 +300,8 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			hostMaster: v1alpha1.HostMaster{
 				Type: ovsBridgeHostAttachment,
 				OVSBridge: &v1alpha1.OVSBridgeConfig{
-					Name:       preExistingOVSBridge,
-					AutoCreate: false,
+					Name:       ptr.To(preExistingOVSBridge),
+					AutoCreate: ptr.To(false),
 				},
 			},
 		}),
@@ -315,8 +315,8 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			hostMaster: v1alpha1.HostMaster{
 				Type: ovsBridgeHostAttachment,
 				OVSBridge: &v1alpha1.OVSBridgeConfig{
-					Name:       preExistingOVSBridge,
-					AutoCreate: false,
+					Name:       ptr.To(preExistingOVSBridge),
+					AutoCreate: ptr.To(false),
 				},
 			},
 		}),
@@ -330,8 +330,8 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			hostMaster: v1alpha1.HostMaster{
 				Type: ovsBridgeHostAttachment,
 				OVSBridge: &v1alpha1.OVSBridgeConfig{
-					Name:       preExistingOVSBridge,
-					AutoCreate: false,
+					Name:       ptr.To(preExistingOVSBridge),
+					AutoCreate: ptr.To(false),
 				},
 			},
 		}),
@@ -361,8 +361,8 @@ var _ = Describe("Routes between bgp and the fabric - vtepInterface", func() {
 			Name:      "red110",
 			Namespace: openperouter.Namespace,
 		},
-		Spec: v1alpha1.L2VNISpec{
-			VNI: 110,
+		Spec: &v1alpha1.L2VNISpec{
+			VNI: ptr.To(int64(110)),
 		},
 	}
 
@@ -387,13 +387,13 @@ var _ = Describe("Routes between bgp and the fabric - vtepInterface", func() {
 		l2VniRedWithGateway.Spec.HostMaster = &v1alpha1.HostMaster{
 			Type: linuxBridgeHostAttachment,
 			LinuxBridge: &v1alpha1.LinuxBridgeConfig{
-				AutoCreate: true,
+				AutoCreate: ptr.To(true),
 			},
 		}
 
 		underlay := infra.Underlay
 		underlay.Spec.EVPN = &v1alpha1.EVPNConfig{
-			VTEPInterface: "toswitch",
+			VTEPInterface: ptr.To("toswitch"),
 		}
 
 		routers, err = openperouter.Get(cs, HostMode)

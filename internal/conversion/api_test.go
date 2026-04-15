@@ -8,6 +8,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 )
 
 func TestMergeAPIConfigs_SingleConfig(t *testing.T) {
@@ -49,7 +50,7 @@ func TestMergeAPIConfigs_MultipleConfigs(t *testing.T) {
 		L3VNIs: []v1alpha1.L3VNI{
 			{
 				ObjectMeta: metav1.ObjectMeta{Name: "l3vni1"},
-				Spec:       v1alpha1.L3VNISpec{VNI: 1000},
+				Spec:       v1alpha1.L3VNISpec{VNI: ptr.To(int64(1000))},
 			},
 		},
 	}
@@ -58,7 +59,7 @@ func TestMergeAPIConfigs_MultipleConfigs(t *testing.T) {
 		L2VNIs: []v1alpha1.L2VNI{
 			{
 				ObjectMeta: metav1.ObjectMeta{Name: "l2vni1"},
-				Spec:       v1alpha1.L2VNISpec{VNI: 2000},
+				Spec:       &v1alpha1.L2VNISpec{VNI: ptr.To(int64(2000))},
 			},
 		},
 	}
@@ -78,13 +79,13 @@ func TestMergeAPIConfigs_MultipleConfigs(t *testing.T) {
 		L3VNIs: []v1alpha1.L3VNI{
 			{
 				ObjectMeta: metav1.ObjectMeta{Name: "l3vni1"},
-				Spec:       v1alpha1.L3VNISpec{VNI: 1000},
+				Spec:       v1alpha1.L3VNISpec{VNI: ptr.To(int64(1000))},
 			},
 		},
 		L2VNIs: []v1alpha1.L2VNI{
 			{
 				ObjectMeta: metav1.ObjectMeta{Name: "l2vni1"},
-				Spec:       v1alpha1.L2VNISpec{VNI: 2000},
+				Spec:       &v1alpha1.L2VNISpec{VNI: ptr.To(int64(2000))},
 			},
 		},
 		L3Passthrough: []v1alpha1.L3Passthrough{},
