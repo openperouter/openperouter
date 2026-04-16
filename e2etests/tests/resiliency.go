@@ -56,6 +56,10 @@ var _ = Describe("Alpha: Named netns and kernel objects survive FRR crash", Orde
 	}
 
 	BeforeAll(func() {
+		if HostMode {
+			ginkgo.Skip("skipping: test requires pod-based FRR; not applicable in systemd/host mode")
+		}
+
 		err := Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
 
@@ -97,6 +101,9 @@ var _ = Describe("Alpha: Named netns and kernel objects survive FRR crash", Orde
 	})
 
 	AfterAll(func() {
+		if HostMode {
+			return
+		}
 		err := Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
 		By("waiting for all router pods to be ready")
