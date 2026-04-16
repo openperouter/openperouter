@@ -709,7 +709,11 @@ spec:
                   rule: (self.?vtepcidr.orValue("") != "") != (self.?vtepInterface.orValue("")
                     != "")
               neighbors:
-                description: Neighbors is the list of external neighbors to peer with.
+                description: |-
+                  Neighbors is the list of external BGP neighbors to peer with.
+                  Multiple neighbors are supported for connecting to multiple TOR switches
+                  or establishing redundant BGP sessions. Each neighbor address must be unique.
+                  At least one neighbor is required.
                 items:
                   description: Neighbor represents a BGP Neighbor we want FRR to connect
                     to.

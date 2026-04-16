@@ -36,6 +36,8 @@ func redistributeConnectedForLeafKind(nodes []corev1.Node) {
 	}
 
 	config := infra.LeafKindConfiguration{
+		ASN:                   infra.LeafKindConfig.ASN,
+		SpinePeerAddress:      infra.LeafKindConfig.SpinePeerAddress,
 		RedistributeConnected: true,
 		Neighbors:             neighbors,
 	}
@@ -47,6 +49,6 @@ func redistributeConnectedForLeafKind(nodes []corev1.Node) {
 }
 
 func resetLeafKindConfig(nodes []corev1.Node) {
-	err := infra.UpdateLeafKindConfig(nodes, false)
+	err := infra.LeafKindConfig.UpdateConfig(nodes, false)
 	Expect(err).NotTo(HaveOccurred())
 }
