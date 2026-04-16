@@ -65,6 +65,13 @@ func dumpBGPInfo(basePath, testName string, cs clientset.Interface, clabContaine
 			ginkgo.GinkgoWriter.Printf("External frr dump for %s failed %v", name, err)
 			continue
 		}
+
+		groutDump, err := frr.GroutDump(exec)
+		if err != nil {
+			ginkgo.GinkgoWriter.Printf("External grout dump for %s failed %v", name, err)
+		}
+		dump += "\n\n" + groutDump
+
 		f, err := logFileFor(testPath, fmt.Sprintf("frrdump-%s", name))
 		if err != nil {
 			ginkgo.GinkgoWriter.Printf("External frr dump for container %s, failed to open file %v", name, err)
