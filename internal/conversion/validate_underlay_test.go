@@ -119,7 +119,7 @@ func TestValidateUnderlay(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "same local and remote ASN",
+			name: "same local and remote ASN (iBGP)",
 			underlay: v1alpha1.Underlay{
 				Spec: v1alpha1.UnderlaySpec{
 					EVPN: &v1alpha1.EVPNConfig{
@@ -133,7 +133,7 @@ func TestValidateUnderlay(t *testing.T) {
 					},
 				},
 			},
-			wantErr: true,
+			wantErr: false,
 		},
 		{
 			name: "underlay NIC is a vlan sub-interface",
@@ -617,7 +617,7 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "node with underlay having same local and remote ASN - should error",
+			name: "node with underlay having same local and remote ASN (iBGP)",
 			nodes: []corev1.Node{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -641,8 +641,61 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 					},
 				},
 			},
-			wantErr: true,
-			errMsg:  "local ASN",
+			wantErr: false,
+		},
+		{
+			name: "neighbor having ASN 0 with external",
+			nodes: []corev1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:   "node-1",
+						Labels: map[string]string{"rack": "rack-1"},
+					},
+				},
+			},
+			underlays: []v1alpha1.Underlay{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "underlay-rack-1"},
+					Spec: v1alpha1.UnderlaySpec{
+						NodeSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{"rack": "rack-1"},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{ASN: 0, Type: "external"},
+						},
+						Nics: []string{"eth0"},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "neighbor having ASN 0 with internal",
+			nodes: []corev1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:   "node-1",
+						Labels: map[string]string{"rack": "rack-1"},
+					},
+				},
+			},
+			underlays: []v1alpha1.Underlay{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "underlay-rack-1"},
+					Spec: v1alpha1.UnderlaySpec{
+						NodeSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{"rack": "rack-1"},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{ASN: 0, Type: "internal"},
+						},
+						Nics: []string{"eth0"},
+					},
+				},
+			},
+			wantErr: false,
 		},
 	}
 

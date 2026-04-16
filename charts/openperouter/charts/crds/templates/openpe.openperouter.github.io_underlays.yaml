@@ -83,8 +83,8 @@ spec:
                         with.
                       type: string
                     asn:
-                      description: ASN is the AS number to use for the local end of
-                        the session.
+                      description: ASN is the AS number of the neighbor. Either ASN
+                        or Type must be set.
                       format: int32
                       maximum: 4294967295
                       minimum: 1
@@ -168,14 +168,6 @@ spec:
                         HoldTime is the requested BGP hold time, per RFC4271.
                         Defaults to 180s.
                       type: string
-                    hostasn:
-                      description: |-
-                        ASN is the expected AS number for a BGP speaking component running in
-                        the default network namespace. If not set, the ASN field is going to be used.
-                      format: int32
-                      maximum: 4294967295
-                      minimum: 0
-                      type: integer
                     keepaliveTime:
                       description: |-
                         KeepaliveTime is the requested BGP keepalive time, per RFC4271.
@@ -201,12 +193,21 @@ spec:
                       maximum: 16384
                       minimum: 0
                       type: integer
+                    type:
+                      description: Type is the AS type of the neighbor. Either ASN
+                        or Type must be set.
+                      enum:
+                      - external
+                      - internal
+                      type: string
                   required:
                   - address
                   type: object
                   x-kubernetes-validations:
-                  - message: hostASN must be different from asn for eBGP
-                    rule: '!has(self.hostasn) || self.hostasn != self.asn'
+                  - message: either ASN or Type must be set
+                    rule: has(self.asn) || has(self.type)
+                  - message: ASN and Type cannot be set together
+                    rule: '!has(self.asn) || !has(self.type)'
                 minItems: 1
                 type: array
               nics:
