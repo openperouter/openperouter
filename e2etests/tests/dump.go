@@ -36,6 +36,10 @@ func dumpIfFails(cs clientset.Interface, additionalNamespaces ...string) {
 			withFRR(),
 		}
 
+		if GroutMode {
+			opts = append(opts, withGrout())
+		}
+
 		dumpFRRInfo(
 			ReportPath,
 			ginkgo.CurrentSpecReport().FullText(),
