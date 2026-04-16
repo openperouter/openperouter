@@ -1304,6 +1304,7 @@ rules:
   - l2vnis
   - l3passthroughs
   - l3vnis
+  - rawfrrconfigs
   - routernodeconfigurationstatuses
   - underlays
   verbs:
@@ -1320,6 +1321,7 @@ rules:
   - l2vnis/finalizers
   - l3passthroughs/finalizers
   - l3vnis/finalizers
+  - rawfrrconfigs/finalizers
   - underlays/finalizers
   verbs:
   - update
@@ -1329,26 +1331,13 @@ rules:
   - l2vnis/status
   - l3passthroughs/status
   - l3vnis/status
+  - rawfrrconfigs/status
   - routernodeconfigurationstatuses/status
   - underlays/status
   verbs:
   - get
   - patch
   - update
-- apiGroups:
-  - openpe.openperouter.github.io
-  resources:
-  - rawfrrconfigs
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - openpe.openperouter.github.io
-  resources:
-  - rawfrrconfigs/status
-  verbs:
-  - get
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
