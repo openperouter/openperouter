@@ -18,6 +18,7 @@ const (
 	IPv6      Family = "ipv6"
 	DualStack Family = "dual"
 	Unknown   Family = "unknown"
+	None      Family = "none"
 )
 
 // ForAddresses returns the address family given list of addresses strings.

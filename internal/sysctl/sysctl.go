@@ -21,9 +21,9 @@ type Sysctl struct {
 	UnsupportedWarning string // If non-empty, log this warning and skip instead of failing when the sysctl is not supported
 }
 
-// Ensure enables the given sysctls in the target namespace.
+// EnsureInNamespace enables the given sysctls in the target namespace.
 // Each sysctl is checked and only written if not already set to "1".
-func Ensure(namespace string, sysctls ...Sysctl) error {
+func EnsureInNamespace(namespace string, sysctls ...Sysctl) error {
 	ns, err := netns.GetFromPath(namespace)
 	if err != nil {
 		return fmt.Errorf("failed to get network namespace %s: %w", namespace, err)
@@ -35,15 +35,21 @@ func Ensure(namespace string, sysctls ...Sysctl) error {
 	}()
 
 	err = netnamespace.In(ns, func() error {
-		for _, s := range sysctls {
-			if err := ensureSysctl(s); err != nil {
-				return err
-			}
-		}
-		return nil
+		return Ensure(sysctls...)
 	})
 	if err != nil {
 		return fmt.Errorf("failed to ensure sysctls at network namespace %q: %w", namespace, err)
+	}
+	return nil
+}
+
+// Ensure enables the given sysctls.
+// Each sysctl is checked and only written if not already set to "1".
+func Ensure(sysctls ...Sysctl) error {
+	for _, s := range sysctls {
+		if err := ensureSysctl(s); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -115,6 +121,46 @@ func AcceptUntrackedNADefault() Sysctl {
 		Description:        "accept_untracked_na on new interfaces",
 		Value:              "1",
 		UnsupportedWarning: "Check if kernel is >= 5.18, layer 2 traffic might be impacted / mac learning might be slower",
+	}
+}
+
+// EnableVRFStrictMode sets the sysctl definition for enabling VRF strict mode.
+// The "strict mode" imposes that each VRF can be associated to a routing table only if such routing table is not
+// already in use by any other VRF. The setting is not available if no VRFs are created and according to
+// https://onvox.net/2024/12/16/srv6-frr/ should be set each time after adding a VRF for safe measure. If you see
+// rejected BGP routes in the table (`B>r`), this is most likely due to a problem with these setting not being set
+// when FRR wanted to install the routes.
+// Reference: https://man7.org/linux/man-pages/man8/ip-route.8.html
+// Reference: https://lwn.net/Articles/823946/
+func EnableVRFStrictMode() Sysctl {
+	return Sysctl{
+		Path:        "net/vrf/strict_mode",
+		Description: "configure VRF strict mode",
+		Value:       "1",
+	}
+}
+
+// Seg6MakeFlowLabel sets the sysctl for SRv6 flow label handling to use seg6_make_flowlabel().
+// When set to 1, the kernel will compute the flow label using seg6_make_flowlabel().
+// Reference: https://www.kernel.org/doc/html/v6.1/networking/seg6-sysctl.html
+func Seg6MakeFlowLabel() Sysctl {
+	return Sysctl{
+		Path:        "net/ipv6/seg6_flowlabel",
+		Description: "compute the flowlabel using seg6_make_flowlabel()",
+		Value:       "1",
+	}
+}
+
+// EnableSeg6All sets the sysctl definition for enabling SRv6 on all interfaces.
+// This enables Segment Routing over IPv6 (SRv6) functionality on all network interfaces,
+// allowing them to process and forward packets with SRv6 segment routing headers.
+// This is required for the kernel to accept and process SRv6 encapsulated traffic.
+// Reference: https://docs.kernel.org/networking/seg6-sysctl.html
+func EnableSeg6All() Sysctl {
+	return Sysctl{
+		Path:        "net/ipv6/conf/all/seg6_enabled",
+		Description: "enable seg6 on all interfaces",
+		Value:       "1",
 	}
 }
 

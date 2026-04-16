@@ -29,20 +29,44 @@ type Config struct {
 	Hostname    string
 	Underlay    UnderlayConfig
 	VNIs        []L3VNIConfig
+	VPNs        []L3VPNConfig
 	Passthrough *PassthroughConfig
 	BFDProfiles []BFDProfile
 	RawConfig   []RawFRRSnippet
 }
 
 type UnderlayConfig struct {
-	MyASN     uint32
-	RouterID  string
-	Neighbors []NeighborConfig
-	EVPN      *UnderlayEvpn
+	MyASN          uint32
+	RouterID       string
+	Neighbors      []NeighborConfig
+	EVPN           *UnderlayEvpn
+	ISIS           []UnderlayISIS
+	SegmentRouting *UnderlaySegmentRouting
 }
 
 type UnderlayEvpn struct {
 	VTEP string
+}
+
+type UnderlayISIS struct {
+	Name       string
+	Net        []ISISNet
+	Type       uint32
+	Interfaces []ISISInterface
+}
+
+type UnderlaySegmentRouting struct {
+	SourceAddress string
+	Locator       SRV6Locator
+}
+
+type SRV6Locator struct {
+	Name     string
+	Prefix   string
+	BlockLen int
+	NodeLen  int
+	Behavior string
+	Format   string
 }
 
 type PassthroughConfig struct {
@@ -60,6 +84,17 @@ type L3VNIConfig struct {
 	VRF             string
 	VNI             int
 	RouterID        string
+}
+
+type L3VPNConfig struct {
+	ASN                uint32
+	ToAdvertiseIPv4    []string
+	ToAdvertiseIPv6    []string
+	LocalNeighbor      *NeighborConfig
+	VRF                string
+	RouteTarget        string
+	RouteDistinguisher string
+	RouterID           string
 }
 
 type BFDProfile struct {

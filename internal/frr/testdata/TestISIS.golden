@@ -1,0 +1,93 @@
+log file /etc/frr/frr.log 
+log timestamp precision 3
+hostname hostname
+ip nht resolve-via-default
+ipv6 nht resolve-via-default
+
+route-map allowall permit 1
+router bgp 64512
+  no bgp ebgp-requires-policy
+  no bgp network import-check
+  no bgp default ipv4-unicast
+  bgp router-id 10.0.0.1
+  neighbor 192.168.1.2 remote-as 64512
+  
+  
+  
+
+  address-family ipv4 unicast
+    neighbor 192.168.1.2 activate
+    neighbor 192.168.1.2 allowas-in
+  exit-address-family
+exit
+!
+router isis ISIS
+  net 49.0001.0002.0003.0004.00
+  is-type level-1
+exit
+!
+interface lound
+  ip router isis ISIS
+  ipv6 router isis ISIS
+  isis passive
+!
+interface eth0
+  ip router isis ISIS
+exit
+!
+interface eth1
+  ipv6 router isis ISIS
+exit
+!
+interface eth2
+  ip router isis ISIS
+  ipv6 router isis ISIS
+exit
+!
+router isis ISIS2
+  net 49.0001.0002.0003.0005.00
+  is-type level-2-only
+exit
+!
+interface lound
+  ip router isis ISIS2
+  ipv6 router isis ISIS2
+  isis passive
+!
+interface eth0
+  ip router isis ISIS2
+exit
+!
+interface eth1
+  ipv6 router isis ISIS2
+exit
+!
+interface eth2
+  ip router isis ISIS2
+  ipv6 router isis ISIS2
+exit
+!
+router isis ISIS3
+  net 49.0001.0002.0003.0006.00
+  net 49.0001.0002.0003.0007.00
+  is-type level-1-2
+exit
+!
+interface lound
+  ip router isis ISIS3
+  ipv6 router isis ISIS3
+  isis passive
+!
+interface eth0
+  ip router isis ISIS3
+exit
+!
+interface eth1
+  ipv6 router isis ISIS3
+exit
+!
+interface eth2
+  ip router isis ISIS3
+  ipv6 router isis ISIS3
+exit
+!

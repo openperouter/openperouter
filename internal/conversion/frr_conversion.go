@@ -22,6 +22,15 @@ const (
 	defaultRouterIDCidr = "10.0.0.0/24"
 )
 
+var locatorFormats = map[string]frr.SRV6Locator{
+	"usid-f3216": {
+		BlockLen: 32,
+		NodeLen:  16,
+		Behavior: "usid",
+		Format:   "usid-f3216",
+	},
+}
+
 type FRREmptyConfigError string
 
 func (e FRREmptyConfigError) Error() string {
@@ -34,6 +43,9 @@ func APItoFRR(config ApiConfigData, nodeIndex int, logLevel string) (frr.Config,
 	}
 	if len(config.L3Passthrough) > 1 {
 		return frr.Config{}, errors.New("multiple passthrough defined, can have only one")
+	}
+	if (len(config.L3VNIs) > 0 || len(config.L2VNIs) > 0) && len(config.L3VPNs) > 0 {
+		return frr.Config{}, errors.New("cannot specify VNI configuration and VPN configuration at the same time")
 	}
 
 	rawSnippets := rawConfigSnippets(config.RawFRRConfigs)
@@ -52,10 +64,14 @@ func APItoFRR(config ApiConfigData, nodeIndex int, logLevel string) (frr.Config,
 
 	underlay := config.Underlays[0]
 
+	if underlay.Spec.EVPN != nil && underlay.Spec.SRV6 != nil {
+		return frr.Config{}, fmt.Errorf("cannot specify EVPN and SRV6 configuration at the same time")
+	}
+
 	underlayNeighbors := []frr.NeighborConfig{}
 	bfdProfiles := []frr.BFDProfile{}
 	for _, n := range underlay.Spec.Neighbors {
-		frrNeigh, err := neighborToFRR(n)
+		frrNeigh, err := neighborToFRR(n, underlay.Spec.SRV6 != nil)
 		if err != nil {
 			return frr.Config{}, fmt.Errorf("failed to translate underlay neighbor %s to frr, err: %w", neighborName(n), err)
 		}
@@ -91,24 +107,48 @@ func APItoFRR(config ApiConfigData, nodeIndex int, logLevel string) (frr.Config,
 		return frr.Config{}, fmt.Errorf("EVPN configuration is required when L3 VNIs are defined")
 	}
 
-	if underlay.Spec.EVPN == nil {
+	if underlay.Spec.ISIS != nil {
+		underlayConfig.ISIS, err = convertISIS(underlay.Spec.ISIS, nodeIndex)
+		if err != nil {
+			return frr.Config{}, fmt.Errorf("failed to translate ISIS settings, err: %w", err)
+		}
+	}
+
+	if underlay.Spec.EVPN == nil && underlay.Spec.SRV6 == nil {
 		return frr.Config{
 			Underlay:    underlayConfig,
 			Passthrough: passthroughConfig,
 			BFDProfiles: bfdProfiles,
 			Loglevel:    logLevel,
 			VNIs:        []frr.L3VNIConfig{},
+			VPNs:        []frr.L3VPNConfig{},
 			RawConfig:   rawSnippets,
 		}, nil
 	}
 
-	underlayConfig.EVPN = &frr.UnderlayEvpn{}
-	if underlay.Spec.EVPN.VTEPCIDR != "" {
-		vtepIP, err := ipam.VTEPIp(underlay.Spec.EVPN.VTEPCIDR, nodeIndex)
-		if err != nil {
-			return frr.Config{}, fmt.Errorf("failed to get vtep ip, cidr %s, nodeIndex %d: %w", underlay.Spec.EVPN.VTEPCIDR, nodeIndex, err)
+	if underlay.Spec.EVPN != nil {
+		underlayConfig.EVPN = &frr.UnderlayEvpn{}
+		if underlay.Spec.EVPN.VTEPCIDR != "" {
+			vtepIP, err := ipam.VTEPIp(underlay.Spec.EVPN.VTEPCIDR, nodeIndex)
+			if err != nil {
+				return frr.Config{}, fmt.Errorf("failed to get vtep ip, cidr %s, nodeIndex %d: %w", underlay.Spec.EVPN.VTEPCIDR, nodeIndex, err)
+			}
+			underlayConfig.EVPN.VTEP = vtepIP.String()
 		}
-		underlayConfig.EVPN.VTEP = vtepIP.String()
+	}
+
+	if underlay.Spec.SRV6 != nil {
+		underlayConfig.SegmentRouting, err = convertSRV6(underlay.Spec.SRV6, nodeIndex)
+		if err != nil {
+			return frr.Config{}, fmt.Errorf("failed to translate SRV6 settings, err: %w", err)
+		}
+		if underlay.Spec.SRV6.Source.CIDR != "" {
+			vtepIP, err := ipam.VTEPIp(underlay.Spec.SRV6.Source.CIDR, nodeIndex)
+			if err != nil {
+				return frr.Config{}, fmt.Errorf("failed to get vtep ip, cidr %s, nodeIndex %d: %w", underlay.Spec.SRV6.Source.CIDR, nodeIndex, err)
+			}
+			underlayConfig.SegmentRouting.SourceAddress = vtepIP.IP.String()
+		}
 	}
 
 	vniConfigs := []frr.L3VNIConfig{}
@@ -120,13 +160,115 @@ func APItoFRR(config ApiConfigData, nodeIndex int, logLevel string) (frr.Config,
 		vniConfigs = append(vniConfigs, frrVNI...)
 	}
 
+	vpnConfigs := []frr.L3VPNConfig{}
+	for _, vpn := range config.L3VPNs {
+		frrVNI, err := l3vpnToFRR(vpn, routerID, underlay.Spec.ASN, nodeIndex)
+		if err != nil {
+			return frr.Config{}, fmt.Errorf("failed to translate vpn to frr: %w, vni %v", err, vpn)
+		}
+		vpnConfigs = append(vpnConfigs, frrVNI...)
+	}
+
 	return frr.Config{
 		Underlay:    underlayConfig,
 		VNIs:        vniConfigs,
+		VPNs:        vpnConfigs,
 		Passthrough: passthroughConfig,
 		BFDProfiles: bfdProfiles,
 		Loglevel:    logLevel,
 		RawConfig:   rawSnippets,
+	}, nil
+}
+
+// convertISIS converts a slice of v1alpha.ISISConfig to a slice of frr.UnderlayISIS.
+func convertISIS(configs []v1alpha1.ISISConfig, nodeIndex int) ([]frr.UnderlayISIS, error) {
+	converted := make([]frr.UnderlayISIS, 0, len(configs))
+
+	names := map[string]struct{}{}
+	for _, config := range configs {
+		// Make sure ISIS process name is set and unique across ISIS processes.
+		if config.Name == "" {
+			return nil, fmt.Errorf("ISIS name must be set")
+		}
+		if _, alreadySet := names[config.Name]; alreadySet {
+			return nil, fmt.Errorf("ISIS interfaces invalid, duplicate interface name %s", config.Name)
+		}
+		names[config.Name] = struct{}{}
+
+		// Make sure the net ID is valid.
+		if len(config.Net) == 0 || len(config.Net) > 3 {
+			return nil, fmt.Errorf("ISIS cannot set more than 3 net addresses per process")
+		}
+		nets := make([]frr.ISISNet, 0, len(config.Net))
+		for _, n := range config.Net {
+			in, err := frr.ParseISISNet(n)
+			if err != nil {
+				return nil, fmt.Errorf("ISIS net address invalid, err: %w", err)
+			}
+			newSystemID, err := frr.IncrementSystemID(in.SystemID, nodeIndex)
+			if err != nil {
+				return nil, fmt.Errorf("could not increment ISIS systemID, err: %w", err)
+			}
+			in.SystemID = newSystemID
+			nets = append(nets, in)
+		}
+
+		// Check the type.
+		if config.Type > 2 {
+			return nil, fmt.Errorf("ISIS type invalid, must be 1, 2 or unset")
+		}
+
+		// Build interfaces and make sure that they are unique per ISIS process.
+		isisInterfaces := make([]frr.ISISInterface, 0, len(config.Interfaces))
+		interfaceNames := make(map[string]struct{}, len(config.Interfaces))
+		for _, intf := range config.Interfaces {
+			name := intf.Name
+			if _, alreadySet := interfaceNames[name]; alreadySet {
+				return nil, fmt.Errorf("ISIS interfaces invalid, duplicate interface name %s", name)
+			}
+			interfaceNames[name] = struct{}{}
+			isisInterfaces = append(isisInterfaces, frr.ISISInterface{
+				Name: intf.Name,
+				IPv4: intf.IPv4,
+				IPv6: intf.IPv6,
+			})
+		}
+
+		converted = append(converted, frr.UnderlayISIS{
+			Name:       config.Name,
+			Net:        nets,
+			Type:       config.Type,
+			Interfaces: isisInterfaces,
+		})
+	}
+	return converted, nil
+}
+
+// convertSRV6 converts a pointer to v1alpha.SRV6Config to a pointer to frr.UnderlaySegmentRouting.
+func convertSRV6(configs *v1alpha1.SRV6Config, nodeIndex int) (*frr.UnderlaySegmentRouting, error) {
+	locator, isValid := locatorFormats[configs.Locator.Format]
+	if !isValid {
+		return nil, fmt.Errorf("invalid locator format %q", configs.Locator.Format)
+	}
+	locator.Name = configs.Locator.Name
+	var err error
+	if locator.Prefix, err = ipam.OffsetIPv6Prefix(configs.Locator.Prefix, nodeIndex, locator.BlockLen+locator.NodeLen); err != nil {
+		return nil, fmt.Errorf("could not calculate SRV6 prefix for node, %w", err)
+	}
+
+	var ip net.IPNet
+	if configs.Source.CIDR != "" {
+		var err error
+		if ip, err = ipam.VTEPIp(configs.Source.CIDR, nodeIndex); err != nil {
+			return nil, fmt.Errorf("failed to get vtep ip, cidr %s, nodeIndex %d: %w", configs.Source.CIDR, nodeIndex, err)
+		}
+	} else {
+		return nil, fmt.Errorf("failed - configs.Srouce.Interface not implemented")
+	}
+
+	return &frr.UnderlaySegmentRouting{
+		SourceAddress: ip.IP.String(),
+		Locator:       locator,
 	}, nil
 }
 
@@ -261,10 +403,96 @@ func createVNIConfig(vni v1alpha1.L3VNI, hostIP net.IP, mask net.IPMask, routerI
 	return config
 }
 
-func neighborToFRR(n v1alpha1.Neighbor) (*frr.NeighborConfig, error) {
-	neighborFamily, err := ipfamily.ForAddresses(n.Address)
+func getRouteDistinguisher(left string, right uint32) string {
+	return fmt.Sprintf("%s:%d", left, right)
+}
+
+func l3vpnToFRR(vpn v1alpha1.L3VPN, routerID string, underlayASN uint32, nodeIndex int) ([]frr.L3VPNConfig, error) {
+	if vpn.Spec.HostSession == nil { // no neighbor, just the vni / vrf
+		return []frr.L3VPNConfig{
+			{
+				RouteTarget:        vpn.Spec.RouteTarget,
+				RouteDistinguisher: getRouteDistinguisher(routerID, vpn.Spec.RouteDistinguisherSuffix),
+				VRF:                vpn.Spec.VRF,
+				ASN:                underlayASN, // Since there is no session, the ASN is arbitrary
+				RouterID:           routerID,
+			},
+		}, nil
+	}
+
+	veths, err := ipam.VethIPsFromPool(vpn.Spec.HostSession.LocalCIDR.IPv4, vpn.Spec.HostSession.LocalCIDR.IPv6, nodeIndex)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find ipfamily for %s, %w", n.Address, err)
+		return nil, fmt.Errorf("failed to get veths ips for vpn %s: %w", vpn.Name, err)
+	}
+
+	var configs []frr.L3VPNConfig
+
+	// Create IPv4 neighbor if IPv4 IP is available
+	if veths.Ipv4.HostSide.IP != nil {
+		config := createVPNConfig(vpn, veths.Ipv4.HostSide.IP, net.CIDRMask(32, 32), routerID)
+		configs = append(configs, config)
+	}
+
+	// Create IPv6 neighbor if IPv6 IP is available
+	if veths.Ipv6.HostSide.IP != nil {
+		config := createVPNConfig(vpn, veths.Ipv6.HostSide.IP, net.CIDRMask(128, 128), routerID)
+		configs = append(configs, config)
+	}
+
+	if len(configs) == 0 {
+		return nil, fmt.Errorf("no valid host side IP found for vni %s", vpn.Name)
+	}
+
+	return configs, nil
+}
+
+// createVPNConfig creates a VPN configuration for a specific IP family
+func createVPNConfig(vpn v1alpha1.L3VPN, hostIP net.IP, mask net.IPMask, routerID string) frr.L3VPNConfig {
+	vniNeighbor := &frr.NeighborConfig{
+		Addr: hostIP.String(),
+	}
+	vniNeighbor.ASN = vpn.Spec.HostSession.ASN
+	if vpn.Spec.HostSession.HostASN != 0 {
+		vniNeighbor.ASN = vpn.Spec.HostSession.HostASN
+	}
+
+	ipnet := net.IPNet{
+		IP:   hostIP,
+		Mask: mask,
+	}
+
+	config := frr.L3VPNConfig{
+		ASN:                vpn.Spec.HostSession.ASN,
+		RouteTarget:        vpn.Spec.RouteTarget,
+		RouteDistinguisher: getRouteDistinguisher(routerID, vpn.Spec.RouteDistinguisherSuffix),
+		VRF:                vpn.Spec.VRF,
+		RouterID:           routerID,
+		LocalNeighbor:      vniNeighbor,
+	}
+
+	ipFamily := ipfamily.ForAddress(hostIP)
+	if ipFamily == ipfamily.IPv4 {
+		config.ToAdvertiseIPv4 = []string{ipnet.String()}
+		config.ToAdvertiseIPv6 = []string{}
+		return config
+	}
+
+	// Else ipv6
+
+	config.ToAdvertiseIPv4 = []string{}
+	config.ToAdvertiseIPv6 = []string{ipnet.String()}
+	return config
+}
+
+func neighborToFRR(n v1alpha1.Neighbor, isSRV6 bool) (*frr.NeighborConfig, error) {
+	var err error
+	neighborFamily := ipfamily.None
+
+	if !isSRV6 {
+		neighborFamily, err = ipfamily.ForAddresses(n.Address)
+		if err != nil {
+			return nil, fmt.Errorf("failed to find ipfamily for %s, %w", n.Address, err)
+		}
 	}
 
 	if n.ASN == 0 {

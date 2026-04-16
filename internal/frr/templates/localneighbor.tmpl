@@ -1,21 +1,21 @@
 {{- define "localneighbor"}}
-  neighbor {{ .LocalNeighbor.Addr }} remote-as {{ .LocalNeighbor.ASN }}
+  neighbor {{ .localNeighbor.Addr }} remote-as {{ .localNeighbor.ASN }}
 
   address-family ipv4 unicast
-  {{- range .ToAdvertiseIPv4 }}
+  {{- range .toAdvertiseIPv4 }}
     network {{ . }}
   {{- end }}
-    neighbor {{ .LocalNeighbor.Addr }} activate
-    neighbor {{ .LocalNeighbor.Addr }} route-map allowall in
-    neighbor {{ .LocalNeighbor.Addr }} route-map allowall out
+    neighbor {{ .localNeighbor.Addr }} activate
+    neighbor {{ .localNeighbor.Addr }} route-map allowall in
+    neighbor {{ .localNeighbor.Addr }} route-map allowall out
   exit-address-family
 
   address-family ipv6 unicast
-  {{- range .ToAdvertiseIPv6 }}
+  {{- range .toAdvertiseIPv6 }}
     network {{ . }}
   {{- end }}
-    neighbor {{ .LocalNeighbor.Addr }} activate
-    neighbor {{ .LocalNeighbor.Addr }} route-map allowall in
-    neighbor {{ .LocalNeighbor.Addr }} route-map allowall out
+    neighbor {{ .localNeighbor.Addr }} activate
+    neighbor {{ .localNeighbor.Addr }} route-map allowall in
+    neighbor {{ .localNeighbor.Addr }} route-map allowall out
   exit-address-family
 {{- end -}}

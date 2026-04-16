@@ -81,6 +81,9 @@ func ensureLoopback(ctx context.Context, ns netns.NsHandle, vtepIP string) error
 			if err := netlink.LinkAdd(loopback); err != nil {
 				return fmt.Errorf("assignVTEPToLoopback: failed to create loopback underlay - %w", err)
 			}
+			if err := netlink.LinkSetUp(loopback); err != nil {
+				return fmt.Errorf("assignVTEPToLoopback: failed to set loopback underlay to 'up' state - %w", err)
+			}
 		}
 
 		err = assignIPToInterface(loopback, vtepIP)
