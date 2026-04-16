@@ -31,6 +31,7 @@ func handleFlags() {
 	flag.StringVar(&tests.ValidatorPath, "hostvalidator", "hostvalidator", "the path for the hostvalidator binary")
 	flag.StringVar(&tests.ReportPath, "reporterpath", "/tmp", "the path for the reporter")
 	flag.BoolVar(&tests.HostMode, "systemdmode", false, "tells if openperouter is running on the host")
+	flag.BoolVar(&tests.GroutMode, "groutmode", false, "tells if openperouter is running with grout dataplane")
 	flag.BoolVar(&tests.SkipUnderlayPassthrough, "skip-underlay-passthrough", false, "skip creating underlay in passthrough tests")
 	flag.Parse()
 }
