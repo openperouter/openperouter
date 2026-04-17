@@ -18,10 +18,6 @@ import (
 	"k8s.io/utils/ptr"
 )
 
-const (
-	defaultRouterIDCidr = "10.0.0.0/24"
-)
-
 type FRREmptyConfigError string
 
 func (e FRREmptyConfigError) Error() string {
@@ -378,12 +374,7 @@ func durationToUint64(value time.Duration) (uint64, error) {
 }
 
 func routerIDFromUnderlay(underlay v1alpha1.Underlay, nodeIndex int) (string, error) {
-	routerIDCidr := underlay.Spec.RouterIDCIDR
-	if underlay.Spec.RouterIDCIDR == "" {
-		routerIDCidr = defaultRouterIDCidr
-		slog.Info("empty routerid cidr, using the default one", "underlay", underlay.Name, "default cidr", defaultRouterIDCidr)
-	}
-	routerID, err := ipam.RouterID(routerIDCidr, nodeIndex)
+	routerID, err := ipam.RouterID(underlay.Spec.RouterIDCIDR, nodeIndex)
 	if err != nil {
 		return "", fmt.Errorf("failed to get router id, cidr %s, nodeIndex %d: %w", underlay.Spec.RouterIDCIDR, nodeIndex, err)
 	}

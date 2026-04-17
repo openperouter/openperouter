@@ -462,7 +462,7 @@ func TestAPItoFRR(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:      "empty routeridcidr uses default",
+			name:      "pre-defaulted routeridcidr",
 			nodeIndex: 0,
 			underlays: []v1alpha1.Underlay{
 				{
@@ -471,7 +471,7 @@ func TestAPItoFRR(t *testing.T) {
 						EVPN: &v1alpha1.EVPNConfig{
 							VTEPCIDR: "192.168.1.0/24",
 						},
-						RouterIDCIDR: "",
+						RouterIDCIDR: "10.0.0.0/24",
 						Neighbors:    []v1alpha1.Neighbor{{Address: "192.168.1.1", ASN: 65001}},
 					},
 				},
