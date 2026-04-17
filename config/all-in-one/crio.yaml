@@ -1562,6 +1562,8 @@ spec:
         - mountPath: /etc/frr
           name: frrconfig
       serviceAccountName: perouter
+      shareProcessNamespace: true
+      terminationGracePeriodSeconds: 10
       tolerations:
       - effect: NoSchedule
         key: node-role.kubernetes.io/master

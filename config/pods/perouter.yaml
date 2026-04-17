@@ -24,6 +24,8 @@ spec:
         app: router
     spec:
       hostNetwork: true
+      terminationGracePeriodSeconds: 10
+      shareProcessNamespace: true
       containers:
       - name: frr
         securityContext:
