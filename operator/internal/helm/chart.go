@@ -96,10 +96,22 @@ func patchChartValues(envConfig envconfig.EnvConfig, crdConfig *operatorapi.Open
 	if envConfig.IsOpenshift {
 		cri = ContainerRuntimeCrio
 	}
+
+	var multusAnnotation string
+	runOnMaster := true
+	if crdConfig.Spec != nil {
+		if crdConfig.Spec.MultusNetworkAnnotation != nil {
+			multusAnnotation = *crdConfig.Spec.MultusNetworkAnnotation
+		}
+		if crdConfig.Spec.RunOnMaster != nil {
+			runOnMaster = *crdConfig.Spec.RunOnMaster
+		}
+	}
+
 	openperouterValues := map[string]any{
 		"logLevel":                logLevelValue(crdConfig),
-		"multusNetworkAnnotation": crdConfig.Spec.MultusNetworkAnnotation,
-		"runOnMaster":             crdConfig.Spec.RunOnMaster,
+		"multusNetworkAnnotation": multusAnnotation,
+		"runOnMaster":             runOnMaster,
 		"image": map[string]any{
 			"repository": envConfig.ControllerImage.Repo,
 			"tag":        envConfig.ControllerImage.Tag,
@@ -125,15 +137,17 @@ func patchChartValues(envConfig envconfig.EnvConfig, crdConfig *operatorapi.Open
 		"cri": cri,
 	}
 
-	if crdConfig.Spec.OVSSocketPath != "" {
-		openperouterValues["ovsSocketPath"] = crdConfig.Spec.OVSSocketPath
-	}
-	if crdConfig.Spec.OVSRunDir != "" {
-		openperouterValues["ovsRunDir"] = crdConfig.Spec.OVSRunDir
-	}
-	if crdConfig.Spec.HealthProbePort != 0 {
-		openperouterValues["controller"] = map[string]any{
-			"healthProbePort": crdConfig.Spec.HealthProbePort,
+	if crdConfig.Spec != nil {
+		if crdConfig.Spec.OVSSocketPath != nil && *crdConfig.Spec.OVSSocketPath != "" {
+			openperouterValues["ovsSocketPath"] = *crdConfig.Spec.OVSSocketPath
+		}
+		if crdConfig.Spec.OVSRunDir != nil && *crdConfig.Spec.OVSRunDir != "" {
+			openperouterValues["ovsRunDir"] = *crdConfig.Spec.OVSRunDir
+		}
+		if crdConfig.Spec.HealthProbePort != nil && *crdConfig.Spec.HealthProbePort != 0 {
+			openperouterValues["controller"] = map[string]any{
+				"healthProbePort": *crdConfig.Spec.HealthProbePort,
+			}
 		}
 	}
 

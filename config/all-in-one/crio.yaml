@@ -48,27 +48,27 @@ spec:
           metadata:
             type: object
           spec:
-            description: L2VNISpec defines the desired state of VNI.
+            description: spec defines the desired state of L2VNI.
             properties:
               hostmaster:
                 description: |-
-                  HostMaster is the interface on the host the veth should be enslaved to.
+                  hostmaster is the interface on the host the veth should be enslaved to.
                   If not set, the host veth will not be enslaved to any interface and it must be
                   enslaved manually (or by some other means). This is useful if another controller
                   is leveraging the host interface for the VNI.
                 properties:
                   linuxBridge:
-                    description: LinuxBridge configuration. Must be set when Type
+                    description: linuxBridge configuration. Must be set when Type
                       is "linux-bridge".
                     properties:
                       autoCreate:
                         default: false
                         description: |-
-                          AutoCreate determines if the bridge should be created automatically.
+                          autoCreate determines if the bridge should be created automatically.
                           When true, the bridge is created with name br-hs-<VNI>.
                         type: boolean
                       name:
-                        description: Name of the Linux bridge interface.
+                        description: name of the Linux bridge interface.
                         maxLength: 15
                         pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
                         type: string
@@ -76,19 +76,19 @@ spec:
                     x-kubernetes-validations:
                     - message: either name must be set or autoCreate must be true,
                         but not both.
-                      rule: (self.?name.orValue("") == "") == self.autoCreate
+                      rule: (self.?name.orValue("") == "") == self.?autoCreate.orValue(false)
                   ovsBridge:
-                    description: OVSBridge configuration. Must be set when Type is
+                    description: ovsBridge configuration. Must be set when Type is
                       "ovs-bridge".
                     properties:
                       autoCreate:
                         default: false
                         description: |-
-                          AutoCreate determines if the OVS bridge should be created automatically.
+                          autoCreate determines if the OVS bridge should be created automatically.
                           When true, the bridge is created with name br-hs-<VNI>.
                         type: boolean
                       name:
-                        description: Name of the OVS bridge interface.
+                        description: name of the OVS bridge interface.
                         maxLength: 15
                         pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
                         type: string
@@ -96,9 +96,9 @@ spec:
                     x-kubernetes-validations:
                     - message: either name must be set or autoCreate must be true,
                         but not both.
-                      rule: (self.?name.orValue("") == "") == self.autoCreate
+                      rule: (self.?name.orValue("") == "") == self.?autoCreate.orValue(false)
                   type:
-                    description: 'Type of the host interface. Supported values: "linux-bridge",
+                    description: 'type of the host interface. Supported values: "linux-bridge",
                       "ovs-bridge".'
                     enum:
                     - linux-bridge
@@ -114,7 +114,7 @@ spec:
                     || (self.type == 'ovs-bridge' && has(self.ovsBridge) && !has(self.linuxBridge))
               l2gatewayips:
                 description: |-
-                  L2GatewayIPs is a list of IP addresses in CIDR notation to be used for the L2 gateway. When this is set, the
+                  l2gatewayips is a list of IP addresses in CIDR notation to be used for the L2 gateway. When this is set, the
                   bridge the veths are enslaved to will be configured with these IP addresses, effectively
                   acting as a distributed gateway for the VNI. This allows for dual-stack (IPv4 and IPv6) support.
                   Maximum of 2 addresses are allowed. If 2 addresses are provided, one must be IPv4 and one must be IPv6.
@@ -122,12 +122,13 @@ spec:
                   type: string
                 maxItems: 2
                 type: array
+                x-kubernetes-list-type: atomic
                 x-kubernetes-validations:
                 - message: L2GatewayIPs cannot be changed
                   rule: self == oldSelf
               nodeSelector:
                 description: |-
-                  NodeSelector specifies which nodes this L2VNI applies to.
+                  nodeSelector specifies which nodes this L2VNI applies to.
                   If empty or not specified, applies to all nodes.
                   Multiple L2VNIs can match the same node.
                 properties:
@@ -175,29 +176,29 @@ spec:
                 type: object
                 x-kubernetes-map-type: atomic
               vni:
-                description: VNI is the VXLan VNI to be used
-                format: int32
+                description: vni is the VXLan VNI to be used
+                format: int64
                 maximum: 4294967295
                 minimum: 0
                 type: integer
               vrf:
                 description: |-
-                  VRF is the name of the linux VRF to be used inside the PERouter namespace.
+                  vrf is the name of the linux VRF to be used inside the PERouter namespace.
                   The field is optional, if not set it the name of the VNI instance will be used.
                 maxLength: 15
                 pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
                 type: string
               vxlanport:
                 default: 4789
-                description: VXLanPort is the port to be used for VXLan encapsulation.
+                description: vxlanport is the port to be used for VXLan encapsulation.
                 format: int32
                 type: integer
+            required:
+            - vni
             type: object
           status:
-            description: VNIStatus defines the observed state of VNI.
+            description: status defines the observed state of L2VNI.
             type: object
-        required:
-        - metadata
         type: object
     served: true
     storage: true
@@ -244,42 +245,43 @@ spec:
           metadata:
             type: object
           spec:
+            description: spec defines the desired state of L3Passthrough.
             properties:
               hostsession:
-                description: HostSession is the configuration for the host session.
+                description: hostsession is the configuration for the host session.
                 properties:
                   asn:
                     description: |-
-                      ASN is the local AS number to use to establish a BGP session with
+                      asn is the local AS number to use to establish a BGP session with
                       the default namespace.
-                    format: int32
+                    format: int64
                     maximum: 4294967295
                     minimum: 1
                     type: integer
                   hostasn:
                     description: |-
-                      ASN is the expected AS number for a BGP speaking component running in
+                      hostasn is the expected AS number for a BGP speaking component running in
                       the default network namespace. If not set, the ASN field is going to be used.
-                    format: int32
+                    format: int64
                     maximum: 4294967295
                     minimum: 0
                     type: integer
                   localcidr:
                     description: |-
-                      LocalCIDR is the CIDR configuration for the veth pair
+                      localcidr is the CIDR configuration for the veth pair
                       to connect with the default namespace. The interface under
                       the PERouter side is going to use the first IP of the cidr on all the nodes.
                       At least one of IPv4 or IPv6 must be provided.
                     properties:
                       ipv4:
                         description: |-
-                          IPv4 is the IPv4 CIDR to be used for the veth pair
+                          ipv4 is the IPv4 CIDR to be used for the veth pair
                           to connect with the default namespace. The interface under
                           the PERouter side is going to use the first IP of the cidr on all the nodes.
                         type: string
                       ipv6:
                         description: |-
-                          IPv6 is the IPv6 CIDR to be used for the veth pair
+                          ipv6 is the IPv6 CIDR to be used for the veth pair
                           to connect with the default namespace. The interface under
                           the PERouter side is going to use the first IP of the cidr on all the nodes.
                         type: string
@@ -290,11 +292,10 @@ spec:
                 required:
                 - asn
                 - hostasn
-                - localcidr
                 type: object
               nodeSelector:
                 description: |-
-                  NodeSelector specifies which nodes this L3Passthrough applies to.
+                  nodeSelector specifies which nodes this L3Passthrough applies to.
                   If empty or not specified, applies to all nodes.
                   Multiple L3Passthrough with overlapping node selectors will be rejected.
                 properties:
@@ -341,10 +342,14 @@ spec:
                     type: object
                 type: object
                 x-kubernetes-map-type: atomic
+            required:
+            - hostsession
             type: object
           status:
-            description: L3PassthroughStatus defines the observed state of L3Passthrough.
+            description: status defines the observed state of L3Passthrough.
             type: object
+        required:
+        - spec
         type: object
     served: true
     storage: true
@@ -391,43 +396,43 @@ spec:
           metadata:
             type: object
           spec:
-            description: L3VNISpec defines the desired state of VNI.
+            description: spec defines the desired state of L3VNI.
             properties:
               hostsession:
-                description: HostSession is the configuration for the host session.
+                description: hostsession is the configuration for the host session.
                 properties:
                   asn:
                     description: |-
-                      ASN is the local AS number to use to establish a BGP session with
+                      asn is the local AS number to use to establish a BGP session with
                       the default namespace.
-                    format: int32
+                    format: int64
                     maximum: 4294967295
                     minimum: 1
                     type: integer
                   hostasn:
                     description: |-
-                      ASN is the expected AS number for a BGP speaking component running in
+                      hostasn is the expected AS number for a BGP speaking component running in
                       the default network namespace. If not set, the ASN field is going to be used.
-                    format: int32
+                    format: int64
                     maximum: 4294967295
                     minimum: 0
                     type: integer
                   localcidr:
                     description: |-
-                      LocalCIDR is the CIDR configuration for the veth pair
+                      localcidr is the CIDR configuration for the veth pair
                       to connect with the default namespace. The interface under
                       the PERouter side is going to use the first IP of the cidr on all the nodes.
                       At least one of IPv4 or IPv6 must be provided.
                     properties:
                       ipv4:
                         description: |-
-                          IPv4 is the IPv4 CIDR to be used for the veth pair
+                          ipv4 is the IPv4 CIDR to be used for the veth pair
                           to connect with the default namespace. The interface under
                           the PERouter side is going to use the first IP of the cidr on all the nodes.
                         type: string
                       ipv6:
                         description: |-
-                          IPv6 is the IPv6 CIDR to be used for the veth pair
+                          ipv6 is the IPv6 CIDR to be used for the veth pair
                           to connect with the default namespace. The interface under
                           the PERouter side is going to use the first IP of the cidr on all the nodes.
                         type: string
@@ -438,11 +443,10 @@ spec:
                 required:
                 - asn
                 - hostasn
-                - localcidr
                 type: object
               nodeSelector:
                 description: |-
-                  NodeSelector specifies which nodes this L3VNI applies to.
+                  nodeSelector specifies which nodes this L3VNI applies to.
                   If empty or not specified, applies to all nodes.
                   Multiple L3VNIs can match the same node.
                 properties:
@@ -490,20 +494,20 @@ spec:
                 type: object
                 x-kubernetes-map-type: atomic
               vni:
-                description: VNI is the VXLan VNI to be used
-                format: int32
+                description: vni is the VXLan VNI to be used
+                format: int64
                 maximum: 4294967295
                 minimum: 0
                 type: integer
               vrf:
-                description: VRF is the name of the linux VRF to be used inside the
+                description: vrf is the name of the linux VRF to be used inside the
                   PERouter namespace.
                 maxLength: 15
                 pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
                 type: string
               vxlanport:
                 default: 4789
-                description: VXLanPort is the port to be used for VXLan encapsulation.
+                description: vxlanport is the port to be used for VXLan encapsulation.
                 format: int32
                 type: integer
             required:
@@ -513,8 +517,10 @@ spec:
             - message: hostASN must be different from asn
               rule: '!has(self.hostsession) || self.hostsession.hostasn != self.hostsession.asn'
           status:
-            description: L3VNIStatus defines the observed state of L3VNI.
+            description: status defines the observed state of L3VNI.
             type: object
+        required:
+        - spec
         type: object
     served: true
     storage: true
@@ -559,11 +565,11 @@ spec:
           metadata:
             type: object
           spec:
-            description: RawFRRConfigSpec defines the desired state of RawFRRConfig.
+            description: spec defines the desired state of RawFRRConfig.
             properties:
               nodeSelector:
                 description: |-
-                  NodeSelector specifies which nodes this RawFRRConfig applies to.
+                  nodeSelector specifies which nodes this RawFRRConfig applies to.
                   If empty or not specified, applies to all nodes.
                 properties:
                   matchExpressions:
@@ -612,13 +618,14 @@ spec:
               priority:
                 default: 0
                 description: |-
-                  Priority controls the ordering of raw config snippets in the rendered FRR configuration.
+                  priority controls the ordering of raw config snippets in the rendered FRR configuration.
                   Lower values are rendered first. Snippets with the same priority have undefined order.
+                format: int32
                 minimum: 0
                 type: integer
               rawConfig:
                 description: |-
-                  RawConfig is the raw FRR configuration text to append to the rendered configuration.
+                  rawConfig is the raw FRR configuration text to append to the rendered configuration.
                   WARNING: This feature is intended for advanced use cases. No validation of FRR syntax
                   is performed at admission time; invalid configuration will cause FRR reload failures.
                 minLength: 1
@@ -627,8 +634,10 @@ spec:
             - rawConfig
             type: object
           status:
-            description: RawFRRConfigStatus defines the observed state of RawFRRConfig.
+            description: status defines the observed state of RawFRRConfig.
             type: object
+        required:
+        - spec
         type: object
     served: true
     storage: true
@@ -673,22 +682,21 @@ spec:
           metadata:
             type: object
           spec:
-            description: UnderlaySpec defines the desired state of Underlay.
+            description: spec defines the desired state of Underlay.
             properties:
               asn:
-                description: ASN is the local AS number to use for the session with
+                description: asn is the local AS number to use for the session with
                   the TOR switch.
-                format: int32
+                format: int64
                 maximum: 4294967295
                 minimum: 1
                 type: integer
               evpn:
-                description: EVPNConfig contains EVPN-VXLAN configuration for the
-                  underlay.
+                description: evpn contains EVPN-VXLAN configuration for the underlay.
                 properties:
                   vtepInterface:
                     description: |-
-                      VTEPInterface is the name of an existing interface to use as the VTEP source.
+                      vtepInterface is the name of an existing interface to use as the VTEP source.
                       The interface must already have an IP address configured that will be used
                       as the VTEP IP. Mutually exclusive with vtepcidr.
                       The ToR must advertise the interface IP into the fabric underlay
@@ -699,7 +707,7 @@ spec:
                     type: string
                   vtepcidr:
                     description: |-
-                      VTEPCIDR is CIDR to be used to assign IPs to the local VTEP on each node.
+                      vtepcidr is the CIDR to be used to assign IPs to the local VTEP on each node.
                       A loopback interface will be created with an IP derived from this CIDR.
                       Mutually exclusive with vtepInterface.
                     type: string
@@ -709,28 +717,28 @@ spec:
                   rule: (self.?vtepcidr.orValue("") != "") != (self.?vtepInterface.orValue("")
                     != "")
               neighbors:
-                description: Neighbors is the list of external neighbors to peer with.
+                description: neighbors is the list of external neighbors to peer with.
                 items:
                   description: Neighbor represents a BGP Neighbor we want FRR to connect
                     to.
                   properties:
                     address:
-                      description: Address is the IP address to establish the session
+                      description: address is the IP address to establish the session
                         with.
                       type: string
                     asn:
-                      description: ASN is the AS number to use for the local end of
+                      description: asn is the AS number to use for the local end of
                         the session.
-                      format: int32
+                      format: int64
                       maximum: 4294967295
                       minimum: 1
                       type: integer
                     bfd:
-                      description: BFD defines the BFD configuration for the BGP session.
+                      description: bfd defines the BFD configuration for the BGP session.
                       properties:
                         detectMultiplier:
                           description: |-
-                            Configures the detection multiplier to determine
+                            detectMultiplier configures the detection multiplier to determine
                             packet loss. The remote transmission interval will be multiplied
                             by this value to determine the connection loss detection timer.
                           format: int32
@@ -739,7 +747,7 @@ spec:
                           type: integer
                         echoInterval:
                           description: |-
-                            Configures the minimal echo receive transmission
+                            echoInterval configures the minimal echo receive transmission
                             interval that this system is capable of handling in milliseconds.
                             Defaults to 50ms
                           format: int32
@@ -748,13 +756,13 @@ spec:
                           type: integer
                         echoMode:
                           description: |-
-                            Enables or disables the echo transmission mode.
+                            echoMode enables or disables the echo transmission mode.
                             This mode is disabled by default, and not supported on multi
                             hops setups.
                           type: boolean
                         minimumTtl:
                           description: |-
-                            For multi hop sessions only: configure the minimum
+                            minimumTtl configures, for multi hop sessions only, the minimum
                             expected TTL for an incoming BFD control packet.
                           format: int32
                           maximum: 254
@@ -762,13 +770,13 @@ spec:
                           type: integer
                         passiveMode:
                           description: |-
-                            Mark session as passive: a passive session will not
+                            passiveMode marks session as passive: a passive session will not
                             attempt to start the connection and will wait for control packets
                             from peer before it begins replying.
                           type: boolean
                         receiveInterval:
                           description: |-
-                            The minimum interval that this system is capable of
+                            receiveInterval is the minimum interval that this system is capable of
                             receiving control packets in milliseconds.
                             Defaults to 300ms.
                           format: int32
@@ -777,7 +785,7 @@ spec:
                           type: integer
                         transmitInterval:
                           description: |-
-                            The minimum transmission interval (less jitter)
+                            transmitInterval is the minimum transmission interval (less jitter)
                             that this system wants to use to send BFD control packets in
                             milliseconds. Defaults to 300ms
                           format: int32
@@ -785,46 +793,45 @@ spec:
                           minimum: 10
                           type: integer
                       type: object
-                    connectTime:
-                      description: Requested BGP connect time, controls how long BGP
-                        waits between connection attempts to a neighbor.
-                      type: string
-                      x-kubernetes-validations:
-                      - message: connect time should be between 1 seconds to 65535
-                        rule: duration(self).getSeconds() >= 1 && duration(self).getSeconds()
-                          <= 65535
-                      - message: connect time should contain a whole number of seconds
-                        rule: duration(self).getMilliseconds() % 1000 == 0
+                    connectTimeSeconds:
+                      description: connectTimeSeconds controls how long BGP waits
+                        between connection attempts to a neighbor, in seconds.
+                      format: int64
+                      maximum: 65535
+                      minimum: 1
+                      type: integer
                     ebgpMultiHop:
-                      description: EBGPMultiHop indicates if the BGPPeer is multi-hops
+                      description: ebgpMultiHop indicates if the BGPPeer is multi-hops
                         away.
                       type: boolean
-                    holdTime:
+                    holdTimeSeconds:
                       description: |-
-                        HoldTime is the requested BGP hold time, per RFC4271.
-                        Defaults to 180s.
-                      type: string
+                        holdTimeSeconds is the requested BGP hold time in seconds, per RFC4271.
+                        Defaults to 180.
+                      format: int64
+                      type: integer
                     hostasn:
                       description: |-
-                        ASN is the expected AS number for a BGP speaking component running in
+                        hostasn is the expected AS number for a BGP speaking component running in
                         the default network namespace. If not set, the ASN field is going to be used.
-                      format: int32
+                      format: int64
                       maximum: 4294967295
                       minimum: 0
                       type: integer
-                    keepaliveTime:
+                    keepaliveTimeSeconds:
                       description: |-
-                        KeepaliveTime is the requested BGP keepalive time, per RFC4271.
-                        Defaults to 60s.
-                      type: string
+                        keepaliveTimeSeconds is the requested BGP keepalive time in seconds, per RFC4271.
+                        Defaults to 60.
+                      format: int64
+                      type: integer
                     password:
                       description: |-
-                        Password to be used for establishing the BGP session.
+                        password to be used for establishing the BGP session.
                         Password and PasswordSecret are mutually exclusive.
                       type: string
                     passwordSecret:
                       description: |-
-                        PasswordSecret is name of the authentication secret for the neighbor.
+                        passwordSecret is name of the authentication secret for the neighbor.
                         the secret must be of type "kubernetes.io/basic-auth", and created in the
                         same namespace as the perouter daemon. The password is stored in the
                         secret as the key "password".
@@ -832,31 +839,35 @@ spec:
                       type: string
                     port:
                       description: |-
-                        Port is the port to dial when establishing the session.
+                        port is the port to dial when establishing the session.
                         Defaults to 179.
+                      format: int32
                       maximum: 16384
                       minimum: 0
                       type: integer
                   required:
                   - address
+                  - asn
                   type: object
                   x-kubernetes-validations:
                   - message: hostASN must be different from asn for eBGP
                     rule: '!has(self.hostasn) || self.hostasn != self.asn'
                 minItems: 1
                 type: array
+                x-kubernetes-list-type: atomic
               nics:
                 description: |-
-                  Nics is the list of physical nics to move under the PERouter namespace to connect
+                  nics is the list of physical nics to move under the PERouter namespace to connect
                   to external routers. This field is optional when using Multus networks for TOR connectivity.
                 items:
                   maxLength: 15
                   pattern: ^[a-zA-Z][a-zA-Z0-9._-]*$
                   type: string
                 type: array
+                x-kubernetes-list-type: atomic
               nodeSelector:
                 description: |-
-                  NodeSelector specifies which nodes this Underlay applies to.
+                  nodeSelector specifies which nodes this Underlay applies to.
                   If empty or not specified, applies to all nodes (backward compatible).
                   Multiple Underlays with overlapping node selectors will be rejected.
                 properties:
@@ -905,15 +916,18 @@ spec:
                 x-kubernetes-map-type: atomic
               routeridcidr:
                 default: 10.0.0.0/24
-                description: RouterIDCIDR is the ipv4 cidr to be used to assign a
+                description: routeridcidr is the ipv4 cidr to be used to assign a
                   different routerID on each node.
                 type: string
             required:
             - asn
+            - neighbors
             type: object
           status:
-            description: UnderlayStatus defines the observed state of Underlay.
+            description: status defines the observed state of Underlay.
             type: object
+        required:
+        - spec
         type: object
     served: true
     storage: true

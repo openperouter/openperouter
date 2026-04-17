@@ -37,11 +37,11 @@ spec:
           metadata:
             type: object
           spec:
-            description: RawFRRConfigSpec defines the desired state of RawFRRConfig.
+            description: spec defines the desired state of RawFRRConfig.
             properties:
               nodeSelector:
                 description: |-
-                  NodeSelector specifies which nodes this RawFRRConfig applies to.
+                  nodeSelector specifies which nodes this RawFRRConfig applies to.
                   If empty or not specified, applies to all nodes.
                 properties:
                   matchExpressions:
@@ -90,13 +90,14 @@ spec:
               priority:
                 default: 0
                 description: |-
-                  Priority controls the ordering of raw config snippets in the rendered FRR configuration.
+                  priority controls the ordering of raw config snippets in the rendered FRR configuration.
                   Lower values are rendered first. Snippets with the same priority have undefined order.
+                format: int32
                 minimum: 0
                 type: integer
               rawConfig:
                 description: |-
-                  RawConfig is the raw FRR configuration text to append to the rendered configuration.
+                  rawConfig is the raw FRR configuration text to append to the rendered configuration.
                   WARNING: This feature is intended for advanced use cases. No validation of FRR syntax
                   is performed at admission time; invalid configuration will cause FRR reload failures.
                 minLength: 1
@@ -105,8 +106,10 @@ spec:
             - rawConfig
             type: object
           status:
-            description: RawFRRConfigStatus defines the observed state of RawFRRConfig.
+            description: status defines the observed state of RawFRRConfig.
             type: object
+        required:
+        - spec
         type: object
     served: true
     storage: true

@@ -12,6 +12,7 @@ linters:
     - gocyclo
     - govet
     - ineffassign
+    - kubeapilinter
     - lll
     - misspell
     - nakedret
@@ -25,6 +26,13 @@ linters:
     revive:
       rules:
         - name: comment-spacings
+    custom:
+      kubeapilinter:
+        type: "module"
+        description: "Kube API Linter lints Kube like APIs based on API conventions and best practices."
+        settings:
+          linters: {}
+          lintersConfig: {}
   exclusions:
     generated: lax
     rules:
@@ -35,6 +43,12 @@ linters:
           - dupl
           - lll
         path: internal/*
+      - linters:
+          - kubeapilinter
+        path-except: "api/"
+      - linters:
+          - kubeapilinter
+        path: "api/static/"
     paths:
       - third_party$
       - builtin$

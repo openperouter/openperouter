@@ -47,8 +47,8 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 			Namespace: openperouter.Namespace,
 		},
 		Spec: v1alpha1.L3VNISpec{
-			VRF: "red",
-			VNI: l3VNI,
+			VRF: ptr.To("red"),
+			VNI: ptr.To(int64(l3VNI)),
 		},
 	}
 
@@ -57,14 +57,14 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 			Name:      "red110",
 			Namespace: openperouter.Namespace,
 		},
-		Spec: v1alpha1.L2VNISpec{
+		Spec: &v1alpha1.L2VNISpec{
 			VRF:          ptr.To("red"),
-			VNI:          l2VNI,
+			VNI:          ptr.To(int64(l2VNI)),
 			L2GatewayIPs: []string{l2GatewayIP},
 			HostMaster: &v1alpha1.HostMaster{
 				Type: linuxBridgeHostAttachment,
 				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
-					AutoCreate: true,
+					AutoCreate: ptr.To(true),
 				},
 			},
 		},
@@ -169,7 +169,7 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 			podNode, err := cs.CoreV1().Nodes().Get(context.Background(), silentPod.Spec.NodeName, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
 
-			vtepIP, err := openperouter.VtepIPForNode(infra.Underlay.Spec.EVPN.VTEPCIDR, podNode)
+			vtepIP, err := openperouter.VtepIPForNode(ptr.Deref(infra.Underlay.Spec.EVPN.VTEPCIDR, ""),podNode)
 			Expect(err).NotTo(HaveOccurred())
 
 			vtepIPOnly := ipfamily.StripCIDRMask(vtepIP)
@@ -287,7 +287,7 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 				By("Verifying Type 2 MAC+IP route exists for migrating pod on node A")
 				migratingPodNode, err := cs.CoreV1().Nodes().Get(context.Background(), migratingPod.Spec.NodeName, metav1.GetOptions{})
 				Expect(err).NotTo(HaveOccurred())
-				vtepIP, err := openperouter.VtepIPForNode(infra.Underlay.Spec.EVPN.VTEPCIDR, migratingPodNode)
+				vtepIP, err := openperouter.VtepIPForNode(ptr.Deref(infra.Underlay.Spec.EVPN.VTEPCIDR, ""),migratingPodNode)
 				Expect(err).NotTo(HaveOccurred())
 				vtepIPOnly := ipfamily.StripCIDRMask(vtepIP)
 

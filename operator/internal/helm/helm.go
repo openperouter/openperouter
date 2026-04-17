@@ -51,8 +51,8 @@ func parseManifest(manifest string) ([]*unstructured.Unstructured, error) {
 }
 
 func logLevelValue(crdConfig *operatorapi.OpenPERouter) string {
-	if crdConfig.Spec.LogLevel != "" {
-		return string(crdConfig.Spec.LogLevel)
+	if crdConfig.Spec != nil && crdConfig.Spec.LogLevel != nil {
+		return string(*crdConfig.Spec.LogLevel)
 	}
 	return string(operatorapi.LogLevelInfo)
 }

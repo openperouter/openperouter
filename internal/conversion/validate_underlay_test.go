@@ -9,6 +9,7 @@ import (
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 )
 
 func TestValidateUnderlay(t *testing.T) {
@@ -22,7 +23,7 @@ func TestValidateUnderlay(t *testing.T) {
 			underlay: v1alpha1.Underlay{
 				Spec: v1alpha1.UnderlaySpec{
 					EVPN: &v1alpha1.EVPNConfig{
-						VTEPCIDR: "192.168.1.0/24",
+						VTEPCIDR: ptr.To("192.168.1.0/24"),
 					},
 					Nics: []string{"eth0"},
 					ASN:  65001,
@@ -45,7 +46,7 @@ func TestValidateUnderlay(t *testing.T) {
 			underlay: v1alpha1.Underlay{
 				Spec: v1alpha1.UnderlaySpec{
 					EVPN: &v1alpha1.EVPNConfig{
-						VTEPCIDR: "invalidCIDR",
+						VTEPCIDR: ptr.To("invalidCIDR"),
 					},
 					Nics: []string{"eth0", "eth1"},
 					ASN:  65001,
@@ -58,7 +59,7 @@ func TestValidateUnderlay(t *testing.T) {
 			underlay: v1alpha1.Underlay{
 				Spec: v1alpha1.UnderlaySpec{
 					EVPN: &v1alpha1.EVPNConfig{
-						VTEPCIDR: "",
+						VTEPCIDR: ptr.To(""),
 					},
 					Nics: []string{"eth0", "eth1"},
 					ASN:  65001,
@@ -71,7 +72,7 @@ func TestValidateUnderlay(t *testing.T) {
 			underlay: v1alpha1.Underlay{
 				Spec: v1alpha1.UnderlaySpec{
 					EVPN: &v1alpha1.EVPNConfig{
-						VTEPCIDR: "192.168.1.0/24",
+						VTEPCIDR: ptr.To("192.168.1.0/24"),
 					},
 					Nics: []string{"eth0", "1$^&invalid"},
 					ASN:  65001,
@@ -84,7 +85,7 @@ func TestValidateUnderlay(t *testing.T) {
 			underlay: v1alpha1.Underlay{
 				Spec: v1alpha1.UnderlaySpec{
 					EVPN: &v1alpha1.EVPNConfig{
-						VTEPCIDR: "192.168.1.0/24",
+						VTEPCIDR: ptr.To("192.168.1.0/24"),
 					},
 					Nics: []string{},
 					ASN:  65001,
@@ -97,7 +98,7 @@ func TestValidateUnderlay(t *testing.T) {
 			underlay: v1alpha1.Underlay{
 				Spec: v1alpha1.UnderlaySpec{
 					EVPN: &v1alpha1.EVPNConfig{
-						VTEPCIDR: "192.168.1.0/24",
+						VTEPCIDR: ptr.To("192.168.1.0/24"),
 					},
 					Nics: nil,
 					ASN:  65001,
@@ -110,7 +111,7 @@ func TestValidateUnderlay(t *testing.T) {
 			underlay: v1alpha1.Underlay{
 				Spec: v1alpha1.UnderlaySpec{
 					EVPN: &v1alpha1.EVPNConfig{
-						VTEPCIDR: "192.168.1.0/24",
+						VTEPCIDR: ptr.To("192.168.1.0/24"),
 					},
 					Nics: []string{"eth0", "eth1"},
 					ASN:  65001,
@@ -123,7 +124,7 @@ func TestValidateUnderlay(t *testing.T) {
 			underlay: v1alpha1.Underlay{
 				Spec: v1alpha1.UnderlaySpec{
 					EVPN: &v1alpha1.EVPNConfig{
-						VTEPCIDR: "192.168.1.0/24",
+						VTEPCIDR: ptr.To("192.168.1.0/24"),
 					},
 					ASN: 65001,
 					Neighbors: []v1alpha1.Neighbor{
@@ -140,7 +141,7 @@ func TestValidateUnderlay(t *testing.T) {
 			underlay: v1alpha1.Underlay{
 				Spec: v1alpha1.UnderlaySpec{
 					EVPN: &v1alpha1.EVPNConfig{
-						VTEPCIDR: "192.168.1.0/24",
+						VTEPCIDR: ptr.To("192.168.1.0/24"),
 					},
 					Nics: []string{"eno2.161"},
 					ASN:  65001,
@@ -152,7 +153,7 @@ func TestValidateUnderlay(t *testing.T) {
 			underlay: v1alpha1.Underlay{
 				Spec: v1alpha1.UnderlaySpec{
 					EVPN: &v1alpha1.EVPNConfig{
-						VTEPCIDR: "192.168.1.0/24",
+						VTEPCIDR: ptr.To("192.168.1.0/24"),
 					},
 					Nics: []string{".eth0"},
 					ASN:  65001,
@@ -165,7 +166,7 @@ func TestValidateUnderlay(t *testing.T) {
 			underlay: v1alpha1.Underlay{
 				Spec: v1alpha1.UnderlaySpec{
 					EVPN: &v1alpha1.EVPNConfig{
-						VTEPCIDR: "192.168.1.0/24",
+						VTEPCIDR: ptr.To("192.168.1.0/24"),
 					},
 					Nics: []string{"verylongname.123"},
 					ASN:  65001,
@@ -178,7 +179,7 @@ func TestValidateUnderlay(t *testing.T) {
 			underlay: v1alpha1.Underlay{
 				Spec: v1alpha1.UnderlaySpec{
 					EVPN: &v1alpha1.EVPNConfig{
-						VTEPCIDR: "192.168.1.0/24",
+						VTEPCIDR: ptr.To("192.168.1.0/24"),
 					},
 					Nics: []string{"eth0.100!"},
 					ASN:  65001,
@@ -191,8 +192,8 @@ func TestValidateUnderlay(t *testing.T) {
 			underlay: v1alpha1.Underlay{
 				Spec: v1alpha1.UnderlaySpec{
 					EVPN: &v1alpha1.EVPNConfig{
-						VTEPCIDR:      "192.168.1.0/24",
-						VTEPInterface: "eth0",
+						VTEPCIDR:      ptr.To("192.168.1.0/24"),
+						VTEPInterface: ptr.To("eth0"),
 					},
 					Nics: []string{"eth0"},
 					ASN:  65001,
@@ -216,7 +217,7 @@ func TestValidateUnderlay(t *testing.T) {
 			underlay: v1alpha1.Underlay{
 				Spec: v1alpha1.UnderlaySpec{
 					EVPN: &v1alpha1.EVPNConfig{
-						VTEPInterface: "eth0",
+						VTEPInterface: ptr.To("eth0"),
 					},
 					Nics: []string{"eth1"},
 					ASN:  65001,
@@ -229,7 +230,7 @@ func TestValidateUnderlay(t *testing.T) {
 			underlay: v1alpha1.Underlay{
 				Spec: v1alpha1.UnderlaySpec{
 					EVPN: &v1alpha1.EVPNConfig{
-						VTEPInterface: "1invalid",
+						VTEPInterface: ptr.To("1invalid"),
 					},
 					Nics: []string{"eth0"},
 					ASN:  65001,
@@ -254,7 +255,7 @@ func TestValidateUnderlay(t *testing.T) {
 			{
 				Spec: v1alpha1.UnderlaySpec{
 					EVPN: &v1alpha1.EVPNConfig{
-						VTEPCIDR: "192.168.1.0/24",
+						VTEPCIDR: ptr.To("192.168.1.0/24"),
 					},
 					Nics: []string{"eth0"},
 					ASN:  65001,
@@ -263,7 +264,7 @@ func TestValidateUnderlay(t *testing.T) {
 			{
 				Spec: v1alpha1.UnderlaySpec{
 					EVPN: &v1alpha1.EVPNConfig{
-						VTEPCIDR: "192.168.2.0/24",
+						VTEPCIDR: ptr.To("192.168.2.0/24"),
 					},
 					Nics: []string{"eth1"},
 					ASN:  65002,
@@ -305,7 +306,7 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 						ASN:  65001,
 						Nics: []string{"eth0"},
 						EVPN: &v1alpha1.EVPNConfig{
-							VTEPCIDR: "192.168.1.0/24",
+							VTEPCIDR: ptr.To("192.168.1.0/24"),
 						},
 					},
 				},
@@ -397,7 +398,7 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 						ASN:  65001,
 						Nics: []string{"eth0"},
 						EVPN: &v1alpha1.EVPNConfig{
-							VTEPCIDR: "192.168.1.0/24",
+							VTEPCIDR: ptr.To("192.168.1.0/24"),
 						},
 					},
 				},
@@ -410,7 +411,7 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 						ASN:  65002,
 						Nics: []string{"eth1"},
 						EVPN: &v1alpha1.EVPNConfig{
-							VTEPCIDR: "192.168.2.0/24",
+							VTEPCIDR: ptr.To("192.168.2.0/24"),
 						},
 					},
 				},
@@ -435,7 +436,7 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 						ASN:          65001,
 						Nics:         []string{"eth0"},
 						EVPN: &v1alpha1.EVPNConfig{
-							VTEPCIDR: "192.168.1.0/24",
+							VTEPCIDR: ptr.To("192.168.1.0/24"),
 						},
 					},
 				},
@@ -460,7 +461,7 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 						ASN:          65001,
 						Nics:         []string{"eth0"},
 						EVPN: &v1alpha1.EVPNConfig{
-							VTEPCIDR: "192.168.1.0/24",
+							VTEPCIDR: ptr.To("192.168.1.0/24"),
 						},
 					},
 				},
@@ -517,7 +518,7 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 						},
 						ASN: 65001,
 						EVPN: &v1alpha1.EVPNConfig{
-							VTEPCIDR: "invalid-cidr", // Invalid VTEP CIDR
+							VTEPCIDR: ptr.To("invalid-cidr"), // Invalid VTEP CIDR
 						},
 						Nics: []string{"eth0"},
 					},
@@ -609,7 +610,7 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 						ASN:  65001,
 						Nics: []string{"eth0"},
 						EVPN: &v1alpha1.EVPNConfig{
-							VTEPCIDR: "192.168.1.0/24",
+							VTEPCIDR: ptr.To("192.168.1.0/24"),
 						},
 					},
 				},

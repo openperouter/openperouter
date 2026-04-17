@@ -97,15 +97,15 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 				Namespace: openperouter.Namespace,
 			},
 			Spec: v1alpha1.L3VNISpec{
-				VRF: "red",
+				VRF: ptr.To("red"),
 				HostSession: &v1alpha1.HostSession{
 					ASN:     64514,
-					HostASN: 64515,
-					LocalCIDR: v1alpha1.LocalCIDRConfig{
-						IPv4: "192.169.10.0/24",
+					HostASN: ptr.To(int64(64515)),
+					LocalCIDR: &v1alpha1.LocalCIDRConfig{
+						IPv4: ptr.To("192.169.10.0/24"),
 					},
 				},
-				VNI: 100,
+				VNI: ptr.To(int64(100)),
 			},
 		}
 		BeforeEach(func() {
@@ -144,9 +144,9 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 			Spec: v1alpha1.L3PassthroughSpec{
 				HostSession: v1alpha1.HostSession{
 					ASN:     64514,
-					HostASN: 64515,
-					LocalCIDR: v1alpha1.LocalCIDRConfig{
-						IPv4: "192.169.10.0/24",
+					HostASN: ptr.To(int64(64515)),
+					LocalCIDR: &v1alpha1.LocalCIDRConfig{
+						IPv4: ptr.To("192.169.10.0/24"),
 					},
 				},
 			},
@@ -326,12 +326,12 @@ var _ = Describe("Underlay BFD Configuration", Ordered, func() {
 					ASN:  64514,
 					Nics: []string{"toswitch"},
 					EVPN: &v1alpha1.EVPNConfig{
-						VTEPCIDR: "100.65.0.0/24",
+						VTEPCIDR: ptr.To("100.65.0.0/24"),
 					},
 					Neighbors: []v1alpha1.Neighbor{
 						{
 							ASN:     64512,
-							Address: "192.168.11.2",
+							Address: ptr.To("192.168.11.2"),
 							BFD:     &v1alpha1.BFDSettings{},
 						},
 					},
@@ -347,16 +347,16 @@ var _ = Describe("Underlay BFD Configuration", Ordered, func() {
 					ASN:  64514,
 					Nics: []string{"toswitch"},
 					EVPN: &v1alpha1.EVPNConfig{
-						VTEPCIDR: "100.65.0.0/24",
+						VTEPCIDR: ptr.To("100.65.0.0/24"),
 					},
 					Neighbors: []v1alpha1.Neighbor{
 						{
 							ASN:     64512,
-							Address: "192.168.11.2",
+							Address: ptr.To("192.168.11.2"),
 							BFD: &v1alpha1.BFDSettings{
-								TransmitInterval: ptr.To(uint32(90)),
-								ReceiveInterval:  ptr.To(uint32(80)),
-								DetectMultiplier: ptr.To(uint32(5)),
+								TransmitInterval: ptr.To(int32(90)),
+								ReceiveInterval:  ptr.To(int32(80)),
+								DetectMultiplier: ptr.To(int32(5)),
 							},
 						},
 					},

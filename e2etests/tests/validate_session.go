@@ -14,19 +14,22 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/frr"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/utils/ptr"
 )
 
 const Established = true
 
 func validateFRRK8sSessionForHostSession(name string, hostsession v1alpha1.HostSession, established bool, frrk8sPods ...*corev1.Pod) {
 	var cidrs []string
-	Expect(hostsession.LocalCIDR.IPv4 != "" || hostsession.LocalCIDR.IPv6 != "").To(BeTrue(), "either IPv4 or IPv6 CIDR must be provided")
+	ipv4CIDR := ptr.Deref(hostsession.LocalCIDR.IPv4, "")
+	ipv6CIDR := ptr.Deref(hostsession.LocalCIDR.IPv6, "")
+	Expect(ipv4CIDR != "" || ipv6CIDR != "").To(BeTrue(), "either IPv4 or IPv6 CIDR must be provided")
 
-	if hostsession.LocalCIDR.IPv4 != "" {
-		cidrs = append(cidrs, hostsession.LocalCIDR.IPv4)
+	if ipv4CIDR != "" {
+		cidrs = append(cidrs, ipv4CIDR)
 	}
-	if hostsession.LocalCIDR.IPv6 != "" {
-		cidrs = append(cidrs, hostsession.LocalCIDR.IPv6)
+	if ipv6CIDR != "" {
+		cidrs = append(cidrs, ipv6CIDR)
 	}
 
 	for _, cidr := range cidrs {

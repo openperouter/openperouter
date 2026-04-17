@@ -35,7 +35,11 @@ The development environment uses kind and containerlab. Details can be found in 
 
 ## Go Style Guidelines
 
-You can run `make lint` to run the go linter against the codebase.
+You can run `make lint` to run the go linter against the codebase. This includes
+the [kube-api-linter](https://sigs.k8s.io/kube-api-linter) plugin, which validates
+that API types under `api/` follow Kubernetes API conventions (lowercase field
+descriptions, proper markers, correct use of optional/required pointers, etc.).
+The linter plugin is configured in `.custom-gcl.yml` and `.golangci.yml`.
 
 ### Code Readability: Line of Sight
 
@@ -135,6 +139,12 @@ if err := fetchData(id); err != nil {
 - Exercise caution when spawning goroutines in Kubernetes controllers
 - Controller lifecycle management makes goroutine cleanup complex
 - Prefer controller-runtime's built-in concurrency patterns
+
+## API Duration Fields
+
+API types under `api/v1alpha1/` use integer fields with unit suffixes (e.g. `HoldTimeSeconds *int64`) instead of `metav1.Duration` to satisfy the `noduration` kube-api-linter rule.
+
+Convenience getters/setters in `api/v1alpha1/duration.go` let Go code work with `time.Duration` instead. When adding or removing a time-related field from the API types, always add or remove the corresponding getter and setter in `duration.go`.
 
 ## Code Review Checklist
 
