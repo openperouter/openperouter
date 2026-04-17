@@ -48,21 +48,24 @@ create_bridges() {
         # For single cluster, use the traditional bridge name
         if [[ ${#CLUSTER_NAMES[@]} -eq 1 && "$cluster_name" == "pe-kind" ]]; then
             bridge_name="leafkind-switch"  # 15 chars exactly
+            dummy_name="lk-dummy"
         else
             # Use cluster suffix to keep bridge name short (under 15 chars)
             # Extract last part after final dash (e.g., pe-kind-a -> a)
             suffix="${cluster_name##*-}"
             bridge_name="leafkind-sw-${suffix}"  # e.g., leafkind-sw-a (13 chars)
+            dummy_name="lk-dummy-${suffix}"
         fi
 
         if [[ ! -d "/sys/class/net/${bridge_name}" ]]; then
             echo "Creating bridge ${bridge_name} for cluster ${cluster_name}"
             sudo ip link add name ${bridge_name} type bridge
-        fi
-
-        if [[ $(cat /sys/class/net/${bridge_name}/operstate) != "up" ]]; then
-            echo "Bringing up bridge ${bridge_name}"
             sudo ip link set dev ${bridge_name} up
+
+            # Add a dummy interface to keep the bridge up when veths are removed
+            sudo ip link add ${dummy_name} type dummy
+            sudo ip link set dev ${dummy_name} master ${bridge_name}
+            sudo ip link set dev ${dummy_name} up
         fi
     done
 
