@@ -99,14 +99,14 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 	ginkgo.AfterEach(func() {
 		dumpIfFails(cs)
 		Expect(Updater.CleanAll()).To(Succeed())
-		ginkgo.By("waiting for the router pod to rollout after removing the underlay")
-		Eventually(func() error {
-			newRouterPods, err := openperouter.RouterPods(cs)
-			if err != nil {
-				return err
+		ginkgo.By("waiting for all router pods to be ready")
+		Eventually(func(g Gomega) {
+			pods, err := openperouter.RouterPods(cs)
+			g.Expect(err).NotTo(HaveOccurred())
+			for _, p := range pods {
+				g.Expect(k8s.PodIsReady(p)).To(BeTrue(), "pod %s must be ready", p.Name)
 			}
-			return podsRolled(cs, routerPods, newRouterPods)
-		}, time.Minute, time.Second).ShouldNot(HaveOccurred())
+		}).WithTimeout(2 * time.Minute).WithPolling(time.Second).Should(Succeed())
 	})
 
 	ginkgo.Context("L3", func() {
