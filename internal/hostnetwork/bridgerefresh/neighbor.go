@@ -39,6 +39,13 @@ func (r *BridgeRefresher) listStaleNeighbors() ([]netlink.Neigh, error) {
 			continue
 		}
 
+		// Skip link-local addresses — they are not advertised as EVPN
+		// Type-2 routes, and the bridge typically has no IPv6 address
+		// to send ICMPv6 pings from.
+		if neigh.IP.IsLinkLocalUnicast() {
+			continue
+		}
+
 		staleNeighbors = append(staleNeighbors, neigh)
 	}
 
