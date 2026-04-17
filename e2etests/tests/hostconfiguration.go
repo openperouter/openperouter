@@ -24,6 +24,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/util/retry"
 )
 
 var ValidatorPath string
@@ -1451,8 +1452,18 @@ func ensureValidator(cs clientset.Interface, pod *corev1.Pod) {
 	_, err := exec.Command(executor.Kubectl, fullargs...).CombinedOutput()
 	Expect(err).NotTo(HaveOccurred())
 
-	pod.Annotations["validator"] = "true"
-	_, err = cs.CoreV1().Pods(pod.Namespace).Update(context.Background(), pod, metav1.UpdateOptions{})
+	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		latest, err := cs.CoreV1().Pods(pod.Namespace).Get(context.Background(), pod.Name, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		if latest.Annotations == nil {
+			latest.Annotations = map[string]string{}
+		}
+		latest.Annotations["validator"] = "true"
+		_, err = cs.CoreV1().Pods(pod.Namespace).Update(context.Background(), latest, metav1.UpdateOptions{})
+		return err
+	})
 	Expect(err).NotTo(HaveOccurred())
 }
 
