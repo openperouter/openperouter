@@ -66,14 +66,8 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 
 	ginkgo.BeforeEach(func() {
 		cs = k8sclient.New()
-		ginkgo.By("ensuring the validator is in all the pods")
-		var err error
-		routerPods, err = openperouter.RouterPods(cs)
-		Expect(err).NotTo(HaveOccurred())
-		for _, pod := range routerPods {
-			ensureValidator(cs, pod)
-		}
 
+		var err error
 		err = Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
 
