@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"sort"
+	"time"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/frr"
@@ -282,13 +283,13 @@ func neighborToFRR(n v1alpha1.Neighbor) (*frr.NeighborConfig, error) {
 		EBGPMultiHop: ptr.Deref(n.EBGPMultiHop, false),
 		Password:     ptr.Deref(n.Password, ""),
 	}
-	res.HoldTime, res.KeepaliveTime, err = parseTimers(n.HoldTimeSeconds, n.KeepaliveTimeSeconds)
+	res.HoldTime, res.KeepaliveTime, err = parseTimers(n.HoldTime(), n.KeepaliveTime())
 	if err != nil {
 		return nil, fmt.Errorf("invalid timers for neighbor %s, err: %w", neighborName(n), err)
 	}
 
-	if n.ConnectTimeSeconds != nil {
-		res.ConnectTime = ptr.To(uint64(*n.ConnectTimeSeconds))
+	if ct := n.ConnectTime(); ct != nil {
+		res.ConnectTime = ptr.To(uint64(ct.Seconds()))
 	}
 
 	if n.BFD == nil {
@@ -336,7 +337,7 @@ func neighborName(n v1alpha1.Neighbor) string {
 	return fmt.Sprintf("%d@%s", n.ASN, ptr.Deref(n.Address, ""))
 }
 
-func parseTimers(ht, ka *int64) (*uint64, *uint64, error) {
+func parseTimers(ht, ka *time.Duration) (*uint64, *uint64, error) {
 	if ht == nil && ka != nil || ht != nil && ka == nil {
 		return nil, nil, fmt.Errorf("one of KeepaliveTime/HoldTime specified, both must be set or none")
 	}
@@ -345,19 +346,16 @@ func parseTimers(ht, ka *int64) (*uint64, *uint64, error) {
 		return nil, nil, nil
 	}
 
-	holdTimeSeconds := *ht
-	keepaliveTimeSeconds := *ka
-
-	if holdTimeSeconds != 0 && holdTimeSeconds < 3 {
-		return nil, nil, fmt.Errorf("invalid hold time %d seconds: must be 0 or >=3s", holdTimeSeconds)
+	if *ht != 0 && *ht < 3*time.Second {
+		return nil, nil, fmt.Errorf("invalid hold time %s: must be 0 or >=3s", *ht)
 	}
 
-	if keepaliveTimeSeconds > holdTimeSeconds {
-		return nil, nil, fmt.Errorf("invalid keepaliveTime %d, must be lower than holdTime %d", keepaliveTimeSeconds, holdTimeSeconds)
+	if *ka > *ht {
+		return nil, nil, fmt.Errorf("invalid keepaliveTime %s, must be lower than holdTime %s", *ka, *ht)
 	}
 
-	htSeconds := uint64(holdTimeSeconds)      // #nosec G115
-	kaSeconds := uint64(keepaliveTimeSeconds) // #nosec G115
+	htSeconds := uint64(ht.Seconds())
+	kaSeconds := uint64(ka.Seconds())
 
 	return &htSeconds, &kaSeconds, nil
 }

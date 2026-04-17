@@ -140,6 +140,12 @@ if err := fetchData(id); err != nil {
 - Controller lifecycle management makes goroutine cleanup complex
 - Prefer controller-runtime's built-in concurrency patterns
 
+## API Duration Fields
+
+API types under `api/v1alpha1/` use integer fields with unit suffixes (e.g. `HoldTimeSeconds *int64`) instead of `metav1.Duration` to satisfy the `noduration` kube-api-linter rule.
+
+Convenience getters/setters in `api/v1alpha1/duration.go` let Go code work with `time.Duration` instead. When adding or removing a time-related field from the API types, always add or remove the corresponding getter and setter in `duration.go`.
+
 ## Code Review Checklist
 
 When reviewing or writing code, verify:
