@@ -74,6 +74,20 @@ func (r routerPods) ExecutorForNode(nodeName string) (RouterExecutor, error) {
 	return nil, fmt.Errorf("no router found on node %s", nodeName)
 }
 
+// allPodsReady returns true when every pod in the list is non-terminating and ready.
+// An empty list is treated as not-ready (cluster may still be converging).
+func allPodsReady(pods []*corev1.Pod) bool {
+	if len(pods) == 0 {
+		return false
+	}
+	for _, p := range pods {
+		if p.DeletionTimestamp != nil || !k8s.PodIsReady(p) {
+			return false
+		}
+	}
+	return true
+}
+
 func daemonsetPodRolled(oldRouters, newRouters routerPods) error {
 	oldPodsNames := []string{}
 	for _, p := range oldRouters.pods {

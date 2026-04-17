@@ -62,8 +62,10 @@ var _ = Describe("North/south traffic after FRR container restart", Ordered, fun
 		Expect(err).NotTo(HaveOccurred())
 
 		cs = k8sclient.New()
-		routers, err = openperouter.Get(cs, HostMode)
-		Expect(err).NotTo(HaveOccurred())
+		Eventually(func() error {
+			routers, err = openperouter.ReadyRouters(cs, HostMode)
+			return err
+		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 
 		routers.Dump(ginkgo.GinkgoWriter)
 

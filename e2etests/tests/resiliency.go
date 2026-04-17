@@ -64,8 +64,10 @@ var _ = Describe("Alpha: Named netns and kernel objects survive FRR crash", Orde
 		Expect(err).NotTo(HaveOccurred())
 
 		cs = k8sclient.New()
-		routers, err = openperouter.Get(cs, HostMode)
-		Expect(err).NotTo(HaveOccurred())
+		Eventually(func() error {
+			routers, err = openperouter.ReadyRouters(cs, HostMode)
+			return err
+		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 
 		routers.Dump(ginkgo.GinkgoWriter)
 
