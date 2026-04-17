@@ -18,6 +18,7 @@ if [[ $# -lt 1 ]]; then
 fi
 
 CLUSTER_NAME="$1"
+KIND="${KIND:-kind}"
 
 if [[ -n "${NODE_CONFIG_DIR:-}" ]]; then
     if [[ ! -d "$NODE_CONFIG_DIR" ]]; then
@@ -27,7 +28,7 @@ if [[ -n "${NODE_CONFIG_DIR:-}" ]]; then
     log_info "Will copy files from $NODE_CONFIG_DIR to each node"
 fi
 
-NODES=$(kind get nodes --name "$CLUSTER_NAME" 2>/dev/null)
+NODES=$($KIND get nodes --name "$CLUSTER_NAME" 2>/dev/null)
 if [[ -z "$NODES" ]]; then
     log_error "No nodes found for kind cluster: $CLUSTER_NAME"
     log_error "Please check that the cluster exists with: kind get clusters"
