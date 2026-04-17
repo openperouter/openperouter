@@ -121,6 +121,21 @@ func linkSetUp(l netlink.Link) error {
 	return netlink.LinkSetUp(l)
 }
 
+// linkSetMTU sets the MTU on the link only if it differs from the desired value.
+// This avoids unnecessary RTM_NEWLINK events that can cause FRR to flush neighbor entries.
+func linkSetMTU(l netlink.Link, mtu int) error {
+	currentLink, err := netlink.LinkByIndex(l.Attrs().Index)
+	if err != nil {
+		return fmt.Errorf("linkSetMTU: failed to get link by index: %w", err)
+	}
+
+	if currentLink.Attrs().MTU == mtu {
+		return nil
+	}
+
+	return netlink.LinkSetMTU(l, mtu)
+}
+
 // linkSetMaster sets the master of a link only if it's not already set to the desired master.
 // This avoids unnecessary RTM_NEWLINK events that can cause FRR to flush neighbor entries.
 func linkSetMaster(link, master netlink.Link) error {
