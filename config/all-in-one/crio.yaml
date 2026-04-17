@@ -1406,7 +1406,7 @@ spec:
           name: varrun
           subPath: containerd.sock
         - mountPath: /run/netns
-          mountPropagation: HostToContainer
+          mountPropagation: Bidirectional
           name: runns
         - mountPath: /etc/frr/
           mountPropagation: HostToContainer
@@ -1475,7 +1475,11 @@ spec:
         - /bin/sh
         - -c
         - |
-          /sbin/tini -- /usr/lib/frr/docker-start &
+          until [ -e /var/run/netns/perouter ]; do
+            echo "Waiting for named netns /var/run/netns/perouter..."
+            sleep 1
+          done
+          nsenter --net=/var/run/netns/perouter /sbin/tini -- /usr/lib/frr/docker-start &
           attempts=0
           until [[ -f /etc/frr/frr.log || $attempts -eq 60 ]]; do
             sleep 1
@@ -1495,11 +1499,15 @@ spec:
             - NET_RAW
             - SYS_ADMIN
             - NET_BIND_SERVICE
+            - SYS_PTRACE
         volumeMounts:
         - mountPath: /var/run/frr
           name: frr-sockets
         - mountPath: /etc/frr
           name: frrconfig
+        - mountPath: /var/run/netns
+          mountPropagation: HostToContainer
+          name: netns
       - args:
         - --frrconfig=/etc/perouter/frr.conf
         - --loglevel=debug
@@ -1539,6 +1547,7 @@ spec:
           name: frr-sockets
         - mountPath: /etc/perouter
           name: frrsharedconfig
+      hostNetwork: true
       initContainers:
       - command:
         - /bin/sh
@@ -1574,6 +1583,9 @@ spec:
         name: frrsharedconfig
       - emptyDir: {}
         name: frrconfig
+      - hostPath:
+          path: /var/run/netns
+        name: netns
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration

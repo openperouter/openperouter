@@ -59,6 +59,24 @@ func Get(cs clientset.Interface, hostMode bool) (Routers, error) {
 	return routerPodmans{routers: routers}, nil
 }
 
+// ReadyRouters returns the current set of router pods if all of them are
+// non-terminating and ready; otherwise it returns an error. Callers should
+// drive retries via gomega's Eventually rather than calling this in a loop.
+// In host mode it delegates to Get (podman has no pod-readiness concept).
+func ReadyRouters(cs clientset.Interface, hostMode bool) (Routers, error) {
+	if hostMode {
+		return Get(cs, hostMode)
+	}
+	pods, err := k8s.PodsForLabel(cs, Namespace, routerLabelSelector)
+	if err != nil {
+		return nil, err
+	}
+	if !allPodsReady(pods) {
+		return nil, fmt.Errorf("not all router pods are non-terminating and ready")
+	}
+	return routerPods{pods: pods}, nil
+}
+
 func RouterPodsForNodes(cs clientset.Interface, nodes map[string]bool) ([]*corev1.Pod, error) {
 	routerPods, err := k8s.PodsForLabel(cs, Namespace, routerLabelSelector)
 	if err != nil {
