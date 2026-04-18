@@ -96,11 +96,7 @@ var _ = Describe("Routes between bgp and the fabric", Label("passthrough"), Orde
 	Context("with passthrough and frr-k8s", func() {
 		ShouldExist := true
 		frrk8sPods := []*corev1.Pod{}
-		frrK8sConfigRed, err := frrk8s.ConfigFromHostSession(passthrough.Spec.HostSession, passthrough.Name)
-		if err != nil {
-			panic(err)
-		}
-		frrK8sConfigBlue, err := frrk8s.ConfigFromHostSession(passthrough.Spec.HostSession, passthrough.Name)
+		frrK8sPassthroughConfigs, err := frrk8s.ConfigFromHostSession(passthrough.Spec.HostSession, passthrough.Name)
 		if err != nil {
 			panic(err)
 		}
@@ -115,7 +111,7 @@ var _ = Describe("Routes between bgp and the fabric", Label("passthrough"), Orde
 				L3Passthrough: []v1alpha1.L3Passthrough{
 					passthrough,
 				},
-				FRRConfigurations: append(frrK8sConfigRed, frrK8sConfigBlue...),
+				FRRConfigurations: frrK8sPassthroughConfigs,
 			})
 			Expect(err).NotTo(HaveOccurred())
 
