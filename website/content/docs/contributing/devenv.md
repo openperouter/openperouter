@@ -56,6 +56,6 @@ The development environment faces a significant issue:
 Because of this, when the router pod wrapping the interface gets deleted (instead of returning to the host as it would happen with a
 real interface).
 
-To emulate the behavior of a real system, there is a [background script](https://github.com/openperouter/openperouter/blob/main/clab/check_veths.sh)
+To emulate the behavior of a real system, there is a [background program](https://github.com/openperouter/openperouter/blob/main/clab/tools/check_veths/check_veths.go)
 which checks for the deletion of the veths and recreates them.
 

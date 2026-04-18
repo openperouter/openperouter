@@ -27,3 +27,43 @@ var Underlay = v1alpha1.Underlay{
 		},
 	},
 }
+
+var UnderlayIPv6 = v1alpha1.Underlay{
+	ObjectMeta: metav1.ObjectMeta{
+		Name:      "underlay",
+		Namespace: openperouter.Namespace,
+	},
+	Spec: v1alpha1.UnderlaySpec{
+		ASN:  64514,
+		Nics: []string{"toswitch"},
+		Neighbors: []v1alpha1.Neighbor{
+			{
+				ASN:     64512,
+				Address: "2001:db8:11::2",
+			},
+		},
+		EVPN: &v1alpha1.EVPNConfig{
+			VTEPCIDR: "100.65.0.0/24",
+		},
+	},
+}
+
+var UnderlayUnnumbered = v1alpha1.Underlay{
+	ObjectMeta: metav1.ObjectMeta{
+		Name:      "underlay",
+		Namespace: openperouter.Namespace,
+	},
+	Spec: v1alpha1.UnderlaySpec{
+		ASN:  64514,
+		Nics: []string{"toleafkind"},
+		Neighbors: []v1alpha1.Neighbor{
+			{
+				ASN:       64512,
+				Interface: "toleafkind",
+			},
+		},
+		EVPN: &v1alpha1.EVPNConfig{
+			VTEPCIDR: "100.65.0.0/24",
+		},
+	},
+}
