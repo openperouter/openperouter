@@ -196,16 +196,13 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 	Context("with vnis and frr-k8s", func() {
 		ShouldExist := true
 		frrk8sPods := []*corev1.Pod{}
-		frrK8sConfigRed, err := frrk8s.ConfigFromHostSession(*vniRed.Spec.HostSession, vniRed.Name)
-		if err != nil {
-			panic(err)
-		}
-		frrK8sConfigBlue, err := frrk8s.ConfigFromHostSession(*vniBlue.Spec.HostSession, vniBlue.Name)
-		if err != nil {
-			panic(err)
-		}
 
 		BeforeEach(func() {
+			frrK8sConfigRed, err := frrk8s.ConfigFromHostSession(*vniRed.Spec.HostSession, vniRed.Name)
+			Expect(err).NotTo(HaveOccurred())
+			frrK8sConfigBlue, err := frrk8s.ConfigFromHostSession(*vniBlue.Spec.HostSession, vniBlue.Name)
+			Expect(err).NotTo(HaveOccurred())
+
 			frrk8sPods, err = frrk8s.Pods(cs)
 			Expect(err).NotTo(HaveOccurred())
 
