@@ -90,6 +90,37 @@ func (p *podExecutor) Exec(cmd string, args ...string) (string, error) {
 	return string(out), err
 }
 
+// ForPodInNamedNetns returns an executor that runs commands inside a pod container
+// but within a specific network namespace via nsenter. This is needed when the
+// pod's processes use nsenter to run in a named netns (e.g. /var/run/netns/perouter),
+// because kubectl exec enters the pod's own network namespace, not the named one.
+func ForPodInNamedNetns(namespace, name, container, netnsPath string) Executor {
+	return &podNetnsExecutor{
+		namespace: namespace,
+		name:      name,
+		container: container,
+		netnsPath: netnsPath,
+	}
+}
+
+type podNetnsExecutor struct {
+	namespace string
+	name      string
+	container string
+	netnsPath string
+}
+
+func (p *podNetnsExecutor) Exec(cmd string, args ...string) (string, error) {
+	if Kubectl == "" {
+		return "", errors.New("the kubectl parameter is not set")
+	}
+	nsenterArgs := []string{"exec", p.name, "-n", p.namespace, "-c", p.container, "--",
+		"nsenter", "--net=" + p.netnsPath, cmd}
+	fullargs := append(nsenterArgs, args...)
+	out, err := exec.Command(Kubectl, fullargs...).CombinedOutput()
+	return string(out), err
+}
+
 // add ephemeral container to deal with distroless image
 type podDebugExecutor struct {
 	namespace string
