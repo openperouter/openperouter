@@ -41,11 +41,8 @@ var _ = Describe("RawFRRConfig", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func() error {
-			newRouters, err := openperouter.Get(cs, HostMode)
-			if err != nil {
-				return err
-			}
-			return openperouter.DaemonsetRolled(routers, newRouters)
+			_, err := openperouter.ReadyRouters(cs, HostMode)
+			return err
 		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 	})
 
