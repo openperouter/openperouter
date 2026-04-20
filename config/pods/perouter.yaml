@@ -23,6 +23,9 @@ spec:
         control-plane: router
         app: router
     spec:
+      hostNetwork: true
+      terminationGracePeriodSeconds: 10
+      shareProcessNamespace: true
       containers:
       - name: frr
         securityContext:
@@ -38,11 +41,18 @@ spec:
             mountPath: /var/run/frr
           - name: frrconfig
             mountPath: /etc/frr
+          - name: netns
+            mountPath: /var/run/netns
+            mountPropagation: HostToContainer
         command:
           - /bin/sh
           - -c
           - |
-            exec /sbin/tini -- /usr/lib/frr/docker-start
+            until [ -e /var/run/netns/perouter ]; do
+              echo "Waiting for named netns /var/run/netns/perouter..."
+              sleep 1
+            done
+            nsenter --net=/var/run/netns/perouter /sbin/tini -- /usr/lib/frr/docker-start
       - name: reloader
         image: router:latest
         imagePullPolicy: IfNotPresent
@@ -100,6 +110,9 @@ spec:
             type: DirectoryOrCreate
         - name: frrconfig
           emptyDir: {}
+        - name: netns
+          hostPath:
+            path: /var/run/netns
       initContainers:
         # Copies the initial config files with the right permissions to the shared volume.
         - name: cp-frr-files
@@ -112,5 +125,4 @@ spec:
             - name: frrconfig
               mountPath: /etc/frr
       serviceAccountName: perouter
-      terminationGracePeriodSeconds: 10
-      shareProcessNamespace: true
+

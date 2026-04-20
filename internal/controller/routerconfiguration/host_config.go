@@ -33,12 +33,15 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 		return fmt.Errorf("failed to check if target namespace %s has underlay: %w", config.targetNamespace, err)
 	}
 	if hasAlreadyUnderlay && len(config.Underlays) == 0 {
-		slog.InfoContext(ctx, "underlay removed, cleaning up VNIs")
+		slog.InfoContext(ctx, "underlay removed, cleaning up VNIs and underlay interfaces")
 		if err := hostnetwork.RemoveAllVNIs(config.targetNamespace); err != nil {
 			slog.Warn("failed to remove vnis after underlay removal", "err", err)
 		}
 		bridgerefresh.StopAllVNIs()
-		return UnderlayRemovedError{}
+		if err := hostnetwork.RemoveUnderlay(config.targetNamespace); err != nil {
+			slog.Warn("failed to remove underlay interfaces after underlay removal", "err", err)
+		}
+		return nil
 	}
 
 	if len(config.Underlays) == 0 {
@@ -123,9 +126,6 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 // nonRecoverableHostError tells whether the router pod
 // should be restarted instead of being reconfigured.
 func nonRecoverableHostError(e error) bool {
-	if errors.As(e, &UnderlayRemovedError{}) {
-		return true
-	}
 	underlayExistsError := hostnetwork.UnderlayExistsError("")
 	return errors.As(e, &underlayExistsError)
 }
