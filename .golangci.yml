@@ -7,6 +7,7 @@ linters:
     - copyloopvar
     - dupl
     - errcheck
+    - forbidigo
     - ginkgolinter
     - goconst
     - gocognit
@@ -24,6 +25,10 @@ linters:
     - unparam
     - unused
   settings:
+    forbidigo:
+      forbid:
+        - pattern: 'time\.Sleep'
+          msg: "use polling or async assertions instead of time.Sleep"
     gocognit:
       min-complexity: 30
     nestif:
