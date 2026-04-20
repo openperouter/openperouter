@@ -122,7 +122,7 @@ spec:
           subPath: crio.sock
         {{- end }}
         - mountPath: /run/netns
-          mountPropagation: HostToContainer
+          mountPropagation: Bidirectional
           name: runns
         - mountPath: /etc/frr/
           mountPropagation: HostToContainer

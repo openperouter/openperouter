@@ -35,6 +35,15 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, underlay
 		return fmt.Errorf("failed to validate host sessions: %w", err)
 	}
 
+	if err := configureInterfaces(ctx, interfacesConfiguration{
+		targetNamespace:    targetNamespace,
+		APIConfigData:      apiConfig,
+		nodeIndex:          nodeIndex,
+		underlayFromMultus: underlayFromMultus,
+	}); err != nil {
+		return fmt.Errorf("failed to configure the host: %w", err)
+	}
+
 	if err := configureFRR(ctx, frrConfigData{
 		configFile:    frrConfigPath,
 		updater:       updater,
@@ -43,15 +52,6 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, underlay
 		logLevel:      logLevel,
 	}); err != nil {
 		return fmt.Errorf("failed to reload frr config: %w", err)
-	}
-
-	if err := configureInterfaces(ctx, interfacesConfiguration{
-		targetNamespace:    targetNamespace,
-		APIConfigData:      apiConfig,
-		nodeIndex:          nodeIndex,
-		underlayFromMultus: underlayFromMultus,
-	}); err != nil {
-		return fmt.Errorf("failed to configure the host: %w", err)
 	}
 
 	return nil

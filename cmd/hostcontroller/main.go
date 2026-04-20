@@ -51,7 +51,6 @@ import (
 	"github.com/openperouter/openperouter/internal/filewatcher"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/openperouter/openperouter/internal/logging"
-	"github.com/openperouter/openperouter/internal/pods"
 	"github.com/openperouter/openperouter/internal/staticconfiguration"
 	"github.com/openperouter/openperouter/internal/systemdctl"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
@@ -158,7 +157,7 @@ func main() {
 	}
 
 	if args.mode == modeK8s {
-		runK8sMode(ctx, args, k8sModeParams, logger)
+		runK8sMode(ctx, args, logger)
 		return
 	}
 
@@ -168,7 +167,6 @@ func main() {
 func runK8sMode(
 	ctx context.Context,
 	args parameters,
-	k8sModeParams k8sModeParameters,
 	logger *slog.Logger,
 ) {
 	// K8s mode: setup k8s-based reconciler and start
@@ -178,9 +176,7 @@ func runK8sMode(
 		os.Exit(1)
 	}
 	// runK8sConfigReconciler is blocking so when running in k8s mode we should stop here
-	if err := runK8sConfigReconciler(
-		ctx, args, k8sModeParams, k8sConfig, logger, args.probeAddr,
-	); err != nil {
+	if err := runK8sConfigReconciler(ctx, args, k8sConfig, logger, args.probeAddr); err != nil {
 		logger.Error("failed to enable k8s reconciler", "error", err)
 		os.Exit(1)
 	}
@@ -310,7 +306,6 @@ func runK8sConfigReconcilerHostMode(ctx context.Context,
 
 func runK8sConfigReconciler(ctx context.Context,
 	args parameters,
-	k8sModeParams k8sModeParameters,
 	k8sConfig *rest.Config,
 	logger *slog.Logger,
 	probeAddr string) error {
@@ -322,15 +317,11 @@ func runK8sConfigReconciler(ctx context.Context,
 		return fmt.Errorf("unable to start manager: %w", err)
 	}
 
-	podRuntime, err := pods.NewRuntime(k8sModeParams.criSocket, 5*time.Minute)
-	if err != nil {
-		return fmt.Errorf("failed to connect to crio: %w", err)
-	}
-	routerProvider := &routerconfiguration.RouterPodProvider{
-		FRRConfigPath: args.frrConfigPath,
-		PodRuntime:    podRuntime,
-		Client:        mgr.GetClient(),
-		Node:          args.nodeName,
+	routerProvider := &routerconfiguration.RouterNamedNSProvider{
+		FRRConfigPath:   args.frrConfigPath,
+		FRRReloadSocket: args.reloaderSocket,
+		Client:          mgr.GetClient(),
+		Node:            args.nodeName,
 	}
 
 	apiReconciler := &routerconfiguration.PERouterReconciler{

@@ -7,9 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
-	"strconv"
 
-	"github.com/openperouter/openperouter/internal/controller/nodeindex"
 	"github.com/openperouter/openperouter/internal/pods"
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -46,22 +44,7 @@ func (r *RouterPodProvider) New(ctx context.Context) (Router, error) {
 }
 
 func (r *RouterPodProvider) NodeIndex(ctx context.Context) (int, error) {
-	var node v1.Node
-	if err := r.Get(ctx, client.ObjectKey{Name: r.Node}, &node); err != nil {
-		return 0, fmt.Errorf("failed to get node %s: %w", r.Node, err)
-	}
-	if node.Annotations == nil {
-		return 0, fmt.Errorf("node %s has no annotations", r.Node)
-	}
-	index, ok := node.Annotations[nodeindex.OpenpeNodeIndex]
-	if !ok {
-		return 0, fmt.Errorf("node %s has no index annotation", r.Node)
-	}
-	i, err := strconv.Atoi(index)
-	if err != nil {
-		return 0, fmt.Errorf("failed to parse index %s: %w", index, err)
-	}
-	return i, nil
+	return nodeIndexFor(ctx, r.Client, r.Node)
 }
 
 func (r *RouterPod) TargetNS(ctx context.Context) (string, error) {
