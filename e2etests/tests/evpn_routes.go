@@ -117,8 +117,8 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			dumpIfFails(cs)
 			err := Updater.CleanButUnderlay()
 			Expect(err).NotTo(HaveOccurred())
-			Expect(infra.LeafAConfig.RemovePrefixes()).To(Succeed())
-			Expect(infra.LeafBConfig.RemovePrefixes()).To(Succeed())
+			Expect(infra.LeafAConfig.Reset()).To(Succeed())
+			Expect(infra.LeafBConfig.Reset()).To(Succeed())
 		})
 
 		BeforeEach(func() {
@@ -225,8 +225,8 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			dumpIfFails(cs)
 			err := Updater.CleanButUnderlay()
 			Expect(err).NotTo(HaveOccurred())
-			Expect(infra.LeafAConfig.RemovePrefixes()).To(Succeed())
-			Expect(infra.LeafBConfig.RemovePrefixes()).To(Succeed())
+			Expect(infra.LeafAConfig.Reset()).To(Succeed())
+			Expect(infra.LeafBConfig.Reset()).To(Succeed())
 		})
 
 		It("translates EVPN incoming routes as BGP routes", func() {
@@ -276,8 +276,8 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 
 		BeforeAll(func() {
 			By("setting redistribute connected on leaves")
-			redistributeConnectedForLeaf(infra.LeafAConfig)
-			redistributeConnectedForLeaf(infra.LeafBConfig)
+			Expect(infra.LeafAConfig.RedistributeConnected()).To(Succeed())
+			Expect(infra.LeafBConfig.RedistributeConnected()).To(Succeed())
 
 			By("Creating the test namespace")
 			_, err := k8s.CreateNamespace(cs, testNamespace)
@@ -318,8 +318,8 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 
 			err = Updater.CleanButUnderlay()
 			Expect(err).NotTo(HaveOccurred())
-			Expect(infra.LeafAConfig.RemovePrefixes()).To(Succeed())
-			Expect(infra.LeafBConfig.RemovePrefixes()).To(Succeed())
+			Expect(infra.LeafAConfig.Reset()).To(Succeed())
+			Expect(infra.LeafBConfig.Reset()).To(Succeed())
 		})
 
 		AfterEach(func() {
@@ -489,8 +489,8 @@ var _ = Describe("Routes between bgp and the fabric with iBGP testing e2e integr
 		Expect(err).NotTo(HaveOccurred())
 
 		By("setting redistribute connected on leaves")
-		redistributeConnectedForLeaf(infra.LeafAConfig)
-		redistributeConnectedForLeaf(infra.LeafBConfig)
+		Expect(infra.LeafAConfig.RedistributeConnected()).To(Succeed())
+		Expect(infra.LeafBConfig.RedistributeConnected()).To(Succeed())
 
 		By("Creating the test namespace")
 		_, err = k8s.CreateNamespace(cs, testNamespace)
@@ -532,8 +532,8 @@ var _ = Describe("Routes between bgp and the fabric with iBGP testing e2e integr
 		Expect(err).NotTo(HaveOccurred())
 
 		// RemovePrefixes() is used to reset the LeafA and LeafB configurations to default.
-		Expect(infra.LeafAConfig.RemovePrefixes()).To(Succeed())
-		Expect(infra.LeafBConfig.RemovePrefixes()).To(Succeed())
+		Expect(infra.LeafAConfig.Reset()).To(Succeed())
+		Expect(infra.LeafBConfig.Reset()).To(Succeed())
 
 		resetLeafKindConfig(nodes)
 
