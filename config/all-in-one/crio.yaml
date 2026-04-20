@@ -1501,7 +1501,7 @@ spec:
   template:
     metadata:
       annotations:
-        kubectl.kubernetes.io/default-container: router
+        kubectl.kubernetes.io/default-container: frr
       labels:
         app: router
         control-plane: router
