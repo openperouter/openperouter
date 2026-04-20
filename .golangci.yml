@@ -9,12 +9,14 @@ linters:
     - errcheck
     - ginkgolinter
     - goconst
+    - gocognit
     - gocyclo
     - govet
     - ineffassign
     - lll
     - misspell
     - nakedret
+    - nestif
     - prealloc
     - revive
     - staticcheck
@@ -22,9 +24,14 @@ linters:
     - unparam
     - unused
   settings:
+    gocognit:
+      min-complexity: 30
+    nestif:
+      min-complexity: 3
     revive:
       rules:
         - name: comment-spacings
+        - name: early-return
   exclusions:
     generated: lax
     rules:
