@@ -1,0 +1,6 @@
+.book-brand img {
+    max-height: none;   /* Removes the default height limit */
+    width: 100%;        /* Forces the logo to the width of the sidebar */
+    height: auto;       /* Maintains original aspect ratio */
+    margin-bottom: 1rem; /* Adds space between logo and site title */
+}

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 200 200" role="img">
+<title>OpenPERouter</title>
+<style>
+.a{fill:#0891B2}
+.h{fill:none;stroke:#0891B2;stroke-width:3}
+.l{fill:none;stroke:#0891B2;stroke-width:3;stroke-linecap:round}
+@media(prefers-color-scheme:dark){
+.a{fill:#38BDF8}
+.h{stroke:#38BDF8}
+.l{stroke:#38BDF8}
+}
+</style>
+<line x1="61" y1="100" x2="26" y2="100" class="l"/>
+<line x1="127" y1="62" x2="155" y2="40" class="l"/>
+<line x1="127" y1="138" x2="155" y2="160" class="l"/>
+<polygon points="149,100 127,138 83,138 61,100 83,62 127,62" class="h"/>
+<circle cx="105" cy="100" r="13" class="a"/>
+<rect x="19" y="93" width="14" height="14" rx="2" class="a"/>
+<circle cx="155" cy="40" r="7" class="h"/>
+<circle cx="155" cy="160" r="7" class="h"/>
+</svg>
