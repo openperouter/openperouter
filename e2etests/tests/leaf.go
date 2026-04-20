@@ -8,25 +8,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-func redistributeConnectedForLeaf(leaf infra.Leaf) {
-	leafConfiguration := infra.LeafConfiguration{
-		Leaf: leaf,
-		Red: infra.Addresses{
-			RedistributeConnected: true,
-		},
-		Blue: infra.Addresses{
-			RedistributeConnected: true,
-		},
-		Default: infra.Addresses{
-			RedistributeConnected: true,
-		},
-	}
-	config, err := infra.LeafConfigToFRR(leafConfiguration)
-	Expect(err).NotTo(HaveOccurred())
-	err = leaf.ReloadConfig(config)
-	Expect(err).NotTo(HaveOccurred())
-}
-
 func redistributeConnectedForLeafKind(nodes []corev1.Node) {
 	neighbors := []string{}
 	for _, node := range nodes {

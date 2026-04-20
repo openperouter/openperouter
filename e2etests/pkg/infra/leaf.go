@@ -189,31 +189,26 @@ func (l Leaf) ChangePrefixes(defaultPrefixes, redPrefixes, bluePrefixes []string
 	redIPv4, redIPv6 := SeparateIPFamilies(redPrefixes)
 	blueIPv4, blueIPv6 := SeparateIPFamilies(bluePrefixes)
 
-	leafConfiguration := LeafConfiguration{
-		Leaf: l,
-		Default: Addresses{
-			IPV4: defaultIPv4,
-			IPV6: defaultIPv6,
-		},
-		Red: Addresses{
-			IPV4: redIPv4,
-			IPV6: redIPv6,
-		},
-		Blue: Addresses{
-			IPV4: blueIPv4,
-			IPV6: blueIPv6,
-		},
-	}
-	config, err := LeafConfigToFRR(leafConfiguration)
-	if err != nil {
-		return err
-	}
-	return l.ReloadConfig(config)
+	return l.Configure(LeafConfiguration{
+		Default: Addresses{IPV4: defaultIPv4, IPV6: defaultIPv6},
+		Red:     Addresses{IPV4: redIPv4, IPV6: redIPv6},
+		Blue:    Addresses{IPV4: blueIPv4, IPV6: blueIPv6},
+	})
 }
 
-// RemovePrefixes removes all prefixes from the leaf configuration.
-func (l Leaf) RemovePrefixes() error {
-	return l.ChangePrefixes([]string{}, []string{}, []string{})
+// RedistributeConnected updates the leaf configuration to redistribute connected
+// prefixes.
+func (l Leaf) RedistributeConnected() error {
+	return l.Configure(LeafConfiguration{
+		Red:     Addresses{RedistributeConnected: true},
+		Blue:    Addresses{RedistributeConnected: true},
+		Default: Addresses{RedistributeConnected: true},
+	})
+}
+
+// Reset resets Leaf configuration to default values.
+func (l Leaf) Reset() error {
+	return l.Configure(LeafConfiguration{})
 }
 
 // SeparateIPFamilies separates a slice of CIDR prefixes into IPv4 and IPv6 slices
