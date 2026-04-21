@@ -129,6 +129,11 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			slog.Error("failed to handle non recoverable error", "error", err)
 			return ctrl.Result{}, err
 		}
+		return ctrl.Result{}, nil
+	}
+	if transientHostError(err) {
+		slog.Info("transient error configuring the host, retrying", "error", err)
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 	if err != nil {
 		slog.Error("failed to configure the host", "error", err)
