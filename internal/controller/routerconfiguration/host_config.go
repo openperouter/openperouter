@@ -12,6 +12,7 @@ import (
 	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/openperouter/openperouter/internal/hostnetwork/bridgerefresh"
 	"github.com/openperouter/openperouter/internal/sysctl"
+	"github.com/vishvananda/netlink"
 )
 
 type interfacesConfiguration struct {
@@ -38,10 +39,13 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 			slog.Warn("failed to remove vnis after underlay removal", "err", err)
 		}
 		bridgerefresh.StopAllVNIs()
+		// Remove the underlay marker address and VTEP loopback so that if the router
+		// pod is restarted (named-netns mode), the next reconcile sees no underlay and
+		// does not loop back into this cleanup path.
 		if err := hostnetwork.RemoveUnderlay(config.targetNamespace); err != nil {
 			slog.Warn("failed to remove underlay interfaces after underlay removal", "err", err)
 		}
-		return nil
+		return UnderlayRemovedError{}
 	}
 
 	if len(config.Underlays) == 0 {
@@ -126,6 +130,18 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 // nonRecoverableHostError tells whether the router pod
 // should be restarted instead of being reconfigured.
 func nonRecoverableHostError(e error) bool {
+	if errors.As(e, &UnderlayRemovedError{}) {
+		return true
+	}
 	underlayExistsError := hostnetwork.UnderlayExistsError("")
 	return errors.As(e, &underlayExistsError)
+}
+
+// transientHostError returns true when the error is a temporary condition
+// that should be retried with a fixed delay instead of exponential backoff.
+// The underlay NIC being absent is expected during netns rebuild — the NIC
+// returns to the host netns only after the old FRR process fully exits.
+func transientHostError(e error) bool {
+	var linkNotFound netlink.LinkNotFoundError
+	return errors.As(e, &linkNotFound)
 }
