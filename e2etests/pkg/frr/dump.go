@@ -5,65 +5,45 @@ package frr
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/openperouter/openperouter/e2etests/pkg/executor"
 )
 
 func RawDump(exec executor.Executor) (string, error) {
+	res := ""
 	allerrs := errors.New("")
-	res := "####### Show version\n"
-	out, err := exec.Exec("vtysh", "-c", "show version")
-	if err != nil {
-		allerrs = errors.Join(allerrs, fmt.Errorf("\nFailed exec show version: %v", err))
-	}
-	res += out
 
-	res += "####### Show running config\n"
-	out, err = exec.Exec("vtysh", "-c", "show running-config")
-	if err != nil {
-		allerrs = errors.Join(allerrs, fmt.Errorf("\nFailed exec show bgp neighbor: %v", err))
+	commands := []struct {
+		desc string
+		cmd  []string
+	}{
+		{"Show version", []string{"vtysh", "-c", "show version"}},
+		{"Show running config", []string{"vtysh", "-c", "show running-config"}},
+		{"BGP Summary", []string{"vtysh", "-c", "show bgp vrf all summary"}},
+		{"BGP Neighbors", []string{"vtysh", "-c", "show bgp vrf all neighbor"}},
+		{"RIB ipv4", []string{"vtysh", "-c", "show ip route"}},
+		{"RIB ipv6", []string{"vtysh", "-c", "show ipv6 route"}},
+		{"BGP route table ipv4", []string{"vtysh", "-c", "show bgp vrf all ipv4"}},
+		{"BGP route table ipv6", []string{"vtysh", "-c", "show bgp vrf all ipv6"}},
+		{"EVPN Routes", []string{"vtysh", "-c", "show bgp l2vpn evpn"}},
+		{"Zebra interface information", []string{"vtysh", "-c", "show interface"}},
+		{"ip link", []string{"bash", "-c", "ip l"}},
+		{"ip address", []string{"bash", "-c", "ip address"}},
+		{"ip neigh", []string{"bash", "-c", "ip neigh"}},
+		{"Detailed interface statistics", []string{"bash", "-c", "ip -s -s link ls"}},
+		{"ip vrf", []string{"bash", "-c", "ip vrf"}},
+		{"ip route table all", []string{"bash", "-c", "ip route show table all"}},
 	}
-	res += out
 
-	res += "####### BGP Neighbors\n"
-	out, err = exec.Exec("vtysh", "-c", "show bgp vrf all neighbor")
-	if err != nil {
-		allerrs = errors.Join(allerrs, fmt.Errorf("\nFailed exec show bgp neighbor: %v", err))
+	for _, c := range commands {
+		res += fmt.Sprintf("\n######## %s\n\n", c.desc)
+		out, err := exec.Exec(c.cmd[0], c.cmd[1:]...)
+		if err != nil {
+			allerrs = errors.Join(allerrs, fmt.Errorf("\nFailed exec %q: %v", strings.Join(c.cmd, " "), err))
+		}
+		res += out
 	}
-	res += out
-
-	res += "####### Routes\n"
-	out, err = exec.Exec("vtysh", "-c", "show bgp vrf all ipv4")
-	if err != nil {
-		allerrs = errors.Join(allerrs, fmt.Errorf("\nFailed exec show bgp ipv4: %v", err))
-	}
-	res += out
-
-	res += "####### Routes\n"
-	out, err = exec.Exec("vtysh", "-c", "show bgp vrf all ipv6")
-	if err != nil {
-		allerrs = errors.Join(allerrs, fmt.Errorf("\nFailed exec show bgp ipv6: %v", err))
-	}
-	res += out
-
-	res += "####### EVPN Routes\n"
-	out, err = exec.Exec("vtysh", "-c", "show bgp l2vpn evpn")
-	if err != nil {
-		allerrs = errors.Join(allerrs, fmt.Errorf("\nFailed exec show bgp ipv6: %v", err))
-	}
-	res += out
-
-	res += "####### Network setup for host\n"
-	out, err = exec.Exec("bash", "-c", "ip -6 route; ip -4 route")
-	if err != nil {
-		allerrs = errors.Join(allerrs, fmt.Errorf("\nFailed exec to print network setup: %v", err))
-	}
-	res += out
-	out, err = exec.Exec("bash", "-c", "ip l")
-	if err != nil {
-		allerrs = errors.Join(allerrs, fmt.Errorf("\nFailed exec to print network setup: %v", err))
-	}
-	res += out
 
 	if allerrs.Error() == "" {
 		allerrs = nil

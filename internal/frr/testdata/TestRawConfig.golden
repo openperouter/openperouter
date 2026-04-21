@@ -19,5 +19,7 @@ router bgp 64512
     neighbor 192.168.1.2 activate
     neighbor 192.168.1.2 allowas-in
   exit-address-family
+exit
+!
 ip prefix-list raw-low seq 10 permit 10.0.0.0/8
 ip prefix-list raw-high seq 10 permit 10.1.0.0/16

@@ -1,3 +1,3 @@
-FROM ghcr.io/srl-labs/clab:0.67.0
+FROM ghcr.io/srl-labs/clab:0.74.1
 
 RUN apk add podman

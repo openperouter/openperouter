@@ -58,5 +58,7 @@ router bgp 64512 vrf red
   address-family l2vpn evpn
     advertise ipv4 unicast
     advertise ipv6 unicast
+    route-target export 65000:1000
+    route-target import 65000:1000
   exit-address-family
 exit
