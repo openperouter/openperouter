@@ -176,22 +176,22 @@ func validateVxlan(vxLan *netlink.Vxlan, params VNIParams) error {
 		return nil
 	}
 
-	if params.VTEPInterface != "" {
-		iface, err := net.InterfaceByName(params.VTEPInterface)
-		if err != nil {
-			return fmt.Errorf("failed to get vtep interface %s: %w", params.VTEPInterface, err)
-		}
-		expectedIP, err := findFirstInterfaceIPv4Address(iface)
-		if err != nil {
-			return fmt.Errorf("failed to get vtep source address from interface %s: %w", params.VTEPInterface, err)
-		}
-		if !vxLan.SrcAddr.Equal(expectedIP) {
-			return fmt.Errorf("src addr does not match vtep interface ip: %v, expected %v", vxLan.SrcAddr, expectedIP)
-		}
-		return nil
+	if params.VTEPInterface == "" {
+		return fmt.Errorf("missing vtepip or vtepinterface")
 	}
 
-	return fmt.Errorf("missing vtepip or vtepinterface")
+	iface, err := net.InterfaceByName(params.VTEPInterface)
+	if err != nil {
+		return fmt.Errorf("failed to get vtep interface %s: %w", params.VTEPInterface, err)
+	}
+	expectedIP, err := findFirstInterfaceIPv4Address(iface)
+	if err != nil {
+		return fmt.Errorf("failed to get vtep source address from interface %s: %w", params.VTEPInterface, err)
+	}
+	if !vxLan.SrcAddr.Equal(expectedIP) {
+		return fmt.Errorf("src addr does not match vtep interface ip: %v, expected %v", vxLan.SrcAddr, expectedIP)
+	}
+	return nil
 }
 
 // findVxlanSrcAddr resolve the source IP for the VXLAN interface.

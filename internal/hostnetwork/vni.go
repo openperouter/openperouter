@@ -175,26 +175,8 @@ func SetupL2VNI(ctx context.Context, params L2VNIParams) error {
 	slog.Info("SetupL2VNI: found host veth", "name", vethNames.HostSide, "index", hostVeth.Attrs().Index)
 
 	if params.HostMaster != nil {
-		bridgeConfig := *params.HostMaster
-		switch bridgeConfig.Type {
-		case OVSBridgeLinkType:
-			lowerDeviceName := bridgeConfig.Name
-			if bridgeConfig.AutoCreate {
-				lowerDeviceName = hostBridgeName(params.VNI)
-			}
-			if err := ensureOVSBridgeAndAttach(ctx, lowerDeviceName, hostVeth.Attrs().Name); err != nil {
-				return fmt.Errorf("failed to ensure OVS bridge %s and attach %s: %w", lowerDeviceName, hostVeth.Attrs().Name, err)
-			}
-		case BridgeLinkType:
-			master, err := hostMaster(params.VNI, bridgeConfig)
-			if err != nil {
-				return fmt.Errorf("SetupL2VNI: failed to get host master for VRF %s: %w", params.VRF, err)
-			}
-			if err := linkSetMaster(hostVeth, master); err != nil {
-				return fmt.Errorf("failed to set host master %s as master of host veth %s: %w", master.Attrs().Name, hostVeth.Attrs().Name, err)
-			}
-		default:
-			return fmt.Errorf("provided hostmaster.Type %q is not supported", bridgeConfig.Type)
+		if err := setupHostMaster(ctx, params, hostVeth); err != nil {
+			return err
 		}
 	}
 
@@ -227,6 +209,31 @@ func SetupL2VNI(ctx context.Context, params L2VNIParams) error {
 		return nil
 	}); err != nil {
 		return err
+	}
+	return nil
+}
+
+func setupHostMaster(ctx context.Context, params L2VNIParams, hostVeth netlink.Link) error {
+	bridgeConfig := *params.HostMaster
+	switch bridgeConfig.Type {
+	case OVSBridgeLinkType:
+		lowerDeviceName := bridgeConfig.Name
+		if bridgeConfig.AutoCreate {
+			lowerDeviceName = hostBridgeName(params.VNI)
+		}
+		if err := ensureOVSBridgeAndAttach(ctx, lowerDeviceName, hostVeth.Attrs().Name); err != nil {
+			return fmt.Errorf("failed to ensure OVS bridge %s and attach %s: %w", lowerDeviceName, hostVeth.Attrs().Name, err)
+		}
+	case BridgeLinkType:
+		master, err := hostMaster(params.VNI, bridgeConfig)
+		if err != nil {
+			return fmt.Errorf("SetupL2VNI: failed to get host master for VRF %s: %w", params.VRF, err)
+		}
+		if err := linkSetMaster(hostVeth, master); err != nil {
+			return fmt.Errorf("failed to set host master %s as master of host veth %s: %w", master.Attrs().Name, hostVeth.Attrs().Name, err)
+		}
+	default:
+		return fmt.Errorf("provided hostmaster.Type %q is not supported", bridgeConfig.Type)
 	}
 	return nil
 }
@@ -492,18 +499,22 @@ func removeOVSBridgesForVNIs(ctx context.Context, vnis map[int]bool) error {
 		ops = append(ops, deleteOps...)
 	}
 
-	if len(ops) > 0 {
-		txResult, err := ovs.Transact(ctx, ops...)
-		if err != nil {
-			deleteErrors = append(deleteErrors, fmt.Errorf("failed to delete OVS bridges: %w", err))
-			slog.Error("failed to batch-delete OVS bridges", "error", err)
-		} else if _, err := ovsdb.CheckOperationResults(txResult, ops); err != nil {
-			deleteErrors = append(deleteErrors, fmt.Errorf("OVS bridge deletion operations failed: %w", err))
-			slog.Error("OVS bridge deletion operations failed", "error", err)
-		} else {
-			slog.Info("successfully deleted auto-created OVS bridges")
-		}
+	if len(ops) == 0 {
+		return errors.Join(deleteErrors...)
 	}
+
+	txResult, err := ovs.Transact(ctx, ops...)
+	if err != nil {
+		deleteErrors = append(deleteErrors, fmt.Errorf("failed to delete OVS bridges: %w", err))
+		slog.Error("failed to batch-delete OVS bridges", "error", err)
+		return errors.Join(deleteErrors...)
+	}
+	if _, err := ovsdb.CheckOperationResults(txResult, ops); err != nil {
+		deleteErrors = append(deleteErrors, fmt.Errorf("OVS bridge deletion operations failed: %w", err))
+		slog.Error("OVS bridge deletion operations failed", "error", err)
+		return errors.Join(deleteErrors...)
+	}
+	slog.Info("successfully deleted auto-created OVS bridges")
 
 	return errors.Join(deleteErrors...)
 }
@@ -515,19 +526,20 @@ func removeOVSBridgesForVNIs(ctx context.Context, vnis map[int]bool) error {
 func removePortsFromBridge(ctx context.Context, ovs libovsclient.Client, bridge ovsmodel.Bridge, filter func(*ovsmodel.Port) bool) ([]ovsdb.Operation, error) {
 	var matchingUUIDs []string
 	for _, portUUID := range bridge.Ports {
-		if filter != nil {
-			port := &ovsmodel.Port{UUID: portUUID}
-			if err := ovs.Get(ctx, port); err != nil {
-				if errors.Is(err, libovsclient.ErrNotFound) {
-					continue
-				}
-				return nil, fmt.Errorf("failed to get port %s from bridge %s: %w", portUUID, bridge.Name, err)
-			}
-			if !filter(port) {
+		if filter == nil {
+			matchingUUIDs = append(matchingUUIDs, portUUID)
+			continue
+		}
+		port := &ovsmodel.Port{UUID: portUUID}
+		if err := ovs.Get(ctx, port); err != nil {
+			if errors.Is(err, libovsclient.ErrNotFound) {
 				continue
 			}
+			return nil, fmt.Errorf("failed to get port %s from bridge %s: %w", portUUID, bridge.Name, err)
 		}
-		matchingUUIDs = append(matchingUUIDs, portUUID)
+		if filter(port) {
+			matchingUUIDs = append(matchingUUIDs, portUUID)
+		}
 	}
 
 	if len(matchingUUIDs) == 0 {

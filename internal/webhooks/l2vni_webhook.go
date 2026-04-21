@@ -51,14 +51,15 @@ func (v *L2VNIValidator) Handle(ctx context.Context, req admission.Request) (res
 		if err := v.decoder.DecodeRaw(req.OldObject, &l2vni); err != nil {
 			return admission.Errored(http.StatusBadRequest, err)
 		}
-	} else {
+	}
+	if req.Operation != v1.Delete {
 		if err := v.decoder.Decode(req, &l2vni); err != nil {
 			return admission.Errored(http.StatusBadRequest, err)
 		}
-		if req.OldObject.Size() > 0 {
-			if err := v.decoder.DecodeRaw(req.OldObject, &oldL2VNI); err != nil {
-				return admission.Errored(http.StatusBadRequest, err)
-			}
+	}
+	if req.Operation != v1.Delete && req.OldObject.Size() > 0 {
+		if err := v.decoder.DecodeRaw(req.OldObject, &oldL2VNI); err != nil {
+			return admission.Errored(http.StatusBadRequest, err)
 		}
 	}
 
