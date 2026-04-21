@@ -42,15 +42,8 @@ PodmanArgs=--pidfile=/etc/perouter/frr/frr.pid
 Entrypoint=/bin/bash
 
 # Container startup command
-# This complex command does the following:
-# 1. Changes permissions on /var/run/frr for socket access
-# 2. Starts FRR via tini process supervisor in background
-# 3. Waits up to 60 seconds for FRR to create its log file
-# 4. Tails the FRR log to keep the container running
-#
-# Note: $$ escaping is required to prevent systemd variable expansion
-# Shell variables must use $$ syntax (e.g., $$attempts not $attempts)
-Exec=-c "chmod -R a+rw /var/run/frr && /sbin/tini -- /usr/lib/frr/docker-start & attempts=0; until [[ -f /etc/frr/frr.log || $$attempts -eq 60 ]]; do sleep 1; attempts=$$(( $$attempts + 1 )); done; tail -f /etc/frr/frr.log"
+# Changes permissions on /var/run/frr for socket access, then starts FRR via tini.
+Exec=-c "chmod -R a+rw /var/run/frr && exec /sbin/tini -- /usr/lib/frr/docker-start"
 
 [Service]
 # Restart policy - restart container if it fails
