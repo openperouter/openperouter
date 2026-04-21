@@ -302,15 +302,40 @@ func RemoveNonConfiguredVNIs(targetNS string, params []VNIParams) error {
 		vrfs[p.VRF] = true
 		vnis[p.VNI] = true
 	}
+
+	failedDeletes := removeHostSideVNIs(vnis)
+
+	ns, err := netns.GetFromPath(targetNS)
+	if err != nil {
+		return fmt.Errorf("RemoveNonConfiguredVNIs: Failed to get network namespace %s: %w", targetNS, err)
+	}
+	defer func() {
+		if err := ns.Close(); err != nil {
+			slog.Error("failed to close namespace", "namespace", targetNS, "error", err)
+		}
+	}()
+
+	if err := netnamespace.In(ns, func() error {
+		nsErrors := removeNamespaceSideVNIs(vnis, vrfs)
+		failedDeletes = append(failedDeletes, nsErrors...)
+		return errors.Join(failedDeletes...)
+	}); err != nil {
+		return err
+	}
+
+	return errors.Join(failedDeletes...)
+}
+
+func removeHostSideVNIs(vnis map[int]bool) []error {
+	var failedDeletes []error
+
 	hostLinks, err := netlink.LinkList()
 	if err != nil {
-		return fmt.Errorf("remove non configured vnis: failed to list links: %w", err)
+		return []error{fmt.Errorf("remove non configured vnis: failed to list links: %w", err)}
 	}
-	failedDeletes := []error{}
 	if err := deleteLinksForType(BridgeLinkType, vnis, hostLinks, vniFromHostBridgeName); err != nil {
 		failedDeletes = append(failedDeletes, fmt.Errorf("remove bridge links: %w", err))
 	}
-
 	if err := removeOVSBridgesForVNIs(context.Background(), vnis); err != nil {
 		failedDeletes = append(failedDeletes, fmt.Errorf("remove OVS bridges: %w", err))
 	}
@@ -334,49 +359,35 @@ func RemoveNonConfiguredVNIs(targetNS string, params []VNIParams) error {
 			failedDeletes = append(failedDeletes, fmt.Errorf("remove host leg: %s %w", hl.Attrs().Name, err))
 		}
 	}
+	return failedDeletes
+}
 
-	ns, err := netns.GetFromPath(targetNS)
+func removeNamespaceSideVNIs(vnis map[int]bool, vrfs map[string]bool) []error {
+	var failedDeletes []error
+
+	links, err := netlink.LinkList()
 	if err != nil {
-		return fmt.Errorf("RemoveNonConfiguredVNIs: Failed to get network namespace %s: %w", targetNS, err)
+		return []error{fmt.Errorf("remove non configured vnis: failed to list links: %w", err)}
 	}
-	defer func() {
-		if err := ns.Close(); err != nil {
-			slog.Error("failed to close namespace", "namespace", targetNS, "error", err)
-		}
-	}()
-
-	if err := netnamespace.In(ns, func() error {
-		links, err := netlink.LinkList()
-		if err != nil {
-			return fmt.Errorf("remove non configured vnis: failed to list links: %w", err)
-		}
-
-		if err := deleteLinksForType(VXLanLinkType, vnis, links, vniFromVXLanName); err != nil {
-			failedDeletes = append(failedDeletes, fmt.Errorf("remove vlan links: %w", err))
-			return err
-		}
-		if err := deleteLinksForType(BridgeLinkType, vnis, links, vniFromBridgeName); err != nil {
-			failedDeletes = append(failedDeletes, fmt.Errorf("remove bridge links: %w", err))
-			return err
-		}
-
-		for _, l := range links {
-			if l.Type() != VRFLinkType {
-				continue
-			}
-			if vrfs[l.Attrs().Name] {
-				continue
-			}
-			if err := netlink.LinkDel(l); err != nil {
-				failedDeletes = append(failedDeletes, fmt.Errorf("remove non configured vnis: failed to delete vrf %s %w", l.Attrs().Name, err))
-			}
-		}
-		return errors.Join(failedDeletes...)
-	}); err != nil {
-		return err
+	if err := deleteLinksForType(VXLanLinkType, vnis, links, vniFromVXLanName); err != nil {
+		failedDeletes = append(failedDeletes, fmt.Errorf("remove vlan links: %w", err))
+	}
+	if err := deleteLinksForType(BridgeLinkType, vnis, links, vniFromBridgeName); err != nil {
+		failedDeletes = append(failedDeletes, fmt.Errorf("remove bridge links: %w", err))
 	}
 
-	return errors.Join(failedDeletes...)
+	for _, l := range links {
+		if l.Type() != VRFLinkType {
+			continue
+		}
+		if vrfs[l.Attrs().Name] {
+			continue
+		}
+		if err := netlink.LinkDel(l); err != nil {
+			failedDeletes = append(failedDeletes, fmt.Errorf("remove non configured vnis: failed to delete vrf %s %w", l.Attrs().Name, err))
+		}
+	}
+	return failedDeletes
 }
 
 // deleteLinks deletes all the links of the given type that do not correspond to

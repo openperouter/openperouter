@@ -25,6 +25,20 @@ var expectedStats = MessageStats{
 	TotalReceived:      10,
 }
 
+type neighbourTestCase struct {
+	name               string
+	neighborIP         string
+	remoteAS           string
+	localAS            string
+	status             string
+	ipv4PrefixSent     int
+	ipv6PrefixSent     int
+	ipv4PrefixReceived int
+	ipv6PrefixReceived int
+	port               int
+	expectedError      string
+}
+
 func TestNeighbour(t *testing.T) {
 	sample := `{
     "%s":{
@@ -99,19 +113,7 @@ func TestNeighbour(t *testing.T) {
     }
   }`
 
-	tests := []struct {
-		name               string
-		neighborIP         string
-		remoteAS           string
-		localAS            string
-		status             string
-		ipv4PrefixSent     int
-		ipv6PrefixSent     int
-		ipv4PrefixReceived int
-		ipv6PrefixReceived int
-		port               int
-		expectedError      string
-	}{
+	tests := []neighbourTestCase{
 		{
 			"ipv4, connected",
 			"172.18.0.5",
@@ -159,37 +161,42 @@ func TestNeighbour(t *testing.T) {
 			if err != nil {
 				t.Fatal("Failed to parse ", err)
 			}
-			if !n.IP.Equal(net.ParseIP(tt.neighborIP)) {
-				t.Fatal("Expected neighbour ip", tt.neighborIP, "got", n.IP.String())
-			}
-			if n.RemoteAS != tt.remoteAS {
-				t.Fatal("Expected remote as", tt.remoteAS, "got", n.RemoteAS)
-			}
-			if n.LocalAS != tt.localAS {
-				t.Fatal("Expected local as", tt.localAS, "got", n.LocalAS)
-			}
-			if tt.status == "Established" && n.Connected != true {
-				t.Fatal("Expected connected", true, "got", n.Connected)
-			}
-			if tt.status != "Established" && n.Connected == true {
-				t.Fatal("Expected connected", false, "got", n.Connected)
-			}
-			if tt.ipv4PrefixSent+tt.ipv6PrefixSent != n.PrefixSent {
-				t.Fatal("Expected prefix sent", tt.ipv4PrefixSent+tt.ipv6PrefixSent, "got", n.PrefixSent)
-			}
-			if tt.ipv4PrefixReceived+tt.ipv6PrefixReceived != n.PrefixReceived {
-				t.Fatal("Expected prefix received", tt.ipv4PrefixReceived+tt.ipv6PrefixReceived, "got", n.PrefixReceived)
-			}
-			if tt.port != n.Port {
-				t.Fatal("Expected port", tt.port, "got", n.Port)
-			}
-			if n.RemoteRouterID != "0.0.0.0" {
-				t.Fatal("Expected remote routerid 0.0.0.0")
-			}
-			if !cmp.Equal(expectedStats, n.MsgStats) {
-				t.Fatal("unexpected BGP messages stats (-want +got)\n", cmp.Diff(expectedStats, n.MsgStats))
-			}
+			assertNeighbourFields(t, n, tt)
 		})
+	}
+}
+
+func assertNeighbourFields(t *testing.T, n *Neighbor, tc neighbourTestCase) {
+	t.Helper()
+	if !n.IP.Equal(net.ParseIP(tc.neighborIP)) {
+		t.Fatal("Expected neighbour ip", tc.neighborIP, "got", n.IP.String())
+	}
+	if n.RemoteAS != tc.remoteAS {
+		t.Fatal("Expected remote as", tc.remoteAS, "got", n.RemoteAS)
+	}
+	if n.LocalAS != tc.localAS {
+		t.Fatal("Expected local as", tc.localAS, "got", n.LocalAS)
+	}
+	expectedConnected := tc.status == "Established"
+	if n.Connected != expectedConnected {
+		t.Fatal("Expected connected", expectedConnected, "got", n.Connected)
+	}
+	wantPrefixSent := tc.ipv4PrefixSent + tc.ipv6PrefixSent
+	if wantPrefixSent != n.PrefixSent {
+		t.Fatal("Expected prefix sent", wantPrefixSent, "got", n.PrefixSent)
+	}
+	wantPrefixReceived := tc.ipv4PrefixReceived + tc.ipv6PrefixReceived
+	if wantPrefixReceived != n.PrefixReceived {
+		t.Fatal("Expected prefix received", wantPrefixReceived, "got", n.PrefixReceived)
+	}
+	if tc.port != n.Port {
+		t.Fatal("Expected port", tc.port, "got", n.Port)
+	}
+	if n.RemoteRouterID != "0.0.0.0" {
+		t.Fatal("Expected remote routerid 0.0.0.0")
+	}
+	if !cmp.Equal(expectedStats, n.MsgStats) {
+		t.Fatal("unexpected BGP messages stats (-want +got)\n", cmp.Diff(expectedStats, n.MsgStats))
 	}
 }
 

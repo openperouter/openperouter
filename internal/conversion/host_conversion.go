@@ -124,39 +124,50 @@ func APItoHostConfig(nodeIndex int, targetNS string, underlayFromMultus bool, ap
 			copy(vni.L2GatewayIPs, l2vni.Spec.L2GatewayIPs)
 		}
 		if l2vni.Spec.HostMaster != nil {
-			var name string
-			var autoCreate bool
-
-			switch l2vni.Spec.HostMaster.Type {
-			case v1alpha1.LinuxBridge:
-				if l2vni.Spec.HostMaster.LinuxBridge != nil {
-					name = l2vni.Spec.HostMaster.LinuxBridge.Name
-					autoCreate = l2vni.Spec.HostMaster.LinuxBridge.AutoCreate
-				}
-			case v1alpha1.OVSBridge:
-				if l2vni.Spec.HostMaster.OVSBridge != nil {
-					name = l2vni.Spec.HostMaster.OVSBridge.Name
-					autoCreate = l2vni.Spec.HostMaster.OVSBridge.AutoCreate
-				}
-			default:
-				return HostConfigData{}, fmt.Errorf(
-					"unknown host master type %q for L2VNI %s",
-					l2vni.Spec.HostMaster.Type,
-					client.ObjectKeyFromObject(&l2vni),
-				)
+			hm, err := convertHostMaster(&l2vni)
+			if err != nil {
+				return HostConfigData{}, err
 			}
-
-			vni.HostMaster = &hostnetwork.HostMaster{
-				Name:       name,
-				Type:       l2vni.Spec.HostMaster.Type,
-				AutoCreate: autoCreate,
-			}
+			vni.HostMaster = hm
 		}
 
 		res.L2VNIs = append(res.L2VNIs, vni)
 	}
 
 	return res, nil
+}
+
+func convertHostMaster(l2vni *v1alpha1.L2VNI) (*hostnetwork.HostMaster, error) {
+	switch l2vni.Spec.HostMaster.Type {
+	case v1alpha1.LinuxBridge:
+		if l2vni.Spec.HostMaster.LinuxBridge != nil {
+			return &hostnetwork.HostMaster{
+				Name:       l2vni.Spec.HostMaster.LinuxBridge.Name,
+				Type:       l2vni.Spec.HostMaster.Type,
+				AutoCreate: l2vni.Spec.HostMaster.LinuxBridge.AutoCreate,
+			}, nil
+		}
+	case v1alpha1.OVSBridge:
+		if l2vni.Spec.HostMaster.OVSBridge != nil {
+			return &hostnetwork.HostMaster{
+				Name:       l2vni.Spec.HostMaster.OVSBridge.Name,
+				Type:       l2vni.Spec.HostMaster.Type,
+				AutoCreate: l2vni.Spec.HostMaster.OVSBridge.AutoCreate,
+			}, nil
+		}
+	default:
+		return nil, fmt.Errorf(
+			"unknown host master type %q for L2VNI %s",
+			l2vni.Spec.HostMaster.Type,
+			client.ObjectKeyFromObject(l2vni),
+		)
+	}
+
+	return nil, fmt.Errorf(
+		"host master config is nil for type %q in L2VNI %s",
+		l2vni.Spec.HostMaster.Type,
+		client.ObjectKeyFromObject(l2vni),
+	)
 }
 
 // ipNetToString returns the string representation of the IPNet, or empty string if IP is nil

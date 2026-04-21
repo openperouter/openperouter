@@ -13,8 +13,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/openperouter/openperouter/internal/hostcredentials"
 	"github.com/openperouter/openperouter/internal/buildversion"
+	"github.com/openperouter/openperouter/internal/hostcredentials"
 )
 
 type Config struct {

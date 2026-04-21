@@ -32,11 +32,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/openperouter/openperouter/internal/buildversion"
 	"github.com/openperouter/openperouter/internal/frr/liveness"
 	"github.com/openperouter/openperouter/internal/frr/vtysh"
 	"github.com/openperouter/openperouter/internal/frrconfig"
 	"github.com/openperouter/openperouter/internal/logging"
-	"github.com/openperouter/openperouter/internal/buildversion"
 )
 
 type Args struct {

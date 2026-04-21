@@ -97,48 +97,8 @@ func TestExportCredentials(t *testing.T) {
 			apiServer: "https://test-api-server:6443",
 			wantErr:   false,
 			validate: func(t *testing.T, outputPath string) {
-				files := []string{"kubeconfig", "token", "ca.crt", "namespace"}
-				for _, file := range files {
-					if _, err := os.Stat(filepath.Join(outputPath, file)); os.IsNotExist(err) {
-						t.Errorf("Expected file %s was not created", file)
-					}
-				}
-
-				tokenContent, err := os.ReadFile(filepath.Join(outputPath, "token"))
-				if err != nil {
-					t.Errorf("Failed to read token file: %v", err)
-				}
-				if string(tokenContent) != "test-token" {
-					t.Errorf("Token content = %v, want %v", string(tokenContent), "test-token")
-				}
-
-				caContent, err := os.ReadFile(filepath.Join(outputPath, "ca.crt"))
-				if err != nil {
-					t.Errorf("Failed to read ca.crt file: %v", err)
-				}
-				if string(caContent) != "test-ca-cert" {
-					t.Errorf("CA content = %v, want %v", string(caContent), "test-ca-cert")
-				}
-
-				namespaceContent, err := os.ReadFile(filepath.Join(outputPath, "namespace"))
-				if err != nil {
-					t.Errorf("Failed to read namespace file: %v", err)
-				}
-				if string(namespaceContent) != "test-namespace" {
-					t.Errorf("Namespace content = %v, want %v", string(namespaceContent), "test-namespace")
-				}
-
-				kubeconfigContent, err := os.ReadFile(filepath.Join(outputPath, "kubeconfig"))
-				if err != nil {
-					t.Errorf("Failed to read kubeconfig file: %v", err)
-				}
-				kubeconfigStr := string(kubeconfigContent)
-				if !strings.Contains(kubeconfigStr, "https://test-api-server:6443") {
-					t.Errorf("Kubeconfig does not contain expected API server URL")
-				}
-				if !strings.Contains(kubeconfigStr, "test-namespace") {
-					t.Errorf("Kubeconfig does not contain expected namespace")
-				}
+				t.Helper()
+				validateExportedCredentials(t, outputPath)
 			},
 		},
 		{
@@ -190,5 +150,42 @@ func TestExportCredentials(t *testing.T) {
 				tt.validate(t, outputPath)
 			}
 		})
+	}
+}
+
+func validateExportedCredentials(t *testing.T, outputPath string) {
+	t.Helper()
+
+	for _, file := range []string{"kubeconfig", "token", "ca.crt", "namespace"} {
+		if _, err := os.Stat(filepath.Join(outputPath, file)); os.IsNotExist(err) {
+			t.Errorf("Expected file %s was not created", file)
+		}
+	}
+
+	assertFileContent(t, outputPath, "token", "test-token")
+	assertFileContent(t, outputPath, "ca.crt", "test-ca-cert")
+	assertFileContent(t, outputPath, "namespace", "test-namespace")
+
+	kubeconfigContent, err := os.ReadFile(filepath.Join(outputPath, "kubeconfig"))
+	if err != nil {
+		t.Fatalf("Failed to read kubeconfig file: %v", err)
+	}
+	kubeconfigStr := string(kubeconfigContent)
+	if !strings.Contains(kubeconfigStr, "https://test-api-server:6443") {
+		t.Errorf("Kubeconfig does not contain expected API server URL")
+	}
+	if !strings.Contains(kubeconfigStr, "test-namespace") {
+		t.Errorf("Kubeconfig does not contain expected namespace")
+	}
+}
+
+func assertFileContent(t *testing.T, dir, filename, expected string) {
+	t.Helper()
+	content, err := os.ReadFile(filepath.Join(dir, filename))
+	if err != nil {
+		t.Fatalf("Failed to read %s file: %v", filename, err)
+	}
+	if string(content) != expected {
+		t.Errorf("%s content = %v, want %v", filename, string(content), expected)
 	}
 }
