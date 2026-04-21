@@ -1,0 +1,29 @@
+interfaces:
+- left:
+    bridge: "leafkind-switch"
+    name: "kindctrlpl"
+  right:
+    container: "pe-kind-a-control-plane"
+    name: "toswitch"
+    ips: ["192.168.11.3/24", "2001:db8:11::3/64"]
+- left:
+    bridge: "leafkind-switch"
+    name: "kindworkera"
+  right:
+    container: "pe-kind-a-worker"
+    name: "toswitch"
+    ips: ["192.168.11.4/24", "2001:db8:11::4/64"]
+- left:
+    bridge: "leafkind-switch"
+    name: "kindctrlplb"
+  right:
+    container: "pe-kind-b-control-plane"
+    name: "toswitch"
+    ips: ["192.168.12.3/24", "2001:db8:12::3/64"]
+- left:
+    bridge: "leafkind-switch"
+    name: "kindworkerb"
+  right:
+    container: "pe-kind-b-worker"
+    name: "toswitch"
+    ips: ["192.168.12.4/24", "2001:db8:12::4/64"]

@@ -79,6 +79,8 @@ type NeighborConfig struct {
 	Name          string
 	ASN           uint32
 	Addr          string
+	Interface     string
+	ID            string
 	Port          *uint16
 	HoldTime      *uint64
 	KeepaliveTime *uint64
@@ -88,10 +90,11 @@ type NeighborConfig struct {
 	BFDProfile    string
 	EBGPMultiHop  bool
 	IPFamily      ipfamily.Family
-}
-
-func (n *NeighborConfig) ID() string {
-	return n.Addr
+	// Allow bgp to negotiate the extended-nexthop capability with its peer. If you are peering over a v6 LL address
+	// then this capability is turned on automatically.
+	// If you are peering over a v6 Global Address then turning on this command will allow BGP to install v4 routes
+	// with v6 nexthops if you do not have v4 configured on interfaces.
+	ExtendedNexthop bool
 }
 
 // templateConfig uses the template library to template

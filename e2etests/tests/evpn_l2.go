@@ -28,7 +28,7 @@ import (
 	"k8s.io/utils/ptr"
 )
 
-var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
+var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Ordered, func() {
 	var cs clientset.Interface
 	var routers openperouter.Routers
 
@@ -340,6 +340,16 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 })
 
 var _ = Describe("Routes between bgp and the fabric - vtepInterface", func() {
+	DescribeTableSubtree("underlay address family", runVTEPTests,
+		// For the vtepInterface setting to work, the link requires an IP address which is then used by OpenPERouter.
+		// Because unnumbered links do not have an IP address, the vtepInterface settings does not work with BGP unnumbered;
+		// therefore, only tests IPv4 and IPv6, but not unnumbered.
+		Entry("IPv4", ipfamily.IPv4, infra.Underlay),
+		Entry("IPv6", ipfamily.IPv6, infra.UnderlayIPv6),
+	)
+})
+
+var runVTEPTests = func(af ipfamily.Family, underlay v1alpha1.Underlay) {
 	const (
 		testNamespace             = "test-namespace"
 		linuxBridgeHostAttachment = "linux-bridge"
@@ -374,12 +384,13 @@ var _ = Describe("Routes between bgp and the fabric - vtepInterface", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(len(nodes)).To(BeNumerically(">=", 2), "Expected at least 2 nodes, but got fewer")
 
-		By("setting redistribute connected on leaf kind for vtepInterface")
+		By("setting LeafKind configuration with redistribute connected on leaf kind for vtepInterface")
 		// This is needed if we use vtepInterface since
 		// openperouter is not going to advertise the
 		// address there, that address is supposed to be
 		// advertised by the network fabric
-		redistributeConnectedForLeafKind(nodes)
+		err = infra.UpdateLeafKindConfig(nodes, infra.LeafKindConfiguration{RedistributeConnected: true, AddressFamily: af})
+		Expect(err).NotTo(HaveOccurred())
 
 		l2VniRedWithGateway := l2VniRed.DeepCopy()
 		l2VniRedWithGateway.Spec.VRF = nil
@@ -391,7 +402,6 @@ var _ = Describe("Routes between bgp and the fabric - vtepInterface", func() {
 			},
 		}
 
-		underlay := infra.Underlay
 		underlay.Spec.EVPN = &v1alpha1.EVPNConfig{
 			VTEPInterface: "toswitch",
 		}
@@ -415,9 +425,10 @@ var _ = Describe("Routes between bgp and the fabric - vtepInterface", func() {
 	})
 
 	AfterEach(func() {
-		resetLeafKindConfig(nodes)
+		err := infra.UpdateLeafKindConfig(nodes, infra.LeafKindConfiguration{})
+		Expect(err).NotTo(HaveOccurred())
 		dumpIfFails(cs)
-		err := Updater.CleanAll()
+		err = Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
 
 		By("waiting for the router pod to rollout after removing the underlay")
@@ -461,7 +472,7 @@ var _ = Describe("Routes between bgp and the fabric - vtepInterface", func() {
 			WithPolling(time.Second).
 			Should(Equal(firstPodIP), "curl should return the expected clientip")
 	})
-})
+}
 
 func removeGatewayFromPod(pod *corev1.Pod) error {
 	exec := executor.ForPod(pod.Namespace, pod.Name, "agnhost")

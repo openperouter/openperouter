@@ -6,8 +6,8 @@
 {{ end }}
   address-family l2vpn evpn
 {{- range .Underlay.Neighbors }}
-    neighbor {{ .Addr }} activate
-    neighbor {{ .Addr }} allowas-in 
+    neighbor {{ .ID }} activate
+    neighbor {{ .ID }} allowas-in 
 {{- end }}
     advertise-all-vni
     advertise-svi-ip

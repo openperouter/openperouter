@@ -302,7 +302,8 @@ _Appears in:_
 | --- | --- | --- | --- |
 | `asn` _integer_ | ASN is the AS number to use for the local end of the session. |  | Maximum: 4.294967295e+09 <br />Minimum: 1 <br /> |
 | `hostasn` _integer_ | ASN is the expected AS number for a BGP speaking component running in<br />the default network namespace. If not set, the ASN field is going to be used. |  | Maximum: 4.294967295e+09 <br />Minimum: 0 <br />Optional: \{\} <br /> |
-| `address` _string_ | Address is the IP address to establish the session with. |  |  |
+| `address` _string_ | Address is the IP address to establish the session with. The IP address<br />can be either IPv4 or IPv6. |  | MaxLength: 39 <br />MinLength: 1 <br />Optional: \{\} <br /> |
+| `interface` _string_ | Interface is the interface name for BGP unnumbered sessions. The session will be established via IPv6 link locals. |  | MaxLength: 15 <br />MinLength: 1 <br />Optional: \{\} <br /> |
 | `port` _integer_ | Port is the port to dial when establishing the session.<br />Defaults to 179. |  | Maximum: 16384 <br />Minimum: 0 <br />Optional: \{\} <br /> |
 | `password` _string_ | Password to be used for establishing the BGP session.<br />Password and PasswordSecret are mutually exclusive. |  | Optional: \{\} <br /> |
 | `passwordSecret` _string_ | PasswordSecret is name of the authentication secret for the neighbor.<br />the secret must be of type "kubernetes.io/basic-auth", and created in the<br />same namespace as the perouter daemon. The password is stored in the<br />secret as the key "password".<br />Password and PasswordSecret are mutually exclusive. |  | Optional: \{\} <br /> |
@@ -415,7 +416,7 @@ _Appears in:_
 | `nodeSelector` _[LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#labelselector-v1-meta)_ | NodeSelector specifies which nodes this Underlay applies to.<br />If empty or not specified, applies to all nodes (backward compatible).<br />Multiple Underlays with overlapping node selectors will be rejected. |  | Optional: \{\} <br /> |
 | `asn` _integer_ | ASN is the local AS number to use for the session with the TOR switch. |  | Maximum: 4.294967295e+09 <br />Minimum: 1 <br />Required: \{\} <br /> |
 | `routeridcidr` _string_ | RouterIDCIDR is the ipv4 cidr to be used to assign a different routerID on each node. | 10.0.0.0/24 | Optional: \{\} <br /> |
-| `neighbors` _[Neighbor](#neighbor) array_ | Neighbors is the list of external neighbors to peer with. |  | MinItems: 1 <br /> |
+| `neighbors` _[Neighbor](#neighbor) array_ | Neighbors is the list of external neighbors to peer with. |  | MaxItems: 1000 <br />MinItems: 1 <br /> |
 | `nics` _string array_ | Nics is the list of physical nics to move under the PERouter namespace to connect<br />to external routers. This field is optional when using Multus networks for TOR connectivity. |  | items:MaxLength: 15 <br />items:Pattern: `^[a-zA-Z][a-zA-Z0-9._-]*$` <br /> |
 | `evpn` _[EVPNConfig](#evpnconfig)_ |  |  |  |
 
