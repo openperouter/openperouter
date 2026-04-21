@@ -53,7 +53,7 @@ import (
 	"github.com/openperouter/openperouter/internal/pods"
 	"github.com/openperouter/openperouter/internal/staticconfiguration"
 	"github.com/openperouter/openperouter/internal/systemdctl"
-	"github.com/openperouter/openperouter/internal/version"
+	"github.com/openperouter/openperouter/internal/buildversion"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	// +kubebuilder:scaffold:imports
 )
@@ -146,7 +146,7 @@ func main() {
 		os.Exit(1)
 	}
 	ctrl.SetLogger(logr.FromSlogHandler(logger.Handler()))
-	setupLog.Info("version", "version", version.Version())
+	setupLog.Info("version", "version", buildversion.Version())
 	setupLog.Info("arguments", "args", fmt.Sprintf("%+v", args))
 
 	// Setup signal handler once for the entire process

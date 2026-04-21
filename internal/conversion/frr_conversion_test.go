@@ -807,7 +807,7 @@ func TestAPItoFRR(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			apiConfig := ApiConfigData{
+			apiConfig := APIConfigData{
 				Underlays:     tt.underlays,
 				L3VNIs:        tt.vnis,
 				L3Passthrough: tt.l3Passthrough,
@@ -893,7 +893,7 @@ func TestAPItoFRRRawConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			apiConfig := ApiConfigData{
+			apiConfig := APIConfigData{
 				Underlays:     baseUnderlay,
 				RawFRRConfigs: tt.rawFRRConfigs,
 			}
@@ -1011,7 +1011,7 @@ func TestAPItoFRRRawConfigWithoutUnderlay(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			apiConfig := ApiConfigData{
+			apiConfig := APIConfigData{
 				Underlays:     []v1alpha1.Underlay{},
 				RawFRRConfigs: rawConfigs,
 				L3VNIs:        tt.l3VNIs,

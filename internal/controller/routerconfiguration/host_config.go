@@ -18,7 +18,7 @@ type interfacesConfiguration struct {
 	targetNamespace    string
 	underlayFromMultus bool
 	nodeIndex          int
-	conversion.ApiConfigData
+	conversion.APIConfigData
 }
 
 type UnderlayRemovedError struct{}
@@ -47,7 +47,7 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 
 	slog.InfoContext(ctx, "configure interface start", "namespace", config.targetNamespace)
 	defer slog.InfoContext(ctx, "configure interface end", "namespace", config.targetNamespace)
-	apiConfig := conversion.ApiConfigData{
+	apiConfig := conversion.APIConfigData{
 		Underlays:     config.Underlays,
 		L3VNIs:        config.L3VNIs,
 		L2VNIs:        config.L2VNIs,

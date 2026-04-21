@@ -12,7 +12,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func APItoHostConfig(nodeIndex int, targetNS string, underlayFromMultus bool, apiConfig ApiConfigData) (HostConfigData, error) {
+func APItoHostConfig(nodeIndex int, targetNS string, underlayFromMultus bool, apiConfig APIConfigData) (HostConfigData, error) {
 	res := HostConfigData{
 		L3VNIs: []hostnetwork.L3VNIParams{},
 		L2VNIs: []hostnetwork.L2VNIParams{},

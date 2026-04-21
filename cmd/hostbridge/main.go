@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/openperouter/openperouter/internal/hostcredentials"
-	"github.com/openperouter/openperouter/internal/version"
+	"github.com/openperouter/openperouter/internal/buildversion"
 )
 
 type Config struct {
@@ -44,7 +44,7 @@ func main() {
 		NodeName:       nodeName,
 	}
 
-	slog.Info("version", "version", version.Version())
+	slog.Info("version", "version", buildversion.Version())
 	slog.Info("Starting hostbridge with configuration", "config", config)
 
 	ctx := context.Background()
@@ -93,7 +93,7 @@ func getAPIServer(config Config) (string, error) {
 		res := "https://" + net.JoinHostPort(config.APIServer, strconv.Itoa(config.K8sPort))
 		return res, nil
 	}
-	res, err := hostcredentials.ApiServerAddress(config.K8sPort)
+	res, err := hostcredentials.APIServerAddress(config.K8sPort)
 	if err != nil {
 		return "", err
 	}
