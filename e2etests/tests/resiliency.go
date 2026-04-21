@@ -4,6 +4,8 @@ package tests
 
 import (
 	"context"
+	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -17,6 +19,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
+	"github.com/openperouter/openperouter/e2etests/pkg/url"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -208,3 +211,197 @@ func killFRREntrypoint(frrExec executor.Executor) {
 	output, err := frrExec.Exec("kill", frrPID)
 	Expect(err).NotTo(HaveOccurred(), "failed to kill FRR process %q: %v", frrPID, output)
 }
+
+var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func() {
+	var cs clientset.Interface
+
+	vniRed := v1alpha1.L3VNI{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "red",
+			Namespace: openperouter.Namespace,
+		},
+		Spec: v1alpha1.L3VNISpec{
+			VRF: "red",
+			VNI: 100,
+		},
+	}
+
+	l2VniRed := v1alpha1.L2VNI{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "red110",
+			Namespace: openperouter.Namespace,
+		},
+		Spec: v1alpha1.L2VNISpec{
+			VRF: ptr.To("red"),
+			VNI: 110,
+			HostMaster: &v1alpha1.HostMaster{
+				Type: "linux-bridge",
+				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
+					AutoCreate: true,
+				},
+			},
+		},
+	}
+
+	BeforeAll(func() {
+		if HostMode {
+			Skip("host mode is not applicable; skip beta netns rebuild tests")
+		}
+
+		cs = k8sclient.New()
+
+		By("ensuring underlay veth pairs are healthy on all nodes")
+		nodes, err := k8s.GetNodes(cs)
+		Expect(err).NotTo(HaveOccurred())
+		for _, node := range nodes {
+			Expect(openperouter.EnsureUnderlayLink(node.Name)).To(Succeed())
+		}
+
+		err = Updater.Update(config.Resources{
+			Underlays: []v1alpha1.Underlay{infra.Underlay},
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("waiting for all router pods to be ready")
+		Eventually(func() error {
+			_, err := openperouter.ReadyRouters(cs, HostMode)
+			return err
+		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
+
+		redistributeConnectedForLeaf(infra.LeafAConfig)
+		redistributeConnectedForLeaf(infra.LeafBConfig)
+	})
+
+	AfterAll(func() {
+		err := Updater.CleanAll()
+		Expect(err).NotTo(HaveOccurred())
+		By("waiting for all router pods to be ready")
+		Eventually(func(g Gomega) {
+			pods, err := openperouter.RouterPods(cs)
+			g.Expect(err).NotTo(HaveOccurred())
+			for _, p := range pods {
+				g.Expect(k8s.PodIsReady(p)).To(BeTrue(), "pod %s must be ready", p.Name)
+			}
+		}).WithTimeout(2 * time.Minute).WithPolling(time.Second).Should(Succeed())
+	})
+
+	const testNamespace = "test-namespace-rebuild"
+
+	It("should auto-recover when the named netns is deleted via ip netns delete", func() {
+		l2VniRedWithGateway := l2VniRed.DeepCopy()
+		l2VniRedWithGateway.Spec.L2GatewayIPs = []string{"192.171.24.1/24"}
+
+		err := Updater.Update(config.Resources{
+			L3VNIs: []v1alpha1.L3VNI{vniRed},
+			L2VNIs: []v1alpha1.L2VNI{*l2VniRedWithGateway},
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = k8s.CreateNamespace(cs, testNamespace)
+		Expect(err).NotTo(HaveOccurred())
+
+		nad, err := k8s.CreateMacvlanNad("110", testNamespace, "br-hs-110", []string{"192.171.24.1/24"})
+		Expect(err).NotTo(HaveOccurred())
+
+		DeferCleanup(func() {
+			dumpIfFails(cs)
+			Expect(infra.LeafAConfig.RemovePrefixes()).To(Succeed())
+			Expect(infra.LeafBConfig.RemovePrefixes()).To(Succeed())
+			err := Updater.CleanButUnderlay()
+			Expect(err).NotTo(HaveOccurred())
+			err = k8s.DeleteNamespace(cs, testNamespace)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		nodes, err := k8s.GetNodes(cs)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(len(nodes)).To(BeNumerically(">=", 1))
+
+		By("creating the client pod")
+		clientPod, err := k8s.CreateAgnhostPod(cs, "pod1", testNamespace,
+			k8s.WithNad(nad.Name, testNamespace, []string{"192.171.24.2/24"}),
+			k8s.OnNode(nodes[0].Name))
+		Expect(err).NotTo(HaveOccurred())
+
+		By("removing the default gateway via the primary interface")
+		Expect(removeGatewayFromPod(clientPod)).To(Succeed())
+
+		hostARedExecutor := executor.ForContainer("clab-kind-hostA_red")
+		firstPodIP := "192.171.24.2"
+		const port = "8090"
+		hostPort := net.JoinHostPort(firstPodIP, port)
+		urlStr := url.Format("http://%s/clientip", hostPort)
+
+		By("waiting for BGP sessions to establish before traffic check")
+		neighborIP, err := infra.NeighborIP(infra.KindLeaf, nodes[0].Name)
+		Expect(err).NotTo(HaveOccurred())
+		validateSessionWithNeighbor(
+			infra.KindLeaf,
+			nodes[0].Name,
+			executor.ForContainer(infra.KindLeaf),
+			neighborIP,
+			Established,
+		)
+
+		By("verifying traffic works before netns deletion")
+		Eventually(func() error {
+			_, err := hostARedExecutor.Exec("curl", "-sS", "--max-time", "2", urlStr)
+			return err
+		}).WithTimeout(30 * time.Second).WithPolling(time.Second).Should(Succeed())
+
+		By("identifying the router pod on clientPod's node")
+		routerPods, err := openperouter.RouterPodsForNodes(cs, map[string]bool{clientPod.Spec.NodeName: true})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(routerPods).To(HaveLen(1))
+		routerPod := routerPods[0]
+		nodeName := routerPod.Spec.NodeName
+		oldPodUID := routerPod.UID
+
+		By("deleting the named netns bind mount while the router pod is still running")
+		Expect(openperouter.DeleteNamedNetns(nodeName)).To(Succeed())
+
+		By("deleting the router pod so FRR exits and the netns is truly destroyed")
+		err = cs.CoreV1().Pods(openperouter.Namespace).Delete(context.Background(), routerPod.Name, metav1.DeleteOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("waiting for the old router pod to be fully terminated")
+		Eventually(func() error {
+			_, getErr := cs.CoreV1().Pods(openperouter.Namespace).Get(context.Background(), routerPod.Name, metav1.GetOptions{})
+			if getErr != nil {
+				return nil
+			}
+			return fmt.Errorf("old pod %s still exists", routerPod.Name)
+		}).WithTimeout(2 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
+
+		By("recreating the underlay veth destroyed by netns deletion")
+		Expect(openperouter.RecreateUnderlayLink(nodeName)).To(Succeed())
+
+		By("waiting for the controller to recreate the named netns")
+		Eventually(func() (bool, error) {
+			return openperouter.NamedNetnsExists(nodeName)
+		}, 2*time.Minute, 2*time.Second).Should(BeTrue(), "controller must recreate named netns")
+
+		By("waiting for all interface types to be recreated in the new netns")
+		for _, ifType := range []string{"vrf", "bridge", "vxlan"} {
+			Eventually(func() (bool, error) {
+				return openperouter.NamedNetnsHasInterfaceType(nodeName, ifType)
+			}, 2*time.Minute, 2*time.Second).Should(BeTrue(), "interface type %s must be recreated", ifType)
+		}
+
+		By("waiting for a new router pod to come up and become ready")
+		Eventually(func(g Gomega) {
+			newRouterPods, err := openperouter.RouterPodsForNodes(cs, map[string]bool{nodeName: true})
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(newRouterPods).To(HaveLen(1))
+			newPod := newRouterPods[0]
+			g.Expect(newPod.UID).NotTo(Equal(oldPodUID), "a new router pod must be created after netns deletion")
+			g.Expect(k8s.PodIsReady(newPod)).To(BeTrue(), "new router pod must be ready")
+		}).WithTimeout(3 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
+
+		// TODO: once BGP Graceful Restart is wired into the Underlay CRD and
+		// FRR templates (init-container for persistent frr.conf, zebra -K 60,
+		// connect-retry timer, redistribute connected), add back:
+		//   - validateSessionWithNeighbor (BGP re-establishment)
+		//   - curl traffic check from hostA_red
+	})
+})

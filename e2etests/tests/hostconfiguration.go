@@ -67,7 +67,14 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 	ginkgo.BeforeEach(func() {
 		cs = k8sclient.New()
 
+		ginkgo.By("ensuring the validator is in all the pods")
 		var err error
+		routerPods, err = openperouter.RouterPods(cs)
+		Expect(err).NotTo(HaveOccurred())
+		for _, pod := range routerPods {
+			ensureValidator(cs, pod)
+		}
+
 		err = Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
 
@@ -94,14 +101,14 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 	ginkgo.AfterEach(func() {
 		dumpIfFails(cs)
 		Expect(Updater.CleanAll()).To(Succeed())
-		ginkgo.By("waiting for all router pods to be ready")
-		Eventually(func(g Gomega) {
-			pods, err := openperouter.RouterPods(cs)
-			g.Expect(err).NotTo(HaveOccurred())
-			for _, p := range pods {
-				g.Expect(k8s.PodIsReady(p)).To(BeTrue(), "pod %s must be ready", p.Name)
+		ginkgo.By("waiting for the router pods to rollout after removing the underlay")
+		Eventually(func() error {
+			newRouterPods, err := openperouter.RouterPods(cs)
+			if err != nil {
+				return err
 			}
-		}).WithTimeout(2 * time.Minute).WithPolling(time.Second).Should(Succeed())
+			return podsRolled(cs, routerPods, newRouterPods)
+		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 	})
 
 	ginkgo.Context("L3", func() {
@@ -1137,19 +1144,32 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				}
 			}
 
+			routerPodsToRollout := []*corev1.Pod{}
+			for _, p := range routerPods {
+				if p.Spec.NodeName == nodes[1].Name {
+					routerPodsToRollout = append(routerPodsToRollout, p)
+				}
+			}
+
 			ginkgo.By(fmt.Sprintf("Unlabel the node %q", nodes[1].Name))
 			Expect(
 				k8s.UnlabelNodes(cs, nodes[1]),
 			).To(Succeed())
 
-			ginkgo.By("waiting for all router pods to be ready after unlabeling")
+			ginkgo.By("waiting for the routers with deleted underlay to rollout")
 			Eventually(func() error {
-				_, err := openperouter.ReadyRouters(cs, HostMode)
-				return err
-			}).
-				WithTimeout(time.Minute).
-				WithPolling(time.Second).
-				ShouldNot(HaveOccurred())
+				newRouterPods, err := openperouter.RouterPods(cs)
+				if err != nil {
+					return err
+				}
+				newRouterPodsToRollout := []*corev1.Pod{}
+				for _, p := range newRouterPods {
+					if p.Spec.NodeName == nodes[1].Name {
+						newRouterPodsToRollout = append(newRouterPodsToRollout, p)
+					}
+				}
+				return podsRolled(cs, routerPodsToRollout, newRouterPodsToRollout)
+			}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 			routerPods, err = routerPodsWithValidator(cs)
 			Expect(err).ToNot(HaveOccurred())
 
