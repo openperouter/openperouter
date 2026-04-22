@@ -34,11 +34,17 @@ type Config struct {
 	RawConfig   []RawFRRSnippet
 }
 
+type GracefulRestart struct {
+	RestartTime   uint32
+	StalePathTime uint32
+}
+
 type UnderlayConfig struct {
-	MyASN     uint32
-	RouterID  string
-	Neighbors []NeighborConfig
-	EVPN      *UnderlayEvpn
+	MyASN           uint32
+	RouterID        string
+	Neighbors       []NeighborConfig
+	EVPN            *UnderlayEvpn
+	GracefulRestart *GracefulRestart
 }
 
 type UnderlayEvpn struct {
@@ -53,15 +59,16 @@ type PassthroughConfig struct {
 }
 
 type L3VNIConfig struct {
-	ASN             uint32
-	ToAdvertiseIPv4 []string
-	ToAdvertiseIPv6 []string
-	LocalNeighbor   *NeighborConfig
-	VRF             string
-	VNI             int
-	RouterID        string
-	ExportRTs       []string
-	ImportRTs       []string
+	ASN                   uint32
+	ToAdvertiseIPv4       []string
+	ToAdvertiseIPv6       []string
+	LocalNeighbor         *NeighborConfig
+	VRF                   string
+	VNI                   int
+	RouterID              string
+	ExportRTs             []string
+	ImportRTs             []string
+	RedistributeConnected bool
 }
 
 type BFDProfile struct {
