@@ -13,10 +13,11 @@ router bgp 64512
   no bgp network import-check
   no bgp default ipv4-unicast
   bgp router-id 10.0.0.1
-  neighbor 2001:db8::2 remote-as 64512
+  neighbor 2001:db8::2 remote-as 64513
   
   
   
+  neighbor 2001:db8::2 disable-connected-check
 
   address-family ipv6 unicast
     neighbor 2001:db8::2 activate
@@ -40,7 +41,7 @@ router bgp 64512 vrf red
   no bgp default ipv4-unicast
   bgp router-id 10.0.0.1
   
-  neighbor 2001:db8::2 remote-as 64512
+  neighbor 2001:db8::2 remote-as 64513
 
   address-family ipv4 unicast
     neighbor 2001:db8::2 activate

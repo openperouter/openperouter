@@ -86,7 +86,7 @@ _Appears in:_
 
 
 
-Host Session represent the leg between the router and the host.
+Host Session represents the leg between the router and the host.
 A BGP session is established over this leg.
 
 
@@ -98,7 +98,8 @@ _Appears in:_
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `asn` _integer_ | ASN is the local AS number to use to establish a BGP session with<br />the default namespace. |  | Maximum: 4.294967295e+09 <br />Minimum: 1 <br />Required: \{\} <br /> |
-| `hostasn` _integer_ | ASN is the expected AS number for a BGP speaking component running in<br />the default network namespace. If not set, the ASN field is going to be used. |  | Maximum: 4.294967295e+09 <br />Minimum: 0 <br />Required: \{\} <br /> |
+| `hostasn` _integer_ | HostASN is the expected AS number for a BGP speaking component running in<br />the default network namespace. Either HostASN or HostType must be set. |  | Maximum: 4.294967295e+09 <br />Minimum: 1 <br />Optional: \{\} <br /> |
+| `hosttype` _string_ | HostType is the AS type of the BGP speaking component running in the<br />default network namespace. Either HostASN or HostType must be set. |  | Enum: [external internal] <br />Optional: \{\} <br /> |
 | `localcidr` _[LocalCIDRConfig](#localcidrconfig)_ | LocalCIDR is the CIDR configuration for the veth pair<br />to connect with the default namespace. The interface under<br />the PERouter side is going to use the first IP of the cidr on all the nodes.<br />At least one of IPv4 or IPv6 must be provided. |  | Required: \{\} <br /> |
 
 
@@ -308,8 +309,8 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `asn` _integer_ | ASN is the AS number to use for the local end of the session. |  | Maximum: 4.294967295e+09 <br />Minimum: 1 <br /> |
-| `hostasn` _integer_ | ASN is the expected AS number for a BGP speaking component running in<br />the default network namespace. If not set, the ASN field is going to be used. |  | Maximum: 4.294967295e+09 <br />Minimum: 0 <br />Optional: \{\} <br /> |
+| `asn` _integer_ | ASN is the AS number of the neighbor. Either ASN or Type must be set. |  | Maximum: 4.294967295e+09 <br />Minimum: 1 <br />Optional: \{\} <br /> |
+| `type` _string_ | Type is the AS type of the neighbor. Either ASN or Type must be set. |  | Enum: [external internal] <br />Optional: \{\} <br /> |
 | `address` _string_ | Address is the IP address to establish the session with. |  |  |
 | `port` _integer_ | Port is the port to dial when establishing the session.<br />Defaults to 179. |  | Maximum: 16384 <br />Minimum: 0 <br />Optional: \{\} <br /> |
 | `password` _string_ | Password to be used for establishing the BGP session.<br />Password and PasswordSecret are mutually exclusive. |  | Optional: \{\} <br /> |

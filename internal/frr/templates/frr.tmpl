@@ -46,7 +46,7 @@ router bgp {{ .Underlay.MyASN }}
 {{- template "neighborsession" dict "neighbor" $n "routerASN" $.Underlay.MyASN -}}
 {{- end }}
 {{- range $n := .Underlay.Neighbors }}
-{{- template "neighborenableipfamily" . -}}
+{{- template "neighborenableipfamily" dict "neighbor" $n "routerASN" $.Underlay.MyASN -}}
 {{end }}
 
 {{- if .Passthrough }}
@@ -68,7 +68,7 @@ router bgp {{ .ASN }} vrf {{ .VRF }}
   bgp router-id {{ .RouterID }}
 
   {{- if .LocalNeighbor }}
-  {{ template "localneighbor" . }}
+  {{ template "localneighbor" dict "vni" . "routerASN" $.Underlay.MyASN -}}
   {{- end }}
 
   address-family l2vpn evpn
