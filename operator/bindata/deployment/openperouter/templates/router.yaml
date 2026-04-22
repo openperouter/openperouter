@@ -45,7 +45,7 @@ data:
     # Check /etc/pam.d/frr if you intend to use "vtysh"!
     #
     vtysh_enable=yes
-    zebra_options="  -A 127.0.0.1 -s 90000000 --limit-fds 100000"
+    zebra_options="  -A 127.0.0.1 -s 90000000 --limit-fds 100000 -K 60"
     bgpd_options="   -A 127.0.0.1 --limit-fds 100000"
     ospfd_options="  -A 127.0.0.1"
     ospf6d_options=" -A ::1"
@@ -262,10 +262,19 @@ spec:
           {{- if .Values.openperouter.image.pullPolicy }}
           imagePullPolicy: {{ .Values.openperouter.image.pullPolicy }}
           {{- end }}
-          command: ["/bin/sh", "-c", "cp -rLf /tmp/frr/* /etc/frr/"]
+          command:
+            - /bin/sh
+            - -c
+            - |
+              cp -rLf /tmp/frr/* /etc/frr/
+              if [ -f /etc/perouter/frr.conf ]; then
+                cp /etc/perouter/frr.conf /etc/frr/frr.conf
+              fi
           volumeMounts:
             - name: frr-startup
               mountPath: /tmp/frr
             - name: frrconfig
               mountPath: /etc/frr
+            - name: frrsharedconfig
+              mountPath: /etc/perouter
 {{- end }}

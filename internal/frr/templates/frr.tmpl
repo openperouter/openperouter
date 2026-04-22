@@ -41,6 +41,12 @@ router bgp {{ .Underlay.MyASN }}
   no bgp network import-check
   no bgp default ipv4-unicast
   bgp router-id {{ .Underlay.RouterID }}
+{{- if .Underlay.GracefulRestart }}
+  bgp graceful-restart
+  bgp graceful-restart preserve-fw-state
+  bgp graceful-restart restart-time {{ .Underlay.GracefulRestart.RestartTime }}
+  bgp graceful-restart stalepath-time {{ .Underlay.GracefulRestart.StalePathTime }}
+{{- end }}
 
 {{- range $n := .Underlay.Neighbors }}
 {{- template "neighborsession" dict "neighbor" $n "routerASN" $.Underlay.MyASN -}}
@@ -69,6 +75,13 @@ router bgp {{ .ASN }} vrf {{ .VRF }}
 
   {{- if .LocalNeighbor }}
   {{ template "localneighbor" dict "vni" . "routerASN" $.Underlay.MyASN -}}
+  {{- else if .RedistributeConnected }}
+  address-family ipv4 unicast
+    redistribute connected
+  exit-address-family
+  address-family ipv6 unicast
+    redistribute connected
+  exit-address-family
   {{- end }}
 
   address-family l2vpn evpn

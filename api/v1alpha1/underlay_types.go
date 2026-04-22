@@ -50,6 +50,34 @@ type UnderlaySpec struct {
 	Nics []string `json:"nics,omitempty"`
 
 	EVPN *EVPNConfig `json:"evpn,omitempty"`
+
+	// GracefulRestart configures BGP Graceful Restart behaviour.
+	// When set, FRR advertises GR capability and preserves forwarding
+	// state across restarts so that peers keep stale routes active.
+	// Omit to disable graceful restart.
+	// +optional
+	GracefulRestart *GracefulRestartConfig `json:"gracefulRestart,omitempty"`
+}
+
+// GracefulRestartConfig holds BGP Graceful Restart parameters.
+// Its presence on the Underlay enables graceful restart.
+type GracefulRestartConfig struct {
+	// RestartTime is the time in seconds that the restarting router
+	// requests its peers to preserve routes. Peers will wait this long
+	// before removing stale routes.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=4095
+	// +kubebuilder:default=120
+	// +optional
+	RestartTime *uint32 `json:"restartTime,omitempty"`
+
+	// StalePathTime is the time in seconds that stale paths from a
+	// restarting peer are retained locally.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=4095
+	// +kubebuilder:default=360
+	// +optional
+	StalePathTime *uint32 `json:"stalePathTime,omitempty"`
 }
 
 // EVPNConfig contains EVPN-VXLAN configuration for the underlay.
