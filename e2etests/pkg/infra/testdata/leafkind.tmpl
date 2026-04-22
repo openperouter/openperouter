@@ -21,6 +21,8 @@ debug bfd peer
 debug bfd zebra
 
 router bgp 64512
+ bgp graceful-restart
+ bgp graceful-restart preserve-fw-state
  no bgp ebgp-requires-policy
  no bgp network import-check
  no bgp default ipv4-unicast
