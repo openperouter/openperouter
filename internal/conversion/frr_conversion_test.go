@@ -1436,6 +1436,73 @@ func TestAPItoFRRRawConfigWithoutUnderlay(t *testing.T) {
 	}
 }
 
+func TestAPItoFRRGracefulRestart(t *testing.T) {
+	baseUnderlay := v1alpha1.Underlay{
+		ObjectMeta: metav1.ObjectMeta{Name: "underlay", Namespace: "openperouter-system"},
+		Spec: v1alpha1.UnderlaySpec{
+			ASN: 64514,
+			Neighbors: []v1alpha1.Neighbor{
+				{ASN: 64517, Address: "192.168.11.2"},
+			},
+			EVPN: &v1alpha1.EVPNConfig{VTEPCIDR: "100.65.0.0/24"},
+		},
+	}
+
+	tests := []struct {
+		name string
+		gr   *v1alpha1.GracefulRestartConfig
+		want *frr.GracefulRestart
+	}{
+		{
+			name: "GR disabled (nil)",
+			gr:   nil,
+			want: nil,
+		},
+		{
+			name: "GR enabled with defaults",
+			gr:   &v1alpha1.GracefulRestartConfig{},
+			want: &frr.GracefulRestart{RestartTime: 120, StalePathTime: 360},
+		},
+		{
+			name: "GR enabled with custom timers",
+			gr:   &v1alpha1.GracefulRestartConfig{RestartTime: ptr.To(uint32(90)), StalePathTime: ptr.To(uint32(180))},
+			want: &frr.GracefulRestart{RestartTime: 90, StalePathTime: 180},
+		},
+		{
+			name: "GR enabled with partial custom timers",
+			gr:   &v1alpha1.GracefulRestartConfig{RestartTime: ptr.To(uint32(60))},
+			want: &frr.GracefulRestart{RestartTime: 60, StalePathTime: 360},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			u := baseUnderlay.DeepCopy()
+			u.Spec.GracefulRestart = tt.gr
+
+			config := APIConfigData{
+				Underlays: []v1alpha1.Underlay{*u},
+			}
+			got, err := APItoFRR(config, 0, "")
+			if err != nil {
+				t.Fatalf("APItoFRR() unexpected error: %v", err)
+			}
+
+			if !cmp.Equal(got.Underlay.GracefulRestart, tt.want) {
+				t.Errorf("GracefulRestart diff: %s", cmp.Diff(tt.want, got.Underlay.GracefulRestart))
+			}
+
+			if tt.want != nil {
+				for _, n := range got.Underlay.Neighbors {
+					if n.ConnectTime == nil || *n.ConnectTime != 5 {
+						t.Errorf("expected ConnectTime=5 when GR enabled, got %v", n.ConnectTime)
+					}
+				}
+			}
+		})
+	}
+}
+
 func mustNewPeerASNFromNumber(number uint32) frr.PeerASN {
 	if number == 0 {
 		panic("number must be > 0")
