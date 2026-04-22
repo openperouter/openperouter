@@ -258,8 +258,11 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 			Expect(openperouter.EnsureUnderlayLink(node.Name)).To(Succeed())
 		}
 
+		underlayWithGR := infra.Underlay.DeepCopy()
+		underlayWithGR.Spec.GracefulRestart = &v1alpha1.GracefulRestartConfig{}
+
 		err = Updater.Update(config.Resources{
-			Underlays: []v1alpha1.Underlay{infra.Underlay},
+			Underlays: []v1alpha1.Underlay{*underlayWithGR},
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -410,10 +413,21 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 			g.Expect(k8s.PodIsReady(newPod)).To(BeTrue(), "new router pod must be ready")
 		}).WithTimeout(3 * time.Minute).WithPolling(2 * time.Second).Should(Succeed())
 
-		// TODO: once BGP Graceful Restart is wired into the Underlay CRD and
-		// FRR templates (init-container for persistent frr.conf, zebra -K 60,
-		// connect-retry timer, redistribute connected), add back:
-		//   - validateSessionWithNeighbor (BGP re-establishment)
-		//   - curl traffic check from hostA_red
+		By("waiting for BGP sessions to re-establish")
+		neighborIP, err = infra.NeighborIP(infra.KindLeaf, nodeName)
+		Expect(err).NotTo(HaveOccurred())
+		validateSessionWithNeighbor(
+			infra.KindLeaf,
+			nodeName,
+			executor.ForContainer(infra.KindLeaf),
+			neighborIP,
+			Established,
+		)
+
+		By("verifying traffic works again after rebuild")
+		Eventually(func() error {
+			_, err := hostARedExecutor.Exec("curl", "-sS", "--max-time", "3", urlStr)
+			return err
+		}).WithTimeout(30 * time.Second).WithPolling(time.Second).Should(Succeed())
 	})
 })
