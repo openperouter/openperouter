@@ -231,6 +231,17 @@ var _ = Describe("Webhooks", func() {
 					VXLanPort: 4789,
 				},
 			}}, "duplicate vni"),
+			Entry("when trying to create an L2VNI with l2gatewayips but no VRF", []v1alpha1.L2VNI{{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "l2vni-no-vrf-gw",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.L2VNISpec{
+					VNI:          213,
+					VXLanPort:    4789,
+					L2GatewayIPs: []string{"10.100.0.1/24"},
+				},
+			}}, "l2gatewayips cannot be set without spec.vrf"),
 			Entry("when trying to create an L2VNI with an invalid IPv4 address", []v1alpha1.L2VNI{{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "l2-invalid-ip4",
@@ -238,6 +249,7 @@ var _ = Describe("Webhooks", func() {
 				},
 				Spec: v1alpha1.L2VNISpec{
 					VNI:          201,
+					VRF:          ptr.To("test-vrf-2"),
 					VXLanPort:    4789,
 					L2GatewayIPs: []string{"not-an-ip-address"},
 				},
@@ -249,6 +261,7 @@ var _ = Describe("Webhooks", func() {
 				},
 				Spec: v1alpha1.L2VNISpec{
 					VNI:          202,
+					VRF:          ptr.To("test-vrf-2"),
 					VXLanPort:    4789,
 					L2GatewayIPs: []string{"256.256.256.256/24"},
 				},
@@ -260,6 +273,7 @@ var _ = Describe("Webhooks", func() {
 				},
 				Spec: v1alpha1.L2VNISpec{
 					VNI:          203,
+					VRF:          ptr.To("test-vrf-2"),
 					VXLanPort:    4789,
 					L2GatewayIPs: []string{"192.168.1.1/24", "invalid-ip"},
 				},
@@ -271,6 +285,7 @@ var _ = Describe("Webhooks", func() {
 				},
 				Spec: v1alpha1.L2VNISpec{
 					VNI:          204,
+					VRF:          ptr.To("test-vrf-2"),
 					VXLanPort:    4789,
 					L2GatewayIPs: []string{"192.168.1.1/24", "2001:db8::1/64", "10.0.0.1/24"},
 				},
@@ -282,6 +297,7 @@ var _ = Describe("Webhooks", func() {
 				},
 				Spec: v1alpha1.L2VNISpec{
 					VNI:          205,
+					VRF:          ptr.To("test-vrf-2"),
 					VXLanPort:    4789,
 					L2GatewayIPs: []string{"192.168.1.1/24", "10.0.0.1/24"},
 				},
@@ -293,6 +309,7 @@ var _ = Describe("Webhooks", func() {
 				},
 				Spec: v1alpha1.L2VNISpec{
 					VNI:          206,
+					VRF:          ptr.To("test-vrf-2"),
 					VXLanPort:    4789,
 					L2GatewayIPs: []string{"2001:db8::1/64", "2001:db9::1/64"},
 				},
@@ -391,6 +408,7 @@ var _ = Describe("Webhooks", func() {
 				},
 				Spec: v1alpha1.L2VNISpec{
 					VNI:          210,
+					VRF:          ptr.To("test-vrf-2"),
 					VXLanPort:    4789,
 					L2GatewayIPs: []string{"192.168.1.1/24"},
 				},
@@ -409,6 +427,7 @@ var _ = Describe("Webhooks", func() {
 				},
 				Spec: v1alpha1.L2VNISpec{
 					VNI:          211,
+					VRF:          ptr.To("test-vrf-2"),
 					VXLanPort:    4789,
 					L2GatewayIPs: []string{"2001:db8::1/64"},
 				},
@@ -427,6 +446,7 @@ var _ = Describe("Webhooks", func() {
 				},
 				Spec: v1alpha1.L2VNISpec{
 					VNI:          212,
+					VRF:          ptr.To("test-vrf-2"),
 					VXLanPort:    4789,
 					L2GatewayIPs: []string{"192.168.1.1/24", "2001:db8::1/64"},
 				},
@@ -447,6 +467,7 @@ var _ = Describe("Webhooks", func() {
 				},
 				Spec: v1alpha1.L2VNISpec{
 					VNI:          300,
+					VRF:          ptr.To("test-vrf-2"),
 					VXLanPort:    4789,
 					L2GatewayIPs: []string{"192.168.10.1/24"},
 				},
