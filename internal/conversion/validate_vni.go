@@ -80,6 +80,9 @@ func ValidateL2VNIs(l2Vnis []v1alpha1.L2VNI) error {
 				return err
 			}
 		}
+		if len(vni.Spec.L2GatewayIPs) > 0 && !hasVRF(vni) {
+			return fmt.Errorf("l2gatewayips cannot be set without spec.vrf for vni %q", vni.Name)
+		}
 		if len(vni.Spec.L2GatewayIPs) > 0 {
 			_, err := ipfamily.ForCIDRStrings(vni.Spec.L2GatewayIPs...)
 			if err != nil {
@@ -238,6 +241,10 @@ func cidrsOverlap(cidr1, cidr2 string) (bool, error) {
 	}
 
 	return false, nil
+}
+
+func hasVRF(l2vni v1alpha1.L2VNI) bool {
+	return l2vni.Spec.VRF != nil && *l2vni.Spec.VRF != ""
 }
 
 func isValidInterfaceName(name string) error {
