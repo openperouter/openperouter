@@ -81,6 +81,9 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 
 	ginkgo.AfterEach(func() {
 		dumpIfFails(cs)
+		currentPods, err := openperouter.RouterPods(cs)
+		Expect(err).NotTo(HaveOccurred())
+
 		Expect(Updater.CleanAll()).To(Succeed())
 		ginkgo.By("waiting for the router pod to rollout after removing the underlay")
 		Eventually(func() error {
@@ -88,7 +91,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 			if err != nil {
 				return err
 			}
-			return podsRolled(cs, routerPods, newRouterPods)
+			return podsRolled(cs, currentPods, newRouterPods)
 		}, time.Minute, time.Second).ShouldNot(HaveOccurred())
 	})
 
