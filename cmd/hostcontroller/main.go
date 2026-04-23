@@ -206,7 +206,9 @@ func runHostMode(
 	staticControllerCtx, stopStaticReconciler := context.WithCancel(ctx)
 	defer stopStaticReconciler()
 
+	staticDone := make(chan struct{})
 	go func() {
+		defer close(staticDone)
 		logger.Info("creating static configuration controller for host mode")
 		err := runStaticConfigReconciler(
 			staticControllerCtx, args, hostModeParams, nodeConfig, logger, args.probeAddr,
@@ -232,6 +234,10 @@ func runHostMode(
 	logger.Info("kubernetes API is now available, stopping static reconciler and starting k8s reconciler")
 
 	stopStaticReconciler()
+	// Wait for the static reconciler to fully stop and release the health probe port
+	// before starting the K8s reconciler, which binds the same port.
+	<-staticDone
+	logger.Info("static reconciler fully stopped, starting k8s reconciler")
 
 	// Start API reconciler in main thread (blocking) - keeps process alive
 	if err := runK8sConfigReconcilerHostMode(
