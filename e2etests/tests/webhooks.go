@@ -289,7 +289,7 @@ var _ = Describe("Webhooks", func() {
 					VXLanPort:    4789,
 					L2GatewayIPs: []string{"192.168.1.1/24", "2001:db8::1/64", "10.0.0.1/24"},
 				},
-			}}, "Too many"),
+			}}, "invalid ips length"),
 			Entry("when trying to create an L2VNI with 2 IPv4 addresses", []v1alpha1.L2VNI{{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "l2-two-ipv4",
