@@ -61,8 +61,7 @@ var _ = Describe("Webhooks", func() {
 				err := Updater.Update(config.Resources{
 					L3VNIs: []v1alpha1.L3VNI{vni},
 				})
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring(expectedError))
+				Expect(err).To(MatchError(ContainSubstring(expectedError)))
 			},
 			Entry("when trying to create a VNI without VRF field", v1alpha1.L3VNI{
 				ObjectMeta: metav1.ObjectMeta{
@@ -218,8 +217,7 @@ var _ = Describe("Webhooks", func() {
 				err := Updater.Update(config.Resources{
 					L2VNIs: l2vnis,
 				})
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring(expectedError))
+				Expect(err).To(MatchError(ContainSubstring(expectedError)))
 			},
 			Entry("when trying to create an L2VNI with the same VNI as an existing one", []v1alpha1.L2VNI{{
 				ObjectMeta: metav1.ObjectMeta{
@@ -474,8 +472,7 @@ var _ = Describe("Webhooks", func() {
 			err := Updater.Update(config.Resources{
 				L2VNIs: []v1alpha1.L2VNI{l2vniUpdated},
 			})
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("L2GatewayIPs cannot be changed"))
+			Expect(err).To(MatchError(ContainSubstring("L2GatewayIPs cannot be changed")))
 		})
 
 		It("should block updates to L2GatewayIPs when adding an IP", func() {
@@ -494,8 +491,7 @@ var _ = Describe("Webhooks", func() {
 			err := Updater.Update(config.Resources{
 				L2VNIs: []v1alpha1.L2VNI{l2vniUpdated},
 			})
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("L2GatewayIPs cannot be changed"))
+			Expect(err).To(MatchError(ContainSubstring("L2GatewayIPs cannot be changed")))
 		})
 
 		It("should block updates to L2GatewayIPs when removing an IP", func() {
@@ -514,8 +510,7 @@ var _ = Describe("Webhooks", func() {
 			err := Updater.Update(config.Resources{
 				L2VNIs: []v1alpha1.L2VNI{l2vniUpdated},
 			})
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("L2GatewayIPs cannot be changed"))
+			Expect(err).To(MatchError(ContainSubstring("L2GatewayIPs cannot be changed")))
 		})
 	})
 
@@ -569,8 +564,7 @@ var _ = Describe("Webhooks", func() {
 			err := Updater.Update(config.Resources{
 				L3VNIs: []v1alpha1.L3VNI{l3vniUpdated},
 			})
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("LocalCIDR can't be changed"))
+			Expect(err).To(MatchError(ContainSubstring("LocalCIDR can't be changed")))
 		})
 	})
 
@@ -580,8 +574,7 @@ var _ = Describe("Webhooks", func() {
 				err := Updater.Update(config.Resources{
 					Underlays: []v1alpha1.Underlay{underlay},
 				})
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring(expectedError))
+				Expect(err).To(MatchError(ContainSubstring(expectedError)))
 			},
 			Entry("when trying to create an underlay with multiple nics", v1alpha1.Underlay{
 				ObjectMeta: metav1.ObjectMeta{
@@ -639,8 +632,7 @@ var _ = Describe("Webhooks", func() {
 				err := Updater.Update(config.Resources{
 					Underlays: underlays,
 				})
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring(expectedError))
+				Expect(err).To(MatchError(ContainSubstring(expectedError)))
 			},
 			Entry("when trying to create a second different underlay (should fail)",
 				[]v1alpha1.Underlay{
@@ -723,8 +715,7 @@ var _ = Describe("Webhooks", func() {
 			err = Updater.Update(config.Resources{
 				L3Passthrough: []v1alpha1.L3Passthrough{passthrough2},
 			})
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("more than one"))
+			Expect(err).To(MatchError(ContainSubstring("more than one")))
 		})
 
 		DescribeTable("the webhook should block",
@@ -732,8 +723,7 @@ var _ = Describe("Webhooks", func() {
 				err := Updater.Update(config.Resources{
 					L3Passthrough: []v1alpha1.L3Passthrough{passthrough},
 				})
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring(expectedError))
+				Expect(err).To(MatchError(ContainSubstring(expectedError)))
 			},
 			Entry("when trying to create an L3Passthrough with invalid CIDR", v1alpha1.L3Passthrough{
 				ObjectMeta: metav1.ObjectMeta{
@@ -797,8 +787,7 @@ var _ = Describe("Webhooks", func() {
 			err := Updater.Update(config.Resources{
 				L3Passthrough: []v1alpha1.L3Passthrough{passthroughUpdated},
 			})
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("LocalCIDR can't be changed"))
+			Expect(err).To(MatchError(ContainSubstring("LocalCIDR can't be changed")))
 		})
 	})
 
@@ -849,8 +838,7 @@ var _ = Describe("Webhooks", func() {
 			err := Updater.Update(config.Resources{
 				L3Passthrough: []v1alpha1.L3Passthrough{passthroughOverlap},
 			})
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("overlapping"))
+			Expect(err).To(MatchError(ContainSubstring("overlapping")))
 		})
 	})
 })
