@@ -101,3 +101,56 @@ func (r *RouterNamedNS) HandleNonRecoverableError(ctx context.Context) error {
 	}
 	return nil
 }
+
+const nodeNameIndex = "spec.NodeName"
+
+// routerPodForNode returns the non-terminating router pod for the given node.
+// Pods with DeletionTimestamp set are filtered out so that the brief overlap
+// between a dying pod and its DaemonSet replacement is not treated as an error.
+func routerPodForNode(ctx context.Context, cli client.Client, node string) (*v1.Pod, error) {
+	var pods v1.PodList
+	if err := cli.List(ctx, &pods, client.MatchingLabels{"app": "router"},
+		client.MatchingFields{
+			nodeNameIndex: node,
+		}); err != nil {
+		return nil, fmt.Errorf("failed to get router pod for node %s: %v", node, err)
+	}
+	active := make([]v1.Pod, 0, len(pods.Items))
+	for i := range pods.Items {
+		if pods.Items[i].DeletionTimestamp == nil {
+			active = append(active, pods.Items[i])
+		}
+	}
+	if len(active) > 1 {
+		return nil, fmt.Errorf("more than one router pod found for node %s", node)
+	}
+	if len(active) == 0 {
+		return nil, fmt.Errorf("no router pods found for node %s", node)
+	}
+	return &active[0], nil
+}
+
+// PodIsReady returns true only when the pod is not terminating and both its
+// PodReady and ContainersReady conditions are True. A pod in the termination
+// grace period still reports Ready=True, so DeletionTimestamp must be checked.
+func PodIsReady(p *v1.Pod) bool {
+	if p == nil || p.DeletionTimestamp != nil {
+		return false
+	}
+	return podConditionStatus(p, v1.PodReady) == v1.ConditionTrue && podConditionStatus(p, v1.ContainersReady) == v1.ConditionTrue
+}
+
+// podConditionStatus returns the status of the condition for a given pod.
+func podConditionStatus(p *v1.Pod, condition v1.PodConditionType) v1.ConditionStatus {
+	if p == nil {
+		return v1.ConditionUnknown
+	}
+
+	for _, c := range p.Status.Conditions {
+		if c.Type == condition {
+			return c.Status
+		}
+	}
+
+	return v1.ConditionUnknown
+}
