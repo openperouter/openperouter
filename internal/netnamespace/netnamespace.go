@@ -10,6 +10,29 @@ import (
 	"github.com/vishvananda/netns"
 )
 
+var hostNS netns.NsHandle
+
+// InitHostNS opens the host network namespace from the given path
+// and stores it for use by InHost(). Must be called once at startup.
+func InitHostNS(path string) error {
+	ns, err := netns.GetFromPath(path)
+	if err != nil {
+		return fmt.Errorf("failed to open host network namespace from %s: %w", path, err)
+	}
+	hostNS = ns
+	return nil
+}
+
+// InHost executes the given function inside the host network namespace.
+func InHost(fn func() error) error {
+	return In(hostNS, fn)
+}
+
+// HostNS returns the stored host network namespace handle.
+func HostNS() netns.NsHandle {
+	return hostNS
+}
+
 type SetNamespaceError string
 
 func (i SetNamespaceError) Error() string {

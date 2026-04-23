@@ -179,20 +179,25 @@ func moveInterfaceToNamespace(ctx context.Context, intf string, ns netns.NsHandl
 		return fmt.Errorf("moveInterfaceToNamespace: Failed to execute in ns %s: %w", intf, err)
 	}
 
-	link, err := netlink.LinkByName(intf)
-	if err != nil {
-		return fmt.Errorf("moveInterfaceToNamespace: Failed to find link %s: %w", intf, err)
-	}
+	var addresses []netlink.Addr
+	if err := netnamespace.InHost(func() error {
+		link, err := netlink.LinkByName(intf)
+		if err != nil {
+			return fmt.Errorf("moveInterfaceToNamespace: Failed to find link %s: %w", intf, err)
+		}
 
-	addresses, err := netlink.AddrList(link, netlink.FAMILY_ALL)
-	if err != nil {
-		return fmt.Errorf("moveInterfaceToNamespace: Failed to get addresses for intf %s: %w", link.Attrs().Name, err)
-	}
+		addresses, err = netlink.AddrList(link, netlink.FAMILY_ALL)
+		if err != nil {
+			return fmt.Errorf("moveInterfaceToNamespace: Failed to get addresses for intf %s: %w", link.Attrs().Name, err)
+		}
 
-	slog.DebugContext(ctx, "addresses before moving", "addresses", addresses)
-	err = netlink.LinkSetNsFd(link, int(ns))
-	if err != nil {
-		return fmt.Errorf("moveInterfaceToNamespace: Failed to move %s to network namespace %s: %w", link.Attrs().Name, ns.String(), err)
+		slog.DebugContext(ctx, "addresses before moving", "addresses", addresses)
+		if err := netlink.LinkSetNsFd(link, int(ns)); err != nil {
+			return fmt.Errorf("moveInterfaceToNamespace: Failed to move %s to network namespace %s: %w", link.Attrs().Name, ns.String(), err)
+		}
+		return nil
+	}); err != nil {
+		return err
 	}
 	if err := netnamespace.In(ns, func() error {
 		nsLink, err := netlink.LinkByName(intf)

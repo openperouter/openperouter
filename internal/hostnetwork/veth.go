@@ -42,12 +42,19 @@ func setupNamespacedVeth(ctx context.Context, vethNames VethNames, namespace str
 	logger := slog.Default().With("host side", vethNames.HostSide, "pe side", vethNames.NamespaceSide)
 	logger.DebugContext(ctx, "setting up veth")
 
-	hostSide, err := createVeth(ctx, logger, vethNames)
-	if err != nil {
-		return fmt.Errorf("could not create veth for %s - %s: %w", vethNames.HostSide, vethNames.NamespaceSide, err)
-	}
-	if err = netlink.LinkSetUp(hostSide); err != nil {
-		return fmt.Errorf("could not set link up for host leg %s: %v", hostSide.Attrs().Name, err)
+	var hostSide *netlink.Veth
+	if err := netnamespace.InHost(func() error {
+		var err error
+		hostSide, err = createVeth(ctx, logger, vethNames)
+		if err != nil {
+			return fmt.Errorf("could not create veth for %s - %s: %w", vethNames.HostSide, vethNames.NamespaceSide, err)
+		}
+		if err = netlink.LinkSetUp(hostSide); err != nil {
+			return fmt.Errorf("could not set link up for host leg %s: %v", hostSide.Attrs().Name, err)
+		}
+		return nil
+	}); err != nil {
+		return err
 	}
 
 	// Let's try to look into the namespace
@@ -66,24 +73,27 @@ func setupNamespacedVeth(ctx context.Context, vethNames VethNames, namespace str
 		return nil
 	}
 
-	// Not in the namespace, let's try locally
-	peerIndex, err := netlink.VethPeerIndex(hostSide)
-	if err != nil {
-		return fmt.Errorf("could not find peer veth for %s: %w", vethNames.HostSide, err)
+	// Not in the namespace, let's move peer from host NS
+	if err := netnamespace.InHost(func() error {
+		peerIndex, err := netlink.VethPeerIndex(hostSide)
+		if err != nil {
+			return fmt.Errorf("could not find peer veth for %s: %w", vethNames.HostSide, err)
+		}
+		nsSide, err := netlink.LinkByIndex(peerIndex)
+		if errors.As(err, &netlink.LinkNotFoundError{}) {
+			return fmt.Errorf("peer veth not found by index for %s: %w", vethNames.HostSide, err)
+		}
+		if err != nil {
+			return fmt.Errorf("could not find peer by index for %s: %w", vethNames.HostSide, err)
+		}
+		if err = netlink.LinkSetNsFd(nsSide, int(targetNS)); err != nil {
+			return fmt.Errorf("setupUnderlay: Failed to move %s to network namespace %s: %w", nsSide.Attrs().Name, targetNS.String(), err)
+		}
+		slog.DebugContext(ctx, "pe leg moved to ns", "pe veth", nsSide.Attrs().Name)
+		return nil
+	}); err != nil {
+		return err
 	}
-	nsSide, err := netlink.LinkByIndex(peerIndex)
-	if errors.As(err, &netlink.LinkNotFoundError{}) {
-		return fmt.Errorf("peer veth not found by index for %s: %w", vethNames.HostSide, err)
-	}
-
-	if err != nil {
-		return fmt.Errorf("could not find peer by index for %s: %w", vethNames.HostSide, err)
-	}
-
-	if err = netlink.LinkSetNsFd(nsSide, int(targetNS)); err != nil {
-		return fmt.Errorf("setupUnderlay: Failed to move %s to network namespace %s: %w", nsSide.Attrs().Name, targetNS.String(), err)
-	}
-	slog.DebugContext(ctx, "pe leg moved to ns", "pe veth", nsSide.Attrs().Name)
 
 	if err := netnamespace.In(targetNS, func() error {
 		nsSideLink, err := netlink.LinkByName(vethNames.NamespaceSide)
