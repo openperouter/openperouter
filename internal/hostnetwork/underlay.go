@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
+	"slices"
 
 	"github.com/openperouter/openperouter/internal/netnamespace"
 	"github.com/vishvananda/netlink"
@@ -17,14 +19,15 @@ const (
 	UnderlayLoopback = "lound"
 )
 
-// used to identify the interface moved into the network ns to serve
-// the underlay
-const underlayInterfaceSpecialAddr = "172.16.1.1/32"
+// CIDR range used to assign marker IPs to underlay interfaces moved
+// into the network namespace. Each interface gets a unique IP from
+// this range (172.16.1.1, 172.16.1.2, ...) so we can track them.
+const underlayMarkerCIDR = "172.16.1.0/24"
 
 type UnderlayParams struct {
-	UnderlayInterface string              `json:"underlay_interface"`
-	TargetNS          string              `json:"target_ns"`
-	EVPN              *UnderlayEVPNParams `json:"evpn"`
+	UnderlayInterfaces []string            `json:"underlay_interfaces"`
+	TargetNS           string              `json:"target_ns"`
+	EVPN               *UnderlayEVPNParams `json:"evpn"`
 }
 
 type UnderlayEVPNParams struct {
@@ -44,8 +47,37 @@ func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
 		}
 	}()
 
-	if params.UnderlayInterface != "" {
-		if err := moveUnderlayInterface(ctx, params.UnderlayInterface, ns); err != nil {
+	// Check if there are existing underlay interfaces that aren't in the new list.
+	// This means the underlay configuration changed and requires a pod restart.
+	existingIfaces, err := findInterfacesInCIDR(ns, underlayMarkerCIDR)
+	if err != nil {
+		return fmt.Errorf("failed to check existing underlay interfaces: %w", err)
+	}
+	for name := range existingIfaces {
+		if !slices.Contains(params.UnderlayInterfaces, name) {
+			return UnderlayExistsError(fmt.Sprintf(
+				"existing underlay found: %s, new interfaces are %v", name, params.UnderlayInterfaces))
+		}
+	}
+
+	for i, underlayInterface := range params.UnderlayInterfaces {
+		if err := moveInterfaceToNamespace(ctx, underlayInterface, ns); err != nil {
+			return err
+		}
+		if err := netnamespace.In(ns, func() error {
+			underlay, err := netlink.LinkByName(underlayInterface)
+			if err != nil {
+				return fmt.Errorf("failed to get underlay nic by name %s: %w", underlayInterface, err)
+			}
+			underlayMarkerIP := fmt.Sprintf("172.16.1.%d/32", i+1)
+			if err := assignIPToInterface(underlay, underlayMarkerIP); err != nil {
+				return err
+			}
+			if err := netlink.LinkSetUp(underlay); err != nil {
+				return fmt.Errorf("could not set link up for VRF %s: %v", underlay.Attrs().Name, err)
+			}
+			return nil
+		}); err != nil {
 			return err
 		}
 	}
@@ -87,56 +119,14 @@ func ensureLoopback(ctx context.Context, ns netns.NsHandle, vtepIP string) error
 		if err != nil {
 			return err
 		}
-		return nil
-	}); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// moveUnderlayInterface moves the interface to be used for the underlay connectivity in
-// the given namespace.
-func moveUnderlayInterface(ctx context.Context, underlayInterface string, ns netns.NsHandle) error {
-	currentUnderlayInterface, err := findInterfaceWithIP(ns, underlayInterfaceSpecialAddr)
-	if err != nil {
-		return fmt.Errorf("failed to get old underlay interface %w", err)
-	}
-
-	if currentUnderlayInterface != "" && currentUnderlayInterface == underlayInterface { // nothing to do
-		slog.DebugContext(ctx, "move underlay", "event", "underlay nic already set")
-		return nil
-	}
-
-	if currentUnderlayInterface != "" && currentUnderlayInterface != underlayInterface { // need to move the old one back
-		slog.DebugContext(ctx, "move underlay", "event", "different underlay nic found, removing", "old", currentUnderlayInterface, "new", underlayInterface)
-		// given the tricky nature of the operation, better error and let the caller delete the namespace and start the machinery from scratch.
-		// moving the underlay is a destructive operation anyway.
-		return UnderlayExistsError(fmt.Sprintf("existing underlay found: %s, new is %s", currentUnderlayInterface, underlayInterface))
-	}
-
-	err = moveInterfaceToNamespace(ctx, underlayInterface, ns)
-	if err != nil {
-		return err
-	}
-
-	if err := netnamespace.In(ns, func() error {
-		underlay, err := netlink.LinkByName(underlayInterface)
-		if err != nil {
-			return fmt.Errorf("failed to get underlay nic by name %s: %w", underlayInterface, err)
-		}
-
-		// we assign a special address so we we can detect if an interface was already moved.
-		if err := assignIPToInterface(underlay, underlayInterfaceSpecialAddr); err != nil {
-			return err
-		}
-		if err := netlink.LinkSetUp(underlay); err != nil {
-			return fmt.Errorf("could not set link up for VRF %s: %v", underlay.Attrs().Name, err)
+		if err := netlink.LinkSetUp(loopback); err != nil {
+			return fmt.Errorf("ensureLoopback: failed to bring up %s: %w", UnderlayLoopback, err)
 		}
 		return nil
 	}); err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -153,43 +143,53 @@ func HasUnderlayInterface(namespace string) (bool, error) {
 		}
 	}()
 
-	underlayInterface, err := findInterfaceWithIP(ns, underlayInterfaceSpecialAddr)
+	ifaces, err := findInterfacesInCIDR(ns, underlayMarkerCIDR)
 	if err != nil {
-		return false, fmt.Errorf("failed to get old underlay interface %w", err)
+		return false, fmt.Errorf("failed to find underlay interfaces: %w", err)
 	}
-	return underlayInterface != "", nil
+	return len(ifaces) > 0, nil
 }
 
-// findInterfaceWithIP retrieves the interface assigned to the given ip
-// in the given network ns.
-func findInterfaceWithIP(ns netns.NsHandle, ip string) (string, error) {
-	res := ""
-	err := netnamespace.In(ns, func() error {
+// findInterfacesInCIDR returns a map of interface name to assigned IP
+// for all interfaces in the namespace that have an IP within the given CIDR.
+func findInterfacesInCIDR(ns netns.NsHandle, cidr string) (map[string]string, error) {
+	_, ipNet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid CIDR %s: %w", cidr, err)
+	}
+	result := make(map[string]string)
+	err = netnamespace.In(ns, func() error {
 		links, err := netlink.LinkList()
 		if err != nil {
 			return fmt.Errorf("failed to list links: %w", err)
 		}
 		for _, l := range links {
-			addr, _ := netlink.AddrList(l, netlink.FAMILY_ALL)
-			slog.Debug("find underlay", "checking link", l.Attrs().Name, "addresses", addr)
-			hasIP, err := interfaceHasIP(l, ip)
+			addrs, err := netlink.AddrList(l, netlink.FAMILY_ALL)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to list addresses for %s: %w", l.Attrs().Name, err)
 			}
-			if hasIP {
-				res = l.Attrs().Name
-				return nil
+			for _, a := range addrs {
+				if ipNet.Contains(a.IP) {
+					result[l.Attrs().Name] = a.IPNet.String()
+					break
+				}
 			}
 		}
 		return nil
 	})
+	return result, err
+}
+
+// IsUnderlayMarkerIP returns true if the given address falls within
+// the underlay marker CIDR range.
+func IsUnderlayMarkerIP(addr string) bool {
+	_, ipNet, err := net.ParseCIDR(underlayMarkerCIDR)
 	if err != nil {
-		return "", err
+		return false
 	}
-	if res != "" {
-		slog.Debug("returning found has ip", "res", res)
-		return res, nil
+	ip, _, err := net.ParseCIDR(addr)
+	if err != nil {
+		return false
 	}
-	slog.Debug("returning not found")
-	return "", nil
+	return ipNet.Contains(ip)
 }

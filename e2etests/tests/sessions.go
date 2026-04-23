@@ -76,16 +76,23 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 
-	validateTORSession := func() {
-		exec := executor.ForContainer(infra.KindLeaf)
-		for _, node := range nodes {
-			neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
-			Expect(err).NotTo(HaveOccurred())
-			validateSessionWithNeighbor(infra.KindLeaf, node.Name, exec, neighborIP, Established)
+	validateTORSessions := func() {
+		// Validate sessions with both leaf nodes
+		leaves := []string{infra.KindLeaf, infra.KindLeaf2}
+		for _, leaf := range leaves {
+			exec := executor.ForContainer(leaf)
+			Eventually(func() error {
+				for _, node := range nodes {
+					neighborIP, err := infra.NeighborIP(leaf, node.Name)
+					Expect(err).NotTo(HaveOccurred())
+					validateSessionWithNeighbor(leaf, node.Name, exec, neighborIP, Established)
+				}
+				return nil
+			}, time.Minute, time.Second).ShouldNot(HaveOccurred())
 		}
 	}
-	It("peers with the tor", func() {
-		validateTORSession()
+	It("peers with both TOR switches", func() {
+		validateTORSessions()
 	})
 
 	Context("with a l3 vni", func() {
@@ -524,18 +531,22 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 	})
 
 	// This test must be the last of the ordered describe as it will remove the underlay
-	It("deleting the underlay removes the session with the tor", func() {
-		validateTORSession()
+	It("deleting the underlay removes the session with both TOR switches", func() {
+		validateTORSessions()
 
-		By("deleting the vni removes the session with the host")
+		By("deleting the underlay removes the session with the TOR switches")
 		err := Updater.Client().Delete(context.Background(), &infra.Underlay)
 		Expect(err).NotTo(HaveOccurred())
 
-		exec := executor.ForContainer(infra.KindLeaf)
-		for _, node := range nodes {
-			neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
-			Expect(err).NotTo(HaveOccurred())
-			validateSessionDownForNeigh(exec, neighborIP)
+		// Validate sessions are down on both leaf nodes
+		leaves := []string{infra.KindLeaf, infra.KindLeaf2}
+		for _, leaf := range leaves {
+			exec := executor.ForContainer(leaf)
+			for _, node := range nodes {
+				neighborIP, err := infra.NeighborIP(leaf, node.Name)
+				Expect(err).NotTo(HaveOccurred())
+				validateSessionDownForNeigh(exec, neighborIP)
+			}
 		}
 	})
 })
@@ -683,8 +694,10 @@ var _ = Describe("Underlay BFD Configuration", Ordered, func() {
 			neighbors = append(neighbors, neighborIP)
 		}
 
-		// Enable BFD on leafkind
-		err = infra.UpdateLeafKindConfig(nodes, true)
+		// Enable BFD on both leaf switches
+		err = infra.LeafKindConfig.UpdateConfig(nodes, true)
+		Expect(err).NotTo(HaveOccurred())
+		err = infra.LeafKind2Config.UpdateConfig(nodes, true)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -702,7 +715,9 @@ var _ = Describe("Underlay BFD Configuration", Ordered, func() {
 			return openperouter.DaemonsetRolled(routers, newRouters)
 		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 
-		err = infra.UpdateLeafKindConfig(nodes, false)
+		err = infra.LeafKindConfig.UpdateConfig(nodes, false)
+		Expect(err).NotTo(HaveOccurred())
+		err = infra.LeafKind2Config.UpdateConfig(nodes, false)
 		Expect(err).NotTo(HaveOccurred())
 	})
 

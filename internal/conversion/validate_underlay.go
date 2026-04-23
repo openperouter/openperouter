@@ -32,12 +32,25 @@ func ValidateUnderlays(underlays []v1alpha1.Underlay) error {
 	if len(underlays) > 1 {
 		return fmt.Errorf("can't have more than one underlay per node")
 	}
-	return validateUnderlay(&underlays[0])
+	return validateUnderlay(underlays[0])
 }
 
-func validateUnderlay(underlay *v1alpha1.Underlay) error {
+func validateUnderlay(underlay v1alpha1.Underlay) error {
 	if underlay.Spec.ASN == 0 {
 		return fmt.Errorf("underlay %s must have a valid ASN", underlay.Name)
+	}
+
+	// Validate at least one neighbor is specified
+	if len(underlay.Spec.Neighbors) == 0 {
+		return fmt.Errorf("underlay %s must have at least one neighbor configured", underlay.Name)
+	}
+
+	if dup, found := checkDuplicates(neighborAddressesOf(underlay.Spec.Neighbors)); found {
+		return fmt.Errorf("underlay %s has duplicate neighbor address: %s", underlay.Name, dup)
+	}
+
+	if dup, found := checkDuplicates(underlay.Spec.Nics); found {
+		return fmt.Errorf("underlay %s has duplicate nic name: %s", underlay.Name, dup)
 	}
 
 	if underlay.Spec.EVPN != nil {
@@ -56,13 +69,9 @@ func validateUnderlay(underlay *v1alpha1.Underlay) error {
 
 		if hasVTEPInterface {
 			if err := isValidInterfaceName(underlay.Spec.EVPN.VTEPInterface); err != nil {
-				return fmt.Errorf("invalid vtep interface name %q for underlay %q: %w", underlay.Name, underlay.Spec.EVPN.VTEPInterface, err)
+				return fmt.Errorf("invalid vtep interface name %q for underlay %q: %w", underlay.Spec.EVPN.VTEPInterface, underlay.Name, err)
 			}
 		}
-	}
-
-	if len(underlay.Spec.Nics) > 1 {
-		return fmt.Errorf("underlay %s can only have one nic, found %d", underlay.Name, len(underlay.Spec.Nics))
 	}
 
 	for _, n := range underlay.Spec.Nics {
@@ -71,4 +80,23 @@ func validateUnderlay(underlay *v1alpha1.Underlay) error {
 		}
 	}
 	return nil
+}
+
+func neighborAddressesOf(neighbors []v1alpha1.Neighbor) []string {
+	res := make([]string, len(neighbors))
+	for i, n := range neighbors {
+		res[i] = n.Address
+	}
+	return res
+}
+
+func checkDuplicates(items []string) (string, bool) {
+	seen := make(map[string]bool, len(items))
+	for _, item := range items {
+		if seen[item] {
+			return item, true
+		}
+		seen[item] = true
+	}
+	return "", false
 }

@@ -3,10 +3,15 @@ clab-kind-spine,eth2,192.168.1.2/31
 clab-kind-spine,eth3,192.168.1.4/31
 clab-kind-leafA,eth1,192.168.1.1/31
 clab-kind-leafB,eth1,192.168.1.3/31
-clab-kind-leafkind,eth1,192.168.1.5/31
-clab-kind-leafkind,toswitch,192.168.11.2/24
+clab-kind-spine,eth4,192.168.1.6/31
+clab-kind-leafkind1,eth1,192.168.1.5/31
+clab-kind-leafkind1,toswitch,192.168.11.2/24
+clab-kind-leafkind2,eth1,192.168.1.7/31
 pe-kind-control-plane,toswitch,192.168.11.3/24
 pe-kind-worker,toswitch,192.168.11.4/24
+clab-kind-leafkind2,toswitch2,192.168.12.2/24
+pe-kind-control-plane,toswitch2,192.168.12.3/24
+pe-kind-worker,toswitch2,192.168.12.4/24
 clab-kind-leafA,ethred,192.168.20.1/24
 clab-kind-leafA,ethred,2001:db8:20::1/64
 clab-kind-hostA_red,eth1,192.168.20.2/24

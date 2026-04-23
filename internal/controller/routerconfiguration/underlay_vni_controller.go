@@ -56,6 +56,7 @@ type PERouterReconciler struct {
 
 	// TriggerChan receives events from FileWatcher (in host mode)
 	TriggerChan chan event.GenericEvent
+
 }
 
 type requestKey string

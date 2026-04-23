@@ -34,11 +34,10 @@ func APItoHostConfig(nodeIndex int, targetNS string, underlayFromMultus bool, ap
 	}
 
 	res.Underlay = hostnetwork.UnderlayParams{
-		TargetNS: targetNS,
+		TargetNS:           targetNS,
+		UnderlayInterfaces: make([]string, len(underlay.Spec.Nics)),
 	}
-	if len(underlay.Spec.Nics) > 0 {
-		res.Underlay.UnderlayInterface = underlay.Spec.Nics[0]
-	}
+	copy(res.Underlay.UnderlayInterfaces, underlay.Spec.Nics)
 
 	if len(apiConfig.L3Passthrough) == 1 {
 		vethIPs, err := ipam.VethIPsFromPool(apiConfig.L3Passthrough[0].Spec.HostSession.LocalCIDR.IPv4, apiConfig.L3Passthrough[0].Spec.HostSession.LocalCIDR.IPv6, nodeIndex)

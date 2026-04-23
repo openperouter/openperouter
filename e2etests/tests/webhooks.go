@@ -576,19 +576,6 @@ var _ = Describe("Webhooks", func() {
 				})
 				Expect(err).To(MatchError(ContainSubstring(expectedError)))
 			},
-			Entry("when trying to create an underlay with multiple nics", v1alpha1.Underlay{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "underlay",
-					Namespace: openperouter.Namespace,
-				},
-				Spec: v1alpha1.UnderlaySpec{
-					ASN:  65000,
-					Nics: []string{"nic1", "nic2"},
-					EVPN: &v1alpha1.EVPNConfig{
-						VTEPCIDR: "192.168.1.0/24",
-					},
-				},
-			}, "can only have one nic"),
 			Entry("when trying to create an underlay with invalid vtep cidr", v1alpha1.Underlay{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "underlay",
@@ -600,9 +587,50 @@ var _ = Describe("Webhooks", func() {
 					EVPN: &v1alpha1.EVPNConfig{
 						VTEPCIDR: "notacidr",
 					},
+					Neighbors: []v1alpha1.Neighbor{
+						{ASN: 65001, Address: "192.168.1.1"},
+					},
 				},
 			}, "invalid vtep CIDR"),
 		)
+
+		It("should allow creating an underlay with multiple NICs and neighbors", func() {
+			underlay := v1alpha1.Underlay{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "underlay-multi",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.UnderlaySpec{
+					ASN:  65000,
+					Nics: []string{"nic1", "nic2"},
+					EVPN: &v1alpha1.EVPNConfig{
+						VTEPCIDR: "192.168.1.0/24",
+					},
+					Neighbors: []v1alpha1.Neighbor{
+						{
+							ASN:     65001,
+							Address: "192.168.1.1",
+						},
+						{
+							ASN:     65002,
+							Address: "192.168.1.2",
+						},
+						{
+							ASN:     65003,
+							Address: "192.168.2.1",
+						},
+						{
+							ASN:     65004,
+							Address: "192.168.2.2",
+						},
+					},
+				},
+			}
+			err := Updater.Update(config.Resources{
+				Underlays: []v1alpha1.Underlay{underlay},
+			})
+			Expect(err).NotTo(HaveOccurred())
+		})
 	})
 
 	Context("when multiple underlay scenarios are tested", func() {
@@ -617,6 +645,9 @@ var _ = Describe("Webhooks", func() {
 					Nics: []string{"nic1"},
 					EVPN: &v1alpha1.EVPNConfig{
 						VTEPCIDR: "192.168.1.0/24",
+					},
+					Neighbors: []v1alpha1.Neighbor{
+						{ASN: 65001, Address: "192.168.1.1"},
 					},
 				},
 			}
@@ -647,6 +678,9 @@ var _ = Describe("Webhooks", func() {
 							EVPN: &v1alpha1.EVPNConfig{
 								VTEPCIDR: "192.168.2.0/24",
 							},
+							Neighbors: []v1alpha1.Neighbor{
+								{ASN: 65002, Address: "192.168.2.1"},
+							},
 						},
 					},
 				},
@@ -664,6 +698,9 @@ var _ = Describe("Webhooks", func() {
 							Nics: []string{"nic1"},
 							EVPN: &v1alpha1.EVPNConfig{
 								VTEPCIDR: "notacidr",
+							},
+							Neighbors: []v1alpha1.Neighbor{
+								{ASN: 65001, Address: "192.168.1.1"},
 							},
 						},
 					},

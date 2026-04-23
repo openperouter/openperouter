@@ -32,11 +32,13 @@ setup_containers() {
     # Setup cluster-specific leaf containers
     for cluster_name in "${CLUSTER_NAMES[@]}"; do
         if [[ ${#CLUSTER_NAMES[@]} -eq 1 ]]; then
-            # Single cluster mode - try leafkind container
-            if ${CONTAINER_ENGINE_CLI} exec clab-kind-leafkind test -f /setup.sh 2>/dev/null; then
-                echo "Setting up leafkind container"
-                ${CONTAINER_ENGINE_CLI} exec clab-kind-leafkind /setup.sh
-            fi
+            # Single cluster mode - try leafkind containers
+            for leaf in leafkind1 leafkind2; do
+                if ${CONTAINER_ENGINE_CLI} exec clab-kind-${leaf} test -f /setup.sh 2>/dev/null; then
+                    echo "Setting up ${leaf} container"
+                    ${CONTAINER_ENGINE_CLI} exec clab-kind-${leaf} /setup.sh
+                fi
+            done
         else
             # Multi-cluster mode - try cluster-specific leafkind containers
             cluster_suffix="${cluster_name##*-}"

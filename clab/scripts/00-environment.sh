@@ -45,25 +45,27 @@ create_bridges() {
     echo "Creating bridge interfaces for clusters: ${CLUSTER_NAMES[*]}"
 
     for cluster_name in "${CLUSTER_NAMES[@]}"; do
-        # For single cluster, use the traditional bridge name
+        # For single cluster, use the traditional bridge names
         if [[ ${#CLUSTER_NAMES[@]} -eq 1 && "$cluster_name" == "pe-kind" ]]; then
-            bridge_name="leafkind-switch"  # 15 chars exactly
+            bridge_names=("leafkind1-sw" "leafkind2-sw")
         else
             # Use cluster suffix to keep bridge name short (under 15 chars)
             # Extract last part after final dash (e.g., pe-kind-a -> a)
             suffix="${cluster_name##*-}"
-            bridge_name="leafkind-sw-${suffix}"  # e.g., leafkind-sw-a (13 chars)
+            bridge_names=("leafkind-sw-${suffix}")  # e.g., leafkind-sw-a (13 chars)
         fi
 
-        if [[ ! -d "/sys/class/net/${bridge_name}" ]]; then
-            echo "Creating bridge ${bridge_name} for cluster ${cluster_name}"
-            sudo ip link add name ${bridge_name} type bridge
-        fi
+        for bridge_name in "${bridge_names[@]}"; do
+            if [[ ! -d "/sys/class/net/${bridge_name}" ]]; then
+                echo "Creating bridge ${bridge_name} for cluster ${cluster_name}"
+                sudo ip link add name ${bridge_name} type bridge
+            fi
 
-        if [[ $(cat /sys/class/net/${bridge_name}/operstate) != "up" ]]; then
-            echo "Bringing up bridge ${bridge_name}"
-            sudo ip link set dev ${bridge_name} up
-        fi
+            if [[ $(cat /sys/class/net/${bridge_name}/operstate) != "up" ]]; then
+                echo "Bringing up bridge ${bridge_name}"
+                sudo ip link set dev ${bridge_name} up
+            fi
+        done
     done
 
     echo "Bridge interfaces created"

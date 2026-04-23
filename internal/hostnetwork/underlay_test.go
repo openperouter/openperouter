@@ -67,7 +67,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 
 	It("should work with a single underlay", func() {
 		params := UnderlayParams{
-			UnderlayInterface: underlayTestInterface,
+			UnderlayInterfaces: []string{underlayTestInterface},
 			EVPN: &UnderlayEVPNParams{
 				VtepIP: "192.168.1.1/32",
 			},
@@ -83,7 +83,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 
 	It("creating the same underlay twice should be idempotent", func() {
 		params := UnderlayParams{
-			UnderlayInterface: underlayTestInterface,
+			UnderlayInterfaces: []string{underlayTestInterface},
 			EVPN: &UnderlayEVPNParams{
 				VtepIP: "192.168.1.1/32",
 			},
@@ -101,7 +101,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 
 	It("changing the underlay interface should error", func() {
 		params := UnderlayParams{
-			UnderlayInterface: underlayTestInterface,
+			UnderlayInterfaces: []string{underlayTestInterface},
 			EVPN: &UnderlayEVPNParams{
 				VtepIP: "192.168.1.1/32",
 			},
@@ -113,7 +113,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 			validateUnderlayInNS(g, testNs, params)
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 
-		params.UnderlayInterface = underlayTestInterfaceEdit
+		params.UnderlayInterfaces = []string{underlayTestInterfaceEdit}
 
 		err = SetupUnderlay(context.Background(), params)
 		u := UnderlayExistsError("")
@@ -122,7 +122,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 
 	It("changing the vtepip should work", func() {
 		params := UnderlayParams{
-			UnderlayInterface: underlayTestInterface,
+			UnderlayInterfaces: []string{underlayTestInterface},
 			EVPN: &UnderlayEVPNParams{
 				VtepIP: "192.168.1.1/32",
 			},
@@ -147,8 +147,8 @@ var _ = Describe("Underlay configuration should work when", func() {
 
 	It("should work without EVPN set", func() {
 		params := UnderlayParams{
-			UnderlayInterface: underlayTestInterface,
-			TargetNS:          underlayTestNSPath(),
+			UnderlayInterfaces: []string{underlayTestInterface},
+			TargetNS:           underlayTestNSPath(),
 		}
 		err := SetupUnderlay(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
@@ -160,8 +160,8 @@ var _ = Describe("Underlay configuration should work when", func() {
 
 	It("should work without NIC set, assuming Multus is used", func() {
 		params := UnderlayParams{
-			UnderlayInterface: "",
-			TargetNS:          underlayTestNSPath(),
+			UnderlayInterfaces: []string{},
+			TargetNS:           underlayTestNSPath(),
 		}
 		err := SetupUnderlay(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
@@ -191,12 +191,17 @@ func validateUnderlay(g Gomega, params UnderlayParams, interfaceIPs ...string) {
 				validateIP(g, l, params.EVPN.VtepIP)
 			}
 		}
-		if params.UnderlayInterface != "" && l.Attrs().Name == params.UnderlayInterface {
-			mainNicFound = true
-			for _, ip := range interfaceIPs {
-				validateIP(g, l, ip)
+		// Check if this link matches any of the underlay interfaces
+		for i, underlayIface := range params.UnderlayInterfaces {
+			if l.Attrs().Name == underlayIface {
+				mainNicFound = true
+				for _, ip := range interfaceIPs {
+					validateIP(g, l, ip)
+				}
+				// Each interface gets its own marker IP from the CIDR
+				markerIP := fmt.Sprintf("172.16.1.%d/32", i+1)
+				validateIP(g, l, markerIP)
 			}
-			validateIP(g, l, underlayInterfaceSpecialAddr)
 		}
 
 	}
@@ -205,7 +210,7 @@ func validateUnderlay(g Gomega, params UnderlayParams, interfaceIPs ...string) {
 	} else if params.EVPN != nil {
 		g.Expect(loopbackFound).To(BeTrue(), fmt.Sprintf("failed to find loopback in ns, links %v", links))
 	}
-	if params.UnderlayInterface != "" && !mainNicFound {
+	if len(params.UnderlayInterfaces) > 0 && !mainNicFound {
 		g.Expect(mainNicFound).To(BeTrue(), fmt.Sprintf("failed to find underlay interface in ns, links %v", links))
 	}
 }
