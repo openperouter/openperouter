@@ -575,6 +575,7 @@ var _ = Describe("Underlay external and internal configuration", Ordered, func()
 
 	AfterEach(func() {
 		dumpIfFails(cs)
+		resetLeafKindConfig(nodes)
 		err := Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
 	})
@@ -589,6 +590,9 @@ var _ = Describe("Underlay external and internal configuration", Ordered, func()
 	}
 
 	It("peers with the tor with BGP external", func() {
+		By("ensuring leafkind expects eBGP with PE ASN 64514")
+		resetLeafKindConfig(nodes)
+
 		underlay := *infra.Underlay.DeepCopy()
 		underlay.Spec.Neighbors[0].ASN = 0
 		underlay.Spec.Neighbors[0].Type = "external"
@@ -602,6 +606,9 @@ var _ = Describe("Underlay external and internal configuration", Ordered, func()
 	})
 
 	It("peers with the tor with BGP internal", func() {
+		By("reconfiguring leafkind for iBGP (PERouterASN=64512)")
+		ibgpForLeafKind(nodes)
+
 		underlay := *infra.Underlay.DeepCopy()
 		underlay.Spec.ASN = 64512
 		underlay.Spec.Neighbors[0].ASN = 0
@@ -616,9 +623,11 @@ var _ = Describe("Underlay external and internal configuration", Ordered, func()
 	})
 
 	It("peers with the tor with iBGP with ASN number", func() {
+		By("reconfiguring leafkind for iBGP (PERouterASN=64512)")
+		ibgpForLeafKind(nodes)
+
 		underlay := *infra.Underlay.DeepCopy()
-		underlay.Spec.Neighbors[0].ASN = 64512
-		underlay.Spec.Neighbors[0].Type = ""
+		underlay.Spec.ASN = 64512
 		err := Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{
 				underlay,
