@@ -125,8 +125,8 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		nadMaster                                                         string              // Bridge name for NAD (defaults to "br-hs-110")
 	}
 	AfterEach(func() {
-		Expect(infra.LeafAConfig.RemovePrefixes()).To(Succeed())
-		Expect(infra.LeafBConfig.RemovePrefixes()).To(Succeed())
+		Expect(infra.LeafAConfig.Reset()).To(Succeed())
+		Expect(infra.LeafBConfig.Reset()).To(Succeed())
 		dumpIfFails(cs)
 		err := Updater.CleanButUnderlay()
 		Expect(err).NotTo(HaveOccurred())
@@ -136,8 +136,10 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 
 	DescribeTable("should create two pods connected to the l2 overlay", func(tc testCase) {
 		By("setting redistribute connected on leaves")
-		redistributeConnectedForLeaf(infra.LeafAConfig)
-		redistributeConnectedForLeaf(infra.LeafBConfig)
+		err := infra.LeafAConfig.RedistributeConnected()
+		Expect(err).NotTo(HaveOccurred())
+		err = infra.LeafBConfig.RedistributeConnected()
+		Expect(err).NotTo(HaveOccurred())
 
 		nodes, err := k8s.GetNodes(cs)
 		Expect(err).NotTo(HaveOccurred())

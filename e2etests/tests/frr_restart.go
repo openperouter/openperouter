@@ -75,8 +75,10 @@ var _ = Describe("North/south traffic after FRR container restart", Ordered, fun
 		})
 		Expect(err).NotTo(HaveOccurred())
 
-		redistributeConnectedForLeaf(infra.LeafAConfig)
-		redistributeConnectedForLeaf(infra.LeafBConfig)
+		err = infra.LeafAConfig.RedistributeConnected()
+		Expect(err).NotTo(HaveOccurred())
+		err = infra.LeafBConfig.RedistributeConnected()
+		Expect(err).NotTo(HaveOccurred())
 	})
 
 	AfterAll(func() {
@@ -115,8 +117,8 @@ var _ = Describe("North/south traffic after FRR container restart", Ordered, fun
 		Expect(err).NotTo(HaveOccurred())
 
 		DeferCleanup(func() {
-			Expect(infra.LeafAConfig.RemovePrefixes()).To(Succeed())
-			Expect(infra.LeafBConfig.RemovePrefixes()).To(Succeed())
+			Expect(infra.LeafAConfig.Reset()).To(Succeed())
+			Expect(infra.LeafBConfig.Reset()).To(Succeed())
 			dumpIfFails(cs)
 			err := Updater.CleanButUnderlay()
 			Expect(err).NotTo(HaveOccurred())

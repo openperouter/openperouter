@@ -164,8 +164,8 @@ var _ = Describe("Hybrid mode: static files and API configuration", Label("syste
 			GinkgoWriter.Printf("Warning: failed to delete DaemonSet: %v\n", err)
 		}
 
-		Expect(infra.LeafAConfig.RemovePrefixes()).To(Succeed())
-		Expect(infra.LeafBConfig.RemovePrefixes()).To(Succeed())
+		Expect(infra.LeafAConfig.Reset()).To(Succeed())
+		Expect(infra.LeafBConfig.Reset()).To(Succeed())
 
 		err = Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())

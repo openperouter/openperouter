@@ -88,8 +88,10 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 		routers.Dump(ginkgo.GinkgoWriter)
 
 		By("setting redistribute connected on leaves")
-		redistributeConnectedForLeaf(infra.LeafAConfig)
-		redistributeConnectedForLeaf(infra.LeafBConfig)
+		err = infra.LeafAConfig.RedistributeConnected()
+		Expect(err).NotTo(HaveOccurred())
+		err = infra.LeafBConfig.RedistributeConnected()
+		Expect(err).NotTo(HaveOccurred())
 	})
 
 	AfterAll(func() {
@@ -104,8 +106,8 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 			return openperouter.DaemonsetRolled(routers, newRouters)
 		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 
-		Expect(infra.LeafAConfig.RemovePrefixes()).To(Succeed())
-		Expect(infra.LeafBConfig.RemovePrefixes()).To(Succeed())
+		Expect(infra.LeafAConfig.Reset()).To(Succeed())
+		Expect(infra.LeafBConfig.Reset()).To(Succeed())
 	})
 
 	Context("Type 2 Route Persistence with Silent Workload", func() {
@@ -393,4 +395,3 @@ func checkNeighborStale(cs clientset.Interface, podIP string, vni int, nodeName 
 	}
 	return fmt.Errorf("neighbor %s on %s in router %s is not STALE yet: %s", podIP, bridgeDev, exec.Name(), out)
 }
-
