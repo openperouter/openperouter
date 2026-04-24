@@ -4,6 +4,7 @@ package tests
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -295,6 +296,11 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 					return checkType2RouteExists(cs, migratingPodIPOnly, vtepIPOnly, l2VNI)
 				}, 3*time.Minute, 5*time.Second).ShouldNot(HaveOccurred())
 
+				By("Verifying neighbor entry exists on the router before migration")
+				Eventually(func() error {
+					return checkNeighborExists(cs, migratingPodIPOnly, l2VNI, migratingPod.Spec.NodeName)
+				}, time.Minute, 2*time.Second).ShouldNot(HaveOccurred())
+
 				By("Deleting migrating pod (simulating pod eviction/migration)")
 				err = cs.CoreV1().Pods(testNamespace).Delete(
 					context.Background(),
@@ -316,7 +322,11 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 				// This is important to trigger the deadlock situation described in https://github.com/FRRouting/frr/issues/14156
 				By("Waiting for neighbor entry to go STALE on the router on the same node")
 				Eventually(func() error {
-					return checkNeighborStale(cs, migratingPodIPOnly, l2VNI, migratingPod.Spec.NodeName)
+					err := checkNeighborStale(cs, migratingPodIPOnly, l2VNI, migratingPod.Spec.NodeName)
+					if errors.Is(err, ErrNoNeighborEntry) { // if the neighbor entry is expired no need to wait
+						return nil
+					}
+					return err
 				}, 3*time.Minute, 2*time.Second).ShouldNot(HaveOccurred())
 
 				By("Recreating migrating pod on node B (the other node) with same IP")
@@ -370,6 +380,28 @@ func checkType2RouteExists(cs clientset.Interface, podIP, vtepIP string, vni int
 	return nil
 }
 
+var ErrNoNeighborEntry = errors.New("no neighbor entry")
+
+func checkNeighborExists(cs clientset.Interface, podIP string, vni int, nodeName string) error {
+	bridgeDev := fmt.Sprintf("br-pe-%d", vni)
+	currentRouters, err := openperouter.Get(cs, HostMode)
+	if err != nil {
+		return err
+	}
+	exec, err := openperouter.ExecutorForNode(currentRouters, nodeName)
+	if err != nil {
+		return err
+	}
+	out, err := exec.Exec("ip", "neigh", "show", podIP, "dev", bridgeDev)
+	if err != nil {
+		return fmt.Errorf("failed to check neighbor on router %s: %w", exec.Name(), err)
+	}
+	if strings.TrimSpace(out) == "" {
+		return fmt.Errorf("no neighbor entry for %s on %s in router %s", podIP, bridgeDev, exec.Name())
+	}
+	return nil
+}
+
 func checkNeighborStale(cs clientset.Interface, podIP string, vni int, nodeName string) error {
 	bridgeDev := fmt.Sprintf("br-pe-%d", vni)
 	currentRouters, err := openperouter.Get(cs, HostMode)
@@ -386,11 +418,10 @@ func checkNeighborStale(cs clientset.Interface, podIP string, vni int, nodeName 
 	}
 	out = strings.TrimSpace(out)
 	if out == "" {
-		return fmt.Errorf("no neighbor entry for %s on %s in router %s", podIP, bridgeDev, exec.Name())
+		return fmt.Errorf("%w for %s on %s in router %s", ErrNoNeighborEntry, podIP, bridgeDev, exec.Name())
 	}
 	if strings.Contains(out, "STALE") || strings.Contains(out, "FAILED") {
 		return nil
 	}
 	return fmt.Errorf("neighbor %s on %s in router %s is not STALE yet: %s", podIP, bridgeDev, exec.Name(), out)
 }
-
