@@ -25,9 +25,15 @@ var failingUpdater = frr.ConfigUpdater(func(_ context.Context, _ string) error {
 	return fmt.Errorf("frr-reload failed")
 })
 
-var noopHostConfigurator = HostConfigurator(func(_ context.Context, _ interfacesConfiguration) error {
+type noopDatapathConfigurator struct{}
+
+func (n *noopDatapathConfigurator) Configure(_ context.Context, _ interfacesConfiguration) error {
 	return nil
-})
+}
+
+func (n *noopDatapathConfigurator) Validate(_ conversion.APIConfigData) error {
+	return nil
+}
 
 func TestReconcilePerResourceErrors(t *testing.T) {
 	tests := []struct {
@@ -519,7 +525,7 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 
 			gotConfig = conversion.APIConfigData{}
 			reconcileErr := Reconcile(context.Background(), config, 0, "",
-				"", "", noopUpdater, noopHostConfigurator, testConfigureFRR)
+				"", "", noopUpdater, &noopDatapathConfigurator{}, testConfigureFRR)
 
 			failures := openpeerrors.CollectFailures(reconcileErr)
 
@@ -536,7 +542,7 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 
 func TestReconcileFrrReloadFailure(t *testing.T) {
 	reconcileErr := Reconcile(context.Background(), conversion.APIConfigData{}, 0, "",
-		"", "", failingUpdater, noopHostConfigurator, configureFRR)
+		"", "", failingUpdater, &noopDatapathConfigurator{}, configureFRR)
 	if reconcileErr == nil {
 		t.Fatal("expected error from FRR reload failure")
 	}

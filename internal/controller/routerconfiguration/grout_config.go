@@ -14,17 +14,20 @@ import (
 	"github.com/openperouter/openperouter/internal/grout"
 )
 
-type groutConfigurator struct {
+// GroutDatapathConfigurator configures the host via the grout DPDK daemon.
+type GroutDatapathConfigurator struct {
+	conversion.GroutDatapathConfigValidator
+
 	groutSocketPath string
 }
 
-func newGroutConfigurator(groutSocketPath string) *groutConfigurator {
-	return &groutConfigurator{
+func NewGroutConfigurator(groutSocketPath string) *GroutDatapathConfigurator {
+	return &GroutDatapathConfigurator{
 		groutSocketPath: groutSocketPath,
 	}
 }
 
-func (g *groutConfigurator) configure(ctx context.Context, config interfacesConfiguration) error {
+func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interfacesConfiguration) error {
 	groutClient := grout.NewClient(g.groutSocketPath)
 
 	hasAlreadyUnderlay, err := grout.HasUnderlayInterface(ctx, groutClient)

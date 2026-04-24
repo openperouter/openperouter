@@ -49,6 +49,9 @@ spec:
         - --loglevel={{ . }}
         {{- end }}
         - "--namespace=$(NAMESPACE)"
+        {{- if eq .Values.openperouter.datapath "grout" }}
+        - --datapath=grout
+        {{- end }}
         {{- if .Values.openperouter.hostmode }}
         - "--webhookmode=webhookonly"
         {{- else if not .Values.webhook.enabled }}
