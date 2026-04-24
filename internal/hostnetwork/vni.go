@@ -165,7 +165,18 @@ func SetupL2VNI(ctx context.Context, params L2VNIParams) error {
 		}
 	}()
 
-	if err := netnamespace.InHost(func() error {
+	if err := setupL2VNIHostSide(ctx, params, vethNames); err != nil {
+		return err
+	}
+
+	if err := setupL2VNINamespaceSide(ns, params, vethNames); err != nil {
+		return err
+	}
+	return nil
+}
+
+func setupL2VNIHostSide(ctx context.Context, params L2VNIParams, vethNames VethNames) error {
+	return netnamespace.InHost(func() error {
 		hostVeth, err := netlink.LinkByName(vethNames.HostSide)
 		if errors.As(err, &netlink.LinkNotFoundError{}) {
 			return fmt.Errorf("SetupL2VNI: host veth %s does not exist, cannot setup L2 VNI", vethNames.HostSide)
@@ -181,11 +192,11 @@ func SetupL2VNI(ctx context.Context, params L2VNIParams) error {
 			}
 		}
 		return nil
-	}); err != nil {
-		return err
-	}
+	})
+}
 
-	if err := netnamespace.In(ns, func() error {
+func setupL2VNINamespaceSide(ns netns.NsHandle, params L2VNIParams, vethNames VethNames) error {
+	return netnamespace.In(ns, func() error {
 		peVeth, err := netlink.LinkByName(vethNames.NamespaceSide)
 		if err != nil {
 			return fmt.Errorf("could not find peer veth %s in namespace %s: %w", vethNames.NamespaceSide, params.TargetNS, err)
@@ -212,10 +223,7 @@ func SetupL2VNI(ctx context.Context, params L2VNIParams) error {
 		}
 
 		return nil
-	}); err != nil {
-		return err
-	}
-	return nil
+	})
 }
 
 func setupHostMaster(ctx context.Context, params L2VNIParams, hostVeth netlink.Link) error {
