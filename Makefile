@@ -15,6 +15,8 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
+RELBIN=bin
+
 # CONTAINER_TOOL defines the container tool to be used for building images.
 # Be aware that the target commands are only tested with Docker which is
 # scaffolded by default. However, you might want to replace it to use other
@@ -136,7 +138,7 @@ endif
 
 
 ## Location to install dependencies to
-LOCALBIN ?= $(shell pwd)/bin
+LOCALBIN ?= $(shell pwd)/$(RELBIN)
 $(LOCALBIN):
 	mkdir -p $(LOCALBIN)
 
@@ -370,7 +372,7 @@ kind-node-image-push: ## Push custom kind node image to quay.io
 
 .PHONY: lint
 lint:
-	hack/lint.sh
+	RELBIN=$(RELBIN) hack/lint.sh
 
 .PHONY: bumplicense
 bumplicense:
