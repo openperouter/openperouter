@@ -2,6 +2,9 @@
   neighbor {{ .vni.LocalNeighbor.Addr }} remote-as {{ .vni.LocalNeighbor.ASN }}
 
   address-family ipv4 unicast
+  {{- if .RedistributeConnected }}
+    redistribute connected
+  {{- end }}
   {{- range .vni.ToAdvertiseIPv4 }}
     network {{ . }}
   {{- end }}
@@ -14,6 +17,9 @@
   exit-address-family
 
   address-family ipv6 unicast
+  {{- if .RedistributeConnected }}
+    redistribute connected
+  {{- end }}
   {{- range .vni.ToAdvertiseIPv6 }}
     network {{ . }}
   {{- end }}

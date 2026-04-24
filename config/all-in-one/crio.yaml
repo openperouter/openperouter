@@ -743,6 +743,33 @@ spec:
                 - message: exactly one of vtepcidr or vtepInterface must be specified
                   rule: (self.?vtepcidr.orValue("") != "") != (self.?vtepInterface.orValue("")
                     != "")
+              gracefulRestart:
+                description: |-
+                  GracefulRestart configures BGP Graceful Restart behaviour.
+                  When set, FRR advertises GR capability and preserves forwarding
+                  state across restarts so that peers keep stale routes active.
+                  Omit to disable graceful restart.
+                properties:
+                  restartTime:
+                    default: 120
+                    description: |-
+                      RestartTime is the time in seconds that the restarting router
+                      requests its peers to preserve routes. Peers will wait this long
+                      before removing stale routes.
+                    format: int32
+                    maximum: 4095
+                    minimum: 1
+                    type: integer
+                  stalePathTime:
+                    default: 360
+                    description: |-
+                      StalePathTime is the time in seconds that stale paths from a
+                      restarting peer are retained locally.
+                    format: int32
+                    maximum: 4095
+                    minimum: 1
+                    type: integer
+                type: object
               neighbors:
                 description: Neighbors is the list of external neighbors to peer with.
                 items:
@@ -1442,7 +1469,7 @@ spec:
           name: varrun
           subPath: containerd.sock
         - mountPath: /run/netns
-          mountPropagation: HostToContainer
+          mountPropagation: Bidirectional
           name: runns
         - mountPath: /etc/frr/
           mountPropagation: HostToContainer
@@ -1511,7 +1538,11 @@ spec:
         - /bin/sh
         - -c
         - |
-          exec /sbin/tini -- /usr/lib/frr/docker-start
+          until [ -e /var/run/netns/perouter ]; do
+            echo "Waiting for named netns /var/run/netns/perouter..."
+            sleep 1
+          done
+          nsenter --net=/var/run/netns/perouter /sbin/tini -- /usr/lib/frr/docker-start
         env:
         - name: TINI_SUBREAPER
           value: "true"
@@ -1530,6 +1561,9 @@ spec:
           name: frr-sockets
         - mountPath: /etc/frr
           name: frrconfig
+        - mountPath: /var/run/netns
+          mountPropagation: HostToContainer
+          name: netns
       - args:
         - --frrconfig=/etc/perouter/frr.conf
         - --loglevel=debug
@@ -1569,6 +1603,7 @@ spec:
           name: frr-sockets
         - mountPath: /etc/perouter
           name: frrsharedconfig
+      hostNetwork: true
       initContainers:
       - command:
         - /bin/sh
@@ -1604,6 +1639,9 @@ spec:
         name: frrsharedconfig
       - emptyDir: {}
         name: frrconfig
+      - hostPath:
+          path: /var/run/netns
+        name: netns
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration

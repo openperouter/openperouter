@@ -150,9 +150,13 @@ func NodeObjectForPod(cs clientset.Interface, pod *corev1.Pod) (*corev1.Node, er
 	return cs.CoreV1().Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
 }
 
-// PodIsReady returns the given pod's PodReady and ContainersReady condition.
+// PodIsReady returns true only when the pod is not terminating and both its
+// PodReady and ContainersReady conditions are True. A pod in the termination
+// grace period still reports Ready=True in its status, so DeletionTimestamp
+// must be checked explicitly to avoid treating a SIGTERM'd pod as healthy.
 func PodIsReady(p *corev1.Pod) bool {
-	return podConditionStatus(p, corev1.PodReady) == corev1.ConditionTrue &&
+	return p.DeletionTimestamp == nil &&
+		podConditionStatus(p, corev1.PodReady) == corev1.ConditionTrue &&
 		podConditionStatus(p, corev1.ContainersReady) == corev1.ConditionTrue
 }
 

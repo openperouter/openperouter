@@ -27,7 +27,6 @@ import (
 
 var _ = Describe("Router Host configuration", Ordered, func() {
 	var cs clientset.Interface
-	var routers openperouter.Routers
 	frrk8sPods := []*corev1.Pod{}
 	nodes := []corev1.Node{}
 
@@ -36,7 +35,7 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		cs = k8sclient.New()
-		routers, err = openperouter.Get(cs, HostMode)
+		_, err = openperouter.Get(cs, HostMode)
 		Expect(err).NotTo(HaveOccurred())
 		frrk8sPods, err = frrk8s.Pods(cs)
 		Expect(err).NotTo(HaveOccurred())
@@ -55,13 +54,10 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 	AfterAll(func() {
 		err := Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
-		By("waiting for the router pod to rollout after removing the underlay")
+		By("waiting for all router pods to be ready after removing the underlay")
 		Eventually(func() error {
-			newRouters, err := openperouter.Get(cs, HostMode)
-			if err != nil {
-				return err
-			}
-			return openperouter.DaemonsetRolled(routers, newRouters)
+			_, err := openperouter.ReadyRouters(cs, HostMode)
+			return err
 		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 	})
 
@@ -664,13 +660,12 @@ var _ = Describe("Underlay external and internal configuration", Ordered, func()
 
 var _ = Describe("Underlay BFD Configuration", Ordered, func() {
 	var cs clientset.Interface
-	var routers openperouter.Routers
 	nodes := []corev1.Node{}
 
 	BeforeEach(func() {
 		cs = k8sclient.New()
 		var err error
-		routers, err = openperouter.Get(cs, HostMode)
+		_, err = openperouter.Get(cs, HostMode)
 		Expect(err).NotTo(HaveOccurred())
 		nodesItems, err := cs.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred())
@@ -693,13 +688,10 @@ var _ = Describe("Underlay BFD Configuration", Ordered, func() {
 		err := Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
 
-		By("waiting for router pods to rollout")
+		By("waiting for all router pods to be ready")
 		Eventually(func() error {
-			newRouters, err := openperouter.Get(cs, HostMode)
-			if err != nil {
-				return err
-			}
-			return openperouter.DaemonsetRolled(routers, newRouters)
+			_, err := openperouter.ReadyRouters(cs, HostMode)
+			return err
 		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 
 		err = infra.UpdateLeafKindConfig(nodes, false)

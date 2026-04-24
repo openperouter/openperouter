@@ -24,6 +24,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/util/retry"
 )
 
 var ValidatorPath string
@@ -65,6 +66,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 
 	ginkgo.BeforeEach(func() {
 		cs = k8sclient.New()
+
 		ginkgo.By("ensuring the validator is in all the pods")
 		var err error
 		routerPods, err = openperouter.RouterPods(cs)
@@ -76,20 +78,37 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 		err = Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
 
+		// In named-netns mode, CleanAll may trigger HandleNonRecoverableError which
+		// deletes the named netns and the router pod. Wait for all router pods to be
+		// ready before proceeding so the controller can reconcile new CRDs immediately.
+		ginkgo.By("waiting for all router pods to be ready")
+		Eventually(func(g Gomega) {
+			pods, err := openperouter.RouterPods(cs)
+			g.Expect(err).NotTo(HaveOccurred())
+			for _, p := range pods {
+				g.Expect(k8s.PodIsReady(p)).To(BeTrue(), "pod %s must be ready", p.Name)
+			}
+			routerPods = pods
+		}).WithTimeout(2 * time.Minute).WithPolling(time.Second).Should(Succeed())
+
+		for _, pod := range routerPods {
+			ensureValidator(cs, pod)
+		}
+
 		cs = k8sclient.New()
 	})
 
 	ginkgo.AfterEach(func() {
 		dumpIfFails(cs)
 		Expect(Updater.CleanAll()).To(Succeed())
-		ginkgo.By("waiting for the router pod to rollout after removing the underlay")
+		ginkgo.By("waiting for the router pods to rollout after removing the underlay")
 		Eventually(func() error {
 			newRouterPods, err := openperouter.RouterPods(cs)
 			if err != nil {
 				return err
 			}
 			return podsRolled(cs, routerPods, newRouterPods)
-		}, time.Minute, time.Second).ShouldNot(HaveOccurred())
+		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 	})
 
 	ginkgo.Context("L3", func() {
@@ -1125,7 +1144,6 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				}
 			}
 
-			ginkgo.By(fmt.Sprintf("Unlabel the node %q", nodes[1].Name))
 			routerPodsToRollout := []*corev1.Pod{}
 			for _, p := range routerPods {
 				if p.Spec.NodeName == nodes[1].Name {
@@ -1133,6 +1151,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				}
 			}
 
+			ginkgo.By(fmt.Sprintf("Unlabel the node %q", nodes[1].Name))
 			Expect(
 				k8s.UnlabelNodes(cs, nodes[1]),
 			).To(Succeed())
@@ -1150,10 +1169,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 					}
 				}
 				return podsRolled(cs, routerPodsToRollout, newRouterPodsToRollout)
-			}).
-				WithTimeout(time.Minute).
-				WithPolling(time.Second).
-				ShouldNot(HaveOccurred())
+			}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 			routerPods, err = routerPodsWithValidator(cs)
 			Expect(err).ToNot(HaveOccurred())
 
@@ -1404,29 +1420,58 @@ type evpnParams struct {
 func validateConfig[T any](config T, test string, pod *corev1.Pod) {
 	fileToValidate := sendConfigToValidate(pod, config)
 	Eventually(func() error {
-		exec := executor.ForPod(pod.Namespace, pod.Name, "frr")
+		exec := executorForRouterPod(pod)
 		res, err := exec.Exec("/validatehost", "--ginkgo.focus", test, "--paramsfile", fileToValidate)
 		if err != nil {
 			return fmt.Errorf("failed to validate test %s : %s %w", test, res, err)
 		}
 		return nil
 	}).
-		WithTimeout(6 * time.Second).
+		WithTimeout(2 * time.Minute).
 		WithPolling(time.Second).
 		ShouldNot(HaveOccurred())
 }
 
+const namedNetnsPath = "/var/run/netns/perouter"
+
+// executorForRouterPod returns the right executor for the router pod's frr container.
+// In named-netns mode, kubectl exec enters the pod's own network namespace, but FRR
+// and host interfaces live in the named netns, so we wrap with nsenter.
+func executorForRouterPod(pod *corev1.Pod) executor.Executor {
+	return executor.ForPodInNamedNetns(pod.Namespace, pod.Name, "frr", namedNetnsPath)
+}
+
 func ensureValidator(cs clientset.Interface, pod *corev1.Pod) {
+	ginkgo.GinkgoHelper()
 	if pod.Annotations != nil && pod.Annotations["validator"] == "true" {
 		return
 	}
 	dst := fmt.Sprintf("%s/%s:/", pod.Namespace, pod.Name)
 	fullargs := []string{"cp", ValidatorPath, dst}
-	_, err := exec.Command(executor.Kubectl, fullargs...).CombinedOutput()
-	Expect(err).NotTo(HaveOccurred())
+	Eventually(func() error {
+		cmd := exec.Command(executor.Kubectl, fullargs...)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("kubectl cp failed: %w, output: %s", err, string(out))
+		}
+		return nil
+	}).
+		WithTimeout(30 * time.Second).
+		WithPolling(time.Second).
+		ShouldNot(HaveOccurred())
 
-	pod.Annotations["validator"] = "true"
-	_, err = cs.CoreV1().Pods(pod.Namespace).Update(context.Background(), pod, metav1.UpdateOptions{})
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		latest, err := cs.CoreV1().Pods(pod.Namespace).Get(context.Background(), pod.Name, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		if latest.Annotations == nil {
+			latest.Annotations = map[string]string{}
+		}
+		latest.Annotations["validator"] = "true"
+		_, err = cs.CoreV1().Pods(pod.Namespace).Update(context.Background(), latest, metav1.UpdateOptions{})
+		return err
+	})
 	Expect(err).NotTo(HaveOccurred())
 }
 

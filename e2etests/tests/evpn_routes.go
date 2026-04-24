@@ -86,8 +86,10 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		cs = k8sclient.New()
-		routers, err = openperouter.Get(cs, HostMode)
-		Expect(err).NotTo(HaveOccurred())
+		Eventually(func() error {
+			routers, err = openperouter.ReadyRouters(cs, HostMode)
+			return err
+		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 
 		routers.Dump(ginkgo.GinkgoWriter)
 
@@ -102,13 +104,10 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 	AfterAll(func() {
 		err := Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
-		By("waiting for the router pod to rollout after removing the underlay")
+		By("waiting for all router pods to be ready after removing the underlay")
 		Eventually(func() error {
-			newRouters, err := openperouter.Get(cs, HostMode)
-			if err != nil {
-				return err
-			}
-			return openperouter.DaemonsetRolled(routers, newRouters)
+			_, err := openperouter.ReadyRouters(cs, HostMode)
+			return err
 		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 	})
 
@@ -539,13 +538,10 @@ var _ = Describe("Routes between bgp and the fabric with iBGP testing e2e integr
 
 		err = Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
-		By("waiting for the router pod to rollout after removing the underlay")
+		By("waiting for all router pods to be ready after removing the underlay")
 		Eventually(func() error {
-			newRouters, err := openperouter.Get(cs, HostMode)
-			if err != nil {
-				return err
-			}
-			return openperouter.DaemonsetRolled(routers, newRouters)
+			_, err := openperouter.ReadyRouters(cs, HostMode)
+			return err
 		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 	})
 
