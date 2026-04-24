@@ -37,22 +37,21 @@ spec:
           metadata:
             type: object
           spec:
-            description: UnderlaySpec defines the desired state of Underlay.
+            description: spec defines the desired state of Underlay.
             properties:
               asn:
-                description: ASN is the local AS number to use for the session with
+                description: asn is the local AS number to use for the session with
                   the TOR switch.
-                format: int32
+                format: int64
                 maximum: 4294967295
                 minimum: 1
                 type: integer
               evpn:
-                description: EVPNConfig contains EVPN-VXLAN configuration for the
-                  underlay.
+                description: evpn contains EVPN-VXLAN configuration for the underlay.
                 properties:
                   vtepInterface:
                     description: |-
-                      VTEPInterface is the name of an existing interface to use as the VTEP source.
+                      vtepInterface is the name of an existing interface to use as the VTEP source.
                       The interface must already have an IP address configured that will be used
                       as the VTEP IP. Mutually exclusive with vtepcidr.
                       The ToR must advertise the interface IP into the fabric underlay
@@ -63,7 +62,7 @@ spec:
                     type: string
                   vtepcidr:
                     description: |-
-                      VTEPCIDR is CIDR to be used to assign IPs to the local VTEP on each node.
+                      vtepcidr is the CIDR to be used to assign IPs to the local VTEP on each node.
                       A loopback interface will be created with an IP derived from this CIDR.
                       Mutually exclusive with vtepInterface.
                     type: string
@@ -73,28 +72,29 @@ spec:
                   rule: (self.?vtepcidr.orValue("") != "") != (self.?vtepInterface.orValue("")
                     != "")
               neighbors:
-                description: Neighbors is the list of external neighbors to peer with.
+                description: neighbors is the list of external neighbors to peer with.
                 items:
                   description: Neighbor represents a BGP Neighbor we want FRR to connect
                     to.
                   properties:
                     address:
-                      description: Address is the IP address to establish the session
+                      description: address is the IP address to establish the session
                         with.
+                      minLength: 1
                       type: string
                     asn:
-                      description: ASN is the AS number of the neighbor. Either ASN
+                      description: asn is the AS number of the neighbor. Either ASN
                         or Type must be set.
-                      format: int32
+                      format: int64
                       maximum: 4294967295
                       minimum: 1
                       type: integer
                     bfd:
-                      description: BFD defines the BFD configuration for the BGP session.
+                      description: bfd defines the BFD configuration for the BGP session.
                       properties:
                         detectMultiplier:
                           description: |-
-                            Configures the detection multiplier to determine
+                            detectMultiplier configures the detection multiplier to determine
                             packet loss. The remote transmission interval will be multiplied
                             by this value to determine the connection loss detection timer.
                           format: int32
@@ -103,7 +103,7 @@ spec:
                           type: integer
                         echoInterval:
                           description: |-
-                            Configures the minimal echo receive transmission
+                            echoInterval configures the minimal echo receive transmission
                             interval that this system is capable of handling in milliseconds.
                             Defaults to 50ms
                           format: int32
@@ -112,13 +112,13 @@ spec:
                           type: integer
                         echoMode:
                           description: |-
-                            Enables or disables the echo transmission mode.
+                            echoMode enables or disables the echo transmission mode.
                             This mode is disabled by default, and not supported on multi
                             hops setups.
                           type: boolean
                         minimumTtl:
                           description: |-
-                            For multi hop sessions only: configure the minimum
+                            minimumTtl configures, for multi hop sessions only, the minimum
                             expected TTL for an incoming BFD control packet.
                           format: int32
                           maximum: 254
@@ -126,13 +126,13 @@ spec:
                           type: integer
                         passiveMode:
                           description: |-
-                            Mark session as passive: a passive session will not
+                            passiveMode marks session as passive: a passive session will not
                             attempt to start the connection and will wait for control packets
                             from peer before it begins replying.
                           type: boolean
                         receiveInterval:
                           description: |-
-                            The minimum interval that this system is capable of
+                            receiveInterval is the minimum interval that this system is capable of
                             receiving control packets in milliseconds.
                             Defaults to 300ms.
                           format: int32
@@ -141,7 +141,7 @@ spec:
                           type: integer
                         transmitInterval:
                           description: |-
-                            The minimum transmission interval (less jitter)
+                            transmitInterval is the minimum transmission interval (less jitter)
                             that this system wants to use to send BFD control packets in
                             milliseconds. Defaults to 300ms
                           format: int32
@@ -149,38 +149,37 @@ spec:
                           minimum: 10
                           type: integer
                       type: object
-                    connectTime:
-                      description: Requested BGP connect time, controls how long BGP
-                        waits between connection attempts to a neighbor.
-                      type: string
-                      x-kubernetes-validations:
-                      - message: connect time should be between 1 seconds to 65535
-                        rule: duration(self).getSeconds() >= 1 && duration(self).getSeconds()
-                          <= 65535
-                      - message: connect time should contain a whole number of seconds
-                        rule: duration(self).getMilliseconds() % 1000 == 0
+                    connectTimeSeconds:
+                      description: connectTimeSeconds controls how long BGP waits
+                        between connection attempts to a neighbor, in seconds.
+                      format: int64
+                      maximum: 65535
+                      minimum: 1
+                      type: integer
                     ebgpMultiHop:
-                      description: EBGPMultiHop indicates if the BGPPeer is multi-hops
+                      description: ebgpMultiHop indicates if the BGPPeer is multi-hops
                         away.
                       type: boolean
-                    holdTime:
+                    holdTimeSeconds:
                       description: |-
-                        HoldTime is the requested BGP hold time, per RFC4271.
-                        Defaults to 180s.
-                      type: string
-                    keepaliveTime:
+                        holdTimeSeconds is the requested BGP hold time in seconds, per RFC4271.
+                        Defaults to 180.
+                      format: int64
+                      type: integer
+                    keepaliveTimeSeconds:
                       description: |-
-                        KeepaliveTime is the requested BGP keepalive time, per RFC4271.
-                        Defaults to 60s.
-                      type: string
+                        keepaliveTimeSeconds is the requested BGP keepalive time in seconds, per RFC4271.
+                        Defaults to 60.
+                      format: int64
+                      type: integer
                     password:
                       description: |-
-                        Password to be used for establishing the BGP session.
+                        password to be used for establishing the BGP session.
                         Password and PasswordSecret are mutually exclusive.
                       type: string
                     passwordSecret:
                       description: |-
-                        PasswordSecret is name of the authentication secret for the neighbor.
+                        passwordSecret is name of the authentication secret for the neighbor.
                         the secret must be of type "kubernetes.io/basic-auth", and created in the
                         same namespace as the perouter daemon. The password is stored in the
                         secret as the key "password".
@@ -188,13 +187,14 @@ spec:
                       type: string
                     port:
                       description: |-
-                        Port is the port to dial when establishing the session.
+                        port is the port to dial when establishing the session.
                         Defaults to 179.
+                      format: int32
                       maximum: 16384
                       minimum: 0
                       type: integer
                     type:
-                      description: Type is the AS type of the neighbor. Either ASN
+                      description: type is the AS type of the neighbor. Either ASN
                         or Type must be set.
                       enum:
                       - external
@@ -210,18 +210,20 @@ spec:
                     rule: '!has(self.asn) || !has(self.type)'
                 minItems: 1
                 type: array
+                x-kubernetes-list-type: atomic
               nics:
                 description: |-
-                  Nics is the list of physical nics to move under the PERouter namespace to connect
+                  nics is the list of physical nics to move under the PERouter namespace to connect
                   to external routers. This field is optional when using Multus networks for TOR connectivity.
                 items:
                   maxLength: 15
                   pattern: ^[a-zA-Z][a-zA-Z0-9._-]*$
                   type: string
                 type: array
+                x-kubernetes-list-type: atomic
               nodeSelector:
                 description: |-
-                  NodeSelector specifies which nodes this Underlay applies to.
+                  nodeSelector specifies which nodes this Underlay applies to.
                   If empty or not specified, applies to all nodes (backward compatible).
                   Multiple Underlays with overlapping node selectors will be rejected.
                 properties:
@@ -270,15 +272,17 @@ spec:
                 x-kubernetes-map-type: atomic
               routeridcidr:
                 default: 10.0.0.0/24
-                description: RouterIDCIDR is the ipv4 cidr to be used to assign a
+                description: routeridcidr is the ipv4 cidr to be used to assign a
                   different routerID on each node.
                 type: string
             required:
             - asn
             type: object
           status:
-            description: UnderlayStatus defines the observed state of Underlay.
+            description: status defines the observed state of Underlay.
             type: object
+        required:
+        - spec
         type: object
     served: true
     storage: true

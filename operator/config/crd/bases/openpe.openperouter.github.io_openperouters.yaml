@@ -37,18 +37,19 @@ spec:
           metadata:
             type: object
           spec:
-            description: OpenPERouterSpec defines the desired state of OpenPERouter
+            description: spec defines the desired state of OpenPERouter.
             properties:
               healthProbePort:
                 default: 9081
-                description: 'HealthProbePort specifies the port for the controller''s
+                description: 'healthProbePort specifies the port for the controller''s
                   health and readiness probes. (default: 9081)'
+                format: int32
                 maximum: 65535
                 minimum: 1
                 type: integer
               logLevel:
                 description: |-
-                  Define the verbosity of the controller and the router logging.
+                  logLevel defines the verbosity of the controller and the router logging.
                   Allowed values are: all, debug, info, warn, error, none. (default: info)
                 enum:
                 - all
@@ -59,26 +60,26 @@ spec:
                 - none
                 type: string
               multusNetworkAnnotation:
-                description: MultusNetworkAnnotation specifies the Multus network
+                description: multusNetworkAnnotation specifies the Multus network
                   annotation to be added to the router pod.
                 type: string
               ovsRunDir:
-                description: 'OVSRunDir specifies the OVS run directory to mount.
+                description: 'ovsRunDir specifies the OVS run directory to mount.
                   This is the directory containing the OVS socket. (default: /var/run/openvswitch)'
                 type: string
               ovsSocketPath:
-                description: OVSSocketPath specifies the OVS database socket path.
+                description: ovsSocketPath specifies the OVS database socket path.
                   Defaults to standard OVS location if not specified.
                 type: string
               runOnMaster:
                 default: true
-                description: 'RunOnMaster determines if all pods (router, controller,
+                description: 'runOnMaster determines if all pods (router, controller,
                   and nodemarker) will run on master/control-plane nodes. (default:
                   true)'
                 type: boolean
             type: object
           status:
-            description: OpenPERouterStatus defines the observed state of OpenPERouter
+            description: status defines the observed state of OpenPERouter.
             type: object
         type: object
     served: true
