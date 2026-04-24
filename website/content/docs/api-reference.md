@@ -64,6 +64,24 @@ _Appears in:_
 | `vtepInterface` _string_ | VTEPInterface is the name of an existing interface to use as the VTEP source.<br />The interface must already have an IP address configured that will be used<br />as the VTEP IP. Mutually exclusive with vtepcidr.<br />The ToR must advertise the interface IP into the fabric underlay<br />(e.g. via redistribute connected) so that the VTEP address is reachable<br />from other leaves. |  | MaxLength: 15 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9._-]*$` <br />Optional: \{\} <br /> |
 
 
+#### GracefulRestartConfig
+
+
+
+GracefulRestartConfig holds BGP Graceful Restart parameters.
+Its presence on the Underlay enables graceful restart.
+
+
+
+_Appears in:_
+- [UnderlaySpec](#underlayspec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `restartTime` _integer_ | RestartTime is the time in seconds that the restarting router<br />requests its peers to preserve routes. Peers will wait this long<br />before removing stale routes. | 120 | Maximum: 4095 <br />Minimum: 1 <br />Optional: \{\} <br /> |
+| `stalePathTime` _integer_ | StalePathTime is the time in seconds that stale paths from a<br />restarting peer are retained locally. | 360 | Maximum: 4095 <br />Minimum: 1 <br />Optional: \{\} <br /> |
+
+
 #### HostMaster
 
 
@@ -427,6 +445,7 @@ _Appears in:_
 | `neighbors` _[Neighbor](#neighbor) array_ | Neighbors is the list of external neighbors to peer with. |  | MinItems: 1 <br /> |
 | `nics` _string array_ | Nics is the list of physical nics to move under the PERouter namespace to connect<br />to external routers. This field is optional when using Multus networks for TOR connectivity. |  | items:MaxLength: 15 <br />items:Pattern: `^[a-zA-Z][a-zA-Z0-9._-]*$` <br /> |
 | `evpn` _[EVPNConfig](#evpnconfig)_ |  |  |  |
+| `gracefulRestart` _[GracefulRestartConfig](#gracefulrestartconfig)_ | GracefulRestart configures BGP Graceful Restart behaviour.<br />When set, FRR advertises GR capability and preserves forwarding<br />state across restarts so that peers keep stale routes active.<br />Omit to disable graceful restart. |  | Optional: \{\} <br /> |
 
 
 #### UnderlayStatus
