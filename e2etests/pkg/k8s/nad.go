@@ -11,7 +11,7 @@ import (
 	nadclientset "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
-	
+
 	"github.com/openperouter/openperouter/e2etests/pkg/ipfamily"
 )
 

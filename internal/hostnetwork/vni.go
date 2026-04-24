@@ -16,15 +16,16 @@ import (
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
+	"k8s.io/utils/ptr"
 )
 
 type VNIParams struct {
-	VRF           string `json:"vrf"`
-	TargetNS      string `json:"targetns"`
-	VTEPIP        string `json:"vtepip"`
-	VTEPInterface string `json:"vtepiface"`
-	VNI           int    `json:"vni"`
-	VXLanPort     int    `json:"vxlanport"`
+	VRF           string  `json:"vrf"`
+	TargetNS      string  `json:"targetns"`
+	VTEPIP        string  `json:"vtepip"`
+	VTEPInterface *string `json:"vtepiface,omitempty"`
+	VNI           int     `json:"vni"`
+	VXLanPort     *int32  `json:"vxlanport,omitempty"`
 }
 
 type L3VNIParams struct {
@@ -51,9 +52,9 @@ type L2VNIParams struct {
 }
 
 type HostMaster struct {
-	Name       string `json:"name,omitempty"`
-	Type       string `json:"type,omitempty"`
-	AutoCreate bool   `json:"autocreate,omitempty"`
+	Name       *string `json:"name,omitempty"`
+	Type       string  `json:"type,omitempty"`
+	AutoCreate *bool   `json:"autocreate,omitempty"`
 }
 
 const (
@@ -217,8 +218,8 @@ func setupHostMaster(ctx context.Context, params L2VNIParams, hostVeth netlink.L
 	bridgeConfig := *params.HostMaster
 	switch bridgeConfig.Type {
 	case OVSBridgeLinkType:
-		lowerDeviceName := bridgeConfig.Name
-		if bridgeConfig.AutoCreate {
+		lowerDeviceName := ptr.Deref(bridgeConfig.Name, "")
+		if ptr.Deref(bridgeConfig.AutoCreate, false) {
 			lowerDeviceName = hostBridgeName(params.VNI)
 		}
 		if err := ensureOVSBridgeAndAttach(ctx, lowerDeviceName, hostVeth.Attrs().Name); err != nil {
@@ -610,10 +611,10 @@ func detachOurPortsFromBridge(ctx context.Context, ovs libovsclient.Client, brid
 }
 
 func hostMaster(vni int, m HostMaster) (netlink.Link, error) {
-	if !m.AutoCreate {
-		hostMaster, err := netlink.LinkByName(m.Name)
+	if !ptr.Deref(m.AutoCreate, false) {
+		hostMaster, err := netlink.LinkByName(ptr.Deref(m.Name, ""))
 		if err != nil {
-			return nil, fmt.Errorf("could not find host master %s: %w", m.Name, err)
+			return nil, fmt.Errorf("could not find host master %s: %w", ptr.Deref(m.Name, ""), err)
 		}
 		return hostMaster, nil
 	}

@@ -70,7 +70,7 @@ func staticConfigToAPIConfig(staticConfig *static.PERouterConfig) conversion.API
 			ObjectMeta: metav1.ObjectMeta{
 				Name: fmt.Sprintf("static-l2vni-%d", i),
 			},
-			Spec: spec,
+			Spec: &spec,
 		}
 	}
 

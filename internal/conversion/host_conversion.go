@@ -9,6 +9,7 @@ import (
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/openperouter/openperouter/internal/ipam"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -41,7 +42,8 @@ func APItoHostConfig(nodeIndex int, targetNS string, underlayFromMultus bool, ap
 	}
 
 	if len(apiConfig.L3Passthrough) == 1 {
-		vethIPs, err := ipam.VethIPsFromPool(apiConfig.L3Passthrough[0].Spec.HostSession.LocalCIDR.IPv4, apiConfig.L3Passthrough[0].Spec.HostSession.LocalCIDR.IPv6, nodeIndex)
+		ipv4CIDR, ipv6CIDR := localCIDRStrings(apiConfig.L3Passthrough[0].Spec.HostSession.LocalCIDR)
+		vethIPs, err := ipam.VethIPsFromPool(ipv4CIDR, ipv6CIDR, nodeIndex)
 		if err != nil {
 			return res, fmt.Errorf("failed to get veth ips, cidr %v, nodeIndex %d", apiConfig.L3Passthrough[0].Spec.HostSession.LocalCIDR, nodeIndex)
 		}
@@ -68,10 +70,10 @@ func APItoHostConfig(nodeIndex int, targetNS string, underlayFromMultus bool, ap
 	}
 
 	res.Underlay.EVPN = &hostnetwork.UnderlayEVPNParams{}
-	if underlay.Spec.EVPN.VTEPCIDR != "" {
-		vtepIP, err := ipam.VTEPIp(underlay.Spec.EVPN.VTEPCIDR, nodeIndex)
+	if underlay.Spec.EVPN.VTEPCIDR != nil && *underlay.Spec.EVPN.VTEPCIDR != "" {
+		vtepIP, err := ipam.VTEPIp(*underlay.Spec.EVPN.VTEPCIDR, nodeIndex)
 		if err != nil {
-			return res, fmt.Errorf("failed to get vtep ip, cidr %s, nodeIndex %d: %w", underlay.Spec.EVPN.VTEPCIDR, nodeIndex, err)
+			return res, fmt.Errorf("failed to get vtep ip, cidr %s, nodeIndex %d: %w", *underlay.Spec.EVPN.VTEPCIDR, nodeIndex, err)
 		}
 		res.Underlay.EVPN.VtepIP = vtepIP.String()
 	}
@@ -83,8 +85,8 @@ func APItoHostConfig(nodeIndex int, targetNS string, underlayFromMultus bool, ap
 				TargetNS:      targetNS,
 				VTEPIP:        res.Underlay.EVPN.VtepIP,
 				VTEPInterface: underlay.Spec.EVPN.VTEPInterface,
-				VNI:           int(vni.Spec.VNI),
-				VXLanPort:     int(vni.Spec.VXLanPort),
+				VNI:           int(ptr.Deref(vni.Spec.VNI, 0)),
+				VXLanPort:     vni.Spec.VXLanPort,
 			},
 		}
 		if vni.Spec.HostSession == nil {
@@ -92,7 +94,8 @@ func APItoHostConfig(nodeIndex int, targetNS string, underlayFromMultus bool, ap
 			continue
 		}
 
-		vethIPs, err := ipam.VethIPsFromPool(vni.Spec.HostSession.LocalCIDR.IPv4, vni.Spec.HostSession.LocalCIDR.IPv6, nodeIndex)
+		ipv4CIDR, ipv6CIDR := localCIDRStrings(vni.Spec.HostSession.LocalCIDR)
+		vethIPs, err := ipam.VethIPsFromPool(ipv4CIDR, ipv6CIDR, nodeIndex)
 		if err != nil {
 			return res, fmt.Errorf("failed to get veth ips, cidr %v, nodeIndex %d", vni.Spec.HostSession.LocalCIDR, nodeIndex)
 		}
@@ -115,8 +118,8 @@ func APItoHostConfig(nodeIndex int, targetNS string, underlayFromMultus bool, ap
 				TargetNS:      targetNS,
 				VTEPIP:        res.Underlay.EVPN.VtepIP,
 				VTEPInterface: underlay.Spec.EVPN.VTEPInterface,
-				VNI:           int(l2vni.Spec.VNI),
-				VXLanPort:     int(l2vni.Spec.VXLanPort),
+				VNI:           int(ptr.Deref(l2vni.Spec.VNI, 0)),
+				VXLanPort:     l2vni.Spec.VXLanPort,
 			},
 		}
 		if len(l2vni.Spec.L2GatewayIPs) > 0 {

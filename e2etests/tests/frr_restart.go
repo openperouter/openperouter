@@ -37,7 +37,7 @@ var _ = Describe("North/south traffic after FRR container restart", Ordered, fun
 		},
 		Spec: v1alpha1.L3VNISpec{
 			VRF: "red",
-			VNI: 100,
+			VNI: ptr.To(int64(100)),
 		},
 	}
 
@@ -46,13 +46,13 @@ var _ = Describe("North/south traffic after FRR container restart", Ordered, fun
 			Name:      "red110",
 			Namespace: openperouter.Namespace,
 		},
-		Spec: v1alpha1.L2VNISpec{
+		Spec: &v1alpha1.L2VNISpec{
 			VRF: ptr.To("red"),
-			VNI: 110,
+			VNI: ptr.To(int64(110)),
 			HostMaster: &v1alpha1.HostMaster{
 				Type: "linux-bridge",
 				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
-					AutoCreate: true,
+					AutoCreate: ptr.To(true),
 				},
 			},
 		},
