@@ -28,6 +28,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/utils/ptr"
 )
 
 // var update = flag.Bool("update", false, "update .golden files")
@@ -77,8 +78,8 @@ func TestParseChartWithCustomValues(t *testing.T) {
 			Name:      "openperouter",
 			Namespace: openperouterTestNamespace,
 		},
-		Spec: operatorapi.OpenPERouterSpec{
-			LogLevel: "info",
+		Spec: &operatorapi.OpenPERouterSpec{
+			LogLevel: ptr.To(operatorapi.LogLevelInfo),
 		},
 	}
 
@@ -145,9 +146,9 @@ func TestParseChartWithMultusAnnotation(t *testing.T) {
 			Name:      "openperouter",
 			Namespace: openperouterTestNamespace,
 		},
-		Spec: operatorapi.OpenPERouterSpec{
-			LogLevel:                "info",
-			MultusNetworkAnnotation: multusAnnotation,
+		Spec: &operatorapi.OpenPERouterSpec{
+			LogLevel:                ptr.To(operatorapi.LogLevelInfo),
+			MultusNetworkAnnotation: &multusAnnotation,
 		},
 	}
 
@@ -183,8 +184,8 @@ func TestParseChartWithoutMultusAnnotation(t *testing.T) {
 			Name:      "openperouter",
 			Namespace: openperouterTestNamespace,
 		},
-		Spec: operatorapi.OpenPERouterSpec{
-			LogLevel: "info",
+		Spec: &operatorapi.OpenPERouterSpec{
+			LogLevel: ptr.To(operatorapi.LogLevelInfo),
 		},
 	}
 
@@ -265,9 +266,9 @@ func TestParseChartWithMasterTolerations(t *testing.T) {
 					Name:      "openperouter",
 					Namespace: openperouterTestNamespace,
 				},
-				Spec: operatorapi.OpenPERouterSpec{
-					LogLevel:    "info",
-					RunOnMaster: tt.runOnMaster,
+				Spec: &operatorapi.OpenPERouterSpec{
+					LogLevel:    ptr.To(operatorapi.LogLevelInfo),
+					RunOnMaster: &tt.runOnMaster,
 				},
 			}
 

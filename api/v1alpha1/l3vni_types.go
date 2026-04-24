@@ -21,41 +21,45 @@ import (
 )
 
 // L3VNISpec defines the desired state of VNI.
+// +kubebuilder:validation:XValidation:rule="!has(self.hostsession) || !has(self.hostsession.hostasn) || self.hostsession.hostasn != self.hostsession.asn",message="hostASN must be different from asn"
 type L3VNISpec struct {
-	// NodeSelector specifies which nodes this L3VNI applies to.
+	// nodeSelector specifies which nodes this L3VNI applies to.
 	// If empty or not specified, applies to all nodes.
 	// Multiple L3VNIs can match the same node.
 	// +optional
 	NodeSelector *metav1.LabelSelector `json:"nodeSelector,omitempty"`
 
-	// VRF is the name of the linux VRF to be used inside the PERouter namespace.
+	// vrf is the name of the linux VRF to be used inside the PERouter namespace.
 	// +kubebuilder:validation:Pattern=`^[a-zA-Z][a-zA-Z0-9_-]*$`
 	// +kubebuilder:validation:MaxLength=15
-	// +kubebuilder:validation:Required
-	VRF string `json:"vrf"`
+	// +required
+	VRF *string `json:"vrf,omitempty"`
 
-	// VNI is the VXLan VNI to be used
+	// vni is the VXLan VNI to be used
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:validation:Maximum=4294967295
 	// +optional
-	VNI uint32 `json:"vni,omitempty"`
+	VNI *int64 `json:"vni,omitempty"`
 
-	// VXLanPort is the port to be used for VXLan encapsulation.
-	// +kubebuilder:default:=4789
-	VXLanPort uint32 `json:"vxlanport,omitempty"`
+	// vxlanport is the port to be used for VXLan encapsulation.
+	// +default=4789
+	// +optional
+	VXLanPort *int32 `json:"vxlanport,omitempty"`
 
-	// HostSession is the configuration for the host session.
+	// hostsession is the configuration for the host session.
 	// +optional
 	HostSession *HostSession `json:"hostsession,omitempty"`
 
-	// ExportRTs are the Route Targets to be used for exporting routes.
+	// exportRTs are the Route Targets to be used for exporting routes.
 	// RouteTarget defines a BGP Extended Community for route filtering.
 	// +optional
+	// +listType=atomic
 	ExportRTs []string `json:"exportRTs,omitempty"`
 
-	// ImportRTs are the Route Targets to be used for importing routes.
+	// importRTs are the Route Targets to be used for importing routes.
 	// RouteTarget defines a BGP Extended Community for route filtering.
 	// +optional
+	// +listType=atomic
 	ImportRTs []string `json:"importRTs,omitempty"`
 }
 
@@ -72,11 +76,17 @@ type L3VNIStatus struct {
 // L3VNI represents a VXLan L3VNI to receive EVPN type 5 routes
 // from.
 type L3VNI struct {
-	metav1.TypeMeta   `json:",inline"`
+	metav1.TypeMeta `json:",inline"`
+	// metadata is the standard object metadata.
+	// +optional
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   L3VNISpec   `json:"spec,omitempty"`
-	Status L3VNIStatus `json:"status,omitempty"`
+	// spec defines the desired state of L3VNI.
+	// +required
+	Spec L3VNISpec `json:"spec,omitzero"`
+	// status defines the observed state of L3VNI.
+	// +optional
+	Status *L3VNIStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true

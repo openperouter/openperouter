@@ -39,29 +39,30 @@ spec:
           metadata:
             type: object
           spec:
+            description: spec defines the desired state of L3Passthrough.
             properties:
               hostsession:
-                description: HostSession is the configuration for the host session.
+                description: hostsession is the configuration for the host session.
                 properties:
                   asn:
                     description: |-
-                      ASN is the local AS number to use to establish a BGP session with
+                      asn is the local AS number to use to establish a BGP session with
                       the default namespace.
-                    format: int32
+                    format: int64
                     maximum: 4294967295
                     minimum: 1
                     type: integer
                   hostasn:
                     description: |-
-                      HostASN is the expected AS number for a BGP speaking component running in
+                      hostasn is the expected AS number for a BGP speaking component running in
                       the default network namespace. Either HostASN or HostType must be set.
-                    format: int32
+                    format: int64
                     maximum: 4294967295
                     minimum: 1
                     type: integer
                   hosttype:
                     description: |-
-                      HostType is the AS type of the BGP speaking component running in the
+                      hosttype is the AS type of the BGP speaking component running in the
                       default network namespace. Either HostASN or HostType must be set.
                     enum:
                     - external
@@ -69,20 +70,20 @@ spec:
                     type: string
                   localcidr:
                     description: |-
-                      LocalCIDR is the CIDR configuration for the veth pair
+                      localcidr is the CIDR configuration for the veth pair
                       to connect with the default namespace. The interface under
                       the PERouter side is going to use the first IP of the cidr on all the nodes.
                       At least one of IPv4 or IPv6 must be provided.
                     properties:
                       ipv4:
                         description: |-
-                          IPv4 is the IPv4 CIDR to be used for the veth pair
+                          ipv4 is the IPv4 CIDR to be used for the veth pair
                           to connect with the default namespace. The interface under
                           the PERouter side is going to use the first IP of the cidr on all the nodes.
                         type: string
                       ipv6:
                         description: |-
-                          IPv6 is the IPv6 CIDR to be used for the veth pair
+                          ipv6 is the IPv6 CIDR to be used for the veth pair
                           to connect with the default namespace. The interface under
                           the PERouter side is going to use the first IP of the cidr on all the nodes.
                         type: string
@@ -90,6 +91,8 @@ spec:
                     x-kubernetes-validations:
                     - message: LocalCIDR can't be changed
                       rule: self == oldSelf
+                    - message: at least one of ipv4 or ipv6 must be specified
+                      rule: has(self.ipv4) || has(self.ipv6)
                 required:
                 - asn
                 - localcidr
@@ -101,7 +104,7 @@ spec:
                   rule: '!has(self.hostasn) || !has(self.hosttype)'
               nodeSelector:
                 description: |-
-                  NodeSelector specifies which nodes this L3Passthrough applies to.
+                  nodeSelector specifies which nodes this L3Passthrough applies to.
                   If empty or not specified, applies to all nodes.
                   Multiple L3Passthrough with overlapping node selectors will be rejected.
                 properties:
@@ -148,10 +151,14 @@ spec:
                     type: object
                 type: object
                 x-kubernetes-map-type: atomic
+            required:
+            - hostsession
             type: object
           status:
-            description: L3PassthroughStatus defines the observed state of L3Passthrough.
+            description: status defines the observed state of L3Passthrough.
             type: object
+        required:
+        - spec
         type: object
     served: true
     storage: true

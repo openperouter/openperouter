@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/conversion"
@@ -90,7 +91,7 @@ func validateL3VNIUpdate(l3vni *v1alpha1.L3VNI, oldL3VNI *v1alpha1.L3VNI) error 
 	Logger.Debug("webhook l3vni", "action", "update", "name", l3vni.Name, "namespace", l3vni.Namespace)
 	defer Logger.Debug("webhook l3vni", "action", "end update", "name", l3vni.Name, "namespace", l3vni.Namespace)
 
-	if localCIDR(oldL3VNI.Spec.HostSession) != localCIDR(l3vni.Spec.HostSession) {
+	if !reflect.DeepEqual(localCIDR(oldL3VNI.Spec.HostSession), localCIDR(l3vni.Spec.HostSession)) {
 		return errors.New("LocalCIDR cannot be changed")
 	}
 

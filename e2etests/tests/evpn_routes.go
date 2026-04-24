@@ -3,6 +3,7 @@
 package tests
 
 import (
+	"k8s.io/utils/ptr"
 	"context"
 	"fmt"
 	"net"
@@ -49,16 +50,16 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			Namespace: openperouter.Namespace,
 		},
 		Spec: v1alpha1.L3VNISpec{
-			VRF: "red",
+			VRF: ptr.To("red"),
 			HostSession: &v1alpha1.HostSession{
 				ASN:     64514,
-				HostASN: 64515,
+				HostASN: ptr.To(int64(64515)),
 				LocalCIDR: v1alpha1.LocalCIDRConfig{
-					IPv4: "192.169.10.0/24",
-					IPv6: "2001:db8:1::/64",
+					IPv4: ptr.To("192.169.10.0/24"),
+					IPv6: ptr.To("2001:db8:1::/64"),
 				},
 			},
-			VNI: 100,
+			VNI: ptr.To(int64(100)),
 		},
 	}
 
@@ -68,16 +69,16 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			Namespace: openperouter.Namespace,
 		},
 		Spec: v1alpha1.L3VNISpec{
-			VRF: "blue",
+			VRF: ptr.To("blue"),
 			HostSession: &v1alpha1.HostSession{
 				ASN:     64514,
-				HostASN: 64515,
+				HostASN: ptr.To(int64(64515)),
 				LocalCIDR: v1alpha1.LocalCIDRConfig{
-					IPv4: "192.169.11.0/24",
-					IPv6: "2001:db8:2::/64",
+					IPv4: ptr.To("192.169.11.0/24"),
+					IPv6: ptr.To("2001:db8:2::/64"),
 				},
 			},
-			VNI: 200,
+			VNI: ptr.To(int64(200)),
 		},
 	}
 
@@ -143,10 +144,10 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 							return fmt.Errorf("failed to get EVPN info from %s: %w", exec.Name(), err)
 						}
 						for _, prefix := range prefixes {
-							if mustContain && !evpn.ContainsType5RouteForVNI(prefix, leaf.VTEPIP, int(vni.Spec.VNI)) {
+							if mustContain && !evpn.ContainsType5RouteForVNI(prefix, leaf.VTEPIP, int(ptr.Deref(vni.Spec.VNI, 0))) {
 								return fmt.Errorf("type5 route for %s - %s not found in %v in router %s", prefix, leaf.VTEPIP, evpn, exec.Name())
 							}
-							if !mustContain && evpn.ContainsType5RouteForVNI(prefix, leaf.VTEPIP, int(vni.Spec.VNI)) {
+							if !mustContain && evpn.ContainsType5RouteForVNI(prefix, leaf.VTEPIP, int(ptr.Deref(vni.Spec.VNI, 0))) {
 								return fmt.Errorf("type5 route for %s - %s found in %v in router %s", prefix, leaf.VTEPIP, evpn, exec.Name())
 							}
 						}
@@ -334,10 +335,10 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		) {
 
 			var localCIDR string
-			localCIDR = vni.Spec.HostSession.LocalCIDR.IPv4
+			localCIDR = ptr.Deref(vni.Spec.HostSession.LocalCIDR.IPv4, "")
 
 			if ipFamily == ipfamily.IPv6 {
-				localCIDR = vni.Spec.HostSession.LocalCIDR.IPv6
+				localCIDR = ptr.Deref(vni.Spec.HostSession.LocalCIDR.IPv6, "")
 			}
 			hostSide, err := openperouter.HostIPFromCIDRForNode(localCIDR, podNode)
 			Expect(err).NotTo(HaveOccurred())
@@ -414,12 +415,12 @@ var _ = Describe("Routes between bgp and the fabric with iBGP testing e2e integr
 			Nics: []string{"toswitch"},
 			Neighbors: []v1alpha1.Neighbor{
 				{
-					Type:    "internal",
-					Address: "192.168.11.2",
+					Type:    ptr.To("internal"),
+					Address: ptr.To("192.168.11.2"),
 				},
 			},
 			EVPN: &v1alpha1.EVPNConfig{
-				VTEPCIDR: "100.65.0.0/24",
+				VTEPCIDR: ptr.To("100.65.0.0/24"),
 			},
 		},
 	}
@@ -430,16 +431,16 @@ var _ = Describe("Routes between bgp and the fabric with iBGP testing e2e integr
 			Namespace: openperouter.Namespace,
 		},
 		Spec: v1alpha1.L3VNISpec{
-			VRF: "red",
+			VRF: ptr.To("red"),
 			HostSession: &v1alpha1.HostSession{
 				ASN:     64514,
-				HostASN: 64515,
+				HostASN: ptr.To(int64(64515)),
 				LocalCIDR: v1alpha1.LocalCIDRConfig{
-					IPv4: "192.169.10.0/24",
-					IPv6: "2001:db8:1::/64",
+					IPv4: ptr.To("192.169.10.0/24"),
+					IPv6: ptr.To("2001:db8:1::/64"),
 				},
 			},
-			VNI: 100,
+			VNI: ptr.To(int64(100)),
 		},
 	}
 
@@ -449,16 +450,16 @@ var _ = Describe("Routes between bgp and the fabric with iBGP testing e2e integr
 			Namespace: openperouter.Namespace,
 		},
 		Spec: v1alpha1.L3VNISpec{
-			VRF: "blue",
+			VRF: ptr.To("blue"),
 			HostSession: &v1alpha1.HostSession{
 				ASN:     64514,
-				HostASN: 64515,
+				HostASN: ptr.To(int64(64515)),
 				LocalCIDR: v1alpha1.LocalCIDRConfig{
-					IPv4: "192.169.11.0/24",
-					IPv6: "2001:db8:2::/64",
+					IPv4: ptr.To("192.169.11.0/24"),
+					IPv6: ptr.To("2001:db8:2::/64"),
 				},
 			},
-			VNI: 200,
+			VNI: ptr.To(int64(200)),
 		},
 	}
 
@@ -556,10 +557,10 @@ var _ = Describe("Routes between bgp and the fabric with iBGP testing e2e integr
 		ipFamily := ipfamily.IPv4
 
 		var localCIDR string
-		localCIDR = vni.Spec.HostSession.LocalCIDR.IPv4
+		localCIDR = ptr.Deref(vni.Spec.HostSession.LocalCIDR.IPv4, "")
 
 		if ipFamily == ipfamily.IPv6 {
-			localCIDR = vni.Spec.HostSession.LocalCIDR.IPv6
+			localCIDR = ptr.Deref(vni.Spec.HostSession.LocalCIDR.IPv6, "")
 		}
 		hostSide, err := openperouter.HostIPFromCIDRForNode(localCIDR, podNode)
 		Expect(err).NotTo(HaveOccurred())

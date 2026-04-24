@@ -9,7 +9,7 @@ import (
 func TestPeerASNToString(t *testing.T) {
 	tcs := []struct {
 		name          string
-		peerASNNumber uint32
+		peerASNNumber int64
 		peerASNType   string
 		wantString    string // String representation of peerASN.
 	}{
@@ -60,9 +60,9 @@ func TestPeerASNToString(t *testing.T) {
 func TestPeerASNEqual(t *testing.T) {
 	tcs := []struct {
 		name           string
-		peerASNNumber  uint32
+		peerASNNumber  int64
 		peerASNType    string
-		otherASNNumber uint32
+		otherASNNumber int64
 		wantEqual      bool // Want peer and other ASN to be equal (test for Equal()).
 	}{
 		{
@@ -124,9 +124,9 @@ func TestPeerASNEqual(t *testing.T) {
 func TestPeerASNIsExternalTo(t *testing.T) {
 	tcs := []struct {
 		name             string
-		peerASNNumber    uint32
+		peerASNNumber    int64
 		peerASNType      string
-		otherASNNumber   uint32
+		otherASNNumber   int64
 		wantIsExternalTo bool // Want peer and other ASN to be external to each other (test for IsExternalTo()).
 	}{
 		{

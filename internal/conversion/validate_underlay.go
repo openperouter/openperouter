@@ -59,22 +59,22 @@ func validateUnderlay(underlay *v1alpha1.Underlay) error {
 }
 
 func validateUnderlayEVPN(underlay *v1alpha1.Underlay) error {
-	hasVTEPCIDR := underlay.Spec.EVPN.VTEPCIDR != ""
-	hasVTEPInterface := underlay.Spec.EVPN.VTEPInterface != ""
+	hasVTEPCIDR := underlay.Spec.EVPN.VTEPCIDR != nil && *underlay.Spec.EVPN.VTEPCIDR != ""
+	hasVTEPInterface := underlay.Spec.EVPN.VTEPInterface != nil && *underlay.Spec.EVPN.VTEPInterface != ""
 
 	if hasVTEPCIDR == hasVTEPInterface {
 		return fmt.Errorf("underlay %s: either vtepcidr (%t) or vtepInterface (%t) (not both) must be specified", underlay.Name, hasVTEPCIDR, hasVTEPInterface)
 	}
 
 	if hasVTEPCIDR {
-		if _, _, err := net.ParseCIDR(underlay.Spec.EVPN.VTEPCIDR); err != nil {
-			return fmt.Errorf("invalid vtep CIDR format for underlay %s: %s - %w", underlay.Name, underlay.Spec.EVPN.VTEPCIDR, err)
+		if _, _, err := net.ParseCIDR(*underlay.Spec.EVPN.VTEPCIDR); err != nil {
+			return fmt.Errorf("invalid vtep CIDR format for underlay %s: %s - %w", underlay.Name, *underlay.Spec.EVPN.VTEPCIDR, err)
 		}
 	}
 
 	if hasVTEPInterface {
-		if err := isValidInterfaceName(underlay.Spec.EVPN.VTEPInterface); err != nil {
-			return fmt.Errorf("invalid vtep interface name %q for underlay %q: %w", underlay.Name, underlay.Spec.EVPN.VTEPInterface, err)
+		if err := isValidInterfaceName(*underlay.Spec.EVPN.VTEPInterface); err != nil {
+			return fmt.Errorf("invalid vtep interface name %q for underlay %q: %w", underlay.Name, *underlay.Spec.EVPN.VTEPInterface, err)
 		}
 	}
 

@@ -37,16 +37,16 @@ var _ = Describe("Webhooks", func() {
 					Namespace: openperouter.Namespace,
 				},
 				Spec: v1alpha1.L3VNISpec{
-					VRF: "test-vrf-1",
+					VRF: ptr.To("test-vrf-1"),
 					HostSession: &v1alpha1.HostSession{
 						ASN: 65001,
 						LocalCIDR: v1alpha1.LocalCIDRConfig{
-							IPv4: "10.0.0.0/24",
+							IPv4: ptr.To("10.0.0.0/24"),
 						},
-						HostASN: 65002,
+						HostASN: ptr.To(int64(65002)),
 					},
-					VNI:       100,
-					VXLanPort: 4789,
+					VNI:       ptr.To(int64(100)),
+					VXLanPort: ptr.To(int32(4789)),
 				},
 			}
 			By("creating the first VNI")
@@ -69,31 +69,31 @@ var _ = Describe("Webhooks", func() {
 					Namespace: openperouter.Namespace,
 				},
 				Spec: v1alpha1.L3VNISpec{
-					VNI:       103,
-					VXLanPort: 4789,
+					VNI:       ptr.To(int64(103)),
+					VXLanPort: ptr.To(int32(4789)),
 					HostSession: &v1alpha1.HostSession{
 						ASN:     65001,
-						HostASN: 65002,
+						HostASN: ptr.To(int64(65002)),
 						LocalCIDR: v1alpha1.LocalCIDRConfig{
-							IPv4: "10.0.3.0/24",
+							IPv4: ptr.To("10.0.3.0/24"),
 						},
 					},
 				},
-			}, "spec.vrf in body should match"),
+			}, "spec.vrf: Required value"),
 			Entry("when trying to create a VNI with the same VNI as an existing one", v1alpha1.L3VNI{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-vni-2",
 					Namespace: openperouter.Namespace,
 				},
 				Spec: v1alpha1.L3VNISpec{
-					VRF:       "test-vrf-2",
-					VNI:       100,
-					VXLanPort: 4789,
+					VRF:       ptr.To("test-vrf-2"),
+					VNI:       ptr.To(int64(100)),
+					VXLanPort: ptr.To(int32(4789)),
 					HostSession: &v1alpha1.HostSession{
 						ASN:     65001,
-						HostASN: 65002,
+						HostASN: ptr.To(int64(65002)),
 						LocalCIDR: v1alpha1.LocalCIDRConfig{
-							IPv4: "10.0.1.0/24",
+							IPv4: ptr.To("10.0.1.0/24"),
 						},
 					},
 				},
@@ -104,14 +104,14 @@ var _ = Describe("Webhooks", func() {
 					Namespace: openperouter.Namespace,
 				},
 				Spec: v1alpha1.L3VNISpec{
-					VRF:       "test-vrf-3",
-					VNI:       101,
-					VXLanPort: 4789,
+					VRF:       ptr.To("test-vrf-3"),
+					VNI:       ptr.To(int64(101)),
+					VXLanPort: ptr.To(int32(4789)),
 					HostSession: &v1alpha1.HostSession{
 						ASN:     65001,
-						HostASN: 65002,
+						HostASN: ptr.To(int64(65002)),
 						LocalCIDR: v1alpha1.LocalCIDRConfig{
-							IPv4: "invalid-cidr",
+							IPv4: ptr.To("invalid-cidr"),
 						},
 					},
 				},
@@ -126,10 +126,10 @@ var _ = Describe("Webhooks", func() {
 					Name:      "test-l2vni-1",
 					Namespace: openperouter.Namespace,
 				},
-				Spec: v1alpha1.L2VNISpec{
+				Spec: &v1alpha1.L2VNISpec{
 					VRF:          ptr.To("test-vrf-1"),
-					VNI:          200,
-					VXLanPort:    4789,
+					VNI:          ptr.To(int64(200)),
+					VXLanPort:    ptr.To(int32(4789)),
 					L2GatewayIPs: []string{"10.0.0.1/25"},
 				},
 			}
@@ -145,17 +145,17 @@ var _ = Describe("Webhooks", func() {
 					Namespace: openperouter.Namespace,
 				},
 				Spec: v1alpha1.L3VNISpec{
-					VRF: "test-vrf-1",
+					VRF: ptr.To("test-vrf-1"),
 					HostSession: &v1alpha1.HostSession{
 						ASN: 65001,
 						LocalCIDR: v1alpha1.LocalCIDRConfig{
-							IPv4: "10.0.0.0/24",
-							IPv6: "2000::1/64",
+							IPv4: ptr.To("10.0.0.0/24"),
+							IPv6: ptr.To("2000::1/64"),
 						},
-						HostASN: 65002,
+						HostASN: ptr.To(int64(65002)),
 					},
-					VNI:       100,
-					VXLanPort: 4789,
+					VNI:       ptr.To(int64(100)),
+					VXLanPort: ptr.To(int32(4789)),
 				},
 			}
 			By("creating the L3VNI")
@@ -175,9 +175,9 @@ var _ = Describe("Webhooks", func() {
 					Name:      "test-l2vni-1",
 					Namespace: openperouter.Namespace,
 				},
-				Spec: v1alpha1.L2VNISpec{
-					VNI:       200,
-					VXLanPort: 4789,
+				Spec: &v1alpha1.L2VNISpec{
+					VNI:       ptr.To(int64(200)),
+					VXLanPort: ptr.To(int32(4789)),
 				},
 			}
 			By("creating the first L2VNI")
@@ -192,17 +192,17 @@ var _ = Describe("Webhooks", func() {
 					Namespace: openperouter.Namespace,
 				},
 				Spec: v1alpha1.L3VNISpec{
-					VRF: "test-vrf-1",
+					VRF: ptr.To("test-vrf-1"),
 					HostSession: &v1alpha1.HostSession{
 						ASN: 65001,
 						LocalCIDR: v1alpha1.LocalCIDRConfig{
-							IPv4: "10.0.0.0/24",
-							IPv6: "2000::1/64",
+							IPv4: ptr.To("10.0.0.0/24"),
+							IPv6: ptr.To("2000::1/64"),
 						},
-						HostASN: 65002,
+						HostASN: ptr.To(int64(65002)),
 					},
-					VNI:       100,
-					VXLanPort: 4789,
+					VNI:       ptr.To(int64(100)),
+					VXLanPort: ptr.To(int32(4789)),
 				},
 			}
 			By("creating the first L3VNI")
@@ -224,9 +224,9 @@ var _ = Describe("Webhooks", func() {
 					Name:      "test-l2vni-2",
 					Namespace: openperouter.Namespace,
 				},
-				Spec: v1alpha1.L2VNISpec{
-					VNI:       200, // Same VNI as l2vni1
-					VXLanPort: 4789,
+				Spec: &v1alpha1.L2VNISpec{
+					VNI:       ptr.To(int64(200)), // Same VNI as l2vni1
+					VXLanPort: ptr.To(int32(4789)),
 				},
 			}}, "duplicate vni"),
 			Entry("when trying to create an L2VNI with an invalid IPv4 address", []v1alpha1.L2VNI{{
@@ -234,9 +234,9 @@ var _ = Describe("Webhooks", func() {
 					Name:      "l2-invalid-ip4",
 					Namespace: openperouter.Namespace,
 				},
-				Spec: v1alpha1.L2VNISpec{
-					VNI:          201,
-					VXLanPort:    4789,
+				Spec: &v1alpha1.L2VNISpec{
+					VNI:          ptr.To(int64(201)),
+					VXLanPort:    ptr.To(int32(4789)),
 					L2GatewayIPs: []string{"not-an-ip-address"},
 				},
 			}}, `invalid l2gatewayips for vni "l2-invalid-ip4" = [not-an-ip-address]: invalid cidr: invalid CIDR address: not-an-ip-address`),
@@ -245,9 +245,9 @@ var _ = Describe("Webhooks", func() {
 					Name:      "l2-bad-format",
 					Namespace: openperouter.Namespace,
 				},
-				Spec: v1alpha1.L2VNISpec{
-					VNI:          202,
-					VXLanPort:    4789,
+				Spec: &v1alpha1.L2VNISpec{
+					VNI:          ptr.To(int64(202)),
+					VXLanPort:    ptr.To(int32(4789)),
 					L2GatewayIPs: []string{"256.256.256.256/24"},
 				},
 			}}, `invalid l2gatewayips for vni "l2-bad-format" = [256.256.256.256/24]: invalid cidr: invalid CIDR address: 256.256.256.256/24`),
@@ -256,9 +256,9 @@ var _ = Describe("Webhooks", func() {
 					Name:      "l2-mixed-ips",
 					Namespace: openperouter.Namespace,
 				},
-				Spec: v1alpha1.L2VNISpec{
-					VNI:          203,
-					VXLanPort:    4789,
+				Spec: &v1alpha1.L2VNISpec{
+					VNI:          ptr.To(int64(203)),
+					VXLanPort:    ptr.To(int32(4789)),
 					L2GatewayIPs: []string{"192.168.1.1/24", "invalid-ip"},
 				},
 			}}, `invalid l2gatewayips for vni "l2-mixed-ips" = [192.168.1.1/24 invalid-ip]: invalid cidr: invalid CIDR address: invalid-ip`),
@@ -267,9 +267,9 @@ var _ = Describe("Webhooks", func() {
 					Name:      "l2-too-many",
 					Namespace: openperouter.Namespace,
 				},
-				Spec: v1alpha1.L2VNISpec{
-					VNI:          204,
-					VXLanPort:    4789,
+				Spec: &v1alpha1.L2VNISpec{
+					VNI:          ptr.To(int64(204)),
+					VXLanPort:    ptr.To(int32(4789)),
 					L2GatewayIPs: []string{"192.168.1.1/24", "2001:db8::1/64", "10.0.0.1/24"},
 				},
 			}}, "Too many"),
@@ -278,9 +278,9 @@ var _ = Describe("Webhooks", func() {
 					Name:      "l2-two-ipv4",
 					Namespace: openperouter.Namespace,
 				},
-				Spec: v1alpha1.L2VNISpec{
-					VNI:          205,
-					VXLanPort:    4789,
+				Spec: &v1alpha1.L2VNISpec{
+					VNI:          ptr.To(int64(205)),
+					VXLanPort:    ptr.To(int32(4789)),
 					L2GatewayIPs: []string{"192.168.1.1/24", "10.0.0.1/24"},
 				},
 			}}, `invalid l2gatewayips for vni "l2-two-ipv4" = [192.168.1.1/24 10.0.0.1/24]: IPFamilyForAddresses: same address family ["192.168.1.1" "10.0.0.1"]`),
@@ -289,9 +289,9 @@ var _ = Describe("Webhooks", func() {
 					Name:      "l2-two-ipv6",
 					Namespace: openperouter.Namespace,
 				},
-				Spec: v1alpha1.L2VNISpec{
-					VNI:          206,
-					VXLanPort:    4789,
+				Spec: &v1alpha1.L2VNISpec{
+					VNI:          ptr.To(int64(206)),
+					VXLanPort:    ptr.To(int32(4789)),
 					L2GatewayIPs: []string{"2001:db8::1/64", "2001:db9::1/64"},
 				},
 			}}, `invalid l2gatewayips for vni "l2-two-ipv6" = [2001:db8::1/64 2001:db9::1/64]: IPFamilyForAddresses: same address family ["2001:db8::1" "2001:db9::1"]`),
@@ -301,10 +301,10 @@ var _ = Describe("Webhooks", func() {
 						Name:      "first",
 						Namespace: openperouter.Namespace,
 					},
-					Spec: v1alpha1.L2VNISpec{
-						VNI:          207,
+					Spec: &v1alpha1.L2VNISpec{
+						VNI:          ptr.To(int64(207)),
 						VRF:          ptr.To("test-vrf-1"),
-						VXLanPort:    4789,
+						VXLanPort:    ptr.To(int32(4789)),
 						L2GatewayIPs: []string{"192.168.123.1/24", "2000:0:0:123::1/64"},
 					},
 				},
@@ -313,10 +313,10 @@ var _ = Describe("Webhooks", func() {
 						Name:      "second",
 						Namespace: openperouter.Namespace,
 					},
-					Spec: v1alpha1.L2VNISpec{
-						VNI:          208,
+					Spec: &v1alpha1.L2VNISpec{
+						VNI:          ptr.To(int64(208)),
 						VRF:          ptr.To("test-vrf-1"),
-						VXLanPort:    4789,
+						VXLanPort:    ptr.To(int32(4789)),
 						L2GatewayIPs: []string{"192.168.123.1/24"},
 					},
 				},
@@ -328,10 +328,10 @@ var _ = Describe("Webhooks", func() {
 						Name:      "first",
 						Namespace: openperouter.Namespace,
 					},
-					Spec: v1alpha1.L2VNISpec{
-						VNI:          209,
+					Spec: &v1alpha1.L2VNISpec{
+						VNI:          ptr.To(int64(209)),
 						VRF:          ptr.To("test-vrf-1"),
-						VXLanPort:    4789,
+						VXLanPort:    ptr.To(int32(4789)),
 						L2GatewayIPs: []string{"192.168.123.1/24", "2000:0:0:123::1/64"},
 					},
 				},
@@ -340,10 +340,10 @@ var _ = Describe("Webhooks", func() {
 						Name:      "second",
 						Namespace: openperouter.Namespace,
 					},
-					Spec: v1alpha1.L2VNISpec{
-						VNI:          210,
+					Spec: &v1alpha1.L2VNISpec{
+						VNI:          ptr.To(int64(210)),
 						VRF:          ptr.To("test-vrf-1"),
-						VXLanPort:    4789,
+						VXLanPort:    ptr.To(int32(4789)),
 						L2GatewayIPs: []string{"2000:0:0:123::1:1/112"},
 					},
 				},
@@ -355,10 +355,10 @@ var _ = Describe("Webhooks", func() {
 						Name:      "first",
 						Namespace: openperouter.Namespace,
 					},
-					Spec: v1alpha1.L2VNISpec{
-						VNI:          207,
+					Spec: &v1alpha1.L2VNISpec{
+						VNI:          ptr.To(int64(207)),
 						VRF:          ptr.To("test-vrf-1"),
-						VXLanPort:    4789,
+						VXLanPort:    ptr.To(int32(4789)),
 						L2GatewayIPs: []string{"10.0.0.1/24"},
 					},
 				},
@@ -370,10 +370,10 @@ var _ = Describe("Webhooks", func() {
 						Name:      "first",
 						Namespace: openperouter.Namespace,
 					},
-					Spec: v1alpha1.L2VNISpec{
-						VNI:          207,
+					Spec: &v1alpha1.L2VNISpec{
+						VNI:          ptr.To(int64(207)),
 						VRF:          ptr.To("test-vrf-1"),
-						VXLanPort:    4789,
+						VXLanPort:    ptr.To(int32(4789)),
 						L2GatewayIPs: []string{"2000::2/64"},
 					},
 				},
@@ -387,9 +387,9 @@ var _ = Describe("Webhooks", func() {
 					Name:      "l2-valid-ipv4",
 					Namespace: openperouter.Namespace,
 				},
-				Spec: v1alpha1.L2VNISpec{
-					VNI:          210,
-					VXLanPort:    4789,
+				Spec: &v1alpha1.L2VNISpec{
+					VNI:          ptr.To(int64(210)),
+					VXLanPort:    ptr.To(int32(4789)),
 					L2GatewayIPs: []string{"192.168.1.1/24"},
 				},
 			}
@@ -405,9 +405,9 @@ var _ = Describe("Webhooks", func() {
 					Name:      "l2-valid-ipv6",
 					Namespace: openperouter.Namespace,
 				},
-				Spec: v1alpha1.L2VNISpec{
-					VNI:          211,
-					VXLanPort:    4789,
+				Spec: &v1alpha1.L2VNISpec{
+					VNI:          ptr.To(int64(211)),
+					VXLanPort:    ptr.To(int32(4789)),
 					L2GatewayIPs: []string{"2001:db8::1/64"},
 				},
 			}
@@ -423,9 +423,9 @@ var _ = Describe("Webhooks", func() {
 					Name:      "l2-dualstack",
 					Namespace: openperouter.Namespace,
 				},
-				Spec: v1alpha1.L2VNISpec{
-					VNI:          212,
-					VXLanPort:    4789,
+				Spec: &v1alpha1.L2VNISpec{
+					VNI:          ptr.To(int64(212)),
+					VXLanPort:    ptr.To(int32(4789)),
 					L2GatewayIPs: []string{"192.168.1.1/24", "2001:db8::1/64"},
 				},
 			}
@@ -443,9 +443,9 @@ var _ = Describe("Webhooks", func() {
 					Name:      "l2vni-immutable",
 					Namespace: openperouter.Namespace,
 				},
-				Spec: v1alpha1.L2VNISpec{
-					VNI:          300,
-					VXLanPort:    4789,
+				Spec: &v1alpha1.L2VNISpec{
+					VNI:          ptr.To(int64(300)),
+					VXLanPort:    ptr.To(int32(4789)),
 					L2GatewayIPs: []string{"192.168.10.1/24"},
 				},
 			}
@@ -462,9 +462,9 @@ var _ = Describe("Webhooks", func() {
 					Name:      "l2vni-immutable",
 					Namespace: openperouter.Namespace,
 				},
-				Spec: v1alpha1.L2VNISpec{
-					VNI:          300,
-					VXLanPort:    4789,
+				Spec: &v1alpha1.L2VNISpec{
+					VNI:          ptr.To(int64(300)),
+					VXLanPort:    ptr.To(int32(4789)),
 					L2GatewayIPs: []string{"192.168.20.1/24"},
 				},
 			}
@@ -481,9 +481,9 @@ var _ = Describe("Webhooks", func() {
 					Name:      "l2vni-immutable",
 					Namespace: openperouter.Namespace,
 				},
-				Spec: v1alpha1.L2VNISpec{
-					VNI:          300,
-					VXLanPort:    4789,
+				Spec: &v1alpha1.L2VNISpec{
+					VNI:          ptr.To(int64(300)),
+					VXLanPort:    ptr.To(int32(4789)),
 					L2GatewayIPs: []string{"192.168.10.1/24", "2001:db8::1/64"},
 				},
 			}
@@ -500,9 +500,9 @@ var _ = Describe("Webhooks", func() {
 					Name:      "l2vni-immutable",
 					Namespace: openperouter.Namespace,
 				},
-				Spec: v1alpha1.L2VNISpec{
-					VNI:          300,
-					VXLanPort:    4789,
+				Spec: &v1alpha1.L2VNISpec{
+					VNI:          ptr.To(int64(300)),
+					VXLanPort:    ptr.To(int32(4789)),
 					L2GatewayIPs: []string{},
 				},
 			}
@@ -522,14 +522,14 @@ var _ = Describe("Webhooks", func() {
 					Namespace: openperouter.Namespace,
 				},
 				Spec: v1alpha1.L3VNISpec{
-					VRF:       "vrf-immutable",
-					VNI:       400,
-					VXLanPort: 4789,
+					VRF:       ptr.To("vrf-immutable"),
+					VNI:       ptr.To(int64(400)),
+					VXLanPort: ptr.To(int32(4789)),
 					HostSession: &v1alpha1.HostSession{
 						ASN:     65000,
-						HostASN: 65001,
+						HostASN: ptr.To(int64(65001)),
 						LocalCIDR: v1alpha1.LocalCIDRConfig{
-							IPv4: "10.0.0.0/24",
+							IPv4: ptr.To("10.0.0.0/24"),
 						},
 					},
 				},
@@ -548,14 +548,14 @@ var _ = Describe("Webhooks", func() {
 					Namespace: openperouter.Namespace,
 				},
 				Spec: v1alpha1.L3VNISpec{
-					VRF:       "vrf-immutable",
-					VNI:       400,
-					VXLanPort: 4789,
+					VRF:       ptr.To("vrf-immutable"),
+					VNI:       ptr.To(int64(400)),
+					VXLanPort: ptr.To(int32(4789)),
 					HostSession: &v1alpha1.HostSession{
 						ASN:     65000,
-						HostASN: 65001,
+						HostASN: ptr.To(int64(65001)),
 						LocalCIDR: v1alpha1.LocalCIDRConfig{
-							IPv4: "10.0.1.0/24",
+							IPv4: ptr.To("10.0.1.0/24"),
 						},
 					},
 				},
@@ -585,7 +585,7 @@ var _ = Describe("Webhooks", func() {
 					ASN:  65000,
 					Nics: []string{"nic1", "nic2"},
 					EVPN: &v1alpha1.EVPNConfig{
-						VTEPCIDR: "192.168.1.0/24",
+						VTEPCIDR: ptr.To("192.168.1.0/24"),
 					},
 				},
 			}, "can only have one nic"),
@@ -598,7 +598,7 @@ var _ = Describe("Webhooks", func() {
 					ASN:  65000,
 					Nics: []string{"nic1"},
 					EVPN: &v1alpha1.EVPNConfig{
-						VTEPCIDR: "notacidr",
+						VTEPCIDR: ptr.To("notacidr"),
 					},
 				},
 			}, "invalid vtep CIDR"),
@@ -616,7 +616,7 @@ var _ = Describe("Webhooks", func() {
 					ASN:  65000,
 					Nics: []string{"nic1"},
 					EVPN: &v1alpha1.EVPNConfig{
-						VTEPCIDR: "192.168.1.0/24",
+						VTEPCIDR: ptr.To("192.168.1.0/24"),
 					},
 				},
 			}
@@ -645,7 +645,7 @@ var _ = Describe("Webhooks", func() {
 							ASN:  65001,
 							Nics: []string{"nic2"},
 							EVPN: &v1alpha1.EVPNConfig{
-								VTEPCIDR: "192.168.2.0/24",
+								VTEPCIDR: ptr.To("192.168.2.0/24"),
 							},
 						},
 					},
@@ -663,7 +663,7 @@ var _ = Describe("Webhooks", func() {
 							ASN:  65000,
 							Nics: []string{"nic1"},
 							EVPN: &v1alpha1.EVPNConfig{
-								VTEPCIDR: "notacidr",
+								VTEPCIDR: ptr.To("notacidr"),
 							},
 						},
 					},
@@ -684,9 +684,9 @@ var _ = Describe("Webhooks", func() {
 					HostSession: v1alpha1.HostSession{
 						ASN: 65010,
 						LocalCIDR: v1alpha1.LocalCIDRConfig{
-							IPv4: "10.10.0.0/24",
+							IPv4: ptr.To("10.10.0.0/24"),
 						},
-						HostASN: 65011,
+						HostASN: ptr.To(int64(65011)),
 					},
 				},
 			}
@@ -706,9 +706,9 @@ var _ = Describe("Webhooks", func() {
 					HostSession: v1alpha1.HostSession{
 						ASN: 65020,
 						LocalCIDR: v1alpha1.LocalCIDRConfig{
-							IPv4: "10.20.0.0/24",
+							IPv4: ptr.To("10.20.0.0/24"),
 						},
-						HostASN: 65021,
+						HostASN: ptr.To(int64(65021)),
 					},
 				},
 			}
@@ -734,9 +734,9 @@ var _ = Describe("Webhooks", func() {
 					HostSession: v1alpha1.HostSession{
 						ASN: 65030,
 						LocalCIDR: v1alpha1.LocalCIDRConfig{
-							IPv4: "invalid-cidr",
+							IPv4: ptr.To("invalid-cidr"),
 						},
-						HostASN: 65031,
+						HostASN: ptr.To(int64(65031)),
 					},
 				},
 			}, "invalid local CIDR"),
@@ -754,9 +754,9 @@ var _ = Describe("Webhooks", func() {
 					HostSession: v1alpha1.HostSession{
 						ASN: 65050,
 						LocalCIDR: v1alpha1.LocalCIDRConfig{
-							IPv4: "10.50.0.0/24",
+							IPv4: ptr.To("10.50.0.0/24"),
 						},
-						HostASN: 65051,
+						HostASN: ptr.To(int64(65051)),
 					},
 				},
 			}
@@ -777,9 +777,9 @@ var _ = Describe("Webhooks", func() {
 					HostSession: v1alpha1.HostSession{
 						ASN: 65050,
 						LocalCIDR: v1alpha1.LocalCIDRConfig{
-							IPv4: "10.60.0.0/24", // Different LocalCIDR
+							IPv4: ptr.To("10.60.0.0/24"), // Different LocalCIDR
 						},
-						HostASN: 65051,
+						HostASN: ptr.To(int64(65051)),
 					},
 				},
 			}
@@ -799,16 +799,16 @@ var _ = Describe("Webhooks", func() {
 					Namespace: openperouter.Namespace,
 				},
 				Spec: v1alpha1.L3VNISpec{
-					VRF: "vrf-overlap",
+					VRF: ptr.To("vrf-overlap"),
 					HostSession: &v1alpha1.HostSession{
 						ASN: 65070,
 						LocalCIDR: v1alpha1.LocalCIDRConfig{
-							IPv4: "10.70.0.0/24",
+							IPv4: ptr.To("10.70.0.0/24"),
 						},
-						HostASN: 65071,
+						HostASN: ptr.To(int64(65071)),
 					},
-					VNI:       500,
-					VXLanPort: 4789,
+					VNI:       ptr.To(int64(500)),
+					VXLanPort: ptr.To(int32(4789)),
 				},
 			}
 			By("creating an L3VNI with a specific LocalCIDR")
@@ -828,9 +828,9 @@ var _ = Describe("Webhooks", func() {
 					HostSession: v1alpha1.HostSession{
 						ASN: 65080,
 						LocalCIDR: v1alpha1.LocalCIDRConfig{
-							IPv4: "10.70.0.0/24", // Same CIDR as L3VNI
+							IPv4: ptr.To("10.70.0.0/24"), // Same CIDR as L3VNI
 						},
-						HostASN: 65081,
+						HostASN: ptr.To(int64(65081)),
 					},
 				},
 			}

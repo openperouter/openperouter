@@ -9,6 +9,7 @@ import (
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/openperouter/openperouter/internal/ipam"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -41,7 +42,8 @@ func APItoHostConfig(nodeIndex int, targetNS string, underlayFromMultus bool, ap
 	}
 
 	if len(apiConfig.L3Passthrough) == 1 {
-		vethIPs, err := ipam.VethIPsFromPool(apiConfig.L3Passthrough[0].Spec.HostSession.LocalCIDR.IPv4, apiConfig.L3Passthrough[0].Spec.HostSession.LocalCIDR.IPv6, nodeIndex)
+		ipv4CIDR, ipv6CIDR := localCIDRStrings(apiConfig.L3Passthrough[0].Spec.HostSession.LocalCIDR)
+		vethIPs, err := ipam.VethIPsFromPool(ipv4CIDR, ipv6CIDR, nodeIndex)
 		if err != nil {
 			return res, fmt.Errorf("failed to get veth ips, cidr %v, nodeIndex %d", apiConfig.L3Passthrough[0].Spec.HostSession.LocalCIDR, nodeIndex)
 		}
@@ -68,10 +70,10 @@ func APItoHostConfig(nodeIndex int, targetNS string, underlayFromMultus bool, ap
 	}
 
 	res.Underlay.EVPN = &hostnetwork.UnderlayEVPNParams{}
-	if underlay.Spec.EVPN.VTEPCIDR != "" {
-		vtepIP, err := ipam.VTEPIp(underlay.Spec.EVPN.VTEPCIDR, nodeIndex)
+	if underlay.Spec.EVPN.VTEPCIDR != nil && *underlay.Spec.EVPN.VTEPCIDR != "" {
+		vtepIP, err := ipam.VTEPIp(*underlay.Spec.EVPN.VTEPCIDR, nodeIndex)
 		if err != nil {
-			return res, fmt.Errorf("failed to get vtep ip, cidr %s, nodeIndex %d: %w", underlay.Spec.EVPN.VTEPCIDR, nodeIndex, err)
+			return res, fmt.Errorf("failed to get vtep ip, cidr %s, nodeIndex %d: %w", *underlay.Spec.EVPN.VTEPCIDR, nodeIndex, err)
 		}
 		res.Underlay.EVPN.VtepIP = vtepIP.String()
 	}
@@ -79,12 +81,12 @@ func APItoHostConfig(nodeIndex int, targetNS string, underlayFromMultus bool, ap
 	for _, vni := range apiConfig.L3VNIs {
 		v := hostnetwork.L3VNIParams{
 			VNIParams: hostnetwork.VNIParams{
-				VRF:           vni.Spec.VRF,
+				VRF:           ptr.Deref(vni.Spec.VRF, ""),
 				TargetNS:      targetNS,
 				VTEPIP:        res.Underlay.EVPN.VtepIP,
-				VTEPInterface: underlay.Spec.EVPN.VTEPInterface,
-				VNI:           int(vni.Spec.VNI),
-				VXLanPort:     int(vni.Spec.VXLanPort),
+				VTEPInterface: ptr.Deref(underlay.Spec.EVPN.VTEPInterface, ""),
+				VNI:           int(ptr.Deref(vni.Spec.VNI, 0)),
+				VXLanPort:     int(ptr.Deref(vni.Spec.VXLanPort, 4789)),
 			},
 		}
 		if vni.Spec.HostSession == nil {
@@ -92,7 +94,8 @@ func APItoHostConfig(nodeIndex int, targetNS string, underlayFromMultus bool, ap
 			continue
 		}
 
-		vethIPs, err := ipam.VethIPsFromPool(vni.Spec.HostSession.LocalCIDR.IPv4, vni.Spec.HostSession.LocalCIDR.IPv6, nodeIndex)
+		ipv4CIDR, ipv6CIDR := localCIDRStrings(vni.Spec.HostSession.LocalCIDR)
+		vethIPs, err := ipam.VethIPsFromPool(ipv4CIDR, ipv6CIDR, nodeIndex)
 		if err != nil {
 			return res, fmt.Errorf("failed to get veth ips, cidr %v, nodeIndex %d", vni.Spec.HostSession.LocalCIDR, nodeIndex)
 		}
@@ -114,9 +117,9 @@ func APItoHostConfig(nodeIndex int, targetNS string, underlayFromMultus bool, ap
 				VRF:           l2vni.VRFName(),
 				TargetNS:      targetNS,
 				VTEPIP:        res.Underlay.EVPN.VtepIP,
-				VTEPInterface: underlay.Spec.EVPN.VTEPInterface,
-				VNI:           int(l2vni.Spec.VNI),
-				VXLanPort:     int(l2vni.Spec.VXLanPort),
+				VTEPInterface: ptr.Deref(underlay.Spec.EVPN.VTEPInterface, ""),
+				VNI:           int(ptr.Deref(l2vni.Spec.VNI, 0)),
+				VXLanPort:     int(ptr.Deref(l2vni.Spec.VXLanPort, 4789)),
 			},
 		}
 		if len(l2vni.Spec.L2GatewayIPs) > 0 {
@@ -142,17 +145,17 @@ func convertHostMaster(l2vni *v1alpha1.L2VNI) (*hostnetwork.HostMaster, error) {
 	case v1alpha1.LinuxBridge:
 		if l2vni.Spec.HostMaster.LinuxBridge != nil {
 			return &hostnetwork.HostMaster{
-				Name:       l2vni.Spec.HostMaster.LinuxBridge.Name,
+				Name:       ptr.Deref(l2vni.Spec.HostMaster.LinuxBridge.Name, ""),
 				Type:       l2vni.Spec.HostMaster.Type,
-				AutoCreate: l2vni.Spec.HostMaster.LinuxBridge.AutoCreate,
+				AutoCreate: ptr.Deref(l2vni.Spec.HostMaster.LinuxBridge.AutoCreate, false),
 			}, nil
 		}
 	case v1alpha1.OVSBridge:
 		if l2vni.Spec.HostMaster.OVSBridge != nil {
 			return &hostnetwork.HostMaster{
-				Name:       l2vni.Spec.HostMaster.OVSBridge.Name,
+				Name:       ptr.Deref(l2vni.Spec.HostMaster.OVSBridge.Name, ""),
 				Type:       l2vni.Spec.HostMaster.Type,
-				AutoCreate: l2vni.Spec.HostMaster.OVSBridge.AutoCreate,
+				AutoCreate: ptr.Deref(l2vni.Spec.HostMaster.OVSBridge.AutoCreate, false),
 			}, nil
 		}
 	default:

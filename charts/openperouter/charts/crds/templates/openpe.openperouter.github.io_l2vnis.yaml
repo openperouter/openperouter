@@ -39,27 +39,27 @@ spec:
           metadata:
             type: object
           spec:
-            description: L2VNISpec defines the desired state of VNI.
+            description: spec defines the desired state of L2VNI.
             properties:
               hostmaster:
                 description: |-
-                  HostMaster is the interface on the host the veth should be enslaved to.
+                  hostmaster is the interface on the host the veth should be enslaved to.
                   If not set, the host veth will not be enslaved to any interface and it must be
                   enslaved manually (or by some other means). This is useful if another controller
                   is leveraging the host interface for the VNI.
                 properties:
                   linuxBridge:
-                    description: LinuxBridge configuration. Must be set when Type
+                    description: linuxBridge configuration. Must be set when Type
                       is "linux-bridge".
                     properties:
                       autoCreate:
                         default: false
                         description: |-
-                          AutoCreate determines if the bridge should be created automatically.
+                          autoCreate determines if the bridge should be created automatically.
                           When true, the bridge is created with name br-hs-<VNI>.
                         type: boolean
                       name:
-                        description: Name of the Linux bridge interface.
+                        description: name of the Linux bridge interface.
                         maxLength: 15
                         pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
                         type: string
@@ -67,19 +67,19 @@ spec:
                     x-kubernetes-validations:
                     - message: either name must be set or autoCreate must be true,
                         but not both.
-                      rule: (self.?name.orValue("") == "") == self.autoCreate
+                      rule: (self.?name.orValue("") == "") == self.?autoCreate.orValue(false)
                   ovsBridge:
-                    description: OVSBridge configuration. Must be set when Type is
+                    description: ovsBridge configuration. Must be set when Type is
                       "ovs-bridge".
                     properties:
                       autoCreate:
                         default: false
                         description: |-
-                          AutoCreate determines if the OVS bridge should be created automatically.
+                          autoCreate determines if the OVS bridge should be created automatically.
                           When true, the bridge is created with name br-hs-<VNI>.
                         type: boolean
                       name:
-                        description: Name of the OVS bridge interface.
+                        description: name of the OVS bridge interface.
                         maxLength: 15
                         pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
                         type: string
@@ -87,9 +87,9 @@ spec:
                     x-kubernetes-validations:
                     - message: either name must be set or autoCreate must be true,
                         but not both.
-                      rule: (self.?name.orValue("") == "") == self.autoCreate
+                      rule: (self.?name.orValue("") == "") == self.?autoCreate.orValue(false)
                   type:
-                    description: 'Type of the host interface. Supported values: "linux-bridge",
+                    description: 'type of the host interface. Supported values: "linux-bridge",
                       "ovs-bridge".'
                     enum:
                     - linux-bridge
@@ -105,7 +105,7 @@ spec:
                     || (self.type == 'ovs-bridge' && has(self.ovsBridge) && !has(self.linuxBridge))
               l2gatewayips:
                 description: |-
-                  L2GatewayIPs is a list of IP addresses in CIDR notation to be used for the L2 gateway. When this is set, the
+                  l2gatewayips is a list of IP addresses in CIDR notation to be used for the L2 gateway. When this is set, the
                   bridge the veths are enslaved to will be configured with these IP addresses, effectively
                   acting as a distributed gateway for the VNI. This allows for dual-stack (IPv4 and IPv6) support.
                   Maximum of 2 addresses are allowed. If 2 addresses are provided, one must be IPv4 and one must be IPv6.
@@ -113,12 +113,13 @@ spec:
                   type: string
                 maxItems: 2
                 type: array
+                x-kubernetes-list-type: atomic
                 x-kubernetes-validations:
                 - message: L2GatewayIPs cannot be changed
                   rule: self == oldSelf
               nodeSelector:
                 description: |-
-                  NodeSelector specifies which nodes this L2VNI applies to.
+                  nodeSelector specifies which nodes this L2VNI applies to.
                   If empty or not specified, applies to all nodes.
                   Multiple L2VNIs can match the same node.
                 properties:
@@ -166,29 +167,29 @@ spec:
                 type: object
                 x-kubernetes-map-type: atomic
               vni:
-                description: VNI is the VXLan VNI to be used
-                format: int32
+                description: vni is the VXLan VNI to be used
+                format: int64
                 maximum: 4294967295
                 minimum: 0
                 type: integer
               vrf:
                 description: |-
-                  VRF is the name of the linux VRF to be used inside the PERouter namespace.
+                  vrf is the name of the linux VRF to be used inside the PERouter namespace.
                   The field is optional, if not set it the name of the VNI instance will be used.
                 maxLength: 15
                 pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
                 type: string
               vxlanport:
                 default: 4789
-                description: VXLanPort is the port to be used for VXLan encapsulation.
+                description: vxlanport is the port to be used for VXLan encapsulation.
                 format: int32
                 type: integer
+            required:
+            - vni
             type: object
           status:
-            description: VNIStatus defines the observed state of VNI.
+            description: status defines the observed state of L2VNI.
             type: object
-        required:
-        - metadata
         type: object
     served: true
     storage: true

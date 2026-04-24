@@ -34,30 +34,30 @@ const (
 
 // OpenPERouterSpec defines the desired state of OpenPERouter
 type OpenPERouterSpec struct {
-	// Define the verbosity of the controller and the router logging.
+	// logLevel defines the verbosity of the controller and the router logging.
 	// Allowed values are: all, debug, info, warn, error, none. (default: info)
 	// +optional
 	// +kubebuilder:validation:Enum=all;debug;info;warn;error;none
-	LogLevel LogLevel `json:"logLevel,omitempty"`
-	// MultusNetworkAnnotation specifies the Multus network annotation to be added to the router pod.
+	LogLevel *LogLevel `json:"logLevel,omitempty"`
+	// multusNetworkAnnotation specifies the Multus network annotation to be added to the router pod.
 	// +optional
-	MultusNetworkAnnotation string `json:"multusNetworkAnnotation,omitempty"`
-	// RunOnMaster determines if all pods (router, controller, and nodemarker) will run on master/control-plane nodes. (default: true)
+	MultusNetworkAnnotation *string `json:"multusNetworkAnnotation,omitempty"`
+	// runOnMaster determines if all pods (router, controller, and nodemarker) will run on master/control-plane nodes. (default: true)
 	// +optional
-	// +kubebuilder:default:=true
-	RunOnMaster bool `json:"runOnMaster,omitempty"`
-	// OVSSocketPath specifies the OVS database socket path. Defaults to standard OVS location if not specified.
+	// +default=true
+	RunOnMaster *bool `json:"runOnMaster,omitempty"`
+	// ovsSocketPath specifies the OVS database socket path. Defaults to standard OVS location if not specified.
 	// +optional
-	OVSSocketPath string `json:"ovsSocketPath,omitempty"`
-	// OVSRunDir specifies the OVS run directory to mount. This is the directory containing the OVS socket. (default: /var/run/openvswitch)
+	OVSSocketPath *string `json:"ovsSocketPath,omitempty"`
+	// ovsRunDir specifies the OVS run directory to mount. This is the directory containing the OVS socket. (default: /var/run/openvswitch)
 	// +optional
-	OVSRunDir string `json:"ovsRunDir,omitempty"`
-	// HealthProbePort specifies the port for the controller's health and readiness probes. (default: 9081)
+	OVSRunDir *string `json:"ovsRunDir,omitempty"`
+	// healthProbePort specifies the port for the controller's health and readiness probes. (default: 9081)
 	// +optional
-	// +kubebuilder:default:=9081
+	// +default=9081
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=65535
-	HealthProbePort int `json:"healthProbePort,omitempty"`
+	HealthProbePort *int32 `json:"healthProbePort,omitempty"`
 }
 
 // OpenPERouterStatus defines the observed state of OpenPERouter
@@ -68,11 +68,17 @@ type OpenPERouterStatus struct{}
 
 // OpenPERouter is the Schema for the openperouters API
 type OpenPERouter struct {
-	metav1.TypeMeta   `json:",inline"`
+	metav1.TypeMeta `json:",inline"`
+	// metadata is the standard object metadata.
+	// +optional
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   OpenPERouterSpec   `json:"spec,omitempty"`
-	Status OpenPERouterStatus `json:"status,omitempty"`
+	// spec defines the desired state of OpenPERouter.
+	// +optional
+	Spec *OpenPERouterSpec `json:"spec,omitempty"`
+	// status defines the observed state of OpenPERouter.
+	// +optional
+	Status *OpenPERouterStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true

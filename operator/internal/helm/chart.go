@@ -26,6 +26,7 @@ import (
 	"helm.sh/helm/v3/pkg/cli/values"
 	"helm.sh/helm/v3/pkg/getter"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/utils/ptr"
 )
 
 const (
@@ -98,8 +99,8 @@ func patchChartValues(envConfig envconfig.EnvConfig, crdConfig *operatorapi.Open
 	}
 	openperouterValues := map[string]any{
 		"logLevel":                logLevelValue(crdConfig),
-		"multusNetworkAnnotation": crdConfig.Spec.MultusNetworkAnnotation,
-		"runOnMaster":             crdConfig.Spec.RunOnMaster,
+		"multusNetworkAnnotation": ptr.Deref(crdConfig.Spec.MultusNetworkAnnotation, ""),
+		"runOnMaster":             ptr.Deref(crdConfig.Spec.RunOnMaster, true),
 		"image": map[string]any{
 			"repository": envConfig.ControllerImage.Repo,
 			"tag":        envConfig.ControllerImage.Tag,
@@ -125,15 +126,15 @@ func patchChartValues(envConfig envconfig.EnvConfig, crdConfig *operatorapi.Open
 		"cri": cri,
 	}
 
-	if crdConfig.Spec.OVSSocketPath != "" {
-		openperouterValues["ovsSocketPath"] = crdConfig.Spec.OVSSocketPath
+	if crdConfig.Spec.OVSSocketPath != nil && *crdConfig.Spec.OVSSocketPath != "" {
+		openperouterValues["ovsSocketPath"] = *crdConfig.Spec.OVSSocketPath
 	}
-	if crdConfig.Spec.OVSRunDir != "" {
-		openperouterValues["ovsRunDir"] = crdConfig.Spec.OVSRunDir
+	if crdConfig.Spec.OVSRunDir != nil && *crdConfig.Spec.OVSRunDir != "" {
+		openperouterValues["ovsRunDir"] = *crdConfig.Spec.OVSRunDir
 	}
-	if crdConfig.Spec.HealthProbePort != 0 {
+	if crdConfig.Spec.HealthProbePort != nil && *crdConfig.Spec.HealthProbePort != 0 {
 		openperouterValues["controller"] = map[string]any{
-			"healthProbePort": crdConfig.Spec.HealthProbePort,
+			"healthProbePort": *crdConfig.Spec.HealthProbePort,
 		}
 	}
 
