@@ -111,7 +111,7 @@ func (o Updater) Update(r Resources) error {
 				toChange.Spec = *old.Spec.DeepCopy()
 			case *v1alpha1.L2VNI:
 				old := oldValues[i].(*v1alpha1.L2VNI)
-				toChange.Spec = *old.Spec.DeepCopy()
+				toChange.Spec = old.Spec.DeepCopy()
 			case *v1alpha1.L3Passthrough:
 				old := oldValues[i].(*v1alpha1.L3Passthrough)
 				toChange.Spec = *old.Spec.DeepCopy()

@@ -3,6 +3,7 @@
 package systemd_static
 
 import (
+	"k8s.io/utils/ptr"
 	"fmt"
 	"time"
 
@@ -31,10 +32,10 @@ func checkRouteFromLeaf(leaf infra.Leaf, routers openperouter.Routers, vni v1alp
 				return fmt.Errorf("failed to get EVPN info from %s: %w", exec.Name(), err)
 			}
 			for _, prefix := range prefixes {
-				if check == mustContain && !evpn.ContainsType5RouteForVNI(prefix, leaf.VTEPIP, int(vni.Spec.VNI)) {
+				if check == mustContain && !evpn.ContainsType5RouteForVNI(prefix, leaf.VTEPIP, int(ptr.Deref(vni.Spec.VNI, 0))) {
 					return fmt.Errorf("type5 route for %s - %s not found in %v in router %s", prefix, leaf.VTEPIP, evpn, exec.Name())
 				}
-				if check == shouldNotContain && evpn.ContainsType5RouteForVNI(prefix, leaf.VTEPIP, int(vni.Spec.VNI)) {
+				if check == shouldNotContain && evpn.ContainsType5RouteForVNI(prefix, leaf.VTEPIP, int(ptr.Deref(vni.Spec.VNI, 0))) {
 					return fmt.Errorf("type5 route for %s - %s found in %v in router %s", prefix, leaf.VTEPIP, evpn, exec.Name())
 				}
 			}

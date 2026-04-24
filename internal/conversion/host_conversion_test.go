@@ -8,6 +8,7 @@ import (
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
+	"k8s.io/utils/ptr"
 )
 
 func TestAPItoHostConfig(t *testing.T) {
@@ -45,8 +46,8 @@ func TestAPItoHostConfig(t *testing.T) {
 			nodeIndex: 0,
 			targetNS:  "namespace",
 			underlays: []v1alpha1.Underlay{
-				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth0"}, EVPN: &v1alpha1.EVPNConfig{VTEPCIDR: "10.0.0.0/24"}}},
-				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth1"}, EVPN: &v1alpha1.EVPNConfig{VTEPCIDR: "10.0.1.0/24"}}},
+				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth0"}, EVPN: &v1alpha1.EVPNConfig{VTEPCIDR: ptr.To("10.0.0.0/24")}}},
+				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth1"}, EVPN: &v1alpha1.EVPNConfig{VTEPCIDR: ptr.To("10.0.1.0/24")}}},
 			},
 			vnis:            []v1alpha1.L3VNI{},
 			l2vnis:          []v1alpha1.L2VNI{},
@@ -62,10 +63,10 @@ func TestAPItoHostConfig(t *testing.T) {
 			nodeIndex: 0,
 			targetNS:  "namespace",
 			underlays: []v1alpha1.Underlay{
-				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth0"}, EVPN: &v1alpha1.EVPNConfig{VTEPCIDR: "10.0.0.0/24"}}},
+				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth0"}, EVPN: &v1alpha1.EVPNConfig{VTEPCIDR: ptr.To("10.0.0.0/24")}}},
 			},
 			vnis: []v1alpha1.L3VNI{
-				{Spec: v1alpha1.L3VNISpec{VRF: "red", HostSession: &v1alpha1.HostSession{LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "10.1.0.0/24"}}, VNI: 100, VXLanPort: 4789}},
+				{Spec: v1alpha1.L3VNISpec{VRF: ptr.To("red"), HostSession: &v1alpha1.HostSession{LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: ptr.To("10.1.0.0/24")}}, VNI: ptr.To(int64(100)), VXLanPort: ptr.To(int32(4789))}},
 			},
 			l2vnis:        []v1alpha1.L2VNI{},
 			l3Passthrough: []v1alpha1.L3Passthrough{},
@@ -100,10 +101,10 @@ func TestAPItoHostConfig(t *testing.T) {
 			nodeIndex: 0,
 			targetNS:  "namespace",
 			underlays: []v1alpha1.Underlay{
-				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth0"}, EVPN: &v1alpha1.EVPNConfig{VTEPCIDR: "10.0.0.0/24"}}},
+				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth0"}, EVPN: &v1alpha1.EVPNConfig{VTEPCIDR: ptr.To("10.0.0.0/24")}}},
 			},
 			vnis: []v1alpha1.L3VNI{
-				{Spec: v1alpha1.L3VNISpec{VRF: "red", HostSession: &v1alpha1.HostSession{LocalCIDR: v1alpha1.LocalCIDRConfig{IPv6: "2001:db8::/64"}}, VNI: 100, VXLanPort: 4789}},
+				{Spec: v1alpha1.L3VNISpec{VRF: ptr.To("red"), HostSession: &v1alpha1.HostSession{LocalCIDR: v1alpha1.LocalCIDRConfig{IPv6: ptr.To("2001:db8::/64")}}, VNI: ptr.To(int64(100)), VXLanPort: ptr.To(int32(4789))}},
 			},
 			l2vnis:        []v1alpha1.L2VNI{},
 			l3Passthrough: []v1alpha1.L3Passthrough{},
@@ -138,10 +139,10 @@ func TestAPItoHostConfig(t *testing.T) {
 			nodeIndex: 0,
 			targetNS:  "namespace",
 			underlays: []v1alpha1.Underlay{
-				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth0"}, EVPN: &v1alpha1.EVPNConfig{VTEPCIDR: "10.0.0.0/24"}}},
+				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth0"}, EVPN: &v1alpha1.EVPNConfig{VTEPCIDR: ptr.To("10.0.0.0/24")}}},
 			},
 			vnis: []v1alpha1.L3VNI{
-				{Spec: v1alpha1.L3VNISpec{VRF: "red", HostSession: &v1alpha1.HostSession{LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "10.1.0.0/24", IPv6: "2001:db8::/64"}}, VNI: 100, VXLanPort: 4789}},
+				{Spec: v1alpha1.L3VNISpec{VRF: ptr.To("red"), HostSession: &v1alpha1.HostSession{LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: ptr.To("10.1.0.0/24"), IPv6: ptr.To("2001:db8::/64")}}, VNI: ptr.To(int64(100)), VXLanPort: ptr.To(int32(4789))}},
 			},
 			l2vnis:        []v1alpha1.L2VNI{},
 			l3Passthrough: []v1alpha1.L3Passthrough{},
@@ -178,11 +179,11 @@ func TestAPItoHostConfig(t *testing.T) {
 			nodeIndex: 0,
 			targetNS:  "namespace",
 			underlays: []v1alpha1.Underlay{
-				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth0"}, EVPN: &v1alpha1.EVPNConfig{VTEPCIDR: "10.0.0.0/24"}}},
+				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth0"}, EVPN: &v1alpha1.EVPNConfig{VTEPCIDR: ptr.To("10.0.0.0/24")}}},
 			},
 			vnis: []v1alpha1.L3VNI{},
 			l2vnis: []v1alpha1.L2VNI{
-				{Spec: v1alpha1.L2VNISpec{VNI: 200, VXLanPort: 4789}},
+				{Spec: &v1alpha1.L2VNISpec{VNI: ptr.To(int64(200)), VXLanPort: ptr.To(int32(4789))}},
 			},
 			l3Passthrough: []v1alpha1.L3Passthrough{},
 			wantUnderlay: hostnetwork.UnderlayParams{
@@ -213,11 +214,11 @@ func TestAPItoHostConfig(t *testing.T) {
 			nodeIndex: 0,
 			targetNS:  "namespace",
 			underlays: []v1alpha1.Underlay{
-				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth0"}, EVPN: &v1alpha1.EVPNConfig{VTEPCIDR: "10.0.0.0/24"}}},
+				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth0"}, EVPN: &v1alpha1.EVPNConfig{VTEPCIDR: ptr.To("10.0.0.0/24")}}},
 			},
 			vnis: []v1alpha1.L3VNI{},
 			l2vnis: []v1alpha1.L2VNI{
-				{Spec: v1alpha1.L2VNISpec{VNI: 201, VXLanPort: 4789, HostMaster: &v1alpha1.HostMaster{Type: "linux-bridge", LinuxBridge: &v1alpha1.LinuxBridgeConfig{Name: "br0"}}, L2GatewayIPs: []string{"192.168.100.1/24"}}},
+				{Spec: &v1alpha1.L2VNISpec{VNI: ptr.To(int64(201)), VXLanPort: ptr.To(int32(4789)), HostMaster: &v1alpha1.HostMaster{Type: "linux-bridge", LinuxBridge: &v1alpha1.LinuxBridgeConfig{Name: ptr.To("br0")}}, L2GatewayIPs: []string{"192.168.100.1/24"}}},
 			},
 			l3Passthrough: []v1alpha1.L3Passthrough{},
 			wantUnderlay: hostnetwork.UnderlayParams{
@@ -248,10 +249,10 @@ func TestAPItoHostConfig(t *testing.T) {
 			nodeIndex: 0,
 			targetNS:  "namespace",
 			underlays: []v1alpha1.Underlay{
-				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth0"}, EVPN: &v1alpha1.EVPNConfig{VTEPCIDR: "10.0.0.0/24"}}},
+				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth0"}, EVPN: &v1alpha1.EVPNConfig{VTEPCIDR: ptr.To("10.0.0.0/24")}}},
 			},
 			vnis: []v1alpha1.L3VNI{
-				{Spec: v1alpha1.L3VNISpec{VRF: "red", VNI: 100, VXLanPort: 4789}},
+				{Spec: v1alpha1.L3VNISpec{VRF: ptr.To("red"), VNI: ptr.To(int64(100)), VXLanPort: ptr.To(int32(4789))}},
 			},
 			l2vnis:        []v1alpha1.L2VNI{},
 			l3Passthrough: []v1alpha1.L3Passthrough{},
@@ -312,8 +313,8 @@ func TestAPItoHostConfig(t *testing.T) {
 						HostSession: v1alpha1.HostSession{
 							ASN: 65000,
 							LocalCIDR: v1alpha1.LocalCIDRConfig{
-								IPv4: "192.168.2.0/24",
-								IPv6: "2001:db8::/64",
+								IPv4: ptr.To("192.168.2.0/24"),
+								IPv6: ptr.To("2001:db8::/64"),
 							},
 						},
 					},
@@ -342,7 +343,7 @@ func TestAPItoHostConfig(t *testing.T) {
 			targetNS:           "namespace",
 			underlayFromMultus: true,
 			underlays: []v1alpha1.Underlay{
-				{Spec: v1alpha1.UnderlaySpec{Nics: []string{}, EVPN: &v1alpha1.EVPNConfig{VTEPCIDR: "10.0.0.0/24"}}},
+				{Spec: v1alpha1.UnderlaySpec{Nics: []string{}, EVPN: &v1alpha1.EVPNConfig{VTEPCIDR: ptr.To("10.0.0.0/24")}}},
 			},
 			vnis:          []v1alpha1.L3VNI{},
 			l2vnis:        []v1alpha1.L2VNI{},

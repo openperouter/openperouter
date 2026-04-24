@@ -514,7 +514,7 @@ func TestBFDProfile(t *testing.T) {
 		BFDProfiles: []BFDProfile{
 			{
 				Name:            "foo",
-				ReceiveInterval: ptr.To(uint32(43)),
+				ReceiveInterval: ptr.To(int32(43)),
 			},
 		},
 	}
@@ -818,7 +818,7 @@ func testUpdater(configFile string) func(context.Context, string) error {
 	}
 }
 
-func mustNewPeerASNFromNumber(number uint32) PeerASN {
+func mustNewPeerASNFromNumber(number int64) PeerASN {
 	if number == 0 {
 		panic("number must be > 0")
 	}

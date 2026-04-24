@@ -3,6 +3,7 @@
 package infra
 
 import (
+	"k8s.io/utils/ptr"
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -18,12 +19,12 @@ var Underlay = v1alpha1.Underlay{
 		Nics: []string{"toswitch"},
 		Neighbors: []v1alpha1.Neighbor{
 			{
-				ASN:     64512,
-				Address: "192.168.11.2",
+				ASN:     ptr.To(int64(64512)),
+				Address: ptr.To("192.168.11.2"),
 			},
 		},
 		EVPN: &v1alpha1.EVPNConfig{
-			VTEPCIDR: "100.65.0.0/24",
+			VTEPCIDR: ptr.To("100.65.0.0/24"),
 		},
 	},
 }

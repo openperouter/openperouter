@@ -35,7 +35,7 @@ type Config struct {
 }
 
 type UnderlayConfig struct {
-	MyASN     uint32
+	MyASN     int64
 	RouterID  string
 	Neighbors []NeighborConfig
 	EVPN      *UnderlayEvpn
@@ -53,7 +53,7 @@ type PassthroughConfig struct {
 }
 
 type L3VNIConfig struct {
-	ASN             uint32
+	ASN             int64
 	ToAdvertiseIPv4 []string
 	ToAdvertiseIPv6 []string
 	LocalNeighbor   *NeighborConfig
@@ -66,20 +66,20 @@ type L3VNIConfig struct {
 
 type BFDProfile struct {
 	Name             string
-	ReceiveInterval  *uint32
-	TransmitInterval *uint32
-	DetectMultiplier *uint32
-	EchoInterval     *uint32
+	ReceiveInterval  *int32
+	TransmitInterval *int32
+	DetectMultiplier *int32
+	EchoInterval     *int32
 	EchoMode         bool
 	PassiveMode      bool
-	MinimumTTL       *uint32
+	MinimumTTL       *int32
 }
 
 type NeighborConfig struct {
 	Name          string
 	ASN           PeerASN
 	Addr          string
-	Port          *uint16
+	Port          *int32
 	HoldTime      *uint64
 	KeepaliveTime *uint64
 	ConnectTime   *uint64
@@ -120,14 +120,14 @@ func templateConfig(data any) (string, error) {
 				}
 				return dict, nil
 			},
-			"mustDisableConnectedCheck": func(ipFamily ipfamily.Family, myASN uint32, peerASN PeerASN, eBGPMultiHop bool) bool {
+			"mustDisableConnectedCheck": func(ipFamily ipfamily.Family, myASN int64, peerASN PeerASN, eBGPMultiHop bool) bool {
 				// return true only for IPv6 eBGP sessions
 				if ipFamily == "ipv6" && !eBGPMultiHop && peerASN.IsExternalTo(myASN) {
 					return true
 				}
 				return false
 			},
-			"isEBGP": func(myASN uint32, peerASN PeerASN) bool {
+			"isEBGP": func(myASN int64, peerASN PeerASN) bool {
 				return peerASN.IsExternalTo(myASN)
 			},
 			"activateNeighborFor": func(ipFamily string, neighbourFamily ipfamily.Family) bool {

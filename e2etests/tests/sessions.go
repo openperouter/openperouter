@@ -95,15 +95,15 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 				Namespace: openperouter.Namespace,
 			},
 			Spec: v1alpha1.L3VNISpec{
-				VRF: "red",
+				VRF: ptr.To("red"),
 				HostSession: &v1alpha1.HostSession{
 					ASN:     64514,
-					HostASN: 64515,
+					HostASN: ptr.To(int64(64515)),
 					LocalCIDR: v1alpha1.LocalCIDRConfig{
-						IPv4: "192.169.10.0/24",
+						IPv4: ptr.To("192.169.10.0/24"),
 					},
 				},
-				VNI: 100,
+				VNI: ptr.To(int64(100)),
 			},
 		}
 		BeforeEach(func() {
@@ -140,15 +140,15 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 				Namespace: openperouter.Namespace,
 			},
 			Spec: v1alpha1.L3VNISpec{
-				VRF: "red",
+				VRF: ptr.To("red"),
 				HostSession: &v1alpha1.HostSession{
 					ASN:      64514,
-					HostType: "external",
+					HostType: ptr.To("external"),
 					LocalCIDR: v1alpha1.LocalCIDRConfig{
-						IPv4: "192.169.10.0/24",
+						IPv4: ptr.To("192.169.10.0/24"),
 					},
 				},
-				VNI: 100,
+				VNI: ptr.To(int64(100)),
 			},
 		}
 		BeforeEach(func() {
@@ -189,15 +189,15 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 				Namespace: openperouter.Namespace,
 			},
 			Spec: v1alpha1.L3VNISpec{
-				VRF: "red",
+				VRF: ptr.To("red"),
 				HostSession: &v1alpha1.HostSession{
 					ASN:      64514,
-					HostType: "internal",
+					HostType: ptr.To("internal"),
 					LocalCIDR: v1alpha1.LocalCIDRConfig{
-						IPv4: "192.169.10.0/24",
+						IPv4: ptr.To("192.169.10.0/24"),
 					},
 				},
-				VNI: 100,
+				VNI: ptr.To(int64(100)),
 			},
 		}
 		BeforeEach(func() {
@@ -238,15 +238,15 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 				Namespace: openperouter.Namespace,
 			},
 			Spec: v1alpha1.L3VNISpec{
-				VRF: "red",
+				VRF: ptr.To("red"),
 				HostSession: &v1alpha1.HostSession{
-					ASN:     64514,
-					HostASN: 64514,
+					ASN:      64514,
+					HostType: ptr.To("internal"),
 					LocalCIDR: v1alpha1.LocalCIDRConfig{
-						IPv4: "192.169.10.0/24",
+						IPv4: ptr.To("192.169.10.0/24"),
 					},
 				},
-				VNI: 100,
+				VNI: ptr.To(int64(100)),
 			},
 		}
 		BeforeEach(func() {
@@ -288,14 +288,14 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 					Namespace: openperouter.Namespace,
 				},
 				Spec: v1alpha1.L3VNISpec{
-					VRF: "red",
+					VRF: ptr.To("red"),
 					HostSession: &v1alpha1.HostSession{
 						ASN: 64514,
 						LocalCIDR: v1alpha1.LocalCIDRConfig{
-							IPv4: "192.169.10.0/24",
+							IPv4: ptr.To("192.169.10.0/24"),
 						},
 					},
-					VNI: 100,
+					VNI: ptr.To(int64(100)),
 				},
 			}
 			err := Updater.Update(config.Resources{
@@ -315,16 +315,16 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 					Namespace: openperouter.Namespace,
 				},
 				Spec: v1alpha1.L3VNISpec{
-					VRF: "red",
+					VRF: ptr.To("red"),
 					HostSession: &v1alpha1.HostSession{
 						ASN:      64514,
-						HostASN:  100,
-						HostType: "internal",
+						HostASN:  ptr.To(int64(100)),
+						HostType: ptr.To("internal"),
 						LocalCIDR: v1alpha1.LocalCIDRConfig{
-							IPv4: "192.169.10.0/24",
+							IPv4: ptr.To("192.169.10.0/24"),
 						},
 					},
-					VNI: 100,
+					VNI: ptr.To(int64(100)),
 				},
 			}
 			err := Updater.Update(config.Resources{
@@ -345,9 +345,9 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 			Spec: v1alpha1.L3PassthroughSpec{
 				HostSession: v1alpha1.HostSession{
 					ASN:     64514,
-					HostASN: 64515,
+					HostASN: ptr.To(int64(64515)),
 					LocalCIDR: v1alpha1.LocalCIDRConfig{
-						IPv4: "192.169.10.0/24",
+						IPv4: ptr.To("192.169.10.0/24"),
 					},
 				},
 			},
@@ -388,9 +388,9 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 			Spec: v1alpha1.L3PassthroughSpec{
 				HostSession: v1alpha1.HostSession{
 					ASN:      64514,
-					HostType: "external",
+					HostType: ptr.To("external"),
 					LocalCIDR: v1alpha1.LocalCIDRConfig{
-						IPv4: "192.169.10.0/24",
+						IPv4: ptr.To("192.169.10.0/24"),
 					},
 				},
 			},
@@ -436,9 +436,9 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 			Spec: v1alpha1.L3PassthroughSpec{
 				HostSession: v1alpha1.HostSession{
 					ASN:      64514,
-					HostType: "internal",
+					HostType: ptr.To("internal"),
 					LocalCIDR: v1alpha1.LocalCIDRConfig{
-						IPv4: "192.169.10.0/24",
+						IPv4: ptr.To("192.169.10.0/24"),
 					},
 				},
 			},
@@ -484,9 +484,9 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 			Spec: v1alpha1.L3PassthroughSpec{
 				HostSession: v1alpha1.HostSession{
 					ASN:     64514,
-					HostASN: 64514,
+					HostASN: ptr.To(int64(64514)),
 					LocalCIDR: v1alpha1.LocalCIDRConfig{
-						IPv4: "192.169.10.0/24",
+						IPv4: ptr.To("192.169.10.0/24"),
 					},
 				},
 			},
@@ -594,8 +594,8 @@ var _ = Describe("Underlay external and internal configuration", Ordered, func()
 		resetLeafKindConfig(nodes)
 
 		underlay := *infra.Underlay.DeepCopy()
-		underlay.Spec.Neighbors[0].ASN = 0
-		underlay.Spec.Neighbors[0].Type = "external"
+		underlay.Spec.Neighbors[0].ASN = nil
+		underlay.Spec.Neighbors[0].Type = ptr.To("external")
 		err := Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{
 				underlay,
@@ -611,8 +611,8 @@ var _ = Describe("Underlay external and internal configuration", Ordered, func()
 
 		underlay := *infra.Underlay.DeepCopy()
 		underlay.Spec.ASN = 64512
-		underlay.Spec.Neighbors[0].ASN = 0
-		underlay.Spec.Neighbors[0].Type = "internal"
+		underlay.Spec.Neighbors[0].ASN = nil
+		underlay.Spec.Neighbors[0].Type = ptr.To("internal")
 		err := Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{
 				underlay,
@@ -627,7 +627,7 @@ var _ = Describe("Underlay external and internal configuration", Ordered, func()
 		ibgpForLeafKind(nodes)
 
 		underlay := *infra.Underlay.DeepCopy()
-		underlay.Spec.ASN = 64512
+		underlay.Spec.ASN = int64(64512)
 		err := Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{
 				underlay,
@@ -639,8 +639,8 @@ var _ = Describe("Underlay external and internal configuration", Ordered, func()
 
 	It("rejects resource when neither neighbor ASN nor Type are specified", func() {
 		underlay := *infra.Underlay.DeepCopy()
-		underlay.Spec.Neighbors[0].ASN = 0
-		underlay.Spec.Neighbors[0].Type = ""
+		underlay.Spec.Neighbors[0].ASN = nil
+		underlay.Spec.Neighbors[0].Type = nil
 		err := Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{
 				underlay,
@@ -651,8 +651,8 @@ var _ = Describe("Underlay external and internal configuration", Ordered, func()
 
 	It("rejects resource when both neighbor ASN and Type are specified", func() {
 		underlay := *infra.Underlay.DeepCopy()
-		underlay.Spec.Neighbors[0].ASN = 100
-		underlay.Spec.Neighbors[0].Type = "external"
+		underlay.Spec.Neighbors[0].ASN = ptr.To(int64(100))
+		underlay.Spec.Neighbors[0].Type = ptr.To("external")
 		err := Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{
 				underlay,
@@ -793,12 +793,12 @@ var _ = Describe("Underlay BFD Configuration", Ordered, func() {
 					ASN:  64514,
 					Nics: []string{"toswitch"},
 					EVPN: &v1alpha1.EVPNConfig{
-						VTEPCIDR: "100.65.0.0/24",
+						VTEPCIDR: ptr.To("100.65.0.0/24"),
 					},
 					Neighbors: []v1alpha1.Neighbor{
 						{
-							ASN:     64512,
-							Address: "192.168.11.2",
+							ASN:     ptr.To(int64(64512)),
+							Address: ptr.To("192.168.11.2"),
 							BFD:     &v1alpha1.BFDSettings{},
 						},
 					},
@@ -814,16 +814,16 @@ var _ = Describe("Underlay BFD Configuration", Ordered, func() {
 					ASN:  64514,
 					Nics: []string{"toswitch"},
 					EVPN: &v1alpha1.EVPNConfig{
-						VTEPCIDR: "100.65.0.0/24",
+						VTEPCIDR: ptr.To("100.65.0.0/24"),
 					},
 					Neighbors: []v1alpha1.Neighbor{
 						{
-							ASN:     64512,
-							Address: "192.168.11.2",
+							ASN:     ptr.To(int64(64512)),
+							Address: ptr.To("192.168.11.2"),
 							BFD: &v1alpha1.BFDSettings{
-								TransmitInterval: ptr.To(uint32(90)),
-								ReceiveInterval:  ptr.To(uint32(80)),
-								DetectMultiplier: ptr.To(uint32(5)),
+								TransmitInterval: ptr.To(int32(90)),
+								ReceiveInterval:  ptr.To(int32(80)),
+								DetectMultiplier: ptr.To(int32(5)),
 							},
 						},
 					},

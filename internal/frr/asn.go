@@ -11,7 +11,7 @@ type asnType int
 // PeerASN is the representation of a peer ASN. It can either be numeric, "external" or "internal".
 type PeerASN struct {
 	asType asnType
-	number uint32
+	number int64
 }
 
 const (
@@ -23,7 +23,7 @@ const (
 // NewPeerASN creates a PeerASN from the provided ASN number and type string.
 // If the provided number is larger than 0, it creates a numeric ASN.
 // Otherwise, it creates a type-based ASN with valid values "external", "internal" or "" (alias for "external").
-func NewPeerASN(number uint32, t string) (PeerASN, error) {
+func NewPeerASN(number int64, t string) (PeerASN, error) {
 	asType := typeNumber
 	if number > 0 {
 		return PeerASN{
@@ -46,7 +46,7 @@ func NewPeerASN(number uint32, t string) (PeerASN, error) {
 }
 
 // IsExternalTo returns true if PeerASN's type is "external" or if the provided ASN number differs from the peer's.
-func (pa PeerASN) IsExternalTo(a uint32) bool {
+func (pa PeerASN) IsExternalTo(a int64) bool {
 	if pa.asType == typeExternal {
 		return true
 	}
