@@ -207,7 +207,7 @@ func moveInterfaceToNamespace(ctx context.Context, intf string, ns netns.NsHandl
 		slog.DebugContext(ctx, "restoring addresses in namespace", "addresses", addresses)
 		for _, a := range addresses {
 			slog.DebugContext(ctx, "restoring address in namespace", "address", a, "flags", a.Flags)
-			IFA_F_NOPREFIXROUTE := 0x200 // remove no prefix route
+			IFA_F_NOPREFIXROUTE := 0x200 //nolint:revive // matches kernel define
 			a.Flags &= ^IFA_F_NOPREFIXROUTE
 			slog.DebugContext(ctx, "restoring address in namespace after no prefix", "address", a, "flags", a.Flags)
 			err := netlink.AddrAdd(nsLink, &a)

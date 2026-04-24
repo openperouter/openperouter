@@ -36,7 +36,7 @@ func (m mockCRI) ListPodSandbox(ctx context.Context, in *cri.ListPodSandboxReque
 }
 
 func TestNamespaceForPod(t *testing.T) {
-	validNamespaceJson, err := json.Marshal(PodSandboxStatusInfo{
+	validNamespaceJSON, err := json.Marshal(PodSandboxStatusInfo{
 		RuntimeSpec: &runtimespec.Spec{
 			Linux: &runtimespec.Linux{
 				Namespaces: []runtimespec.LinuxNamespace{
@@ -71,7 +71,7 @@ func TestNamespaceForPod(t *testing.T) {
 				},
 				podSandboxStatusRes: &cri.PodSandboxStatusResponse{
 					Info: map[string]string{
-						InfoKey: string(validNamespaceJson),
+						InfoKey: string(validNamespaceJSON),
 					},
 				},
 			},

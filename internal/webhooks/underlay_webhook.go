@@ -51,14 +51,15 @@ func (v *UnderlayValidator) Handle(ctx context.Context, req admission.Request) (
 		if err := v.decoder.DecodeRaw(req.OldObject, &underlay); err != nil {
 			return admission.Errored(http.StatusBadRequest, err)
 		}
-	} else {
+	}
+	if req.Operation != v1.Delete {
 		if err := v.decoder.Decode(req, &underlay); err != nil {
 			return admission.Errored(http.StatusBadRequest, err)
 		}
-		if req.OldObject.Size() > 0 {
-			if err := v.decoder.DecodeRaw(req.OldObject, &oldUnderlay); err != nil {
-				return admission.Errored(http.StatusBadRequest, err)
-			}
+	}
+	if req.Operation != v1.Delete && req.OldObject.Size() > 0 {
+		if err := v.decoder.DecodeRaw(req.OldObject, &oldUnderlay); err != nil {
+			return admission.Errored(http.StatusBadRequest, err)
 		}
 	}
 

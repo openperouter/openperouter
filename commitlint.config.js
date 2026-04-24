@@ -7,5 +7,9 @@ module.exports = {
        'body-max-line-length': [1, 'always', 72],
        // Ensure the header line doesn't end with a period.
        'header-full-stop': [2, 'never'],
+       // Keep subject lines short enough for git log and GitHub UI.
+       'header-max-length': [2, 'always', 72],
+       // Reject trivially short subjects like "fix" or "update".
+       'header-min-length': [2, 'always', 10],
     },
 };

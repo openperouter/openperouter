@@ -771,10 +771,8 @@ func testCompareFiles(t *testing.T, configFile, goldenFile string) {
 func testUpdateGoldenFile(t *testing.T, configFile, goldenFile string) {
 	t.Log("update golden file")
 
-	// Sleep to be sure the sessionManager has produced all configuration the test
-	// has triggered and no config is still waiting in the debouncer() local variables.
 	// No other conditions can be checked, so sleeping is our best option.
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond) //nolint:forbidigo // debouncer has no observable condition to poll
 
 	cmd := exec.Command("cp", "-a", configFile, goldenFile)
 	output, err := cmd.Output()

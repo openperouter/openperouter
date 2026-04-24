@@ -32,11 +32,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/openperouter/openperouter/internal/buildversion"
 	"github.com/openperouter/openperouter/internal/frr/liveness"
 	"github.com/openperouter/openperouter/internal/frr/vtysh"
 	"github.com/openperouter/openperouter/internal/frrconfig"
 	"github.com/openperouter/openperouter/internal/logging"
-	"github.com/openperouter/openperouter/internal/version"
 )
 
 type Args struct {
@@ -64,7 +64,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	slog.Info("version", "version", version.Version())
+	slog.Info("version", "version", buildversion.Version())
 	slog.Info("arguments", "args", fmt.Sprintf("%+v", args))
 	slog.Info("listening", "address", args.bindAddress)
 

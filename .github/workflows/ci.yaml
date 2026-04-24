@@ -20,6 +20,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  feature-needs-docs:
+    runs-on: ubuntu-22.04
+    if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'kind/feature')
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check for website changes
+        run: |
+          BASE=${{ github.event.pull_request.base.sha }}
+          HEAD=${{ github.event.pull_request.head.sha }}
+          if git diff --name-only "$BASE"..."$HEAD" | grep '^website/' | grep -qv 'api-reference\.md$'; then
+            echo "Website changes found."
+          else
+            echo "ERROR: PRs labeled kind/feature must include documentation updates under website/."
+            echo "Please add or update the relevant documentation."
+            exit 1
+          fi
+
   static-security-analysis:
     runs-on: ubuntu-22.04
     env:

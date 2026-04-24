@@ -28,7 +28,7 @@ func (e FRREmptyConfigError) Error() string {
 	return string(e)
 }
 
-func APItoFRR(config ApiConfigData, nodeIndex int, logLevel string) (frr.Config, error) {
+func APItoFRR(config APIConfigData, nodeIndex int, logLevel string) (frr.Config, error) {
 	if len(config.Underlays) > 1 {
 		return frr.Config{}, errors.New("multiple underlays defined")
 	}

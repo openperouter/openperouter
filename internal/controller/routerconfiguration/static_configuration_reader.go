@@ -12,26 +12,26 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func readStaticConfigs(configDir string) (conversion.ApiConfigData, error) {
+func readStaticConfigs(configDir string) (conversion.APIConfigData, error) {
 	routerConfigs, err := staticconfiguration.ReadRouterConfigs(configDir)
 	if err != nil {
-		return conversion.ApiConfigData{}, fmt.Errorf("failed to read router configs: %w", err)
+		return conversion.APIConfigData{}, fmt.Errorf("failed to read router configs: %w", err)
 	}
 
-	apiConfigs := make([]conversion.ApiConfigData, len(routerConfigs))
+	apiConfigs := make([]conversion.APIConfigData, len(routerConfigs))
 	for i, rc := range routerConfigs {
 		apiConfigs[i] = staticConfigToAPIConfig(rc)
 	}
 
 	merged, err := conversion.MergeAPIConfigs(apiConfigs...)
 	if err != nil {
-		return conversion.ApiConfigData{}, fmt.Errorf("failed to merge static configs: %w", err)
+		return conversion.APIConfigData{}, fmt.Errorf("failed to merge static configs: %w", err)
 	}
 
 	return merged, nil
 }
 
-func staticConfigToAPIConfig(staticConfig *static.PERouterConfig) conversion.ApiConfigData {
+func staticConfigToAPIConfig(staticConfig *static.PERouterConfig) conversion.APIConfigData {
 	underlays := make([]v1alpha1.Underlay, len(staticConfig.Underlays))
 	for i, spec := range staticConfig.Underlays {
 		underlays[i] = v1alpha1.Underlay{
@@ -104,7 +104,7 @@ func staticConfigToAPIConfig(staticConfig *static.PERouterConfig) conversion.Api
 		}
 	}
 
-	return conversion.ApiConfigData{
+	return conversion.APIConfigData{
 		Underlays:     underlays,
 		L3VNIs:        l3vnis,
 		L2VNIs:        l2vnis,

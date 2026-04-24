@@ -681,11 +681,14 @@ func TestHasSubnetOverlap(t *testing.T) {
 			err := hasSubnetOverlap(vniSubnets)
 			if tt.wantErrContains != "" {
 				if err == nil {
-					t.Errorf("hasIPOverlap() error = nil, want error containing %q", tt.wantErrContains)
-				} else if !strings.Contains(err.Error(), tt.wantErrContains) {
+					t.Fatalf("hasIPOverlap() error = nil, want error containing %q", tt.wantErrContains)
+				}
+				if !strings.Contains(err.Error(), tt.wantErrContains) {
 					t.Errorf("hasIPOverlap() error = %v, want error containing %q", err, tt.wantErrContains)
 				}
-			} else if err != nil {
+				return
+			}
+			if err != nil {
 				t.Errorf("hasIPOverlap() error = %v, want nil", err)
 			}
 		})

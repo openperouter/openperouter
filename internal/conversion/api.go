@@ -7,7 +7,7 @@ import (
 	"github.com/openperouter/openperouter/internal/hostnetwork"
 )
 
-type ApiConfigData struct {
+type APIConfigData struct {
 	Underlays     []v1alpha1.Underlay
 	L3VNIs        []v1alpha1.L3VNI
 	L2VNIs        []v1alpha1.L2VNI
@@ -22,12 +22,12 @@ type HostConfigData struct {
 	L3Passthrough *hostnetwork.PassthroughParams
 }
 
-func MergeAPIConfigs(configs ...ApiConfigData) (ApiConfigData, error) {
+func MergeAPIConfigs(configs ...APIConfigData) (APIConfigData, error) {
 	if len(configs) == 0 {
-		return ApiConfigData{}, nil
+		return APIConfigData{}, nil
 	}
 
-	merged := ApiConfigData{
+	merged := APIConfigData{
 		L3VNIs:        []v1alpha1.L3VNI{},
 		L2VNIs:        []v1alpha1.L2VNI{},
 		L3Passthrough: []v1alpha1.L3Passthrough{},

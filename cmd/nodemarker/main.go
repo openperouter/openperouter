@@ -39,10 +39,10 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/open-policy-agent/cert-controller/pkg/rotator"
 	"github.com/openperouter/openperouter/api/v1alpha1"
+	"github.com/openperouter/openperouter/internal/buildversion"
 	"github.com/openperouter/openperouter/internal/controller/nodeindex"
 	"github.com/openperouter/openperouter/internal/logging"
 	"github.com/openperouter/openperouter/internal/tlsconfig"
-	"github.com/openperouter/openperouter/internal/version"
 	"github.com/openperouter/openperouter/internal/webhooks"
 	// +kubebuilder:scaffold:imports
 )
@@ -120,7 +120,7 @@ func main() {
 	}
 	ctrl.SetLogger(logr.FromSlogHandler(logger.Handler()))
 
-	setupLog.Info("version", "version", version.Version())
+	setupLog.Info("version", "version", buildversion.Version())
 	setupLog.Info("arguments", "args", fmt.Sprintf("%+v", args))
 
 	if !args.enableHTTP2 {

@@ -138,7 +138,7 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	return ctrl.Result{}, nil
 }
 
-func mergeStaticConfig(staticConfigDir string, config conversion.ApiConfigData, logger *slog.Logger) (conversion.ApiConfigData, error) {
+func mergeStaticConfig(staticConfigDir string, config conversion.APIConfigData, logger *slog.Logger) (conversion.APIConfigData, error) {
 	var noConfigErr *staticconfiguration.NoConfigAvailable
 	staticConfig, err := readStaticConfigs(staticConfigDir)
 	// if we don't have a static configuration is fair to continue and use only the dynamic one
@@ -148,7 +148,7 @@ func mergeStaticConfig(staticConfigDir string, config conversion.ApiConfigData, 
 	}
 	if err != nil {
 		logger.Error("failed to read static configuration", "error", err, "dir", staticConfigDir)
-		return conversion.ApiConfigData{}, fmt.Errorf("failed to read static configuration: %w", err)
+		return conversion.APIConfigData{}, fmt.Errorf("failed to read static configuration: %w", err)
 	}
 
 	merged, err := conversion.MergeAPIConfigs(config, staticConfig)
@@ -161,72 +161,72 @@ func mergeStaticConfig(staticConfigDir string, config conversion.ApiConfigData, 
 	return merged, nil
 }
 
-func (r *PERouterReconciler) getConfigFromAPI(ctx context.Context, logger *slog.Logger) (conversion.ApiConfigData, error) {
+func (r *PERouterReconciler) getConfigFromAPI(ctx context.Context, logger *slog.Logger) (conversion.APIConfigData, error) {
 	var underlays v1alpha1.UnderlayList
 	if err := r.List(ctx, &underlays); err != nil {
 		slog.Error("failed to list underlays", "error", err)
-		return conversion.ApiConfigData{}, err
+		return conversion.APIConfigData{}, err
 	}
 
 	var l3vnis v1alpha1.L3VNIList
 	if err := r.List(ctx, &l3vnis); err != nil {
 		slog.Error("failed to list l3vnis", "error", err)
-		return conversion.ApiConfigData{}, err
+		return conversion.APIConfigData{}, err
 	}
 
 	var l2vnis v1alpha1.L2VNIList
 	if err := r.List(ctx, &l2vnis); err != nil {
 		slog.Error("failed to list l2vnis", "error", err)
-		return conversion.ApiConfigData{}, err
+		return conversion.APIConfigData{}, err
 	}
 
 	var l3passthrough v1alpha1.L3PassthroughList
 	if err := r.List(ctx, &l3passthrough); err != nil {
 		slog.Error("failed to list l3passthrough", "error", err)
-		return conversion.ApiConfigData{}, err
+		return conversion.APIConfigData{}, err
 	}
 
 	var rawFRRConfigs v1alpha1.RawFRRConfigList
 	if err := r.List(ctx, &rawFRRConfigs); err != nil {
 		slog.Error("failed to list rawfrrconfigs", "error", err)
-		return conversion.ApiConfigData{}, err
+		return conversion.APIConfigData{}, err
 	}
 
 	node := &v1.Node{}
 	if err := r.Get(ctx, client.ObjectKey{Name: r.MyNode}, node); err != nil {
 		slog.Error("failed to get node", "node", r.MyNode, "error", err)
-		return conversion.ApiConfigData{}, err
+		return conversion.APIConfigData{}, err
 	}
 
 	// Filter resources by node selector
 	filteredUnderlays, err := filter.UnderlaysForNode(node, underlays.Items)
 	if err != nil {
 		slog.Error("failed to filter underlays for node", "node", r.MyNode, "error", err)
-		return conversion.ApiConfigData{}, err
+		return conversion.APIConfigData{}, err
 	}
 
 	filteredL3VNIs, err := filter.L3VNIsForNode(node, l3vnis.Items)
 	if err != nil {
 		slog.Error("failed to filter l3vnis for node", "node", r.MyNode, "error", err)
-		return conversion.ApiConfigData{}, err
+		return conversion.APIConfigData{}, err
 	}
 
 	filteredL2VNIs, err := filter.L2VNIsForNode(node, l2vnis.Items)
 	if err != nil {
 		slog.Error("failed to filter l2vnis for node", "node", r.MyNode, "error", err)
-		return conversion.ApiConfigData{}, err
+		return conversion.APIConfigData{}, err
 	}
 
 	filteredL3Passthrough, err := filter.L3PassthroughsForNode(node, l3passthrough.Items)
 	if err != nil {
 		slog.Error("failed to filter l3passthrough for node", "node", r.MyNode, "error", err)
-		return conversion.ApiConfigData{}, err
+		return conversion.APIConfigData{}, err
 	}
 
 	filteredRawFRRConfigs, err := filter.RawFRRConfigsForNode(node, rawFRRConfigs.Items)
 	if err != nil {
 		slog.Error("failed to filter rawfrrconfigs for node", "node", r.MyNode, "error", err)
-		return conversion.ApiConfigData{}, err
+		return conversion.APIConfigData{}, err
 	}
 
 	if len(filteredRawFRRConfigs) > 0 {
@@ -235,7 +235,7 @@ func (r *PERouterReconciler) getConfigFromAPI(ctx context.Context, logger *slog.
 
 	logger.Debug("using config", "l3vnis", l3vnis.Items, "l2vnis", l2vnis.Items, "underlays", underlays.Items, "l3passthrough", l3passthrough.Items, "rawfrrconfigs", rawFRRConfigs.Items)
 
-	apiConfig := conversion.ApiConfigData{
+	apiConfig := conversion.APIConfigData{
 		Underlays:     filteredUnderlays,
 		L3VNIs:        filteredL3VNIs,
 		L2VNIs:        filteredL2VNIs,

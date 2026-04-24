@@ -172,25 +172,31 @@ func TestVethIPsFromPool(t *testing.T) {
 			if err == nil && tc.shouldFail {
 				t.Fatalf("was expecting error, didn't fail")
 			}
-
-			if tc.poolIPv4 != "" && !tc.shouldFail {
-				if res.Ipv4.HostSide.String() != tc.expectedHostIPv4 {
-					t.Fatalf("was expecting %s, got %s on the host IPv4", tc.expectedHostIPv4, res.Ipv4.HostSide.String())
-				}
-				if res.Ipv4.PeSide.String() != tc.expectedPEIPv4 {
-					t.Fatalf("was expecting %s, got %s on the container IPv4", tc.expectedPEIPv4, res.Ipv4.PeSide.String())
-				}
+			if tc.shouldFail {
+				return
 			}
-
-			if tc.poolIPv6 != "" && !tc.shouldFail {
-				if res.Ipv6.HostSide.String() != tc.expectedHostIPv6 {
-					t.Fatalf("was expecting %s, got %s on the host IPv6", tc.expectedHostIPv6, res.Ipv6.HostSide.String())
-				}
-				if res.Ipv6.PeSide.String() != tc.expectedPEIPv6 {
-					t.Fatalf("was expecting %s, got %s on the container IPv6", tc.expectedPEIPv6, res.Ipv6.PeSide.String())
-				}
-			}
+			assertVethIPs(t, res, tc.poolIPv4, tc.poolIPv6, tc.expectedPEIPv4, tc.expectedHostIPv4, tc.expectedPEIPv6, tc.expectedHostIPv6)
 		})
+	}
+}
+
+func assertVethIPs(t *testing.T, res VethIPs, poolIPv4, poolIPv6, expectedPE4, expectedHost4, expectedPE6, expectedHost6 string) {
+	t.Helper()
+	if poolIPv4 != "" {
+		if res.Ipv4.HostSide.String() != expectedHost4 {
+			t.Fatalf("was expecting %s, got %s on the host IPv4", expectedHost4, res.Ipv4.HostSide.String())
+		}
+		if res.Ipv4.PeSide.String() != expectedPE4 {
+			t.Fatalf("was expecting %s, got %s on the container IPv4", expectedPE4, res.Ipv4.PeSide.String())
+		}
+	}
+	if poolIPv6 != "" {
+		if res.Ipv6.HostSide.String() != expectedHost6 {
+			t.Fatalf("was expecting %s, got %s on the host IPv6", expectedHost6, res.Ipv6.HostSide.String())
+		}
+		if res.Ipv6.PeSide.String() != expectedPE6 {
+			t.Fatalf("was expecting %s, got %s on the container IPv6", expectedPE6, res.Ipv6.PeSide.String())
+		}
 	}
 }
 

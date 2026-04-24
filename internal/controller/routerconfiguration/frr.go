@@ -15,14 +15,14 @@ import (
 type frrConfigData struct {
 	configFile string
 	updater    frr.ConfigUpdater
-	conversion.ApiConfigData
+	conversion.APIConfigData
 	nodeIndex int
 	logLevel  string
 }
 
 func configureFRR(ctx context.Context, data frrConfigData) error {
 	slog.DebugContext(ctx, "reloading FRR config", "config", data)
-	frrConfig, err := conversion.APItoFRR(data.ApiConfigData, data.nodeIndex, data.logLevel)
+	frrConfig, err := conversion.APItoFRR(data.APIConfigData, data.nodeIndex, data.logLevel)
 	emptyConfig := conversion.FRREmptyConfigError("")
 	if errors.As(err, &emptyConfig) {
 		slog.InfoContext(ctx, "reloading FRR config", "empty config", data, "event", "cleaning the frr configuration")
