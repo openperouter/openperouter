@@ -31,6 +31,7 @@ router bgp 64512
 
 {{- range .Neighbors }}
  neighbor {{ . }} remote-as {{ $.PERouterASN }}
+ neighbor {{ . }} timers connect 5
 {{- if $.EnableBFD }}
  neighbor {{ . }} bfd
 {{- end }}
