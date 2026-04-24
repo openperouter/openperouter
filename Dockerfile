@@ -18,6 +18,7 @@ COPY cmd/ cmd/
 COPY api/ api/
 COPY internal/ internal/
 COPY operator/ operator/
+COPY config/ config/
 
 RUN --mount=type=cache,target=/root/.cache/go-build \
   --mount=type=cache,target=/go/pkg/mod \
@@ -27,6 +28,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
   --mount=type=bind,source=api,target=api \
   --mount=type=bind,source=cmd,target=cmd \
   --mount=type=bind,source=operator,target=operator \
+  --mount=type=bind,source=config,target=config \
   CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -o reloader ./cmd/reloader \
   && \
   CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -o controller ./cmd/hostcontroller \
