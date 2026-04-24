@@ -54,6 +54,13 @@ var switchPortForNode = map[string]string{
 	"pe-kind-worker":        "kindworker",
 }
 
+// underlayIPForNode maps Kind node names to their underlay IP/prefix on the
+// leafkind-switch link, matching the containerlab topology.
+var underlayIPForNode = map[string]string{
+	"pe-kind-control-plane": "192.168.11.3/24",
+	"pe-kind-worker":        "192.168.11.4/24",
+}
+
 // hostNetImage is a container image with iproute2, used for privileged host
 // network operations. The FRR image is already cached by containerlab.
 const hostNetImage = "quay.io/frrouting/frr:10.6.0"
@@ -92,6 +99,10 @@ func RecreateUnderlayLink(nodeName string) error {
 	if !ok {
 		return fmt.Errorf("unknown node %s for underlay link recreation", nodeName)
 	}
+	underlayIP, ok := underlayIPForNode[nodeName]
+	if !ok {
+		return fmt.Errorf("unknown node %s for underlay IP assignment", nodeName)
+	}
 	const bridgeName = "leafkind-switch"
 
 	nodeExec := executor.ForContainer(nodeName)
@@ -119,9 +130,12 @@ ip link set toswitch-tmp netns %s
 		return fmt.Errorf("failed to recreate underlay link on host: %s: %w", out, err)
 	}
 
-	// Rename and bring up inside the node container.
+	// Rename, assign the underlay IP, and bring up inside the node container.
 	if out, err := nodeExec.Exec("ip", "link", "set", "toswitch-tmp", "name", "toswitch"); err != nil {
 		return fmt.Errorf("failed to rename toswitch in %s: %s: %w", nodeName, out, err)
+	}
+	if out, err := nodeExec.Exec("ip", "addr", "add", underlayIP, "dev", "toswitch"); err != nil {
+		return fmt.Errorf("failed to assign underlay IP to toswitch on %s: %s: %w", nodeName, out, err)
 	}
 	if out, err := nodeExec.Exec("ip", "link", "set", "toswitch", "up"); err != nil {
 		return fmt.Errorf("failed to bring up toswitch on %s: %s: %w", nodeName, out, err)
