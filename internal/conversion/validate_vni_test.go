@@ -273,6 +273,7 @@ func TestValidateL2VNIs(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
 					Spec: v1alpha1.L2VNISpec{
 						VNI:          1001,
+						VRF:          ptr.To("test-vrf"),
 						L2GatewayIPs: []string{"192.168.1.0/24"},
 					},
 					Status: v1alpha1.L2VNIStatus{},
@@ -287,6 +288,7 @@ func TestValidateL2VNIs(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
 					Spec: v1alpha1.L2VNISpec{
 						VNI:          1001,
+						VRF:          ptr.To("test-vrf"),
 						L2GatewayIPs: []string{"2001:db8::/64"},
 					},
 					Status: v1alpha1.L2VNIStatus{},
@@ -301,6 +303,7 @@ func TestValidateL2VNIs(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
 					Spec: v1alpha1.L2VNISpec{
 						VNI:          1001,
+						VRF:          ptr.To("test-vrf"),
 						L2GatewayIPs: []string{"192.168.1.0/24", "2001:db8::/64"},
 					},
 					Status: v1alpha1.L2VNIStatus{},
@@ -309,12 +312,26 @@ func TestValidateL2VNIs(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "l2gatewayips without VRF",
+			vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI:          1001,
+						L2GatewayIPs: []string{"192.168.1.0/24"},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
 			name: "ivalid L2GatewayIPs dual-stack both ipv4",
 			vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
 					Spec: v1alpha1.L2VNISpec{
 						VNI:          1001,
+						VRF:          ptr.To("test-vrf"),
 						L2GatewayIPs: []string{"192.168.1.0/24", "192.168.2.0/24"},
 					},
 					Status: v1alpha1.L2VNIStatus{},
@@ -329,6 +346,7 @@ func TestValidateL2VNIs(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
 					Spec: v1alpha1.L2VNISpec{
 						VNI:          1001,
+						VRF:          ptr.To("test-vrf"),
 						L2GatewayIPs: []string{"2002:db8::/64", "2001:db8::/64"},
 					},
 					Status: v1alpha1.L2VNIStatus{},
@@ -343,6 +361,7 @@ func TestValidateL2VNIs(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
 					Spec: v1alpha1.L2VNISpec{
 						VNI:          1001,
+						VRF:          ptr.To("test-vrf"),
 						L2GatewayIPs: []string{"invalid-cidr-format"},
 					},
 					Status: v1alpha1.L2VNIStatus{},
