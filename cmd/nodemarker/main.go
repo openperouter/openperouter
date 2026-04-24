@@ -81,6 +81,7 @@ func main() {
 		restartOnRotatorSecretRefresh bool
 		certDir                       string
 		certServiceName               string
+		groutEnabled                  bool
 	}{}
 
 	flag.StringVar(&args.metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
@@ -102,6 +103,7 @@ func main() {
 		"The service name used to generate the TLS cert's hostname")
 	flag.IntVar(&args.webhookPort, "webhook-port", 9443, "the port of the webhook service")
 	flag.StringVar(&args.webhookMode, "webhookmode", WebhookModeEnabled, "webhook mode: disabled, enabled, or webhookonly")
+	flag.BoolVar(&args.groutEnabled, "grout-enabled", false, "enable grout datapath, disallowing L2VNI and L3VNI resources")
 
 	flag.Parse()
 
@@ -182,7 +184,7 @@ func main() {
 				logger.Error("unable to add v1alpha1 scheme", "error", err)
 			}
 
-			err := setupWebhook(mgr, logger)
+			err := setupWebhook(mgr, logger, args.groutEnabled)
 			if err != nil {
 				setupLog.Error(err, "unable to create", "webhooks")
 				os.Exit(1)
@@ -250,17 +252,17 @@ func setupCertRotation(notifyFinished chan struct{}, mgr manager.Manager, logger
 	return nil
 }
 
-func setupWebhook(mgr manager.Manager, logger *slog.Logger) error {
+func setupWebhook(mgr manager.Manager, logger *slog.Logger, groutEnabled bool) error {
 	logger.Info("webhooks enabled")
 
 	webhooks.Logger = logger
 	webhooks.WebhookClient = mgr.GetAPIReader()
 
-	if err := webhooks.SetupL3VNI(mgr); err != nil {
+	if err := webhooks.SetupL3VNI(mgr, groutEnabled); err != nil {
 		logger.Error("unable to create the webook", "error", err, "webhook", "L3VNIs")
 		return err
 	}
-	if err := webhooks.SetupL2VNI(mgr); err != nil {
+	if err := webhooks.SetupL2VNI(mgr, groutEnabled); err != nil {
 		logger.Error("unable to create the webook", "error", err, "webhook", "L2VNIs")
 		return err
 	}

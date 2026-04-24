@@ -11,6 +11,10 @@ import (
 )
 
 func Reconcile(ctx context.Context, apiConfig conversion.ApiConfigData, underlayFromMultus bool, groutEnabled bool, groutSocketPath string, nodeIndex int, logLevel, frrConfigPath, targetNamespace string, updater frr.ConfigUpdater) error {
+	if err := conversion.ValidateGrout(groutEnabled, apiConfig); err != nil {
+		return fmt.Errorf("failed grout validation: %w", err)
+	}
+
 	if err := conversion.ValidateUnderlays(apiConfig.Underlays); err != nil {
 		return fmt.Errorf("failed to validate underlays: %w", err)
 	}

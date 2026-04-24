@@ -24,14 +24,16 @@ const (
 )
 
 type L2VNIValidator struct {
-	client  client.Client
-	decoder admission.Decoder
+	client       client.Client
+	decoder      admission.Decoder
+	groutEnabled bool
 }
 
-func SetupL2VNI(mgr ctrl.Manager) error {
+func SetupL2VNI(mgr ctrl.Manager, groutEnabled bool) error {
 	validator := &L2VNIValidator{
-		client:  mgr.GetClient(),
-		decoder: admission.NewDecoder(mgr.GetScheme()),
+		client:       mgr.GetClient(),
+		decoder:      admission.NewDecoder(mgr.GetScheme()),
+		groutEnabled: groutEnabled,
 	}
 
 	mgr.GetWebhookServer().Register(
@@ -60,6 +62,10 @@ func (v *L2VNIValidator) Handle(ctx context.Context, req admission.Request) (res
 				return admission.Errored(http.StatusBadRequest, err)
 			}
 		}
+	}
+
+	if v.groutEnabled && (req.Operation == v1.Create || req.Operation == v1.Update) {
+		return admission.Denied("L2VNI resources are not supported when grout datapath is enabled")
 	}
 
 	switch req.Operation {
