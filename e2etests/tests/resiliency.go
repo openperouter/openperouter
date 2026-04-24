@@ -21,6 +21,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 	"github.com/openperouter/openperouter/e2etests/pkg/url"
 	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/utils/ptr"
@@ -273,19 +274,40 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 	})
 
 	AfterAll(func() {
-		err := Updater.CleanAll()
+		Expect(infra.LeafAConfig.RemovePrefixes()).To(Succeed())
+		Expect(infra.LeafBConfig.RemovePrefixes()).To(Succeed())
+
+		oldRouters, err := openperouter.Get(cs, HostMode)
 		Expect(err).NotTo(HaveOccurred())
-		By("waiting for all router pods to be ready")
-		Eventually(func(g Gomega) {
-			pods, err := openperouter.RouterPods(cs)
-			g.Expect(err).NotTo(HaveOccurred())
-			for _, p := range pods {
-				g.Expect(k8s.PodIsReady(p)).To(BeTrue(), "pod %s must be ready", p.Name)
+
+		err = Updater.CleanAll()
+		Expect(err).NotTo(HaveOccurred())
+
+		By("waiting for the router pods to rollout after removing the underlay")
+		Eventually(func() error {
+			newRouters, err := openperouter.Get(cs, HostMode)
+			if err != nil {
+				return err
 			}
-		}).WithTimeout(2 * time.Minute).WithPolling(time.Second).Should(Succeed())
+			return openperouter.DaemonsetRolled(oldRouters, newRouters)
+		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 	})
 
 	const testNamespace = "test-namespace-rebuild"
+
+	AfterEach(func() {
+		dumpIfFails(cs)
+		err := Updater.CleanButUnderlay()
+		Expect(err).NotTo(HaveOccurred())
+		if err := k8s.DeleteNamespace(cs, testNamespace); err != nil && !apierrors.IsNotFound(err) {
+			Expect(err).NotTo(HaveOccurred())
+		}
+		By("waiting for all router pods to be ready")
+		Eventually(func() error {
+			_, err := openperouter.ReadyRouters(cs, HostMode)
+			return err
+		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
+	})
 
 	It("should auto-recover when the named netns is deleted via ip netns delete", func() {
 		l2VniRedWithGateway := l2VniRed.DeepCopy()
@@ -302,16 +324,6 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 
 		nad, err := k8s.CreateMacvlanNad("110", testNamespace, "br-hs-110", []string{"192.171.24.1/24"})
 		Expect(err).NotTo(HaveOccurred())
-
-		DeferCleanup(func() {
-			dumpIfFails(cs)
-			Expect(infra.LeafAConfig.RemovePrefixes()).To(Succeed())
-			Expect(infra.LeafBConfig.RemovePrefixes()).To(Succeed())
-			err := Updater.CleanButUnderlay()
-			Expect(err).NotTo(HaveOccurred())
-			err = k8s.DeleteNamespace(cs, testNamespace)
-			Expect(err).NotTo(HaveOccurred())
-		})
 
 		nodes, err := k8s.GetNodes(cs)
 		Expect(err).NotTo(HaveOccurred())
