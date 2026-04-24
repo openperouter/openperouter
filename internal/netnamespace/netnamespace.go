@@ -25,6 +25,9 @@ func InitHostNS(path string) error {
 
 // InHost executes the given function inside the host network namespace.
 func InHost(fn func() error) error {
+	if hostNS == 0 {
+		return fmt.Errorf("host network namespace not initialized; call InitHostNS first")
+	}
 	return In(hostNS, fn)
 }
 

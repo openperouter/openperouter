@@ -1464,12 +1464,12 @@ spec:
         operator: Exists
       volumes:
       - hostPath:
+          path: /var/run/crio
+        name: varrun
+      - hostPath:
           path: /proc/1/ns/net
           type: File
         name: host-netns
-      - hostPath:
-          path: /var/run/crio
-        name: varrun
       - hostPath:
           path: /run/netns
         name: runns
