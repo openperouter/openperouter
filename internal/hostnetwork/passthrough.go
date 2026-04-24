@@ -40,14 +40,14 @@ func SetupPassthrough(ctx context.Context, params PassthroughParams) error {
 		}
 	}()
 
-	hostVeth, err := netlink.LinkByName(PassthroughNames.HostSide)
-	if errors.As(err, &netlink.LinkNotFoundError{}) {
-		return fmt.Errorf("SetupPassthrough: host veth %s does not exist, cannot setup Passthrough", PassthroughNames.HostSide)
-	}
-
-	err = assignIPsToInterface(hostVeth, params.HostVeth.HostIPv4, params.HostVeth.HostIPv6)
-	if err != nil {
-		return fmt.Errorf("failed to assign IPs to host veth: %w", err)
+	if err := netnamespace.InHost(func() error {
+		hostVeth, err := netlink.LinkByName(PassthroughNames.HostSide)
+		if errors.As(err, &netlink.LinkNotFoundError{}) {
+			return fmt.Errorf("SetupPassthrough: host veth %s does not exist, cannot setup Passthrough", PassthroughNames.HostSide)
+		}
+		return assignIPsToInterface(hostVeth, params.HostVeth.HostIPv4, params.HostVeth.HostIPv6)
+	}); err != nil {
+		return err
 	}
 
 	if err := netnamespace.In(ns, func() error {
@@ -68,7 +68,9 @@ func SetupPassthrough(ctx context.Context, params PassthroughParams) error {
 }
 
 func RemovePassthrough(targetNS string) error {
-	if err := removeLinkByName(PassthroughNames.HostSide); err != nil {
+	if err := netnamespace.InHost(func() error {
+		return removeLinkByName(PassthroughNames.HostSide)
+	}); err != nil {
 		return fmt.Errorf("RemovePassthrough: failed to remove host link %s: %w", PassthroughNames.HostSide, err)
 	}
 

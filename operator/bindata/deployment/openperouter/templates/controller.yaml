@@ -47,9 +47,6 @@ spec:
         {{- with .Values.openperouter.logLevel }}
         - --loglevel={{ . }}
         {{- end }}
-        {{- with .Values.openperouter.controller.healthProbePort }}
-        - --health-probe-bind-address=:{{ . }}
-        {{- end }}
         {{- if eq .Values.openperouter.cri "containerd" }}
         - --crisocket=/containerd.sock
         {{- end }}
@@ -79,13 +76,13 @@ spec:
         {{- end }}
         name: controller
         ports:
-        - containerPort: {{ .Values.openperouter.controller.healthProbePort | default 9081 }}
+        - containerPort: 9081
           name: health
           protocol: TCP
         readinessProbe:
           httpGet:
             path: /readyz
-            port: {{ .Values.openperouter.controller.healthProbePort | default 9081 }}
+            port: 9081
           initialDelaySeconds: 5
           periodSeconds: 10
           timeoutSeconds: 1
@@ -93,7 +90,7 @@ spec:
         livenessProbe:
           httpGet:
             path: /healthz
-            port: {{ .Values.openperouter.controller.healthProbePort | default 9081 }}
+            port: 9081
           initialDelaySeconds: 15
           periodSeconds: 20
           timeoutSeconds: 1
@@ -108,8 +105,8 @@ spec:
             - NET_ADMIN
             - NET_RAW
             - SYS_ADMIN
-            - NET_BIND_SERVICE
-          privileged: true
+          seccompProfile:
+            type: Unconfined
         volumeMounts:
         {{- if eq .Values.openperouter.cri "containerd" }}
         - mountPath: /containerd.sock
@@ -124,6 +121,8 @@ spec:
         - mountPath: /run/netns
           mountPropagation: HostToContainer
           name: runns
+        - mountPath: /run/host-netns/net
+          name: host-netns
         - mountPath: /etc/frr/
           mountPropagation: HostToContainer
           name: frr-config
@@ -132,8 +131,6 @@ spec:
           mountPropagation: HostToContainer
         - mountPath: /var/run/frr
           name: frr-sockets
-      hostNetwork: true
-      hostPID: true
       tolerations:
       {{- if .Values.openperouter.runOnMaster }}
       - effect: NoSchedule
@@ -150,6 +147,10 @@ spec:
       priorityClassName: {{ . | quote }}
       {{- end }}
       volumes:
+      - hostPath:
+          path: /proc/1/ns/net
+          type: File
+        name: host-netns
       - hostPath:
           path: /run/netns
         name: runns

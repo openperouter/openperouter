@@ -1432,8 +1432,8 @@ spec:
             - NET_ADMIN
             - NET_RAW
             - SYS_ADMIN
-            - NET_BIND_SERVICE
-          privileged: true
+          seccompProfile:
+            type: Unconfined
         volumeMounts:
         - mountPath: /crio.sock
           name: varrun
@@ -1444,6 +1444,8 @@ spec:
         - mountPath: /run/netns
           mountPropagation: HostToContainer
           name: runns
+        - mountPath: /run/host-netns/net
+          name: host-netns
         - mountPath: /etc/frr/
           mountPropagation: HostToContainer
           name: frr-config
@@ -1452,8 +1454,6 @@ spec:
           name: ovs-var-run
         - mountPath: /var/run/frr
           name: frr-sockets
-      hostNetwork: true
-      hostPID: true
       serviceAccountName: controller
       tolerations:
       - effect: NoSchedule
@@ -1466,6 +1466,10 @@ spec:
       - hostPath:
           path: /var/run/crio
         name: varrun
+      - hostPath:
+          path: /proc/1/ns/net
+          type: File
+        name: host-netns
       - hostPath:
           path: /run/netns
         name: runns

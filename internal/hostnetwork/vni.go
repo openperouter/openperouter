@@ -101,14 +101,14 @@ func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
 		}
 	}()
 
-	hostVeth, err := netlink.LinkByName(vethNames.HostSide)
-	if errors.As(err, &netlink.LinkNotFoundError{}) {
-		return fmt.Errorf("SetupL3VNI: host veth %s does not exist, cannot setup L3 VNI", vethNames.HostSide)
-	}
-
-	err = assignIPsToInterface(hostVeth, params.HostVeth.HostIPv4, params.HostVeth.HostIPv6)
-	if err != nil {
-		return fmt.Errorf("failed to assign IPs to host veth: %w", err)
+	if err := netnamespace.InHost(func() error {
+		hostVeth, err := netlink.LinkByName(vethNames.HostSide)
+		if errors.As(err, &netlink.LinkNotFoundError{}) {
+			return fmt.Errorf("SetupL3VNI: host veth %s does not exist, cannot setup L3 VNI", vethNames.HostSide)
+		}
+		return assignIPsToInterface(hostVeth, params.HostVeth.HostIPv4, params.HostVeth.HostIPv6)
+	}); err != nil {
+		return err
 	}
 
 	if err := netnamespace.In(ns, func() error {
@@ -165,22 +165,38 @@ func SetupL2VNI(ctx context.Context, params L2VNIParams) error {
 		}
 	}()
 
-	hostVeth, err := netlink.LinkByName(vethNames.HostSide)
-	if errors.As(err, &netlink.LinkNotFoundError{}) {
-		return fmt.Errorf("SetupL2VNI: host veth %s does not exist, cannot setup L2 VNI", vethNames.HostSide)
+	if err := setupL2VNIHostSide(ctx, params, vethNames); err != nil {
+		return err
 	}
-	if err != nil {
-		return fmt.Errorf("SetupL2VNI: failed to get host veth %s: %w", vethNames.HostSide, err)
-	}
-	slog.Info("SetupL2VNI: found host veth", "name", vethNames.HostSide, "index", hostVeth.Attrs().Index)
 
-	if params.HostMaster != nil {
-		if err := setupHostMaster(ctx, params, hostVeth); err != nil {
-			return err
+	if err := setupL2VNINamespaceSide(ns, params, vethNames); err != nil {
+		return err
+	}
+	return nil
+}
+
+func setupL2VNIHostSide(ctx context.Context, params L2VNIParams, vethNames VethNames) error {
+	return netnamespace.InHost(func() error {
+		hostVeth, err := netlink.LinkByName(vethNames.HostSide)
+		if errors.As(err, &netlink.LinkNotFoundError{}) {
+			return fmt.Errorf("SetupL2VNI: host veth %s does not exist, cannot setup L2 VNI", vethNames.HostSide)
 		}
-	}
+		if err != nil {
+			return fmt.Errorf("SetupL2VNI: failed to get host veth %s: %w", vethNames.HostSide, err)
+		}
+		slog.Info("SetupL2VNI: found host veth", "name", vethNames.HostSide, "index", hostVeth.Attrs().Index)
 
-	if err := netnamespace.In(ns, func() error {
+		if params.HostMaster != nil {
+			if err := setupHostMaster(ctx, params, hostVeth); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func setupL2VNINamespaceSide(ns netns.NsHandle, params L2VNIParams, vethNames VethNames) error {
+	return netnamespace.In(ns, func() error {
 		peVeth, err := netlink.LinkByName(vethNames.NamespaceSide)
 		if err != nil {
 			return fmt.Errorf("could not find peer veth %s in namespace %s: %w", vethNames.NamespaceSide, params.TargetNS, err)
@@ -207,10 +223,7 @@ func SetupL2VNI(ctx context.Context, params L2VNIParams) error {
 		}
 
 		return nil
-	}); err != nil {
-		return err
-	}
-	return nil
+	})
 }
 
 func setupHostMaster(ctx context.Context, params L2VNIParams, hostVeth netlink.Link) error {
@@ -302,8 +315,13 @@ func RemoveNonConfiguredVNIs(targetNS string, params []VNIParams) error {
 		vrfs[p.VRF] = true
 		vnis[p.VNI] = true
 	}
-
-	failedDeletes := removeHostSideVNIs(vnis)
+	var failedDeletes []error
+	if err := netnamespace.InHost(func() error {
+		failedDeletes = removeHostSideVNIs(vnis)
+		return nil
+	}); err != nil {
+		return err
+	}
 
 	ns, err := netns.GetFromPath(targetNS)
 	if err != nil {

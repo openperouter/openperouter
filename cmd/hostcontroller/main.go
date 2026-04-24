@@ -51,6 +51,7 @@ import (
 	"github.com/openperouter/openperouter/internal/filewatcher"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/openperouter/openperouter/internal/logging"
+	"github.com/openperouter/openperouter/internal/netnamespace"
 	"github.com/openperouter/openperouter/internal/pods"
 	"github.com/openperouter/openperouter/internal/staticconfiguration"
 	"github.com/openperouter/openperouter/internal/systemdctl"
@@ -85,7 +86,8 @@ type hostModeParameters struct {
 }
 
 type k8sModeParameters struct {
-	criSocket string
+	criSocket     string
+	hostNetNSPath string
 }
 
 type parameters struct {
@@ -119,6 +121,8 @@ func main() {
 	flag.StringVar(&args.nodeName, "nodename", "", "The name of the node the controller runs on")
 	flag.StringVar(&args.namespace, "namespace", "", "The namespace the controller runs in")
 	flag.StringVar(&k8sModeParams.criSocket, "crisocket", "/containerd.sock", "the location of the cri socket")
+	flag.StringVar(&k8sModeParams.hostNetNSPath, "host-netns-path",
+		"/run/host-netns/net", "the path to the mounted host network namespace")
 
 	flag.DurationVar(&hostModeParams.k8sWaitInterval, "k8s-wait-timeout", time.Minute,
 		"K8s API server waiting interval time")
@@ -171,6 +175,12 @@ func runK8sMode(
 	k8sModeParams k8sModeParameters,
 	logger *slog.Logger,
 ) {
+	// Initialize host network namespace handle from mounted path
+	if err := netnamespace.InitHostNS(k8sModeParams.hostNetNSPath); err != nil {
+		logger.Error("unable to initialize host network namespace", "path", k8sModeParams.hostNetNSPath, "error", err)
+		os.Exit(1)
+	}
+
 	// K8s mode: setup k8s-based reconciler and start
 	k8sConfig, err := config.GetConfig()
 	if err != nil {
