@@ -41,6 +41,7 @@ import (
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/buildversion"
 	"github.com/openperouter/openperouter/internal/controller/nodeindex"
+	"github.com/openperouter/openperouter/internal/conversion"
 	"github.com/openperouter/openperouter/internal/logging"
 	"github.com/openperouter/openperouter/internal/tlsconfig"
 	"github.com/openperouter/openperouter/internal/webhooks"
@@ -81,6 +82,7 @@ func main() {
 		restartOnRotatorSecretRefresh bool
 		certDir                       string
 		certServiceName               string
+		datapath                      string
 	}{}
 
 	flag.StringVar(&args.metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
@@ -102,6 +104,7 @@ func main() {
 		"The service name used to generate the TLS cert's hostname")
 	flag.IntVar(&args.webhookPort, "webhook-port", 9443, "the port of the webhook service")
 	flag.StringVar(&args.webhookMode, "webhookmode", WebhookModeEnabled, "webhook mode: disabled, enabled, or webhookonly")
+	flag.StringVar(&args.datapath, "datapath", "kernel", "The datapath to use (kernel or grout)")
 
 	flag.Parse()
 
@@ -176,13 +179,18 @@ func main() {
 			// +kubebuilder:scaffold:builder
 		}
 
+		var datapathConfigValidator conversion.DatapathConfigValidator = &conversion.KernelDatapathConfigValidator{}
+		if args.datapath == "grout" {
+			datapathConfigValidator = &conversion.GroutDatapathConfigValidator{}
+		}
+
 		if args.webhookMode == WebhookModeEnabled || args.webhookMode == WebhookModeWebhookOnly {
 			setupLog.Info("Starting webhooks")
 			if err := v1alpha1.AddToScheme(mgr.GetScheme()); err != nil {
 				logger.Error("unable to add v1alpha1 scheme", "error", err)
 			}
 
-			err := setupWebhook(mgr, logger)
+			err := setupWebhook(mgr, logger, datapathConfigValidator)
 			if err != nil {
 				setupLog.Error(err, "unable to create", "webhooks")
 				os.Exit(1)
@@ -250,11 +258,12 @@ func setupCertRotation(notifyFinished chan struct{}, mgr manager.Manager, logger
 	return nil
 }
 
-func setupWebhook(mgr manager.Manager, logger *slog.Logger) error {
+func setupWebhook(mgr manager.Manager, logger *slog.Logger, configValidator conversion.DatapathConfigValidator) error {
 	logger.Info("webhooks enabled")
 
 	webhooks.Logger = logger
 	webhooks.WebhookClient = mgr.GetAPIReader()
+	webhooks.DatapathConfigValidator = configValidator
 
 	if err := webhooks.SetupL3VNI(mgr); err != nil {
 		logger.Error("unable to create the webhook", "error", err, "webhook", "L3VNIs")

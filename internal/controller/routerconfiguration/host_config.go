@@ -24,11 +24,13 @@ type interfacesConfiguration struct {
 	conversion.APIConfigData
 }
 
-// HostConfigurator applies host-level network configuration (interfaces, VNIs, sysctls).
-// Injected into Reconcile so tests can substitute a no-op implementation.
-type HostConfigurator func(ctx context.Context, config interfacesConfiguration) error
+// KernelDatapathConfigurator configures the host via kernel netlink calls.
+// It supports the full API surface.
+type KernelDatapathConfigurator struct {
+	conversion.KernelDatapathConfigValidator
+}
 
-func configureInterfaces(ctx context.Context, config interfacesConfiguration) error {
+func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config interfacesConfiguration) error {
 	hasAlreadyUnderlay, err := hostnetwork.HasUnderlayInterface(config.targetNamespace)
 	if err != nil {
 		return fmt.Errorf("failed to check if target namespace %s has underlay: %w", config.targetNamespace, err)

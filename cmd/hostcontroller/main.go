@@ -59,8 +59,10 @@ import (
 )
 
 const (
-	modeK8s  = "k8s"
-	modeHost = "host"
+	datapathKernel = "kernel"
+	datapathGrout  = "grout"
+	modeK8s        = "k8s"
+	modeHost       = "host"
 )
 
 var (
@@ -274,21 +276,24 @@ func runK8sConfigReconcilerHostMode(ctx context.Context,
 	triggerChan := make(chan event.GenericEvent, 1)
 	mirrorTriggerChan := make(chan event.GenericEvent, 1)
 
+	var datapathConfigurator routerconfiguration.DatapathConfigurator = &routerconfiguration.KernelDatapathConfigurator{}
+	if args.datapath == datapathGrout {
+		datapathConfigurator = routerconfiguration.NewGroutConfigurator(args.groutSocketPath)
+	}
 	apiReconciler := &routerconfiguration.PERouterReconciler{
-		Client:          mgr.GetClient(),
-		Scheme:          mgr.GetScheme(),
-		LogLevel:        args.logLevel,
-		Logger:          logger,
-		MyNode:          args.nodeName,
-		MyNamespace:     args.namespace,
-		FRRReloadSocket: args.reloaderSocket,
-		FRRConfigPath:   args.frrConfigPath,
-		RouterProvider:  routerProvider,
-		StaticConfigDir: hostModeParams.configurationDir,
-		NodeConfigPath:  hostModeParams.nodeConfigPath,
-		TriggerChan:     triggerChan,
-		GroutEnabled:    args.groutEnabled,
-		GroutSocketPath: args.groutSocketPath,
+		Client:               mgr.GetClient(),
+		Scheme:               mgr.GetScheme(),
+		LogLevel:             args.logLevel,
+		Logger:               logger,
+		MyNode:               args.nodeName,
+		MyNamespace:          args.namespace,
+		FRRReloadSocket:      args.reloaderSocket,
+		FRRConfigPath:        args.frrConfigPath,
+		RouterProvider:       routerProvider,
+		StaticConfigDir:      hostModeParams.configurationDir,
+		NodeConfigPath:       hostModeParams.nodeConfigPath,
+		TriggerChan:          triggerChan,
+		DatapathConfigurator: datapathConfigurator,
 	}
 
 	if err := apiReconciler.SetupWithManager(mgr); err != nil {
@@ -367,18 +372,22 @@ func runK8sConfigReconciler(ctx context.Context,
 		Node:            args.nodeName,
 	}
 
+	var datapathConfigurator routerconfiguration.DatapathConfigurator = &routerconfiguration.KernelDatapathConfigurator{}
+	if args.datapath == datapathGrout {
+		datapathConfigurator = routerconfiguration.NewGroutConfigurator(args.groutSocketPath)
+	}
+
 	apiReconciler := &routerconfiguration.PERouterReconciler{
-		Client:          mgr.GetClient(),
-		Scheme:          mgr.GetScheme(),
-		LogLevel:        args.logLevel,
-		Logger:          logger,
-		MyNode:          args.nodeName,
-		FRRReloadSocket: args.reloaderSocket,
-		FRRConfigPath:   args.frrConfigPath,
-		RouterProvider:  routerProvider,
-		MyNamespace:     args.namespace,
-		GroutEnabled:    args.groutEnabled,
-		GroutSocketPath: args.groutSocketPath,
+		Client:               mgr.GetClient(),
+		Scheme:               mgr.GetScheme(),
+		LogLevel:             args.logLevel,
+		Logger:               logger,
+		MyNode:               args.nodeName,
+		FRRReloadSocket:      args.reloaderSocket,
+		FRRConfigPath:        args.frrConfigPath,
+		RouterProvider:       routerProvider,
+		MyNamespace:          args.namespace,
+		DatapathConfigurator: datapathConfigurator,
 	}
 
 	if err := apiReconciler.SetupWithManager(mgr); err != nil {
@@ -418,19 +427,23 @@ func runStaticConfigReconciler(ctx context.Context,
 		RouterHealthCheckPort: hostModeParams.routerHealthCheckPort,
 	}
 
+	var datapathConfigurator routerconfiguration.DatapathConfigurator = &routerconfiguration.KernelDatapathConfigurator{}
+	if args.datapath == datapathGrout {
+		datapathConfigurator = routerconfiguration.NewGroutConfigurator(args.groutSocketPath)
+	}
+
 	staticReconciler := &routerconfiguration.StaticConfigReconciler{
-		Scheme:          mgr.GetScheme(),
-		Logger:          logger,
-		NodeIndex:       nodeConfig.NodeIndex,
-		LogLevel:        args.logLevel,
-		FRRConfigPath:   args.frrConfigPath,
-		FRRReloadSocket: args.reloaderSocket,
-		RouterProvider:  staticRouterProvider,
-		ConfigDir:       hostModeParams.configurationDir,
-		MyNode:          args.nodeName,
-		MyNamespace:     args.namespace,
-		GroutEnabled:    args.groutEnabled,
-		GroutSocketPath: args.groutSocketPath,
+		Scheme:               mgr.GetScheme(),
+		Logger:               logger,
+		NodeIndex:            nodeConfig.NodeIndex,
+		LogLevel:             args.logLevel,
+		FRRConfigPath:        args.frrConfigPath,
+		FRRReloadSocket:      args.reloaderSocket,
+		RouterProvider:       staticRouterProvider,
+		ConfigDir:            hostModeParams.configurationDir,
+		MyNode:               args.nodeName,
+		MyNamespace:          args.namespace,
+		DatapathConfigurator: datapathConfigurator,
 	}
 	if err = staticReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create controller: %w", err)
