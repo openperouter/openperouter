@@ -4,7 +4,7 @@ metadata:
   annotations:
     alm-examples: '[]'
     capabilities: Basic Install
-    createdAt: "2026-04-22T08:50:06Z"
+    createdAt: "2026-04-29T19:08:36Z"
     operators.operatorframework.io/builder: operator-sdk-v1.41.1
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
   name: openperouter-operator.v0.0.0
@@ -33,6 +33,9 @@ spec:
       version: v1alpha1
     - kind: RawFRRConfig
       name: rawfrrconfigs.openpe.openperouter.github.io
+      version: v1alpha1
+    - kind: RouterNodeConfigurationStatus
+      name: routernodeconfigurationstatuses.openpe.openperouter.github.io
       version: v1alpha1
     - description: Underlay is the Schema for the underlays API.
       displayName: Underlay
@@ -113,6 +116,7 @@ spec:
           - l2vnis/status
           - l3passthroughs/status
           - l3vnis/status
+          - routernodeconfigurationstatuses/status
           - underlays/status
           verbs:
           - get
@@ -132,6 +136,17 @@ spec:
           - rawfrrconfigs/status
           verbs:
           - get
+        - apiGroups:
+          - openpe.openperouter.github.io
+          resources:
+          - routernodeconfigurationstatuses
+          verbs:
+          - create
+          - get
+          - list
+          - patch
+          - update
+          - watch
         serviceAccountName: controller
       - rules:
         - apiGroups:
