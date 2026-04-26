@@ -21,6 +21,7 @@ Package v1alpha1 contains API Schema definitions for the openpe v1alpha1 API gro
 - [L3Passthrough](#l3passthrough)
 - [L3VNI](#l3vni)
 - [RawFRRConfig](#rawfrrconfig)
+- [RouterNodeConfigurationStatus](#routernodeconfigurationstatus)
 - [Underlay](#underlay)
 
 
@@ -62,6 +63,44 @@ _Appears in:_
 | --- | --- | --- | --- |
 | `vtepCIDR` _string_ | vtepCIDR is the CIDR to be used to assign IPs to the local VTEP on each node.<br />A loopback interface will be created with an IP derived from this CIDR.<br />Mutually exclusive with vtepInterface. |  | Optional: \{\} <br /> |
 | `vtepInterface` _string_ | vtepInterface is the name of an existing interface to use as the VTEP source.<br />The interface must already have an IP address configured that will be used<br />as the VTEP IP. Mutually exclusive with vtepCIDR.<br />The ToR must advertise the interface IP into the fabric underlay<br />(e.g. via redistribute connected) so that the VTEP address is reachable<br />from other leaves. |  | MaxLength: 15 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9._-]*$` <br />Optional: \{\} <br /> |
+
+
+#### FailedResource
+
+
+
+FailedResource describes a single resource that failed during reconciliation.
+
+
+
+_Appears in:_
+- [RouterNodeConfigurationStatusStatus](#routernodeconfigurationstatusstatus)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `kind` _string_ | kind is the type of OpenPERouter resource that failed (e.g. "Underlay", "L2VNI", "L3VNI", "FrrConfiguration"). |  | MinLength: 1 <br />Required: \{\} <br /> |
+| `name` _string_ | name is the name of the specific resource instance. |  | MinLength: 1 <br />Required: \{\} <br /> |
+| `reason` _[FailureReason](#failurereason)_ | reason is why the resource failed. |  | Enum: [ValidationFailed DependencyFailed OverlayAttachmentFailed FrrConfigurationFailed] <br />Required: \{\} <br /> |
+| `message` _string_ | message is a detailed error description. |  | Optional: \{\} <br /> |
+
+
+#### FailureReason
+
+_Underlying type:_ _string_
+
+FailureReason describes why a resource failed during reconciliation.
+
+
+
+_Appears in:_
+- [FailedResource](#failedresource)
+
+| Field | Description |
+| --- | --- |
+| `ValidationFailed` |  |
+| `DependencyFailed` |  |
+| `OverlayAttachmentFailed` |  |
+| `FrrConfigurationFailed` |  |
 
 
 #### HostMaster
@@ -387,6 +426,41 @@ RawFRRConfigStatus defines the observed state of RawFRRConfig.
 _Appears in:_
 - [RawFRRConfig](#rawfrrconfig)
 
+
+
+#### RouterNodeConfigurationStatus
+
+
+
+RouterNodeConfigurationStatus reports the configuration result for a single node.
+
+
+
+
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `apiVersion` _string_ | `openpe.openperouter.github.io/v1alpha1` | | |
+| `kind` _string_ | `RouterNodeConfigurationStatus` | | |
+| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  | Optional: \{\} <br /> |
+| `status` _[RouterNodeConfigurationStatusStatus](#routernodeconfigurationstatusstatus)_ | status is the observed state of the node configuration. |  | Optional: \{\} <br /> |
+
+
+#### RouterNodeConfigurationStatusStatus
+
+
+
+RouterNodeConfigurationStatusStatus defines the observed state of RouterNodeConfigurationStatus.
+
+
+
+_Appears in:_
+- [RouterNodeConfigurationStatus](#routernodeconfigurationstatus)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `conditions` _[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#condition-v1-meta) array_ | conditions represent the latest available observations of the configuration state. |  | Optional: \{\} <br /> |
+| `failedResources` _[FailedResource](#failedresource) array_ | failedResources lists resources that failed during reconciliation. |  | Optional: \{\} <br /> |
 
 
 #### Underlay
