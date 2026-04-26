@@ -13,6 +13,102 @@ import (
 	"k8s.io/utils/ptr"
 )
 
+func TestValidateL3VNI(t *testing.T) {
+	tests := []struct {
+		name    string
+		vni     v1alpha1.L3VNI
+		wantErr bool
+	}{
+		{
+			name: "valid L3VNI",
+			vni: v1alpha1.L3VNI{
+				ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+				Spec:       v1alpha1.L3VNISpec{VNI: 100, VRF: "red", VXLanPort: 4789},
+			},
+		},
+		{
+			name: "invalid VRF name",
+			vni: v1alpha1.L3VNI{
+				ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+				Spec:       v1alpha1.L3VNISpec{VNI: 100, VRF: "toolongvrfnamexxxxxxx", VXLanPort: 4789},
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid route target",
+			vni: v1alpha1.L3VNI{
+				ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+				Spec:       v1alpha1.L3VNISpec{VNI: 100, VRF: "red", ExportRTs: []string{"bad"}},
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateL3VNI(tt.vni)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateL3VNI() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateL2VNI(t *testing.T) {
+	tests := []struct {
+		name    string
+		vni     v1alpha1.L2VNI
+		wantErr bool
+	}{
+		{
+			name: "valid L2VNI",
+			vni: v1alpha1.L2VNI{
+				ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+				Spec:       v1alpha1.L2VNISpec{VNI: 100, VRF: ptr.To("blue")},
+			},
+		},
+		{
+			name: "invalid VRF name",
+			vni: v1alpha1.L2VNI{
+				ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+				Spec:       v1alpha1.L2VNISpec{VNI: 100, VRF: ptr.To("toolongvrfnamexxxxxxx")},
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid L2GatewayIPs",
+			vni: v1alpha1.L2VNI{
+				ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+				Spec:       v1alpha1.L2VNISpec{VNI: 100, L2GatewayIPs: []string{"not-a-cidr"}},
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid hostmaster",
+			vni: v1alpha1.L2VNI{
+				ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+				Spec: v1alpha1.L2VNISpec{
+					VNI: 100,
+					HostMaster: &v1alpha1.HostMaster{
+						Type:        "linux-bridge",
+						LinuxBridge: &v1alpha1.LinuxBridgeConfig{Name: "toolonghostmasternamexx"},
+					},
+				},
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateL2VNI(tt.vni)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateL2VNI() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestValidateVNIs(t *testing.T) {
 	tests := []struct {
 		name    string
