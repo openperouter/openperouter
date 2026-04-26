@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/conversion"
 	"github.com/openperouter/openperouter/internal/frr"
 )
@@ -14,7 +15,8 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, underlay
 	var result ReconcileResult
 
 	if err := conversion.ValidateUnderlays(apiConfig.Underlays); err != nil {
-		return result, fmt.Errorf("failed to validate underlays: %w", err)
+		result.AddFailure("Underlay", underlayName(apiConfig), v1alpha1.ValidationFailed, err.Error())
+		return result, nil
 	}
 
 	if err := conversion.ValidateL3VNIs(apiConfig.L3VNIs); err != nil {
@@ -57,4 +59,11 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, underlay
 	}
 
 	return result, nil
+}
+
+func underlayName(apiConfig conversion.APIConfigData) string {
+	if len(apiConfig.Underlays) > 0 {
+		return apiConfig.Underlays[0].Name
+	}
+	return ""
 }
