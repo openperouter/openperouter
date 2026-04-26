@@ -11,7 +11,6 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/equality"
 	k8serr "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -21,7 +20,7 @@ import (
 
 // reconcileNodeStatus creates or updates the node status resource.
 // It sets the owner reference to the hosting node.
-func (r *PERouterReconciler) reconcileNodeStatus(ctx context.Context) error {
+func (r *PERouterReconciler) reconcileNodeStatus(ctx context.Context, reconcileErr error) error {
 	node := &corev1.Node{}
 	if err := r.Get(ctx, client.ObjectKey{Name: r.MyNode}, node); err != nil {
 		if k8serr.IsNotFound(err) {
@@ -40,14 +39,14 @@ func (r *PERouterReconciler) reconcileNodeStatus(ctx context.Context) error {
 		return fmt.Errorf("failed to create or update node status: %w", err)
 	}
 
-	newStatus := updateStatus(nodeStatus.Status)
+	newStatus := buildStatus(reconcileErr)
 
-	if equality.Semantic.DeepEqual(nodeStatus.Status, newStatus) {
+	if equality.Semantic.DeepEqual(nodeStatus.Status, &newStatus) {
 		return nil
 	}
 
 	newNodeStatus := nodeStatus.DeepCopy()
-	newNodeStatus.Status = newStatus
+	newNodeStatus.Status = &newStatus
 
 	if err := r.Status().Patch(ctx, newNodeStatus, client.MergeFrom(nodeStatus)); err != nil {
 		return fmt.Errorf("failed to patch status: %w", err)
@@ -57,39 +56,4 @@ func (r *PERouterReconciler) reconcileNodeStatus(ctx context.Context) error {
 		"node", r.MyNode, "namespace", r.MyNamespace, "status", newNodeStatus.Status)
 
 	return nil
-}
-
-func updateStatus(status *v1alpha1.RouterNodeConfigurationStatusStatus) *v1alpha1.RouterNodeConfigurationStatusStatus {
-	updated := status.DeepCopy()
-	if updated == nil {
-		updated = &v1alpha1.RouterNodeConfigurationStatusStatus{}
-	}
-
-	desiredConditions := newConditions()
-	for _, desiredCondition := range desiredConditions {
-		// SetStatusCondition update lastTransitionTime if unset or differs from desired condition.
-		meta.SetStatusCondition(&updated.Conditions, desiredCondition)
-	}
-
-	return updated
-}
-
-// newConditions return default conditions.
-// The conditions lastTransitionTime is unset.
-// TODO: create conditions according to status.FailedResources.
-func newConditions() []metav1.Condition {
-	ready := metav1.Condition{
-		Type:    v1alpha1.ConditionTypeReady,
-		Status:  metav1.ConditionUnknown,
-		Reason:  "Unknown",
-		Message: "Unknown status",
-	}
-	degraded := metav1.Condition{
-		Type:    v1alpha1.ConditionTypeDegraded,
-		Status:  metav1.ConditionUnknown,
-		Reason:  "Unknown",
-		Message: "Unknown status",
-	}
-
-	return []metav1.Condition{ready, degraded}
 }

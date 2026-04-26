@@ -34,6 +34,7 @@ import (
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/conversion"
+	openpeerrors "github.com/openperouter/openperouter/internal/errors"
 	"github.com/openperouter/openperouter/internal/filter"
 	"github.com/openperouter/openperouter/internal/frrconfig"
 	"github.com/openperouter/openperouter/internal/staticconfiguration"
@@ -85,6 +86,25 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	ctx = context.WithValue(ctx, requestKey("request"), req.String())
 
+	result, err := r.reconcile(ctx, logger)
+
+	if statusErr := r.reconcileNodeStatus(ctx, err); statusErr != nil {
+		return ctrl.Result{}, errors.Join(err, statusErr)
+	}
+
+	if err == nil {
+		return result, nil
+	}
+
+	if nonRecoverableHostError(err) ||
+		openpeerrors.IsUnderlayOnly(err) {
+		return ctrl.Result{}, nil
+	}
+
+	return ctrl.Result{}, err
+}
+
+func (r *PERouterReconciler) reconcile(ctx context.Context, logger *slog.Logger) (ctrl.Result, error) {
 	config, err := r.getConfigFromAPI(ctx, logger)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -130,20 +150,11 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			slog.Error("failed to handle non recoverable error", "error", err)
 			return ctrl.Result{}, err
 		}
-		return ctrl.Result{}, nil
+		return ctrl.Result{}, err
 	}
-	var errs []error
+
 	if err != nil {
-		errs = append(errs, err)
-	}
-
-	if err := r.reconcileNodeStatus(ctx); err != nil {
-		errs = append(errs, err)
-	}
-
-	if len(errs) > 0 {
-		err := errors.Join(errs...)
-		slog.Error("failed to configure the host", "error", err)
+		logger.Error("failed to reconcile host configuration", "error", err)
 		return ctrl.Result{}, err
 	}
 
