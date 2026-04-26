@@ -66,7 +66,9 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, underlay
 	}
 
 	if len(validConfig.Underlays) > 0 {
-		if err := provisionOverlays(ctx, ifConfig, hostConfig); err != nil {
+		overlayResult, err := provisionOverlays(ctx, ifConfig, hostConfig)
+		result.Merge(overlayResult)
+		if err != nil {
 			return result, fmt.Errorf("failed to provision overlays: %w", err)
 		}
 	}
