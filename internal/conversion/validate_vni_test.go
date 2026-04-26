@@ -13,6 +13,115 @@ import (
 	"k8s.io/utils/ptr"
 )
 
+func TestValidateL3VNI(t *testing.T) {
+	tests := []struct {
+		name           string
+		vni            v1alpha1.L3VNI
+		wantErrContain string
+	}{
+		{
+			name: "valid L3VNI",
+			vni: v1alpha1.L3VNI{
+				ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+				Spec:       v1alpha1.L3VNISpec{VNI: 100, VRF: "red", VXLanPort: ptr.To(int32(4789))},
+			},
+		},
+		{
+			name: "invalid VRF name",
+			vni: v1alpha1.L3VNI{
+				ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+				Spec:       v1alpha1.L3VNISpec{VNI: 100, VRF: "toolongvrfnamexxxxxxx", VXLanPort: ptr.To(int32(4789))},
+			},
+			wantErrContain: "invalid vrf name",
+		},
+		{
+			name: "invalid route target",
+			vni: v1alpha1.L3VNI{
+				ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+				Spec:       v1alpha1.L3VNISpec{VNI: 100, VRF: "red", ExportRTs: []string{"bad"}},
+			},
+			wantErrContain: "invalid route targets",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateL3VNI(tt.vni)
+			if tt.wantErrContain == "" && err != nil {
+				t.Errorf("ValidateL3VNI() unexpected error = %v", err)
+			}
+			if tt.wantErrContain != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErrContain)) {
+				t.Errorf("ValidateL3VNI() error = %v, want error containing %q", err, tt.wantErrContain)
+			}
+		})
+	}
+}
+
+func TestValidateL2VNI(t *testing.T) {
+	tests := []struct {
+		name           string
+		vni            v1alpha1.L2VNI
+		wantErrContain string
+	}{
+		{
+			name: "valid L2VNI with VRF and gateway IPs",
+			vni: v1alpha1.L2VNI{
+				ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+				Spec:       v1alpha1.L2VNISpec{VNI: 100, VRF: ptr.To("blue"), L2GatewayIPs: []string{"10.10.10.1/24"}},
+			},
+		},
+		{
+			name: "valid disconnected L2VNI",
+			vni: v1alpha1.L2VNI{
+				ObjectMeta: metav1.ObjectMeta{Name: "vni2"},
+				Spec:       v1alpha1.L2VNISpec{VNI: 200},
+			},
+		},
+		{
+			name: "invalid VRF name",
+			vni: v1alpha1.L2VNI{
+				ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+				Spec:       v1alpha1.L2VNISpec{VNI: 100, VRF: ptr.To("toolongvrfnamexxxxxxx")},
+			},
+			wantErrContain: "invalid vrf name",
+		},
+		{
+			name: "invalid L2GatewayIPs",
+			vni: v1alpha1.L2VNI{
+				ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+				Spec:       v1alpha1.L2VNISpec{VNI: 100, L2GatewayIPs: []string{"not-a-cidr"}},
+			},
+			wantErrContain: "l2gatewayips cannot be set without spec.vrf",
+		},
+		{
+			name: "invalid hostmaster",
+			vni: v1alpha1.L2VNI{
+				ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+				Spec: v1alpha1.L2VNISpec{
+					VNI: 100,
+					HostMaster: &v1alpha1.HostMaster{
+						Type:        "linux-bridge",
+						LinuxBridge: &v1alpha1.LinuxBridgeConfig{Name: ptr.To("toolonghostmasternamexx")},
+					},
+				},
+			},
+			wantErrContain: "invalid hostmaster name",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateL2VNI(tt.vni)
+			if tt.wantErrContain == "" && err != nil {
+				t.Errorf("ValidateL2VNI() unexpected error = %v", err)
+			}
+			if tt.wantErrContain != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErrContain)) {
+				t.Errorf("ValidateL2VNI() error = %v, want error containing %q", err, tt.wantErrContain)
+			}
+		})
+	}
+}
+
 func TestValidateVNIs(t *testing.T) {
 	tests := []struct {
 		name    string
