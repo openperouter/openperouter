@@ -116,6 +116,10 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
+	if err := ensureStatusCR(ctx, r.Client, r.MyNode, r.MyNamespace); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to ensure status CR: %w", err)
+	}
+
 	updater := frrconfig.UpdaterForSocket(r.FRRReloadSocket, r.FRRConfigPath)
 
 	nodeIndex, err := r.RouterProvider.NodeIndex(ctx)
@@ -124,7 +128,7 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
-	err = Reconcile(ctx, config, r.UnderlayFromMultus, nodeIndex, r.LogLevel, r.FRRConfigPath, targetNS, updater)
+	result, err := Reconcile(ctx, config, r.UnderlayFromMultus, nodeIndex, r.LogLevel, r.FRRConfigPath, targetNS, updater)
 	if nonRecoverableHostError(err) {
 		logger.Error("non recoverable error", "error", err)
 		if err := router.HandleNonRecoverableError(ctx); err != nil {
@@ -132,6 +136,11 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			return ctrl.Result{}, err
 		}
 	}
+
+	if statusErr := updateStatus(ctx, r.Client, r.MyNode, r.MyNamespace, result, err); statusErr != nil {
+		slog.ErrorContext(ctx, "failed to update status", "error", statusErr)
+	}
+
 	if err != nil {
 		slog.Error("failed to configure the host", "error", err)
 		return ctrl.Result{}, err

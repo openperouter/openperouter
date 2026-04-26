@@ -10,29 +10,31 @@ import (
 	"github.com/openperouter/openperouter/internal/frr"
 )
 
-func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, underlayFromMultus bool, nodeIndex int, logLevel, frrConfigPath, targetNamespace string, updater frr.ConfigUpdater) error {
+func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, underlayFromMultus bool, nodeIndex int, logLevel, frrConfigPath, targetNamespace string, updater frr.ConfigUpdater) (ReconcileResult, error) {
+	var result ReconcileResult
+
 	if err := conversion.ValidateUnderlays(apiConfig.Underlays); err != nil {
-		return fmt.Errorf("failed to validate underlays: %w", err)
+		return result, fmt.Errorf("failed to validate underlays: %w", err)
 	}
 
 	if err := conversion.ValidateL3VNIs(apiConfig.L3VNIs); err != nil {
-		return fmt.Errorf("failed to validate l3vnis: %w", err)
+		return result, fmt.Errorf("failed to validate l3vnis: %w", err)
 	}
 
 	if err := conversion.ValidateL2VNIs(apiConfig.L2VNIs); err != nil {
-		return fmt.Errorf("failed to validate l2vnis: %w", err)
+		return result, fmt.Errorf("failed to validate l2vnis: %w", err)
 	}
 
 	if err := conversion.ValidateVRFs(apiConfig.L2VNIs, apiConfig.L3VNIs); err != nil {
-		return fmt.Errorf("failed to validate VRFs: %w", err)
+		return result, fmt.Errorf("failed to validate VRFs: %w", err)
 	}
 
 	if err := conversion.ValidatePassthroughs(apiConfig.L3Passthrough); err != nil {
-		return fmt.Errorf("failed to validate l3passthrough: %w", err)
+		return result, fmt.Errorf("failed to validate l3passthrough: %w", err)
 	}
 
 	if err := conversion.ValidateHostSessions(apiConfig.L3VNIs, apiConfig.L3Passthrough); err != nil {
-		return fmt.Errorf("failed to validate host sessions: %w", err)
+		return result, fmt.Errorf("failed to validate host sessions: %w", err)
 	}
 
 	if err := configureFRR(ctx, frrConfigData{
@@ -42,7 +44,7 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, underlay
 		nodeIndex:     nodeIndex,
 		logLevel:      logLevel,
 	}); err != nil {
-		return fmt.Errorf("failed to reload frr config: %w", err)
+		return result, fmt.Errorf("failed to reload frr config: %w", err)
 	}
 
 	if err := configureInterfaces(ctx, interfacesConfiguration{
@@ -51,8 +53,8 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, underlay
 		nodeIndex:          nodeIndex,
 		underlayFromMultus: underlayFromMultus,
 	}); err != nil {
-		return fmt.Errorf("failed to configure the host: %w", err)
+		return result, fmt.Errorf("failed to configure the host: %w", err)
 	}
 
-	return nil
+	return result, nil
 }

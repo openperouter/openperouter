@@ -61,7 +61,7 @@ func ensureStatusCR(ctx context.Context, cl client.Client, nodeName, namespace s
 	return nil
 }
 
-func updateStatus(ctx context.Context, cl client.Client, nodeName, namespace string, result ReconcileResult) error {
+func updateStatus(ctx context.Context, cl client.Client, nodeName, namespace string, result ReconcileResult, reconcileErr error) error {
 	status := &v1alpha1.RouterNodeConfigurationStatus{}
 	if err := cl.Get(ctx, client.ObjectKey{Name: nodeName, Namespace: namespace}, status); err != nil {
 		return fmt.Errorf("failed to get RouterNodeConfigurationStatus %s: %w", nodeName, err)
@@ -70,7 +70,7 @@ func updateStatus(ctx context.Context, cl client.Client, nodeName, namespace str
 	oldStatus := status.Status.DeepCopy()
 
 	status.Status.FailedResources = result.FailedResources
-	setConditions(status, result, nil)
+	setConditions(status, result, reconcileErr)
 
 	if equality.Semantic.DeepEqual(*oldStatus, status.Status) {
 		return nil
