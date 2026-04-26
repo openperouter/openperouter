@@ -54,13 +54,21 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, underlay
 		return result, fmt.Errorf("failed to reload frr config: %w", err)
 	}
 
-	if err := configureInterfaces(ctx, interfacesConfiguration{
+	ifConfig := interfacesConfiguration{
 		targetNamespace:    targetNamespace,
 		APIConfigData:      validConfig,
 		nodeIndex:          nodeIndex,
 		underlayFromMultus: underlayFromMultus,
-	}); err != nil {
+	}
+	hostConfig, err := setupHostPrerequisites(ctx, ifConfig)
+	if err != nil {
 		return result, fmt.Errorf("failed to configure the host: %w", err)
+	}
+
+	if len(validConfig.Underlays) > 0 {
+		if err := provisionOverlays(ctx, ifConfig, hostConfig); err != nil {
+			return result, fmt.Errorf("failed to provision overlays: %w", err)
+		}
 	}
 
 	return result, nil

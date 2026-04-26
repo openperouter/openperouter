@@ -27,10 +27,10 @@ func (n UnderlayRemovedError) Error() string {
 	return "no underlays configured"
 }
 
-func configureInterfaces(ctx context.Context, config interfacesConfiguration) error {
+func setupHostPrerequisites(ctx context.Context, config interfacesConfiguration) (conversion.HostConfigData, error) {
 	hasAlreadyUnderlay, err := hostnetwork.HasUnderlayInterface(config.targetNamespace)
 	if err != nil {
-		return fmt.Errorf("failed to check if target namespace %s has underlay: %w", config.targetNamespace, err)
+		return conversion.HostConfigData{}, fmt.Errorf("failed to check if target namespace %s has underlay: %w", config.targetNamespace, err)
 	}
 	if hasAlreadyUnderlay && len(config.Underlays) == 0 {
 		slog.InfoContext(ctx, "underlay removed, cleaning up VNIs")
@@ -38,15 +38,13 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 			slog.Warn("failed to remove vnis after underlay removal", "err", err)
 		}
 		bridgerefresh.StopAllVNIs()
-		return UnderlayRemovedError{}
+		return conversion.HostConfigData{}, UnderlayRemovedError{}
 	}
 
 	if len(config.Underlays) == 0 {
-		return nil // nothing to do
+		return conversion.HostConfigData{}, nil
 	}
 
-	slog.InfoContext(ctx, "configure interface start", "namespace", config.targetNamespace)
-	defer slog.InfoContext(ctx, "configure interface end", "namespace", config.targetNamespace)
 	apiConfig := conversion.APIConfigData{
 		Underlays:     config.Underlays,
 		L3VNIs:        config.L3VNIs,
@@ -55,7 +53,7 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 	}
 	hostConfig, err := conversion.APItoHostConfig(config.nodeIndex, config.targetNamespace, config.underlayFromMultus, apiConfig)
 	if err != nil {
-		return fmt.Errorf("failed to convert config to host configuration: %w", err)
+		return conversion.HostConfigData{}, fmt.Errorf("failed to convert config to host configuration: %w", err)
 	}
 
 	slog.InfoContext(ctx, "ensuring sysctls")
@@ -68,13 +66,21 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 		sysctl.AcceptUntrackedNADefault(),
 		sysctl.AcceptUntrackedNAAll(),
 	); err != nil {
-		return fmt.Errorf("failed to ensure sysctls: %w", err)
+		return conversion.HostConfigData{}, fmt.Errorf("failed to ensure sysctls: %w", err)
 	}
 
 	slog.InfoContext(ctx, "setting up underlay")
 	if err := hostnetwork.SetupUnderlay(ctx, hostConfig.Underlay); err != nil {
-		return fmt.Errorf("failed to setup underlay: %w", err)
+		return conversion.HostConfigData{}, fmt.Errorf("failed to setup underlay: %w", err)
 	}
+
+	return hostConfig, nil
+}
+
+func provisionOverlays(ctx context.Context, config interfacesConfiguration, hostConfig conversion.HostConfigData) error {
+	slog.InfoContext(ctx, "configure interface start", "namespace", config.targetNamespace)
+	defer slog.InfoContext(ctx, "configure interface end", "namespace", config.targetNamespace)
+
 	for _, vni := range hostConfig.L3VNIs {
 		slog.InfoContext(ctx, "setting up VNI", "vni", vni.VRF)
 		if err := hostnetwork.SetupL3VNI(ctx, vni); err != nil {
@@ -112,7 +118,7 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 	}
 	bridgerefresh.StopForRemovedVNIs(hostConfig.L2VNIs)
 
-	if len(apiConfig.L3Passthrough) == 0 {
+	if len(config.L3Passthrough) == 0 {
 		if err := hostnetwork.RemovePassthrough(config.targetNamespace); err != nil {
 			return fmt.Errorf("failed to remove passthrough: %w", err)
 		}
