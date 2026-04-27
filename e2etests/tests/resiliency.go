@@ -16,6 +16,7 @@ import (
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/e2etests/pkg/config"
 	"github.com/openperouter/openperouter/e2etests/pkg/executor"
+	"github.com/openperouter/openperouter/e2etests/pkg/frr"
 	"github.com/openperouter/openperouter/e2etests/pkg/infra"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
@@ -330,6 +331,44 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 		})
 		Expect(err).NotTo(HaveOccurred())
 
+		DeferCleanup(func() {
+			if !ginkgo.CurrentSpecReport().Failed() {
+				return
+			}
+			leafExec := executor.ForContainer(infra.KindLeaf)
+			out, err := leafExec.Exec("vtysh", "-c", "show bgp l2vpn evpn route type prefix")
+			if err != nil {
+				ginkgo.GinkgoWriter.Printf("failed to dump leafkind Type-5 routes: %v\n", err)
+			} else {
+				ginkgo.GinkgoWriter.Printf("=== leafkind Type-5 EVPN routes ===\n%s\n", out)
+			}
+			out, err = leafExec.Exec("vtysh", "-c", "show bgp l2vpn evpn route type macip")
+			if err != nil {
+				ginkgo.GinkgoWriter.Printf("failed to dump leafkind Type-2 routes: %v\n", err)
+			} else {
+				ginkgo.GinkgoWriter.Printf("=== leafkind Type-2 EVPN routes ===\n%s\n", out)
+			}
+			freshRouters, routerErr := openperouter.ReadyRouters(cs, HostMode)
+			if routerErr != nil {
+				ginkgo.GinkgoWriter.Printf("failed to get ready routers for diagnostics: %v\n", routerErr)
+			} else {
+				for exec := range freshRouters.GetExecutors() {
+					cfg, cfgErr := frr.RunningConfig(exec)
+					if cfgErr != nil {
+						ginkgo.GinkgoWriter.Printf("failed to dump running config on %s: %v\n", exec.Name(), cfgErr)
+					} else {
+						ginkgo.GinkgoWriter.Printf("=== %s FRR running config ===\n%s\n", exec.Name(), cfg)
+					}
+					evpnOut, evpnErr := exec.Exec("vtysh", "-c", "show bgp l2vpn evpn route type prefix")
+					if evpnErr != nil {
+						ginkgo.GinkgoWriter.Printf("failed to dump PE Type-5 routes on %s: %v\n", exec.Name(), evpnErr)
+					} else {
+						ginkgo.GinkgoWriter.Printf("=== %s PE Type-5 EVPN routes ===\n%s\n", exec.Name(), evpnOut)
+					}
+				}
+			}
+		})
+
 		_, err = k8s.CreateNamespace(cs, testNamespace)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -432,11 +471,24 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 			Established,
 		)
 
+		By("waiting for Type-5 prefix route to appear on the fabric")
+		leafExec := executor.ForContainer(infra.KindLeaf)
+		Eventually(func() error {
+			out, err := leafExec.Exec("vtysh", "-c", "show bgp l2vpn evpn route type prefix")
+			if err != nil {
+				return err
+			}
+			if !strings.Contains(out, "192.171.24.0/24") {
+				return fmt.Errorf("Type-5 route for 192.171.24.0/24 not yet present on leafkind")
+			}
+			return nil
+		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
+
 		By("verifying traffic works again after rebuild")
 		Eventually(func() error {
 			_, err := hostARedExecutor.Exec("curl", "-sS", "--max-time", "3", urlStr)
 			return err
-		}).WithTimeout(2 * time.Minute).WithPolling(time.Second).Should(Succeed())
+		}).WithTimeout(3 * time.Minute).WithPolling(time.Second).Should(Succeed())
 	})
 
 	It("should maintain stretched L2 traffic across nodes with minimal disruption when a router pod is deleted", func() {
