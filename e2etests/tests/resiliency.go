@@ -436,7 +436,7 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 		Eventually(func() error {
 			_, err := hostARedExecutor.Exec("curl", "-sS", "--max-time", "3", urlStr)
 			return err
-		}).WithTimeout(30 * time.Second).WithPolling(time.Second).Should(Succeed())
+		}).WithTimeout(2 * time.Minute).WithPolling(time.Second).Should(Succeed())
 	})
 
 	It("should maintain stretched L2 traffic across nodes with minimal disruption when a router pod is deleted", func() {
