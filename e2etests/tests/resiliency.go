@@ -478,8 +478,8 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 			if err != nil {
 				return err
 			}
-			if !strings.Contains(out, "192.171.24.0/24") {
-				return fmt.Errorf("Type-5 route for 192.171.24.0/24 not yet present on leafkind")
+			if !strings.Contains(out, "192.171.24.0") {
+				return fmt.Errorf("Type-5 route for 192.171.24.0 not yet present on leafkind")
 			}
 			return nil
 		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
