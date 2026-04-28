@@ -3,6 +3,7 @@
 package conversion
 
 import (
+	"errors"
 	"fmt"
 	"net"
 
@@ -12,89 +13,182 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func APItoHostConfig(nodeIndex int, targetNS string, underlayFromMultus bool, apiConfig APIConfigData) (HostConfigData, error) {
-	res := HostConfigData{
-		L3VNIs: []hostnetwork.L3VNIParams{},
-		L2VNIs: []hostnetwork.L2VNIParams{},
-	}
-	if len(apiConfig.Underlays) > 1 {
-		return res, fmt.Errorf("can't have more than one underlay")
-	}
-	if len(apiConfig.L3Passthrough) > 1 {
-		return res, fmt.Errorf("can't have more than one passthrough")
-	}
+// APItoHostConfig converts API custom resources into configuration that is applied to the underlying OS.
+func APItoHostConfig(nodeIndex int, targetNS string, underlayFromMultus bool,
+	apiConfig APIConfigData) (HostConfigData, error) {
+	// Contrary to the FRR conversion, the Host conversion always accepts an empty underlay.
 	if len(apiConfig.Underlays) == 0 {
-		return res, nil
+		return HostConfigData{
+			L3VNIs: []hostnetwork.L3VNIParams{},
+			L2VNIs: []hostnetwork.L2VNIParams{},
+		}, nil
+	}
+
+	// Common validation between the FRR and Host config conversion layer.
+	if err := validateAPIConfigData(apiConfig); err != nil {
+		return HostConfigData{}, err
 	}
 
 	underlay := apiConfig.Underlays[0]
 
+	underlayInterface, err := getUnderlayInterfaceForHost(underlay, underlayFromMultus)
+	if err != nil {
+		return HostConfigData{}, err
+	}
+
+	l3Passthrough, err := convertPassthroughConfigForHost(apiConfig.L3Passthrough, targetNS, nodeIndex)
+	if err != nil {
+		return HostConfigData{}, err
+	}
+
+	underlayConfigEVPN, err := convertUnderlayEVPNForHost(underlay, nodeIndex)
+	if err != nil {
+		return HostConfigData{}, err
+	}
+
+	l3VNIs, err := convertL3VNIsForHost(
+		underlay,
+		apiConfig.L3VNIs,
+		underlayConfigEVPN.VtepIP,
+		targetNS,
+		nodeIndex)
+	if err != nil {
+		return HostConfigData{}, err
+	}
+
+	l2VNIs, err := convertL2VNIsForHost(
+		underlay,
+		apiConfig.L2VNIs,
+		underlayConfigEVPN.VtepIP,
+		targetNS)
+	if err != nil {
+		return HostConfigData{}, err
+	}
+
+	underlayConfigEVPNForSRv6, err := convertUnderlayL3VPNForHost(underlay, nodeIndex)
+	if err != nil {
+		return HostConfigData{}, err
+	}
+	if underlayConfigEVPNForSRv6.VtepIP != "" {
+		underlayConfigEVPN = underlayConfigEVPNForSRv6
+	}
+
+	l3VNIsForSRv6, err := convertL3VPNsForHost(
+		underlay,
+		apiConfig.L3VPNs,
+		underlayConfigEVPN.VtepIP,
+		targetNS,
+		nodeIndex)
+	if err != nil {
+		return HostConfigData{}, err
+	}
+	l3VNIs = append(l3VNIs, l3VNIsForSRv6...)
+
+	return HostConfigData{
+		Underlay: hostnetwork.UnderlayParams{
+			TargetNS:          targetNS,
+			UnderlayInterface: underlayInterface,
+			EVPN:              underlayConfigEVPN,
+		},
+		L3VNIs:        l3VNIs,
+		L2VNIs:        l2VNIs,
+		L3Passthrough: l3Passthrough,
+	}, nil
+}
+
+// getUnderlayInterfaceForHost returns the underlay interface name from the Underlay spec.
+// It is a helper for APItoHostConfig to keep cognitive complexity light.
+func getUnderlayInterfaceForHost(underlay v1alpha1.Underlay, underlayFromMultus bool) (string, error) {
 	if len(underlay.Spec.Nics) == 0 && !underlayFromMultus {
-		return res, fmt.Errorf("underlay interface must be specified when Multus is not enabled")
+		return "", errors.New("underlay interface must be specified when Multus is not enabled")
 	}
 
-	res.Underlay = hostnetwork.UnderlayParams{
-		TargetNS: targetNS,
-	}
+	underlayInterface := ""
 	if len(underlay.Spec.Nics) > 0 {
-		res.Underlay.UnderlayInterface = underlay.Spec.Nics[0]
+		underlayInterface = underlay.Spec.Nics[0]
+	}
+	return underlayInterface, nil
+}
+
+// convertPassthroughConfigForHost converts the L3Passthrough API resources into PassthroughParams for host network
+// configuration. It is a helper for APItoHostConfig to keep cognitive complexity light.
+func convertPassthroughConfigForHost(l3Passthrough []v1alpha1.L3Passthrough, targetNS string,
+	nodeIndex int) (*hostnetwork.PassthroughParams, error) {
+	if len(l3Passthrough) != 1 {
+		return nil, nil
+	}
+	vethIPs, err := ipam.VethIPsFromPool(
+		l3Passthrough[0].Spec.HostSession.LocalCIDR.IPv4,
+		l3Passthrough[0].Spec.HostSession.LocalCIDR.IPv6,
+		nodeIndex,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get veth ips, cidr %v, nodeIndex %d, err: %w",
+			l3Passthrough[0].Spec.HostSession.LocalCIDR, nodeIndex, err)
 	}
 
-	if len(apiConfig.L3Passthrough) == 1 {
-		vethIPs, err := ipam.VethIPsFromPool(apiConfig.L3Passthrough[0].Spec.HostSession.LocalCIDR.IPv4, apiConfig.L3Passthrough[0].Spec.HostSession.LocalCIDR.IPv6, nodeIndex)
-		if err != nil {
-			return res, fmt.Errorf("failed to get veth ips, cidr %v, nodeIndex %d", apiConfig.L3Passthrough[0].Spec.HostSession.LocalCIDR, nodeIndex)
-		}
+	return &hostnetwork.PassthroughParams{
+		TargetNS: targetNS,
+		HostVeth: hostnetwork.Veth{
+			HostIPv4: ipNetToString(vethIPs.Ipv4.HostSide),
+			NSIPv4:   ipNetToString(vethIPs.Ipv4.PeSide),
+			HostIPv6: ipNetToString(vethIPs.Ipv6.HostSide),
+			NSIPv6:   ipNetToString(vethIPs.Ipv6.PeSide),
+		},
+	}, nil
+}
 
-		res.L3Passthrough = &hostnetwork.PassthroughParams{
-			TargetNS: targetNS,
-			HostVeth: hostnetwork.Veth{
-				HostIPv4: ipNetToString(vethIPs.Ipv4.HostSide),
-				NSIPv4:   ipNetToString(vethIPs.Ipv4.PeSide),
-				HostIPv6: ipNetToString(vethIPs.Ipv6.HostSide),
-				NSIPv6:   ipNetToString(vethIPs.Ipv6.PeSide),
-			},
-		}
-	}
-
-	// EVPN is required when VNIs are defined, but EVPN without VNIs is allowed
-	// (e.g., for preparation or advanced BGP EVPN use cases)
-	if underlay.Spec.EVPN == nil && (len(apiConfig.L3VNIs) > 0 || len(apiConfig.L2VNIs) > 0) {
-		return res, fmt.Errorf("underlay EVPN configuration is required when L3 or L2 VNIs are defined")
-	}
-
+// convertUnderlayEVPNForHost converts the EVPN underlay VTEP CIDR into UnderlayEVPNParams.
+// It is a helper for APItoHostConfig to keep cognitive complexity light.
+func convertUnderlayEVPNForHost(underlay v1alpha1.Underlay, nodeIndex int) (hostnetwork.UnderlayEVPNParams, error) {
 	if underlay.Spec.EVPN == nil {
-		return res, nil
+		return hostnetwork.UnderlayEVPNParams{}, nil
+	}
+	if underlay.Spec.EVPN.VTEPCIDR == "" {
+		return hostnetwork.UnderlayEVPNParams{}, nil
 	}
 
-	res.Underlay.EVPN = &hostnetwork.UnderlayEVPNParams{}
-	if underlay.Spec.EVPN.VTEPCIDR != "" {
-		vtepIP, err := ipam.VTEPIp(underlay.Spec.EVPN.VTEPCIDR, nodeIndex)
-		if err != nil {
-			return res, fmt.Errorf("failed to get vtep ip, cidr %s, nodeIndex %d: %w", underlay.Spec.EVPN.VTEPCIDR, nodeIndex, err)
-		}
-		res.Underlay.EVPN.VtepIP = vtepIP.String()
+	vtepIP, err := ipam.VTEPIp(underlay.Spec.EVPN.VTEPCIDR, nodeIndex)
+	if err != nil {
+		return hostnetwork.UnderlayEVPNParams{}, fmt.Errorf("failed to get vtep ip, cidr %s, nodeIndex %d: %w",
+			underlay.Spec.EVPN.VTEPCIDR, nodeIndex, err)
 	}
+	return hostnetwork.UnderlayEVPNParams{
+		VtepIP: vtepIP.String(),
+	}, nil
+}
 
-	for _, vni := range apiConfig.L3VNIs {
+// convertL3VNIsForHost converts the L3VNI API resources into a slice of L3VNIParams for host network
+// configuration (EVPN). It is a helper for APItoHostConfig to keep cognitive complexity light.
+func convertL3VNIsForHost(underlay v1alpha1.Underlay, l3VNIs []v1alpha1.L3VNI,
+	vtepIP, targetNS string, nodeIndex int) ([]hostnetwork.L3VNIParams, error) {
+	if underlay.Spec.EVPN == nil {
+		return []hostnetwork.L3VNIParams{}, nil
+	}
+	hostVNIs := []hostnetwork.L3VNIParams{}
+	for _, vni := range l3VNIs {
 		v := hostnetwork.L3VNIParams{
 			VNIParams: hostnetwork.VNIParams{
 				VRF:           vni.Spec.VRF,
 				TargetNS:      targetNS,
-				VTEPIP:        res.Underlay.EVPN.VtepIP,
+				VTEPIP:        vtepIP,
 				VTEPInterface: underlay.Spec.EVPN.VTEPInterface,
 				VNI:           int(vni.Spec.VNI),
 				VXLanPort:     int(vni.Spec.VXLanPort),
 			},
 		}
 		if vni.Spec.HostSession == nil {
-			res.L3VNIs = append(res.L3VNIs, v)
+			hostVNIs = append(hostVNIs, v)
 			continue
 		}
 
-		vethIPs, err := ipam.VethIPsFromPool(vni.Spec.HostSession.LocalCIDR.IPv4, vni.Spec.HostSession.LocalCIDR.IPv6, nodeIndex)
+		vethIPs, err := ipam.VethIPsFromPool(
+			vni.Spec.HostSession.LocalCIDR.IPv4,
+			vni.Spec.HostSession.LocalCIDR.IPv6,
+			nodeIndex)
 		if err != nil {
-			return res, fmt.Errorf("failed to get veth ips, cidr %v, nodeIndex %d", vni.Spec.HostSession.LocalCIDR, nodeIndex)
+			return nil, fmt.Errorf("failed to get veth ips, cidr %v, nodeIndex %d, err: %w",
+				vni.Spec.HostSession.LocalCIDR, nodeIndex, err)
 		}
 
 		v.HostVeth = &hostnetwork.Veth{
@@ -104,37 +198,105 @@ func APItoHostConfig(nodeIndex int, targetNS string, underlayFromMultus bool, ap
 			NSIPv6:   ipNetToString(vethIPs.Ipv6.PeSide),
 		}
 
-		res.L3VNIs = append(res.L3VNIs, v)
+		hostVNIs = append(hostVNIs, v)
 	}
+	return hostVNIs, nil
+}
 
-	res.L2VNIs = []hostnetwork.L2VNIParams{}
-	for _, l2vni := range apiConfig.L2VNIs {
+// convertL2VNIsForHost converts the L2VNI API resources into a slice of L2VNIParams for host network
+// configuration (EVPN). It is a helper for APItoHostConfig to keep cognitive complexity light.
+func convertL2VNIsForHost(underlay v1alpha1.Underlay, l2VNIs []v1alpha1.L2VNI,
+	vtepIP, targetNS string) ([]hostnetwork.L2VNIParams, error) {
+	if underlay.Spec.EVPN == nil {
+		return []hostnetwork.L2VNIParams{}, nil
+	}
+	hostVNIs := []hostnetwork.L2VNIParams{}
+	for _, l2vni := range l2VNIs {
 		vni := hostnetwork.L2VNIParams{
 			VNIParams: hostnetwork.VNIParams{
 				VRF:           l2vni.VRFName(),
 				TargetNS:      targetNS,
-				VTEPIP:        res.Underlay.EVPN.VtepIP,
+				VTEPIP:        vtepIP,
 				VTEPInterface: underlay.Spec.EVPN.VTEPInterface,
 				VNI:           int(l2vni.Spec.VNI),
 				VXLanPort:     int(l2vni.Spec.VXLanPort),
 			},
-		}
-		if len(l2vni.Spec.L2GatewayIPs) > 0 {
-			vni.L2GatewayIPs = make([]string, len(l2vni.Spec.L2GatewayIPs))
-			copy(vni.L2GatewayIPs, l2vni.Spec.L2GatewayIPs)
+			L2GatewayIPs: append([]string(nil), l2vni.Spec.L2GatewayIPs...), // Create deepcopy to avoid side effects.
 		}
 		if l2vni.Spec.HostMaster != nil {
 			hm, err := convertHostMaster(&l2vni)
 			if err != nil {
-				return HostConfigData{}, err
+				return nil, err
 			}
 			vni.HostMaster = hm
 		}
+		hostVNIs = append(hostVNIs, vni)
+	}
+	return hostVNIs, nil
+}
 
-		res.L2VNIs = append(res.L2VNIs, vni)
+// convertUnderlayL3VPNForHost converts the SRv6 underlay source CIDR into UnderlayEVPNParams.
+// It is a helper for APItoHostConfig to keep cognitive complexity light.
+func convertUnderlayL3VPNForHost(underlay v1alpha1.Underlay, nodeIndex int) (hostnetwork.UnderlayEVPNParams, error) {
+	if underlay.Spec.SRV6 == nil {
+		return hostnetwork.UnderlayEVPNParams{}, nil
+	}
+	if underlay.Spec.SRV6.Source.CIDR == "" {
+		return hostnetwork.UnderlayEVPNParams{}, nil
 	}
 
-	return res, nil
+	vtepIP, err := ipam.VTEPIp(underlay.Spec.SRV6.Source.CIDR, nodeIndex)
+	if err != nil {
+		return hostnetwork.UnderlayEVPNParams{}, fmt.Errorf("failed to get vtep ip, cidr %s, nodeIndex %d: %w",
+			underlay.Spec.SRV6.Source.CIDR, nodeIndex, err)
+	}
+	return hostnetwork.UnderlayEVPNParams{
+		VtepIP: vtepIP.String(),
+	}, nil
+}
+
+// convertL3VPNsForHost converts the L3VPN API resources into a slice of L3VNIParams for host network
+// configuration (SRv6). It is a helper for APItoHostConfig to keep cognitive complexity light.
+func convertL3VPNsForHost(underlay v1alpha1.Underlay, l3VPNs []v1alpha1.L3VPN, vtepIP, targetNS string,
+	nodeIndex int) ([]hostnetwork.L3VNIParams, error) {
+	if underlay.Spec.SRV6 == nil {
+		return []hostnetwork.L3VNIParams{}, nil
+	}
+	hostVNIs := []hostnetwork.L3VNIParams{}
+	for _, vni := range l3VPNs {
+		v := hostnetwork.L3VNIParams{
+			VNIParams: hostnetwork.VNIParams{
+				VRF:           vni.Spec.VRF,
+				TargetNS:      targetNS,
+				VTEPIP:        vtepIP,
+				VTEPInterface: underlay.Spec.SRV6.Source.Interface,
+				VNI:           int(vni.Spec.RDAssignedNumber),
+			},
+		}
+		if vni.Spec.HostSession == nil {
+			hostVNIs = append(hostVNIs, v)
+			continue
+		}
+
+		vethIPs, err := ipam.VethIPsFromPool(
+			vni.Spec.HostSession.LocalCIDR.IPv4,
+			vni.Spec.HostSession.LocalCIDR.IPv6,
+			nodeIndex)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get veth ips, cidr %v, nodeIndex %d",
+				vni.Spec.HostSession.LocalCIDR, nodeIndex)
+		}
+
+		v.HostVeth = &hostnetwork.Veth{
+			HostIPv4: ipNetToString(vethIPs.Ipv4.HostSide),
+			NSIPv4:   ipNetToString(vethIPs.Ipv4.PeSide),
+			HostIPv6: ipNetToString(vethIPs.Ipv6.HostSide),
+			NSIPv6:   ipNetToString(vethIPs.Ipv6.PeSide),
+		}
+
+		hostVNIs = append(hostVNIs, v)
+	}
+	return hostVNIs, nil
 }
 
 func convertHostMaster(l2vni *v1alpha1.L2VNI) (*hostnetwork.HostMaster, error) {

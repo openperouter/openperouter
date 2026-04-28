@@ -70,7 +70,7 @@ var _ = Describe("Ensure", func() {
 				}
 			}
 
-			err := Ensure(fmt.Sprintf("/var/run/netns/%s", testNS), sysctls...)
+			err := EnsureInNamespace(fmt.Sprintf("/var/run/netns/%s", testNS), sysctls...)
 			Expect(err).NotTo(HaveOccurred())
 
 			for _, s := range sysctls {
@@ -100,7 +100,7 @@ var _ = Describe("Ensure", func() {
 			Description:        "nonexistent sysctl with UnsupportedWarning",
 			UnsupportedWarning: "expected to be skipped",
 		}
-		err := Ensure(fmt.Sprintf("/var/run/netns/%s", testNS), s)
+		err := EnsureInNamespace(fmt.Sprintf("/var/run/netns/%s", testNS), s)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -113,7 +113,7 @@ var _ = Describe("Ensure", func() {
 			Path:        "net/ipv6/conf/all/nonexistent_sysctl",
 			Description: "nonexistent sysctl without UnsupportedWarning",
 		}
-		err := Ensure(fmt.Sprintf("/var/run/netns/%s", testNS), s)
+		err := EnsureInNamespace(fmt.Sprintf("/var/run/netns/%s", testNS), s)
 		Expect(err).To(HaveOccurred())
 	})
 })

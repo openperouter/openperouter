@@ -3,6 +3,8 @@
 package conversion
 
 import (
+	"errors"
+
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
 )
@@ -11,6 +13,7 @@ type APIConfigData struct {
 	Underlays     []v1alpha1.Underlay
 	L3VNIs        []v1alpha1.L3VNI
 	L2VNIs        []v1alpha1.L2VNI
+	L3VPNs        []v1alpha1.L3VPN
 	L3Passthrough []v1alpha1.L3Passthrough
 	RawFRRConfigs []v1alpha1.RawFRRConfig
 }
@@ -30,6 +33,7 @@ func MergeAPIConfigs(configs ...APIConfigData) (APIConfigData, error) {
 	merged := APIConfigData{
 		L3VNIs:        []v1alpha1.L3VNI{},
 		L2VNIs:        []v1alpha1.L2VNI{},
+		L3VPNs:        []v1alpha1.L3VPN{},
 		L3Passthrough: []v1alpha1.L3Passthrough{},
 	}
 
@@ -37,9 +41,43 @@ func MergeAPIConfigs(configs ...APIConfigData) (APIConfigData, error) {
 		merged.Underlays = append(merged.Underlays, config.Underlays...)
 		merged.L3VNIs = append(merged.L3VNIs, config.L3VNIs...)
 		merged.L2VNIs = append(merged.L2VNIs, config.L2VNIs...)
+		merged.L3VPNs = append(merged.L3VPNs, config.L3VPNs...)
 		merged.L3Passthrough = append(merged.L3Passthrough, config.L3Passthrough...)
 		merged.RawFRRConfigs = append(merged.RawFRRConfigs, config.RawFRRConfigs...)
 	}
 
 	return merged, nil
+}
+
+// validateAPIConfigData flags invalid config data.
+// The caller must ensure that length of config.Underlays > 0, otherwise this will panic.
+func validateAPIConfigData(config APIConfigData) error {
+	if len(config.Underlays) > 1 {
+		return errors.New("multiple underlays defined")
+	}
+	if len(config.L3Passthrough) > 1 {
+		return errors.New("multiple passthroughs defined, can have only one")
+	}
+	if len(config.L3VNIs) > 0 && len(config.L3VPNs) > 0 {
+		return errors.New("cannot specify L3 VNI configuration and VPN configuration at the same time")
+	}
+
+	underlay := config.Underlays[0]
+	if underlay.Spec.EVPN != nil && underlay.Spec.SRV6 != nil {
+		return errors.New("cannot specify EVPN and SRv6 configuration at the same time")
+	}
+	if len(config.L3VNIs) > 0 && underlay.Spec.EVPN == nil {
+		return errors.New("EVPN configuration is required when L3 VNIs are defined")
+	}
+	if len(config.L2VNIs) > 0 && underlay.Spec.EVPN == nil {
+		return errors.New("EVPN configuration is required when L2 VNIs are defined")
+	}
+	if len(config.L3VPNs) > 0 && underlay.Spec.SRV6 == nil {
+		return errors.New("SRV6 configuration is required when L3VPNs are defined")
+	}
+	if underlay.Spec.SRV6 != nil && underlay.Spec.ISIS == nil {
+		return errors.New("ISIS configuration is required when SRv6 is defined")
+	}
+
+	return nil
 }

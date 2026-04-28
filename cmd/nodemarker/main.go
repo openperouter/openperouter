@@ -264,6 +264,10 @@ func setupWebhook(mgr manager.Manager, logger *slog.Logger) error {
 		logger.Error("unable to create the webook", "error", err, "webhook", "L2VNIs")
 		return err
 	}
+	if err := webhooks.SetupL3VPN(mgr); err != nil {
+		logger.Error("unable to create the webook", "error", err, "webhook", "L3VPNs")
+		return err
+	}
 	if err := webhooks.SetupUnderlay(mgr); err != nil {
 		logger.Error("unable to create the webook", "error", err, "webhook", "Underlays")
 		return err

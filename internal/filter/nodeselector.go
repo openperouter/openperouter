@@ -31,6 +31,13 @@ func L2VNIsForNode(node *corev1.Node, l2vnis []v1alpha1.L2VNI) ([]v1alpha1.L2VNI
 	})
 }
 
+// L3VNIsForNode returns L3VNIs that match the given node's labels.
+func L3VPNsForNode(node *corev1.Node, l3vpns []v1alpha1.L3VPN) ([]v1alpha1.L3VPN, error) {
+	return filterForNode(node, l3vpns, func(v v1alpha1.L3VPN) *metav1.LabelSelector {
+		return v.Spec.NodeSelector
+	})
+}
+
 // L3PassthroughsForNode returns L3Passthroughs that match the given node's labels.
 func L3PassthroughsForNode(node *corev1.Node, l3passthroughs []v1alpha1.L3Passthrough) ([]v1alpha1.L3Passthrough, error) {
 	return filterForNode(node, l3passthroughs, func(p v1alpha1.L3Passthrough) *metav1.LabelSelector {

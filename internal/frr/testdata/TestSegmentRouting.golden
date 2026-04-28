@@ -1,0 +1,147 @@
+log stdout 
+log timestamp precision 3
+hostname hostname
+ip nht resolve-via-default
+ipv6 nht resolve-via-default
+
+route-map allowall permit 1
+router bgp 64512
+  no bgp ebgp-requires-policy
+  no bgp network import-check
+  no bgp default ipv4-unicast
+  bgp router-id 10.0.0.1
+  neighbor fc00::2:172:31:1:12 remote-as 64513
+  
+  
+  neighbor fc00::2:172:31:1:12 capability extended-nexthop
+  neighbor fc00::2:172:31:1:12 update-source fc00::2:172:31:1:32
+
+  address-family ipv4 vpn
+    neighbor fc00::2:172:31:1:12 activate
+    neighbor fc00::2:172:31:1:12 next-hop-self
+  exit-address-family
+
+  segment-routing srv6
+    locator MAIN
+  exit
+exit
+!
+router bgp 65000 vrf vrf1
+  no bgp ebgp-requires-policy
+  no bgp network import-check
+  no bgp default ipv4-unicast
+  bgp router-id 10.0.0.1
+  sid vpn per-vrf export auto
+  
+  neighbor 192.168.2.2 remote-as 65001
+
+  address-family ipv4 unicast
+    network 192.168.2.2/32
+    neighbor 192.168.2.2 activate
+    neighbor 192.168.2.2 route-map allowall in
+    neighbor 192.168.2.2 route-map allowall out
+  exit-address-family
+
+  address-family ipv6 unicast
+    neighbor 192.168.2.2 activate
+    neighbor 192.168.2.2 route-map allowall in
+    neighbor 192.168.2.2 route-map allowall out
+  exit-address-family
+
+  address-family ipv4 unicast
+    rd vpn export 10.0.0.1:100
+    rt vpn export 65000:100
+    rt vpn export 65000:101
+    rt vpn import 65001:102
+    rt vpn import 65001:103
+    export vpn
+    import vpn
+  exit-address-family
+
+  address-family ipv6 unicast
+    rd vpn export 10.0.0.1:100
+    rt vpn export 65000:100
+    rt vpn export 65000:101
+    rt vpn import 65001:102
+    rt vpn import 65001:103
+    export vpn
+    import vpn
+  exit-address-family
+exit
+router bgp 65000 vrf vrf2
+  no bgp ebgp-requires-policy
+  no bgp network import-check
+  no bgp default ipv4-unicast
+  bgp router-id 10.0.0.1
+  sid vpn per-vrf export auto
+  
+  neighbor 2001:db8::2 remote-as 65001
+
+  address-family ipv4 unicast
+    neighbor 2001:db8::2 activate
+    neighbor 2001:db8::2 route-map allowall in
+    neighbor 2001:db8::2 route-map allowall out
+  exit-address-family
+
+  address-family ipv6 unicast
+    network 2001:db8::2/128
+    neighbor 2001:db8::2 activate
+    neighbor 2001:db8::2 route-map allowall in
+    neighbor 2001:db8::2 route-map allowall out
+  exit-address-family
+
+  address-family ipv4 unicast
+    rd vpn export 10.0.0.1:101
+    rt vpn export 65002:100
+    rt vpn export 65002:101
+    rt vpn import 65003:102
+    rt vpn import 65003:103
+    export vpn
+    import vpn
+  exit-address-family
+
+  address-family ipv6 unicast
+    rd vpn export 10.0.0.1:101
+    rt vpn export 65002:100
+    rt vpn export 65002:101
+    rt vpn import 65003:102
+    rt vpn import 65003:103
+    export vpn
+    import vpn
+  exit-address-family
+exit
+router isis ISIS
+  net 49.0001.0002.0003.0004.00
+  is-type level-1
+  segment-routing srv6
+    locator MAIN
+  exit
+exit
+!
+interface lound
+  ip router isis ISIS
+  ipv6 router isis ISIS
+  isis passive
+!
+interface eth0
+  ipv6 router isis ISIS
+exit
+!
+segment-routing
+  srv6
+    encapsulation
+      source-address fc00::2:172:31:1:32
+    exit
+    locators
+      locator MAIN
+        prefix fd00:0:32::/48 block-len 32 node-len 16
+        behavior usid
+        format usid-f3216
+      exit
+      !
+    exit
+    !
+  exit
+  !
+exit
+!

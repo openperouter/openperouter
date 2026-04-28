@@ -43,10 +43,15 @@ router bgp {{ .Underlay.MyASN }}
   bgp router-id {{ .Underlay.RouterID }}
 
 {{- range $n := .Underlay.Neighbors }}
-{{- template "neighborsession" dict "neighbor" $n "routerASN" $.Underlay.MyASN -}}
+{{- template "neighborsession" dict
+    "neighbor" $n
+    "routerASN" $.Underlay.MyASN
+    "segmentrouting" $.Underlay.SegmentRouting -}}
 {{- end }}
 {{- range $n := .Underlay.Neighbors }}
-{{- template "neighborenableipfamily" dict "neighbor" $n "routerASN" $.Underlay.MyASN -}}
+{{- template "neighborenableipfamily" dict
+    "neighbor" $n
+    "routerASN" $.Underlay.MyASN -}}
 {{end }}
 
 {{- if .Passthrough }}
@@ -56,37 +61,31 @@ router bgp {{ .Underlay.MyASN }}
 {{- if .Underlay.EVPN }}
 {{- template "underlayevpn" . -}}
 {{- end }}
+{{- if .Underlay.SegmentRouting }}
+{{- template "underlayl3vpn" . -}}
+{{- end }}
 exit
 !
 {{- end }}
 
-{{- range .VNIs }}
-router bgp {{ .ASN }} vrf {{ .VRF }}
-  no bgp ebgp-requires-policy
-  no bgp network import-check
-  no bgp default ipv4-unicast
-  bgp router-id {{ .RouterID }}
-
-  {{- if .LocalNeighbor }}
-  {{ template "localneighbor" dict "vni" . "routerASN" $.Underlay.MyASN -}}
-  {{- end }}
-
-  address-family l2vpn evpn
-    advertise ipv4 unicast
-    advertise ipv6 unicast
-    {{- if .ExportRTs }}
-    {{- range .ExportRTs }}
-    route-target export {{ . }}
-    {{- end }}
-    {{- end }}
-    {{- if .ImportRTs }}
-    {{- range .ImportRTs }}
-    route-target import {{ . }}
-    {{- end }}
-    {{- end }}
-  exit-address-family
-exit
+{{- range $n := .VNIs }}
+{{- template "vni" dict
+    "vni" $n
+    "routerASN" $.Underlay.MyASN -}}
+{{- end }}
+{{- range $n := .VPNs }}
+{{- template "vpn" dict
+    "vpn" $n 
+    "routerASN" $.Underlay.MyASN -}}
 {{- end }}
 {{- range .RawConfig }}
 {{ .Config }}
+{{- end }}
+
+{{- if .Underlay.ISIS }}
+{{- template "isis" dict "isisconf" $.Underlay.ISIS "segmentrouting" $.Underlay.SegmentRouting -}}
+{{- end }}
+
+{{- if .Underlay.SegmentRouting }}
+{{- template "segmentrouting" .Underlay.SegmentRouting -}}
 {{- end }}

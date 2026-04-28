@@ -49,6 +49,11 @@ func ValidateL3VNIs(l3Vnis []v1alpha1.L3VNI) error {
 	return nil
 }
 
+// ValidateL3VNIs runs L3VPN specific validation.
+func ValidateL3VPNs(l3Vpns []v1alpha1.L3VNI) error {
+	return nil
+}
+
 // ValidateL2VNIsForNodes runs L2VNI specific validation, per Node.
 func ValidateL2VNIsForNodes(nodes []corev1.Node, underlays []v1alpha1.L2VNI) error {
 	for _, node := range nodes {

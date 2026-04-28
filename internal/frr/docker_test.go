@@ -118,13 +118,14 @@ func testFileIsValid(fileName string) error {
 	code, err := containerHandle.Exec([]string{"python3", "/usr/lib/frr/frr-reload.py", "--test", "--stdout", "/etc/frr/frr.conf"},
 		dockertest.ExecOptions{
 			StdErr: buf,
+			StdOut: buf,
 		})
 	if err != nil {
 		return errors.Join(err, errors.New("failed to exec reloader into the container"))
 	}
 
 	if code != 0 {
-		return invalidFileErr{Reason: buf.String()}
+		return invalidFileErr{Reason: fmt.Sprintf("code: %d, buffer: %q", code, buf.String())}
 	}
 	return nil
 }

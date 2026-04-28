@@ -1,0 +1,12 @@
+{{ define "underlayl3vpn"}}
+  address-family ipv4 vpn
+{{- range .Underlay.Neighbors }}
+    neighbor {{ .Addr }} activate
+    neighbor {{ .Addr }} next-hop-self
+{{- end }}
+  exit-address-family
+
+  segment-routing srv6
+    locator {{ .Underlay.SegmentRouting.Locator.Name }}
+  exit
+{{- end }}

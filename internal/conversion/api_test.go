@@ -22,6 +22,7 @@ func TestMergeAPIConfigs_SingleConfig(t *testing.T) {
 		},
 		L3VNIs:        []v1alpha1.L3VNI{},
 		L2VNIs:        []v1alpha1.L2VNI{},
+		L3VPNs:        []v1alpha1.L3VPN{},
 		L3Passthrough: []v1alpha1.L3Passthrough{},
 	}
 
@@ -63,7 +64,19 @@ func TestMergeAPIConfigs_MultipleConfigs(t *testing.T) {
 		},
 	}
 
-	merged, err := MergeAPIConfigs(config1, config2, config3)
+	config4 := APIConfigData{
+		L3VPNs: []v1alpha1.L3VPN{
+			{
+				ObjectMeta: metav1.ObjectMeta{Name: "l3vpn1"},
+				Spec: v1alpha1.L3VPNSpec{
+					ExportRTs: []v1alpha1.RouteTarget{"192.0.2.1:100"},
+					ImportRTs: []v1alpha1.RouteTarget{"192.0.2.2:100"},
+				},
+			},
+		},
+	}
+
+	merged, err := MergeAPIConfigs(config1, config2, config3, config4)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -87,6 +100,15 @@ func TestMergeAPIConfigs_MultipleConfigs(t *testing.T) {
 				Spec:       v1alpha1.L2VNISpec{VNI: 2000},
 			},
 		},
+		L3VPNs: []v1alpha1.L3VPN{
+			{
+				ObjectMeta: metav1.ObjectMeta{Name: "l3vpn1"},
+				Spec: v1alpha1.L3VPNSpec{
+					ExportRTs: []v1alpha1.RouteTarget{"192.0.2.1:100"},
+					ImportRTs: []v1alpha1.RouteTarget{"192.0.2.2:100"},
+				},
+			},
+		},
 		L3Passthrough: []v1alpha1.L3Passthrough{},
 	}
 
@@ -104,6 +126,9 @@ func TestMergeAPIConfigs_AllResourceTypes(t *testing.T) {
 		},
 		L2VNIs: []v1alpha1.L2VNI{
 			{ObjectMeta: metav1.ObjectMeta{Name: "l2vni1"}},
+		},
+		L3VPNs: []v1alpha1.L3VPN{
+			{ObjectMeta: metav1.ObjectMeta{Name: "l3vpn1"}},
 		},
 		L3Passthrough: []v1alpha1.L3Passthrough{
 			{ObjectMeta: metav1.ObjectMeta{Name: "passthrough1"}},
@@ -147,6 +172,7 @@ func TestMergeAPIConfigs_ResourcesConcatenated(t *testing.T) {
 		},
 		L3VNIs:        []v1alpha1.L3VNI{},
 		L2VNIs:        []v1alpha1.L2VNI{},
+		L3VPNs:        []v1alpha1.L3VPN{},
 		L3Passthrough: []v1alpha1.L3Passthrough{},
 	}
 
