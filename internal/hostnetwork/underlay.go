@@ -87,6 +87,9 @@ func ensureLoopback(ctx context.Context, ns netns.NsHandle, vtepIP string) error
 		if err != nil {
 			return err
 		}
+		if err := linkSetUp(loopback); err != nil {
+			return fmt.Errorf("ensureLoopback: failed to set %s up: %w", UnderlayLoopback, err)
+		}
 		return nil
 	}); err != nil {
 		return err
