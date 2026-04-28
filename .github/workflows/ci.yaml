@@ -368,7 +368,7 @@ jobs:
 
       - name: Deploy the cluster
         run: |
-          make deploy
+          make deploy-scale
 
       - name: Install metrics-server
         env:

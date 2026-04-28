@@ -185,6 +185,10 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified 
 .PHONY: deploy
 deploy: kind deploy-cluster deploy-controller ## Deploy cluster and controller.
 
+.PHONY: deploy-scale
+deploy-scale: export KUSTOMIZE_LAYER=scale
+deploy-scale: kind deploy-cluster deploy-controller ## Deploy cluster and controller without resource limits for scale testing.
+
 .PHONY: setup-hostmode
 setup-hostmode: ## Setup node configuration for hostmode.
 	./systemdmode/setup_node_config.sh $(KIND_CLUSTER_NAME)
