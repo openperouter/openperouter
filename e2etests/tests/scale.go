@@ -54,8 +54,12 @@ var _ = Describe("VNI Scale Tests", Ordered, Label("scale"), func() {
 		experiment = gmeasure.NewExperiment("VNI Scale")
 		AddReportEntry(experiment.Name, experiment)
 
+		By("Verifying metrics-server is available")
+		_, err := metrics.ForPod(executor.Kubectl, openperouter.Namespace, routerLabelSelector)
+		Expect(err).NotTo(HaveOccurred(), "metrics-server must be running for scale tests")
+
 		By("Cleaning up any existing resources")
-		err := Updater.CleanAll()
+		err = Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
 
 		By("Setting up underlay configuration")
