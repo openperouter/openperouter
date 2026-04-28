@@ -58,11 +58,10 @@ var _ = Describe("VNI Scale Tests", Ordered, Label("scale"), func() {
 		_, err := metrics.ForPod(executor.Kubectl, openperouter.Namespace, routerLabelSelector)
 		Expect(err).NotTo(HaveOccurred(), "metrics-server must be running for scale tests")
 
-		By("Cleaning up any existing resources")
-		err = Updater.CleanAll()
-		Expect(err).NotTo(HaveOccurred())
+		By("Cleaning up any existing VNI resources")
+		Expect(Updater.CleanButUnderlay()).To(Succeed())
 
-		By("Setting up underlay configuration")
+		By("Ensuring underlay configuration exists")
 		err = Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{infra.Underlay},
 		})
@@ -221,7 +220,6 @@ func buildResources(tc scaleTestCase) config.Resources {
 	}
 }
 
-
 func waitForVNIsGone(cli crclient.Client) {
 	Eventually(func(g Gomega) int {
 		l2list := &v1alpha1.L2VNIList{}
@@ -231,7 +229,6 @@ func waitForVNIsGone(cli crclient.Client) {
 		return len(l2list.Items) + len(l3list.Items)
 	}, 3*time.Minute, time.Second).Should(BeZero())
 }
-
 
 func generateL2VNIs(count int, namespace, bridgeType string) []v1alpha1.L2VNI {
 	const baseVNI = 1000
