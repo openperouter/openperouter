@@ -597,6 +597,27 @@ func TestValidateVRFs(t *testing.T) {
 			},
 		},
 		{
+			name: "disconnected L2VNI is skipped in subnet overlap checks",
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI: 1001,
+					},
+				},
+			},
+			l3vnis: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
+					Spec: v1alpha1.L3VNISpec{
+						VNI:         1002,
+						VRF:         "vni1",
+						HostSession: &v1alpha1.HostSession{ASN: 65001, HostASN: 65002, LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "192.168.1.0/24"}},
+					},
+				},
+			},
+		},
+		{
 			name: "more than one L3VNI in the same VRF",
 			l3vnis: []v1alpha1.L3VNI{
 				{
