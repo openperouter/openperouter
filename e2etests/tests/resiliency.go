@@ -260,6 +260,8 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 			Expect(openperouter.EnsureUnderlayLink(node.Name)).To(Succeed())
 		}
 
+		dumpUnderlayVeths(cs, "BeforeAll after EnsureUnderlayLink")
+
 		underlayWithGR := infra.Underlay.DeepCopy()
 		underlayWithGR.Spec.GracefulRestart = &v1alpha1.GracefulRestartConfig{}
 
@@ -521,6 +523,8 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 			}
 		})
 
+		dumpUnderlayVeths(cs, "stretched-L2 before traffic check")
+
 		By("verifying stretched L2 traffic works before router pod deletion")
 		Eventually(func() error {
 			_, err := clientExec.Exec("curl", "-sS", "--max-time", "2", urlStr)
@@ -625,6 +629,45 @@ func (tr trafficTestResult) eval() error {
 
 func (tr trafficTestResult) String() string {
 	return fmt.Sprintf("failed %d/%d times", tr.failCount, tr.totalCount)
+}
+
+func dumpUnderlayVeths(cs clientset.Interface, label string) {
+	w := ginkgo.GinkgoWriter
+	w.Printf("=== DIAG [%s]: underlay veth state ===\n", label)
+
+	nodes, err := k8s.GetNodes(cs)
+	if err != nil {
+		w.Printf("DIAG [%s]: failed to list nodes: %v\n", label, err)
+		return
+	}
+
+	for _, node := range nodes {
+		nodeExec := executor.ForContainer(node.Name)
+
+		for _, loc := range []struct {
+			desc string
+			args []string
+		}{
+			{"default netns", []string{"ip", "-d", "link", "show", "toswitch"}},
+			{"perouter netns", []string{"ip", "netns", "exec", "perouter", "ip", "-d", "link", "show", "toswitch"}},
+		} {
+			out, err := nodeExec.Exec(loc.args[0], loc.args[1:]...)
+			if err != nil {
+				w.Printf("DIAG [%s]: %s toswitch in %s: not found\n", label, node.Name, loc.desc)
+			} else {
+				w.Printf("DIAG [%s]: %s toswitch in %s:\n%s\n", label, node.Name, loc.desc, out)
+			}
+		}
+	}
+
+	for _, port := range []string{"kindctrlpl", "kindworker"} {
+		out, err := executor.Host.Exec("ip", "-d", "link", "show", port)
+		if err != nil {
+			w.Printf("DIAG [%s]: bridge port %s: not found\n", label, port)
+		} else {
+			w.Printf("DIAG [%s]: bridge port %s:\n%s\n", label, port, out)
+		}
+	}
 }
 
 func dumpPreTrafficState(cs clientset.Interface, nodeName string) {
