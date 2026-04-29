@@ -193,11 +193,14 @@ func vnisFromL3VNIs(l3vnis []v1alpha1.L3VNI) []VNI {
 func vnisFromL2VNIs(l2vnis []v1alpha1.L2VNI) []VNI {
 	result := make([]VNI, len(l2vnis))
 	for i, l2vni := range l2vnis {
-		result[i] = VNI{
-			name:    l2vni.Name,
-			vni:     l2vni.Spec.VNI,
-			vrfName: l2vni.VRFName(),
+		v := VNI{
+			name: l2vni.Name,
+			vni:  l2vni.Spec.VNI,
 		}
+		if hasVRF(l2vni) {
+			v.vrfName = *l2vni.Spec.VRF
+		}
+		result[i] = v
 	}
 	return result
 }
@@ -207,8 +210,10 @@ func validateVNIs(vnis []VNI) error {
 	existingVNIs := map[uint32]string{} // a map between the given VNI number and the VNI instance it's configured in
 
 	for _, vni := range vnis {
-		if err := isValidInterfaceName(vni.vrfName); err != nil {
-			return fmt.Errorf("invalid vrf name for vni %s: %s - %w", vni.name, vni.vrfName, err)
+		if vni.vrfName != "" {
+			if err := isValidInterfaceName(vni.vrfName); err != nil {
+				return fmt.Errorf("invalid vrf name for vni %s: %s - %w", vni.name, vni.vrfName, err)
+			}
 		}
 
 		existingVNI, ok := existingVNIs[vni.vni]
