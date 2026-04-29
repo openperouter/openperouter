@@ -331,44 +331,6 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 		})
 		Expect(err).NotTo(HaveOccurred())
 
-		DeferCleanup(func() {
-			if !ginkgo.CurrentSpecReport().Failed() {
-				return
-			}
-			leafExec := executor.ForContainer(infra.KindLeaf)
-			out, err := leafExec.Exec("vtysh", "-c", "show bgp l2vpn evpn route type prefix")
-			if err != nil {
-				ginkgo.GinkgoWriter.Printf("failed to dump leafkind Type-5 routes: %v\n", err)
-			} else {
-				ginkgo.GinkgoWriter.Printf("=== leafkind Type-5 EVPN routes ===\n%s\n", out)
-			}
-			out, err = leafExec.Exec("vtysh", "-c", "show bgp l2vpn evpn route type macip")
-			if err != nil {
-				ginkgo.GinkgoWriter.Printf("failed to dump leafkind Type-2 routes: %v\n", err)
-			} else {
-				ginkgo.GinkgoWriter.Printf("=== leafkind Type-2 EVPN routes ===\n%s\n", out)
-			}
-			freshRouters, routerErr := openperouter.ReadyRouters(cs, HostMode)
-			if routerErr != nil {
-				ginkgo.GinkgoWriter.Printf("failed to get ready routers for diagnostics: %v\n", routerErr)
-			} else {
-				for exec := range freshRouters.GetExecutors() {
-					cfg, cfgErr := frr.RunningConfig(exec)
-					if cfgErr != nil {
-						ginkgo.GinkgoWriter.Printf("failed to dump running config on %s: %v\n", exec.Name(), cfgErr)
-					} else {
-						ginkgo.GinkgoWriter.Printf("=== %s FRR running config ===\n%s\n", exec.Name(), cfg)
-					}
-					evpnOut, evpnErr := exec.Exec("vtysh", "-c", "show bgp l2vpn evpn route type prefix")
-					if evpnErr != nil {
-						ginkgo.GinkgoWriter.Printf("failed to dump PE Type-5 routes on %s: %v\n", exec.Name(), evpnErr)
-					} else {
-						ginkgo.GinkgoWriter.Printf("=== %s PE Type-5 EVPN routes ===\n%s\n", exec.Name(), evpnOut)
-					}
-				}
-			}
-		})
-
 		_, err = k8s.CreateNamespace(cs, testNamespace)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -476,6 +438,9 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 
 		By("waiting for Type-5 prefix route to appear on the fabric")
 		waitForType5Route(executor.ForContainer(infra.KindLeaf), "192.171.24.0/24")
+
+		By("capturing pre-traffic diagnostic snapshot (rebuilt PE + leafkind state)")
+		dumpPreTrafficState(cs, nodeName)
 
 		By("verifying traffic works again after rebuild")
 		Eventually(func() error {
@@ -647,4 +612,42 @@ func (tr trafficTestResult) eval() error {
 
 func (tr trafficTestResult) String() string {
 	return fmt.Sprintf("failed %d/%d times", tr.failCount, tr.totalCount)
+}
+
+func dumpPreTrafficState(cs clientset.Interface, nodeName string) {
+	w := ginkgo.GinkgoWriter
+
+	routerPods, err := openperouter.RouterPodsForNodes(cs, map[string]bool{nodeName: true})
+	if err != nil || len(routerPods) == 0 {
+		w.Printf("DIAG: cannot get rebuilt router pod on %s: %v\n", nodeName, err)
+		return
+	}
+	peExec := executor.ForPod(routerPods[0].Namespace, routerPods[0].Name, "frr")
+
+	cfg, err := frr.RunningConfig(peExec)
+	if err != nil {
+		w.Printf("DIAG: rebuilt PE running-config error: %v\n", err)
+	} else {
+		w.Printf("=== DIAG: rebuilt PE (%s) running-config ===\n%s\n", routerPods[0].Name, cfg)
+	}
+
+	for _, cmd := range []struct {
+		label string
+		exec  executor.Executor
+		args  []string
+	}{
+		{"rebuilt PE Type-5 routes", peExec, []string{"vtysh", "-c", "show bgp l2vpn evpn route type prefix"}},
+		{"rebuilt PE Type-2 routes", peExec, []string{"vtysh", "-c", "show bgp l2vpn evpn route type macip"}},
+		{"rebuilt PE ip neigh", peExec, []string{"bash", "-c", "ip neigh"}},
+		{"leafkind Type-5 routes", executor.ForContainer(infra.KindLeaf), []string{"vtysh", "-c", "show bgp l2vpn evpn route type prefix"}},
+		{"leafkind Type-2 routes", executor.ForContainer(infra.KindLeaf), []string{"vtysh", "-c", "show bgp l2vpn evpn route type macip"}},
+		{"leafkind BGP neighbors", executor.ForContainer(infra.KindLeaf), []string{"vtysh", "-c", "show bgp neighbors"}},
+	} {
+		out, err := cmd.exec.Exec(cmd.args[0], cmd.args[1:]...)
+		if err != nil {
+			w.Printf("DIAG: %s error: %v\n", cmd.label, err)
+		} else {
+			w.Printf("=== DIAG: %s ===\n%s\n", cmd.label, out)
+		}
+	}
 }
