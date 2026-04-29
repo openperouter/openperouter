@@ -1443,7 +1443,7 @@ data:
     ospf6d=no
     ripd=no
     ripngd=no
-    isisd=no
+    isisd=yes
     pimd=no
     ldpd=no
     nhrpd=no

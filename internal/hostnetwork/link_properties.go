@@ -21,24 +21,29 @@ import (
 )
 
 // assingIPToInterface assignes the given address to the link.
-func assignIPToInterface(link netlink.Link, address string) error {
-	addr, err := netlink.ParseAddr(address)
-	if err != nil {
-		return fmt.Errorf("assignIPToInterface: failed to parse address %s for interface %s: %w", address, link.Attrs().Name, err)
-	}
+func assignIPToInterface(link netlink.Link, addresses ...string) error {
+	var errs []error
+	for _, address := range addresses {
+		addr, err := netlink.ParseAddr(address)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("assignIPToInterface: failed to parse address %s for interface %s: %w", address, link.Attrs().Name, err))
+			continue
+		}
 
-	hasIP, err := interfaceHasIP(link, address)
-	if err != nil {
-		return err
+		hasIP, err := interfaceHasIP(link, address)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		if hasIP {
+			continue
+		}
+		if err := netlink.AddrAdd(link, addr); err != nil {
+			errs = append(errs, fmt.Errorf("assignIPToInterface: failed to add address %s to interface %s, err %v", address, link.Attrs().Name, err))
+			continue
+		}
 	}
-	if hasIP {
-		return nil
-	}
-	err = netlink.AddrAdd(link, addr)
-	if err != nil {
-		return fmt.Errorf("assignIPToInterface: failed to add address %s to interface %s, err %v", address, link.Attrs().Name, err)
-	}
-	return nil
+	return errors.Join(errs...)
 }
 
 // interfaceHasIP tells if the given link has the provided ip.

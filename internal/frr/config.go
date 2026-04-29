@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"text/template"
 
 	"github.com/openperouter/openperouter/internal/ipfamily"
@@ -29,6 +30,7 @@ type Config struct {
 	Hostname    string
 	Underlay    UnderlayConfig
 	VNIs        []L3VNIConfig
+	VPNs        []L3VPNConfig
 	Passthrough *PassthroughConfig
 	BFDProfiles []BFDProfile
 	RawConfig   []RawFRRSnippet
@@ -45,11 +47,35 @@ type UnderlayConfig struct {
 	Neighbors       []NeighborConfig
 	TunnelEndpoint  *TunnelEndpoint
 	GracefulRestart *GracefulRestart
+	ISIS            *UnderlayISIS
+	SegmentRouting  *UnderlaySegmentRouting
 }
 
 type TunnelEndpoint struct {
 	IPv4CIDR string
 	IPv6CIDR string
+}
+
+type UnderlayISIS struct {
+	Name                 string
+	Net                  ISISNet
+	Level                int32
+	AdvertisePassiveOnly bool
+	Interfaces           []ISISInterface
+}
+
+type UnderlaySegmentRouting struct {
+	SourceAddress string
+	Locator       SRV6Locator
+}
+
+type SRV6Locator struct {
+	Name     string
+	Prefix   string
+	BlockLen int
+	NodeLen  int
+	Behavior string
+	Format   string
 }
 
 type PassthroughConfig struct {
@@ -69,6 +95,18 @@ type L3VNIConfig struct {
 	RouterID        string
 	ExportRTs       []string
 	ImportRTs       []string
+}
+
+type L3VPNConfig struct {
+	ASN                int64
+	ToAdvertiseIPv4    []string
+	ToAdvertiseIPv6    []string
+	LocalNeighbor      *NeighborConfig
+	VRF                string
+	RouterID           string
+	ExportRTs          string
+	ImportRTs          string
+	RouteDistinguisher string
 }
 
 type BFDProfile struct {
@@ -96,12 +134,13 @@ type NeighborConfig struct {
 	BFDEnabled    bool
 	BFDProfile    string
 	EBGPMultiHop  bool
-	IPFamily      ipfamily.Family
+	IPFamilies    []ipfamily.AfiSafi
 	// Allow bgp to negotiate the extended-nexthop capability with its peer. If you are peering over a v6 LL address
 	// then this capability is turned on automatically.
 	// If you are peering over a v6 Global Address then turning on this command will allow BGP to install v4 routes
 	// with v6 nexthops if you do not have v4 configured on interfaces.
 	ExtendedNexthop bool
+	UpdateSource    string
 }
 
 // templateConfig uses the template library to template
@@ -130,9 +169,10 @@ func templateConfig(data any) (string, error) {
 				}
 				return dict, nil
 			},
-			"mustDisableConnectedCheck": func(ipFamily ipfamily.Family, myASN int64, peerASN PeerASN, eBGPMultiHop bool) bool {
-				// return true only for IPv6 eBGP sessions
-				if ipFamily == "ipv6" && !eBGPMultiHop && peerASN.IsExternalTo(myASN) {
+			"mustDisableConnectedCheck": func(ipFamilies []ipfamily.AfiSafi, myASN int64, peerASN PeerASN, eBGPMultiHop bool) bool {
+				// Return true only if neighbor establishes an IPv6 eBGP session.
+				if slices.Contains(ipFamilies, ipfamily.AfiSafi{AFI: "ipv6", SAFI: "unicast"}) &&
+					!eBGPMultiHop && peerASN.IsExternalTo(myASN) {
 					return true
 				}
 				return false
@@ -140,11 +180,8 @@ func templateConfig(data any) (string, error) {
 			"isEBGP": func(myASN int64, peerASN PeerASN) bool {
 				return peerASN.IsExternalTo(myASN)
 			},
-			"activateNeighborFor": func(ipFamily string, neighbourFamily ipfamily.Family) bool {
-				if neighbourFamily == ipfamily.DualStack {
-					return ipFamily != string(ipfamily.Unknown)
-				}
-				return string(neighbourFamily) == ipFamily
+			"activateNeighborFor": func(ipFamilies []ipfamily.AfiSafi, afi ipfamily.Family, safi ipfamily.SAFI) bool {
+				return slices.Contains(ipFamilies, ipfamily.AfiSafi{AFI: afi, SAFI: safi})
 			},
 		}).ParseFS(templates, "templates/*")
 	if err != nil {

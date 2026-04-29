@@ -1,0 +1,23 @@
+{{ define "underlayl3vpn"}}
+  address-family ipv4 vpn
+{{- range .Underlay.Neighbors }}
+{{- if activateNeighborFor .IPFamilies "ipv4" "vpn" }}
+    neighbor {{ .ID }} activate
+    neighbor {{ .ID }} next-hop-self
+{{- end }}
+{{- end }}
+  exit-address-family
+  !
+  address-family ipv6 vpn
+{{- range .Underlay.Neighbors }}
+{{- if activateNeighborFor .IPFamilies "ipv6" "vpn" }}
+    neighbor {{ .ID }} activate
+    neighbor {{ .ID }} next-hop-self
+{{- end }}
+{{- end }}
+  exit-address-family
+  !
+  segment-routing srv6
+    locator {{ .Underlay.SegmentRouting.Locator.Name }}
+  exit
+{{- end }}

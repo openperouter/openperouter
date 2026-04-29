@@ -125,7 +125,12 @@ func validateUnderlay(underlay *v1alpha1.Underlay) error {
 		return fmt.Errorf("failed to get existing Node objects when validating Underlay: %w", err)
 	}
 
-	if err := conversion.ValidateUnderlaysForNodes(nodeList.Items, toValidate); err != nil {
+	l3vpns, err := getL3VPNs()
+	if err != nil {
+		return err
+	}
+
+	if err := conversion.ValidateUnderlaysForNodes(nodeList.Items, toValidate, l3vpns.Items); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
 	}
 	return nil

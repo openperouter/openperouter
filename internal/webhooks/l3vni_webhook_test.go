@@ -19,6 +19,7 @@ func TestValidateL3VNICreate(t *testing.T) {
 	tcs := []struct {
 		name        string
 		l3vnis      []*v1alpha1.L3VNI
+		l3vpns      []*v1alpha1.L3VPN
 		nodes       []*v1.Node
 		newL3VNI    *v1alpha1.L3VNI
 		errorString string
@@ -164,12 +165,64 @@ func TestValidateL3VNICreate(t *testing.T) {
 			},
 			errorString: "more than one L3VNI detected in VRF",
 		},
+		{
+			name: "testing L3VNIs and L3VPNs are mutually exclusive",
+			nodes: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node1",
+						Labels: map[string]string{
+							"nodeName": "node1",
+						},
+					},
+				},
+			},
+			l3vpns: []*v1alpha1.L3VPN{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: "default",
+						Name:      "existingL3VPN",
+					},
+					Spec: v1alpha1.L3VPNSpec{
+						VRF: "0123456789abcdefghijkl",
+						HostSession: &v1alpha1.HostSession{
+							LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.0.4.0/24")},
+						},
+						NodeSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{
+								"nodeName": "node1",
+							},
+						},
+					},
+				},
+			},
+			newL3VNI: &v1alpha1.L3VNI{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      "newL3VNI",
+				},
+				Spec: v1alpha1.L3VNISpec{
+					VRF: "vrfa",
+					HostSession: &v1alpha1.HostSession{
+						LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.0.3.0/24")},
+					},
+					NodeSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"nodeName": "node1",
+						},
+					},
+				},
+			},
+			errorString: "cannot create L3VNI default/newL3VNI when L3VPNs already exist",
+		},
 	}
 	for _, tc := range tcs {
 		t.Run(tc.name, func(t *testing.T) {
 			l3vnis := objectsFromResources(tc.l3vnis)
+			l3vpns := objectsFromResources(tc.l3vpns)
 			nodes := objectsFromResources(tc.nodes)
-			objects := append(l3vnis, nodes...)
+			objects := append(l3vnis, l3vpns...)
+			objects = append(objects, nodes...)
 			client, err := setupFakeWebhookClient(objects)
 			if err != nil {
 				t.Fatal(err)

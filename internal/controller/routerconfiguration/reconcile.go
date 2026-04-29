@@ -11,7 +11,7 @@ import (
 )
 
 func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeIndex int, logLevel, frrConfigPath, targetNamespace string, updater frr.ConfigUpdater) error {
-	if err := conversion.ValidateUnderlays(apiConfig.Underlays); err != nil {
+	if err := conversion.ValidateUnderlays(apiConfig.Underlays, apiConfig.L3VPNs); err != nil {
 		return fmt.Errorf("failed to validate underlays: %w", err)
 	}
 
@@ -19,8 +19,12 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 		return fmt.Errorf("failed to validate l3vnis: %w", err)
 	}
 
-	if err := conversion.ValidateL2VNIs(apiConfig.L2VNIs); err != nil {
+	if err := conversion.ValidateL2VNIs(apiConfig.L2VNIs, apiConfig.L3VPNs); err != nil {
 		return fmt.Errorf("failed to validate l2vnis: %w", err)
+	}
+
+	if err := conversion.ValidateL3VPNs(apiConfig.L3VPNs, apiConfig.Underlays, apiConfig.L2VNIs); err != nil {
+		return fmt.Errorf("failed to validate l3vpns: %w", err)
 	}
 
 	if err := conversion.ValidateVRFs(apiConfig.L2VNIs, apiConfig.L3VNIs); err != nil {

@@ -337,6 +337,27 @@ func TestReadStaticConfigs_ExistingTestdata(t *testing.T) {
 				},
 			},
 		},
+		L3VPNs: []v1alpha1.L3VPN{
+			{
+				TypeMeta:   metav1.TypeMeta{Kind: "L3VPN", APIVersion: "openpe.openperouter.github.io/v1alpha1"},
+				ObjectMeta: metav1.ObjectMeta{Name: "static-l3vpn-0"},
+				Spec: v1alpha1.L3VPNSpec{
+					VRF:              "red",
+					RDAssignedNumber: 100,
+					ExportRTs: []v1alpha1.RouteTarget{
+						"64514:100",
+					},
+					ImportRTs: []v1alpha1.RouteTarget{
+						"64520:100",
+					},
+					HostSession: &v1alpha1.HostSession{
+						ASN:       64514,
+						HostASN:   new(int64(64515)),
+						LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.169.10.0/24")},
+					},
+				},
+			},
+		},
 		L3Passthrough: []v1alpha1.L3Passthrough{
 			{
 				TypeMeta:   metav1.TypeMeta{Kind: "L3Passthrough", APIVersion: "openpe.openperouter.github.io/v1alpha1"},

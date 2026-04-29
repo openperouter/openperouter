@@ -12,30 +12,34 @@ import (
 	"github.com/openperouter/openperouter/internal/ipfamily"
 )
 
-func ValidateUnderlaysForNodes(nodes []corev1.Node, underlays []v1alpha1.Underlay) error {
+func ValidateUnderlaysForNodes(nodes []corev1.Node, underlays []v1alpha1.Underlay, l3vpns []v1alpha1.L3VPN) error {
 	for _, node := range nodes {
 		filteredUnderlays, err := filter.UnderlaysForNode(&node, underlays)
 		if err != nil {
 			return fmt.Errorf("failed to filter underlays for node %q: %w", node.Name, err)
 		}
-		if err := ValidateUnderlays(filteredUnderlays); err != nil {
+		filteredL3VPNs, err := filter.L3VPNsForNode(&node, l3vpns)
+		if err != nil {
+			return fmt.Errorf("failed to filter L3VPNs for node %q: %w", node.Name, err)
+		}
+		if err := ValidateUnderlays(filteredUnderlays, filteredL3VPNs); err != nil {
 			return fmt.Errorf("failed to validate underlays for node %q: %w", node.Name, err)
 		}
 	}
 	return nil
 }
 
-func ValidateUnderlays(underlays []v1alpha1.Underlay) error {
+func ValidateUnderlays(underlays []v1alpha1.Underlay, l3vpns []v1alpha1.L3VPN) error {
 	if len(underlays) == 0 {
 		return nil
 	}
 	if len(underlays) > 1 {
 		return fmt.Errorf("can't have more than one underlay per node")
 	}
-	return validateUnderlay(underlays[0])
+	return validateUnderlay(underlays[0], l3vpns)
 }
 
-func validateUnderlay(underlay v1alpha1.Underlay) error {
+func validateUnderlay(underlay v1alpha1.Underlay, l3vpns []v1alpha1.L3VPN) error {
 	if underlay.Spec.ASN == 0 {
 		return fmt.Errorf("underlay %s must have a valid ASN", underlay.Name)
 	}
@@ -65,6 +69,10 @@ func validateUnderlay(underlay v1alpha1.Underlay) error {
 		}
 	}
 
+	if err := validateUnderlaySRv6(underlay.Spec.SRV6, l3vpns); err != nil {
+		return fmt.Errorf("invalid SRv6 configuration in underlay %q, err: %w", underlay.Name, err)
+	}
+
 	return nil
 }
 
@@ -83,10 +91,20 @@ func validateUnderlayTunnelEndpoint(underlay *v1alpha1.Underlay) error {
 		return fmt.Errorf("invalid tunnel endpoint CIDRs for underlay %s: %v - %w",
 			underlay.Name, cidrs, err)
 	}
-	if af != ipfamily.IPv4 && af != ipfamily.DualStack {
+
+	if underlay.Spec.SRV6 != nil && af == ipfamily.IPv4 {
+		return fmt.Errorf("invalid tunnel endpoint CIDRs for underlay %s with SRv6, no IPv6 CIDR found: %v",
+			underlay.Name, cidrs)
+	}
+	if underlay.Spec.SRV6 != nil {
+		return nil
+	}
+
+	if af == ipfamily.IPv6 {
 		return fmt.Errorf("invalid tunnel endpoint CIDRs for underlay %s, no IPv4 CIDR found: %v",
 			underlay.Name, cidrs)
 	}
+
 	return nil
 }
 
@@ -109,5 +127,21 @@ func validateNoDuplicates(items []string) error {
 		}
 		seen[item] = struct{}{}
 	}
+	return nil
+}
+
+func validateUnderlaySRv6(srv6Config *v1alpha1.SRV6Config, l3vpns []v1alpha1.L3VPN) error {
+	if len(l3vpns) > 0 && srv6Config == nil {
+		return fmt.Errorf("invalid SRv6 configuration. Cannot be nil when there are %d matching L3VPNs", len(l3vpns))
+	}
+
+	if srv6Config == nil {
+		return nil
+	}
+
+	if _, isValid := locatorFormats[srv6Config.Locator.Format]; !isValid {
+		return fmt.Errorf("invalid locator format %q", srv6Config.Locator.Format)
+	}
+
 	return nil
 }
