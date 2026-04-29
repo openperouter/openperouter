@@ -50,6 +50,7 @@ func (r *StaticConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		"logLevel", r.LogLevel,
 		"l3vnis", len(apiConfig.L3VNIs),
 		"l2vnis", len(apiConfig.L2VNIs),
+		"l3vpns", len(apiConfig.L3VPNs),
 		"underlays", len(apiConfig.Underlays),
 		"l3passthrough", len(apiConfig.L3Passthrough))
 

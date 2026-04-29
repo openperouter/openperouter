@@ -51,31 +51,33 @@ func ValidateL3VNIs(l3Vnis []v1alpha1.L3VNI) error {
 }
 
 // ValidateL2VNIsForNodes runs L2VNI specific validation, per Node.
-func ValidateL2VNIsForNodes(nodes []corev1.Node, underlays []v1alpha1.L2VNI) error {
+func ValidateL2VNIsForNodes(nodes []corev1.Node, l2vnis []v1alpha1.L2VNI, l3vpns []v1alpha1.L3VPN) error {
 	for _, node := range nodes {
-		filteredL2VNIs, err := filter.L2VNIsForNode(&node, underlays)
+		filteredL2VNIs, err := filter.L2VNIsForNode(&node, l2vnis)
 		if err != nil {
-			return fmt.Errorf("failed to filter underlays for node %q: %w", node.Name, err)
+			return fmt.Errorf("failed to filter L2VNIs for node %q: %w", node.Name, err)
 		}
-		if err := ValidateL2VNIs(filteredL2VNIs); err != nil {
-			return fmt.Errorf("failed to validate underlays for node %q: %w", node.Name, err)
+		filteredL3VPNs, err := filter.L3VPNsForNode(&node, l3vpns)
+		if err != nil {
+			return fmt.Errorf("failed to filter L3VPNs for node %q: %w", node.Name, err)
+		}
+		if err := ValidateL2VNIs(filteredL2VNIs, filteredL3VPNs); err != nil {
+			return fmt.Errorf("failed to validate L2VNIs for node %q: %w", node.Name, err)
 		}
 	}
 	return nil
 }
 
 // ValidateL2VNIs runs L2VNI specific validation.
-func ValidateL2VNIs(l2Vnis []v1alpha1.L2VNI) error {
-	// Convert L2VNIs to vni structs
-	vnis := vnisFromL2VNIs(l2Vnis)
-
-	// Perform common validation
+func ValidateL2VNIs(l2vnis []v1alpha1.L2VNI, l3vpns []v1alpha1.L3VPN) error {
+	// Convert L2VNIs and L3VPNs to vni structs and combine them for common validation.
+	vnis := append(vnisFromL2VNIs(l2vnis), vnisFromL3VPNs(l3vpns)...)
 	if err := validateVNIs(vnis); err != nil {
 		return err
 	}
 
 	// Perform L2-specific validation (HostMaster and L2GatewayIPs validation)
-	for _, vni := range l2Vnis {
+	for _, vni := range l2vnis {
 		if vni.Spec.HostMaster != nil {
 			if err := validateHostMaster(vni.Name, vni.Spec.HostMaster); err != nil {
 				return err

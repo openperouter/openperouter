@@ -10,22 +10,37 @@ router bgp 64512
   no bgp network import-check
   no bgp default ipv4-unicast
   bgp router-id 10.0.0.1
-  neighbor 192.168.1.2 remote-as 64513
+  neighbor 192.168.1.2 remote-as 64512
   
   
   
 
   address-family ipv4 unicast
     neighbor 192.168.1.2 activate
-    neighbor 192.168.1.2 allowas-in
+    neighbor 192.168.1.2 next-hop-self force
   exit-address-family
-  address-family ipv4 unicast
-    network 100.64.0.1/32
-  exit-address-family
-
-  address-family l2vpn evpn
-    advertise-all-vni
-    advertise-svi-ip
-  exit-address-family
+exit
+!
+router isis ISIS
+  net 49.0001.0002.0003.0004.00
+  is-type level-1
+exit
+!
+interface lo
+  ipv6 router isis ISIS
+  isis passive
+exit
+!
+interface eth0
+  ip router isis ISIS
+exit
+!
+interface eth1
+  ipv6 router isis ISIS
+exit
+!
+interface eth2
+  ip router isis ISIS
+  ipv6 router isis ISIS
 exit
 !

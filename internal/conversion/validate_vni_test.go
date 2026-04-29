@@ -130,6 +130,7 @@ func TestValidateL2VNIs(t *testing.T) {
 	tests := []struct {
 		name    string
 		vnis    []v1alpha1.L2VNI
+		l3vpns  []v1alpha1.L3VPN
 		wantErr bool
 	}{
 		{
@@ -151,6 +152,62 @@ func TestValidateL2VNIs(t *testing.T) {
 				},
 			},
 			wantErr: false,
+		},
+		{
+			name: "valid L2VNIs with L3VPN",
+			vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI: 1001,
+					},
+					Status: &v1alpha1.L2VNIStatus{},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni2"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI: 1002,
+					},
+					Status: &v1alpha1.L2VNIStatus{},
+				},
+			},
+			l3vpns: []v1alpha1.L3VPN{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l3vpn"},
+					Spec: v1alpha1.L3VPNSpec{
+						RDAssignedNumber: 1003,
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid L2VNIs with L3VPN with VNI number overlap",
+			vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI: 1001,
+					},
+					Status: &v1alpha1.L2VNIStatus{},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni2"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI: 1002,
+					},
+					Status: &v1alpha1.L2VNIStatus{},
+				},
+			},
+			l3vpns: []v1alpha1.L3VPN{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l3vpn"},
+					Spec: v1alpha1.L3VPNSpec{
+						RDAssignedNumber: 1001,
+					},
+				},
+			},
+			wantErr: true,
 		},
 		{
 			name: "duplicate VRF name",
@@ -384,7 +441,7 @@ func TestValidateL2VNIs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateL2VNIs(tt.vnis)
+			err := ValidateL2VNIs(tt.vnis, tt.l3vpns)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ValidateL2VNIs() error = %v, wantErr %v", err, tt.wantErr)
 			}

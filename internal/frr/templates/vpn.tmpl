@@ -1,0 +1,48 @@
+{{ define "vpn"}}
+router bgp {{ .vpn.ASN }} vrf {{ .vpn.VRF }}
+  no bgp ebgp-requires-policy
+  no bgp network import-check
+  no bgp default ipv4-unicast
+  bgp router-id {{ .vpn.RouterID }}
+  sid vpn per-vrf export auto
+
+  {{- if .vpn.LocalNeighbor }}
+  {{ template "localneighbor" dict "vni" .vpn "routerASN" .routerASN -}}
+  {{- else if or .vpn.ToAdvertiseIPv4 .vpn.ToAdvertiseIPv6 }}
+  address-family ipv4 unicast
+  {{- range .vpn.ToAdvertiseIPv4 }}
+    network {{ . }}
+  {{- end }}
+  exit-address-family
+  address-family ipv6 unicast
+  {{- range .vpn.ToAdvertiseIPv6 }}
+    network {{ . }}
+  {{- end }}
+  exit-address-family
+  {{- end }}
+
+  address-family ipv4 unicast
+    rd vpn export {{ .vpn.RouteDistinguisher }}
+    {{- if .vpn.ExportRTs }}
+    rt vpn export {{ .vpn.ExportRTs }}
+    {{- end }}
+    {{- if .vpn.ImportRTs }}
+    rt vpn import {{ .vpn.ImportRTs }}
+    {{- end }}
+    export vpn
+    import vpn
+  exit-address-family
+
+  address-family ipv6 unicast
+    rd vpn export {{ .vpn.RouteDistinguisher }}
+    {{- if .vpn.ExportRTs }}
+    rt vpn export {{ .vpn.ExportRTs }}
+    {{- end }}
+    {{- if .vpn.ImportRTs }}
+    rt vpn import {{ .vpn.ImportRTs }}
+    {{- end }}
+    export vpn
+    import vpn
+  exit-address-family
+exit
+{{- end }}

@@ -133,6 +133,26 @@ func IPsInCIDR(pool string) (uint64, error) {
 	return gocidr.AddressCount(ipNet), nil
 }
 
+// OffsetPrefix adds nodeIndex to the network portion of an IPv4 or IPv6 prefix.
+// For example, with prefix "fd00:0:11::/48", nodeIndex 2, and prefixLen 48,
+// it returns "fd00:0:13::/48" (0x11 + 2 = 0x13). The host portion of the CIDR
+// will be discarded.
+func OffsetPrefix(prefix string, nodeIndex, prefixLen int) (string, error) {
+	_, ipNet, err := net.ParseCIDR(prefix)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse prefix %s: %w", prefix, err)
+	}
+
+	var endOfRange bool
+	for ; nodeIndex > 0; nodeIndex-- {
+		ipNet, endOfRange = gocidr.NextSubnet(ipNet, prefixLen)
+		if endOfRange {
+			return "", fmt.Errorf("failed to offset prefix %s by nodeIndex %d, end of range", prefix, nodeIndex)
+		}
+	}
+	return ipNet.String(), nil
+}
+
 // vethIPsForFamily returns the host side and PE side IPs for a given pool and index.
 func vethIPsForFamily(pool string, index int) (VethIPsForFamily, error) {
 	_, cidr, err := net.ParseCIDR(pool)

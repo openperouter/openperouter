@@ -46,6 +46,7 @@ rules:
   - l3passthroughs
   - l3vnis
   - routernodeconfigurationstatuses
+  - l3vpns
   - underlays
   verbs:
   - create
@@ -61,6 +62,7 @@ rules:
   - l2vnis/finalizers
   - l3passthroughs/finalizers
   - l3vnis/finalizers
+  - l3vpns/finalizers
   - underlays/finalizers
   verbs:
   - update
@@ -71,6 +73,7 @@ rules:
   - l3passthroughs/status
   - l3vnis/status
   - routernodeconfigurationstatuses/status
+  - l3vpns/status
   - underlays/status
   verbs:
   - get
