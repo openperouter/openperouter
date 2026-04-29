@@ -52,8 +52,8 @@ func VethIPsFromPool(poolIPv4, poolIPv6 *string, index int) (VethIPs, error) {
 	return veths, nil
 }
 
-// VTEPIp returns the IP to be used for the local VTEP on the ith node.
-func VTEPIp(pool string, index int) (net.IPNet, error) {
+// TunnelEndpointIP returns the IP to be used for the local VTEP on the ith node.
+func TunnelEndpointIP(pool string, index int) (net.IPNet, error) {
 	_, cidr, err := net.ParseCIDR(pool)
 	if err != nil {
 		return net.IPNet{}, fmt.Errorf("failed to parse pool %s: %w", pool, err)
@@ -131,6 +131,26 @@ func IPsInCIDR(pool string) (uint64, error) {
 	}
 
 	return gocidr.AddressCount(ipNet), nil
+}
+
+// OffsetWithPrefix adds nodeIndex to the network portion of an IPv4 or IPv6 basePrefix.
+// For example, with basePrefix "fd00:0:11::/48", nodeIndex 2, and prefixLen 48,
+// it returns "fd00:0:13::/48" (0x11 + 2 = 0x13). The host portion of the CIDR
+// will be discarded.
+func OffsetWithPrefix(basePrefix string, nodeIndex, prefixLen int) (string, error) {
+	_, ipNet, err := net.ParseCIDR(basePrefix)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse prefix %s: %w", basePrefix, err)
+	}
+
+	var endOfRange bool
+	for ; nodeIndex > 0; nodeIndex-- {
+		ipNet, endOfRange = gocidr.NextSubnet(ipNet, prefixLen)
+		if endOfRange {
+			return "", fmt.Errorf("failed to offset prefix %s by nodeIndex %d, end of range", basePrefix, nodeIndex)
+		}
+	}
+	return ipNet.String(), nil
 }
 
 // vethIPsForFamily returns the host side and PE side IPs for a given pool and index.

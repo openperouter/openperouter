@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -110,6 +111,26 @@ func TestFilterValidL2VNIs(t *testing.T) {
 	}{
 		{
 			name: "valid L2VNIs",
+			vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI: 1001,
+					},
+					Status: &v1alpha1.L2VNIStatus{},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni2"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI: 1002,
+					},
+					Status: &v1alpha1.L2VNIStatus{},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid L2VNIs with L3VPN",
 			vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
@@ -353,6 +374,7 @@ func TestFilterValidVRFSubnets(t *testing.T) {
 		name       string
 		l2vnis     []v1alpha1.L2VNI
 		l3vnis     []v1alpha1.L3VNI
+		l3vpns     []v1alpha1.L3VPN
 		wantErrStr string
 	}{
 		{
@@ -476,6 +498,32 @@ func TestFilterValidVRFSubnets(t *testing.T) {
 			wantErrStr: "subnet overlap in VRF \"vni1\": IPNet 192.168.1.128/25 (L2VNI test/vni2) overlaps with IPNet 192.168.1.0/24 (L3VNI test/vni1)",
 		},
 		{
+			name: "l3VPN and L2GatewayIPs CIDR overlap in same VRF",
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI:          1002,
+						VRF:          new("vni1"),
+						L2GatewayIPs: []string{"192.168.1.128/25"},
+					},
+					Status: &v1alpha1.L2VNIStatus{},
+				},
+			},
+			l3vpns: []v1alpha1.L3VPN{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
+					Spec: v1alpha1.L3VPNSpec{
+						RDAssignedNumber: 1001,
+						VRF:              "vni1",
+						HostSession:      &v1alpha1.HostSession{ASN: 65001, HostASN: new(int64(65002)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.168.1.0/24")}},
+					},
+					Status: &v1alpha1.L3VPNStatus{},
+				},
+			},
+			wantErrStr: "subnet overlap in VRF \"vni1\": IPNet 192.168.1.128/25 (L2VNI test/vni2) overlaps with IPNet 192.168.1.0/24 (L3VPN test/vni1)",
+		},
+		{
 			name: "l3VNI and L2GatewayIPs CIDR V6 overlap in same VRF",
 			l2vnis: []v1alpha1.L2VNI{
 				{
@@ -502,6 +550,32 @@ func TestFilterValidVRFSubnets(t *testing.T) {
 			wantErrStr: "subnet overlap in VRF \"vni1\": IPNet 2000::1:0:0:0/80 (L2VNI test/vni2) overlaps with IPNet 2000::/64 (L3VNI test/vni1)",
 		},
 		{
+			name: "l3VPN and L2GatewayIPs CIDR V6 overlap in same VRF",
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI:          1002,
+						VRF:          new("vni1"),
+						L2GatewayIPs: []string{"2000:0:0:0:1::1/80"},
+					},
+					Status: &v1alpha1.L2VNIStatus{},
+				},
+			},
+			l3vpns: []v1alpha1.L3VPN{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
+					Spec: v1alpha1.L3VPNSpec{
+						RDAssignedNumber: 1001,
+						VRF:              "vni1",
+						HostSession:      &v1alpha1.HostSession{ASN: 65001, HostASN: new(int64(65002)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv6: new("2000::1/64")}},
+					},
+					Status: &v1alpha1.L3VPNStatus{},
+				},
+			},
+			wantErrStr: "subnet overlap in VRF \"vni1\": IPNet 2000::1:0:0:0/80 (L2VNI test/vni2) overlaps with IPNet 2000::/64 (L3VPN test/vni1)",
+		},
+		{
 			name: "l3VNI and L2GatewayIPs CIDR overlap in different VRFs",
 			l2vnis: []v1alpha1.L2VNI{
 				{
@@ -523,6 +597,31 @@ func TestFilterValidVRFSubnets(t *testing.T) {
 						HostSession: &v1alpha1.HostSession{ASN: 65001, HostASN: new(int64(65002)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.168.1.0/24")}},
 					},
 					Status: &v1alpha1.L3VNIStatus{},
+				},
+			},
+		},
+		{
+			name: "l3VPN and L2GatewayIPs CIDR overlap in different VRFs",
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI:          1002,
+						VRF:          new("test"),
+						L2GatewayIPs: []string{"192.168.1.128/25"},
+					},
+					Status: &v1alpha1.L2VNIStatus{},
+				},
+			},
+			l3vpns: []v1alpha1.L3VPN{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
+					Spec: v1alpha1.L3VPNSpec{
+						RDAssignedNumber: 1001,
+						VRF:              "vni1",
+						HostSession:      &v1alpha1.HostSession{ASN: 65001, HostASN: new(int64(65002)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.168.1.0/24")}},
+					},
+					Status: &v1alpha1.L3VPNStatus{},
 				},
 			},
 		},
@@ -552,6 +651,31 @@ func TestFilterValidVRFSubnets(t *testing.T) {
 			},
 		},
 		{
+			name: "l3VPN and L2GatewayIPs CIDR V6 overlap in different VRFs",
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI:          1002,
+						VRF:          new("vni1"),
+						L2GatewayIPs: []string{"2000:0:0:0:1::1/80"},
+					},
+					Status: &v1alpha1.L2VNIStatus{},
+				},
+			},
+			l3vpns: []v1alpha1.L3VPN{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
+					Spec: v1alpha1.L3VPNSpec{
+						RDAssignedNumber: 1001,
+						VRF:              "vni2",
+						HostSession:      &v1alpha1.HostSession{ASN: 65001, HostASN: new(int64(65002)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv6: new("2000::1/64")}},
+					},
+					Status: &v1alpha1.L3VPNStatus{},
+				},
+			},
+		},
+		{
 			name: "disconnected L2VNI is skipped in subnet overlap checks",
 			l2vnis: []v1alpha1.L2VNI{
 				{
@@ -572,11 +696,32 @@ func TestFilterValidVRFSubnets(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "disconnected L2VNI is skipped in subnet overlap checks (L3VPN)",
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI: 1001,
+					},
+				},
+			},
+			l3vpns: []v1alpha1.L3VPN{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
+					Spec: v1alpha1.L3VPNSpec{
+						RDAssignedNumber: 1002,
+						VRF:              "vni1",
+						HostSession:      &v1alpha1.HostSession{ASN: 65001, HostASN: new(int64(65002)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.168.1.0/24")}},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, _, err := FilterValidVRFSubnets(tt.l3vnis, tt.l2vnis)
+			_, _, _, err := FilterValidVRFSubnets(tt.l3vnis, tt.l3vpns, tt.l2vnis)
 			if tt.wantErrStr == "" && err != nil {
 				t.Errorf("FilterValidVRFSubnets() no error expected but got errors = %v", err)
 			}
@@ -613,7 +758,7 @@ func TestFilterUniqueVRFs_DuplicateVRF(t *testing.T) {
 		},
 	}
 
-	valid, err := FilterUniqueVRFs(l3vnis)
+	valid, _, err := FilterUniqueVRFsForL3VNIs(l3vnis)
 	if err == nil {
 		t.Fatal("expected error for duplicate VRF")
 	}
@@ -623,6 +768,816 @@ func TestFilterUniqueVRFs_DuplicateVRF(t *testing.T) {
 	}
 	if len(valid) != 1 || valid[0].Name != "vni1" {
 		t.Errorf("expected first L3VNI to be valid, got %v", valid)
+	}
+}
+
+func TestValidateSRv6ForNodes(t *testing.T) {
+	tests := []struct {
+		name       string
+		nodes      []corev1.Node
+		underlays  []v1alpha1.Underlay
+		l3vpns     []v1alpha1.L3VPN
+		wantErrStr string
+	}{
+		{
+			name:  "no L3VPNs and no underlays",
+			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+		},
+		{
+			name:  "no nodes",
+			nodes: []corev1.Node{},
+		},
+		{
+			name:  "L3VPN with SRv6-enabled underlay",
+			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+			underlays: []v1alpha1.Underlay{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "underlay1"},
+					Spec: v1alpha1.UnderlaySpec{
+						SRV6: &v1alpha1.SRV6Config{
+							Locator: v1alpha1.SRV6Locator{
+								BasePrefix: "fc00:0:1::/48",
+								Format:     "usid-f3216",
+							},
+						},
+					},
+				},
+			},
+			l3vpns: []v1alpha1.L3VPN{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vpn1"},
+					Spec: v1alpha1.L3VPNSpec{
+						RDAssignedNumber: 100,
+						VRF:              "red",
+						ImportRTs:        []v1alpha1.RouteTarget{"65000:100"},
+					},
+				},
+			},
+		},
+		{
+			name:  "L3VPN without any underlay",
+			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+			l3vpns: []v1alpha1.L3VPN{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vpn1"},
+					Spec: v1alpha1.L3VPNSpec{
+						RDAssignedNumber: 100,
+						VRF:              "red",
+						ImportRTs:        []v1alpha1.RouteTarget{"65000:100"},
+					},
+				},
+			},
+			wantErrStr: "cannot specify L3VPN configuration without an underlay with SRV6 configuration",
+		},
+		{
+			name:  "L3VPN with underlay missing SRv6 config",
+			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+			underlays: []v1alpha1.Underlay{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "underlay1"},
+					Spec:       v1alpha1.UnderlaySpec{},
+				},
+			},
+			l3vpns: []v1alpha1.L3VPN{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vpn1"},
+					Spec: v1alpha1.L3VPNSpec{
+						RDAssignedNumber: 100,
+						VRF:              "red",
+						ImportRTs:        []v1alpha1.RouteTarget{"65000:100"},
+					},
+				},
+			},
+			wantErrStr: "cannot specify L3VPN configuration without an underlay with SRV6 configuration",
+		},
+		{
+			name:  "underlay with SRv6 but no L3VPNs",
+			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+			underlays: []v1alpha1.Underlay{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "underlay1"},
+					Spec: v1alpha1.UnderlaySpec{
+						SRV6: &v1alpha1.SRV6Config{
+							Locator: v1alpha1.SRV6Locator{
+								BasePrefix: "fc00:0:1::/48",
+								Format:     "usid-f3216",
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "L3VPN on node without matching underlay due to node selector",
+			nodes: []corev1.Node{
+				{ObjectMeta: metav1.ObjectMeta{
+					Name:   "node1",
+					Labels: map[string]string{"rack": "a"},
+				}},
+			},
+			underlays: []v1alpha1.Underlay{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "underlay1"},
+					Spec: v1alpha1.UnderlaySpec{
+						NodeSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{"rack": "b"},
+						},
+						SRV6: &v1alpha1.SRV6Config{
+							Locator: v1alpha1.SRV6Locator{
+								BasePrefix: "fc00:0:1::/48",
+								Format:     "usid-f3216",
+							},
+						},
+					},
+				},
+			},
+			l3vpns: []v1alpha1.L3VPN{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vpn1"},
+					Spec: v1alpha1.L3VPNSpec{
+						RDAssignedNumber: 100,
+						VRF:              "red",
+						ImportRTs:        []v1alpha1.RouteTarget{"65000:100"},
+					},
+				},
+			},
+			wantErrStr: "cannot specify L3VPN configuration without an underlay with SRV6 configuration",
+		},
+		{
+			name: "three nodes - one valid two invalid",
+			nodes: []corev1.Node{
+				{ObjectMeta: metav1.ObjectMeta{
+					Name:   "node1",
+					Labels: map[string]string{"rack": "a"},
+				}},
+				{ObjectMeta: metav1.ObjectMeta{
+					Name:   "node2",
+					Labels: map[string]string{"rack": "b"},
+				}},
+				{ObjectMeta: metav1.ObjectMeta{
+					Name:   "node3",
+					Labels: map[string]string{"rack": "c"},
+				}},
+			},
+			underlays: []v1alpha1.Underlay{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "underlay1"},
+					Spec: v1alpha1.UnderlaySpec{
+						NodeSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{"rack": "a"},
+						},
+						SRV6: &v1alpha1.SRV6Config{
+							Locator: v1alpha1.SRV6Locator{
+								BasePrefix: "fc00:0:1::/48",
+								Format:     "usid-f3216",
+							},
+						},
+					},
+				},
+			},
+			l3vpns: []v1alpha1.L3VPN{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vpn1"},
+					Spec: v1alpha1.L3VPNSpec{
+						RDAssignedNumber: 100,
+						VRF:              "red",
+						ImportRTs:        []v1alpha1.RouteTarget{"65000:100"},
+					},
+				},
+			},
+			wantErrStr: "L3VPN/vpn1: cannot specify L3VPN configuration without an underlay with SRV6 configuration on node \"node2\"",
+		},
+		{
+			name: "L3VPN not matching node is not validated",
+			nodes: []corev1.Node{
+				{ObjectMeta: metav1.ObjectMeta{
+					Name:   "node1",
+					Labels: map[string]string{"rack": "a"},
+				}},
+			},
+			l3vpns: []v1alpha1.L3VPN{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vpn1"},
+					Spec: v1alpha1.L3VPNSpec{
+						RDAssignedNumber: 100,
+						VRF:              "red",
+						ImportRTs:        []v1alpha1.RouteTarget{"65000:100"},
+						NodeSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{"rack": "b"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateSRv6ForNodes(tt.nodes, tt.underlays, tt.l3vpns)
+			if tt.wantErrStr != "" {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tt.wantErrStr)
+				}
+				if !strings.Contains(err.Error(), tt.wantErrStr) {
+					t.Errorf("error = %q, want substring %q", err, tt.wantErrStr)
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("expected no error, but got: %v", err)
+			}
+		})
+	}
+}
+
+func TestValidateVNIandVPNResourcesForNodes(t *testing.T) {
+	tests := []struct {
+		name       string
+		nodes      []corev1.Node
+		l2vnis     []v1alpha1.L2VNI
+		l3vnis     []v1alpha1.L3VNI
+		l3vpns     []v1alpha1.L3VPN
+		wantErrStr string
+	}{
+		{
+			name:  "no resources",
+			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+		},
+		{
+			name:  "no nodes",
+			nodes: []corev1.Node{},
+		},
+		{
+			name:  "valid L3VNIs only",
+			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+			l3vnis: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l3vni1"},
+					Spec: v1alpha1.L3VNISpec{
+						VNI: 100,
+						VRF: "red",
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l3vni2"},
+					Spec: v1alpha1.L3VNISpec{
+						VNI: 200,
+						VRF: "blue",
+					},
+				},
+			},
+		},
+		{
+			name:  "valid L2VNIs only",
+			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l2vni1"},
+					Spec:       v1alpha1.L2VNISpec{VNI: 300},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l2vni2"},
+					Spec:       v1alpha1.L2VNISpec{VNI: 400},
+				},
+			},
+		},
+		{
+			name:  "valid L3VPNs only",
+			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+			l3vpns: []v1alpha1.L3VPN{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vpn1"},
+					Spec: v1alpha1.L3VPNSpec{
+						RDAssignedNumber: 100,
+						VRF:              "red",
+						ImportRTs:        []v1alpha1.RouteTarget{"65000:100"},
+					},
+				},
+			},
+		},
+		{
+			name:  "valid mixed L3VNI, L2VNI",
+			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+			l3vnis: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l3vni1"},
+					Spec: v1alpha1.L3VNISpec{
+						VNI: 100,
+						VRF: "red",
+						HostSession: &v1alpha1.HostSession{
+							ASN: 65001, HostASN: new(int64(65002)),
+							LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("10.0.1.0/24")},
+						},
+					},
+				},
+			},
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l2vni1"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI:          300,
+						VRF:          new("red"),
+						L2GatewayIPs: []string{"10.0.2.0/24"},
+					},
+				},
+			},
+		},
+		{
+			name:  "valid mixed L2VNI, L3VPN",
+			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l2vni1"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI:          300,
+						VRF:          new("red"),
+						L2GatewayIPs: []string{"10.0.2.0/24"},
+					},
+				},
+			},
+			l3vpns: []v1alpha1.L3VPN{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vpn1"},
+					Spec: v1alpha1.L3VPNSpec{
+						RDAssignedNumber: 200,
+						VRF:              "red",
+						ImportRTs:        []v1alpha1.RouteTarget{"65000:200"},
+						HostSession: &v1alpha1.HostSession{
+							ASN: 65003, HostASN: new(int64(65004)),
+							LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("10.0.3.0/24")},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "duplicate VNI between non-matching node selectors passes on single node",
+			nodes: []corev1.Node{
+				{ObjectMeta: metav1.ObjectMeta{
+					Name:   "node1",
+					Labels: map[string]string{"rack": "a"},
+				}},
+			},
+			l3vnis: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l3vni1"},
+					Spec: v1alpha1.L3VNISpec{
+						VNI: 100,
+						VRF: "red",
+						NodeSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{"rack": "a"},
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l3vni2"},
+					Spec: v1alpha1.L3VNISpec{
+						VNI: 100,
+						VRF: "blue",
+						NodeSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{"rack": "b"},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:  "invalid L3VNI VRF name too long",
+			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+			l3vnis: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l3vni1"},
+					Spec: v1alpha1.L3VNISpec{
+						VNI: 100,
+						VRF: "vrfnametoolong99",
+					},
+				},
+			},
+			wantErrStr: "failed to validate l3vnis for node",
+		},
+		{
+			name:  "invalid L3VPN VRF name too long",
+			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+			l3vpns: []v1alpha1.L3VPN{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vpn1"},
+					Spec: v1alpha1.L3VPNSpec{
+						RDAssignedNumber: 100,
+						VRF:              "vrfnametoolong99",
+						ImportRTs:        []v1alpha1.RouteTarget{"65000:100"},
+					},
+				},
+			},
+			wantErrStr: "failed to validate l3vpns for node",
+		},
+		{
+			name:  "invalid L2VNI VRF name too long",
+			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l2vni1"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI: 100,
+						VRF: new("vrfnametoolong99"),
+					},
+				},
+			},
+			wantErrStr: "failed to validate l2vnis for node",
+		},
+		{
+			name:  "duplicate VNI number across L3VNIs",
+			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+			l3vnis: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l3vni1"},
+					Spec:       v1alpha1.L3VNISpec{VNI: 100, VRF: "red"},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l3vni2"},
+					Spec:       v1alpha1.L3VNISpec{VNI: 100, VRF: "blue"},
+				},
+			},
+			wantErrStr: "duplicate L3VNIs found for node",
+		},
+		{
+			name:  "duplicate VNI number between L3VNI and L2VNI",
+			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+			l3vnis: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l3vni1"},
+					Spec:       v1alpha1.L3VNISpec{VNI: 100, VRF: "red"},
+				},
+			},
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l2vni1"},
+					Spec:       v1alpha1.L2VNISpec{VNI: 100},
+				},
+			},
+			wantErrStr: "duplicate L2VNIs found for node",
+		},
+		{
+			name:  "duplicate RDAssignedNumber between L3VPN and L2VNI",
+			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l2vni1"},
+					Spec:       v1alpha1.L2VNISpec{VNI: 100, VRF: new("red")},
+				},
+			},
+			l3vpns: []v1alpha1.L3VPN{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vpn1"},
+					Spec: v1alpha1.L3VPNSpec{
+						RDAssignedNumber: 100,
+						VRF:              "red",
+						ImportRTs:        []v1alpha1.RouteTarget{"65000:100"},
+					},
+				},
+			},
+			wantErrStr: "duplicate L2VNIs found for node",
+		},
+		{
+			name:  "duplicate VRF across L3VNIs",
+			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+			l3vnis: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l3vni1"},
+					Spec:       v1alpha1.L3VNISpec{VNI: 100, VRF: "red"},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l3vni2"},
+					Spec:       v1alpha1.L3VNISpec{VNI: 200, VRF: "red"},
+				},
+			},
+			wantErrStr: "duplicate L3VNI VRFs found for node",
+		},
+		{
+			name:  "duplicate VRF across L3VPNs",
+			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+			l3vpns: []v1alpha1.L3VPN{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vpn1"},
+					Spec: v1alpha1.L3VPNSpec{
+						RDAssignedNumber: 100,
+						VRF:              "red",
+						ImportRTs:        []v1alpha1.RouteTarget{"65000:100"},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vpn2"},
+					Spec: v1alpha1.L3VPNSpec{
+						RDAssignedNumber: 200,
+						VRF:              "red",
+						ImportRTs:        []v1alpha1.RouteTarget{"65000:200"},
+					},
+				},
+			},
+			wantErrStr: "duplicate L3VPN VRFs found for node",
+		},
+		{
+			name:  "subnet overlap between L3VNI and L2VNI in same VRF",
+			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+			l3vnis: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l3vni1", Namespace: "test"},
+					Spec: v1alpha1.L3VNISpec{
+						VNI: 100,
+						VRF: "red",
+						HostSession: &v1alpha1.HostSession{
+							ASN: 65001, HostASN: new(int64(65002)),
+							LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("10.0.0.0/16")},
+						},
+					},
+				},
+			},
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l2vni1", Namespace: "test"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI:          300,
+						VRF:          new("red"),
+						L2GatewayIPs: []string{"10.0.1.0/24"},
+					},
+				},
+			},
+			wantErrStr: "subnet overlaps found in VRFs for node",
+		},
+		{
+			name:  "subnet overlap between L3VPN and L2VNI in same VRF",
+			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+			l3vpns: []v1alpha1.L3VPN{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vpn1", Namespace: "test"},
+					Spec: v1alpha1.L3VPNSpec{
+						RDAssignedNumber: 100,
+						VRF:              "red",
+						ImportRTs:        []v1alpha1.RouteTarget{"65000:100"},
+						HostSession: &v1alpha1.HostSession{
+							ASN: 65001, HostASN: new(int64(65002)),
+							LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("10.0.0.0/16")},
+						},
+					},
+				},
+			},
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l2vni1", Namespace: "test"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI:          300,
+						VRF:          new("red"),
+						L2GatewayIPs: []string{"10.0.1.0/24"},
+					},
+				},
+			},
+			wantErrStr: "subnet overlaps found in VRFs for node",
+		},
+		{
+			name:  "no subnet overlap in different VRFs",
+			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+			l3vnis: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l3vni1", Namespace: "test"},
+					Spec: v1alpha1.L3VNISpec{
+						VNI: 100,
+						VRF: "red",
+						HostSession: &v1alpha1.HostSession{
+							ASN: 65001, HostASN: new(int64(65002)),
+							LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("10.0.0.0/16")},
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l3vni1", Namespace: "test"},
+					Spec: v1alpha1.L3VNISpec{
+						VNI: 101,
+						VRF: "blue",
+						HostSession: &v1alpha1.HostSession{
+							ASN: 65001, HostASN: new(int64(65002)),
+							LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("10.1.0.0/16")},
+						},
+					},
+				},
+			},
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l2vni1", Namespace: "test"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI:          300,
+						VRF:          new("blue"),
+						L2GatewayIPs: []string{"10.0.1.0/24"},
+					},
+				},
+			},
+		},
+		{
+			name: "multiple nodes validated independently",
+			nodes: []corev1.Node{
+				{ObjectMeta: metav1.ObjectMeta{Name: "node1"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "node2"}},
+			},
+			l3vnis: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l3vni1"},
+					Spec:       v1alpha1.L3VNISpec{VNI: 100, VRF: "red"},
+				},
+			},
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l2vni1"},
+					Spec:       v1alpha1.L2VNISpec{VNI: 200},
+				},
+			},
+		},
+		{
+			name: "duplicate VNI caught on second node",
+			nodes: []corev1.Node{
+				{ObjectMeta: metav1.ObjectMeta{
+					Name:   "node1",
+					Labels: map[string]string{"rack": "a"},
+				}},
+				{ObjectMeta: metav1.ObjectMeta{
+					Name:   "node2",
+					Labels: map[string]string{"rack": "b"},
+				}},
+			},
+			l3vnis: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l3vni1"},
+					Spec: v1alpha1.L3VNISpec{
+						VNI: 100,
+						VRF: "red",
+						NodeSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{"rack": "b"},
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l3vni2"},
+					Spec: v1alpha1.L3VNISpec{
+						VNI: 100,
+						VRF: "blue",
+						NodeSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{"rack": "b"},
+						},
+					},
+				},
+			},
+			wantErrStr: "duplicate L3VNIs found for node \"node2\"",
+		},
+		{
+			name:  "invalid L3VPN route target",
+			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+			l3vpns: []v1alpha1.L3VPN{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vpn1"},
+					Spec: v1alpha1.L3VPNSpec{
+						RDAssignedNumber: 100,
+						VRF:              "red",
+						ImportRTs:        []v1alpha1.RouteTarget{"invalid"},
+					},
+				},
+			},
+			wantErrStr: "failed to validate l3vpns for node",
+		},
+		{
+			name:  "invalid L3VNI route target",
+			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+			l3vnis: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l3vni1"},
+					Spec: v1alpha1.L3VNISpec{
+						VNI:       100,
+						VRF:       "red",
+						ExportRTs: []v1alpha1.RouteTarget{"bad:rt:format"},
+					},
+				},
+			},
+			wantErrStr: "failed to validate l3vnis for node",
+		},
+		{
+			name:  "L2VNI with L2GatewayIPs but no VRF",
+			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l2vni1"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI:          100,
+						L2GatewayIPs: []string{"10.0.0.0/24"},
+					},
+				},
+			},
+			wantErrStr: "failed to validate l2vnis for node",
+		},
+		{
+			name:  "dual-stack subnets no overlap in same VRF",
+			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+			l3vnis: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l3vni1", Namespace: "test"},
+					Spec: v1alpha1.L3VNISpec{
+						VNI: 100,
+						VRF: "red",
+						HostSession: &v1alpha1.HostSession{
+							ASN: 65001, HostASN: new(int64(65002)),
+							LocalCIDR: v1alpha1.LocalCIDRConfig{
+								IPv4: new("10.0.1.0/24"),
+								IPv6: new("2001:db8:1::/64"),
+							},
+						},
+					},
+				},
+			},
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l2vni1", Namespace: "test"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI:          300,
+						VRF:          new("red"),
+						L2GatewayIPs: []string{"10.0.2.0/24", "2001:db8:2::/64"},
+					},
+				},
+			},
+		},
+		{
+			name:  "IPv6 subnet overlap in same VRF",
+			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+			l3vnis: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l3vni1", Namespace: "test"},
+					Spec: v1alpha1.L3VNISpec{
+						VNI: 100,
+						VRF: "red",
+						HostSession: &v1alpha1.HostSession{
+							ASN: 65001, HostASN: new(int64(65002)),
+							LocalCIDR: v1alpha1.LocalCIDRConfig{IPv6: new("2001:db8::/32")},
+						},
+					},
+				},
+			},
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l2vni1", Namespace: "test"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI:          300,
+						VRF:          new("red"),
+						L2GatewayIPs: []string{"2001:db8:1::/64"},
+					},
+				},
+			},
+			wantErrStr: "subnet overlaps found in VRFs for node",
+		},
+		{
+			name:  "disconnected L2VNI passes all validation",
+			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l2vni1"},
+					Spec:       v1alpha1.L2VNISpec{VNI: 100},
+				},
+			},
+		},
+		{
+			name:  "duplicate RDAssignedNumber across L3VPNs",
+			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+			l3vpns: []v1alpha1.L3VPN{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vpn1"},
+					Spec: v1alpha1.L3VPNSpec{
+						RDAssignedNumber: 100,
+						VRF:              "red",
+						ImportRTs:        []v1alpha1.RouteTarget{"65000:100"},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vpn2"},
+					Spec: v1alpha1.L3VPNSpec{
+						RDAssignedNumber: 100,
+						VRF:              "blue",
+						ImportRTs:        []v1alpha1.RouteTarget{"65000:200"},
+					},
+				},
+			},
+			wantErrStr: "duplicate L3VPNs found for node",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateOverlayResourcesForNodes(tt.nodes, tt.l2vnis, tt.l3vnis, tt.l3vpns)
+			if tt.wantErrStr != "" {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tt.wantErrStr)
+				}
+				if !strings.Contains(err.Error(), tt.wantErrStr) {
+					t.Errorf("error = %q, want substring %q", err, tt.wantErrStr)
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("expected no error, but got: %v", err)
+			}
+		})
 	}
 }
 

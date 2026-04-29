@@ -1,0 +1,12 @@
+l3vpns:
+  - hostsession:
+      asn: 64514
+      hostasn: 64515
+      localcidr:
+        ipv4: 192.169.10.0/24
+    vrf: red
+    rdAssignedNumber: 100
+    exportRTs:
+    - "64514:100"
+    importRTs:
+    - "64520:100"

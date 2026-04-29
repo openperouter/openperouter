@@ -73,6 +73,9 @@ type requestKey string
 // +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l2vnis,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l2vnis/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l2vnis/finalizers,verbs=update
+// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l3vpns,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l3vpns/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l3vpns/finalizers,verbs=update
 // +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=underlays,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=underlays/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=underlays/finalizers,verbs=update
@@ -219,6 +222,12 @@ func (r *PERouterReconciler) getConfigFromAPI(ctx context.Context, logger *slog.
 		return conversion.APIConfigData{}, err
 	}
 
+	var l3vpns v1alpha1.L3VPNList
+	if err := r.List(ctx, &l3vpns); err != nil {
+		slog.Error("failed to list l3vpns", "error", err)
+		return conversion.APIConfigData{}, err
+	}
+
 	var l3passthrough v1alpha1.L3PassthroughList
 	if err := r.List(ctx, &l3passthrough, r.notStaticConfigsListOpts); err != nil {
 		slog.Error("failed to list l3passthrough", "error", err)
@@ -256,6 +265,12 @@ func (r *PERouterReconciler) getConfigFromAPI(ctx context.Context, logger *slog.
 		return conversion.APIConfigData{}, err
 	}
 
+	filteredL3VPNs, err := filter.L3VPNsForNode(node, l3vpns.Items)
+	if err != nil {
+		slog.Error("failed to filter l3vpns for node", "node", r.MyNode, "error", err)
+		return conversion.APIConfigData{}, err
+	}
+
 	filteredL3Passthrough, err := filter.L3PassthroughsForNode(node, l3passthrough.Items)
 	if err != nil {
 		slog.Error("failed to filter l3passthrough for node", "node", r.MyNode, "error", err)
@@ -278,6 +293,7 @@ func (r *PERouterReconciler) getConfigFromAPI(ctx context.Context, logger *slog.
 		Underlays:     filteredUnderlays,
 		L3VNIs:        filteredL3VNIs,
 		L2VNIs:        filteredL2VNIs,
+		L3VPNs:        filteredL3VPNs,
 		L3Passthrough: filteredL3Passthrough,
 		RawFRRConfigs: filteredRawFRRConfigs,
 	}
@@ -352,6 +368,7 @@ func (r *PERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(&v1.Pod{}, &handler.EnqueueRequestForObject{}).
 		Watches(&v1alpha1.L3VNI{}, &handler.EnqueueRequestForObject{}).
 		Watches(&v1alpha1.L2VNI{}, &handler.EnqueueRequestForObject{}).
+		Watches(&v1alpha1.L3VPN{}, &handler.EnqueueRequestForObject{}).
 		Watches(&v1alpha1.L3Passthrough{}, &handler.EnqueueRequestForObject{}).
 		Watches(&v1alpha1.RawFRRConfig{}, &handler.EnqueueRequestForObject{}).
 		Watches(&v1alpha1.RouterNodeConfigurationStatus{}, &handler.EnqueueRequestForObject{}).

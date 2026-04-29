@@ -83,6 +83,20 @@ func validateUnderlay(underlay v1alpha1.Underlay) error {
 		}
 	}
 
+	srv6Config := underlay.Spec.SRV6
+	if srv6Config == nil {
+		return nil
+	}
+	if _, isValid := locatorFormats[srv6Config.Locator.Format]; !isValid {
+		return &openpeerrors.ResourceError{
+			Obj: v1alpha1.FailedResource{
+				Kind:    v1alpha1.FailedResourceKind("Underlay"),
+				Name:    underlay.Name,
+				Reason:  v1alpha1.FailedResourceReasonValidationFailed,
+				Message: fmt.Sprintf("invalid locator format %q", srv6Config.Locator.Format),
+			},
+		}
+	}
 	return nil
 }
 
@@ -96,10 +110,19 @@ func validateUnderlayTunnelEndpoint(underlay *v1alpha1.Underlay) error {
 		return fmt.Errorf("underlay %s: tunnel endpoint CIDRs must be specified", underlay.Name)
 	}
 
-	_, err := ipfamily.ForCIDRStrings(cidrs...)
+	af, err := ipfamily.ForCIDRStrings(cidrs...)
 	if err != nil {
 		return fmt.Errorf("invalid tunnel endpoint CIDRs for underlay %s: %v - %w",
 			underlay.Name, cidrs, err)
+	}
+
+	if underlay.Spec.SRV6 == nil {
+		return nil
+	}
+
+	if af == ipfamily.IPv4 {
+		return fmt.Errorf("invalid tunnel endpoint CIDRs for underlay %s with SRv6, no IPv6 CIDR found: %v",
+			underlay.Name, cidrs)
 	}
 	return nil
 }

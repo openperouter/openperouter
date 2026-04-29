@@ -3,6 +3,7 @@
 package conversion
 
 import (
+	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
@@ -20,6 +21,7 @@ func TestAPItoHostConfig(t *testing.T) {
 		underlays       []v1alpha1.Underlay
 		vnis            []v1alpha1.L3VNI
 		l2vnis          []v1alpha1.L2VNI
+		l3vpns          []v1alpha1.L3VPN
 		l3Passthrough   []v1alpha1.L3Passthrough
 		wantUnderlay    hostnetwork.UnderlayParams
 		wantL2VNIParams []hostnetwork.L2VNIParams
@@ -49,14 +51,7 @@ func TestAPItoHostConfig(t *testing.T) {
 				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth0"}, TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: []string{"10.0.0.0/24"}}}},
 				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth1"}, TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: []string{"10.0.1.0/24"}}}},
 			},
-			vnis:            []v1alpha1.L3VNI{},
-			l2vnis:          []v1alpha1.L2VNI{},
-			l3Passthrough:   []v1alpha1.L3Passthrough{},
-			wantUnderlay:    hostnetwork.UnderlayParams{},
-			wantL3VNIParams: []hostnetwork.L3VNIParams{},
-			wantL2VNIParams: []hostnetwork.L2VNIParams{},
-			wantPassthrough: nil,
-			wantErr:         true,
+			wantErr: true,
 		},
 		{
 			name:      "ipv4 only",
@@ -149,6 +144,78 @@ func TestAPItoHostConfig(t *testing.T) {
 				},
 			},
 			wantL2VNIParams: []hostnetwork.L2VNIParams{},
+			wantPassthrough: nil,
+			wantErr:         false,
+		},
+		{
+			name:      "SRV6 + EVPN L2",
+			nodeIndex: 0,
+			targetNS:  "namespace",
+			underlays: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						Nics: []string{"eth0"},
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"10.0.0.0/24", "2001:db8::/128"},
+						},
+						SRV6: &v1alpha1.SRV6Config{},
+						ISIS: &v1alpha1.ISISConfig{},
+					},
+				},
+			},
+			l3vpns: []v1alpha1.L3VPN{
+				{Spec: v1alpha1.L3VPNSpec{
+					VRF: "red",
+					HostSession: &v1alpha1.HostSession{
+						LocalCIDR: v1alpha1.LocalCIDRConfig{
+							IPv4: new("10.1.0.0/24"),
+						},
+					},
+					ImportRTs:        []v1alpha1.RouteTarget{"65000:100"},
+					ExportRTs:        []v1alpha1.RouteTarget{"65001:100"},
+					RDAssignedNumber: 100,
+				},
+				},
+			},
+			l2vnis: []v1alpha1.L2VNI{
+				{Spec: v1alpha1.L2VNISpec{VNI: 200, VXLanPort: new(int32(4789))}},
+			},
+			l3Passthrough: []v1alpha1.L3Passthrough{},
+			wantUnderlay: hostnetwork.UnderlayParams{
+				UnderlayInterfaces: []string{"eth0"},
+				TargetNS:           "namespace",
+				TunnelEndpoint: &hostnetwork.UnderlayTunnelEndpointParams{
+					IPv4CIDR: "10.0.0.0/32",
+					IPv6CIDR: "2001:db8::/128",
+				},
+			},
+			wantL3VNIParams: []hostnetwork.L3VNIParams{
+				{
+					VNIParams: hostnetwork.VNIParams{
+						VRF:      "red",
+						VNI:      100,
+						TargetNS: "namespace",
+						VTEPIP:   "2001:db8::/128",
+						HasSRv6:  true,
+					},
+					HostVeth: &hostnetwork.Veth{
+						HostIPv4: "10.1.0.2/24",
+						NSIPv4:   "10.1.0.1/24",
+					},
+				},
+			},
+			wantL2VNIParams: []hostnetwork.L2VNIParams{
+				{
+					VNIParams: hostnetwork.VNIParams{
+						TargetNS:  "namespace",
+						VTEPIP:    "10.0.0.0/32",
+						VNI:       200,
+						VXLanPort: new(int32(4789)),
+					},
+					L2GatewayIPs: nil,
+					HostMaster:   nil,
+				},
+			},
 			wantPassthrough: nil,
 			wantErr:         false,
 		},
@@ -376,7 +443,7 @@ func TestAPItoHostConfig(t *testing.T) {
 			wantErr:         false,
 		},
 		{
-			name:      "underlay without evpn",
+			name:      "underlay without evpn or srv6",
 			nodeIndex: 0,
 			targetNS:  "namespace",
 			underlays: []v1alpha1.Underlay{
@@ -391,7 +458,6 @@ func TestAPItoHostConfig(t *testing.T) {
 			},
 			wantL3VNIParams: []hostnetwork.L3VNIParams{},
 			wantL2VNIParams: []hostnetwork.L2VNIParams{},
-			wantPassthrough: nil,
 			wantErr:         false,
 		},
 		{
@@ -493,6 +559,47 @@ func TestAPItoHostConfig(t *testing.T) {
 			wantL2VNIParams: []hostnetwork.L2VNIParams{},
 			wantErr:         false,
 		},
+		{
+			name:      "l2vnis without EVPN",
+			nodeIndex: 0,
+			targetNS:  "namespace",
+			underlays: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						Nics: []string{"eth0"},
+					},
+				},
+			},
+			l2vnis: []v1alpha1.L2VNI{
+				{Spec: v1alpha1.L2VNISpec{VNI: 200, VXLanPort: new(int32(4789))}},
+			},
+			wantErr: true,
+		},
+		{
+			name:      "l3vnis without EVPN",
+			nodeIndex: 0,
+			targetNS:  "namespace",
+			underlays: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						Nics: []string{"eth0"},
+					},
+				},
+			},
+			vnis: []v1alpha1.L3VNI{
+				{Spec: v1alpha1.L3VNISpec{
+					VRF: "red",
+					HostSession: &v1alpha1.HostSession{
+						LocalCIDR: v1alpha1.LocalCIDRConfig{
+							IPv4: new("10.1.0.0/24")},
+					},
+					VNI:       100,
+					VXLanPort: new(int32(4789)),
+				},
+				},
+			},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -501,6 +608,7 @@ func TestAPItoHostConfig(t *testing.T) {
 				Underlays:     tt.underlays,
 				L3VNIs:        tt.vnis,
 				L2VNIs:        tt.l2vnis,
+				L3VPNs:        tt.l3vpns,
 				L3Passthrough: tt.l3Passthrough,
 			}
 
@@ -510,7 +618,7 @@ func TestAPItoHostConfig(t *testing.T) {
 				return
 			}
 			if !reflect.DeepEqual(gotHostConfig.Underlay, tt.wantUnderlay) {
-				t.Errorf("APItoHostConfig() gotUnderlay = %+v, want %+v", gotHostConfig.Underlay, tt.wantUnderlay)
+				t.Errorf("APItoHostConfig() gotUnderlay = %s, want %s", mustMarshal(gotHostConfig.Underlay), mustMarshal(tt.wantUnderlay))
 			}
 			if !reflect.DeepEqual(gotHostConfig.L3VNIs, tt.wantL3VNIParams) {
 				t.Errorf("APItoHostConfig() gotL3VNIParams = %+v, want %+v", gotHostConfig.L3VNIs, tt.wantL3VNIParams)
@@ -529,14 +637,14 @@ func TestResolveVTEPIP(t *testing.T) {
 	tests := []struct {
 		name           string
 		addressFamily  *string
-		tunnelEndpoint *hostnetwork.UnderlayTunnelEndpointParams
+		tunnelEndpoint hostnetwork.UnderlayTunnelEndpointParams
 		want           string
 		wantErr        string
 	}{
 		{
 			name:          "ipv4 only, no field set, returns ipv4",
 			addressFamily: nil,
-			tunnelEndpoint: &hostnetwork.UnderlayTunnelEndpointParams{
+			tunnelEndpoint: hostnetwork.UnderlayTunnelEndpointParams{
 				IPv4CIDR: "10.0.0.1/32",
 			},
 			want: "10.0.0.1/32",
@@ -544,7 +652,7 @@ func TestResolveVTEPIP(t *testing.T) {
 		{
 			name:          "ipv6 only, no field set, returns ipv6",
 			addressFamily: nil,
-			tunnelEndpoint: &hostnetwork.UnderlayTunnelEndpointParams{
+			tunnelEndpoint: hostnetwork.UnderlayTunnelEndpointParams{
 				IPv6CIDR: "2001:db8::1/128",
 			},
 			want: "2001:db8::1/128",
@@ -552,7 +660,7 @@ func TestResolveVTEPIP(t *testing.T) {
 		{
 			name:          "dual-stack, no field set, defaults to ipv4",
 			addressFamily: nil,
-			tunnelEndpoint: &hostnetwork.UnderlayTunnelEndpointParams{
+			tunnelEndpoint: hostnetwork.UnderlayTunnelEndpointParams{
 				IPv4CIDR: "10.0.0.1/32",
 				IPv6CIDR: "2001:db8::1/128",
 			},
@@ -561,7 +669,7 @@ func TestResolveVTEPIP(t *testing.T) {
 		{
 			name:          "dual-stack, field=ipv6, returns ipv6",
 			addressFamily: new("ipv6"),
-			tunnelEndpoint: &hostnetwork.UnderlayTunnelEndpointParams{
+			tunnelEndpoint: hostnetwork.UnderlayTunnelEndpointParams{
 				IPv4CIDR: "10.0.0.1/32",
 				IPv6CIDR: "2001:db8::1/128",
 			},
@@ -570,7 +678,7 @@ func TestResolveVTEPIP(t *testing.T) {
 		{
 			name:          "dual-stack, field=ipv4, returns ipv4",
 			addressFamily: new("ipv4"),
-			tunnelEndpoint: &hostnetwork.UnderlayTunnelEndpointParams{
+			tunnelEndpoint: hostnetwork.UnderlayTunnelEndpointParams{
 				IPv4CIDR: "10.0.0.1/32",
 				IPv6CIDR: "2001:db8::1/128",
 			},
@@ -579,7 +687,7 @@ func TestResolveVTEPIP(t *testing.T) {
 		{
 			name:          "ipv4 only, field=ipv6, error",
 			addressFamily: new("ipv6"),
-			tunnelEndpoint: &hostnetwork.UnderlayTunnelEndpointParams{
+			tunnelEndpoint: hostnetwork.UnderlayTunnelEndpointParams{
 				IPv4CIDR: "10.0.0.1/32",
 			},
 			wantErr: "ipv6 address family requested but no IPv6 VTEP IP available",
@@ -587,7 +695,7 @@ func TestResolveVTEPIP(t *testing.T) {
 		{
 			name:          "ipv6 only, field=ipv4, error",
 			addressFamily: new("ipv4"),
-			tunnelEndpoint: &hostnetwork.UnderlayTunnelEndpointParams{
+			tunnelEndpoint: hostnetwork.UnderlayTunnelEndpointParams{
 				IPv6CIDR: "2001:db8::1/128",
 			},
 			wantErr: "ipv4 address family requested but no IPv4 VTEP IP available",
@@ -595,7 +703,7 @@ func TestResolveVTEPIP(t *testing.T) {
 		{
 			name:           "empty tunnel endpoint, no field set, error",
 			addressFamily:  nil,
-			tunnelEndpoint: &hostnetwork.UnderlayTunnelEndpointParams{},
+			tunnelEndpoint: hostnetwork.UnderlayTunnelEndpointParams{},
 			wantErr:        "no VTEP IP available",
 		},
 	}
@@ -655,12 +763,8 @@ func TestTunnelEndpointToHost(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			underlay := v1alpha1.Underlay{
-				Spec: v1alpha1.UnderlaySpec{
-					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: tt.cidrs},
-				},
-			}
-			got, err := tunnelEndpointToHost(underlay, 0)
+			tunnelEndpoint := &v1alpha1.TunnelEndpointConfig{CIDRs: tt.cidrs}
+			got, err := tunnelEndpointToHost(tunnelEndpoint, 0)
 			if tt.wantErr != "" {
 				if err == nil {
 					t.Fatalf("expected error containing %q, got nil", tt.wantErr)
@@ -786,4 +890,12 @@ func checkAddressFamilyResult(t *testing.T, got HostConfigData, err error, wantE
 			t.Errorf("L2VNI VTEPIP = %q, want %q", got.L2VNIs[0].VTEPIP, wantVTEPIP)
 		}
 	}
+}
+
+func mustMarshal(v any) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
 }
