@@ -41,6 +41,12 @@ purpose. Consult [GitHub
 Help](https://help.github.com/articles/about-pull-requests/) for more
 information on using pull requests.
 
+## AI Guidelines
+
+We welcome the use of AI tools when contributing. Please review our
+[AI Guidelines]({{%relref "ai-guidelines.md" %}}) for details on
+authorship, sign-off requirements, and contributor responsibility.
+
 ## Certificate of Origin
 
 By contributing to this project you agree to the Developer Certificate of
