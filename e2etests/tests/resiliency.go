@@ -277,8 +277,21 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 		redistributeConnectedForLeaf(infra.LeafAConfig)
 		redistributeConnectedForLeaf(infra.LeafBConfig)
 
-		By("configuring leafkind with BGP graceful-restart")
-		err = infra.UpdateLeafKindConfig(nodes, false)
+		By("configuring leafkind with BGP graceful-restart and next-hop-self")
+		neighbors := []string{}
+		for _, node := range nodes {
+			neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
+			Expect(err).NotTo(HaveOccurred())
+			neighbors = append(neighbors, neighborIP)
+		}
+		leafConfig := infra.LeafKindConfiguration{
+			PERouterASN: 64514,
+			NextHopSelf: true,
+			Neighbors:   neighbors,
+		}
+		configString, err := infra.LeafKindConfigToFRR(leafConfig)
+		Expect(err).NotTo(HaveOccurred())
+		err = infra.LeafKindConfig.ReloadConfig(configString)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
