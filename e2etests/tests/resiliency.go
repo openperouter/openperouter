@@ -253,6 +253,15 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 
 		cs = k8sclient.New()
 
+		err := Updater.CleanAll()
+		Expect(err).NotTo(HaveOccurred())
+
+		By("waiting for all router pods to be ready after cleanup")
+		Eventually(func() error {
+			_, err := openperouter.ReadyRouters(cs, HostMode)
+			return err
+		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
+
 		By("ensuring underlay veth pairs are healthy on all nodes")
 		nodes, err := k8s.GetNodes(cs)
 		Expect(err).NotTo(HaveOccurred())
@@ -524,6 +533,20 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 		})
 
 		dumpUnderlayVeths(cs, "stretched-L2 before traffic check")
+
+		By("waiting for BGP sessions to establish on both nodes before traffic check")
+		leafExec := executor.ForContainer(infra.KindLeaf)
+		for _, node := range nodes {
+			neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
+			Expect(err).NotTo(HaveOccurred())
+			validateSessionWithNeighbor(
+				infra.KindLeaf,
+				node.Name,
+				leafExec,
+				neighborIP,
+				Established,
+			)
+		}
 
 		By("verifying stretched L2 traffic works before router pod deletion")
 		Eventually(func() error {

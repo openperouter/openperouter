@@ -554,6 +554,9 @@ var _ = Describe("Underlay external and internal configuration", Ordered, func()
 	})
 
 	AfterAll(func() {
+		err := Updater.CleanAll()
+		Expect(err).NotTo(HaveOccurred())
+
 		By("waiting for the router pod to rollout after removing the underlay")
 		Eventually(func() error {
 			newRouters, err := openperouter.Get(cs, HostMode)

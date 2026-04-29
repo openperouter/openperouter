@@ -26,7 +26,10 @@ var _ = Describe("RawFRRConfig", Ordered, func() {
 
 	BeforeAll(func() {
 		cs = k8sclient.New()
-		var err error
+
+		err := Updater.CleanAll()
+		Expect(err).NotTo(HaveOccurred())
+
 		Eventually(func() error {
 			routers, err = openperouter.ReadyRouters(cs, HostMode)
 			return err
