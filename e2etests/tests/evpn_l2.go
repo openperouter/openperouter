@@ -382,7 +382,7 @@ var _ = Describe("Routes between bgp and the fabric - vtepInterface", func() {
 		redistributeConnectedForLeafKind(nodes)
 
 		l2VniRedWithGateway := l2VniRed.DeepCopy()
-		l2VniRedWithGateway.Spec.VRF = nil
+		l2VniRedWithGateway.Spec.VRF = ptr.To("red")
 		l2VniRedWithGateway.Spec.L2GatewayIPs = []string{"192.171.24.1/24"}
 		l2VniRedWithGateway.Spec.HostMaster = &v1alpha1.HostMaster{
 			Type: linuxBridgeHostAttachment,
