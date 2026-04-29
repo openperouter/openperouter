@@ -3,6 +3,8 @@
 package conversion
 
 import (
+	"errors"
+
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
 )
@@ -42,4 +44,26 @@ func MergeAPIConfigs(configs ...APIConfigData) (APIConfigData, error) {
 	}
 
 	return merged, nil
+}
+
+// validateAPIConfigData flags invalid config data.
+func validateAPIConfigData(config APIConfigData) error {
+	if len(config.Underlays) > 1 {
+		return errors.New("multiple underlays defined")
+	}
+	if len(config.Underlays) == 0 {
+		return FRREmptyConfigError("no underlays provided")
+	}
+	if len(config.L3Passthrough) > 1 {
+		return errors.New("multiple passthroughs defined, can have only one")
+	}
+
+	underlay := config.Underlays[0]
+	if len(config.L3VNIs) > 0 && underlay.Spec.EVPN == nil {
+		return errors.New("EVPN configuration is required when L3 VNIs are defined")
+	}
+	if len(config.L2VNIs) > 0 && underlay.Spec.EVPN == nil {
+		return errors.New("EVPN configuration is required when L2 VNIs are defined")
+	}
+	return nil
 }
