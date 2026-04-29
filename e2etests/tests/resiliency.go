@@ -405,11 +405,14 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 			Established,
 		)
 
+		By("waiting for Type-5 prefix route to appear on the fabric before traffic check")
+		waitForType5Route(executor.ForContainer(infra.KindLeaf), "192.171.24.0/24")
+
 		By("verifying traffic works before netns deletion")
 		Eventually(func() error {
-			_, err := hostARedExecutor.Exec("curl", "-sS", "--max-time", "2", urlStr)
+			_, err := hostARedExecutor.Exec("curl", "-sS", "--max-time", "3", urlStr)
 			return err
-		}).WithTimeout(30 * time.Second).WithPolling(time.Second).Should(Succeed())
+		}).WithTimeout(2 * time.Minute).WithPolling(time.Second).Should(Succeed())
 
 		By("identifying the router pod on clientPod's node")
 		routerPods, err := openperouter.RouterPodsForNodes(cs, map[string]bool{clientPod.Spec.NodeName: true})
@@ -472,17 +475,7 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 		)
 
 		By("waiting for Type-5 prefix route to appear on the fabric")
-		leafExec := executor.ForContainer(infra.KindLeaf)
-		Eventually(func() error {
-			out, err := leafExec.Exec("vtysh", "-c", "show bgp l2vpn evpn route type prefix")
-			if err != nil {
-				return err
-			}
-			if !strings.Contains(out, "192.171.24.0") {
-				return fmt.Errorf("Type-5 route for 192.171.24.0 not yet present on leafkind")
-			}
-			return nil
-		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
+		waitForType5Route(executor.ForContainer(infra.KindLeaf), "192.171.24.0/24")
 
 		By("verifying traffic works again after rebuild")
 		Eventually(func() error {
