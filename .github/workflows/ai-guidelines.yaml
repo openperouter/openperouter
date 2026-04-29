@@ -1,0 +1,19 @@
+name: AI Guidelines Check
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+
+jobs:
+  check-acknowledgment:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check AI guidelines acknowledgment
+        run: |
+          if echo "$BODY" | grep -qP '^\s*-\s*\[x\].*AI-generated'; then
+            echo "AI guidelines acknowledged."
+          else
+            echo "::error::AI guidelines checkbox not checked. Please check the acknowledgment box in the PR description."
+            exit 1
+          fi
+        env:
+          BODY: ${{ github.event.pull_request.body }}
