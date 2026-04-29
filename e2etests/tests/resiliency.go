@@ -304,25 +304,33 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 		Expect(err).NotTo(HaveOccurred())
 		err = infra.LeafKindConfig.ReloadConfig(configString)
 		Expect(err).NotTo(HaveOccurred())
+
+		By("waiting for BGP sessions to establish after underlay creation")
+		leafExec := executor.ForContainer(infra.KindLeaf)
+		for _, node := range nodes {
+			neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
+			Expect(err).NotTo(HaveOccurred())
+			validateSessionWithNeighbor(
+				infra.KindLeaf,
+				node.Name,
+				leafExec,
+				neighborIP,
+				Established,
+			)
+		}
 	})
 
 	AfterAll(func() {
 		Expect(infra.LeafAConfig.RemovePrefixes()).To(Succeed())
 		Expect(infra.LeafBConfig.RemovePrefixes()).To(Succeed())
 
-		oldRouters, err := openperouter.Get(cs, HostMode)
+		err := Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
 
-		err = Updater.CleanAll()
-		Expect(err).NotTo(HaveOccurred())
-
-		By("waiting for the router pods to rollout after removing the underlay")
+		By("waiting for all router pods to be ready after cleanup")
 		Eventually(func() error {
-			newRouters, err := openperouter.Get(cs, HostMode)
-			if err != nil {
-				return err
-			}
-			return openperouter.DaemonsetRolled(oldRouters, newRouters)
+			_, err := openperouter.ReadyRouters(cs, HostMode)
+			return err
 		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 	})
 

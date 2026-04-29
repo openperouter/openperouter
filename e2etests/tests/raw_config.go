@@ -11,6 +11,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/e2etests/pkg/config"
+	"github.com/openperouter/openperouter/e2etests/pkg/executor"
 	"github.com/openperouter/openperouter/e2etests/pkg/frr"
 	"github.com/openperouter/openperouter/e2etests/pkg/infra"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
@@ -30,6 +31,7 @@ var _ = Describe("RawFRRConfig", Ordered, func() {
 		err := Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
 
+		By("waiting for all router pods to be ready after cleanup")
 		Eventually(func() error {
 			routers, err = openperouter.ReadyRouters(cs, HostMode)
 			return err
@@ -39,6 +41,22 @@ var _ = Describe("RawFRRConfig", Ordered, func() {
 			Underlays: []v1alpha1.Underlay{infra.Underlay},
 		})
 		Expect(err).NotTo(HaveOccurred())
+
+		By("waiting for BGP sessions to establish after underlay creation")
+		nodes, err := k8s.GetNodes(cs)
+		Expect(err).NotTo(HaveOccurred())
+		leafExec := executor.ForContainer(infra.KindLeaf)
+		for _, node := range nodes {
+			neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
+			Expect(err).NotTo(HaveOccurred())
+			validateSessionWithNeighbor(
+				infra.KindLeaf,
+				node.Name,
+				leafExec,
+				neighborIP,
+				Established,
+			)
+		}
 	})
 
 	AfterAll(func() {

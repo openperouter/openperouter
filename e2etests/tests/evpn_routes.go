@@ -136,7 +136,11 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 			checkRouteFromLeaf := func(leaf infra.Leaf, vni v1alpha1.L3VNI, mustContain bool, prefixes []string) {
 				By(fmt.Sprintf("checking routes from leaf %s on vni %s, mustContain %v %v", leaf.Name, vni.Name, mustContain, prefixes))
 				Eventually(func() error {
-					for exec := range routers.GetExecutors() {
+					currentRouters, err := openperouter.ReadyRouters(cs, HostMode)
+					if err != nil {
+						return err
+					}
+					for exec := range currentRouters.GetExecutors() {
 						evpn, err := frr.EVPNInfo(exec)
 						if err != nil {
 							return fmt.Errorf("failed to get EVPN info from %s: %w", exec.Name(), err)
