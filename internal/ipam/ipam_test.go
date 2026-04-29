@@ -336,7 +336,7 @@ func TestVTEPIP(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			res, err := VTEPIp(tc.pool, tc.index)
+			res, err := TunnelEndpointIP(tc.pool, tc.index)
 			if err != nil && !tc.shouldFail {
 				t.Fatalf("got error %v while should not fail", err)
 			}
@@ -350,4 +350,104 @@ func TestVTEPIP(t *testing.T) {
 		})
 	}
 
+}
+
+func TestOffsetIPv6Prefix(t *testing.T) {
+	tests := []struct {
+		name           string
+		prefix         string
+		nodeIndex      int
+		prefixLen      int
+		expectedPrefix string
+		shouldFail     bool
+	}{
+		{
+			"offset_by_two",
+			"fd00:0:11::/48",
+			2,
+			48,
+			"fd00:0:13::/48",
+			false,
+		},
+		{
+			"zero_offset",
+			"fd00:0:11::/48",
+			0,
+			48,
+			"fd00:0:11::/48",
+			false,
+		},
+		{
+			"offset_by_one",
+			"fd00:0:11::/48",
+			1,
+			48,
+			"fd00:0:12::/48",
+			false,
+		},
+		{
+			"large_offset",
+			"fd00:0:11::/48",
+			256,
+			48,
+			"fd00:0:111::/48",
+			false,
+		},
+		{
+			"prefix_32",
+			"fd00:0:11::/32",
+			2,
+			32,
+			"fd00:2::/32",
+			false,
+		},
+		{
+			"prefix_64",
+			"fd00:0:11:22::/64",
+			2,
+			64,
+			"fd00:0:11:24::/64",
+			false,
+		},
+		{
+			"out_of_bounds",
+			"ffff:ffff:ffff:fffe::/64",
+			2,
+			64,
+			"",
+			true,
+		},
+		{
+			"ipv4",
+			"192.168.3.0/24",
+			2,
+			24,
+			"192.168.5.0/24",
+			false,
+		},
+		{
+			"invalid_prefix",
+			"invalid",
+			2,
+			48,
+			"",
+			true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			res, err := OffsetWithPrefix(tc.prefix, tc.nodeIndex, tc.prefixLen)
+			if err != nil && !tc.shouldFail {
+				t.Fatalf("got error %v while should not fail", err)
+			}
+			if err == nil && tc.shouldFail {
+				t.Fatalf("was expecting error, got %s instead", res)
+			}
+
+			if !tc.shouldFail && res != tc.expectedPrefix {
+				t.Fatalf("was expecting %s, got %s", tc.expectedPrefix, res)
+			}
+		})
+	}
 }

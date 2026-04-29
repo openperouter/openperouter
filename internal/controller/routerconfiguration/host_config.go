@@ -55,6 +55,7 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 		Underlays:     config.Underlays,
 		L3VNIs:        config.L3VNIs,
 		L2VNIs:        config.L2VNIs,
+		L3VPNs:        config.L3VPNs,
 		L3Passthrough: config.L3Passthrough,
 	}
 	hostConfig, err := conversion.APItoHostConfig(config.nodeIndex, config.targetNamespace, apiConfig)
@@ -62,17 +63,8 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 		return fmt.Errorf("failed to convert config to host configuration: %w", err)
 	}
 
-	slog.InfoContext(ctx, "ensuring sysctls")
-	if err := sysctl.Ensure(
-		config.targetNamespace,
-		sysctl.IPv4Forwarding(),
-		sysctl.IPv6Forwarding(),
-		sysctl.ArpAcceptAll(),
-		sysctl.ArpAcceptDefault(),
-		sysctl.AcceptUntrackedNADefault(),
-		sysctl.AcceptUntrackedNAAll(),
-	); err != nil {
-		return fmt.Errorf("failed to ensure sysctls: %w", err)
+	if err := ensureSysctlsForConfig(ctx, config); err != nil {
+		return err
 	}
 
 	slog.InfoContext(ctx, "setting up underlay")
@@ -167,4 +159,33 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 func nonRecoverableHostError(e error) bool {
 	underlayExistsError := hostnetwork.UnderlayExistsError("")
 	return errors.As(e, &underlayExistsError)
+}
+
+func ensureSysctlsForConfig(ctx context.Context, config interfacesConfiguration) error {
+	slog.InfoContext(ctx, "ensuring sysctls")
+	sysctls := []sysctl.Sysctl{
+		sysctl.IPv4Forwarding(),
+		sysctl.IPv6Forwarding(),
+		sysctl.ArpAcceptAll(),
+		sysctl.ArpAcceptDefault(),
+		sysctl.AcceptUntrackedNADefault(),
+		sysctl.AcceptUntrackedNAAll(),
+	}
+	if isSRV6(config.Underlays[0]) {
+		sysctls = append(sysctls,
+			sysctl.Seg6MakeFlowLabel(),
+			sysctl.EnableSeg6All(),
+		)
+	}
+	if err := sysctl.EnsureInNamespace(
+		config.targetNamespace,
+		sysctls...,
+	); err != nil {
+		return fmt.Errorf("failed to ensure sysctls: %w", err)
+	}
+	return nil
+}
+
+func isSRV6(underlay v1alpha1.Underlay) bool {
+	return underlay.Spec.SRV6 != nil
 }

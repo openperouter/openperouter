@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"text/template"
 
 	"github.com/openperouter/openperouter/internal/networklayerprotocol"
@@ -29,6 +30,7 @@ type Config struct {
 	Hostname    string
 	Underlay    UnderlayConfig
 	VNIs        []L3VNIConfig
+	VPNs        []L3VPNConfig
 	Passthrough *PassthroughConfig
 	BFDProfiles []BFDProfile
 	RawConfig   []RawFRRSnippet
@@ -45,11 +47,35 @@ type UnderlayConfig struct {
 	Neighbors       []NeighborConfig
 	TunnelEndpoint  *TunnelEndpoint
 	GracefulRestart *GracefulRestart
+	ISIS            *UnderlayISIS
+	SegmentRouting  *UnderlaySegmentRouting
 }
 
 type TunnelEndpoint struct {
 	IPv4CIDR string
 	IPv6CIDR string
+}
+
+type UnderlayISIS struct {
+	Name                 string
+	Net                  ISISNet
+	Level                int32
+	AdvertisePassiveOnly bool
+	Interfaces           []ISISInterface
+}
+
+type UnderlaySegmentRouting struct {
+	SourceAddress string
+	Locator       SRV6Locator
+}
+
+type SRV6Locator struct {
+	Name     string
+	Prefix   string
+	BlockLen int
+	NodeLen  int
+	Behavior string
+	Format   string
 }
 
 type PassthroughConfig struct {
@@ -69,6 +95,18 @@ type L3VNIConfig struct {
 	RouterID        string
 	ExportRTs       []string
 	ImportRTs       []string
+}
+
+type L3VPNConfig struct {
+	ASN                int64
+	ToAdvertiseIPv4    []string
+	ToAdvertiseIPv6    []string
+	LocalNeighbor      *NeighborConfig
+	VRF                string
+	RouterID           string
+	ExportRTs          []string
+	ImportRTs          []string
+	RouteDistinguisher string
 }
 
 type BFDProfile struct {
@@ -102,6 +140,7 @@ type NeighborConfig struct {
 	// If you are peering over a v6 Global Address then turning on this command will allow BGP to install v4 routes
 	// with v6 nexthops if you do not have v4 configured on interfaces.
 	ExtendedNexthop bool
+	UpdateSource    string
 }
 
 // templateConfig uses the template library to template
@@ -142,6 +181,9 @@ func templateConfig(data any) (string, error) {
 			"activateNeighborFor": func(nlps []networklayerprotocol.NLP, afi networklayerprotocol.AFI,
 				safi networklayerprotocol.SAFI) bool {
 				return networklayerprotocol.HasNLP(nlps, networklayerprotocol.NLP{AFI: afi, SAFI: safi})
+			},
+			"join": func(s []string) string {
+				return strings.Join(s, " ")
 			},
 		}).ParseFS(templates, "templates/*")
 	if err != nil {

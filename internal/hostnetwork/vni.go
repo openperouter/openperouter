@@ -35,6 +35,7 @@ type VNIParams struct {
 	VTEPIP    string `json:"vtepip"`
 	VNI       int32  `json:"vni"`
 	VXLanPort *int32 `json:"vxlanport,omitempty"`
+	HasSRv6   bool   `json:"hassrv6,omitempty"`
 }
 
 type L3VNIParams struct {
@@ -288,8 +289,9 @@ func setupHostMaster(ctx context.Context, params L2VNIParams, hostVeth netlink.L
 // setupVNI sets up the configuration required by FRR to
 // serve a given VNI in the target namespace. This includes:
 // - a linux VRF (only when params.VRF is non-empty)
-// - a linux Bridge, enslaved to the VRF when one exists
-// - a VXLan interface
+// - a linux Bridge, enslaved to the VRF when one exists (only for EVPN)
+// - a VXLan interface (only for EVPN)
+// - sysctl strict mode and disable RP filter (for SRv6)
 //
 // Additionally, it creates a veth pair and moves one leg in the target
 // namespace.
@@ -312,10 +314,16 @@ func setupVNI(ctx context.Context, params VNIParams, options ...NetlinkOption) e
 		if params.VRF != "" {
 			slog.DebugContext(ctx, "setting up vrf", "vrf", params.VRF)
 			var err error
-			vrf, err = setupVRF(params.VRF)
+			vrf, err = setupVRF(params.VRF, params.HasSRv6)
 			if err != nil {
 				return err
 			}
+		}
+
+		// The VXLAN port is set by l3vniToHost and l2vniToHost, but not by l3vpnToHost.
+		// Setup of the VXLAN tunnel and corresponding bridge is only necessary for EVPN.
+		if params.VXLanPort == nil {
+			return nil
 		}
 
 		slog.DebugContext(ctx, "setting up bridge")
@@ -325,12 +333,7 @@ func setupVNI(ctx context.Context, params VNIParams, options ...NetlinkOption) e
 		}
 
 		slog.DebugContext(ctx, "setting up vxlan")
-		err = setupVXLan(params, bridge)
-		if err != nil {
-			return err
-		}
-
-		return nil
+		return setupVXLan(params, bridge)
 	}); err != nil {
 		return err
 	}

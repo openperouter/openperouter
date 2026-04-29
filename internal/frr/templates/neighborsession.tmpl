@@ -28,6 +28,9 @@
   neighbor {{.neighbor.ID}} disable-connected-check
 {{- end }}
 {{- if .neighbor.ExtendedNexthop }}
-  neighbor {{.neighbor.ID}} capability extended-nexthop
+  neighbor {{ .neighbor.ID }} capability extended-nexthop
+{{- end }}
+{{- if .neighbor.UpdateSource }}
+  neighbor {{ .neighbor.ID }} update-source {{ .neighbor.UpdateSource }}
 {{- end }}
 {{- end -}}

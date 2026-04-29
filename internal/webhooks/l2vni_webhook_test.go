@@ -20,6 +20,7 @@ func TestValidateL2VNICreate(t *testing.T) {
 		name        string
 		l2vnis      []*v1alpha1.L2VNI
 		l3vnis      []*v1alpha1.L3VNI
+		l3vpns      []*v1alpha1.L3VPN
 		nodes       []*v1.Node
 		newL2VNI    *v1alpha1.L2VNI
 		errorString string
@@ -200,6 +201,53 @@ func TestValidateL2VNICreate(t *testing.T) {
 			errorString: "duplicate vni",
 		},
 		{
+			name: "testing conversion.ValidateL2VNIsForNodes is hit - duplicate VNI due to L3VPN",
+			nodes: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node1",
+						Labels: map[string]string{
+							"nodeName": "node1",
+						},
+					},
+				},
+			},
+			l3vpns: []*v1alpha1.L3VPN{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: "default",
+						Name:      "existingL3VPN",
+					},
+					Spec: v1alpha1.L3VPNSpec{
+						VRF:              "existing",
+						RDAssignedNumber: 100,
+						ImportRTs:        []v1alpha1.RouteTarget{"65000:100"},
+						NodeSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{
+								"nodeName": "node1",
+							},
+						},
+					},
+				},
+			},
+			newL2VNI: &v1alpha1.L2VNI{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      "newL2VNI",
+				},
+				Spec: v1alpha1.L2VNISpec{
+					VRF: new("another"),
+					VNI: 100,
+					NodeSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"nodeName": "node1",
+						},
+					},
+				},
+			},
+			errorString: "validation failed: duplicate VNIs found in L2VNIs for node \"node1\": L2VNI/newL2VNI: duplicate vni 100:L3VPN/existingL3VPN",
+		},
+		{
 			name: "testing conversion.ValidateVRFsForNodes is hit - subnet overlap in VRF",
 			nodes: []*v1.Node{
 				{
@@ -258,8 +306,10 @@ func TestValidateL2VNICreate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			l2vnis := objectsFromResources(tc.l2vnis)
 			l3vnis := objectsFromResources(tc.l3vnis)
+			l3vpns := objectsFromResources(tc.l3vpns)
 			nodes := objectsFromResources(tc.nodes)
 			objects := append(l2vnis, l3vnis...)
+			objects = append(objects, l3vpns...)
 			objects = append(objects, nodes...)
 			client, err := setupFakeWebhookClient(objects)
 			if err != nil {

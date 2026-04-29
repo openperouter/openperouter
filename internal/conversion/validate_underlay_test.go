@@ -276,6 +276,35 @@ func TestValidateUnderlay(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "valid SRv6 Locator Format",
+			underlay: v1alpha1.Underlay{
+				Spec: v1alpha1.UnderlaySpec{
+					ASN:       65001,
+					Neighbors: []v1alpha1.Neighbor{{}},
+					SRV6: &v1alpha1.SRV6Config{
+						Locator: v1alpha1.SRV6Locator{
+							Format: "usid-f3216",
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "invalid SRv6 Locator Format",
+			underlay: v1alpha1.Underlay{
+				Spec: v1alpha1.UnderlaySpec{
+					ASN:       65001,
+					Neighbors: []v1alpha1.Neighbor{{}},
+					SRV6: &v1alpha1.SRV6Config{
+						Locator: v1alpha1.SRV6Locator{
+							Format: "usid-finvalid",
+						},
+					},
+				},
+			},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
