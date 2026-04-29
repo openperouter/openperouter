@@ -157,10 +157,6 @@ func runScaleTest(tc scaleTestCase, experiment *gmeasure.Experiment) {
 	By("Waiting for VNI resources to be fully removed")
 	waitForVNIsGone(Updater.Client())
 
-	By("Collecting baseline metrics before " + testLabel)
-	baselineRouter := collectPodMetrics(routerLabelSelector)
-	baselineCtrl := collectPodMetrics(controllerLabelSelector)
-
 	By("Creating " + testLabel)
 	resources := buildResources(tc)
 
@@ -169,25 +165,19 @@ func runScaleTest(tc scaleTestCase, experiment *gmeasure.Experiment) {
 		Expect(err).NotTo(HaveOccurred())
 	}, gmeasure.Annotation(fmt.Sprintf("%d VNIs", tc.vniCount)))
 
-	By("Collecting scaled metrics")
-	scaledRouter := collectPodMetrics(routerLabelSelector)
-	scaledCtrl := collectPodMetrics(controllerLabelSelector)
+	By("Collecting stable memory metrics after reconcile")
+	routerMem := collectStableMemory(routerLabelSelector)
+	ctrlMem := collectStableMemory(controllerLabelSelector)
 
-	experiment.RecordValue(testLabel+" router CPU delta",
-		scaledRouter.TotalCPU-baselineRouter.TotalCPU,
-		gmeasure.Units("millicores"), gmeasure.Precision(2),
-	)
-	experiment.RecordValue(testLabel+" router mem delta",
-		scaledRouter.TotalMem-baselineRouter.TotalMem,
+	experiment.RecordValue(testLabel+" router memory",
+		routerMem.TotalMem,
 		gmeasure.Units("MB"), gmeasure.Precision(2),
+		gmeasure.Annotation(fmt.Sprintf("%d VNIs", tc.vniCount)),
 	)
-	experiment.RecordValue(testLabel+" controller CPU delta",
-		scaledCtrl.TotalCPU-baselineCtrl.TotalCPU,
-		gmeasure.Units("millicores"), gmeasure.Precision(2),
-	)
-	experiment.RecordValue(testLabel+" controller mem delta",
-		scaledCtrl.TotalMem-baselineCtrl.TotalMem,
+	experiment.RecordValue(testLabel+" controller memory",
+		ctrlMem.TotalMem,
 		gmeasure.Units("MB"), gmeasure.Precision(2),
+		gmeasure.Annotation(fmt.Sprintf("%d VNIs", tc.vniCount)),
 	)
 
 	By("Cleaning up VNIs")
@@ -195,14 +185,15 @@ func runScaleTest(tc scaleTestCase, experiment *gmeasure.Experiment) {
 	Expect(err).NotTo(HaveOccurred())
 }
 
-func collectPodMetrics(labelSelector string) metrics.MetricsSummaryResult {
-	pods, err := metrics.ForPod(
+func collectStableMemory(labelSelector string) metrics.MetricsSummaryResult {
+	result, err := metrics.WaitForStableMemory(
 		executor.Kubectl,
 		openperouter.Namespace,
 		labelSelector,
+		metrics.DefaultStableMemoryConfig(),
 	)
-	Expect(err).NotTo(HaveOccurred())
-	return metrics.SummarizeMetrics(pods)
+	Expect(err).NotTo(HaveOccurred(), "metrics did not stabilize for %s", labelSelector)
+	return result
 }
 
 func buildResources(tc scaleTestCase) config.Resources {

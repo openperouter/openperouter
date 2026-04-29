@@ -4,6 +4,7 @@ package metrics
 
 import (
 	"fmt"
+	"math"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -125,6 +126,54 @@ type MetricsSummaryResult struct {
 	TotalMem float64
 	AvgCPU   float64
 	AvgMem   float64
+}
+
+// StableMemoryConfig controls the polling behavior of WaitForStableMemory.
+type StableMemoryConfig struct {
+	PollInterval time.Duration
+	Timeout      time.Duration
+	ToleranceMB  float64
+}
+
+func DefaultStableMemoryConfig() StableMemoryConfig {
+	return StableMemoryConfig{
+		PollInterval: 5 * time.Second,
+		Timeout:      90 * time.Second,
+		ToleranceMB:  1.0,
+	}
+}
+
+// WaitForStableMemory polls kubectl top until two consecutive total-memory
+// readings are within ToleranceMB of each other, ensuring at least one
+// metrics-server refresh has been observed.
+func WaitForStableMemory(kubectl, namespace, labelSelector string, cfg StableMemoryConfig) (MetricsSummaryResult, error) {
+	pods, err := ForPod(kubectl, namespace, labelSelector)
+	if err != nil {
+		return MetricsSummaryResult{}, fmt.Errorf("initial metrics poll failed: %w", err)
+	}
+	prev := SummarizeMetrics(pods)
+
+	ticker := time.NewTicker(cfg.PollInterval)
+	defer ticker.Stop()
+	deadline := time.After(cfg.Timeout)
+
+	for {
+		select {
+		case <-deadline:
+			return prev, fmt.Errorf("metrics did not stabilize within %s (last two readings: %.2f MB, %.2f MB)",
+				cfg.Timeout, prev.TotalMem, prev.TotalMem)
+		case <-ticker.C:
+			pods, err = ForPod(kubectl, namespace, labelSelector)
+			if err != nil {
+				return MetricsSummaryResult{}, fmt.Errorf("metrics poll failed: %w", err)
+			}
+			curr := SummarizeMetrics(pods)
+			if math.Abs(curr.TotalMem-prev.TotalMem) <= cfg.ToleranceMB {
+				return curr, nil
+			}
+			prev = curr
+		}
+	}
 }
 
 // SummarizeMetrics calculates aggregate statistics for a slice of Pod.
