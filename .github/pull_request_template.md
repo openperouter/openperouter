@@ -39,3 +39,7 @@
 ```release-note
 
 ```
+
+**AI Guidelines Acknowledgment**:
+
+- [ ] I have reviewed all changes in this PR, including any AI-generated content, and I take full responsibility for its accuracy and correctness.
