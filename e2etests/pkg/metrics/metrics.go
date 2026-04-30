@@ -128,15 +128,15 @@ type MetricsSummaryResult struct {
 	AvgMem   float64
 }
 
-// StableMemoryConfig controls the polling behavior of WaitForStableMemory.
-type StableMemoryConfig struct {
+// MemoryConvergenceConfig controls the polling behavior of WaitForStableMemory.
+type MemoryConvergenceConfig struct {
 	PollInterval time.Duration
 	Timeout      time.Duration
 	ToleranceMB  float64
 }
 
-func DefaultStableMemoryConfig() StableMemoryConfig {
-	return StableMemoryConfig{
+func DefaultMemoryConvergenceConfig() MemoryConvergenceConfig {
+	return MemoryConvergenceConfig{
 		PollInterval: 5 * time.Second,
 		Timeout:      90 * time.Second,
 		ToleranceMB:  1.0,
@@ -146,7 +146,7 @@ func DefaultStableMemoryConfig() StableMemoryConfig {
 // WaitForStableMemory polls kubectl top until two consecutive total-memory
 // readings are within ToleranceMB of each other, ensuring at least one
 // metrics-server refresh has been observed.
-func WaitForStableMemory(kubectl, namespace, labelSelector string, cfg StableMemoryConfig) (MetricsSummaryResult, error) {
+func WaitForStableMemory(kubectl, namespace, labelSelector string, cfg MemoryConvergenceConfig) (MetricsSummaryResult, error) {
 	pods, err := ForPod(kubectl, namespace, labelSelector)
 	if err != nil {
 		return MetricsSummaryResult{}, fmt.Errorf("initial metrics poll failed: %w", err)

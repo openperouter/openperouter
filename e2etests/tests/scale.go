@@ -190,7 +190,7 @@ func collectStableMemory(labelSelector string) metrics.MetricsSummaryResult {
 		executor.Kubectl,
 		openperouter.Namespace,
 		labelSelector,
-		metrics.DefaultStableMemoryConfig(),
+		metrics.DefaultMemoryConvergenceConfig(),
 	)
 	Expect(err).NotTo(HaveOccurred(), "metrics did not stabilize for %s", labelSelector)
 	return result
