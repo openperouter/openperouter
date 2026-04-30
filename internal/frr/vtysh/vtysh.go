@@ -3,14 +3,26 @@
 package vtysh
 
 import (
+	"context"
 	"os/exec"
+	"time"
 )
+
+const DefaultTimeout = 10 * time.Second
 
 type Cli func(args string) (string, error)
 
-func Run(args string) (string, error) {
-	out, err := exec.Command("/usr/bin/vtysh", "-c", args).CombinedOutput()
-	return string(out), err
+func NewCLIWithTimeout(timeout time.Duration) Cli {
+	return func(args string) (string, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		out, err := exec.CommandContext(ctx, "/usr/bin/vtysh", "-c", args).CombinedOutput()
+		return string(out), err
+	}
 }
 
-var _ Cli = Run
+func NewCLI(args string) (string, error) {
+	return NewCLIWithTimeout(DefaultTimeout)(args)
+}
+
+var _ Cli = NewCLI

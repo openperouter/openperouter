@@ -177,7 +177,10 @@ spec:
         {{- with .Values.openperouter.logLevel }}
         - --loglevel={{ . }}
         {{- end }}
-        securityContext: 
+        {{- with .Values.openperouter.frr.reloader.vtyshTimeout }}
+        - --vtysh-timeout={{ . }}
+        {{- end }}
+        securityContext:
           seLinuxOptions:
             type: spc_t
         volumeMounts:

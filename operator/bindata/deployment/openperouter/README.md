@@ -34,6 +34,7 @@ Kubernetes: `>= 1.19.0-0`
 | openperouter.frr.image.repository | string | `"quay.io/openperouter/openperouter"` |  |
 | openperouter.frr.image.tag | string | `""` |  |
 | openperouter.frr.reloader.resources | object | `{}` |  |
+| openperouter.frr.reloader.vtyshTimeout | string | `""` | Timeout for vtysh commands used in health checks. Increase under heavy VNI load. Defaults to 10s. |
 | openperouter.frr.resources | object | `{}` |  |
 | openperouter.hostmode | bool | `false` | If true, enables host mode deployment: deploys hostbridge DaemonSet instead of router and controller, and configures nodemarker to run in webhook-only mode |
 | openperouter.image.pullPolicy | string | `""` |  |

@@ -63,6 +63,7 @@ openperouter:
     resources: {}
     reloader:
       resources: {}
+      vtyshTimeout: ""
   cri: "containerd" # cri to bind its socket, can be containerd or crio.
   # -- OVS database socket path. Defaults to standard OVS location if not specified.
   ovsSocketPath: ""
