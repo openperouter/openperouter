@@ -509,6 +509,10 @@ func validateL3VNI(g Gomega, params L3VNIParams) {
 	}
 	validateVethForVNI(g, params.VNIParams)
 
+	bridgeLink, err := netlink.LinkByName(BridgeName(params.VNI))
+	g.Expect(err).NotTo(HaveOccurred(), "bridge not found for addr_gen_mode check", BridgeName(params.VNI))
+	g.Expect(checkAddrGenModeNone(bridgeLink)).To(BeTrue(), "L3VNI bridge must have addr_gen_mode=1")
+
 	vethNames := vethNamesFromVNI(params.VNI)
 	peLegLink, err := netlink.LinkByName(vethNames.NamespaceSide)
 	g.Expect(err).NotTo(HaveOccurred(), "veth pe side not found", vethNames.NamespaceSide)
@@ -536,6 +540,10 @@ func validateL3VNI(g Gomega, params L3VNIParams) {
 func validateL2VNI(g Gomega, params L2VNIParams) {
 	validateVNI(g, params.VNIParams)
 	validateVethForVNI(g, params.VNIParams)
+
+	bridgeLinkForMode, err := netlink.LinkByName(BridgeName(params.VNI))
+	g.Expect(err).NotTo(HaveOccurred(), "bridge not found for addr_gen_mode check", BridgeName(params.VNI))
+	g.Expect(checkAddrGenModeNone(bridgeLinkForMode)).To(BeFalse(), "L2VNI bridge must NOT have addr_gen_mode=1")
 
 	vethNames := vethNamesFromVNI(params.VNI)
 	peLegLink, err := netlink.LinkByName(vethNames.NamespaceSide)
@@ -595,9 +603,6 @@ func validateVNI(g Gomega, params VNIParams) {
 	g.Expect(bridge.OperState).To(BeEquivalentTo(netlink.OperUp))
 
 	g.Expect(bridge.MasterIndex).To(Equal(vrf.Index))
-
-	addrGenModeNone = checkAddrGenModeNone(bridge)
-	g.Expect(addrGenModeNone).To(BeTrue())
 
 	err = checkVXLanConfigured(vxlan, bridge.Index, vtepDev.Attrs().Index, params)
 	g.Expect(err).NotTo(HaveOccurred())
