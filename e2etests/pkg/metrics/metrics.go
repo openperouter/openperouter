@@ -17,17 +17,97 @@ var (
 	memRegex = regexp.MustCompile(`^(\d+)(Ki|Mi|Gi)?$`)
 )
 
-// Pod represents CPU and memory metrics for a single pod.
-type Pod struct {
-	PodName   string    `json:"pod_name"`
-	Namespace string    `json:"namespace"`
-	CPUMillicores  float64   `json:"cpu_millicores"` // In millicores (e.g., 250 = 250m)
-	MemoryMB  float64   `json:"memory_mb"`      // In megabytes
-	Timestamp time.Time `json:"timestamp"`
+// Aggregated contains aggregate statistics for a set of pods.
+type Aggregated struct {
+	TotalCPU float64
+	TotalMem float64
+	AvgCPU   float64
+	AvgMem   float64
 }
 
-// ForPod uses kubectl top to collect metrics for pods matching the label.
-func ForPod(kubectl, namespace, labelSelector string) ([]Pod, error) {
+// MemoryConvergenceConfig controls the polling behavior of WaitForStableMemory.
+type MemoryConvergenceConfig struct {
+	PollInterval time.Duration
+	Timeout      time.Duration
+	ToleranceMB  float64
+}
+
+func DefaultMemoryConvergenceConfig() MemoryConvergenceConfig {
+	return MemoryConvergenceConfig{
+		PollInterval: 5 * time.Second,
+		Timeout:      90 * time.Second,
+		ToleranceMB:  1.0,
+	}
+}
+
+// CheckAvailability verifies that metrics-server is running by attempting
+// to collect pod metrics for the given label selector.
+func CheckAvailability(kubectl, namespace, labelSelector string) error {
+	_, err := forPod(kubectl, namespace, labelSelector)
+	return err
+}
+
+// WaitForStableMemory polls kubectl top until two consecutive total-memory
+// readings are within ToleranceMB of each other, ensuring at least one
+// metrics-server refresh has been observed.
+func WaitForStableMemory(kubectl, namespace, labelSelector string, cfg MemoryConvergenceConfig) (Aggregated, error) {
+	pods, err := forPod(kubectl, namespace, labelSelector)
+	if err != nil {
+		return Aggregated{}, fmt.Errorf("initial metrics poll failed: %w", err)
+	}
+	prev := SummarizeMetrics(pods)
+
+	ticker := time.NewTicker(cfg.PollInterval)
+	defer ticker.Stop()
+	deadline := time.After(cfg.Timeout)
+
+	for {
+		select {
+		case <-deadline:
+			return prev, fmt.Errorf("metrics did not stabilize within %s (last two readings: %.2f MB, %.2f MB)",
+				cfg.Timeout, prev.TotalMem, prev.TotalMem)
+		case <-ticker.C:
+			pods, err = forPod(kubectl, namespace, labelSelector)
+			if err != nil {
+				return Aggregated{}, fmt.Errorf("metrics poll failed: %w", err)
+			}
+			curr := SummarizeMetrics(pods)
+			if math.Abs(curr.TotalMem-prev.TotalMem) <= cfg.ToleranceMB {
+				return curr, nil
+			}
+			prev = curr
+		}
+	}
+}
+
+// SummarizeMetrics calculates aggregate statistics for a slice of podMetrics.
+func SummarizeMetrics(pods []podMetrics) Aggregated {
+	if len(pods) == 0 {
+		return Aggregated{}
+	}
+
+	var result Aggregated
+	for _, p := range pods {
+		result.TotalCPU += p.cpuMillicores
+		result.TotalMem += p.memoryMB
+	}
+
+	result.AvgCPU = result.TotalCPU / float64(len(pods))
+	result.AvgMem = result.TotalMem / float64(len(pods))
+	return result
+}
+
+// --- private helpers and types ---
+
+type podMetrics struct {
+	podName       string
+	namespace     string
+	cpuMillicores float64
+	memoryMB      float64
+	timestamp     time.Time
+}
+
+func forPod(kubectl, namespace, labelSelector string) ([]podMetrics, error) {
 	args := []string{"top", "pods", "-n", namespace, "-l", labelSelector, "--no-headers"}
 	out, err := exec.Command(kubectl, args...).CombinedOutput()
 	if err != nil {
@@ -40,8 +120,8 @@ func ForPod(kubectl, namespace, labelSelector string) ([]Pod, error) {
 // parseKubectlTopOutput parses "kubectl top pods" output.
 // Format: PODNAME    CPU(cores)   MEMORY(bytes)
 // Example: router-xyz   50m          128Mi
-func parseKubectlTopOutput(output, namespace string) ([]Pod, error) {
-	var metrics []Pod
+func parseKubectlTopOutput(output, namespace string) ([]podMetrics, error) {
+	var metrics []podMetrics
 	lines := strings.Split(strings.TrimSpace(output), "\n")
 
 	for _, line := range lines {
@@ -66,12 +146,12 @@ func parseKubectlTopOutput(output, namespace string) ([]Pod, error) {
 			return nil, fmt.Errorf("failed to parse memory for pod %s: %w", podName, err)
 		}
 
-		metrics = append(metrics, Pod{
-			PodName:   podName,
-			Namespace: namespace,
-			CPUMillicores:  cpu,
-			MemoryMB:  mem,
-			Timestamp: time.Now(),
+		metrics = append(metrics, podMetrics{
+			podName:       podName,
+			namespace:     namespace,
+			cpuMillicores: cpu,
+			memoryMB:      mem,
+			timestamp:     time.Now(),
 		})
 	}
 
@@ -79,7 +159,6 @@ func parseKubectlTopOutput(output, namespace string) ([]Pod, error) {
 }
 
 func parseCPU(s string) (float64, error) {
-	// Handle "50m" (millicores) or "1" (cores)
 	matches := cpuRegex.FindStringSubmatch(s)
 	if len(matches) < 2 {
 		return 0, fmt.Errorf("invalid CPU format: %q", s)
@@ -89,9 +168,9 @@ func parseCPU(s string) (float64, error) {
 		return 0, fmt.Errorf("failed to parse CPU value %q: %w", matches[1], err)
 	}
 	if len(matches) > 2 && matches[2] == "m" {
-		return val, nil // Already in millicores
+		return val, nil
 	}
-	return val * 1000, nil // Convert cores to millicores
+	return val * 1000, nil
 }
 
 func parseMemory(s string) (float64, error) {
@@ -110,85 +189,12 @@ func parseMemory(s string) (float64, error) {
 
 	switch unit {
 	case "Ki":
-		return val / 1024, nil // Convert KiB to MiB
+		return val / 1024, nil
 	case "Mi":
 		return val, nil
 	case "Gi":
 		return val * 1024, nil
 	default:
-		return val / (1024 * 1024), nil // Bytes to MiB
+		return val / (1024 * 1024), nil
 	}
-}
-
-// Aggregated contains aggregate statistics for a slice of Pod.
-type Aggregated struct {
-	TotalCPU float64
-	TotalMem float64
-	AvgCPU   float64
-	AvgMem   float64
-}
-
-// MemoryConvergenceConfig controls the polling behavior of WaitForStableMemory.
-type MemoryConvergenceConfig struct {
-	PollInterval time.Duration
-	Timeout      time.Duration
-	ToleranceMB  float64
-}
-
-func DefaultMemoryConvergenceConfig() MemoryConvergenceConfig {
-	return MemoryConvergenceConfig{
-		PollInterval: 5 * time.Second,
-		Timeout:      90 * time.Second,
-		ToleranceMB:  1.0,
-	}
-}
-
-// WaitForStableMemory polls kubectl top until two consecutive total-memory
-// readings are within ToleranceMB of each other, ensuring at least one
-// metrics-server refresh has been observed.
-func WaitForStableMemory(kubectl, namespace, labelSelector string, cfg MemoryConvergenceConfig) (Aggregated, error) {
-	pods, err := ForPod(kubectl, namespace, labelSelector)
-	if err != nil {
-		return Aggregated{}, fmt.Errorf("initial metrics poll failed: %w", err)
-	}
-	prev := SummarizeMetrics(pods)
-
-	ticker := time.NewTicker(cfg.PollInterval)
-	defer ticker.Stop()
-	deadline := time.After(cfg.Timeout)
-
-	for {
-		select {
-		case <-deadline:
-			return prev, fmt.Errorf("metrics did not stabilize within %s (last two readings: %.2f MB, %.2f MB)",
-				cfg.Timeout, prev.TotalMem, prev.TotalMem)
-		case <-ticker.C:
-			pods, err = ForPod(kubectl, namespace, labelSelector)
-			if err != nil {
-				return Aggregated{}, fmt.Errorf("metrics poll failed: %w", err)
-			}
-			curr := SummarizeMetrics(pods)
-			if math.Abs(curr.TotalMem-prev.TotalMem) <= cfg.ToleranceMB {
-				return curr, nil
-			}
-			prev = curr
-		}
-	}
-}
-
-// SummarizeMetrics calculates aggregate statistics for a slice of Pod.
-func SummarizeMetrics(pods []Pod) Aggregated {
-	if len(pods) == 0 {
-		return Aggregated{}
-	}
-
-	var result Aggregated
-	for _, p := range pods {
-		result.TotalCPU += p.CPUMillicores
-		result.TotalMem += p.MemoryMB
-	}
-
-	result.AvgCPU = result.TotalCPU / float64(len(pods))
-	result.AvgMem = result.TotalMem / float64(len(pods))
-	return result
 }
