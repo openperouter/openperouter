@@ -199,16 +199,16 @@ Since a single `frr-reload.py` call applies the entire valid resource set, a fai
 
 ## Design Details
 
-### RouterNodeConfigurationStatus CRD
+### RouterNodeState CRD
 
 The core status reporting mechanism uses a separate CR instance for each node to report the overall configuration result. This design follows established patterns from kubernetes-nmstate and frr-k8s.
 
-Each node has one RouterNodeConfigurationStatus resource that reports the outcome of every resource processed during reconciliation — both those that succeeded and those that failed — making it the single source of truth for configuration health on that node.
+Each node has one RouterNodeState resource that reports the outcome of every resource processed during reconciliation — both those that succeeded and those that failed — making it the single source of truth for configuration health on that node.
 
 #### API Structure
 
 ```go
-type RouterNodeConfigurationStatusStatus struct {
+type RouterNodeStateStatus struct {
     FailedResources  []FailedResource   `json:"failedResources,omitempty"`
     Conditions       []metav1.Condition `json:"conditions,omitempty"`
 }
@@ -229,7 +229,7 @@ type FailedResource struct {
 
 #### Node Association via Owner References
 
-RouterNodeConfigurationStatus resources are associated with their target nodes through Kubernetes owner references. This provides several benefits:
+RouterNodeState resources are associated with their target nodes through Kubernetes owner references. This provides several benefits:
 
 - **Automatic cleanup**: Resources are automatically deleted when the associated node is removed from the cluster
 - **Clear relationship**: The node association is established through standard Kubernetes metadata.
@@ -263,7 +263,7 @@ This structured approach allows operators to quickly identify problematic resour
 **Successful Configuration (all resources applied):**
 ```yaml
 apiVersion: openpe.openperouter.github.io/v1alpha1
-kind: RouterNodeConfigurationStatus
+kind: RouterNodeState
 metadata:
   name: worker-1
   namespace: openperouter-system
@@ -285,7 +285,7 @@ status:
 **Partially Applied Configuration (some resources failed):**
 ```yaml
 apiVersion: openpe.openperouter.github.io/v1alpha1
-kind: RouterNodeConfigurationStatus
+kind: RouterNodeState
 metadata:
   name: worker-2
   namespace: openperouter-system
@@ -329,7 +329,7 @@ status:
 **Overlay Attachment Failed (netlink provisioning failure, per-VRF scope):**
 ```yaml
 apiVersion: openpe.openperouter.github.io/v1alpha1
-kind: RouterNodeConfigurationStatus
+kind: RouterNodeState
 metadata:
   name: worker-4
   namespace: openperouter-system
@@ -365,7 +365,7 @@ status:
 **FRR Configuration Failed (global scope, affects all valid resources):**
 ```yaml
 apiVersion: openpe.openperouter.github.io/v1alpha1
-kind: RouterNodeConfigurationStatus
+kind: RouterNodeState
 metadata:
   name: worker-5
   namespace: openperouter-system
@@ -397,7 +397,7 @@ status:
 **Underlay Failed (VNI configuration skipped):**
 ```yaml
 apiVersion: openpe.openperouter.github.io/v1alpha1
-kind: RouterNodeConfigurationStatus
+kind: RouterNodeState
 metadata:
   name: worker-3
   namespace: openperouter-system
@@ -428,7 +428,7 @@ status:
 #### Naming and Lifecycle
 
 - **Resource naming**: `<nodeName>` format (simple node name since router identity is implicit from namespace)
-- **Owner references**: RouterNodeConfigurationStatus resources are owned by their associated Node, enabling automatic cleanup when nodes are removed
+- **Owner references**: RouterNodeState resources are owned by their associated Node, enabling automatic cleanup when nodes are removed
 - **Lifecycle management**: Created/updated by controller when any configuration changes; automatically cleaned up when the associated node is deleted or when the controller pod is removed from the node (due to node selectors, taints, or other scheduling constraints)
 - **Namespace placement**: Same namespace as the router
 
@@ -436,22 +436,22 @@ status:
 
 ```bash
 # List all configuration status for the router in current namespace
-kubectl get routernodeconfigurationstatus
+kubectl get routernodestate
 
 # Check status for specific node
-kubectl get routernodeconfigurationstatus worker-1
+kubectl get routernodestate worker-1
 
 # Get status with conditions for monitoring
-kubectl get routernodeconfigurationstatus -o json | jq '.items[] | {name: .metadata.name, ready: (.status.conditions[] | select(.type=="Ready") | .status)}'
+kubectl get routernodestate -o json | jq '.items[] | {name: .metadata.name, ready: (.status.conditions[] | select(.type=="Ready") | .status)}'
 
 # Check failed configurations
-kubectl get routernodeconfigurationstatus -o json | jq '.items[] | select(.status.failedResources | length > 0) | {node: .metadata.name, failed: [.status.failedResources[] | "\(.kind)/\(.name): \(.message)"]}'
+kubectl get routernodestate -o json | jq '.items[] | select(.status.failedResources | length > 0) | {node: .metadata.name, failed: [.status.failedResources[] | "\(.kind)/\(.name): \(.message)"]}'
 
 # List all failed resources across all nodes
-kubectl get routernodeconfigurationstatus -o json | jq '[.items[] | .status.failedResources[]? | {node: .metadata.name, kind, name, reason, message}]'
+kubectl get routernodestate -o json | jq '[.items[] | .status.failedResources[]? | {node: .metadata.name, kind, name, reason, message}]'
 
 # Check for underlay failures specifically
-kubectl get routernodeconfigurationstatus -o json | jq '.items[] | select(.status.failedResources[]? | .kind == "Underlay") | .metadata.name'
+kubectl get routernodestate -o json | jq '.items[] | select(.status.failedResources[]? | .kind == "Underlay") | .metadata.name'
 ```
 
 Example output:
@@ -468,9 +468,9 @@ control-1     True    False      5m
 
 #### Controller Behavior
 
-The OpenPERouter controller creates and manages RouterNodeConfigurationStatus resources:
+The OpenPERouter controller creates and manages RouterNodeState resources:
 
-1. **Creation**: Creates one RouterNodeConfigurationStatus per node when any OpenPERouter configuration is applied
+1. **Creation**: Creates one RouterNodeState per node when any OpenPERouter configuration is applied
 2. **End-of-reconcile updates**: At the end of each reconcile, the controller computes the full status struct (conditions + failedResources) from the reconcile results, compares it with the current CRD status, and patches the CRD only if the status changed. This keeps status updates co-located with reconcile logic and avoids scattered update calls or concurrent channel complexity.
 3. **Status reporting**: Reports configuration results through standard Kubernetes conditions for all OpenPERouter resources on the node
 
@@ -514,7 +514,7 @@ The controller requires additional permissions:
 
 ```yaml
 - apiGroups: ["openpe.openperouter.github.io"]
-  resources: ["routernodeconfigurationstatuses"]
+  resources: ["routernodestates"]
   verbs: ["get", "list", "watch", "create", "update", "patch"]
 ```
 
@@ -631,12 +631,12 @@ The dependency model distinguishes between L2VNIs with an explicit VRF (which de
 
 **Deliverable:** Fix https://github.com/openperouter/openperouter/issues/280 — L2VNIs without `spec.vrf` become disconnected overlays (east-west only), `l2gatewayips` without a VRF is rejected, and VRF names are cross-validated between L2VNIs and L3VNIs.
 
-### Phase 1: RouterNodeConfigurationStatus CRD Creation
+### Phase 1: RouterNodeState CRD Creation
 
-Introduce the RouterNodeConfigurationStatus CRD and basic resource lifecycle management.
+Introduce the RouterNodeState CRD and basic resource lifecycle management.
 
 **Deliverables:**
-- RouterNodeConfigurationStatus CRD definition with `FailedResource` type
+- RouterNodeState CRD definition with `FailedResource` type
 - Controller logic for creating/deleting status resources per node
 - Basic resource structure with status field
 
@@ -655,7 +655,7 @@ Implement pre-emptive semantic validation and failed resource tracking.
 
 ### Phase 3: Status Reporting
 
-Compute and persist the RouterNodeConfigurationStatus at the end of each reconcile based on the reconcile results.
+Compute and persist the RouterNodeState at the end of each reconcile based on the reconcile results.
 
 **Deliverables:**
 - Status struct computation at reconcile end (conditions + failedResources)
