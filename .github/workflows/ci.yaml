@@ -388,6 +388,22 @@ jobs:
         run: |
           make scale-tests
 
+      - name: Parse scale test report
+        if: ${{ always() }}
+        run: |
+          python3 hack/parse-scale-report.py /tmp/kind_logs/e2etests_suite_scale-report.json \
+            | tee /tmp/kind_logs/scale-test-summary.txt
+
+      - name: Upload scale test report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          retention-days: 30
+          name: scale-test-report
+          path: |
+            /tmp/kind_logs/e2etests_suite_scale-report.json
+            /tmp/kind_logs/scale-test-summary.txt
+
       - name: Export kind logs
         if: ${{ failure() }}
         run:

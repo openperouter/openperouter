@@ -336,7 +336,9 @@ e2etests-hostmode-boot: ginkgo kubectl build-validator create-export-logs ## Run
 
 .PHONY: scale-tests
 scale-tests: ginkgo kubectl build-validator create-export-logs ## Run VNI scale tests
-	$(GINKGO) -v --label-filter="scale" --timeout=3h ./e2etests/suite -- \
+	$(GINKGO) -v --label-filter="scale" --timeout=3h \
+		--json-report=scale-report.json --output-dir=${KIND_EXPORT_LOGS} --keep-separate-reports \
+		./e2etests/suite -- \
 		--kubectl=$(KUBECTL) $(TEST_ARGS) \
 		--hostvalidator $(VALIDATOR_PATH) \
 		--reporterpath=${KIND_EXPORT_LOGS}
