@@ -121,8 +121,8 @@ var _ = Describe("Routes between bgp and the fabric", Label("passthrough"), Orde
 			dumpIfFails(cs)
 			err := Updater.CleanButUnderlay()
 			Expect(err).NotTo(HaveOccurred())
-			Expect(infra.LeafAConfig.RemovePrefixes()).To(Succeed())
-			Expect(infra.LeafBConfig.RemovePrefixes()).To(Succeed())
+			Expect(infra.LeafAConfig.Reset()).To(Succeed())
+			Expect(infra.LeafBConfig.Reset()).To(Succeed())
 		})
 
 		It("translates BGP incoming routes as BGP routes", func() {
@@ -158,8 +158,8 @@ var _ = Describe("Routes between bgp and the fabric", Label("passthrough"), Orde
 
 		BeforeAll(func() {
 			By("setting redistribute connected on leaves")
-			redistributeConnectedForLeaf(infra.LeafAConfig)
-			redistributeConnectedForLeaf(infra.LeafBConfig)
+			Expect(infra.LeafAConfig.RedistributeConnected()).To(Succeed())
+			Expect(infra.LeafBConfig.RedistributeConnected()).To(Succeed())
 
 			By("Creating the test namespace")
 			_, err := k8s.CreateNamespace(cs, testNamespace)
@@ -215,8 +215,8 @@ var _ = Describe("Routes between bgp and the fabric", Label("passthrough"), Orde
 
 			err = Updater.CleanButUnderlay()
 			Expect(err).NotTo(HaveOccurred())
-			Expect(infra.LeafAConfig.RemovePrefixes()).To(Succeed())
-			Expect(infra.LeafBConfig.RemovePrefixes()).To(Succeed())
+			Expect(infra.LeafAConfig.Reset()).To(Succeed())
+			Expect(infra.LeafBConfig.Reset()).To(Succeed())
 		})
 
 		AfterEach(func() {

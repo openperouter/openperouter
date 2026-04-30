@@ -56,8 +56,8 @@ var _ = Describe("Static configuration", Ordered, func() {
 
 	Context("with vnis", func() {
 		AfterEach(func() {
-			Expect(infra.LeafAConfig.RemovePrefixes()).To(Succeed())
-			Expect(infra.LeafBConfig.RemovePrefixes()).To(Succeed())
+			Expect(infra.LeafAConfig.Reset()).To(Succeed())
+			Expect(infra.LeafBConfig.Reset()).To(Succeed())
 		})
 
 		It("receives type 5 routes from the fabric", func() {
