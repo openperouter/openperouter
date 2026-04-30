@@ -39,7 +39,14 @@ var (
 		Container:    LeafBContainer,
 	}
 	LeafKindConfig = LeafKind{
-		Container: KindLeafContainer,
+		ASN:              64512,
+		SpinePeerAddress: "192.168.1.4",
+		Container:        KindLeafContainer,
+	}
+	LeafKind2Config = LeafKind{
+		ASN:              64513,
+		SpinePeerAddress: "192.168.1.6",
+		Container:        KindLeaf2Container,
 	}
 
 	EmptyLeafConfig = LeafConfiguration{
@@ -68,6 +75,8 @@ type LeafConfiguration struct {
 }
 
 type LeafKindConfiguration struct {
+	ASN                   int
+	SpinePeerAddress      string
 	EnableBFD             bool
 	RedistributeConnected bool
 	Neighbors             []string
@@ -94,6 +103,8 @@ type Leaf struct {
 }
 
 type LeafKind struct {
+	ASN              int
+	SpinePeerAddress string
 	frr.Container
 }
 
@@ -151,12 +162,12 @@ func LeafKindConfigToFRR(config LeafKindConfiguration) (string, error) {
 
 const EnableBFD = true
 
-// UpdateLeafKindConfig updates the leafkind configuration file with the given configuration.
+// UpdateConfig updates the leafkind configuration file with the given configuration.
 // It takes nodes and automatically builds the neighbors list from their IPs.
-func UpdateLeafKindConfig(nodes []corev1.Node, enableBFD bool) error {
+func (l LeafKind) UpdateConfig(nodes []corev1.Node, enableBFD bool) error {
 	neighbors := []string{}
 	for _, node := range nodes {
-		neighborIP, err := NeighborIP(KindLeaf, node.Name)
+		neighborIP, err := NeighborIP(l.Name, node.Name)
 		if err != nil {
 			return err
 		}
@@ -164,9 +175,10 @@ func UpdateLeafKindConfig(nodes []corev1.Node, enableBFD bool) error {
 	}
 
 	config := LeafKindConfiguration{
-		PERouterASN: 64514,
-		EnableBFD:   enableBFD,
-		Neighbors:   neighbors,
+		PERouterASN:      uint32(l.ASN),
+		SpinePeerAddress: l.SpinePeerAddress,
+		EnableBFD:        enableBFD,
+		Neighbors:        neighbors,
 	}
 
 	configString, err := LeafKindConfigToFRR(config)
@@ -174,7 +186,7 @@ func UpdateLeafKindConfig(nodes []corev1.Node, enableBFD bool) error {
 		return err
 	}
 
-	return LeafKindConfig.ReloadConfig(configString)
+	return l.ReloadConfig(configString)
 }
 
 func (l Leaf) Configure(LeafConfig LeafConfiguration) error {
