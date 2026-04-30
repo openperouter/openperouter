@@ -57,6 +57,16 @@ func (e *EVPNData) ContainsType5RouteWithRT(prefix string, vtep string, vni int,
 	return false
 }
 
+func (e *EVPNData) ContainsType5Prefix(prefix string) bool {
+	for _, path := range e.allPaths() {
+		routePrefix := fmt.Sprintf("%s/%d", path.IP, path.IPLen)
+		if routePrefix == prefix {
+			return true
+		}
+	}
+	return false
+}
+
 func (e *EVPNData) ContainsType5PrefixWithRT(prefix string, communities []string) bool {
 	for _, path := range e.allPaths() {
 		routePrefix := fmt.Sprintf("%s/%d", path.IP, path.IPLen)

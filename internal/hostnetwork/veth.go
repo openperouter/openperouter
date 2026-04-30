@@ -66,18 +66,13 @@ func setupNamespacedVeth(ctx context.Context, vethNames VethNames, namespace str
 		return nil
 	}
 
-	// Not in the namespace, let's try locally
-	peerIndex, err := netlink.VethPeerIndex(hostSide)
+	// Not in the namespace, let's try locally.
+	// The peer may be gone entirely (netns destroyed) or the stale peer index
+	// may now point to an unrelated link (e.g. a bridge that reused the index).
+	// In either case, delete the orphaned host-side and recreate the pair.
+	nsSide, err := findOrRecreateVethPeer(ctx, logger, hostSide, vethNames)
 	if err != nil {
-		return fmt.Errorf("could not find peer veth for %s: %w", vethNames.HostSide, err)
-	}
-	nsSide, err := netlink.LinkByIndex(peerIndex)
-	if errors.As(err, &netlink.LinkNotFoundError{}) {
-		return fmt.Errorf("peer veth not found by index for %s: %w", vethNames.HostSide, err)
-	}
-
-	if err != nil {
-		return fmt.Errorf("could not find peer by index for %s: %w", vethNames.HostSide, err)
+		return err
 	}
 
 	if err = netlink.LinkSetNsFd(nsSide, int(targetNS)); err != nil {
@@ -152,4 +147,51 @@ func vethNamesFromVNI(vni int) VethNames {
 func vniFromHostVeth(hostVethName string) (int, error) {
 	trimmed := strings.TrimPrefix(hostVethName, HostVethPrefix)
 	return strconv.Atoi(trimmed)
+}
+
+// findOrRecreateVethPeer locates the namespace-side veth peer locally.
+// If the peer is missing (netns destroyed) or the stale peer index now
+// points to an unrelated link (index reuse), the orphaned host-side is
+// deleted and the pair is recreated.
+func findOrRecreateVethPeer(ctx context.Context, logger *slog.Logger, hostSide *netlink.Veth, vethNames VethNames) (netlink.Link, error) {
+	peerIndex, err := netlink.VethPeerIndex(hostSide)
+	if err == nil {
+		nsSide, linkErr := netlink.LinkByIndex(peerIndex)
+		if linkErr == nil && nsSide.Attrs().Name == vethNames.NamespaceSide {
+			return nsSide, nil
+		}
+		// Stale index: either the link is gone or it's an unrelated link
+		// (e.g. a bridge that reused the freed index).
+		slog.DebugContext(ctx, "peer veth gone or stale index, recreating veth pair",
+			"hostSide", vethNames.HostSide, "foundLink", linkName(nsSide), "linkErr", linkErr)
+	} else {
+		slog.DebugContext(ctx, "peer veth gone, recreating veth pair", "hostSide", vethNames.HostSide)
+	}
+
+	if delErr := netlink.LinkDel(hostSide); delErr != nil {
+		return nil, fmt.Errorf("could not delete orphaned veth %s: %w", vethNames.HostSide, delErr)
+	}
+	newHost, err := createVeth(ctx, logger, vethNames)
+	if err != nil {
+		return nil, fmt.Errorf("could not recreate veth for %s - %s: %w", vethNames.HostSide, vethNames.NamespaceSide, err)
+	}
+	if err = netlink.LinkSetUp(newHost); err != nil {
+		return nil, fmt.Errorf("could not set link up for recreated host leg %s: %v", newHost.Attrs().Name, err)
+	}
+	peerIndex, err = netlink.VethPeerIndex(newHost)
+	if err != nil {
+		return nil, fmt.Errorf("could not find peer veth for %s after recreate: %w", vethNames.HostSide, err)
+	}
+	nsSide, err := netlink.LinkByIndex(peerIndex)
+	if err != nil {
+		return nil, fmt.Errorf("peer veth not found by index for %s after recreate: %w", vethNames.HostSide, err)
+	}
+	return nsSide, nil
+}
+
+func linkName(l netlink.Link) string {
+	if l == nil {
+		return "<nil>"
+	}
+	return l.Attrs().Name
 }

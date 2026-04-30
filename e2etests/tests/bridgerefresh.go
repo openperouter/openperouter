@@ -82,8 +82,10 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 		})
 		Expect(err).NotTo(HaveOccurred())
 
-		routers, err = openperouter.Get(cs, HostMode)
-		Expect(err).NotTo(HaveOccurred())
+		Eventually(func() error {
+			routers, err = openperouter.ReadyRouters(cs, HostMode)
+			return err
+		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 
 		routers.Dump(ginkgo.GinkgoWriter)
 
@@ -95,13 +97,10 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 	AfterAll(func() {
 		Expect(Updater.CleanAll()).To(Succeed())
 
-		By("waiting for the router pod to rollout after removing the underlay")
+		By("waiting for all router pods to be ready after removing the underlay")
 		Eventually(func() error {
-			newRouters, err := openperouter.Get(cs, HostMode)
-			if err != nil {
-				return err
-			}
-			return openperouter.DaemonsetRolled(routers, newRouters)
+			_, err := openperouter.ReadyRouters(cs, HostMode)
+			return err
 		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 
 		Expect(infra.LeafAConfig.RemovePrefixes()).To(Succeed())

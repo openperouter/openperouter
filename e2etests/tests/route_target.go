@@ -102,13 +102,10 @@ var _ = Describe("Routes with RT between bgp and the fabric", Ordered, func() {
 	AfterAll(func() {
 		err := Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
-		By("waiting for the router pod to rollout after removing the underlay")
+		By("waiting for all router pods to be ready after removing the underlay")
 		Eventually(func() error {
-			newRouters, err := openperouter.Get(cs, HostMode)
-			if err != nil {
-				return err
-			}
-			return openperouter.DaemonsetRolled(routers, newRouters)
+			_, err := openperouter.ReadyRouters(cs, HostMode)
+			return err
 		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 	})
 
@@ -159,7 +156,11 @@ var _ = Describe("Routes with RT between bgp and the fabric", Ordered, func() {
 			checkRouteAndRTsFromLeaf := func(leaf infra.Leaf, vni v1alpha1.L3VNI, mustContain bool, prefixes []string, routeTargets []string) {
 				By(fmt.Sprintf("checking routes from leaf %s on vni %s, mustContain %v %v", leaf.Name, vni.Name, mustContain, prefixes))
 				Eventually(func() error {
-					for exec := range routers.GetExecutors() {
+					freshRouters, err := openperouter.ReadyRouters(cs, HostMode)
+					if err != nil {
+						return err
+					}
+					for exec := range freshRouters.GetExecutors() {
 						evpn, err := frr.EVPNInfo(exec)
 						if err != nil {
 							return fmt.Errorf("failed to get EVPN info from %s: %w", exec.Name(), err)

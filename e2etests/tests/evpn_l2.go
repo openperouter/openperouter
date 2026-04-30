@@ -95,13 +95,10 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 	AfterAll(func() {
 		err := Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
-		By("waiting for the router pod to rollout after removing the underlay")
+		By("waiting for all router pods to be ready after removing the underlay")
 		Eventually(func() error {
-			newRouters, err := openperouter.Get(cs, HostMode)
-			if err != nil {
-				return err
-			}
-			return openperouter.DaemonsetRolled(routers, newRouters)
+			_, err := openperouter.ReadyRouters(cs, HostMode)
+			return err
 		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 
 		// Clean up pre-existing OVS bridges
@@ -175,6 +172,20 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		By("removing the default gateway via the primary interface")
 		Expect(removeGatewayFromPod(firstPod)).To(Succeed())
 		Expect(removeGatewayFromPod(secondPod)).To(Succeed())
+
+		By("waiting for BGP sessions to establish on both nodes before traffic check")
+		leafExec := executor.ForContainer(infra.KindLeaf)
+		for _, node := range nodes {
+			neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
+			Expect(err).NotTo(HaveOccurred())
+			validateSessionWithNeighbor(
+				infra.KindLeaf,
+				node.Name,
+				leafExec,
+				neighborIP,
+				Established,
+			)
+		}
 
 		podExecutor := executor.ForPod(firstPod.Namespace, firstPod.Name, "agnhost")
 		secondPodExecutor := executor.ForPod(secondPod.Namespace, secondPod.Name, "agnhost")
@@ -349,7 +360,6 @@ var _ = Describe("Routes between bgp and the fabric - vtepInterface", func() {
 
 	var (
 		cs        clientset.Interface
-		routers   openperouter.Routers
 		nodes     []corev1.Node
 		firstPod  *corev1.Pod
 		secondPod *corev1.Pod
@@ -396,7 +406,7 @@ var _ = Describe("Routes between bgp and the fabric - vtepInterface", func() {
 			VTEPInterface: "toswitch",
 		}
 
-		routers, err = openperouter.Get(cs, HostMode)
+		_, err = openperouter.Get(cs, HostMode)
 		Expect(err).NotTo(HaveOccurred())
 
 		err = Updater.Update(config.Resources{
@@ -420,13 +430,10 @@ var _ = Describe("Routes between bgp and the fabric - vtepInterface", func() {
 		err := Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
 
-		By("waiting for the router pod to rollout after removing the underlay")
+		By("waiting for all router pods to be ready after removing the underlay")
 		Eventually(func() error {
-			newRouters, err := openperouter.Get(cs, HostMode)
-			if err != nil {
-				return err
-			}
-			return openperouter.DaemonsetRolled(routers, newRouters)
+			_, err := openperouter.ReadyRouters(cs, HostMode)
+			return err
 		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 
 		err = k8s.DeleteNamespace(cs, testNamespace)

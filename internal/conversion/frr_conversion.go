@@ -37,7 +37,6 @@ func APItoFRR(config APIConfigData, nodeIndex int, logLevel string) (frr.Config,
 	}
 
 	rawSnippets := rawConfigSnippets(config.RawFRRConfigs)
-	// if we have raw config, we apply it regardless of the rest of the configuration
 	if len(rawSnippets) > 0 && len(config.Underlays) == 0 {
 		slog.Info("no underlay provided, applying raw configuration only")
 		return frr.Config{
@@ -52,82 +51,155 @@ func APItoFRR(config APIConfigData, nodeIndex int, logLevel string) (frr.Config,
 
 	underlay := config.Underlays[0]
 
-	underlayNeighbors := []frr.NeighborConfig{}
-	bfdProfiles := []frr.BFDProfile{}
-	for _, n := range underlay.Spec.Neighbors {
-		frrNeigh, err := neighborToFRR(n)
-		if err != nil {
-			return frr.Config{}, fmt.Errorf("failed to translate underlay neighbor to frr, err: %w", err)
-		}
-
-		bfdProfile := bfdProfileForNeighbor(n)
-		underlayNeighbors = append(underlayNeighbors, *frrNeigh)
-		if bfdProfile != nil {
-			bfdProfiles = append(bfdProfiles, *bfdProfile)
-		}
-	}
-
 	routerID, err := routerIDFromUnderlay(underlay, nodeIndex)
 	if err != nil {
 		return frr.Config{}, fmt.Errorf("failed to get routerID: %w", err)
-	}
-
-	underlayConfig := frr.UnderlayConfig{
-		MyASN:     underlay.Spec.ASN,
-		RouterID:  routerID,
-		Neighbors: underlayNeighbors,
-	}
-
-	var passthroughConfig *frr.PassthroughConfig
-	if len(config.L3Passthrough) > 0 {
-		passthrough, err := passthroughToFRR(config.L3Passthrough[0], nodeIndex)
-		if err != nil {
-			return frr.Config{}, fmt.Errorf("failed to translate passthrough to frr: %w", err)
-		}
-		passthroughConfig = passthrough
 	}
 
 	if len(config.L3VNIs) > 0 && underlay.Spec.EVPN == nil {
 		return frr.Config{}, fmt.Errorf("EVPN configuration is required when L3 VNIs are defined")
 	}
 
-	if underlay.Spec.EVPN == nil {
-		return frr.Config{
-			Underlay:    underlayConfig,
-			Passthrough: passthroughConfig,
-			BFDProfiles: bfdProfiles,
-			Loglevel:    logLevel,
-			VNIs:        []frr.L3VNIConfig{},
-			RawConfig:   rawSnippets,
-		}, nil
+	configMaker := newConfigFactory(
+		underlay.Spec.ASN,
+		routerID,
+		WithNeighbors(underlay.Spec.Neighbors),
+		WithGracefulRestart(underlay.Spec.GracefulRestart),
+		WithPassthrough(config.L3Passthrough, nodeIndex),
+		WithVNIs(config.L3VNIs, config.L2VNIs, routerID, underlay.Spec.ASN, nodeIndex),
+		WithEVPN(underlay, nodeIndex),
+	)
+	if configMaker.err != nil {
+		return frr.Config{}, configMaker.err
 	}
 
-	underlayConfig.EVPN = &frr.UnderlayEvpn{}
-	if underlay.Spec.EVPN.VTEPCIDR != "" {
-		vtepIP, err := ipam.VTEPIp(underlay.Spec.EVPN.VTEPCIDR, nodeIndex)
-		if err != nil {
-			return frr.Config{}, fmt.Errorf("failed to get vtep ip, cidr %s, nodeIndex %d: %w", underlay.Spec.EVPN.VTEPCIDR, nodeIndex, err)
-		}
-		underlayConfig.EVPN.VTEP = vtepIP.String()
-	}
+	return configMaker.render(logLevel, rawSnippets), nil
+}
 
-	vniConfigs := []frr.L3VNIConfig{}
-	for _, vni := range config.L3VNIs {
-		frrVNI, err := l3vniToFRR(vni, routerID, underlay.Spec.ASN, nodeIndex)
-		if err != nil {
-			return frr.Config{}, fmt.Errorf("failed to translate vni to frr: %w, vni %v", err, vni)
-		}
-		vniConfigs = append(vniConfigs, frrVNI...)
-	}
+type Option func(*configFactory)
 
+type configFactory struct {
+	config      frr.UnderlayConfig
+	bfdProfiles []frr.BFDProfile
+	passthrough *frr.PassthroughConfig
+	vniConfigs  []frr.L3VNIConfig
+	err         error
+}
+
+func newConfigFactory(asn uint32, routerID string, opts ...Option) *configFactory {
+	b := &configFactory{
+		config: frr.UnderlayConfig{
+			MyASN:    asn,
+			RouterID: routerID,
+		},
+		bfdProfiles: []frr.BFDProfile{},
+		vniConfigs:  []frr.L3VNIConfig{},
+	}
+	for _, opt := range opts {
+		opt(b)
+	}
+	return b
+}
+
+func (b *configFactory) render(logLevel string, rawSnippets []frr.RawFRRSnippet) frr.Config {
 	return frr.Config{
-		Underlay:    underlayConfig,
-		VNIs:        vniConfigs,
-		Passthrough: passthroughConfig,
-		BFDProfiles: bfdProfiles,
+		Underlay:    b.config,
+		VNIs:        b.vniConfigs,
+		Passthrough: b.passthrough,
+		BFDProfiles: b.bfdProfiles,
 		Loglevel:    logLevel,
 		RawConfig:   rawSnippets,
-	}, nil
+	}
+}
+
+func WithEVPN(underlay v1alpha1.Underlay, nodeIndex int) Option {
+	return func(b *configFactory) {
+		if b.err != nil || underlay.Spec.EVPN == nil {
+			return
+		}
+		b.config.EVPN = &frr.UnderlayEvpn{}
+		if underlay.Spec.EVPN.VTEPCIDR != "" {
+			vtepIP, err := ipam.VTEPIp(underlay.Spec.EVPN.VTEPCIDR, nodeIndex)
+			if err != nil {
+				b.err = fmt.Errorf("failed to get vtep ip, cidr %s, nodeIndex %d: %w", underlay.Spec.EVPN.VTEPCIDR, nodeIndex, err)
+				return
+			}
+			b.config.EVPN.VTEP = vtepIP.String()
+		}
+	}
+}
+
+func WithNeighbors(apiNeighbors []v1alpha1.Neighbor) Option {
+	return func(b *configFactory) {
+		if b.err != nil {
+			return
+		}
+		for _, n := range apiNeighbors {
+			frrNeigh, err := neighborToFRR(n)
+			if err != nil {
+				b.err = fmt.Errorf("failed to translate underlay neighbor to frr, err: %w", err)
+				return
+			}
+			b.config.Neighbors = append(b.config.Neighbors, *frrNeigh)
+			if bfdProfile := bfdProfileForNeighbor(n); bfdProfile != nil {
+				b.bfdProfiles = append(b.bfdProfiles, *bfdProfile)
+			}
+		}
+	}
+}
+
+func WithGracefulRestart(gr *v1alpha1.GracefulRestartConfig) Option {
+	return func(b *configFactory) {
+		if b.err != nil || gr == nil {
+			return
+		}
+		b.config.GracefulRestart = &frr.GracefulRestart{
+			RestartTime:   ptr.Deref(gr.RestartTime, 120),
+			StalePathTime: ptr.Deref(gr.StalePathTime, 360),
+		}
+		const grConnectRetrySeconds = uint64(5)
+		for i := range b.config.Neighbors {
+			if b.config.Neighbors[i].ConnectTime == nil {
+				b.config.Neighbors[i].ConnectTime = ptr.To(grConnectRetrySeconds)
+			}
+		}
+	}
+}
+
+func WithPassthrough(passthroughs []v1alpha1.L3Passthrough, nodeIndex int) Option {
+	return func(b *configFactory) {
+		if b.err != nil || len(passthroughs) == 0 {
+			return
+		}
+		passthrough, err := passthroughToFRR(passthroughs[0], nodeIndex)
+		if err != nil {
+			b.err = fmt.Errorf("failed to translate passthrough to frr: %w", err)
+			return
+		}
+		b.passthrough = passthrough
+	}
+}
+
+func WithVNIs(l3vnis []v1alpha1.L3VNI, l2vnis []v1alpha1.L2VNI, routerID string, underlayASN uint32, nodeIndex int) Option {
+	return func(b *configFactory) {
+		if b.err != nil {
+			return
+		}
+		vrfsWithL2Gateway := vrfsWithL2Gateways(l2vnis)
+		for _, vni := range l3vnis {
+			frrVNI, err := l3vniToFRR(vni, routerID, underlayASN, nodeIndex)
+			if err != nil {
+				b.err = fmt.Errorf("failed to translate vni to frr: %w, vni %v", err, vni)
+				return
+			}
+			for i := range frrVNI {
+				if _, ok := vrfsWithL2Gateway[frrVNI[i].VRF]; ok {
+					frrVNI[i].RedistributeConnected = true
+				}
+			}
+			b.vniConfigs = append(b.vniConfigs, frrVNI...)
+		}
+	}
 }
 
 func rawConfigSnippets(rawFRRConfigs []v1alpha1.RawFRRConfig) []frr.RawFRRSnippet {
@@ -386,4 +458,14 @@ func routerIDFromUnderlay(underlay v1alpha1.Underlay, nodeIndex int) (string, er
 		return "", fmt.Errorf("failed to get router id, cidr %s, nodeIndex %d: %w", underlay.Spec.RouterIDCIDR, nodeIndex, err)
 	}
 	return routerID, nil
+}
+
+func vrfsWithL2Gateways(l2vnis []v1alpha1.L2VNI) map[string]struct{} {
+	res := make(map[string]struct{})
+	for _, l2vni := range l2vnis {
+		if len(l2vni.Spec.L2GatewayIPs) > 0 {
+			res[l2vni.VRFName()] = struct{}{}
+		}
+	}
+	return res
 }
