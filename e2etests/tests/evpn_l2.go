@@ -356,9 +356,9 @@ var _ = Describe("Routes between bgp and the fabric - vtepInterface", func() {
 		nad       nad.NetworkAttachmentDefinition
 	)
 
-	l2VniRed := v1alpha1.L2VNI{
+	l2Vni := v1alpha1.L2VNI{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "red110",
+			Name:      "vni110",
 			Namespace: openperouter.Namespace,
 		},
 		Spec: v1alpha1.L2VNISpec{
@@ -381,10 +381,8 @@ var _ = Describe("Routes between bgp and the fabric - vtepInterface", func() {
 		// advertised by the network fabric
 		redistributeConnectedForLeafKind(nodes)
 
-		l2VniRedWithGateway := l2VniRed.DeepCopy()
-		l2VniRedWithGateway.Spec.VRF = ptr.To("red")
-		l2VniRedWithGateway.Spec.L2GatewayIPs = []string{"192.171.24.1/24"}
-		l2VniRedWithGateway.Spec.HostMaster = &v1alpha1.HostMaster{
+		l2VniVtep := l2Vni.DeepCopy()
+		l2VniVtep.Spec.HostMaster = &v1alpha1.HostMaster{
 			Type: linuxBridgeHostAttachment,
 			LinuxBridge: &v1alpha1.LinuxBridgeConfig{
 				AutoCreate: ptr.To(true),
@@ -402,7 +400,7 @@ var _ = Describe("Routes between bgp and the fabric - vtepInterface", func() {
 		err = Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{underlay},
 			L2VNIs: []v1alpha1.L2VNI{
-				*l2VniRedWithGateway,
+				*l2VniVtep,
 			},
 		})
 		Expect(err).NotTo(HaveOccurred())
