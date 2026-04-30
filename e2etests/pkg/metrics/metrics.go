@@ -51,11 +51,18 @@ func CheckAvailability(kubectl, namespace, labelSelector string) error {
 // readings are within ToleranceMB of each other, ensuring at least one
 // metrics-server refresh has been observed.
 func FetchMetricsAggregation(kubectl, namespace, labelSelector string, cfg MemoryConvergenceConfig) (Aggregated, error) {
-	pods, err := forPod(kubectl, namespace, labelSelector)
+	fetchAggregation := func() (Aggregated, error) {
+		pods, err := forPod(kubectl, namespace, labelSelector)
+		if err != nil {
+			return Aggregated{}, err
+		}
+		return summarize(pods), nil
+	}
+
+	prev, err := fetchAggregation()
 	if err != nil {
 		return Aggregated{}, fmt.Errorf("initial metrics poll failed: %w", err)
 	}
-	prev := summarize(pods)
 
 	ticker := time.NewTicker(cfg.PollInterval)
 	defer ticker.Stop()
@@ -67,11 +74,10 @@ func FetchMetricsAggregation(kubectl, namespace, labelSelector string, cfg Memor
 			return prev, fmt.Errorf("metrics did not stabilize within %s (last two readings: %.2f MB, %.2f MB)",
 				cfg.Timeout, prev.TotalMem, prev.TotalMem)
 		case <-ticker.C:
-			pods, err = forPod(kubectl, namespace, labelSelector)
+			curr, err := fetchAggregation()
 			if err != nil {
 				return Aggregated{}, fmt.Errorf("metrics poll failed: %w", err)
 			}
-			curr := summarize(pods)
 			if math.Abs(curr.TotalMem-prev.TotalMem) <= cfg.ToleranceMB {
 				return curr, nil
 			}
