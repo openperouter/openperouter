@@ -17,16 +17,25 @@ import (
 
 var nadClient *nadclientset.Clientset
 
-func init() {
-	var err error
-	config := ctrl.GetConfigOrDie()
+func initNADClient() error {
+	if nadClient != nil {
+		return nil
+	}
+	config, err := ctrl.GetConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load kubeconfig for NAD client: %w", err)
+	}
 	nadClient, err = nadclientset.NewForConfig(config)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("failed to create NAD client: %w", err)
 	}
+	return nil
 }
 
 func CreateMacvlanNad(name, namespace, master string, gatewayIPs []string) (nad.NetworkAttachmentDefinition, error) {
+	if err := initNADClient(); err != nil {
+		return nad.NetworkAttachmentDefinition{}, err
+	}
 	// Build routes based on gateway IPs (IPv4 and/or IPv6)
 	var routes []string
 	for _, gwIP := range gatewayIPs {

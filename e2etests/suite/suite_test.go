@@ -5,6 +5,7 @@ package e2e
 import (
 	"flag"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/onsi/ginkgo/v2"
@@ -55,19 +56,24 @@ func TestE2E(t *testing.T) {
 
 var _ = ginkgo.BeforeSuite(func() {
 	log.SetLogger(zap.New(zap.WriteTo(ginkgo.GinkgoWriter), zap.UseDevMode(true)))
-	clientconfig := k8sclient.RestConfig()
-	var err error
+	clientconfig, err := k8sclient.RestConfig()
+	Expect(err).NotTo(HaveOccurred(), "failed to load kubeconfig (KUBECONFIG=%s)", os.Getenv("KUBECONFIG"))
 	updater, err = config.UpdaterForCRs(clientconfig, openperouter.Namespace)
 	Expect(err).NotTo(HaveOccurred())
 	tests.Updater = updater
 	kubeconfig := os.Getenv("KUBECONFIG")
 	if kubeconfig == "" {
-		ginkgo.Fail("KUBECONFIG not set")
+		kubeconfig = filepath.Join(os.Getenv("HOME"), ".kube", "config")
 	}
-	tests.K8sReporter = k8s.InitReporter(kubeconfig, tests.ReportPath, openperouter.Namespace, frrk8s.Namespace)
+	reporter, err := k8s.InitReporter(kubeconfig, tests.ReportPath, openperouter.Namespace, frrk8s.Namespace)
+	Expect(err).NotTo(HaveOccurred(), "failed to initialize k8s reporter (kubeconfig=%s)", kubeconfig)
+	tests.K8sReporter = reporter
 })
 
 var _ = ginkgo.AfterSuite(func() {
+	if updater == nil {
+		return
+	}
 	err := updater.CleanAll()
 	Expect(err).NotTo(HaveOccurred())
 })
