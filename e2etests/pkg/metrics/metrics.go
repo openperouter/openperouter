@@ -120,8 +120,8 @@ func parseMemory(s string) (float64, error) {
 	}
 }
 
-// MetricsSummaryResult contains aggregate statistics for a slice of Pod.
-type MetricsSummaryResult struct {
+// Aggregated contains aggregate statistics for a slice of Pod.
+type Aggregated struct {
 	TotalCPU float64
 	TotalMem float64
 	AvgCPU   float64
@@ -146,10 +146,10 @@ func DefaultMemoryConvergenceConfig() MemoryConvergenceConfig {
 // WaitForStableMemory polls kubectl top until two consecutive total-memory
 // readings are within ToleranceMB of each other, ensuring at least one
 // metrics-server refresh has been observed.
-func WaitForStableMemory(kubectl, namespace, labelSelector string, cfg MemoryConvergenceConfig) (MetricsSummaryResult, error) {
+func WaitForStableMemory(kubectl, namespace, labelSelector string, cfg MemoryConvergenceConfig) (Aggregated, error) {
 	pods, err := ForPod(kubectl, namespace, labelSelector)
 	if err != nil {
-		return MetricsSummaryResult{}, fmt.Errorf("initial metrics poll failed: %w", err)
+		return Aggregated{}, fmt.Errorf("initial metrics poll failed: %w", err)
 	}
 	prev := SummarizeMetrics(pods)
 
@@ -165,7 +165,7 @@ func WaitForStableMemory(kubectl, namespace, labelSelector string, cfg MemoryCon
 		case <-ticker.C:
 			pods, err = ForPod(kubectl, namespace, labelSelector)
 			if err != nil {
-				return MetricsSummaryResult{}, fmt.Errorf("metrics poll failed: %w", err)
+				return Aggregated{}, fmt.Errorf("metrics poll failed: %w", err)
 			}
 			curr := SummarizeMetrics(pods)
 			if math.Abs(curr.TotalMem-prev.TotalMem) <= cfg.ToleranceMB {
@@ -177,12 +177,12 @@ func WaitForStableMemory(kubectl, namespace, labelSelector string, cfg MemoryCon
 }
 
 // SummarizeMetrics calculates aggregate statistics for a slice of Pod.
-func SummarizeMetrics(pods []Pod) MetricsSummaryResult {
+func SummarizeMetrics(pods []Pod) Aggregated {
 	if len(pods) == 0 {
-		return MetricsSummaryResult{}
+		return Aggregated{}
 	}
 
-	var result MetricsSummaryResult
+	var result Aggregated
 	for _, p := range pods {
 		result.TotalCPU += p.CPUMillicores
 		result.TotalMem += p.MemoryMB

@@ -185,7 +185,7 @@ func runScaleTest(tc scaleTestCase, experiment *gmeasure.Experiment) {
 	Expect(err).NotTo(HaveOccurred())
 }
 
-func collectStableMemory(labelSelector string) metrics.MetricsSummaryResult {
+func collectStableMemory(labelSelector string) metrics.Aggregated {
 	result, err := metrics.WaitForStableMemory(
 		executor.Kubectl,
 		openperouter.Namespace,
