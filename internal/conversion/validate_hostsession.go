@@ -48,19 +48,20 @@ func ValidateHostSessions(l3VNIs []v1alpha1.L3VNI, l3Passthrough []v1alpha1.L3Pa
 	existingCIDRsV4 := map[string]string{}
 	existingCIDRsV6 := map[string]string{}
 	for _, s := range hostSessions {
-		if s.LocalCIDR.IPv4 != "" {
-			if err := validateCIDR(s, s.LocalCIDR.IPv4, existingCIDRsV4); err != nil {
+		ipv4CIDR, ipv6CIDR := localCIDRStrings(s.LocalCIDR)
+		if ipv4CIDR != "" {
+			if err := validateCIDR(s, ipv4CIDR, existingCIDRsV4); err != nil {
 				return err
 			}
-			existingCIDRsV4[s.LocalCIDR.IPv4] = s.name
+			existingCIDRsV4[ipv4CIDR] = s.name
 		}
-		if s.LocalCIDR.IPv6 != "" {
-			if err := validateCIDR(s, s.LocalCIDR.IPv6, existingCIDRsV6); err != nil {
+		if ipv6CIDR != "" {
+			if err := validateCIDR(s, ipv6CIDR, existingCIDRsV6); err != nil {
 				return err
 			}
-			existingCIDRsV6[s.LocalCIDR.IPv6] = s.name
+			existingCIDRsV6[ipv6CIDR] = s.name
 		}
-		if s.LocalCIDR.IPv4 == "" && s.LocalCIDR.IPv6 == "" {
+		if ipv4CIDR == "" && ipv6CIDR == "" {
 			return fmt.Errorf("at least one local CIDR (IPv4 or IPv6) must be provided for vni %s", s.name)
 		}
 	}

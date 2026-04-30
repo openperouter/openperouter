@@ -99,6 +99,17 @@ Check [the dev environment documentation]({{< relref "devenv.md" >}}) for more d
 After deploying the ContainerLab environment together with Kind, the kubeconfig will
 be available at `bin/kubeconfig`.
 
+### Running the linter
+
+You can run the Go linter locally with:
+
+```bash
+make lint
+```
+
+This runs `golangci-lint` including the `kube-api-linter` plugin, which
+validates that API types under `api/` follow Kubernetes API conventions.
+
 ### Running the tests locally
 
 You can run unit tests locally with:

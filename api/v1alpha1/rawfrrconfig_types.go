@@ -22,24 +22,24 @@ import (
 
 // RawFRRConfigSpec defines the desired state of RawFRRConfig.
 type RawFRRConfigSpec struct {
-	// NodeSelector specifies which nodes this RawFRRConfig applies to.
+	// nodeSelector specifies which nodes this RawFRRConfig applies to.
 	// If empty or not specified, applies to all nodes.
 	// +optional
 	NodeSelector *metav1.LabelSelector `json:"nodeSelector,omitempty"`
 
-	// Priority controls the ordering of raw config snippets in the rendered FRR configuration.
+	// priority controls the ordering of raw config snippets in the rendered FRR configuration.
 	// Lower values are rendered first. Snippets with the same priority have undefined order.
-	// +kubebuilder:default:=0
+	// +default=0
 	// +kubebuilder:validation:Minimum=0
 	// +optional
-	Priority int `json:"priority,omitempty"`
+	Priority *int32 `json:"priority,omitempty"`
 
-	// RawConfig is the raw FRR configuration text to append to the rendered configuration.
+	// rawConfig is the raw FRR configuration text to append to the rendered configuration.
 	// WARNING: This feature is intended for advanced use cases. No validation of FRR syntax
 	// is performed at admission time; invalid configuration will cause FRR reload failures.
 	// +kubebuilder:validation:MinLength=1
 	// +required
-	RawConfig string `json:"rawConfig"`
+	RawConfig string `json:"rawConfig,omitempty"`
 }
 
 // RawFRRConfigStatus defines the observed state of RawFRRConfig.
@@ -54,11 +54,17 @@ type RawFRRConfigStatus struct {
 
 // RawFRRConfig is the Schema for the rawfrrconfigs API.
 type RawFRRConfig struct {
-	metav1.TypeMeta   `json:",inline"`
+	metav1.TypeMeta `json:",inline"`
+	// metadata is the standard object metadata.
+	// +optional
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   RawFRRConfigSpec   `json:"spec,omitempty"`
-	Status RawFRRConfigStatus `json:"status,omitempty"`
+	// spec defines the desired state of RawFRRConfig.
+	// +required
+	Spec RawFRRConfigSpec `json:"spec,omitzero,omitempty"`
+	// status defines the observed state of RawFRRConfig.
+	// +optional
+	Status *RawFRRConfigStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true

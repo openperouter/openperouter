@@ -20,6 +20,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/utils/ptr"
 )
 
 var (
@@ -27,8 +28,8 @@ var (
 	leafAVRFBlueV4Prefixes, leafAVRFBlueV6Prefixes = infra.SeparateIPFamilies(leafAVRFBluePrefixes)
 	leafBVRFRedV4Prefixes, leafBVRFRedV6Prefixes   = infra.SeparateIPFamilies(leafBVRFRedPrefixes)
 	leafBVRFBlueV4Prefixes, leafBVRFBlueV6Prefixes = infra.SeparateIPFamilies(leafBVRFBluePrefixes)
-	redRouteTargets  = infra.RouteTargets{ImportRTs: []string{"65000:1000"}, ExportRTs: []string{"65000:1000"}}
-	blueRouteTargets = infra.RouteTargets{ImportRTs: []string{"65000:2000"}, ExportRTs: []string{"65000:2000"}}
+	redRouteTargets                                = infra.RouteTargets{ImportRTs: []string{"65000:1000"}, ExportRTs: []string{"65000:1000"}}
+	blueRouteTargets                               = infra.RouteTargets{ImportRTs: []string{"65000:2000"}, ExportRTs: []string{"65000:2000"}}
 
 	frrk8sRedPrefixes  = []string{"10.100.0.0/24"}
 	frrk8sBluePrefixes = []string{"10.200.0.0/24"}
@@ -47,13 +48,13 @@ var _ = Describe("Routes with RT between bgp and the fabric", Ordered, func() {
 			VRF: "red",
 			HostSession: &v1alpha1.HostSession{
 				ASN:     64514,
-				HostASN: 64515,
+				HostASN: ptr.To(int64(64515)),
 				LocalCIDR: v1alpha1.LocalCIDRConfig{
-					IPv4: "192.169.10.0/24",
-					IPv6: "2001:db8:1::/64",
+					IPv4: ptr.To("192.169.10.0/24"),
+					IPv6: ptr.To("2001:db8:1::/64"),
 				},
 			},
-			VNI:       100,
+			VNI:       ptr.To(int64(100)),
 			ExportRTs: redRouteTargets.ExportRTs,
 			ImportRTs: redRouteTargets.ImportRTs,
 		},
@@ -68,13 +69,13 @@ var _ = Describe("Routes with RT between bgp and the fabric", Ordered, func() {
 			VRF: "blue",
 			HostSession: &v1alpha1.HostSession{
 				ASN:     64514,
-				HostASN: 64515,
+				HostASN: ptr.To(int64(64515)),
 				LocalCIDR: v1alpha1.LocalCIDRConfig{
-					IPv4: "192.169.11.0/24",
-					IPv6: "2001:db8:2::/64",
+					IPv4: ptr.To("192.169.11.0/24"),
+					IPv6: ptr.To("2001:db8:2::/64"),
 				},
 			},
-			VNI:       200,
+			VNI:       ptr.To(int64(200)),
 			ExportRTs: blueRouteTargets.ExportRTs,
 			ImportRTs: blueRouteTargets.ImportRTs,
 		},
@@ -165,10 +166,10 @@ var _ = Describe("Routes with RT between bgp and the fabric", Ordered, func() {
 							return fmt.Errorf("failed to get EVPN info from %s: %w", exec.Name(), err)
 						}
 						for _, prefix := range prefixes {
-							if mustContain && !evpn.ContainsType5RouteWithRT(prefix, leaf.VTEPIP, int(vni.Spec.VNI), routeTargets) {
+							if mustContain && !evpn.ContainsType5RouteWithRT(prefix, leaf.VTEPIP, int(ptr.Deref(vni.Spec.VNI, 0)), routeTargets) {
 								return fmt.Errorf("type5 route for %s - %s not found in %v in router %s", prefix, leaf.VTEPIP, evpn, exec.Name())
 							}
-							if !mustContain && evpn.ContainsType5RouteWithRT(prefix, leaf.VTEPIP, int(vni.Spec.VNI), routeTargets) {
+							if !mustContain && evpn.ContainsType5RouteWithRT(prefix, leaf.VTEPIP, int(ptr.Deref(vni.Spec.VNI, 0)), routeTargets) {
 								return fmt.Errorf("type5 route for %s - %s found in %v in router %s", prefix, leaf.VTEPIP, evpn, exec.Name())
 							}
 						}

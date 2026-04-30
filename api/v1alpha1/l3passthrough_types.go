@@ -21,14 +21,15 @@ import (
 )
 
 type L3PassthroughSpec struct {
-	// NodeSelector specifies which nodes this L3Passthrough applies to.
+	// nodeSelector specifies which nodes this L3Passthrough applies to.
 	// If empty or not specified, applies to all nodes.
 	// Multiple L3Passthrough with overlapping node selectors will be rejected.
 	// +optional
 	NodeSelector *metav1.LabelSelector `json:"nodeSelector,omitempty"`
 
-	// HostSession is the configuration for the host session.
-	HostSession HostSession `json:"hostsession,omitempty"`
+	// hostsession is the configuration for the host session.
+	// +required
+	HostSession HostSession `json:"hostsession,omitzero,omitempty"`
 }
 
 // L3PassthroughStatus defines the observed state of L3Passthrough.
@@ -44,11 +45,17 @@ type L3PassthroughStatus struct {
 // L3Passthrough represents a session with the host which is not encapsulated and
 // takes part to the bgp fabric.
 type L3Passthrough struct {
-	metav1.TypeMeta   `json:",inline"`
+	metav1.TypeMeta `json:",inline"`
+	// metadata is the standard object metadata.
+	// +optional
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   L3PassthroughSpec   `json:"spec,omitempty"`
-	Status L3PassthroughStatus `json:"status,omitempty"`
+	// spec defines the desired state of L3Passthrough.
+	// +required
+	Spec L3PassthroughSpec `json:"spec,omitzero,omitempty"`
+	// status defines the observed state of L3Passthrough.
+	// +optional
+	Status *L3PassthroughStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true

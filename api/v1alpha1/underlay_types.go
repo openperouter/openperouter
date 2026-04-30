@@ -22,46 +22,52 @@ import (
 
 // UnderlaySpec defines the desired state of Underlay.
 type UnderlaySpec struct {
-	// NodeSelector specifies which nodes this Underlay applies to.
+	// nodeSelector specifies which nodes this Underlay applies to.
 	// If empty or not specified, applies to all nodes (backward compatible).
 	// Multiple Underlays with overlapping node selectors will be rejected.
 	// +optional
 	NodeSelector *metav1.LabelSelector `json:"nodeSelector,omitempty"`
 
-	// ASN is the local AS number to use for the session with the TOR switch.
+	// asn is the local AS number to use for the session with the TOR switch.
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=4294967295
 	// +required
-	ASN uint32 `json:"asn,omitempty"`
+	ASN int64 `json:"asn,omitempty"`
 
-	// RouterIDCIDR is the ipv4 cidr to be used to assign a different routerID on each node.
-	// +kubebuilder:default="10.0.0.0/24"
+	// routeridcidr is the ipv4 cidr to be used to assign a different routerID on each node.
+	// +default="10.0.0.0/24"
 	// +optional
-	RouterIDCIDR string `json:"routeridcidr,omitempty"`
+	RouterIDCIDR *string `json:"routeridcidr,omitempty"`
 
-	// Neighbors is the list of external neighbors to peer with.
+	// neighbors is the list of external neighbors to peer with.
 	// +kubebuilder:validation:MinItems=1
+	// +optional
+	// +listType=atomic
 	Neighbors []Neighbor `json:"neighbors,omitempty"`
 
-	// Nics is the list of physical nics to move under the PERouter namespace to connect
+	// nics is the list of physical nics to move under the PERouter namespace to connect
 	// to external routers. This field is optional when using Multus networks for TOR connectivity.
 	// +kubebuilder:validation:items:Pattern=`^[a-zA-Z][a-zA-Z0-9._-]*$`
 	// +kubebuilder:validation:items:MaxLength=15
+	// +optional
+	// +listType=atomic
 	Nics []string `json:"nics,omitempty"`
 
+	// evpn contains EVPN-VXLAN configuration for the underlay.
+	// +optional
 	EVPN *EVPNConfig `json:"evpn,omitempty"`
 }
 
 // EVPNConfig contains EVPN-VXLAN configuration for the underlay.
 // +kubebuilder:validation:XValidation:rule="(self.?vtepcidr.orValue(\"\") != \"\") != (self.?vtepInterface.orValue(\"\") != \"\")",message="exactly one of vtepcidr or vtepInterface must be specified"
 type EVPNConfig struct {
-	// VTEPCIDR is CIDR to be used to assign IPs to the local VTEP on each node.
+	// vtepcidr is the CIDR to be used to assign IPs to the local VTEP on each node.
 	// A loopback interface will be created with an IP derived from this CIDR.
 	// Mutually exclusive with vtepInterface.
 	// +optional
-	VTEPCIDR string `json:"vtepcidr,omitempty"`
+	VTEPCIDR *string `json:"vtepcidr,omitempty"`
 
-	// VTEPInterface is the name of an existing interface to use as the VTEP source.
+	// vtepInterface is the name of an existing interface to use as the VTEP source.
 	// The interface must already have an IP address configured that will be used
 	// as the VTEP IP. Mutually exclusive with vtepcidr.
 	// The ToR must advertise the interface IP into the fabric underlay
@@ -70,7 +76,7 @@ type EVPNConfig struct {
 	// +kubebuilder:validation:Pattern=`^[a-zA-Z][a-zA-Z0-9._-]*$`
 	// +kubebuilder:validation:MaxLength=15
 	// +optional
-	VTEPInterface string `json:"vtepInterface,omitempty"`
+	VTEPInterface *string `json:"vtepInterface,omitempty"`
 }
 
 // UnderlayStatus defines the observed state of Underlay.
@@ -85,11 +91,17 @@ type UnderlayStatus struct {
 
 // Underlay is the Schema for the underlays API.
 type Underlay struct {
-	metav1.TypeMeta   `json:",inline"`
+	metav1.TypeMeta `json:",inline"`
+	// metadata is the standard object metadata.
+	// +optional
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   UnderlaySpec   `json:"spec,omitempty"`
-	Status UnderlayStatus `json:"status,omitempty"`
+	// spec defines the desired state of Underlay.
+	// +required
+	Spec UnderlaySpec `json:"spec,omitzero,omitempty"`
+	// status defines the observed state of Underlay.
+	// +optional
+	Status *UnderlayStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true

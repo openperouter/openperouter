@@ -208,21 +208,21 @@ func TestReadRouterConfigsFromFiles(t *testing.T) {
 		Nics: []string{"toswitch", "eth0"},
 		Neighbors: []v1alpha1.Neighbor{
 			{
-				ASN:     64512,
+				ASN:     ptr.To(int64(64512)),
 				Address: "192.168.11.2",
 			},
 			{
-				ASN:     64512,
+				ASN:     ptr.To(int64(64512)),
 				Address: "192.168.11.3",
 				BFD: &v1alpha1.BFDSettings{
-					ReceiveInterval:  ptr.To(uint32(300)),
-					TransmitInterval: ptr.To(uint32(300)),
-					DetectMultiplier: ptr.To(uint32(3)),
+					ReceiveInterval:  ptr.To(int32(300)),
+					TransmitInterval: ptr.To(int32(300)),
+					DetectMultiplier: ptr.To(int32(3)),
 				},
 			},
 		},
 		EVPN: &v1alpha1.EVPNConfig{
-			VTEPCIDR: "100.65.0.0/24",
+			VTEPCIDR: ptr.To("100.65.0.0/24"),
 		},
 	}
 
@@ -232,25 +232,25 @@ func TestReadRouterConfigsFromFiles(t *testing.T) {
 			VRF: "red",
 			HostSession: &v1alpha1.HostSession{
 				ASN:     64514,
-				HostASN: 64515,
+				HostASN: ptr.To(int64(64515)),
 				LocalCIDR: v1alpha1.LocalCIDRConfig{
-					IPv4: "192.169.10.0/24",
-					IPv6: "2001:db8:1::/64",
+					IPv4: ptr.To("192.169.10.0/24"),
+					IPv6: ptr.To("2001:db8:1::/64"),
 				},
 			},
-			VNI: 100,
+			VNI: ptr.To(int64(100)),
 		},
 		{
 			VRF: "blue",
 			HostSession: &v1alpha1.HostSession{
 				ASN:     64514,
-				HostASN: 64516,
+				HostASN: ptr.To(int64(64516)),
 				LocalCIDR: v1alpha1.LocalCIDRConfig{
-					IPv4: "192.169.11.0/24",
-					IPv6: "2001:db8:2::/64",
+					IPv4: ptr.To("192.169.11.0/24"),
+					IPv6: ptr.To("2001:db8:2::/64"),
 				},
 			},
-			VNI: 200,
+			VNI: ptr.To(int64(200)),
 		},
 	}
 
@@ -258,23 +258,23 @@ func TestReadRouterConfigsFromFiles(t *testing.T) {
 	wantL2VNIs := []v1alpha1.L2VNISpec{
 		{
 			VRF:       ptr.To("storage"),
-			VNI:       300,
-			VXLanPort: 4789,
+			VNI:       ptr.To(int64(300)),
+			VXLanPort: ptr.To(int32(4789)),
 			HostMaster: &v1alpha1.HostMaster{
 				Type: "linux-bridge",
 				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
-					Name: "br-storage",
+					Name: ptr.To("br-storage"),
 				},
 			},
 		},
 		{
 			VRF:       ptr.To("management"),
-			VNI:       400,
-			VXLanPort: 4789,
+			VNI:       ptr.To(int64(400)),
+			VXLanPort: ptr.To(int32(4789)),
 			HostMaster: &v1alpha1.HostMaster{
 				Type: "ovs-bridge",
 				OVSBridge: &v1alpha1.OVSBridgeConfig{
-					Name: "ovsbr0",
+					Name: ptr.To("ovsbr0"),
 				},
 			},
 		},
@@ -284,10 +284,10 @@ func TestReadRouterConfigsFromFiles(t *testing.T) {
 	wantBGPPassthrough := v1alpha1.L3PassthroughSpec{
 		HostSession: v1alpha1.HostSession{
 			ASN:     64514,
-			HostASN: 64517,
+			HostASN: ptr.To(int64(64517)),
 			LocalCIDR: v1alpha1.LocalCIDRConfig{
-				IPv4: "192.169.100.0/24",
-				IPv6: "2001:db8:100::/64",
+				IPv4: ptr.To("192.169.100.0/24"),
+				IPv6: ptr.To("2001:db8:100::/64"),
 			},
 		},
 	}
@@ -299,7 +299,7 @@ func TestReadRouterConfigsFromFiles(t *testing.T) {
 		return a.VRF < b.VRF
 	})
 	sortL2VNIs := cmpopts.SortSlices(func(a, b v1alpha1.L2VNISpec) bool {
-		return a.VNI < b.VNI
+		return ptr.Deref(a.VNI, 0) < ptr.Deref(b.VNI, 0)
 	})
 
 	if len(underlays) != 1 {

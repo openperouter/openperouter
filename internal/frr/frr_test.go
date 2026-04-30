@@ -45,7 +45,7 @@ func TestBasic(t *testing.T) {
 			{
 				VRF:      "red",
 				ASN:      64512,
-				VNI:      100,
+				VNI:      ptr.To(int64(100)),
 				RouterID: "10.0.0.1",
 				LocalNeighbor: &NeighborConfig{
 					ASN:      mustNewPeerASNFromNumber(64513),
@@ -88,7 +88,7 @@ func TestBasicWithASNRT(t *testing.T) {
 			{
 				VRF:      "red",
 				ASN:      64512,
-				VNI:      100,
+				VNI:      ptr.To(int64(100)),
 				RouterID: "10.0.0.1",
 				LocalNeighbor: &NeighborConfig{
 					ASN:      mustNewPeerASNFromNumber(64513),
@@ -133,7 +133,7 @@ func TestBasicWithIPRT(t *testing.T) {
 			{
 				VRF:      "red",
 				ASN:      64512,
-				VNI:      100,
+				VNI:      ptr.To(int64(100)),
 				RouterID: "10.0.0.1",
 				LocalNeighbor: &NeighborConfig{
 					ASN:      mustNewPeerASNFromNumber(64513),
@@ -178,7 +178,7 @@ func TestExternal(t *testing.T) {
 			{
 				VRF:      "red",
 				ASN:      64512,
-				VNI:      100,
+				VNI:      ptr.To(int64(100)),
 				RouterID: "10.0.0.1",
 				LocalNeighbor: &NeighborConfig{
 					ASN:      mustNewPeerASNFromType("external"),
@@ -221,7 +221,7 @@ func TestInternal(t *testing.T) {
 			{
 				VRF:      "red",
 				ASN:      64512,
-				VNI:      100,
+				VNI:      ptr.To(int64(100)),
 				RouterID: "10.0.0.1",
 				LocalNeighbor: &NeighborConfig{
 					ASN:      mustNewPeerASNFromNumber(64512),
@@ -264,7 +264,7 @@ func TestDualStack(t *testing.T) {
 			{
 				VRF:      "red",
 				ASN:      64512,
-				VNI:      100,
+				VNI:      ptr.To(int64(100)),
 				RouterID: "10.0.0.1",
 				LocalNeighbor: &NeighborConfig{
 					ASN:      mustNewPeerASNFromNumber(64513),
@@ -310,7 +310,7 @@ func TestDualStackWithRT(t *testing.T) {
 			{
 				VRF:      "red",
 				ASN:      64512,
-				VNI:      100,
+				VNI:      ptr.To(int64(100)),
 				RouterID: "10.0.0.1",
 				LocalNeighbor: &NeighborConfig{
 					ASN:      mustNewPeerASNFromNumber(64513),
@@ -358,7 +358,7 @@ func TestIPv6Only(t *testing.T) {
 			{
 				VRF:      "red",
 				ASN:      64512,
-				VNI:      100,
+				VNI:      ptr.To(int64(100)),
 				RouterID: "10.0.0.1",
 				LocalNeighbor: &NeighborConfig{
 					ASN:      mustNewPeerASNFromNumber(64513),
@@ -401,7 +401,7 @@ func TestIPv6OnlyWithRT(t *testing.T) {
 			{
 				VRF:      "red",
 				ASN:      64512,
-				VNI:      100,
+				VNI:      ptr.To(int64(100)),
 				RouterID: "10.0.0.1",
 				LocalNeighbor: &NeighborConfig{
 					ASN:      mustNewPeerASNFromNumber(64513),
@@ -514,7 +514,7 @@ func TestBFDProfile(t *testing.T) {
 		BFDProfiles: []BFDProfile{
 			{
 				Name:            "foo",
-				ReceiveInterval: ptr.To(uint32(43)),
+				ReceiveInterval: ptr.To(int32(43)),
 			},
 		},
 	}
@@ -548,7 +548,7 @@ func TestL3VNIWithoutLocalNeighborAndAdvertise(t *testing.T) {
 			{
 				RouterID: "10.0.0.1",
 				VRF:      "red",
-				VNI:      100,
+				VNI:      ptr.To(int64(100)),
 				ASN:      64512,
 			},
 		},
@@ -733,8 +733,8 @@ func TestRawConfig(t *testing.T) {
 			},
 		},
 		RawConfig: []RawFRRSnippet{
-			{Priority: 5, Config: "ip prefix-list raw-low seq 10 permit 10.0.0.0/8"},
-			{Priority: 20, Config: "ip prefix-list raw-high seq 10 permit 10.1.0.0/16"},
+			{Priority: ptr.To(int32(5)), Config: "ip prefix-list raw-low seq 10 permit 10.0.0.0/8"},
+			{Priority: ptr.To(int32(20)), Config: "ip prefix-list raw-high seq 10 permit 10.1.0.0/16"},
 		},
 	}
 	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
@@ -818,7 +818,7 @@ func testUpdater(configFile string) func(context.Context, string) error {
 	}
 }
 
-func mustNewPeerASNFromNumber(number uint32) PeerASN {
+func mustNewPeerASNFromNumber(number int64) PeerASN {
 	if number == 0 {
 		panic("number must be > 0")
 	}

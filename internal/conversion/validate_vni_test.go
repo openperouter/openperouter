@@ -25,20 +25,20 @@ func TestValidateVNIs(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
 					Spec: v1alpha1.L3VNISpec{
-						VNI:         1001,
+						VNI:         ptr.To(int64(1001)),
 						VRF:         "vrf1",
-						HostSession: &v1alpha1.HostSession{ASN: 65001, HostASN: 65002, LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "192.168.1.0/24"}},
+						HostSession: &v1alpha1.HostSession{ASN: 65001, HostASN: ptr.To(int64(65002)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: ptr.To("192.168.1.0/24")}},
 					},
-					Status: v1alpha1.L3VNIStatus{},
+					Status: &v1alpha1.L3VNIStatus{},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni2"},
 					Spec: v1alpha1.L3VNISpec{
-						VNI:         1002,
+						VNI:         ptr.To(int64(1002)),
 						VRF:         "vrf2",
-						HostSession: &v1alpha1.HostSession{ASN: 65003, HostASN: 65004, LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "192.168.2.0/24"}},
+						HostSession: &v1alpha1.HostSession{ASN: 65003, HostASN: ptr.To(int64(65004)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: ptr.To("192.168.2.0/24")}},
 					},
-					Status: v1alpha1.L3VNIStatus{},
+					Status: &v1alpha1.L3VNIStatus{},
 				},
 			},
 			wantErr: false,
@@ -49,20 +49,20 @@ func TestValidateVNIs(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
 					Spec: v1alpha1.L3VNISpec{
-						VNI:         1001,
+						VNI:         ptr.To(int64(1001)),
 						VRF:         "vrf1",
-						HostSession: &v1alpha1.HostSession{ASN: 65001, HostASN: 65002, LocalCIDR: v1alpha1.LocalCIDRConfig{IPv6: "2001:db8::/64"}},
+						HostSession: &v1alpha1.HostSession{ASN: 65001, HostASN: ptr.To(int64(65002)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv6: ptr.To("2001:db8::/64")}},
 					},
-					Status: v1alpha1.L3VNIStatus{},
+					Status: &v1alpha1.L3VNIStatus{},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni2"},
 					Spec: v1alpha1.L3VNISpec{
-						VNI:         1002,
+						VNI:         ptr.To(int64(1002)),
 						VRF:         "vrf2",
-						HostSession: &v1alpha1.HostSession{ASN: 65003, HostASN: 65004, LocalCIDR: v1alpha1.LocalCIDRConfig{IPv6: "2001:db9::/64"}},
+						HostSession: &v1alpha1.HostSession{ASN: 65003, HostASN: ptr.To(int64(65004)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv6: ptr.To("2001:db9::/64")}},
 					},
-					Status: v1alpha1.L3VNIStatus{},
+					Status: &v1alpha1.L3VNIStatus{},
 				},
 			},
 			wantErr: false,
@@ -73,20 +73,20 @@ func TestValidateVNIs(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
 					Spec: v1alpha1.L3VNISpec{
-						VNI:         1001,
+						VNI:         ptr.To(int64(1001)),
 						VRF:         "vrf1",
-						HostSession: &v1alpha1.HostSession{ASN: 65001, HostASN: 65002, LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "192.168.1.0/24", IPv6: "2001:db8::/64"}},
+						HostSession: &v1alpha1.HostSession{ASN: 65001, HostASN: ptr.To(int64(65002)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: ptr.To("192.168.1.0/24"), IPv6: ptr.To("2001:db8::/64")}},
 					},
-					Status: v1alpha1.L3VNIStatus{},
+					Status: &v1alpha1.L3VNIStatus{},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni2"},
 					Spec: v1alpha1.L3VNISpec{
-						VNI:         1002,
+						VNI:         ptr.To(int64(1002)),
 						VRF:         "vrf2",
-						HostSession: &v1alpha1.HostSession{ASN: 65003, HostASN: 65004, LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "192.168.2.0/24", IPv6: "2001:db9::/64"}},
+						HostSession: &v1alpha1.HostSession{ASN: 65003, HostASN: ptr.To(int64(65004)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: ptr.To("192.168.2.0/24"), IPv6: ptr.To("2001:db9::/64")}},
 					},
-					Status: v1alpha1.L3VNIStatus{},
+					Status: &v1alpha1.L3VNIStatus{},
 				},
 			},
 			wantErr: false,
@@ -97,20 +97,20 @@ func TestValidateVNIs(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
 					Spec: v1alpha1.L3VNISpec{
-						VNI:         1001,
+						VNI:         ptr.To(int64(1001)),
 						VRF:         "vrf1",
-						HostSession: &v1alpha1.HostSession{ASN: 65001, HostASN: 65002, LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "192.168.1.0/24"}},
+						HostSession: &v1alpha1.HostSession{ASN: 65001, HostASN: ptr.To(int64(65002)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: ptr.To("192.168.1.0/24")}},
 					},
-					Status: v1alpha1.L3VNIStatus{},
+					Status: &v1alpha1.L3VNIStatus{},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni2"},
 					Spec: v1alpha1.L3VNISpec{
-						VNI:         1001,
+						VNI:         ptr.To(int64(1001)),
 						VRF:         "vrf2",
-						HostSession: &v1alpha1.HostSession{ASN: 65003, HostASN: 65004, LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "192.168.2.0/24"}},
+						HostSession: &v1alpha1.HostSession{ASN: 65003, HostASN: ptr.To(int64(65004)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: ptr.To("192.168.2.0/24")}},
 					},
-					Status: v1alpha1.L3VNIStatus{},
+					Status: &v1alpha1.L3VNIStatus{},
 				},
 			},
 			wantErr: true,
@@ -138,17 +138,17 @@ func TestValidateL2VNIs(t *testing.T) {
 			vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI: 1001,
+					Spec: &v1alpha1.L2VNISpec{
+						VNI: ptr.To(int64(1001)),
 					},
-					Status: v1alpha1.L2VNIStatus{},
+					Status: &v1alpha1.L2VNIStatus{},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni2"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI: 1002,
+					Spec: &v1alpha1.L2VNISpec{
+						VNI: ptr.To(int64(1002)),
 					},
-					Status: v1alpha1.L2VNIStatus{},
+					Status: &v1alpha1.L2VNIStatus{},
 				},
 			},
 			wantErr: false,
@@ -158,19 +158,19 @@ func TestValidateL2VNIs(t *testing.T) {
 			vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI: 1001,
+					Spec: &v1alpha1.L2VNISpec{
+						VNI: ptr.To(int64(1001)),
 						VRF: ptr.To("vrf1"),
 					},
-					Status: v1alpha1.L2VNIStatus{},
+					Status: &v1alpha1.L2VNIStatus{},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni2"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI: 1002,
+					Spec: &v1alpha1.L2VNISpec{
+						VNI: ptr.To(int64(1002)),
 						VRF: ptr.To("vrf1"),
 					},
-					Status: v1alpha1.L2VNIStatus{},
+					Status: &v1alpha1.L2VNIStatus{},
 				},
 			},
 			wantErr: false,
@@ -180,17 +180,17 @@ func TestValidateL2VNIs(t *testing.T) {
 			vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI: 1001,
+					Spec: &v1alpha1.L2VNISpec{
+						VNI: ptr.To(int64(1001)),
 					},
-					Status: v1alpha1.L2VNIStatus{},
+					Status: &v1alpha1.L2VNIStatus{},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni2"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI: 1001,
+					Spec: &v1alpha1.L2VNISpec{
+						VNI: ptr.To(int64(1001)),
 					},
-					Status: v1alpha1.L2VNIStatus{},
+					Status: &v1alpha1.L2VNIStatus{},
 				},
 			},
 			wantErr: true,
@@ -200,11 +200,11 @@ func TestValidateL2VNIs(t *testing.T) {
 			vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI: 1001,
+					Spec: &v1alpha1.L2VNISpec{
+						VNI: ptr.To(int64(1001)),
 						VRF: ptr.To("invalid-vrf-name-with-dashes"),
 					},
-					Status: v1alpha1.L2VNIStatus{},
+					Status: &v1alpha1.L2VNIStatus{},
 				},
 			},
 			wantErr: true,
@@ -214,16 +214,16 @@ func TestValidateL2VNIs(t *testing.T) {
 			vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI: 1001,
+					Spec: &v1alpha1.L2VNISpec{
+						VNI: ptr.To(int64(1001)),
 						HostMaster: &v1alpha1.HostMaster{
 							Type: "linux-bridge",
 							LinuxBridge: &v1alpha1.LinuxBridgeConfig{
-								Name: "invalid-hostmaster-name-with-dashes",
+								Name: ptr.To("invalid-hostmaster-name-with-dashes"),
 							},
 						},
 					},
-					Status: v1alpha1.L2VNIStatus{},
+					Status: &v1alpha1.L2VNIStatus{},
 				},
 			},
 			wantErr: true,
@@ -233,16 +233,16 @@ func TestValidateL2VNIs(t *testing.T) {
 			vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI: 1001,
+					Spec: &v1alpha1.L2VNISpec{
+						VNI: ptr.To(int64(1001)),
 						HostMaster: &v1alpha1.HostMaster{
 							Type: "linux-bridge",
 							LinuxBridge: &v1alpha1.LinuxBridgeConfig{
-								Name: "validhostmaster",
+								Name: ptr.To("validhostmaster"),
 							},
 						},
 					},
-					Status: v1alpha1.L2VNIStatus{},
+					Status: &v1alpha1.L2VNIStatus{},
 				},
 			},
 			wantErr: false,
@@ -252,16 +252,16 @@ func TestValidateL2VNIs(t *testing.T) {
 			vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI: 1001,
+					Spec: &v1alpha1.L2VNISpec{
+						VNI: ptr.To(int64(1001)),
 						HostMaster: &v1alpha1.HostMaster{
 							Type: "linux-bridge",
 							LinuxBridge: &v1alpha1.LinuxBridgeConfig{
-								AutoCreate: true,
+								AutoCreate: ptr.To(true),
 							},
 						},
 					},
-					Status: v1alpha1.L2VNIStatus{},
+					Status: &v1alpha1.L2VNIStatus{},
 				},
 			},
 			wantErr: false,
@@ -271,12 +271,12 @@ func TestValidateL2VNIs(t *testing.T) {
 			vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI:          1001,
+					Spec: &v1alpha1.L2VNISpec{
+						VNI:          ptr.To(int64(1001)),
 						VRF:          ptr.To("test-vrf"),
 						L2GatewayIPs: []string{"192.168.1.0/24"},
 					},
-					Status: v1alpha1.L2VNIStatus{},
+					Status: &v1alpha1.L2VNIStatus{},
 				},
 			},
 			wantErr: false,
@@ -286,12 +286,12 @@ func TestValidateL2VNIs(t *testing.T) {
 			vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI:          1001,
+					Spec: &v1alpha1.L2VNISpec{
+						VNI:          ptr.To(int64(1001)),
 						VRF:          ptr.To("test-vrf"),
 						L2GatewayIPs: []string{"2001:db8::/64"},
 					},
-					Status: v1alpha1.L2VNIStatus{},
+					Status: &v1alpha1.L2VNIStatus{},
 				},
 			},
 			wantErr: false,
@@ -301,12 +301,12 @@ func TestValidateL2VNIs(t *testing.T) {
 			vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI:          1001,
+					Spec: &v1alpha1.L2VNISpec{
+						VNI:          ptr.To(int64(1001)),
 						VRF:          ptr.To("test-vrf"),
 						L2GatewayIPs: []string{"192.168.1.0/24", "2001:db8::/64"},
 					},
-					Status: v1alpha1.L2VNIStatus{},
+					Status: &v1alpha1.L2VNIStatus{},
 				},
 			},
 			wantErr: false,
@@ -316,8 +316,8 @@ func TestValidateL2VNIs(t *testing.T) {
 			vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI:          1001,
+					Spec: &v1alpha1.L2VNISpec{
+						VNI:          ptr.To(int64(1001)),
 						L2GatewayIPs: []string{"192.168.1.0/24"},
 					},
 				},
@@ -329,12 +329,12 @@ func TestValidateL2VNIs(t *testing.T) {
 			vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI:          1001,
+					Spec: &v1alpha1.L2VNISpec{
+						VNI:          ptr.To(int64(1001)),
 						VRF:          ptr.To("test-vrf"),
 						L2GatewayIPs: []string{"192.168.1.0/24", "192.168.2.0/24"},
 					},
-					Status: v1alpha1.L2VNIStatus{},
+					Status: &v1alpha1.L2VNIStatus{},
 				},
 			},
 			wantErr: true,
@@ -344,12 +344,12 @@ func TestValidateL2VNIs(t *testing.T) {
 			vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI:          1001,
+					Spec: &v1alpha1.L2VNISpec{
+						VNI:          ptr.To(int64(1001)),
 						VRF:          ptr.To("test-vrf"),
 						L2GatewayIPs: []string{"2002:db8::/64", "2001:db8::/64"},
 					},
-					Status: v1alpha1.L2VNIStatus{},
+					Status: &v1alpha1.L2VNIStatus{},
 				},
 			},
 			wantErr: true,
@@ -359,12 +359,12 @@ func TestValidateL2VNIs(t *testing.T) {
 			vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI:          1001,
+					Spec: &v1alpha1.L2VNISpec{
+						VNI:          ptr.To(int64(1001)),
 						VRF:          ptr.To("test-vrf"),
 						L2GatewayIPs: []string{"invalid-cidr-format"},
 					},
-					Status: v1alpha1.L2VNIStatus{},
+					Status: &v1alpha1.L2VNIStatus{},
 				},
 			},
 			wantErr: true,
@@ -393,21 +393,21 @@ func TestValidateVRFs(t *testing.T) {
 			l2vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI:          1001,
+					Spec: &v1alpha1.L2VNISpec{
+						VNI:          ptr.To(int64(1001)),
 						VRF:          ptr.To("test"),
 						L2GatewayIPs: []string{"192.168.1.0/24"},
 					},
-					Status: v1alpha1.L2VNIStatus{},
+					Status: &v1alpha1.L2VNIStatus{},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI:          1002,
+					Spec: &v1alpha1.L2VNISpec{
+						VNI:          ptr.To(int64(1002)),
 						VRF:          ptr.To("test2"),
 						L2GatewayIPs: []string{"192.168.1.128/25"},
 					},
-					Status: v1alpha1.L2VNIStatus{},
+					Status: &v1alpha1.L2VNIStatus{},
 				},
 			},
 		},
@@ -416,21 +416,21 @@ func TestValidateVRFs(t *testing.T) {
 			l2vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI:          1001,
+					Spec: &v1alpha1.L2VNISpec{
+						VNI:          ptr.To(int64(1001)),
 						VRF:          ptr.To("test"),
 						L2GatewayIPs: []string{"2000::/64"},
 					},
-					Status: v1alpha1.L2VNIStatus{},
+					Status: &v1alpha1.L2VNIStatus{},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI:          1002,
+					Spec: &v1alpha1.L2VNISpec{
+						VNI:          ptr.To(int64(1002)),
 						VRF:          ptr.To("test2"),
 						L2GatewayIPs: []string{"2000::/64"},
 					},
-					Status: v1alpha1.L2VNIStatus{},
+					Status: &v1alpha1.L2VNIStatus{},
 				},
 			},
 		},
@@ -439,21 +439,21 @@ func TestValidateVRFs(t *testing.T) {
 			l2vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI:          1001,
+					Spec: &v1alpha1.L2VNISpec{
+						VNI:          ptr.To(int64(1001)),
 						VRF:          ptr.To("test"),
 						L2GatewayIPs: []string{"192.168.1.0/24"},
 					},
-					Status: v1alpha1.L2VNIStatus{},
+					Status: &v1alpha1.L2VNIStatus{},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI:          1002,
+					Spec: &v1alpha1.L2VNISpec{
+						VNI:          ptr.To(int64(1002)),
 						VRF:          ptr.To("test"),
 						L2GatewayIPs: []string{"192.168.1.128/25"},
 					},
-					Status: v1alpha1.L2VNIStatus{},
+					Status: &v1alpha1.L2VNIStatus{},
 				},
 			},
 			wantErrStr: "subnet overlap in VRF \"test\": IPNet 192.168.1.128/25 (L2VNI test/vni2) overlaps with IPNet 192.168.1.0/24 (L2VNI test/vni1)",
@@ -463,21 +463,21 @@ func TestValidateVRFs(t *testing.T) {
 			l2vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI:          1001,
+					Spec: &v1alpha1.L2VNISpec{
+						VNI:          ptr.To(int64(1001)),
 						VRF:          ptr.To("test"),
 						L2GatewayIPs: []string{"2000::1/64"},
 					},
-					Status: v1alpha1.L2VNIStatus{},
+					Status: &v1alpha1.L2VNIStatus{},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI:          1002,
+					Spec: &v1alpha1.L2VNISpec{
+						VNI:          ptr.To(int64(1002)),
 						VRF:          ptr.To("test"),
 						L2GatewayIPs: []string{"2000:0:0:0:1::1/80"},
 					},
-					Status: v1alpha1.L2VNIStatus{},
+					Status: &v1alpha1.L2VNIStatus{},
 				},
 			},
 			wantErrStr: "subnet overlap in VRF \"test\": IPNet 2000::1:0:0:0/80 (L2VNI test/vni2) overlaps with IPNet 2000::/64 (L2VNI test/vni1)",
@@ -487,23 +487,23 @@ func TestValidateVRFs(t *testing.T) {
 			l2vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI:          1002,
+					Spec: &v1alpha1.L2VNISpec{
+						VNI:          ptr.To(int64(1002)),
 						VRF:          ptr.To("vni1"),
 						L2GatewayIPs: []string{"192.168.1.128/25"},
 					},
-					Status: v1alpha1.L2VNIStatus{},
+					Status: &v1alpha1.L2VNIStatus{},
 				},
 			},
 			l3vnis: []v1alpha1.L3VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
 					Spec: v1alpha1.L3VNISpec{
-						VNI:         1001,
+						VNI:         ptr.To(int64(1001)),
 						VRF:         "vni1",
-						HostSession: &v1alpha1.HostSession{ASN: 65001, HostASN: 65002, LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "192.168.1.0/24"}},
+						HostSession: &v1alpha1.HostSession{ASN: 65001, HostASN: ptr.To(int64(65002)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: ptr.To("192.168.1.0/24")}},
 					},
-					Status: v1alpha1.L3VNIStatus{},
+					Status: &v1alpha1.L3VNIStatus{},
 				},
 			},
 			wantErrStr: "subnet overlap in VRF \"vni1\": IPNet 192.168.1.128/25 (L2VNI test/vni2) overlaps with IPNet 192.168.1.0/24 (L3VNI test/vni1)",
@@ -513,23 +513,23 @@ func TestValidateVRFs(t *testing.T) {
 			l2vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI:          1002,
+					Spec: &v1alpha1.L2VNISpec{
+						VNI:          ptr.To(int64(1002)),
 						VRF:          ptr.To("vni1"),
 						L2GatewayIPs: []string{"2000:0:0:0:1::1/80"},
 					},
-					Status: v1alpha1.L2VNIStatus{},
+					Status: &v1alpha1.L2VNIStatus{},
 				},
 			},
 			l3vnis: []v1alpha1.L3VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
 					Spec: v1alpha1.L3VNISpec{
-						VNI:         1001,
+						VNI:         ptr.To(int64(1001)),
 						VRF:         "vni1",
-						HostSession: &v1alpha1.HostSession{ASN: 65001, HostASN: 65002, LocalCIDR: v1alpha1.LocalCIDRConfig{IPv6: "2000::1/64"}},
+						HostSession: &v1alpha1.HostSession{ASN: 65001, HostASN: ptr.To(int64(65002)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv6: ptr.To("2000::1/64")}},
 					},
-					Status: v1alpha1.L3VNIStatus{},
+					Status: &v1alpha1.L3VNIStatus{},
 				},
 			},
 			wantErrStr: "subnet overlap in VRF \"vni1\": IPNet 2000::1:0:0:0/80 (L2VNI test/vni2) overlaps with IPNet 2000::/64 (L3VNI test/vni1)",
@@ -539,23 +539,23 @@ func TestValidateVRFs(t *testing.T) {
 			l2vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI:          1002,
+					Spec: &v1alpha1.L2VNISpec{
+						VNI:          ptr.To(int64(1002)),
 						VRF:          ptr.To("test"),
 						L2GatewayIPs: []string{"192.168.1.128/25"},
 					},
-					Status: v1alpha1.L2VNIStatus{},
+					Status: &v1alpha1.L2VNIStatus{},
 				},
 			},
 			l3vnis: []v1alpha1.L3VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
 					Spec: v1alpha1.L3VNISpec{
-						VNI:         1001,
+						VNI:         ptr.To(int64(1001)),
 						VRF:         "vni1",
-						HostSession: &v1alpha1.HostSession{ASN: 65001, HostASN: 65002, LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "192.168.1.0/24"}},
+						HostSession: &v1alpha1.HostSession{ASN: 65001, HostASN: ptr.To(int64(65002)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: ptr.To("192.168.1.0/24")}},
 					},
-					Status: v1alpha1.L3VNIStatus{},
+					Status: &v1alpha1.L3VNIStatus{},
 				},
 			},
 		},
@@ -564,23 +564,23 @@ func TestValidateVRFs(t *testing.T) {
 			l2vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI:          1002,
+					Spec: &v1alpha1.L2VNISpec{
+						VNI:          ptr.To(int64(1002)),
 						VRF:          ptr.To("vni1"),
 						L2GatewayIPs: []string{"2000:0:0:0:1::1/80"},
 					},
-					Status: v1alpha1.L2VNIStatus{},
+					Status: &v1alpha1.L2VNIStatus{},
 				},
 			},
 			l3vnis: []v1alpha1.L3VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
 					Spec: v1alpha1.L3VNISpec{
-						VNI:         1001,
+						VNI:         ptr.To(int64(1001)),
 						VRF:         "vni2",
-						HostSession: &v1alpha1.HostSession{ASN: 65001, HostASN: 65002, LocalCIDR: v1alpha1.LocalCIDRConfig{IPv6: "2000::1/64"}},
+						HostSession: &v1alpha1.HostSession{ASN: 65001, HostASN: ptr.To(int64(65002)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv6: ptr.To("2000::1/64")}},
 					},
-					Status: v1alpha1.L3VNIStatus{},
+					Status: &v1alpha1.L3VNIStatus{},
 				},
 			},
 		},
@@ -590,20 +590,20 @@ func TestValidateVRFs(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
 					Spec: v1alpha1.L3VNISpec{
-						VNI:         1001,
+						VNI:         ptr.To(int64(1001)),
 						VRF:         "vni1",
-						HostSession: &v1alpha1.HostSession{ASN: 65001, HostASN: 65002, LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "192.168.1.0/24"}},
+						HostSession: &v1alpha1.HostSession{ASN: 65001, HostASN: ptr.To(int64(65002)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: ptr.To("192.168.1.0/24")}},
 					},
-					Status: v1alpha1.L3VNIStatus{},
+					Status: &v1alpha1.L3VNIStatus{},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
 					Spec: v1alpha1.L3VNISpec{
-						VNI:         1002,
-						HostSession: &v1alpha1.HostSession{ASN: 65003, HostASN: 65004, LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "192.168.2.0/24"}},
+						VNI:         ptr.To(int64(1002)),
+						HostSession: &v1alpha1.HostSession{ASN: 65003, HostASN: ptr.To(int64(65004)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: ptr.To("192.168.2.0/24")}},
 						VRF:         "vni1",
 					},
-					Status: v1alpha1.L3VNIStatus{},
+					Status: &v1alpha1.L3VNIStatus{},
 				},
 			},
 			wantErrStr: "more than one L3VNI detected in VRF \"vni1\": test/vni1 - test/vni2",
