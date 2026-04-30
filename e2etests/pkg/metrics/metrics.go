@@ -55,7 +55,7 @@ func WaitForStableMemory(kubectl, namespace, labelSelector string, cfg MemoryCon
 	if err != nil {
 		return Aggregated{}, fmt.Errorf("initial metrics poll failed: %w", err)
 	}
-	prev := SummarizeMetrics(pods)
+	prev := summarize(pods)
 
 	ticker := time.NewTicker(cfg.PollInterval)
 	defer ticker.Stop()
@@ -71,7 +71,7 @@ func WaitForStableMemory(kubectl, namespace, labelSelector string, cfg MemoryCon
 			if err != nil {
 				return Aggregated{}, fmt.Errorf("metrics poll failed: %w", err)
 			}
-			curr := SummarizeMetrics(pods)
+			curr := summarize(pods)
 			if math.Abs(curr.TotalMem-prev.TotalMem) <= cfg.ToleranceMB {
 				return curr, nil
 			}
@@ -80,20 +80,20 @@ func WaitForStableMemory(kubectl, namespace, labelSelector string, cfg MemoryCon
 	}
 }
 
-// SummarizeMetrics calculates aggregate statistics for a slice of podMetrics.
-func SummarizeMetrics(pods []podMetrics) Aggregated {
-	if len(pods) == 0 {
+// summarize calculates aggregate statistics for a slice of podMetrics.
+func summarize(podsMetrics []podMetrics) Aggregated {
+	if len(podsMetrics) == 0 {
 		return Aggregated{}
 	}
 
 	var result Aggregated
-	for _, p := range pods {
+	for _, p := range podsMetrics {
 		result.TotalCPU += p.cpuMillicores
 		result.TotalMem += p.memoryMB
 	}
 
-	result.AvgCPU = result.TotalCPU / float64(len(pods))
-	result.AvgMem = result.TotalMem / float64(len(pods))
+	result.AvgCPU = result.TotalCPU / float64(len(podsMetrics))
+	result.AvgMem = result.TotalMem / float64(len(podsMetrics))
 	return result
 }
 
