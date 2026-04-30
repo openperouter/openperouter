@@ -381,10 +381,8 @@ var _ = Describe("Routes between bgp and the fabric - vtepInterface", func() {
 		// advertised by the network fabric
 		redistributeConnectedForLeafKind(nodes)
 
-		l2VniRedWithGateway := l2VniRed.DeepCopy()
-		l2VniRedWithGateway.Spec.VRF = ptr.To("red")
-		l2VniRedWithGateway.Spec.L2GatewayIPs = []string{"192.171.24.1/24"}
-		l2VniRedWithGateway.Spec.HostMaster = &v1alpha1.HostMaster{
+		l2VniRedVtep := l2VniRed.DeepCopy()
+		l2VniRedVtep.Spec.HostMaster = &v1alpha1.HostMaster{
 			Type: linuxBridgeHostAttachment,
 			LinuxBridge: &v1alpha1.LinuxBridgeConfig{
 				AutoCreate: true,
@@ -402,7 +400,7 @@ var _ = Describe("Routes between bgp and the fabric - vtepInterface", func() {
 		err = Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{underlay},
 			L2VNIs: []v1alpha1.L2VNI{
-				*l2VniRedWithGateway,
+				*l2VniRedVtep,
 			},
 		})
 		Expect(err).NotTo(HaveOccurred())
