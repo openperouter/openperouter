@@ -166,8 +166,8 @@ func runScaleTest(tc scaleTestCase, experiment *gmeasure.Experiment) {
 	}, gmeasure.Annotation(fmt.Sprintf("%d VNIs", tc.vniCount)))
 
 	By("Collecting stable memory metrics after reconcile")
-	routerMem := collectStableMemory(routerLabelSelector)
-	ctrlMem := collectStableMemory(controllerLabelSelector)
+	routerMem := collectMetrics(routerLabelSelector)
+	ctrlMem := collectMetrics(controllerLabelSelector)
 
 	experiment.RecordValue(testLabel+" router memory",
 		routerMem.TotalMem,
@@ -185,8 +185,8 @@ func runScaleTest(tc scaleTestCase, experiment *gmeasure.Experiment) {
 	Expect(err).NotTo(HaveOccurred())
 }
 
-func collectStableMemory(labelSelector string) metrics.Aggregated {
-	result, err := metrics.WaitForStableMemory(
+func collectMetrics(labelSelector string) metrics.Aggregated {
+	result, err := metrics.FetchMetricsAggregation(
 		executor.Kubectl,
 		openperouter.Namespace,
 		labelSelector,

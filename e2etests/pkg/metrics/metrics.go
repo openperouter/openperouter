@@ -25,7 +25,7 @@ type Aggregated struct {
 	AvgMem   float64
 }
 
-// MemoryConvergenceConfig controls the polling behavior of WaitForStableMemory.
+// MemoryConvergenceConfig controls the polling behavior of FetchMetricsAggregation.
 type MemoryConvergenceConfig struct {
 	PollInterval time.Duration
 	Timeout      time.Duration
@@ -47,10 +47,10 @@ func CheckAvailability(kubectl, namespace, labelSelector string) error {
 	return err
 }
 
-// WaitForStableMemory polls kubectl top until two consecutive total-memory
+// FetchMetricsAggregation polls kubectl top until two consecutive total-memory
 // readings are within ToleranceMB of each other, ensuring at least one
 // metrics-server refresh has been observed.
-func WaitForStableMemory(kubectl, namespace, labelSelector string, cfg MemoryConvergenceConfig) (Aggregated, error) {
+func FetchMetricsAggregation(kubectl, namespace, labelSelector string, cfg MemoryConvergenceConfig) (Aggregated, error) {
 	pods, err := forPod(kubectl, namespace, labelSelector)
 	if err != nil {
 		return Aggregated{}, fmt.Errorf("initial metrics poll failed: %w", err)
