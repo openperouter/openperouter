@@ -76,7 +76,7 @@ func (e NotRouterInterfaceError) Error() string {
 // VXLan interface, and moves the veth to the VRF corresponding
 // to the L3 routing domain, exposing it to the default host namespace.
 func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
-	if err := setupVNI(ctx, params.VNIParams); err != nil {
+	if err := setupVNI(ctx, params.VNIParams, WithAddrGenModeNone()); err != nil {
 		return fmt.Errorf("SetupL3VNI: failed to setup VNI: %w", err)
 	}
 	slog.DebugContext(ctx, "setting up l3 VNI", "params", params)
@@ -246,7 +246,7 @@ func setupHostMaster(ctx context.Context, params L2VNIParams, hostVeth netlink.L
 //
 // Additionally, it creates a veth pair and moves one leg in the target
 // namespace.
-func setupVNI(ctx context.Context, params VNIParams) error {
+func setupVNI(ctx context.Context, params VNIParams, bridgeOpts ...BridgeOption) error {
 	slog.DebugContext(ctx, "setting up VNI", "params", params)
 	defer slog.DebugContext(ctx, "end setting up VNI", "params", params)
 	ns, err := netns.GetFromPath(params.TargetNS)
@@ -268,7 +268,7 @@ func setupVNI(ctx context.Context, params VNIParams) error {
 		}
 
 		slog.DebugContext(ctx, "setting up bridge")
-		bridge, err := setupBridge(params, vrf)
+		bridge, err := setupBridge(params, vrf, bridgeOpts...)
 		if err != nil {
 			return err
 		}
