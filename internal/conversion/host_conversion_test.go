@@ -8,6 +8,7 @@ import (
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestAPItoHostConfig(t *testing.T) {
@@ -196,6 +197,45 @@ func TestAPItoHostConfig(t *testing.T) {
 			wantL2VNIParams: []hostnetwork.L2VNIParams{
 				{
 					VNIParams: hostnetwork.VNIParams{
+						TargetNS:  "namespace",
+						VTEPIP:    "10.0.0.0/32",
+						VNI:       200,
+						VXLanPort: 4789,
+					},
+					L2GatewayIPs: nil,
+					HostMaster:   nil,
+				},
+			},
+			wantPassthrough: nil,
+			wantErr:         false,
+		},
+		{
+			name:      "disconnected l2 vni gets empty VRF in host config",
+			nodeIndex: 0,
+			targetNS:  "namespace",
+			underlays: []v1alpha1.Underlay{
+				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth0"}, EVPN: &v1alpha1.EVPNConfig{VTEPCIDR: "10.0.0.0/24"}}},
+			},
+			vnis: []v1alpha1.L3VNI{},
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "my-l2vni"},
+					Spec:       v1alpha1.L2VNISpec{VNI: 200, VXLanPort: 4789},
+				},
+			},
+			l3Passthrough: []v1alpha1.L3Passthrough{},
+			wantUnderlay: hostnetwork.UnderlayParams{
+				UnderlayInterface: "eth0",
+				TargetNS:          "namespace",
+				EVPN: &hostnetwork.UnderlayEVPNParams{
+					VtepIP: "10.0.0.0/32",
+				},
+			},
+			wantL3VNIParams: []hostnetwork.L3VNIParams{},
+			wantL2VNIParams: []hostnetwork.L2VNIParams{
+				{
+					VNIParams: hostnetwork.VNIParams{
+						VRF:       "",
 						TargetNS:  "namespace",
 						VTEPIP:    "10.0.0.0/32",
 						VNI:       200,

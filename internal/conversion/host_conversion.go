@@ -122,13 +122,15 @@ func APItoHostConfig(nodeIndex int, targetNS string, underlayFromMultus bool, ap
 func convertL2VNI(l2vni v1alpha1.L2VNI, targetNS string, evpn *v1alpha1.EVPNConfig, vtepIP string) (hostnetwork.L2VNIParams, error) {
 	vni := hostnetwork.L2VNIParams{
 		VNIParams: hostnetwork.VNIParams{
-			VRF:           l2vni.VRFName(),
 			TargetNS:      targetNS,
 			VTEPIP:        vtepIP,
 			VTEPInterface: evpn.VTEPInterface,
 			VNI:           int(l2vni.Spec.VNI),
 			VXLanPort:     int(l2vni.Spec.VXLanPort),
 		},
+	}
+	if hasVRF(l2vni) {
+		vni.VRF = *l2vni.Spec.VRF
 	}
 	if len(l2vni.Spec.L2GatewayIPs) > 0 {
 		vni.L2GatewayIPs = make([]string, len(l2vni.Spec.L2GatewayIPs))
