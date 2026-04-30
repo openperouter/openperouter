@@ -1,27 +1,27 @@
 {{- define "localneighbor"}}
-  neighbor {{ .vni.LocalNeighbor.Addr }} remote-as {{ .vni.LocalNeighbor.ASN }}
+  neighbor {{ .localNeighbor.Addr }} remote-as {{ .localNeighbor.ASN }}
 
   address-family ipv4 unicast
-  {{- range .vni.ToAdvertiseIPv4 }}
+  {{- range .toAdvertiseIPv4 }}
     network {{ . }}
   {{- end }}
-    neighbor {{ .vni.LocalNeighbor.Addr }} activate
-    neighbor {{ .vni.LocalNeighbor.Addr }} route-map allowall in
-    neighbor {{ .vni.LocalNeighbor.Addr }} route-map allowall out
-  {{- if not (isEBGP .routerASN .vni.LocalNeighbor.ASN) }}
-    neighbor {{ .vni.LocalNeighbor.Addr }} next-hop-self force
+    neighbor {{ .localNeighbor.Addr }} activate
+    neighbor {{ .localNeighbor.Addr }} route-map allowall in
+    neighbor {{ .localNeighbor.Addr }} route-map allowall out
+  {{- if not (isEBGP .routerASN .localNeighbor.ASN) }}
+    neighbor {{ .localNeighbor.Addr }} next-hop-self force
   {{- end }}
   exit-address-family
 
   address-family ipv6 unicast
-  {{- range .vni.ToAdvertiseIPv6 }}
+  {{- range .toAdvertiseIPv6 }}
     network {{ . }}
   {{- end }}
-    neighbor {{ .vni.LocalNeighbor.Addr }} activate
-    neighbor {{ .vni.LocalNeighbor.Addr }} route-map allowall in
-    neighbor {{ .vni.LocalNeighbor.Addr }} route-map allowall out
-  {{- if not (isEBGP .routerASN .vni.LocalNeighbor.ASN) }}
-    neighbor {{ .vni.LocalNeighbor.Addr }} next-hop-self force
+    neighbor {{ .localNeighbor.Addr }} activate
+    neighbor {{ .localNeighbor.Addr }} route-map allowall in
+    neighbor {{ .localNeighbor.Addr }} route-map allowall out
+  {{- if not (isEBGP .routerASN .localNeighbor.ASN) }}
+    neighbor {{ .localNeighbor.Addr }} next-hop-self force
   {{- end }}
   exit-address-family
 {{- end -}}

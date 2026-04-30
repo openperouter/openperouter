@@ -4,7 +4,7 @@ metadata:
   annotations:
     alm-examples: '[]'
     capabilities: Basic Install
-    createdAt: "2026-04-22T08:50:06Z"
+    createdAt: "2026-04-30T15:50:45Z"
     operators.operatorframework.io/builder: operator-sdk-v1.41.1
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
   name: openperouter-operator.v0.0.0
@@ -25,6 +25,9 @@ spec:
       displayName: L3VNI
       kind: L3VNI
       name: l3vnis.openpe.openperouter.github.io
+      version: v1alpha1
+    - kind: L3VPN
+      name: l3vpns.openpe.openperouter.github.io
       version: v1alpha1
     - description: OpenPERouter is the Schema for the openperouters API
       displayName: Open PERouter
@@ -89,6 +92,7 @@ spec:
           - l2vnis
           - l3passthroughs
           - l3vnis
+          - l3vpns
           - underlays
           verbs:
           - create
@@ -104,6 +108,7 @@ spec:
           - l2vnis/finalizers
           - l3passthroughs/finalizers
           - l3vnis/finalizers
+          - l3vpns/finalizers
           - underlays/finalizers
           verbs:
           - update
@@ -113,6 +118,7 @@ spec:
           - l2vnis/status
           - l3passthroughs/status
           - l3vnis/status
+          - l3vpns/status
           - underlays/status
           verbs:
           - get

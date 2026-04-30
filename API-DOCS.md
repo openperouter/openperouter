@@ -12,6 +12,7 @@ Package v1alpha1 contains API Schema definitions for the openpe v1alpha1 API gro
 - [L2VNI](#l2vni)
 - [L3Passthrough](#l3passthrough)
 - [L3VNI](#l3vni)
+- [L3VPN](#l3vpn)
 - [RawFRRConfig](#rawfrrconfig)
 - [Underlay](#underlay)
 
@@ -86,6 +87,7 @@ A BGP session is established over this leg.
 _Appears in:_
 - [L3PassthroughSpec](#l3passthroughspec)
 - [L3VNISpec](#l3vnispec)
+- [L3VPNSpec](#l3vpnspec)
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
@@ -93,6 +95,57 @@ _Appears in:_
 | `hostasn` _integer_ | HostASN is the expected AS number for a BGP speaking component running in<br />the default network namespace. Either HostASN or HostType must be set. |  | Maximum: 4.294967295e+09 <br />Minimum: 1 <br />Optional: \{\} <br /> |
 | `hosttype` _string_ | HostType is the AS type of the BGP speaking component running in the<br />default network namespace. Either HostASN or HostType must be set. |  | Enum: [external internal] <br />Optional: \{\} <br /> |
 | `localcidr` _[LocalCIDRConfig](#localcidrconfig)_ | LocalCIDR is the CIDR configuration for the veth pair<br />to connect with the default namespace. The interface under<br />the PERouter side is going to use the first IP of the cidr on all the nodes.<br />At least one of IPv4 or IPv6 must be provided. |  | Required: \{\} <br /> |
+
+
+#### ISISConfig
+
+
+
+ISISConfig contains ISIS configuration for the underlay.
+
+
+
+_Appears in:_
+- [UnderlaySpec](#underlayspec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `baseNet` _[ISISNet](#isisnet)_ | BaseNet holds the ISIS net address.<br />The configured Net address is a base address which is offset by the node index of each node. |  | MaxLength: 25 <br />MinLength: 25 <br />Required: \{\} <br /> |
+| `level` _integer_ | Level configures the ISIS type, system wide. It defaults to level-1-2 unless specified otherwise. |  | Enum: [1 2] <br />Optional: \{\} <br /> |
+| `interfaces` _[ISISInterface](#isisinterface) array_ | Interfaces holds additional ISIS interface level configuration and / or per<br />interface overrides. By default, OpenPERouter enables IPv6 on all required<br />interfaces with default settings. |  | MaxItems: 1000 <br />Optional: \{\} <br /> |
+
+
+#### ISISInterface
+
+
+
+ISISInterface holds ISIS interface level configuration.
+
+
+
+_Appears in:_
+- [ISISConfig](#isisconfig)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `name` _string_ | Name of the interface that these settings shall apply to. |  | MaxLength: 15 <br />MinLength: 1 <br />Required: \{\} <br /> |
+| `ipv4` _boolean_ | ipv4 isis <name> enabled |  | Optional: \{\} <br /> |
+| `ipv6` _boolean_ | ipv6 isis <name> enabled |  | Optional: \{\} <br /> |
+
+
+#### ISISNet
+
+_Underlying type:_ _string_
+
+ISISNet represents a single ISIS net address.
+
+_Validation:_
+- MaxLength: 25
+- MinLength: 25
+
+_Appears in:_
+- [ISISConfig](#isisconfig)
+
 
 
 #### L2VNI
@@ -254,6 +307,60 @@ _Appears in:_
 
 
 
+#### L3VPN
+
+
+
+L3VPN represents a VXLan L3VPN to receive EVPN type 5 routes
+from.
+
+
+
+
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `apiVersion` _string_ | `openpe.openperouter.github.io/v1alpha1` | | |
+| `kind` _string_ | `L3VPN` | | |
+| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
+| `spec` _[L3VPNSpec](#l3vpnspec)_ |  |  |  |
+| `status` _[L3VPNStatus](#l3vpnstatus)_ |  |  |  |
+
+
+#### L3VPNSpec
+
+
+
+L3VPNSpec defines the desired state of L3VPN.
+
+
+
+_Appears in:_
+- [L3VPN](#l3vpn)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `nodeSelector` _[LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#labelselector-v1-meta)_ | NodeSelector specifies which nodes this L3VPN applies to.<br />If empty or not specified, applies to all nodes.<br />Multiple L3VPNs can match the same node. |  | Optional: \{\} <br /> |
+| `vrf` _string_ | VRF is the name of the linux VRF to be used inside the PERouter namespace. |  | MaxLength: 15 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9_-]*$` <br />Required: \{\} <br /> |
+| `exportRTs` _[RouteTarget](#routetarget) array_ | ExportRTs are the Route Targets to be used for exporting routes. |  | MaxItems: 100 <br />MaxLength: 26 <br />Optional: \{\} <br /> |
+| `importRTs` _[RouteTarget](#routetarget) array_ | ImportRTs are the Route Targets to be used for importing routes. |  | MaxItems: 100 <br />MaxLength: 26 <br />Optional: \{\} <br /> |
+| `rdAssignedNumber` _integer_ | RDAssignedNumber sets the Route Distinguisher's Assigned Number subfield.<br />The Administrator subfield is automatically set to the value of the router<br />ID. OpenPERouter uses Type 1 Route Distinguishers as defined in RFC4364. |  | Maximum: 4.294967295e+09 <br />Minimum: 0 <br />Optional: \{\} <br /> |
+| `hostsession` _[HostSession](#hostsession)_ | HostSession is the configuration for the host session. |  | Optional: \{\} <br /> |
+
+
+#### L3VPNStatus
+
+
+
+L3VPNStatus defines the observed state of L3VPN.
+
+
+
+_Appears in:_
+- [L3VPN](#l3vpn)
+
+
+
 #### LinuxBridgeConfig
 
 
@@ -381,6 +488,71 @@ _Appears in:_
 
 
 
+#### RouteTarget
+
+_Underlying type:_ _string_
+
+RouteTarget defines a BGP Extended Community for route filtering.
+
+_Validation:_
+- MaxLength: 26
+
+_Appears in:_
+- [L3VPNSpec](#l3vpnspec)
+
+
+
+#### SRV6Config
+
+
+
+SRV6Config contains SRV6 configuration for the underlay.
+
+
+
+_Appears in:_
+- [UnderlaySpec](#underlayspec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `source` _[SRV6Source](#srv6source)_ | Source specifies the source for the SRV6 VPN. |  | Required: \{\} <br /> |
+| `locator` _[SRV6Locator](#srv6locator)_ | Locator defines the locator for this SRV6 VPN. |  | Required: \{\} <br /> |
+
+
+#### SRV6Locator
+
+
+
+
+
+
+
+_Appears in:_
+- [SRV6Config](#srv6config)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `basePrefix` _string_ | BasePrefix is the CIDR to be used for the locator, offset by the router index. |  | MaxLength: 43 <br />MinLength: 1 <br />Required: \{\} <br /> |
+| `format` _string_ | Format specifies the format of the locator. Defaults to usid-f3216 |  | MaxLength: 40 <br />MinLength: 1 <br />Optional: \{\} <br /> |
+
+
+#### SRV6Source
+
+
+
+
+
+
+
+_Appears in:_
+- [SRV6Config](#srv6config)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `cidr` _string_ | CIDR to assign IPs to the local VTEP on each node from.<br />The IPv6 address will be assigned to the loopback interface.<br />Mutually exclusive with interface. |  | MaxLength: 43 <br />MinLength: 1 <br />Optional: \{\} <br /> |
+| `interface` _string_ | Interface is the name of an existing interface to use as the VTEP source.<br />The interface must already have an IP address configured that will be used<br />as the VTEP IP. Mutually exclusive with cidr.<br />The ToR must advertise the interface IP into the fabric underlay<br />(e.g. via redistribute connected) so that the VTEP address is reachable<br />from other leaves. |  | MaxLength: 15 <br />MinLength: 1 <br />Optional: \{\} <br /> |
+
+
 #### Underlay
 
 
@@ -418,7 +590,9 @@ _Appears in:_
 | `routeridcidr` _string_ | RouterIDCIDR is the ipv4 cidr to be used to assign a different routerID on each node. | 10.0.0.0/24 | Optional: \{\} <br /> |
 | `neighbors` _[Neighbor](#neighbor) array_ | Neighbors is the list of external neighbors to peer with. |  | MinItems: 1 <br /> |
 | `nics` _string array_ | Nics is the list of physical nics to move under the PERouter namespace to connect<br />to external routers. This field is optional when using Multus networks for TOR connectivity. |  | items:MaxLength: 15 <br />items:Pattern: `^[a-zA-Z][a-zA-Z0-9._-]*$` <br /> |
-| `evpn` _[EVPNConfig](#evpnconfig)_ |  |  |  |
+| `evpn` _[EVPNConfig](#evpnconfig)_ |  |  | Optional: \{\} <br /> |
+| `isis` _[ISISConfig](#isisconfig)_ | ISIS holds the ISIS configuration for the underlay. |  | Optional: \{\} <br /> |
+| `srv6` _[SRV6Config](#srv6config)_ | SRV6 holds the SRV6 configuration. |  | Optional: \{\} <br /> |
 
 
 #### UnderlayStatus

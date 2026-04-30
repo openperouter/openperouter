@@ -1,0 +1,31 @@
+{{ define "vni"}}
+router bgp {{ .vni.ASN }} vrf {{ .vni.VRF }}
+  no bgp ebgp-requires-policy
+  no bgp network import-check
+  no bgp default ipv4-unicast
+  bgp router-id {{ .vni.RouterID }}
+
+  {{- if .vni.LocalNeighbor }}
+  {{ template "localneighbor" dict
+    "localNeighbor" .vni.LocalNeighbor
+    "toAdvertiseIPv4" .vni.ToAdvertiseIPv4
+    "toAdvertiseIPv6" .vni.ToAdvertiseIPv6
+    "routerASN" .routerASN }}
+  {{- end }}
+
+  address-family l2vpn evpn
+    advertise ipv4 unicast
+    advertise ipv6 unicast
+    {{- if .vni.ExportRTs }}
+    {{- range .vni.ExportRTs }}
+    route-target export {{ . }}
+    {{- end }}
+    {{- end }}
+    {{- if .vni.ImportRTs }}
+    {{- range .vni.ImportRTs }}
+    route-target import {{ . }}
+    {{- end }}
+    {{- end }}
+  exit-address-family
+exit
+{{- end }}
