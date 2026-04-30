@@ -252,9 +252,9 @@ deploy-controller-cluster: kubectl kustomize ## Deploy controller to a specific 
 
 .PHONY: deploy-helm
 deploy-helm: helm kind deploy-cluster
-	$(KUBECTL) -n ${NAMESPACE} delete ds controller || true
-	$(KUBECTL) -n ${NAMESPACE} delete ds router || true
-	$(KUBECTL) -n ${NAMESPACE} delete deployment nodemarker || true
+	$(KUBECTL) -n ${NAMESPACE} delete ds openperouter-controller || true
+	$(KUBECTL) -n ${NAMESPACE} delete ds openperouter-router || true
+	$(KUBECTL) -n ${NAMESPACE} delete deployment openperouter-nodemarker || true
 	$(KUBECTL) create ns ${NAMESPACE} || true
 	$(KUBECTL) label ns ${NAMESPACE} pod-security.kubernetes.io/enforce=privileged
 	$(HELM) install openperouter charts/openperouter/ --set openperouter.image.tag=${IMG_TAG} \
