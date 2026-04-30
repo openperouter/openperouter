@@ -35,6 +35,13 @@ type scaleTestCase struct {
 	vniCount   int
 }
 
+func (tc scaleTestCase) String() string {
+	if tc.scenario == l2l3vni {
+		return fmt.Sprintf("%d pairs", tc.vniCount)
+	}
+	return fmt.Sprintf("%d VNIs", tc.vniCount)
+}
+
 const (
 	routerLabelSelector     = "app=router"
 	controllerLabelSelector = "app=controller"
@@ -69,16 +76,17 @@ var _ = Describe("VNI Scale Tests", Ordered, Label("scale"), func() {
 			func(tc scaleTestCase) {
 				runScaleTest(tc, experiment)
 			},
-			Entry("1 VNI", scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2vni, vniCount: 1}),
-			Entry("50 VNIs", scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2vni, vniCount: 50}),
-			Entry("150 VNIs", scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2vni, vniCount: 150}),
-			Entry("200 VNIs", scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2vni, vniCount: 200}),
-			Entry("250 VNIs", scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2vni, vniCount: 250}),
-			Entry("300 VNIs", scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2vni, vniCount: 300}),
-			Entry("350 VNIs", scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2vni, vniCount: 350}),
-			Entry("400 VNIs", scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2vni, vniCount: 400}),
-			Entry("450 VNIs", scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2vni, vniCount: 450}),
-			Entry("500 VNIs", scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2vni, vniCount: 500}),
+			EntryDescription("%v"),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2vni, vniCount: 1}),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2vni, vniCount: 50}),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2vni, vniCount: 150}),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2vni, vniCount: 200}),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2vni, vniCount: 250}),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2vni, vniCount: 300}),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2vni, vniCount: 350}),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2vni, vniCount: 400}),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2vni, vniCount: 450}),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2vni, vniCount: 500}),
 		)
 	})
 
@@ -87,16 +95,17 @@ var _ = Describe("VNI Scale Tests", Ordered, Label("scale"), func() {
 			func(tc scaleTestCase) {
 				runScaleTest(tc, experiment)
 			},
-			Entry("1 VNI", scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2vni, vniCount: 1}),
-			Entry("50 VNIs", scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2vni, vniCount: 50}),
-			Entry("150 VNIs", scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2vni, vniCount: 150}),
-			Entry("200 VNIs", scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2vni, vniCount: 200}),
-			Entry("250 VNIs", scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2vni, vniCount: 250}),
-			Entry("300 VNIs", scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2vni, vniCount: 300}),
-			Entry("350 VNIs", scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2vni, vniCount: 350}),
-			Entry("400 VNIs", scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2vni, vniCount: 400}),
-			Entry("450 VNIs", scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2vni, vniCount: 450}),
-			Entry("500 VNIs", scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2vni, vniCount: 500}),
+			EntryDescription("%v"),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2vni, vniCount: 1}),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2vni, vniCount: 50}),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2vni, vniCount: 150}),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2vni, vniCount: 200}),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2vni, vniCount: 250}),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2vni, vniCount: 300}),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2vni, vniCount: 350}),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2vni, vniCount: 400}),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2vni, vniCount: 450}),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2vni, vniCount: 500}),
 		)
 	})
 
@@ -105,16 +114,17 @@ var _ = Describe("VNI Scale Tests", Ordered, Label("scale"), func() {
 			func(tc scaleTestCase) {
 				runScaleTest(tc, experiment)
 			},
-			Entry("1 pair", scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2l3vni, vniCount: 1}),
-			Entry("50 pairs", scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2l3vni, vniCount: 50}),
-			Entry("150 pairs", scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2l3vni, vniCount: 150}),
-			Entry("200 pairs", scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2l3vni, vniCount: 200}),
-			Entry("250 pairs", scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2l3vni, vniCount: 250}),
-			Entry("300 pairs", scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2l3vni, vniCount: 300}),
-			Entry("350 pairs", scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2l3vni, vniCount: 350}),
-			Entry("400 pairs", scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2l3vni, vniCount: 400}),
-			Entry("450 pairs", scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2l3vni, vniCount: 450}),
-			Entry("500 pairs", scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2l3vni, vniCount: 500}),
+			EntryDescription("%v"),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2l3vni, vniCount: 1}),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2l3vni, vniCount: 50}),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2l3vni, vniCount: 150}),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2l3vni, vniCount: 200}),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2l3vni, vniCount: 250}),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2l3vni, vniCount: 300}),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2l3vni, vniCount: 350}),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2l3vni, vniCount: 400}),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2l3vni, vniCount: 450}),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.LinuxBridge, scenario: l2l3vni, vniCount: 500}),
 		)
 	})
 
@@ -123,22 +133,23 @@ var _ = Describe("VNI Scale Tests", Ordered, Label("scale"), func() {
 			func(tc scaleTestCase) {
 				runScaleTest(tc, experiment)
 			},
-			Entry("1 pair", scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2l3vni, vniCount: 1}),
-			Entry("50 pairs", scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2l3vni, vniCount: 50}),
-			Entry("150 pairs", scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2l3vni, vniCount: 150}),
-			Entry("200 pairs", scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2l3vni, vniCount: 200}),
-			Entry("250 pairs", scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2l3vni, vniCount: 250}),
-			Entry("300 pairs", scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2l3vni, vniCount: 300}),
-			Entry("350 pairs", scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2l3vni, vniCount: 350}),
-			Entry("400 pairs", scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2l3vni, vniCount: 400}),
-			Entry("450 pairs", scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2l3vni, vniCount: 450}),
-			Entry("500 pairs", scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2l3vni, vniCount: 500}),
+			EntryDescription("%v"),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2l3vni, vniCount: 1}),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2l3vni, vniCount: 50}),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2l3vni, vniCount: 150}),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2l3vni, vniCount: 200}),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2l3vni, vniCount: 250}),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2l3vni, vniCount: 300}),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2l3vni, vniCount: 350}),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2l3vni, vniCount: 400}),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2l3vni, vniCount: 450}),
+			Entry(nil, scaleTestCase{hostMaster: v1alpha1.OVSBridge, scenario: l2l3vni, vniCount: 500}),
 		)
 	})
 })
 
 func runScaleTest(tc scaleTestCase, experiment *gmeasure.Experiment) {
-	testLabel := describeScaleTest(tc)
+	testLabel := CurrentSpecReport().FullText()
 
 	By("Waiting for VNI resources to be fully removed")
 	waitForVNIsGone(Updater.Client())
@@ -206,14 +217,6 @@ func buildResources(tc scaleTestCase) config.Resources {
 	}
 }
 
-func describeScaleTest(tc scaleTestCase) string {
-	switch tc.scenario {
-	case l2l3vni:
-		return fmt.Sprintf("%d L3VNI+L2VNI pairs (%s)", tc.vniCount, tc.hostMaster)
-	default:
-		return fmt.Sprintf("%d L2VNIs (%s)", tc.vniCount, tc.hostMaster)
-	}
-}
 
 func waitForVNIsGone(cli crclient.Client) {
 	Eventually(func(g Gomega) int {
