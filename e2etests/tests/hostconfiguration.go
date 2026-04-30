@@ -71,14 +71,16 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 		err := Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
 
-		// In named-netns mode, CleanAll may trigger HandleNonRecoverableError which
-		// deletes the named netns and the router pod. Wait for all router pods to be
-		// ready before proceeding so the controller can reconcile new CRDs immediately.
+		// CleanAll (or a pending cleanup from the previous suite) may trigger
+		// HandleNonRecoverableError which deletes and recreates router pods.
+		// Check DeletionTimestamp so the Eventually retries while the rollout
+		// is in progress instead of capturing pods that are about to disappear.
 		ginkgo.By("waiting for all router pods to be ready")
 		Eventually(func(g Gomega) {
 			pods, err := openperouter.RouterPods(cs)
 			g.Expect(err).NotTo(HaveOccurred())
 			for _, p := range pods {
+				g.Expect(p.DeletionTimestamp).To(BeNil(), "pod %s is being deleted", p.Name)
 				g.Expect(k8s.PodIsReady(p)).To(BeTrue(), "pod %s must be ready", p.Name)
 			}
 			routerPods = pods

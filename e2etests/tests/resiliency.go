@@ -482,9 +482,12 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 	})
 
 	It("should maintain stretched L2 traffic across nodes with minimal disruption when a router pod is deleted", func() {
+		l2VniRedWithGateway := l2VniRed.DeepCopy()
+		l2VniRedWithGateway.Spec.L2GatewayIPs = []string{"192.171.24.1/24"}
+
 		err := Updater.Update(config.Resources{
 			L3VNIs: []v1alpha1.L3VNI{vniRed},
-			L2VNIs: []v1alpha1.L2VNI{l2VniRed},
+			L2VNIs: []v1alpha1.L2VNI{*l2VniRedWithGateway},
 		})
 		Expect(err).NotTo(HaveOccurred())
 
