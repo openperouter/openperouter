@@ -324,7 +324,12 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 		Expect(infra.LeafAConfig.RemovePrefixes()).To(Succeed())
 		Expect(infra.LeafBConfig.RemovePrefixes()).To(Succeed())
 
-		err := Updater.CleanAll()
+		By("resetting leafkind config to defaults")
+		nodes, err := k8s.GetNodes(cs)
+		Expect(err).NotTo(HaveOccurred())
+		resetLeafKindConfig(nodes)
+
+		err = Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
 
 		By("waiting for all router pods to be ready after cleanup")
