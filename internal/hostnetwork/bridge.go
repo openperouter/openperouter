@@ -17,7 +17,11 @@ import (
 // vrf.
 func setupBridge(params VNIParams, vrf *netlink.Vrf) (*netlink.Bridge, error) {
 	name := BridgeName(params.VNI)
-	bridge, err := createBridge(name, vrf.Index)
+	var vrfIndex int
+	if vrf != nil {
+		vrfIndex = vrf.Index
+	}
+	bridge, err := createBridge(name, vrfIndex)
 	if err != nil {
 		return nil, err
 	}

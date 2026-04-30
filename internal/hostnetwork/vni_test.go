@@ -443,6 +443,19 @@ var _ = Describe("L2 VNI configuration", func() {
 				Type: BridgeLinkType,
 			},
 		}),
+		Entry("disconnected L2VNI (no VRF)", L2VNIParams{
+			VNIParams: VNIParams{
+				VRF:       "",
+				TargetNS:  testNSPath(),
+				VTEPIP:    "192.170.0.13/32",
+				VNI:       500,
+				VXLanPort: 4789,
+			},
+			HostMaster: &HostMaster{
+				Name: bridgeName,
+				Type: BridgeLinkType,
+			},
+		}),
 	)
 })
 
@@ -582,19 +595,23 @@ func validateVNI(g Gomega, params VNIParams) {
 	addrGenModeNone := checkAddrGenModeNone(vxlan)
 	g.Expect(addrGenModeNone).To(BeTrue())
 
-	vrfLink, err := netlink.LinkByName(params.VRF)
-	g.Expect(err).NotTo(HaveOccurred(), "vrf not found", params.VRF)
-
-	vrf := vrfLink.(*netlink.Vrf)
-	g.Expect(vrf.OperState).To(BeEquivalentTo(netlink.OperUp))
-
 	bridgeLink, err := netlink.LinkByName(BridgeName(params.VNI))
 	g.Expect(err).NotTo(HaveOccurred(), "bridge not found", BridgeName(params.VNI))
 
 	bridge := bridgeLink.(*netlink.Bridge)
 	g.Expect(bridge.OperState).To(BeEquivalentTo(netlink.OperUp))
 
-	g.Expect(bridge.MasterIndex).To(Equal(vrf.Index))
+	if params.VRF != "" {
+		vrfLink, err := netlink.LinkByName(params.VRF)
+		g.Expect(err).NotTo(HaveOccurred(), "vrf not found", params.VRF)
+
+		vrf := vrfLink.(*netlink.Vrf)
+		g.Expect(vrf.OperState).To(BeEquivalentTo(netlink.OperUp))
+
+		g.Expect(bridge.MasterIndex).To(Equal(vrf.Index))
+	} else {
+		g.Expect(bridge.MasterIndex).To(BeZero(), "disconnected bridge should not be enslaved to a VRF")
+	}
 
 	addrGenModeNone = checkAddrGenModeNone(bridge)
 	g.Expect(addrGenModeNone).To(BeTrue())
@@ -631,7 +648,9 @@ func checkLinkExists(g Gomega, name string) {
 
 func validateVNIIsNotConfigured(g Gomega, params VNIParams) {
 	checkLinkdeleted(g, vxLanNameFromVNI(params.VNI))
-	checkLinkdeleted(g, params.VRF)
+	if params.VRF != "" {
+		checkLinkdeleted(g, params.VRF)
+	}
 	checkLinkdeleted(g, BridgeName(params.VNI))
 
 	vethNames := vethNamesFromVNI(params.VNI)
