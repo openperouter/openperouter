@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"strings"
 
+	"github.com/openperouter/openperouter/internal/ipfamily"
 	"github.com/openperouter/openperouter/internal/netnamespace"
 	"github.com/openperouter/openperouter/internal/ovsmodel"
 	libovsclient "github.com/ovn-kubernetes/libovsdb/client"
@@ -203,6 +205,12 @@ func SetupL2VNI(ctx context.Context, params L2VNIParams) error {
 			// setting up the same mac address for all the nodes for distributed gateway
 			if err := ensureBridgeFixedMacAddress(bridge, params.VNI); err != nil {
 				return fmt.Errorf("failed to set bridge mac address %s: %v", name, err)
+			}
+
+			if hasIPv6Gateway(params.L2GatewayIPs) {
+				if err := ensureBridgeLinkLocal(bridge); err != nil {
+					return fmt.Errorf("failed to ensure link-local on bridge %s: %w", name, err)
+				}
 			}
 		}
 
@@ -644,4 +652,64 @@ func assignIPsToInterface(link netlink.Link, ipv4, ipv6 string) error {
 	}
 
 	return nil
+}
+
+// hasIPv6Gateway returns true if any of the gateway IPs are IPv6.
+func hasIPv6Gateway(gatewayIPs []string) bool {
+	for _, gw := range gatewayIPs {
+		if ipfamily.ForCIDRString(gw) == ipfamily.IPv6 {
+			return true
+		}
+	}
+	return false
+}
+
+// ensureBridgeLinkLocal adds an EUI-64 link-local address to the bridge derived
+// from its MAC. The kernel's NDP state machine requires a link-local address to
+// send unicast Neighbor Solicitation probes (PROBE state). Without it, NDP NS
+// is silently dropped and neighbor entries cycle DELAY → PROBE → FAILED.
+func ensureBridgeLinkLocal(bridge netlink.Link) error {
+	mac := bridge.Attrs().HardwareAddr
+	if len(mac) != 6 {
+		return fmt.Errorf("bridge %s has unexpected MAC length %d", bridge.Attrs().Name, len(mac))
+	}
+
+	addrs, err := netlink.AddrList(bridge, netlink.FAMILY_V6)
+	if err != nil {
+		return fmt.Errorf("failed to list addresses on bridge %s: %w", bridge.Attrs().Name, err)
+	}
+	for _, a := range addrs {
+		if a.IP.IsLinkLocalUnicast() {
+			return nil
+		}
+	}
+
+	ll := linkLocalFromMAC(mac)
+	addr := &netlink.Addr{
+		IPNet: &net.IPNet{
+			IP:   ll,
+			Mask: net.CIDRMask(64, 128),
+		},
+	}
+
+	slog.Info("adding link-local address for NDP", "bridge", bridge.Attrs().Name, "address", ll)
+	return netlink.AddrAdd(bridge, addr)
+}
+
+// linkLocalFromMAC derives an IPv6 link-local address from a MAC address
+// using the EUI-64 algorithm (RFC 4291 Appendix A).
+func linkLocalFromMAC(mac net.HardwareAddr) net.IP {
+	ip := make(net.IP, 16)
+	ip[0] = 0xfe
+	ip[1] = 0x80
+	// bytes 2-7 are zero (link-local prefix padding)
+	ip[8] = mac[0] ^ 0x02 // flip the universal/local bit
+	ip[9] = mac[1]
+	ip[10] = mac[2]
+	ip[11] = 0xff
+	ip[12] = 0xfe
+	ip[13] = mac[3]
+	ip[14] = mac[4]
+	ip[15] = mac[5]
+	return ip
 }
