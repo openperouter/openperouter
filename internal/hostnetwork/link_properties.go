@@ -121,6 +121,21 @@ func linkSetUp(l netlink.Link) error {
 	return netlink.LinkSetUp(l)
 }
 
+// linkSetMTU sets the MTU on the link only if it differs from the desired value.
+// This avoids unnecessary RTM_NEWLINK events that can cause FRR to flush neighbor entries.
+func linkSetMTU(l netlink.Link, mtu int) error {
+	currentLink, err := netlink.LinkByIndex(l.Attrs().Index)
+	if err != nil {
+		return fmt.Errorf("linkSetMTU: failed to get link by index: %w", err)
+	}
+
+	if currentLink.Attrs().MTU == mtu {
+		return nil
+	}
+
+	return netlink.LinkSetMTU(l, mtu)
+}
+
 // linkSetMaster sets the master of a link only if it's not already set to the desired master.
 // This avoids unnecessary RTM_NEWLINK events that can cause FRR to flush neighbor entries.
 func linkSetMaster(link, master netlink.Link) error {
@@ -159,12 +174,13 @@ func setNeighSuppression(link netlink.Link) error {
 }
 
 // moveInterfaceToNamespace takes the given interface and moves it into the given namespace.
-func moveInterfaceToNamespace(ctx context.Context, intf string, ns netns.NsHandle) error {
+func moveInterfaceToNamespace(ctx context.Context, intf string, extraAddresses []string, ns netns.NsHandle) (netlink.Link, error) {
 	slog.DebugContext(ctx, "move intf to namespace", "intf", intf, "namespace", ns.String())
 	defer slog.DebugContext(ctx, "move intf to namespace end", "intf", intf, "namespace", ns.String())
-
+	var link netlink.Link
 	err := netnamespace.In(ns, func() error {
-		_, err := netlink.LinkByName(intf)
+		var err error
+		link, err = netlink.LinkByName(intf)
 		if err != nil {
 			return fmt.Errorf("moveInterfaceToNamespace: Failed to find link %s: %w", intf, err)
 		}
@@ -172,36 +188,37 @@ func moveInterfaceToNamespace(ctx context.Context, intf string, ns netns.NsHandl
 	})
 	if err == nil {
 		slog.DebugContext(ctx, "intf is already in namespace", "intf", intf, "namespace", ns.String())
-		return nil
+		return link, nil
 	}
 	var nsError netnamespace.SetNamespaceError
 	if errors.As(err, &nsError) {
-		return fmt.Errorf("moveInterfaceToNamespace: Failed to execute in ns %s: %w", intf, err)
+		return nil, fmt.Errorf("moveInterfaceToNamespace: Failed to execute in ns %s: %w", intf, err)
 	}
 
-	link, err := netlink.LinkByName(intf)
+	link, err = netlink.LinkByName(intf)
 	if err != nil {
-		return fmt.Errorf("moveInterfaceToNamespace: Failed to find link %s: %w", intf, err)
+		return nil, fmt.Errorf("moveInterfaceToNamespace: Failed to find link %s: %w", intf, err)
 	}
 
 	addresses, err := netlink.AddrList(link, netlink.FAMILY_ALL)
 	if err != nil {
-		return fmt.Errorf("moveInterfaceToNamespace: Failed to get addresses for intf %s: %w", link.Attrs().Name, err)
+		return nil, fmt.Errorf("moveInterfaceToNamespace: Failed to get addresses for intf %s: %w", link.Attrs().Name, err)
 	}
 
 	slog.DebugContext(ctx, "addresses before moving", "addresses", addresses)
 	err = netlink.LinkSetNsFd(link, int(ns))
 	if err != nil {
-		return fmt.Errorf("moveInterfaceToNamespace: Failed to move %s to network namespace %s: %w", link.Attrs().Name, ns.String(), err)
+		return nil, fmt.Errorf("moveInterfaceToNamespace: Failed to move %s to network namespace %s: %w", link.Attrs().Name, ns.String(), err)
 	}
 	if err := netnamespace.In(ns, func() error {
-		nsLink, err := netlink.LinkByName(intf)
+		var err error
+		link, err = netlink.LinkByName(intf)
 		if err != nil {
 			return fmt.Errorf("moveInterfaceToNamespace: Failed to get link by name %s up in network namespace %s: %w", intf, ns.String(), err)
 		}
-		err = netlink.LinkSetUp(nsLink)
+		err = netlink.LinkSetUp(link)
 		if err != nil {
-			return fmt.Errorf("moveInterfaceToNamespace: Failed to set %s up in network namespace %s: %w", nsLink.Attrs().Name, ns.String(), err)
+			return fmt.Errorf("moveInterfaceToNamespace: Failed to set %s up in network namespace %s: %w", link.Attrs().Name, ns.String(), err)
 		}
 
 		slog.DebugContext(ctx, "restoring addresses in namespace", "addresses", addresses)
@@ -210,16 +227,25 @@ func moveInterfaceToNamespace(ctx context.Context, intf string, ns netns.NsHandl
 			IFA_F_NOPREFIXROUTE := 0x200 //nolint:revive // matches kernel define
 			a.Flags &= ^IFA_F_NOPREFIXROUTE
 			slog.DebugContext(ctx, "restoring address in namespace after no prefix", "address", a, "flags", a.Flags)
-			err := netlink.AddrAdd(nsLink, &a)
+			err := netlink.AddrAdd(link, &a)
 			if err != nil && !os.IsExist(err) {
-				return fmt.Errorf("moveNicToNamespace: Failed to add address %s to %s: %w", a, nsLink.Attrs().Name, err)
+				return fmt.Errorf("moveNicToNamespace: Failed to add address %s to %s: %w", a, link.Attrs().Name, err)
 			}
+		}
+		for _, a := range extraAddresses {
+			if err := assignIPToInterface(link, a); err != nil {
+				return err
+			}
+		}
+		if err := netlink.LinkSetUp(link); err != nil {
+			return fmt.Errorf("could not set link up for VRF %s: %v", link.Attrs().Name, err)
 		}
 		return nil
 	}); err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+
+	return link, nil
 }
 
 func intToInt32(val int) (int32, error) {

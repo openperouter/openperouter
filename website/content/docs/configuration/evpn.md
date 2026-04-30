@@ -153,10 +153,11 @@ When you create or update VNI configurations, OpenPERouter automatically:
 
 1. **Creates Network Interfaces**: Sets up VXLAN interface and Linux VRF named after the VNI
 2. **Establishes Connectivity**: Creates veth pair and moves one end to the router's namespace
-3. **Assigns IP Addresses**: Allocates IPs from the `localcidr` range:
+3. **Adjusts Veth MTU**: Sets the MTU on both veth legs to account for VXLan encapsulation overhead (see [Automatic Veth MTU Adjustment](#automatic-veth-mtu-adjustment))
+4. **Assigns IP Addresses**: Allocates IPs from the `localcidr` range:
    - Router side: First IP in the CIDR (e.g., `192.169.11.1`)
    - Host side: Each node gets a free IP in the CIDR, starting from the second (e.g., `192.169.11.15`)
-4. **Creates BGP Session**: Opens BGP session between router and host using the specified ASNs
+5. **Creates BGP Session**: Opens BGP session between router and host using the specified ASNs
 
 ## L2VNI Configuration
 
@@ -198,10 +199,19 @@ When you create or update VNI configurations, OpenPERouter automatically:
 
 1. **Creates Network Interfaces**: Sets up VXLAN interface and Linux VRF named after the VNI
 2. **Establishes Connectivity**: Creates veth pair and moves one end to the router's namespace
-3. **Enslaves the veth**: the veth is connected to the bridge corresponding to the l2 domain
-4. **Optionally creates a bridge on the host**: if hostmaster.autocreate is set to `true`
-5. **Optionally connects the host veth to the bridge on the host**: if hostmaster.autocreate is set to `true` or name
+3. **Adjusts Veth MTU**: Sets the MTU on both veth legs to account for VXLan encapsulation overhead (see [Automatic Veth MTU Adjustment](#automatic-veth-mtu-adjustment))
+4. **Enslaves the veth**: the veth is connected to the bridge corresponding to the l2 domain
+5. **Optionally creates a bridge on the host**: if hostmaster.autocreate is set to `true`
+6. **Optionally connects the host veth to the bridge on the host**: if hostmaster.autocreate is set to `true` or name
 is set
+
+## Automatic Veth MTU Adjustment
+
+VXLan encapsulation adds 50 bytes of overhead to each frame (14 bytes Ethernet + 20 bytes IP + 8 bytes UDP + 8 bytes VXLan header). Without adjusting the MTU of the veth pairs that carry traffic into and out of the VXLan tunnels, frames at the underlay MTU limit will be fragmented or dropped.
+
+OpenPERouter automatically sets the MTU of both veth legs (host side and router namespace side) to the underlay NIC MTU minus 50 bytes. For example, if the underlay interface has an MTU of 9000, each veth leg will be configured with an MTU of 8950.
+
+This applies to both L3VNI and L2VNI setups. The underlay MTU is resolved during reconciliation by reading the MTU from the interface moved into the router namespace. When the underlay MTU cannot be determined (e.g. in Multus-managed underlay mode where no interface is explicitly moved), the MTU adjustment is skipped and the default system MTU is used.
 
 ## Per-Node Configuration
 
