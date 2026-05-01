@@ -575,7 +575,7 @@ var _ = Describe("Underlay external and internal configuration", Ordered, func()
 
 	AfterEach(func() {
 		dumpIfFails(cs)
-		resetLeafKindConfig(nodes)
+		Expect(infra.UpdateLeafKindConfig(nodes, infra.LeafKindConfiguration{})).To(Succeed())
 		err := Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
 	})
@@ -591,7 +591,7 @@ var _ = Describe("Underlay external and internal configuration", Ordered, func()
 
 	It("peers with the tor with BGP external", func() {
 		By("ensuring leafkind expects eBGP with PE ASN 64514")
-		resetLeafKindConfig(nodes)
+		Expect(infra.UpdateLeafKindConfig(nodes, infra.LeafKindConfiguration{})).To(Succeed())
 
 		underlay := *infra.Underlay.DeepCopy()
 		underlay.Spec.Neighbors[0].ASN = 0
@@ -607,7 +607,7 @@ var _ = Describe("Underlay external and internal configuration", Ordered, func()
 
 	It("peers with the tor with BGP internal", func() {
 		By("reconfiguring leafkind for iBGP (PERouterASN=64512)")
-		ibgpForLeafKind(nodes)
+		Expect(infra.UpdateLeafKindConfig(nodes, infra.LeafKindConfiguration{PERouterASN: 64512, NextHopSelf: true})).To(Succeed())
 
 		underlay := *infra.Underlay.DeepCopy()
 		underlay.Spec.ASN = 64512
@@ -624,7 +624,7 @@ var _ = Describe("Underlay external and internal configuration", Ordered, func()
 
 	It("peers with the tor with iBGP with ASN number", func() {
 		By("reconfiguring leafkind for iBGP (PERouterASN=64512)")
-		ibgpForLeafKind(nodes)
+		Expect(infra.UpdateLeafKindConfig(nodes, infra.LeafKindConfiguration{PERouterASN: 64512, NextHopSelf: true})).To(Succeed())
 
 		underlay := *infra.Underlay.DeepCopy()
 		underlay.Spec.ASN = 64512
@@ -684,8 +684,7 @@ var _ = Describe("Underlay BFD Configuration", Ordered, func() {
 		}
 
 		// Enable BFD on leafkind
-		err = infra.UpdateLeafKindConfig(nodes, true)
-		Expect(err).NotTo(HaveOccurred())
+		Expect(infra.UpdateLeafKindConfig(nodes, infra.LeafKindConfiguration{EnableBFD: true})).To(Succeed())
 	})
 
 	AfterEach(func() {
@@ -702,8 +701,7 @@ var _ = Describe("Underlay BFD Configuration", Ordered, func() {
 			return openperouter.DaemonsetRolled(routers, newRouters)
 		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 
-		err = infra.UpdateLeafKindConfig(nodes, false)
-		Expect(err).NotTo(HaveOccurred())
+		Expect(infra.UpdateLeafKindConfig(nodes, infra.LeafKindConfiguration{})).To(Succeed())
 	})
 
 	DescribeTable("should establish BFD sessions with the ToR",

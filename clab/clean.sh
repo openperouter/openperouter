@@ -66,4 +66,7 @@ ${CONTAINER_ENGINE_CLI} rm kind-registry 2>/dev/null || true
 echo "=== cluster cleanup completed ==="
 echo "All resources have been cleaned up"
 
+echo "=== Stop check_veths.go monitoring ==="
+pgrep -f check_veths.go | xargs kill 2>/dev/null || true
+
 popd

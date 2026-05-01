@@ -32,7 +32,7 @@ var (
 	leafBDefaultPrefixes = []string{"192.170.21.0/24"}
 )
 
-var _ = Describe("Routes between bgp and the fabric", Label("passthrough"), Ordered, func() {
+var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Label("passthrough"), Ordered, func() {
 	var cs clientset.Interface
 	var routers openperouter.Routers
 
