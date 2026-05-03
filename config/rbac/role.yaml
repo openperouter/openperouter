@@ -69,6 +69,7 @@ rules:
   - l2vnis/status
   - l3passthroughs/status
   - l3vnis/status
+  - routernodeconfigurationstatuses/status
   - underlays/status
   verbs:
   - get
@@ -88,3 +89,14 @@ rules:
   - rawfrrconfigs/status
   verbs:
   - get
+- apiGroups:
+  - openpe.openperouter.github.io
+  resources:
+  - routernodeconfigurationstatuses
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch

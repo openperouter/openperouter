@@ -40,11 +40,29 @@ func ValidateL3VNIsForNodes(nodes []corev1.Node, underlays []v1alpha1.L3VNI) err
 	return nil
 }
 
-// ValidateL3VNIs runs L3VNI specific validation.
+// ValidateL3VNI validates a single L3VNI's fields (VRF name, route targets).
+func ValidateL3VNI(l3Vni v1alpha1.L3VNI) error {
+	vni := vnisFromL3VNIs([]v1alpha1.L3VNI{l3Vni})[0]
+	if err := isValidInterfaceName(vni.vrfName); err != nil {
+		return fmt.Errorf("invalid vrf name for vni %s: %s - %w", vni.name, vni.vrfName, err)
+	}
+	if err := ValidateRouteTargets(vni); err != nil {
+		return fmt.Errorf("invalid route targets for vni %s: %w", vni.name, err)
+	}
+	return nil
+}
+
+// ValidateL3VNIs runs L3VNI specific validation (per-field + VNI uniqueness).
 func ValidateL3VNIs(l3Vnis []v1alpha1.L3VNI) error {
-	vnis := vnisFromL3VNIs(l3Vnis)
-	if err := validateVNIs(vnis); err != nil {
-		return err
+	existingVNIs := map[uint32]string{}
+	for _, l3 := range l3Vnis {
+		if err := ValidateL3VNI(l3); err != nil {
+			return err
+		}
+		if existing, ok := existingVNIs[l3.Spec.VNI]; ok {
+			return fmt.Errorf("duplicate vni %d:%s - %s", l3.Spec.VNI, existing, l3.Name)
+		}
+		existingVNIs[l3.Spec.VNI] = l3.Name
 	}
 	return nil
 }
@@ -63,34 +81,43 @@ func ValidateL2VNIsForNodes(nodes []corev1.Node, underlays []v1alpha1.L2VNI) err
 	return nil
 }
 
-// ValidateL2VNIs runs L2VNI specific validation.
+// ValidateL2VNI validates a single L2VNI's fields (VRF name, route targets, HostMaster, L2GatewayIPs).
+func ValidateL2VNI(l2Vni v1alpha1.L2VNI) error {
+	vni := vnisFromL2VNIs([]v1alpha1.L2VNI{l2Vni})[0]
+	if err := isValidInterfaceName(vni.vrfName); err != nil {
+		return fmt.Errorf("invalid vrf name for vni %s: %s - %w", vni.name, vni.vrfName, err)
+	}
+	if err := ValidateRouteTargets(vni); err != nil {
+		return fmt.Errorf("invalid route targets for vni %s: %w", vni.name, err)
+	}
+	if l2Vni.Spec.HostMaster != nil {
+		if err := validateHostMaster(l2Vni.Name, l2Vni.Spec.HostMaster); err != nil {
+			return err
+		}
+	}
+	if len(l2Vni.Spec.L2GatewayIPs) > 0 && !hasVRF(l2Vni) {
+		return fmt.Errorf("l2gatewayips cannot be set without spec.vrf for vni %q", l2Vni.Name)
+	}
+	if len(l2Vni.Spec.L2GatewayIPs) > 0 {
+		if _, err := ipfamily.ForCIDRStrings(l2Vni.Spec.L2GatewayIPs...); err != nil {
+			return fmt.Errorf("invalid l2gatewayips for vni %q = %v: %w", l2Vni.Name, l2Vni.Spec.L2GatewayIPs, err)
+		}
+	}
+	return nil
+}
+
+// ValidateL2VNIs runs L2VNI specific validation (per-field + VNI uniqueness).
 func ValidateL2VNIs(l2Vnis []v1alpha1.L2VNI) error {
-	// Convert L2VNIs to vni structs
-	vnis := vnisFromL2VNIs(l2Vnis)
-
-	// Perform common validation
-	if err := validateVNIs(vnis); err != nil {
-		return err
+	existingVNIs := map[uint32]string{}
+	for _, l2 := range l2Vnis {
+		if err := ValidateL2VNI(l2); err != nil {
+			return err
+		}
+		if existing, ok := existingVNIs[l2.Spec.VNI]; ok {
+			return fmt.Errorf("duplicate vni %d:%s - %s", l2.Spec.VNI, existing, l2.Name)
+		}
+		existingVNIs[l2.Spec.VNI] = l2.Name
 	}
-
-	// Perform L2-specific validation (HostMaster and L2GatewayIPs validation)
-	for _, vni := range l2Vnis {
-		if vni.Spec.HostMaster != nil {
-			if err := validateHostMaster(vni.Name, vni.Spec.HostMaster); err != nil {
-				return err
-			}
-		}
-		if len(vni.Spec.L2GatewayIPs) > 0 && !hasVRF(vni) {
-			return fmt.Errorf("l2gatewayips cannot be set without spec.vrf for vni %q", vni.Name)
-		}
-		if len(vni.Spec.L2GatewayIPs) > 0 {
-			_, err := ipfamily.ForCIDRStrings(vni.Spec.L2GatewayIPs...)
-			if err != nil {
-				return fmt.Errorf("invalid l2gatewayips for vni %q = %v: %w", vni.Name, vni.Spec.L2GatewayIPs, err)
-			}
-		}
-	}
-
 	return nil
 }
 
@@ -200,29 +227,6 @@ func vnisFromL2VNIs(l2vnis []v1alpha1.L2VNI) []VNI {
 		}
 	}
 	return result
-}
-
-// validateVNIs performs common validation logic for VNIs
-func validateVNIs(vnis []VNI) error {
-	existingVNIs := map[uint32]string{} // a map between the given VNI number and the VNI instance it's configured in
-
-	for _, vni := range vnis {
-		if err := isValidInterfaceName(vni.vrfName); err != nil {
-			return fmt.Errorf("invalid vrf name for vni %s: %s - %w", vni.name, vni.vrfName, err)
-		}
-
-		existingVNI, ok := existingVNIs[vni.vni]
-		if ok {
-			return fmt.Errorf("duplicate vni %d:%s - %s", vni.vni, existingVNI, vni.name)
-		}
-		existingVNIs[vni.vni] = vni.name
-
-		if err := ValidateRouteTargets(vni); err != nil {
-			return fmt.Errorf("invalid route targets for vni %s: %w", vni.name, err)
-		}
-	}
-
-	return nil
 }
 
 func cidrsOverlap(cidr1, cidr2 string) (bool, error) {
