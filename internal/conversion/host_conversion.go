@@ -109,32 +109,41 @@ func APItoHostConfig(nodeIndex int, targetNS string, underlayFromMultus bool, ap
 
 	res.L2VNIs = []hostnetwork.L2VNIParams{}
 	for _, l2vni := range apiConfig.L2VNIs {
-		vni := hostnetwork.L2VNIParams{
-			VNIParams: hostnetwork.VNIParams{
-				VRF:           l2vni.VRFName(),
-				TargetNS:      targetNS,
-				VTEPIP:        res.Underlay.EVPN.VtepIP,
-				VTEPInterface: underlay.Spec.EVPN.VTEPInterface,
-				VNI:           int(l2vni.Spec.VNI),
-				VXLanPort:     int(l2vni.Spec.VXLanPort),
-			},
+		vni, err := convertL2VNI(l2vni, targetNS, underlay.Spec.EVPN, res.Underlay.EVPN.VtepIP)
+		if err != nil {
+			return HostConfigData{}, err
 		}
-		if len(l2vni.Spec.L2GatewayIPs) > 0 {
-			vni.L2GatewayIPs = make([]string, len(l2vni.Spec.L2GatewayIPs))
-			copy(vni.L2GatewayIPs, l2vni.Spec.L2GatewayIPs)
-		}
-		if l2vni.Spec.HostMaster != nil {
-			hm, err := convertHostMaster(&l2vni)
-			if err != nil {
-				return HostConfigData{}, err
-			}
-			vni.HostMaster = hm
-		}
-
 		res.L2VNIs = append(res.L2VNIs, vni)
 	}
 
 	return res, nil
+}
+
+func convertL2VNI(l2vni v1alpha1.L2VNI, targetNS string, evpn *v1alpha1.EVPNConfig, vtepIP string) (hostnetwork.L2VNIParams, error) {
+	vni := hostnetwork.L2VNIParams{
+		VNIParams: hostnetwork.VNIParams{
+			TargetNS:      targetNS,
+			VTEPIP:        vtepIP,
+			VTEPInterface: evpn.VTEPInterface,
+			VNI:           int(l2vni.Spec.VNI),
+			VXLanPort:     int(l2vni.Spec.VXLanPort),
+		},
+	}
+	if hasVRF(l2vni) {
+		vni.VRF = *l2vni.Spec.VRF
+	}
+	if len(l2vni.Spec.L2GatewayIPs) > 0 {
+		vni.L2GatewayIPs = make([]string, len(l2vni.Spec.L2GatewayIPs))
+		copy(vni.L2GatewayIPs, l2vni.Spec.L2GatewayIPs)
+	}
+	if l2vni.Spec.HostMaster != nil {
+		hm, err := convertHostMaster(&l2vni)
+		if err != nil {
+			return hostnetwork.L2VNIParams{}, err
+		}
+		vni.HostMaster = hm
+	}
+	return vni, nil
 }
 
 func convertHostMaster(l2vni *v1alpha1.L2VNI) (*hostnetwork.HostMaster, error) {
