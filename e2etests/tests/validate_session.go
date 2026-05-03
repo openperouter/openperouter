@@ -57,6 +57,19 @@ func validateSessionWithNeighbor(fromName, toName string, exec executor.Executor
 	}, 5*time.Minute, time.Second).ShouldNot(HaveOccurred())
 }
 
+func waitForType5Route(exec executor.Executor, prefix string) {
+	Eventually(func() error {
+		evpn, err := frr.EVPNInfo(exec)
+		if err != nil {
+			return err
+		}
+		if !evpn.ContainsType5Prefix(prefix) {
+			return fmt.Errorf("Type-5 route for %s not yet present", prefix)
+		}
+		return nil
+	}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
+}
+
 // validateSessionDownForNeigh validates that the neighbor is down
 // or if the session does not exist.
 func validateSessionDownForNeigh(exec executor.Executor, neighborIP string) {

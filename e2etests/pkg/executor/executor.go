@@ -4,6 +4,7 @@ package executor
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 
@@ -87,7 +88,11 @@ func (p *podExecutor) Exec(cmd string, args ...string) (string, error) {
 	}
 	fullargs := append([]string{"exec", p.name, "-n", p.namespace, "-c", p.container, "--", cmd}, args...)
 	out, err := exec.Command(Kubectl, fullargs...).CombinedOutput()
-	return string(out), err
+	if err != nil {
+		return string(out), fmt.Errorf("exec in pod %s/%s container %s failed: %w. Output: %s",
+			p.namespace, p.name, p.container, err, string(out))
+	}
+	return string(out), nil
 }
 
 // ForPodInNamedNetns returns an executor that runs commands inside a pod container
@@ -118,7 +123,11 @@ func (p *podNetnsExecutor) Exec(cmd string, args ...string) (string, error) {
 		"nsenter", "--net=" + p.netnsPath, cmd}
 	fullargs := append(nsenterArgs, args...)
 	out, err := exec.Command(Kubectl, fullargs...).CombinedOutput()
-	return string(out), err
+	if err != nil {
+		return string(out), fmt.Errorf("exec nsenter in pod %s/%s container %s netns %s failed: %w. Output: %s",
+			p.namespace, p.name, p.container, p.netnsPath, err, string(out))
+	}
+	return string(out), nil
 }
 
 // add ephemeral container to deal with distroless image

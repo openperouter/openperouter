@@ -144,7 +144,7 @@ var _ = Describe("North/south traffic after FRR container restart", Ordered, fun
 		urlStr := url.Format("http://%s/clientip", hostPort)
 		Eventually(func(g Gomega) string {
 			By(fmt.Sprintf("trying to hit %s from hostA_red", firstPodIP))
-			res, err := hostARedExecutor.Exec("curl", "-sS", urlStr)
+			res, err := hostARedExecutor.Exec("curl", "-sS", "--max-time", "3", urlStr)
 			g.Expect(err).ToNot(HaveOccurred(), "curl %s failed: %s", hostPort, res)
 			clientIP, _, err := net.SplitHostPort(res)
 			g.Expect(err).ToNot(HaveOccurred())

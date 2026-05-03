@@ -20,7 +20,7 @@ func checkPodIsReachable(exec executor.Executor, from, to string) {
 	urlStr := url.Format("http://%s/clientip", hostPort)
 	Eventually(func(g Gomega) string {
 		By(fmt.Sprintf("trying to hit %s from %s", to, from))
-		res, err := exec.Exec("curl", "-sS", urlStr)
+		res, err := exec.Exec("curl", "-sS", "--max-time", "5", urlStr)
 		g.Expect(err).ToNot(HaveOccurred(), "curl %s failed: %s", hostPort, res)
 		clientIP, _, err := net.SplitHostPort(res)
 		g.Expect(err).ToNot(HaveOccurred())

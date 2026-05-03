@@ -68,18 +68,19 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 	ginkgo.BeforeEach(func() {
 		cs = k8sclient.New()
 
-		var err error
-		err = Updater.CleanAll()
+		err := Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
 
-		// In named-netns mode, CleanAll may trigger HandleNonRecoverableError which
-		// deletes the named netns and the router pod. Wait for all router pods to be
-		// ready before proceeding so the controller can reconcile new CRDs immediately.
+		// CleanAll (or a pending cleanup from the previous suite) may trigger
+		// HandleNonRecoverableError which deletes and recreates router pods.
+		// Check DeletionTimestamp so the Eventually retries while the rollout
+		// is in progress instead of capturing pods that are about to disappear.
 		ginkgo.By("waiting for all router pods to be ready")
 		Eventually(func(g Gomega) {
 			pods, err := openperouter.RouterPods(cs)
 			g.Expect(err).NotTo(HaveOccurred())
 			for _, p := range pods {
+				g.Expect(p.DeletionTimestamp).To(BeNil(), "pod %s is being deleted", p.Name)
 				g.Expect(k8s.PodIsReady(p)).To(BeTrue(), "pod %s must be ready", p.Name)
 			}
 			routerPods = pods
@@ -95,14 +96,14 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 	ginkgo.AfterEach(func() {
 		dumpIfFails(cs)
 		Expect(Updater.CleanAll()).To(Succeed())
-		ginkgo.By("waiting for all router pods to be ready")
-		Eventually(func(g Gomega) {
-			pods, err := openperouter.RouterPods(cs)
-			g.Expect(err).NotTo(HaveOccurred())
-			for _, p := range pods {
-				g.Expect(k8s.PodIsReady(p)).To(BeTrue(), "pod %s must be ready", p.Name)
+		ginkgo.By("waiting for the router pods to rollout after removing the underlay")
+		Eventually(func() error {
+			newRouterPods, err := openperouter.RouterPods(cs)
+			if err != nil {
+				return err
 			}
-		}).WithTimeout(2 * time.Minute).WithPolling(time.Second).Should(Succeed())
+			return podsRolled(cs, routerPods, newRouterPods)
+		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 	})
 
 	ginkgo.Context("L3", func() {
@@ -1139,19 +1140,32 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				}
 			}
 
+			routerPodsToRollout := []*corev1.Pod{}
+			for _, p := range routerPods {
+				if p.Spec.NodeName == nodes[1].Name {
+					routerPodsToRollout = append(routerPodsToRollout, p)
+				}
+			}
+
 			ginkgo.By(fmt.Sprintf("Unlabel the node %q", nodes[1].Name))
 			Expect(
 				k8s.UnlabelNodes(cs, nodes[1]),
 			).To(Succeed())
 
-			ginkgo.By("waiting for all router pods to be ready after unlabeling")
+			ginkgo.By("waiting for the routers with deleted underlay to rollout")
 			Eventually(func() error {
-				_, err := openperouter.ReadyRouters(cs, HostMode)
-				return err
-			}).
-				WithTimeout(time.Minute).
-				WithPolling(time.Second).
-				ShouldNot(HaveOccurred())
+				newRouterPods, err := openperouter.RouterPods(cs)
+				if err != nil {
+					return err
+				}
+				newRouterPodsToRollout := []*corev1.Pod{}
+				for _, p := range newRouterPods {
+					if p.Spec.NodeName == nodes[1].Name {
+						newRouterPodsToRollout = append(newRouterPodsToRollout, p)
+					}
+				}
+				return podsRolled(cs, routerPodsToRollout, newRouterPodsToRollout)
+			}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 			routerPods, err = routerPodsWithValidator(cs)
 			Expect(err).ToNot(HaveOccurred())
 

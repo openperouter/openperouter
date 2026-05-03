@@ -173,6 +173,20 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		Expect(removeGatewayFromPod(firstPod)).To(Succeed())
 		Expect(removeGatewayFromPod(secondPod)).To(Succeed())
 
+		By("waiting for BGP sessions to establish on both nodes before traffic check")
+		leafExec := executor.ForContainer(infra.KindLeaf)
+		for _, node := range nodes {
+			neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
+			Expect(err).NotTo(HaveOccurred())
+			validateSessionWithNeighbor(
+				infra.KindLeaf,
+				node.Name,
+				leafExec,
+				neighborIP,
+				Established,
+			)
+		}
+
 		podExecutor := executor.ForPod(firstPod.Namespace, firstPod.Name, "agnhost")
 		secondPodExecutor := executor.ForPod(secondPod.Namespace, secondPod.Name, "agnhost")
 		hostARedExecutor := executor.ForContainer("clab-kind-hostA_red")
