@@ -121,20 +121,45 @@ func createVeth(ctx context.Context, logger *slog.Logger, vethNames VethNames) (
 	}
 
 	vethHost, ok := link.(*netlink.Veth)
-	if ok {
-		return vethHost, nil
-	}
-	logger.DebugContext(ctx, "link exists, but not a veth, deleting and creating")
-	if err := netlink.LinkDel(link); err != nil {
-		return nil, fmt.Errorf("failed to delete link %v: %w", link, err)
+	if !ok {
+		logger.DebugContext(ctx, "link exists, but not a veth, deleting and creating")
+		if err := netlink.LinkDel(link); err != nil {
+			return nil, fmt.Errorf("failed to delete link %v: %w", link, err)
+		}
+		if err := netlink.LinkAdd(toCreate); err != nil {
+			return nil, fmt.Errorf("failed to add veth for vrf %s/%s: %w", vethNames.HostSide, vethNames.NamespaceSide, err)
+		}
+		slog.DebugContext(ctx, "veth recreated", "veth", vethNames.HostSide)
+		return toCreate, nil
 	}
 
+	if !peerOrphaned(vethHost, vethNames) {
+		return vethHost, nil
+	}
+
+	logger.InfoContext(ctx, "orphaned veth detected, recreating pair", "hostSide", vethNames.HostSide)
+	if err := netlink.LinkDel(vethHost); err != nil {
+		return nil, fmt.Errorf("failed to delete orphaned veth %s: %w", vethNames.HostSide, err)
+	}
 	if err := netlink.LinkAdd(toCreate); err != nil {
 		return nil, fmt.Errorf("failed to add veth for vrf %s/%s: %w", vethNames.HostSide, vethNames.NamespaceSide, err)
 	}
-
-	slog.DebugContext(ctx, "veth recreated", "veth", vethNames.HostSide)
+	logger.InfoContext(ctx, "orphaned veth recreated", "hostSide", vethNames.HostSide)
 	return toCreate, nil
+}
+
+// peerOrphaned checks whether the namespace-side peer of a host-side veth
+// is gone (netns destroyed) or its index now points to an unrelated link.
+func peerOrphaned(hostSide *netlink.Veth, vethNames VethNames) bool {
+	peerIndex, err := netlink.VethPeerIndex(hostSide)
+	if err != nil {
+		return true
+	}
+	peer, err := netlink.LinkByIndex(peerIndex)
+	if err != nil {
+		return true
+	}
+	return peer.Attrs().Name != vethNames.NamespaceSide
 }
 
 const HostVethPrefix = "host-"
