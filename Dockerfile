@@ -52,4 +52,10 @@ COPY systemdmode/frrconfig/daemons /etc/frr/daemons
 COPY systemdmode/frrconfig/vtysh.conf /etc/frr/vtysh.conf
 COPY systemdmode/frrconfig/frr.conf /etc/frr/frr.conf
 
+# Hack for https://github.com/FRRouting/frr/issues/20355
+#          https://github.com/FRRouting/frr/pull/20378 
+COPY 0001-Revert-tools-Allow-deleting-of-interfaces.patch .
+RUN apk update && apk add patch
+RUN patch /usr/lib/frr/frr-reload.py 0001-Revert-tools-Allow-deleting-of-interfaces.patch
+
 ENTRYPOINT ["/controller"]
