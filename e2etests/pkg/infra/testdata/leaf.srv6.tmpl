@@ -1,0 +1,161 @@
+log file /etc/frr/frr.log debug
+
+debug zebra events
+debug zebra vxlan
+debug bgp zebra
+debug zebra events
+debug zebra nht
+debug zebra kernel
+debug zebra rib
+debug zebra nexthop
+debug bgp neighbor-events
+debug bgp updates
+debug bgp keepalives
+debug bgp nht
+debug bgp zebra
+debug bfd network
+debug bfd peer
+debug bfd zebra
+
+ip nht resolve-via-default
+ipv6 nht resolve-via-default
+ipv6 forwarding
+
+vrf red
+ vni 100
+exit-vrf
+!
+vrf blue
+ vni 200
+exit-vrf
+!
+router bgp 64520
+ bgp router-id {{ .Leaf.RouterID }}
+ no bgp ebgp-requires-policy
+ no bgp network import-check
+ no bgp default ipv4-unicast
+ !
+ neighbor PE peer-group
+ neighbor PE remote-as {{ .PERouterASN }}
+ neighbor PE update-source {{ .Leaf.UpdateSource }}
+ neighbor PE capability extended-nexthop
+ neighbor PE ebgp-multihop
+ bgp listen range 2001:db8:1234:5678::/64 peer-group PE
+ !
+ segment-routing srv6
+  locator MAIN
+ exit
+ !
+ address-family ipv4 vpn
+  neighbor PE activate
+  neighbor PE next-hop-self force
+ exit-address-family
+ !
+ address-family ipv6 vpn
+  neighbor PE activate
+  neighbor PE next-hop-self force
+ exit-address-family
+exit
+!
+router bgp 64520 vrf red
+ bgp router-id {{ .Leaf.RouterID }}
+ sid vpn per-vrf export auto
+ !
+ address-family ipv4 unicast
+  {{ if .Red.RedistributeConnected }}
+  redistribute connected
+  {{- end }}
+  {{- range .Red.IPV4 }}
+  network {{ . }}
+  {{- end }}
+  rd vpn export {{ .Leaf.RouterID }}:100
+  rt vpn import 64514:100
+  rt vpn export 64520:100
+  export vpn
+  import vpn
+ exit-address-family
+ !
+ address-family ipv6 unicast
+  {{ if .Red.RedistributeConnected }}
+  redistribute connected
+  {{- end }}
+  {{- range .Red.IPV6 }}
+  network {{ . }}
+  {{- end }}
+  rd vpn export {{ .Leaf.RouterID }}:100
+  rt vpn import 64514:100
+  rt vpn export 64520:100
+  export vpn
+  import vpn
+ exit-address-family
+ !
+exit
+!
+router bgp 64520 vrf blue
+ bgp router-id {{ .Leaf.RouterID }}
+ sid vpn per-vrf export auto
+ !
+ address-family ipv4 unicast
+  {{ if .Blue.RedistributeConnected }}
+  redistribute connected
+  {{- end }}
+  {{- range .Blue.IPV4 }}
+  network {{ . }}
+  {{- end }}
+  rd vpn export {{ .Leaf.RouterID }}:200
+  rt vpn import 64514:200
+  rt vpn export 64520:200
+  export vpn
+  import vpn
+ exit-address-family
+ !
+ address-family ipv6 unicast
+  {{ if .Blue.RedistributeConnected }}
+  redistribute connected
+  {{- end }}
+  {{- range .Blue.IPV6 }}
+  network {{ . }}
+  {{- end }}
+  rd vpn export {{ .Leaf.RouterID }}:200
+  rt vpn import 64514:200
+  rt vpn export 64520:200
+  export vpn
+  import vpn
+ exit-address-family
+ !
+exit
+! 
+interface eth1
+ ipv6 router isis ISIS
+exit
+!
+interface lo
+ ipv6 router isis ISIS
+ isis passive
+!
+router isis ISIS
+ is-type level-1
+ net {{ .Leaf.ISISNet }}
+ advertise-passive-only
+ segment-routing srv6
+  locator MAIN
+ exit
+exit
+!
+segment-routing
+ srv6
+  encapsulation
+   source-address {{ .Leaf.UpdateSource }}
+  exit
+  locators
+   locator MAIN
+    prefix {{ .Leaf.SRV6Prefix }} block-len 32 node-len 16
+    behavior usid
+    format usid-f3216
+   exit
+   !
+  exit
+  !
+ exit
+ !
+exit

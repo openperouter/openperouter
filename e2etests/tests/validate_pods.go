@@ -14,21 +14,25 @@ import (
 )
 
 func checkPodIsReachable(exec executor.Executor, from, to string) {
+	checkPodIsReachableWithExpected(exec, from, to, from, 40)
+}
+
+func checkPodIsReachableWithExpected(exec executor.Executor, from, to, expected string, timeoutSeconds int) {
 	GinkgoHelper()
 	const port = "8090"
 	hostPort := net.JoinHostPort(to, port)
 	urlStr := url.Format("http://%s/clientip", hostPort)
 	Eventually(func(g Gomega) string {
-		By(fmt.Sprintf("trying to hit %s from %s", to, from))
+		By(fmt.Sprintf("trying to hit %s from %s and expecting to see %s", to, from, expected))
 		res, err := exec.Exec("curl", "-sS", "--max-time", "5", urlStr)
 		g.Expect(err).ToNot(HaveOccurred(), "curl %s failed: %s", hostPort, res)
 		clientIP, _, err := net.SplitHostPort(res)
 		g.Expect(err).ToNot(HaveOccurred())
 		return clientIP
 	}).
-		WithTimeout(40*time.Second).
+		WithTimeout(time.Duration(timeoutSeconds)*time.Second).
 		WithPolling(time.Second).
-		Should(Equal(from), "curl should return the expected clientip")
+		Should(Equal(expected), "curl should return the expected clientip")
 }
 
 func canPingFromPod(exec executor.Executor, ip string) {
