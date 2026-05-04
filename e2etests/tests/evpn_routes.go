@@ -307,8 +307,8 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Orde
 			nodeSelector := k8s.NodeSelectorForPod(testPod)
 
 			By("Creating the frr-k8s configuration for the node where the test pod runs and advertising all pod ips")
-			frrK8sConfigRedForPod := advertisePodToVNI(testPod, vniRed, nodeSelector)
-			frrK8sConfigBlueForPod := advertisePodToVNI(testPod, vniBlue, nodeSelector)
+			frrK8sConfigRedForPod := advertisePodToVNI(testPod, vniRed.Name, vniRed.Spec.HostSession, nodeSelector)
+			frrK8sConfigBlueForPod := advertisePodToVNI(testPod, vniBlue.Name, vniBlue.Spec.HostSession, nodeSelector)
 
 			err = Updater.Update(config.Resources{
 				L3VNIs: []v1alpha1.L3VNI{
@@ -514,7 +514,7 @@ var _ = Describe("Routes between bgp and the fabric with iBGP testing e2e integr
 		nodeSelector := k8s.NodeSelectorForPod(testPod)
 
 		By("Creating the frr-k8s configuration for the node where the test pod runs and advertising all pod ips")
-		frrK8sConfigRedForPod := advertisePodToVNI(testPod, vniRed, nodeSelector)
+		frrK8sConfigRedForPod := advertisePodToVNI(testPod, vniRed.Name, vniRed.Spec.HostSession, nodeSelector)
 
 		err = Updater.Update(config.Resources{
 			L3VNIs: []v1alpha1.L3VNI{
@@ -613,7 +613,7 @@ var _ = Describe("Routes between bgp and the fabric with iBGP testing e2e integr
 	})
 })
 
-func advertisePodToVNI(pod *corev1.Pod, vni v1alpha1.L3VNI, nodeSelector map[string]string) []frrk8sapi.FRRConfiguration {
+func advertisePodToVNI(pod *corev1.Pod, vniName string, hostSession *v1alpha1.HostSession, nodeSelector map[string]string) []frrk8sapi.FRRConfiguration {
 	res := []frrk8sapi.FRRConfiguration{}
 	for _, podIP := range pod.Status.PodIPs {
 		var cidrSuffix = "/32"
@@ -623,7 +623,7 @@ func advertisePodToVNI(pod *corev1.Pod, vni v1alpha1.L3VNI, nodeSelector map[str
 			cidrSuffix = "/128"
 		}
 
-		config, err := frrk8s.ConfigFromHostSessionForIPFamily(*vni.Spec.HostSession, vni.Name, ipFamily, frrk8s.WithNodeSelector(nodeSelector), frrk8s.AdvertisePrefixes(podIP.IP+cidrSuffix))
+		config, err := frrk8s.ConfigFromHostSessionForIPFamily(*hostSession, vniName, ipFamily, frrk8s.WithNodeSelector(nodeSelector), frrk8s.AdvertisePrefixes(podIP.IP+cidrSuffix))
 		Expect(err).NotTo(HaveOccurred())
 		res = append(res, *config)
 	}
