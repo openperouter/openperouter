@@ -23,11 +23,15 @@ const (
 	HostADefaultIPv4 = "192.168.22.2"
 	HostBRedIPv4     = "192.169.20.2"
 	HostBBlueIPv4    = "192.169.21.2"
+	HostSRV6RedIPv4  = "192.170.20.2"
+	HostSRV6BlueIPv4 = "192.170.21.2"
 
-	HostARedIPv6  = "2001:db8:20::2"
-	HostABlueIPv6 = "2001:db8:21::2"
-	HostBRedIPv6  = "2001:db8:169:20::2"
-	HostBBlueIPv6 = "2001:db8:169:21::2"
+	HostARedIPv6     = "2001:db8:20::2"
+	HostABlueIPv6    = "2001:db8:21::2"
+	HostBRedIPv6     = "2001:db8:169:20::2"
+	HostBBlueIPv6    = "2001:db8:169:21::2"
+	HostSRV6RedIPv6  = "2001:db8:170:20::2"
+	HostSRV6BlueIPv6 = "2001:db8:170:21::2"
 )
 
 var (
@@ -41,15 +45,25 @@ var (
 		SpineAddress: "192.168.1.2",
 		Container:    LeafBContainer,
 	}
+	LeafSRV6Config = Leaf{
+		RouterID:     "100.65.0.1",
+		UpdateSource: "2001:db8:1234::1",
+		SRV6Prefix:   "fd00:0:10::/48",
+		ISISNet:      "49.0001.0000.0000.0001.00",
+		SRv6:         true,
+		Container:    LeafSRV6Container,
+	}
 	LeafKind1Config = LeafKind{
-		ASN:              64512,
-		SpinePeerAddress: "192.168.1.4",
-		Container:        KindLeaf1Container,
+		ASN:               64512,
+		SpinePeerAddress:  "192.168.1.4",
+		Container:         KindLeaf1Container,
+		ToSwitchInterface: "toswitch1",
 	}
 	LeafKind2Config = LeafKind{
-		ASN:              64513,
-		SpinePeerAddress: "192.168.1.6",
-		Container:        KindLeaf2Container,
+		ASN:               64513,
+		SpinePeerAddress:  "192.168.1.6",
+		Container:         KindLeaf2Container,
+		ToSwitchInterface: "toswitch2",
 	}
 
 	EmptyLeafConfig = LeafConfiguration{
@@ -72,14 +86,17 @@ var (
 
 type LeafConfiguration struct {
 	Leaf
-	Red     Addresses
-	Blue    Addresses
-	Default Addresses
+	Red          Addresses
+	Blue         Addresses
+	Default      Addresses
+	PERouterASN  uint32
+	TemplateName string
 }
 
 type LeafKindConfiguration struct {
 	ASN                   int
 	SpinePeerAddress      string
+	ToSwitchInterface     string
 	EnableBFD             bool
 	RedistributeConnected bool
 	Neighbors             []Neighbor
@@ -111,12 +128,18 @@ type Addresses struct {
 type Leaf struct {
 	VTEPIP       string
 	SpineAddress string
+	RouterID     string
+	UpdateSource string
+	SRV6Prefix   string
+	ISISNet      string
+	SRv6         bool
 	frr.Container
 }
 
 type LeafKind struct {
-	ASN              int
-	SpinePeerAddress string
+	ASN               int
+	SpinePeerAddress  string
+	ToSwitchInterface string
 	frr.Container
 }
 
@@ -126,8 +149,14 @@ func (l Leaf) VTEPPrefix() string {
 
 // LeafConfigToFRR reads a Go template from the testdata directory and generates a string.
 func LeafConfigToFRR(config LeafConfiguration) (string, error) {
+	if config.TemplateName == "" {
+		config.TemplateName = "leaf.tmpl"
+	}
+	if config.PERouterASN == 0 {
+		config.PERouterASN = 64514
+	}
 	_, currentFile, _, _ := runtime.Caller(0) // current file's path
-	templatePath := filepath.Join(filepath.Dir(currentFile), "testdata", "leaf.tmpl")
+	templatePath := filepath.Join(filepath.Dir(currentFile), "testdata", config.TemplateName)
 
 	// Read the template file
 	tmplContent, err := os.ReadFile(templatePath)
@@ -135,7 +164,7 @@ func LeafConfigToFRR(config LeafConfiguration) (string, error) {
 		return "", err
 	}
 
-	tmpl, err := template.New("leaf.tmpl").Parse(string(tmplContent))
+	tmpl, err := template.New(config.TemplateName).Parse(string(tmplContent))
 	if err != nil {
 		return "", err
 	}
@@ -198,6 +227,9 @@ func (l LeafKind) UpdateConfig(nodes []corev1.Node, config LeafKindConfiguration
 	if config.SpinePeerAddress == "" {
 		config.SpinePeerAddress = l.SpinePeerAddress
 	}
+	if config.ToSwitchInterface == "" {
+		config.ToSwitchInterface = l.ToSwitchInterface
+	}
 
 	neighbors := []Neighbor{}
 	for _, node := range nodes {
@@ -217,9 +249,14 @@ func (l LeafKind) UpdateConfig(nodes []corev1.Node, config LeafKindConfiguration
 	return l.ReloadConfig(configString)
 }
 
-func (l Leaf) Configure(LeafConfig LeafConfiguration) error {
-	LeafConfig.Leaf = l
-	config, err := LeafConfigToFRR(LeafConfig)
+func (l Leaf) Configure(leafConfig LeafConfiguration) error {
+	leafConfig.Leaf = l
+
+	if l.SRv6 {
+		leafConfig.TemplateName = "leaf.srv6.tmpl"
+	}
+
+	config, err := LeafConfigToFRR(leafConfig)
 	if err != nil {
 		return err
 	}
