@@ -1556,6 +1556,8 @@ spec:
             - NET_RAW
             - SYS_ADMIN
             - NET_BIND_SERVICE
+          seLinuxOptions:
+            type: spc_t
         volumeMounts:
         - mountPath: /var/run/frr
           name: frr-sockets
@@ -1603,7 +1605,6 @@ spec:
           name: frr-sockets
         - mountPath: /etc/perouter
           name: frrsharedconfig
-      hostNetwork: true
       initContainers:
       - command:
         - /bin/sh
