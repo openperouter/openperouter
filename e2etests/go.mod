@@ -7,7 +7,7 @@ require (
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.7.6
 	github.com/metallb/frr-k8s v0.0.20
 	github.com/onsi/ginkgo/v2 v2.27.2
-	github.com/onsi/gomega v1.38.2
+	github.com/onsi/gomega v1.40.0
 	github.com/openperouter/openperouter v0.0.0-00010101000000-000000000000
 	github.com/openshift-kni/k8sreporter v1.0.7
 	k8s.io/api v0.35.0
