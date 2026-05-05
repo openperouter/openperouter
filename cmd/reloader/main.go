@@ -32,11 +32,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/openperouter/openperouter/internal/buildversion"
 	"github.com/openperouter/openperouter/internal/frr/liveness"
 	"github.com/openperouter/openperouter/internal/frr/vtysh"
 	"github.com/openperouter/openperouter/internal/frrconfig"
 	"github.com/openperouter/openperouter/internal/logging"
-	"github.com/openperouter/openperouter/internal/version"
 )
 
 type Args struct {
@@ -44,6 +44,7 @@ type Args struct {
 	frrConfigPath string
 	logLevel      string
 	unixSocket    string
+	vtyshTimeout  time.Duration
 }
 
 func main() {
@@ -52,6 +53,8 @@ func main() {
 	flag.StringVar(&args.unixSocket, "unixsocket", "", "Unix socket path to listen on")
 	flag.StringVar(&args.logLevel, "loglevel", "info", "The log level of the process")
 	flag.StringVar(&args.frrConfigPath, "frrconfig", "/etc/frr/frr.conf", "The path the frr configuration is at")
+	flag.DurationVar(&args.vtyshTimeout, "vtysh-timeout", vtysh.DefaultTimeout,
+		"Timeout for vtysh commands used in health checks")
 	flag.Parse()
 
 	_, err := logging.New(args.logLevel)
@@ -64,7 +67,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	slog.Info("version", "version", version.Version())
+	slog.Info("version", "version", buildversion.Version())
 	slog.Info("arguments", "args", fmt.Sprintf("%+v", args))
 	slog.Info("listening", "address", args.bindAddress)
 
@@ -87,10 +90,11 @@ func serveReload(args Args) error {
 		[]handlerConfig{{pattern: "/", handler: reloadHandler(args.frrConfigPath)}},
 	)
 
+	healthHandler := health(vtysh.NewCLIWithTimeout(args.vtyshTimeout))
 	healthServer := newServer(
 		[]handlerConfig{
-			{pattern: "/healthz", handler: health()},
-			{pattern: "/readyz", handler: health()},
+			{pattern: "/healthz", handler: healthHandler},
+			{pattern: "/readyz", handler: healthHandler},
 		},
 		withEndpoint(args.bindAddress),
 	)
@@ -157,14 +161,15 @@ func reloadHandler(frrConfigPath string) func(w http.ResponseWriter, req *http.R
 	}
 }
 
-func health() func(w http.ResponseWriter, req *http.Request) {
+func health(frrCli vtysh.Cli) func(w http.ResponseWriter, req *http.Request) {
 	return func(w http.ResponseWriter, req *http.Request) {
 		if req.Method != http.MethodGet {
 			http.Error(w, "invalid method", http.StatusMethodNotAllowed)
 			return
 		}
 
-		if err := liveness.PingFrr(vtysh.Run); err != nil {
+		if err := liveness.PingFrr(frrCli); err != nil {
+			slog.Error("health check ping frr", "error", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}

@@ -3,18 +3,17 @@
 package k8s
 
 import (
-	"log"
-	"strings"
+	"fmt"
+	"regexp"
 	"time"
 
 	frrk8sv1beta1 "github.com/metallb/frr-k8s/api/v1beta1"
-	"github.com/onsi/ginkgo/v2"
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openshift-kni/k8sreporter"
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
-func InitReporter(kubeconfig, path string, namespaces ...string) *k8sreporter.KubernetesReporter {
+func InitReporter(kubeconfig, path string, namespaces ...string) (*k8sreporter.KubernetesReporter, error) {
 	// When using custom crds, we need to add them to the scheme
 	addToScheme := func(s *runtime.Scheme) error {
 		err := v1alpha1.AddToScheme(s)
@@ -49,12 +48,13 @@ func InitReporter(kubeconfig, path string, namespaces ...string) *k8sreporter.Ku
 
 	reporter, err := k8sreporter.New(kubeconfig, addToScheme, dumpNamespace, path, crds...)
 	if err != nil {
-		log.Fatalf("Failed to initialize the reporter %s", err)
+		return nil, fmt.Errorf("failed to initialize k8s reporter: %w", err)
 	}
-	return reporter
+	return reporter, nil
 }
 
 func DumpInfo(reporter *k8sreporter.KubernetesReporter, testName string) {
-	testNameNoSpaces := strings.ReplaceAll(ginkgo.CurrentSpecReport().LeafNodeText, " ", "-")
+	nonAlphanumeric := regexp.MustCompile(`[^a-zA-Z0-9]+`)
+	testNameNoSpaces := nonAlphanumeric.ReplaceAllString(testName, "_")
 	reporter.Dump(10*time.Minute, testNameNoSpaces)
 }

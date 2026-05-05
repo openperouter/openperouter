@@ -13,18 +13,19 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
-// setup bridge creates the bridge if not exists, and it enslaves it to the provided
-// vrf.
-func setupBridge(params VNIParams, vrf *netlink.Vrf) (*netlink.Bridge, error) {
+// setupBridge creates the bridge if not exists, enslaves it to the provided
+// vrf, and applies any bridge options before bringing the link up.
+func setupBridge(params VNIParams, vrf *netlink.Vrf, opts ...NetlinkOption) (*netlink.Bridge, error) {
 	name := BridgeName(params.VNI)
 	bridge, err := createBridge(name, vrf.Index)
 	if err != nil {
 		return nil, err
 	}
 
-	err = setAddrGenModeNone(bridge)
-	if err != nil {
-		return nil, fmt.Errorf("failed to set addr_gen_mode to 1 for %s: %w", bridge.Name, err)
+	for _, opt := range opts {
+		if err := opt(bridge); err != nil {
+			return nil, fmt.Errorf("failed to apply bridge option for %s: %w", bridge.Name, err)
+		}
 	}
 
 	err = linkSetUp(bridge)

@@ -1,20 +1,24 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<!-- Created with Inkscape (http://www.inkscape.org/) -->
-
 <svg
-   width="300mm"
-   height="300mm"
-   viewBox="0 0 300 300"
+   width="180"
+   height="180"
+   viewBox="0 0 180 180"
+   role="img"
    version="1.1"
-   id="svg1"
-   inkscape:version="1.4 (e7c3feb100, 2024-10-09)"
+   id="svg5"
    sodipodi:docname="logo.svg"
+   inkscape:version="1.4.3 (0d15f75042, 2025-12-25)"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns="http://www.w3.org/2000/svg"
-   xmlns:svg="http://www.w3.org/2000/svg">
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <defs
+     id="defs5" />
   <sodipodi:namedview
-     id="namedview1"
+     id="namedview5"
      pagecolor="#ffffff"
      bordercolor="#000000"
      borderopacity="0.25"
@@ -22,155 +26,99 @@
      inkscape:pageopacity="0.0"
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1"
-     inkscape:document-units="mm"
-     showgrid="true"
-     inkscape:zoom="0.53480902"
-     inkscape:cx="143.04171"
-     inkscape:cy="573.10177"
-     inkscape:window-width="1916"
-     inkscape:window-height="1058"
+     inkscape:zoom="2.5591026"
+     inkscape:cx="355.20264"
+     inkscape:cy="203.19623"
+     inkscape:window-width="2560"
+     inkscape:window-height="1366"
      inkscape:window-x="0"
-     inkscape:window-y="20"
+     inkscape:window-y="0"
      inkscape:window-maximized="1"
-     inkscape:current-layer="layer1">
-    <inkscape:grid
-       id="grid2"
-       units="mm"
-       originx="0"
-       originy="0"
-       spacingx="0.99999999"
-       spacingy="0.99999999"
-       empcolor="#0099e5"
-       empopacity="0.30196078"
-       color="#0099e5"
-       opacity="0.14901961"
-       empspacing="5"
-       enabled="true"
-       visible="true" />
-  </sodipodi:namedview>
-  <defs
-     id="defs1" />
-  <g
-     inkscape:label="Layer 1"
-     inkscape:groupmode="layer"
-     id="layer1">
-    <circle
-       style="fill:none;stroke:#2053ab;stroke-width:16.2605;stroke-dasharray:none"
-       id="path1"
-       cx="150.14894"
-       cy="149.09946"
-       r="131.39192" />
-    <circle
-       style="fill:none;stroke:#2053ab;stroke-width:16.5123;stroke-dasharray:none"
-       id="path1-5"
-       cx="150.54361"
-       cy="151.09955"
-       r="70.472984" />
-    <g
-       id="g3"
-       transform="rotate(90,149.15429,151.74767)">
-      <g
-         id="g2">
-        <rect
-           style="fill:none;stroke:#2053ab;stroke-width:16.3233;stroke-dasharray:none"
-           id="rect1"
-           width="0.91961372"
-           height="65.991104"
-           x="150.48677"
-           y="188.26768" />
-      </g>
-      <path
-         sodipodi:type="star"
-         style="fill:#2053ab;fill-opacity:1;stroke:#2053ab;stroke-width:12;stroke-dasharray:none"
-         id="path2"
-         inkscape:flatsided="false"
-         sodipodi:sides="3"
-         sodipodi:cx="63.31802"
-         sodipodi:cy="11.194346"
-         sodipodi:r1="25.250362"
-         sodipodi:r2="12.625181"
-         sodipodi:arg1="0.82459377"
-         sodipodi:arg2="1.8717913"
-         inkscape:rounded="0"
-         inkscape:randomized="0"
-         d="M 80.459362,29.734982 59.575025,23.251924 38.690687,16.768867 54.747348,1.9240287 70.80401,-12.92081 75.631686,8.4070861 Z"
-         inkscape:transform-center-x="-1.7074646"
-         inkscape:transform-center-y="-3.314652"
-         transform="matrix(0.53597377,-0.16507535,0.16507535,0.53597377,115.0434,186.25453)" />
-    </g>
-    <g
-       id="g3-9"
-       transform="matrix(0,1,1,0,1.3921782,2.2830897)">
-      <g
-         id="g2-3">
-        <rect
-           style="fill:none;stroke:#2053ab;stroke-width:16.3233;stroke-dasharray:none"
-           id="rect1-6"
-           width="0.91961372"
-           height="65.991104"
-           x="150.48677"
-           y="188.26768" />
-      </g>
-      <path
-         sodipodi:type="star"
-         style="fill:#2053ab;fill-opacity:1;stroke:#2053ab;stroke-width:12;stroke-dasharray:none"
-         id="path2-0"
-         inkscape:flatsided="false"
-         sodipodi:sides="3"
-         sodipodi:cx="63.31802"
-         sodipodi:cy="11.194346"
-         sodipodi:r1="25.250362"
-         sodipodi:r2="12.625181"
-         sodipodi:arg1="0.82459377"
-         sodipodi:arg2="1.8717913"
-         inkscape:rounded="0"
-         inkscape:randomized="0"
-         d="M 80.459362,29.734982 59.575025,23.251924 38.690687,16.768867 54.747348,1.9240287 70.80401,-12.92081 75.631686,8.4070861 Z"
-         inkscape:transform-center-x="-1.7074646"
-         inkscape:transform-center-y="-3.314652"
-         transform="matrix(0.53597377,-0.16507535,0.16507535,0.53597377,115.0434,186.25453)" />
-    </g>
-    <ellipse
-       style="fill:#2053ab;fill-opacity:1;stroke:#2053ab;stroke-width:5.11616;stroke-dasharray:none"
-       id="path3"
-       cx="150.77385"
-       cy="152.82642"
-       rx="3.2419608"
-       ry="3.241966" />
-    <g
-       id="g4">
-      <ellipse
-         style="fill:#2053ab;fill-opacity:1;stroke:#2053ab;stroke-width:5.11616;stroke-dasharray:none"
-         id="path3-1"
-         cx="150.69891"
-         cy="38.225739"
-         rx="3.2419608"
-         ry="3.241966" />
-      <ellipse
-         style="fill:#2053ab;fill-opacity:1;stroke:#2053ab;stroke-width:5.11616;stroke-dasharray:none"
-         id="path3-1-2"
-         cx="150.67442"
-         cy="60.874302"
-         rx="3.2419608"
-         ry="3.241966" />
-    </g>
-    <g
-       id="g4-8"
-       transform="translate(0.40602675,203.34976)">
-      <ellipse
-         style="fill:#2053ab;fill-opacity:1;stroke:#2053ab;stroke-width:5.11616;stroke-dasharray:none"
-         id="path3-1-9"
-         cx="150.69891"
-         cy="38.225739"
-         rx="3.2419608"
-         ry="3.241966" />
-      <ellipse
-         style="fill:#2053ab;fill-opacity:1;stroke:#2053ab;stroke-width:5.11616;stroke-dasharray:none"
-         id="path3-1-2-7"
-         cx="150.67442"
-         cy="60.874302"
-         rx="3.2419608"
-         ry="3.241966" />
-    </g>
-  </g>
+     inkscape:current-layer="svg5" />
+  <title
+     id="title1">OpenPERouter logo</title>
+  <desc
+     id="desc1">Minimalist network routing logo — a hexagonal PE router node with connected host and BGP peer endpoints, plus the OpenPERouter wordmark</desc>
+  <style
+     id="style1">
+.a{fill:#0891B2}
+.h{fill:none;stroke:#0891B2;stroke-width:2}
+.l{fill:none;stroke:#0891B2;stroke-width:2;stroke-linecap:round}
+.wa{fill:#0891B2}
+.wl{fill:#64748B}
+@media(prefers-color-scheme:dark){
+.a{fill:#38BDF8}
+.h{stroke:#38BDF8}
+.l{stroke:#38BDF8}
+.wa{fill:#38BDF8}
+.wl{fill:#94A3B8}
+}
+</style>
+  <!-- connector lines -->
+  <line
+     x1="60"
+     y1="90"
+     x2="25"
+     y2="90"
+     class="l"
+     id="line1" />
+  <line
+     x1="126"
+     y1="52"
+     x2="154"
+     y2="30"
+     class="l"
+     id="line2" />
+  <line
+     x1="126"
+     y1="128"
+     x2="154"
+     y2="150"
+     class="l"
+     id="line3" />
+  <!-- hexagon outline -->
+  <polygon
+     points="83,138 61,100 83,62 127,62 149,100 127,138 "
+     class="h"
+     id="polygon3"
+     transform="translate(-1,-10)" />
+  <!-- center node -->
+  <circle
+     cx="104"
+     cy="90"
+     r="13"
+     class="a"
+     id="circle3" />
+  <!-- west: filled square = host/veth interface -->
+  <rect
+     x="18"
+     y="83"
+     width="14"
+     height="14"
+     rx="2"
+     class="a"
+     id="rect3" />
+  <!-- NE: outlined circle = BGP peer -->
+  <circle
+     cx="154"
+     cy="30"
+     r="7"
+     class="h"
+     id="circle4" />
+  <!-- SE: outlined circle = BGP peer -->
+  <circle
+     cx="154"
+     cy="150"
+     r="7"
+     class="h"
+     id="circle5" />
+  <metadata
+     id="metadata5">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:title>OpenPERouter logo</dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
 </svg>

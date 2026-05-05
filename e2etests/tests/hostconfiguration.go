@@ -24,6 +24,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/utils/ptr"
 )
 
 var ValidatorPath string
@@ -727,6 +728,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 			},
 			Spec: v1alpha1.L2VNISpec{
 				VNI:          400,
+				VRF:          ptr.To("second"),
 				L2GatewayIPs: []string{"192.168.1.4/24"},
 			},
 		}

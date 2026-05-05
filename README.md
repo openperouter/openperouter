@@ -1,4 +1,7 @@
-## OpenPERouter
+
+<p align="center">
+  <img src="drawings/logo_text.svg" alt="OpenPERouter" width="400">
+</p>
 
 Official docs at [openperouter.github.io](https://openperouter.github.io).
 

@@ -104,7 +104,7 @@ func TestFileWatcherDebouncing(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to write test file iteration %d: %v", i, err)
 		}
-		time.Sleep(40 * time.Millisecond) // 40ms between changes = 200ms total
+		time.Sleep(40 * time.Millisecond) //nolint:forbidigo // testing debounce timing
 	}
 
 	// Should receive only ONE event after debounce window
@@ -173,7 +173,7 @@ func TestFileWatcherLifecycle(t *testing.T) {
 
 	// Cancel context - watcher should stop automatically
 	cancel()
-	time.Sleep(100 * time.Millisecond) // Give time for goroutine to exit and cleanup
+	time.Sleep(100 * time.Millisecond) //nolint:forbidigo // waiting for goroutine cleanup
 
 	// Test context cancellation with new watcher
 	fw2, err := New(tmpDir, triggerChan, logger)
@@ -189,7 +189,7 @@ func TestFileWatcherLifecycle(t *testing.T) {
 
 	// Cancel context and verify cleanup happens
 	cancel2()
-	time.Sleep(100 * time.Millisecond) // Give time for goroutine to exit and cleanup
+	time.Sleep(100 * time.Millisecond) //nolint:forbidigo // waiting for goroutine cleanup
 }
 
 func TestFileWatcherNonExistentDirectory(t *testing.T) {

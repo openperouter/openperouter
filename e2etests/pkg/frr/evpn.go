@@ -47,6 +47,26 @@ func (e *EVPNData) ContainsType5RouteForVNI(prefix string, vtep string, vni int)
 	return false
 }
 
+func (e *EVPNData) ContainsType5RouteWithRT(prefix string, vtep string, vni int, communities []string) bool {
+	for _, path := range e.allPaths() {
+		routePrefix := fmt.Sprintf("%s/%d", path.IP, path.IPLen)
+		if routePrefix == prefix && pathHasVTEPAndRouteTarget(path, vtep, communities) {
+			return true
+		}
+	}
+	return false
+}
+
+func (e *EVPNData) ContainsType5PrefixWithRT(prefix string, communities []string) bool {
+	for _, path := range e.allPaths() {
+		routePrefix := fmt.Sprintf("%s/%d", path.IP, path.IPLen)
+		if routePrefix == prefix && pathHasRouteTarget(path, communities) {
+			return true
+		}
+	}
+	return false
+}
+
 // ContainsType2MACIPRouteForVNI checks if a Type 2 MAC+IP route exists for the given VNI.
 // Type 2 routes have RouteType == 2 and include both MAC and IP information.
 // The ip parameter should be the bare IP address (e.g., "192.168.1.10").
@@ -89,6 +109,28 @@ func (e *EVPNData) matchingPaths(predicate func(Path) bool) []Path {
 		}
 	}
 	return paths
+}
+
+func pathHasRouteTarget(path Path, routeTargets []string) bool {
+	for _, rt := range routeTargets {
+		routeTarget := fmt.Sprintf("RT:%s", rt)
+		if strings.Contains(path.ExtendedCommunity.String, routeTarget) {
+			return true
+		}
+	}
+	return false
+}
+
+func pathHasVTEPAndRouteTarget(path Path, vtep string, routeTargets []string) bool {
+	for _, rt := range routeTargets {
+		routeTarget := fmt.Sprintf("RT:%s", rt)
+		for _, n := range path.Nexthops {
+			if n.IP == vtep && strings.Contains(path.ExtendedCommunity.String, routeTarget) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // pathHasVTEPAndVNI checks if a path has the given VTEP as a nexthop and the given VNI in its extended community.

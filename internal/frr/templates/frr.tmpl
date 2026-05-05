@@ -1,4 +1,4 @@
-log file /etc/frr/frr.log {{.Loglevel}}
+log stdout {{.Loglevel}}
 log timestamp precision 3
 {{- if eq .Loglevel "debug" }}
 debug zebra events
@@ -46,7 +46,7 @@ router bgp {{ .Underlay.MyASN }}
 {{- template "neighborsession" dict "neighbor" $n "routerASN" $.Underlay.MyASN -}}
 {{- end }}
 {{- range $n := .Underlay.Neighbors }}
-{{- template "neighborenableipfamily" . -}}
+{{- template "neighborenableipfamily" dict "neighbor" $n "routerASN" $.Underlay.MyASN -}}
 {{end }}
 
 {{- if .Passthrough }}
@@ -56,7 +56,8 @@ router bgp {{ .Underlay.MyASN }}
 {{- if .Underlay.EVPN }}
 {{- template "underlayevpn" . -}}
 {{- end }}
-
+exit
+!
 {{- end }}
 
 {{- range .VNIs }}
@@ -67,12 +68,22 @@ router bgp {{ .ASN }} vrf {{ .VRF }}
   bgp router-id {{ .RouterID }}
 
   {{- if .LocalNeighbor }}
-  {{ template "localneighbor" . }}
+  {{ template "localneighbor" dict "vni" . "routerASN" $.Underlay.MyASN -}}
   {{- end }}
 
   address-family l2vpn evpn
     advertise ipv4 unicast
     advertise ipv6 unicast
+    {{- if .ExportRTs }}
+    {{- range .ExportRTs }}
+    route-target export {{ . }}
+    {{- end }}
+    {{- end }}
+    {{- if .ImportRTs }}
+    {{- range .ImportRTs }}
+    route-target import {{ . }}
+    {{- end }}
+    {{- end }}
   exit-address-family
 exit
 {{- end }}

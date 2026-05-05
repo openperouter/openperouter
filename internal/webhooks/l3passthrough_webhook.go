@@ -49,14 +49,15 @@ func (v *L3PassthroughValidator) Handle(ctx context.Context, req admission.Reque
 		if err := v.decoder.DecodeRaw(req.OldObject, &l3passthrough); err != nil {
 			return admission.Errored(http.StatusBadRequest, err)
 		}
-	} else {
+	}
+	if req.Operation != v1.Delete {
 		if err := v.decoder.Decode(req, &l3passthrough); err != nil {
 			return admission.Errored(http.StatusBadRequest, err)
 		}
-		if req.OldObject.Size() > 0 {
-			if err := v.decoder.DecodeRaw(req.OldObject, &oldL3Passthrough); err != nil {
-				return admission.Errored(http.StatusBadRequest, err)
-			}
+	}
+	if req.Operation != v1.Delete && req.OldObject.Size() > 0 {
+		if err := v.decoder.DecodeRaw(req.OldObject, &oldL3Passthrough); err != nil {
+			return admission.Errored(http.StatusBadRequest, err)
 		}
 	}
 

@@ -116,7 +116,7 @@ func TestValidateHostSessions(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "same local and remote ASN",
+			name: "same local and remote ASN (iBGP)",
 			l3VNIs: []v1alpha1.L3VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
@@ -130,7 +130,43 @@ func TestValidateHostSessions(t *testing.T) {
 					},
 				},
 			},
-			wantErr: true,
+			wantErr: false,
+		},
+		{
+			name: "remote ASN 0 and type external)",
+			l3VNIs: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+					Spec: v1alpha1.L3VNISpec{
+						VNI: 100,
+						HostSession: &v1alpha1.HostSession{
+							ASN:       65001,
+							HostASN:   0,
+							HostType:  "external",
+							LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "192.168.1.0/24"},
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "remote ASN 0 and type internal",
+			l3VNIs: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+					Spec: v1alpha1.L3VNISpec{
+						VNI: 100,
+						HostSession: &v1alpha1.HostSession{
+							ASN:       65001,
+							HostASN:   0,
+							HostType:  "internal",
+							LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: "192.168.1.0/24"},
+						},
+					},
+				},
+			},
+			wantErr: false,
 		},
 		{
 			name: "no host session",

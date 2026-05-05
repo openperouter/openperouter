@@ -280,16 +280,7 @@ func TestParseChartWithMasterTolerations(t *testing.T) {
 					ds := appsv1.DaemonSet{}
 					err = runtime.DefaultUnstructuredConverter.FromUnstructured(obj.UnstructuredContent(), &ds)
 					g.Expect(err).ToNot(HaveOccurred())
-
-					hasMasterToleration := false
-					for _, tol := range ds.Spec.Template.Spec.Tolerations {
-						if (tol.Key == "node-role.kubernetes.io/master" || tol.Key == "node-role.kubernetes.io/control-plane") &&
-							tol.Effect == v1.TaintEffectNoSchedule {
-							hasMasterToleration = true
-							break
-						}
-					}
-					g.Expect(hasMasterToleration).To(Equal(tt.expectTolerations),
+					g.Expect(hasMasterToleration(ds.Spec.Template.Spec.Tolerations)).To(Equal(tt.expectTolerations),
 						fmt.Sprintf("DaemonSet %s should have master toleration=%v", obj.GetName(), tt.expectTolerations))
 				}
 
@@ -297,21 +288,22 @@ func TestParseChartWithMasterTolerations(t *testing.T) {
 					deployment := appsv1.Deployment{}
 					err = runtime.DefaultUnstructuredConverter.FromUnstructured(obj.UnstructuredContent(), &deployment)
 					g.Expect(err).ToNot(HaveOccurred())
-
-					hasMasterToleration := false
-					for _, tol := range deployment.Spec.Template.Spec.Tolerations {
-						if (tol.Key == "node-role.kubernetes.io/master" || tol.Key == "node-role.kubernetes.io/control-plane") &&
-							tol.Effect == v1.TaintEffectNoSchedule {
-							hasMasterToleration = true
-							break
-						}
-					}
-					g.Expect(hasMasterToleration).To(Equal(tt.expectTolerations),
+					g.Expect(hasMasterToleration(deployment.Spec.Template.Spec.Tolerations)).To(Equal(tt.expectTolerations),
 						fmt.Sprintf("Deployment %s should have master toleration=%v", obj.GetName(), tt.expectTolerations))
 				}
 			}
 		})
 	}
+}
+
+func hasMasterToleration(tolerations []v1.Toleration) bool {
+	for _, tol := range tolerations {
+		if (tol.Key == "node-role.kubernetes.io/master" || tol.Key == "node-role.kubernetes.io/control-plane") &&
+			tol.Effect == v1.TaintEffectNoSchedule {
+			return true
+		}
+	}
+	return false
 }
 
 func validateLogLevel(level string, pod v1.PodTemplateSpec) error {

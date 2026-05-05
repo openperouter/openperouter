@@ -18,6 +18,6 @@ func New() *clientset.Clientset {
 	return res
 }
 
-func RestConfig() *restclient.Config {
-	return ctrl.GetConfigOrDie()
+func RestConfig() (*restclient.Config, error) {
+	return ctrl.GetConfig()
 }

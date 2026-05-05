@@ -48,9 +48,6 @@ func ValidateHostSessions(l3VNIs []v1alpha1.L3VNI, l3Passthrough []v1alpha1.L3Pa
 	existingCIDRsV4 := map[string]string{}
 	existingCIDRsV6 := map[string]string{}
 	for _, s := range hostSessions {
-		if s.HostASN == s.ASN {
-			return fmt.Errorf("%s local ASN %d must be different from remote ASN %d", s.name, s.HostASN, s.ASN)
-		}
 		if s.LocalCIDR.IPv4 != "" {
 			if err := validateCIDR(s, s.LocalCIDR.IPv4, existingCIDRsV4); err != nil {
 				return err

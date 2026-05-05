@@ -51,7 +51,7 @@ apply_registry_config() {
 
         if [[ -f "${KUBECONFIG_PATH_CLUSTER}" ]]; then
             export KUBECONFIG="${KUBECONFIG_PATH_CLUSTER}"
-            kubectl apply -f "$(dirname $(readlink -f $0))/../kind-registry_configmap.yaml"
+            $KUBECTL apply -f "$(dirname $(readlink -f $0))/../kind-registry_configmap.yaml"
         else
             echo "Warning: Kubeconfig not found at ${KUBECONFIG_PATH_CLUSTER}"
         fi

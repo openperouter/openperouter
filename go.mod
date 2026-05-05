@@ -20,7 +20,7 @@ require (
 	github.com/vishvananda/netns v0.0.5
 	golang.org/x/net v0.49.0
 	golang.org/x/sys v0.40.0
-	google.golang.org/grpc v1.78.0
+	google.golang.org/grpc v1.79.3
 	helm.sh/helm/v3 v3.18.6
 	k8s.io/api v0.35.0
 	k8s.io/apiextensions-apiserver v0.35.0
@@ -34,7 +34,7 @@ require (
 )
 
 require (
-	cel.dev/expr v0.24.0 // indirect
+	cel.dev/expr v0.25.1 // indirect
 	dario.cat/mergo v1.0.1 // indirect
 	github.com/AdaLogics/go-fuzz-headers v0.0.0-20240806141605-e8a1dd7889d6 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect

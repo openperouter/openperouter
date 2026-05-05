@@ -61,8 +61,7 @@ var _ = Describe("Webhooks", func() {
 				err := Updater.Update(config.Resources{
 					L3VNIs: []v1alpha1.L3VNI{vni},
 				})
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring(expectedError))
+				Expect(err).To(MatchError(ContainSubstring(expectedError)))
 			},
 			Entry("when trying to create a VNI without VRF field", v1alpha1.L3VNI{
 				ObjectMeta: metav1.ObjectMeta{
@@ -117,24 +116,6 @@ var _ = Describe("Webhooks", func() {
 					},
 				},
 			}, "invalid local CIDR"),
-			Entry("when trying to create a VNI with the same local and remote ASN", v1alpha1.L3VNI{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-vni-4",
-					Namespace: openperouter.Namespace,
-				},
-				Spec: v1alpha1.L3VNISpec{
-					VRF:       "test-vrf-4",
-					VNI:       102,
-					VXLanPort: 4789,
-					HostSession: &v1alpha1.HostSession{
-						ASN:     65001,
-						HostASN: 65001,
-						LocalCIDR: v1alpha1.LocalCIDRConfig{
-							IPv4: "10.0.2.0/24",
-						},
-					},
-				},
-			}, "hostASN must be different from asn"),
 		)
 	})
 
@@ -236,8 +217,7 @@ var _ = Describe("Webhooks", func() {
 				err := Updater.Update(config.Resources{
 					L2VNIs: l2vnis,
 				})
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring(expectedError))
+				Expect(err).To(MatchError(ContainSubstring(expectedError)))
 			},
 			Entry("when trying to create an L2VNI with the same VNI as an existing one", []v1alpha1.L2VNI{{
 				ObjectMeta: metav1.ObjectMeta{
@@ -249,6 +229,17 @@ var _ = Describe("Webhooks", func() {
 					VXLanPort: 4789,
 				},
 			}}, "duplicate vni"),
+			Entry("when trying to create an L2VNI with l2gatewayips but no VRF", []v1alpha1.L2VNI{{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "l2vni-no-vrf-gw",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.L2VNISpec{
+					VNI:          213,
+					VXLanPort:    4789,
+					L2GatewayIPs: []string{"10.100.0.1/24"},
+				},
+			}}, "l2gatewayips cannot be set without spec.vrf"),
 			Entry("when trying to create an L2VNI with an invalid IPv4 address", []v1alpha1.L2VNI{{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "l2-invalid-ip4",
@@ -256,6 +247,7 @@ var _ = Describe("Webhooks", func() {
 				},
 				Spec: v1alpha1.L2VNISpec{
 					VNI:          201,
+					VRF:          ptr.To("test-vrf-2"),
 					VXLanPort:    4789,
 					L2GatewayIPs: []string{"not-an-ip-address"},
 				},
@@ -267,6 +259,7 @@ var _ = Describe("Webhooks", func() {
 				},
 				Spec: v1alpha1.L2VNISpec{
 					VNI:          202,
+					VRF:          ptr.To("test-vrf-2"),
 					VXLanPort:    4789,
 					L2GatewayIPs: []string{"256.256.256.256/24"},
 				},
@@ -278,6 +271,7 @@ var _ = Describe("Webhooks", func() {
 				},
 				Spec: v1alpha1.L2VNISpec{
 					VNI:          203,
+					VRF:          ptr.To("test-vrf-2"),
 					VXLanPort:    4789,
 					L2GatewayIPs: []string{"192.168.1.1/24", "invalid-ip"},
 				},
@@ -289,6 +283,7 @@ var _ = Describe("Webhooks", func() {
 				},
 				Spec: v1alpha1.L2VNISpec{
 					VNI:          204,
+					VRF:          ptr.To("test-vrf-2"),
 					VXLanPort:    4789,
 					L2GatewayIPs: []string{"192.168.1.1/24", "2001:db8::1/64", "10.0.0.1/24"},
 				},
@@ -300,6 +295,7 @@ var _ = Describe("Webhooks", func() {
 				},
 				Spec: v1alpha1.L2VNISpec{
 					VNI:          205,
+					VRF:          ptr.To("test-vrf-2"),
 					VXLanPort:    4789,
 					L2GatewayIPs: []string{"192.168.1.1/24", "10.0.0.1/24"},
 				},
@@ -311,6 +307,7 @@ var _ = Describe("Webhooks", func() {
 				},
 				Spec: v1alpha1.L2VNISpec{
 					VNI:          206,
+					VRF:          ptr.To("test-vrf-2"),
 					VXLanPort:    4789,
 					L2GatewayIPs: []string{"2001:db8::1/64", "2001:db9::1/64"},
 				},
@@ -409,6 +406,7 @@ var _ = Describe("Webhooks", func() {
 				},
 				Spec: v1alpha1.L2VNISpec{
 					VNI:          210,
+					VRF:          ptr.To("test-vrf-2"),
 					VXLanPort:    4789,
 					L2GatewayIPs: []string{"192.168.1.1/24"},
 				},
@@ -427,6 +425,7 @@ var _ = Describe("Webhooks", func() {
 				},
 				Spec: v1alpha1.L2VNISpec{
 					VNI:          211,
+					VRF:          ptr.To("test-vrf-2"),
 					VXLanPort:    4789,
 					L2GatewayIPs: []string{"2001:db8::1/64"},
 				},
@@ -445,6 +444,7 @@ var _ = Describe("Webhooks", func() {
 				},
 				Spec: v1alpha1.L2VNISpec{
 					VNI:          212,
+					VRF:          ptr.To("test-vrf-2"),
 					VXLanPort:    4789,
 					L2GatewayIPs: []string{"192.168.1.1/24", "2001:db8::1/64"},
 				},
@@ -465,6 +465,7 @@ var _ = Describe("Webhooks", func() {
 				},
 				Spec: v1alpha1.L2VNISpec{
 					VNI:          300,
+					VRF:          ptr.To("test-vrf-2"),
 					VXLanPort:    4789,
 					L2GatewayIPs: []string{"192.168.10.1/24"},
 				},
@@ -492,8 +493,7 @@ var _ = Describe("Webhooks", func() {
 			err := Updater.Update(config.Resources{
 				L2VNIs: []v1alpha1.L2VNI{l2vniUpdated},
 			})
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("L2GatewayIPs cannot be changed"))
+			Expect(err).To(MatchError(ContainSubstring("L2GatewayIPs cannot be changed")))
 		})
 
 		It("should block updates to L2GatewayIPs when adding an IP", func() {
@@ -512,8 +512,7 @@ var _ = Describe("Webhooks", func() {
 			err := Updater.Update(config.Resources{
 				L2VNIs: []v1alpha1.L2VNI{l2vniUpdated},
 			})
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("L2GatewayIPs cannot be changed"))
+			Expect(err).To(MatchError(ContainSubstring("L2GatewayIPs cannot be changed")))
 		})
 
 		It("should block updates to L2GatewayIPs when removing an IP", func() {
@@ -532,8 +531,7 @@ var _ = Describe("Webhooks", func() {
 			err := Updater.Update(config.Resources{
 				L2VNIs: []v1alpha1.L2VNI{l2vniUpdated},
 			})
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("L2GatewayIPs cannot be changed"))
+			Expect(err).To(MatchError(ContainSubstring("L2GatewayIPs cannot be changed")))
 		})
 	})
 
@@ -587,8 +585,7 @@ var _ = Describe("Webhooks", func() {
 			err := Updater.Update(config.Resources{
 				L3VNIs: []v1alpha1.L3VNI{l3vniUpdated},
 			})
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("LocalCIDR can't be changed"))
+			Expect(err).To(MatchError(ContainSubstring("LocalCIDR can't be changed")))
 		})
 	})
 
@@ -598,8 +595,7 @@ var _ = Describe("Webhooks", func() {
 				err := Updater.Update(config.Resources{
 					Underlays: []v1alpha1.Underlay{underlay},
 				})
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring(expectedError))
+				Expect(err).To(MatchError(ContainSubstring(expectedError)))
 			},
 			Entry("when trying to create an underlay with multiple nics", v1alpha1.Underlay{
 				ObjectMeta: metav1.ObjectMeta{
@@ -627,25 +623,6 @@ var _ = Describe("Webhooks", func() {
 					},
 				},
 			}, "invalid vtep CIDR"),
-			Entry("when trying to create an underlay with a neighbor with the same ASN", v1alpha1.Underlay{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "underlay",
-					Namespace: openperouter.Namespace,
-				},
-				Spec: v1alpha1.UnderlaySpec{
-					ASN:  65000,
-					Nics: []string{"nic1"},
-					EVPN: &v1alpha1.EVPNConfig{
-						VTEPCIDR: "192.168.1.0/24",
-					},
-					Neighbors: []v1alpha1.Neighbor{
-						{
-							ASN:     65000,
-							Address: "192.168.1.1",
-						},
-					},
-				},
-			}, "local ASN 65000 must be different from remote ASN 65000"),
 		)
 	})
 
@@ -676,8 +653,7 @@ var _ = Describe("Webhooks", func() {
 				err := Updater.Update(config.Resources{
 					Underlays: underlays,
 				})
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring(expectedError))
+				Expect(err).To(MatchError(ContainSubstring(expectedError)))
 			},
 			Entry("when trying to create a second different underlay (should fail)",
 				[]v1alpha1.Underlay{
@@ -760,8 +736,7 @@ var _ = Describe("Webhooks", func() {
 			err = Updater.Update(config.Resources{
 				L3Passthrough: []v1alpha1.L3Passthrough{passthrough2},
 			})
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("more than one"))
+			Expect(err).To(MatchError(ContainSubstring("more than one")))
 		})
 
 		DescribeTable("the webhook should block",
@@ -769,8 +744,7 @@ var _ = Describe("Webhooks", func() {
 				err := Updater.Update(config.Resources{
 					L3Passthrough: []v1alpha1.L3Passthrough{passthrough},
 				})
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring(expectedError))
+				Expect(err).To(MatchError(ContainSubstring(expectedError)))
 			},
 			Entry("when trying to create an L3Passthrough with invalid CIDR", v1alpha1.L3Passthrough{
 				ObjectMeta: metav1.ObjectMeta{
@@ -787,21 +761,6 @@ var _ = Describe("Webhooks", func() {
 					},
 				},
 			}, "invalid local CIDR"),
-			Entry("when trying to create an L3Passthrough with the same local and remote ASN", v1alpha1.L3Passthrough{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-passthrough-4",
-					Namespace: openperouter.Namespace,
-				},
-				Spec: v1alpha1.L3PassthroughSpec{
-					HostSession: v1alpha1.HostSession{
-						ASN: 65040,
-						LocalCIDR: v1alpha1.LocalCIDRConfig{
-							IPv4: "10.40.0.0/24",
-						},
-						HostASN: 65040,
-					},
-				},
-			}, "must be different from remote ASN"),
 		)
 	})
 
@@ -849,8 +808,7 @@ var _ = Describe("Webhooks", func() {
 			err := Updater.Update(config.Resources{
 				L3Passthrough: []v1alpha1.L3Passthrough{passthroughUpdated},
 			})
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("LocalCIDR can't be changed"))
+			Expect(err).To(MatchError(ContainSubstring("LocalCIDR can't be changed")))
 		})
 	})
 
@@ -901,8 +859,7 @@ var _ = Describe("Webhooks", func() {
 			err := Updater.Update(config.Resources{
 				L3Passthrough: []v1alpha1.L3Passthrough{passthroughOverlap},
 			})
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("overlapping"))
+			Expect(err).To(MatchError(ContainSubstring("overlapping")))
 		})
 	})
 })

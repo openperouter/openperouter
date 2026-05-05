@@ -88,36 +88,17 @@ func TestReadRouterConfigs(t *testing.T) {
 	t.Run("empty directory", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		_, err := ReadRouterConfigs(tmpDir)
-		if err == nil {
-			t.Fatal("expected NoConfigAvailable error, got nil")
-		}
-		var noConfigErr *NoConfigAvailable
-		if !errors.As(err, &noConfigErr) {
-			t.Errorf("expected NoConfigAvailable error, got: %v", err)
-		}
+		assertNoConfigAvailable(t, err)
 	})
 
 	t.Run("non-existent directory", func(t *testing.T) {
 		_, err := ReadRouterConfigs("/nonexistent/path")
-		if err == nil {
-			t.Fatal("expected NoConfigAvailable error, got nil")
-		}
-		var noConfigErr *NoConfigAvailable
-		if !errors.As(err, &noConfigErr) {
-			t.Errorf("expected NoConfigAvailable error, got: %v", err)
-		}
+		assertNoConfigAvailable(t, err)
 	})
 
 	t.Run("single file", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		configPath := filepath.Join(tmpDir, "openpe_underlay.yaml")
-		content := `underlays:
-  - asn: 64515
-    routeridcidr: "10.0.0.0/24"
-`
-		if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
-			t.Fatalf("failed to write test config file: %v", err)
-		}
+		writeTestFile(t, tmpDir, "openpe_underlay.yaml", "underlays:\n  - asn: 64515\n    routeridcidr: \"10.0.0.0/24\"\n")
 
 		configs, err := ReadRouterConfigs(tmpDir)
 		if err != nil {
@@ -133,32 +114,9 @@ func TestReadRouterConfigs(t *testing.T) {
 
 	t.Run("multiple files", func(t *testing.T) {
 		tmpDir := t.TempDir()
-
-		// Create first config file
-		configPath1 := filepath.Join(tmpDir, "openpe_underlay.yaml")
-		content1 := `underlays:
-  - asn: 64515
-    routeridcidr: "10.0.0.0/24"
-`
-		if err := os.WriteFile(configPath1, []byte(content1), 0644); err != nil {
-			t.Fatalf("failed to write test config file: %v", err)
-		}
-
-		// Create second config file
-		configPath2 := filepath.Join(tmpDir, "openpe_l3vni.yaml")
-		content2 := `l3vnis:
-  - vrf: "vrf-test"
-    vni: 1000
-`
-		if err := os.WriteFile(configPath2, []byte(content2), 0644); err != nil {
-			t.Fatalf("failed to write test config file: %v", err)
-		}
-
-		// Create a non-matching file (should be ignored)
-		nonMatchingPath := filepath.Join(tmpDir, "other.yaml")
-		if err := os.WriteFile(nonMatchingPath, []byte("test: value\n"), 0644); err != nil {
-			t.Fatalf("failed to write non-matching file: %v", err)
-		}
+		writeTestFile(t, tmpDir, "openpe_underlay.yaml", "underlays:\n  - asn: 64515\n    routeridcidr: \"10.0.0.0/24\"\n")
+		writeTestFile(t, tmpDir, "openpe_l3vni.yaml", "l3vnis:\n  - vrf: \"vrf-test\"\n    vni: 1000\n")
+		writeTestFile(t, tmpDir, "other.yaml", "test: value\n")
 
 		configs, err := ReadRouterConfigs(tmpDir)
 		if err != nil {
@@ -167,38 +125,55 @@ func TestReadRouterConfigs(t *testing.T) {
 		if len(configs) != 2 {
 			t.Fatalf("expected 2 configs, got %d", len(configs))
 		}
-
-		// Verify contents
-		var hasUnderlay, hasL3VNI bool
-		for _, cfg := range configs {
-			if len(cfg.Underlays) > 0 {
-				hasUnderlay = true
-			}
-			if len(cfg.L3VNIs) > 0 {
-				hasL3VNI = true
-			}
-		}
-		if !hasUnderlay {
-			t.Error("expected at least one config with underlays")
-		}
-		if !hasL3VNI {
-			t.Error("expected at least one config with l3vnis")
-		}
+		assertConfigTypes(t, configs)
 	})
 
 	t.Run("invalid file in directory", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		configPath := filepath.Join(tmpDir, "openpe_invalid.yaml")
-		content := "invalid: [unclosed\n"
-		if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
-			t.Fatalf("failed to write test config file: %v", err)
-		}
+		writeTestFile(t, tmpDir, "openpe_invalid.yaml", "invalid: [unclosed\n")
 
 		_, err := ReadRouterConfigs(tmpDir)
 		if err == nil {
 			t.Error("expected error for invalid YAML file")
 		}
 	})
+}
+
+func assertNoConfigAvailable(t *testing.T, err error) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("expected NoConfigAvailable error, got nil")
+	}
+	var noConfigErr *NoConfigAvailable
+	if !errors.As(err, &noConfigErr) {
+		t.Errorf("expected NoConfigAvailable error, got: %v", err)
+	}
+}
+
+func writeTestFile(t *testing.T, dir, name, content string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test config file %s: %v", name, err)
+	}
+}
+
+func assertConfigTypes(t *testing.T, configs []*static.PERouterConfig) {
+	t.Helper()
+	var hasUnderlay, hasL3VNI bool
+	for _, cfg := range configs {
+		if len(cfg.Underlays) > 0 {
+			hasUnderlay = true
+		}
+		if len(cfg.L3VNIs) > 0 {
+			hasL3VNI = true
+		}
+	}
+	if !hasUnderlay {
+		t.Error("expected at least one config with underlays")
+	}
+	if !hasL3VNI {
+		t.Error("expected at least one config with l3vnis")
+	}
 }
 
 func TestReadRouterConfigsFromFiles(t *testing.T) {

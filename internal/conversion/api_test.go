@@ -11,7 +11,7 @@ import (
 )
 
 func TestMergeAPIConfigs_SingleConfig(t *testing.T) {
-	config := ApiConfigData{
+	config := APIConfigData{
 		Underlays: []v1alpha1.Underlay{
 			{
 				ObjectMeta: metav1.ObjectMeta{Name: "underlay1"},
@@ -36,7 +36,7 @@ func TestMergeAPIConfigs_SingleConfig(t *testing.T) {
 }
 
 func TestMergeAPIConfigs_MultipleConfigs(t *testing.T) {
-	config1 := ApiConfigData{
+	config1 := APIConfigData{
 		Underlays: []v1alpha1.Underlay{
 			{
 				ObjectMeta: metav1.ObjectMeta{Name: "underlay1"},
@@ -45,7 +45,7 @@ func TestMergeAPIConfigs_MultipleConfigs(t *testing.T) {
 		},
 	}
 
-	config2 := ApiConfigData{
+	config2 := APIConfigData{
 		L3VNIs: []v1alpha1.L3VNI{
 			{
 				ObjectMeta: metav1.ObjectMeta{Name: "l3vni1"},
@@ -54,7 +54,7 @@ func TestMergeAPIConfigs_MultipleConfigs(t *testing.T) {
 		},
 	}
 
-	config3 := ApiConfigData{
+	config3 := APIConfigData{
 		L2VNIs: []v1alpha1.L2VNI{
 			{
 				ObjectMeta: metav1.ObjectMeta{Name: "l2vni1"},
@@ -68,7 +68,7 @@ func TestMergeAPIConfigs_MultipleConfigs(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	want := ApiConfigData{
+	want := APIConfigData{
 		Underlays: []v1alpha1.Underlay{
 			{
 				ObjectMeta: metav1.ObjectMeta{Name: "underlay1"},
@@ -95,7 +95,7 @@ func TestMergeAPIConfigs_MultipleConfigs(t *testing.T) {
 	}
 }
 func TestMergeAPIConfigs_AllResourceTypes(t *testing.T) {
-	config := ApiConfigData{
+	config := APIConfigData{
 		Underlays: []v1alpha1.Underlay{
 			{ObjectMeta: metav1.ObjectMeta{Name: "underlay1"}},
 		},
@@ -121,14 +121,14 @@ func TestMergeAPIConfigs_AllResourceTypes(t *testing.T) {
 }
 
 func TestMergeAPIConfigs_ResourcesConcatenated(t *testing.T) {
-	config1 := ApiConfigData{
+	config1 := APIConfigData{
 		Underlays: []v1alpha1.Underlay{
 			{ObjectMeta: metav1.ObjectMeta{Name: "underlay1"}},
 			{ObjectMeta: metav1.ObjectMeta{Name: "underlay2"}},
 		},
 	}
 
-	config2 := ApiConfigData{
+	config2 := APIConfigData{
 		Underlays: []v1alpha1.Underlay{
 			{ObjectMeta: metav1.ObjectMeta{Name: "underlay3"}},
 		},
@@ -139,7 +139,7 @@ func TestMergeAPIConfigs_ResourcesConcatenated(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	want := ApiConfigData{
+	want := APIConfigData{
 		Underlays: []v1alpha1.Underlay{
 			{ObjectMeta: metav1.ObjectMeta{Name: "underlay1"}},
 			{ObjectMeta: metav1.ObjectMeta{Name: "underlay2"}},

@@ -141,6 +141,40 @@ var _ = Describe("listStaleNeighbors", func() {
 		Expect(neighbors).To(BeEmpty())
 	})
 
+	It("should skip link-local neighbors", func() {
+		createTestBridge(testNSPath(), "br-pe-304")
+		addIPToBridge(testNSPath(), "br-pe-304", "192.168.1.1/24")
+
+		// Add a link-local IPv6 stale neighbor (should be skipped)
+		linkLocalIP := net.ParseIP("fe80::1")
+		linkLocalMAC, _ := net.ParseMAC("02:00:00:00:00:01")
+		addStaleNeighbor(testNSPath(), "br-pe-304", linkLocalIP, linkLocalMAC)
+
+		// Add a regular IPv4 stale neighbor (should be kept)
+		regularIP := net.ParseIP("192.168.1.10")
+		regularMAC, _ := net.ParseMAC("02:00:00:00:00:02")
+		addStaleNeighbor(testNSPath(), "br-pe-304", regularIP, regularMAC)
+
+		refresher := &BridgeRefresher{
+			bridgeName: "br-pe-304",
+			namespace:  testNSPath(),
+		}
+
+		ns, err := netns.GetFromPath(testNSPath())
+		Expect(err).NotTo(HaveOccurred())
+		defer func() { _ = ns.Close() }()
+
+		var neighbors []netlink.Neigh
+		err = netnamespace.In(ns, func() error {
+			var err error
+			neighbors, err = refresher.listStaleNeighbors()
+			return err
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(neighbors).To(HaveLen(1))
+		Expect(neighbors[0].IP.String()).To(Equal(regularIP.String()))
+	})
+
 	It("should error for non-existent bridge", func() {
 		refresher := &BridgeRefresher{
 			bridgeName: "nonexistent-bridge",

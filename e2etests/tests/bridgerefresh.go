@@ -295,12 +295,6 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 					return checkType2RouteExists(cs, migratingPodIPOnly, vtepIPOnly, l2VNI)
 				}, 3*time.Minute, 5*time.Second).ShouldNot(HaveOccurred())
 
-				// This is important to trigger the deadlock situation described in https://github.com/FRRouting/frr/issues/14156
-				By("Waiting for neighbor entry to go STALE on the router on the same node")
-				Eventually(func() error {
-					return checkNeighborStale(cs, migratingPodIPOnly, l2VNI, migratingPod.Spec.NodeName)
-				}, 3*time.Minute, 2*time.Second).ShouldNot(HaveOccurred())
-
 				By("Deleting migrating pod (simulating pod eviction/migration)")
 				err = cs.CoreV1().Pods(testNamespace).Delete(
 					context.Background(),
@@ -318,6 +312,12 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 					)
 					return err != nil
 				}, 2*time.Minute, time.Second).Should(BeTrue())
+
+				// This is important to trigger the deadlock situation described in https://github.com/FRRouting/frr/issues/14156
+				By("Waiting for neighbor entry to go STALE on the router on the same node")
+				Eventually(func() error {
+					return checkNeighborStale(cs, migratingPodIPOnly, l2VNI, migratingPod.Spec.NodeName)
+				}, 3*time.Minute, 2*time.Second).ShouldNot(HaveOccurred())
 
 				By("Recreating migrating pod on node B (the other node) with same IP")
 				migratingPod, err = k8s.CreateAgnhostPod(
@@ -393,3 +393,4 @@ func checkNeighborStale(cs clientset.Interface, podIP string, vni int, nodeName 
 	}
 	return fmt.Errorf("neighbor %s on %s in router %s is not STALE yet: %s", podIP, bridgeDev, exec.Name(), out)
 }
+

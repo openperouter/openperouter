@@ -63,6 +63,8 @@ openperouter:
     resources: {}
     reloader:
       resources: {}
+      # -- Timeout for vtysh commands used in health checks. Increase under heavy VNI load. Defaults to 10s.
+      vtyshTimeout: ""
   cri: "containerd" # cri to bind its socket, can be containerd or crio.
   # -- OVS database socket path. Defaults to standard OVS location if not specified.
   ovsSocketPath: ""

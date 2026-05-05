@@ -46,6 +46,7 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/openperouter/openperouter/api/static"
 	periov1alpha1 "github.com/openperouter/openperouter/api/v1alpha1"
+	"github.com/openperouter/openperouter/internal/buildversion"
 	"github.com/openperouter/openperouter/internal/controller/routerconfiguration"
 	"github.com/openperouter/openperouter/internal/filewatcher"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
@@ -53,7 +54,6 @@ import (
 	"github.com/openperouter/openperouter/internal/pods"
 	"github.com/openperouter/openperouter/internal/staticconfiguration"
 	"github.com/openperouter/openperouter/internal/systemdctl"
-	"github.com/openperouter/openperouter/internal/version"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	// +kubebuilder:scaffold:imports
 )
@@ -146,7 +146,7 @@ func main() {
 		os.Exit(1)
 	}
 	ctrl.SetLogger(logr.FromSlogHandler(logger.Handler()))
-	setupLog.Info("version", "version", version.Version())
+	setupLog.Info("version", "version", buildversion.Version())
 	setupLog.Info("arguments", "args", fmt.Sprintf("%+v", args))
 
 	// Setup signal handler once for the entire process
@@ -206,7 +206,9 @@ func runHostMode(
 	staticControllerCtx, stopStaticReconciler := context.WithCancel(ctx)
 	defer stopStaticReconciler()
 
+	staticDone := make(chan struct{})
 	go func() {
+		defer close(staticDone)
 		logger.Info("creating static configuration controller for host mode")
 		err := runStaticConfigReconciler(
 			staticControllerCtx, args, hostModeParams, nodeConfig, logger, args.probeAddr,
@@ -232,6 +234,10 @@ func runHostMode(
 	logger.Info("kubernetes API is now available, stopping static reconciler and starting k8s reconciler")
 
 	stopStaticReconciler()
+	// Wait for the static reconciler to fully stop and release the health probe port
+	// before starting the K8s reconciler, which binds the same port.
+	<-staticDone
+	logger.Info("static reconciler fully stopped, starting k8s reconciler")
 
 	// Start API reconciler in main thread (blocking) - keeps process alive
 	if err := runK8sConfigReconcilerHostMode(

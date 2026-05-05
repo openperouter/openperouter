@@ -1,0 +1,30 @@
+version: 2
+updates:
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    assignees:
+      - "maiqueb"
+    open-pull-requests-limit: 10
+  - package-ecosystem: "gomod"
+    directory: "/e2etests"
+    schedule:
+      interval: "weekly"
+    assignees:
+      - "maiqueb"
+    open-pull-requests-limit: 10
+  - package-ecosystem: "gomod"
+    directory: "/website"
+    schedule:
+      interval: "weekly"
+    assignees:
+      - "maiqueb"
+    open-pull-requests-limit: 10
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    assignees:
+      - "maiqueb"
+    open-pull-requests-limit: 10

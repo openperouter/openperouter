@@ -14,10 +14,15 @@ import (
 
 func main() {
 	inputFile := flag.String("file", "", "Input CSV file with IP assignments")
-	containerEngine := flag.String("engine", "docker", "Container engine to use (docker, podman, etc.)")
+	containerEngine := flag.String("engine", "docker", "Container engine to use (e.g. docker, podman, 'sudo podman')")
 
 	// Parse command line arguments
 	flag.Parse()
+
+	// Split the engine string to support multi-word commands like "sudo podman"
+	engineParts := strings.Fields(*containerEngine)
+	engineCmd := engineParts[0]
+	engineArgs := engineParts[1:]
 
 	// Validate input file parameter
 	if *inputFile == "" {
@@ -53,12 +58,12 @@ func main() {
 		fmt.Printf("Assigning IP %s to interface %s in container %s...\n", ipAddress, interfaceName, containerName)
 
 		// #nosec G204
-		ipCmdArgs := []string{"exec", containerName, "ip"}
+		ipCmdArgs := append(append([]string{}, engineArgs...), "exec", containerName, "ip")
 		if strings.Contains(ipAddress, ":") {
 			ipCmdArgs = append(ipCmdArgs, "-6")
 		}
 		ipCmdArgs = append(ipCmdArgs, "addr", "add", ipAddress, "dev", interfaceName)
-		cmdAdd := exec.Command(*containerEngine, ipCmdArgs...)
+		cmdAdd := exec.Command(engineCmd, ipCmdArgs...)
 		fmt.Printf("Running command: %s\n", strings.Join(cmdAdd.Args, " "))
 		if err := cmdAdd.Run(); err != nil {
 			fmt.Printf("Error assigning IP: %v \n", err)
@@ -66,7 +71,8 @@ func main() {
 		}
 
 		// #nosec G204
-		cmdUp := exec.Command(*containerEngine, "exec", containerName, "ip", "link", "set", interfaceName, "up")
+		upArgs := append(append([]string{}, engineArgs...), "exec", containerName, "ip", "link", "set", interfaceName, "up")
+		cmdUp := exec.Command(engineCmd, upArgs...)
 		if err := cmdUp.Run(); err != nil {
 			fmt.Printf("Error bringing interface up: %v\n", err)
 			continue

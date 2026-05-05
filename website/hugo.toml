@@ -1,6 +1,8 @@
 baseURL = 'https://openperouter.github.io/'
 languageCode = 'en-us'
-title = 'OpenPERouter official docs'
+
+[params]
+booklogo = '/images/logo_text.svg'
 
 [module]
 [[module.imports]]

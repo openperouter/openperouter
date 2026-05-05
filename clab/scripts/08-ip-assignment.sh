@@ -28,8 +28,9 @@ assign_ips() {
         exit 1
     fi
 
-    # Run IP assignment tool
-    sudo $(which go) run tools/assign_ips/assign_ips.go -file ${IP_MAP_FILE} -engine ${CONTAINER_ENGINE}
+    # Run IP assignment tool using CONTAINER_ENGINE_CLI which already
+    # includes sudo for podman (via common.sh)
+    go run tools/assign_ips/assign_ips.go -file ${IP_MAP_FILE} -engine "${CONTAINER_ENGINE_CLI}"
 
     popd
 }

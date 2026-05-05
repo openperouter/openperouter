@@ -6,7 +6,8 @@ CONTAINER_ENGINE=${CONTAINER_ENGINE:-"docker"}
 CONTAINER_ENGINE_CLI="docker"
 KUBECONFIG_PATH=${KUBECONFIG_PATH:-"$(pwd)/kubeconfig"}
 KIND=${KIND:-"kind"}
-CLAB_VERSION="0.67.0"
+KUBECTL=${KUBECTL:-"kubectl"}
+CLAB_VERSION="0.74.1"
 
 KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME:-pe-kind}"
 
@@ -45,7 +46,7 @@ load_local_image_to_kind() {
     local image_tag=$1
     local file_name=$2
     local temp_file="/tmp/${file_name}.tar"
-    sudo rm -f ${temp_file} || true
+    rm -f ${temp_file}
     ${CONTAINER_ENGINE_CLI} save -o ${temp_file} ${image_tag}
     ${KIND_COMMAND} load image-archive ${temp_file} --name ${KIND_CLUSTER_NAME}
     load_image_to_podman_on_nodes ${image_tag} ${file_name}

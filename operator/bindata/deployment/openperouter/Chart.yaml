@@ -4,7 +4,7 @@ description: An open implementation of a PE router.
 home: https://github.com/openperouter/openperouter
 sources:
   - https://github.com/openperouter/openperouter
-icon: https://github.com/openperouter/openperouter/blob/main/drawings/logo_text.png
+icon: https://raw.githubusercontent.com/openperouter/openperouter/main/drawings/logo.svg
 dependencies:
 - name: crds
   condition: crds.enabled

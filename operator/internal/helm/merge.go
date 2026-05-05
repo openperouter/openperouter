@@ -82,57 +82,57 @@ func mergeDeploymentForUpdate(current, updated *uns.Unstructured) error {
 // mergeServiceForUpdate ensures the ClusterIP/IPFamily is never modified
 func mergeServiceForUpdate(current, updated *uns.Unstructured) error {
 	gvk := updated.GroupVersionKind()
-	if gvk.Group == "" && gvk.Kind == "Service" {
-		clusterIP, found, err := uns.NestedString(current.Object, "spec", "clusterIP")
-		if err != nil {
-			return err
-		}
-		if found {
-			err = uns.SetNestedField(updated.Object, clusterIP, "spec", "clusterIP")
-			if err != nil {
-				return err
-			}
-		}
-
-		clusterIPs, found, err := uns.NestedStringSlice(current.Object, "spec", "clusterIPs")
-		if err != nil {
-			return err
-		}
-		if found {
-			err = uns.SetNestedStringSlice(updated.Object, clusterIPs, "spec", "clusterIPs")
-			if err != nil {
-				return err
-			}
-		}
-
-		ipFamilies, found, err := uns.NestedStringSlice(current.Object, "spec", "ipFamilies")
-		if err != nil {
-			return err
-		}
-		if found {
-			err = uns.SetNestedStringSlice(updated.Object, ipFamilies, "spec", "ipFamilies")
-			if err != nil {
-				return err
-			}
-		}
-
-		ipFamilyPolicy, foundOld, err := uns.NestedString(current.Object, "spec", "ipFamilyPolicy")
-		if err != nil {
-			return err
-		}
-		_, foundNew, err := uns.NestedString(updated.Object, "spec", "ipFamilyPolicy")
-		if err != nil {
-			return err
-		}
-		if foundOld && !foundNew {
-			err = uns.SetNestedField(updated.Object, ipFamilyPolicy, "spec", "ipFamilyPolicy")
-			if err != nil {
-				return err
-			}
-		}
-
+	if gvk.Group != "" {
+		return nil
+	}
+	if gvk.Kind != "Service" {
+		return nil
 	}
 
+	if err := copyNestedString(current.Object, updated.Object, "spec", "clusterIP"); err != nil {
+		return err
+	}
+	if err := copyNestedStringSlice(current.Object, updated.Object, "spec", "clusterIPs"); err != nil {
+		return err
+	}
+	if err := copyNestedStringSlice(current.Object, updated.Object, "spec", "ipFamilies"); err != nil {
+		return err
+	}
+
+	ipFamilyPolicy, foundOld, err := uns.NestedString(current.Object, "spec", "ipFamilyPolicy")
+	if err != nil {
+		return err
+	}
+	_, foundNew, err := uns.NestedString(updated.Object, "spec", "ipFamilyPolicy")
+	if err != nil {
+		return err
+	}
+	if foundOld && !foundNew {
+		return uns.SetNestedField(updated.Object, ipFamilyPolicy, "spec", "ipFamilyPolicy")
+	}
+
+	return nil
+}
+
+func copyNestedString(src, dst map[string]interface{}, fields ...string) error {
+	val, found, err := uns.NestedString(src, fields...)
+	if err != nil {
+		return err
+	}
+	if found {
+		return uns.SetNestedField(dst, val, fields...)
+	}
+	return nil
+}
+
+func copyNestedStringSlice(src, dst map[string]interface{}, fields ...string) error {
+	val, found, err := uns.NestedStringSlice(src, fields...)
+	if err != nil {
+		return err
+	}
+	if found {
+		return uns.SetNestedStringSlice(dst, val, fields...)
+	}
 	return nil
 }
 
@@ -142,23 +142,27 @@ func mergeServiceForUpdate(current, updated *uns.Unstructured) error {
 // any secrets ourselves.
 func mergeServiceAccountForUpdate(current, updated *uns.Unstructured) error {
 	gvk := updated.GroupVersionKind()
-	if gvk.Group == "" && gvk.Kind == "ServiceAccount" {
-		curSecrets, ok, err := uns.NestedSlice(current.Object, "secrets")
-		if err != nil {
-			return err
-		}
+	if gvk.Group != "" {
+		return nil
+	}
+	if gvk.Kind != "ServiceAccount" {
+		return nil
+	}
 
-		if ok {
-			_ = uns.SetNestedField(updated.Object, curSecrets, "secrets")
-		}
+	curSecrets, ok, err := uns.NestedSlice(current.Object, "secrets")
+	if err != nil {
+		return err
+	}
+	if ok {
+		_ = uns.SetNestedField(updated.Object, curSecrets, "secrets")
+	}
 
-		curImagePullSecrets, ok, err := uns.NestedSlice(current.Object, "imagePullSecrets")
-		if err != nil {
-			return err
-		}
-		if ok {
-			_ = uns.SetNestedField(updated.Object, curImagePullSecrets, "imagePullSecrets")
-		}
+	curImagePullSecrets, ok, err := uns.NestedSlice(current.Object, "imagePullSecrets")
+	if err != nil {
+		return err
+	}
+	if ok {
+		_ = uns.SetNestedField(updated.Object, curImagePullSecrets, "imagePullSecrets")
 	}
 	return nil
 }

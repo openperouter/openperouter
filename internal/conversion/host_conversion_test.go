@@ -363,7 +363,7 @@ func TestAPItoHostConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			apiConfig := ApiConfigData{
+			apiConfig := APIConfigData{
 				Underlays:     tt.underlays,
 				L3VNIs:        tt.vnis,
 				L2VNIs:        tt.l2vnis,

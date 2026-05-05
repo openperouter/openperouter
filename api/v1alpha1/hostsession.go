@@ -2,8 +2,10 @@
 
 package v1alpha1
 
-// Host Session represent the leg between the router and the host.
+// Host Session represents the leg between the router and the host.
 // A BGP session is established over this leg.
+// +kubebuilder:validation:XValidation:rule="has(self.hostasn) || has(self.hosttype)",message="either HostASN or HostType must be set"
+// +kubebuilder:validation:XValidation:rule="!has(self.hostasn) || !has(self.hosttype)",message="HostASN and HostType cannot be set together"
 type HostSession struct {
 	// ASN is the local AS number to use to establish a BGP session with
 	// the default namespace.
@@ -12,12 +14,18 @@ type HostSession struct {
 	// +required
 	ASN uint32 `json:"asn,omitempty"`
 
-	// ASN is the expected AS number for a BGP speaking component running in
-	// the default network namespace. If not set, the ASN field is going to be used.
-	// +kubebuilder:validation:Minimum=0
+	// HostASN is the expected AS number for a BGP speaking component running in
+	// the default network namespace. Either HostASN or HostType must be set.
+	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=4294967295
-	// +required
+	// +optional
 	HostASN uint32 `json:"hostasn,omitempty"`
+
+	// HostType is the AS type of the BGP speaking component running in the
+	// default network namespace. Either HostASN or HostType must be set.
+	// +kubebuilder:validation:Enum=external;internal
+	// +optional
+	HostType string `json:"hosttype,omitempty"`
 
 	// LocalCIDR is the CIDR configuration for the veth pair
 	// to connect with the default namespace. The interface under

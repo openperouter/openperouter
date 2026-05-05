@@ -93,7 +93,7 @@ data:
     frr defaults traditional
     hostname Router
     line vty
-    log file /etc/frr/frr.log informational
+    log stdout informational
   vtysh.conf: |
     service integrated-vtysh-config
 ---
@@ -119,7 +119,7 @@ spec:
   template:
     metadata:
       annotations:
-        kubectl.kubernetes.io/default-container: router
+        kubectl.kubernetes.io/default-container: frr
         {{- if .Values.openperouter.multusNetworkAnnotation }}
         k8s.v1.cni.cncf.io/networks: {{ .Values.openperouter.multusNetworkAnnotation | quote }}
         {{- end }}
@@ -156,20 +156,11 @@ spec:
             mountPath: /var/run/frr
           - name: frrconfig
             mountPath: /etc/frr
-        # The command is FRR's default entrypoint & waiting for the log file to appear and tailing it.
-        # If the log file isn't created in 60 seconds the tail fails and the container is restarted.
-        # This workaround is needed to have the frr logs as part of kubectl logs -c frr < k8s-frr-podname >.
         command:
           - /bin/sh
           - -c
           - |
-            /sbin/tini -- /usr/lib/frr/docker-start &
-            attempts=0
-            until [[ -f /etc/frr/frr.log || $attempts -eq 60 ]]; do
-              sleep 1
-              attempts=$(( $attempts + 1 ))
-            done
-            tail -f /etc/frr/frr.log
+            exec /sbin/tini -- /usr/lib/frr/docker-start
         {{- with .Values.openperouter.frr.resources }}
         resources:
           {{- toYaml . | nindent 12 }}
@@ -186,7 +177,10 @@ spec:
         {{- with .Values.openperouter.logLevel }}
         - --loglevel={{ . }}
         {{- end }}
-        securityContext: 
+        {{- with .Values.openperouter.frr.reloader.vtyshTimeout }}
+        - --vtysh-timeout={{ . }}
+        {{- end }}
+        securityContext:
           seLinuxOptions:
             type: spc_t
         volumeMounts:

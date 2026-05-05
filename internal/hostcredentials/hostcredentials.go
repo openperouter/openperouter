@@ -18,7 +18,7 @@ const (
 	kubeConfigFile = "kubeconfig"
 )
 
-func ApiServerAddress(port int) (string, error) {
+func APIServerAddress(port int) (string, error) {
 	clusterIP, err := resolveKubernetesServiceIP()
 	if err != nil {
 		return "", fmt.Errorf("failed to get kubernetes service IP: %w", err)
