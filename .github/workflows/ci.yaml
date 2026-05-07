@@ -74,6 +74,7 @@ jobs:
         run: |
           make generate-all-ci
           make fix
+          make fmt
           make checkuncommitted
 
       - name: Helm doc generate
