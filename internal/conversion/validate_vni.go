@@ -144,7 +144,6 @@ func ValidateVRFsForNodes(nodes []corev1.Node, l2vnis []v1alpha1.L2VNI, l3vnis [
 // Note that when ValidateVRFs is called, L3VNIs and L2VNIs should already have been verified for correctness
 // by ValidateL2VNIs() and ValidateL3VNIs() (such as individual subnets parse correctly, no duplicate AF per VNI).
 func ValidateVRFs(l2Vnis []v1alpha1.L2VNI, l3Vnis []v1alpha1.L3VNI) error {
-	// Make sure that there's only a single l3Vni in a given VRF.
 	vrfToVNI := map[string]types.NamespacedName{}
 	for _, l3Vni := range l3Vnis {
 		namespaceName := types.NamespacedName{Namespace: l3Vni.Namespace, Name: l3Vni.Name}
@@ -155,7 +154,15 @@ func ValidateVRFs(l2Vnis []v1alpha1.L2VNI, l3Vnis []v1alpha1.L3VNI) error {
 		vrfToVNI[l3Vni.Spec.VRF] = namespaceName
 	}
 
-	// Make sure that there are no subnet overlaps in the VRFs.
+	for _, err := range ValidateVRFSubnets(l2Vnis, l3Vnis) {
+		return err
+	}
+	return nil
+}
+
+// ValidateVRFSubnets checks for subnet overlaps per VRF and returns a map of
+// VRF name to error for each VRF that has overlapping subnets.
+func ValidateVRFSubnets(l2Vnis []v1alpha1.L2VNI, l3Vnis []v1alpha1.L3VNI) map[string]error {
 	v4SubnetsForVRF := map[string]subnets{}
 	v6SubnetsForVRF := map[string]subnets{}
 	for _, l2vni := range l2Vnis {
@@ -178,19 +185,21 @@ func ValidateVRFs(l2Vnis []v1alpha1.L2VNI, l3Vnis []v1alpha1.L3VNI) error {
 			v6SubnetsForVRF[vrfName] = append(v6SubnetsForVRF[vrfName], subnetWithSource{source, subnet})
 		}
 	}
+
+	failedVRFs := map[string]error{}
 	for vrf, subnetList := range v4SubnetsForVRF {
 		subnetList.sort()
 		if err := hasSubnetOverlap(subnetList); err != nil {
-			return fmt.Errorf("subnet overlap in VRF %q: %w", vrf, err)
+			failedVRFs[vrf] = fmt.Errorf("subnet overlap in VRF %q: %w", vrf, err)
 		}
 	}
 	for vrf, subnetList := range v6SubnetsForVRF {
 		subnetList.sort()
 		if err := hasSubnetOverlap(subnetList); err != nil {
-			return fmt.Errorf("subnet overlap in VRF %q: %w", vrf, err)
+			failedVRFs[vrf] = fmt.Errorf("subnet overlap in VRF %q: %w", vrf, err)
 		}
 	}
-	return nil
+	return failedVRFs
 }
 
 // vni holds VNI validation data
