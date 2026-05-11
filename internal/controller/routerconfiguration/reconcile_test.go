@@ -116,6 +116,26 @@ func TestReconcileQuarantine(t *testing.T) {
 			},
 		},
 		{
+			name: "VRF subnet overlap quarantines entire VRF",
+			l3VNIs: []v1alpha1.L3VNI{
+				l3VNI("good-l3", "vrfGood", 100),
+				l3VNI("bad-l3", "vrfBad", 200),
+			},
+			l2VNIs: []v1alpha1.L2VNI{
+				l2VNIWithGateway("good-l2", "vrfGood", 300, []string{"10.0.1.1/24"}),
+				l2VNIWithGateway("bad-l2-1", "vrfBad", 400, []string{"10.0.2.1/24"}),
+				l2VNIWithGateway("bad-l2-2", "vrfBad", 500, []string{"10.0.2.100/24"}),
+			},
+			expectedFailures: []v1alpha1.FailedResource{
+				{Kind: KindL3VNI, Name: "bad-l3", Reason: v1alpha1.ValidationFailed,
+					Message: ptr.To("subnet overlap in VRF \"vrfBad\": IPNet 10.0.2.0/24 (L2VNI /bad-l2-2) overlaps with IPNet 10.0.2.0/24 (L2VNI /bad-l2-1)")},
+				{Kind: KindL2VNI, Name: "bad-l2-1", Reason: v1alpha1.ValidationFailed,
+					Message: ptr.To("subnet overlap in VRF \"vrfBad\": IPNet 10.0.2.0/24 (L2VNI /bad-l2-2) overlaps with IPNet 10.0.2.0/24 (L2VNI /bad-l2-1)")},
+				{Kind: KindL2VNI, Name: "bad-l2-2", Reason: v1alpha1.ValidationFailed,
+					Message: ptr.To("subnet overlap in VRF \"vrfBad\": IPNet 10.0.2.0/24 (L2VNI /bad-l2-2) overlaps with IPNet 10.0.2.0/24 (L2VNI /bad-l2-1)")},
+			},
+		},
+		{
 			name: "cross-type VNI conflict quarantines L2VNI",
 			l3VNIs: []v1alpha1.L3VNI{
 				l3VNI("good-l3", "vrfA", 100),
@@ -163,6 +183,17 @@ func l2VNI(name string, vrf *string, vni int32) v1alpha1.L2VNI {
 	return v1alpha1.L2VNI{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
 		Spec:       v1alpha1.L2VNISpec{VRF: vrf, VNI: vni},
+	}
+}
+
+func l2VNIWithGateway(name, vrf string, vni int32, gatewayIPs []string) v1alpha1.L2VNI {
+	return v1alpha1.L2VNI{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Spec: v1alpha1.L2VNISpec{
+			VRF:          ptr.To(vrf),
+			VNI:          vni,
+			L2GatewayIPs: gatewayIPs,
+		},
 	}
 }
 

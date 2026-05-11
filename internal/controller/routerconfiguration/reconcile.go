@@ -30,17 +30,16 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, underlay
 	validPassthrough, ptFailures := validatePassthroughsWithQuarantine(apiConfig.L3Passthrough)
 	result.Merge(ptFailures)
 
-	if err := conversion.ValidateVRFs(validL2VNIs, l3Result.ValidL3VNIs); err != nil {
-		return result, fmt.Errorf("failed to validate VRFs: %w", err)
-	}
+	validL3VNIs, validL2VNIs, vrfFailures := validateVRFsWithQuarantine(l3Result.ValidL3VNIs, validL2VNIs)
+	result.Merge(vrfFailures)
 
-	if err := conversion.ValidateHostSessions(l3Result.ValidL3VNIs, validPassthrough); err != nil {
+	if err := conversion.ValidateHostSessions(validL3VNIs, validPassthrough); err != nil {
 		return result, fmt.Errorf("failed to validate host sessions: %w", err)
 	}
 
 	validConfig := conversion.APIConfigData{
 		Underlays:     apiConfig.Underlays,
-		L3VNIs:        l3Result.ValidL3VNIs,
+		L3VNIs:        validL3VNIs,
 		L2VNIs:        validL2VNIs,
 		L3Passthrough: validPassthrough,
 		RawFRRConfigs: apiConfig.RawFRRConfigs,
@@ -133,6 +132,35 @@ func validateL2VNIsWithQuarantine(l2VNIs []v1alpha1.L2VNI, usedVNIs map[int32]st
 		valid = append(valid, l2)
 	}
 	return valid, result
+}
+
+func validateVRFsWithQuarantine(l3VNIs []v1alpha1.L3VNI, l2VNIs []v1alpha1.L2VNI) ([]v1alpha1.L3VNI, []v1alpha1.L2VNI, ReconcileResult) {
+	var result ReconcileResult
+	failedVRFs := conversion.ValidateVRFSubnets(l2VNIs, l3VNIs)
+	if len(failedVRFs) == 0 {
+		return l3VNIs, l2VNIs, result
+	}
+
+	var validL3 []v1alpha1.L3VNI
+	for _, l3 := range l3VNIs {
+		if err, failed := failedVRFs[l3.Spec.VRF]; failed {
+			result.AddFailure(KindL3VNI, l3.Name, v1alpha1.ValidationFailed, err.Error())
+			continue
+		}
+		validL3 = append(validL3, l3)
+	}
+
+	var validL2 []v1alpha1.L2VNI
+	for _, l2 := range l2VNIs {
+		vrfName := l2.VRFName()
+		if err, failed := failedVRFs[vrfName]; failed {
+			result.AddFailure(KindL2VNI, l2.Name, v1alpha1.ValidationFailed, err.Error())
+			continue
+		}
+		validL2 = append(validL2, l2)
+	}
+
+	return validL3, validL2, result
 }
 
 func validatePassthroughsWithQuarantine(passthroughs []v1alpha1.L3Passthrough) ([]v1alpha1.L3Passthrough, ReconcileResult) {
