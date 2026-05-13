@@ -27,6 +27,17 @@ func (n UnderlayRemovedError) Error() string {
 	return "no underlays configured"
 }
 
+// HostConfigurator applies host-level network configuration (interfaces, VNIs, sysctls).
+// Injected into Reconcile so tests can substitute a no-op implementation.
+type HostConfigurator func(ctx context.Context, config interfacesConfiguration) (ReconcileResult, error)
+
+func ConfigureHost(ctx context.Context, config interfacesConfiguration) (ReconcileResult, error) {
+	if err := configureInterfaces(ctx, config); err != nil {
+		return ReconcileResult{}, err
+	}
+	return ReconcileResult{}, nil
+}
+
 func configureInterfaces(ctx context.Context, config interfacesConfiguration) error {
 	hasAlreadyUnderlay, err := hostnetwork.HasUnderlayInterface(config.targetNamespace)
 	if err != nil {
