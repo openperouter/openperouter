@@ -65,7 +65,7 @@ func TestAPItoHostConfig(t *testing.T) {
 			wantUnderlay: hostnetwork.UnderlayParams{
 				UnderlayInterface: "eth0",
 				TargetNS:          "namespace",
-				EVPN: hostnetwork.UnderlayEVPNParams{
+				EVPN: &hostnetwork.UnderlayEVPNParams{
 					VtepIP: "10.0.0.0/32",
 				},
 			},
@@ -103,7 +103,7 @@ func TestAPItoHostConfig(t *testing.T) {
 			wantUnderlay: hostnetwork.UnderlayParams{
 				UnderlayInterface: "eth0",
 				TargetNS:          "namespace",
-				EVPN: hostnetwork.UnderlayEVPNParams{
+				EVPN: &hostnetwork.UnderlayEVPNParams{
 					VtepIP: "10.0.0.0/32",
 				},
 			},
@@ -141,7 +141,7 @@ func TestAPItoHostConfig(t *testing.T) {
 			wantUnderlay: hostnetwork.UnderlayParams{
 				UnderlayInterface: "eth0",
 				TargetNS:          "namespace",
-				EVPN: hostnetwork.UnderlayEVPNParams{
+				EVPN: &hostnetwork.UnderlayEVPNParams{
 					VtepIP: "10.0.0.0/32",
 				},
 			},
@@ -181,7 +181,7 @@ func TestAPItoHostConfig(t *testing.T) {
 			wantUnderlay: hostnetwork.UnderlayParams{
 				UnderlayInterface: "eth0",
 				TargetNS:          "namespace",
-				EVPN: hostnetwork.UnderlayEVPNParams{
+				EVPN: &hostnetwork.UnderlayEVPNParams{
 					VtepIP: "10.0.0.0/32",
 				},
 			},
@@ -216,7 +216,7 @@ func TestAPItoHostConfig(t *testing.T) {
 			wantUnderlay: hostnetwork.UnderlayParams{
 				UnderlayInterface: "eth0",
 				TargetNS:          "namespace",
-				EVPN: hostnetwork.UnderlayEVPNParams{
+				EVPN: &hostnetwork.UnderlayEVPNParams{
 					VtepIP: "10.0.0.0/32",
 				},
 			},
@@ -251,7 +251,7 @@ func TestAPItoHostConfig(t *testing.T) {
 			wantUnderlay: hostnetwork.UnderlayParams{
 				UnderlayInterface: "eth0",
 				TargetNS:          "namespace",
-				EVPN: hostnetwork.UnderlayEVPNParams{
+				EVPN: &hostnetwork.UnderlayEVPNParams{
 					VtepIP: "10.0.0.0/32",
 				},
 			},
@@ -343,7 +343,7 @@ func TestAPItoHostConfig(t *testing.T) {
 			wantUnderlay: hostnetwork.UnderlayParams{
 				UnderlayInterface: "",
 				TargetNS:          "namespace",
-				EVPN: hostnetwork.UnderlayEVPNParams{
+				EVPN: &hostnetwork.UnderlayEVPNParams{
 					VtepIP: "10.0.0.0/32",
 				},
 			},
@@ -364,7 +364,7 @@ func TestAPItoHostConfig(t *testing.T) {
 				},
 			},
 			l2vnis: []v1alpha1.L2VNI{
-				{Spec: v1alpha1.L2VNISpec{VNI: 200, VXLanPort: ptr.To(int32(4789))}},
+				{Spec: v1alpha1.L2VNISpec{VNI: 200, VXLanPort: new(int32(4789))}},
 			},
 			wantErr: true,
 		},
@@ -384,10 +384,10 @@ func TestAPItoHostConfig(t *testing.T) {
 					VRF: "red",
 					HostSession: &v1alpha1.HostSession{
 						LocalCIDR: v1alpha1.LocalCIDRConfig{
-							IPv4: ptr.To("10.1.0.0/24")},
+							IPv4: new("10.1.0.0/24")},
 					},
 					VNI:       100,
-					VXLanPort: ptr.To(int32(4789)),
+					VXLanPort: new(int32(4789)),
 				},
 				},
 			},

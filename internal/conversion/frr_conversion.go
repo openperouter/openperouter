@@ -30,18 +30,14 @@ func APItoFRR(config APIConfigData, nodeIndex int, logLevel string) (frr.Config,
 	rawSnippets := rawConfigSnippets(config.RawFRRConfigs)
 	// If we have raw config, we apply it regardless of the rest of the
 	// configuration. Otherwise, the FRR conversion rejects an empty underlay.
-	if len(config.Underlays) == 0 {
-		if len(rawSnippets) > 0 {
-			slog.Info("no underlay provided, applying raw configuration only")
-			return frr.Config{
-				Loglevel:  logLevel,
-				RawConfig: rawSnippets,
-			}, nil
-		}
-		return frr.Config{}, FRREmptyConfigError("no underlays provided")
+	if len(rawSnippets) > 0 && len(config.Underlays) == 0 {
+		slog.Info("no underlay provided, applying raw configuration only")
+		return frr.Config{
+			Loglevel:  logLevel,
+			RawConfig: rawSnippets,
+		}, nil
 	}
 
-	// Common validation between the FRR and Host config conversion layer.
 	if err := validateAPIConfigData(config); err != nil {
 		return frr.Config{}, err
 	}
@@ -53,12 +49,12 @@ func APItoFRR(config APIConfigData, nodeIndex int, logLevel string) (frr.Config,
 		return frr.Config{}, fmt.Errorf("failed to get routerID: %w", err)
 	}
 
-	underlayNeighbors, err := convertUnderlayNeighborConfig(underlay)
+	underlayNeighbors, err := apiToFRRNeighborConfig(underlay)
 	if err != nil {
 		return frr.Config{}, err
 	}
 
-	underlayConfigEVPN, err := convertUnderlayEVPN(underlay, nodeIndex)
+	underlayConfigEVPN, err := apiToFRREVPN(underlay, nodeIndex)
 	if err != nil {
 		return frr.Config{}, err
 	}
@@ -70,12 +66,12 @@ func APItoFRR(config APIConfigData, nodeIndex int, logLevel string) (frr.Config,
 		EVPN:      underlayConfigEVPN,
 	}
 
-	passthroughConfig, err := convertPassthroughConfig(config.L3Passthrough, nodeIndex)
+	passthroughConfig, err := apiToFRRPassthroughConfig(config.L3Passthrough, nodeIndex)
 	if err != nil {
 		return frr.Config{}, err
 	}
 
-	vniConfigs, err := convertVNIConfigs(underlay, config.L3VNIs, routerID, nodeIndex)
+	vniConfigs, err := apiToFRRL3VNIConfig(underlay, config.L3VNIs, routerID, nodeIndex)
 	if err != nil {
 		return frr.Config{}, err
 	}
@@ -84,15 +80,13 @@ func APItoFRR(config APIConfigData, nodeIndex int, logLevel string) (frr.Config,
 		Underlay:    underlayConfig,
 		VNIs:        vniConfigs,
 		Passthrough: passthroughConfig,
-		BFDProfiles: convertUnderlayBFDProfiles(underlay),
+		BFDProfiles: apiToFRRBFDProfile(underlay),
 		Loglevel:    logLevel,
 		RawConfig:   rawSnippets,
 	}, nil
 }
 
-// convertUnderlayNeighborConfig converts the underlay's Neighbor API resources to a slice of NeighborConfig.
-// It is a helper for APItoFRR to keep cognitive complexity light.
-func convertUnderlayNeighborConfig(underlay v1alpha1.Underlay) ([]frr.NeighborConfig, error) {
+func apiToFRRNeighborConfig(underlay v1alpha1.Underlay) ([]frr.NeighborConfig, error) {
 	underlayNeighbors := []frr.NeighborConfig{}
 	for _, n := range underlay.Spec.Neighbors {
 		frrNeigh, err := neighborToFRR(n)
@@ -104,9 +98,7 @@ func convertUnderlayNeighborConfig(underlay v1alpha1.Underlay) ([]frr.NeighborCo
 	return underlayNeighbors, nil
 }
 
-// convertUnderlayEVPN converts the API custom resources to a pointer of UnderlayEVPN.
-// It is a helper for APItoFRR to keep cognitive complexity light.
-func convertUnderlayEVPN(underlay v1alpha1.Underlay, nodeIndex int) (*frr.UnderlayEvpn, error) {
+func apiToFRREVPN(underlay v1alpha1.Underlay, nodeIndex int) (*frr.UnderlayEvpn, error) {
 	if underlay.Spec.EVPN == nil {
 		return nil, nil
 	}
@@ -122,9 +114,7 @@ func convertUnderlayEVPN(underlay v1alpha1.Underlay, nodeIndex int) (*frr.Underl
 	return underlayConfigEVPN, nil
 }
 
-// convertPassthroughConfig converts the L3Passthrough API resources to a pointer of PassthroughConfig.
-// It is a helper for APItoFRR to keep cognitive complexity light.
-func convertPassthroughConfig(l3Passthrough []v1alpha1.L3Passthrough, nodeIndex int) (*frr.PassthroughConfig, error) {
+func apiToFRRPassthroughConfig(l3Passthrough []v1alpha1.L3Passthrough, nodeIndex int) (*frr.PassthroughConfig, error) {
 	if len(l3Passthrough) == 0 {
 		return nil, nil
 	}
@@ -135,9 +125,7 @@ func convertPassthroughConfig(l3Passthrough []v1alpha1.L3Passthrough, nodeIndex 
 	return passthroughConfig, nil
 }
 
-// convertVNIConfigs converts the API custom resources to a slice of []L3VNIConfig (EVPN).
-// It is a helper for APItoFRR to keep cognitive complexity light.
-func convertVNIConfigs(underlay v1alpha1.Underlay, l3VNIs []v1alpha1.L3VNI, routerID string,
+func apiToFRRL3VNIConfig(underlay v1alpha1.Underlay, l3VNIs []v1alpha1.L3VNI, routerID string,
 	nodeIndex int) ([]frr.L3VNIConfig, error) {
 	vniConfigs := []frr.L3VNIConfig{}
 	for _, vni := range l3VNIs {
@@ -150,9 +138,7 @@ func convertVNIConfigs(underlay v1alpha1.Underlay, l3VNIs []v1alpha1.L3VNI, rout
 	return vniConfigs, nil
 }
 
-// convertUnderlayBFDProfiles converts the underlay's Neighbor API resources to a slice of BFDProfile.
-// It is a helper for APItoFRR to keep cognitive complexity light.
-func convertUnderlayBFDProfiles(underlay v1alpha1.Underlay) []frr.BFDProfile {
+func apiToFRRBFDProfile(underlay v1alpha1.Underlay) []frr.BFDProfile {
 	bfdProfiles := []frr.BFDProfile{}
 	for _, n := range underlay.Spec.Neighbors {
 		bfdProfile := bfdProfileForNeighbor(n)

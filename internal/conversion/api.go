@@ -47,16 +47,18 @@ func MergeAPIConfigs(configs ...APIConfigData) (APIConfigData, error) {
 }
 
 // validateAPIConfigData flags invalid config data.
-// The caller must ensure that length of config.Underlays > 0, otherwise this will panic.
 func validateAPIConfigData(config APIConfigData) error {
+	if len(config.Underlays) == 0 {
+		return FRREmptyConfigError("no underlays provided")
+	}
 	if len(config.Underlays) > 1 {
 		return errors.New("multiple underlays defined")
 	}
 	if len(config.L3Passthrough) > 1 {
 		return errors.New("multiple passthroughs defined, can have only one")
 	}
-
 	underlay := config.Underlays[0]
+
 	if len(config.L3VNIs) > 0 && underlay.Spec.EVPN == nil {
 		return errors.New("EVPN configuration is required when L3 VNIs are defined")
 	}
