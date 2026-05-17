@@ -14,14 +14,14 @@ import (
 
 func TestValidatePassthroughsForNodes(t *testing.T) {
 	tests := []struct {
-		name        string
-		nodes       []corev1.Node
+		name           string
+		nodes          []corev1.Node
 		l3Passthroughs []v1alpha1.L3Passthrough
-		expectedErr error
+		expectedErr    error
 	}{
 		{
-			name:      "no nodes no passthroughs",
-			nodes:     nil,
+			name:           "no nodes no passthroughs",
+			nodes:          nil,
 			l3Passthroughs: nil,
 		},
 		{
@@ -162,16 +162,16 @@ func TestValidatePassthroughsForNodes(t *testing.T) {
 
 func TestValidatePassthroughs(t *testing.T) {
 	tests := []struct {
-		name          string
+		name           string
 		l3Passthroughs []v1alpha1.L3Passthrough
-		expectedErr   error
+		expectedErr    error
 	}{
 		{
-			name:          "no passthroughs",
+			name:           "no passthroughs",
 			l3Passthroughs: nil,
 		},
 		{
-			name:          "empty slice",
+			name:           "empty slice",
 			l3Passthroughs: []v1alpha1.L3Passthrough{},
 		},
 		{
