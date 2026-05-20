@@ -423,12 +423,41 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 		nodeName := routerPod.Spec.NodeName
 		oldPodUID := routerPod.UID
 
+		t0 := time.Now()
+
+		DeferCleanup(func() {
+			if !ginkgo.CurrentSpecReport().Failed() {
+				return
+			}
+			ginkgo.GinkgoWriter.Printf("=== FAILURE-TIME DIAGNOSTICS (at %v) ===\n", time.Since(t0))
+			dumpNetnsState(cs, nodeName)
+		})
+
 		By("deleting the named netns bind mount while the router pod is still running")
 		Expect(openperouter.DeleteNamedNetns(nodeName)).To(Succeed())
+		ginkgo.GinkgoWriter.Printf("TIMING: T0 netns deleted at %v\n", time.Since(t0))
+
+		monitorCtx, monitorCancel := context.WithCancel(context.Background())
+		defer monitorCancel()
+		go func() {
+			for {
+				select {
+				case <-monitorCtx.Done():
+					return
+				case <-time.After(time.Second):
+					_, err := executor.Host.Exec("ip", "link", "show", "kindctrlpl")
+					if err != nil {
+						ginkgo.GinkgoWriter.Printf("TIMING: kindctrlpl disappeared at %v (old netns dead)\n", time.Since(t0))
+						return
+					}
+				}
+			}
+		}()
 
 		By("deleting the router pod so FRR exits and the netns is truly destroyed")
 		err = cs.CoreV1().Pods(openperouter.Namespace).Delete(context.Background(), routerPod.Name, metav1.DeleteOptions{})
 		Expect(err).NotTo(HaveOccurred())
+		ginkgo.GinkgoWriter.Printf("TIMING: T1 pod delete API call at %v\n", time.Since(t0))
 
 		By("waiting for the old router pod to be fully terminated")
 		Eventually(func() error {
@@ -438,14 +467,18 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 			MatchError(apierrors.IsNotFound, "NOT FOUND"),
 			"the router pod must be gone from the API",
 		)
+		ginkgo.GinkgoWriter.Printf("TIMING: T2 old pod 404 at %v\n", time.Since(t0))
 
 		By("collecting diagnostic state to identify what keeps the old netns alive")
 		dumpNetnsState(cs, nodeName)
+		ginkgo.GinkgoWriter.Printf("TIMING: T3 diagnostics done at %v\n", time.Since(t0))
 
 		By("waiting for check_veths to recreate the underlay veth destroyed by netns deletion")
 		Eventually(func() bool {
 			return openperouter.UnderlayVethExists(nodeName)
 		}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(BeTrue())
+		ginkgo.GinkgoWriter.Printf("TIMING: T4 toswitch found at %v\n", time.Since(t0))
+		monitorCancel()
 
 		By("waiting for the controller to recreate the named netns")
 		Eventually(func() (bool, error) {
@@ -752,6 +785,8 @@ func dumpNetnsState(cs clientset.Interface, nodeName string) {
 			args  []string
 		}{
 			{"controller mountinfo (perouter)", []string{"bash", "-c", "cat /proc/self/mountinfo | grep perouter || echo 'no perouter mount found'"}},
+			{"controller perouter mount count", []string{"bash", "-c", "echo -n 'count: '; cat /proc/self/mountinfo | grep -c perouter || echo 0"}},
+			{"controller nsfs fd count", []string{"bash", "-c", "echo -n 'count: '; ls -la /proc/1/fd/ 2>/dev/null | grep -c nsfs || echo 0"}},
 			{"controller ls /var/run/netns/", []string{"ls", "/var/run/netns/"}},
 			{"controller ip netns list", []string{"ip", "netns", "list"}},
 		} {
@@ -772,9 +807,11 @@ func dumpNetnsState(cs clientset.Interface, nodeName string) {
 		args  []string
 	}{
 		{"KIND node mountinfo (perouter)", []string{"bash", "-c", "cat /proc/self/mountinfo | grep perouter || echo 'no perouter mount found'"}},
+		{"KIND node perouter mount count", []string{"bash", "-c", "echo -n 'count: '; cat /proc/self/mountinfo | grep -c perouter || echo 0"}},
 		{"KIND node ls /var/run/netns/", []string{"ls", "/var/run/netns/"}},
 		{"KIND node ip netns list", []string{"ip", "netns", "list"}},
 		{"KIND node lsns -t net", []string{"lsns", "-t", "net"}},
+		{"KIND node netns holders", []string{"bash", "-c", "for p in /proc/[0-9]*/ns/net; do readlink $p 2>/dev/null; done | sort | uniq -c | sort -rn | head -10"}},
 	} {
 		out, err := nodeExec.Exec(cmd.args[0], cmd.args[1:]...)
 		if err != nil {
