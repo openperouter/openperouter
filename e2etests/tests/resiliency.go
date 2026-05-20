@@ -439,6 +439,9 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 			"the router pod must be gone from the API",
 		)
 
+		By("collecting diagnostic state to identify what keeps the old netns alive")
+		dumpNetnsState(cs, nodeName)
+
 		By("waiting for check_veths to recreate the underlay veth destroyed by netns deletion")
 		Eventually(func() bool {
 			return openperouter.UnderlayVethExists(nodeName)
@@ -723,6 +726,72 @@ func dumpUnderlayVeths(cs clientset.Interface, label string) {
 			w.Printf("DIAG [%s]: bridge port %s:\n%s\n", label, port, out)
 		}
 	}
+}
+
+func dumpNetnsState(cs clientset.Interface, nodeName string) {
+	w := ginkgo.GinkgoWriter
+	w.Printf("=== DIAG: netns state after pod termination (node %s) ===\n", nodeName)
+
+	controllerPods, err := k8s.PodsForLabel(cs, openperouter.Namespace, "app=controller")
+	if err != nil {
+		w.Printf("DIAG: failed to list controller pods: %v\n", err)
+		return
+	}
+	var controllerPod *v1.Pod
+	for _, p := range controllerPods {
+		if p.Spec.NodeName == nodeName {
+			controllerPod = p
+			break
+		}
+	}
+
+	if controllerPod != nil {
+		ctrlExec := executor.ForPod(controllerPod.Namespace, controllerPod.Name, "controller")
+		for _, cmd := range []struct {
+			label string
+			args  []string
+		}{
+			{"controller mountinfo (perouter)", []string{"bash", "-c", "cat /proc/self/mountinfo | grep perouter || echo 'no perouter mount found'"}},
+			{"controller ls /var/run/netns/", []string{"ls", "/var/run/netns/"}},
+			{"controller ip netns list", []string{"ip", "netns", "list"}},
+		} {
+			out, err := ctrlExec.Exec(cmd.args[0], cmd.args[1:]...)
+			if err != nil {
+				w.Printf("DIAG: %s: error: %v (output: %s)\n", cmd.label, err, out)
+			} else {
+				w.Printf("DIAG: %s:\n%s\n", cmd.label, out)
+			}
+		}
+	} else {
+		w.Printf("DIAG: no controller pod found on node %s\n", nodeName)
+	}
+
+	nodeExec := executor.ForContainer(nodeName)
+	for _, cmd := range []struct {
+		label string
+		args  []string
+	}{
+		{"KIND node mountinfo (perouter)", []string{"bash", "-c", "cat /proc/self/mountinfo | grep perouter || echo 'no perouter mount found'"}},
+		{"KIND node ls /var/run/netns/", []string{"ls", "/var/run/netns/"}},
+		{"KIND node ip netns list", []string{"ip", "netns", "list"}},
+		{"KIND node lsns -t net", []string{"lsns", "-t", "net"}},
+	} {
+		out, err := nodeExec.Exec(cmd.args[0], cmd.args[1:]...)
+		if err != nil {
+			w.Printf("DIAG: %s: error: %v (output: %s)\n", cmd.label, err, out)
+		} else {
+			w.Printf("DIAG: %s:\n%s\n", cmd.label, out)
+		}
+	}
+
+	out, err := executor.Host.Exec("ip", "link", "show", "kindctrlpl")
+	if err != nil {
+		w.Printf("DIAG: CI host kindctrlpl: not found (old netns likely dead)\n")
+	} else {
+		w.Printf("DIAG: CI host kindctrlpl (still alive = old netns held open):\n%s\n", out)
+	}
+
+	w.Printf("=== END netns diagnostics ===\n")
 }
 
 func dumpPreTrafficState(cs clientset.Interface, nodeName string) {
