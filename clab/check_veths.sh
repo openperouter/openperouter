@@ -19,29 +19,23 @@ function container_exists {
 }
 
 
-function peer_exists_in_container {
-    "$CONTAINER_ENGINE_CLI" exec "$1" ip link show "$2" &>/dev/null && return 0
-    "$CONTAINER_ENGINE_CLI" exec "$1" ip netns exec perouter ip link show "$2" &>/dev/null && return 0
-    "$CONTAINER_ENGINE_CLI" exec "$1" bash -c \
-        'test -f /etc/perouter/frr/frr.pid && nsenter -t $(cat /etc/perouter/frr/frr.pid) -n ip link show '"$2" &>/dev/null && return 0
-    return 1
-}
+function ensure_veth {
+  VETH_NAME=$1
+  PEER_NAME=$2
+  CONTAINER_NAME=$3
+  CONTAINER_SIDE_IP=$4
 
-function recreate_veth {
-    VETH_NAME=$1
-    PEER_NAME=$2
-    CONTAINER_NAME=$3
-    CONTAINER_SIDE_IP=$4
-    TEMP_PEER_NAME="${PEER_NAME}_temp"
+  TEMP_PEER_NAME="${PEER_NAME}_temp"
+  if ! veth_exists "$VETH_NAME"; then
+    echo "Veth $VETH_NAME not there, recreating"
 
-    # Clean up stale interfaces
-    ip link delete "$VETH_NAME" 2>/dev/null || true
+    # Clean up stale interfaces from previous failed attempts
     "$CONTAINER_ENGINE_CLI" exec "$CONTAINER_NAME" ip link delete "$PEER_NAME" 2>/dev/null || true
     "$CONTAINER_ENGINE_CLI" exec "$CONTAINER_NAME" ip link delete "$TEMP_PEER_NAME" 2>/dev/null || true
     ip link delete "$TEMP_PEER_NAME" 2>/dev/null || true
 
     ip link add "$VETH_NAME" type veth peer name "$TEMP_PEER_NAME"
-    echo "Veth $VETH_NAME recreated"
+    echo "Veth $VETH_NAME not there, recreated"
     pid=$("$CONTAINER_ENGINE_CLI" inspect -f '{{.State.Pid}}' "$CONTAINER_NAME")
     ip link set "$TEMP_PEER_NAME" netns "$pid"
     ip link set "$VETH_NAME" up
@@ -56,20 +50,6 @@ function recreate_veth {
     MAC_ADDR="02:ed:$[RANDOM%10]$[RANDOM%10]:$[RANDOM%10]$[RANDOM%10]:$[RANDOM%10]$[RANDOM%10]:$[RANDOM%10]$[RANDOM%10]"
     "$CONTAINER_ENGINE_CLI" exec "$CONTAINER_NAME" ip link set "$PEER_NAME" address "$MAC_ADDR"
     "$CONTAINER_ENGINE_CLI" exec "$CONTAINER_NAME" ip link set "$PEER_NAME" up
-}
-
-function ensure_veth {
-  VETH_NAME=$1
-  PEER_NAME=$2
-  CONTAINER_NAME=$3
-  CONTAINER_SIDE_IP=$4
-
-  if ! veth_exists "$VETH_NAME"; then
-    echo "Veth $VETH_NAME not there, recreating"
-    recreate_veth "$VETH_NAME" "$PEER_NAME" "$CONTAINER_NAME" "$CONTAINER_SIDE_IP"
-  elif ! peer_exists_in_container "$CONTAINER_NAME" "$PEER_NAME"; then
-    echo "Veth $VETH_NAME exists but peer $PEER_NAME missing in container, recreating"
-    recreate_veth "$VETH_NAME" "$PEER_NAME" "$CONTAINER_NAME" "$CONTAINER_SIDE_IP"
   fi
 }
 
