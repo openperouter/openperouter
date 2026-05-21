@@ -433,7 +433,7 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 			dumpNetnsState(cs, nodeName)
 		})
 
-		By("capturing the initial perouter netns inode before deletion")
+		By("capturing the initial perouter netns inode and container process tree before deletion")
 		nodeExec := executor.ForContainer(nodeName)
 		oldNetnsInode, err := nodeExec.Exec("bash", "-c",
 			"cat /proc/self/mountinfo | grep '/run/netns/perouter' | awk '{print $4}'")
@@ -441,6 +441,41 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 			ginkgo.GinkgoWriter.Printf("DIAG: failed to get initial netns inode: %v\n", err)
 		} else {
 			ginkgo.GinkgoWriter.Printf("DIAG: initial (OLD) perouter netns inode: %s\n", strings.TrimSpace(oldNetnsInode))
+		}
+
+		var oldMntNS, oldShimPID string
+		if strings.TrimSpace(oldNetnsInode) != "" {
+			containerInfo, infoErr := nodeExec.Exec("bash", "-c", fmt.Sprintf(`inode='%s'
+for p in /proc/[0-9]*/ns/net; do
+  pid=${p#/proc/}; pid=${pid%%%%/*}
+  if [ "$(readlink "$p" 2>/dev/null)" = "$inode" ]; then
+    mntns=$(readlink /proc/$pid/ns/mnt 2>/dev/null)
+    echo "OLD_MNTNS=$mntns"
+    current=$pid
+    for i in 1 2 3 4 5; do
+      ppid=$(awk '/PPid/{print $2}' /proc/$current/status 2>/dev/null)
+      cmd=$(cat /proc/$current/cmdline 2>/dev/null | tr '\0' ' ' | head -c 120)
+      echo "CHAIN: pid=$current ppid=$ppid cmd=$cmd"
+      case "$cmd" in *containerd-shim*) echo "OLD_SHIM_PID=$current" ;; esac
+      [ -z "$ppid" ] || [ "$ppid" = "0" ] && break
+      current=$ppid
+    done
+    break
+  fi
+done`, strings.TrimSpace(oldNetnsInode)))
+			if infoErr != nil {
+				ginkgo.GinkgoWriter.Printf("DIAG: failed to get old container info: %v\n", infoErr)
+			} else {
+				ginkgo.GinkgoWriter.Printf("DIAG: old container process tree:\n%s\n", containerInfo)
+				for _, line := range strings.Split(containerInfo, "\n") {
+					if strings.HasPrefix(line, "OLD_MNTNS=") {
+						oldMntNS = strings.TrimPrefix(line, "OLD_MNTNS=")
+					}
+					if strings.HasPrefix(line, "OLD_SHIM_PID=") {
+						oldShimPID = strings.TrimPrefix(line, "OLD_SHIM_PID=")
+					}
+				}
+			}
 		}
 
 		By("deleting the named netns bind mount while the router pod is still running")
@@ -478,6 +513,46 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 			"the router pod must be gone from the API",
 		)
 		ginkgo.GinkgoWriter.Printf("TIMING: T2 old pod 404 at %v\n", time.Since(t0))
+
+		By("checking if old container's containerd-shim and mount namespace survived pod termination")
+		if oldShimPID != "" {
+			shimOut, shimErr := nodeExec.Exec("bash", "-c", fmt.Sprintf(`shim_pid='%s'
+if [ -d /proc/$shim_pid ]; then
+  echo "SHIM ALIVE: pid=$shim_pid cmd=$(cat /proc/$shim_pid/cmdline 2>/dev/null | tr '\0' ' ' | head -c 120)"
+  echo "SHIM FDS:"
+  for fd in /proc/$shim_pid/fd/*; do
+    target=$(readlink "$fd" 2>/dev/null)
+    case "$target" in *nsfs*|*net:*|*mnt:*|*":[[]"*) echo "  fd=$(basename $fd) -> $target" ;; esac
+  done
+else
+  echo "SHIM GONE: pid=$shim_pid"
+fi`, strings.TrimSpace(oldShimPID)))
+			if shimErr != nil {
+				ginkgo.GinkgoWriter.Printf("DIAG: shim check error: %v\n", shimErr)
+			} else {
+				ginkgo.GinkgoWriter.Printf("DIAG: old containerd-shim status:\n%s\n", shimOut)
+			}
+		}
+		if oldMntNS != "" {
+			mntOut, mntErr := nodeExec.Exec("bash", "-c", fmt.Sprintf(`old_mntns='%s'
+echo "searching for processes still in old FRR mount namespace $old_mntns:"
+found=0
+for p in /proc/[0-9]*/ns/mnt; do
+  pid=${p#/proc/}; pid=${pid%%%%/*}
+  if [ "$(readlink "$p" 2>/dev/null)" = "$old_mntns" ]; then
+    cmd=$(cat /proc/$pid/cmdline 2>/dev/null | tr '\0' ' ' | head -c 100)
+    netns=$(readlink /proc/$pid/ns/net 2>/dev/null)
+    echo "  HOLDER: pid=$pid netns=$netns cmd=$cmd"
+    found=1
+  fi
+done
+[ $found -eq 0 ] && echo "  none found (mount namespace fully cleaned up)"`, strings.TrimSpace(oldMntNS)))
+			if mntErr != nil {
+				ginkgo.GinkgoWriter.Printf("DIAG: mount namespace survivor check error: %v\n", mntErr)
+			} else {
+				ginkgo.GinkgoWriter.Printf("DIAG: old mount namespace survivors:\n%s\n", mntOut)
+			}
+		}
 
 		By("collecting diagnostic state to identify what keeps the old netns alive")
 		dumpNetnsState(cs, nodeName)
