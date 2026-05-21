@@ -5,6 +5,8 @@
 
 package ovsmodel
 
+import "maps"
+
 import "github.com/ovn-kubernetes/libovsdb/model"
 
 const AutoAttachTable = "AutoAttach"
@@ -30,9 +32,7 @@ func copyAutoAttachMappings(a map[int]int) map[int]int {
 		return nil
 	}
 	b := make(map[int]int, len(a))
-	for k, v := range a {
-		b[k] = v
-	}
+	maps.Copy(b, a)
 	return b
 }
 

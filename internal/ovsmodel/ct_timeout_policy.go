@@ -5,6 +5,8 @@
 
 package ovsmodel
 
+import "maps"
+
 import "github.com/ovn-kubernetes/libovsdb/model"
 
 const CTTimeoutPolicyTable = "CT_Timeout_Policy"
@@ -52,9 +54,7 @@ func copyCTTimeoutPolicyExternalIDs(a map[string]string) map[string]string {
 		return nil
 	}
 	b := make(map[string]string, len(a))
-	for k, v := range a {
-		b[k] = v
-	}
+	maps.Copy(b, a)
 	return b
 }
 
@@ -82,9 +82,7 @@ func copyCTTimeoutPolicyTimeouts(a map[string]int) map[string]int {
 		return nil
 	}
 	b := make(map[string]int, len(a))
-	for k, v := range a {
-		b[k] = v
-	}
+	maps.Copy(b, a)
 	return b
 }
 

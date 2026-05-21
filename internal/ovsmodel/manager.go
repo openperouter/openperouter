@@ -5,6 +5,8 @@
 
 package ovsmodel
 
+import "maps"
+
 import "github.com/ovn-kubernetes/libovsdb/model"
 
 const ManagerTable = "Manager"
@@ -66,9 +68,7 @@ func copyManagerExternalIDs(a map[string]string) map[string]string {
 		return nil
 	}
 	b := make(map[string]string, len(a))
-	for k, v := range a {
-		b[k] = v
-	}
+	maps.Copy(b, a)
 	return b
 }
 
@@ -144,9 +144,7 @@ func copyManagerOtherConfig(a map[string]string) map[string]string {
 		return nil
 	}
 	b := make(map[string]string, len(a))
-	for k, v := range a {
-		b[k] = v
-	}
+	maps.Copy(b, a)
 	return b
 }
 
@@ -174,9 +172,7 @@ func copyManagerStatus(a map[string]string) map[string]string {
 		return nil
 	}
 	b := make(map[string]string, len(a))
-	for k, v := range a {
-		b[k] = v
-	}
+	maps.Copy(b, a)
 	return b
 }
 

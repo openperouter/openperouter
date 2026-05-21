@@ -5,6 +5,8 @@
 
 package ovsmodel
 
+import "maps"
+
 import "github.com/ovn-kubernetes/libovsdb/model"
 
 const FlowSampleCollectorSetTable = "Flow_Sample_Collector_Set"
@@ -35,9 +37,7 @@ func copyFlowSampleCollectorSetExternalIDs(a map[string]string) map[string]strin
 		return nil
 	}
 	b := make(map[string]string, len(a))
-	for k, v := range a {
-		b[k] = v
-	}
+	maps.Copy(b, a)
 	return b
 }
 

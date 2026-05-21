@@ -5,6 +5,8 @@
 
 package ovsmodel
 
+import "maps"
+
 import "github.com/ovn-kubernetes/libovsdb/model"
 
 const BridgeTable = "Bridge"
@@ -145,9 +147,7 @@ func copyBridgeExternalIDs(a map[string]string) map[string]string {
 		return nil
 	}
 	b := make(map[string]string, len(a))
-	for k, v := range a {
-		b[k] = v
-	}
+	maps.Copy(b, a)
 	return b
 }
 
@@ -225,9 +225,7 @@ func copyBridgeFlowTables(a map[int]string) map[int]string {
 		return nil
 	}
 	b := make(map[int]string, len(a))
-	for k, v := range a {
-		b[k] = v
-	}
+	maps.Copy(b, a)
 	return b
 }
 
@@ -335,9 +333,7 @@ func copyBridgeOtherConfig(a map[string]string) map[string]string {
 		return nil
 	}
 	b := make(map[string]string, len(a))
-	for k, v := range a {
-		b[k] = v
-	}
+	maps.Copy(b, a)
 	return b
 }
 
@@ -425,9 +421,7 @@ func copyBridgeRSTPStatus(a map[string]string) map[string]string {
 		return nil
 	}
 	b := make(map[string]string, len(a))
-	for k, v := range a {
-		b[k] = v
-	}
+	maps.Copy(b, a)
 	return b
 }
 
@@ -477,9 +471,7 @@ func copyBridgeStatus(a map[string]string) map[string]string {
 		return nil
 	}
 	b := make(map[string]string, len(a))
-	for k, v := range a {
-		b[k] = v
-	}
+	maps.Copy(b, a)
 	return b
 }
 

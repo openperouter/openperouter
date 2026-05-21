@@ -5,6 +5,8 @@
 
 package ovsmodel
 
+import "maps"
+
 import "github.com/ovn-kubernetes/libovsdb/model"
 
 const PortTable = "Port"
@@ -153,9 +155,7 @@ func copyPortExternalIDs(a map[string]string) map[string]string {
 		return nil
 	}
 	b := make(map[string]string, len(a))
-	for k, v := range a {
-		b[k] = v
-	}
+	maps.Copy(b, a)
 	return b
 }
 
@@ -263,9 +263,7 @@ func copyPortOtherConfig(a map[string]string) map[string]string {
 		return nil
 	}
 	b := make(map[string]string, len(a))
-	for k, v := range a {
-		b[k] = v
-	}
+	maps.Copy(b, a)
 	return b
 }
 
@@ -319,9 +317,7 @@ func copyPortRSTPStatistics(a map[string]int) map[string]int {
 		return nil
 	}
 	b := make(map[string]int, len(a))
-	for k, v := range a {
-		b[k] = v
-	}
+	maps.Copy(b, a)
 	return b
 }
 
@@ -349,9 +345,7 @@ func copyPortRSTPStatus(a map[string]string) map[string]string {
 		return nil
 	}
 	b := make(map[string]string, len(a))
-	for k, v := range a {
-		b[k] = v
-	}
+	maps.Copy(b, a)
 	return b
 }
 
@@ -379,9 +373,7 @@ func copyPortStatistics(a map[string]int) map[string]int {
 		return nil
 	}
 	b := make(map[string]int, len(a))
-	for k, v := range a {
-		b[k] = v
-	}
+	maps.Copy(b, a)
 	return b
 }
 
@@ -409,9 +401,7 @@ func copyPortStatus(a map[string]string) map[string]string {
 		return nil
 	}
 	b := make(map[string]string, len(a))
-	for k, v := range a {
-		b[k] = v
-	}
+	maps.Copy(b, a)
 	return b
 }
 

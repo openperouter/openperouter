@@ -5,6 +5,8 @@
 
 package ovsmodel
 
+import "maps"
+
 import "github.com/ovn-kubernetes/libovsdb/model"
 
 const OpenvSwitchTable = "Open_vSwitch"
@@ -104,9 +106,7 @@ func copyOpenvSwitchDatapaths(a map[string]string) map[string]string {
 		return nil
 	}
 	b := make(map[string]string, len(a))
-	for k, v := range a {
-		b[k] = v
-	}
+	maps.Copy(b, a)
 	return b
 }
 
@@ -182,9 +182,7 @@ func copyOpenvSwitchExternalIDs(a map[string]string) map[string]string {
 		return nil
 	}
 	b := make(map[string]string, len(a))
-	for k, v := range a {
-		b[k] = v
-	}
+	maps.Copy(b, a)
 	return b
 }
 
@@ -272,9 +270,7 @@ func copyOpenvSwitchOtherConfig(a map[string]string) map[string]string {
 		return nil
 	}
 	b := make(map[string]string, len(a))
-	for k, v := range a {
-		b[k] = v
-	}
+	maps.Copy(b, a)
 	return b
 }
 
@@ -346,9 +342,7 @@ func copyOpenvSwitchStatistics(a map[string]string) map[string]string {
 		return nil
 	}
 	b := make(map[string]string, len(a))
-	for k, v := range a {
-		b[k] = v
-	}
+	maps.Copy(b, a)
 	return b
 }
 

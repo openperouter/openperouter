@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -278,10 +279,5 @@ func vnisFromExtendedCommunity(extendedCommunity string) ([]int, error) {
 }
 
 func containsVNI(vnis []int, vni int) bool {
-	for _, v := range vnis {
-		if v == vni {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(vnis, vni)
 }

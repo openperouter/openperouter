@@ -19,7 +19,7 @@ func NamedNetnsExists(nodeName string) (bool, error) {
 	}
 	// Each line of "ip netns list" is "<name>" or "<name> (id: N)".
 	// Use exact name comparison to avoid "perouter" matching inside "openperouter".
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		fields := strings.Fields(line)
 		if len(fields) > 0 && fields[0] == namedNetns {
 			return true, nil
