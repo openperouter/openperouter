@@ -226,7 +226,7 @@ func generateL2VNIs(count int, namespace, bridgeType string) []v1alpha1.L2VNI {
 	const baseVNI = 1000
 
 	vnis := make([]v1alpha1.L2VNI, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		vrfName := fmt.Sprintf("vrf%03d", i+1)
 		vnis[i] = v1alpha1.L2VNI{
 			ObjectMeta: metav1.ObjectMeta{
@@ -250,7 +250,7 @@ func generateL3VNIsWithL2VNIs(count int, namespace, bridgeType string) ([]v1alph
 	l3vnis := make([]v1alpha1.L3VNI, count)
 	l2vnis := make([]v1alpha1.L2VNI, count)
 
-	for i := 0; i < count; i++ {
+	for i := range count {
 		vrfName := fmt.Sprintf("vrf%03d", i+1)
 
 		l3vnis[i] = v1alpha1.L3VNI{
