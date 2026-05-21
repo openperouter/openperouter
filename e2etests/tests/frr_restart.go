@@ -118,9 +118,9 @@ var _ = Describe("North/south traffic after FRR container restart", Ordered, fun
 		Expect(err).NotTo(HaveOccurred())
 
 		DeferCleanup(func() {
+			dumpIfFails(cs, testNamespace)
 			Expect(infra.LeafAConfig.Reset()).To(Succeed())
 			Expect(infra.LeafBConfig.Reset()).To(Succeed())
-			dumpIfFails(cs)
 			err := Updater.CleanButUnderlay()
 			Expect(err).NotTo(HaveOccurred())
 			err = k8s.DeleteNamespace(cs, testNamespace)

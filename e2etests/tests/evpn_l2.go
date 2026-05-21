@@ -124,9 +124,9 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		nadMaster                                                         string              // Bridge name for NAD (defaults to "br-hs-110")
 	}
 	AfterEach(func() {
+		dumpIfFails(cs, testNamespace)
 		Expect(infra.LeafAConfig.Reset()).To(Succeed())
 		Expect(infra.LeafBConfig.Reset()).To(Succeed())
-		dumpIfFails(cs)
 		err := Updater.CleanButUnderlay()
 		Expect(err).NotTo(HaveOccurred())
 		err = k8s.DeleteNamespace(cs, testNamespace)
@@ -427,8 +427,8 @@ var _ = Describe("Routes between bgp and the fabric - vtepInterface", func() {
 	})
 
 	AfterEach(func() {
+		dumpIfFails(cs, testNamespace)
 		resetLeafKindConfig(nodes)
-		dumpIfFails(cs)
 		err := Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
 

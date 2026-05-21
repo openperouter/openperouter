@@ -160,7 +160,7 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 		})
 
 		AfterEach(func() {
-			dumpIfFails(cs)
+			dumpIfFails(cs, testNamespace)
 
 			By("Deleting test namespace")
 			Expect(k8s.DeleteNamespace(cs, testNamespace)).To(Succeed())
@@ -247,7 +247,7 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 				Expect(len(nodes)).To(BeNumerically(">=", 2), "Expected at least 2 nodes")
 
 				DeferCleanup(func() {
-					dumpIfFails(cs)
+					dumpIfFails(cs, testNamespace)
 
 					By("Deleting test namespace")
 					Expect(k8s.DeleteNamespace(cs, testNamespace)).To(Succeed())
