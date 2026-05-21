@@ -433,6 +433,16 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 			dumpNetnsState(cs, nodeName)
 		})
 
+		By("capturing the initial perouter netns inode before deletion")
+		nodeExec := executor.ForContainer(nodeName)
+		oldNetnsInode, err := nodeExec.Exec("bash", "-c",
+			"cat /proc/self/mountinfo | grep '/run/netns/perouter' | awk '{print $4}'")
+		if err != nil {
+			ginkgo.GinkgoWriter.Printf("DIAG: failed to get initial netns inode: %v\n", err)
+		} else {
+			ginkgo.GinkgoWriter.Printf("DIAG: initial (OLD) perouter netns inode: %s\n", strings.TrimSpace(oldNetnsInode))
+		}
+
 		By("deleting the named netns bind mount while the router pod is still running")
 		Expect(openperouter.DeleteNamedNetns(nodeName)).To(Succeed())
 		ginkgo.GinkgoWriter.Printf("TIMING: T0 netns deleted at %v\n", time.Since(t0))
