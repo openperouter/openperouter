@@ -546,9 +546,9 @@ for p in /proc/[0-9]*/ns/mnt; do
     found=1
   fi
 done
-[ $found -eq 0 ] && echo "  none found (mount namespace fully cleaned up)"`, strings.TrimSpace(oldMntNS)))
+if [ $found -eq 0 ]; then echo "  none found (mount namespace fully cleaned up)"; fi`, strings.TrimSpace(oldMntNS)))
 			if mntErr != nil {
-				ginkgo.GinkgoWriter.Printf("DIAG: mount namespace survivor check error: %v\n", mntErr)
+				ginkgo.GinkgoWriter.Printf("DIAG: mount namespace survivor check error: %v (output: %s)\n", mntErr, mntOut)
 			} else {
 				ginkgo.GinkgoWriter.Printf("DIAG: old mount namespace survivors:\n%s\n", mntOut)
 			}
