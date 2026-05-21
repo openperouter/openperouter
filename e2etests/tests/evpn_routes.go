@@ -337,7 +337,7 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 		})
 
 		AfterEach(func() {
-			dumpIfFails(cs)
+			dumpIfFails(cs, testNamespace)
 		})
 
 		DescribeTable("should be able to reach the hosts from the test pod and vice versa", func(
@@ -517,7 +517,7 @@ var _ = Describe("Routes between bgp and the fabric with iBGP testing e2e integr
 	})
 
 	AfterEach(func() {
-		dumpIfFails(cs)
+		dumpIfFails(cs, testNamespace)
 
 		By("Deleting the test namespace")
 		err := k8s.DeleteNamespace(cs, testNamespace)

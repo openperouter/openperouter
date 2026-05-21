@@ -342,7 +342,7 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 	const testNamespace = "test-namespace-rebuild"
 
 	AfterEach(func() {
-		dumpIfFails(cs)
+		dumpIfFails(cs, testNamespace)
 		dumpUnderlayVeths(cs, "Beta AfterEach before cleanup")
 		err := Updater.CleanButUnderlay()
 		Expect(err).NotTo(HaveOccurred())
