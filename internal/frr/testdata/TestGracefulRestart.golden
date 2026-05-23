@@ -15,6 +15,7 @@ router bgp 64512
   bgp graceful-restart restart-time 120
   bgp graceful-restart stalepath-time 360
   neighbor 192.168.1.2 remote-as 64512
+  neighbor 192.168.1.2 soft-reconfiguration inbound
   
   
   

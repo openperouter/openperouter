@@ -4,6 +4,7 @@
   {{- else }}
   neighbor {{.neighbor.Interface}} interface remote-as {{.neighbor.ASN}}
   {{- end }}
+  neighbor {{ .neighbor.ID }} soft-reconfiguration inbound
   {{- if .neighbor.EBGPMultiHop }}
   neighbor {{.neighbor.ID}} ebgp-multihop
   {{- end }}

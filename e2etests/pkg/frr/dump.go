@@ -43,6 +43,7 @@ func RawDump(exec executor.Executor) string {
 	}
 
 	perNeighborCommands := []string{
+		"show bgp %s neighbors %s received-routes",
 		"show bgp %s neighbors %s advertised-routes",
 		"show bgp %s neighbors %s advertised-routes detail",
 		"show bgp %s neighbors %s graceful-restart",
