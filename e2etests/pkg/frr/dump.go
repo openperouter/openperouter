@@ -44,6 +44,7 @@ func RawDump(exec executor.Executor) string {
 	neighbors, err := getBGPNeighbors(exec)
 	if err == nil {
 		perNeighborCommands := []string{
+			"show ip bgp neighbors %s received-routes",
 			"show ip bgp neighbors %s advertised-routes",
 			"show ip bgp neighbors %s advertised-routes detail",
 			"show bgp neighbors %s graceful-restart",
