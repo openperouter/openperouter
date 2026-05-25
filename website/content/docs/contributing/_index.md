@@ -157,6 +157,12 @@ Or omit the version to automatically fetch and use the latest:
 make bump-go-version
 ```
 
+## Code Style and Formatting
+
+All Go code must be formatted with `go fmt`. CI enforces this automatically.
+
+**Style preference**: Use multi-line format for slices/structs with multiple elements for better readability in code review.
+
 ## Commit Messages
 
 The following are our commit message guidelines:
