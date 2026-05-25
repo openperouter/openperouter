@@ -3,11 +3,14 @@
 package tests
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"path"
 	"regexp"
+	"slices"
+	"strings"
 
 	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -18,12 +21,20 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	"sigs.k8s.io/yaml"
 )
 
-func dumpIfFails(cs clientset.Interface) {
+func dumpIfFails(cs clientset.Interface, additionalNamespaces ...string) {
+	slices.Sort(additionalNamespaces)
+	additionalNamespaces = slices.Compact(additionalNamespaces)
+
 	if ginkgo.CurrentSpecReport().Failed() {
-		dumpBGPInfo(ReportPath, ginkgo.CurrentSpecReport().FullText(), cs, infra.LeafA, infra.LeafB, infra.KindLeaf)
+		dumpFRRInfo(ReportPath, ginkgo.CurrentSpecReport().FullText(), cs, infra.LeafA, infra.LeafB, infra.KindLeaf)
+		for _, namespace := range additionalNamespaces {
+			dumpWorkloadInfo(ReportPath, ginkgo.CurrentSpecReport().FullText(), cs, namespace)
+		}
 		k8s.DumpInfo(K8sReporter, ginkgo.CurrentSpecReport().FullText())
 		if HostMode {
 			dumpPodmanInfo(cs, ReportPath, ginkgo.CurrentSpecReport().FullText())
@@ -31,12 +42,13 @@ func dumpIfFails(cs clientset.Interface) {
 	}
 }
 
-func dumpBGPInfo(basePath, testName string, cs clientset.Interface, clabContainers ...string) {
+func dumpFRRInfo(basePath, testName string, cs clientset.Interface, clabContainers ...string) {
 	testPath, err := createTestOutput(basePath, testName)
 	if err != nil {
-		ginkgo.GinkgoWriter.Printf("failed to create test dir: %s", err)
+		ginkgo.GinkgoWriter.Printf("dumpFRRInfo: failed to create test dir: %v", err)
 		return
 	}
+
 	executors := map[string]executor.Executor{}
 	for _, c := range clabContainers {
 		exec := executor.ForContainer(c)
@@ -60,22 +72,99 @@ func dumpBGPInfo(basePath, testName string, cs clientset.Interface, clabContaine
 	}
 
 	for name, exec := range executors {
-		dump, err := frr.RawDump(exec)
-		if err != nil {
-			ginkgo.GinkgoWriter.Printf("External frr dump for %s failed %v", name, err)
+		func() {
+			dump := frr.RawDump(exec)
+			f, err := logFileFor(testPath, fmt.Sprintf("frrdump-%s", name))
+			if err != nil {
+				ginkgo.GinkgoWriter.Printf("dumpFRRInfo: external frr dump for container %s, failed to open file %v", name, err)
+				return
+			}
+			defer func() {
+				if err := f.Close(); err != nil {
+					ginkgo.GinkgoWriter.Printf("dumpFRRInfo: failed to close file %s, err: %v", f.Name(), err)
+				}
+			}()
+			fmt.Fprintf(f, "Dumping information for %s", name)
+			if _, err = fmt.Fprint(f, dump); err != nil {
+				ginkgo.GinkgoWriter.Printf("dumpFRRInfo: external frr dump for container %s, failed to write to file %v", name, err)
+				return
+			}
+		}()
+	}
+}
+
+// dumpWorkloadInfo gathers the pod list inside namespace and stores it in a file, in YAML format.
+// It also runs an executor inside each pod where it collects basic networking information.
+func dumpWorkloadInfo(basePath, testName string, cs clientset.Interface, namespace string) {
+	testPath, err := createTestOutput(basePath, testName)
+	if err != nil {
+		ginkgo.GinkgoWriter.Printf("dumpWorkloadInfo: failed to create test dir: %s", err)
+		return
+	}
+
+	pods, err := cs.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		ginkgo.GinkgoWriter.Printf("dumpWorkloadInfo: failed to list pods in namespace %s: %v", namespace, err)
+		return
+	}
+	dumpPodList(pods.Items, testPath, namespace)
+
+	executors := map[string]executor.Executor{}
+	for _, pod := range pods.Items {
+		if len(pod.Spec.Containers) == 0 {
 			continue
 		}
-		f, err := logFileFor(testPath, fmt.Sprintf("frrdump-%s", name))
-		if err != nil {
-			ginkgo.GinkgoWriter.Printf("External frr dump for container %s, failed to open file %v", name, err)
-			continue
+		// All containers in a pod share the same network namespace.
+		container := pod.Spec.Containers[0]
+		exec := executor.ForPod(pod.Namespace, pod.Name, container.Name)
+		executors[fmt.Sprintf("%s-%s", pod.Namespace, pod.Name)] = exec
+	}
+
+	for name, exec := range executors {
+		func() {
+			dump := podNetworkInfo(exec)
+			f, err := logFileFor(testPath, fmt.Sprintf("pod-container-dump-%s", name))
+			if err != nil {
+				ginkgo.GinkgoWriter.Printf("dumpWorkloadInfo: external dump for pod container %s, failed to open file %v", name, err)
+				return
+			}
+			defer func() {
+				if err := f.Close(); err != nil {
+					ginkgo.GinkgoWriter.Printf("dumpWorkloadInfo: failed to close file %s, err: %v", f.Name(), err)
+				}
+			}()
+			fmt.Fprintf(f, "Dumping information for %s", name)
+			if _, err = fmt.Fprint(f, dump); err != nil {
+				ginkgo.GinkgoWriter.Printf("dumpWorkloadInfo: external dump for pod container %s, failed to write to file %v", name, err)
+				return
+			}
+		}()
+	}
+}
+
+func dumpPodList(pods []corev1.Pod, testPath, namespace string) {
+	fileName := fmt.Sprintf("pod-list-namespace-%s", namespace)
+	f, err := logFileFor(testPath, fileName)
+	if err != nil {
+		ginkgo.GinkgoWriter.Printf("dumpPodList: failed to open file %s for namespace %s: %v",
+			fileName, namespace, err)
+		return
+	}
+	defer func() {
+		if err := f.Close(); err != nil {
+			ginkgo.GinkgoWriter.Printf("dumpPodList: failed to close file %s, err: %v", f.Name(), err)
 		}
-		fmt.Fprintf(f, "Dumping information for %s", name)
-		_, err = fmt.Fprint(f, dump)
-		if err != nil {
-			ginkgo.GinkgoWriter.Printf("External frr dump for container %s, failed to write to file %v", name, err)
-			continue
-		}
+	}()
+	fmt.Fprintf(f, "Dumping pod YAMLs for namespace %s\n", namespace)
+	out, err := yaml.Marshal(pods)
+	if err != nil {
+		ginkgo.GinkgoWriter.Printf("dumpPodList: failed to marshal pods to yaml for namespace %s: %v",
+			namespace, err)
+		return
+	}
+	if _, err = fmt.Fprint(f, string(out)); err != nil {
+		ginkgo.GinkgoWriter.Printf("dumpPodList: failed to write to file %s for namespace %s: %v",
+			fileName, namespace, err)
 	}
 }
 
@@ -91,24 +180,24 @@ func logFileFor(base string, kind string) (*os.File, error) {
 func dumpPodmanInfo(cs clientset.Interface, basePath, testName string) {
 	testPath, err := createTestOutput(basePath, testName)
 	if err != nil {
-		ginkgo.GinkgoWriter.Printf("failed to create test dir: %s", err)
+		ginkgo.GinkgoWriter.Printf("dumpPodmanInfo: failed to create test dir: %s", err)
 		return
 	}
 
 	nodes, err := k8s.GetNodes(cs)
 	if err != nil {
-		ginkgo.GinkgoWriter.Printf("Failed to get nodes for podman dump: %v", err)
+		ginkgo.GinkgoWriter.Printf("dumpPodmanInfo: failed to get nodes: %v", err)
 		return
 	}
 
 	dump, err := openperouter.DumpPodmanLogs(nodes)
 	if err != nil {
-		ginkgo.GinkgoWriter.Printf("Podman dump failed: %v", err)
+		ginkgo.GinkgoWriter.Printf("dumpPodmanInfo: failed to dump podman logs: %v", err)
 	}
 
 	f, err := logFileFor(testPath, "podmandump")
 	if err != nil {
-		ginkgo.GinkgoWriter.Printf("Podman dump failed to open file: %v", err)
+		ginkgo.GinkgoWriter.Printf("dumpPodmanInfo: failed to open file: %v", err)
 		return
 	}
 	defer f.Close()
@@ -116,7 +205,7 @@ func dumpPodmanInfo(cs clientset.Interface, basePath, testName string) {
 	fmt.Fprint(f, "Dumping podman information\n")
 	_, err = fmt.Fprint(f, dump)
 	if err != nil {
-		ginkgo.GinkgoWriter.Printf("Podman dump failed to write to file: %v", err)
+		ginkgo.GinkgoWriter.Printf("dumpPodmanInfo: failed to write to file: %v", err)
 		return
 	}
 }
@@ -144,4 +233,29 @@ func createTestOutput(basePath, testName string) (string, error) {
 		return "", fmt.Errorf("failed to create test dir: %w", err)
 	}
 	return testPath, nil
+}
+
+func podNetworkInfo(exec executor.Executor) string {
+	var res strings.Builder
+
+	commands := []struct {
+		desc string
+		cmd  []string
+	}{
+		{"ip link", []string{"bash", "-c", "ip l"}},
+		{"ip address", []string{"bash", "-c", "ip address"}},
+		{"ip neigh", []string{"bash", "-c", "ip neigh"}},
+		{"Detailed interface statistics", []string{"bash", "-c", "ip -s -s link ls"}},
+		{"ip route table all", []string{"bash", "-c", "ip route show table all"}},
+	}
+
+	for _, c := range commands {
+		fmt.Fprintf(&res, "\n######## %s\n\n", c.desc)
+		out, err := exec.Exec(c.cmd[0], c.cmd[1:]...)
+		if err != nil {
+			fmt.Fprintf(&res, "\nFailed exec %q: %v", strings.Join(c.cmd, " "), err)
+		}
+		res.WriteString(out)
+	}
+	return res.String()
 }

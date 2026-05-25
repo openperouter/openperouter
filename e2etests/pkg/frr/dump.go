@@ -3,53 +3,97 @@
 package frr
 
 import (
-	"errors"
+	"encoding/json"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/openperouter/openperouter/e2etests/pkg/executor"
+	"github.com/openperouter/openperouter/e2etests/pkg/ipfamily"
 )
 
-func RawDump(exec executor.Executor) (string, error) {
-	res := ""
-	allerrs := errors.New("")
+type command struct {
+	desc           string
+	cmd            []string
+	skipLogOnError bool // true means that we will not log anything (not even the failure) in case of an error.
+}
 
-	commands := []struct {
-		desc string
-		cmd  []string
-	}{
-		{"Show version", []string{"vtysh", "-c", "show version"}},
-		{"Show running config", []string{"vtysh", "-c", "show running-config"}},
-		{"BGP Summary", []string{"vtysh", "-c", "show bgp vrf all summary"}},
-		{"BGP Neighbors", []string{"vtysh", "-c", "show bgp vrf all neighbor"}},
-		{"RIB ipv4", []string{"vtysh", "-c", "show ip route"}},
-		{"RIB ipv6", []string{"vtysh", "-c", "show ipv6 route"}},
-		{"BGP route table ipv4", []string{"vtysh", "-c", "show bgp vrf all ipv4"}},
-		{"BGP route table ipv6", []string{"vtysh", "-c", "show bgp vrf all ipv6"}},
-		{"EVPN Routes", []string{"vtysh", "-c", "show bgp l2vpn evpn"}},
-		{"Zebra interface information", []string{"vtysh", "-c", "show interface"}},
-		{"ip link", []string{"bash", "-c", "ip l"}},
-		{"ip address", []string{"bash", "-c", "ip address"}},
-		{"ip neigh", []string{"bash", "-c", "ip neigh"}},
-		{"Detailed interface statistics", []string{"bash", "-c", "ip -s -s link ls"}},
-		{"ip vrf", []string{"bash", "-c", "ip vrf"}},
-		{"ip route table all", []string{"bash", "-c", "ip route show table all"}},
-		{"bridge fdb (vni110)", []string{"bash", "-c", "bridge fdb show dev vni110"}},
-		{"bridge fdb (br-pe-110)", []string{"bash", "-c", "bridge fdb show dev br-pe-110"}},
+func RawDump(exec executor.Executor) string {
+	var res strings.Builder
+
+	commands := []command{
+		{desc: "Show version", cmd: []string{"vtysh", "-c", "show version"}},
+		{desc: "Show running config", cmd: []string{"vtysh", "-c", "show running-config"}},
+		{desc: "BGP Summary", cmd: []string{"vtysh", "-c", "show bgp vrf all summary"}},
+		{desc: "BGP Neighbors", cmd: []string{"vtysh", "-c", "show bgp vrf all neighbor"}},
+		{desc: "RIB ipv4", cmd: []string{"vtysh", "-c", "show ip route"}},
+		{desc: "RIB ipv6", cmd: []string{"vtysh", "-c", "show ipv6 route"}},
+		{desc: "BGP route table ipv4", cmd: []string{"vtysh", "-c", "show bgp vrf all ipv4"}},
+		{desc: "BGP route table ipv6", cmd: []string{"vtysh", "-c", "show bgp vrf all ipv6"}},
+		{desc: "EVPN Routes", cmd: []string{"vtysh", "-c", "show bgp l2vpn evpn"}},
+		{desc: "Zebra interface information", cmd: []string{"vtysh", "-c", "show interface"}},
+		{desc: "ip link", cmd: []string{"bash", "-c", "ip l"}},
+		{desc: "ip address", cmd: []string{"bash", "-c", "ip address"}},
+		{desc: "ip neigh", cmd: []string{"bash", "-c", "ip neigh"}},
+		{desc: "Detailed interface statistics", cmd: []string{"bash", "-c", "ip -s -s link ls"}},
+		{desc: "ip vrf", cmd: []string{"bash", "-c", "ip vrf"}},
+		{desc: "ip route table all", cmd: []string{"bash", "-c", "ip route show table all"}},
+		{desc: "bridge fdb show", cmd: []string{"bash", "-c", "bridge fdb show"}},
 	}
+
+	perNeighborCommands := []string{
+		"show bgp %s neighbors %s advertised-routes",
+		"show bgp %s neighbors %s advertised-routes detail",
+		"show bgp %s neighbors %s graceful-restart",
+	}
+	for _, family := range []ipfamily.Family{ipfamily.IPv4, ipfamily.IPv6} {
+		neighbors, err := getBGPNeighbors(exec, family)
+		if err != nil {
+			continue
+		}
+		for _, neighbor := range neighbors {
+			for _, perNeighborCommand := range perNeighborCommands {
+				cmd := fmt.Sprintf(perNeighborCommand, family, neighbor)
+				commands = append(commands, command{
+					desc: cmd, cmd: []string{"vtysh", "-c", cmd},
+				})
+			}
+		}
+	}
+
+	// Collect logs from /etc/frr/frr.log. This is for the leaf and leafkind
+	// docker containers only and will fail for the router pods.
+	// Will only work on leaf/leafkind, so skip error reporting.
+	commands = append(commands, command{
+		desc:           "cat /etc/frr/frr.log",
+		cmd:            []string{"bash", "-c", "cat /etc/frr/frr.log"},
+		skipLogOnError: true,
+	})
 
 	for _, c := range commands {
-		res += fmt.Sprintf("\n######## %s\n\n", c.desc)
 		out, err := exec.Exec(c.cmd[0], c.cmd[1:]...)
-		if err != nil {
-			allerrs = errors.Join(allerrs, fmt.Errorf("\nFailed exec %q: %v", strings.Join(c.cmd, " "), err))
+		if err != nil && c.skipLogOnError {
+			continue
 		}
-		res += out
+		fmt.Fprintf(&res, "\n######## %s\n\n", c.desc)
+		if err != nil {
+			fmt.Fprintf(&res, "\nFailed exec %q: %v", strings.Join(c.cmd, " "), err)
+		}
+		res.WriteString(out)
 	}
 
-	if allerrs.Error() == "" {
-		allerrs = nil
-	}
+	return res.String()
+}
 
-	return res, allerrs
+func getBGPNeighbors(exec executor.Executor, family ipfamily.Family) ([]string, error) {
+	out, err := exec.Exec("vtysh", "-c", fmt.Sprintf("show bgp %s neighbors json", family))
+	if err != nil {
+		return nil, fmt.Errorf("getBGPNeighbors: command failed: %w", err)
+	}
+	neighbors := map[string]any{}
+	if err = json.Unmarshal([]byte(out), &neighbors); err != nil {
+		return nil, fmt.Errorf("getBGPNeighbors: unmarshalling failed: out: %s, err: %w", out, err)
+	}
+	return slices.Collect(maps.Keys(neighbors)), nil
 }

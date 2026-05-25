@@ -85,7 +85,7 @@ vet: ## Run go vet against code.
 test: fmt vet envtest $(LOCALBIN) ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v e2etest) -coverprofile cover.out
 	@RUNASROOT_TESTS=""; \
-	for pkg in $$(grep -rl "//go:build runasroot" --include="*_test.go" . | xargs -I{} dirname {} | sort -u); do \
+	for pkg in $$(grep -rl "//go:build runasroot" --include="*_test.go" $$(go list -f '{{.Dir}}' ./...) | xargs -I{} dirname {} | sort -u); do \
 		name=$$(basename $$pkg); \
 		go test -tags=runasroot -c -race -o $(LOCALBIN)/$$name.test $$pkg; \
 		RUNASROOT_TESTS="$$RUNASROOT_TESTS /src/bin/$$name.test"; \

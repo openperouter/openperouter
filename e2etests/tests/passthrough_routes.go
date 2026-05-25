@@ -221,7 +221,7 @@ var _ = Describe("Routes between bgp and the fabric", Label("passthrough"), Orde
 		})
 
 		AfterEach(func() {
-			dumpIfFails(cs)
+			dumpIfFails(cs, testNamespace)
 		})
 
 		It("host and the pod from each other with the expected ips", func() {
