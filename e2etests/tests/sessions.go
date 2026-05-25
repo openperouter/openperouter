@@ -784,7 +784,7 @@ var _ = Describe("Underlay BFD Configuration", Ordered, func() {
 					ASN:  64514,
 					Nics: []string{"toswitch"},
 					EVPN: &v1alpha1.EVPNConfig{
-						VTEPCIDR: new("100.65.0.0/24"),
+						VTEPCIDR: "100.65.0.0/24",
 					},
 					Neighbors: []v1alpha1.Neighbor{
 						{
@@ -805,7 +805,7 @@ var _ = Describe("Underlay BFD Configuration", Ordered, func() {
 					ASN:  64514,
 					Nics: []string{"toswitch"},
 					EVPN: &v1alpha1.EVPNConfig{
-						VTEPCIDR: new("100.65.0.0/24"),
+						VTEPCIDR: "100.65.0.0/24",
 					},
 					Neighbors: []v1alpha1.Neighbor{
 						{
@@ -822,3 +822,5 @@ var _ = Describe("Underlay BFD Configuration", Ordered, func() {
 			}),
 	)
 })
+
+

@@ -433,7 +433,7 @@ var _ = Describe("Routes between bgp and the fabric with iBGP testing e2e integr
 				},
 			},
 			EVPN: &v1alpha1.EVPNConfig{
-				VTEPCIDR: new("100.65.0.0/24"),
+				VTEPCIDR: "100.65.0.0/24",
 			},
 		},
 	}

@@ -13,7 +13,7 @@ import (
 
 const nodeIndexAnnotation = "openpe.io/nodeindex"
 
-func VtepIPForNode(cidr *string, node *corev1.Node) (string, error) {
+func VtepIPForNode(cidr string, node *corev1.Node) (string, error) {
 	if node.Annotations == nil ||
 		node.Annotations[nodeIndexAnnotation] == "" {
 		return "", fmt.Errorf("no index for node %s", node.Name)
@@ -22,10 +22,10 @@ func VtepIPForNode(cidr *string, node *corev1.Node) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("non int index %s for node %s", node.Annotations[nodeIndexAnnotation], node.Name)
 	}
-	if cidr == nil || *cidr == "" {
-		return "", fmt.Errorf("missign vtep cidr")
+	if cidr == "" {
+		return "", fmt.Errorf("missing vtep cidr")
 	}
-	_, vtepCIDR, err := net.ParseCIDR(*cidr)
+	_, vtepCIDR, err := net.ParseCIDR(cidr)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse cidr %s: %w", cidr, err)
 	}

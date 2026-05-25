@@ -201,7 +201,7 @@ func validateUnderlay(g Gomega, params UnderlayParams, interfaceIPs ...string) {
 
 	}
 	if params.EVPN != nil && params.EVPN.VtepIP == "" {
-		g.Expect(loopbackFound).To(BeFalse(), fmt.Sprintf("loopback should not exist when vtepInterface is set, links %v", links))
+		g.Expect(loopbackFound).To(BeFalse(), fmt.Sprintf("loopback should not exist when vtepIP is empty, links %v", links))
 	} else if params.EVPN != nil {
 		g.Expect(loopbackFound).To(BeTrue(), fmt.Sprintf("failed to find loopback in ns, links %v", links))
 	}

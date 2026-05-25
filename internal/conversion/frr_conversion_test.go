@@ -41,7 +41,7 @@ func TestAPItoFRR(t *testing.T) {
 					Spec: v1alpha1.UnderlaySpec{
 						ASN: 65000,
 						EVPN: &v1alpha1.EVPNConfig{
-							VTEPCIDR: new("192.168.1.0/24"),
+							VTEPCIDR: "192.168.1.0/24",
 						},
 						RouterIDCIDR: new("10.0.0.0/24"),
 						Neighbors:    []v1alpha1.Neighbor{{Address: "192.168.1.1", ASN: new(int64(65001))}},
@@ -82,7 +82,7 @@ func TestAPItoFRR(t *testing.T) {
 					Spec: v1alpha1.UnderlaySpec{
 						ASN: 65000,
 						EVPN: &v1alpha1.EVPNConfig{
-							VTEPCIDR: new("192.168.1.0/24"),
+							VTEPCIDR: "192.168.1.0/24",
 						},
 						RouterIDCIDR: new("10.0.0.0/24"),
 						Neighbors:    []v1alpha1.Neighbor{{Address: "192.168.1.1", Type: new("external")}},
@@ -123,7 +123,7 @@ func TestAPItoFRR(t *testing.T) {
 					Spec: v1alpha1.UnderlaySpec{
 						ASN: 65000,
 						EVPN: &v1alpha1.EVPNConfig{
-							VTEPCIDR: new("192.168.1.0/24"),
+							VTEPCIDR: "192.168.1.0/24",
 						},
 						RouterIDCIDR: new("10.0.0.0/24"),
 						Neighbors: []v1alpha1.Neighbor{
@@ -169,7 +169,7 @@ func TestAPItoFRR(t *testing.T) {
 					Spec: v1alpha1.UnderlaySpec{
 						ASN: 65000,
 						EVPN: &v1alpha1.EVPNConfig{
-							VTEPCIDR: new("192.168.1.0/24"),
+							VTEPCIDR: "192.168.1.0/24",
 						},
 						RouterIDCIDR: new("10.0.0.0/24"),
 						Neighbors: []v1alpha1.Neighbor{
@@ -215,7 +215,7 @@ func TestAPItoFRR(t *testing.T) {
 					Spec: v1alpha1.UnderlaySpec{
 						ASN: 65000,
 						EVPN: &v1alpha1.EVPNConfig{
-							VTEPCIDR: new("192.168.1.0/24"),
+							VTEPCIDR: "192.168.1.0/24",
 						},
 						RouterIDCIDR: new("10.0.0.0/24"),
 						Neighbors:    []v1alpha1.Neighbor{{Address: "192.168.1.1", ASN: new(int64(65001))}},
@@ -284,7 +284,7 @@ func TestAPItoFRR(t *testing.T) {
 					Spec: v1alpha1.UnderlaySpec{
 						ASN: 65000,
 						EVPN: &v1alpha1.EVPNConfig{
-							VTEPCIDR: new("192.168.1.0/24"),
+							VTEPCIDR: "192.168.1.0/24",
 						},
 						RouterIDCIDR: new("10.0.0.0/24"),
 						Neighbors:    []v1alpha1.Neighbor{{Address: "192.168.1.1", ASN: new(int64(65001))}},
@@ -353,7 +353,7 @@ func TestAPItoFRR(t *testing.T) {
 					Spec: v1alpha1.UnderlaySpec{
 						ASN: 65000,
 						EVPN: &v1alpha1.EVPNConfig{
-							VTEPCIDR: new("192.168.1.0/24"),
+							VTEPCIDR: "192.168.1.0/24",
 						},
 						RouterIDCIDR: new("10.0.0.0/24"),
 						Neighbors:    []v1alpha1.Neighbor{{Address: "192.168.1.1", ASN: new(int64(65001))}},
@@ -435,7 +435,7 @@ func TestAPItoFRR(t *testing.T) {
 					Spec: v1alpha1.UnderlaySpec{
 						ASN: 65000,
 						EVPN: &v1alpha1.EVPNConfig{
-							VTEPCIDR: new("192.168.1.0/24"),
+							VTEPCIDR: "192.168.1.0/24",
 						},
 						RouterIDCIDR: new("10.0.0.0/24"),
 						Neighbors: []v1alpha1.Neighbor{
@@ -497,7 +497,7 @@ func TestAPItoFRR(t *testing.T) {
 					Spec: v1alpha1.UnderlaySpec{
 						ASN: 65000,
 						EVPN: &v1alpha1.EVPNConfig{
-							VTEPCIDR: new("192.168.1.0/24"),
+							VTEPCIDR: "192.168.1.0/24",
 						},
 						RouterIDCIDR: new("10.0.0.0/24"),
 						Neighbors: []v1alpha1.Neighbor{
@@ -546,7 +546,7 @@ func TestAPItoFRR(t *testing.T) {
 					Spec: v1alpha1.UnderlaySpec{
 						ASN: 65000,
 						EVPN: &v1alpha1.EVPNConfig{
-							VTEPCIDR: new("192.168.1.0/24"),
+							VTEPCIDR: "192.168.1.0/24",
 						},
 						RouterIDCIDR: new("10.0.0.0/24"),
 						Neighbors:    []v1alpha1.Neighbor{{Address: "192.168.1.1", ASN: new(int64(65001))}},
@@ -602,7 +602,7 @@ func TestAPItoFRR(t *testing.T) {
 					Spec: v1alpha1.UnderlaySpec{
 						ASN: 65000,
 						EVPN: &v1alpha1.EVPNConfig{
-							VTEPCIDR: new("192.168.1.0/24"),
+							VTEPCIDR: "192.168.1.0/24",
 						},
 						RouterIDCIDR: new("10.0.0.0/24"),
 						Neighbors:    []v1alpha1.Neighbor{{Address: "192.168.1.1", ASN: new(int64(65001))}},
@@ -675,7 +675,7 @@ func TestAPItoFRR(t *testing.T) {
 					Spec: v1alpha1.UnderlaySpec{
 						ASN: 65000,
 						EVPN: &v1alpha1.EVPNConfig{
-							VTEPCIDR: new("192.168.1.0/24"),
+							VTEPCIDR: "192.168.1.0/24",
 						},
 						RouterIDCIDR: new("10.0.0.0/24"),
 						Neighbors:    []v1alpha1.Neighbor{{Address: "192.168.1.1", ASN: new(int64(65001))}},
@@ -735,7 +735,7 @@ func TestAPItoFRR(t *testing.T) {
 					Spec: v1alpha1.UnderlaySpec{
 						ASN: 65000,
 						EVPN: &v1alpha1.EVPNConfig{
-							VTEPCIDR: new("192.168.1.0/24"),
+							VTEPCIDR: "192.168.1.0/24",
 						},
 						RouterIDCIDR: new("10.0.0.0/24"),
 						Neighbors:    []v1alpha1.Neighbor{{Address: "192.168.1.1", ASN: new(int64(65001))}},
@@ -804,7 +804,7 @@ func TestAPItoFRR(t *testing.T) {
 					Spec: v1alpha1.UnderlaySpec{
 						ASN: 65000,
 						EVPN: &v1alpha1.EVPNConfig{
-							VTEPCIDR: new("192.168.1.0/24"),
+							VTEPCIDR: "192.168.1.0/24",
 						},
 						RouterIDCIDR: new("10.0.0.0/24"),
 						Neighbors:    []v1alpha1.Neighbor{{Address: "192.168.1.1", ASN: new(int64(65001))}},
@@ -874,7 +874,7 @@ func TestAPItoFRR(t *testing.T) {
 					Spec: v1alpha1.UnderlaySpec{
 						ASN: 65000,
 						EVPN: &v1alpha1.EVPNConfig{
-							VTEPCIDR: new("192.168.1.0/24"),
+							VTEPCIDR: "192.168.1.0/24",
 						},
 						RouterIDCIDR: new("10.0.0.0/24"),
 						Neighbors:    []v1alpha1.Neighbor{{Address: "192.168.1.1", ASN: new(int64(65001))}},
@@ -979,7 +979,7 @@ func TestAPItoFRR(t *testing.T) {
 					Spec: v1alpha1.UnderlaySpec{
 						ASN: 65000,
 						EVPN: &v1alpha1.EVPNConfig{
-							VTEPCIDR: new("192.168.1.0/24"),
+							VTEPCIDR: "192.168.1.0/24",
 						},
 						RouterIDCIDR: new("10.0.0.0/24"),
 						Neighbors:    []v1alpha1.Neighbor{{Address: "192.168.1.1", ASN: new(int64(65001))}},
@@ -1045,7 +1045,7 @@ func TestAPItoFRR(t *testing.T) {
 					Spec: v1alpha1.UnderlaySpec{
 						ASN: 65000,
 						EVPN: &v1alpha1.EVPNConfig{
-							VTEPCIDR: new("192.168.1.0/24"),
+							VTEPCIDR: "192.168.1.0/24",
 						},
 						RouterIDCIDR: new("10.0.0.0/24"),
 						Neighbors:    []v1alpha1.Neighbor{{Address: "192.168.1.1", ASN: new(int64(65001))}},
@@ -1112,7 +1112,7 @@ func TestAPItoFRR(t *testing.T) {
 					Spec: v1alpha1.UnderlaySpec{
 						ASN: 65000,
 						EVPN: &v1alpha1.EVPNConfig{
-							VTEPCIDR: new("192.168.1.0/24"),
+							VTEPCIDR: "192.168.1.0/24",
 						},
 						RouterIDCIDR: new("10.0.0.0/24"),
 						Neighbors:    []v1alpha1.Neighbor{{Address: "192.168.1.1", ASN: new(int64(65001))}},
@@ -1171,45 +1171,7 @@ func TestAPItoFRR(t *testing.T) {
 			},
 			wantErr: false,
 		},
-		{
-			name:      "vtepInterface sets EVPN with empty VTEP",
-			nodeIndex: 0,
-			underlays: []v1alpha1.Underlay{
-				{
-					Spec: v1alpha1.UnderlaySpec{
-						ASN: 65000,
-						EVPN: &v1alpha1.EVPNConfig{
-							VTEPInterface: new("eth1"),
-						},
-						RouterIDCIDR: new("10.0.0.0/24"),
-						Neighbors:    []v1alpha1.Neighbor{{Address: "192.168.1.1", ASN: new(int64(65001))}},
-					},
-				},
-			},
-			vnis:          []v1alpha1.L3VNI{},
-			l3Passthrough: []v1alpha1.L3Passthrough{},
-			logLevel:      "debug",
-			want: frr.Config{
-				Underlay: frr.UnderlayConfig{
-					MyASN:    65000,
-					EVPN:     &frr.UnderlayEvpn{},
-					RouterID: "10.0.0.1",
-					Neighbors: []frr.NeighborConfig{
-						{
-							Name:         "65001@192.168.1.1",
-							ASN:          mustNewPeerASNFromNumber(65001),
-							Addr:         "192.168.1.1",
-							IPFamily:     ipfamily.IPv4,
-							EBGPMultiHop: false,
-						},
-					},
-				},
-				VNIs:        []frr.L3VNIConfig{},
-				BFDProfiles: []frr.BFDProfile{},
-				Loglevel:    "debug",
-			},
-			wantErr: false,
-		},
+
 		{
 			name:      "l3vni with matching L2 gateway IPv4",
 			nodeIndex: 0,
@@ -1628,7 +1590,7 @@ func TestAPItoFRRGracefulRestart(t *testing.T) {
 			Neighbors: []v1alpha1.Neighbor{
 				{ASN: new(int64(64517)), Address: "192.168.11.2"},
 			},
-			EVPN: &v1alpha1.EVPNConfig{VTEPCIDR: new("100.65.0.0/24")},
+			EVPN: &v1alpha1.EVPNConfig{VTEPCIDR: "100.65.0.0/24"},
 		},
 	}
 

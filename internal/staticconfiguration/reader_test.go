@@ -221,7 +221,7 @@ func TestReadRouterConfigsFromFiles(t *testing.T) {
 			},
 		},
 		EVPN: &v1alpha1.EVPNConfig{
-			VTEPCIDR: new("100.65.0.0/24"),
+			VTEPCIDR: "100.65.0.0/24",
 		},
 	}
 

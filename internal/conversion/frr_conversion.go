@@ -156,10 +156,10 @@ func evpnToFRR(underlay v1alpha1.Underlay, nodeIndex int) (*frr.UnderlayEvpn, er
 		return nil, nil
 	}
 	evpn := &frr.UnderlayEvpn{}
-	if vtepCIDR := ptr.Deref(underlay.Spec.EVPN.VTEPCIDR, ""); vtepCIDR != "" {
-		vtepIP, err := ipam.VTEPIp(vtepCIDR, nodeIndex)
+	if underlay.Spec.EVPN.VTEPCIDR != "" {
+		vtepIP, err := ipam.VTEPIp(underlay.Spec.EVPN.VTEPCIDR, nodeIndex)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get vtep ip, cidr %s, nodeIndex %d: %w", vtepCIDR, nodeIndex, err)
+			return nil, fmt.Errorf("failed to get vtep ip, cidr %s, nodeIndex %d: %w", underlay.Spec.EVPN.VTEPCIDR, nodeIndex, err)
 		}
 		evpn.VTEP = vtepIP.String()
 	}

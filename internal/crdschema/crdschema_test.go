@@ -272,22 +272,16 @@ func TestValidateSuccessful(t *testing.T) {
 			gvk:  underlayGVK,
 			obj: newUnstructured("Underlay", map[string]any{
 				"asn":  int64(65000),
+				"nics": []any{"eth0"},
 				"evpn": map[string]any{"vtepCIDR": "10.10.0.0/24"},
-			}),
-		},
-		{
-			name: "Underlay EVPN with only vtepInterface",
-			gvk:  underlayGVK,
-			obj: newUnstructured("Underlay", map[string]any{
-				"asn":  int64(65000),
-				"evpn": map[string]any{"vtepInterface": "eth0"},
 			}),
 		},
 		{
 			name: "Underlay Neighbor without hostasn",
 			gvk:  underlayGVK,
 			obj: newUnstructured("Underlay", map[string]any{
-				"asn": int64(65000),
+				"asn":  int64(65000),
+				"nics": []any{"eth0"},
 				"neighbors": []any{
 					map[string]any{
 						"address": "192.168.1.1",
@@ -300,7 +294,8 @@ func TestValidateSuccessful(t *testing.T) {
 			name: "Underlay Neighbor with different hostasn and asn",
 			gvk:  underlayGVK,
 			obj: newUnstructured("Underlay", map[string]any{
-				"asn": int64(65000),
+				"asn":  int64(65000),
+				"nics": []any{"eth0"},
 				"neighbors": []any{
 					map[string]any{
 						"address": "192.168.1.1",
@@ -420,27 +415,6 @@ func TestValidateFailure(t *testing.T) {
 		obj       *unstructured.Unstructured
 		errSubstr string
 	}{
-		{
-			name: "EVPN with both vtepCIDR and vtepInterface",
-			gvk:  underlayGVK,
-			obj: newUnstructured("Underlay", map[string]any{
-				"asn": int64(65000),
-				"evpn": map[string]any{
-					"vtepCIDR":      "10.10.0.0/24",
-					"vtepInterface": "eth0",
-				},
-			}),
-			errSubstr: "exactly one of vtepCIDR or vtepInterface must be specified",
-		},
-		{
-			name: "EVPN with neither vtepCIDR nor vtepInterface",
-			gvk:  underlayGVK,
-			obj: newUnstructured("Underlay", map[string]any{
-				"asn":  int64(65000),
-				"evpn": map[string]any{},
-			}),
-			errSubstr: "exactly one of vtepCIDR or vtepInterface must be specified",
-		},
 		{
 			name: "LinuxBridge with both name and autoCreate true",
 			gvk:  l2vniGVK,
@@ -629,42 +603,6 @@ func TestValidateOldSelfFiltering(t *testing.T) {
 }
 
 func TestValidateMultipleErrors(t *testing.T) {
-	t.Run("EVPN with both vteps", func(t *testing.T) {
-		obj := newUnstructured("Underlay", map[string]any{
-			"asn": int64(65000),
-			"evpn": map[string]any{
-				"vtepCIDR":      "10.10.0.0/24",
-				"vtepInterface": "eth0",
-			},
-			"neighbors": []any{
-				map[string]any{
-					"address": "192.168.1.1",
-					"asn":     int64(65001),
-				},
-			},
-		})
-
-		if err := ApplyDefaults(obj, underlayGVK); err != nil {
-			t.Fatalf("ApplyDefaults() returned error: %v", err)
-		}
-
-		errs := Validate(context.Background(), obj, underlayGVK)
-		if len(errs) == 0 {
-			t.Fatal("expected validation errors, got none")
-		}
-
-		found := false
-		for _, e := range errs {
-			msg := e.Error()
-			if strings.Contains(msg, "exactly one of vtepCIDR or vtepInterface must be specified") {
-				found = true
-			}
-		}
-		if !found {
-			t.Error("missing VTEP validation error")
-		}
-	})
-
 	t.Run("LinuxBridge both name and autoCreate plus type mismatch", func(t *testing.T) {
 		obj := newUnstructured("L2VNI", map[string]any{
 			"hostmaster": map[string]any{

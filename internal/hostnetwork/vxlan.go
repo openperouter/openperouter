@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/openperouter/openperouter/internal/ipfamily"
 	"github.com/vishvananda/netlink"
 	"k8s.io/utils/ptr"
 )
@@ -64,18 +63,14 @@ func checkVXLanConfigured(vxLan *netlink.Vxlan, bridgeIndex, loopbackIndex int, 
 }
 
 func createVXLan(params VNIParams, bridge *netlink.Bridge) (*netlink.Vxlan, error) {
-	vtepInterfaceName := UnderlayLoopback
-	if vtepIface := ptr.Deref(params.VTEPInterface, ""); vtepIface != "" {
-		vtepInterfaceName = vtepIface
-	}
-	vtepInterface, err := net.InterfaceByName(vtepInterfaceName)
+	loopback, err := net.InterfaceByName(UnderlayLoopback)
 	if err != nil {
-		return nil, fmt.Errorf("failed looking for vtep interface %s: %w", vtepInterfaceName, err)
+		return nil, fmt.Errorf("failed looking for vtep loopback interface %s: %w", UnderlayLoopback, err)
 	}
 
-	srcAddr, err := findVxlanSrcAddr(vtepInterface, params)
+	vtepIP, _, err := net.ParseCIDR(params.VTEPIP)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse vtep ip %v: %w", params.VTEPIP, err)
 	}
 
 	vxlanName := vxLanNameFromVNI(params.VNI)
@@ -87,8 +82,8 @@ func createVXLan(params VNIParams, bridge *netlink.Bridge) (*netlink.Vxlan, erro
 		VxlanId:      int(params.VNI),
 		Port:         int(ptr.Deref(params.VXLanPort, 4789)),
 		Learning:     false,
-		VtepDevIndex: vtepInterface.Index,
-		SrcAddr:      srcAddr,
+		VtepDevIndex: loopback.Index,
+		SrcAddr:      vtepIP,
 	}
 
 	link, err := netlink.LinkByName(vxlanName)
@@ -102,7 +97,7 @@ func createVXLan(params VNIParams, bridge *netlink.Bridge) (*netlink.Vxlan, erro
 		return nil, fmt.Errorf("failed to get vxlan link by name %s: %w", vxlanName, err)
 	}
 	vxlan, ok := link.(*netlink.Vxlan)
-	if ok && checkVXLanConfigured(vxlan, bridge.Index, vtepInterface.Index, params) == nil {
+	if ok && checkVXLanConfigured(vxlan, bridge.Index, loopback.Index, params) == nil {
 		return vxlan, nil
 	}
 	if err := netlink.LinkDel(link); err != nil {
@@ -133,89 +128,13 @@ func vniFromVXLanName(name string) (int32, error) {
 	return int32(res), nil
 }
 
-// findFirstInterfaceIPv4Address returns the first IPv4 address assigned to the interface,
-// skipping the special underlay marker address.
-func findFirstInterfaceIPv4Address(iface *net.Interface) (net.IP, error) {
-	addrs, err := iface.Addrs()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get addresses: %w", err)
-	}
-	for _, addr := range addrs {
-		if addr.String() == underlayInterfaceSpecialAddr {
-			continue
-		}
-		var ip net.IP
-		switch v := addr.(type) {
-		case *net.IPNet:
-			ip = v.IP
-		case *net.IPAddr:
-			ip = v.IP
-		}
-		if ip == nil {
-			continue
-		}
-		ipFamily, err := ipfamily.ForAddressesIPs([]net.IP{ip})
-		if err != nil {
-			return nil, err
-		}
-		if ipFamily != ipfamily.IPv4 {
-			continue
-		}
-		return ip, nil
-	}
-	return nil, fmt.Errorf("no IPv4 address found on interface %s", iface.Name)
-}
-
 func validateVxlan(vxLan *netlink.Vxlan, params VNIParams) error {
-	if params.VTEPIP != "" {
-		vtepIP, _, err := net.ParseCIDR(params.VTEPIP)
-		if err != nil {
-			return fmt.Errorf("failed to parse vtep ip %v: %w", params.VTEPIP, err)
-		}
-		if !vxLan.SrcAddr.Equal(vtepIP) {
-			return fmt.Errorf("src addr does not match vtep ip: %v, expected %v", vxLan.SrcAddr, vtepIP)
-		}
-		return nil
-	}
-
-	paramsVTEPIfaceName := ptr.Deref(params.VTEPInterface, "")
-	if paramsVTEPIfaceName == "" {
-		return fmt.Errorf("missing vtepip or vtepinterface")
-	}
-
-	iface, err := net.InterfaceByName(paramsVTEPIfaceName)
+	vtepIP, _, err := net.ParseCIDR(params.VTEPIP)
 	if err != nil {
-		return fmt.Errorf("failed to get vtep interface %s: %w", paramsVTEPIfaceName, err)
+		return fmt.Errorf("failed to parse vtep ip %v: %w", params.VTEPIP, err)
 	}
-	expectedIP, err := findFirstInterfaceIPv4Address(iface)
-	if err != nil {
-		return fmt.Errorf("failed to get vtep source address from interface %s: %w", paramsVTEPIfaceName, err)
-	}
-	if !vxLan.SrcAddr.Equal(expectedIP) {
-		return fmt.Errorf("src addr does not match vtep interface ip: %v, expected %v", vxLan.SrcAddr, expectedIP)
+	if !vxLan.SrcAddr.Equal(vtepIP) {
+		return fmt.Errorf("src addr does not match vtep ip: %v, expected %v", vxLan.SrcAddr, vtepIP)
 	}
 	return nil
-}
-
-// findVxlanSrcAddr resolve the source IP for the VXLAN interface.
-// When VTEPIP is explicitly provided (vtepCIDR mode), use it directly.
-// When using VTEPInterface, resolve the IP from the interface itself.
-func findVxlanSrcAddr(vtepInterface *net.Interface, params VNIParams) (net.IP, error) {
-	if params.VTEPIP != "" {
-		vtepIP, _, err := net.ParseCIDR(params.VTEPIP)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse vtep ip %v: %w", params.VTEPIP, err)
-		}
-		return vtepIP, nil
-	}
-
-	if vtepIface := ptr.Deref(params.VTEPInterface, ""); vtepIface != "" {
-		srcAddr, err := findFirstInterfaceIPv4Address(vtepInterface)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get vtep source address from interface %s: %w", vtepInterface.Name, err)
-		}
-		return srcAddr, nil
-	}
-
-	return nil, fmt.Errorf("missing vtepip or vtepinterface")
 }

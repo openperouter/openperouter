@@ -23,6 +23,8 @@ func TestReadStaticConfigs_L2VNI_DefaultVXLanPort(t *testing.T) {
 underlays:
   - asn: 64515
     routeridcidr: "10.0.0.0/24"
+    nics:
+      - eth0
     neighbors:
       - asn: 64512
         address: "192.168.11.2"
@@ -55,6 +57,8 @@ func TestReadStaticConfigs_L3VNI_DefaultVXLanPort(t *testing.T) {
 underlays:
   - asn: 64515
     routeridcidr: "10.0.0.0/24"
+    nics:
+      - eth0
     neighbors:
       - asn: 64512
         address: "192.168.11.2"
@@ -83,6 +87,8 @@ func TestReadStaticConfigs_Underlay_DefaultRouterIDCIDR(t *testing.T) {
 	writeYAMLFile(t, dir, "openpe_underlay.yaml", `
 underlays:
   - asn: 64515
+    nics:
+      - eth0
     neighbors:
       - asn: 64512
         address: "192.168.11.2"
@@ -108,6 +114,8 @@ func TestReadStaticConfigs_AllDefaults(t *testing.T) {
 	writeYAMLFile(t, dir, "openpe_all.yaml", `
 underlays:
   - asn: 64515
+    nics:
+      - eth0
     neighbors:
       - asn: 64512
         address: "192.168.11.2"
@@ -146,6 +154,8 @@ func TestReadStaticConfigs_ExplicitVXLanPort(t *testing.T) {
 underlays:
   - asn: 64515
     routeridcidr: "10.0.0.0/24"
+    nics:
+      - eth0
     neighbors:
       - asn: 64512
         address: "192.168.11.2"
@@ -176,6 +186,8 @@ func TestReadStaticConfigs_ExplicitRouterIDCIDR(t *testing.T) {
 underlays:
   - asn: 64515
     routeridcidr: "172.16.0.0/16"
+    nics:
+      - eth0
     neighbors:
       - asn: 64512
         address: "192.168.11.2"
@@ -199,6 +211,8 @@ func TestReadStaticConfigs_MultiFileDefaults(t *testing.T) {
 	writeYAMLFile(t, dir, "openpe_underlay.yaml", `
 underlays:
   - asn: 64515
+    nics:
+      - eth0
     neighbors:
       - asn: 64512
         address: "192.168.11.2"
@@ -251,7 +265,7 @@ func TestReadStaticConfigs_ExistingTestdata(t *testing.T) {
 				Spec: v1alpha1.UnderlaySpec{
 					ASN:          64514,
 					RouterIDCIDR: new(defaultRouterIDCIDR),
-					Nics:         []string{"toswitch", "eth0"},
+					Nics:         []string{"toswitch1", "eth0"},
 					Neighbors: []v1alpha1.Neighbor{
 						{ASN: new(int64(64512)), Address: "192.168.11.2"},
 						{
@@ -264,7 +278,7 @@ func TestReadStaticConfigs_ExistingTestdata(t *testing.T) {
 							},
 						},
 					},
-					EVPN: &v1alpha1.EVPNConfig{VTEPCIDR: new("100.65.0.0/24")},
+					EVPN: &v1alpha1.EVPNConfig{VTEPCIDR: "100.65.0.0/24"},
 				},
 			},
 		},
@@ -335,35 +349,14 @@ func TestReadStaticConfigs_ExistingTestdata(t *testing.T) {
 	}
 }
 
-func TestReadStaticConfigs_CELValidation_EVPNBothVTEPs(t *testing.T) {
-	dir := t.TempDir()
-	writeYAMLFile(t, dir, "openpe_invalid.yaml", `
-underlays:
-  - asn: 64515
-    routeridcidr: "10.0.0.0/24"
-    neighbors:
-      - asn: 64512
-        address: "192.168.11.2"
-    evpn:
-      vtepcidr: "100.65.0.0/24"
-      vtepInterface: "eth0"
-`)
-
-	_, err := readStaticConfigs(dir)
-	if err == nil {
-		t.Fatal("expected validation error for EVPN with both vtepCIDR and vtepInterface, got nil")
-	}
-	if !strings.Contains(err.Error(), "exactly one of vtepCIDR or vtepInterface must be specified") {
-		t.Errorf("expected error containing 'exactly one of vtepCIDR or vtepInterface must be specified', got: %v", err)
-	}
-}
-
 func TestReadStaticConfigs_CELValidation_L2VNIBridgeNameAndAutoCreate(t *testing.T) {
 	dir := t.TempDir()
 	writeYAMLFile(t, dir, "openpe_invalid.yaml", `
 underlays:
   - asn: 64515
     routeridcidr: "10.0.0.0/24"
+    nics:
+      - eth0
     neighbors:
       - asn: 64512
         address: "192.168.11.2"
@@ -394,24 +387,12 @@ func TestReadStaticConfigs_ErrorMessageQuality(t *testing.T) {
 		wantContains string
 	}{
 		{
-			name: "EVPN CEL message is exact",
-			yaml: `
-underlays:
-  - asn: 64515
-    neighbors:
-      - asn: 64512
-        address: "192.168.11.2"
-    evpn:
-      vtepcidr: "100.65.0.0/24"
-      vtepInterface: "eth0"
-`,
-			wantContains: "exactly one of vtepCIDR or vtepInterface must be specified",
-		},
-		{
 			name: "LinuxBridge CEL message is exact",
 			yaml: `
 underlays:
   - asn: 64515
+    nics:
+      - eth0
     neighbors:
       - asn: 64512
         address: "192.168.11.2"
@@ -451,12 +432,13 @@ func TestReadStaticConfigs_MultipleErrors(t *testing.T) {
 underlays:
   - asn: 64515
     routeridcidr: "10.0.0.0/24"
+    nics:
+      - eth0
     neighbors:
       - asn: 64512
         address: "192.168.11.2"
     evpn:
-      vtepcidr: "100.65.0.0/24"
-      vtepInterface: "eth0"
+      vtepcidr: "invalid-cidr"
 l2vnis:
   - vni: 300
     hostmaster:
@@ -472,7 +454,7 @@ l2vnis:
 	}
 
 	errMsg := err.Error()
-	if !strings.Contains(errMsg, "exactly one of vtepCIDR or vtepInterface must be specified") {
+	if !strings.Contains(errMsg, "invalid vtep CIDR format") {
 		t.Errorf("expected error from underlay EVPN validation, got: %v", err)
 	}
 	if !strings.Contains(errMsg, "either name must be set or autoCreate must be true, but not both") {
@@ -487,6 +469,8 @@ func TestReadStaticConfigs_AtomicRejection(t *testing.T) {
 underlays:
   - asn: 64515
     routeridcidr: "10.0.0.0/24"
+    nics:
+      - eth0
     neighbors:
       - asn: 64512
         address: "192.168.11.2"

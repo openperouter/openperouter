@@ -30,12 +30,11 @@ const (
 )
 
 type VNIParams struct {
-	VRF           string  `json:"vrf"`
-	TargetNS      string  `json:"targetns"`
-	VTEPIP        string  `json:"vtepip"`
-	VTEPInterface *string `json:"vtepiface,omitempty"`
-	VNI           int32   `json:"vni"`
-	VXLanPort     *int32  `json:"vxlanport,omitempty"`
+	VRF       string `json:"vrf"`
+	TargetNS  string `json:"targetns"`
+	VTEPIP    string `json:"vtepip"`
+	VNI       int32  `json:"vni"`
+	VXLanPort *int32 `json:"vxlanport,omitempty"`
 }
 
 type L3VNIParams struct {
