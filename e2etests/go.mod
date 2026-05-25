@@ -3,7 +3,7 @@ module github.com/openperouter/openperouter/e2etests
 go 1.26.3
 
 require (
-	github.com/apparentlymart/go-cidr v1.1.0
+	github.com/apparentlymart/go-cidr v1.1.1
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.7.6
 	github.com/metallb/frr-k8s v0.0.25
 	github.com/onsi/ginkgo/v2 v2.28.3
