@@ -23,7 +23,7 @@ var (
 )
 
 const (
-	frrImageTag = "10.6.0"
+	frrImageTag = "10.6.1"
 )
 
 func init() {
