@@ -37,9 +37,11 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 	validL3VNIs, validL2VNIs, err = conversion.FilterUniqueVNIs(validL3VNIs, validL2VNIs)
 	allErrors = append(allErrors, err)
 
-	if err := conversion.ValidateVRFs(validL2VNIs, validL3VNIs); err != nil {
-		return fmt.Errorf("failed to validate VRFs: %w", err)
-	}
+	validL3VNIs, err = conversion.FilterUniqueVRFs(validL3VNIs)
+	allErrors = append(allErrors, err)
+
+	validL3VNIs, validL2VNIs, err = conversion.FilterValidVRFSubnets(validL3VNIs, validL2VNIs)
+	allErrors = append(allErrors, err)
 
 	validL2VNIs, err = filterL2VNIsWithoutL3VNI(validL2VNIs, validL3VNIs)
 	allErrors = append(allErrors, err)

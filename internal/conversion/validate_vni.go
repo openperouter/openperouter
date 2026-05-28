@@ -194,29 +194,87 @@ func ValidateVRFsForNodes(nodes []corev1.Node, l2vnis []v1alpha1.L2VNI, l3vnis [
 		if err != nil {
 			return fmt.Errorf("failed to filter l3vnis for node %q: %w", node.Name, err)
 		}
-		if err := ValidateVRFs(filteredL2VNIs, filteredL3VNIs); err != nil {
+		if _, err := FilterUniqueVRFs(filteredL3VNIs); err != nil {
+			return fmt.Errorf("failed to validate VRFs for node %q: %w", node.Name, err)
+		}
+		if _, _, err := FilterValidVRFSubnets(filteredL3VNIs, filteredL2VNIs); err != nil {
 			return fmt.Errorf("failed to validate VRFs for node %q: %w", node.Name, err)
 		}
 	}
 	return nil
 }
 
-// ValidateVRFs validates that the information in each VRF as a whole is correct.
-// Note that when ValidateVRFs is called, L3VNIs and L2VNIs should already have been verified for correctness
-// by ValidateL2VNIs() and ValidateL3VNIs() (such as individual subnets parse correctly, no duplicate AF per VNI).
-func ValidateVRFs(l2Vnis []v1alpha1.L2VNI, l3Vnis []v1alpha1.L3VNI) error {
-	// Make sure that there's only a single l3Vni in a given VRF.
+// FilterUniqueVRFs checks VRF uniqueness among L3VNIs and returns the valid
+// L3VNIs alongside per-resource errors for duplicates.
+func FilterUniqueVRFs(l3Vnis []v1alpha1.L3VNI) ([]v1alpha1.L3VNI, error) {
+	reason := v1alpha1.FailedResourceReasonValidationFailed
+	var allErrors []error
+
 	vrfToVNI := map[string]types.NamespacedName{}
+	var valid []v1alpha1.L3VNI
 	for _, l3Vni := range l3Vnis {
 		namespaceName := types.NamespacedName{Namespace: l3Vni.Namespace, Name: l3Vni.Name}
-		l3vni, ok := vrfToVNI[l3Vni.Spec.VRF]
+		existing, ok := vrfToVNI[l3Vni.Spec.VRF]
 		if ok {
-			return fmt.Errorf("more than one L3VNI detected in VRF %q: %s - %s", l3Vni.Spec.VRF, l3vni, namespaceName)
+			allErrors = append(allErrors, &openpeerrors.ResourceError{
+				Obj: v1alpha1.FailedResource{
+					Kind: "L3VNI", Name: l3Vni.Name, Reason: reason,
+					Message: fmt.Sprintf("more than one L3VNI detected in VRF %q: %q already exists", l3Vni.Spec.VRF, existing),
+				},
+			})
+			continue
 		}
 		vrfToVNI[l3Vni.Spec.VRF] = namespaceName
+		valid = append(valid, l3Vni)
+	}
+	return valid, errors.Join(allErrors...)
+}
+
+// FilterValidVRFSubnets checks for subnet overlaps per VRF and returns valid
+// L3VNIs, valid L2VNIs, and per-resource errors. Resources in VRFs with
+// overlapping subnets are excluded.
+func FilterValidVRFSubnets(l3Vnis []v1alpha1.L3VNI, l2Vnis []v1alpha1.L2VNI) ([]v1alpha1.L3VNI, []v1alpha1.L2VNI, error) {
+	reason := v1alpha1.FailedResourceReasonValidationFailed
+	failedVRFs := ValidateVRFSubnets(l2Vnis, l3Vnis)
+	if len(failedVRFs) == 0 {
+		return l3Vnis, l2Vnis, nil
 	}
 
-	// Make sure that there are no subnet overlaps in the VRFs.
+	var allErrors []error
+	var resultL3 []v1alpha1.L3VNI
+	for _, l3 := range l3Vnis {
+		if err, failed := failedVRFs[l3.Spec.VRF]; failed {
+			allErrors = append(allErrors, &openpeerrors.ResourceError{
+				Obj: v1alpha1.FailedResource{
+					Kind: "L3VNI", Name: l3.Name, Reason: reason, Message: err.Error(),
+				},
+			})
+			continue
+		}
+		resultL3 = append(resultL3, l3)
+	}
+
+	var resultL2 []v1alpha1.L2VNI
+	for _, l2 := range l2Vnis {
+		if hasVRF(l2) {
+			if err, failed := failedVRFs[*l2.Spec.VRF]; failed {
+				allErrors = append(allErrors, &openpeerrors.ResourceError{
+					Obj: v1alpha1.FailedResource{
+						Kind: "L2VNI", Name: l2.Name, Reason: reason, Message: err.Error(),
+					},
+				})
+				continue
+			}
+		}
+		resultL2 = append(resultL2, l2)
+	}
+
+	return resultL3, resultL2, errors.Join(allErrors...)
+}
+
+// ValidateVRFSubnets checks for subnet overlaps per VRF and returns a map of
+// VRF name to error for each VRF that has overlapping subnets.
+func ValidateVRFSubnets(l2Vnis []v1alpha1.L2VNI, l3Vnis []v1alpha1.L3VNI) map[string]error {
 	v4SubnetsForVRF := map[string]subnets{}
 	v6SubnetsForVRF := map[string]subnets{}
 	for _, l2vni := range l2Vnis {
@@ -242,19 +300,21 @@ func ValidateVRFs(l2Vnis []v1alpha1.L2VNI, l3Vnis []v1alpha1.L3VNI) error {
 			v6SubnetsForVRF[vrfName] = append(v6SubnetsForVRF[vrfName], subnetWithSource{source, subnet})
 		}
 	}
+
+	failedVRFs := map[string]error{}
 	for vrf, subnetList := range v4SubnetsForVRF {
 		subnetList.sort()
 		if err := hasSubnetOverlap(subnetList); err != nil {
-			return fmt.Errorf("subnet overlap in VRF %q: %w", vrf, err)
+			failedVRFs[vrf] = fmt.Errorf("subnet overlap in VRF %q: %w", vrf, err)
 		}
 	}
 	for vrf, subnetList := range v6SubnetsForVRF {
 		subnetList.sort()
 		if err := hasSubnetOverlap(subnetList); err != nil {
-			return fmt.Errorf("subnet overlap in VRF %q: %w", vrf, err)
+			failedVRFs[vrf] = fmt.Errorf("subnet overlap in VRF %q: %w", vrf, err)
 		}
 	}
-	return nil
+	return failedVRFs
 }
 
 // vni holds VNI validation data

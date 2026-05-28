@@ -347,7 +347,8 @@ func TestFilterValidL2VNIs(t *testing.T) {
 		})
 	}
 }
-func TestValidateVRFs(t *testing.T) {
+
+func TestFilterValidVRFSubnets(t *testing.T) {
 	tests := []struct {
 		name       string
 		l2vnis     []v1alpha1.L2VNI
@@ -571,42 +572,57 @@ func TestValidateVRFs(t *testing.T) {
 				},
 			},
 		},
-		{
-			name: "more than one L3VNI in the same VRF",
-			l3vnis: []v1alpha1.L3VNI{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
-					Spec: v1alpha1.L3VNISpec{
-						VNI:         1001,
-						VRF:         "vni1",
-						HostSession: &v1alpha1.HostSession{ASN: 65001, HostASN: new(int64(65002)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.168.1.0/24")}},
-					},
-					Status: &v1alpha1.L3VNIStatus{},
-				},
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
-					Spec: v1alpha1.L3VNISpec{
-						VNI:         1002,
-						HostSession: &v1alpha1.HostSession{ASN: 65003, HostASN: new(int64(65004)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.168.2.0/24")}},
-						VRF:         "vni1",
-					},
-					Status: &v1alpha1.L3VNIStatus{},
-				},
-			},
-			wantErrStr: "more than one L3VNI detected in VRF \"vni1\": test/vni1 - test/vni2",
-		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateVRFs(tt.l2vnis, tt.l3vnis)
+			_, _, err := FilterValidVRFSubnets(tt.l3vnis, tt.l2vnis)
 			if tt.wantErrStr == "" && err != nil {
-				t.Errorf("ValidateVRFs() no error expected but got error = %q", err)
+				t.Errorf("FilterValidVRFSubnets() no error expected but got errors = %v", err)
 			}
-			if tt.wantErrStr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErrStr)) {
-				t.Errorf("ValidateVRFs() error expected but got error = %q, wantErr %q", err, tt.wantErrStr)
+			if tt.wantErrStr != "" {
+				if err == nil {
+					t.Errorf("FilterValidVRFSubnets() error expected but got none, wantErr %q", tt.wantErrStr)
+				} else if !strings.Contains(err.Error(), tt.wantErrStr) {
+					t.Errorf("FilterValidVRFSubnets() error = %q, wantErr %q", err, tt.wantErrStr)
+				}
 			}
 		})
+	}
+}
+
+func TestFilterUniqueVRFs_DuplicateVRF(t *testing.T) {
+	l3vnis := []v1alpha1.L3VNI{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
+			Spec: v1alpha1.L3VNISpec{
+				VNI:         1001,
+				VRF:         "vni1",
+				HostSession: &v1alpha1.HostSession{ASN: 65001, HostASN: new(int64(65002)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.168.1.0/24")}},
+			},
+			Status: &v1alpha1.L3VNIStatus{},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
+			Spec: v1alpha1.L3VNISpec{
+				VNI:         1002,
+				HostSession: &v1alpha1.HostSession{ASN: 65003, HostASN: new(int64(65004)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.168.2.0/24")}},
+				VRF:         "vni1",
+			},
+			Status: &v1alpha1.L3VNIStatus{},
+		},
+	}
+
+	valid, err := FilterUniqueVRFs(l3vnis)
+	if err == nil {
+		t.Fatal("expected error for duplicate VRF")
+	}
+	wantErr := "more than one L3VNI detected in VRF \"vni1\": \"test/vni1\" already exists"
+	if !strings.Contains(err.Error(), wantErr) {
+		t.Errorf("error = %q, want %q", err, wantErr)
+	}
+	if len(valid) != 1 || valid[0].Name != "vni1" {
+		t.Errorf("expected first L3VNI to be valid, got %v", valid)
 	}
 }
 

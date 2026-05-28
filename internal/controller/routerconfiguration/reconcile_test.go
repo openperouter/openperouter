@@ -97,6 +97,30 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 			},
 		},
 		{
+			name: "more than one passthrough skips all",
+			l3Passthroughs: []v1alpha1.L3Passthrough{
+				{ObjectMeta: metav1.ObjectMeta{Name: "pt-a"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "pt-b"}},
+			},
+			expectedFailures: []v1alpha1.FailedResource{
+				{Kind: openpeerrors.KindL3Passthrough, Name: "pt-a", Reason: v1alpha1.FailedResourceReasonValidationFailed,
+					Message: "can't have more than one l3passthrough per node"},
+				{Kind: openpeerrors.KindL3Passthrough, Name: "pt-b", Reason: v1alpha1.FailedResourceReasonValidationFailed,
+					Message: "can't have more than one l3passthrough per node"},
+			},
+		},
+		{
+			name: "duplicate VRF skips second L3VNI",
+			l3VNIs: []v1alpha1.L3VNI{
+				l3VNI("first", "same-vrf", 100),
+				l3VNI("second", "same-vrf", 200),
+			},
+			expectedFailures: []v1alpha1.FailedResource{
+				{Kind: openpeerrors.KindL3VNI, Name: "second", Reason: v1alpha1.FailedResourceReasonValidationFailed,
+					Message: `more than one L3VNI detected in VRF "same-vrf": "/first" already exists`},
+			},
+		},
+		{
 			name: "L2VNI with no valid L3VNI reports DependencyFailed",
 			l3VNIs: []v1alpha1.L3VNI{
 				l3VNI("good-l3", "vrfA", 100),
@@ -111,16 +135,23 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 			},
 		},
 		{
-			name: "more than one passthrough skips all",
-			l3Passthroughs: []v1alpha1.L3Passthrough{
-				{ObjectMeta: metav1.ObjectMeta{Name: "pt-a"}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "pt-b"}},
+			name: "VRF subnet overlap reports all resources in failed VRF",
+			l3VNIs: []v1alpha1.L3VNI{
+				l3VNI("good-l3", "vrfGood", 100),
+				l3VNI("bad-l3", "vrfBad", 200),
+			},
+			l2VNIs: []v1alpha1.L2VNI{
+				l2VNIWithGateway("good-l2", "vrfGood", 300, []string{"10.0.1.1/24"}),
+				l2VNIWithGateway("bad-l2-1", "vrfBad", 400, []string{"10.0.2.1/24"}),
+				l2VNIWithGateway("bad-l2-2", "vrfBad", 500, []string{"10.0.2.100/24"}),
 			},
 			expectedFailures: []v1alpha1.FailedResource{
-				{Kind: openpeerrors.KindL3Passthrough, Name: "pt-a", Reason: v1alpha1.FailedResourceReasonValidationFailed,
-					Message: "can't have more than one l3passthrough per node"},
-				{Kind: openpeerrors.KindL3Passthrough, Name: "pt-b", Reason: v1alpha1.FailedResourceReasonValidationFailed,
-					Message: "can't have more than one l3passthrough per node"},
+				{Kind: openpeerrors.KindL3VNI, Name: "bad-l3", Reason: v1alpha1.FailedResourceReasonValidationFailed,
+					Message: `subnet overlap in VRF "vrfBad": IPNet 10.0.2.0/24 (L2VNI /bad-l2-2) overlaps with IPNet 10.0.2.0/24 (L2VNI /bad-l2-1)`},
+				{Kind: openpeerrors.KindL2VNI, Name: "bad-l2-1", Reason: v1alpha1.FailedResourceReasonValidationFailed,
+					Message: `subnet overlap in VRF "vrfBad": IPNet 10.0.2.0/24 (L2VNI /bad-l2-2) overlaps with IPNet 10.0.2.0/24 (L2VNI /bad-l2-1)`},
+				{Kind: openpeerrors.KindL2VNI, Name: "bad-l2-2", Reason: v1alpha1.FailedResourceReasonValidationFailed,
+					Message: `subnet overlap in VRF "vrfBad": IPNet 10.0.2.0/24 (L2VNI /bad-l2-2) overlaps with IPNet 10.0.2.0/24 (L2VNI /bad-l2-1)`},
 			},
 		},
 	}
@@ -155,5 +186,16 @@ func l2VNI(name string, vrf *string, vni int32) v1alpha1.L2VNI {
 	return v1alpha1.L2VNI{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
 		Spec:       v1alpha1.L2VNISpec{VRF: vrf, VNI: vni},
+	}
+}
+
+func l2VNIWithGateway(name, vrf string, vni int32, gatewayIPs []string) v1alpha1.L2VNI {
+	return v1alpha1.L2VNI{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Spec: v1alpha1.L2VNISpec{
+			VRF:          new(vrf),
+			VNI:          vni,
+			L2GatewayIPs: gatewayIPs,
+		},
 	}
 }
