@@ -43,12 +43,12 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 
 	validL2VNIs, err = filterL2VNIsWithoutL3VNI(validL2VNIs, validL3VNIs)
 	allErrors = append(allErrors, err)
-	
-	if err := conversion.ValidatePassthroughs(apiConfig.L3Passthrough); err != nil {
-		return fmt.Errorf("failed to validate l3passthrough: %w", err)
-	}
 
-	if err := conversion.ValidateHostSessions(validL3VNIs, apiConfig.L3Passthrough); err != nil {
+	var validPassthrough []v1alpha1.L3Passthrough
+	validPassthrough, err = conversion.FilterValidPassthroughs(apiConfig.L3Passthrough)
+	allErrors = append(allErrors, err)
+
+	if err := conversion.ValidateHostSessions(validL3VNIs, validPassthrough); err != nil {
 		return fmt.Errorf("failed to validate host sessions: %w", err)
 	}
 
@@ -56,7 +56,7 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 		Underlays:     apiConfig.Underlays,
 		L3VNIs:        validL3VNIs,
 		L2VNIs:        validL2VNIs,
-		L3Passthrough: apiConfig.L3Passthrough,
+		L3Passthrough: validPassthrough,
 		RawFRRConfigs: apiConfig.RawFRRConfigs,
 	}
 

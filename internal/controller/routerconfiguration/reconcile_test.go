@@ -28,6 +28,7 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 		name             string
 		l3VNIs           []v1alpha1.L3VNI
 		l2VNIs           []v1alpha1.L2VNI
+		l3Passthroughs   []v1alpha1.L3Passthrough
 		expectedFailures []v1alpha1.FailedResource
 	}{
 		{
@@ -109,13 +110,27 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 					Message: `no valid L3VNI for L3 domain "vrfMissing"`},
 			},
 		},
+		{
+			name: "more than one passthrough skips all",
+			l3Passthroughs: []v1alpha1.L3Passthrough{
+				{ObjectMeta: metav1.ObjectMeta{Name: "pt-a"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "pt-b"}},
+			},
+			expectedFailures: []v1alpha1.FailedResource{
+				{Kind: openpeerrors.KindL3Passthrough, Name: "pt-a", Reason: v1alpha1.FailedResourceReasonValidationFailed,
+					Message: "can't have more than one l3passthrough per node"},
+				{Kind: openpeerrors.KindL3Passthrough, Name: "pt-b", Reason: v1alpha1.FailedResourceReasonValidationFailed,
+					Message: "can't have more than one l3passthrough per node"},
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			config := conversion.APIConfigData{
-				L3VNIs: tt.l3VNIs,
-				L2VNIs: tt.l2VNIs,
+				L3VNIs:        tt.l3VNIs,
+				L2VNIs:        tt.l2VNIs,
+				L3Passthrough: tt.l3Passthroughs,
 			}
 			reconcileErr := Reconcile(context.Background(), config, 0, "",
 				"", "", noopUpdater, noopHostConfigurator)

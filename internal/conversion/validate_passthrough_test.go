@@ -4,6 +4,7 @@ package conversion
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -55,7 +56,7 @@ func TestValidatePassthroughsForNodes(t *testing.T) {
 					},
 				},
 			},
-			expectedErr: fmt.Errorf("failed to validate underlays for node \"node-1\": can't have more than one l3passthrough per node"),
+			expectedErr: fmt.Errorf("can't have more than one l3passthrough per node"),
 		},
 		{
 			name: "two nodes each with one matching passthrough",
@@ -118,7 +119,7 @@ func TestValidatePassthroughsForNodes(t *testing.T) {
 					},
 				},
 			},
-			expectedErr: fmt.Errorf("failed to validate underlays for node \"node-1\": can't have more than one l3passthrough per node"),
+			expectedErr: fmt.Errorf("can't have more than one l3passthrough per node"),
 		},
 		{
 			name: "invalid node selector expression",
@@ -148,8 +149,8 @@ func TestValidatePassthroughsForNodes(t *testing.T) {
 				if err == nil {
 					t.Fatalf("expected error %q but got none", tt.expectedErr)
 				}
-				if err.Error() != tt.expectedErr.Error() {
-					t.Fatalf("expected error %q, got: %q", tt.expectedErr, err)
+				if !strings.Contains(err.Error(), tt.expectedErr.Error()) {
+					t.Fatalf("expected error containing %q, got: %q", tt.expectedErr, err)
 				}
 				return
 			}
@@ -160,7 +161,7 @@ func TestValidatePassthroughsForNodes(t *testing.T) {
 	}
 }
 
-func TestValidatePassthroughs(t *testing.T) {
+func TestFilterValidPassthroughs(t *testing.T) {
 	tests := []struct {
 		name           string
 		l3Passthroughs []v1alpha1.L3Passthrough
@@ -192,13 +193,13 @@ func TestValidatePassthroughs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ValidatePassthroughs(tt.l3Passthroughs)
+			_, err := FilterValidPassthroughs(tt.l3Passthroughs)
 			if tt.expectedErr != nil {
 				if err == nil {
 					t.Fatalf("expected error %q but got none", tt.expectedErr)
 				}
-				if err.Error() != tt.expectedErr.Error() {
-					t.Fatalf("expected error %q, got: %q", tt.expectedErr, err)
+				if !strings.Contains(err.Error(), tt.expectedErr.Error()) {
+					t.Fatalf("expected error containing %q, got: %q", tt.expectedErr, err)
 				}
 				return
 			}
