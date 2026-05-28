@@ -12,7 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func TestValidateVNIs(t *testing.T) {
+func TestFilterValidL3VNIs(t *testing.T) {
 	tests := []struct {
 		name    string
 		vnis    []v1alpha1.L3VNI
@@ -90,43 +90,19 @@ func TestValidateVNIs(t *testing.T) {
 			},
 			wantErr: false,
 		},
-		{
-			name: "duplicate VNI",
-			vnis: []v1alpha1.L3VNI{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
-					Spec: v1alpha1.L3VNISpec{
-						VNI:         1001,
-						VRF:         "vrf1",
-						HostSession: &v1alpha1.HostSession{ASN: 65001, HostASN: new(int64(65002)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.168.1.0/24")}},
-					},
-					Status: &v1alpha1.L3VNIStatus{},
-				},
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni2"},
-					Spec: v1alpha1.L3VNISpec{
-						VNI:         1001,
-						VRF:         "vrf2",
-						HostSession: &v1alpha1.HostSession{ASN: 65003, HostASN: new(int64(65004)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.168.2.0/24")}},
-					},
-					Status: &v1alpha1.L3VNIStatus{},
-				},
-			},
-			wantErr: true,
-		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateL3VNIs(tt.vnis)
+			_, err := FilterValidL3VNIs(tt.vnis)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("validateL3VNIs() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("FilterValidL3VNIs() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
 }
 
-func TestValidateL2VNIs(t *testing.T) {
+func TestFilterValidL2VNIs(t *testing.T) {
 	tests := []struct {
 		name    string
 		vnis    []v1alpha1.L2VNI
@@ -173,26 +149,6 @@ func TestValidateL2VNIs(t *testing.T) {
 				},
 			},
 			wantErr: false,
-		},
-		{
-			name: "duplicate VNI",
-			vnis: []v1alpha1.L2VNI{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI: 1001,
-					},
-					Status: &v1alpha1.L2VNIStatus{},
-				},
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni2"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI: 1001,
-					},
-					Status: &v1alpha1.L2VNIStatus{},
-				},
-			},
-			wantErr: true,
 		},
 		{
 			name: "invalid VRF name",
@@ -384,14 +340,13 @@ func TestValidateL2VNIs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateL2VNIs(tt.vnis)
+			_, err := FilterValidL2VNIs(tt.vnis)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("ValidateL2VNIs() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("FilterValidL2VNIs() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
 }
-
 func TestValidateVRFs(t *testing.T) {
 	tests := []struct {
 		name       string

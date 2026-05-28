@@ -5,11 +5,15 @@ package routerconfiguration
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 
+	"k8s.io/apimachinery/pkg/util/sets"
+
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/conversion"
+	openpeerrors "github.com/openperouter/openperouter/internal/errors"
 	"github.com/openperouter/openperouter/internal/frr"
 )
 
@@ -19,29 +23,46 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 		return err
 	}
 
-	if err := conversion.ValidateL3VNIs(apiConfig.L3VNIs); err != nil {
-		return fmt.Errorf("failed to validate l3vnis: %w", err)
-	}
+	var allErrors []error
+	var err error
 
-	if err := conversion.ValidateL2VNIs(apiConfig.L2VNIs); err != nil {
-		return fmt.Errorf("failed to validate l2vnis: %w", err)
-	}
+	var validL3VNIs []v1alpha1.L3VNI
+	validL3VNIs, err = conversion.FilterValidL3VNIs(apiConfig.L3VNIs)
+	allErrors = append(allErrors, err)
 
-	if err := conversion.ValidateVRFs(apiConfig.L2VNIs, apiConfig.L3VNIs); err != nil {
+	var validL2VNIs []v1alpha1.L2VNI
+	validL2VNIs, err = conversion.FilterValidL2VNIs(apiConfig.L2VNIs)
+	allErrors = append(allErrors, err)
+
+	validL3VNIs, validL2VNIs, err = conversion.FilterUniqueVNIs(validL3VNIs, validL2VNIs)
+	allErrors = append(allErrors, err)
+
+	if err := conversion.ValidateVRFs(validL2VNIs, validL3VNIs); err != nil {
 		return fmt.Errorf("failed to validate VRFs: %w", err)
 	}
 
+	validL2VNIs, err = filterL2VNIsWithoutL3VNI(validL2VNIs, validL3VNIs)
+	allErrors = append(allErrors, err)
+	
 	if err := conversion.ValidatePassthroughs(apiConfig.L3Passthrough); err != nil {
 		return fmt.Errorf("failed to validate l3passthrough: %w", err)
 	}
 
-	if err := conversion.ValidateHostSessions(apiConfig.L3VNIs, apiConfig.L3Passthrough); err != nil {
+	if err := conversion.ValidateHostSessions(validL3VNIs, apiConfig.L3Passthrough); err != nil {
 		return fmt.Errorf("failed to validate host sessions: %w", err)
+	}
+
+	config := conversion.APIConfigData{
+		Underlays:     apiConfig.Underlays,
+		L3VNIs:        validL3VNIs,
+		L2VNIs:        validL2VNIs,
+		L3Passthrough: apiConfig.L3Passthrough,
+		RawFRRConfigs: apiConfig.RawFRRConfigs,
 	}
 
 	if err := hostConfigurator(ctx, interfacesConfiguration{
 		targetNamespace: targetNamespace,
-		APIConfigData:   apiConfig,
+		APIConfigData:   config,
 		nodeIndex:       nodeIndex,
 	}); err != nil {
 		return err
@@ -50,14 +71,39 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 	if err := configureFRR(ctx, frrConfigData{
 		configFile:    frrConfigPath,
 		updater:       updater,
-		APIConfigData: apiConfig,
+		APIConfigData: config,
 		nodeIndex:     nodeIndex,
 		logLevel:      logLevel,
 	}); err != nil {
 		return fmt.Errorf("failed to reload frr config: %w", err)
 	}
 
-	return nil
+	return errors.Join(allErrors...)
+}
+
+// filterL2VNIsWithoutL3VNI must be called after all L3VNI filtering is complete.
+func filterL2VNIsWithoutL3VNI(l2Vnis []v1alpha1.L2VNI, l3Vnis []v1alpha1.L3VNI) ([]v1alpha1.L2VNI, error) {
+	vrfs := sets.New[string]()
+	for _, l3 := range l3Vnis {
+		vrfs.Insert(l3.Spec.VRF)
+	}
+	var valid []v1alpha1.L2VNI
+	var allErrors []error
+	for _, l2 := range l2Vnis {
+		if l2.Spec.VRF != nil && *l2.Spec.VRF != "" && !vrfs.Has(*l2.Spec.VRF) {
+			allErrors = append(allErrors, &openpeerrors.ResourceError{
+				Obj: v1alpha1.FailedResource{
+					Kind:    openpeerrors.KindL2VNI,
+					Name:    l2.Name,
+					Reason:  v1alpha1.FailedResourceReasonDependencyFailed,
+					Message: fmt.Sprintf("no valid L3VNI for L3 domain %q", *l2.Spec.VRF),
+				},
+			})
+			continue
+		}
+		valid = append(valid, l2)
+	}
+	return valid, errors.Join(allErrors...)
 }
 
 func normalizeConfig(config *conversion.APIConfigData) {

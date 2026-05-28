@@ -4,6 +4,7 @@ package conversion
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"net"
 	"regexp"
@@ -16,6 +17,7 @@ import (
 	"k8s.io/utils/ptr"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
+	openpeerrors "github.com/openperouter/openperouter/internal/errors"
 	"github.com/openperouter/openperouter/internal/filter"
 	"github.com/openperouter/openperouter/internal/ipfamily"
 )
@@ -33,7 +35,10 @@ func ValidateL3VNIsForNodes(nodes []corev1.Node, underlays []v1alpha1.L3VNI) err
 		if err != nil {
 			return fmt.Errorf("failed to filter underlays for node %q: %w", node.Name, err)
 		}
-		if err := ValidateL3VNIs(filteredL3VNIs); err != nil {
+		if _, err := FilterValidL3VNIs(filteredL3VNIs); err != nil {
+			return fmt.Errorf("failed to validate underlays for node %q: %w", node.Name, err)
+		}
+		if _, _, err := FilterUniqueVNIs(filteredL3VNIs, nil); err != nil {
 			return fmt.Errorf("failed to validate underlays for node %q: %w", node.Name, err)
 		}
 	}
@@ -41,19 +46,24 @@ func ValidateL3VNIsForNodes(nodes []corev1.Node, underlays []v1alpha1.L3VNI) err
 	return nil
 }
 
-// ValidateL3VNIs runs L3VNI specific validation (per-field + VNI uniqueness).
-func ValidateL3VNIs(l3Vnis []v1alpha1.L3VNI) error {
-	existingVNIs := map[int32]string{}
+// FilterValidL3VNIs validates L3VNIs per-field and returns the valid resources
+// alongside per-resource errors.
+func FilterValidL3VNIs(l3Vnis []v1alpha1.L3VNI) ([]v1alpha1.L3VNI, error) {
+	var valid []v1alpha1.L3VNI
+	var allErrors []error
 	for _, l3 := range l3Vnis {
 		if err := validateL3VNI(l3); err != nil {
-			return err
+			allErrors = append(allErrors, &openpeerrors.ResourceError{
+				Obj: v1alpha1.FailedResource{
+					Kind: "L3VNI", Name: l3.Name,
+					Reason: v1alpha1.FailedResourceReasonValidationFailed, Message: err.Error(),
+				},
+			})
+			continue
 		}
-		if existing, ok := existingVNIs[l3.Spec.VNI]; ok {
-			return fmt.Errorf("duplicate vni %d:%s - %s", l3.Spec.VNI, existing, l3.Name)
-		}
-		existingVNIs[l3.Spec.VNI] = l3.Name
+		valid = append(valid, l3)
 	}
-	return nil
+	return valid, errors.Join(allErrors...)
 }
 
 // validateL3VNI validates a single L3VNI's fields (VRF name, route targets).
@@ -75,26 +85,75 @@ func ValidateL2VNIsForNodes(nodes []corev1.Node, underlays []v1alpha1.L2VNI) err
 		if err != nil {
 			return fmt.Errorf("failed to filter underlays for node %q: %w", node.Name, err)
 		}
-		if err := ValidateL2VNIs(filteredL2VNIs); err != nil {
+		if _, err := FilterValidL2VNIs(filteredL2VNIs); err != nil {
+			return fmt.Errorf("failed to validate underlays for node %q: %w", node.Name, err)
+		}
+		if _, _, err := FilterUniqueVNIs(nil, filteredL2VNIs); err != nil {
 			return fmt.Errorf("failed to validate underlays for node %q: %w", node.Name, err)
 		}
 	}
 	return nil
 }
 
-// ValidateL2VNIs runs L2VNI specific validation (per-field + VNI uniqueness).
-func ValidateL2VNIs(l2Vnis []v1alpha1.L2VNI) error {
-	existingVNIs := map[int32]string{}
+// FilterValidL2VNIs validates L2VNIs per-field and returns the valid resources
+// alongside per-resource errors.
+func FilterValidL2VNIs(l2Vnis []v1alpha1.L2VNI) ([]v1alpha1.L2VNI, error) {
+	var valid []v1alpha1.L2VNI
+	var allErrors []error
 	for _, l2 := range l2Vnis {
 		if err := validateL2VNI(l2); err != nil {
-			return err
+			allErrors = append(allErrors, &openpeerrors.ResourceError{
+				Obj: v1alpha1.FailedResource{
+					Kind: "L2VNI", Name: l2.Name,
+					Reason: v1alpha1.FailedResourceReasonValidationFailed, Message: err.Error(),
+				},
+			})
+			continue
 		}
-		if existing, ok := existingVNIs[l2.Spec.VNI]; ok {
-			return fmt.Errorf("duplicate vni %d:%s - %s", l2.Spec.VNI, existing, l2.Name)
-		}
-		existingVNIs[l2.Spec.VNI] = l2.Name
+		valid = append(valid, l2)
 	}
-	return nil
+	return valid, errors.Join(allErrors...)
+}
+
+// FilterUniqueVNIs removes VNIs with duplicate VNI numbers. L3VNIs are
+// processed first and take priority; L2VNIs that collide with an L3VNI
+// are discarded.
+func FilterUniqueVNIs(l3Vnis []v1alpha1.L3VNI, l2Vnis []v1alpha1.L2VNI) ([]v1alpha1.L3VNI, []v1alpha1.L2VNI, error) {
+	existingVNIs := map[int32]string{}
+	reason := v1alpha1.FailedResourceReasonValidationFailed
+	var allErrors []error
+
+	var validL3 []v1alpha1.L3VNI
+	for _, l3 := range l3Vnis {
+		if existing, ok := existingVNIs[l3.Spec.VNI]; ok {
+			allErrors = append(allErrors, &openpeerrors.ResourceError{
+				Obj: v1alpha1.FailedResource{
+					Kind: "L3VNI", Name: l3.Name, Reason: reason,
+					Message: fmt.Sprintf("duplicate vni %d:%s", l3.Spec.VNI, existing),
+				},
+			})
+			continue
+		}
+		existingVNIs[l3.Spec.VNI] = "L3VNI/" + l3.Name
+		validL3 = append(validL3, l3)
+	}
+
+	var validL2 []v1alpha1.L2VNI
+	for _, l2 := range l2Vnis {
+		if existing, ok := existingVNIs[l2.Spec.VNI]; ok {
+			allErrors = append(allErrors, &openpeerrors.ResourceError{
+				Obj: v1alpha1.FailedResource{
+					Kind: "L2VNI", Name: l2.Name, Reason: reason,
+					Message: fmt.Sprintf("duplicate vni %d:%s", l2.Spec.VNI, existing),
+				},
+			})
+			continue
+		}
+		existingVNIs[l2.Spec.VNI] = "L2VNI/" + l2.Name
+		validL2 = append(validL2, l2)
+	}
+
+	return validL3, validL2, errors.Join(allErrors...)
 }
 
 // validateL2VNI validates a single L2VNI's fields (VRF name, route targets, HostMaster, L2GatewayIPs).
