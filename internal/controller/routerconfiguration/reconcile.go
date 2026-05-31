@@ -16,7 +16,7 @@ import (
 func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeIndex int, logLevel, frrConfigPath, targetNamespace string, updater frr.ConfigUpdater) error {
 	normalizeConfig(&apiConfig)
 	if err := conversion.ValidateUnderlays(apiConfig.Underlays); err != nil {
-		return fmt.Errorf("failed to validate underlays: %w", err)
+		return err
 	}
 
 	if err := conversion.ValidateL3VNIs(apiConfig.L3VNIs); err != nil {

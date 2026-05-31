@@ -8,6 +8,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
+	openpeerrors "github.com/openperouter/openperouter/internal/errors"
 	"github.com/openperouter/openperouter/internal/filter"
 	"github.com/openperouter/openperouter/internal/ipfamily"
 )
@@ -30,9 +31,26 @@ func ValidateUnderlays(underlays []v1alpha1.Underlay) error {
 		return nil
 	}
 	if len(underlays) > 1 {
-		return fmt.Errorf("can't have more than one underlay per node")
+		return &openpeerrors.ResourceError{
+			Obj: v1alpha1.FailedResource{
+				Kind:    v1alpha1.FailedResourceKind("Underlay"),
+				Name:    underlays[0].Name,
+				Reason:  v1alpha1.FailedResourceReasonValidationFailed,
+				Message: "can't have more than one underlay per node",
+			},
+		}
 	}
-	return validateUnderlay(underlays[0])
+	if err := validateUnderlay(underlays[0]); err != nil {
+		return &openpeerrors.ResourceError{
+			Obj: v1alpha1.FailedResource{
+				Kind:    v1alpha1.FailedResourceKind("Underlay"),
+				Name:    underlays[0].Name,
+				Reason:  v1alpha1.FailedResourceReasonValidationFailed,
+				Message: err.Error(),
+			},
+		}
+	}
+	return nil
 }
 
 func validateUnderlay(underlay v1alpha1.Underlay) error {
