@@ -13,7 +13,7 @@ import (
 	"github.com/openperouter/openperouter/internal/frr"
 )
 
-func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeIndex int, logLevel, frrConfigPath, targetNamespace string, updater frr.ConfigUpdater) error {
+func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeIndex int, logLevel, frrConfigPath, targetNamespace string, updater frr.ConfigUpdater, hostConfigurator HostConfigurator) error {
 	normalizeConfig(&apiConfig)
 	if err := conversion.ValidateUnderlays(apiConfig.Underlays); err != nil {
 		return err
@@ -39,12 +39,12 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 		return fmt.Errorf("failed to validate host sessions: %w", err)
 	}
 
-	if err := configureInterfaces(ctx, interfacesConfiguration{
+	if err := hostConfigurator(ctx, interfacesConfiguration{
 		targetNamespace: targetNamespace,
 		APIConfigData:   apiConfig,
 		nodeIndex:       nodeIndex,
 	}); err != nil {
-		return fmt.Errorf("failed to configure the host: %w", err)
+		return err
 	}
 
 	if err := configureFRR(ctx, frrConfigData{
