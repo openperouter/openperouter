@@ -3,14 +3,18 @@
 package routerconfiguration
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"slices"
 
+	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/conversion"
 	"github.com/openperouter/openperouter/internal/frr"
 )
 
 func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeIndex int, logLevel, frrConfigPath, targetNamespace string, updater frr.ConfigUpdater) error {
+	normalizeConfig(&apiConfig)
 	if err := conversion.ValidateUnderlays(apiConfig.Underlays); err != nil {
 		return fmt.Errorf("failed to validate underlays: %w", err)
 	}
@@ -54,4 +58,14 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 	}
 
 	return nil
+}
+
+func normalizeConfig(config *conversion.APIConfigData) {
+	slices.SortFunc(config.L3VNIs, func(a, b v1alpha1.L3VNI) int { return cmp.Compare(a.Namespace+"/"+a.Name, b.Namespace+"/"+b.Name) })
+
+	slices.SortFunc(config.L2VNIs, func(a, b v1alpha1.L2VNI) int { return cmp.Compare(a.Namespace+"/"+a.Name, b.Namespace+"/"+b.Name) })
+
+	slices.SortFunc(config.L3Passthrough, func(a, b v1alpha1.L3Passthrough) int {
+		return cmp.Compare(a.Namespace+"/"+a.Name, b.Namespace+"/"+b.Name)
+	})
 }
