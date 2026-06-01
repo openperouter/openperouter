@@ -289,6 +289,7 @@ func TestAPItoHostConfig(t *testing.T) {
 			wantL3VNIParams: []hostnetwork.L3VNIParams{},
 			wantL2VNIParams: []hostnetwork.L2VNIParams{
 				{
+					Name: "my-l2vni",
 					VNIParams: hostnetwork.VNIParams{
 						VRF:       "",
 						TargetNS:  "namespace",

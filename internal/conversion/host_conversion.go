@@ -83,6 +83,7 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig APIConfigData) (H
 				VNI:       vni.Spec.VNI,
 				VXLanPort: vni.Spec.VXLanPort,
 			},
+			Name: vni.Name,
 		}
 		if vni.Spec.HostSession == nil {
 			res.L3VNIs = append(res.L3VNIs, v)
@@ -147,6 +148,7 @@ func tunnelEndpointToHost(underlay v1alpha1.Underlay, nodeIndex int) (hostnetwor
 
 func convertL2VNI(l2vni v1alpha1.L2VNI, targetNS string, vtepIP string) (hostnetwork.L2VNIParams, error) {
 	vni := hostnetwork.L2VNIParams{
+		Name: l2vni.Name,
 		VNIParams: hostnetwork.VNIParams{
 			TargetNS:  targetNS,
 			VTEPIP:    vtepIP,
