@@ -62,22 +62,24 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 		RawFRRConfigs: apiConfig.RawFRRConfigs,
 	}
 
-	if err := hostConfigurator(ctx, interfacesConfiguration{
+	err = hostConfigurator(ctx, interfacesConfiguration{
 		targetNamespace: targetNamespace,
 		APIConfigData:   config,
 		nodeIndex:       nodeIndex,
-	}); err != nil {
+	})
+	if openpeerrors.IsNonResourceError(err) {
 		return err
 	}
+	allErrors = append(allErrors, err)
 
-	if err := configureFRR(ctx, frrConfigData{
+	if err = configureFRR(ctx, frrConfigData{
 		configFile:    frrConfigPath,
 		updater:       updater,
 		APIConfigData: config,
 		nodeIndex:     nodeIndex,
 		logLevel:      logLevel,
 	}); err != nil {
-		return fmt.Errorf("failed to reload frr config: %w", err)
+		return err
 	}
 
 	return errors.Join(allErrors...)

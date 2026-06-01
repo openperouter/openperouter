@@ -4,7 +4,9 @@ package routerconfiguration
 
 import (
 	"context"
+	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -17,6 +19,10 @@ import (
 
 var noopUpdater = frr.ConfigUpdater(func(_ context.Context, _ string) error {
 	return nil
+})
+
+var failingUpdater = frr.ConfigUpdater(func(_ context.Context, _ string) error {
+	return fmt.Errorf("frr-reload failed")
 })
 
 var noopHostConfigurator = HostConfigurator(func(_ context.Context, _ interfacesConfiguration) error {
@@ -172,6 +178,23 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 				t.Errorf("FailedResources mismatch:\n  got:  %+v\n  want: %+v", failures, tt.expectedFailures)
 			}
 		})
+	}
+}
+
+func TestReconcileFrrReloadFailure(t *testing.T) {
+	reconcileErr := Reconcile(context.Background(), conversion.APIConfigData{}, 0, "",
+		"", "", failingUpdater, noopHostConfigurator)
+	if reconcileErr == nil {
+		t.Fatal("expected error from FRR reload failure")
+	}
+
+	if !strings.Contains(reconcileErr.Error(), "failed to update the frr configuration") {
+		t.Errorf("expected FRR error message, got: %s", reconcileErr.Error())
+	}
+
+	failures := openpeerrors.CollectFailures(reconcileErr)
+	if len(failures) != 0 {
+		t.Errorf("expected no resource failures for FRR error, got: %+v", failures)
 	}
 }
 
