@@ -8,6 +8,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"io"
 	"log"
@@ -33,6 +34,10 @@ func main() {
 	if *pidFileName != "" {
 		pf := pidFile(*pidFileName)
 		if err := pf.Lock(); err != nil {
+			if errors.Is(err, errAlreadyRunning) {
+				log.Printf("process already running, exiting: %v", err)
+				return
+			}
 			log.Fatalf("could not lock PID file, err: %q", err)
 		}
 

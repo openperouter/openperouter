@@ -98,6 +98,27 @@ type parameters struct {
 	logLevel       string
 }
 
+// fanOut fans out events from in channel to multiple out channels.
+// It runs until ctx is cancelled or in channel is closed.
+func fanOut(ctx context.Context, in <-chan event.GenericEvent, outs ...chan<- event.GenericEvent) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case evt, ok := <-in:
+			if !ok {
+				return
+			}
+			for _, out := range outs {
+				select {
+				case out <- evt:
+				default:
+				}
+			}
+		}
+	}
+}
+
 func main() {
 	hostModeParams := hostModeParameters{}
 	k8sModeParams := k8sModeParameters{}
@@ -264,8 +285,9 @@ func runK8sConfigReconcilerHostMode(ctx context.Context,
 		RouterHealthCheckPort: hostModeParams.routerHealthCheckPort,
 	}
 
-	// Create trigger channel for file watcher
+	// Create trigger channels for both controllers
 	triggerChan := make(chan event.GenericEvent, 1)
+	mirrorTriggerChan := make(chan event.GenericEvent, 1)
 
 	apiReconciler := &routerconfiguration.PERouterReconciler{
 		Client:          mgr.GetClient(),
@@ -286,15 +308,32 @@ func runK8sConfigReconcilerHostMode(ctx context.Context,
 		return fmt.Errorf("unable to create controller: %w", err)
 	}
 
-	// Setup file watcher to trigger API reconciler on static file changes
-	fw, err := filewatcher.New(hostModeParams.configurationDir, triggerChan, logger)
-	if err != nil {
-		return fmt.Errorf("unable to create file watcher for API reconciler: %w", err)
+	mirrorController := &routerconfiguration.MirrorController{
+		Client:      mgr.GetClient(),
+		Scheme:      mgr.GetScheme(),
+		Logger:      logger,
+		MyNode:      args.nodeName,
+		MyNamespace: args.namespace,
+		ConfigDir:   hostModeParams.configurationDir,
+		TriggerChan: mirrorTriggerChan,
 	}
 
-	if err := fw.Start(ctx); err != nil {
-		return fmt.Errorf("unable to start file watcher for API reconciler: %w", err)
+	if err := mirrorController.SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to create mirror controller: %w", err)
 	}
+
+	// Setup file watcher to trigger controllers on static file changes
+	filesChangedChan := make(chan event.GenericEvent, 1)
+	watcher, err := filewatcher.New(hostModeParams.configurationDir, filesChangedChan, logger)
+	if err != nil {
+		return fmt.Errorf("unable to create file watcher: %w", err)
+	}
+
+	if err := watcher.Start(ctx); err != nil {
+		return fmt.Errorf("unable to start file watcher: %w", err)
+	}
+
+	go fanOut(ctx, filesChangedChan, triggerChan, mirrorTriggerChan)
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctx); err != nil {
@@ -381,6 +420,8 @@ func runStaticConfigReconciler(ctx context.Context,
 		FRRReloadSocket: args.reloaderSocket,
 		RouterProvider:  staticRouterProvider,
 		ConfigDir:       hostModeParams.configurationDir,
+		MyNode:          args.nodeName,
+		MyNamespace:     args.namespace,
 	}
 	if err = staticReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create controller: %w", err)

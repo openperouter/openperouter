@@ -207,7 +207,7 @@ deploy-metrics-server: kubectl ## Install metrics-server for scale testing (requ
 
 .PHONY: setup-hostmode
 setup-hostmode: ## Setup node configuration for hostmode.
-	./systemdmode/setup_node_config.sh $(KIND_CLUSTER_NAME)
+	KIND=$(KIND) ./systemdmode/setup_node_config.sh $(KIND_CLUSTER_NAME)
 
 .PHONY: deploy-hostmode
 deploy-hostmode: export KUSTOMIZE_LAYER=hostmode
@@ -216,7 +216,7 @@ deploy-hostmode: kind deploy-cluster setup-hostmode deploy-controller ## Deploy 
 
 .PHONY: setup-hostmode-boot
 setup-hostmode-boot: ## Setup node configuration for hostmode with static config files.
-	NODE_CONFIG_DIR=e2etests/systemd_static_suite/testdata ./systemdmode/setup_node_config.sh $(KIND_CLUSTER_NAME)
+	KIND=$(KIND) NODE_CONFIG_DIR=e2etests/systemd_static_suite/testdata ./systemdmode/setup_node_config.sh $(KIND_CLUSTER_NAME)
 
 .PHONY: deploy-hostmode-boot
 deploy-hostmode-boot: export KUSTOMIZE_LAYER=hostmode

@@ -11,6 +11,8 @@ import (
 	"syscall"
 )
 
+var errAlreadyRunning = errors.New("already running")
+
 type pidFile string
 
 // Unlock simply deletes the pid file.
@@ -18,9 +20,8 @@ func (p pidFile) Unlock() error {
 	return os.Remove(string(p))
 }
 
-// Lock writes our PID to the pid file if the file doesn't exist.
-// Otherwise, it reads the PID file, and checks if a process with the PID exists.
-// If so, it throws an error. Otherwise, if no such process is running, it writes our PID to the pid file.
+// Lock writes our PID to the pid file. If a previous process is still
+// running, it returns errAlreadyRunning.
 func (p pidFile) Lock() error {
 	currentPid := os.Getpid()
 
@@ -35,7 +36,7 @@ func (p pidFile) Lock() error {
 	}
 	proc, _ := os.FindProcess(pid)
 	if err := proc.Signal(syscall.Signal(0)); !errors.Is(err, os.ErrProcessDone) {
-		return fmt.Errorf("process with PID %d already running", pid)
+		return fmt.Errorf("process with PID %d: %w", pid, errAlreadyRunning)
 	}
 	return os.WriteFile(string(p), []byte(strconv.Itoa(currentPid)), 0644)
 }
