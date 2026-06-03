@@ -23,6 +23,10 @@ Run `make test` to execute unit tests.
 - **Prerequisites:** Requires active deployment
 - **Before running:** Always verify cluster is running and deployment version is current
 - **Validation only:** You can run the command to check if e2e test code compiles, but confirm with the user before executing against a cluster
+- **Filtering tests:** Use `GINKGO_ARGS` with `--focus` to run specific tests, and `TEST_ARGS` for deployment mode:
+  ```
+  KUBECONFIG=bin/kubeconfig TEST_ARGS="--systemdmode" GINKGO_ARGS='--focus="Mirror static config"' make e2etests
+  ```
 
 **Development environment**
 
