@@ -36,20 +36,30 @@ type UnderlayEVPNParams struct {
 func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
 	slog.DebugContext(ctx, "setup underlay", "params", params)
 	defer slog.DebugContext(ctx, "setup underlay done")
-	ns, err := netns.GetFromPath(params.TargetNS)
+
+	targetNetNS, err := netns.GetFromPath(params.TargetNS)
 	if err != nil {
 		return fmt.Errorf("setupUnderlay: Failed to find network namespace %s: %w", params.TargetNS, err)
 	}
 	defer func() {
-		if err := ns.Close(); err != nil {
+		if err := targetNetNS.Close(); err != nil {
 			slog.Error("failed to close namespace", "namespace", params.TargetNS, "error", err)
+		}
+	}()
+	defaultNetNS, err := netns.Get()
+	if err != nil {
+		return fmt.Errorf("SetupUnderlay: failed to get netns handle for default namespace: %w", err)
+	}
+	defer func() {
+		if err := defaultNetNS.Close(); err != nil {
+			slog.Error("failed to close default namespace", "error", err)
 		}
 	}()
 
 	// Check if there are existing underlay interfaces that aren't in the new list.
 	// This means the underlay configuration changed and requires rebuilding
 	// the network namespace.
-	existingIfaces, err := findInterfacesInGroup(ns, underlayGroupID)
+	existingIfaces, err := findInterfacesInGroup(targetNetNS, underlayGroupID)
 	if err != nil {
 		return fmt.Errorf("failed to check existing underlay interfaces: %w", err)
 	}
@@ -60,26 +70,20 @@ func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
 		}
 	}
 
+	targetNetNSHandle, err := netlink.NewHandleAt(targetNetNS)
+	if err != nil {
+		return fmt.Errorf("SetupUnderlay: failed to get netlink handle for namespace %s: %w", targetNetNS.String(), err)
+	}
+	defer targetNetNSHandle.Close()
+	defaultNetNSHandle, err := netlink.NewHandleAt(defaultNetNS)
+	if err != nil {
+		return fmt.Errorf("SetupUnderlay: failed to get netlink handle for default namespace: %w", err)
+	}
+	defer defaultNetNSHandle.Close()
+
 	for _, underlayInterface := range params.UnderlayInterfaces {
-		if err := moveInterfaceToNamespace(ctx, underlayInterface, ns); err != nil {
-			return err
-		}
-		if err := netnamespace.In(ns, func() error {
-			underlay, err := netlink.LinkByName(underlayInterface)
-			if err != nil {
-				return fmt.Errorf("failed to get underlay nic by name %s: %w", underlayInterface, err)
-			}
-			// Set group ID only if not already set (idempotent)
-			if underlay.Attrs().Group != underlayGroupID {
-				if err := netlink.LinkSetGroup(underlay, int(underlayGroupID)); err != nil {
-					return fmt.Errorf("failed to set group ID on underlay interface %s: %w", underlayInterface, err)
-				}
-			}
-			if err := netlink.LinkSetUp(underlay); err != nil {
-				return fmt.Errorf("could not set link up for VRF %s: %v", underlay.Attrs().Name, err)
-			}
-			return nil
-		}); err != nil {
+		if err := moveInterfaceToNamespace(ctx, underlayInterface, defaultNetNSHandle, targetNetNSHandle, targetNetNS,
+			underlayGroupID); err != nil {
 			return err
 		}
 	}
@@ -89,7 +93,7 @@ func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
 	}
 
 	if params.EVPN.VtepIP != "" {
-		if err := ensureLoopback(ctx, ns, params.EVPN.VtepIP); err != nil {
+		if err := ensureLoopback(ctx, targetNetNS, params.EVPN.VtepIP); err != nil {
 			return err
 		}
 	}
@@ -134,35 +138,56 @@ func ensureLoopback(ctx context.Context, ns netns.NsHandle, vtepIP string) error
 // RemoveUnderlay removes the underlay state from the named network namespace:
 // it resets the group ID on underlay NICs (so HasUnderlayInterface
 // returns false on the next reconcile) and clears all IP addresses from the VTEP loopback (lo).
-func RemoveUnderlay(targetNS string) error {
-	ns, err := netns.GetFromPath(targetNS)
+func RemoveUnderlay(ctx context.Context, fromNetNSPath string) error {
+	fromNetNS, err := netns.GetFromPath(fromNetNSPath)
 	if err != nil {
-		return fmt.Errorf("RemoveUnderlay: failed to find network namespace %s: %w", targetNS, err)
+		return fmt.Errorf("RemoveUnderlay: failed to find network namespace %s: %w", fromNetNSPath, err)
 	}
 	defer func() {
-		if err := ns.Close(); err != nil {
-			slog.Error("failed to close namespace", "namespace", targetNS, "error", err)
+		if err := fromNetNS.Close(); err != nil {
+			slog.Error("failed to close namespace", "namespace", fromNetNSPath, "error", err)
+		}
+	}()
+	defaultNetNS, err := netns.Get()
+	if err != nil {
+		return fmt.Errorf("RemoveUnderlay: failed to get netns for default namespace: %w", err)
+	}
+	defer func() {
+		if err := defaultNetNS.Close(); err != nil {
+			slog.Error("failed to close default namespace", "error", err)
 		}
 	}()
 
-	return netnamespace.In(ns, func() error {
-		if err := clearNonDefaultLoopbackIPs(loopbackName); err != nil {
+	fromNetNSHandle, err := netlink.NewHandleAt(fromNetNS)
+	if err != nil {
+		return fmt.Errorf("RemoveUnderlay: failed to get netlink handle for namespace %s: %w", fromNetNSPath, err)
+	}
+	defer fromNetNSHandle.Close()
+	defaultNetNSHandle, err := netlink.NewHandleAt(defaultNetNS)
+	if err != nil {
+		return fmt.Errorf("RemoveUnderlay: failed to get netlink handle for default namespace: %w", err)
+	}
+	defer defaultNetNSHandle.Close()
+
+	if err := clearNonDefaultLoopbackIPs(fromNetNSHandle, loopbackName); err != nil {
+		return fmt.Errorf("RemoveUnderlay: failed to clear non default loopback IPs from interface %s, err: %w",
+			loopbackName, err)
+	}
+
+	links, err := fromNetNSHandle.LinkList()
+	if err != nil {
+		return fmt.Errorf("failed to list links: %w", err)
+	}
+	for _, l := range links {
+		if l.Attrs().Group != underlayGroupID {
+			continue
+		}
+		if err = moveInterfaceToNamespace(ctx, l.Attrs().Name, fromNetNSHandle, defaultNetNSHandle, defaultNetNS, 0); err != nil {
 			return err
 		}
+	}
 
-		links, err := netlink.LinkList()
-		if err != nil {
-			return fmt.Errorf("failed to list links: %w", err)
-		}
-		for _, l := range links {
-			if l.Attrs().Group == underlayGroupID {
-				if err := netlink.LinkSetGroup(l, 0); err != nil {
-					return fmt.Errorf("failed to reset group ID on %s: %w", l.Attrs().Name, err)
-				}
-			}
-		}
-		return nil
-	})
+	return nil
 }
 
 // HasUnderlayInterface returns true if the given network
@@ -232,13 +257,13 @@ func findUnderlayMTU(ns netns.NsHandle) (int, error) {
 	return minMTU, nil
 }
 
-func clearNonDefaultLoopbackIPs(intf string) error {
-	lo, err := netlink.LinkByName(intf)
+func clearNonDefaultLoopbackIPs(handle *netlink.Handle, intf string) error {
+	lo, err := handle.LinkByName(intf)
 	if err != nil {
 		return fmt.Errorf("failed to find %s: %w", intf, err)
 	}
 
-	addresses, err := netlink.AddrList(lo, netlink.FAMILY_ALL)
+	addresses, err := handle.AddrList(lo, netlink.FAMILY_ALL)
 	if err != nil {
 		return fmt.Errorf("failed to list addresses on %s: %w", intf, err)
 	}
@@ -248,7 +273,7 @@ func clearNonDefaultLoopbackIPs(intf string) error {
 		if address.IP.IsLoopback() {
 			continue
 		}
-		if err := netlink.AddrDel(lo, &address); err != nil {
+		if err := handle.AddrDel(lo, &address); err != nil {
 			errs = append(errs, err)
 		}
 	}

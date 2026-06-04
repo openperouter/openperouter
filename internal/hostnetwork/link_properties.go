@@ -4,7 +4,6 @@ package hostnetwork
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -13,7 +12,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/openperouter/openperouter/internal/netnamespace"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netlink/nl"
 	"github.com/vishvananda/netns"
@@ -173,67 +171,65 @@ func setNeighSuppression(link netlink.Link) error {
 	return nil
 }
 
-// moveInterfaceToNamespace takes the given interface and moves it into the given namespace.
-func moveInterfaceToNamespace(ctx context.Context, intf string, ns netns.NsHandle) error {
-	slog.DebugContext(ctx, "move intf to namespace", "intf", intf, "namespace", ns.String())
-	defer slog.DebugContext(ctx, "move intf to namespace end", "intf", intf, "namespace", ns.String())
+// moveInterfaceToNamespace takes the given interface and moves it from the given to the given namespace.
+func moveInterfaceToNamespace(ctx context.Context, intf string, fromHandle, toHandle *netlink.Handle,
+	toNS netns.NsHandle, groupID uint32) error {
+	slog.DebugContext(ctx, "move intf to namespace", "intf", intf, "toNS", toNS.String())
+	defer slog.DebugContext(ctx, "move intf to namespace end", "intf", intf, "toNS", toNS.String())
 
-	err := netnamespace.In(ns, func() error {
-		_, err := netlink.LinkByName(intf)
-		if err != nil {
-			return fmt.Errorf("moveInterfaceToNamespace: Failed to find link %s: %w", intf, err)
-		}
-		return nil
-	})
-	if err == nil {
-		slog.DebugContext(ctx, "intf is already in namespace", "intf", intf, "namespace", ns.String())
+	// Nothing to do for us if the interface is already inside the target namespace.
+	if _, err := toHandle.LinkByName(intf); err == nil {
+		slog.DebugContext(ctx, "intf is already in namespace", "intf", intf, "namespace", toNS.String())
 		return nil
 	}
-	var nsError netnamespace.SetNamespaceError
-	if errors.As(err, &nsError) {
-		return fmt.Errorf("moveInterfaceToNamespace: Failed to execute in ns %s: %w", intf, err)
-	}
 
-	link, err := netlink.LinkByName(intf)
+	// Get the link, store its current addresses so that we can later restore them (addresses are lost upon moving),
+	// and move the link to the target netns.
+	link, err := fromHandle.LinkByName(intf)
 	if err != nil {
 		return fmt.Errorf("moveInterfaceToNamespace: Failed to find link %s: %w", intf, err)
 	}
 
-	addresses, err := netlink.AddrList(link, netlink.FAMILY_ALL)
+	addresses, err := fromHandle.AddrList(link, netlink.FAMILY_ALL)
 	if err != nil {
 		return fmt.Errorf("moveInterfaceToNamespace: Failed to get addresses for intf %s: %w", link.Attrs().Name, err)
 	}
-
 	slog.DebugContext(ctx, "addresses before moving", "addresses", addresses)
-	err = netlink.LinkSetNsFd(link, int(ns))
-	if err != nil {
-		return fmt.Errorf("moveInterfaceToNamespace: Failed to move %s to network namespace %s: %w", link.Attrs().Name, ns.String(), err)
-	}
-	if err := netnamespace.In(ns, func() error {
-		nsLink, err := netlink.LinkByName(intf)
-		if err != nil {
-			return fmt.Errorf("moveInterfaceToNamespace: Failed to get link by name %s up in network namespace %s: %w", intf, ns.String(), err)
-		}
-		err = netlink.LinkSetUp(nsLink)
-		if err != nil {
-			return fmt.Errorf("moveInterfaceToNamespace: Failed to set %s up in network namespace %s: %w", nsLink.Attrs().Name, ns.String(), err)
-		}
 
-		slog.DebugContext(ctx, "restoring addresses in namespace", "addresses", addresses)
-		for _, a := range addresses {
-			slog.DebugContext(ctx, "restoring address in namespace", "address", a, "flags", a.Flags)
-			IFA_F_NOPREFIXROUTE := 0x200 //nolint:revive // matches kernel define
-			a.Flags &= ^IFA_F_NOPREFIXROUTE
-			slog.DebugContext(ctx, "restoring address in namespace after no prefix", "address", a, "flags", a.Flags)
-			err := netlink.AddrAdd(nsLink, &a)
-			if err != nil && !os.IsExist(err) {
-				return fmt.Errorf("moveNicToNamespace: Failed to add address %s to %s: %w", a, nsLink.Attrs().Name, err)
-			}
-		}
-		return nil
-	}); err != nil {
-		return err
+	err = fromHandle.LinkSetNsFd(link, int(toNS))
+	if err != nil {
+		return fmt.Errorf("moveInterfaceToNamespace: Failed to move %s to network namespace %s: %w", link.Attrs().Name, toNS.String(), err)
 	}
+
+	// After the move, get the link inside the new namespace, set the link up, and add the addresses again.
+	nsLink, err := toHandle.LinkByName(intf)
+	if err != nil {
+		return fmt.Errorf("moveInterfaceToNamespace: Failed to get link by name %s up in network namespace %s: %w", intf, toNS.String(), err)
+	}
+
+	slog.DebugContext(ctx, "restoring addresses in namespace", "addresses", addresses)
+	for _, a := range addresses {
+		slog.DebugContext(ctx, "restoring address in namespace", "address", a, "flags", a.Flags)
+		a.Flags &= ^unix.IFA_F_NOPREFIXROUTE
+		slog.DebugContext(ctx, "restoring address in namespace after no prefix", "address", a, "flags", a.Flags)
+		err := toHandle.AddrAdd(nsLink, &a)
+		if err != nil && !os.IsExist(err) {
+			return fmt.Errorf("moveInterfaceToNamespace: Failed to add address %s to %s: %w", a, nsLink.Attrs().Name, err)
+		}
+	}
+
+	// Set group ID only if not already set (idempotent)
+	if nsLink.Attrs().Group != groupID {
+		if err := toHandle.LinkSetGroup(nsLink, int(groupID)); err != nil {
+			return fmt.Errorf("moveInterfaceToNamespace: Failed to set group ID %d on interface %s: %w", groupID, intf, err)
+		}
+	}
+
+	err = toHandle.LinkSetUp(nsLink)
+	if err != nil {
+		return fmt.Errorf("moveInterfaceToNamespace: Failed to set %s up in network namespace %s: %w", nsLink.Attrs().Name, toNS.String(), err)
+	}
+
 	return nil
 }
 
