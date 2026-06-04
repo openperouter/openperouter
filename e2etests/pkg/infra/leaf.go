@@ -11,6 +11,7 @@ import (
 	"runtime"
 
 	"github.com/openperouter/openperouter/e2etests/pkg/frr"
+	"github.com/openperouter/openperouter/e2etests/pkg/ipfamily"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -38,8 +39,15 @@ var (
 		SpineAddress: "192.168.1.2",
 		Container:    LeafBContainer,
 	}
-	LeafKindConfig = LeafKind{
-		Container: KindLeafContainer,
+	LeafKind1Config = LeafKind{
+		ASN:              64512,
+		SpinePeerAddress: "192.168.1.4",
+		Container:        KindLeaf1Container,
+	}
+	LeafKind2Config = LeafKind{
+		ASN:              64513,
+		SpinePeerAddress: "192.168.1.6",
+		Container:        KindLeaf2Container,
 	}
 
 	EmptyLeafConfig = LeafConfiguration{
@@ -68,11 +76,21 @@ type LeafConfiguration struct {
 }
 
 type LeafKindConfiguration struct {
+	ASN                   int
+	SpinePeerAddress      string
 	EnableBFD             bool
 	RedistributeConnected bool
-	Neighbors             []string
+	Neighbors             []Neighbor
 	NextHopSelf           bool
 	PERouterASN           uint32
+	AddressFamily         ipfamily.Family
+}
+
+// Neighbor represents a BGP neighbor with its ID (IP address or interface)
+// and type.
+type Neighbor struct {
+	ID          string
+	IsInterface bool
 }
 
 type RouteTargets struct {
@@ -94,6 +112,8 @@ type Leaf struct {
 }
 
 type LeafKind struct {
+	ASN              int
+	SpinePeerAddress string
 	frr.Container
 }
 
@@ -151,30 +171,39 @@ func LeafKindConfigToFRR(config LeafKindConfiguration) (string, error) {
 
 const EnableBFD = true
 
-// UpdateLeafKindConfig updates the leafkind configuration file with the given configuration.
+// UpdateConfig updates the leafkind configuration file with the given configuration.
 // It takes nodes and automatically builds the neighbors list from their IPs.
-func UpdateLeafKindConfig(nodes []corev1.Node, enableBFD bool) error {
-	neighbors := []string{}
+// The behavior can be modified via options.
+func (l LeafKind) UpdateConfig(nodes []corev1.Node, config LeafKindConfiguration) error {
+	if config.AddressFamily == "" {
+		config.AddressFamily = ipfamily.IPv4
+	}
+	if config.PERouterASN == 0 {
+		config.PERouterASN = 64514
+	}
+	if config.ASN == 0 {
+		config.ASN = l.ASN
+	}
+	if config.SpinePeerAddress == "" {
+		config.SpinePeerAddress = l.SpinePeerAddress
+	}
+
+	neighbors := []Neighbor{}
 	for _, node := range nodes {
-		neighborIP, err := NeighborIP(KindLeaf, node.Name)
+		neighbor, err := NeighborForFamily(l.Container.Name, node.Name, config.AddressFamily)
 		if err != nil {
 			return err
 		}
-		neighbors = append(neighbors, neighborIP)
+		neighbors = append(neighbors, neighbor)
 	}
-
-	config := LeafKindConfiguration{
-		PERouterASN: 64514,
-		EnableBFD:   enableBFD,
-		Neighbors:   neighbors,
-	}
+	config.Neighbors = neighbors
 
 	configString, err := LeafKindConfigToFRR(config)
 	if err != nil {
 		return err
 	}
 
-	return LeafKindConfig.ReloadConfig(configString)
+	return l.ReloadConfig(configString)
 }
 
 func (l Leaf) Configure(LeafConfig LeafConfiguration) error {
@@ -207,6 +236,11 @@ func (l Leaf) RedistributeConnected() error {
 		Blue:    Addresses{RedistributeConnected: true},
 		Default: Addresses{RedistributeConnected: true},
 	})
+}
+
+// RemovePrefixes removes all prefixes from the leaf configuration.
+func (l Leaf) RemovePrefixes() error {
+	return l.ChangePrefixes([]string{}, []string{}, []string{})
 }
 
 // Reset resets Leaf configuration to default values.

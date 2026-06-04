@@ -39,17 +39,25 @@ type UnderlaySpec struct {
 	// +optional
 	RouterIDCIDR *string `json:"routeridcidr,omitempty"`
 
-	// neighbors is the list of external neighbors to peer with.
+	// neighbors is the list of external BGP neighbors to peer with.
+	// Note: MaxItems=128 is arbitrarily chosen to keep total CEL cost low
+	// Note: kubeapilinter complained about 'the struct has no required fields', but CEL enforces either/or choices
+	// for Address and Interface.
+	// Multiple neighbors are supported for connecting to multiple TOR switches
+	// or establishing redundant BGP sessions. Each neighbor address must be unique.
+	// At least one neighbor is required.
 	// +kubebuilder:validation:MinItems=1
-	// +optional
+	// +kubebuilder:validation:MaxItems=128
+	// +required
 	// +listType=atomic
-	Neighbors []Neighbor `json:"neighbors,omitempty"`
+	Neighbors []Neighbor `json:"neighbors,omitempty"` //nolint:kubeapilinter
 
 	// nics is the list of physical nics to move under the PERouter namespace to connect
-	// to external routers. This field is optional when using Multus networks for TOR connectivity.
+	// to external routers. At least one NIC is required.
+	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:items:Pattern=`^[a-zA-Z][a-zA-Z0-9._-]*$`
 	// +kubebuilder:validation:items:MaxLength=15
-	// +optional
+	// +required
 	// +listType=atomic
 	Nics []string `json:"nics,omitempty"`
 
@@ -87,24 +95,11 @@ type GracefulRestartConfig struct {
 }
 
 // EVPNConfig contains EVPN-VXLAN configuration for the underlay.
-// +kubebuilder:validation:XValidation:rule="(self.?vtepCIDR.orValue(\"\") != \"\") != (self.?vtepInterface.orValue(\"\") != \"\")",message="exactly one of vtepCIDR or vtepInterface must be specified"
 type EVPNConfig struct {
 	// vtepCIDR is the CIDR to be used to assign IPs to the local VTEP on each node.
 	// A loopback interface will be created with an IP derived from this CIDR.
-	// Mutually exclusive with vtepInterface.
 	// +optional
 	VTEPCIDR *string `json:"vtepCIDR,omitempty"`
-
-	// vtepInterface is the name of an existing interface to use as the VTEP source.
-	// The interface must already have an IP address configured that will be used
-	// as the VTEP IP. Mutually exclusive with vtepCIDR.
-	// The ToR must advertise the interface IP into the fabric underlay
-	// (e.g. via redistribute connected) so that the VTEP address is reachable
-	// from other leaves.
-	// +kubebuilder:validation:Pattern=`^[a-zA-Z][a-zA-Z0-9._-]*$`
-	// +kubebuilder:validation:MaxLength=15
-	// +optional
-	VTEPInterface *string `json:"vtepInterface,omitempty"`
 }
 
 // UnderlayStatus defines the observed state of Underlay.

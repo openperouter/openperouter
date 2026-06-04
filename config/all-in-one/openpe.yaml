@@ -911,24 +911,8 @@ spec:
                     description: |-
                       vtepCIDR is the CIDR to be used to assign IPs to the local VTEP on each node.
                       A loopback interface will be created with an IP derived from this CIDR.
-                      Mutually exclusive with vtepInterface.
-                    type: string
-                  vtepInterface:
-                    description: |-
-                      vtepInterface is the name of an existing interface to use as the VTEP source.
-                      The interface must already have an IP address configured that will be used
-                      as the VTEP IP. Mutually exclusive with vtepCIDR.
-                      The ToR must advertise the interface IP into the fabric underlay
-                      (e.g. via redistribute connected) so that the VTEP address is reachable
-                      from other leaves.
-                    maxLength: 15
-                    pattern: ^[a-zA-Z][a-zA-Z0-9._-]*$
                     type: string
                 type: object
-                x-kubernetes-validations:
-                - message: exactly one of vtepCIDR or vtepInterface must be specified
-                  rule: (self.?vtepCIDR.orValue("") != "") != (self.?vtepInterface.orValue("")
-                    != "")
               gracefulRestart:
                 description: |-
                   gracefulRestart configures BGP Graceful Restart behaviour.
@@ -957,16 +941,28 @@ spec:
                     type: integer
                 type: object
               neighbors:
-                description: neighbors is the list of external neighbors to peer with.
+                description: |-
+                  neighbors is the list of external BGP neighbors to peer with.
+                  Note: MaxItems=128 is arbitrarily chosen to keep total CEL cost low
+                  Note: kubeapilinter complained about 'the struct has no required fields', but CEL enforces either/or choices
+                  for Address and Interface.
+                  Multiple neighbors are supported for connecting to multiple TOR switches
+                  or establishing redundant BGP sessions. Each neighbor address must be unique.
+                  At least one neighbor is required.
                 items:
                   description: Neighbor represents a BGP Neighbor we want FRR to connect
                     to.
                   properties:
                     address:
-                      description: address is the IP address to establish the session
-                        with.
+                      description: |-
+                        address is the IP address to establish the session with. The IP address
+                        can be either IPv4 or IPv6.
+                      maxLength: 39
                       minLength: 1
                       type: string
+                      x-kubernetes-validations:
+                      - message: Address must be a valid IPv4 or IPv6 address
+                        rule: isIP(self)
                     asn:
                       description: asn is the AS number of the neighbor. Either ASN
                         or Type must be set.
@@ -1051,6 +1047,17 @@ spec:
                         Defaults to 180.
                       format: int64
                       type: integer
+                    interface:
+                      description: interface is the interface name for BGP unnumbered
+                        sessions. The session will be established via IPv6 link locals.
+                      maxLength: 15
+                      minLength: 1
+                      type: string
+                      x-kubernetes-validations:
+                      - message: Interface must not contain /, :, or whitespace
+                        rule: self.matches('^[^\\/:\\s]+$')
+                      - message: Interface cannot be . or ..
+                        rule: self != '.' && self != '..'
                     keepaliveTimeSeconds:
                       description: |-
                         keepaliveTimeSeconds is the requested BGP keepalive time in seconds, per RFC4271.
@@ -1085,8 +1092,6 @@ spec:
                       - external
                       - internal
                       type: string
-                  required:
-                  - address
                   type: object
                   x-kubernetes-validations:
                   - message: either ASN or Type must be set
@@ -1102,17 +1107,24 @@ spec:
                   - message: keepaliveTimeSeconds must be lower than or equal to holdTimeSeconds
                     rule: '!has(self.holdTimeSeconds) || !has(self.keepaliveTimeSeconds)
                       || self.keepaliveTimeSeconds <= self.holdTimeSeconds'
+                  - message: Either a valid Address or Interface name must be provided
+                      for Neighbor
+                    rule: has(self.address) || has(self.interface)
+                  - message: Address and Interface cannot be set together for Neighbor
+                    rule: '!has(self.address) || !has(self.interface)'
+                maxItems: 128
                 minItems: 1
                 type: array
                 x-kubernetes-list-type: atomic
               nics:
                 description: |-
                   nics is the list of physical nics to move under the PERouter namespace to connect
-                  to external routers. This field is optional when using Multus networks for TOR connectivity.
+                  to external routers. At least one NIC is required.
                 items:
                   maxLength: 15
                   pattern: ^[a-zA-Z][a-zA-Z0-9._-]*$
                   type: string
+                minItems: 1
                 type: array
                 x-kubernetes-list-type: atomic
               nodeSelector:
@@ -1171,6 +1183,8 @@ spec:
                 type: string
             required:
             - asn
+            - neighbors
+            - nics
             type: object
           status:
             description: status defines the observed state of Underlay.

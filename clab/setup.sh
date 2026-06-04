@@ -8,6 +8,10 @@ source common.sh
 CALICO_MODE=${CALICO_MODE:-false}
 CLAB_TOPOLOGY="${CLAB_TOPOLOGY:-singlecluster/kind.clab.yml}"
 IP_MAP_FILE=${IP_MAP_FILE:-"singlecluster/ip_map.txt"}
+KIND_EXPORT_LOGS=${KIND_EXPORT_LOGS:-/tmp/kind_logs}
+
+COREDUMP=${COREDUMP:-false}
+CORE_DUMP_DIR="${KIND_EXPORT_LOGS}/core_dumps"
 
 # Get cluster names from command line arguments or environment variable, default to single cluster
 if [[ $# -gt 0 ]]; then
@@ -79,6 +83,24 @@ echo "=== 10/11 Container setup ==="
 
 echo "=== 11/11 Veth monitoring ==="
 ./scripts/10-veth-monitoring.sh "${CLUSTER_ARRAY[@]}"
+
+# Setting up coredumps is finicky. The sysctl settings are global, so core_pattern
+# must be the same for all containers and pods. Without using a pipe, the core
+# dumps would be stored on the container or inside the pods. However, in that case,
+# we would have to mount e.g. /tmp/core on the container into the pod to make sure
+# that the core dump is captures (and not discarded when the pod dies).
+# In order to avoid this, we use a pipe which will run on the host system. However,
+# we might run into issues with SELinux in such a scenario. E.g., on Fedora,
+# this requires setenforce 0 or building a custom selinux module.
+setup_coredumps() {
+    if [[ "$COREDUMP" != "true" ]]; then
+        return
+    fi
+    mkdir -p "${CORE_DUMP_DIR}"
+    sudo sysctl -w kernel.core_pattern="|/usr/bin/dd of=${CORE_DUMP_DIR}/core.%E.%P.%h.%s.%t bs=1M status=none"
+}
+
+setup_coredumps
 
 echo "=== ${CLUSTER_MODE^} cluster deployment completed ==="
 if [[ "$CLUSTER_MODE" == "single" ]]; then

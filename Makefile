@@ -30,6 +30,12 @@ SHELL = /usr/bin/env bash -o pipefail
 # file to deploy. It defauls to the single cluster variant
 CLAB_TOPOLOGY_FILE ?= singlecluster/kind.clab.yml
 
+# COREDUMP determines if we want to setup the coredump via our scripts. We
+# do not want to do this in local setups, but this is needed for CI environments.
+COREDUMP ?= false
+
+KIND_EXPORT_LOGS ?=/tmp/kind_logs
+
 .PHONY: all
 all: build
 
@@ -58,6 +64,8 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 	$(CONTROLLER_GEN) crd webhook paths="./operator/api/..." paths="./operator/config/..." output:crd:artifacts:config=operator/config/crd/bases
 	$(CONTROLLER_GEN) rbac:roleName=controller-role paths="./internal/controller/..." output:rbac:artifacts:config=config/rbac/
 	$(CONTROLLER_GEN) rbac:roleName=operator-role paths="./operator/..." output:rbac:artifacts:config=operator/config/rbac/
+	# The following line generates operator/config/webhook/webhook/manifests.yaml
+	$(CONTROLLER_GEN) crd webhook paths="./api/..." paths="./config/..." output:crd:none output:webhook:artifacts:config=operator/config/webhook/webhook
 	cp config/crd/bases/*.yaml charts/openperouter/charts/crds/templates
 	rm -f charts/openperouter/charts/crds/templates/kustomization.yaml
 	hack/generate-bindata.sh
@@ -357,13 +365,15 @@ parse-scale-report: ## Parse scale test JSON report and print summary tables.
 
 .PHONY: clab-cluster
 clab-cluster: kind-node-image-build kubectl
-	KUBECONFIG_PATH=$(KUBECONFIG_PATH) KIND=$(KIND) KUBECTL=$(KUBECTL) CLAB_TOPOLOGY=$(CLAB_TOPOLOGY_FILE) clab/setup.sh
+	KUBECONFIG_PATH=$(KUBECONFIG_PATH) KIND=$(KIND) KUBECTL=$(KUBECTL) CLAB_TOPOLOGY=$(CLAB_TOPOLOGY_FILE) \
+	  KIND_EXPORT_LOGS=$(KIND_EXPORT_LOGS) COREDUMP=$(COREDUMP) clab/setup.sh
 	@echo 'kind cluster created, to use it please'
 	@echo 'export KUBECONFIG=${KUBECONFIG_PATH}'
 
 .PHONY: clab-multi-cluster
 clab-multi-cluster: kind-node-image-build kubectl ## Deploy multi-cluster setup with 2 kindleafs, 2 kind switches, and 2 kind clusters (control plane + worker each)
-	KUBECONFIG_PATH=$(KUBECONFIG_PATH) KIND=$(KIND) KUBECTL=$(KUBECTL) CLAB_TOPOLOGY=multicluster/kind.clab.yml clab/setup.sh pe-kind-a pe-kind-b
+	KUBECONFIG_PATH=$(KUBECONFIG_PATH) KIND=$(KIND) KUBECTL=$(KUBECTL) CLAB_TOPOLOGY=multicluster/kind.clab.yml \
+	  KIND_EXPORT_LOGS=$(KIND_EXPORT_LOGS) COREDUMP=$(COREDUMP) clab/setup.sh pe-kind-a pe-kind-b
 	@echo 'Multi-cluster deployment created:'
 	@echo '  - Cluster A: export KUBECONFIG=${KUBECONFIG_PATH}-pe-kind-a'
 	@echo '  - Cluster B: export KUBECONFIG=${KUBECONFIG_PATH}-pe-kind-b'
@@ -430,8 +440,6 @@ bump-k8s-deps: ## Bump all k8s.io and sigs.k8s.io dependencies (K8S_VERSION=v0.3
 .PHONY: bump-go-version
 bump-go-version: ## Bump Go version across the project (GO_VERSION=1.25.7 or omit for latest)
 	hack/bump_go_version.sh $(GO_VERSION)
-
-KIND_EXPORT_LOGS ?=/tmp/kind_logs
 
 .PHONY: kind-export-logs
 kind-export-logs: create-export-logs

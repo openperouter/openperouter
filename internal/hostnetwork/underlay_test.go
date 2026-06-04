@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+
 	"strings"
 	"time"
 
@@ -67,7 +68,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 
 	It("should work with a single underlay", func() {
 		params := UnderlayParams{
-			UnderlayInterface: underlayTestInterface,
+			UnderlayInterfaces: []string{underlayTestInterface},
 			EVPN: &UnderlayEVPNParams{
 				VtepIP: "192.168.1.1/32",
 			},
@@ -83,7 +84,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 
 	It("creating the same underlay twice should be idempotent", func() {
 		params := UnderlayParams{
-			UnderlayInterface: underlayTestInterface,
+			UnderlayInterfaces: []string{underlayTestInterface},
 			EVPN: &UnderlayEVPNParams{
 				VtepIP: "192.168.1.1/32",
 			},
@@ -101,7 +102,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 
 	It("changing the underlay interface should error", func() {
 		params := UnderlayParams{
-			UnderlayInterface: underlayTestInterface,
+			UnderlayInterfaces: []string{underlayTestInterface},
 			EVPN: &UnderlayEVPNParams{
 				VtepIP: "192.168.1.1/32",
 			},
@@ -113,7 +114,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 			validateUnderlayInNS(g, testNs, params)
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 
-		params.UnderlayInterface = underlayTestInterfaceEdit
+		params.UnderlayInterfaces = []string{underlayTestInterfaceEdit}
 
 		err = SetupUnderlay(context.Background(), params)
 		u := UnderlayExistsError("")
@@ -122,7 +123,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 
 	It("changing the vtepip should work", func() {
 		params := UnderlayParams{
-			UnderlayInterface: underlayTestInterface,
+			UnderlayInterfaces: []string{underlayTestInterface},
 			EVPN: &UnderlayEVPNParams{
 				VtepIP: "192.168.1.1/32",
 			},
@@ -147,8 +148,8 @@ var _ = Describe("Underlay configuration should work when", func() {
 
 	It("should work without EVPN set", func() {
 		params := UnderlayParams{
-			UnderlayInterface: underlayTestInterface,
-			TargetNS:          underlayTestNSPath(),
+			UnderlayInterfaces: []string{underlayTestInterface},
+			TargetNS:           underlayTestNSPath(),
 		}
 		err := SetupUnderlay(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
@@ -158,18 +159,6 @@ var _ = Describe("Underlay configuration should work when", func() {
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 	})
 
-	It("should work without NIC set, assuming Multus is used", func() {
-		params := UnderlayParams{
-			UnderlayInterface: "",
-			TargetNS:          underlayTestNSPath(),
-		}
-		err := SetupUnderlay(context.Background(), params)
-		Expect(err).NotTo(HaveOccurred())
-
-		Eventually(func(g Gomega) {
-			validateUnderlayInNS(g, testNs, params)
-		}, 30*time.Second, 1*time.Second).Should(Succeed())
-	})
 })
 
 func validateUnderlayInNS(g Gomega, ns netns.NsHandle, params UnderlayParams) {
@@ -183,7 +172,7 @@ func validateUnderlay(g Gomega, params UnderlayParams, interfaceIPs ...string) {
 	links, err := netlink.LinkList()
 	g.Expect(err).NotTo(HaveOccurred())
 	loopbackFound := false
-	mainNicFound := false
+	foundInterfaces := map[string]bool{}
 	for _, l := range links {
 		if l.Attrs().Name == UnderlayLoopback {
 			loopbackFound = true
@@ -191,22 +180,24 @@ func validateUnderlay(g Gomega, params UnderlayParams, interfaceIPs ...string) {
 				validateIP(g, l, params.EVPN.VtepIP)
 			}
 		}
-		if params.UnderlayInterface != "" && l.Attrs().Name == params.UnderlayInterface {
-			mainNicFound = true
-			for _, ip := range interfaceIPs {
-				validateIP(g, l, ip)
+		for _, underlayIface := range params.UnderlayInterfaces {
+			if l.Attrs().Name == underlayIface {
+				foundInterfaces[underlayIface] = true
+				for _, ip := range interfaceIPs {
+					validateIP(g, l, ip)
+				}
+				validateGroupID(g, l, underlayGroupID)
 			}
-			validateIP(g, l, underlayInterfaceSpecialAddr)
 		}
-
 	}
 	if params.EVPN != nil && params.EVPN.VtepIP == "" {
-		g.Expect(loopbackFound).To(BeFalse(), fmt.Sprintf("loopback should not exist when vtepInterface is set, links %v", links))
+		g.Expect(loopbackFound).To(BeFalse(), fmt.Sprintf("loopback should not exist when vtepIP is empty, links %v", links))
 	} else if params.EVPN != nil {
 		g.Expect(loopbackFound).To(BeTrue(), fmt.Sprintf("failed to find loopback in ns, links %v", links))
 	}
-	if params.UnderlayInterface != "" && !mainNicFound {
-		g.Expect(mainNicFound).To(BeTrue(), fmt.Sprintf("failed to find underlay interface in ns, links %v", links))
+	for _, underlayIface := range params.UnderlayInterfaces {
+		g.Expect(foundInterfaces).To(HaveKey(underlayIface),
+			fmt.Sprintf("underlay interface %s not found in ns, links %v", underlayIface, links))
 	}
 }
 
@@ -222,6 +213,11 @@ func validateIP(g Gomega, l netlink.Link, address string) {
 		}
 	}
 	g.Expect(found).To(BeTrue(), fmt.Sprintf("failed to find address %s for %s: %v", address, l.Attrs().Name, addresses))
+}
+
+func validateGroupID(g Gomega, l netlink.Link, expectedGroupID uint32) {
+	actualGroupID := l.Attrs().Group
+	g.Expect(actualGroupID).To(Equal(expectedGroupID), fmt.Sprintf("interface %s has wrong group ID: expected %d, got %d", l.Attrs().Name, expectedGroupID, actualGroupID))
 }
 
 func cleanTest(namespace string) {

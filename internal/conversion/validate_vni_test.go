@@ -324,6 +324,18 @@ func TestValidateL2VNIs(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name: "disconnected L2VNI with long name passes validation",
+			vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "this-name-is-too-long-for-iface"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI: 1001,
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
 			name: "ivalid L2GatewayIPs dual-stack both ipv4",
 			vnis: []v1alpha1.L2VNI{
 				{
@@ -580,6 +592,27 @@ func TestValidateVRFs(t *testing.T) {
 						HostSession: &v1alpha1.HostSession{ASN: 65001, HostASN: new(int64(65002)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv6: new("2000::1/64")}},
 					},
 					Status: &v1alpha1.L3VNIStatus{},
+				},
+			},
+		},
+		{
+			name: "disconnected L2VNI is skipped in subnet overlap checks",
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI: 1001,
+					},
+				},
+			},
+			l3vnis: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
+					Spec: v1alpha1.L3VNISpec{
+						VNI:         1002,
+						VRF:         "vni1",
+						HostSession: &v1alpha1.HostSession{ASN: 65001, HostASN: new(int64(65002)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.168.1.0/24")}},
+					},
 				},
 			},
 		},

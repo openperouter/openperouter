@@ -1,0 +1,71 @@
+interfaces:
+# requiresTemp: the interface must be fully configured before being given its final name,
+# otherwise the OpenPERouter controller pod could steal and move it into its namespace prematurely.
+
+# leafkind1-sw bridge connections
+- left:
+    bridge: "leafkind1-sw"
+    name: "kindctrlpl1"
+  right:
+    container: "pe-kind-control-plane"
+    name: "toswitch1"
+    ips: ["192.168.11.3/24", "2001:db8:11::3/64"]
+    requiresTemp: true
+- left:
+    bridge: "leafkind1-sw"
+    name: "kindworker1"
+  right:
+    container: "pe-kind-worker"
+    name: "toswitch1"
+    ips: ["192.168.11.4/24", "2001:db8:11::4/64"]
+    requiresTemp: true
+
+# leafkind2-sw bridge connections
+- left:
+    bridge: "leafkind2-sw"
+    name: "kindctrlpl2"
+  right:
+    container: "pe-kind-control-plane"
+    name: "toswitch2"
+    ips: ["192.168.12.3/24", "2001:db8:12::3/64"]
+    requiresTemp: true
+- left:
+    bridge: "leafkind2-sw"
+    name: "kindworker2"
+  right:
+    container: "pe-kind-worker"
+    name: "toswitch2"
+    ips: ["192.168.12.4/24", "2001:db8:12::4/64"]
+    requiresTemp: true
+
+# Point to point links for IPv6 unnumbered BGP sessions - leafkind1
+- left:
+    container: "clab-kind-leafkind1"
+    name: "tokindworker"
+  right:
+    container: "pe-kind-worker"
+    name: "toleafkind1"
+    requiresTemp: true
+- left:
+    container: "clab-kind-leafkind1"
+    name: "tokindctrlpl"
+  right:
+    container: "pe-kind-control-plane"
+    name: "toleafkind1"
+    requiresTemp: true
+
+# Point to point links for IPv6 unnumbered BGP sessions - leafkind2
+- left:
+    container: "clab-kind-leafkind2"
+    name: "tokindworker"
+  right:
+    container: "pe-kind-worker"
+    name: "toleafkind2"
+    requiresTemp: true
+- left:
+    container: "clab-kind-leafkind2"
+    name: "tokindctrlpl"
+  right:
+    container: "pe-kind-control-plane"
+    name: "toleafkind2"
+    requiresTemp: true

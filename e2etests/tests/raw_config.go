@@ -114,48 +114,6 @@ var _ = Describe("RawFRRConfig", Ordered, func() {
 		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 	})
 
-	It("should order multiple raw config snippets by priority", func() {
-		rawConfigHigh := v1alpha1.RawFRRConfig{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "raw-high-priority",
-				Namespace: openperouter.Namespace,
-			},
-			Spec: v1alpha1.RawFRRConfigSpec{
-				Priority:  new(int32(20)),
-				RawConfig: "ip prefix-list raw-high seq 10 permit 10.222.0.0/16",
-			},
-		}
-
-		rawConfigLow := v1alpha1.RawFRRConfig{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "raw-low-priority",
-				Namespace: openperouter.Namespace,
-			},
-			Spec: v1alpha1.RawFRRConfigSpec{
-				Priority:  new(int32(5)),
-				RawConfig: "ip prefix-list raw-low seq 10 permit 10.33.0.0/16",
-			},
-		}
-
-		err := Updater.Update(config.Resources{
-			RawFRRConfigs: []v1alpha1.RawFRRConfig{rawConfigHigh, rawConfigLow},
-		})
-		Expect(err).NotTo(HaveOccurred())
-
-		Eventually(func() error {
-			routers, err = openperouter.Get(cs, HostMode)
-			if err != nil {
-				return err
-			}
-			if err := openperouter.AreReady(routers); err != nil {
-				return err
-			}
-			return checkRawConfigOrderOnAllRouters(routers,
-				"ip prefix-list raw-low seq 10 permit 10.33.0.0/16",
-				"ip prefix-list raw-high seq 10 permit 10.222.0.0/16")
-		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
-	})
-
 	It("should apply raw config only to nodes matching the node selector", func() {
 		nodeSelector := &metav1.LabelSelector{
 			MatchLabels: map[string]string{
@@ -296,28 +254,6 @@ func checkRawConfigAbsentOnAllRouters(routers openperouter.Routers, unexpected s
 		}
 		if strings.Contains(output, unexpected) {
 			return fmt.Errorf("router %s running config still contains %q", router.Name(), unexpected)
-		}
-	}
-	return nil
-}
-
-func checkRawConfigOrderOnAllRouters(routers openperouter.Routers, first, second string) error {
-	for router := range routers.GetExecutors() {
-		output, err := frr.RunningConfig(router)
-		if err != nil {
-			return err
-		}
-		firstIdx := strings.Index(output, first)
-		secondIdx := strings.Index(output, second)
-		if firstIdx == -1 {
-			return fmt.Errorf("router %s running config does not contain %q", router.Name(), first)
-		}
-		if secondIdx == -1 {
-			return fmt.Errorf("router %s running config does not contain %q", router.Name(), second)
-		}
-		if firstIdx >= secondIdx {
-			return fmt.Errorf("router %s: expected %q (priority lower) before %q (priority higher), but found in wrong order",
-				router.Name(), first, second)
 		}
 	}
 	return nil

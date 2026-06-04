@@ -8,6 +8,8 @@ package v1alpha1
 // +kubebuilder:validation:XValidation:rule="has(self.holdTimeSeconds) == has(self.keepaliveTimeSeconds)",message="holdTimeSeconds and keepaliveTimeSeconds must be both set or both unset"
 // +kubebuilder:validation:XValidation:rule="!has(self.holdTimeSeconds) || self.holdTimeSeconds == 0 || self.holdTimeSeconds >= 3",message="holdTimeSeconds must be 0 or >=3"
 // +kubebuilder:validation:XValidation:rule="!has(self.holdTimeSeconds) || !has(self.keepaliveTimeSeconds) || self.keepaliveTimeSeconds <= self.holdTimeSeconds",message="keepaliveTimeSeconds must be lower than or equal to holdTimeSeconds"
+// +kubebuilder:validation:XValidation:rule="has(self.address) || has(self.interface)",message="Either a valid Address or Interface name must be provided for Neighbor"
+// +kubebuilder:validation:XValidation:rule="!has(self.address) || !has(self.interface)",message="Address and Interface cannot be set together for Neighbor"
 type Neighbor struct {
 	// asn is the AS number of the neighbor. Either ASN or Type must be set.
 	// +kubebuilder:validation:Minimum=1
@@ -20,10 +22,21 @@ type Neighbor struct {
 	// +optional
 	Type *string `json:"type,omitempty"`
 
-	// address is the IP address to establish the session with.
-	// +kubebuilder:validation:MinLength=1
-	// +required
-	Address string `json:"address,omitempty"`
+	// address is the IP address to establish the session with. The IP address
+	// can be either IPv4 or IPv6.
+	// +kubebuilder:validation:XValidation:rule="isIP(self)",message="Address must be a valid IPv4 or IPv6 address"
+	// +kubebuilder:validation:MaxLength:=39
+	// +kubebuilder:validation:MinLength:=1
+	// +optional
+	Address *string `json:"address,omitempty"`
+
+	// interface is the interface name for BGP unnumbered sessions. The session will be established via IPv6 link locals.
+	// +kubebuilder:validation:XValidation:rule=`self.matches('^[^\\/:\\s]+$')`,message="Interface must not contain /, :, or whitespace"
+	// +kubebuilder:validation:XValidation:rule=`self != '.' && self != '..'`,message="Interface cannot be . or .."
+	// +kubebuilder:validation:MaxLength:=15
+	// +kubebuilder:validation:MinLength:=1
+	// +optional
+	Interface *string `json:"interface,omitempty"` // https://regex101.com/r/RlniVP/2 see kernel bool dev_valid_name(...)
 
 	// port is the port to dial when establishing the session.
 	// Defaults to 179.

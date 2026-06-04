@@ -507,6 +507,19 @@ var _ = Describe("L2 VNI configuration", func() {
 				Type: BridgeLinkType,
 			},
 		}),
+		Entry("disconnected L2VNI (no VRF)", L2VNIParams{
+			VNIParams: VNIParams{
+				VRF:       "",
+				TargetNS:  testNSPath(),
+				VTEPIP:    "192.170.0.13/32",
+				VNI:       500,
+				VXLanPort: new(int32(4789)),
+			},
+			HostMaster: &HostMaster{
+				Name: new(bridgeName),
+				Type: BridgeLinkType,
+			},
+		}),
 	)
 
 	It("should set veth MTU to underlay MTU minus VXLan overhead when an underlay interface is configured", func() {
@@ -700,12 +713,8 @@ func validateL2VNI(g Gomega, params L2VNIParams) {
 }
 
 func validateVNI(g Gomega, params VNIParams) {
-	vtepDevName := UnderlayLoopback
-	if ptr.Deref(params.VTEPInterface, "") != "" {
-		vtepDevName = ptr.Deref(params.VTEPInterface, "")
-	}
-	vtepDev, err := netlink.LinkByName(vtepDevName)
-	g.Expect(err).NotTo(HaveOccurred(), "vtep device not found %q", vtepDevName)
+	vtepDev, err := netlink.LinkByName(UnderlayLoopback)
+	g.Expect(err).NotTo(HaveOccurred(), "vtep device not found %q", UnderlayLoopback)
 
 	vxlanLink, err := netlink.LinkByName(vxLanNameFromVNI(params.VNI))
 	g.Expect(err).NotTo(HaveOccurred(), "vxlan link not found %q", vxLanNameFromVNI(params.VNI))
@@ -716,17 +725,26 @@ func validateVNI(g Gomega, params VNIParams) {
 	addrGenModeNone := checkAddrGenModeNone(vxlan)
 	g.Expect(addrGenModeNone).To(BeTrue())
 
-	vrfLink, err := netlink.LinkByName(params.VRF)
-	g.Expect(err).NotTo(HaveOccurred(), "vrf not found", params.VRF)
-
-	vrf := vrfLink.(*netlink.Vrf)
-	g.Expect(vrf.OperState).To(BeEquivalentTo(netlink.OperUp))
-
 	bridgeLink, err := netlink.LinkByName(BridgeName(params.VNI))
 	g.Expect(err).NotTo(HaveOccurred(), "bridge not found", BridgeName(params.VNI))
 
 	bridge := bridgeLink.(*netlink.Bridge)
 	g.Expect(bridge.OperState).To(BeEquivalentTo(netlink.OperUp))
+
+	if params.VRF == "" {
+		g.Expect(bridge.MasterIndex).To(BeZero(), "disconnected bridge should not be enslaved to a VRF")
+
+		err = checkVXLanConfigured(vxlan, bridge.Index, vtepDev.Attrs().Index, params)
+		g.Expect(err).NotTo(HaveOccurred())
+		return
+	}
+
+	vrfLink, err := netlink.LinkByName(params.VRF)
+	g.Expect(err).NotTo(HaveOccurred(), "vrf not found", params.VRF)
+
+	vrf, isVrf := vrfLink.(*netlink.Vrf)
+	g.Expect(isVrf).To(BeTrue(), "link %s is not a VRF", params.VRF)
+	g.Expect(vrf.OperState).To(BeEquivalentTo(netlink.OperUp))
 
 	g.Expect(bridge.MasterIndex).To(Equal(vrf.Index))
 
@@ -762,7 +780,9 @@ func checkLinkExists(g Gomega, name string) {
 
 func validateVNIIsNotConfigured(g Gomega, params VNIParams) {
 	checkLinkdeleted(g, vxLanNameFromVNI(params.VNI))
-	checkLinkdeleted(g, params.VRF)
+	if params.VRF != "" {
+		checkLinkdeleted(g, params.VRF)
+	}
 	checkLinkdeleted(g, BridgeName(params.VNI))
 
 	vethNames := vethNamesFromVNI(params.VNI)
@@ -854,8 +874,8 @@ func setupFakeUnderlay(ns netns.NsHandle, name string, mtu int) {
 		if err != nil {
 			return fmt.Errorf("failed to get fake underlay dummy %s: %w", name, err)
 		}
-		if err := assignIPToInterface(link, underlayInterfaceSpecialAddr); err != nil {
-			return fmt.Errorf("failed to assign underlay special addr to %s: %w", name, err)
+		if err := netlink.LinkSetGroup(link, int(underlayGroupID)); err != nil {
+			return fmt.Errorf("failed to set underlay group ID on %s: %w", name, err)
 		}
 		return nil
 	})

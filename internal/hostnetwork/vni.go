@@ -30,12 +30,11 @@ const (
 )
 
 type VNIParams struct {
-	VRF           string  `json:"vrf"`
-	TargetNS      string  `json:"targetns"`
-	VTEPIP        string  `json:"vtepip"`
-	VTEPInterface *string `json:"vtepiface,omitempty"`
-	VNI           int32   `json:"vni"`
-	VXLanPort     *int32  `json:"vxlanport,omitempty"`
+	VRF       string `json:"vrf"`
+	TargetNS  string `json:"targetns"`
+	VTEPIP    string `json:"vtepip"`
+	VNI       int32  `json:"vni"`
+	VXLanPort *int32 `json:"vxlanport,omitempty"`
 }
 
 type L3VNIParams struct {
@@ -286,9 +285,9 @@ func setupHostMaster(ctx context.Context, params L2VNIParams, hostVeth netlink.L
 
 // setupVNI sets up the configuration required by FRR to
 // serve a given VNI in the target namespace. This includes:
-// - a linux VRF
-// - a linux Bridge enslaved to the given VRF
-// - a VXLan interface enslaved to the given VRF
+// - a linux VRF (only when params.VRF is non-empty)
+// - a linux Bridge, enslaved to the VRF when one exists
+// - a VXLan interface
 //
 // Additionally, it creates a veth pair and moves one leg in the target
 // namespace.
@@ -307,10 +306,14 @@ func setupVNI(ctx context.Context, params VNIParams, options ...NetlinkOption) e
 
 	if err := netnamespace.In(ns, func() error {
 
-		slog.DebugContext(ctx, "setting up vrf", "vrf", params.VRF)
-		vrf, err := setupVRF(params.VRF)
-		if err != nil {
-			return err
+		var vrf *netlink.Vrf
+		if params.VRF != "" {
+			slog.DebugContext(ctx, "setting up vrf", "vrf", params.VRF)
+			var err error
+			vrf, err = setupVRF(params.VRF)
+			if err != nil {
+				return err
+			}
 		}
 
 		slog.DebugContext(ctx, "setting up bridge")

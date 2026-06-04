@@ -8,6 +8,7 @@ export KUBECONFIG_PATH=${KUBECONFIG_PATH:-"$(pwd)/kubeconfig"}
 export KIND=${KIND:-"kind"}
 export KUBECTL=${KUBECTL:-"kubectl"}
 CLAB_VERSION="0.74.1"
+PID_FILE="tools/check_veths/bin/check_veths.pid"
 
 export KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME:-pe-kind}"
 

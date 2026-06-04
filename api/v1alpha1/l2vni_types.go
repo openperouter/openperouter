@@ -143,15 +143,6 @@ type L2VNI struct {
 	Status *L2VNIStatus `json:"status,omitempty"`
 }
 
-// VRFName returns the name to be used for the
-// vrf corresponding to the object.
-func (v L2VNI) VRFName() string {
-	if v.Spec.VRF != nil && *v.Spec.VRF != "" {
-		return *v.Spec.VRF
-	}
-	return v.Name
-}
-
 // +kubebuilder:object:root=true
 
 // VNIList contains a list of VNI.

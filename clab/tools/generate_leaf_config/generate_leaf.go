@@ -1,11 +1,12 @@
 // SPDX-License-Identifier:Apache-2.0
 
+//go:build ignore
+
 package main
 
 import (
 	"flag"
 	"fmt"
-	"html/template"
 	"log"
 	"os"
 	"path/filepath"
@@ -33,24 +34,14 @@ func main() {
 	flag.Parse()
 
 	if *leafName == "" || *neighborIP == "" || *networkToAdvertise == "" {
-		fmt.Println("Usage: generate_leaf_config -leaf <name> -neighbor <ip> -network <cidr> [options]")
-		fmt.Println("Example: generate_leaf_config -leaf leafA -neighbor 192.168.1.0 -network 100.64.0.1/32")
+		fmt.Println("Usage: generate_leaf -leaf <name> -neighbor <ip> -network <cidr> [options]")
+		fmt.Println("Example: generate_leaf -leaf leafA -neighbor 192.168.1.0 -network 100.64.0.1/32")
 		flag.PrintDefaults()
 		os.Exit(1)
 	}
 
 	if *outputDir == "" {
 		*outputDir = filepath.Join("..", *leafName)
-	}
-
-	tmplContent, err := os.ReadFile(*templateFile)
-	if err != nil {
-		log.Fatalf("Error reading template file: %v", err)
-	}
-
-	tmpl, err := template.New("frr").Parse(string(tmplContent))
-	if err != nil {
-		log.Fatalf("Error parsing template: %v", err)
 	}
 
 	config := LeafConfig{
@@ -60,22 +51,7 @@ func main() {
 		RedistributeConnectedFromDefault: *redistributeConnectedDefault,
 	}
 
-	if err := os.MkdirAll(*outputDir, 0755); err != nil {
-		log.Fatalf("Error creating output directory: %v", err)
-	}
-
-	outputFile := filepath.Join(*outputDir, "frr.conf")
-	file, err := os.Create(outputFile)
-	if err != nil {
-		log.Fatalf("Error creating output file: %v", err)
-	}
-	defer func() {
-		if err := file.Close(); err != nil {
-			log.Fatalf("Error closing output file: %v", err)
-		}
-	}()
-
-	if err := tmpl.Execute(file, config); err != nil {
-		log.Fatalf("Error executing template: %v", err)
+	if err := GenerateFromTemplate(*templateFile, *outputDir, config); err != nil {
+		log.Fatalf("Error: %v", err)
 	}
 }

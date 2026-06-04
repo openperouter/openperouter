@@ -32,7 +32,7 @@ spec:
     vtepCIDR: 100.65.1.0/24
   routeridcidr: 10.0.1.0/24
   nics:
-    - toswitch
+    - toswitch1
   neighbors:
     - asn: 64516
       address: 192.168.12.2

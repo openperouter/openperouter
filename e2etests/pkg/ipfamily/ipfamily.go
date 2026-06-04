@@ -13,10 +13,11 @@ import (
 type Family string
 
 const (
-	IPv4      Family = "ipv4"
-	IPv6      Family = "ipv6"
-	DualStack Family = "dual"
-	Unknown   Family = "unknown"
+	IPv4       Family = "ipv4"
+	IPv6       Family = "ipv6"
+	DualStack  Family = "dual"
+	Unnumbered Family = "unnumbered"
+	Unknown    Family = "unknown"
 )
 
 // ForAddresses returns the address family given list of addresses strings.

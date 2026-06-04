@@ -13,13 +13,19 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
-// setupBridge creates the bridge if not exists, enslaves it to the provided
-// vrf, and applies any bridge options before bringing the link up.
+// setupBridge creates the bridge, optionally enslaves it to the provided
+// vrf, applies any bridge options, and brings the link up.
 func setupBridge(params VNIParams, vrf *netlink.Vrf, opts ...NetlinkOption) (*netlink.Bridge, error) {
 	name := BridgeName(params.VNI)
-	bridge, err := createBridge(name, vrf.Index)
+	bridge, err := createBridge(name)
 	if err != nil {
 		return nil, err
+	}
+
+	if vrf != nil {
+		if err := ensureBridgeMaster(bridge, vrf.Index); err != nil {
+			return nil, err
+		}
 	}
 
 	for _, opt := range opts {
@@ -35,17 +41,12 @@ func setupBridge(params VNIParams, vrf *netlink.Vrf, opts ...NetlinkOption) (*ne
 	return bridge, nil
 }
 
-// create bridge creates a bridge with the given name, enslaved
-// to the provided vrf.
-func createBridge(name string, vrfIndex int) (*netlink.Bridge, error) {
-
+func createBridge(name string) (*netlink.Bridge, error) {
 	toCreate := &netlink.Bridge{LinkAttrs: netlink.LinkAttrs{
-		Name:        name,
-		MasterIndex: vrfIndex,
+		Name: name,
 	}}
 
 	link, err := netlink.LinkByName(name)
-	// link does not exist, let's create it
 	if errors.As(err, &netlink.LinkNotFoundError{}) {
 		if err := netlink.LinkAdd(toCreate); err != nil {
 			return nil, fmt.Errorf("could not create bridge %s: %w", name, err)
@@ -57,11 +58,11 @@ func createBridge(name string, vrfIndex int) (*netlink.Bridge, error) {
 	}
 
 	bridge, ok := link.(*netlink.Bridge)
-	if ok && bridge.MasterIndex == vrfIndex { // link exists, nothing to do here
+	if ok {
 		return bridge, nil
 	}
 
-	// link exists but it's not a bridge, or wrong vrf. Let's delete and create
+	// link exists but it's not a bridge, delete and recreate
 	err = netlink.LinkDel(link)
 	if err != nil {
 		return nil, fmt.Errorf("failed to delete link %v: %w", link, err)
@@ -71,6 +72,17 @@ func createBridge(name string, vrfIndex int) (*netlink.Bridge, error) {
 	}
 
 	return toCreate, nil
+}
+
+func ensureBridgeMaster(bridge *netlink.Bridge, masterIndex int) error {
+	if bridge.MasterIndex == masterIndex {
+		return nil
+	}
+	if err := netlink.LinkSetMasterByIndex(bridge, masterIndex); err != nil {
+		return fmt.Errorf("could not enslave bridge %s to VRF (index %d): %w", bridge.Name, masterIndex, err)
+	}
+	bridge.MasterIndex = masterIndex
+	return nil
 }
 
 const (

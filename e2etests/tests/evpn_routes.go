@@ -41,7 +41,7 @@ var (
 	emptyPrefixes        = []string{}
 )
 
-var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
+var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Ordered, func() {
 	var cs clientset.Interface
 	var routers openperouter.Routers
 
@@ -425,11 +425,15 @@ var _ = Describe("Routes between bgp and the fabric with iBGP testing e2e integr
 		},
 		Spec: v1alpha1.UnderlaySpec{
 			ASN:  64512,
-			Nics: []string{"toswitch"},
+			Nics: []string{"toswitch1", "toswitch2"},
 			Neighbors: []v1alpha1.Neighbor{
 				{
 					Type:    new("internal"),
-					Address: "192.168.11.2",
+					Address: new("192.168.11.2"),
+				},
+				{
+					Type:    new("internal"),
+					Address: new("192.168.12.2"),
 				},
 			},
 			EVPN: &v1alpha1.EVPNConfig{
@@ -474,7 +478,12 @@ var _ = Describe("Routes between bgp and the fabric with iBGP testing e2e integr
 		By("setting iBGP next-hop-self force on leaf kind")
 		nodes, err = k8s.GetNodes(cs)
 		Expect(err).NotTo(HaveOccurred())
-		ibgpForLeafKind(nodes)
+		Expect(
+			infra.LeafKind1Config.UpdateConfig(nodes, infra.LeafKindConfiguration{NextHopSelf: true, PERouterASN: 64512}),
+		).To(Succeed())
+		Expect(
+			infra.LeafKind2Config.UpdateConfig(nodes, infra.LeafKindConfiguration{NextHopSelf: true, PERouterASN: 64512}),
+		).To(Succeed())
 
 		err = Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{
@@ -484,8 +493,12 @@ var _ = Describe("Routes between bgp and the fabric with iBGP testing e2e integr
 		Expect(err).NotTo(HaveOccurred())
 
 		By("setting redistribute connected on leaves")
-		Expect(infra.LeafAConfig.RedistributeConnected()).To(Succeed())
-		Expect(infra.LeafBConfig.RedistributeConnected()).To(Succeed())
+		Expect(
+			infra.LeafAConfig.RedistributeConnected(),
+		).To(Succeed())
+		Expect(
+			infra.LeafBConfig.RedistributeConnected(),
+		).To(Succeed())
 
 		By("Creating the test namespace")
 		_, err = k8s.CreateNamespace(cs, testNamespace)
@@ -527,7 +540,8 @@ var _ = Describe("Routes between bgp and the fabric with iBGP testing e2e integr
 		Expect(infra.LeafAConfig.Reset()).To(Succeed())
 		Expect(infra.LeafBConfig.Reset()).To(Succeed())
 
-		resetLeafKindConfig(nodes)
+		Expect(infra.LeafKind1Config.UpdateConfig(nodes, infra.LeafKindConfiguration{})).To(Succeed())
+		Expect(infra.LeafKind2Config.UpdateConfig(nodes, infra.LeafKindConfiguration{})).To(Succeed())
 
 		err = Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())

@@ -8,7 +8,7 @@ spec:
   evpn:
     vtepCIDR: 100.65.0.0/24
   nics:
-    - toswitch
+    - toswitch1
   neighbors:
     - asn: 64512
       address: 192.168.11.2

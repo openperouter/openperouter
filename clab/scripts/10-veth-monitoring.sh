@@ -20,31 +20,30 @@ setup_veth_monitoring() {
     pushd "$(dirname $(readlink -f $0))/.."
 
     # Check if monitoring is already running to avoid duplicates
-    if ! pgrep -f check_veths.sh | xargs -r ps -p | grep -q pe-kind; then
-        echo "Starting veth monitoring"
-
-        CHECK_VETHS_LOG="/tmp/check_veths.log"
-        if [[ ${#CLUSTER_NAMES[@]} -eq 1 && "${CLUSTER_NAMES[0]}" == "pe-kind" ]]; then
-            # Single cluster mode
-            sudo -E ./check_veths.sh \
-                kindctrlpl:toswitch:pe-kind-control-plane:192.168.11.3/24 \
-                kindworker:toswitch:pe-kind-worker:192.168.11.4/24 2>&1 \
-                | awk '{print strftime("%Y-%m-%dT%H:%M:%S"), $0; fflush()}' > "$CHECK_VETHS_LOG" &
-        else
-            # Multi-cluster mode
-            sudo -E ./check_veths.sh \
-                kindctrlpla:toswitch:pe-kind-a-control-plane:192.168.11.3/24 \
-                kindworkera:toswitch:pe-kind-a-worker:192.168.11.4/24 \
-                kindctrlplb:toswitch:pe-kind-b-control-plane:192.168.12.3/24 \
-                kindworkerb:toswitch:pe-kind-b-worker:192.168.12.4/24 2>&1 \
-                | awk '{print strftime("%Y-%m-%dT%H:%M:%S"), $0; fflush()}' > "$CHECK_VETHS_LOG" &
-        fi
-    else
-        echo "Veth monitoring already running"
+    pid=$(cat "${PID_FILE}" 2>/dev/null || true)
+    if ps -q "${pid}" >/dev/null 2>&1; then
+        echo "Found process ID ${pid} for check_veths, process is already running"
+        return
     fi
 
-    # Give some time for the monitoring to start
-    sleep 4s
+    echo "Rebuilding check_veth tool"
+
+    pushd tools/check_veths/
+    "$(which go)" build -o bin/check_veths .
+    popd
+
+    echo "Starting veth monitoring"
+
+    CHECK_VETHS_LOG="/tmp/check_veths.log"
+    if [[ ${#CLUSTER_NAMES[@]} -eq 1 && "${CLUSTER_NAMES[0]}" == "pe-kind" ]]; then
+        # Single cluster mode
+        sudo tools/check_veths/bin/check_veths -f singlecluster/check-veths.yaml -p "${PID_FILE}" 2>&1 | \
+          awk '{print strftime("%Y-%m-%dT%H:%M:%S"), $0; fflush()}' > "$CHECK_VETHS_LOG" &
+    else
+        # Multi-cluster mode
+        sudo tools/check_veths/bin/check_veths -f multicluster/check-veths.yaml -p "${PID_FILE}" 2>&1 | \
+          awk '{print strftime("%Y-%m-%dT%H:%M:%S"), $0; fflush()}' > "$CHECK_VETHS_LOG" &
+    fi
 
     popd
 }

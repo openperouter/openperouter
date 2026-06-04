@@ -85,6 +85,8 @@ type NeighborConfig struct {
 	Name          string
 	ASN           PeerASN
 	Addr          string
+	Interface     string
+	ID            string
 	Port          *int32
 	HoldTime      *int64
 	KeepaliveTime *int64
@@ -94,10 +96,11 @@ type NeighborConfig struct {
 	BFDProfile    string
 	EBGPMultiHop  bool
 	IPFamily      ipfamily.Family
-}
-
-func (n *NeighborConfig) ID() string {
-	return n.Addr
+	// Allow bgp to negotiate the extended-nexthop capability with its peer. If you are peering over a v6 LL address
+	// then this capability is turned on automatically.
+	// If you are peering over a v6 Global Address then turning on this command will allow BGP to install v4 routes
+	// with v6 nexthops if you do not have v4 configured on interfaces.
+	ExtendedNexthop bool
 }
 
 // templateConfig uses the template library to template
@@ -137,6 +140,9 @@ func templateConfig(data any) (string, error) {
 				return peerASN.IsExternalTo(myASN)
 			},
 			"activateNeighborFor": func(ipFamily string, neighbourFamily ipfamily.Family) bool {
+				if neighbourFamily == ipfamily.DualStack {
+					return ipFamily != string(ipfamily.Unknown)
+				}
 				return string(neighbourFamily) == ipFamily
 			},
 		}).ParseFS(templates, "templates/*")

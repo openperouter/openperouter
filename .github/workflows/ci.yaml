@@ -263,7 +263,7 @@ jobs:
           if [ ${{ matrix.deployment }} = "systemdmode" ]; then MAKE_RULE="deploy-hostmode"; fi
           if [ ${{ matrix.deployment }} = "hostmode-boot" ]; then MAKE_RULE="deploy-hostmode-boot"; fi
           if [ ${{ matrix.deployment }} = "operator" ]; then MAKE_RULE="deploy-operator-with-olm"; IMG_REPO="localhost:5000"; export USE_HTTP=--use-http; export TLS_VERIFY=false; export KUBECONFIG=bin/kubeconfig; fi
-          IMG_REPO=$IMG_REPO make $MAKE_RULE
+          COREDUMP=true IMG_REPO=$IMG_REPO make $MAKE_RULE
           if [ ${{ matrix.deployment }} = "operator" ]; then IMG_REPO="quay.io/openperouter" make load-on-kind; kubectl apply -f operator/config/samples/openperouter.yaml; sleep 5; kubectl -n openperouter-system wait --for=condition=Ready pods -l "component in (controller,router,nodemarker)" --timeout 300s; fi
 
       - name: Run e2e tests
