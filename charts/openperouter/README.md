@@ -30,12 +30,20 @@ Kubernetes: `>= 1.19.0-0`
 | openperouter.controller.healthProbePort | int | `9081` | Health probe port for liveness and readiness checks |
 | openperouter.controller.resources | object | `{}` |  |
 | openperouter.cri | string | `"containerd"` |  |
+| openperouter.datapath | string | `"kernel"` | Datapath to use for L3 forwarding. "kernel" uses the standard Linux kernel datapath; "grout" adds a DPDK-accelerated sidecar that runs alongside FRR (FRR's dplane_grout module syncs routes automatically). |
 | openperouter.frr.image.pullPolicy | string | `""` |  |
 | openperouter.frr.image.repository | string | `"quay.io/openperouter/openperouter"` |  |
 | openperouter.frr.image.tag | string | `""` |  |
 | openperouter.frr.reloader.resources | object | `{}` |  |
 | openperouter.frr.reloader.vtyshTimeout | string | `""` | Timeout for vtysh commands used in health checks. Increase under heavy VNI load. Defaults to 10s. |
 | openperouter.frr.resources | object | `{}` |  |
+| openperouter.grout.image.pullPolicy | string | `""` |  |
+| openperouter.grout.image.repository | string | `"quay.io/openperouter/router"` |  |
+| openperouter.grout.image.tag | string | `"main-grout"` |  |
+| openperouter.grout.resources.limits.cpu | string | `"500m"` |  |
+| openperouter.grout.resources.limits.memory | string | `"2Gi"` |  |
+| openperouter.grout.resources.requests.cpu | string | `"250m"` |  |
+| openperouter.grout.resources.requests.memory | string | `"512Mi"` |  |
 | openperouter.hostmode | bool | `false` | If true, enables host mode deployment: deploys hostbridge DaemonSet instead of router and controller, and configures nodemarker to run in webhook-only mode |
 | openperouter.image.pullPolicy | string | `""` |  |
 | openperouter.image.repository | string | `"quay.io/openperouter/router"` |  |
