@@ -42,6 +42,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&L2VNIList{},
 		&L3VNI{},
 		&L3VNIList{},
+		&L3VPN{},
+		&L3VPNList{},
 		&L3Passthrough{},
 		&L3PassthroughList{},
 		&RawFRRConfig{},
