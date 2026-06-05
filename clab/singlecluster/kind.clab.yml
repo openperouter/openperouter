@@ -27,10 +27,12 @@ topology:
       group: frr
       binds:
         - leafkind1/frr.conf:/etc/frr/frr.conf
+      image: quay.io/frrouting/frr:master
     leafkind2:
       group: frr
       binds:
         - leafkind2/frr.conf:/etc/frr/frr.conf
+      image: quay.io/frrouting/frr:master
     spine:
       group: frr
       binds:
