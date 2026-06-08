@@ -1790,6 +1790,14 @@ spec:
           value: "true"
         image: quay.io/openperouter/router:main
         imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /healthz
+            port: 9080
+          initialDelaySeconds: 15
+          periodSeconds: 20
+          timeoutSeconds: 1
         name: frr
         securityContext:
           capabilities:
