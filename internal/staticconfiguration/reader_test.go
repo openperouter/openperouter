@@ -38,6 +38,11 @@ func TestReadNodeConfig(t *testing.T) {
 			expected: &static.NodeConfig{NodeIndex: 1, LogLevel: ""},
 		},
 		{
+			name:     "valid yaml with nodeIndexInterfaceName",
+			content:  "nodeIndexInterfaceName: eth0\n",
+			expected: &static.NodeConfig{NodeIndexInterfaceName: "eth0"},
+		},
+		{
 			name:        "invalid yaml",
 			content:     "invalid: [unclosed\n",
 			expectError: true,
@@ -72,6 +77,11 @@ func TestReadNodeConfig(t *testing.T) {
 
 			if config.LogLevel != tt.expected.LogLevel {
 				t.Errorf("expected LogLevel %s, got %s", tt.expected.LogLevel, config.LogLevel)
+			}
+
+			if config.NodeIndexInterfaceName != tt.expected.NodeIndexInterfaceName {
+				t.Errorf("expected NodeIndexInterfaceName %s, got %s",
+					tt.expected.NodeIndexInterfaceName, config.NodeIndexInterfaceName)
 			}
 		})
 	}

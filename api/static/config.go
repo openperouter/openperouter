@@ -7,9 +7,10 @@ import (
 )
 
 type NodeConfig struct {
-	NodeIndex int    `json:"nodeIndex"`
-	NodeName  string `json:"nodeName"`
-	LogLevel  string `json:"logLevel"`
+	NodeIndex              int    `json:"nodeIndex"`
+	NodeIndexInterfaceName string `json:"nodeIndexInterfaceName"`
+	NodeName               string `json:"nodeName"`
+	LogLevel               string `json:"logLevel"`
 }
 
 type PERouterConfig struct {

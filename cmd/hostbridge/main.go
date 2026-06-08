@@ -15,6 +15,7 @@ import (
 
 	"github.com/openperouter/openperouter/internal/buildversion"
 	"github.com/openperouter/openperouter/internal/hostcredentials"
+	"github.com/openperouter/openperouter/internal/staticconfiguration"
 )
 
 type Config struct {
@@ -51,13 +52,25 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	if err := annotateCurrentNode(ctx, config.HostConfigPath, config.NodeName); err != nil {
-		slog.Error("Failed to add node index annotation",
-			"error", err, "config_path", config.HostConfigPath, "node", config.NodeName)
+	nodeConfig, err := staticconfiguration.ReadNodeConfig(config.HostConfigPath)
+	if err != nil {
+		slog.Error("Failed to read node configuration",
+			"error", err, "config_path", config.HostConfigPath)
 		os.Exit(1)
 	}
 
-	slog.Info("Successfully added node index annotation", "config_path", config.HostConfigPath, "node", config.NodeName)
+	if nodeConfig.NodeIndexInterfaceName != "" {
+		slog.Info("nodeIndexInterfaceName is set, skipping node annotation (hostcontroller will handle it)",
+			"interface", nodeConfig.NodeIndexInterfaceName)
+	} else {
+		if err := annotateCurrentNode(ctx, nodeConfig, config.NodeName); err != nil {
+			slog.Error("Failed to add node index annotation",
+				"error", err, "config_path", config.HostConfigPath, "node", config.NodeName)
+			os.Exit(1)
+		}
+		slog.Info("Successfully added node index annotation",
+			"config_path", config.HostConfigPath, "node", config.NodeName)
+	}
 
 	apiServerURL, err := getAPIServer(config)
 	if err != nil {
