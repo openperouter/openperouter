@@ -16,8 +16,6 @@
     neighbor {{ .Passthrough.LocalNeighborV4.ID }} next-hop-self force
   {{- end }}
   exit-address-family
-
-{{- template "neighborenableipfamily" dict "neighbor" .Passthrough.LocalNeighborV4 "routerASN" .Underlay.MyASN -}}
 {{- end -}}
 
 {{- if .Passthrough.LocalNeighborV6 }}
@@ -36,7 +34,6 @@
     neighbor {{ .Passthrough.LocalNeighborV6.ID }} next-hop-self force
   {{- end }}
   exit-address-family
-{{- template "neighborenableipfamily" dict "neighbor" .Passthrough.LocalNeighborV6 "routerASN" .Underlay.MyASN -}}
 {{- end -}}
 {{- end }}
 
