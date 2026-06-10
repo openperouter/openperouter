@@ -1,6 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../clab/common.sh"
+
 log_info() {
     echo "[INFO] $*"
 }
@@ -27,10 +30,10 @@ if [[ -n "${NODE_CONFIG_DIR:-}" ]]; then
     log_info "Will copy files from $NODE_CONFIG_DIR to each node"
 fi
 
-NODES=$(kind get nodes --name "$CLUSTER_NAME" 2>/dev/null)
+NODES=$(${KIND_COMMAND} get nodes --name "$CLUSTER_NAME" 2>/dev/null)
 if [[ -z "$NODES" ]]; then
     log_error "No nodes found for kind cluster: $CLUSTER_NAME"
-    log_error "Please check that the cluster exists with: kind get clusters"
+    log_error "Please check that the cluster exists with: ${KIND_COMMAND} get clusters"
     exit 1
 fi
 
@@ -38,9 +41,9 @@ NODE_INDEX=0
 for NODE in $NODES; do
     log_info "Creating configuration file for node $NODE with nodeIndex=$NODE_INDEX..."
 
-    docker exec "$NODE" mkdir -p /var/lib/openperouter/configs
+    $CONTAINER_ENGINE_CLI exec "$NODE" mkdir -p /var/lib/openperouter/configs
 
-    docker exec "$NODE" bash -c "cat > /var/lib/openperouter/node-config.yaml <<EOF
+    $CONTAINER_ENGINE_CLI exec "$NODE" bash -c "cat > /var/lib/openperouter/node-config.yaml <<EOF
 nodeIndex: $NODE_INDEX
 logLevel: debug
 EOF"
@@ -54,7 +57,7 @@ EOF"
                 filename=$(basename "$file")
                 # Copy openpe_*.yaml files to configs subdirectory
                 if [[ "$filename" == openpe_*.yaml ]]; then
-                    docker cp "$file" "$NODE:/var/lib/openperouter/configs/$filename"
+                    $CONTAINER_ENGINE_CLI cp "$file" "$NODE:/var/lib/openperouter/configs/$filename"
                     log_info "    Copied router config: $filename -> configs/"
                 fi
             fi
