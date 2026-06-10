@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+
+# SPDX-License-Identifier:Apache-2.0
+
+readonly FRR_INFO=(\
+"timeout 10s vtysh -c 'show running-config'" \
+"timeout 10s vtysh -c 'show bgp ipv4'" \
+"timeout 10s vtysh -c 'show bgp ipv6'" \
+"timeout 10s vtysh -c 'show bgp neighbor'" \
+"timeout 10s vtysh -c 'show bfd peer'" \
+"timeout 10s vtysh -c 'show bgp l2vpn evpn'" \
+)
+
+echo "### Routing infrastructure info:"
+for cmd in "${FRR_INFO[@]}"; do
+	echo "$ $cmd"
+	eval "$cmd"
+	echo ""
+done
+echo "###"
