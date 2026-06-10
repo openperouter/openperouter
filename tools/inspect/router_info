@@ -1,0 +1,27 @@
+#!/usr/bin/env bash 
+
+# node router network-namespace name
+readonly NETNS="perouter"
+
+readonly NETNS_EXEC="ip netns exec $NETNS"
+readonly COMMANDS=(\
+"echo Node router netns info:" \
+"${NETNS_EXEC} ip link" \
+"${NETNS_EXEC} ip address" \
+"${NETNS_EXEC} ip route" \
+"${NETNS_EXEC} ip neigh" \
+"${NETNS_EXEC} ip vrf" \
+"echo FRR info:" \
+"timeout 10s vtysh -c 'show running-config'" \
+"timeout 10s vtysh -c 'show bgp ipv4'" \
+"timeout 10s vtysh -c 'show bgp ipv6'" \
+"timeout 10s vtysh -c 'show bgp neighbor'" \
+"timeout 10s vtysh -c 'show bfd peer'" \
+"timeout 10s vtysh -c 'show bgp l2vpn evpn'" \
+)
+
+for cmd in "${COMMANDS[@]}"; do
+	echo "$ $cmd"
+	eval "$cmd"
+	echo ""
+done
