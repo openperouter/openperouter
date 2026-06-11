@@ -678,7 +678,6 @@ deploy-olm: operator-sdk ## deploys OLM on the cluster
 
 build-and-push-bundle-images: bundle-build bundle-push catalog-build catalog-push
 
-
 .PHONY: grout-deploy
 grout-deploy: IMG_TAG=main-grout
 grout-deploy: export KUSTOMIZE_LAYER=grout
@@ -700,3 +699,8 @@ grout-deploy-helm: helm kind deploy-cluster load-on-kind deploy-helm
 grout-docker-build: IMG_TAG=main-grout
 grout-docker-build: DOCKERFILE=Dockerfile.grout
 grout-docker-build: docker-build
+
+INSPECT_DIR ?= /tmp/openperouter-inspect
+.PHONY: inspect
+inspect:
+	tools/inspect/inspect --k8s-client=$(KUBECTL) --namespace=$(NAMESPACE) --dest-dir=$(INSPECT_DIR)

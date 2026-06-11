@@ -18,6 +18,16 @@ $ ./inspect --dest-dir=mydir --k8s-client=oc
 
 # override openperouter namespace
 $ ./inspect --dest-dir=mydir --namespace=myns --k8s-client=oc
+
+# via global Make target
+$ make inspect
+
+# override parameters
+$ KUBECONFIG_PATH=$KUBECONFIG \
+    make inspect \
+      NAMESPACE=myns \
+      KUBECTL=oc \
+      INSPECT_DIR=./art
 ```
 **Note:** Options must be specified with `=`.
 
