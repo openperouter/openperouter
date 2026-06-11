@@ -39,7 +39,8 @@ type VNIParams struct {
 
 type L3VNIParams struct {
 	VNIParams `json:",inline"`
-	HostVeth  *Veth `json:"veth"`
+	Name      string `json:"name"`
+	HostVeth  *Veth  `json:"veth"`
 }
 
 type L3PassthroughParams struct {
@@ -56,6 +57,7 @@ type Veth struct {
 
 type L2VNIParams struct {
 	VNIParams    `json:",inline"`
+	Name         string      `json:"name"`
 	L2GatewayIPs []string    `json:"l2gatewayips"`
 	HostMaster   *HostMaster `json:"hostmaster"`
 }

@@ -15,6 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
+	openpeerrors "github.com/openperouter/openperouter/internal/errors"
 	"github.com/openperouter/openperouter/internal/frrconfig"
 )
 
@@ -74,7 +75,10 @@ func (r *StaticConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	updater := frrconfig.UpdaterForSocket(r.FRRReloadSocket, r.FRRConfigPath)
 
-	err = Reconcile(ctx, apiConfig, r.NodeIndex, r.LogLevel, r.FRRConfigPath, targetNS, updater)
+	err = Reconcile(ctx, apiConfig, r.NodeIndex, r.LogLevel, r.FRRConfigPath, targetNS, updater, configureInterfaces)
+	for _, f := range openpeerrors.CollectFailures(err) {
+		logger.Warn("resource skipped", "kind", f.Kind, "name", f.Name, "reason", f.Reason, "message", f.Message)
+	}
 	if nonRecoverableHostError(err) {
 		logger.Error("non recoverable error", "error", err)
 		if err := router.HandleNonRecoverableError(ctx); err != nil {

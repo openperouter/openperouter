@@ -736,9 +736,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				Namespace: openperouter.Namespace,
 			},
 			Spec: v1alpha1.L2VNISpec{
-				VNI:          400,
-				VRF:          new("second"),
-				L2GatewayIPs: []string{"192.168.1.4/24"},
+				VNI: 400,
 			},
 		}
 
@@ -799,11 +797,10 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				}, l2VNIConfiguredTestSelector, p)
 
 				validateConfig(l2vniParams{
-					VRF:          *l2vni400.Spec.VRF,
-					VNI:          400,
-					VXLanPort:    4789,
-					VTEPIP:       vtepIP,
-					L2GatewayIPs: l2vni400.Spec.L2GatewayIPs,
+					VRF:       "",
+					VNI:       400,
+					VXLanPort: 4789,
+					VTEPIP:    vtepIP,
 				}, l2VNIConfiguredTestSelector, p)
 			}
 
@@ -816,11 +813,10 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 
 				vtepIP := vtepIPv4ForPod(cs, underlay.Spec.TunnelEndpoint, p)
 				validateConfig(l2vniParams{
-					VRF:          *l2vni400.Spec.VRF,
-					VNI:          400,
-					VXLanPort:    4789,
-					VTEPIP:       vtepIP,
-					L2GatewayIPs: l2vni400.Spec.L2GatewayIPs,
+					VRF:       "",
+					VNI:       400,
+					VXLanPort: 4789,
+					VTEPIP:    vtepIP,
 				}, l2VNIConfiguredTestSelector, p)
 
 				ginkgo.By(fmt.Sprintf("validating VNI is deleted for pod %s", p.Name))
@@ -956,10 +952,9 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				VXLanPort: 4789,
 			}
 			l2VNI400Params := l2vniParams{
-				VRF:          *l2vni400.Spec.VRF,
-				VNI:          400,
-				VXLanPort:    4789,
-				L2GatewayIPs: l2vni400.Spec.L2GatewayIPs,
+				VRF:       "",
+				VNI:       400,
+				VXLanPort: 4789,
 			}
 
 			validate := func(p *corev1.Pod, params l2vniParams, test string) {

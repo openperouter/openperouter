@@ -24,6 +24,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/url"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 )
@@ -763,3 +764,253 @@ func dumpPreTrafficState(cs clientset.Interface, nodeName string) {
 		}
 	}
 }
+
+var _ = Describe("Configuration Resiliency", Ordered, func() {
+	var cs clientset.Interface
+
+	goodL3VNI := v1alpha1.L3VNI{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "good-l3",
+			Namespace: openperouter.Namespace,
+		},
+		Spec: v1alpha1.L3VNISpec{
+			VRF: "good",
+			VNI: 100,
+		},
+	}
+
+	goodL2VNI := v1alpha1.L2VNI{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "good-l2",
+			Namespace: openperouter.Namespace,
+		},
+		Spec: v1alpha1.L2VNISpec{
+			VNI: 200,
+		},
+	}
+
+	conflictL3VNI := v1alpha1.L3VNI{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "l3-conflict",
+			Namespace: openperouter.Namespace,
+		},
+		Spec: v1alpha1.L3VNISpec{
+			VRF: "conflict",
+			VNI: 300,
+		},
+	}
+
+	conflictL2VNI := v1alpha1.L2VNI{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "l2-conflict",
+			Namespace: openperouter.Namespace,
+		},
+		Spec: v1alpha1.L2VNISpec{
+			VNI: 300,
+		},
+	}
+
+	BeforeAll(func() {
+		Expect(Updater.CleanAll()).To(Succeed())
+
+		cs = k8sclient.New()
+
+		Expect(k8s.DisableWebhooksForNamespace(cs, openperouter.Namespace)).To(Succeed())
+
+		Expect(Updater.Update(config.Resources{
+			Underlays: []v1alpha1.Underlay{infra.Underlay},
+		})).To(Succeed())
+	})
+
+	AfterAll(func() {
+		Expect(k8s.RestoreWebhooks(cs, openperouter.Namespace)).To(Succeed())
+
+		Expect(Updater.CleanAll()).To(Succeed())
+
+		Eventually(func() error {
+			newRouters, err := openperouter.Get(cs, HostMode)
+			if err != nil {
+				return err
+			}
+			return openperouter.AreReady(newRouters)
+		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
+	})
+
+	AfterEach(func() {
+		dumpIfFails(cs)
+		Expect(Updater.CleanButUnderlay()).To(Succeed())
+
+		Eventually(func(g Gomega) {
+			status, err := openperouter.GetNodeStatus(Updater.Client(), infra.KindControlPlane)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(err).NotTo(HaveOccurred())
+
+			readyCond := apimeta.FindStatusCondition(status.Status.Conditions, "Ready")
+			g.Expect(readyCond).NotTo(BeNil())
+			g.Expect(readyCond.Status).To(Equal(metav1.ConditionTrue))
+
+			degradedCond := apimeta.FindStatusCondition(status.Status.Conditions, "Degraded")
+			g.Expect(degradedCond).NotTo(BeNil())
+			g.Expect(degradedCond.Status).To(Equal(metav1.ConditionFalse))
+		}, time.Minute, time.Second).Should(Succeed())
+	})
+
+	Context("when L3VNI and L2VNI have the same VNI number", func() {
+		It("should skip the conflicting L2VNI and configure the good resources", func() {
+			Expect(Updater.Update(config.Resources{
+				L3VNIs: []v1alpha1.L3VNI{goodL3VNI, conflictL3VNI},
+				L2VNIs: []v1alpha1.L2VNI{goodL2VNI, conflictL2VNI},
+			})).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				status, err := openperouter.GetNodeStatus(Updater.Client(), infra.KindControlPlane)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(status.Status.FailedResources).To(HaveLen(1))
+				failed := status.Status.FailedResources[0]
+				g.Expect(failed.Kind).To(Equal(v1alpha1.FailedResourceKind("L2VNI")))
+				g.Expect(failed.Name).To(Equal("l2-conflict"))
+				g.Expect(failed.Reason).To(Equal(v1alpha1.FailedResourceReasonValidationFailed))
+				g.Expect(failed.Message).To(ContainSubstring("duplicate vni"))
+
+				readyCond := apimeta.FindStatusCondition(status.Status.Conditions, "Ready")
+				g.Expect(readyCond).NotTo(BeNil())
+				g.Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
+
+				degradedCond := apimeta.FindStatusCondition(status.Status.Conditions, "Degraded")
+				g.Expect(degradedCond).NotTo(BeNil())
+				g.Expect(degradedCond.Status).To(Equal(metav1.ConditionTrue))
+			}, time.Minute, time.Second).Should(Succeed())
+		})
+	})
+
+	Context("when an L3VNI has an invalid route target", func() {
+		It("should skip the L3VNI and cascade DependencyFailed to its L2VNIs", func() {
+			badRTL3VNI := v1alpha1.L3VNI{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "bad-rt-l3",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.L3VNISpec{
+					VRF:       "cascade",
+					VNI:       400,
+					ExportRTs: []string{"invalid-rt"},
+				},
+			}
+
+			cascadeL2VNI := v1alpha1.L2VNI{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "cascade-l2",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.L2VNISpec{
+					VRF: new("cascade"),
+					VNI: 401,
+				},
+			}
+
+			Expect(Updater.Update(config.Resources{
+				L3VNIs: []v1alpha1.L3VNI{goodL3VNI, badRTL3VNI},
+				L2VNIs: []v1alpha1.L2VNI{goodL2VNI, cascadeL2VNI},
+			})).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				status, err := openperouter.GetNodeStatus(Updater.Client(), infra.KindControlPlane)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(status.Status.FailedResources).To(HaveLen(2))
+
+				failedByName := map[string]v1alpha1.FailedResource{}
+				for _, f := range status.Status.FailedResources {
+					failedByName[f.Name] = f
+				}
+
+				g.Expect(failedByName).To(HaveKey("bad-rt-l3"))
+				g.Expect(failedByName["bad-rt-l3"].Kind).To(Equal(v1alpha1.FailedResourceKind("L3VNI")))
+				g.Expect(failedByName["bad-rt-l3"].Reason).To(Equal(v1alpha1.FailedResourceReasonValidationFailed))
+
+				g.Expect(failedByName).To(HaveKey("cascade-l2"))
+				g.Expect(failedByName["cascade-l2"].Kind).To(Equal(v1alpha1.FailedResourceKind("L2VNI")))
+				g.Expect(failedByName["cascade-l2"].Reason).To(Equal(v1alpha1.FailedResourceReasonDependencyFailed))
+				g.Expect(failedByName["cascade-l2"].Message).To(ContainSubstring("no valid L3VNI for L3 domain"))
+
+				readyCond := apimeta.FindStatusCondition(status.Status.Conditions, "Ready")
+				g.Expect(readyCond).NotTo(BeNil())
+				g.Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
+			}, time.Minute, time.Second).Should(Succeed())
+		})
+	})
+
+	Context("when an L2VNI references a VRF with no matching L3VNI", func() {
+		It("should report DependencyFailed for the orphan L2VNI", func() {
+			orphanL2VNI := v1alpha1.L2VNI{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "orphan-l2",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.L2VNISpec{
+					VRF: new("nonexistent"),
+					VNI: 500,
+				},
+			}
+
+			Expect(Updater.Update(config.Resources{
+				L3VNIs: []v1alpha1.L3VNI{goodL3VNI},
+				L2VNIs: []v1alpha1.L2VNI{goodL2VNI, orphanL2VNI},
+			})).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				status, err := openperouter.GetNodeStatus(Updater.Client(), infra.KindControlPlane)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(status.Status.FailedResources).To(HaveLen(1))
+				failed := status.Status.FailedResources[0]
+				g.Expect(failed.Kind).To(Equal(v1alpha1.FailedResourceKind("L2VNI")))
+				g.Expect(failed.Name).To(Equal("orphan-l2"))
+				g.Expect(failed.Reason).To(Equal(v1alpha1.FailedResourceReasonDependencyFailed))
+				g.Expect(failed.Message).To(ContainSubstring("no valid L3VNI for L3 domain"))
+
+				readyCond := apimeta.FindStatusCondition(status.Status.Conditions, "Ready")
+				g.Expect(readyCond).NotTo(BeNil())
+				g.Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
+			}, time.Minute, time.Second).Should(Succeed())
+		})
+	})
+
+	Context("when a cross-type VNI conflict is resolved", func() {
+		It("should recover and clear the status", func() {
+			By("creating a cross-type VNI conflict")
+			Expect(Updater.Update(config.Resources{
+				L3VNIs: []v1alpha1.L3VNI{conflictL3VNI},
+				L2VNIs: []v1alpha1.L2VNI{conflictL2VNI},
+			})).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				status, err := openperouter.GetNodeStatus(Updater.Client(), infra.KindControlPlane)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(status.Status.FailedResources).To(HaveLen(1))
+				g.Expect(status.Status.FailedResources[0].Name).To(Equal("l2-conflict"))
+			}, time.Minute, time.Second).Should(Succeed())
+
+			By("fixing the L2VNI to use a non-conflicting VNI number")
+			fixedL2VNI := conflictL2VNI.DeepCopy()
+			fixedL2VNI.Spec.VNI = 301
+
+			Expect(Updater.Update(config.Resources{
+				L3VNIs: []v1alpha1.L3VNI{conflictL3VNI},
+				L2VNIs: []v1alpha1.L2VNI{*fixedL2VNI},
+			})).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				status, err := openperouter.GetNodeStatus(Updater.Client(), infra.KindControlPlane)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(status.Status.FailedResources).To(BeEmpty())
+
+				readyCond := apimeta.FindStatusCondition(status.Status.Conditions, "Ready")
+				g.Expect(readyCond).NotTo(BeNil())
+				g.Expect(readyCond.Status).To(Equal(metav1.ConditionTrue))
+
+				degradedCond := apimeta.FindStatusCondition(status.Status.Conditions, "Degraded")
+				g.Expect(degradedCond).NotTo(BeNil())
+				g.Expect(degradedCond.Status).To(Equal(metav1.ConditionFalse))
+			}, time.Minute, time.Second).Should(Succeed())
+		})
+	})
+})

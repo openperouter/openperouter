@@ -8,7 +8,11 @@ import (
 	"fmt"
 	"log/slog"
 
+	"k8s.io/apimachinery/pkg/util/sets"
+
+	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/conversion"
+	openpeerrors "github.com/openperouter/openperouter/internal/errors"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/openperouter/openperouter/internal/hostnetwork/bridgerefresh"
 	"github.com/openperouter/openperouter/internal/sysctl"
@@ -19,6 +23,10 @@ type interfacesConfiguration struct {
 	nodeIndex       int
 	conversion.APIConfigData
 }
+
+// HostConfigurator applies host-level network configuration (interfaces, VNIs, sysctls).
+// Injected into Reconcile so tests can substitute a no-op implementation.
+type HostConfigurator func(ctx context.Context, config interfacesConfiguration) error
 
 func configureInterfaces(ctx context.Context, config interfacesConfiguration) error {
 	hasAlreadyUnderlay, err := hostnetwork.HasUnderlayInterface(config.targetNamespace)
@@ -71,49 +79,87 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 	if err := hostnetwork.SetupUnderlay(ctx, hostConfig.Underlay); err != nil {
 		return fmt.Errorf("failed to setup underlay: %w", err)
 	}
+
+	var allErrors []error
+	failedL3Domains := sets.New[string]()
+	reason := v1alpha1.FailedResourceReasonOverlayAttachmentFailed
+
+	var configuredL3VNIs []hostnetwork.L3VNIParams
 	for _, vni := range hostConfig.L3VNIs {
 		slog.InfoContext(ctx, "setting up VNI", "vni", vni.VRF)
 		if err := hostnetwork.SetupL3VNI(ctx, vni); err != nil {
-			return fmt.Errorf("failed to setup vni: %w", err)
+			allErrors = append(allErrors, &openpeerrors.ResourceError{
+				Obj: v1alpha1.FailedResource{
+					Kind: openpeerrors.KindL3VNI, Name: vni.Name, Reason: reason, Message: err.Error(),
+				},
+			})
+			failedL3Domains.Insert(vni.VRF)
+			continue
 		}
+		configuredL3VNIs = append(configuredL3VNIs, vni)
 	}
 
+	var configuredL2VNIs []hostnetwork.L2VNIParams
 	for _, vni := range hostConfig.L2VNIs {
+		if failedL3Domains.Has(vni.VRF) {
+			allErrors = append(allErrors, &openpeerrors.ResourceError{
+				Obj: v1alpha1.FailedResource{
+					Kind: openpeerrors.KindL2VNI, Name: vni.Name, Reason: reason,
+					Message: fmt.Sprintf("L3 domain %q failed netlink provisioning", vni.VRF),
+				},
+			})
+			continue
+		}
 		slog.InfoContext(ctx, "setting up L2VNI", "vni", vni.VNI)
 		if err := hostnetwork.SetupL2VNI(ctx, vni); err != nil {
-			return fmt.Errorf("failed to setup vni: %w", err)
+			allErrors = append(allErrors, &openpeerrors.ResourceError{
+				Obj: v1alpha1.FailedResource{
+					Kind: openpeerrors.KindL2VNI, Name: vni.Name, Reason: reason, Message: err.Error(),
+				},
+			})
+			continue
 		}
 		if err := bridgerefresh.StartForVNI(ctx, vni); err != nil {
-			return fmt.Errorf("failed to start bridge refresher for vni %d: %w", vni.VNI, err)
+			allErrors = append(allErrors, &openpeerrors.ResourceError{
+				Obj: v1alpha1.FailedResource{
+					Kind: openpeerrors.KindL2VNI, Name: vni.Name, Reason: reason, Message: err.Error(),
+				},
+			})
+			continue
 		}
+		configuredL2VNIs = append(configuredL2VNIs, vni)
 	}
 
 	slog.InfoContext(ctx, "setting up passthrough")
 	if hostConfig.L3Passthrough != nil {
 		if err := hostnetwork.SetupPassthrough(ctx, *hostConfig.L3Passthrough); err != nil {
-			return fmt.Errorf("failed to setup passthrough: %w", err)
+			allErrors = append(allErrors, &openpeerrors.ResourceError{
+				Obj: v1alpha1.FailedResource{
+					Kind: openpeerrors.KindL3Passthrough, Name: config.L3Passthrough[0].Name, Reason: reason, Message: err.Error(),
+				},
+			})
 		}
 	}
 
 	slog.InfoContext(ctx, "removing deleted vnis")
-	toCheck := make([]hostnetwork.VNIParams, 0, len(hostConfig.L3VNIs)+len(hostConfig.L2VNIs))
-	for _, vni := range hostConfig.L3VNIs {
+	toCheck := make([]hostnetwork.VNIParams, 0, len(configuredL3VNIs)+len(configuredL2VNIs))
+	for _, vni := range configuredL3VNIs {
 		toCheck = append(toCheck, vni.VNIParams)
 	}
-	for _, l2vni := range hostConfig.L2VNIs {
+	for _, l2vni := range configuredL2VNIs {
 		toCheck = append(toCheck, l2vni.VNIParams)
 	}
 	if err := hostnetwork.RemoveNonConfiguredVNIs(config.targetNamespace, toCheck); err != nil {
 		return fmt.Errorf("failed to remove deleted vnis: %w", err)
 	}
-	bridgerefresh.StopForRemovedVNIs(hostConfig.L2VNIs)
+	bridgerefresh.StopForRemovedVNIs(configuredL2VNIs)
 
-	if len(apiConfig.L3Passthrough) == 0 {
+	if len(config.L3Passthrough) == 0 {
 		if err := hostnetwork.RemovePassthrough(config.targetNamespace); err != nil {
 			return fmt.Errorf("failed to remove passthrough: %w", err)
 		}
 	}
-	return nil
+	return errors.Join(allErrors...)
 }
 
 // nonRecoverableHostError tells whether the router pod
