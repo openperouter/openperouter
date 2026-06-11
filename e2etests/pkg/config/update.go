@@ -4,6 +4,7 @@ package config
 
 import (
 	"context"
+	"fmt"
 
 	frrk8sv1beta1 "github.com/metallb/frr-k8s/api/v1beta1"
 	"github.com/openperouter/openperouter/api/v1alpha1"
@@ -18,6 +19,7 @@ type Resources struct {
 	Underlays         []v1alpha1.Underlay      `json:"underlays"`
 	L3VNIs            []v1alpha1.L3VNI         `json:"l3vnis"`
 	L2VNIs            []v1alpha1.L2VNI         `json:"l2vnis"`
+	L3VPNs            []v1alpha1.L3VPN         `json:"l3vpns"`
 	L3Passthrough     []v1alpha1.L3Passthrough `json:"l3passthrough"`
 	RawFRRConfigs     []v1alpha1.RawFRRConfig  `json:"rawfrrconfigs"`
 	FRRConfigurations []frrk8sv1beta1.FRRConfiguration
@@ -80,6 +82,11 @@ func (o Updater) Update(r Resources) error {
 		oldValues[key] = vni.DeepCopy()
 		key++
 	}
+	for _, vpn := range r.L3VPNs {
+		objects[key] = vpn.DeepCopy()
+		oldValues[key] = vpn.DeepCopy()
+		key++
+	}
 	for _, l3Passthrough := range r.L3Passthrough {
 		objects[key] = l3Passthrough.DeepCopy()
 		oldValues[key] = l3Passthrough.DeepCopy()
@@ -112,6 +119,9 @@ func (o Updater) Update(r Resources) error {
 			case *v1alpha1.L2VNI:
 				old := oldValues[i].(*v1alpha1.L2VNI)
 				toChange.Spec = *old.Spec.DeepCopy()
+			case *v1alpha1.L3VPN:
+				old := oldValues[i].(*v1alpha1.L3VPN)
+				toChange.Spec = *old.Spec.DeepCopy()
 			case *v1alpha1.L3Passthrough:
 				old := oldValues[i].(*v1alpha1.L3Passthrough)
 				toChange.Spec = *old.Spec.DeepCopy()
@@ -121,6 +131,9 @@ func (o Updater) Update(r Resources) error {
 			case *frrk8sv1beta1.FRRConfiguration:
 				old := oldValues[i].(*frrk8sv1beta1.FRRConfiguration)
 				toChange.Spec = *old.Spec.DeepCopy()
+			default:
+				return fmt.Errorf("unsupported object, namespace: %s, name: %s, type: %T",
+					obj.GetNamespace(), obj.GetName(), obj)
 			}
 
 			return nil
@@ -153,6 +166,10 @@ func (o Updater) CleanButUnderlay() error {
 		return err
 	}
 	if err := o.cli.DeleteAllOf(context.Background(), &v1alpha1.L2VNI{},
+		client.InNamespace(o.namespace)); err != nil {
+		return err
+	}
+	if err := o.cli.DeleteAllOf(context.Background(), &v1alpha1.L3VPN{},
 		client.InNamespace(o.namespace)); err != nil {
 		return err
 	}

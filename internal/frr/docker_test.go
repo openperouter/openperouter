@@ -114,17 +114,19 @@ func testFileIsValid(fileName string) error {
 	if err != nil {
 		return errors.Join(err, errors.New("failed to copy frr.conf inside the container"))
 	}
-	buf := new(bytes.Buffer)
+	bufErr := new(bytes.Buffer)
+	bufOut := new(bytes.Buffer)
 	code, err := containerHandle.Exec([]string{"python3", "/usr/lib/frr/frr-reload.py", "--test", "--stdout", "/etc/frr/frr.conf"},
 		dockertest.ExecOptions{
-			StdErr: buf,
+			StdOut: bufOut,
+			StdErr: bufErr,
 		})
 	if err != nil {
 		return errors.Join(err, errors.New("failed to exec reloader into the container"))
 	}
 
 	if code != 0 {
-		return invalidFileErr{Reason: buf.String()}
+		return invalidFileErr{Reason: fmt.Sprintf("code: %d, buffer out: %q, buffer err: %q", code, bufOut.String(), bufErr.String())}
 	}
 	return nil
 }

@@ -1,0 +1,20 @@
+{{ define "segmentrouting"}}
+segment-routing
+  srv6
+    encapsulation
+      source-address {{ .SourceAddress }}
+    exit
+    locators
+      locator {{ .Locator.Name }}
+        prefix {{ .Locator.Prefix }} block-len {{ .Locator.BlockLen }} node-len {{ .Locator.NodeLen }}
+        behavior {{ .Locator.Behavior }}
+        format {{ .Locator.Format }}
+      exit
+      !
+    exit
+    !
+  exit
+  !
+exit
+!
+{{- end }}

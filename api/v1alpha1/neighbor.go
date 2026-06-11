@@ -10,6 +10,8 @@ package v1alpha1
 // +kubebuilder:validation:XValidation:rule="!has(self.holdTimeSeconds) || !has(self.keepaliveTimeSeconds) || self.keepaliveTimeSeconds <= self.holdTimeSeconds",message="keepaliveTimeSeconds must be lower than or equal to holdTimeSeconds"
 // +kubebuilder:validation:XValidation:rule="has(self.address) || has(self.interface)",message="Either a valid Address or Interface name must be provided for Neighbor"
 // +kubebuilder:validation:XValidation:rule="!has(self.address) || !has(self.interface)",message="Address and Interface cannot be set together for Neighbor"
+// +kubebuilder:validation:XValidation:rule="!has(self.interface) || !has(self.addressFamilies) || !self.addressFamilies.exists(f, f.type == 'ipv4vpn' || f.type == 'ipv6vpn')",message="ipv4vpn and ipv6vpn address families are not supported for unnumbered (interface) neighbors"
+// +kubebuilder:validation:XValidation:rule="!has(self.address) || !has(self.addressFamilies) || ip(self.address).family() != 4 || !self.addressFamilies.exists(f, f.type == 'ipv4vpn' || f.type == 'ipv6vpn')",message="ipv4vpn and ipv6vpn address families require an IPv6 neighbor address"
 type Neighbor struct {
 	// asn is the AS number of the neighbor. Either ASN or Type must be set.
 	// +kubebuilder:validation:Minimum=1
@@ -81,6 +83,37 @@ type Neighbor struct {
 	// bfd defines the BFD configuration for the BGP session.
 	// +optional
 	BFD *BFDSettings `json:"bfd,omitempty"`
+
+	// extendedNexthop indicates if the BGPPeer has capability extended-nexthop.
+	// +optional
+	ExtendedNexthop *bool `json:"extendedNexthop,omitempty"`
+
+	// addressFamilies specifies the BGP address families that shall be enabled
+	// for this BGP neighbor. evpn and ipv4vpn/ipv6vpn are mutually exclusive.
+	// If ipv4vpn or ipv6vpn are set, the update source of this neighbor will
+	// be set to the loopback's IPv6 address.
+	// If addressFamilies is not provided or empty, the following defaults are
+	// chosen:
+	// For unnamed neighbors:
+	// - ipv4unicast
+	// - ipv6unicast if passthrough is configured with IPv6 local CIDR
+	// - evpn if L2VNIs or L3VNIs are present.
+	// For IPv4 neighbors:
+	// - ipv4unicast
+	// - ipv6unicast if passthrough is configured with IPv6 local CIDR
+	// - evpn if L2VNIs or L3VNIs are present.
+	// For IPv6 neighbors:
+	// - ipv4unicast if L2VNIs or L3VNIs are present, or if passthrough is configured with IPv4 local CIDR
+	// - ipv6unicast
+	// - evpn if L2VNIs or L3VNIs are present
+	// - ipv4vpn if L3VPNs and SRv6 configuration are present.
+	// - ipv6vpn if L3VPNs and SRv6 configuration are present.
+	// +kubebuilder:validation:MaxItems:=4
+	// +kubebuilder:validation:XValidation:rule="!(self.exists(f, f.type == 'evpn') && self.exists(f, f.type == 'ipv4vpn' || f.type == 'ipv6vpn'))",message="EVPN and IPv4VPN/IPv6VPN address families are mutually exclusive"
+	// +kubebuilder:validation:XValidation:rule="!self.exists(x, self.filter(y, x.type == y.type).size() > 1)",message="addressFamilies must not contain duplicate names"
+	// +optional
+	// +listType=atomic
+	AddressFamilies []NeighborAddressFamily `json:"addressFamilies,omitempty"`
 }
 
 // BFDSettings defines the BFD configuration for a BGP session.
@@ -135,4 +168,15 @@ type BFDSettings struct {
 	// +kubebuilder:validation:Minimum:=1
 	// +optional
 	MinimumTTL *int32 `json:"minimumTTL,omitempty"`
+}
+
+// NeighborAddressFamily represents a single BGP address family configuration
+// for a neighbor.
+type NeighborAddressFamily struct {
+	// type is the address family type.
+	// +kubebuilder:validation:MinLength:=1
+	// +kubebuilder:validation:MaxLength:=11
+	// +kubebuilder:validation:Enum:=ipv4unicast;ipv6unicast;evpn;ipv4vpn;ipv6vpn
+	// +required
+	Type string `json:"type,omitempty"`
 }

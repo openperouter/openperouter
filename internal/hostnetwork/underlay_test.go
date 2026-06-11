@@ -137,6 +137,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 
 		params.TunnelEndpoint.IPv4CIDR = "192.168.1.2/32"
+		params.TunnelEndpoint.IPv6CIDR = "2001:db8:192:168:1::2/128"
 
 		err = SetupUnderlay(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
@@ -218,7 +219,6 @@ func validateUnderlay(g Gomega, params UnderlayParams, interfaceIPs ...string) {
 			}
 		}
 	}
-
 	for _, underlayIface := range params.UnderlayInterfaces {
 		g.Expect(foundInterfaces).To(HaveKey(underlayIface),
 			fmt.Sprintf("underlay interface %s not found in ns, links %v", underlayIface, links))

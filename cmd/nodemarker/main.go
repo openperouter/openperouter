@@ -257,23 +257,27 @@ func setupWebhook(mgr manager.Manager, logger *slog.Logger) error {
 	webhooks.WebhookClient = mgr.GetAPIReader()
 
 	if err := webhooks.SetupL3VNI(mgr); err != nil {
-		logger.Error("unable to create the webook", "error", err, "webhook", "L3VNIs")
+		logger.Error("unable to create the webhook", "error", err, "webhook", "L3VNIs")
 		return err
 	}
 	if err := webhooks.SetupL2VNI(mgr); err != nil {
-		logger.Error("unable to create the webook", "error", err, "webhook", "L2VNIs")
+		logger.Error("unable to create the webhook", "error", err, "webhook", "L2VNIs")
+		return err
+	}
+	if err := webhooks.SetupL3VPN(mgr); err != nil {
+		logger.Error("unable to create the webhook", "error", err, "webhook", "L3VPNs")
 		return err
 	}
 	if err := webhooks.SetupUnderlay(mgr); err != nil {
-		logger.Error("unable to create the webook", "error", err, "webhook", "Underlays")
+		logger.Error("unable to create the webhook", "error", err, "webhook", "Underlays")
 		return err
 	}
 	if err := webhooks.SetupL3Passthrough(mgr); err != nil {
-		logger.Error("unable to create the webook", "error", err, "webhook", "L3Passthroughs")
+		logger.Error("unable to create the webhook", "error", err, "webhook", "L3Passthroughs")
 		return err
 	}
 	if err := webhooks.SetupRawFRRConfig(mgr); err != nil {
-		logger.Error("unable to create the webook", "error", err, "webhook", "RawFRRConfigs")
+		logger.Error("unable to create the webhook", "error", err, "webhook", "RawFRRConfigs")
 		return err
 	}
 	return nil

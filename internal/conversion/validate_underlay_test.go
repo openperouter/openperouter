@@ -15,6 +15,7 @@ func TestValidateUnderlay(t *testing.T) {
 	tests := []struct {
 		name     string
 		underlay v1alpha1.Underlay
+		l3vpns   []v1alpha1.L3VPN
 		wantErr  bool
 	}{
 		{
@@ -238,11 +239,52 @@ func TestValidateUnderlay(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name: "valid SRv6 Locator Format",
+			underlay: v1alpha1.Underlay{
+				Spec: v1alpha1.UnderlaySpec{
+					ASN:       65001,
+					Neighbors: []v1alpha1.Neighbor{{}},
+					SRV6: &v1alpha1.SRV6Config{
+						Locator: v1alpha1.SRV6Locator{
+							Format: "usid-f3216",
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "invalid SRv6 Locator Format",
+			underlay: v1alpha1.Underlay{
+				Spec: v1alpha1.UnderlaySpec{
+					ASN:       65001,
+					Neighbors: []v1alpha1.Neighbor{{}},
+					SRV6: &v1alpha1.SRV6Config{
+						Locator: v1alpha1.SRV6Locator{
+							Format: "usid-finvalid",
+						},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "cannot remove SRV6 configuration when L3VPN still present",
+			underlay: v1alpha1.Underlay{
+				Spec: v1alpha1.UnderlaySpec{
+					ASN: 65001,
+				},
+			},
+			l3vpns: []v1alpha1.L3VPN{
+				{},
+			},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateUnderlays([]v1alpha1.Underlay{tt.underlay})
+			err := ValidateUnderlays([]v1alpha1.Underlay{tt.underlay}, tt.l3vpns)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("validateUnderlay() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -283,7 +325,7 @@ func TestValidateUnderlay(t *testing.T) {
 				},
 			},
 		}
-		err := ValidateUnderlays(underlays)
+		err := ValidateUnderlays(underlays, []v1alpha1.L3VPN{})
 		if err == nil {
 			t.Errorf("expected error for multiple underlays, got nil")
 		}
@@ -295,6 +337,7 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 		name      string
 		nodes     []corev1.Node
 		underlays []v1alpha1.Underlay
+		l3vpns    []v1alpha1.L3VPN
 		wantErr   bool
 		errMsg    string
 	}{
@@ -794,11 +837,45 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "cannot remove SRV6 configuration when L3VPN still present",
+			nodes: []corev1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:   "node-1",
+						Labels: map[string]string{"rack": "rack-1"},
+					},
+				},
+			},
+			underlays: []v1alpha1.Underlay{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "underlay-rack-1"},
+					Spec: v1alpha1.UnderlaySpec{
+						NodeSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{"rack": "rack-1"},
+						},
+						ASN:  65001,
+						Nics: []string{"eth0"},
+					},
+				},
+			},
+			l3vpns: []v1alpha1.L3VPN{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l3vpn-1"},
+					Spec: v1alpha1.L3VPNSpec{
+						NodeSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{"rack": "rack-1"},
+						},
+					},
+				},
+			},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateUnderlaysForNodes(tt.nodes, tt.underlays)
+			err := ValidateUnderlaysForNodes(tt.nodes, tt.underlays, tt.l3vpns)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ValidateUnderlaysForNodes() error = %v, wantErr %v", err, tt.wantErr)
 				return

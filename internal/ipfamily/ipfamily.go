@@ -13,11 +13,27 @@ import (
 // IP family helps identifying single stack IPv4/IPv6 vs Dual-stack ["IPv4", "IPv6"] or ["IPv6", "Ipv4"].
 type Family string
 
+type SAFI string
+
+type AfiSafi struct {
+	AFI  Family
+	SAFI SAFI
+}
+
+func (as AfiSafi) String() string {
+	return fmt.Sprintf("%s %s", as.AFI, as.SAFI)
+}
+
 const (
 	IPv4      Family = "ipv4"
 	IPv6      Family = "ipv6"
 	DualStack Family = "dual"
 	Unknown   Family = "unknown"
+	L2VPN     Family = "l2vpn"
+
+	EVPN    SAFI = "evpn"
+	Unicast SAFI = "unicast"
+	VPN     SAFI = "vpn"
 )
 
 // ForAddresses returns the address family given list of addresses strings.

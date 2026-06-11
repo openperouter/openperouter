@@ -20,6 +20,7 @@ Package v1alpha1 contains API Schema definitions for the openpe v1alpha1 API gro
 - [L2VNI](#l2vni)
 - [L3Passthrough](#l3passthrough)
 - [L3VNI](#l3vni)
+- [L3VPN](#l3vpn)
 - [RawFRRConfig](#rawfrrconfig)
 - [RouterNodeConfigurationStatus](#routernodeconfigurationstatus)
 - [Underlay](#underlay)
@@ -151,6 +152,7 @@ A BGP session is established over this leg.
 _Appears in:_
 - [L3PassthroughSpec](#l3passthroughspec)
 - [L3VNISpec](#l3vnispec)
+- [L3VPNSpec](#l3vpnspec)
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
@@ -158,6 +160,111 @@ _Appears in:_
 | `hostasn` _integer_ | hostasn is the expected AS number for a BGP speaking component running in<br />the default network namespace. Either HostASN or HostType must be set. |  | Maximum: 4.294967295e+09 <br />Minimum: 1 <br />Optional: \{\} <br /> |
 | `hosttype` _string_ | hosttype is the AS type of the BGP speaking component running in the<br />default network namespace. Either HostASN or HostType must be set. |  | Enum: [external internal] <br />Optional: \{\} <br /> |
 | `localcidr` _[LocalCIDRConfig](#localcidrconfig)_ | localcidr is the CIDR configuration for the veth pair<br />to connect with the default namespace. The interface under<br />the PERouter side is going to use the first IP of the cidr on all the nodes.<br />At least one of IPv4 or IPv6 must be provided. |  | Required: \{\} <br /> |
+
+
+#### IPFamily
+
+_Underlying type:_ _string_
+
+IPFamily specifies which address families are enabled.
+
+_Validation:_
+- Enum: [ipv4 ipv6 dualstack]
+
+_Appears in:_
+- [ISISInterface](#isisinterface)
+
+| Field | Description |
+| --- | --- |
+| `ipv4` |  |
+| `ipv6` |  |
+| `dualstack` |  |
+
+
+#### ISISConfig
+
+
+
+ISISConfig contains ISIS configuration for the underlay.
+
+
+
+_Appears in:_
+- [UnderlaySpec](#underlayspec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `baseNet` _[ISISNet](#isisnet)_ | baseNet holds the ISIS NET address.<br />The configured Net address is a base address which is offset by the node index of each node.<br />Only accepts the simplified NSAP format with a fixed AreaID length of 3 bytes and a 6 byte SystemID in compliance<br />with the U.S. GOSIP version 2.0 for a total of 10 bytes. |  | MaxLength: 25 <br />MinLength: 25 <br />Required: \{\} <br /> |
+| `features` _[ISISFeature](#isisfeature) array_ | features enables ISIS boolean features.<br />Supported features are:<br />advertisePassiveOnly: configures ISIS to advertise only prefixes that belong to passive interfaces. |  | Enum: [advertisePassiveOnly] <br />MaxItems: 32 <br />MaxLength: 128 <br />MinLength: 1 <br />Optional: \{\} <br /> |
+| `interfaces` _[ISISInterface](#isisinterface) array_ | interfaces holds additional ISIS interface level configuration and / or per<br />interface overrides. By default, OpenPERouter enables IPv6 on all required<br />interfaces with default settings. |  | MaxItems: 128 <br />Optional: \{\} <br /> |
+| `level` _integer_ | level configures the ISIS type, system wide. It defaults to level-1-2 unless specified otherwise. |  | Enum: [1 2] <br />Optional: \{\} <br /> |
+
+
+#### ISISFeature
+
+_Underlying type:_ _string_
+
+ISISFeature represents a single ISIS feature.
+
+_Validation:_
+- Enum: [advertisePassiveOnly]
+- MaxLength: 128
+- MinLength: 1
+
+_Appears in:_
+- [ISISConfig](#isisconfig)
+
+
+
+#### ISISInterface
+
+
+
+ISISInterface holds ISIS interface level configuration.
+
+
+
+_Appears in:_
+- [ISISConfig](#isisconfig)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `name` _string_ | name of the interface that these settings shall apply to. |  | MaxLength: 15 <br />MinLength: 1 <br />Required: \{\} <br /> |
+| `ipFamily` _[IPFamily](#ipfamily)_ | ipFamily configures which address families ISIS is enabled for on this interface. |  | Enum: [ipv4 ipv6 dualstack] <br />Optional: \{\} <br /> |
+| `features` _[ISISInterfaceFeature](#isisinterfacefeature) array_ | features enables ISIS interface boolean features.<br />Supported features are:<br />passive: configures ISIS passive mode on this interface. |  | Enum: [passive] <br />MaxItems: 32 <br />MaxLength: 128 <br />MinLength: 1 <br />Optional: \{\} <br /> |
+
+
+#### ISISInterfaceFeature
+
+_Underlying type:_ _string_
+
+ISISInterfaceFeature represents a single ISIS feature of an ISIS interface.
+
+_Validation:_
+- Enum: [passive]
+- MaxLength: 128
+- MinLength: 1
+
+_Appears in:_
+- [ISISInterface](#isisinterface)
+
+
+
+#### ISISNet
+
+_Underlying type:_ _string_
+
+ISISNet represents a single ISIS NET address.
+Only accepts the simplified NSAP format with a fixed AreaID length of 3 bytes and a 6 byte SystemID in compliance
+with the U.S. GOSIP version 2.0 for a total of 10 bytes.
+
+_Validation:_
+- MaxLength: 25
+- MinLength: 25
+
+_Appears in:_
+- [ISISConfig](#isisconfig)
+
 
 
 #### L2VNI
@@ -319,6 +426,59 @@ _Appears in:_
 
 
 
+#### L3VPN
+
+
+
+L3VPN represents an SRv6 IP VPN.
+
+
+
+
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `apiVersion` _string_ | `openpe.openperouter.github.io/v1alpha1` | | |
+| `kind` _string_ | `L3VPN` | | |
+| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  | Optional: \{\} <br /> |
+| `spec` _[L3VPNSpec](#l3vpnspec)_ | spec defines the desired state of L3VPN. |  | Required: \{\} <br /> |
+| `status` _[L3VPNStatus](#l3vpnstatus)_ | status defines the observed state of L3VPN. |  | Optional: \{\} <br /> |
+
+
+#### L3VPNSpec
+
+
+
+L3VPNSpec defines the desired state of L3VPN.
+
+
+
+_Appears in:_
+- [L3VPN](#l3vpn)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `nodeSelector` _[LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#labelselector-v1-meta)_ | nodeSelector specifies which nodes this L3VPN applies to.<br />If empty or not specified, applies to all nodes.<br />Multiple L3VPNs can match the same node. |  | Optional: \{\} <br /> |
+| `vrf` _string_ | vrf is the name of the linux VRF to be used inside the PERouter namespace. |  | MaxLength: 15 <br />MinLength: 1 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9_-]*$` <br />Required: \{\} <br /> |
+| `exportRTs` _[RouteTarget](#routetarget) array_ | exportRTs are the Route Targets to be used for exporting routes.<br />If no exportRTs are provided, defaults to single export Route Target<br /><asn>:<rdAssignedNumber>. |  | MaxItems: 100 <br />MaxLength: 21 <br />Optional: \{\} <br /> |
+| `importRTs` _[RouteTarget](#routetarget) array_ | importRTs are the Route Targets to be used for importing routes.<br />importRTs must always be provided explicitly. |  | MaxItems: 100 <br />MaxLength: 21 <br />Required: \{\} <br /> |
+| `rdAssignedNumber` _integer_ | rdAssignedNumber sets the Route Distinguisher's Assigned Number subfield.<br />The Administrator subfield is automatically set to the value of the router<br />ID. OpenPERouter uses Type 1 Route Distinguishers as defined in RFC4364,<br />meaning <Administrator subfield>:<Assigned Number subfield>. |  | Maximum: 65535 <br />Minimum: 1 <br />Required: \{\} <br /> |
+| `hostsession` _[HostSession](#hostsession)_ | hostsession is the configuration for the host session. |  | Optional: \{\} <br /> |
+
+
+#### L3VPNStatus
+
+
+
+L3VPNStatus defines the observed state of L3VPN.
+
+
+
+_Appears in:_
+- [L3VPN](#l3vpn)
+
+
+
 #### LinuxBridgeConfig
 
 
@@ -378,6 +538,25 @@ _Appears in:_
 | `connectTimeSeconds` _integer_ | connectTimeSeconds controls how long BGP waits between connection attempts to a neighbor, in seconds. |  | Maximum: 65535 <br />Minimum: 1 <br />Optional: \{\} <br /> |
 | `ebgpMultiHop` _boolean_ | ebgpMultiHop indicates if the BGPPeer is multi-hops away. |  | Optional: \{\} <br /> |
 | `bfd` _[BFDSettings](#bfdsettings)_ | bfd defines the BFD configuration for the BGP session. |  | Optional: \{\} <br /> |
+| `extendedNexthop` _boolean_ | extendedNexthop indicates if the BGPPeer has capability extended-nexthop. |  | Optional: \{\} <br /> |
+| `addressFamilies` _[NeighborAddressFamily](#neighboraddressfamily) array_ | addressFamilies specifies the BGP address families that shall be enabled<br />for this BGP neighbor. evpn and ipv4vpn/ipv6vpn are mutually exclusive.<br />If ipv4vpn or ipv6vpn are set, the update source of this neighbor will<br />be set to the loopback's IPv6 address.<br />If addressFamilies is not provided or empty, the following defaults are<br />chosen:<br />For unnamed neighbors:<br />- ipv4unicast<br />- ipv6unicast if passthrough is configured with IPv6 local CIDR<br />- evpn if L2VNIs or L3VNIs are present.<br />For IPv4 neighbors:<br />- ipv4unicast<br />- ipv6unicast if passthrough is configured with IPv6 local CIDR<br />- evpn if L2VNIs or L3VNIs are present.<br />For IPv6 neighbors:<br />- ipv4unicast if L2VNIs or L3VNIs are present, or if passthrough is configured with IPv4 local CIDR<br />- ipv6unicast<br />- evpn if L2VNIs or L3VNIs are present<br />- ipv4vpn if L3VPNs and SRv6 configuration are present.<br />- ipv6vpn if L3VPNs and SRv6 configuration are present. |  | MaxItems: 4 <br />Optional: \{\} <br /> |
+
+
+#### NeighborAddressFamily
+
+
+
+NeighborAddressFamily represents a single BGP address family configuration
+for a neighbor.
+
+
+
+_Appears in:_
+- [Neighbor](#neighbor)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `type` _string_ | type is the address family type. |  | Enum: [ipv4unicast ipv6unicast evpn ipv4vpn ipv6vpn] <br />MaxLength: 11 <br />MinLength: 1 <br />Required: \{\} <br /> |
 
 
 #### OVSBridgeConfig
@@ -447,6 +626,20 @@ _Appears in:_
 
 
 
+#### RouteTarget
+
+_Underlying type:_ _string_
+
+RouteTarget defines a BGP Extended Community for route filtering.
+
+_Validation:_
+- MaxLength: 21
+
+_Appears in:_
+- [L3VPNSpec](#l3vpnspec)
+
+
+
 #### RouterNodeConfigurationStatus
 
 
@@ -482,6 +675,39 @@ _Appears in:_
 | `conditions` _[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#condition-v1-meta) array_ | conditions list of conditions. |  | Optional: \{\} <br /> |
 
 
+#### SRV6Config
+
+
+
+SRV6Config contains SRV6 configuration for the underlay.
+
+
+
+_Appears in:_
+- [UnderlaySpec](#underlayspec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `locator` _[SRV6Locator](#srv6locator)_ | locator defines the locator for this SRv6 VPN. |  | Required: \{\} <br /> |
+
+
+#### SRV6Locator
+
+
+
+SRV6Locator holds the configuration of a locator for SRv6.
+
+
+
+_Appears in:_
+- [SRV6Config](#srv6config)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `basePrefix` _string_ | basePrefix is the CIDR to be used for the locator, offset by the router index. |  | MaxLength: 43 <br />MinLength: 1 <br />Required: \{\} <br /> |
+| `format` _string_ | format specifies the format of the locator. Defaults to usid-f3216 |  | Enum: [usid-f3216] <br />MaxLength: 40 <br />MinLength: 1 <br />Required: \{\} <br /> |
+
+
 #### TunnelEndpointConfig
 
 
@@ -495,7 +721,7 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `cidrs` _string array_ | cidrs is a list of CIDRs to be used to assign IPs to the local tunnel endpoint on<br />each node. A loopback interface will be created with IPs derived from<br />these CIDRs. Exactly one IPv4 CIDR is required, and an optional IPv6<br />CIDR may also be specified for dual-stack operation. |  | MaxItems: 2 <br />MinItems: 1 <br />Required: \{\} <br /> |
+| `cidrs` _string array_ | cidrs is a list of CIDRs to be used to assign IPs to the local tunnel endpoint on<br />each node. IPs derived from these CIDRs will be assigned to the local loopback.<br />At least one CIDR is required, and at most one CIDR per address family is allowed. |  | MaxItems: 2 <br />MinItems: 1 <br />Required: \{\} <br /> |
 
 
 #### Underlay
@@ -533,10 +759,12 @@ _Appears in:_
 | `nodeSelector` _[LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#labelselector-v1-meta)_ | nodeSelector specifies which nodes this Underlay applies to.<br />If empty or not specified, applies to all nodes (backward compatible).<br />Multiple Underlays with overlapping node selectors will be rejected. |  | Optional: \{\} <br /> |
 | `asn` _integer_ | asn is the local AS number to use for the session with the TOR switch. |  | Maximum: 4.294967295e+09 <br />Minimum: 1 <br />Required: \{\} <br /> |
 | `routeridcidr` _string_ | routeridcidr is the ipv4 cidr to be used to assign a different routerID on each node. | 10.0.0.0/24 | Optional: \{\} <br /> |
-| `neighbors` _[Neighbor](#neighbor) array_ | neighbors is the list of external BGP neighbors to peer with.<br />Note: MaxItems=128 is arbitrarily chosen to keep total CEL cost low<br />Note: kubeapilinter complained about 'the struct has no required fields', but CEL enforces either/or choices<br />for Address and Interface.<br />Multiple neighbors are supported for connecting to multiple TOR switches<br />or establishing redundant BGP sessions. Each neighbor address must be unique.<br />At least one neighbor is required. |  | MaxItems: 128 <br />MinItems: 1 <br />Required: \{\} <br /> |
+| `neighbors` _[Neighbor](#neighbor) array_ | neighbors is the list of external BGP neighbors to peer with.<br />Multiple neighbors are supported for connecting to multiple TOR switches<br />or establishing redundant BGP sessions. Each neighbor address must be unique.<br />At least one neighbor is required. |  | MaxItems: 128 <br />MinItems: 1 <br />Required: \{\} <br /> |
 | `nics` _string array_ | nics is the list of physical nics to move under the PERouter namespace to connect<br />to external routers. At least one NIC is required. |  | MinItems: 1 <br />items:MaxLength: 15 <br />items:Pattern: `^[a-zA-Z][a-zA-Z0-9._-]*$` <br />Required: \{\} <br /> |
 | `tunnelEndpoint` _[TunnelEndpointConfig](#tunnelendpointconfig)_ | tunnelEndpoint contains tunnel endpoint configuration for the underlay. |  | Optional: \{\} <br /> |
 | `gracefulRestart` _[GracefulRestartConfig](#gracefulrestartconfig)_ | gracefulRestart configures BGP Graceful Restart behaviour.<br />When set, FRR advertises GR capability and preserves forwarding<br />state across restarts so that peers keep stale routes active.<br />Omit to disable graceful restart. |  | Optional: \{\} <br /> |
+| `isis` _[ISISConfig](#isisconfig)_ | isis holds the ISIS configuration for the underlay. |  | Optional: \{\} <br /> |
+| `srv6` _[SRV6Config](#srv6config)_ | srv6 holds the SRv6 configuration. Requires ISIS or Neighbors configuration. |  | Optional: \{\} <br /> |
 
 
 #### UnderlayStatus

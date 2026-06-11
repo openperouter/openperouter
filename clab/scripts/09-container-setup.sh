@@ -1,7 +1,6 @@
 #!/bin/bash
 # Execute setup scripts in containers
 set -euo pipefail
-set -x
 
 source "$(dirname $(readlink -f $0))/../common.sh"
 
@@ -19,8 +18,8 @@ setup_containers() {
     echo "Executing setup scripts in containers for clusters: ${CLUSTER_NAMES[*]}"
 
     # Setup common leaf containers (always present)
-    ${CONTAINER_ENGINE_CLI} exec clab-kind-leafA /setup.sh
-    ${CONTAINER_ENGINE_CLI} exec clab-kind-leafB /setup.sh
+    ${CONTAINER_ENGINE_CLI} exec -e SRV6="${SRV6:-false}" clab-kind-leafA /setup.sh
+    ${CONTAINER_ENGINE_CLI} exec -e SRV6="${SRV6:-false}" clab-kind-leafB /setup.sh
 
     # Setup host containers (always present)
     ${CONTAINER_ENGINE_CLI} exec clab-kind-hostA_red /setup.sh
