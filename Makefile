@@ -664,3 +664,7 @@ deploy-olm: operator-sdk ## deploys OLM on the cluster
 
 build-and-push-bundle-images: bundle-build bundle-push catalog-build catalog-push
 
+INSPECT_DIR ?= /tmp/openperouter-inspect
+.PHONY: inspect
+inspect:
+	tools/inspect/inspect --k8s-client=$(KUBECTL) --dest-dir=$(INSPECT_DIR)

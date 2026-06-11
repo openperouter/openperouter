@@ -34,13 +34,15 @@ The artifact directory contains following files:
 - `timestamp` - Execution timestamp
 - `inspect.log` - Execution log
 - `node_info/` - Per node network and routing infrastructure information
-- `openperouter-system/` - Target namespace objects state and logs (dir name is namespace name)
-- `resources` - OpenPERouter config resources from all namespaces (Underlay, L3VNI, L2VNI, etc.) 
+- `openperouter-system/` - OpenPERouter namespace objects and workloads logs (defaults to openperouter-system)
+- `<namespace name>/` - Per namespaces containing config resources directory (Underlay, L3VNI, L2VNI, etc.) 
 
-The target namespace directory structure:
+The OpenPERouter namespace directory structure:
 - `overview/all.log` - Existing resources in summary
 - `pod_logs/` - Pod logs
-- `resources/` - OpenPERouter config resources state, YAML format (CRDs, workloads, events, etc.)
+- `namespace.yaml` - Namespace state 
+- `events.yaml` - Events 
+- `<resource-name>/` - Per resource directory (CRDs, workloads)
 
 Example:
 ```bash

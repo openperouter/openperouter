@@ -46,8 +46,9 @@ function dump_overview() {
 	mkdir -p "$dir"
 
 	local -r logfile="${dir}/all.log"
+	local -r all=("${CORE_RESOURCES[@]}" "${CONFIG_RESOURCES[@]}")
 	{
-		for r in "${ALL_RESOURCES[@]}"; do
+		for r in "${all[@]}"; do
 			echo "# $r"
 			$ctl get "$r" -o wide
 			echo "" 
