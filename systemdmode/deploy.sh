@@ -70,10 +70,10 @@ fi
 
 CLUSTER_NAME="$1"
 
-NODES=$(kind get nodes --name "$CLUSTER_NAME" 2>/dev/null)
+NODES=$(${KIND_COMMAND} get nodes --name "$CLUSTER_NAME" 2>/dev/null)
 if [[ -z "$NODES" ]]; then
     log_error "No nodes found for kind cluster: $CLUSTER_NAME"
-    log_error "Please check that the cluster exists with: kind get clusters"
+    log_error "Please check that the cluster exists with: ${KIND_COMMAND} get clusters"
     exit 1
 fi
 

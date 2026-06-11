@@ -1,5 +1,7 @@
 #!/bin/bash
 
+source "$(dirname $(readlink -f $0))/../common.sh"
+
 timeout=600
 start_time=$(date +%s)
 
@@ -17,7 +19,7 @@ while true; do
     sleep 5
     check_timeout
     echo "Apply calico."
-    if ! kind get kubeconfig --name pe-kind > kubeconfig; then
+    if ! ${KIND_COMMAND} get kubeconfig --name pe-kind > kubeconfig; then
 	    continue
     fi
     export KUBECONFIG=./kubeconfig

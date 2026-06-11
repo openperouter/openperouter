@@ -21,6 +21,13 @@ echo "CLAB_TOPOLOGY: $CLAB_TOPOLOGY"
 echo "CONTAINER_ENGINE: $CONTAINER_ENGINE"
 echo "CLUSTER_NAMES: ${CLUSTER_ARRAY[*]}"
 
+echo "=== Stop check_veths monitoring ==="
+pid=$(cat "${PID_FILE}" 2>/dev/null || true)
+if ps -q "${pid}" >/dev/null 2>&1; then
+    echo "Found process ID ${pid} for check_veths, killing the process"
+    sudo kill "${pid}"
+fi
+
 echo "=== Destroying containerlab topology ==="
 if [[ $CONTAINER_ENGINE == "docker" ]]; then
     docker run --rm --privileged \
@@ -65,12 +72,5 @@ ${CONTAINER_ENGINE_CLI} rm kind-registry 2>/dev/null || true
 
 echo "=== cluster cleanup completed ==="
 echo "All resources have been cleaned up"
-
-echo "=== Stop check_veths monitoring ==="
-pid=$(cat "${PID_FILE}" 2>/dev/null || true)
-if ps -q "${pid}" >/dev/null 2>&1; then
-    echo "Found process ID ${pid} for check_veths, killing the process"
-    sudo kill "${pid}"
-fi
 
 popd
