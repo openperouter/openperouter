@@ -1,0 +1,186 @@
+#!/usr/bin/env bash 
+
+# SPDX-License-Identifier:Apache-2.0
+
+set -eo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# script for collecting node router information (network-namespace and FRR state)
+readonly ROUTER_INFO_SCRIPT="${SCRIPT_DIR}/router_info"
+# router pod's label selector
+readonly ROUTER_LABEL="app=router"
+# router pod's frr container name
+readonly ROUTER_CONTAINER="frr"
+# resources to collect
+readonly RESOURCES=(\
+	# CRDs
+	"underlays" \
+	"l2vnis" \
+	"l3vnis" \
+	"l3passthroughs" \
+	"rawfrrconfigs" \
+	"routernodeconfigurationstatuses" \
+	# deployment resources
+	"daemonsets" \
+	"deployments" \
+	"pods" \
+	"services" \
+	"configmaps" \
+	"events" \
+	"roles" \
+	"rolebindings" \
+	"serviceaccounts" \
+)
+
+function dump_overview() {
+	local -r ctl="$1"
+	local -r dir="$2"
+
+	local -r all="${RESOURCES[*]}"
+	local -r all_list="${all// /,}"
+
+	mkdir -p "$dir"
+	local -r logfile="${dir}/all.log"	
+	$ctl get "$all_list" > "$logfile"
+	echo "Dumped overview summary to $logfile"
+}
+
+function dump_resources() {
+	local -r ctl="$1"
+	local -r base_dir="$2"
+
+	for r in "${RESOURCES[@]}"; do
+		dump_resource "${ctl}" "${base_dir}" "${r}"
+	done
+}
+
+function dump_resource() {
+	local -r ctl="$1"
+	local -r base_dir="$2"
+	local -r type="$3"
+
+	local objs
+	objs="$($ctl get "$type" -o jsonpath='{.items[*].metadata.name}')"
+	if [[ -z $objs ]]; then
+		return 0
+	fi
+
+	local dir="${base_dir}/${type}"
+	mkdir -p "$dir"
+
+	local logfile
+	for obj in $objs; do
+		logfile="${dir}/${obj}.yaml"
+		$ctl get "$type/$obj" -o yaml > "$logfile" 
+		echo "Dumped resource manifest [$type/$obj] to $logfile"
+	done
+}
+
+function dump_pod_logs() {
+	local -r ctl="$1"
+	local -r dir="$2"
+
+	mkdir -p "$dir"
+
+	local -r pods="$($ctl get pods -o jsonpath='{.items[*].metadata.name}')"
+	local containers logfile
+	for p in $pods; do
+		containers="$($ctl get pods "$p" -o jsonpath='{.spec.containers[*].name}')"
+		for c in $containers; do
+			logfile="${dir}/${p}_${c}.log"
+			$ctl logs "$p" -c "$c" > "$logfile"
+			echo "Dumped logs for [$p/$c] to $logfile"
+
+			if $ctl logs "$p" -c "$c" --previous &> /dev/null; then
+				logfile="${dir}/${p}_${c}_previous.log"	
+				$ctl logs "$p" -c "$c" --previous > "$logfile"
+				echo "Dumped previous logs for [$p/$c] to $logfile"
+			fi
+		done
+	done
+}
+
+function dump_node_logs() {
+	local -r ctl="$1"
+	local -r base_dir="$2"
+
+	local -r router_pods="$($ctl get pods -l "$ROUTER_LABEL" -o jsonpath='{.items[*].metadata.name}')"
+	local node_name logfile
+	for p in $router_pods; do
+		node_name="$($ctl get pods "$p" -o jsonpath='{.spec.nodeName}')"
+		node_dir="${base_dir}/${node_name}"
+		logfile="${node_dir}/router_state.log"
+		
+		mkdir -p "$node_dir"
+		
+		$ctl exec -i "$p" -c "$ROUTER_CONTAINER" -- bash <<< "$(cat "$ROUTER_INFO_SCRIPT")" &> "$logfile"
+		
+		echo "Dumped router logs of node [$node_name] pod [$p/$ROUTER_CONTAINER] to $logfile"
+	done
+}
+
+function help() {
+    cat <<EOF
+Inspect OpenPERouter deployment and exports related resources and logs.
+
+Usage: inspect [options]=<value>
+
+Example
+	inspect --dest-dir=/tmp/openperouter-logs --k8s-client=./bin/kubectl
+
+Options:
+  --namespace   The namespace to inspect (default: "openperouter-system")
+  --dest-dir    The directory to store artifacts (default: "openperouter-inspect")
+  --k8s-client  Kubernetes client binary path (default: "kubectl")
+  -h, --help    Show this help message and exit
+EOF
+}
+
+NAMESPACE="openperouter-system"
+ARTIFACTS_DIR="./openperouter-inspect"
+CTL_BIN="kubectl"
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --namespace=*)   NAMESPACE="${1#*=}" ;;
+        --dest-dir=*)    ARTIFACTS_DIR="${1#*=}" ;;
+        --k8s-client=*)  CTL_BIN="${1#*=}" ;;
+        -h | --help)     help; exit 0 ;;
+        *) echo "Unknown option: $1"; help; exit 1 ;;
+    esac
+    shift
+done
+
+if ! command -v "${CTL_BIN}" &> /dev/null; then
+	echo "FATAL: '${CTL_BIN}' command not found" && exit 1
+fi
+
+if ! "${CTL_BIN}" get ns "${NAMESPACE}" &> /dev/null; then
+	echo "FATAL: '${NAMESPACE}' namespace not found. Make sure KUBECONFIG is set correctly." && exit 1
+fi
+
+# artifacts sub-directories
+readonly NS_DIR="${ARTIFACTS_DIR}/${NAMESPACE}"
+readonly OVERVIEW_DIR="${NS_DIR}/overview"
+readonly RESOURCES_DIR="${NS_DIR}/resources"
+readonly POD_LOGS_DIR="${NS_DIR}/pod_logs"
+readonly NODE_LOGS_DIR="${NS_DIR}/node_logs"
+
+# client command
+readonly CTL="${CTL_BIN} -n ${NAMESPACE}"
+
+mkdir -p "${ARTIFACTS_DIR}"
+date --rfc-3339=ns > "${ARTIFACTS_DIR}/timestamp"
+
+dump_overview  "${CTL}" "${OVERVIEW_DIR}"
+
+dump_resources "${CTL}" "${RESOURCES_DIR}"
+
+dump_pod_logs  "${CTL}" "${POD_LOGS_DIR}"
+
+dump_node_logs  "${CTL}" "${NODE_LOGS_DIR}"
+
+echo "Inspect completed. Artifacts are stored in ${ARTIFACTS_DIR}"
+
+exit 0 
