@@ -8,3 +8,29 @@ on:
 jobs:
   ci:
     uses: ./.github/workflows/ci.yaml
+
+  report-flakes:
+    runs-on: ubuntu-22.04
+    needs: ci
+    if: ${{ always() && needs.ci.result == 'failure' }}
+    permissions:
+      issues: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: hack/report-flakes.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Download e2e reports
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: e2e-reports-*
+          path: reports/
+
+      - name: Report flakes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          hack/report-flakes.sh reports/
