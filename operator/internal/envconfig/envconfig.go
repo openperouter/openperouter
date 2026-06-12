@@ -20,6 +20,7 @@ type EnvConfig struct {
 	ControllerImage       ImageInfo
 	FRRImage              ImageInfo
 	KubeRBacImage         ImageInfo
+	GroutImage            *ImageInfo
 	FRRMetricsPort        int
 	SecureFRRMetricsPort  int
 	MetricsPort           int
@@ -52,6 +53,8 @@ func FromEnvironment(isOpenshift bool) (EnvConfig, error) {
 	if err != nil {
 		return EnvConfig{}, err
 	}
+
+	res.GroutImage = optionalImageFromEnv("GROUT_IMAGE")
 
 	res.FRRMetricsPort, err = intValueWithDefault("FRR_METRICS_PORT", 7473)
 	if err != nil {
@@ -96,6 +99,15 @@ func validate(config EnvConfig) error {
 		return fmt.Errorf("secureFRRMetricsPort is available only if service monitors are enabled")
 	}
 	return nil
+}
+
+func optionalImageFromEnv(imageEnv string) *ImageInfo {
+	value, found := os.LookupEnv(imageEnv)
+	if !found || value == "" {
+		return nil
+	}
+	repo, tag := getImageNameTag(value)
+	return &ImageInfo{Repo: repo, Tag: tag}
 }
 
 func imageFromEnv(imageEnv string) (ImageInfo, error) {

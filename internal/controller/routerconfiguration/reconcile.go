@@ -10,7 +10,11 @@ import (
 	"github.com/openperouter/openperouter/internal/frr"
 )
 
-func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeIndex int, logLevel, frrConfigPath, targetNamespace string, updater frr.ConfigUpdater) error {
+func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, groutEnabled bool, groutSocketPath string, nodeIndex int, logLevel, frrConfigPath, targetNamespace string, updater frr.ConfigUpdater) error {
+	if err := conversion.ValidateGrout(groutEnabled, apiConfig); err != nil {
+		return fmt.Errorf("failed grout validation: %w", err)
+	}
+
 	if err := conversion.ValidateUnderlays(apiConfig.Underlays); err != nil {
 		return fmt.Errorf("failed to validate underlays: %w", err)
 	}
@@ -35,12 +39,8 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 		return fmt.Errorf("failed to validate host sessions: %w", err)
 	}
 
-	if err := configureInterfaces(ctx, interfacesConfiguration{
-		targetNamespace: targetNamespace,
-		APIConfigData:   apiConfig,
-		nodeIndex:       nodeIndex,
-	}); err != nil {
-		return fmt.Errorf("failed to configure the host: %w", err)
+	if err := configureDataPath(ctx, groutEnabled, apiConfig, groutSocketPath, targetNamespace, nodeIndex); err != nil {
+		return fmt.Errorf("failed to configure data path: %w", err)
 	}
 
 	if err := configureFRR(ctx, frrConfigData{
@@ -54,4 +54,20 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 	}
 
 	return nil
+}
+
+func configureDataPath(ctx context.Context, groutEnabled bool, apiConfig conversion.APIConfigData, groutSocketPath, targetNamespace string, nodeIndex int) error {
+	if groutEnabled {
+		return configureGroutDataPath(ctx, groutConfiguration{
+			targetNamespace: targetNamespace,
+			nodeIndex:       nodeIndex,
+			APIConfigData:   apiConfig,
+			groutSocketPath: groutSocketPath,
+		})
+	}
+	return configureInterfaces(ctx, interfacesConfiguration{
+		targetNamespace: targetNamespace,
+		APIConfigData:   apiConfig,
+		nodeIndex:       nodeIndex,
+	})
 }

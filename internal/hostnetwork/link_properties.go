@@ -174,7 +174,7 @@ func setNeighSuppression(link netlink.Link) error {
 }
 
 // moveInterfaceToNamespace takes the given interface and moves it into the given namespace.
-func moveInterfaceToNamespace(ctx context.Context, intf string, ns netns.NsHandle) error {
+func MoveInterfaceToNamespace(ctx context.Context, intf string, ns netns.NsHandle) error {
 	slog.DebugContext(ctx, "move intf to namespace", "intf", intf, "namespace", ns.String())
 	defer slog.DebugContext(ctx, "move intf to namespace end", "intf", intf, "namespace", ns.String())
 

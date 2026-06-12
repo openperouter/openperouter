@@ -74,6 +74,9 @@ func dumpFRRInfo(basePath, testName string, cs clientset.Interface, clabContaine
 	for name, exec := range executors {
 		func() {
 			dump := frr.RawDump(exec)
+			groutDump := frr.GroutDump(exec)
+			dump += "\n\n" + groutDump
+
 			f, err := logFileFor(testPath, fmt.Sprintf("frrdump-%s", name))
 			if err != nil {
 				ginkgo.GinkgoWriter.Printf("dumpFRRInfo: external frr dump for container %s, failed to open file %v", name, err)

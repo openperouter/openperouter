@@ -58,6 +58,10 @@ type OpenPERouterSpec struct {
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=65535
 	HealthProbePort *int32 `json:"healthProbePort,omitempty"`
+	// groutEnabled enables the Grout DPDK dataplane sidecar in the router pods.
+	// When enabled, FRR uses the dplane_grout module for accelerated forwarding. (default: false)
+	// +optional
+	GroutEnabled *bool `json:"groutEnabled,omitempty"`
 }
 
 // OpenPERouterStatus defines the observed state of OpenPERouter

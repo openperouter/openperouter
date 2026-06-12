@@ -41,6 +41,34 @@ func TestFromEnvironment(t *testing.T) {
 			},
 		},
 		{
+			desc: "with grout image",
+			setup: func() {
+				setBasics()
+				_ = os.Setenv("GROUT_IMAGE", "quay.io/openperouter/router:main-grout")
+			},
+			expected: EnvConfig{
+				Namespace: "test-namespace",
+				ControllerImage: ImageInfo{
+					Repo: "test-controller-image",
+					Tag:  "1",
+				},
+				FRRImage: ImageInfo{
+					Repo: "test-frr-image",
+					Tag:  "2",
+				},
+				KubeRBacImage: ImageInfo{
+					Repo: "test-kube-rbac-proxy-image",
+					Tag:  "3",
+				},
+				GroutImage: &ImageInfo{
+					Repo: "quay.io/openperouter/router",
+					Tag:  "main-grout",
+				},
+				MetricsPort:    7472,
+				FRRMetricsPort: 7473,
+			},
+		},
+		{
 			desc: "override ports",
 			setup: func() {
 				setBasics()
@@ -86,8 +114,8 @@ func TestFromEnvironment(t *testing.T) {
 				t.Errorf("Expected error, got nil")
 			}
 
-			if res != test.expected {
-				t.Errorf("res different from expected, %s", cmp.Diff(res, test.expected))
+			if diff := cmp.Diff(test.expected, res); diff != "" {
+				t.Errorf("res different from expected (-want +got):\n%s", diff)
 			}
 
 		})
@@ -107,6 +135,7 @@ func unset() {
 	_ = os.Unsetenv("DEPLOY_PODMONITORS")
 	_ = os.Unsetenv("DEPLOY_SERVICEMONITORS")
 	_ = os.Unsetenv("KUBE_RBAC_PROXY_IMAGE")
+	_ = os.Unsetenv("GROUT_IMAGE")
 }
 
 func setBasics() {

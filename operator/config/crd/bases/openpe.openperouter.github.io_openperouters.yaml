@@ -39,6 +39,11 @@ spec:
           spec:
             description: spec defines the desired state of OpenPERouter.
             properties:
+              groutEnabled:
+                description: |-
+                  groutEnabled enables the Grout DPDK dataplane sidecar in the router pods.
+                  When enabled, FRR uses the dplane_grout module for accelerated forwarding. (default: false)
+                type: boolean
               healthProbePort:
                 default: 9081
                 description: 'healthProbePort specifies the port for the controller''s
