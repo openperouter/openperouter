@@ -426,8 +426,7 @@ bumplicense:
 .PHONY: checkuncommitted
 CSV_FILE = operator/bundle/manifests/openperouter-operator.clusterserviceversion.yaml
 checkuncommitted:
-	git diff --exit-code -I'^    createdAt: ' -- $(CSV_FILE)
-	git diff --exit-code -- ':!$(CSV_FILE)'
+	git diff --exit-code
 
 .PHONY: bumpall
 bumpall: bumplicense manifests
@@ -591,6 +590,13 @@ bundle: manifests kustomize operator-sdk ## Generate bundle manifests and metada
 	cd operator/config/pods && $(KUSTOMIZE) edit set image controller=$(IMG)
 	cd operator/config/webhook/backend && $(KUSTOMIZE) edit set image controller=$(IMG)
 	cd operator && $(KUSTOMIZE) build config/default | $(OPERATOR_SDK) generate bundle $(BUNDLE_GEN_FLAGS) --extra-service-accounts "controller,perouter" --package openperouter-operator
+	# Restore the committed createdAt timestamp so regeneration doesn't cause spurious diffs.
+	if git cat-file -e HEAD:$(CSV_FILE) 2>/dev/null; then \
+		OLD_TS=$$(git show HEAD:$(CSV_FILE) | grep '    createdAt:' | sed 's/.*createdAt: //'); \
+		if [ -n "$$OLD_TS" ]; then \
+			sed "s/    createdAt: .*/    createdAt: $$OLD_TS/" $(CSV_FILE) > $(CSV_FILE).tmp && mv $(CSV_FILE).tmp $(CSV_FILE); \
+		fi; \
+	fi
 	cd operator && $(OPERATOR_SDK) bundle validate ./bundle
 
 .PHONY: bundle-build
