@@ -93,6 +93,10 @@ ExecStartPre=/usr/bin/mkdir -p /var/lib/hostbridge
 ExecStartPre=/usr/bin/mkdir -p /var/lib/openperouter
 ExecStartPre=/usr/bin/mkdir -p /var/run/openvswitch
 
+# If a can_start.sh script is mounted, run it and wait for success.
+# This allows deferring startup until external dependencies are ready.
+ExecStartPre=/bin/bash -c 'f=/var/lib/openperouter/can_start.sh; [ ! -x "$f" ] || "$f"'
+
 
 [Install]
 # Automatically enable this container at boot
