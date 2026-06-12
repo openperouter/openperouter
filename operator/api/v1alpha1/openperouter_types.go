@@ -58,6 +58,11 @@ type OpenPERouterSpec struct {
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=65535
 	HealthProbePort *int32 `json:"healthProbePort,omitempty"`
+	// datapath specifies the datapath to use. Allowed values are: kernel, grout. (default: kernel)
+	// +optional
+	// +default="kernel"
+	// +kubebuilder:validation:Enum=kernel;grout
+	Datapath *string `json:"datapath,omitempty"`
 }
 
 // OpenPERouterStatus defines the observed state of OpenPERouter

@@ -206,7 +206,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          tags: quay.io/openperouter/router:main-grout
+          tags: quay.io/openperouter/router:main-grout,localhost:5000/router:main-grout
           file: Dockerfile.grout
           outputs: type=docker,dest=/tmp/openperouter-grout.tar
           cache-from: type=gha
@@ -230,7 +230,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        deployment: [manifests, helm, operator, systemdmode, hostmode-boot, helm-grout]
+        deployment: [manifests, helm, operator, systemdmode, hostmode-boot, helm-grout, operator-grout]
     steps:
       - name: Free Disk Space
         working-directory: ${{ github.workspace }}
@@ -293,8 +293,24 @@ jobs:
           if [ ${{ matrix.deployment }} = "systemdmode" ]; then MAKE_RULE="deploy-hostmode"; fi
           if [ ${{ matrix.deployment }} = "hostmode-boot" ]; then MAKE_RULE="deploy-hostmode-boot"; fi
           if [ ${{ matrix.deployment }} = "operator" ]; then MAKE_RULE="deploy-operator-with-olm"; IMG_REPO="localhost:5000"; export USE_HTTP=--use-http; export TLS_VERIFY=false; export KUBECONFIG=bin/kubeconfig; fi
+          if [ ${{ matrix.deployment }} = "operator-grout" ]; then MAKE_RULE="grout-deploy-operator-with-olm"; IMG_REPO="localhost:5000"; export USE_HTTP=--use-http; export TLS_VERIFY=false; export KUBECONFIG=bin/kubeconfig; fi
+          
           COREDUMP=true IMG_REPO=$IMG_REPO make $MAKE_RULE
-          if [ ${{ matrix.deployment }} = "operator" ]; then IMG_REPO="quay.io/openperouter" make load-on-kind; kubectl apply -f operator/config/samples/openperouter.yaml; sleep 5; kubectl -n openperouter-system wait --for=condition=Ready pods -l "component in (controller,router,nodemarker)" --timeout 300s; fi
+          
+          if [ ${{ matrix.deployment }} = "operator" ]; then 
+            IMG_REPO="quay.io/openperouter" make load-on-kind; 
+            kubectl apply -f operator/config/samples/openperouter.yaml; 
+            sleep 5; 
+            kubectl -n openperouter-system wait --for=condition=Ready pods -l "component in (controller,router,nodemarker)" --timeout 300s; 
+          fi
+          if [ ${{ matrix.deployment }} = "operator-grout" ]; then 
+            IMG_TAG="main-grout" IMG_REPO="quay.io/openperouter" make load-on-kind; 
+            kubectl apply -f operator/config/samples/openperouter.yaml; 
+            kubectl patch openperouter openperouter -n openperouter-system --type merge -p '{"spec":{"datapath":"grout"}}'
+            sleep 5; 
+            kubectl -n openperouter-system wait --for=condition=Ready pods -l "component in (controller,router,nodemarker)" --timeout 300s; 
+          fi
+
 
       - name: Run e2e tests
         run: |
@@ -304,8 +320,8 @@ jobs:
             make e2etests
           elif [ ${{ matrix.deployment }} = "hostmode-boot" ]; then
             make e2etests-hostmode-boot
-          elif [ ${{ matrix.deployment }} = "helm-grout" ]; then
-            make e2etests GINKGO_ARGS="--label-filter=grout-support" TEST_ARGS="--groutmode"
+          elif [ ${{ matrix.deployment }} = "helm-grout" ] || [ ${{ matrix.deployment }} = "operator-grout" ]; then
+            make e2etests GINKGO_ARGS="--label-filter='grout-support'" TEST_ARGS="--groutmode"
           else
             export GINKGO_ARGS="--label-filter='!systemdmode'"
             make e2etests
