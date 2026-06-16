@@ -6,6 +6,8 @@ pushd "$(dirname $(readlink -f $0))"
 source common.sh
 
 CALICO_MODE=${CALICO_MODE:-false}
+NUM_WORKERS="${NUM_WORKERS:-1}"
+export NUM_WORKERS
 CLAB_TOPOLOGY="${CLAB_TOPOLOGY:-singlecluster/kind.clab.yml}"
 IP_MAP_FILE=${IP_MAP_FILE:-"singlecluster/ip_map.txt"}
 KIND_EXPORT_LOGS=${KIND_EXPORT_LOGS:-/tmp/kind_logs}

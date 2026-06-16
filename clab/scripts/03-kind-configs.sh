@@ -28,6 +28,7 @@ generate_kind_configs() {
 
     echo "=== Kind configuration generation diagnostics ==="
     echo "NODE_IMAGE environment variable: ${NODE_IMAGE:-<not set>}"
+    echo "NUM_WORKERS: ${NUM_WORKERS:-1}"
 
     for cluster_name in "${CLUSTER_NAMES[@]}"; do
         KIND_CONFIG_NAME="${cluster_name}-configuration-registry.yaml"
@@ -40,12 +41,24 @@ generate_kind_configs() {
         fi
         go run generate_kind_config/generate_kind_config.go \
             --template generate_kind_config/kind_template/kind-configuration-registry.yaml.template \
-            $KIND_CONFIG_ARGS -cluster-name "${cluster_name}" -output "../${KIND_CONFIG_NAME}"
+            $KIND_CONFIG_ARGS -cluster-name "${cluster_name}" -num-workers "${NUM_WORKERS:-1}" -output "../${KIND_CONFIG_NAME}"
 
         echo "Generated configuration file content:"
         cat "../${KIND_CONFIG_NAME}"
         echo "=== End of ${KIND_CONFIG_NAME} ==="
     done
+
+    popd
+}
+
+generate_topology() {
+    echo "Generating singlecluster topology files (NUM_WORKERS=${NUM_WORKERS:-1})..."
+
+    pushd "$(dirname $(readlink -f $0))/../tools"
+
+    go run generate_topology/generate_topology.go \
+        -num-workers "${NUM_WORKERS:-1}" \
+        -output-dir "../singlecluster"
 
     popd
 }
@@ -59,5 +72,6 @@ setup_calico_if_enabled() {
     fi
 }
 
+generate_topology
 generate_kind_configs
 setup_calico_if_enabled

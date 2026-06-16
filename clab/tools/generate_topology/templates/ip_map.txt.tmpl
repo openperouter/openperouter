@@ -10,14 +10,18 @@ clab-kind-leafkind1,toswitch1,2001:db8:11::2/64
 clab-kind-leafkind2,eth1,192.168.1.7/31
 pe-kind-control-plane,toswitch1,192.168.11.3/24
 pe-kind-control-plane,toswitch1,2001:db8:11::3/64
-pe-kind-worker,toswitch1,192.168.11.4/24
-pe-kind-worker,toswitch1,2001:db8:11::4/64
+{{- range .Workers }}
+{{ .Name }},toswitch1,{{ .IPv4Sw1 }}/24
+{{ .Name }},toswitch1,{{ .IPv6Sw1 }}/64
+{{- end }}
 clab-kind-leafkind2,toswitch2,192.168.12.2/24
 clab-kind-leafkind2,toswitch2,2001:db8:12::2/64
 pe-kind-control-plane,toswitch2,192.168.12.3/24
 pe-kind-control-plane,toswitch2,2001:db8:12::3/64
-pe-kind-worker,toswitch2,192.168.12.4/24
-pe-kind-worker,toswitch2,2001:db8:12::4/64
+{{- range .Workers }}
+{{ .Name }},toswitch2,{{ .IPv4Sw2 }}/24
+{{ .Name }},toswitch2,{{ .IPv6Sw2 }}/64
+{{- end }}
 clab-kind-leafA,ethred,192.168.20.1/24
 clab-kind-leafA,ethred,2001:db8:20::1/64
 clab-kind-hostA_red,eth1,192.168.20.2/24
