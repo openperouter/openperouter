@@ -339,16 +339,16 @@ $(APIDOCSGEN): $(LOCALBIN)
 
 .PHONY: e2etests
 e2etests: ginkgo kubectl build-validator create-export-logs
-	$(GINKGO) -v $(GINKGO_ARGS) --timeout=3h ./e2etests/suite -- --kubectl=$(KUBECTL) $(TEST_ARGS) --hostvalidator $(VALIDATOR_PATH) --reporterpath=${KIND_EXPORT_LOGS}
+	$(GINKGO) -v $(GINKGO_ARGS) --json-report=e2e-report.json --output-dir=${KIND_EXPORT_LOGS} --timeout=3h ./e2etests/suite -- --kubectl=$(KUBECTL) $(TEST_ARGS) --hostvalidator $(VALIDATOR_PATH) --reporterpath=${KIND_EXPORT_LOGS}
 
 .PHONY: e2etests-hostmode-boot
 e2etests-hostmode-boot: ginkgo kubectl build-validator create-export-logs ## Run e2e tests for hostmode boot scenario (static config first, then K8s API).
 	@echo "=== Running systemd_static_suite tests (static config only) ==="
-	$(GINKGO) -v $(GINKGO_ARGS) --timeout=3h ./e2etests/systemd_static_suite -- --kubectl=$(KUBECTL) $(TEST_ARGS)
+	$(GINKGO) -v $(GINKGO_ARGS) --json-report=e2e-report-systemd.json --output-dir=${KIND_EXPORT_LOGS} --timeout=3h ./e2etests/systemd_static_suite -- --kubectl=$(KUBECTL) $(TEST_ARGS)
 	@echo "=== Deploying controller to enable K8s API ==="
 	$(MAKE) deploy-controller KUSTOMIZE_LAYER=hostmode
 	@echo "=== Running passthrough tests (with K8s API available) ==="
-	$(GINKGO) -v $(GINKGO_ARGS) --label-filter="passthrough" --timeout=3h ./e2etests/suite -- --kubectl=$(KUBECTL) $(TEST_ARGS) --skip-underlay-passthrough --systemdmode --hostvalidator $(VALIDATOR_PATH) --reporterpath=${KIND_EXPORT_LOGS}
+	$(GINKGO) -v $(GINKGO_ARGS) --json-report=e2e-report-passthrough.json --output-dir=${KIND_EXPORT_LOGS} --label-filter="passthrough" --timeout=3h ./e2etests/suite -- --kubectl=$(KUBECTL) $(TEST_ARGS) --skip-underlay-passthrough --systemdmode --hostvalidator $(VALIDATOR_PATH) --reporterpath=${KIND_EXPORT_LOGS}
 
 .PHONY: scale-tests
 scale-tests: ginkgo kubectl create-export-logs ## Run VNI scale tests
