@@ -42,6 +42,7 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 			HostMaster: &HostMaster{Type: OVSBridgeLinkType, AutoCreate: new(true)},
 		}
 
+		createVRFInNamespace(testNS, params.VRF)
 		err := SetupL2VNI(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -73,6 +74,7 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 		const bridgeName = "test-ovs-br"
 		Expect(createExternalOVSBridge(bridgeName)).To(Succeed(), "must pre-provision an OVS bridge")
 
+		createVRFInNamespace(testNS, "testred")
 		params := L2VNIParams{
 			VNIParams: VNIParams{
 				VRF: "testred", TargetNS: testNSPath(),
@@ -124,6 +126,8 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 			HostMaster: &HostMaster{Type: OVSBridgeLinkType, AutoCreate: new(true)},
 		}
 
+		createVRFInNamespace(testNS, params1.VRF)
+		createVRFInNamespace(testNS, params2.VRF)
 		err := SetupL2VNI(context.Background(), params1)
 		Expect(err).NotTo(HaveOccurred())
 		err = SetupL2VNI(context.Background(), params2)
@@ -154,6 +158,7 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 			HostMaster: &HostMaster{Type: OVSBridgeLinkType, AutoCreate: new(true)},
 		}
 
+		createVRFInNamespace(testNS, params.VRF)
 		err := SetupL2VNI(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -177,6 +182,7 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 			HostMaster:   &HostMaster{Type: OVSBridgeLinkType, AutoCreate: new(true)},
 		}
 
+		createVRFInNamespace(testNS, params.VRF)
 		err := SetupL2VNI(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 

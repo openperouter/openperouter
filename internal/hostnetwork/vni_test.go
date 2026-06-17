@@ -345,6 +345,7 @@ var _ = Describe("L2 VNI configuration", func() {
 			},
 		}
 
+		createVRFInNamespace(testNS, params.VRF)
 		err := SetupL2VNI(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -406,6 +407,7 @@ var _ = Describe("L2 VNI configuration", func() {
 			},
 		}
 		for _, p := range params {
+			createVRFInNamespace(testNS, p.VRF)
 			err := SetupL2VNI(context.Background(), p)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -449,6 +451,9 @@ var _ = Describe("L2 VNI configuration", func() {
 
 	DescribeTable("should be idempotent",
 		func(params L2VNIParams) {
+			if params.VRF != "" {
+				createVRFInNamespace(testNS, params.VRF)
+			}
 			err := SetupL2VNI(context.Background(), params)
 			Expect(err).NotTo(HaveOccurred())
 
@@ -541,6 +546,7 @@ var _ = Describe("L2 VNI configuration", func() {
 			},
 		}
 
+		createVRFInNamespace(testNS, params.VRF)
 		err := SetupL2VNI(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -572,6 +578,7 @@ var _ = Describe("L2 VNI configuration", func() {
 			L2GatewayIPs: []string{"192.168.1.0/24"},
 		}
 
+		createVRFInNamespace(testNS, params.VRF)
 		err := SetupL2VNI(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -904,4 +911,12 @@ func setupFakeUnderlay(ns netns.NsHandle, name string, mtu int) {
 		return nil
 	})
 	Expect(err).NotTo(HaveOccurred(), "failed to set up fake underlay")
+}
+
+func createVRFInNamespace(ns netns.NsHandle, name string) {
+	err := netnamespace.In(ns, func() error {
+		_, err := setupVRF(name)
+		return err
+	})
+	Expect(err).NotTo(HaveOccurred(), "failed to create VRF %s", name)
 }
