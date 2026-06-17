@@ -174,6 +174,12 @@ Key behaviors to be aware of:
   are usually node-scoped via `nodeSelector`, one Underlay per node. See
   the [example on GitHub](https://github.com/openperouter/openperouter/tree/main/examples/evpn/cni-underlay).
 
+### Route Reflector
+
+A node can act as a BGP route reflector (RFC 4456) to reflect underlay and EVPN routes between its configured route reflector clients — the neighbors accepted via `listenRange` that carry the per-address-family `routeReflectorClient` property — removing the need for a full iBGP mesh between them.
+
+For detailed information and examples, see the [Route Reflector]({{< ref "route-reflector.md" >}}) documentation.
+
 ## Sysctl Configuration
 
 OpenPERouter automatically tunes several kernel sysctl settings inside the
