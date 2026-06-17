@@ -42,6 +42,7 @@ spec:
 | `neighbors` | array | List of BGP neighbors to peer with (minimum 1) | Yes |
 | `nodeSelector` | object | Label selector to target specific nodes (applies to all nodes if omitted) | No |
 | `gracefulRestart` | object | Enables BGP Graceful Restart when present. See [Graceful Restart]({{< ref "graceful-restart" >}}). | No |
+| `routeReflector` | object | Runs the node as a BGP route reflector when present. See [Route Reflector]({{< ref "route-reflector" >}}). | No |
 
 ### Multiple Interfaces and Neighbors
 
@@ -87,6 +88,12 @@ spec:
 The Underlay resource supports an optional `nodeSelector` field that allows you to target specific configurations to specific nodes. This is useful for multi-rack deployments, multi-datacenter clusters, or heterogeneous hardware environments.
 
 For detailed information and examples, see the [Node Selector Configuration]({{< ref "node-selector.md" >}}) documentation.
+
+### Route Reflector
+
+A node can act as a BGP route reflector (RFC 4456) to reflect underlay and EVPN routes between the other nodes, removing the need for a full iBGP mesh. This uses the `routeReflector` field together with neighbor `listenRange` and per-address-family `routeReflectorClient` properties.
+
+For detailed information and examples, see the [Route Reflector]({{< ref "route-reflector.md" >}}) documentation.
 
 ### Alternative: Multus Network for Top of Rack Connectivity
 
