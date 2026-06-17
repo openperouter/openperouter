@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+
+# SPDX-License-Identifier:Apache-2.0
+
+set -ueo pipefail
+
+readonly NETNS_INFO=(\
+	"ip link" \
+	"ip address" \
+	"ip route" \
+	"ip neigh" \
+	"ip vrf" \
+	"bridge fdb show" \
+)
+readonly FRR_INFO=(\
+	"timeout 10s vtysh -c 'show running-config'" \
+	"timeout 10s vtysh -c 'show bgp ipv4'" \
+	"timeout 10s vtysh -c 'show bgp ipv6'" \
+	"timeout 10s vtysh -c 'show bgp neighbor'" \
+	"timeout 10s vtysh -c 'show bfd peer'" \
+	"timeout 10s vtysh -c 'show bgp l2vpn evpn'" \
+)
+
+function dump_netns_info() {
+	echo "### Network namespace info [root]:"
+	for cmd in "${NETNS_INFO[@]}"; do
+		echo "$ $cmd"
+		$cmd
+		echo ""
+	done
+	printf "###\n\n"
+}
+
+function dump_router_info_via_podman_quadlet() {
+	local -r container_id="$1"
+
+	echo "### Routing infrastructure info from podman quadlets:"
+	for cmd in "${FRR_INFO[@]}"; do
+		echo "$ $cmd"
+		podman exec -i "$container_id" bash <<< "$cmd"
+		echo ""
+	done
+	printf "###\n\n"
+}
+
+function dump_config_files() {
+	local -r conf_dir="$1"
+	local -r base_dir="$2"
+
+	local -r yamls="$(find "$conf_dir" -type f -name '*.yaml')"
+	if [[ -z $yamls ]]; then
+		return
+	fi
+
+	local out_conf_dir="$base_dir/configs"
+	mkdir -p "$out_conf_dir"
+	
+	local f
+	for yaml in $yamls; do	
+		f="$out_conf_dir/$(basename "$yaml")"
+		cat "$yaml" > "$f"
+		echo "Dumped configuration file [$yaml] to [$f]"
+	done
+}
+
+ARTIFACTS_DIR=${ARTIFACTS_DIR:-"/openperouter-inspect-host"}
+ROUTER_CONTAINER=${ROUTER_CONTAINER:-"frr"}
+CONF_DIR=${CONF_DIR:-"/var/lib/openperouter"}
+
+mkdir -p "$ARTIFACTS_DIR"
+
+pushd "$ARTIFACTS_DIR"
+	dump_netns_info > "root_netns_info.log"
+
+	if podman info &> /dev/null; then
+		router_container_id="$(podman ps -q -f name="$ROUTER_CONTAINER" -f status=running)"
+		if [[ -n $router_container_id ]]; then
+			dump_router_info_via_podman_quadlet "$router_container_id" > "router_info_podman_quadlet.log"
+		fi
+	fi
+
+	if [[ -d $CONF_DIR ]]; then
+		dump_config_files "$CONF_DIR" "$ARTIFACTS_DIR" > "config_files.log"
+	fi 
+popd 
+
+echo "Inspect completed. Artifacts are stored in ${ARTIFACTS_DIR}"

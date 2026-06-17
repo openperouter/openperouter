@@ -112,3 +112,29 @@ $ tree /tmp/openperouter-inspect/
     └── underlays
         └── underlay.yaml
 ```
+
+## Inspect OpenPERouter nodes when running on systemd mode
+
+When OpenPERouter runs on systemd mode, related info cannot be collected via cluster API as the router container is not
+managed by the cluster, 
+
+`inspect_host` can be used for collecting related info by executing the script directly on the target node.
+
+Artifacts are stored at the host (default is `/openperouter-inspect-host`), and can be copied to base station for inspection.
+
+## Output
+- `router_info_podman_quadlet.log` - router infrastructure information collected via the router Podman Quadlet container
+- `root_netns_info.log` - Root network namespace information
+- `configs/` - Contains collected static config resources in YAML form 
+- `config_files.log` - Static config resources collection log 
+
+How to use:
+```bash
+# via ssh
+$ ssh <target node> -- bash <<< $(cat inspect_host)
+$ scp -r <target node>/openperouter-inspect-host ./<target node>-perouter-inspect
+
+# troubleshooting kind cluster node running OpenPERouter on host mode
+$ docker exec pe-kind-worker -i bash <<< $(cat inspect_host)
+$ docker cp pe-kind-worker:/openperouter-inspect-host ./pe-kind-worker-inspect-host
+```
