@@ -8,8 +8,11 @@ package v1alpha1
 // +kubebuilder:validation:XValidation:rule="has(self.holdTimeSeconds) == has(self.keepaliveTimeSeconds)",message="holdTimeSeconds and keepaliveTimeSeconds must be both set or both unset"
 // +kubebuilder:validation:XValidation:rule="!has(self.holdTimeSeconds) || self.holdTimeSeconds == 0 || self.holdTimeSeconds >= 3",message="holdTimeSeconds must be 0 or >=3"
 // +kubebuilder:validation:XValidation:rule="!has(self.holdTimeSeconds) || !has(self.keepaliveTimeSeconds) || self.keepaliveTimeSeconds <= self.holdTimeSeconds",message="keepaliveTimeSeconds must be lower than or equal to holdTimeSeconds"
-// +kubebuilder:validation:XValidation:rule="has(self.address) || has(self.interface)",message="Either a valid Address or Interface name must be provided for Neighbor"
+// +kubebuilder:validation:XValidation:rule="has(self.address) || has(self.interface) || has(self.listenRange)",message="Either a valid Address, Interface name or ListenRange must be provided for Neighbor"
 // +kubebuilder:validation:XValidation:rule="!has(self.address) || !has(self.interface)",message="Address and Interface cannot be set together for Neighbor"
+// +kubebuilder:validation:XValidation:rule="!has(self.listenRange) || !has(self.address)",message="listenRange and address are mutually exclusive"
+// +kubebuilder:validation:XValidation:rule="!has(self.listenRange) || !has(self.interface)",message="listenRange and interface are mutually exclusive"
+// +kubebuilder:validation:XValidation:rule="!(has(self.addressFamilies) && self.addressFamilies.exists(af, has(af.properties) && af.properties.exists(o, o.type == 'routeReflectorClient'))) || (has(self.type) && self.type == 'internal')",message="routeReflectorClient requires type internal"
 type Neighbor struct {
 	// asn is the AS number of the neighbor. Either ASN or Type must be set.
 	// +kubebuilder:validation:Minimum=1
@@ -37,6 +40,18 @@ type Neighbor struct {
 	// +kubebuilder:validation:MinLength:=1
 	// +optional
 	Interface *string `json:"interface,omitempty"` // https://regex101.com/r/RlniVP/2 see kernel bool dev_valid_name(...)
+
+	// listenRange is a CIDR range for dynamic neighbor acceptance via FRR
+	// bgp listen range. When set, the hostcontroller generates a
+	// "bgp listen range <listenRange> peer-group <name>" stanza instead of
+	// an explicit neighbor statement. Mutually exclusive with address and
+	// interface.
+	// +kubebuilder:validation:XValidation:rule="isCIDR(self)",message="listenRange must be a valid CIDR"
+	// +kubebuilder:validation:XValidation:rule="!isCIDR(self) || cidr(self).ip().family() != 6 || !cidr(self).ip().isLinkLocalUnicast()",message="listenRange must not be an IPv6 link-local range"
+	// +kubebuilder:validation:MaxLength:=43
+	// +kubebuilder:validation:MinLength:=1
+	// +optional
+	ListenRange *string `json:"listenRange,omitempty"`
 
 	// port is the port to dial when establishing the session.
 	// Defaults to 179.
@@ -168,4 +183,34 @@ type NeighborAddressFamily struct {
 	// +kubebuilder:validation:Enum:=ipv4unicast;ipv6unicast;evpn
 	// +required
 	Type string `json:"type,omitempty"`
+
+	// properties is the set of optional per-address-family features for this
+	// neighbor (for example, marking the neighbor as a route reflector client
+	// in this address family).
+	// Note: MaxItems=8 is arbitrarily chosen to keep total CEL cost low.
+	// +optional
+	// +kubebuilder:validation:MaxItems=8
+	// +listType=map
+	// +listMapKey=type
+	Properties []NeighborAddressFamilyProperty `json:"properties,omitempty"`
+}
+
+// NeighborAddressFamilyPropertyType defines an optional feature on a neighbor
+// address family.
+// +kubebuilder:validation:Enum=routeReflectorClient
+type NeighborAddressFamilyPropertyType string
+
+const (
+	// NeighborAddressFamilyPropertyRouteReflectorClient marks the neighbor as a
+	// route reflector client of the local router in this address family (RFC 4456).
+	NeighborAddressFamilyPropertyRouteReflectorClient NeighborAddressFamilyPropertyType = "routeReflectorClient"
+)
+
+// NeighborAddressFamilyProperty is an optional feature applied to a neighbor
+// address family. The type field selects the property; typed sub-fields hold
+// parameters for properties that require them.
+type NeighborAddressFamilyProperty struct {
+	// type selects the property.
+	// +required
+	Type NeighborAddressFamilyPropertyType `json:"type,omitempty"`
 }
