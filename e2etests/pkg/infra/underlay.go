@@ -24,6 +24,11 @@ var defaultInterfaces = []v1alpha1.UnderlayInterface{
 	},
 }
 
+// DefaultInterfaces exposes the interfaces shared by all the underlay
+// fixtures, so underlays defined outside this package can keep the
+// interface parity described above.
+var DefaultInterfaces = defaultInterfaces
+
 // Underlay is the multi-session configuration with multiple interfaces and neighbors
 var Underlay = v1alpha1.Underlay{
 	ObjectMeta: metav1.ObjectMeta{
