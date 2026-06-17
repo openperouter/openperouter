@@ -79,7 +79,7 @@ func (r *StaticConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	for _, f := range openpeerrors.CollectFailures(err) {
 		logger.Warn("resource skipped", "kind", f.Kind, "name", f.Name, "reason", f.Reason, "message", f.Message)
 	}
-	if nonRecoverableHostError(err) {
+	if openpeerrors.NonRecoverableHost(err) {
 		logger.Error("non recoverable error", "error", err)
 		if err := router.HandleNonRecoverableError(ctx); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to handle non recoverable error: %w", err)
