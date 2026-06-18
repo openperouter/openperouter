@@ -91,6 +91,15 @@ func ForCIDR(cidr *net.IPNet) Family {
 	return IPv4
 }
 
+// ForAddress return the address family from a given address in string format
+func ForAddressString(ipString string) Family {
+	ip := net.ParseIP(ipString)
+	if ip == nil {
+		return Unknown
+	}
+	return ForAddress(ip)
+}
+
 // ForAddress returns the address family for a given address.
 func ForAddress(ip net.IP) Family {
 	if ip.To4() == nil {

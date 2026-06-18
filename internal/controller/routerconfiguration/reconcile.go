@@ -27,7 +27,7 @@ type DatapathConfigurator interface {
 	Configure(ctx context.Context, config interfacesConfiguration) error
 }
 
-func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeIndex int, logLevel,
+func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeIndex int, logLevel string,
 	frrConfigPath, targetNamespace string, updater frr.ConfigUpdater,
 	datapathConfigurator DatapathConfigurator, frrConfigurator frrConfiguratorType) error {
 	normalizeConfig(&apiConfig)

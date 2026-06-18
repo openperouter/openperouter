@@ -1,0 +1,34 @@
+log stdout 
+log timestamp precision 3
+hostname hostname
+ip nht resolve-via-default
+ipv6 nht resolve-via-default
+
+route-map allowall permit 1
+router bgp 64514
+  no bgp ebgp-requires-policy
+  no bgp network import-check
+  no bgp default ipv4-unicast
+  bgp router-id 10.0.0.1
+  bgp listen limit 512
+  neighbor 192.168.11.0/24 peer-group
+  neighbor 192.168.11.0/24 remote-as 64512
+  bgp listen range 192.168.11.0/24 peer-group 192.168.11.0/24
+  
+  
+  
+
+  address-family ipv4 unicast
+    neighbor 192.168.11.0/24 activate
+    neighbor 192.168.11.0/24 allowas-in
+  exit-address-family
+  address-family ipv4 unicast
+    network 100.65.0.0/32
+  exit-address-family
+
+  address-family l2vpn evpn
+    advertise-all-vni
+    advertise-svi-ip
+  exit-address-family
+exit
+!

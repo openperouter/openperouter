@@ -1346,6 +1346,214 @@ func TestGracefulRestartCustomTimers(t *testing.T) {
 	testCheckConfigFile(t)
 }
 
+func TestRouteReflector(t *testing.T) {
+	configFile := testSetup(t)
+	updater := testUpdater(configFile)
+
+	evpn := networklayerprotocol.NLP{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN}
+	ipv4 := networklayerprotocol.NLP{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast}
+	evpnWithRRClient := networklayerprotocol.NLP{AFI: evpn.AFI, SAFI: evpn.SAFI,
+		Properties: networklayerprotocol.NLPProperties{RouteReflectorClient: true}}
+
+	config := Config{
+		Underlay: UnderlayConfig{
+			MyASN: 64514,
+			TunnelEndpoint: &TunnelEndpoint{
+				IPv4CIDR: "100.65.0.0/32",
+			},
+			RouterID: "10.0.0.1",
+			RouteReflector: &RouteReflector{
+				ClusterID: "192.0.2.1",
+			},
+			Neighbors: []NeighborConfig{
+				{
+					ASN:                   mustNewPeerASNFromNumber(64512),
+					Addr:                  "192.168.10.2",
+					ID:                    "192.168.10.2",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{ipv4, evpn},
+				},
+				{
+					ASN:                   mustNewPeerASNFromType("internal"),
+					ListenRange:           "192.168.10.0/24",
+					ID:                    "192.168.10.0/24",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{evpnWithRRClient},
+				},
+				{
+					ASN:                   mustNewPeerASNFromType("internal"),
+					ListenRange:           "fd00:10::/64",
+					ID:                    "fd00:10::/64",
+					ExtendedNexthop:       true,
+					NetworkLayerProtocols: []networklayerprotocol.NLP{evpnWithRRClient},
+				},
+				{
+					ASN:                   mustNewPeerASNFromType("internal"),
+					Addr:                  "192.168.10.4",
+					ID:                    "192.168.10.4",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{ipv4, evpn},
+				},
+			},
+		},
+	}
+	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+		t.Fatalf("Failed to apply config: %s", err)
+	}
+
+	testCheckConfigFile(t)
+}
+
+func TestRouteReflectorOnly(t *testing.T) {
+	configFile := testSetup(t)
+	updater := testUpdater(configFile)
+
+	evpn := networklayerprotocol.NLP{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN}
+	evpnWithRRClient := networklayerprotocol.NLP{AFI: evpn.AFI, SAFI: evpn.SAFI,
+		Properties: networklayerprotocol.NLPProperties{RouteReflectorClient: true}}
+
+	config := Config{
+		Underlay: UnderlayConfig{
+			MyASN:    64514,
+			RouterID: "10.0.0.1",
+			RouteReflector: &RouteReflector{
+				ClusterID: "192.0.2.1",
+			},
+			Neighbors: []NeighborConfig{
+				{
+					ASN:                   mustNewPeerASNFromType("internal"),
+					ListenRange:           "192.168.11.0/24",
+					ID:                    "192.168.11.0/24",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{evpnWithRRClient},
+				},
+				{
+					ASN:                   mustNewPeerASNFromType("internal"),
+					Addr:                  "192.168.10.4",
+					ID:                    "192.168.10.4",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{evpn},
+				},
+			},
+		},
+	}
+	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+		t.Fatalf("Failed to apply config: %s", err)
+	}
+
+	testCheckConfigFile(t)
+}
+
+func TestRouteReflectorL3VPN(t *testing.T) {
+	configFile := testSetup(t)
+	updater := testUpdater(configFile)
+
+	ipv4vpnWithRRClient := networklayerprotocol.NLP{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.VPN,
+		Properties: networklayerprotocol.NLPProperties{RouteReflectorClient: true}}
+	ipv6vpnWithRRClient := networklayerprotocol.NLP{AFI: networklayerprotocol.IPv6, SAFI: networklayerprotocol.VPN,
+		Properties: networklayerprotocol.NLPProperties{RouteReflectorClient: true}}
+
+	config := Config{
+		Underlay: UnderlayConfig{
+			MyASN:    64514,
+			RouterID: "10.0.0.1",
+			RouteReflector: &RouteReflector{
+				ClusterID: "192.0.2.1",
+			},
+			Neighbors: []NeighborConfig{
+				{
+					ASN:                   mustNewPeerASNFromType("internal"),
+					Addr:                  "fc00::2:172:31:1:12",
+					ID:                    "fc00::2:172:31:1:12",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{ipv4vpnWithRRClient, ipv6vpnWithRRClient},
+					ExtendedNexthop:       true,
+					UpdateSource:          "fc00::2:172:31:1:32",
+				},
+			},
+			SegmentRouting: &UnderlaySegmentRouting{
+				SourceAddress: "fc00::2:172:31:1:32",
+				Locator: SRV6Locator{
+					Name:     locatorName,
+					Prefix:   "fd00:0:32::/48",
+					BlockLen: 32,
+					NodeLen:  16,
+					Behavior: "usid",
+					Format:   "usid-f3216",
+				},
+				EncapBehavior: HEncaps,
+			},
+		},
+	}
+	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+		t.Fatalf("Failed to apply config: %s", err)
+	}
+
+	testCheckConfigFile(t)
+}
+
+func TestListenRangeEBGP(t *testing.T) {
+	configFile := testSetup(t)
+	updater := testUpdater(configFile)
+
+	evpn := networklayerprotocol.NLP{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN}
+	ipv4 := networklayerprotocol.NLP{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast}
+
+	config := Config{
+		Underlay: UnderlayConfig{
+			MyASN: 64514,
+			TunnelEndpoint: &TunnelEndpoint{
+				IPv4CIDR: "100.65.0.0/32",
+			},
+			RouterID: "10.0.0.1",
+			Neighbors: []NeighborConfig{
+				{
+					ASN:                   mustNewPeerASNFromNumber(64512),
+					ListenRange:           "192.168.11.0/24",
+					ID:                    "192.168.11.0/24",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{ipv4, evpn},
+				},
+				{
+					ASN:                   mustNewPeerASNFromNumber(64513),
+					ListenRange:           "192.168.12.0/24",
+					ID:                    "192.168.12.0/24",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{ipv4, evpn},
+				},
+			},
+		},
+	}
+	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+		t.Fatalf("Failed to apply config: %s", err)
+	}
+
+	testCheckConfigFile(t)
+}
+
+func TestListenRangeCustomLimit(t *testing.T) {
+	configFile := testSetup(t)
+	updater := testUpdater(configFile)
+
+	ipv4 := networklayerprotocol.NLP{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast}
+
+	config := Config{
+		Underlay: UnderlayConfig{
+			MyASN: 64514,
+			TunnelEndpoint: &TunnelEndpoint{
+				IPv4CIDR: "100.65.0.0/32",
+			},
+			RouterID:    "10.0.0.1",
+			ListenLimit: 512,
+			Neighbors: []NeighborConfig{
+				{
+					ASN:                   mustNewPeerASNFromNumber(64512),
+					ListenRange:           "192.168.11.0/24",
+					ID:                    "192.168.11.0/24",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{ipv4},
+				},
+			},
+		},
+	}
+	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+		t.Fatalf("Failed to apply config: %s", err)
+	}
+
+	testCheckConfigFile(t)
+}
+
 func testUpdater(configFile string) func(context.Context, string) error {
 	return func(_ context.Context, config string) error {
 		err := os.WriteFile(configFile, []byte(config), 0600)
