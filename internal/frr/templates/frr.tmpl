@@ -49,6 +49,12 @@ router bgp {{ .Underlay.MyASN }}
   bgp graceful-restart restart-time {{ .Underlay.GracefulRestart.RestartTime }}
   bgp graceful-restart stalepath-time {{ .Underlay.GracefulRestart.StalePathTime }}
 {{- end }}
+{{- if .Underlay.RouteReflector }}
+  bgp cluster-id {{ .Underlay.RouteReflector.ClusterID }}
+{{- end }}
+{{- if .Underlay.ListenLimit }}
+  bgp listen limit {{ .Underlay.ListenLimit }}
+{{- end }}
 
 {{- range $n := .Underlay.Neighbors }}
 {{- template "neighborsession" dict "neighbor" $n "routerASN" $.Underlay.MyASN -}}
@@ -61,7 +67,7 @@ router bgp {{ .Underlay.MyASN }}
 {{- template "localpassthrough" . -}}
 {{- end }}
 
-{{- if .Underlay.TunnelEndpoint }}
+{{- if renderUnderlayEVPN .Underlay }}
 {{- template "underlayevpn" . -}}
 {{- end }}
 exit

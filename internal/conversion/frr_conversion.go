@@ -90,6 +90,10 @@ func APItoFRR(config APIConfigData, nodeIndex int, logLevel string) (frr.Config,
 
 	applyGracefulRestart(&underlayConfig, underlay.Spec.GracefulRestart)
 
+	applyRouteReflector(&underlayConfig, underlay.Spec.RouteReflector)
+
+	applyListenLimit(&underlayConfig)
+
 	tunnelEndpoint, err := tunnelEndpointToFRR(underlay, nodeIndex)
 	if err != nil {
 		return frr.Config{}, err
@@ -155,6 +159,37 @@ func applyGracefulRestart(config *frr.UnderlayConfig, gr *v1alpha1.GracefulResta
 	for i := range config.Neighbors {
 		if config.Neighbors[i].ConnectTime == nil {
 			config.Neighbors[i].ConnectTime = new(grConnectRetrySeconds)
+		}
+	}
+}
+
+// defaultClusterID mirrors the CRD schema default of
+// UnderlaySpec.routeReflector.clusterID for configurations that bypass
+// schema defaulting (e.g. static files).
+const defaultClusterID = "192.0.2.1"
+
+func applyRouteReflector(config *frr.UnderlayConfig, rr *v1alpha1.RouteReflectorConfig) {
+	if rr == nil {
+		return
+	}
+	config.RouteReflector = &frr.RouteReflector{
+		ClusterID: ptr.Deref(rr.ClusterID, defaultClusterID),
+	}
+}
+
+// dynamicNeighborsListenLimit raises the FRR default cap of 100 dynamic
+// neighbors to the maximum. The listen ranges are bound to the operator
+// controlled underlay subnets, so the cap only protects against floods from
+// within the fabric, which is out of scope.
+const dynamicNeighborsListenLimit = 65535
+
+// applyListenLimit sets bgp listen limit when at least one neighbor accepts
+// dynamic sessions via bgp listen range.
+func applyListenLimit(config *frr.UnderlayConfig) {
+	for _, n := range config.Neighbors {
+		if n.ListenRange != "" {
+			config.ListenLimit = dynamicNeighborsListenLimit
+			return
 		}
 	}
 }
@@ -374,10 +409,11 @@ func neighborToFRR(n v1alpha1.Neighbor,
 	neighName := neighborName(asn, neighborID(n))
 
 	var nlps []networklayerprotocol.NLP
+	var propsByNLP map[networklayerprotocol.NLP]frr.NLPProperties
 	if len(n.AddressFamilies) == 0 {
 		nlps, err = defaultNLPsForNeighbor(n, l2vnis, l3vnis, l3passthroughs)
 	} else {
-		nlps, err = nlpsForNeighbor(n)
+		nlps, propsByNLP, err = nlpsForNeighbor(n)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("neighbor %s: could not get network layer protocols, err: %w", neighName, err)
@@ -388,10 +424,12 @@ func neighborToFRR(n v1alpha1.Neighbor,
 		ASN:                   asn,
 		Addr:                  ptr.Deref(n.Address, ""),
 		Interface:             ptr.Deref(n.Interface, ""),
+		ListenRange:           ptr.Deref(n.ListenRange, ""),
 		Port:                  n.Port,
 		EBGPMultiHop:          ptr.Deref(n.EBGPMultiHop, false),
 		Password:              ptr.Deref(n.Password, ""),
 		NetworkLayerProtocols: nlps,
+		PropertiesByNLP:       propsByNLP,
 	}
 
 	if err := validateNeighborConfig(res); err != nil {
@@ -422,11 +460,17 @@ func neighborToFRR(n v1alpha1.Neighbor,
 }
 
 func validateNeighborConfig(res *frr.NeighborConfig) error {
-	if res.Addr == "" && res.Interface == "" {
-		return fmt.Errorf("either a neighbor Address or an Interface must be configured")
+	configuredIDs := 0
+	for _, s := range []string{res.Addr, res.Interface, res.ListenRange} {
+		if s != "" {
+			configuredIDs++
+		}
 	}
-	if res.Addr != "" && res.Interface != "" {
-		return fmt.Errorf("neighbor Address and neighbor Interface are mutually exclusive")
+	if configuredIDs == 0 {
+		return fmt.Errorf("either a neighbor Address, an Interface or a ListenRange must be configured")
+	}
+	if configuredIDs > 1 {
+		return fmt.Errorf("neighbor Address, Interface and ListenRange are mutually exclusive")
 	}
 	return nil
 }
@@ -434,6 +478,10 @@ func validateNeighborConfig(res *frr.NeighborConfig) error {
 func setIDForNeighbor(res *frr.NeighborConfig) {
 	if res.Addr != "" {
 		res.ID = res.Addr
+		return
+	}
+	if res.ListenRange != "" {
+		res.ID = res.ListenRange
 		return
 	}
 	res.ID = res.Interface
@@ -447,9 +495,9 @@ func setExtendedNexthopForNeighbor(res *frr.NeighborConfig) error {
 		return nil
 	}
 
-	neighborFamily, err := ipfamily.ForAddresses(res.Addr)
+	neighborFamily, err := neighborSessionIPFamily(res)
 	if err != nil {
-		return fmt.Errorf("failed to find ipfamily for %s, %w", res.Addr, err)
+		return err
 	}
 	if neighborFamily == ipfamily.IPv4 {
 		return nil
@@ -461,31 +509,62 @@ func setExtendedNexthopForNeighbor(res *frr.NeighborConfig) error {
 	return nil
 }
 
-// nlpsForNeighbor converts a neighbor's API neighbor IP families to internal representations.
-func nlpsForNeighbor(n v1alpha1.Neighbor) ([]networklayerprotocol.NLP, error) {
+// neighborSessionIPFamily returns the IP family of the neighbor session
+// endpoint: the address for explicit neighbors, the listen range CIDR for
+// dynamic ones.
+func neighborSessionIPFamily(res *frr.NeighborConfig) (ipfamily.Family, error) {
+	if res.ListenRange != "" {
+		family, err := ipfamily.ForCIDRStrings(res.ListenRange)
+		if err != nil {
+			return ipfamily.Unknown, fmt.Errorf("failed to find ipfamily for %s, %w", res.ListenRange, err)
+		}
+		return family, nil
+	}
+	family, err := ipfamily.ForAddresses(res.Addr)
+	if err != nil {
+		return ipfamily.Unknown, fmt.Errorf("failed to find ipfamily for %s, %w", res.Addr, err)
+	}
+	return family, nil
+}
+
+// nlpsForNeighbor converts a neighbor's API address families to the internal
+// network layer protocol list and the per-protocol rendering properties
+// (currently the routeReflectorClient flag).
+func nlpsForNeighbor(n v1alpha1.Neighbor) ([]networklayerprotocol.NLP, map[networklayerprotocol.NLP]frr.NLPProperties, error) {
 	nlps := make([]networklayerprotocol.NLP, 0, len(n.AddressFamilies))
+	var propsByNLP map[networklayerprotocol.NLP]frr.NLPProperties
 	for _, af := range n.AddressFamilies {
+		var nlp networklayerprotocol.NLP
 		switch af.Type {
 		case "ipv4unicast":
-			nlps = append(nlps, networklayerprotocol.NLP{
-				AFI:  networklayerprotocol.IPv4,
-				SAFI: networklayerprotocol.Unicast,
-			})
+			nlp = networklayerprotocol.NLP{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast}
 		case "ipv6unicast":
-			nlps = append(nlps, networklayerprotocol.NLP{
-				AFI:  networklayerprotocol.IPv6,
-				SAFI: networklayerprotocol.Unicast,
-			})
+			nlp = networklayerprotocol.NLP{AFI: networklayerprotocol.IPv6, SAFI: networklayerprotocol.Unicast}
 		case "evpn":
-			nlps = append(nlps, networklayerprotocol.NLP{
-				AFI:  networklayerprotocol.L2VPN,
-				SAFI: networklayerprotocol.EVPN,
-			})
+			nlp = networklayerprotocol.NLP{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN}
 		default:
-			return nil, fmt.Errorf("unsupported address family type %q", af.Type)
+			return nil, nil, fmt.Errorf("unsupported address family type %q", af.Type)
+		}
+		nlps = append(nlps, nlp)
+		if neighborAddressFamilyProperty(af.Properties, v1alpha1.NeighborAddressFamilyPropertyRouteReflectorClient) != nil {
+			if propsByNLP == nil {
+				propsByNLP = make(map[networklayerprotocol.NLP]frr.NLPProperties)
+			}
+			propsByNLP[nlp] = frr.NLPProperties{RouteReflectorClient: true}
 		}
 	}
-	return nlps, nil
+	return nlps, propsByNLP, nil
+}
+
+// neighborAddressFamilyProperty returns the property matching propertyType
+// from the list, or nil when absent.
+func neighborAddressFamilyProperty(properties []v1alpha1.NeighborAddressFamilyProperty, propertyType v1alpha1.NeighborAddressFamilyPropertyType) *v1alpha1.NeighborAddressFamilyProperty {
+	for i := range properties {
+		if properties[i].Type == propertyType {
+			return &properties[i]
+		}
+	}
+	return nil
 }
 
 // defaultNLPsForNeighbor parses a neighbor, l2vnis, l3vnis and l3passthroughs and chooses sane defaults.
@@ -511,12 +590,20 @@ func defaultNLPsForNeighbor(n v1alpha1.Neighbor,
 
 	intf := ptr.Deref(n.Interface, "")
 	addr := ptr.Deref(n.Address, "")
+	listenRange := ptr.Deref(n.ListenRange, "")
 	address := net.ParseIP(addr)
-	if intf == "" && address == nil {
-		return nil, fmt.Errorf("either Interface or valid IP Address must be set to determine default, "+
-			"interface: %s, address: %s", intf, addr)
+	if intf == "" && address == nil && listenRange == "" {
+		return nil, fmt.Errorf("either Interface, a valid IP Address or a ListenRange must be set to determine "+
+			"default, interface: %s, address: %s, listenRange: %s", intf, addr, listenRange)
 	}
-	isIPv6Neighbor := intf == "" && ipfamily.ForAddress(address) == ipfamily.IPv6
+
+	isIPv6Neighbor := false
+	switch {
+	case address != nil:
+		isIPv6Neighbor = ipfamily.ForAddress(address) == ipfamily.IPv6
+	case listenRange != "":
+		isIPv6Neighbor = ipfamily.ForCIDRString(listenRange) == ipfamily.IPv6
+	}
 
 	if isIPv6Neighbor {
 		addIPv6Unicast = true
@@ -587,6 +674,9 @@ func bfdProfileForNeighbor(n v1alpha1.Neighbor) *frr.BFDProfile {
 func neighborID(n v1alpha1.Neighbor) string {
 	if address := ptr.Deref(n.Address, ""); address != "" {
 		return address
+	}
+	if listenRange := ptr.Deref(n.ListenRange, ""); listenRange != "" {
+		return listenRange
 	}
 	return ptr.Deref(n.Interface, "")
 }

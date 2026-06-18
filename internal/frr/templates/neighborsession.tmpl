@@ -1,5 +1,9 @@
 {{- define "neighborsession"}}
-  {{- if .neighbor.Addr }}
+  {{- if .neighbor.ListenRange }}
+  neighbor {{.neighbor.ID}} peer-group
+  neighbor {{.neighbor.ID}} remote-as {{.neighbor.ASN}}
+  bgp listen range {{.neighbor.ListenRange}} peer-group {{.neighbor.ID}}
+  {{- else if .neighbor.Addr }}
   neighbor {{.neighbor.Addr}} remote-as {{.neighbor.ASN}}
   {{- else }}
   neighbor {{.neighbor.Interface}} interface remote-as {{.neighbor.ASN}}
