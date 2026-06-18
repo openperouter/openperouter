@@ -1,22 +1,28 @@
 {{- define "neighborenableipfamily"}}
 {{/* no bgp default ipv4-unicast prevents peering if no address families are defined. We declare an ipv4 one for the peer to make the pairing happen */}}
-{{- if activateNeighborFor .neighbor.NetworkLayerProtocols "ipv4" "unicast" }}
+{{- if .neighbor.ActivateFor "ipv4" "unicast" }}
   address-family ipv4 unicast
     neighbor {{.neighbor.ID}} activate
 {{- if isEBGP .routerASN .neighbor.ASN }}
     neighbor {{.neighbor.ID}} allowas-in
 {{- else }}
+{{- if .neighbor.IsRouteReflectorClientFor "ipv4" "unicast" }}
+    neighbor {{.neighbor.ID}} route-reflector-client
+{{- end }}
     neighbor {{.neighbor.ID}} next-hop-self force
 {{- end }}
   exit-address-family
 
 {{- end -}}
-{{if activateNeighborFor .neighbor.NetworkLayerProtocols "ipv6" "unicast" }}
+{{if .neighbor.ActivateFor "ipv6" "unicast" }}
   address-family ipv6 unicast
     neighbor {{.neighbor.ID}} activate
 {{- if isEBGP .routerASN .neighbor.ASN }}
     neighbor {{.neighbor.ID}} allowas-in
 {{- else }}
+{{- if .neighbor.IsRouteReflectorClientFor "ipv6" "unicast" }}
+    neighbor {{.neighbor.ID}} route-reflector-client
+{{- end }}
     neighbor {{.neighbor.ID}} next-hop-self force
 {{- end }}
   exit-address-family

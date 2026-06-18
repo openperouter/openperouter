@@ -1,4 +1,5 @@
 {{ define "underlayevpn"}}
+{{- if .Underlay.TunnelEndpoint }}
 {{- if .Underlay.TunnelEndpoint.IPv4CIDR }}
   address-family ipv4 unicast
     network {{ .Underlay.TunnelEndpoint.IPv4CIDR }}
@@ -9,16 +10,21 @@
     network {{ .Underlay.TunnelEndpoint.IPv6CIDR }}
   exit-address-family
 {{ end }}
+{{- end }}
   address-family l2vpn evpn
-{{- range .Underlay.Neighbors }}
-{{- if activateNeighborFor .NetworkLayerProtocols "l2vpn" "evpn" }}
-    neighbor {{ .ID }} activate
-{{- if isEBGP $.Underlay.MyASN .ASN }}
-    neighbor {{ .ID }} allowas-in
+{{- range $neighbor := .Underlay.Neighbors}}
+{{- if $neighbor.ActivateFor "l2vpn" "evpn" }}
+    neighbor {{ $neighbor.ID }} activate
+{{- if isEBGP $.Underlay.MyASN $neighbor.ASN }}
+    neighbor {{ $neighbor.ID }} allowas-in
+{{- else if $neighbor.IsRouteReflectorClientFor "l2vpn" "evpn" }}
+    neighbor {{ $neighbor.ID }} route-reflector-client
 {{- end }}
 {{- end }}
 {{- end }}
+{{- if .Underlay.TunnelEndpoint }}
     advertise-all-vni
     advertise-svi-ip
+{{- end }}
   exit-address-family
 {{- end }}
