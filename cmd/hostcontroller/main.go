@@ -52,7 +52,9 @@ import (
 	"github.com/openperouter/openperouter/internal/cniinvoker"
 	"github.com/openperouter/openperouter/internal/controller/nodeindex"
 	"github.com/openperouter/openperouter/internal/controller/routerconfiguration"
+	"github.com/openperouter/openperouter/internal/conversion"
 	"github.com/openperouter/openperouter/internal/filewatcher"
+	"github.com/openperouter/openperouter/internal/frr"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/openperouter/openperouter/internal/logging"
 	"github.com/openperouter/openperouter/internal/staticconfiguration"
@@ -128,6 +130,7 @@ type parameters struct {
 	nodeName        string
 	namespace       string
 	logLevel        string
+	bgpListenLimit  uint
 	cniPluginDirs   stringSliceFlag
 	cniCacheDir     string
 	datapath        string
@@ -142,6 +145,8 @@ func main() {
 
 	flag.StringVar(&args.probeAddr, "health-probe-bind-address", ":9081", "The address the probe endpoint binds to.")
 	flag.StringVar(&args.logLevel, "loglevel", "info", "the verbosity of the process")
+	flag.UintVar(&args.bgpListenLimit, "bgplistenlimit", frr.DefaultListenLimit,
+		"the maximum number of dynamic BGP sessions accepted via listen ranges (1-65535)")
 	flag.StringVar(&args.frrConfigPath, "frrconfig", "/etc/perouter/frr/frr.conf",
 		"the location of the frr configuration file")
 	flag.StringVar(&args.ovsSocketPath, "ovssocket", "unix:/var/run/openvswitch/db.sock",
@@ -179,6 +184,12 @@ func main() {
 			args.cniPluginDirs.values))
 
 	flag.Parse()
+
+	if args.bgpListenLimit < 1 || args.bgpListenLimit > frr.DefaultListenLimit {
+		fmt.Println("bgplistenlimit must be between 1 and 65535, got", args.bgpListenLimit)
+		os.Exit(1)
+	}
+	conversion.BGPListenLimit = uint16(args.bgpListenLimit)
 
 	// Initialize OVS socket path for the hostnetwork package
 	hostnetwork.OVSSocketPath = args.ovsSocketPath

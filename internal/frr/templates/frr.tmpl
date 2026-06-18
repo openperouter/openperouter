@@ -50,7 +50,15 @@ router bgp {{ .Underlay.MyASN }}
   bgp graceful-restart restart-time {{ .Underlay.GracefulRestart.RestartTime }}
   bgp graceful-restart stalepath-time {{ .Underlay.GracefulRestart.StalePathTime }}
 {{- end }}
-
+{{- if .Underlay.RouteReflector }}
+  bgp cluster-id {{ .Underlay.RouteReflector.ClusterID }}
+{{- end }}
+{{- if .Underlay.HasListenRange }}
+{{- /* raises the FRR default dynamic neighbors cap (100), needed to
+       properly support listen ranges since we don't know the amount of
+       neighbors from the get go */}}
+  bgp listen limit {{ .Underlay.BGPListenLimit }}
+{{- end }}
 {{- range $n := .Underlay.Neighbors }}
 {{- template "neighborsession" dict
     "neighbor" $n
@@ -66,7 +74,7 @@ router bgp {{ .Underlay.MyASN }}
 {{- template "localpassthrough" . -}}
 {{- end }}
 
-{{- if .Underlay.TunnelEndpoint }}
+{{- if renderUnderlayEVPN .Underlay }}
 {{- template "underlayevpn" . -}}
 {{- end }}
 {{- if .Underlay.SegmentRouting }}

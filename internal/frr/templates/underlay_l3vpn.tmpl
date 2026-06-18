@@ -1,18 +1,24 @@
 {{ define "underlayl3vpn"}}
   address-family ipv4 vpn
-{{- range .Underlay.Neighbors }}
-{{- if activateNeighborFor .NetworkLayerProtocols "ipv4" "vpn" }}
-    neighbor {{ .ID }} activate
-    neighbor {{ .ID }} next-hop-self
+{{- range $neighbor := .Underlay.Neighbors }}
+{{- if $neighbor.ActivateFor "ipv4" "vpn" }}
+    neighbor {{ $neighbor.ID }} activate
+    neighbor {{ $neighbor.ID }} next-hop-self
+{{- if $neighbor.IsRouteReflectorClientFor "ipv4" "vpn" }}
+    neighbor {{ $neighbor.ID }} route-reflector-client
+{{- end }}
 {{- end }}
 {{- end }}
   exit-address-family
   !
   address-family ipv6 vpn
-{{- range .Underlay.Neighbors }}
-{{- if activateNeighborFor .NetworkLayerProtocols "ipv6" "vpn" }}
-    neighbor {{ .ID }} activate
-    neighbor {{ .ID }} next-hop-self
+{{- range $neighbor := .Underlay.Neighbors }}
+{{- if $neighbor.ActivateFor "ipv6" "vpn" }}
+    neighbor {{ $neighbor.ID }} activate
+    neighbor {{ $neighbor.ID }} next-hop-self
+{{- if $neighbor.IsRouteReflectorClientFor "ipv6" "vpn" }}
+    neighbor {{ $neighbor.ID }} route-reflector-client
+{{- end }}
 {{- end }}
 {{- end }}
   exit-address-family
