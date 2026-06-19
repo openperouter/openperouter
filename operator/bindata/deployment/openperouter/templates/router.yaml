@@ -182,6 +182,16 @@ spec:
               fi
             done
             exec nsenter --net=/var/run/netns/perouter /sbin/tini -- /usr/lib/frr/docker-start
+        # Use the same probe as the reloader. If FRR's health is not o.k., both
+        # the frr and the reloader container must be restarted.
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 9080
+          initialDelaySeconds: 15
+          periodSeconds: 20
+          timeoutSeconds: 10
+          failureThreshold: 3
         {{- with .Values.openperouter.frr.resources }}
         resources:
           {{- toYaml . | nindent 12 }}
@@ -221,7 +231,7 @@ spec:
             port: 9080
           initialDelaySeconds: 5
           periodSeconds: 10
-          timeoutSeconds: 1
+          timeoutSeconds: 10
           failureThreshold: 3
         livenessProbe:
           httpGet:
@@ -229,7 +239,7 @@ spec:
             port: 9080
           initialDelaySeconds: 15
           periodSeconds: 20
-          timeoutSeconds: 1
+          timeoutSeconds: 10
           failureThreshold: 3
         {{- with .Values.openperouter.frr.reloader.resources }}
         resources:

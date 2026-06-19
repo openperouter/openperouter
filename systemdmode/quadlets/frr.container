@@ -45,6 +45,14 @@ Entrypoint=/bin/bash
 # Changes permissions on /var/run/frr for socket access, then starts FRR via tini.
 Exec=-c "chmod -R a+rw /var/run/frr && exec /sbin/tini -- /usr/lib/frr/docker-start"
 
+# Health check - kill container if FRR stops responding,
+# systemd Restart=on-failure handles restart
+HealthCmd=wget -qO- http://127.0.0.1:9080/healthz || exit 1
+HealthInterval=20s
+HealthTimeout=10s
+HealthRetries=3
+HealthOnFailure=kill
+
 [Service]
 # Restart policy - restart container if it fails
 Restart=on-failure

@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openperouter/openperouter/internal/ipfamily"
+	"github.com/openperouter/openperouter/internal/networklayerprotocol"
 	"k8s.io/apimachinery/pkg/util/wait"
 )
 
@@ -34,10 +34,13 @@ func TestBasic(t *testing.T) {
 			RouterID: "10.0.0.1",
 			Neighbors: []NeighborConfig{
 				{
-					ASN:      mustNewPeerASNFromNumber(64513),
-					Addr:     "192.168.1.2",
-					ID:       "192.168.1.2",
-					IPFamily: ipfamily.IPv4,
+					ASN:  mustNewPeerASNFromNumber(64513),
+					Addr: "192.168.1.2",
+					ID:   "192.168.1.2",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{
+						{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast},
+						{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN},
+					},
 				},
 			},
 		},
@@ -78,10 +81,13 @@ func TestBasicWithASNRT(t *testing.T) {
 			RouterID: "10.0.0.1",
 			Neighbors: []NeighborConfig{
 				{
-					ASN:      mustNewPeerASNFromNumber(64513),
-					Addr:     "192.168.1.2",
-					ID:       "192.168.1.2",
-					IPFamily: ipfamily.IPv4,
+					ASN:  mustNewPeerASNFromNumber(64513),
+					Addr: "192.168.1.2",
+					ID:   "192.168.1.2",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{
+						{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast},
+						{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN},
+					},
 				},
 			},
 		},
@@ -92,10 +98,9 @@ func TestBasicWithASNRT(t *testing.T) {
 				VNI:      100,
 				RouterID: "10.0.0.1",
 				LocalNeighbor: &NeighborConfig{
-					ASN:      mustNewPeerASNFromNumber(64513),
-					Addr:     "192.168.1.2",
-					ID:       "192.168.1.2",
-					IPFamily: ipfamily.IPv4,
+					ASN:  mustNewPeerASNFromNumber(64513),
+					Addr: "192.168.1.2",
+					ID:   "192.168.1.2",
 				},
 				ToAdvertiseIPv4: []string{
 					"192.169.10.2/24",
@@ -125,10 +130,13 @@ func TestBasicWithIPRT(t *testing.T) {
 			RouterID: "10.0.0.1",
 			Neighbors: []NeighborConfig{
 				{
-					ASN:      mustNewPeerASNFromNumber(64513),
-					Addr:     "192.168.1.2",
-					ID:       "192.168.1.2",
-					IPFamily: ipfamily.IPv4,
+					ASN:  mustNewPeerASNFromNumber(64513),
+					Addr: "192.168.1.2",
+					ID:   "192.168.1.2",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{
+						{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast},
+						{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN},
+					},
 				},
 			},
 		},
@@ -171,10 +179,13 @@ func TestExternal(t *testing.T) {
 			RouterID: "10.0.0.1",
 			Neighbors: []NeighborConfig{
 				{
-					ASN:      mustNewPeerASNFromType("external"),
-					Addr:     "192.168.1.2",
-					ID:       "192.168.1.2",
-					IPFamily: ipfamily.IPv4,
+					ASN:  mustNewPeerASNFromType("external"),
+					Addr: "192.168.1.2",
+					ID:   "192.168.1.2",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{
+						{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast},
+						{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN},
+					},
 				},
 			},
 		},
@@ -215,10 +226,13 @@ func TestInternal(t *testing.T) {
 			RouterID: "10.0.0.1",
 			Neighbors: []NeighborConfig{
 				{
-					ASN:      mustNewPeerASNFromType("internal"),
-					Addr:     "192.168.1.2",
-					ID:       "192.168.1.2",
-					IPFamily: ipfamily.IPv4,
+					ASN:  mustNewPeerASNFromType("internal"),
+					Addr: "192.168.1.2",
+					ID:   "192.168.1.2",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{
+						{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast},
+						{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN},
+					},
 				},
 			},
 		},
@@ -259,10 +273,13 @@ func TestDualStack(t *testing.T) {
 			RouterID: "10.0.0.1",
 			Neighbors: []NeighborConfig{
 				{
-					ASN:      mustNewPeerASNFromNumber(64513),
-					Addr:     "192.168.1.2",
-					ID:       "192.168.1.2",
-					IPFamily: ipfamily.IPv4,
+					ASN:  mustNewPeerASNFromNumber(64513),
+					Addr: "192.168.1.2",
+					ID:   "192.168.1.2",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{
+						{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast},
+						{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN},
+					},
 				},
 			},
 		},
@@ -306,10 +323,13 @@ func TestDualStackWithRT(t *testing.T) {
 			RouterID: "10.0.0.1",
 			Neighbors: []NeighborConfig{
 				{
-					ASN:      mustNewPeerASNFromNumber(64513),
-					Addr:     "192.168.1.2",
-					ID:       "192.168.1.2",
-					IPFamily: ipfamily.IPv4,
+					ASN:  mustNewPeerASNFromNumber(64513),
+					Addr: "192.168.1.2",
+					ID:   "192.168.1.2",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{
+						{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast},
+						{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN},
+					},
 				},
 			},
 		},
@@ -355,10 +375,14 @@ func TestIPv6Only(t *testing.T) {
 			RouterID: "10.0.0.1",
 			Neighbors: []NeighborConfig{
 				{
-					ASN:             mustNewPeerASNFromNumber(64513),
-					Addr:            "2001:db8::2",
-					ID:              "2001:db8::2",
-					IPFamily:        ipfamily.IPv4,
+					ASN:  mustNewPeerASNFromNumber(64513),
+					Addr: "2001:db8::2",
+					ID:   "2001:db8::2",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{
+						{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast},
+						{AFI: networklayerprotocol.IPv6, SAFI: networklayerprotocol.Unicast},
+						{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN},
+					},
 					ExtendedNexthop: true,
 				},
 			},
@@ -400,10 +424,13 @@ func TestBGPUnnumbered(t *testing.T) {
 			RouterID: "10.0.0.1",
 			Neighbors: []NeighborConfig{
 				{
-					ASN:             mustNewPeerASNFromNumber(64512),
-					Interface:       "eth1",
-					ID:              "eth1",
-					IPFamily:        ipfamily.IPv4,
+					ASN:       mustNewPeerASNFromNumber(64512),
+					Interface: "eth1",
+					ID:        "eth1",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{
+						{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast},
+						{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN},
+					},
 					ExtendedNexthop: true,
 				},
 			},
@@ -445,10 +472,14 @@ func TestIPv6OnlyWithRT(t *testing.T) {
 			RouterID: "10.0.0.1",
 			Neighbors: []NeighborConfig{
 				{
-					ASN:      mustNewPeerASNFromNumber(64513),
-					Addr:     "2001:db8::2",
-					ID:       "2001:db8::2",
-					IPFamily: ipfamily.IPv6,
+					ASN:  mustNewPeerASNFromNumber(64513),
+					Addr: "2001:db8::2",
+					ID:   "2001:db8::2",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{
+						{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast},
+						{AFI: networklayerprotocol.IPv6, SAFI: networklayerprotocol.Unicast},
+						{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN},
+					},
 				},
 			},
 		},
@@ -503,10 +534,13 @@ func TestNoVNIs(t *testing.T) {
 			RouterID: "10.0.0.1",
 			Neighbors: []NeighborConfig{
 				{
-					ASN:      mustNewPeerASNFromNumber(64513),
-					Addr:     "192.168.1.2",
-					ID:       "192.168.1.2",
-					IPFamily: ipfamily.IPv4,
+					ASN:  mustNewPeerASNFromNumber(64513),
+					Addr: "192.168.1.2",
+					ID:   "192.168.1.2",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{
+						{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast},
+						{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN},
+					},
 				},
 			},
 		},
@@ -531,10 +565,13 @@ func TestBFDEnabled(t *testing.T) {
 			RouterID: "10.0.0.1",
 			Neighbors: []NeighborConfig{
 				{
-					ASN:        mustNewPeerASNFromNumber(64513),
-					Addr:       "192.168.1.2",
-					ID:         "192.168.1.2",
-					IPFamily:   ipfamily.IPv4,
+					ASN:  mustNewPeerASNFromNumber(64513),
+					Addr: "192.168.1.2",
+					ID:   "192.168.1.2",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{
+						{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast},
+						{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN},
+					},
 					BFDEnabled: true,
 				},
 			},
@@ -560,10 +597,13 @@ func TestBFDProfile(t *testing.T) {
 			RouterID: "10.0.0.1",
 			Neighbors: []NeighborConfig{
 				{
-					ASN:        mustNewPeerASNFromNumber(64513),
-					Addr:       "192.168.1.2",
-					ID:         "192.168.1.2",
-					IPFamily:   ipfamily.IPv4,
+					ASN:  mustNewPeerASNFromNumber(64513),
+					Addr: "192.168.1.2",
+					ID:   "192.168.1.2",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{
+						{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast},
+						{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN},
+					},
 					BFDEnabled: true,
 					BFDProfile: "foo",
 				},
@@ -596,10 +636,13 @@ func TestL3VNIWithoutLocalNeighborAndAdvertise(t *testing.T) {
 			},
 			Neighbors: []NeighborConfig{
 				{
-					ASN:      mustNewPeerASNFromNumber(64513),
-					Addr:     "192.168.1.2",
-					ID:       "192.168.1.2",
-					IPFamily: ipfamily.IPv4,
+					ASN:  mustNewPeerASNFromNumber(64513),
+					Addr: "192.168.1.2",
+					ID:   "192.168.1.2",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{
+						{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast},
+						{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN},
+					},
 				},
 			},
 		},
@@ -632,10 +675,13 @@ func TestL3VNIWithLocalNeighborAndRedistributeConnected(t *testing.T) {
 			},
 			Neighbors: []NeighborConfig{
 				{
-					ASN:      mustNewPeerASNFromNumber(64513),
-					Addr:     "192.168.1.2",
-					ID:       "192.168.1.2",
-					IPFamily: ipfamily.IPv4,
+					ASN:  mustNewPeerASNFromNumber(64513),
+					Addr: "192.168.1.2",
+					ID:   "192.168.1.2",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{
+						{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast},
+						{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN},
+					},
 				},
 			},
 		},
@@ -673,10 +719,10 @@ func TestPassthroughNoEVPN(t *testing.T) {
 			RouterID: "10.0.0.1",
 			Neighbors: []NeighborConfig{
 				{
-					ASN:      mustNewPeerASNFromNumber(64513),
-					Addr:     "192.168.1.2",
-					ID:       "192.168.1.2",
-					IPFamily: ipfamily.IPv4,
+					ASN:                   mustNewPeerASNFromNumber(64513),
+					Addr:                  "192.168.1.2",
+					ID:                    "192.168.1.2",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast}},
 				},
 			},
 		},
@@ -709,10 +755,10 @@ func TestPassthroughExternal(t *testing.T) {
 			RouterID: "10.0.0.1",
 			Neighbors: []NeighborConfig{
 				{
-					ASN:      mustNewPeerASNFromNumber(64513),
-					Addr:     "192.168.1.2",
-					ID:       "192.168.1.2",
-					IPFamily: ipfamily.IPv4,
+					ASN:                   mustNewPeerASNFromNumber(64513),
+					Addr:                  "192.168.1.2",
+					ID:                    "192.168.1.2",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast}},
 				},
 			},
 		},
@@ -741,17 +787,14 @@ func TestPassthroughV4(t *testing.T) {
 
 	config := Config{
 		Underlay: UnderlayConfig{
-			MyASN: 64512,
-			TunnelEndpoint: &TunnelEndpoint{
-				IPv4CIDR: "100.64.0.1/32",
-			},
+			MyASN:    64512,
 			RouterID: "10.0.0.1",
 			Neighbors: []NeighborConfig{
 				{
-					ASN:      mustNewPeerASNFromNumber(64513),
-					Addr:     "192.168.1.2",
-					ID:       "192.168.1.2",
-					IPFamily: ipfamily.IPv4,
+					ASN:                   mustNewPeerASNFromNumber(64513),
+					Addr:                  "192.168.1.2",
+					ID:                    "192.168.1.2",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast}},
 				},
 			},
 		},
@@ -780,23 +823,25 @@ func TestPassthroughDual(t *testing.T) {
 
 	config := Config{
 		Underlay: UnderlayConfig{
-			MyASN: 64512,
-			TunnelEndpoint: &TunnelEndpoint{
-				IPv4CIDR: "100.64.0.1/32",
-			},
+			MyASN:    64512,
 			RouterID: "10.0.0.1",
 			Neighbors: []NeighborConfig{
 				{
-					ASN:      mustNewPeerASNFromNumber(64513),
-					Addr:     "192.168.1.2",
-					ID:       "192.168.1.2",
-					IPFamily: ipfamily.IPv4,
+					ASN:  mustNewPeerASNFromNumber(64513),
+					Addr: "192.168.1.2",
+					ID:   "192.168.1.2",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{ // Override to only IPv4 (auto-detection would be dualstack).
+						{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast},
+					},
 				},
 				{
-					ASN:      mustNewPeerASNFromNumber(64513),
-					Addr:     "2001:db8::1",
-					ID:       "2001:db8::1",
-					IPFamily: ipfamily.DualStack,
+					ASN:  mustNewPeerASNFromNumber(64513),
+					Addr: "2001:db8::1",
+					ID:   "2001:db8::1",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{
+						{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast},
+						{AFI: networklayerprotocol.IPv6, SAFI: networklayerprotocol.Unicast},
+					},
 				},
 			},
 		},
@@ -839,10 +884,10 @@ func TestRawConfig(t *testing.T) {
 			RouterID: "10.0.0.1",
 			Neighbors: []NeighborConfig{
 				{
-					ASN:      mustNewPeerASNFromNumber(64513),
-					Addr:     "192.168.1.2",
-					ID:       "192.168.1.2",
-					IPFamily: ipfamily.IPv4,
+					ASN:                   mustNewPeerASNFromNumber(64513),
+					Addr:                  "192.168.1.2",
+					ID:                    "192.168.1.2",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast}},
 				},
 			},
 		},
@@ -858,6 +903,7 @@ func TestRawConfig(t *testing.T) {
 	testCheckConfigFile(t)
 }
 
+// TestTunnelEndpointConfig tests that both IPv4 and IPv6 networks are advertised via FRR.
 func TestTunnelEndpointConfig(t *testing.T) {
 	configFile := testSetup(t)
 	updater := testUpdater(configFile)
@@ -868,15 +914,34 @@ func TestTunnelEndpointConfig(t *testing.T) {
 			RouterID: "10.0.0.1",
 			Neighbors: []NeighborConfig{
 				{
-					ASN:      mustNewPeerASNFromNumber(64513),
-					Addr:     "192.168.1.2",
-					ID:       "192.168.1.2",
-					IPFamily: ipfamily.IPv4,
+					ASN:  mustNewPeerASNFromNumber(64513),
+					Addr: "192.168.1.2",
+					ID:   "192.168.1.2",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{
+						{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast},
+						{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN},
+					},
 				},
 			},
 			TunnelEndpoint: &TunnelEndpoint{
 				IPv4CIDR: "192.168.10.1/24",
 				IPv6CIDR: "2001:db8:192:168::1/64",
+			},
+		},
+		VNIs: []L3VNIConfig{
+			{
+				VRF:      "red",
+				ASN:      64512,
+				VNI:      100,
+				RouterID: "10.0.0.1",
+				LocalNeighbor: &NeighborConfig{
+					ASN:  mustNewPeerASNFromNumber(64513),
+					Addr: "192.168.1.2",
+					ID:   "192.168.1.2",
+				},
+				ToAdvertiseIPv4: []string{
+					"192.169.10.2/24",
+				},
 			},
 		},
 	}
@@ -964,10 +1029,10 @@ func TestGracefulRestart(t *testing.T) {
 			RouterID: "10.0.0.1",
 			Neighbors: []NeighborConfig{
 				{
-					ASN:      mustNewPeerASNFromNumber(64512),
-					Addr:     "192.168.1.2",
-					ID:       "192.168.1.2",
-					IPFamily: ipfamily.IPv4,
+					ASN:                   mustNewPeerASNFromNumber(64512),
+					Addr:                  "192.168.1.2",
+					ID:                    "192.168.1.2",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast}},
 				},
 			},
 			GracefulRestart: &GracefulRestart{
@@ -996,10 +1061,10 @@ func TestGracefulRestartCustomTimers(t *testing.T) {
 			RouterID: "10.0.0.1",
 			Neighbors: []NeighborConfig{
 				{
-					ASN:      mustNewPeerASNFromNumber(64512),
-					Addr:     "192.168.1.2",
-					ID:       "192.168.1.2",
-					IPFamily: ipfamily.IPv4,
+					ASN:                   mustNewPeerASNFromNumber(64512),
+					Addr:                  "192.168.1.2",
+					ID:                    "192.168.1.2",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast}},
 				},
 			},
 			GracefulRestart: &GracefulRestart{

@@ -24,7 +24,7 @@
 {{- else if .neighbor.BFDEnabled}}
   neighbor {{.neighbor.ID}} bfd
 {{- end }}
-{{- if  mustDisableConnectedCheck .neighbor.IPFamily .routerASN .neighbor.ASN .neighbor.EBGPMultiHop }}
+{{- if  mustDisableConnectedCheck .neighbor.NetworkLayerProtocols .routerASN .neighbor.ASN .neighbor.EBGPMultiHop }}
   neighbor {{.neighbor.ID}} disable-connected-check
 {{- end }}
 {{- if .neighbor.ExtendedNexthop }}

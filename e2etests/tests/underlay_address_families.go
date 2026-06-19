@@ -120,8 +120,8 @@ var runUnderlayTests = func(af ipfamily.Family, underlay v1alpha1.Underlay) {
 		Expect(err).NotTo(HaveOccurred())
 
 		By("setting address family on leafkind node")
-		Expect(infra.LeafKind1Config.UpdateConfig(nodes, infra.LeafKindConfiguration{AddressFamily: af})).To(Succeed())
-		Expect(infra.LeafKind2Config.UpdateConfig(nodes, infra.LeafKindConfiguration{AddressFamily: af})).To(Succeed())
+		Expect(infra.LeafKind1Config.UpdateConfig(nodes, infra.LeafKindConfiguration{PeerIPFamily: af})).To(Succeed())
+		Expect(infra.LeafKind2Config.UpdateConfig(nodes, infra.LeafKindConfiguration{PeerIPFamily: af})).To(Succeed())
 	})
 
 	AfterAll(func() {

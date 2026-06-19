@@ -96,6 +96,46 @@ spec:
                       x-kubernetes-validations:
                       - message: Address must be a valid IPv4 or IPv6 address
                         rule: isIP(self)
+                    addressFamilies:
+                      description: |-
+                        addressFamilies specifies the BGP address families that shall be enabled
+                        for this BGP neighbor.
+                        If addressFamilies is not provided or empty, the following defaults are
+                        chosen:
+                        For unnumbered neighbors:
+                        - ipv4unicast
+                        - ipv6unicast if passthrough is configured with IPv6 local CIDR
+                        - evpn if L2VNIs or L3VNIs are present.
+                        For IPv4 neighbors:
+                        - ipv4unicast
+                        - ipv6unicast if passthrough is configured with IPv6 local CIDR
+                        - evpn if L2VNIs or L3VNIs are present.
+                        For IPv6 neighbors:
+                        - ipv4unicast if L2VNIs or L3VNIs are present, or if passthrough is configured with IPv4 local CIDR
+                        - ipv6unicast
+                        - evpn if L2VNIs or L3VNIs are present
+                      items:
+                        description: |-
+                          NeighborAddressFamily represents a single BGP address family configuration
+                          for a neighbor.
+                        properties:
+                          type:
+                            description: type is the address family type.
+                            enum:
+                            - ipv4unicast
+                            - ipv6unicast
+                            - evpn
+                            maxLength: 11
+                            minLength: 1
+                            type: string
+                        required:
+                        - type
+                        type: object
+                      maxItems: 3
+                      type: array
+                      x-kubernetes-list-map-keys:
+                      - type
+                      x-kubernetes-list-type: map
                     asn:
                       description: asn is the AS number of the neighbor. Either ASN
                         or Type must be set.

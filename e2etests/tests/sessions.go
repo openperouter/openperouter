@@ -18,6 +18,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/frrk8s"
 	"github.com/openperouter/openperouter/e2etests/pkg/infra"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
+	"github.com/openperouter/openperouter/e2etests/pkg/networklayerprotocol"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -86,7 +87,15 @@ var _ = Describe("Router Host configuration", Ordered, func() {
 				for _, node := range nodes {
 					neighborIP, err := infra.NeighborIP(leaf, node.Name)
 					Expect(err).NotTo(HaveOccurred())
-					validateSessionWithNeighbor(leaf, node.Name, exec, neighborIP, Established)
+					validateSessionWithNeighbor(
+						exec,
+						validationParameters{
+							fromName:    leaf,
+							toName:      node.Name,
+							neighborIP:  neighborIP,
+							established: Established,
+						},
+					)
 				}
 				return nil
 			}, time.Minute, time.Second).ShouldNot(HaveOccurred())
@@ -598,7 +607,15 @@ var _ = Describe("Underlay external and internal configuration", Ordered, func()
 		for _, node := range nodes {
 			neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
 			Expect(err).NotTo(HaveOccurred())
-			validateSessionWithNeighbor(infra.KindLeaf, node.Name, exec, neighborIP, Established)
+			validateSessionWithNeighbor(
+				exec,
+				validationParameters{
+					fromName:    infra.KindLeaf,
+					toName:      node.Name,
+					neighborIP:  neighborIP,
+					established: Established,
+				},
+			)
 		}
 	}
 
@@ -762,7 +779,15 @@ var _ = Describe("Underlay BFD Configuration", Ordered, func() {
 			for _, node := range nodes {
 				neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
 				Expect(err).NotTo(HaveOccurred())
-				validateSessionWithNeighbor(infra.KindLeaf, node.Name, exec, neighborIP, Established)
+				validateSessionWithNeighbor(
+					exec,
+					validationParameters{
+						fromName:    infra.KindLeaf,
+						toName:      node.Name,
+						neighborIP:  neighborIP,
+						established: Established,
+					},
+				)
 			}
 
 			if underlay.Spec.Neighbors[0].BFD != nil && underlay.Spec.Neighbors[0].BFD.TransmitInterval != nil {
@@ -914,7 +939,15 @@ var _ = Describe("Add extra neighbor", Ordered, func() {
 				if err != nil {
 					continue
 				}
-				validateSessionWithNeighbor(infra.KindLeaf, node.Name, exec, neighborIP, Established)
+				validateSessionWithNeighbor(
+					exec,
+					validationParameters{
+						fromName:    infra.KindLeaf,
+						toName:      node.Name,
+						neighborIP:  neighborIP,
+						established: Established,
+					},
+				)
 			}
 			return nil
 		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
@@ -943,7 +976,15 @@ var _ = Describe("Add extra neighbor", Ordered, func() {
 				if err != nil {
 					continue
 				}
-				validateSessionWithNeighbor(infra.KindLeaf2, node.Name, exec2, neighborIP, Established)
+				validateSessionWithNeighbor(
+					exec2,
+					validationParameters{
+						fromName:    infra.KindLeaf2,
+						toName:      node.Name,
+						neighborIP:  neighborIP,
+						established: Established,
+					},
+				)
 			}
 			return nil
 		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
@@ -958,4 +999,104 @@ var _ = Describe("Add extra neighbor", Ordered, func() {
 		}, 30*time.Second, 5*time.Second).Should(HaveOccurred())
 	})
 
+})
+
+var _ = Describe("Underlay explicit address family configuration", Ordered, func() {
+	var cs clientset.Interface
+	nodes := []corev1.Node{}
+
+	BeforeAll(func() {
+		err := Updater.CleanAll()
+		Expect(err).NotTo(HaveOccurred())
+
+		cs = k8sclient.New()
+		nodesItems, err := cs.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		nodes = nodesItems.Items
+	})
+
+	AfterAll(func() {
+		err := Updater.CleanAll()
+		Expect(err).NotTo(HaveOccurred())
+
+		By("waiting for the underlay to be removed from all nodes")
+		for _, node := range nodes {
+			Eventually(func(g Gomega) {
+				isConfigured, err := openperouter.UnderlayConfigured(node.Name)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(isConfigured).To(BeFalse())
+			}, 2*time.Minute, time.Second).Should(Succeed())
+		}
+	})
+
+	BeforeEach(func() {
+		err := Updater.CleanAll()
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	AfterEach(func() {
+		dumpIfFails(cs)
+		Expect(infra.LeafKind1Config.UpdateConfig(nodes, infra.LeafKindConfiguration{})).To(Succeed())
+		Expect(infra.LeafKind2Config.UpdateConfig(nodes, infra.LeafKindConfiguration{})).To(Succeed())
+		err := Updater.CleanAll()
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	validateTORSession := func(nlps ...networklayerprotocol.NLP) {
+		for _, tor := range []string{infra.KindLeaf, infra.KindLeaf2} {
+			exec := executor.ForContainer(tor)
+			for _, node := range nodes {
+				neighborIP, err := infra.NeighborIP(tor, node.Name)
+				Expect(err).NotTo(HaveOccurred())
+				By(fmt.Sprintf("validating TOR session from %s to %s (ID: %s) and network layer protocols %s",
+					tor, node.Name, neighborIP, nlps))
+				validateSessionWithNeighbor(
+					exec,
+					validationParameters{
+						fromName:                tor,
+						toName:                  node.Name,
+						neighborIP:              neighborIP,
+						receivedAddressFamilies: nlps,
+						established:             Established,
+					},
+				)
+			}
+		}
+	}
+
+	It("peers with the tor and exchanges address families ipv4unicast and ipv6unicast", func() {
+		By("deploying an underlay with both ToR neighbors with address families ipv4unicast and ipv6unicast")
+		Expect(infra.LeafKind1Config.UpdateConfig(nodes, infra.LeafKindConfiguration{
+			BGPAddressFamilies: []networklayerprotocol.NLP{
+				{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast},
+				{AFI: networklayerprotocol.IPv6, SAFI: networklayerprotocol.Unicast},
+			},
+		})).To(Succeed())
+		Expect(infra.LeafKind2Config.UpdateConfig(nodes, infra.LeafKindConfiguration{
+			BGPAddressFamilies: []networklayerprotocol.NLP{
+				{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast},
+				{AFI: networklayerprotocol.IPv6, SAFI: networklayerprotocol.Unicast},
+			},
+		})).To(Succeed())
+
+		underlay := *infra.Underlay.DeepCopy()
+		underlay.Spec.Neighbors[0].AddressFamilies = []v1alpha1.NeighborAddressFamily{
+			{Type: "ipv4unicast"},
+			{Type: "ipv6unicast"},
+		}
+		underlay.Spec.Neighbors[1].AddressFamilies = []v1alpha1.NeighborAddressFamily{
+			{Type: "ipv4unicast"},
+			{Type: "ipv6unicast"},
+		}
+		err := Updater.Update(config.Resources{
+			Underlays: []v1alpha1.Underlay{
+				underlay,
+			},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		validateTORSession(
+			networklayerprotocol.NLP{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast},
+			networklayerprotocol.NLP{AFI: networklayerprotocol.IPv6, SAFI: networklayerprotocol.Unicast},
+		)
+	})
 })

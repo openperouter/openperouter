@@ -81,6 +81,28 @@ type Neighbor struct {
 	// bfd defines the BFD configuration for the BGP session.
 	// +optional
 	BFD *BFDSettings `json:"bfd,omitempty"`
+
+	// addressFamilies specifies the BGP address families that shall be enabled
+	// for this BGP neighbor.
+	// If addressFamilies is not provided or empty, the following defaults are
+	// chosen:
+	// For unnumbered neighbors:
+	// - ipv4unicast
+	// - ipv6unicast if passthrough is configured with IPv6 local CIDR
+	// - evpn if L2VNIs or L3VNIs are present.
+	// For IPv4 neighbors:
+	// - ipv4unicast
+	// - ipv6unicast if passthrough is configured with IPv6 local CIDR
+	// - evpn if L2VNIs or L3VNIs are present.
+	// For IPv6 neighbors:
+	// - ipv4unicast if L2VNIs or L3VNIs are present, or if passthrough is configured with IPv4 local CIDR
+	// - ipv6unicast
+	// - evpn if L2VNIs or L3VNIs are present
+	// +kubebuilder:validation:MaxItems:=3
+	// +optional
+	// +listType=map
+	// +listMapKey=type
+	AddressFamilies []NeighborAddressFamily `json:"addressFamilies,omitempty"`
 }
 
 // BFDSettings defines the BFD configuration for a BGP session.
@@ -135,4 +157,15 @@ type BFDSettings struct {
 	// +kubebuilder:validation:Minimum:=1
 	// +optional
 	MinimumTTL *int32 `json:"minimumTTL,omitempty"`
+}
+
+// NeighborAddressFamily represents a single BGP address family configuration
+// for a neighbor.
+type NeighborAddressFamily struct {
+	// type is the address family type.
+	// +kubebuilder:validation:MinLength:=1
+	// +kubebuilder:validation:MaxLength:=11
+	// +kubebuilder:validation:Enum:=ipv4unicast;ipv6unicast;evpn
+	// +required
+	Type string `json:"type,omitempty"`
 }

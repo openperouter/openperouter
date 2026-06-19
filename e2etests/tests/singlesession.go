@@ -191,7 +191,15 @@ var _ = Describe("Single Session Baseline", Ordered, func() {
 			for _, node := range nodes {
 				neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
 				Expect(err).NotTo(HaveOccurred())
-				validateSessionWithNeighbor(infra.KindLeaf, node.Name, exec, neighborIP, Established)
+				validateSessionWithNeighbor(
+					exec,
+					validationParameters{
+						fromName:    infra.KindLeaf,
+						toName:      node.Name,
+						neighborIP:  neighborIP,
+						established: Established,
+					},
+				)
 			}
 			return nil
 		}, time.Minute, time.Second).ShouldNot(HaveOccurred())

@@ -39,18 +39,20 @@ router bgp {{ .ASN }}
 {{- end }}
 
  !
- address-family ipv4 unicast
-{{- if .RedistributeConnected }}
+{{- range $af := .BGPAddressFamilies }}
+ address-family {{ $af.AFI }} {{ $af.SAFI }}
+{{- if $.RedistributeConnected }}
   redistribute connected
 {{- end }}
-  neighbor {{ .SpinePeerAddress }} activate
-{{- range .Neighbors }}
+  neighbor {{ $.SpinePeerAddress }} activate
+{{- range $.Neighbors }}
   neighbor {{ .ID }} activate
 {{- if $.NextHopSelf }}
   neighbor {{ .ID }} next-hop-self force 
 {{- end }}
 {{- end }}
  exit-address-family
+{{- end }}
  !
  address-family l2vpn evpn
   neighbor {{ .SpinePeerAddress }} activate

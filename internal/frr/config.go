@@ -11,7 +11,7 @@ import (
 	"log/slog"
 	"text/template"
 
-	"github.com/openperouter/openperouter/internal/ipfamily"
+	"github.com/openperouter/openperouter/internal/networklayerprotocol"
 )
 
 var (
@@ -83,20 +83,20 @@ type BFDProfile struct {
 }
 
 type NeighborConfig struct {
-	Name          string
-	ASN           PeerASN
-	Addr          string
-	Interface     string
-	ID            string
-	Port          *int32
-	HoldTime      *int64
-	KeepaliveTime *int64
-	ConnectTime   *int64
-	Password      string
-	BFDEnabled    bool
-	BFDProfile    string
-	EBGPMultiHop  bool
-	IPFamily      ipfamily.Family
+	Name                  string
+	ASN                   PeerASN
+	Addr                  string
+	Interface             string
+	ID                    string
+	Port                  *int32
+	HoldTime              *int64
+	KeepaliveTime         *int64
+	ConnectTime           *int64
+	Password              string
+	BFDEnabled            bool
+	BFDProfile            string
+	EBGPMultiHop          bool
+	NetworkLayerProtocols []networklayerprotocol.NLP
 	// Allow bgp to negotiate the extended-nexthop capability with its peer. If you are peering over a v6 LL address
 	// then this capability is turned on automatically.
 	// If you are peering over a v6 Global Address then turning on this command will allow BGP to install v4 routes
@@ -130,21 +130,18 @@ func templateConfig(data any) (string, error) {
 				}
 				return dict, nil
 			},
-			"mustDisableConnectedCheck": func(ipFamily ipfamily.Family, myASN int64, peerASN PeerASN, eBGPMultiHop bool) bool {
-				// return true only for IPv6 eBGP sessions
-				if ipFamily == "ipv6" && !eBGPMultiHop && peerASN.IsExternalTo(myASN) {
-					return true
-				}
-				return false
+			"mustDisableConnectedCheck": func(nlps []networklayerprotocol.NLP, myASN int64, peerASN PeerASN,
+				eBGPMultiHop bool) bool {
+				// Return true only if neighbor establishes an IPv6 eBGP session.
+				return networklayerprotocol.HasUnicastFamily(nlps, networklayerprotocol.IPv6) &&
+					!eBGPMultiHop && peerASN.IsExternalTo(myASN)
 			},
 			"isEBGP": func(myASN int64, peerASN PeerASN) bool {
 				return peerASN.IsExternalTo(myASN)
 			},
-			"activateNeighborFor": func(ipFamily string, neighbourFamily ipfamily.Family) bool {
-				if neighbourFamily == ipfamily.DualStack {
-					return ipFamily != string(ipfamily.Unknown)
-				}
-				return string(neighbourFamily) == ipFamily
+			"activateNeighborFor": func(nlps []networklayerprotocol.NLP, afi networklayerprotocol.AFI,
+				safi networklayerprotocol.SAFI) bool {
+				return networklayerprotocol.HasNLP(nlps, networklayerprotocol.NLP{AFI: afi, SAFI: safi})
 			},
 		}).ParseFS(templates, "templates/*")
 	if err != nil {

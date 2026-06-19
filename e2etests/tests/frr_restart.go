@@ -192,11 +192,13 @@ var _ = Describe("North/south traffic after FRR container restart", Ordered, fun
 		neighborIP, err := infra.NeighborIP(infra.KindLeaf, nodeName)
 		Expect(err).NotTo(HaveOccurred())
 		validateSessionWithNeighbor(
-			infra.KindLeaf,
-			nodeName,
 			executor.ForContainer(infra.KindLeaf),
-			neighborIP,
-			Established,
+			validationParameters{
+				fromName:    infra.KindLeaf,
+				toName:      nodeName,
+				neighborIP:  neighborIP,
+				established: Established,
+			},
 		)
 
 		By("verifying north/south traffic still works after FRR restart")

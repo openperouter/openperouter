@@ -185,11 +185,13 @@ var _ = Describe("Alpha: Named netns and kernel objects survive FRR crash", Orde
 		neighborIP, err := infra.NeighborIP(infra.KindLeaf, nodeName)
 		Expect(err).NotTo(HaveOccurred())
 		validateSessionWithNeighbor(
-			infra.KindLeaf,
-			nodeName,
 			executor.ForContainer(infra.KindLeaf),
-			neighborIP,
-			Established,
+			validationParameters{
+				fromName:    infra.KindLeaf,
+				toName:      nodeName,
+				neighborIP:  neighborIP,
+				established: Established,
+			},
 		)
 	})
 })
@@ -305,11 +307,13 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 			neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
 			Expect(err).NotTo(HaveOccurred())
 			validateSessionWithNeighbor(
-				infra.KindLeaf,
-				node.Name,
 				leafExec,
-				neighborIP,
-				Established,
+				validationParameters{
+					fromName:    infra.KindLeaf,
+					toName:      node.Name,
+					neighborIP:  neighborIP,
+					established: Established,
+				},
 			)
 		}
 	})
@@ -397,11 +401,13 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 		neighborIP, err := infra.NeighborIP(infra.KindLeaf, nodes[0].Name)
 		Expect(err).NotTo(HaveOccurred())
 		validateSessionWithNeighbor(
-			infra.KindLeaf,
-			nodes[0].Name,
 			executor.ForContainer(infra.KindLeaf),
-			neighborIP,
-			Established,
+			validationParameters{
+				fromName:    infra.KindLeaf,
+				toName:      nodes[0].Name,
+				neighborIP:  neighborIP,
+				established: Established,
+			},
 		)
 
 		By("waiting for Type-5 prefix route to appear on the fabric before traffic check")
@@ -409,9 +415,13 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 
 		By("verifying traffic works before netns deletion")
 		Eventually(func() error {
-			_, err := hostARedExecutor.Exec("curl", "-sS", "--max-time", "3", urlStr)
-			return err
-		}).WithTimeout(2 * time.Minute).WithPolling(time.Second).Should(Succeed())
+			cmd := "curl"
+			args := []string{"-sS", "--max-time", "3", urlStr}
+			if _, err := hostARedExecutor.Exec(cmd, args...); err != nil {
+				return fmt.Errorf("command failed: %s %v, err: %w", cmd, args, err)
+			}
+			return nil
+		}).WithTimeout(3 * time.Minute).WithPolling(time.Second).Should(Succeed())
 
 		By("identifying the router pod on clientPod's node")
 		routerPods, err := openperouter.RouterPodsForNodes(cs, map[string]bool{clientPod.Spec.NodeName: true})
@@ -468,11 +478,13 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 		neighborIP, err = infra.NeighborIP(infra.KindLeaf, nodeName)
 		Expect(err).NotTo(HaveOccurred())
 		validateSessionWithNeighbor(
-			infra.KindLeaf,
-			nodeName,
 			executor.ForContainer(infra.KindLeaf),
-			neighborIP,
-			Established,
+			validationParameters{
+				fromName:    infra.KindLeaf,
+				toName:      nodeName,
+				neighborIP:  neighborIP,
+				established: Established,
+			},
 		)
 
 		By("waiting for Type-5 prefix route to appear on the fabric")
@@ -495,8 +507,12 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 
 		By("verifying traffic works again after rebuild")
 		Eventually(func() error {
-			_, err := hostARedExecutor.Exec("curl", "-sS", "--max-time", "3", urlStr)
-			return err
+			cmd := "curl"
+			args := []string{"-sS", "--max-time", "3", urlStr}
+			if _, err := hostARedExecutor.Exec(cmd, args...); err != nil {
+				return fmt.Errorf("command failed: %s %v, err: %w", cmd, args, err)
+			}
+			return nil
 		}).WithTimeout(3 * time.Minute).WithPolling(time.Second).Should(Succeed())
 	})
 
@@ -570,11 +586,13 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 			neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
 			Expect(err).NotTo(HaveOccurred())
 			validateSessionWithNeighbor(
-				infra.KindLeaf,
-				node.Name,
 				leafExec,
-				neighborIP,
-				Established,
+				validationParameters{
+					fromName:    infra.KindLeaf,
+					toName:      node.Name,
+					neighborIP:  neighborIP,
+					established: Established,
+				},
 			)
 		}
 
@@ -612,11 +630,13 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 		neighborIP, err := infra.NeighborIP(infra.KindLeaf, nodeName)
 		Expect(err).NotTo(HaveOccurred())
 		validateSessionWithNeighbor(
-			infra.KindLeaf,
-			nodeName,
 			executor.ForContainer(infra.KindLeaf),
-			neighborIP,
-			Established,
+			validationParameters{
+				fromName:    infra.KindLeaf,
+				toName:      nodeName,
+				neighborIP:  neighborIP,
+				established: Established,
+			},
 		)
 
 		By("asserting stretched L2 disruption is within acceptable bounds during router pod deletion and recovery")
