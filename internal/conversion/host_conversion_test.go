@@ -46,8 +46,28 @@ func TestAPItoHostConfig(t *testing.T) {
 			nodeIndex: 0,
 			targetNS:  "namespace",
 			underlays: []v1alpha1.Underlay{
-				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth0"}, TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: []string{"10.0.0.0/24"}}}},
-				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth1"}, TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: []string{"10.0.1.0/24"}}}},
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          "NetworkDevice",
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+						},
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: []string{"10.0.0.0/24"}},
+					},
+				},
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          "NetworkDevice",
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth1"},
+							},
+						},
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: []string{"10.0.1.0/24"}},
+					},
+				},
 			},
 			vnis:            []v1alpha1.L3VNI{},
 			l2vnis:          []v1alpha1.L2VNI{},
@@ -63,7 +83,17 @@ func TestAPItoHostConfig(t *testing.T) {
 			nodeIndex: 0,
 			targetNS:  "namespace",
 			underlays: []v1alpha1.Underlay{
-				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth0"}, TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: []string{"10.0.0.0/24"}}}},
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          "NetworkDevice",
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+						},
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: []string{"10.0.0.0/24"}},
+					},
+				},
 			},
 			vnis: []v1alpha1.L3VNI{
 				{Spec: v1alpha1.L3VNISpec{VRF: "red", HostSession: &v1alpha1.HostSession{LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("10.1.0.0/24")}}, VNI: 100, VXLanPort: new(int32(4789))}},
@@ -103,7 +133,16 @@ func TestAPItoHostConfig(t *testing.T) {
 			underlays: []v1alpha1.Underlay{
 				{
 					Spec: v1alpha1.UnderlaySpec{
-						Nics: []string{"eth0", "eth1"},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          "NetworkDevice",
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+							{
+								Type:          "NetworkDevice",
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth1"},
+							},
+						},
 						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
 							CIDRs: []string{"10.0.0.0/24"},
 						},
@@ -157,7 +196,7 @@ func TestAPItoHostConfig(t *testing.T) {
 			nodeIndex: 0,
 			targetNS:  "namespace",
 			underlays: []v1alpha1.Underlay{
-				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth0"}, TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: []string{"10.0.0.0/24"}}}},
+				{Spec: v1alpha1.UnderlaySpec{Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}}, TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: []string{"10.0.0.0/24"}}}},
 			},
 			vnis: []v1alpha1.L3VNI{
 				{Spec: v1alpha1.L3VNISpec{VRF: "red", HostSession: &v1alpha1.HostSession{LocalCIDR: v1alpha1.LocalCIDRConfig{IPv6: new("2001:db8::/64")}}, VNI: 100, VXLanPort: new(int32(4789))}},
@@ -195,7 +234,7 @@ func TestAPItoHostConfig(t *testing.T) {
 			nodeIndex: 0,
 			targetNS:  "namespace",
 			underlays: []v1alpha1.Underlay{
-				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth0"}, TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: []string{"10.0.0.0/24"}}}},
+				{Spec: v1alpha1.UnderlaySpec{Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}}, TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: []string{"10.0.0.0/24"}}}},
 			},
 			vnis: []v1alpha1.L3VNI{
 				{Spec: v1alpha1.L3VNISpec{VRF: "red", HostSession: &v1alpha1.HostSession{LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("10.1.0.0/24"), IPv6: new("2001:db8::/64")}}, VNI: 100, VXLanPort: new(int32(4789))}},
@@ -235,7 +274,7 @@ func TestAPItoHostConfig(t *testing.T) {
 			nodeIndex: 0,
 			targetNS:  "namespace",
 			underlays: []v1alpha1.Underlay{
-				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth0"}, TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: []string{"10.0.0.0/24"}}}},
+				{Spec: v1alpha1.UnderlaySpec{Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}}, TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: []string{"10.0.0.0/24"}}}},
 			},
 			vnis: []v1alpha1.L3VNI{},
 			l2vnis: []v1alpha1.L2VNI{
@@ -270,7 +309,7 @@ func TestAPItoHostConfig(t *testing.T) {
 			nodeIndex: 0,
 			targetNS:  "namespace",
 			underlays: []v1alpha1.Underlay{
-				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth0"}, TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: []string{"10.0.0.0/24"}}}},
+				{Spec: v1alpha1.UnderlaySpec{Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}}, TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: []string{"10.0.0.0/24"}}}},
 			},
 			vnis: []v1alpha1.L3VNI{},
 			l2vnis: []v1alpha1.L2VNI{
@@ -310,7 +349,7 @@ func TestAPItoHostConfig(t *testing.T) {
 			nodeIndex: 0,
 			targetNS:  "namespace",
 			underlays: []v1alpha1.Underlay{
-				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth0"}, TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: []string{"10.0.0.0/24"}}}},
+				{Spec: v1alpha1.UnderlaySpec{Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}}, TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: []string{"10.0.0.0/24"}}}},
 			},
 			vnis: []v1alpha1.L3VNI{},
 			l2vnis: []v1alpha1.L2VNI{
@@ -345,7 +384,7 @@ func TestAPItoHostConfig(t *testing.T) {
 			nodeIndex: 0,
 			targetNS:  "namespace",
 			underlays: []v1alpha1.Underlay{
-				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth0"}, TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: []string{"10.0.0.0/24"}}}},
+				{Spec: v1alpha1.UnderlaySpec{Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}}, TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: []string{"10.0.0.0/24"}}}},
 			},
 			vnis: []v1alpha1.L3VNI{
 				{Spec: v1alpha1.L3VNISpec{VRF: "red", VNI: 100, VXLanPort: new(int32(4789))}},
@@ -380,7 +419,7 @@ func TestAPItoHostConfig(t *testing.T) {
 			nodeIndex: 0,
 			targetNS:  "namespace",
 			underlays: []v1alpha1.Underlay{
-				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth0"}}},
+				{Spec: v1alpha1.UnderlaySpec{Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}}}},
 			},
 			vnis:          []v1alpha1.L3VNI{},
 			l2vnis:        []v1alpha1.L2VNI{},
@@ -399,7 +438,7 @@ func TestAPItoHostConfig(t *testing.T) {
 			nodeIndex: 0,
 			targetNS:  "namespace",
 			underlays: []v1alpha1.Underlay{
-				{Spec: v1alpha1.UnderlaySpec{Nics: []string{"eth0"}}},
+				{Spec: v1alpha1.UnderlaySpec{Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}}}},
 			},
 			vnis:   []v1alpha1.L3VNI{},
 			l2vnis: []v1alpha1.L2VNI{},
@@ -440,7 +479,7 @@ func TestAPItoHostConfig(t *testing.T) {
 			underlays: []v1alpha1.Underlay{
 				{
 					Spec: v1alpha1.UnderlaySpec{
-						Nics: []string{"eth0"},
+						Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
 						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
 							CIDRs: []string{
 								"192.168.2.0/24",
@@ -472,7 +511,7 @@ func TestAPItoHostConfig(t *testing.T) {
 			underlays: []v1alpha1.Underlay{
 				{
 					Spec: v1alpha1.UnderlaySpec{
-						Nics: []string{"eth0"},
+						Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
 						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
 							CIDRs: []string{
 								"2001:db8:192:168::/64",
@@ -741,7 +780,12 @@ func TestAPItoHostConfigAddressFamily(t *testing.T) {
 			apiConfig := APIConfigData{
 				Underlays: []v1alpha1.Underlay{{
 					Spec: v1alpha1.UnderlaySpec{
-						Nics:           []string{"eth0"},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          "NetworkDevice",
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+						},
 						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: tt.cidrs},
 					},
 				}},
