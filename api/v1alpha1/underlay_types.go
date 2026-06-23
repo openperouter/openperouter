@@ -55,14 +55,13 @@ type UnderlaySpec struct {
 	// +listType=atomic
 	Neighbors []Neighbor `json:"neighbors,omitempty"` //nolint:kubeapilinter
 
-	// nics is the list of physical nics to move under the PERouter namespace to connect
-	// to external routers. At least one NIC is required.
+	// interfaces is the list of interfaces the router uses for underlay
+	// connectivity. Each entry is a discriminated union describing how the
+	// interface is obtained. At least one interface is required.
 	// +kubebuilder:validation:MinItems=1
-	// +kubebuilder:validation:items:Pattern=`^[a-zA-Z][a-zA-Z0-9._-]*$`
-	// +kubebuilder:validation:items:MaxLength=15
 	// +required
 	// +listType=atomic
-	Nics []string `json:"nics,omitempty"`
+	Interfaces []UnderlayInterface `json:"interfaces,omitempty"`
 
 	// tunnelEndpoint contains tunnel endpoint configuration for the underlay.
 	// +optional
@@ -82,6 +81,49 @@ type UnderlaySpec struct {
 	// srv6 holds the SRv6 configuration. Requires ISIS or Neighbors configuration.
 	// +optional
 	SRV6 *SRV6Config `json:"srv6,omitempty"`
+}
+
+// UnderlayInterfaceType selects how the router obtains an underlay link.
+// It is the discriminator of the UnderlayInterface union and is designed to be
+// extended with future modes (e.g. cni).
+// +kubebuilder:validation:Enum=NetworkDevice
+type UnderlayInterfaceType string
+
+const (
+	// UnderlayInterfaceTypeNetworkDevice moves an existing host network device
+	// into the router netns.
+	UnderlayInterfaceTypeNetworkDevice UnderlayInterfaceType = "NetworkDevice"
+)
+
+// UnderlayInterface defines how the router obtains a single underlay link.
+// Exactly one of the sub-structs must match the type field.
+// The union is designed to be extended with future modes (e.g. cni)
+// for controller-provisioned interfaces.
+//
+// +union
+// +kubebuilder:validation:XValidation:rule="has(self.networkDevice) == (self.type == 'NetworkDevice')",message="type/config mismatch: networkDevice must be set if and only if type is 'NetworkDevice'"
+type UnderlayInterface struct {
+	// type selects how the router obtains this underlay link.
+	// +required
+	// +unionDiscriminator
+	Type UnderlayInterfaceType `json:"type,omitempty"`
+
+	// networkDevice moves an existing host network device into the router netns.
+	// The device can be of any kind (physical NIC, bridge, macvlan, etc.).
+	// Must be set when type is "NetworkDevice".
+	// +optional
+	NetworkDevice *NetworkDevice `json:"networkDevice,omitempty"`
+}
+
+// NetworkDevice moves an existing host network device into the router netns.
+type NetworkDevice struct {
+	// interfaceName is the name of the host network device to move into
+	// the router netns.
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z][a-zA-Z0-9._-]*$`
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=15
+	// +required
+	InterfaceName string `json:"interfaceName,omitempty"`
 }
 
 // GracefulRestartConfig holds BGP Graceful Restart parameters.
