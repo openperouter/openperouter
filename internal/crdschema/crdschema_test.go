@@ -271,8 +271,13 @@ func TestValidateSuccessful(t *testing.T) {
 			name: "Underlay with tunnel endpoint",
 			gvk:  underlayGVK,
 			obj: newUnstructured("Underlay", map[string]any{
-				"asn":            int64(65000),
-				"nics":           []any{"eth0"},
+				"asn": int64(65000),
+				"interfaces": []any{
+					map[string]any{
+						"type":          "NetworkDevice",
+						"networkDevice": map[string]any{"interfaceName": "eth0"},
+					},
+				},
 				"tunnelEndpoint": map[string]any{"cidrs": []any{"10.10.0.0/24"}},
 				"neighbors": []any{
 					map[string]any{
@@ -286,8 +291,13 @@ func TestValidateSuccessful(t *testing.T) {
 			name: "Underlay Neighbor without hostasn",
 			gvk:  underlayGVK,
 			obj: newUnstructured("Underlay", map[string]any{
-				"asn":  int64(65000),
-				"nics": []any{"eth0"},
+				"asn": int64(65000),
+				"interfaces": []any{
+					map[string]any{
+						"type":          "NetworkDevice",
+						"networkDevice": map[string]any{"interfaceName": "eth0"},
+					},
+				},
 				"neighbors": []any{
 					map[string]any{
 						"address": "192.168.1.1",
@@ -300,8 +310,13 @@ func TestValidateSuccessful(t *testing.T) {
 			name: "Underlay Neighbor with different hostasn and asn",
 			gvk:  underlayGVK,
 			obj: newUnstructured("Underlay", map[string]any{
-				"asn":  int64(65000),
-				"nics": []any{"eth0"},
+				"asn": int64(65000),
+				"interfaces": []any{
+					map[string]any{
+						"type":          "NetworkDevice",
+						"networkDevice": map[string]any{"interfaceName": "eth0"},
+					},
+				},
 				"neighbors": []any{
 					map[string]any{
 						"address": "192.168.1.1",

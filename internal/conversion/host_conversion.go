@@ -31,15 +31,18 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig APIConfigData) (H
 
 	underlay := apiConfig.Underlays[0]
 
-	if len(underlay.Spec.Nics) == 0 {
+	if len(underlay.Spec.Interfaces) == 0 {
 		return res, fmt.Errorf("underlay interface must be specified")
 	}
 
+	underlayInterfaces, err := underlayNetworkDeviceInterfaceNames(underlay.Spec.Interfaces)
+	if err != nil {
+		return res, err
+	}
 	res.Underlay = hostnetwork.UnderlayParams{
 		TargetNS:           targetNS,
-		UnderlayInterfaces: make([]string, len(underlay.Spec.Nics)),
+		UnderlayInterfaces: underlayInterfaces,
 	}
-	copy(res.Underlay.UnderlayInterfaces, underlay.Spec.Nics)
 
 	if len(apiConfig.L3Passthrough) == 1 {
 		vethIPs, err := ipam.VethIPsFromPool(apiConfig.L3Passthrough[0].Spec.HostSession.LocalCIDR.IPv4, apiConfig.L3Passthrough[0].Spec.HostSession.LocalCIDR.IPv6, nodeIndex)
@@ -252,4 +255,26 @@ func ipNetToString(ipNet net.IPNet) string {
 		return ""
 	}
 	return ipNet.String()
+}
+
+// underlayNetworkDeviceInterfaceNames extracts the host interface names from the underlay
+// interfaces list. Only the NetworkDevice mode is supported today; entries
+// without a NetworkDevice (or with an empty interface name) are skipped.
+func underlayNetworkDeviceInterfaceNames(interfaces []v1alpha1.UnderlayInterface) ([]string, error) {
+	names := make([]string, 0, len(interfaces))
+	for _, iface := range interfaces {
+		if iface.Type != v1alpha1.UnderlayInterfaceTypeNetworkDevice {
+			continue
+		}
+		if iface.NetworkDevice == nil {
+			return nil, fmt.Errorf("networkDevice configuration is missing for interface type NetworkDevice")
+		}
+
+		if iface.NetworkDevice.InterfaceName == "" {
+			return nil, fmt.Errorf("interfaceName is empty for networkDevice")
+		}
+
+		names = append(names, iface.NetworkDevice.InterfaceName)
+	}
+	return names, nil
 }
