@@ -144,6 +144,9 @@ $ scp -r <target node>/openperouter-inspect-host ./<target node>-perouter-inspec
 # troubleshooting kind cluster node running OpenPERouter on host mode
 $ docker exec pe-kind-worker -i bash <<< $(cat inspect_host)
 $ docker cp pe-kind-worker:/openperouter-inspect-host ./pe-kind-worker-inspect-host
+
+# via global make, artifacts stored at /tmp/$NODE-inspect
+$ make inspect-host NODE=pe-kind-worker
 ```
 
 ## Output
