@@ -66,9 +66,13 @@ spec:
   tunnelEndpoint:
     cidrs:
     - 100.65.0.0/24
-  nics:
-    - eno1
-    - eno2
+  interfaces:
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: eno1
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: eno2
   neighbors:
     - asn: 64500
       address: 192.168.10.1
@@ -87,9 +91,13 @@ spec:
   tunnelEndpoint:
     cidrs:
     - 100.65.0.0/24
-  nics:
-    - em1
-    - em2
+  interfaces:
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: em1
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: em2
   neighbors:
     - asn: 64500
       address: 192.168.10.1

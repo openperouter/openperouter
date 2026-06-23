@@ -22,8 +22,10 @@ metadata:
   namespace: openperouter-system
 spec:
   asn: 64514
-  nics:
-    - toswitch
+  interfaces:
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: toswitch
   neighbors:
     - asn: 64512
       address: 192.168.11.2
@@ -34,7 +36,7 @@ spec:
 | Field | Type | Description | Required |
 |-------|------|-------------|----------|
 | `asn` | integer | Local ASN for BGP sessions | Yes |
-| `nics` | array | List of network interface names to move to router namespace | Yes |
+| `interfaces` | array | List of underlay interfaces to use for connectivity. Each entry is a discriminated union; today only the `NetworkDevice` type is supported, which moves an existing host network device into the router namespace | Yes |
 | `neighbors` | array | List of BGP neighbors to peer with | Yes |
 | `nodeSelector` | object | Label selector to target specific nodes (applies to all nodes if omitted) | No |
 
