@@ -168,7 +168,7 @@ func TestParityDefaults(t *testing.T) {
 					Neighbors: []v1alpha1.Neighbor{
 						{ASN: new(int64(65200)), Address: new("10.0.0.1")},
 					},
-					Nics: []string{"eth0"},
+					Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
 					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
 						CIDRs: []string{"10.100.0.0/24"},
 					},
@@ -289,7 +289,7 @@ func TestParityRoundTrip(t *testing.T) {
 							},
 						},
 					},
-					Nics: []string{"eth0", "eth1"},
+					Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}, {Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth1"}}},
 					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
 						CIDRs: []string{"10.100.0.0/24"},
 					},
