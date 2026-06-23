@@ -31,8 +31,10 @@ const (
 // staticUnderlayYAML is a minimal underlay for static mirroring tests.
 var staticUnderlayYAML = fmt.Sprintf(`underlays:
   - asn: %d
-    nics:
-      - toswitch
+    interfaces:
+      - type: NetworkDevice
+        networkDevice:
+          interfaceName: toswitch
     neighbors:
       - asn: 64512
         address: "192.168.11.2"
@@ -201,8 +203,10 @@ var _ = Describe("Mirror static config to Kubernetes", Label("systemdmode"), Ord
 			if u.Spec.ASN != infra.Underlay.Spec.ASN {
 				return fmt.Errorf("mirrored underlay %s has ASN %d, expected %d", u.Name, u.Spec.ASN, infra.Underlay.Spec.ASN)
 			}
-			if len(u.Spec.Nics) != 1 || u.Spec.Nics[0] != "toswitch" {
-				return fmt.Errorf("mirrored underlay %s has nics %v, expected [toswitch]", u.Name, u.Spec.Nics)
+			if len(u.Spec.Interfaces) != 1 ||
+				u.Spec.Interfaces[0].NetworkDevice == nil ||
+				u.Spec.Interfaces[0].NetworkDevice.InterfaceName != "toswitch" {
+				return fmt.Errorf("mirrored underlay %s has interfaces %v, expected a single NetworkDevice toswitch", u.Name, u.Spec.Interfaces)
 			}
 			if len(u.Spec.Neighbors) != 1 || u.Spec.Neighbors[0].Address == nil || *u.Spec.Neighbors[0].Address != "192.168.11.2" {
 				return fmt.Errorf("mirrored underlay %s has unexpected neighbors", u.Name)
@@ -532,7 +536,12 @@ var _ = Describe("Mirror static config to Kubernetes", Label("systemdmode"), Ord
 								Address: new("192.168.99.2"),
 							},
 						},
-						Nics: []string{"eth0"},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          "NetworkDevice",
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+						},
 						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
 							CIDRs: []string{"100.66.0.0/24"},
 						},

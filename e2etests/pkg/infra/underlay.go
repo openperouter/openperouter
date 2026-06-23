@@ -8,7 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// We want to use the same Nics for all underlays wherever possible. The reason is that if the underlay is
+// We want to use the same Interfaces for all underlays wherever possible. The reason is that if the underlay is
 // updated and if the interfaces change, the OpenPERouter will be forced to trigger a rebuild of the underlay
 // that leads to the teardown and recreation of the router pod. This can lead to issues with E2E tests which often
 // list the existing router pods in the BeforeAll() sections and the executors of which will then fail.
@@ -18,7 +18,17 @@ import (
 //		return UnderlayExistsError(fmt.Sprintf(
 //			"existing underlay found: %s, new interfaces are %v", name, params.UnderlayInterfaces))
 //	 }
-var defaultNics = []string{"toswitch1", "toswitch2"}
+
+var defaultInterfaces = []v1alpha1.UnderlayInterface{
+	{
+		Type:          "NetworkDevice",
+		NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch1"},
+	},
+	{
+		Type:          "NetworkDevice",
+		NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch2"},
+	},
+}
 
 // Underlay is the multi-session configuration with multiple interfaces and neighbors
 var Underlay = v1alpha1.Underlay{
@@ -27,8 +37,8 @@ var Underlay = v1alpha1.Underlay{
 		Namespace: openperouter.Namespace,
 	},
 	Spec: v1alpha1.UnderlaySpec{
-		ASN:  64514,
-		Nics: defaultNics,
+		ASN:        64514,
+		Interfaces: defaultInterfaces,
 		Neighbors: []v1alpha1.Neighbor{
 			{
 				ASN:     new(int64(64512)),
@@ -51,8 +61,8 @@ var UnderlayIPv6 = v1alpha1.Underlay{
 		Namespace: openperouter.Namespace,
 	},
 	Spec: v1alpha1.UnderlaySpec{
-		ASN:  64514,
-		Nics: defaultNics,
+		ASN:        64514,
+		Interfaces: defaultInterfaces,
 		Neighbors: []v1alpha1.Neighbor{
 			{
 				ASN:     new(int64(64512)),
@@ -75,8 +85,13 @@ var UnderlayUnnumbered = v1alpha1.Underlay{
 		Namespace: openperouter.Namespace,
 	},
 	Spec: v1alpha1.UnderlaySpec{
-		ASN:  64514,
-		Nics: []string{"toleafkind1"},
+		ASN: 64514,
+		Interfaces: []v1alpha1.UnderlayInterface{
+			{
+				Type:          "NetworkDevice",
+				NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toleafkind1"},
+			},
+		},
 		Neighbors: []v1alpha1.Neighbor{
 			{
 				ASN:       new(int64(64512)),
@@ -95,8 +110,8 @@ var UnderlaySRv6 = v1alpha1.Underlay{
 		Namespace: openperouter.Namespace,
 	},
 	Spec: v1alpha1.UnderlaySpec{
-		ASN:  64514,
-		Nics: defaultNics,
+		ASN:        64514,
+		Interfaces: defaultInterfaces,
 		Neighbors: []v1alpha1.Neighbor{
 			{
 				ASN:          new(int64(64520)),
@@ -135,8 +150,8 @@ var UnderlayEVPNandSRv6 = v1alpha1.Underlay{
 		Namespace: openperouter.Namespace,
 	},
 	Spec: v1alpha1.UnderlaySpec{
-		ASN:  64514,
-		Nics: defaultNics,
+		ASN:        64514,
+		Interfaces: defaultInterfaces,
 		Neighbors: []v1alpha1.Neighbor{
 			// leafA - use automatically derived address families.
 			{
