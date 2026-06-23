@@ -125,8 +125,10 @@ spec:
     ebgpMultiHop: true
   - asn: 64512
     address: 192.168.11.2
-  nics:
-  - toswitch1
+  interfaces:
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: toswitch1
   routeridcidr: 10.0.0.0/24
   isis:
     baseNet: "49.0001.0002.0003.0004.00"
