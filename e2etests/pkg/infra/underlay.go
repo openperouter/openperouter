@@ -15,8 +15,17 @@ var Underlay = v1alpha1.Underlay{
 		Namespace: openperouter.Namespace,
 	},
 	Spec: v1alpha1.UnderlaySpec{
-		ASN:  64514,
-		Nics: []string{"toswitch1", "toswitch2"},
+		ASN: 64514,
+		Interfaces: []v1alpha1.UnderlayInterface{
+			{
+				Type:          "NetworkDevice",
+				NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch1"},
+			},
+			{
+				Type:          "NetworkDevice",
+				NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch2"},
+			},
+		},
 		Neighbors: []v1alpha1.Neighbor{
 			{
 				ASN:     new(int64(64512)),
@@ -39,8 +48,17 @@ var UnderlayIPv6 = v1alpha1.Underlay{
 		Namespace: openperouter.Namespace,
 	},
 	Spec: v1alpha1.UnderlaySpec{
-		ASN:  64514,
-		Nics: []string{"toswitch1", "toswitch2"},
+		ASN: 64514,
+		Interfaces: []v1alpha1.UnderlayInterface{
+			{
+				Type:          "NetworkDevice",
+				NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch1"},
+			},
+			{
+				Type:          "NetworkDevice",
+				NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch2"},
+			},
+		},
 		Neighbors: []v1alpha1.Neighbor{
 			{
 				ASN:     new(int64(64512)),
@@ -63,8 +81,13 @@ var UnderlayUnnumbered = v1alpha1.Underlay{
 		Namespace: openperouter.Namespace,
 	},
 	Spec: v1alpha1.UnderlaySpec{
-		ASN:  64514,
-		Nics: []string{"toleafkind1"},
+		ASN: 64514,
+		Interfaces: []v1alpha1.UnderlayInterface{
+			{
+				Type:          "NetworkDevice",
+				NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toleafkind1"},
+			},
+		},
 		Neighbors: []v1alpha1.Neighbor{
 			{
 				ASN:       new(int64(64512)),

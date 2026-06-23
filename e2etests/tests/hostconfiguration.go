@@ -46,8 +46,8 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 			Namespace: openperouter.Namespace,
 		},
 		Spec: v1alpha1.UnderlaySpec{
-			ASN:  64514,
-			Nics: []string{"toswitch1"},
+			ASN:        64514,
+			Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch1"}}},
 			Neighbors: []v1alpha1.Neighbor{
 				{
 					ASN:     new(int64(64517)),
@@ -415,7 +415,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 			validate(resources.Underlays[0].Spec.TunnelEndpoint)
 
 			ginkgo.By("editing the underlay nic (to non existent one)")
-			resources.Underlays[0].Spec.Nics[0] = "foo"
+			resources.Underlays[0].Spec.Interfaces[0].NetworkDevice.InterfaceName = "foo"
 			err = Updater.Update(resources)
 			Expect(err).NotTo(HaveOccurred())
 

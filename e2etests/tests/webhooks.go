@@ -602,8 +602,8 @@ var _ = Describe("Webhooks", func() {
 					Namespace: openperouter.Namespace,
 				},
 				Spec: v1alpha1.UnderlaySpec{
-					ASN:  65000,
-					Nics: []string{"nic1"},
+					ASN:        65000,
+					Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "nic1"}}},
 					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
 						CIDRs: []string{"notacidr"},
 					},
@@ -621,8 +621,8 @@ var _ = Describe("Webhooks", func() {
 					Namespace: openperouter.Namespace,
 				},
 				Spec: v1alpha1.UnderlaySpec{
-					ASN:  65000,
-					Nics: []string{"nic1", "nic2"},
+					ASN:        65000,
+					Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "nic1"}}, {Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "nic2"}}},
 					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
 						CIDRs: []string{"192.168.1.0/24"},
 					},
@@ -661,8 +661,8 @@ var _ = Describe("Webhooks", func() {
 					Namespace: openperouter.Namespace,
 				},
 				Spec: v1alpha1.UnderlaySpec{
-					ASN:  65000,
-					Nics: []string{"nic1"},
+					ASN:        65000,
+					Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "nic1"}}},
 					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
 						CIDRs: []string{"192.168.1.0/24"},
 					},
@@ -693,8 +693,8 @@ var _ = Describe("Webhooks", func() {
 							Namespace: openperouter.Namespace,
 						},
 						Spec: v1alpha1.UnderlaySpec{
-							ASN:  65001,
-							Nics: []string{"nic2"},
+							ASN:        65001,
+							Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "nic2"}}},
 							TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
 								CIDRs: []string{"192.168.2.0/24"},
 							},
@@ -714,8 +714,8 @@ var _ = Describe("Webhooks", func() {
 							Namespace: openperouter.Namespace,
 						},
 						Spec: v1alpha1.UnderlaySpec{
-							ASN:  65000,
-							Nics: []string{"nic1"},
+							ASN:        65000,
+							Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "nic1"}}},
 							TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
 								CIDRs: []string{"notacidr"},
 							},
