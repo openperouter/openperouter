@@ -2,4 +2,4 @@
 
 | Tool | Description |
 |------|-------------|
-| [inspect/](inspect/) | Collect OpenPERouter deployment state for debugging (`make inspect`) |
+| [inspect/](inspect/) | Collect OpenPERouter deployment state for debugging (`make inspect`, `make inspect-host`) |

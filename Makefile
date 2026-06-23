@@ -668,3 +668,12 @@ INSPECT_DIR ?= /tmp/openperouter-inspect
 .PHONY: inspect
 inspect:
 	tools/inspect/inspect --k8s-client=$(KUBECTL) --dest-dir=$(INSPECT_DIR)
+
+HOST_INSPECT_DIR = /openperouter-inspect-host
+.PHONY: inspect-host
+inspect-host:
+	@ ! test -n "$(NODE)" && echo "target node is not set, make sure to pass NODE argument" && exit 1; \
+	NODE_INSPECT_DIR="/tmp/$(NODE)-inspect"; \
+	$(CONTAINER_ENGINE) exec -i $(NODE) bash <<< $$(cat tools/inspect/inspect_host); \
+	$(CONTAINER_ENGINE) cp $(NODE):$(HOST_INSPECT_DIR) $$NODE_INSPECT_DIR; \
+	echo "Inspect node $(NODE) completed. Artifacts are stored at $$NODE_INSPECT_DIR"

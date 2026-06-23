@@ -116,7 +116,7 @@ $ tree /tmp/openperouter-inspect/
 ## Inspect OpenPERouter nodes when running on systemd mode
 
 When OpenPERouter runs on systemd mode, related info cannot be collected via cluster API as the router container is not
-managed by the cluster, 
+managed by the cluster. 
 
 `inspect_host` can be used for collecting related info by executing the script directly on the target node.
 
@@ -137,4 +137,25 @@ $ scp -r <target node>/openperouter-inspect-host ./<target node>-perouter-inspec
 # troubleshooting kind cluster node running OpenPERouter on host mode
 $ docker exec pe-kind-worker -i bash <<< $(cat inspect_host)
 $ docker cp pe-kind-worker:/openperouter-inspect-host ./pe-kind-worker-inspect-host
+
+# via global make, artifacts stored at /tmp/$NODE-inspect
+$ make inspect-host NODE=pe-kind-worker
+```
+
+Example:
+```bash
+$ kubectl get no
+NAME                    STATUS   ROLES           AGE     VERSION
+pe-kind-control-plane   Ready    control-plane   3h20m   v1.32.2
+pe-kind-worker          Ready    <none>          3h20m   v1.32.2
+
+$ make inspect-host NODE=pe-kind-worker
+
+$ tree /tmp/pe-kind-worker-inspect/
+pe-kind-worker-inspect/
+├── config_files.log
+├── root_netns_info.log
+├── router_info_podman_quadlet.log
+└── configs
+    └── node-config.yaml
 ```
