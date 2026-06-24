@@ -31,15 +31,12 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig APIConfigData) (H
 
 	underlay := apiConfig.Underlays[0]
 
-	if len(underlay.Spec.Nics) == 0 {
-		return res, fmt.Errorf("underlay interface must be specified")
-	}
-
 	res.Underlay = hostnetwork.UnderlayParams{
-		TargetNS:           targetNS,
-		UnderlayInterfaces: make([]string, len(underlay.Spec.Nics)),
+		TargetNS: targetNS,
 	}
-	copy(res.Underlay.UnderlayInterfaces, underlay.Spec.Nics)
+	if err := underlayInterfacesToHost(nodeIndex, underlay, &apiConfig, &res.Underlay); err != nil {
+		return res, err
+	}
 
 	if len(apiConfig.L3Passthrough) == 1 {
 		vethIPs, err := ipam.VethIPsFromPool(apiConfig.L3Passthrough[0].Spec.HostSession.LocalCIDR.IPv4, apiConfig.L3Passthrough[0].Spec.HostSession.LocalCIDR.IPv6, nodeIndex)
@@ -115,6 +112,50 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig APIConfigData) (H
 	}
 
 	return res, nil
+}
+
+// underlayCNIIfName is the interface name created inside the router netns when
+// the underlay is provisioned from a NetworkAttachmentDefinition.
+const underlayCNIIfName = "underlay0"
+
+// underlayInterfacesToHost fills the interface portion of UnderlayParams either
+// from physical nics (moved into the namespace) or from a
+// NetworkAttachmentDefinition (provisioned via CNI). For the NAD path, when
+// cidrs are configured the per-node IPs are computed from them and handed to the
+// IPAM plugin via the CNI "ips" capability (the NAD must declare
+// `capabilities.ips=true` and an IPAM that honours it, e.g. static); when no
+// cidrs are configured the NAD config is passed through unchanged and the NAD's
+// own IPAM (e.g. dhcp) assigns the address.
+func underlayInterfacesToHost(nodeIndex int, underlay v1alpha1.Underlay, apiConfig *APIConfigData, out *hostnetwork.UnderlayParams) error {
+	nadRef := underlay.Spec.NetworkAttachmentDefinition
+	if nadRef == nil {
+		if len(underlay.Spec.Nics) == 0 {
+			return fmt.Errorf("underlay interface must be specified (nics or networkAttachmentDefinition)")
+		}
+		out.UnderlayInterfaces = make([]string, len(underlay.Spec.Nics))
+		copy(out.UnderlayInterfaces, underlay.Spec.Nics)
+		return nil
+	}
+
+	if apiConfig.UnderlayNAD == nil {
+		return fmt.Errorf("underlay references NetworkAttachmentDefinition %q but its config was not resolved", nadRef.Name)
+	}
+	var addresses []string
+	if len(nadRef.CIDRs) > 0 {
+		ips, err := ipam.UnderlayIPs(nadRef.CIDRs, nodeIndex)
+		if err != nil {
+			return fmt.Errorf("failed to assign underlay ips from cidrs %v: %w", nadRef.CIDRs, err)
+		}
+		addresses = ips
+	}
+	out.CNI = &hostnetwork.UnderlayCNIParams{
+		Config:    []byte(apiConfig.UnderlayNAD.Config),
+		IfName:    underlayCNIIfName,
+		BinDirs:   apiConfig.CNIBinDirs,
+		CacheDir:  apiConfig.CNICacheDir,
+		Addresses: addresses,
+	}
+	return nil
 }
 
 func tunnelEndpointToHost(underlay v1alpha1.Underlay, nodeIndex int) (hostnetwork.UnderlayTunnelEndpointParams, error) {

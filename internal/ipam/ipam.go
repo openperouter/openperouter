@@ -4,6 +4,7 @@ package ipam
 
 import (
 	"fmt"
+	"math/big"
 	"net"
 
 	gocidr "github.com/apparentlymart/go-cidr/cidr"
@@ -74,6 +75,46 @@ func VTEPIp(pool string, index int) (net.IPNet, error) {
 		res.Mask = net.CIDRMask(128, 128)
 	}
 	return res, nil
+}
+
+// UnderlayIPs returns the underlay interface IPs to assign on the ith node,
+// one per pool. The pool's address part marks the start of the allocation, so
+// the ith node gets start+i; the prefix length is preserved so each address is
+// on-link with the segment (suitable for the static CNI IPAM). When the address
+// is the network address (host 0), the allocation starts at host 1 to skip the
+// unusable network address (so "10.0.0.0/24" yields .1, .2, ... while
+// "10.0.0.10/24" yields .10, .11, ... letting callers avoid reserved addresses
+// such as the TOR).
+func UnderlayIPs(pools []string, index int) ([]string, error) {
+	res := make([]string, 0, len(pools))
+	for _, pool := range pools {
+		ip, cidr, err := net.ParseCIDR(pool)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse pool %s: %w", pool, err)
+		}
+		start := ip
+		if ip.Equal(cidr.IP) {
+			start = addToIP(ip, 1)
+		}
+		addr := addToIP(start, index)
+		ones, _ := cidr.Mask.Size()
+		res = append(res, fmt.Sprintf("%s/%d", addr.String(), ones))
+	}
+	return res, nil
+}
+
+// addToIP returns ip incremented by n, preserving the IPv4/IPv6 family.
+func addToIP(ip net.IP, n int) net.IP {
+	isV4 := ip.To4() != nil
+	val := new(big.Int).SetBytes(ip.To16())
+	val.Add(val, big.NewInt(int64(n)))
+	out := val.Bytes()
+	res := make(net.IP, net.IPv6len)
+	copy(res[net.IPv6len-len(out):], out)
+	if isV4 {
+		return res.To4()
+	}
+	return res
 }
 
 // RouterID returns the IP to be used for the router ID on the ith node.

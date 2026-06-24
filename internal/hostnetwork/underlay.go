@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"slices"
 
+	"github.com/openperouter/openperouter/internal/cni"
 	"github.com/openperouter/openperouter/internal/netnamespace"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
@@ -27,6 +29,47 @@ type UnderlayParams struct {
 	UnderlayInterfaces []string                      `json:"underlay_interfaces"`
 	TargetNS           string                        `json:"target_ns"`
 	TunnelEndpoint     *UnderlayTunnelEndpointParams `json:"tunnel_endpoint"`
+	// CNI, when set, provisions the underlay interface inside the namespace by
+	// invoking a CNI configuration (e.g. from a NetworkAttachmentDefinition)
+	// instead of moving a physical nic. Mutually exclusive with UnderlayInterfaces.
+	CNI *UnderlayCNIParams `json:"cni,omitempty"`
+}
+
+// UnderlayCNIParams holds the data needed to provision the underlay interface
+// through a CNI plugin chain directly into the router network namespace.
+type UnderlayCNIParams struct {
+	// Config is the CNI conf/conflist JSON (the NAD .spec.config, unchanged).
+	Config []byte `json:"config"`
+	// IfName is the interface name created inside the namespace.
+	IfName string `json:"if_name"`
+	// BinDirs are the directories searched for CNI plugin binaries.
+	BinDirs []string `json:"bin_dirs"`
+	// CacheDir is libcni's result cache directory.
+	CacheDir string `json:"cache_dir"`
+	// Addresses are the per-node IPs (CIDR notation) handed to the IPAM plugin
+	// via the CNI "ips" capability.
+	Addresses []string `json:"addresses"`
+}
+
+// NodeName, when set (k8s mode), is incorporated into the CNI container ID so
+// the DHCP client identifier (which the dhcp plugin derives from the container
+// ID) is unique per node. Without this every node presents the shared DHCP
+// server the same client-id and they collide onto a single lease. It is set
+// once at startup (see cmd/hostcontroller).
+var NodeName string
+
+// cniContainerIDPrefix is the stable base of the CNI container ID used for the
+// underlay attachment in the router netns (the netns is well-known and singular
+// per node).
+const cniContainerIDPrefix = "perouter-underlay"
+
+// cniContainerID returns the node-scoped CNI container ID for the underlay
+// attachment. Node-scoping keeps the derived DHCP client-id unique per node.
+func cniContainerID() string {
+	if NodeName == "" {
+		return cniContainerIDPrefix
+	}
+	return cniContainerIDPrefix + "-" + NodeName
 }
 
 type UnderlayTunnelEndpointParams struct {
@@ -50,14 +93,24 @@ func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
 	// Check if there are existing underlay interfaces that aren't in the new list.
 	// This means the underlay configuration changed and requires rebuilding
 	// the network namespace.
+	expected := slices.Clone(params.UnderlayInterfaces)
+	if params.CNI != nil {
+		expected = append(expected, params.CNI.IfName)
+	}
 	existingIfaces, err := findInterfacesInGroup(ns, underlayGroupID)
 	if err != nil {
 		return fmt.Errorf("failed to check existing underlay interfaces: %w", err)
 	}
 	for _, name := range existingIfaces {
-		if !slices.Contains(params.UnderlayInterfaces, name) {
+		if !slices.Contains(expected, name) {
 			return UnderlayExistsError(fmt.Sprintf(
-				"existing underlay found: %s, new interfaces are %v", name, params.UnderlayInterfaces))
+				"existing underlay found: %s, new interfaces are %v", name, expected))
+		}
+	}
+
+	if params.CNI != nil {
+		if err := setupUnderlayCNI(ctx, ns, params); err != nil {
+			return fmt.Errorf("failed to setup underlay via cni: %w", err)
 		}
 	}
 
@@ -109,6 +162,133 @@ func (e UnderlayExistsError) Error() string {
 	return string(e)
 }
 
+// setupUnderlayCNI provisions the underlay interface inside the namespace by
+// invoking the CNI configuration, then marks it as an underlay interface so the
+// existing detection/rebuild logic keeps working. It is idempotent: if the
+// interface already exists, the CNI ADD is skipped and, for a DHCP IPAM, the
+// lease is re-established so a freshly (re)started dhcp daemon resumes renewing
+// it (see ensureUnderlayLease).
+func setupUnderlayCNI(ctx context.Context, ns netns.NsHandle, params UnderlayParams) error {
+	alreadyExists := false
+	if err := netnamespace.In(ns, func() error {
+		if _, err := netlink.LinkByName(params.CNI.IfName); err == nil {
+			alreadyExists = true
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	if !alreadyExists {
+		if _, err := cni.Add(ctx, cni.Params{
+			Config:      params.CNI.Config,
+			NetNS:       params.TargetNS,
+			IfName:      params.CNI.IfName,
+			ContainerID: cniContainerID(),
+			BinDirs:     params.CNI.BinDirs,
+			CacheDir:    params.CNI.CacheDir,
+			Addresses:   params.CNI.Addresses,
+		}); err != nil {
+			return err
+		}
+	}
+
+	if err := netnamespace.In(ns, func() error {
+		link, err := netlink.LinkByName(params.CNI.IfName)
+		if err != nil {
+			return fmt.Errorf("failed to get cni underlay interface %s: %w", params.CNI.IfName, err)
+		}
+		if link.Attrs().Group != underlayGroupID {
+			if err := netlink.LinkSetGroup(link, int(underlayGroupID)); err != nil {
+				return fmt.Errorf("failed to set group ID on cni underlay interface %s: %w", params.CNI.IfName, err)
+			}
+		}
+		if err := netlink.LinkSetUp(link); err != nil {
+			return fmt.Errorf("could not set cni underlay interface %s up: %w", params.CNI.IfName, err)
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	// When the interface already existed we skipped CNI ADD, so a DHCP IPAM is
+	// not (re)acquiring its lease. This is the case after a controller or dhcp
+	// daemon restart: the interface lives in the persistent router netns and
+	// outlives the controller, but the freshly started daemon has no record of
+	// the lease and would stop renewing it. Re-establish the lease so the daemon
+	// resumes renewal; it is a no-op for non-DHCP IPAM.
+	if alreadyExists {
+		if err := ensureUnderlayLease(ctx, ns, params); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// ensureUnderlayLease re-establishes a DHCP IPAM lease for an existing
+// CNI-provisioned underlay interface by invoking the IPAM plugin directly (see
+// cni.EnsureIPAM). It is a no-op unless the NAD's IPAM is "dhcp". After the
+// daemon returns the lease, any address drift on the interface is reconciled.
+func ensureUnderlayLease(ctx context.Context, ns netns.NsHandle, params UnderlayParams) error {
+	ipamType, err := cni.IPAMType(params.CNI.Config)
+	if err != nil {
+		return fmt.Errorf("failed to determine underlay ipam type: %w", err)
+	}
+	if ipamType != "dhcp" {
+		return nil
+	}
+	leased, err := cni.EnsureIPAM(ctx, params.CNI.BinDirs, params.TargetNS, cniContainerID(), params.CNI.IfName, params.CNI.Config)
+	if err != nil {
+		return fmt.Errorf("failed to re-establish dhcp lease for %s: %w", params.CNI.IfName, err)
+	}
+	return netnamespace.In(ns, func() error {
+		link, err := netlink.LinkByName(params.CNI.IfName)
+		if err != nil {
+			return fmt.Errorf("failed to get cni underlay interface %s: %w", params.CNI.IfName, err)
+		}
+		return reconcileInterfaceAddress(link, leased)
+	})
+}
+
+// reconcileInterfaceAddress ensures want is the address configured on link,
+// replacing a drifted address. Drift can only occur if the lease was re-acquired
+// so late that the DHCP server already reassigned the old IP; in normal
+// operation the re-acquired lease matches what is on the interface and this is a
+// no-op.
+func reconcileInterfaceAddress(link netlink.Link, want net.IPNet) error {
+	family := netlink.FAMILY_V4
+	if want.IP.To4() == nil {
+		family = netlink.FAMILY_V6
+	}
+	addrs, err := netlink.AddrList(link, family)
+	if err != nil {
+		return fmt.Errorf("failed to list addresses on %s: %w", link.Attrs().Name, err)
+	}
+	wantStr := want.String()
+	for i := range addrs {
+		if addrs[i].IPNet != nil && addrs[i].IPNet.String() == wantStr {
+			return nil // no drift
+		}
+	}
+	slog.Warn("dhcp lease drift on underlay interface, replacing address",
+		"interface", link.Attrs().Name, "leased", wantStr)
+	if err := netlink.AddrReplace(link, &netlink.Addr{IPNet: &want}); err != nil {
+		return fmt.Errorf("failed to set leased address %s on %s: %w", wantStr, link.Attrs().Name, err)
+	}
+	for i := range addrs {
+		a := &addrs[i]
+		if a.IPNet == nil || a.IPNet.String() == wantStr || !a.IP.IsGlobalUnicast() {
+			continue
+		}
+		if err := netlink.AddrDel(link, a); err != nil {
+			slog.Warn("failed to remove stale underlay address",
+				"interface", link.Attrs().Name, "address", a.IPNet.String(), "error", err)
+		}
+	}
+	return nil
+}
+
 func ensureLoopback(ctx context.Context, ns netns.NsHandle, vtepIPs ...string) error {
 	slog.DebugContext(ctx, "setup underlay", "step", "setting up loopback interface")
 	defer slog.DebugContext(ctx, "setup underlay", "step", "loopback interface set up")
@@ -140,9 +320,19 @@ func ensureLoopback(ctx context.Context, ns netns.NsHandle, vtepIPs ...string) e
 }
 
 // RemoveUnderlay removes the underlay state from the named network namespace:
-// it resets the group ID on underlay NICs (so HasUnderlayInterface
-// returns false on the next reconcile) and clears all IP addresses from the VTEP loopback (lo).
-func RemoveUnderlay(targetNS string) error {
+// it deletes any CNI-provisioned underlay interface (via the libcni result
+// cache, since the underlay/NAD config may already be gone), resets the group
+// ID on physical underlay NICs (so HasUnderlayInterface returns false on the
+// next reconcile), and clears all IP addresses from the VTEP loopback (lo).
+func RemoveUnderlay(ctx context.Context, targetNS string, cniBinDirs []string, cniCacheDir string) error {
+	// Tear down a CNI-provisioned underlay interface first. The plugin enters
+	// the target netns itself via CNI_NETNS, so this runs outside In().
+	if cniCacheDir != "" || len(cniBinDirs) > 0 {
+		if err := cni.DelCached(ctx, cniBinDirs, cniCacheDir, cniContainerID()); err != nil {
+			return fmt.Errorf("RemoveUnderlay: failed to delete cni underlay: %w", err)
+		}
+	}
+
 	ns, err := netns.GetFromPath(targetNS)
 	if err != nil {
 		return fmt.Errorf("RemoveUnderlay: failed to find network namespace %s: %w", targetNS, err)

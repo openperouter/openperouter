@@ -15,10 +15,15 @@ kubectl -n frr-k8s-system wait --for=condition=Ready --all pods --timeout 300s
 echo "Waiting for multus pods to be ready"
 kubectl -n kube-system wait --for=condition=Ready --all pods --timeout 300s
 
+# Build the CNI plugins statically (CGO_ENABLED=0). The openperouter router and
+# controller images are Alpine (musl), so a glibc-dynamically-linked plugin
+# fails with "exec: no such file or directory" when the controller invokes it
+# programmatically (the glibc loader is absent in the container).
 TEMP_GOBIN=$(mktemp -d)
-GOBIN=$TEMP_GOBIN go install github.com/containernetworking/plugins/plugins/main/macvlan@${CNI_PLUGINS_VERSION}
-GOBIN=$TEMP_GOBIN go install github.com/containernetworking/plugins/plugins/main/bridge@${CNI_PLUGINS_VERSION}
-GOBIN=$TEMP_GOBIN go install github.com/containernetworking/plugins/plugins/ipam/static@${CNI_PLUGINS_VERSION}
+CGO_ENABLED=0 GOBIN=$TEMP_GOBIN go install github.com/containernetworking/plugins/plugins/main/macvlan@${CNI_PLUGINS_VERSION}
+CGO_ENABLED=0 GOBIN=$TEMP_GOBIN go install github.com/containernetworking/plugins/plugins/main/bridge@${CNI_PLUGINS_VERSION}
+CGO_ENABLED=0 GOBIN=$TEMP_GOBIN go install github.com/containernetworking/plugins/plugins/ipam/static@${CNI_PLUGINS_VERSION}
+CGO_ENABLED=0 GOBIN=$TEMP_GOBIN go install github.com/containernetworking/plugins/plugins/ipam/dhcp@${CNI_PLUGINS_VERSION}
 
 CNI_PATH="/opt/cni/bin"
 
@@ -31,5 +36,6 @@ for NODE in $KIND_NODES; do
   ${CONTAINER_CLI} cp $TEMP_GOBIN/macvlan $NODE:$CNI_PATH/
   ${CONTAINER_CLI} cp $TEMP_GOBIN/bridge $NODE:$CNI_PATH/
   ${CONTAINER_CLI} cp $TEMP_GOBIN/static $NODE:$CNI_PATH/
+  ${CONTAINER_CLI} cp $TEMP_GOBIN/dhcp $NODE:$CNI_PATH/
 done
 

@@ -20,6 +20,16 @@ openperouter:
   hostmode: false
   # -- Multus network annotation to be added to router pods
   multusNetworkAnnotation: ""
+  # -- Directory on the host containing CNI plugin binaries, mounted read-only
+  # into the controller for NAD-backed underlay provisioning.
+  cniBinDir: "/opt/cni/bin"
+  # -- Host directory used by libcni to cache CNI results (must be persistent so
+  # CNI DEL works across controller restarts).
+  cniCacheDir: "/var/lib/cni"
+  # -- Path to the CNI dhcp IPAM plugin to run as a supervised daemon, enabling
+  # NAD-backed underlays whose IPAM is "dhcp". Empty disables the daemon. The
+  # plugin must be present in cniBinDir (e.g. "/opt/cni/bin/dhcp").
+  dhcpBin: ""
   image:
     repository: quay.io/openperouter/router
     tag: ""

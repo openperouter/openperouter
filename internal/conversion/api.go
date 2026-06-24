@@ -13,6 +13,23 @@ type APIConfigData struct {
 	L2VNIs        []v1alpha1.L2VNI
 	L3Passthrough []v1alpha1.L3Passthrough
 	RawFRRConfigs []v1alpha1.RawFRRConfig
+	// UnderlayNAD carries the resolved NetworkAttachmentDefinition config for an
+	// underlay that references one. It is populated by the reconciler (which has
+	// the API client) since conversion is pure.
+	UnderlayNAD *UnderlayNAD
+	// CNIBinDirs and CNICacheDir are the node-level CNI settings used to invoke
+	// (and, on removal, tear down) a NAD-backed underlay interface. They are
+	// always populated by the reconciler so the teardown path has them even when
+	// the underlay (and thus UnderlayNAD) is gone.
+	CNIBinDirs  []string
+	CNICacheDir string
+}
+
+// UnderlayNAD holds the resolved NetworkAttachmentDefinition CNI config for an
+// underlay that references one.
+type UnderlayNAD struct {
+	// Config is the NetworkAttachmentDefinition's .spec.config (CNI JSON).
+	Config string
 }
 
 type HostConfigData struct {
@@ -39,6 +56,15 @@ func MergeAPIConfigs(configs ...APIConfigData) (APIConfigData, error) {
 		merged.L2VNIs = append(merged.L2VNIs, config.L2VNIs...)
 		merged.L3Passthrough = append(merged.L3Passthrough, config.L3Passthrough...)
 		merged.RawFRRConfigs = append(merged.RawFRRConfigs, config.RawFRRConfigs...)
+		if config.UnderlayNAD != nil {
+			merged.UnderlayNAD = config.UnderlayNAD
+		}
+		if len(config.CNIBinDirs) > 0 {
+			merged.CNIBinDirs = config.CNIBinDirs
+		}
+		if config.CNICacheDir != "" {
+			merged.CNICacheDir = config.CNICacheDir
+		}
 	}
 
 	return merged, nil

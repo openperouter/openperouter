@@ -1,0 +1,29 @@
+---
+# NetworkAttachmentDefinition for a DHCP-addressed underlay interface.
+#
+# openperouter passes this CNI configuration through unchanged. Because the
+# Underlay sets no `cidrs`, openperouter does NOT inject the "ips" capability;
+# the NAD's own IPAM ("dhcp") leases the address. The lease is acquired and
+# renewed by the CNI dhcp daemon, which the controller supervises (--dhcp-bin).
+#
+# "master: toswitch1" is the dev-env uplink towards the leaf segment
+# (192.168.11.0/24), where a dnsmasq server (clab node "dhcp1") hands out leases.
+apiVersion: "k8s.cni.cncf.io/v1"
+kind: NetworkAttachmentDefinition
+metadata:
+  name: underlay-dhcp-nad
+  namespace: openperouter-system
+spec:
+  config: |
+    {
+      "cniVersion": "1.0.0",
+      "name": "underlay-dhcp-nad",
+      "plugins": [
+        {
+          "type": "macvlan",
+          "master": "toswitch1",
+          "mode": "bridge",
+          "ipam": { "type": "dhcp" }
+        }
+      ]
+    }

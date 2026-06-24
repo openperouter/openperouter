@@ -351,3 +351,78 @@ func TestVTEPIP(t *testing.T) {
 	}
 
 }
+
+func TestUnderlayIPs(t *testing.T) {
+	tests := []struct {
+		name       string
+		pools      []string
+		index      int
+		expected   []string
+		shouldFail bool
+	}{
+		{
+			"ipv4 node 0",
+			[]string{"192.168.11.0/24"},
+			0,
+			[]string{"192.168.11.1/24"},
+			false,
+		},
+		{
+			"ipv4 node 1",
+			[]string{"192.168.11.0/24"},
+			1,
+			[]string{"192.168.11.2/24"},
+			false,
+		},
+		{
+			"dual stack node 2",
+			[]string{"192.168.11.0/24", "2001:db8:11::/64"},
+			2,
+			[]string{"192.168.11.3/24", "2001:db8:11::3/64"},
+			false,
+		},
+		{
+			"offset start avoids low addresses node 0",
+			[]string{"192.168.11.10/24"},
+			0,
+			[]string{"192.168.11.10/24"},
+			false,
+		},
+		{
+			"offset start avoids low addresses node 1",
+			[]string{"192.168.11.10/24"},
+			1,
+			[]string{"192.168.11.11/24"},
+			false,
+		},
+		{
+			"invalid cidr",
+			[]string{"not-a-cidr"},
+			0,
+			nil,
+			true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			res, err := UnderlayIPs(tc.pools, tc.index)
+			if err != nil && !tc.shouldFail {
+				t.Fatalf("got error %v while should not fail", err)
+			}
+			if err == nil && tc.shouldFail {
+				t.Fatalf("was expecting error, didn't fail")
+			}
+			if tc.shouldFail {
+				return
+			}
+			if len(res) != len(tc.expected) {
+				t.Fatalf("was expecting %v, got %v", tc.expected, res)
+			}
+			for i := range tc.expected {
+				if res[i] != tc.expected[i] {
+					t.Fatalf("index %d: was expecting %s, got %s", i, tc.expected[i], res[i])
+				}
+			}
+		})
+	}
+}

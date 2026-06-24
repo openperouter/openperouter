@@ -1,0 +1,23 @@
+---
+# Underlay that builds its interface from the DHCP NetworkAttachmentDefinition in
+# nad.yaml instead of moving a physical nic.
+#
+# No `cidrs` are set, so openperouter passes the NAD through unchanged and the
+# NAD's "dhcp" IPAM leases the per-node address (no "ips" capability is
+# injected). The leased source IP is accepted by the leaf's BGP listen range
+# (192.168.11.0/24), so the session still establishes.
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: Underlay
+metadata:
+  name: underlay
+  namespace: openperouter-system
+spec:
+  asn: 64514
+  networkAttachmentDefinition:
+    name: underlay-dhcp-nad
+  tunnelEndpoint:
+    cidrs:
+      - 100.65.0.0/24
+  neighbors:
+    - asn: 64512
+      address: 192.168.11.2

@@ -61,6 +61,9 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 		L2VNIs:        validL2VNIs,
 		L3Passthrough: validPassthrough,
 		RawFRRConfigs: apiConfig.RawFRRConfigs,
+		UnderlayNAD:   apiConfig.UnderlayNAD,
+		CNIBinDirs:    apiConfig.CNIBinDirs,
+		CNICacheDir:   apiConfig.CNICacheDir,
 	}
 
 	err = hostConfigurator(ctx, interfacesConfiguration{

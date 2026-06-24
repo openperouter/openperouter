@@ -519,3 +519,60 @@ func TestAPItoHostConfig(t *testing.T) {
 		})
 	}
 }
+
+// TestUnderlayInterfacesToHostNAD covers the NAD-backed underlay paths: when
+// cidrs are set openperouter assigns a per-node IP (handed to IPAM via the "ips"
+// capability); when omitted (e.g. dhcp IPAM) no addresses are produced and the
+// NAD config is passed through unchanged.
+func TestUnderlayInterfacesToHostNAD(t *testing.T) {
+	const nadConfig = `{"cniVersion":"1.0.0","name":"underlay-nad","plugins":[{"type":"macvlan","master":"toswitch1","mode":"bridge","ipam":{"type":"dhcp"}}]}`
+	tests := []struct {
+		name      string
+		cidrs     []string
+		nodeIndex int
+		wantAddrs []string
+	}{
+		{
+			name:      "dhcp (no cidrs) omits addresses",
+			cidrs:     nil,
+			nodeIndex: 1,
+			wantAddrs: nil,
+		},
+		{
+			name:      "static cidrs assign per-node ip",
+			cidrs:     []string{"192.168.11.10/24"},
+			nodeIndex: 1,
+			wantAddrs: []string{"192.168.11.11/24"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			underlay := v1alpha1.Underlay{
+				Spec: v1alpha1.UnderlaySpec{
+					NetworkAttachmentDefinition: &v1alpha1.NADUnderlay{Name: "underlay-nad", CIDRs: tt.cidrs},
+				},
+			}
+			apiConfig := APIConfigData{
+				UnderlayNAD: &UnderlayNAD{Config: nadConfig},
+				CNIBinDirs:  []string{"/opt/cni/bin"},
+				CNICacheDir: "/var/lib/cni",
+			}
+			out := hostnetwork.UnderlayParams{}
+			if err := underlayInterfacesToHost(tt.nodeIndex, underlay, &apiConfig, &out); err != nil {
+				t.Fatalf("underlayInterfacesToHost() error = %v", err)
+			}
+			if out.CNI == nil {
+				t.Fatalf("expected CNI params to be set")
+			}
+			if !reflect.DeepEqual(out.CNI.Addresses, tt.wantAddrs) {
+				t.Errorf("Addresses = %v, want %v", out.CNI.Addresses, tt.wantAddrs)
+			}
+			if out.CNI.IfName != underlayCNIIfName {
+				t.Errorf("IfName = %q, want %q", out.CNI.IfName, underlayCNIIfName)
+			}
+			if string(out.CNI.Config) != nadConfig {
+				t.Errorf("Config was not passed through unchanged")
+			}
+		})
+	}
+}

@@ -1,0 +1,30 @@
+---
+# Underlay that builds its interface from the NetworkAttachmentDefinition in
+# nad.yaml instead of moving a physical nic.
+#
+# openperouter assigns a per-node IP from cidrs using the static CNI IPAM. The
+# cidr's address part is the start of the allocation, so node index i gets
+# start+i while the prefix keeps the address on-link with the segment:
+#   192.168.11.10/24 -> node 0 = 192.168.11.10, node 1 = 192.168.11.11, ...
+#
+# The start (.10) is chosen to avoid the dev-env addresses on this segment
+# (leaf/TOR=192.168.11.2, node toswitch1=192.168.11.3/.4), so every node gets a
+# collision-free, on-link address regardless of its index — no nodeSelector
+# needed. Use "192.168.11.0/24" if you want the allocation to start at .1.
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: Underlay
+metadata:
+  name: underlay
+  namespace: openperouter-system
+spec:
+  asn: 64514
+  networkAttachmentDefinition:
+    name: underlay-nad
+    cidrs:
+      - 192.168.11.10/24
+  tunnelEndpoint:
+    cidrs:
+      - 100.65.0.0/24
+  neighbors:
+    - asn: 64512
+      address: 192.168.11.2

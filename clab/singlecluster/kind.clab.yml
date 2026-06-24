@@ -63,6 +63,16 @@ topology:
     leafkind2-sw:
       kind: bridge
 
+    # Dev-env DHCP server for the NAD-backed underlay with dhcp IPAM. Sits on the
+    # leafkind1-sw segment and leases addresses to the underlay macvlan in each
+    # router netns.
+    dhcp1:
+      kind: linux
+      image: alpine:3.20
+      binds:
+        - dhcp1/dnsmasq.sh:/dnsmasq.sh
+      cmd: /bin/sh /dnsmasq.sh
+
     pe-kind:
       kind: k8s-kind
       startup-config: ../pe-kind-configuration-registry.yaml
@@ -83,6 +93,8 @@ topology:
     - endpoints: ["leafB:ethblue", "hostB_blue:eth1"]
     - endpoints: ["leafkind1:toswitch1", "leafkind1-sw:leaf1"]
     - endpoints: ["leafkind2:toswitch2", "leafkind2-sw:leaf2"]
+    # Dev-env DHCP server attached to the leafkind1-sw underlay segment.
+    - endpoints: ["dhcp1:eth1", "leafkind1-sw:dhcp1"]
     # Point to point links for IPv6 unnumbered BGP sessions.
     - endpoints: ["leafkind1:tokindworker", "pe-kind-worker:toleafkind1"]
     - endpoints: ["leafkind2:tokindworker", "pe-kind-worker:toleafkind2"]

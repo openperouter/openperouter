@@ -39,7 +39,7 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 			slog.Warn("failed to remove vnis after underlay removal", "err", err)
 		}
 		bridgerefresh.StopAllVNIs()
-		if err := hostnetwork.RemoveUnderlay(config.targetNamespace); err != nil {
+		if err := hostnetwork.RemoveUnderlay(ctx, config.targetNamespace, config.CNIBinDirs, config.CNICacheDir); err != nil {
 			slog.Warn("failed to remove underlay interfaces after underlay removal", "err", err)
 		}
 		return nil
@@ -56,6 +56,9 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 		L3VNIs:        config.L3VNIs,
 		L2VNIs:        config.L2VNIs,
 		L3Passthrough: config.L3Passthrough,
+		UnderlayNAD:   config.UnderlayNAD,
+		CNIBinDirs:    config.CNIBinDirs,
+		CNICacheDir:   config.CNICacheDir,
 	}
 	hostConfig, err := conversion.APItoHostConfig(config.nodeIndex, config.targetNamespace, apiConfig)
 	if err != nil {

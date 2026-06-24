@@ -21,6 +21,7 @@ import (
 )
 
 // UnderlaySpec defines the desired state of Underlay.
+// +kubebuilder:validation:XValidation:rule="has(self.nics) != has(self.networkAttachmentDefinition)",message="exactly one of nics or networkAttachmentDefinition must be set"
 type UnderlaySpec struct {
 	// nodeSelector specifies which nodes this Underlay applies to.
 	// If empty or not specified, applies to all nodes (backward compatible).
@@ -53,13 +54,21 @@ type UnderlaySpec struct {
 	Neighbors []Neighbor `json:"neighbors,omitempty"` //nolint:kubeapilinter
 
 	// nics is the list of physical nics to move under the PERouter namespace to connect
-	// to external routers. At least one NIC is required.
+	// to external routers. Mutually exclusive with networkAttachmentDefinition.
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:items:Pattern=`^[a-zA-Z][a-zA-Z0-9._-]*$`
 	// +kubebuilder:validation:items:MaxLength=15
-	// +required
+	// +optional
 	// +listType=atomic
 	Nics []string `json:"nics,omitempty"`
+
+	// networkAttachmentDefinition creates the underlay interface from a Multus
+	// NetworkAttachmentDefinition (e.g. macvlan/ipvlan) instead of moving a
+	// physical nic. openperouter provisions the interface directly inside the
+	// router network namespace and assigns a per-node IP from the given cidrs
+	// using the static CNI IPAM. Mutually exclusive with nics.
+	// +optional
+	NetworkAttachmentDefinition *NADUnderlay `json:"networkAttachmentDefinition,omitempty"`
 
 	// tunnelEndpoint contains tunnel endpoint configuration for the underlay.
 	// +optional
@@ -107,6 +116,33 @@ type TunnelEndpointConfig struct {
 	// +kubebuilder:validation:XValidation:rule="self.filter(c, isCIDR(c) && cidr(c).ip().family() == 6).size() <= 1",message="at most one IPv6 CIDR is allowed"
 	// +listType=atomic
 	// +required
+	CIDRs []string `json:"cidrs,omitempty"`
+}
+
+// NADUnderlay configures the underlay interface from a NetworkAttachmentDefinition.
+// openperouter invokes the NAD's CNI configuration directly into the router
+// network namespace. When cidrs is set it assigns a per-node IP via the CNI
+// "ips" capability; when cidrs is omitted the NAD's own IPAM (e.g. dhcp) assigns
+// the address.
+type NADUnderlay struct {
+	// name is the name of the NetworkAttachmentDefinition, looked up in the same
+	// namespace as the Underlay, whose CNI configuration creates the interface.
+	// +required
+	Name string `json:"name,omitempty"`
+
+	// cidrs is an optional list of subnets from which openperouter assigns a
+	// per-node IP to the underlay interface (one IP per cidr), handed to the IPAM
+	// plugin via the CNI "ips" capability (the NAD must declare
+	// `capabilities.ips=true` and an IPAM that honours it, e.g. static). When set,
+	// exactly one IPv4 CIDR is required and an optional IPv6 CIDR may also be
+	// specified for dual-stack operation. When omitted, the NAD config is passed
+	// through unchanged and the NAD's own IPAM (e.g. dhcp) assigns the address.
+	// +kubebuilder:validation:MaxItems=2
+	// +kubebuilder:validation:XValidation:rule="self.all(c, isCIDR(c))",message="all entries must be valid CIDRs"
+	// +kubebuilder:validation:XValidation:rule="self.filter(c, isCIDR(c) && cidr(c).ip().family() == 4).size() == 1",message="exactly one IPv4 CIDR is required"
+	// +kubebuilder:validation:XValidation:rule="self.filter(c, isCIDR(c) && cidr(c).ip().family() == 6).size() <= 1",message="at most one IPv6 CIDR is allowed"
+	// +listType=atomic
+	// +optional
 	CIDRs []string `json:"cidrs,omitempty"`
 }
 

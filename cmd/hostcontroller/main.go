@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"time"
 
 	"k8s.io/apimachinery/pkg/labels"
@@ -44,9 +45,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/go-logr/logr"
+	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"github.com/openperouter/openperouter/api/static"
 	periov1alpha1 "github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/buildversion"
+	"github.com/openperouter/openperouter/internal/cnidhcp"
 	"github.com/openperouter/openperouter/internal/controller/routerconfiguration"
 	"github.com/openperouter/openperouter/internal/filewatcher"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
@@ -71,6 +74,7 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(periov1alpha1.AddToScheme(scheme))
+	utilruntime.Must(nadv1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -96,6 +100,9 @@ type parameters struct {
 	nodeName       string
 	namespace      string
 	logLevel       string
+	cniBinDir      string
+	cniCacheDir    string
+	dhcpBin        string
 }
 
 func main() {
@@ -116,6 +123,12 @@ func main() {
 	flag.StringVar(&args.nodeName, "nodename", "", "The name of the node the controller runs on")
 	flag.StringVar(&args.namespace, "namespace", "", "The namespace the controller runs in")
 	flag.StringVar(&k8sModeParams.criSocket, "crisocket", "/containerd.sock", "the location of the cri socket")
+	flag.StringVar(&args.cniBinDir, "cni-bin-dir", "/opt/cni/bin",
+		"colon-separated directories searched for CNI plugin binaries (NAD-backed underlay)")
+	flag.StringVar(&args.cniCacheDir, "cni-cache-dir", "/var/lib/cni",
+		"directory used by libcni to cache CNI results (NAD-backed underlay)")
+	flag.StringVar(&args.dhcpBin, "dhcp-bin", "",
+		"path to the CNI dhcp IPAM plugin, run as a supervised daemon for NAD-backed underlays with dhcp IPAM; empty disables the daemon")
 
 	flag.DurationVar(&hostModeParams.k8sWaitInterval, "k8s-wait-timeout", time.Minute,
 		"K8s API server waiting interval time")
@@ -136,6 +149,8 @@ func main() {
 
 	// Initialize OVS socket path for the hostnetwork package
 	hostnetwork.OVSSocketPath = args.ovsSocketPath
+	// Node-scope the CNI container ID so the DHCP client-id is unique per node.
+	hostnetwork.NodeName = args.nodeName
 
 	logger, err := logging.New(args.logLevel)
 	if err != nil {
@@ -279,6 +294,8 @@ func runK8sConfigReconcilerHostMode(ctx context.Context,
 		RouterProvider:  routerProvider,
 		StaticConfigDir: hostModeParams.configurationDir,
 		NodeConfigPath:  hostModeParams.nodeConfigPath,
+		CNIBinDirs:      filepath.SplitList(args.cniBinDir),
+		CNICacheDir:     args.cniCacheDir,
 		TriggerChan:     triggerChan,
 	}
 
@@ -333,6 +350,23 @@ func runK8sConfigReconciler(ctx context.Context,
 		FRRConfigPath:   args.frrConfigPath,
 		RouterProvider:  routerProvider,
 		MyNamespace:     args.namespace,
+		CNIBinDirs:      filepath.SplitList(args.cniBinDir),
+		CNICacheDir:     args.cniCacheDir,
+	}
+
+	// When a dhcp plugin is configured, supervise it as a daemon and have the
+	// reconciler re-establish leases whenever it (re)starts.
+	if args.dhcpBin != "" {
+		dhcpRestartChan := make(chan event.GenericEvent, 1)
+		apiReconciler.DHCPRestartChan = dhcpRestartChan
+		if err := mgr.Add(&cnidhcp.Supervisor{
+			BinPath:       args.dhcpBin,
+			Broadcast:     true,
+			Logger:        logger,
+			RestartNotify: dhcpRestartChan,
+		}); err != nil {
+			return fmt.Errorf("unable to add dhcp daemon supervisor: %w", err)
+		}
 	}
 
 	if err := apiReconciler.SetupWithManager(mgr); err != nil {

@@ -1,0 +1,29 @@
+---
+# NetworkAttachmentDefinition describing how to build the underlay interface.
+#
+# openperouter passes this CNI configuration through unchanged and supplies the
+# per-node IP (computed from the Underlay's cidrs) at runtime via the CNI "ips"
+# capability. The plugin must therefore declare `"capabilities": {"ips": true}`
+# and an IPAM that honours it -- here a "static" IPAM with no addresses.
+#
+# "master: toswitch1" is the dev-env uplink towards the leaf (192.168.11.2).
+apiVersion: "k8s.cni.cncf.io/v1"
+kind: NetworkAttachmentDefinition
+metadata:
+  name: underlay-nad
+  namespace: openperouter-system
+spec:
+  config: |
+    {
+      "cniVersion": "1.0.0",
+      "name": "underlay-nad",
+      "plugins": [
+        {
+          "type": "macvlan",
+          "master": "toswitch1",
+          "mode": "bridge",
+          "capabilities": { "ips": true },
+          "ipam": { "type": "static" }
+        }
+      ]
+    }

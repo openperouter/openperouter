@@ -32,6 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
+	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/conversion"
 	openpeerrors "github.com/openperouter/openperouter/internal/errors"
@@ -54,8 +55,18 @@ type PERouterReconciler struct {
 	NodeConfigPath  string
 	RouterProvider  RouterProvider
 
+	// CNIBinDirs and CNICacheDir configure the programmatic CNI invocation used
+	// to provision a NAD-backed underlay interface.
+	CNIBinDirs  []string
+	CNICacheDir string
+
 	// TriggerChan receives events from FileWatcher (in host mode)
 	TriggerChan chan event.GenericEvent
+
+	// DHCPRestartChan receives an event whenever the supervised dhcp daemon
+	// (re)starts. A fresh daemon has forgotten all leases, so we re-reconcile
+	// the underlay to re-establish (re-acquire) the DHCP lease before it lapses.
+	DHCPRestartChan chan event.GenericEvent
 }
 
 type requestKey string
@@ -78,6 +89,7 @@ type requestKey string
 // +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=rawfrrconfigs/status,verbs=get
 // +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=routernodeconfigurationstatuses,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=routernodeconfigurationstatuses/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=k8s.cni.cncf.io,resources=network-attachment-definitions,verbs=get;list;watch
 
 func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := r.Logger.With("controller", "RouterConfiguration", "request", req.String())
@@ -270,9 +282,32 @@ func (r *PERouterReconciler) getConfigFromAPI(ctx context.Context, logger *slog.
 		L2VNIs:        filteredL2VNIs,
 		L3Passthrough: filteredL3Passthrough,
 		RawFRRConfigs: filteredRawFRRConfigs,
+		CNIBinDirs:    r.CNIBinDirs,
+		CNICacheDir:   r.CNICacheDir,
+	}
+
+	if err := r.resolveUnderlayNAD(ctx, filteredUnderlays, &apiConfig); err != nil {
+		return conversion.APIConfigData{}, err
 	}
 
 	return apiConfig, nil
+}
+
+// resolveUnderlayNAD fetches the NetworkAttachmentDefinition referenced by the
+// underlay (if any) and records its CNI config, so the conversion can build the
+// underlay interface programmatically.
+func (r *PERouterReconciler) resolveUnderlayNAD(ctx context.Context, underlays []v1alpha1.Underlay, apiConfig *conversion.APIConfigData) error {
+	if len(underlays) != 1 || underlays[0].Spec.NetworkAttachmentDefinition == nil {
+		return nil
+	}
+	nadRef := underlays[0].Spec.NetworkAttachmentDefinition
+	nad := &nadv1.NetworkAttachmentDefinition{}
+	key := client.ObjectKey{Namespace: underlays[0].Namespace, Name: nadRef.Name}
+	if err := r.Get(ctx, key, nad); err != nil {
+		return fmt.Errorf("failed to get NetworkAttachmentDefinition %s: %w", key, err)
+	}
+	apiConfig.UnderlayNAD = &conversion.UnderlayNAD{Config: nad.Spec.Config}
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -339,6 +374,7 @@ func (r *PERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(&v1alpha1.L3Passthrough{}, &handler.EnqueueRequestForObject{}).
 		Watches(&v1alpha1.RawFRRConfig{}, &handler.EnqueueRequestForObject{}).
 		Watches(&v1alpha1.RouterNodeConfigurationStatus{}, &handler.EnqueueRequestForObject{}).
+		Watches(&nadv1.NetworkAttachmentDefinition{}, &handler.EnqueueRequestForObject{}).
 		WithEventFilter(filterNonRouterPods).
 		WithEventFilter(filterLocalNodeStatus).
 		WithEventFilter(filterUpdates).
@@ -349,7 +385,29 @@ func (r *PERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		builder = builder.WatchesRawSource(source.Channel(r.TriggerChan, &handler.EnqueueRequestForObject{}))
 	}
 
+	// Re-establish DHCP underlay leases whenever the dhcp daemon (re)starts.
+	if r.DHCPRestartChan != nil {
+		builder = builder.WatchesRawSource(source.Channel(r.DHCPRestartChan,
+			handler.EnqueueRequestsFromMapFunc(r.enqueueUnderlays)))
+	}
+
 	return builder.Complete(r)
+}
+
+// enqueueUnderlays maps a (daemon restart) trigger to reconcile requests for all
+// underlays, so the reconcile re-establishes their DHCP leases. The triggering
+// object is ignored.
+func (r *PERouterReconciler) enqueueUnderlays(ctx context.Context, _ client.Object) []ctrl.Request {
+	var underlays v1alpha1.UnderlayList
+	if err := r.List(ctx, &underlays); err != nil {
+		r.Logger.Error("failed to list underlays for dhcp restart trigger", "error", err)
+		return nil
+	}
+	requests := make([]ctrl.Request, 0, len(underlays.Items))
+	for i := range underlays.Items {
+		requests = append(requests, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(&underlays.Items[i])})
+	}
+	return requests
 }
 
 func setPodNodeNameIndex(mgr ctrl.Manager) error {

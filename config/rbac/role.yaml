@@ -40,6 +40,14 @@ rules:
   verbs:
   - update
 - apiGroups:
+  - k8s.cni.cncf.io
+  resources:
+  - network-attachment-definitions
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - openpe.openperouter.github.io
   resources:
   - l2vnis
