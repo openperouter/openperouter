@@ -50,7 +50,7 @@ type RawFRRConfigStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:webhook:verbs=create;update,path=/validate-openperouter-io-v1alpha1-rawfrrconfig,mutating=false,failurePolicy=fail,groups=openpe.openperouter.github.io,resources=rawfrrconfigs,versions=v1alpha1,name=rawfrrconfigvalidationwebhook.openperouter.io,sideEffects=None,admissionReviewVersions=v1
+// +kubebuilder:webhook:verbs=create;update,path=/validate-openperouter-io-v1alpha1-rawfrrconfig,mutating=false,failurePolicy=fail,groups=network.openperouter.io,resources=rawfrrconfigs,versions=v1alpha1,name=rawfrrconfigvalidationwebhook.openperouter.io,sideEffects=None,admissionReviewVersions=v1
 
 // RawFRRConfig is the Schema for the rawfrrconfigs API.
 type RawFRRConfig struct {
