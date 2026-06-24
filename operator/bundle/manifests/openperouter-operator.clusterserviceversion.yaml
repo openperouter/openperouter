@@ -14,33 +14,33 @@ spec:
   customresourcedefinitions:
     owned:
     - kind: L2VNI
-      name: l2vnis.openpe.openperouter.github.io
+      name: l2vnis.network.openperouter.io
       version: v1alpha1
     - kind: L3Passthrough
-      name: l3passthroughs.openpe.openperouter.github.io
+      name: l3passthroughs.network.openperouter.io
       version: v1alpha1
     - description: |-
         L3VNI represents a VXLan VNI to receive EVPN type 5 routes
         from.
       displayName: L3VNI
       kind: L3VNI
-      name: l3vnis.openpe.openperouter.github.io
+      name: l3vnis.network.openperouter.io
       version: v1alpha1
     - description: OpenPERouter is the Schema for the openperouters API
       displayName: Open PERouter
       kind: OpenPERouter
-      name: openperouters.openpe.openperouter.github.io
+      name: openperouters.network.openperouter.io
       version: v1alpha1
     - kind: RawFRRConfig
-      name: rawfrrconfigs.openpe.openperouter.github.io
+      name: rawfrrconfigs.network.openperouter.io
       version: v1alpha1
     - kind: RouterNodeConfigurationStatus
-      name: routernodeconfigurationstatuses.openpe.openperouter.github.io
+      name: routernodeconfigurationstatuses.network.openperouter.io
       version: v1alpha1
     - description: Underlay is the Schema for the underlays API.
       displayName: Underlay
       kind: Underlay
-      name: underlays.openpe.openperouter.github.io
+      name: underlays.network.openperouter.io
       version: v1alpha1
   description: An operator for deploying OpenPERouter on a Kubernetes cluster.
   displayName: OpenPERouter Operator
@@ -87,7 +87,7 @@ spec:
           verbs:
           - update
         - apiGroups:
-          - openpe.openperouter.github.io
+          - network.openperouter.io
           resources:
           - l2vnis
           - l3passthroughs
@@ -103,7 +103,7 @@ spec:
           - update
           - watch
         - apiGroups:
-          - openpe.openperouter.github.io
+          - network.openperouter.io
           resources:
           - l2vnis/finalizers
           - l3passthroughs/finalizers
@@ -112,7 +112,7 @@ spec:
           verbs:
           - update
         - apiGroups:
-          - openpe.openperouter.github.io
+          - network.openperouter.io
           resources:
           - l2vnis/status
           - l3passthroughs/status
@@ -124,7 +124,7 @@ spec:
           - patch
           - update
         - apiGroups:
-          - openpe.openperouter.github.io
+          - network.openperouter.io
           resources:
           - rawfrrconfigs
           verbs:
@@ -132,7 +132,7 @@ spec:
           - list
           - watch
         - apiGroups:
-          - openpe.openperouter.github.io
+          - network.openperouter.io
           resources:
           - rawfrrconfigs/status
           verbs:
@@ -140,7 +140,7 @@ spec:
         serviceAccountName: controller
       - rules:
         - apiGroups:
-          - openpe.openperouter.github.io
+          - network.openperouter.io
           resources:
           - openperouters
           verbs:
@@ -152,13 +152,13 @@ spec:
           - update
           - watch
         - apiGroups:
-          - openpe.openperouter.github.io
+          - network.openperouter.io
           resources:
           - openperouters/finalizers
           verbs:
           - update
         - apiGroups:
-          - openpe.openperouter.github.io
+          - network.openperouter.io
           resources:
           - openperouters/status
           verbs:
@@ -370,7 +370,7 @@ spec:
     generateName: l2vnivalidationwebhook.openperouter.io
     rules:
     - apiGroups:
-      - openpe.openperouter.github.io
+      - network.openperouter.io
       apiVersions:
       - v1alpha1
       operations:
@@ -390,7 +390,7 @@ spec:
     generateName: l3passthroughvalidationwebhook.openperouter.io
     rules:
     - apiGroups:
-      - openpe.openperouter.github.io
+      - network.openperouter.io
       apiVersions:
       - v1alpha1
       operations:
@@ -410,7 +410,7 @@ spec:
     generateName: l3vnivalidationwebhook.openperouter.io
     rules:
     - apiGroups:
-      - openpe.openperouter.github.io
+      - network.openperouter.io
       apiVersions:
       - v1alpha1
       operations:
@@ -430,7 +430,7 @@ spec:
     generateName: rawfrrconfigvalidationwebhook.openperouter.io
     rules:
     - apiGroups:
-      - openpe.openperouter.github.io
+      - network.openperouter.io
       apiVersions:
       - v1alpha1
       operations:
@@ -450,7 +450,7 @@ spec:
     generateName: underlayvalidationwebhook.openperouter.io
     rules:
     - apiGroups:
-      - openpe.openperouter.github.io
+      - network.openperouter.io
       apiVersions:
       - v1alpha1
       operations:

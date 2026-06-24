@@ -13,19 +13,19 @@ spec:
     - description: Underlay is the Schema for the underlays API.
       displayName: Underlay
       kind: Underlay
-      name: underlays.openpe.openperouter.github.io
+      name: underlays.network.openperouter.io
       version: v1alpha1
     - description: |-
         L3VNI represents a VXLan VNI to receive EVPN type 5 routes
         from.
       displayName: L3VNI
       kind: L3VNI
-      name: l3vnis.openpe.openperouter.github.io
+      name: l3vnis.network.openperouter.io
       version: v1alpha1
     - description: OpenPERouter is the Schema for the openperouters API
       displayName: Open PERouter
       kind: OpenPERouter
-      name: openperouters.openpe.openperouter.github.io
+      name: openperouters.network.openperouter.io
       version: v1alpha1
   description: An operator for deploying OpenPERouter on a Kubernetes cluster.
   displayName: OpenPERouter Operator
