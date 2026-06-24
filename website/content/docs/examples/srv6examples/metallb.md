@@ -71,7 +71,7 @@ When external traffic reaches the service:
 Configure one L3VPN for each overlay:
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3VPN
 metadata:
   name: red
@@ -89,7 +89,7 @@ spec:
   importRTs:
   - "64520:100"
 ---
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3VPN
 metadata:
   name: blue

@@ -75,7 +75,7 @@ webhooks:
   name: l3vpnsvalidationwebhook.openperouter.io
   rules:
   - apiGroups:
-    - openpe.openperouter.github.io
+    - network.openperouter.io
     apiVersions:
     - v1alpha1
     operations:

@@ -61,7 +61,7 @@ reachable from the broader L3 domain.
 Create the L3VNI and L2VNI resources (in **each** cluster):
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3VNI
 metadata:
   name: red
@@ -70,7 +70,7 @@ spec:
   vni: 100
   vrf: red
 ---
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L2VNI
 metadata:
   name: layer2

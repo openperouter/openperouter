@@ -1,6 +1,6 @@
 ---
 # L3VNI for us-east-1a
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3VNI
 metadata:
   name: tenant-b-east
@@ -18,7 +18,7 @@ spec:
       ipv4: 192.169.3.0/24
 ---
 # L3VNI for us-west-1a
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3VNI
 metadata:
   name: tenant-b-west

@@ -1,6 +1,6 @@
 ---
 # L3VNI for rack-1 nodes
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3VNI
 metadata:
   name: tenant-a-rack-1
@@ -19,7 +19,7 @@ spec:
       ipv4: 192.169.1.0/24
 ---
 # L3VNI for rack-2 nodes
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3VNI
 metadata:
   name: tenant-a-rack-2

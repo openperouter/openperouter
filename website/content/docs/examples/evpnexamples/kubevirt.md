@@ -52,7 +52,7 @@ The example configures both an L2 VNI and an L3 VNI. The L2 VNI belongs to the L
 Create the L3VNI and L2VNI resources:
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3VNI
 metadata:
   name: red
@@ -66,7 +66,7 @@ spec:
     localcidr:
       ipv4: 192.169.10.0/24
 ---
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L2VNI
 metadata:
   name: layer2

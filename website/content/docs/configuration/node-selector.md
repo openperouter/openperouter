@@ -53,7 +53,7 @@ Different NIC naming across vendor hardware:
 
 ```yaml
 # For Dell servers with specific NIC naming
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: Underlay
 metadata:
   name: underlay-dell-hardware
@@ -78,7 +78,7 @@ spec:
       address: 192.168.10.1
 ---
 # For HP servers with different NIC naming
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: Underlay
 metadata:
   name: underlay-hp-hardware
@@ -111,7 +111,7 @@ Different racks use different L3VNIs for network segmentation:
 
 ```yaml
 # L3VNI for rack-1 nodes
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3VNI
 metadata:
   name: tenant-a-rack-1
@@ -130,7 +130,7 @@ spec:
       ipv4: 192.169.1.0/24
 ---
 # L3VNI for rack-2 nodes
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3VNI
 metadata:
   name: tenant-a-rack-2
@@ -155,7 +155,7 @@ Multiple L3VNIs can be configured on the same set of nodes for multi-tenancy:
 
 ```yaml
 # Tenant A VNI on worker nodes
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3VNI
 metadata:
   name: tenant-a-vni
@@ -173,7 +173,7 @@ spec:
       ipv4: 192.169.5.0/24
 ---
 # Tenant B VNI on the same worker nodes
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3VNI
 metadata:
   name: tenant-b-vni
@@ -191,7 +191,7 @@ spec:
       ipv4: 192.169.6.0/24
 ---
 # Tenant C VNI on the same worker nodes
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3VNI
 metadata:
   name: tenant-c-vni
@@ -215,7 +215,7 @@ L2VNI configured only on worker nodes, not control plane:
 
 ```yaml
 # L2VNI for worker nodes only
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L2VNI
 metadata:
   name: app-network
@@ -240,7 +240,7 @@ L3Passthrough configured only on edge nodes that participate in direct BGP fabri
 
 ```yaml
 # L3Passthrough for edge nodes
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3Passthrough
 metadata:
   name: edge-passthrough
