@@ -20,11 +20,11 @@ import (
 )
 
 var (
-	underlayGVK      = schema.GroupVersionKind{Group: "openpe.openperouter.github.io", Version: "v1alpha1", Kind: "Underlay"}
-	l3vniGVK         = schema.GroupVersionKind{Group: "openpe.openperouter.github.io", Version: "v1alpha1", Kind: "L3VNI"}
-	l2vniGVK         = schema.GroupVersionKind{Group: "openpe.openperouter.github.io", Version: "v1alpha1", Kind: "L2VNI"}
-	l3passthroughGVK = schema.GroupVersionKind{Group: "openpe.openperouter.github.io", Version: "v1alpha1", Kind: "L3Passthrough"}
-	rawFRRConfigGVK  = schema.GroupVersionKind{Group: "openpe.openperouter.github.io", Version: "v1alpha1", Kind: "RawFRRConfig"}
+	underlayGVK      = schema.GroupVersionKind{Group: "network.openperouter.io", Version: "v1alpha1", Kind: "Underlay"}
+	l3vniGVK         = schema.GroupVersionKind{Group: "network.openperouter.io", Version: "v1alpha1", Kind: "L3VNI"}
+	l2vniGVK         = schema.GroupVersionKind{Group: "network.openperouter.io", Version: "v1alpha1", Kind: "L2VNI"}
+	l3passthroughGVK = schema.GroupVersionKind{Group: "network.openperouter.io", Version: "v1alpha1", Kind: "L3Passthrough"}
+	rawFRRConfigGVK  = schema.GroupVersionKind{Group: "network.openperouter.io", Version: "v1alpha1", Kind: "RawFRRConfig"}
 )
 
 func readStaticConfigs(configDir string) (conversion.APIConfigData, error) {
@@ -58,7 +58,7 @@ func staticConfigToAPIConfig(staticConfig *static.PERouterConfig) (conversion.AP
 		underlays[i] = v1alpha1.Underlay{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "Underlay",
-				APIVersion: "openpe.openperouter.github.io/v1alpha1",
+				APIVersion: "network.openperouter.io/v1alpha1",
 			},
 			ObjectMeta: metav1.ObjectMeta{
 				Name: fmt.Sprintf("static-underlay-%d", i),
@@ -78,7 +78,7 @@ func staticConfigToAPIConfig(staticConfig *static.PERouterConfig) (conversion.AP
 		l3vnis[i] = v1alpha1.L3VNI{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "L3VNI",
-				APIVersion: "openpe.openperouter.github.io/v1alpha1",
+				APIVersion: "network.openperouter.io/v1alpha1",
 			},
 			ObjectMeta: metav1.ObjectMeta{
 				Name: fmt.Sprintf("static-l3vni-%d", i),
@@ -98,7 +98,7 @@ func staticConfigToAPIConfig(staticConfig *static.PERouterConfig) (conversion.AP
 		l2vnis[i] = v1alpha1.L2VNI{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "L2VNI",
-				APIVersion: "openpe.openperouter.github.io/v1alpha1",
+				APIVersion: "network.openperouter.io/v1alpha1",
 			},
 			ObjectMeta: metav1.ObjectMeta{
 				Name: fmt.Sprintf("static-l2vni-%d", i),
@@ -118,7 +118,7 @@ func staticConfigToAPIConfig(staticConfig *static.PERouterConfig) (conversion.AP
 		pt := v1alpha1.L3Passthrough{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "L3Passthrough",
-				APIVersion: "openpe.openperouter.github.io/v1alpha1",
+				APIVersion: "network.openperouter.io/v1alpha1",
 			},
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "static-l3passthrough",
@@ -139,7 +139,7 @@ func staticConfigToAPIConfig(staticConfig *static.PERouterConfig) (conversion.AP
 		rawFRRConfigs[i] = v1alpha1.RawFRRConfig{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "RawFRRConfig",
-				APIVersion: "openpe.openperouter.github.io/v1alpha1",
+				APIVersion: "network.openperouter.io/v1alpha1",
 			},
 			ObjectMeta: metav1.ObjectMeta{
 				Name: fmt.Sprintf("static-rawfrrconfig-%d", i),

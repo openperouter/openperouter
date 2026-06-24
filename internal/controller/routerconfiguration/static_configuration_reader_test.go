@@ -267,7 +267,7 @@ func TestReadStaticConfigs_ExistingTestdata(t *testing.T) {
 	expected := conversion.APIConfigData{
 		Underlays: []v1alpha1.Underlay{
 			{
-				TypeMeta:   metav1.TypeMeta{Kind: "Underlay", APIVersion: "openpe.openperouter.github.io/v1alpha1"},
+				TypeMeta:   metav1.TypeMeta{Kind: "Underlay", APIVersion: "network.openperouter.io/v1alpha1"},
 				ObjectMeta: metav1.ObjectMeta{Name: "static-underlay-0"},
 				Spec: v1alpha1.UnderlaySpec{
 					ASN:          64514,
@@ -291,7 +291,7 @@ func TestReadStaticConfigs_ExistingTestdata(t *testing.T) {
 		},
 		L3VNIs: []v1alpha1.L3VNI{
 			{
-				TypeMeta:   metav1.TypeMeta{Kind: "L3VNI", APIVersion: "openpe.openperouter.github.io/v1alpha1"},
+				TypeMeta:   metav1.TypeMeta{Kind: "L3VNI", APIVersion: "network.openperouter.io/v1alpha1"},
 				ObjectMeta: metav1.ObjectMeta{Name: "static-l3vni-0"},
 				Spec: v1alpha1.L3VNISpec{
 					VRF: "red", VNI: 100, VXLanPort: new(int32(4789)),
@@ -302,7 +302,7 @@ func TestReadStaticConfigs_ExistingTestdata(t *testing.T) {
 				},
 			},
 			{
-				TypeMeta:   metav1.TypeMeta{Kind: "L3VNI", APIVersion: "openpe.openperouter.github.io/v1alpha1"},
+				TypeMeta:   metav1.TypeMeta{Kind: "L3VNI", APIVersion: "network.openperouter.io/v1alpha1"},
 				ObjectMeta: metav1.ObjectMeta{Name: "static-l3vni-1"},
 				Spec: v1alpha1.L3VNISpec{
 					VRF: "blue", VNI: 200, VXLanPort: new(int32(4789)),
@@ -315,7 +315,7 @@ func TestReadStaticConfigs_ExistingTestdata(t *testing.T) {
 		},
 		L2VNIs: []v1alpha1.L2VNI{
 			{
-				TypeMeta:   metav1.TypeMeta{Kind: "L2VNI", APIVersion: "openpe.openperouter.github.io/v1alpha1"},
+				TypeMeta:   metav1.TypeMeta{Kind: "L2VNI", APIVersion: "network.openperouter.io/v1alpha1"},
 				ObjectMeta: metav1.ObjectMeta{Name: "static-l2vni-0"},
 				Spec: v1alpha1.L2VNISpec{
 					VRF: new("storage"), VNI: 300, VXLanPort: new(int32(4789)),
@@ -326,7 +326,7 @@ func TestReadStaticConfigs_ExistingTestdata(t *testing.T) {
 				},
 			},
 			{
-				TypeMeta:   metav1.TypeMeta{Kind: "L2VNI", APIVersion: "openpe.openperouter.github.io/v1alpha1"},
+				TypeMeta:   metav1.TypeMeta{Kind: "L2VNI", APIVersion: "network.openperouter.io/v1alpha1"},
 				ObjectMeta: metav1.ObjectMeta{Name: "static-l2vni-1"},
 				Spec: v1alpha1.L2VNISpec{
 					VRF: new("management"), VNI: 400, VXLanPort: new(int32(4789)),
@@ -339,7 +339,7 @@ func TestReadStaticConfigs_ExistingTestdata(t *testing.T) {
 		},
 		L3Passthrough: []v1alpha1.L3Passthrough{
 			{
-				TypeMeta:   metav1.TypeMeta{Kind: "L3Passthrough", APIVersion: "openpe.openperouter.github.io/v1alpha1"},
+				TypeMeta:   metav1.TypeMeta{Kind: "L3Passthrough", APIVersion: "network.openperouter.io/v1alpha1"},
 				ObjectMeta: metav1.ObjectMeta{Name: "static-l3passthrough"},
 				Spec: v1alpha1.L3PassthroughSpec{
 					HostSession: v1alpha1.HostSession{

@@ -17,7 +17,7 @@ import (
 
 // containsOpenPERouterCR checks if YAML contains OpenPERouter custom resources
 func containsOpenPERouterCR(content string) bool {
-	return strings.Contains(content, "openpe.openperouter.github.io")
+	return strings.Contains(content, "network.openperouter.io")
 }
 
 // validateResourceFromFile reads a YAML file and validates its resources by
@@ -55,7 +55,7 @@ func validateResourceYAML(k8sClient client.Client, content string) error {
 			return fmt.Errorf("failed to decode YAML: %w", err)
 		}
 
-		if !strings.Contains(obj.GetAPIVersion(), "openpe.openperouter.github.io") {
+		if !strings.Contains(obj.GetAPIVersion(), "network.openperouter.io") {
 			continue
 		}
 
