@@ -13,9 +13,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: l2vnis.openpe.openperouter.github.io
+  name: l2vnis.network.openperouter.io
 spec:
-  group: openpe.openperouter.github.io
+  group: network.openperouter.io
   names:
     kind: L2VNI
     listKind: L2VNIList
@@ -221,9 +221,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: l3passthroughs.openpe.openperouter.github.io
+  name: l3passthroughs.network.openperouter.io
 spec:
-  group: openpe.openperouter.github.io
+  group: network.openperouter.io
   names:
     kind: L3Passthrough
     listKind: L3PassthroughList
@@ -387,9 +387,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: l3vnis.openpe.openperouter.github.io
+  name: l3vnis.network.openperouter.io
 spec:
-  group: openpe.openperouter.github.io
+  group: network.openperouter.io
   names:
     kind: L3VNI
     listKind: L3VNIList
@@ -609,9 +609,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: l3vpns.openpe.openperouter.github.io
+  name: l3vpns.network.openperouter.io
 spec:
-  group: openpe.openperouter.github.io
+  group: network.openperouter.io
   names:
     kind: L3VPN
     listKind: L3VPNList
@@ -820,9 +820,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: rawfrrconfigs.openpe.openperouter.github.io
+  name: rawfrrconfigs.network.openperouter.io
 spec:
-  group: openpe.openperouter.github.io
+  group: network.openperouter.io
   names:
     kind: RawFRRConfig
     listKind: RawFRRConfigList
@@ -937,9 +937,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: routernodeconfigurationstatuses.openpe.openperouter.github.io
+  name: routernodeconfigurationstatuses.network.openperouter.io
 spec:
-  group: openpe.openperouter.github.io
+  group: network.openperouter.io
   names:
     kind: RouterNodeConfigurationStatus
     listKind: RouterNodeConfigurationStatusList
@@ -1099,9 +1099,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: underlays.openpe.openperouter.github.io
+  name: underlays.network.openperouter.io
 spec:
-  group: openpe.openperouter.github.io
+  group: network.openperouter.io
   names:
     kind: Underlay
     listKind: UnderlayList
@@ -1774,7 +1774,7 @@ rules:
   verbs:
   - update
 - apiGroups:
-  - openpe.openperouter.github.io
+  - network.openperouter.io
   resources:
   - l2vnis
   - l3passthroughs
@@ -1792,7 +1792,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - openpe.openperouter.github.io
+  - network.openperouter.io
   resources:
   - l2vnis/finalizers
   - l3passthroughs/finalizers
@@ -1803,7 +1803,7 @@ rules:
   verbs:
   - update
 - apiGroups:
-  - openpe.openperouter.github.io
+  - network.openperouter.io
   resources:
   - l2vnis/status
   - l3passthroughs/status
@@ -2364,7 +2364,7 @@ webhooks:
   name: l2vnivalidationwebhook.openperouter.io
   rules:
   - apiGroups:
-    - openpe.openperouter.github.io
+    - network.openperouter.io
     apiVersions:
     - v1alpha1
     operations:
@@ -2384,7 +2384,7 @@ webhooks:
   name: l3passthroughvalidationwebhook.openperouter.io
   rules:
   - apiGroups:
-    - openpe.openperouter.github.io
+    - network.openperouter.io
     apiVersions:
     - v1alpha1
     operations:
@@ -2404,7 +2404,7 @@ webhooks:
   name: l3vnivalidationwebhook.openperouter.io
   rules:
   - apiGroups:
-    - openpe.openperouter.github.io
+    - network.openperouter.io
     apiVersions:
     - v1alpha1
     operations:
@@ -2424,7 +2424,7 @@ webhooks:
   name: l3vpnsvalidationwebhook.openperouter.io
   rules:
   - apiGroups:
-    - openpe.openperouter.github.io
+    - network.openperouter.io
     apiVersions:
     - v1alpha1
     operations:
@@ -2444,7 +2444,7 @@ webhooks:
   name: rawfrrconfigvalidationwebhook.openperouter.io
   rules:
   - apiGroups:
-    - openpe.openperouter.github.io
+    - network.openperouter.io
     apiVersions:
     - v1alpha1
     operations:
@@ -2464,7 +2464,7 @@ webhooks:
   name: underlayvalidationwebhook.openperouter.io
   rules:
   - apiGroups:
-    - openpe.openperouter.github.io
+    - network.openperouter.io
     apiVersions:
     - v1alpha1
     operations:

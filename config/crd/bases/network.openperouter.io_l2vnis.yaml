@@ -4,21 +4,21 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: l3vnis.openpe.openperouter.github.io
+  name: l2vnis.network.openperouter.io
 spec:
-  group: openpe.openperouter.github.io
+  group: network.openperouter.io
   names:
-    kind: L3VNI
-    listKind: L3VNIList
-    plural: l3vnis
-    singular: l3vni
+    kind: L2VNI
+    listKind: L2VNIList
+    plural: l2vnis
+    singular: l2vni
   scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
         description: |-
-          L3VNI represents a VXLan L3VNI to receive EVPN type 5 routes
+          L2VNI represents a VXLan VNI to receive EVPN type 2 routes
           from.
         properties:
           apiVersion:
@@ -39,98 +39,89 @@ spec:
           metadata:
             type: object
           spec:
-            description: spec defines the desired state of L3VNI.
+            description: spec defines the desired state of L2VNI.
             properties:
-              exportRTs:
+              hostmaster:
                 description: |-
-                  exportRTs are the Route Targets to be used for exporting routes.
-                  RouteTarget defines a BGP Extended Community for route filtering.
-                items:
-                  description: RouteTarget defines a BGP Extended Community for route
-                    filtering.
-                  maxLength: 21
-                  type: string
-                maxItems: 100
-                type: array
-                x-kubernetes-list-type: atomic
-              hostsession:
-                description: hostsession is the configuration for the host session.
+                  hostmaster is the interface on the host the veth should be enslaved to.
+                  If not set, the host veth will not be enslaved to any interface and it must be
+                  enslaved manually (or by some other means). This is useful if another controller
+                  is leveraging the host interface for the VNI.
                 properties:
-                  asn:
-                    description: |-
-                      asn is the local AS number to use to establish a BGP session with
-                      the default namespace.
-                    format: int64
-                    maximum: 4294967295
-                    minimum: 1
-                    type: integer
-                  hostasn:
-                    description: |-
-                      hostasn is the expected AS number for a BGP speaking component running in
-                      the default network namespace. Either HostASN or HostType must be set.
-                    format: int64
-                    maximum: 4294967295
-                    minimum: 1
-                    type: integer
-                  hosttype:
-                    description: |-
-                      hosttype is the AS type of the BGP speaking component running in the
-                      default network namespace. Either HostASN or HostType must be set.
-                    enum:
-                    - external
-                    - internal
-                    type: string
-                  localcidr:
-                    description: |-
-                      localcidr is the CIDR configuration for the veth pair
-                      to connect with the default namespace. The interface under
-                      the PERouter side is going to use the first IP of the cidr on all the nodes.
-                      At least one of IPv4 or IPv6 must be provided.
+                  linuxBridge:
+                    description: linuxBridge configuration. Must be set when Type
+                      is "linux-bridge".
                     properties:
-                      ipv4:
+                      autoCreate:
+                        default: false
                         description: |-
-                          ipv4 is the IPv4 CIDR to be used for the veth pair
-                          to connect with the default namespace. The interface under
-                          the PERouter side is going to use the first IP of the cidr on all the nodes.
-                        type: string
-                      ipv6:
-                        description: |-
-                          ipv6 is the IPv6 CIDR to be used for the veth pair
-                          to connect with the default namespace. The interface under
-                          the PERouter side is going to use the first IP of the cidr on all the nodes.
+                          autoCreate determines if the bridge should be created automatically.
+                          When true, the bridge is created with name br-hs-<VNI>.
+                        type: boolean
+                      name:
+                        description: name of the Linux bridge interface.
+                        maxLength: 15
+                        pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
                         type: string
                     type: object
                     x-kubernetes-validations:
-                    - message: LocalCIDR can't be changed
-                      rule: self == oldSelf
-                    - message: at least one of ipv4 or ipv6 must be specified
-                      rule: has(self.ipv4) || has(self.ipv6)
+                    - message: either name must be set or autoCreate must be true,
+                        but not both.
+                      rule: (self.?name.orValue("") != "") != self.?autoCreate.orValue(false)
+                  ovsBridge:
+                    description: ovsBridge configuration. Must be set when Type is
+                      "ovs-bridge".
+                    properties:
+                      autoCreate:
+                        default: false
+                        description: |-
+                          autoCreate determines if the OVS bridge should be created automatically.
+                          When true, the bridge is created with name br-hs-<VNI>.
+                        type: boolean
+                      name:
+                        description: name of the OVS bridge interface.
+                        maxLength: 15
+                        pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
+                        type: string
+                    type: object
+                    x-kubernetes-validations:
+                    - message: either name must be set or autoCreate must be true,
+                        but not both.
+                      rule: (self.?name.orValue("") != "") != self.?autoCreate.orValue(false)
+                  type:
+                    description: 'type of the host interface. Supported values: "linux-bridge",
+                      "ovs-bridge".'
+                    enum:
+                    - linux-bridge
+                    - ovs-bridge
+                    type: string
                 required:
-                - asn
-                - localcidr
+                - type
                 type: object
                 x-kubernetes-validations:
-                - message: either HostASN or HostType must be set
-                  rule: has(self.hostasn) || has(self.hosttype)
-                - message: HostASN and HostType cannot be set together
-                  rule: '!has(self.hostasn) || !has(self.hosttype)'
-              importRTs:
+                - message: 'type/config mismatch: ''linux-bridge'' requires linuxBridge
+                    field, ''ovs-bridge'' requires ovsBridge field'
+                  rule: (self.type == 'linux-bridge' && has(self.linuxBridge) && !has(self.ovsBridge))
+                    || (self.type == 'ovs-bridge' && has(self.ovsBridge) && !has(self.linuxBridge))
+              l2gatewayips:
                 description: |-
-                  importRTs are the Route Targets to be used for importing routes.
-                  RouteTarget defines a BGP Extended Community for route filtering.
+                  l2gatewayips is a list of IP addresses in CIDR notation to be used for the L2 gateway. When this is set, the
+                  bridge the veths are enslaved to will be configured with these IP addresses, effectively
+                  acting as a distributed gateway for the VNI. This allows for dual-stack (IPv4 and IPv6) support.
+                  Maximum of 2 addresses are allowed. If 2 addresses are provided, one must be IPv4 and one must be IPv6.
                 items:
-                  description: RouteTarget defines a BGP Extended Community for route
-                    filtering.
-                  maxLength: 21
                   type: string
-                maxItems: 100
+                maxItems: 2
                 type: array
                 x-kubernetes-list-type: atomic
+                x-kubernetes-validations:
+                - message: L2GatewayIPs cannot be changed
+                  rule: self == oldSelf
               nodeSelector:
                 description: |-
-                  nodeSelector specifies which nodes this L3VNI applies to.
+                  nodeSelector specifies which nodes this L2VNI applies to.
                   If empty or not specified, applies to all nodes.
-                  Multiple L3VNIs can match the same node.
+                  Multiple L2VNIs can match the same node.
                 properties:
                   matchExpressions:
                     description: matchExpressions is a list of label selector requirements.
@@ -191,10 +182,10 @@ spec:
                 minimum: 1
                 type: integer
               vrf:
-                description: vrf is the name of the linux VRF to be used inside the
-                  PERouter namespace.
+                description: |-
+                  vrf is the name of the linux VRF to be used inside the PERouter namespace.
+                  The field is optional, if not set it the name of the VNI instance will be used.
                 maxLength: 15
-                minLength: 1
                 pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
                 type: string
               vxlanport:
@@ -204,14 +195,9 @@ spec:
                 type: integer
             required:
             - vni
-            - vrf
             type: object
-            x-kubernetes-validations:
-            - message: hostASN must be different from asn
-              rule: '!has(self.hostsession) || !has(self.hostsession.hostasn) || self.hostsession.hostasn
-                != self.hostsession.asn'
           status:
-            description: status defines the observed state of L3VNI.
+            description: status defines the observed state of L2VNI.
             type: object
         required:
         - spec

@@ -4,20 +4,22 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: l3vpns.openpe.openperouter.github.io
+  name: l3passthroughs.network.openperouter.io
 spec:
-  group: openpe.openperouter.github.io
+  group: network.openperouter.io
   names:
-    kind: L3VPN
-    listKind: L3VPNList
-    plural: l3vpns
-    singular: l3vpn
+    kind: L3Passthrough
+    listKind: L3PassthroughList
+    plural: l3passthroughs
+    singular: l3passthrough
   scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: L3VPN represents an SRv6 IP VPN.
+        description: |-
+          L3Passthrough represents a session with the host which is not encapsulated and
+          takes part to the bgp fabric.
         properties:
           apiVersion:
             description: |-
@@ -37,21 +39,8 @@ spec:
           metadata:
             type: object
           spec:
-            description: spec defines the desired state of L3VPN.
+            description: spec defines the desired state of L3Passthrough.
             properties:
-              exportRTs:
-                description: |-
-                  exportRTs are the Route Targets to be used for exporting routes.
-                  If no exportRTs are provided, defaults to single export Route Target
-                  <asn>:<rdAssignedNumber>.
-                items:
-                  description: RouteTarget defines a BGP Extended Community for route
-                    filtering.
-                  maxLength: 21
-                  type: string
-                maxItems: 100
-                type: array
-                x-kubernetes-list-type: atomic
               hostsession:
                 description: hostsession is the configuration for the host session.
                 properties:
@@ -113,23 +102,11 @@ spec:
                   rule: has(self.hostasn) || has(self.hosttype)
                 - message: HostASN and HostType cannot be set together
                   rule: '!has(self.hostasn) || !has(self.hosttype)'
-              importRTs:
-                description: |-
-                  importRTs are the Route Targets to be used for importing routes.
-                  importRTs must always be provided explicitly.
-                items:
-                  description: RouteTarget defines a BGP Extended Community for route
-                    filtering.
-                  maxLength: 21
-                  type: string
-                maxItems: 100
-                type: array
-                x-kubernetes-list-type: atomic
               nodeSelector:
                 description: |-
-                  nodeSelector specifies which nodes this L3VPN applies to.
+                  nodeSelector specifies which nodes this L3Passthrough applies to.
                   If empty or not specified, applies to all nodes.
-                  Multiple L3VPNs can match the same node.
+                  Multiple L3Passthrough with overlapping node selectors will be rejected.
                 properties:
                   matchExpressions:
                     description: matchExpressions is a list of label selector requirements.
@@ -174,33 +151,11 @@ spec:
                     type: object
                 type: object
                 x-kubernetes-map-type: atomic
-              rdAssignedNumber:
-                description: |-
-                  rdAssignedNumber sets the Route Distinguisher's Assigned Number subfield.
-                  The Administrator subfield is automatically set to the value of the router
-                  ID. OpenPERouter uses Type 1 Route Distinguishers as defined in RFC4364,
-                  meaning <Administrator subfield>:<Assigned Number subfield>.
-                format: int32
-                maximum: 65535
-                minimum: 1
-                type: integer
-              vrf:
-                description: vrf is the name of the linux VRF to be used inside the
-                  PERouter namespace.
-                maxLength: 15
-                minLength: 1
-                pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
-                type: string
             required:
-            - importRTs
-            - rdAssignedNumber
-            - vrf
+            - hostsession
             type: object
-            x-kubernetes-validations:
-            - message: hostASN must be different from asn
-              rule: '!has(self.hostsession) || self.hostsession.hostasn != self.hostsession.asn'
           status:
-            description: status defines the observed state of L3VPN.
+            description: status defines the observed state of L3Passthrough.
             type: object
         required:
         - spec

@@ -1,12 +1,12 @@
----
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: routernodeconfigurationstatuses.openpe.openperouter.github.io
+  creationTimestamp: null
+  name: routernodeconfigurationstatuses.network.openperouter.io
 spec:
-  group: openpe.openperouter.github.io
+  group: network.openperouter.io
   names:
     kind: RouterNodeConfigurationStatus
     listKind: RouterNodeConfigurationStatusList
@@ -160,3 +160,9 @@ spec:
     storage: true
     subresources:
       status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: null
+  storedVersions: null

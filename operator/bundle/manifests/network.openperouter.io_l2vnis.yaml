@@ -1,12 +1,12 @@
----
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: l2vnis.openpe.openperouter.github.io
+  creationTimestamp: null
+  name: l2vnis.network.openperouter.io
 spec:
-  group: openpe.openperouter.github.io
+  group: network.openperouter.io
   names:
     kind: L2VNI
     listKind: L2VNIList
@@ -206,3 +206,9 @@ spec:
     storage: true
     subresources:
       status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: null
+  storedVersions: null
