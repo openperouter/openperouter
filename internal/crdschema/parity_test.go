@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	group   = "openpe.openperouter.github.io"
+	group   = "network.openperouter.io"
 	version = "v1alpha1"
 )
 

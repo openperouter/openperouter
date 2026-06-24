@@ -54,9 +54,9 @@ type OpenPERouterReconciler struct {
 // +kubebuilder:rbac:groups="",namespace=openperouter-system,resources=services;configmaps,verbs=create;delete;get;update;patch
 // +kubebuilder:rbac:groups="",namespace=openperouter-system,resources=events,verbs=create;patch
 
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=openperouters,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=openperouters/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=openperouters/finalizers,verbs=update
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=openperouters,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=openperouters/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=openperouters/finalizers,verbs=update
 
 func (r *OpenPERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := r.Logger.With("controller", "OpenPERouter", "request", req.String())
