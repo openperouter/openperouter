@@ -43,7 +43,7 @@ When a pod tries to reach a pod running on another node, the traffic lands on th
 The OpenPERouter configuration is simple: one underlay and one L3VNI configured to peer with the host:
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3VNI
 metadata:
   name: red
@@ -57,7 +57,7 @@ spec:
     localcidr:
       ipv4: 192.169.10.0/24
 ---
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: Underlay
 metadata:
   name: underlay

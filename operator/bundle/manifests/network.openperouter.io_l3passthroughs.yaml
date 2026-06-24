@@ -1,25 +1,25 @@
----
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: l3vnis.openpe.openperouter.github.io
+  creationTimestamp: null
+  name: l3passthroughs.network.openperouter.io
 spec:
-  group: openpe.openperouter.github.io
+  group: network.openperouter.io
   names:
-    kind: L3VNI
-    listKind: L3VNIList
-    plural: l3vnis
-    singular: l3vni
+    kind: L3Passthrough
+    listKind: L3PassthroughList
+    plural: l3passthroughs
+    singular: l3passthrough
   scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
         description: |-
-          L3VNI represents a VXLan L3VNI to receive EVPN type 5 routes
-          from.
+          L3Passthrough represents a session with the host which is not encapsulated and
+          takes part to the bgp fabric.
         properties:
           apiVersion:
             description: |-
@@ -39,16 +39,8 @@ spec:
           metadata:
             type: object
           spec:
-            description: spec defines the desired state of L3VNI.
+            description: spec defines the desired state of L3Passthrough.
             properties:
-              exportRTs:
-                description: |-
-                  exportRTs are the Route Targets to be used for exporting routes.
-                  RouteTarget defines a BGP Extended Community for route filtering.
-                items:
-                  type: string
-                type: array
-                x-kubernetes-list-type: atomic
               hostsession:
                 description: hostsession is the configuration for the host session.
                 properties:
@@ -110,19 +102,11 @@ spec:
                   rule: has(self.hostasn) || has(self.hosttype)
                 - message: HostASN and HostType cannot be set together
                   rule: '!has(self.hostasn) || !has(self.hosttype)'
-              importRTs:
-                description: |-
-                  importRTs are the Route Targets to be used for importing routes.
-                  RouteTarget defines a BGP Extended Community for route filtering.
-                items:
-                  type: string
-                type: array
-                x-kubernetes-list-type: atomic
               nodeSelector:
                 description: |-
-                  nodeSelector specifies which nodes this L3VNI applies to.
+                  nodeSelector specifies which nodes this L3Passthrough applies to.
                   If empty or not specified, applies to all nodes.
-                  Multiple L3VNIs can match the same node.
+                  Multiple L3Passthrough with overlapping node selectors will be rejected.
                 properties:
                   matchExpressions:
                     description: matchExpressions is a list of label selector requirements.
@@ -167,34 +151,11 @@ spec:
                     type: object
                 type: object
                 x-kubernetes-map-type: atomic
-              vni:
-                description: vni is the VXLan VNI to be used
-                format: int32
-                maximum: 16777215
-                minimum: 1
-                type: integer
-              vrf:
-                description: vrf is the name of the linux VRF to be used inside the
-                  PERouter namespace.
-                maxLength: 15
-                minLength: 1
-                pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
-                type: string
-              vxlanport:
-                default: 4789
-                description: vxlanport is the port to be used for VXLan encapsulation.
-                format: int32
-                type: integer
             required:
-            - vni
-            - vrf
+            - hostsession
             type: object
-            x-kubernetes-validations:
-            - message: hostASN must be different from asn
-              rule: '!has(self.hostsession) || !has(self.hostsession.hostasn) || self.hostsession.hostasn
-                != self.hostsession.asn'
           status:
-            description: status defines the observed state of L3VNI.
+            description: status defines the observed state of L3Passthrough.
             type: object
         required:
         - spec
@@ -203,3 +164,9 @@ spec:
     storage: true
     subresources:
       status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: null
+  storedVersions: null

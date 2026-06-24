@@ -1,0 +1,205 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  creationTimestamp: null
+  name: l2vnis.network.openperouter.io
+spec:
+  group: network.openperouter.io
+  names:
+    kind: L2VNI
+    listKind: L2VNIList
+    plural: l2vnis
+    singular: l2vni
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          L2VNI represents a VXLan VNI to receive EVPN type 2 routes
+          from.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of L2VNI.
+            properties:
+              hostmaster:
+                description: |-
+                  hostmaster is the interface on the host the veth should be enslaved to.
+                  If not set, the host veth will not be enslaved to any interface and it must be
+                  enslaved manually (or by some other means). This is useful if another controller
+                  is leveraging the host interface for the VNI.
+                properties:
+                  linuxBridge:
+                    description: linuxBridge configuration. Must be set when Type
+                      is "linux-bridge".
+                    properties:
+                      autoCreate:
+                        default: false
+                        description: |-
+                          autoCreate determines if the bridge should be created automatically.
+                          When true, the bridge is created with name br-hs-<VNI>.
+                        type: boolean
+                      name:
+                        description: name of the Linux bridge interface.
+                        maxLength: 15
+                        pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
+                        type: string
+                    type: object
+                    x-kubernetes-validations:
+                    - message: either name must be set or autoCreate must be true,
+                        but not both.
+                      rule: (self.?name.orValue("") != "") != self.?autoCreate.orValue(false)
+                  ovsBridge:
+                    description: ovsBridge configuration. Must be set when Type is
+                      "ovs-bridge".
+                    properties:
+                      autoCreate:
+                        default: false
+                        description: |-
+                          autoCreate determines if the OVS bridge should be created automatically.
+                          When true, the bridge is created with name br-hs-<VNI>.
+                        type: boolean
+                      name:
+                        description: name of the OVS bridge interface.
+                        maxLength: 15
+                        pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
+                        type: string
+                    type: object
+                    x-kubernetes-validations:
+                    - message: either name must be set or autoCreate must be true,
+                        but not both.
+                      rule: (self.?name.orValue("") != "") != self.?autoCreate.orValue(false)
+                  type:
+                    description: 'type of the host interface. Supported values: "linux-bridge",
+                      "ovs-bridge".'
+                    enum:
+                    - linux-bridge
+                    - ovs-bridge
+                    type: string
+                required:
+                - type
+                type: object
+                x-kubernetes-validations:
+                - message: 'type/config mismatch: ''linux-bridge'' requires linuxBridge
+                    field, ''ovs-bridge'' requires ovsBridge field'
+                  rule: (self.type == 'linux-bridge' && has(self.linuxBridge) && !has(self.ovsBridge))
+                    || (self.type == 'ovs-bridge' && has(self.ovsBridge) && !has(self.linuxBridge))
+              l2gatewayips:
+                description: |-
+                  l2gatewayips is a list of IP addresses in CIDR notation to be used for the L2 gateway. When this is set, the
+                  bridge the veths are enslaved to will be configured with these IP addresses, effectively
+                  acting as a distributed gateway for the VNI. This allows for dual-stack (IPv4 and IPv6) support.
+                  Maximum of 2 addresses are allowed. If 2 addresses are provided, one must be IPv4 and one must be IPv6.
+                items:
+                  type: string
+                maxItems: 2
+                type: array
+                x-kubernetes-list-type: atomic
+                x-kubernetes-validations:
+                - message: L2GatewayIPs cannot be changed
+                  rule: self == oldSelf
+              nodeSelector:
+                description: |-
+                  nodeSelector specifies which nodes this L2VNI applies to.
+                  If empty or not specified, applies to all nodes.
+                  Multiple L2VNIs can match the same node.
+                properties:
+                  matchExpressions:
+                    description: matchExpressions is a list of label selector requirements.
+                      The requirements are ANDed.
+                    items:
+                      description: |-
+                        A label selector requirement is a selector that contains values, a key, and an operator that
+                        relates the key and values.
+                      properties:
+                        key:
+                          description: key is the label key that the selector applies
+                            to.
+                          type: string
+                        operator:
+                          description: |-
+                            operator represents a key's relationship to a set of values.
+                            Valid operators are In, NotIn, Exists and DoesNotExist.
+                          type: string
+                        values:
+                          description: |-
+                            values is an array of string values. If the operator is In or NotIn,
+                            the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                            the values array must be empty. This array is replaced during a strategic
+                            merge patch.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  matchLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                      map is equivalent to an element of matchExpressions, whose key field is "key", the
+                      operator is "In", and the values array contains only "value". The requirements are ANDed.
+                    type: object
+                type: object
+                x-kubernetes-map-type: atomic
+              vni:
+                description: vni is the VXLan VNI to be used
+                format: int32
+                maximum: 16777215
+                minimum: 1
+                type: integer
+              vrf:
+                description: |-
+                  vrf is the name of the linux VRF to be used inside the PERouter namespace.
+                  The field is optional, if not set it the name of the VNI instance will be used.
+                maxLength: 15
+                pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
+                type: string
+              vxlanport:
+                default: 4789
+                description: vxlanport is the port to be used for VXLan encapsulation.
+                format: int32
+                type: integer
+            required:
+            - vni
+            type: object
+          status:
+            description: status defines the observed state of L2VNI.
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: null
+  storedVersions: null

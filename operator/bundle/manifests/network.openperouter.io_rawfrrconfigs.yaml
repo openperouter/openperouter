@@ -4,22 +4,20 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
   creationTimestamp: null
-  name: l3passthroughs.openpe.openperouter.github.io
+  name: rawfrrconfigs.network.openperouter.io
 spec:
-  group: openpe.openperouter.github.io
+  group: network.openperouter.io
   names:
-    kind: L3Passthrough
-    listKind: L3PassthroughList
-    plural: l3passthroughs
-    singular: l3passthrough
+    kind: RawFRRConfig
+    listKind: RawFRRConfigList
+    plural: rawfrrconfigs
+    singular: rawfrrconfig
   scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: |-
-          L3Passthrough represents a session with the host which is not encapsulated and
-          takes part to the bgp fabric.
+        description: RawFRRConfig is the Schema for the rawfrrconfigs API.
         properties:
           apiVersion:
             description: |-
@@ -39,74 +37,12 @@ spec:
           metadata:
             type: object
           spec:
-            description: spec defines the desired state of L3Passthrough.
+            description: spec defines the desired state of RawFRRConfig.
             properties:
-              hostsession:
-                description: hostsession is the configuration for the host session.
-                properties:
-                  asn:
-                    description: |-
-                      asn is the local AS number to use to establish a BGP session with
-                      the default namespace.
-                    format: int64
-                    maximum: 4294967295
-                    minimum: 1
-                    type: integer
-                  hostasn:
-                    description: |-
-                      hostasn is the expected AS number for a BGP speaking component running in
-                      the default network namespace. Either HostASN or HostType must be set.
-                    format: int64
-                    maximum: 4294967295
-                    minimum: 1
-                    type: integer
-                  hosttype:
-                    description: |-
-                      hosttype is the AS type of the BGP speaking component running in the
-                      default network namespace. Either HostASN or HostType must be set.
-                    enum:
-                    - external
-                    - internal
-                    type: string
-                  localcidr:
-                    description: |-
-                      localcidr is the CIDR configuration for the veth pair
-                      to connect with the default namespace. The interface under
-                      the PERouter side is going to use the first IP of the cidr on all the nodes.
-                      At least one of IPv4 or IPv6 must be provided.
-                    properties:
-                      ipv4:
-                        description: |-
-                          ipv4 is the IPv4 CIDR to be used for the veth pair
-                          to connect with the default namespace. The interface under
-                          the PERouter side is going to use the first IP of the cidr on all the nodes.
-                        type: string
-                      ipv6:
-                        description: |-
-                          ipv6 is the IPv6 CIDR to be used for the veth pair
-                          to connect with the default namespace. The interface under
-                          the PERouter side is going to use the first IP of the cidr on all the nodes.
-                        type: string
-                    type: object
-                    x-kubernetes-validations:
-                    - message: LocalCIDR can't be changed
-                      rule: self == oldSelf
-                    - message: at least one of ipv4 or ipv6 must be specified
-                      rule: has(self.ipv4) || has(self.ipv6)
-                required:
-                - asn
-                - localcidr
-                type: object
-                x-kubernetes-validations:
-                - message: either HostASN or HostType must be set
-                  rule: has(self.hostasn) || has(self.hosttype)
-                - message: HostASN and HostType cannot be set together
-                  rule: '!has(self.hostasn) || !has(self.hosttype)'
               nodeSelector:
                 description: |-
-                  nodeSelector specifies which nodes this L3Passthrough applies to.
+                  nodeSelector specifies which nodes this RawFRRConfig applies to.
                   If empty or not specified, applies to all nodes.
-                  Multiple L3Passthrough with overlapping node selectors will be rejected.
                 properties:
                   matchExpressions:
                     description: matchExpressions is a list of label selector requirements.
@@ -151,11 +87,26 @@ spec:
                     type: object
                 type: object
                 x-kubernetes-map-type: atomic
+              priority:
+                default: 0
+                description: |-
+                  priority controls the ordering of raw config snippets in the rendered FRR configuration.
+                  Lower values are rendered first. Snippets with the same priority have undefined order.
+                format: int32
+                minimum: 0
+                type: integer
+              rawConfig:
+                description: |-
+                  rawConfig is the raw FRR configuration text to append to the rendered configuration.
+                  WARNING: This feature is intended for advanced use cases. No validation of FRR syntax
+                  is performed at admission time; invalid configuration will cause FRR reload failures.
+                minLength: 1
+                type: string
             required:
-            - hostsession
+            - rawConfig
             type: object
           status:
-            description: status defines the observed state of L3Passthrough.
+            description: status defines the observed state of RawFRRConfig.
             type: object
         required:
         - spec

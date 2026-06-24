@@ -62,22 +62,22 @@ type requestKey string
 
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;delete
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l3vnis,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l3vnis/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l3vnis/finalizers,verbs=update
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l2vnis,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l2vnis/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l2vnis/finalizers,verbs=update
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=underlays,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=underlays/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=underlays/finalizers,verbs=update
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l3passthroughs,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l3passthroughs/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l3passthroughs/finalizers,verbs=update
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=rawfrrconfigs,verbs=get;list;watch
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=rawfrrconfigs/status,verbs=get
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=routernodeconfigurationstatuses,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=routernodeconfigurationstatuses/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=l3vnis,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=l3vnis/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=l3vnis/finalizers,verbs=update
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=l2vnis,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=l2vnis/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=l2vnis/finalizers,verbs=update
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=underlays,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=underlays/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=underlays/finalizers,verbs=update
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=l3passthroughs,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=l3passthroughs/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=l3passthroughs/finalizers,verbs=update
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=rawfrrconfigs,verbs=get;list;watch
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=rawfrrconfigs/status,verbs=get
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=routernodeconfigurationstatuses,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=routernodeconfigurationstatuses/status,verbs=get;update;patch
 
 func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := r.Logger.With("controller", "RouterConfiguration", "request", req.String())
