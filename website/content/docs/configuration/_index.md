@@ -19,7 +19,7 @@ The underlay configuration establishes BGP sessions with external routers (typic
 ### Basic Underlay Configuration
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: Underlay
 metadata:
   name: underlay
@@ -50,7 +50,7 @@ OpenPERouter supports configuring multiple physical network interfaces and multi
 **Example with multiple neighbors and interfaces**:
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: Underlay
 metadata:
   name: underlay

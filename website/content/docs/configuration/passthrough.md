@@ -15,7 +15,7 @@ For passthrough mode, the underlay configuration is simpler than EVPN mode as it
 ### Basic Underlay Configuration
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: Underlay
 metadata:
   name: underlay
@@ -47,7 +47,7 @@ L3 Passthrough configurations define direct BGP connectivity between the host an
 ### Basic L3Passthrough Configuration
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3Passthrough
 metadata:
   name: passthrough
@@ -75,7 +75,7 @@ spec:
 You can configure both IPv4 and IPv6 for dual stack support:
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3Passthrough
 metadata:
   name: passthrough-dual

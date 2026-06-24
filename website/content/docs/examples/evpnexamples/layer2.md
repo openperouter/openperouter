@@ -41,7 +41,7 @@ When a pod needs to reach a host belonging to the L3 domain the L2 VNI belongs t
 One L3 VNI corresponding to the routing domain, one L2 VNI with the same VRF as the L3 VNI:
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3VNI
 metadata:
   name: red
@@ -55,7 +55,7 @@ spec:
     localcidr:
       ipv4: 192.169.10.0/24
 ---
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L2VNI
 metadata:
   name: layer2
