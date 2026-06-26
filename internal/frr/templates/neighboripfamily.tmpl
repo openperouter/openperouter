@@ -5,6 +5,8 @@
     neighbor {{.neighbor.ID}} activate
 {{- if isEBGP .routerASN .neighbor.ASN }}
     neighbor {{.neighbor.ID}} allowas-in
+{{- else if rrClientAt .neighbor.PropertiesByNLP "ipv4" "unicast" }}
+    neighbor {{.neighbor.ID}} route-reflector-client
 {{- else }}
     neighbor {{.neighbor.ID}} next-hop-self force
 {{- end }}
@@ -16,6 +18,8 @@
     neighbor {{.neighbor.ID}} activate
 {{- if isEBGP .routerASN .neighbor.ASN }}
     neighbor {{.neighbor.ID}} allowas-in
+{{- else if rrClientAt .neighbor.PropertiesByNLP "ipv6" "unicast" }}
+    neighbor {{.neighbor.ID}} route-reflector-client
 {{- else }}
     neighbor {{.neighbor.ID}} next-hop-self force
 {{- end }}

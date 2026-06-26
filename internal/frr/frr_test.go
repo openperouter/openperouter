@@ -1080,6 +1080,106 @@ func TestGracefulRestartCustomTimers(t *testing.T) {
 	testCheckConfigFile(t)
 }
 
+func TestRouteReflector(t *testing.T) {
+	configFile := testSetup(t)
+	updater := testUpdater(configFile)
+
+	evpn := networklayerprotocol.NLP{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN}
+	ipv4 := networklayerprotocol.NLP{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast}
+
+	config := Config{
+		Underlay: UnderlayConfig{
+			MyASN: 64514,
+			TunnelEndpoint: &TunnelEndpoint{
+				IPv4CIDR: "100.65.0.0/32",
+			},
+			RouterID: "10.0.0.1",
+			RouteReflector: &RouteReflector{
+				ClusterID: "192.0.2.1",
+			},
+			ListenLimit: 65535,
+			Neighbors: []NeighborConfig{
+				{
+					ASN:                   mustNewPeerASNFromNumber(64512),
+					Addr:                  "192.168.10.2",
+					ID:                    "192.168.10.2",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{ipv4, evpn},
+				},
+				{
+					ASN:                   mustNewPeerASNFromType("internal"),
+					ListenRange:           "192.168.10.0/24",
+					ID:                    "192.168.10.0/24",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{evpn},
+					PropertiesByNLP: map[networklayerprotocol.NLP]NLPProperties{
+						evpn: {RouteReflectorClient: true},
+					},
+				},
+				{
+					ASN:                   mustNewPeerASNFromType("internal"),
+					ListenRange:           "fd00:10::/64",
+					ID:                    "fd00:10::/64",
+					ExtendedNexthop:       true,
+					NetworkLayerProtocols: []networklayerprotocol.NLP{evpn},
+					PropertiesByNLP: map[networklayerprotocol.NLP]NLPProperties{
+						evpn: {RouteReflectorClient: true},
+					},
+				},
+				{
+					ASN:                   mustNewPeerASNFromType("internal"),
+					Addr:                  "192.168.10.4",
+					ID:                    "192.168.10.4",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{ipv4, evpn},
+				},
+			},
+		},
+	}
+	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+		t.Fatalf("Failed to apply config: %s", err)
+	}
+
+	testCheckConfigFile(t)
+}
+
+func TestRouteReflectorOnly(t *testing.T) {
+	configFile := testSetup(t)
+	updater := testUpdater(configFile)
+
+	evpn := networklayerprotocol.NLP{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN}
+
+	config := Config{
+		Underlay: UnderlayConfig{
+			MyASN:    64514,
+			RouterID: "10.0.0.1",
+			RouteReflector: &RouteReflector{
+				ClusterID: "192.0.2.1",
+			},
+			ListenLimit: 65535,
+			Neighbors: []NeighborConfig{
+				{
+					ASN:                   mustNewPeerASNFromType("internal"),
+					ListenRange:           "192.168.11.0/24",
+					ID:                    "192.168.11.0/24",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{evpn},
+					PropertiesByNLP: map[networklayerprotocol.NLP]NLPProperties{
+						evpn: {RouteReflectorClient: true},
+					},
+				},
+				{
+					ASN:                   mustNewPeerASNFromType("internal"),
+					Addr:                  "192.168.10.4",
+					ID:                    "192.168.10.4",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{evpn},
+				},
+			},
+		},
+	}
+	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+		t.Fatalf("Failed to apply config: %s", err)
+	}
+
+	testCheckConfigFile(t)
+}
+
 func testUpdater(configFile string) func(context.Context, string) error {
 	return func(_ context.Context, config string) error {
 		err := os.WriteFile(configFile, []byte(config), 0600)

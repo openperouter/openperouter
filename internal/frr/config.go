@@ -45,6 +45,16 @@ type UnderlayConfig struct {
 	Neighbors       []NeighborConfig
 	TunnelEndpoint  *TunnelEndpoint
 	GracefulRestart *GracefulRestart
+	RouteReflector  *RouteReflector
+	// ListenLimit caps the number of dynamic neighbors accepted via
+	// bgp listen range. Rendered only when greater than zero.
+	ListenLimit int64
+}
+
+// RouteReflector holds the BGP route reflector parameters of the local
+// router (RFC 4456).
+type RouteReflector struct {
+	ClusterID string
 }
 
 type TunnelEndpoint struct {
@@ -97,11 +107,49 @@ type NeighborConfig struct {
 	BFDProfile            string
 	EBGPMultiHop          bool
 	NetworkLayerProtocols []networklayerprotocol.NLP
+	// PropertiesByNLP holds per-address-family rendering attributes for the
+	// neighbor, keyed by the network layer protocol they apply to.
+	PropertiesByNLP map[networklayerprotocol.NLP]NLPProperties
+	// ListenRange turns the neighbor into a peer-group accepting dynamic
+	// sessions from the given CIDR via bgp listen range. ID holds the
+	// peer-group name.
+	ListenRange string
 	// Allow bgp to negotiate the extended-nexthop capability with its peer. If you are peering over a v6 LL address
 	// then this capability is turned on automatically.
 	// If you are peering over a v6 Global Address then turning on this command will allow BGP to install v4 routes
 	// with v6 nexthops if you do not have v4 configured on interfaces.
 	ExtendedNexthop bool
+}
+
+// NLPProperties holds the per-address-family rendering attributes of a
+// neighbor (for example, whether the neighbor is a route reflector client in
+// that network layer protocol).
+type NLPProperties struct {
+	RouteReflectorClient bool
+}
+
+// isRRClientAt reports whether the neighbor is a route-reflector-client in
+// the given address family.
+func isRRClientAt(props map[networklayerprotocol.NLP]NLPProperties, afi networklayerprotocol.AFI, safi networklayerprotocol.SAFI) bool {
+	p, ok := props[networklayerprotocol.NLP{AFI: afi, SAFI: safi}]
+	return ok && p.RouteReflectorClient
+}
+
+// shouldRenderUnderlayEVPN tells whether the underlay needs the l2vpn evpn
+// address family block. Data-plane underlays render it whenever a tunnel
+// endpoint exists; route-reflector-only nodes render it when a neighbor
+// activates the l2vpn evpn family without a tunnel endpoint.
+func shouldRenderUnderlayEVPN(underlay UnderlayConfig) bool {
+	if underlay.TunnelEndpoint != nil {
+		return true
+	}
+	evpn := networklayerprotocol.NLP{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN}
+	for _, n := range underlay.Neighbors {
+		if networklayerprotocol.HasNLP(n.NetworkLayerProtocols, evpn) {
+			return true
+		}
+	}
+	return false
 }
 
 // templateConfig uses the template library to template
@@ -143,6 +191,8 @@ func templateConfig(data any) (string, error) {
 				safi networklayerprotocol.SAFI) bool {
 				return networklayerprotocol.HasNLP(nlps, networklayerprotocol.NLP{AFI: afi, SAFI: safi})
 			},
+			"rrClientAt":         isRRClientAt,
+			"renderUnderlayEVPN": shouldRenderUnderlayEVPN,
 		}).ParseFS(templates, "templates/*")
 	if err != nil {
 		return "", err

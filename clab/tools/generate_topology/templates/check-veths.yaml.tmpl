@@ -11,14 +11,16 @@ interfaces:
     name: "toswitch1"
     ips: ["192.168.11.3/24", "2001:db8:11::3/64"]
     requiresTemp: true
+{{- range .Workers }}
 - left:
     bridge: "leafkind1-sw"
-    name: "kindworker1"
+    name: "{{ .BridgeSw1 }}"
   right:
-    container: "pe-kind-worker"
+    container: "{{ .Name }}"
     name: "toswitch1"
-    ips: ["192.168.11.4/24", "2001:db8:11::4/64"]
+    ips: ["{{ .IPv4Sw1 }}/24", "{{ .IPv6Sw1 }}/64"]
     requiresTemp: true
+{{- end }}
 
 # leafkind2-sw bridge connections
 - left:
@@ -29,23 +31,27 @@ interfaces:
     name: "toswitch2"
     ips: ["192.168.12.3/24", "2001:db8:12::3/64"]
     requiresTemp: true
+{{- range .Workers }}
 - left:
     bridge: "leafkind2-sw"
-    name: "kindworker2"
+    name: "{{ .BridgeSw2 }}"
   right:
-    container: "pe-kind-worker"
+    container: "{{ .Name }}"
     name: "toswitch2"
-    ips: ["192.168.12.4/24", "2001:db8:12::4/64"]
+    ips: ["{{ .IPv4Sw2 }}/24", "{{ .IPv6Sw2 }}/64"]
     requiresTemp: true
+{{- end }}
 
 # Point to point links for IPv6 unnumbered BGP sessions - leafkind1
+{{- range .Workers }}
 - left:
     container: "clab-kind-leafkind1"
-    name: "tokindworker"
+    name: "{{ .LeafIface }}"
   right:
-    container: "pe-kind-worker"
+    container: "{{ .Name }}"
     name: "toleafkind1"
     requiresTemp: true
+{{- end }}
 - left:
     container: "clab-kind-leafkind1"
     name: "tokindctrlpl"
@@ -55,13 +61,15 @@ interfaces:
     requiresTemp: true
 
 # Point to point links for IPv6 unnumbered BGP sessions - leafkind2
+{{- range .Workers }}
 - left:
     container: "clab-kind-leafkind2"
-    name: "tokindworker"
+    name: "{{ .LeafIface }}"
   right:
-    container: "pe-kind-worker"
+    container: "{{ .Name }}"
     name: "toleafkind2"
     requiresTemp: true
+{{- end }}
 - left:
     container: "clab-kind-leafkind2"
     name: "tokindctrlpl"

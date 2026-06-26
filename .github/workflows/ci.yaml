@@ -263,6 +263,10 @@ jobs:
           if [ ${{ matrix.deployment }} = "systemdmode" ]; then MAKE_RULE="deploy-hostmode"; fi
           if [ ${{ matrix.deployment }} = "hostmode-boot" ]; then MAKE_RULE="deploy-hostmode-boot"; fi
           if [ ${{ matrix.deployment }} = "operator" ]; then MAKE_RULE="deploy-operator-with-olm"; IMG_REPO="localhost:5000"; export USE_HTTP=--use-http; export TLS_VERIFY=false; export KUBECONFIG=bin/kubeconfig; fi
+          # Provision a third node (two workers) on the manifests lane so the
+          # route reflector e2e test (which needs a reflector plus two clients)
+          # runs. The other lanes stay 2-node and self-skip that test.
+          if [ ${{ matrix.deployment }} = "manifests" ]; then export NUM_WORKERS=2; fi
           COREDUMP=true IMG_REPO=$IMG_REPO make $MAKE_RULE
           if [ ${{ matrix.deployment }} = "operator" ]; then IMG_REPO="quay.io/openperouter" make load-on-kind; kubectl apply -f operator/config/samples/openperouter.yaml; sleep 5; kubectl -n openperouter-system wait --for=condition=Ready pods -l "component in (controller,router,nodemarker)" --timeout 300s; fi
 

@@ -21,6 +21,7 @@ import (
 )
 
 // UnderlaySpec defines the desired state of Underlay.
+// +kubebuilder:validation:XValidation:rule="!has(self.routeReflector) || !has(self.routeReflector.clusterID) || !isIP(self.routeReflector.clusterID) || !has(self.routeridcidr) || !isCIDR(self.routeridcidr) || !cidr(self.routeridcidr).containsIP(self.routeReflector.clusterID)",message="routeReflector.clusterID must be outside the routeridcidr range"
 type UnderlaySpec struct {
 	// nodeSelector specifies which nodes this Underlay applies to.
 	// If empty or not specified, applies to all nodes (backward compatible).
@@ -71,6 +72,33 @@ type UnderlaySpec struct {
 	// Omit to disable graceful restart.
 	// +optional
 	GracefulRestart *GracefulRestartConfig `json:"gracefulRestart,omitempty"`
+
+	// routeReflector configures the local FRR process as a BGP route reflector.
+	// When set, the hostcontroller generates bgp cluster-id from clusterID
+	// and derives bgp listen range and route-reflector-client stanzas from
+	// neighbors with listenRange and the routeReflectorClient property.
+	// Omit to run as a standard router without route reflection.
+	// +optional
+	RouteReflector *RouteReflectorConfig `json:"routeReflector,omitempty"`
+}
+
+// RouteReflectorConfig holds BGP Route Reflector parameters (RFC 4456).
+// Its presence on the Underlay enables route reflection on matching nodes.
+type RouteReflectorConfig struct {
+	// clusterID is the BGP cluster-id shared by all RR nodes in the same
+	// cluster (RFC 4456 §7). All RRs serving the same set of clients must
+	// use the same value so that CLUSTER_LIST loop detection prevents
+	// duplicate route reflection. The cluster-id is an opaque 32-bit
+	// identifier, not a routable address, and must be outside the
+	// routeridcidr range to avoid colliding with allocated router-ids.
+	// The default (192.0.2.1) is an RFC 5737 documentation address,
+	// guaranteed not to be part of any real router-id pool.
+	// +default="192.0.2.1"
+	// +kubebuilder:validation:XValidation:rule="isIP(self) && ip(self).family() == 4",message="clusterID must be a valid IPv4 address"
+	// +kubebuilder:validation:MaxLength:=15
+	// +kubebuilder:validation:MinLength:=7
+	// +optional
+	ClusterID *string `json:"clusterID,omitempty"`
 }
 
 // GracefulRestartConfig holds BGP Graceful Restart parameters.

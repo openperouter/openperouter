@@ -68,8 +68,10 @@ topology:
       startup-config: ../pe-kind-configuration-registry.yaml
     pe-kind-control-plane:
       kind: ext-container
-    pe-kind-worker:
+{{- range .Workers }}
+    {{ .Name }}:
       kind: ext-container
+{{- end }}
 
   links:
     - endpoints: ["leafA:eth1", "spine:eth1"]
@@ -84,13 +86,19 @@ topology:
     - endpoints: ["leafkind1:toswitch1", "leafkind1-sw:leaf1"]
     - endpoints: ["leafkind2:toswitch2", "leafkind2-sw:leaf2"]
     # Point to point links for IPv6 unnumbered BGP sessions.
-    - endpoints: ["leafkind1:tokindworker", "pe-kind-worker:toleafkind1"]
-    - endpoints: ["leafkind2:tokindworker", "pe-kind-worker:toleafkind2"]
+{{- range .Workers }}
+    - endpoints: ["leafkind1:{{ .LeafIface }}", "{{ .Name }}:toleafkind1"]
+    - endpoints: ["leafkind2:{{ .LeafIface }}", "{{ .Name }}:toleafkind2"]
+{{- end }}
     - endpoints: ["leafkind1:tokindctrlpl", "pe-kind-control-plane:toleafkind1"]
     - endpoints: ["leafkind2:tokindctrlpl", "pe-kind-control-plane:toleafkind2"]
 
     # All kind nodes connect to both leaf switches for redundancy
     - endpoints: ["pe-kind-control-plane:toswitch1", "leafkind1-sw:kindctrlpl1"]
-    - endpoints: ["pe-kind-worker:toswitch1", "leafkind1-sw:kindworker1"]
+{{- range .Workers }}
+    - endpoints: ["{{ .Name }}:toswitch1", "leafkind1-sw:{{ .BridgeSw1 }}"]
+{{- end }}
     - endpoints: ["pe-kind-control-plane:toswitch2", "leafkind2-sw:kindctrlpl2"]
-    - endpoints: ["pe-kind-worker:toswitch2", "leafkind2-sw:kindworker2"]
+{{- range .Workers }}
+    - endpoints: ["{{ .Name }}:toswitch2", "leafkind2-sw:{{ .BridgeSw2 }}"]
+{{- end }}

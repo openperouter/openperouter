@@ -29,6 +29,7 @@ SHELL = /usr/bin/env bash -o pipefail
 # CLAB_TOPOLOGY_FILE allows the user to specify which containerlab topology
 # file to deploy. It defauls to the single cluster variant
 CLAB_TOPOLOGY_FILE ?= singlecluster/kind.clab.yml
+NUM_WORKERS ?= 1
 
 # COREDUMP determines if we want to setup the coredump via our scripts. We
 # do not want to do this in local setups, but this is needed for CI environments.
@@ -366,7 +367,7 @@ parse-scale-report: ## Parse scale test JSON report and print summary tables.
 .PHONY: clab-cluster
 clab-cluster: kind-node-image-build kubectl
 	KUBECONFIG_PATH=$(KUBECONFIG_PATH) KIND=$(KIND) KUBECTL=$(KUBECTL) CLAB_TOPOLOGY=$(CLAB_TOPOLOGY_FILE) \
-	  KIND_EXPORT_LOGS=$(KIND_EXPORT_LOGS) COREDUMP=$(COREDUMP) clab/setup.sh
+	  NUM_WORKERS=$(NUM_WORKERS) KIND_EXPORT_LOGS=$(KIND_EXPORT_LOGS) COREDUMP=$(COREDUMP) clab/setup.sh
 	@echo 'kind cluster created, to use it please'
 	@echo 'export KUBECONFIG=${KUBECONFIG_PATH}'
 

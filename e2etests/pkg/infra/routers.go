@@ -42,22 +42,42 @@ var linksForFamily map[ipfamily.Family]map[link]linkAddresses
 func init() {
 	linksForFamily = map[ipfamily.Family]map[link]linkAddresses{}
 
-	// leafkind1 links - bridge connections use toswitch1
+	// leafkind1 links - control plane
 	addLinkIPs("clab-kind-leafkind1", "pe-kind-control-plane", "192.168.11.2", "192.168.11.3")
 	addLinkIPv6s("clab-kind-leafkind1", "pe-kind-control-plane", "2001:db8:11::2", "2001:db8:11::3")
 	addLinkInterfaces("clab-kind-leafkind1", "pe-kind-control-plane", "tokindctrlpl", "toleafkind1")
-	addLinkIPs("clab-kind-leafkind1", "pe-kind-worker", "192.168.11.2", "192.168.11.4")
-	addLinkIPv6s("clab-kind-leafkind1", "pe-kind-worker", "2001:db8:11::2", "2001:db8:11::4")
-	addLinkInterfaces("clab-kind-leafkind1", "pe-kind-worker", "tokindworker", "toleafkind1")
-	addLinkIPs("clab-kind-leafkind1", "clab-kind-spine", "192.168.1.5", "192.168.1.4")
 
-	// leafkind2 links - bridge connections use toswitch2
+	// leafkind2 links - control plane
 	addLinkIPs("clab-kind-leafkind2", "pe-kind-control-plane", "192.168.12.2", "192.168.12.3")
 	addLinkIPv6s("clab-kind-leafkind2", "pe-kind-control-plane", "2001:db8:12::2", "2001:db8:12::3")
 	addLinkInterfaces("clab-kind-leafkind2", "pe-kind-control-plane", "tokindctrlpl", "toleafkind2")
-	addLinkIPs("clab-kind-leafkind2", "pe-kind-worker", "192.168.12.2", "192.168.12.4")
-	addLinkIPv6s("clab-kind-leafkind2", "pe-kind-worker", "2001:db8:12::2", "2001:db8:12::4")
-	addLinkInterfaces("clab-kind-leafkind2", "pe-kind-worker", "tokindworker", "toleafkind2")
+
+	// Worker links — addressing formula mirrors
+	// clab/tools/generate_topology/generate_topology.go:
+	//   worker i (1-based): 192.168.{11,12}.(3+i), 2001:db8:{11,12}::(3+i)
+	//   leaf iface: tokindworker (i=1), tokindworker{i} (i>1)
+	//   node name: pe-kind-worker (i=1), pe-kind-worker{i} (i>1)
+	const maxWorkers = 16
+	for i := 1; i <= maxWorkers; i++ {
+		name := "pe-kind-worker"
+		if i > 1 {
+			name = fmt.Sprintf("pe-kind-worker%d", i)
+		}
+		leafIface := "tokindworker"
+		if i > 1 {
+			leafIface = fmt.Sprintf("tokindworker%d", i)
+		}
+		ip := 3 + i
+		addLinkIPs("clab-kind-leafkind1", name, "192.168.11.2", fmt.Sprintf("192.168.11.%d", ip))
+		addLinkIPv6s("clab-kind-leafkind1", name, "2001:db8:11::2", fmt.Sprintf("2001:db8:11::%d", ip))
+		addLinkInterfaces("clab-kind-leafkind1", name, leafIface, "toleafkind1")
+		addLinkIPs("clab-kind-leafkind2", name, "192.168.12.2", fmt.Sprintf("192.168.12.%d", ip))
+		addLinkIPv6s("clab-kind-leafkind2", name, "2001:db8:12::2", fmt.Sprintf("2001:db8:12::%d", ip))
+		addLinkInterfaces("clab-kind-leafkind2", name, leafIface, "toleafkind2")
+	}
+
+	// Spine links
+	addLinkIPs("clab-kind-leafkind1", "clab-kind-spine", "192.168.1.5", "192.168.1.4")
 	addLinkIPs("clab-kind-leafkind2", "clab-kind-spine", "192.168.1.7", "192.168.1.6")
 
 	// Other leaf links

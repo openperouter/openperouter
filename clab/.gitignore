@@ -5,3 +5,6 @@
 /kubeconfig
 /leafA/frr.conf
 /leafB/frr.conf
+/singlecluster/kind.clab.yml
+/singlecluster/ip_map.txt
+/singlecluster/check-veths.yaml

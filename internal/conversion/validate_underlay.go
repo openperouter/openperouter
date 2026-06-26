@@ -4,6 +4,7 @@ package conversion
 
 import (
 	"fmt"
+	"net/netip"
 
 	corev1 "k8s.io/api/core/v1"
 
@@ -67,6 +68,10 @@ func validateUnderlay(underlay v1alpha1.Underlay) error {
 		return fmt.Errorf("underlay %s has duplicate neighbor address: %w", underlay.Name, err)
 	}
 
+	if err := validateListenRanges(underlay.Spec.Neighbors); err != nil {
+		return fmt.Errorf("underlay %s: %w", underlay.Name, err)
+	}
+
 	if err := validateNoDuplicates(underlay.Spec.Nics); err != nil {
 		return fmt.Errorf("underlay %s has duplicate nic name: %w", underlay.Name, err)
 	}
@@ -109,14 +114,39 @@ func validateUnderlayTunnelEndpoint(underlay *v1alpha1.Underlay) error {
 }
 
 func neighborAddressesOf(neighbors []v1alpha1.Neighbor) []string {
-	res := make([]string, len(neighbors))
-	for i, n := range neighbors {
+	res := make([]string, 0, len(neighbors))
+	for _, n := range neighbors {
 		if n.Address == nil {
 			continue
 		}
-		res[i] = *n.Address
+		res = append(res, *n.Address)
 	}
 	return res
+}
+
+// validateListenRanges rejects malformed, duplicate and overlapping listen
+// ranges. FRR refuses overlapping bgp listen range stanzas, so admitting
+// them would break the router configuration at reload time.
+func validateListenRanges(neighbors []v1alpha1.Neighbor) error {
+	ranges := make([]netip.Prefix, 0, len(neighbors))
+	for _, n := range neighbors {
+		if n.ListenRange == nil {
+			continue
+		}
+		prefix, err := netip.ParsePrefix(*n.ListenRange)
+		if err != nil {
+			return fmt.Errorf("invalid listenRange %s: %w", *n.ListenRange, err)
+		}
+		ranges = append(ranges, prefix)
+	}
+	for i := 0; i < len(ranges); i++ {
+		for j := i + 1; j < len(ranges); j++ {
+			if ranges[i].Overlaps(ranges[j]) {
+				return fmt.Errorf("listenRange %s overlaps with listenRange %s", ranges[i], ranges[j])
+			}
+		}
+	}
+	return nil
 }
 
 func validateNoDuplicates(items []string) error {

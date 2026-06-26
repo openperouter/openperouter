@@ -6,9 +6,11 @@ nodes:
 {{- if .NodeImage }}
   image: {{.NodeImage}}
 {{- end }}
+{{- range .Workers }}
 - role: worker
-{{- if .NodeImage }}
-  image: {{.NodeImage}}
+{{- if $.NodeImage }}
+  image: {{$.NodeImage}}
+{{- end }}
 {{- end }}
 networking:
 {{- if .DisableDefaultCNI }}
