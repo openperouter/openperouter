@@ -32,6 +32,20 @@ func TestNodeIndexValidate(t *testing.T) {
 			nodeIndex:   static.NodeIndex{Index: 5, InterfaceName: "eth0"},
 			expectError: true,
 		},
+		{
+			name:      "interface with valid cidr",
+			nodeIndex: static.NodeIndex{InterfaceName: "eth0", CIDR: "192.168.1.0/24"},
+		},
+		{
+			name:        "cidr without interface is an error",
+			nodeIndex:   static.NodeIndex{CIDR: "192.168.1.0/24"},
+			expectError: true,
+		},
+		{
+			name:        "invalid cidr is an error",
+			nodeIndex:   static.NodeIndex{InterfaceName: "eth0", CIDR: "not-a-cidr"},
+			expectError: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -54,7 +68,7 @@ func TestNodeIndexFromInterface(t *testing.T) {
 	loopback := loopbackInterfaceName(t)
 
 	t.Run("loopback resolves to 1", func(t *testing.T) {
-		result, err := NodeIndexFromInterface(loopback)
+		result, err := NodeIndexFromInterface(loopback, "")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -64,7 +78,24 @@ func TestNodeIndexFromInterface(t *testing.T) {
 	})
 
 	t.Run("non-existent interface", func(t *testing.T) {
-		_, err := NodeIndexFromInterface("nonexistent-iface-xyz")
+		_, err := NodeIndexFromInterface("nonexistent-iface-xyz", "")
+		if err == nil {
+			t.Error("expected error but got none")
+		}
+	})
+
+	t.Run("loopback with matching cidr", func(t *testing.T) {
+		result, err := NodeIndexFromInterface(loopback, "127.0.0.0/8")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result != 1 {
+			t.Errorf("NodeIndexFromInterface(%s, 127.0.0.0/8) = %d, want 1", loopback, result)
+		}
+	})
+
+	t.Run("loopback with non-matching cidr", func(t *testing.T) {
+		_, err := NodeIndexFromInterface(loopback, "10.0.0.0/8")
 		if err == nil {
 			t.Error("expected error but got none")
 		}

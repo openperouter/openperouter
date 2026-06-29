@@ -26,8 +26,6 @@ func FileExists(path string) bool {
 	return err == nil
 }
 
-// ReadNodeConfig reads a NodeConfig from a YAML file.
-// If the file does not exist, returns an empty config.
 func ReadNodeConfig(path string) (*static.NodeConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -37,6 +35,16 @@ func ReadNodeConfig(path string) (*static.NodeConfig, error) {
 	var config static.NodeConfig
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse YAML node config: %w", err)
+	}
+
+	if err := ValidateNodeIndex(config.NodeIndex); err != nil {
+		return nil, err
+	}
+	if config.NodeIndex.InterfaceName != "" {
+		config.NodeIndex.Index, err = NodeIndexFromInterface(config.NodeIndex.InterfaceName, config.NodeIndex.CIDR)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve node index from interface: %w", err)
+		}
 	}
 
 	return &config, nil

@@ -47,6 +47,7 @@ import (
 	"github.com/openperouter/openperouter/api/static"
 	periov1alpha1 "github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/buildversion"
+	"github.com/openperouter/openperouter/internal/controller/nodeindex"
 	"github.com/openperouter/openperouter/internal/controller/routerconfiguration"
 	"github.com/openperouter/openperouter/internal/filewatcher"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
@@ -227,6 +228,18 @@ func runHostMode(
 
 	logger.Info("kubernetes API is now available, stopping static reconciler and starting k8s reconciler")
 
+	k8sClientset, err := kubernetes.NewForConfig(k8sConfig)
+	if err != nil {
+		logger.Error("failed to create kubernetes clientset for node annotation", "error", err)
+		os.Exit(1)
+	}
+	if err := nodeindex.AnnotateNodeIndex(ctx, k8sClientset, args.nodeName, nodeConfig.NodeIndex.Index); err != nil {
+		logger.Error("failed to annotate node with node index", "error", err)
+		os.Exit(1)
+	}
+	logger.Info("successfully annotated node with node index",
+		"node", args.nodeName, "nodeIndex", nodeConfig.NodeIndex.Index)
+
 	stopStaticReconciler()
 	// Wait for the static reconciler to fully stop and release the health probe port
 	// before starting the K8s reconciler, which binds the same port.
@@ -259,7 +272,7 @@ func runK8sConfigReconcilerHostMode(ctx context.Context,
 	routerProvider := &routerconfiguration.RouterHostProvider{
 		FRRConfigPath:         args.frrConfigPath,
 		RouterPidFilePath:     hostModeParams.hostContainerPidPath,
-		CurrentNodeIndex:      nodeConfig.NodeIndex,
+		CurrentNodeIndex:      nodeConfig.NodeIndex.Index,
 		SystemdSocketPath:     hostModeParams.systemdSocketPath,
 		RouterHealthCheckPort: hostModeParams.routerHealthCheckPort,
 	}
@@ -367,7 +380,7 @@ func runStaticConfigReconciler(ctx context.Context,
 	staticRouterProvider := &routerconfiguration.RouterHostProvider{
 		FRRConfigPath:         args.frrConfigPath,
 		RouterPidFilePath:     hostModeParams.hostContainerPidPath,
-		CurrentNodeIndex:      nodeConfig.NodeIndex,
+		CurrentNodeIndex:      nodeConfig.NodeIndex.Index,
 		SystemdSocketPath:     hostModeParams.systemdSocketPath,
 		RouterHealthCheckPort: hostModeParams.routerHealthCheckPort,
 	}
@@ -375,7 +388,7 @@ func runStaticConfigReconciler(ctx context.Context,
 	staticReconciler := &routerconfiguration.StaticConfigReconciler{
 		Scheme:          mgr.GetScheme(),
 		Logger:          logger,
-		NodeIndex:       nodeConfig.NodeIndex,
+		NodeIndex:       nodeConfig.NodeIndex.Index,
 		LogLevel:        args.logLevel,
 		FRRConfigPath:   args.frrConfigPath,
 		FRRReloadSocket: args.reloaderSocket,

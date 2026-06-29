@@ -15,10 +15,18 @@ func ValidateNodeIndex(n static.NodeIndex) error {
 			"index and interfaceName are mutually exclusive, got index %d and interface %q",
 			n.Index, n.InterfaceName)
 	}
+	if n.CIDR != "" && n.InterfaceName == "" {
+		return fmt.Errorf("cidr %q requires interfaceName to be set", n.CIDR)
+	}
+	if n.CIDR != "" {
+		if _, _, err := net.ParseCIDR(n.CIDR); err != nil {
+			return fmt.Errorf("invalid cidr %q: %w", n.CIDR, err)
+		}
+	}
 	return nil
 }
 
-func NodeIndexFromInterface(name string) (int, error) {
+func NodeIndexFromInterface(name, cidr string) (int, error) {
 	iface, err := net.InterfaceByName(name)
 	if err != nil {
 		return 0, fmt.Errorf("failed to find interface %s: %w", name, err)
@@ -29,10 +37,24 @@ func NodeIndexFromInterface(name string) (int, error) {
 		return 0, fmt.Errorf("failed to get addresses for interface %s: %w", name, err)
 	}
 
+	var cidrNet *net.IPNet
+	if cidr != "" {
+		_, cidrNet, err = net.ParseCIDR(cidr)
+		if err != nil {
+			return 0, fmt.Errorf("invalid cidr %q: %w", cidr, err)
+		}
+	}
+
 	var v6Fallback *net.IPNet
 	for _, addr := range addrs {
 		ipNet, ok := addr.(*net.IPNet)
 		if !ok {
+			continue
+		}
+		if cidrNet != nil {
+			if cidrNet.Contains(ipNet.IP) {
+				return hostPartFromIPNet(ipNet), nil
+			}
 			continue
 		}
 		if ipNet.IP.To4() != nil {
@@ -43,10 +65,12 @@ func NodeIndexFromInterface(name string) (int, error) {
 		}
 	}
 
+	if cidrNet != nil {
+		return 0, fmt.Errorf("no address matching cidr %s found on interface %s", cidr, name)
+	}
 	if v6Fallback != nil {
 		return hostPartFromIPNet(v6Fallback), nil
 	}
-
 	return 0, fmt.Errorf("no IP address found on interface %s", name)
 }
 
