@@ -25,6 +25,20 @@ var defaultUnreachableRoutes = []struct {
 	{family: netlink.FAMILY_V6, dst: &net.IPNet{IP: net.IPv6zero, Mask: net.CIDRMask(0, 128)}},
 }
 
+// lookupVRF finds an existing VRF by name and returns an error if it
+// does not exist or is not a VRF.
+func lookupVRF(name string) (*netlink.Vrf, error) {
+	link, err := netlink.LinkByName(name)
+	if err != nil {
+		return nil, fmt.Errorf("could not find vrf %s: %w", name, err)
+	}
+	vrf, ok := link.(*netlink.Vrf)
+	if !ok {
+		return nil, fmt.Errorf("link %s exists but is not a VRF", name)
+	}
+	return vrf, nil
+}
+
 // setupVRF creates a new VRF and sets it up.
 func setupVRF(name string) (*netlink.Vrf, error) {
 	vrf, err := createVRF(name)

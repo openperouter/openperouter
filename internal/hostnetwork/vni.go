@@ -88,7 +88,10 @@ func (e NotRouterInterfaceError) Error() string {
 // VXLan interface, and moves the veth to the VRF corresponding
 // to the L3 routing domain, exposing it to the default host namespace.
 func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
-	if err := setupVNI(ctx, params.VNIParams, setAddrGenModeNone); err != nil {
+	if err := setupVNI(ctx, params.VNIParams, vniSetupOpts{
+		createVRF:     true,
+		bridgeOptions: []NetlinkOption{setAddrGenModeNone},
+	}); err != nil {
 		return fmt.Errorf("SetupL3VNI: failed to setup VNI: %w", err)
 	}
 	slog.DebugContext(ctx, "setting up l3 VNI", "params", params)
@@ -169,11 +172,13 @@ func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
 }
 
 // SetupL2VNI sets up a Layer 2 VNI in the target namespace.
-// It uses setupVNI to create the necessary VRF, bridge, and
-// VXLan interface, and enslaves the veth leg to the bridge,
-// exposing the L2 domain to the default host namespace.
+// It uses setupVNI to create the bridge and VXLan interface,
+// and connects the veth leg to the bridge, exposing the L2
+// domain to the default host namespace.
+// The VRF must already exist (created by SetupL3VNI); it is
+// looked up and bound to the bridge in setupL2VNIRouterSide.
 func SetupL2VNI(ctx context.Context, params L2VNIParams) error {
-	if err := setupVNI(ctx, params.VNIParams); err != nil {
+	if err := setupVNI(ctx, params.VNIParams, vniSetupOpts{}); err != nil {
 		return fmt.Errorf("SetupL2VNI: failed to setup VNI: %w", err)
 	}
 	vethNames := vethNamesFromVNI(params.VNI)
@@ -242,6 +247,11 @@ func setupL2VNIRouterSide(params L2VNIParams, vethName string, underlayMTU int) 
 	if err != nil {
 		return fmt.Errorf("could not find bridge %s in namespace %s: %w", name, params.TargetNS, err)
 	}
+	if params.VRF != "" {
+		if err := bindBridgeToVRF(bridge, params.VRF); err != nil {
+			return err
+		}
+	}
 	if err := linkSetMaster(peVeth, bridge); err != nil {
 		return fmt.Errorf("failed to set bridge %s as master of pe veth %s: %w", name, peVeth.Attrs().Name, err)
 	}
@@ -285,15 +295,17 @@ func setupHostMaster(ctx context.Context, params L2VNIParams, hostVeth netlink.L
 	return nil
 }
 
+type vniSetupOpts struct {
+	createVRF     bool
+	bridgeOptions []NetlinkOption
+}
+
 // setupVNI sets up the configuration required by FRR to
 // serve a given VNI in the target namespace. This includes:
-// - a linux VRF (only when params.VRF is non-empty)
-// - a linux Bridge, enslaved to the VRF when one exists
+// - a linux VRF (created when opts.createVRF is true, looked up otherwise)
+// - a linux Bridge, bound to the VRF when one exists
 // - a VXLan interface
-//
-// Additionally, it creates a veth pair and moves one leg in the target
-// namespace.
-func setupVNI(ctx context.Context, params VNIParams, options ...NetlinkOption) error {
+func setupVNI(ctx context.Context, params VNIParams, opts vniSetupOpts) error {
 	slog.DebugContext(ctx, "setting up VNI", "params", params)
 	defer slog.DebugContext(ctx, "end setting up VNI", "params", params)
 	ns, err := netns.GetFromPath(params.TargetNS)
@@ -312,14 +324,18 @@ func setupVNI(ctx context.Context, params VNIParams, options ...NetlinkOption) e
 		if params.VRF != "" {
 			slog.DebugContext(ctx, "setting up vrf", "vrf", params.VRF)
 			var err error
-			vrf, err = setupVRF(params.VRF)
+			if opts.createVRF {
+				vrf, err = setupVRF(params.VRF)
+			} else {
+				vrf, err = lookupVRF(params.VRF)
+			}
 			if err != nil {
 				return err
 			}
 		}
 
 		slog.DebugContext(ctx, "setting up bridge")
-		bridge, err := setupBridge(params, vrf, options...)
+		bridge, err := setupBridge(params, vrf, opts.bridgeOptions...)
 		if err != nil {
 			return err
 		}

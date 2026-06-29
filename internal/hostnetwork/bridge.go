@@ -74,12 +74,24 @@ func createBridge(name string) (*netlink.Bridge, error) {
 	return toCreate, nil
 }
 
+func bindBridgeToVRF(link netlink.Link, vrfName string) error {
+	vrf, err := lookupVRF(vrfName)
+	if err != nil {
+		return fmt.Errorf("could not find vrf %s for bridge %s: %w", vrfName, link.Attrs().Name, err)
+	}
+	bridge, ok := link.(*netlink.Bridge)
+	if !ok {
+		return fmt.Errorf("link %s is not a bridge", link.Attrs().Name)
+	}
+	return ensureBridgeMaster(bridge, vrf.Attrs().Index)
+}
+
 func ensureBridgeMaster(bridge *netlink.Bridge, masterIndex int) error {
 	if bridge.MasterIndex == masterIndex {
 		return nil
 	}
 	if err := netlink.LinkSetMasterByIndex(bridge, masterIndex); err != nil {
-		return fmt.Errorf("could not enslave bridge %s to VRF (index %d): %w", bridge.Name, masterIndex, err)
+		return fmt.Errorf("could not bind bridge %s to VRF (index %d): %w", bridge.Name, masterIndex, err)
 	}
 	bridge.MasterIndex = masterIndex
 	return nil
