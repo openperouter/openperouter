@@ -75,6 +75,7 @@ jobs:
           make generate-all-ci
           make fix
           make fmt
+          make check-ginkgo-version
           make checkuncommitted
 
       - name: Helm doc generate
