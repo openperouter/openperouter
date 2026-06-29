@@ -229,7 +229,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        deployment: [manifests, helm, operator, systemdmode, hostmode-boot, helm-grout, operator-grout]
+        deployment: [manifests, helm, operator, systemdmode, hostmode-boot, grout, helm-grout, operator-grout]
     steps:
       - name: Free Disk Space
         working-directory: ${{ github.workspace }}
@@ -289,6 +289,7 @@ jobs:
           IMG_REPO="quay.io/openperouter"
           if [ ${{ matrix.deployment }} = "helm" ]; then MAKE_RULE="deploy-helm"; fi
           if [ ${{ matrix.deployment }} = "helm-grout" ]; then MAKE_RULE="grout-deploy-helm"; fi
+          if [ ${{ matrix.deployment }} = "grout" ]; then MAKE_RULE="grout-deploy"; fi
           if [ ${{ matrix.deployment }} = "systemdmode" ]; then MAKE_RULE="deploy-hostmode"; fi
           if [ ${{ matrix.deployment }} = "hostmode-boot" ]; then MAKE_RULE="deploy-hostmode-boot"; fi
           if [ ${{ matrix.deployment }} = "operator" ]; then MAKE_RULE="deploy-operator-with-olm"; IMG_REPO="localhost:5000"; export USE_HTTP=--use-http; export TLS_VERIFY=false; export KUBECONFIG=bin/kubeconfig; fi
@@ -306,8 +307,8 @@ jobs:
             make e2etests
           elif [ ${{ matrix.deployment }} = "hostmode-boot" ]; then
             make e2etests-hostmode-boot
-          elif [ ${{ matrix.deployment }} = "helm-grout" ]; then
-            make e2etests GINKGO_ARGS="--label-filter=grout-support" TEST_ARGS="--groutmode"
+          elif [ ${{ matrix.deployment }} = "helm-grout" ] || [ ${{ matrix.deployment }} = "grout" ]; then
+            make e2etests GINKGO_ARGS="--label-filter='grout-support'" TEST_ARGS="--groutmode"
           else
             export GINKGO_ARGS="--label-filter='!systemdmode'"
             make e2etests

@@ -665,6 +665,12 @@ deploy-olm: operator-sdk ## deploys OLM on the cluster
 
 build-and-push-bundle-images: bundle-build bundle-push catalog-build catalog-push
 
+
+.PHONY: grout-deploy
+grout-deploy: IMG_TAG=main-grout
+grout-deploy: export KUSTOMIZE_LAYER=grout
+grout-deploy: kind deploy-cluster deploy-controller ## Deploy cluster and controller with grout dataplane.
+
 .PHONY: grout-deploy-operator-with-olm
 grout-deploy-operator-with-olm: IMG_TAG=main-grout
 grout-deploy-operator-with-olm: bundle kustomize kind clab-cluster load-on-kind deploy-olm build-and-push-bundle-images
