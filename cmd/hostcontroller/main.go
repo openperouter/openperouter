@@ -31,6 +31,7 @@ import (
 	"k8s.io/client-go/rest"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -286,6 +287,24 @@ func runK8sConfigReconcilerHostMode(ctx context.Context,
 		return fmt.Errorf("unable to create controller: %w", err)
 	}
 
+	if err := routerProvider.StartFRRRestartWatcher(ctx, func() {
+		select {
+		case triggerChan <- event.GenericEvent{
+			Object: &metav1.PartialObjectMetadata{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "restart-trigger",
+					Namespace: "default",
+				},
+			},
+		}:
+			slog.Info("triggered reconciliation after router restart")
+		default:
+			slog.Debug("reconciliation already queued, skipping restart trigger")
+		}
+	}); err != nil {
+		return fmt.Errorf("unable to start FRR restart watcher: %w", err)
+	}
+
 	// Setup file watcher to trigger API reconciler on static file changes
 	fw, err := filewatcher.New(hostModeParams.configurationDir, triggerChan, logger)
 	if err != nil {
@@ -384,6 +403,12 @@ func runStaticConfigReconciler(ctx context.Context,
 	}
 	if err = staticReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create controller: %w", err)
+	}
+
+	if err := staticRouterProvider.StartFRRRestartWatcher(ctx, func() {
+		staticReconciler.TriggerReconcile()
+	}); err != nil {
+		return fmt.Errorf("unable to start FRR restart watcher: %w", err)
 	}
 
 	// Setup file watcher for static configuration changes

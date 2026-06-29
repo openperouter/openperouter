@@ -8,10 +8,12 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/openperouter/openperouter/internal/netnamespace"
 	"github.com/openperouter/openperouter/internal/systemdctl"
 	"github.com/vishvananda/netns"
@@ -151,4 +153,61 @@ func (r *RouterHostContainer) CanReconcile(ctx context.Context) (bool, error) {
 	}
 
 	return true, nil
+}
+
+// StartFRRRestartWatcher watches the router PID file for changes via inotify.
+// When the PID file is rewritten (container restart), onRestart is called.
+// The goroutine stops when ctx is cancelled.
+// Safe to call multiple times — only the first call starts the watcher.
+func (r *RouterHostProvider) StartFRRRestartWatcher(ctx context.Context, onRestart func()) error {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return fmt.Errorf("failed to create fsnotify watcher: %w", err)
+	}
+
+	pidDir := filepath.Dir(r.RouterPidFilePath)
+	pidFile := filepath.Base(r.RouterPidFilePath)
+
+	if err := watcher.Add(pidDir); err != nil {
+		if closeErr := watcher.Close(); closeErr != nil {
+			slog.Error("failed to close watcher", "error", closeErr)
+		}
+		return fmt.Errorf("failed to watch PID directory %s: %w", pidDir, err)
+	}
+
+	slog.Info("restart watcher: watching PID file", "path", r.RouterPidFilePath)
+
+	go func() {
+		defer func() {
+			if err := watcher.Close(); err != nil {
+				slog.Error("failed to close watcher", "error", err)
+			}
+		}()
+		for {
+			select {
+			case <-ctx.Done():
+				slog.Info("restart watcher: stopping")
+				return
+			case ev, ok := <-watcher.Events:
+				if !ok {
+					return
+				}
+				if filepath.Base(ev.Name) != pidFile {
+					continue
+				}
+				if ev.Op&(fsnotify.Write|fsnotify.Create) == 0 {
+					continue
+				}
+				slog.Info("restart watcher: PID file changed, router restart detected", "event", ev.Op.String())
+				onRestart()
+			case err, ok := <-watcher.Errors:
+				if !ok {
+					return
+				}
+				slog.Error("restart watcher: fsnotify error", "error", err)
+			}
+		}
+	}()
+
+	return nil
 }

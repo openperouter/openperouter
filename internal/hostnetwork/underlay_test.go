@@ -6,8 +6,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"net"
 	"os"
 	"runtime"
+	"slices"
 
 	"strings"
 	"time"
@@ -40,29 +43,8 @@ var _ = Describe("Underlay configuration should work when", func() {
 
 	BeforeEach(func() {
 		cleanTest(underlayTestNS)
-
-		toMove := &netlink.Dummy{
-			LinkAttrs: netlink.LinkAttrs{
-				Name: underlayTestInterface,
-			},
-		}
-		err := netlink.LinkAdd(toMove)
-		Expect(err).NotTo(HaveOccurred())
-
-		err = assignIPToInterface(toMove, externalInterfaceIP)
-		Expect(err).NotTo(HaveOccurred())
-
-		toEdit := &netlink.Dummy{
-			LinkAttrs: netlink.LinkAttrs{
-				Name: underlayTestInterfaceEdit,
-			},
-		}
-		err = netlink.LinkAdd(toEdit)
-		Expect(err).NotTo(HaveOccurred())
-
-		err = assignIPToInterface(toEdit, externalInterfaceEditIP)
-		Expect(err).NotTo(HaveOccurred())
-
+		Expect(createInterface(underlayTestInterface, externalInterfaceIP)).To(Succeed())
+		Expect(createInterface(underlayTestInterfaceEdit, externalInterfaceEditIP)).To(Succeed())
 		testNs = createTestNS(underlayTestNS)
 	})
 
@@ -191,16 +173,76 @@ var _ = Describe("Underlay configuration should work when", func() {
 			validateUnderlayInNS(g, testNs, params)
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 	})
+	It("RemoveUnderlay should move the underlay interfaces back to the default namespace", func() {
+		underlayInterfaces := map[string]string{
+			underlayTestInterface:     externalInterfaceIP,
+			underlayTestInterfaceEdit: externalInterfaceEditIP,
+		}
+		params := UnderlayParams{
+			UnderlayInterfaces: slices.Collect(maps.Keys(underlayInterfaces)),
+			TunnelEndpoint: &UnderlayTunnelEndpointParams{
+				IPv4CIDR: "192.168.1.1/32",
+			},
+			TargetNS: underlayTestNSPath(),
+		}
+		Expect(SetupUnderlay(context.Background(), params)).To(Succeed())
+
+		By("verifying the interfaces have the original IP while in the target namespace and have the correct group ID")
+		Eventually(func(g Gomega) {
+			validateUnderlayInNS(g, testNs, params)
+		}, 30*time.Second, 1*time.Second).Should(Succeed())
+
+		Expect(RestoreUnderlay(context.Background(), underlayTestNSPath())).To(Succeed())
+
+		By("verifying the loopback IPs were deleted from the target namespace")
+		Eventually(func(g Gomega) {
+			_ = netnamespace.In(testNs, func() error {
+				checkInterfaceHasNoNonLoopbackIPs(g, loopbackName)
+				return nil
+			})
+		}, 30*time.Second, 1*time.Second).Should(Succeed())
+
+		By("verifying the interface was moved back, is up, still has the original IP and groupID was removed")
+		Eventually(func(g Gomega) {
+			for intf, ip := range underlayInterfaces {
+				link, err := netlink.LinkByName(intf)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(link).NotTo(BeNil())
+				g.Expect(link.Attrs().Flags&net.FlagUp).To(Equal(net.FlagUp), "interface should be administratively up")
+
+				hasIP, err := interfaceHasIP(link, ip)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(hasIP).To(BeTrue(), "interface should have %s after moving back to the default namespace",
+					ip)
+
+				g.Expect(link.Attrs().Group).To(
+					Equal(uint32(0)),
+					"interface should not be part of a group after moving back to default namespace, found group: %d",
+					link.Attrs().Group,
+				)
+			}
+		}, 30*time.Second, 1*time.Second).Should(Succeed())
+	})
 })
 
 func validateUnderlayInNS(g Gomega, ns netns.NsHandle, params UnderlayParams) {
 	_ = netnamespace.In(ns, func() error {
-		validateUnderlay(g, params, externalInterfaceIP)
+		validateUnderlay(
+			g,
+			params,
+			map[string]string{
+				underlayTestInterface:     externalInterfaceIP,
+				underlayTestInterfaceEdit: externalInterfaceEditIP,
+			},
+		)
 		return nil
 	})
 }
 
-func validateUnderlay(g Gomega, params UnderlayParams, interfaceIPs ...string) {
+// validateUnderlay checks that everything inside the underlay was configured as expected.
+// If the caller does not care about interface IP address validation, they can set interfaceIPs to empty and these
+// checks will be skipped.
+func validateUnderlay(g Gomega, params UnderlayParams, interfaceIPs map[string]string) {
 	links, err := netlink.LinkList()
 	g.Expect(err).NotTo(HaveOccurred())
 	foundInterfaces := map[string]bool{}
@@ -211,10 +253,14 @@ func validateUnderlay(g Gomega, params UnderlayParams, interfaceIPs ...string) {
 		for _, underlayIface := range params.UnderlayInterfaces {
 			if l.Attrs().Name == underlayIface {
 				foundInterfaces[underlayIface] = true
-				for _, ip := range interfaceIPs {
-					validateIP(g, l, ip)
-				}
 				validateGroupID(g, l, underlayGroupID)
+
+				if len(interfaceIPs) == 0 {
+					continue
+				}
+				ip := interfaceIPs[underlayIface]
+				g.Expect(ip).NotTo(BeEmpty())
+				validateIP(g, l, ip)
 			}
 		}
 	}
@@ -286,8 +332,33 @@ func cleanTest(namespace string) {
 	err = removeLinkByName(PassthroughNames.HostSide)
 	Expect(err).NotTo(HaveOccurred())
 
-	err = clearNonDefaultLoopbackIPs(loopbackName)
+	curNS, err := netns.Get()
+	defer func() {
+		if err := curNS.Close(); err != nil {
+			GinkgoWriter.Printf("couldn't close curNS, err: %v", err)
+		}
+	}()
 	Expect(err).NotTo(HaveOccurred())
+
+	handle, err := netlink.NewHandleAt(curNS)
+	Expect(err).NotTo(HaveOccurred())
+	defer handle.Close()
+
+	err = clearNonDefaultLoopbackIPs(handle, loopbackName)
+	Expect(err).NotTo(HaveOccurred())
+}
+
+func createInterface(intf, ip string) error {
+	toMove := &netlink.Dummy{
+		LinkAttrs: netlink.LinkAttrs{
+			Name: intf,
+		},
+	}
+	if err := netlink.LinkAdd(toMove); err != nil {
+		return err
+	}
+
+	return assignIPToInterface(toMove, ip)
 }
 
 func createTestNS(testNs string) netns.NsHandle {

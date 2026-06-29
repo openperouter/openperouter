@@ -10,7 +10,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/executor"
 )
 
-const namedNetns = "perouter"
+const NamedNetns = "perouter"
 
 // NamedNetnsExists checks whether /var/run/netns/perouter is present on nodeName.
 func NamedNetnsExists(nodeName string) (bool, error) {
@@ -23,7 +23,7 @@ func NamedNetnsExists(nodeName string) (bool, error) {
 	// Use exact name comparison to avoid "perouter" matching inside "openperouter".
 	for _, line := range strings.Split(out, "\n") {
 		fields := strings.Fields(line)
-		if len(fields) > 0 && fields[0] == namedNetns {
+		if len(fields) > 0 && fields[0] == NamedNetns {
 			return true, nil
 		}
 	}
@@ -34,7 +34,7 @@ func NamedNetnsExists(nodeName string) (bool, error) {
 // interface of the given link type (e.g. "vrf", "bridge", "vxlan").
 func NamedNetnsHasInterfaceType(nodeName, linkType string) (bool, error) {
 	exec := executor.ForContainer(nodeName)
-	out, err := exec.Exec("ip", "netns", "exec", namedNetns, "ip", "link", "show", "type", linkType)
+	out, err := exec.Exec("ip", "netns", "exec", NamedNetns, "ip", "link", "show", "type", linkType)
 	if err != nil {
 		return false, err
 	}
@@ -51,7 +51,7 @@ func DeleteNamedNetns(nodeName string) error {
 		log.Printf("pre-deletion of devices failed for %q, proceeding with netns delete: %v", nodeName, err)
 	}
 
-	_, err := e.Exec("ip", "netns", "delete", namedNetns)
+	_, err := e.Exec("ip", "netns", "delete", NamedNetns)
 	return err
 }
 
@@ -66,11 +66,11 @@ func UnderlayConfigured(nodeName string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if !strings.Contains(out, namedNetns) {
+	if !strings.Contains(out, NamedNetns) {
 		return false, nil
 	}
 
-	out, err = exec.Exec("ip", "netns", "exec", namedNetns, "ip", "-o", "link", "show", "dev", "lo")
+	out, err = exec.Exec("ip", "netns", "exec", NamedNetns, "ip", "-o", "link", "show", "dev", "lo")
 	if err != nil {
 		return false, err
 	}
@@ -78,7 +78,7 @@ func UnderlayConfigured(nodeName string) (bool, error) {
 		return false, nil
 	}
 
-	out, err = exec.Exec("ip", "netns", "exec", namedNetns, "ip", "address", "show", "dev", "lo", "scope", "global")
+	out, err = exec.Exec("ip", "netns", "exec", NamedNetns, "ip", "address", "show", "dev", "lo", "scope", "global")
 	if err != nil {
 		return false, err
 	}
@@ -97,7 +97,7 @@ func UnderlayVethsExists(nodeName string) bool {
 		if _, err := exec.Exec("ip", "link", "show", iface); err == nil {
 			return true
 		}
-		if _, err := exec.Exec("ip", "netns", "exec", namedNetns, "ip", "link", "show", iface); err == nil {
+		if _, err := exec.Exec("ip", "netns", "exec", NamedNetns, "ip", "link", "show", iface); err == nil {
 			return true
 		}
 	}
@@ -107,7 +107,7 @@ func UnderlayVethsExists(nodeName string) bool {
 // deleteNetnsDevices lists all devices inside the perouter netns and deletes
 // them one by one, skipping loopback.
 func deleteNetnsDevices(e executor.Executor) error {
-	out, err := e.Exec("ip", "netns", "exec", namedNetns, "ip", "-o", "link", "show")
+	out, err := e.Exec("ip", "netns", "exec", NamedNetns, "ip", "-o", "link", "show")
 	if err != nil {
 		return err
 	}
@@ -121,7 +121,7 @@ func deleteNetnsDevices(e executor.Executor) error {
 		if name == "lo" {
 			continue
 		}
-		if out, err := e.Exec("ip", "netns", "exec", namedNetns, "ip", "link", "delete", name); err != nil {
+		if out, err := e.Exec("ip", "netns", "exec", NamedNetns, "ip", "link", "delete", name); err != nil {
 			if strings.Contains(out, "Cannot find device") {
 				continue
 			}

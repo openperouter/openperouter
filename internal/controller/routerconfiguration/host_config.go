@@ -39,7 +39,7 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 			slog.Warn("failed to remove vnis after underlay removal", "err", err)
 		}
 		bridgerefresh.StopAllVNIs()
-		if err := hostnetwork.RemoveUnderlay(config.targetNamespace); err != nil {
+		if err := hostnetwork.RestoreUnderlay(ctx, config.targetNamespace); err != nil {
 			slog.Warn("failed to remove underlay interfaces after underlay removal", "err", err)
 		}
 		return nil

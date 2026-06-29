@@ -1184,6 +1184,75 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				}, underlayConfiguredTestSelector, p)
 			}
 		})
+
+		ginkgo.It("moves the underlay interface back to the default netns on deletion", func() {
+			nodes, err := k8s.GetNodes(cs)
+			Expect(err).NotTo(HaveOccurred())
+
+			underlayNIC := "toswitch1"
+
+			ginkgo.By(fmt.Sprintf("verifying %s exists in the default netns before creating the underlay", underlayNIC))
+			for _, node := range nodes {
+				Eventually(func() bool {
+					return openperouter.IsInterfaceInDefaultNetns(node.Name, underlayNIC)
+				}).WithTimeout(30 * time.Second).WithPolling(time.Second).Should(
+					BeTrueBecause("%s should be in the default netns on %s before underlay creation", underlayNIC, node.Name))
+			}
+
+			ginkgo.By(fmt.Sprintf("recording the %s IP addresses before creating the underlay", underlayNIC))
+			addrsBefore := map[string]string{}
+			for _, node := range nodes {
+				addrs, err := openperouter.InterfaceIPAddresses(node.Name, underlayNIC)
+				Expect(err).NotTo(HaveOccurred(), "failed to get %s addresses on %s", underlayNIC, node.Name)
+				addrsBefore[node.Name] = addrs
+			}
+
+			ginkgo.By("creating the underlay")
+			err = Updater.Update(config.Resources{
+				Underlays: []v1alpha1.Underlay{underlay},
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			ginkgo.By(fmt.Sprintf("verifying %s moved into the perouter netns", underlayNIC))
+			for _, node := range nodes {
+				Eventually(func() bool {
+					return openperouter.IsInterfaceInNS(node.Name, underlayNIC, openperouter.NamedNetns)
+				}).WithTimeout(2 * time.Minute).WithPolling(time.Second).Should(BeTrueBecause(
+					"%s should be inside the perouter netns on %s after underlay creation", underlayNIC, node.Name))
+			}
+
+			ginkgo.By("deleting the underlay")
+			Expect(Updater.CleanAll()).To(Succeed())
+
+			ginkgo.By("waiting for all router pods to be ready after underlay deletion")
+			Eventually(func(g Gomega) {
+				pods, err := openperouter.RouterPods(cs)
+				g.Expect(err).NotTo(HaveOccurred())
+				for _, p := range pods {
+					g.Expect(k8s.PodIsReady(p)).To(BeTrueBecause("pod %s must be ready", p.Name))
+				}
+			}).WithTimeout(2 * time.Minute).WithPolling(time.Second).Should(Succeed())
+
+			ginkgo.By(fmt.Sprintf("verifying %s is back in the default netns after underlay deletion", underlayNIC))
+			for _, node := range nodes {
+				Eventually(func() bool {
+					return openperouter.IsInterfaceInDefaultNetns(node.Name, underlayNIC)
+				}).WithTimeout(2 * time.Minute).WithPolling(time.Second).Should(BeTrueBecause(
+					"%s should be back in the default netns on %s after underlay deletion", underlayNIC, node.Name))
+			}
+
+			ginkgo.By(fmt.Sprintf("verifying %s is UP and has the same IP addresses as before", underlayNIC))
+			for _, node := range nodes {
+				Expect(openperouter.InterfaceIsUp(node.Name, underlayNIC)).To(BeTrueBecause(
+					"%s should be UP on %s after underlay deletion", underlayNIC, node.Name))
+
+				addrsAfter, err := openperouter.InterfaceIPAddresses(node.Name, underlayNIC)
+				Expect(err).NotTo(HaveOccurred(), "failed to get %s addresses on %s after deletion", underlayNIC, node.Name)
+				Expect(addrsAfter).To(Equal(addrsBefore[node.Name]),
+					"%s IP addresses on %s should be preserved after underlay deletion; was: %q, is: %q",
+					underlayNIC, node.Name, addrsBefore[node.Name], addrsAfter)
+			}
+		})
 	})
 
 	ginkgo.Context("L3Passthrough", func() {

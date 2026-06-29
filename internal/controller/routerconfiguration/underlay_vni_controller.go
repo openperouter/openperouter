@@ -344,7 +344,6 @@ func (r *PERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		WithEventFilter(filterUpdates).
 		Named("routercontroller")
 
-	// In host mode, watch for file system events via TriggerChan
 	if r.TriggerChan != nil {
 		builder = builder.WatchesRawSource(source.Channel(r.TriggerChan, &handler.EnqueueRequestForObject{}))
 	}
