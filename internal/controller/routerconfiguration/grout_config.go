@@ -13,6 +13,7 @@ import (
 	openpeerrors "github.com/openperouter/openperouter/internal/errors"
 	"github.com/openperouter/openperouter/internal/grout"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
+	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 // GroutDatapathConfigurator configures the host via the grout DPDK daemon.
@@ -36,11 +37,7 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 		return fmt.Errorf("failed to check if target namespace %s has underlay: %w", config.targetNamespace, err)
 	}
 	if len(currentUnderlayIfaces) > 0 && len(config.Underlays) == 0 {
-		slog.InfoContext(ctx, "underlay removed, cleaning up grout underlay")
-		if err := grout.RestoreUnderlay(ctx, groutClient, config.targetNamespace,
-			currentUnderlayIfaces); err != nil {
-			slog.Warn("failed to remove underlay after underlay removal", "err", err)
-		}
+		cleanupGroutInterfaces(ctx, groutClient, config.targetNamespace, currentUnderlayIfaces)
 		return nil
 	}
 
@@ -67,7 +64,23 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 	}
 
 	var resourceErrors []error
+	failedL3Domains := sets.New[string]()
 	reason := v1alpha1.FailedResourceReasonOverlayAttachmentFailed
+
+	var configuredL3VNIs []hostnetwork.L3VNIParams
+	for _, vni := range hostConfig.L3VNIs {
+		slog.InfoContext(ctx, "setting up VNI", "vni", vni.VRF)
+		if err := grout.SetupL3VNI(ctx, groutClient, vni); err != nil {
+			resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
+				Obj: v1alpha1.FailedResource{
+					Kind: openpeerrors.KindL3VNI, Name: vni.Name, Reason: reason, Message: err.Error(),
+				},
+			})
+			failedL3Domains.Insert(vni.VRF)
+			continue
+		}
+		configuredL3VNIs = append(configuredL3VNIs, vni)
+	}
 
 	slog.InfoContext(ctx, "setting up passthrough")
 	if hostConfig.L3Passthrough != nil {
@@ -80,6 +93,27 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 		}
 	}
 
+	if len(resourceErrors) > 0 {
+		slog.Error("configuration failed", "errors", resourceErrors)
+	}
+
+	configuredVNIs := make([]hostnetwork.VNIParams, 0, len(configuredL3VNIs))
+	configuredVRFs := []string{}
+	for _, vni := range configuredL3VNIs {
+		configuredVNIs = append(configuredVNIs, vni.VNIParams)
+		configuredVRFs = append(configuredVRFs, vni.VRF)
+	}
+
+	slog.InfoContext(ctx, "removing deleted vnis")
+	if err := grout.RemoveNonConfiguredVNIs(ctx, groutClient, config.targetNamespace, configuredVNIs); err != nil {
+		return fmt.Errorf("failed to remove deleted vnis: %w", err)
+	}
+
+	slog.InfoContext(ctx, "removing deleted vrfs")
+	if err := grout.RemoveNonConfiguredVRFs(ctx, groutClient, config.targetNamespace, configuredVRFs); err != nil {
+		return fmt.Errorf("failed to remove deleted vrfs: %w", err)
+	}
+
 	if len(apiConfig.L3Passthrough) == 0 {
 		if err := grout.RemovePassthrough(ctx, groutClient); err != nil {
 			return fmt.Errorf("failed to remove passthrough: %w", err)
@@ -87,4 +121,17 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 	}
 
 	return errors.Join(resourceErrors...)
+}
+
+func cleanupGroutInterfaces(ctx context.Context, groutClient *grout.Client, targetNamespace string, currentUnderlayIfaces []hostnetwork.UnderlayInterface) {
+	slog.InfoContext(ctx, "underlay removed, cleaning up VNIs and underlay interfaces")
+	if err := grout.RemoveAllVNIs(ctx, groutClient, targetNamespace); err != nil {
+		slog.Warn("failed to remove vnis after underlay removal", "err", err)
+	}
+	if err := grout.RemoveAllVRFs(ctx, groutClient, targetNamespace); err != nil {
+		slog.Warn("failed to remove vrfs after underlay removal", "err", err)
+	}
+	if err := grout.RestoreUnderlay(ctx, groutClient, targetNamespace, currentUnderlayIfaces); err != nil {
+		slog.Warn("failed to remove underlay after underlay removal", "err", err)
+	}
 }

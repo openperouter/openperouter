@@ -18,8 +18,8 @@ func TestValidateGroutL2VNI(t *testing.T) {
 
 func TestValidateGroutL3VNI(t *testing.T) {
 	err := ValidateGroutL3VNI(v1alpha1.L3VNI{})
-	if err == nil {
-		t.Error("ValidateGroutL3VNI() expected error, got nil")
+	if err != nil {
+		t.Errorf("ValidateGroutL3VNI() unexpected error: %v", err)
 	}
 }
 

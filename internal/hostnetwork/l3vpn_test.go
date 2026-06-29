@@ -434,7 +434,7 @@ var _ = Describe("L3 VPN configuration", func() {
 	})
 
 	It("should leave veth MTU at default when no underlay interface is configured", func() {
-		// No fake underlay is set up here, so findUnderlayMTU returns 0
+		// No fake underlay is set up here, so FindUnderlayMTU returns 0
 		// and the veth MTU must be left untouched.
 		params := L3VPNParams{
 			VRF:              "testred",

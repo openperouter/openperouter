@@ -37,7 +37,7 @@ func SetupPassthrough(ctx context.Context, client *Client, params hostnetwork.Pa
 		}
 	}()
 
-	if err := ensureTapPortInHostNamespace(ctx, client, portName, tapName, "main", peRouterNs); err != nil {
+	if err := ensureTapPortInHostNamespace(ctx, client, portName, tapName, defaultVRFName, peRouterNs); err != nil {
 		return err
 	}
 

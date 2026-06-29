@@ -131,7 +131,7 @@ var _ = Describe("Underlay CNI configuration", func() {
 		// not carry the underlay group ID.
 		Expect(SetupUnderlay(context.Background(), cniParams("net1"))).To(Succeed())
 
-		mtu, err := findUnderlayMTU(testNs)
+		mtu, err := FindUnderlayMTU(testNs)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(mtu).To(Equal(1500), "the lowest MTU among the underlay interfaces should win")
 	})
