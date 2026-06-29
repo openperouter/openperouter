@@ -1,0 +1,11 @@
+resources:
+- ../default
+patchesStrategicMerge:
+  - controller_patch.yaml
+  - perouter_patch.yaml
+  - frr_cm_patch.yaml
+
+images:
+- name: quay.io/openperouter/router
+  newName: quay.io/openperouter/router
+  newTag: main-grout
