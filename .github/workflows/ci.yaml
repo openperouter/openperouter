@@ -84,6 +84,22 @@ jobs:
       - name: Check if docs are different
         run: make checkuncommitted
 
+  check-ginkgo-version:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: "go.mod"
+          cache: true
+      - name: Check Ginkgo Version
+        run: make check-ginkgo-version
+
   commitlint:
     runs-on: ubuntu-22.04
     steps:

@@ -430,6 +430,20 @@ lint: $(GOLANGCI_LINT_CUSTOM_BIN)
 bumplicense:
 	hack/bumplicense.sh
 
+.PHONY: check-ginkgo-version
+check-ginkgo-version: ## Verify ginkgo version is aligned between go.mod and e2etests/go.mod
+	@set -e; \
+	MAIN_VERSION=$$(go list -m -f '{{.Version}}' github.com/onsi/ginkgo/v2) || { echo "ERROR: failed to get ginkgo version from go.mod"; exit 1; }; \
+	E2E_VERSION=$$(cd e2etests && go list -m -f '{{.Version}}' github.com/onsi/ginkgo/v2) || { echo "ERROR: failed to get ginkgo version from e2etests/go.mod"; exit 1; }; \
+	if [ -z "$$MAIN_VERSION" ] || [ -z "$$E2E_VERSION" ]; then \
+		echo "ERROR: failed to determine ginkgo versions (main=$$MAIN_VERSION, e2e=$$E2E_VERSION)"; \
+		exit 1; \
+	fi; \
+	if [ "$$MAIN_VERSION" != "$$E2E_VERSION" ]; then \
+		echo "ERROR: ginkgo version mismatch: go.mod has $$MAIN_VERSION, e2etests/go.mod has $$E2E_VERSION"; \
+		exit 1; \
+	fi
+
 .PHONY: checkuncommitted
 CSV_FILE = operator/bundle/manifests/openperouter-operator.clusterserviceversion.yaml
 checkuncommitted:
