@@ -26,10 +26,10 @@ import (
 
 const (
 	// Static configuration directory on the host (from systemdmode/generate_systemd.sh)
-	// The systemd setup mounts /var/lib/openperouter -> /etc/openperouter in the container
-	hostConfigDir = "/var/lib/openperouter/configs"
-	// Mount path inside the helper pod
-	podConfigMount = "/configs"
+	// The systemd setup mounts /var/lib/openperouter -> /etc/openperouter in the controller container.
+	// We mount the same parent directory in the helper pod so both resolve to the same overlayfs layer.
+	hostConfigDir  = "/var/lib/openperouter"
+	podConfigMount = "/hostconfig/configs"
 )
 
 // This test validates hybrid mode where configuration comes from both
@@ -131,9 +131,9 @@ var _ = Describe("Hybrid mode: static files and API configuration", Label("syste
 		configPods, err = createConfigHelperDaemonSet(cs)
 		Expect(err).NotTo(HaveOccurred())
 
-		By("Cleaning any existing static configuration files on all nodes")
+		By("Ensuring the static configuration directory exists and cleaning existing files on all nodes")
 		for _, pod := range configPods {
-			_, err = execInConfigPod(pod, fmt.Sprintf("rm -f %s/openpe_*.yaml", podConfigMount))
+			_, err = execInConfigPod(pod, fmt.Sprintf("mkdir -p %s && rm -f %s/openpe_*.yaml", podConfigMount, podConfigMount))
 			Expect(err).NotTo(HaveOccurred())
 		}
 
@@ -292,7 +292,7 @@ func createConfigHelperDaemonSet(cs clientset.Interface) ([]*corev1.Pod, error) 
 							VolumeMounts: []corev1.VolumeMount{
 								{
 									Name:      "config-dir",
-									MountPath: podConfigMount,
+									MountPath: "/hostconfig",
 								},
 							},
 						},
