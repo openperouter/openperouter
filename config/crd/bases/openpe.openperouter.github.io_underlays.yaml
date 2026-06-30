@@ -73,12 +73,101 @@ spec:
                     minimum: 1
                     type: integer
                 type: object
+              isis:
+                description: isis holds the ISIS configuration for the underlay.
+                properties:
+                  baseNet:
+                    description: |-
+                      baseNet holds the ISIS NET address.
+                      The configured Net address is a base address which is offset by the node index of each node.
+                      Only accepts the simplified NSAP format with a fixed AreaID length of 3 bytes and a 6 byte SystemID in compliance
+                      with the U.S. GOSIP version 2.0 for a total of 10 bytes.
+                    maxLength: 25
+                    minLength: 25
+                    type: string
+                    x-kubernetes-validations:
+                    - message: Provided net address must match canonical format
+                      rule: self.matches('^[0-9a-f]{2}\\.([0-9a-f]{4}\\.){4}[0-9a-f]{2}$')
+                  features:
+                    description: |-
+                      features enables ISIS boolean features.
+                      Supported features are:
+                      advertisePassiveOnly: configures ISIS to advertise only prefixes that belong to passive interfaces.
+                    items:
+                      description: ISISFeature represents a single ISIS feature.
+                      enum:
+                      - advertisePassiveOnly
+                      maxLength: 128
+                      minLength: 1
+                      type: string
+                    maxItems: 32
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  interfaces:
+                    description: |-
+                      interfaces holds additional ISIS interface level configuration and / or per
+                      interface overrides. By default, OpenPERouter enables IPv6 on all required
+                      interfaces with default settings.
+                    items:
+                      description: ISISInterface holds ISIS interface level configuration.
+                      properties:
+                        features:
+                          description: |-
+                            features enables ISIS interface boolean features.
+                            Supported features are:
+                            passive: configures ISIS passive mode on this interface.
+                          items:
+                            description: ISISInterfaceFeature represents a single
+                              ISIS feature of an ISIS interface.
+                            enum:
+                            - passive
+                            maxLength: 128
+                            minLength: 1
+                            type: string
+                          maxItems: 32
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        ipFamily:
+                          description: ipFamily configures which address families
+                            ISIS is enabled for on this interface.
+                          enum:
+                          - ipv4
+                          - ipv6
+                          - dualstack
+                          type: string
+                        name:
+                          description: name of the interface that these settings shall
+                            apply to.
+                          maxLength: 15
+                          minLength: 1
+                          type: string
+                          x-kubernetes-validations:
+                          - message: Interface must not contain /, :, or whitespace
+                            rule: self.matches('^[^\\/:\\s]+$')
+                          - message: Interface cannot be . or ..
+                            rule: self != '.' && self != '..'
+                      required:
+                      - name
+                      type: object
+                    maxItems: 128
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - name
+                    x-kubernetes-list-type: map
+                  level:
+                    description: level configures the ISIS type, system wide. It defaults
+                      to level-1-2 unless specified otherwise.
+                    enum:
+                    - 1
+                    - 2
+                    format: int32
+                    type: integer
+                required:
+                - baseNet
+                type: object
               neighbors:
                 description: |-
                   neighbors is the list of external BGP neighbors to peer with.
-                  Note: MaxItems=128 is arbitrarily chosen to keep total CEL cost low
-                  Note: kubeapilinter complained about 'the struct has no required fields', but CEL enforces either/or choices
-                  for Address and Interface.
                   Multiple neighbors are supported for connecting to multiple TOR switches
                   or establishing redundant BGP sessions. Each neighbor address must be unique.
                   At least one neighbor is required.
@@ -99,7 +188,9 @@ spec:
                     addressFamilies:
                       description: |-
                         addressFamilies specifies the BGP address families that shall be enabled
-                        for this BGP neighbor.
+                        for this BGP neighbor. evpn and ipv4vpn/ipv6vpn are mutually exclusive.
+                        If ipv4vpn or ipv6vpn are set, the update source of this neighbor will
+                        be set to the loopback's IPv6 address.
                         If addressFamilies is not provided or empty, the following defaults are
                         chosen:
                         For unnumbered neighbors:
@@ -114,6 +205,8 @@ spec:
                         - ipv4unicast if L2VNIs or L3VNIs are present, or if passthrough is configured with IPv4 local CIDR
                         - ipv6unicast
                         - evpn if L2VNIs or L3VNIs are present
+                        - ipv4vpn if L3VPNs and SRv6 configuration are present.
+                        - ipv6vpn if L3VPNs and SRv6 configuration are present.
                       items:
                         description: |-
                           NeighborAddressFamily represents a single BGP address family configuration
@@ -125,17 +218,24 @@ spec:
                             - ipv4unicast
                             - ipv6unicast
                             - evpn
+                            - ipv4vpn
+                            - ipv6vpn
                             maxLength: 11
                             minLength: 1
                             type: string
                         required:
                         - type
                         type: object
-                      maxItems: 3
+                      maxItems: 4
                       type: array
                       x-kubernetes-list-map-keys:
                       - type
                       x-kubernetes-list-type: map
+                      x-kubernetes-validations:
+                      - message: EVPN and IPv4VPN/IPv6VPN address families are mutually
+                          exclusive
+                        rule: '!(self.exists(f, f.type == ''evpn'') && self.exists(f,
+                          f.type == ''ipv4vpn'' || f.type == ''ipv6vpn''))'
                     asn:
                       description: asn is the AS number of the neighbor. Either ASN
                         or Type must be set.
@@ -285,6 +385,15 @@ spec:
                     rule: has(self.address) || has(self.interface)
                   - message: Address and Interface cannot be set together for Neighbor
                     rule: '!has(self.address) || !has(self.interface)'
+                  - message: ipv4vpn and ipv6vpn address families are not supported
+                      for unnumbered (interface) neighbors
+                    rule: '!has(self.interface) || !has(self.addressFamilies) || !self.addressFamilies.exists(f,
+                      f.type == ''ipv4vpn'' || f.type == ''ipv6vpn'')'
+                  - message: ipv4vpn and ipv6vpn address families require an IPv6
+                      neighbor address
+                    rule: '!has(self.address) || !has(self.addressFamilies) || ip(self.address).family()
+                      != 4 || !self.addressFamilies.exists(f, f.type == ''ipv4vpn''
+                      || f.type == ''ipv6vpn'')'
                 maxItems: 128
                 minItems: 1
                 type: array
@@ -354,6 +463,37 @@ spec:
                 description: routeridcidr is the ipv4 cidr to be used to assign a
                   different routerID on each node.
                 type: string
+              srv6:
+                description: srv6 holds the SRv6 configuration. Requires ISIS or Neighbors
+                  configuration.
+                properties:
+                  locator:
+                    description: locator defines the locator for this SRv6 VPN.
+                    properties:
+                      basePrefix:
+                        description: basePrefix is the CIDR to be used for the locator,
+                          offset by the router index.
+                        maxLength: 43
+                        minLength: 1
+                        type: string
+                        x-kubernetes-validations:
+                        - message: prefix must be an IPv6 CIDR
+                          rule: isCIDR(self) && cidr(self).ip().family() == 6
+                      format:
+                        description: format specifies the format of the locator. Defaults
+                          to usid-f3216
+                        enum:
+                        - usid-f3216
+                        maxLength: 40
+                        minLength: 1
+                        type: string
+                    required:
+                    - basePrefix
+                    - format
+                    type: object
+                required:
+                - locator
+                type: object
               tunnelEndpoint:
                 description: tunnelEndpoint contains tunnel endpoint configuration
                   for the underlay.
@@ -361,8 +501,8 @@ spec:
                   cidrs:
                     description: |-
                       cidrs is a list of CIDRs to be used to assign IPs to the local tunnel endpoint on
-                      each node. A loopback interface will be created with IPs derived from
-                      these CIDRs. At least one IPv4 or IPv6 CIDR is required. At most one of each family may be specified.
+                      each node. IPs derived from these CIDRs will be assigned to the local loopback.
+                      At least one IPv4 or IPv6 CIDR is required. At most one of each family may be specified.
                     items:
                       type: string
                     maxItems: 2
@@ -386,6 +526,12 @@ spec:
             - neighbors
             - nics
             type: object
+            x-kubernetes-validations:
+            - message: SRv6 can only be configured if isis is set
+              rule: '!has(self.srv6) || has(self.isis)'
+            - message: SRv6 requires at least one IPv6 CIDR in tunnelEndpoint.cidrs
+              rule: '!has(self.srv6) || (has(self.tunnelEndpoint) && has(self.tunnelEndpoint.cidrs)
+                && self.tunnelEndpoint.cidrs.exists(c, cidr(c).ip().family() == 6))'
           status:
             description: status defines the observed state of Underlay.
             type: object
