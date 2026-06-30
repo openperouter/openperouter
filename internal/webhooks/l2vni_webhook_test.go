@@ -25,7 +25,60 @@ func TestValidateL2VNICreate(t *testing.T) {
 		errorString string
 	}{
 		{
-			name: "webhook passes",
+			name: "webhook passes (pre-existing l3vni in same VRF)",
+			nodes: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node1",
+						Labels: map[string]string{
+							"nodeName": "node1",
+						},
+					},
+				},
+			},
+			l3vnis: []*v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: "default",
+						Name:      "existingL3VNI",
+					},
+					Spec: v1alpha1.L3VNISpec{
+						VRF: "vrfa",
+						VNI: 200,
+						NodeSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{
+								"nodeName": "node1",
+							},
+						},
+						HostSession: &v1alpha1.HostSession{
+							LocalCIDR: v1alpha1.LocalCIDRConfig{
+								IPv4: new("192.0.2.0/24"),
+							},
+						},
+					},
+				},
+			},
+			newL2VNI: &v1alpha1.L2VNI{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      "newL2VNI",
+				},
+				Spec: v1alpha1.L2VNISpec{
+					VNI: 100,
+					VRF: new("vrfa"),
+					NodeSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"nodeName": "node1",
+						},
+					},
+					L2GatewayIPs: []string{"192.0.3.0/24"},
+				},
+			},
+		},
+		// Even though this is technically not a correct configuration, the webhook should let this pass to avoid
+		// order of operations issues.
+		{
+			name: "webhook passes (pre-existing l3vni in different VRF)",
 			nodes: []*v1.Node{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -71,12 +124,12 @@ func TestValidateL2VNICreate(t *testing.T) {
 							"nodeName": "node1",
 						},
 					},
-					L2GatewayIPs: []string{"192.0.2.0/24"},
+					L2GatewayIPs: []string{"192.0.3.0/24"},
 				},
 			},
 		},
 		{
-			name: "webhook passes",
+			name: "webhook passes (no prior resources)",
 			nodes: []*v1.Node{
 				{
 					ObjectMeta: metav1.ObjectMeta{
