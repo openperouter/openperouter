@@ -121,7 +121,7 @@ func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
 		return fmt.Errorf("SetupL3VNI: failed to get host veth %s: %w", vethNames.HostSide, err)
 	}
 
-	err = assignIPsToInterface(hostVeth, params.CrossNsIPs.HostIPv4, params.CrossNsIPs.HostIPv6)
+	err = AssignIPsToInterface(hostVeth, params.CrossNsIPs.HostIPv4, params.CrossNsIPs.HostIPv6)
 	if err != nil {
 		return fmt.Errorf("failed to assign IPs to host veth: %w", err)
 	}
@@ -156,7 +156,7 @@ func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
 		}
 		// Note: since the ipv6 address is removed after enslaving the veth to the vrf, this has to
 		// be performed after the veth is enslaved to the vrf.
-		err = assignIPsToInterface(peVeth, params.CrossNsIPs.NSIPv4, params.CrossNsIPs.NSIPv6)
+		err = AssignIPsToInterface(peVeth, params.CrossNsIPs.NSIPv4, params.CrossNsIPs.NSIPv6)
 		if err != nil {
 			return fmt.Errorf("failed to assign IPs to PE veth: %w", err)
 		}
@@ -247,7 +247,7 @@ func setupL2VNIRouterSide(params L2VNIParams, vethName string, underlayMTU int) 
 	}
 	if len(params.L2GatewayIPs) > 0 {
 		for _, ip := range params.L2GatewayIPs {
-			if err := assignIPToInterface(bridge, ip); err != nil {
+			if err := AssignIPToInterface(bridge, ip); err != nil {
 				return fmt.Errorf("failed to assign L2 gateway IP %s to bridge %s: %w", ip, name, err)
 			}
 		}
@@ -695,21 +695,21 @@ func setVethMTUForVXLAN(link netlink.Link, underlayMTU int) error {
 	return linkSetMTU(link, targetMTU)
 }
 
-// assignIPsToInterface assigns both IPv4 and IPv6 addresses to an interface.
+// AssignIPsToInterface assigns both IPv4 and IPv6 addresses to an interface.
 // It fails if no IPs are provided (both IPv4 and IPv6 are empty).
-func assignIPsToInterface(link netlink.Link, ipv4, ipv6 string) error {
+func AssignIPsToInterface(link netlink.Link, ipv4, ipv6 string) error {
 	if ipv4 == "" && ipv6 == "" {
 		return fmt.Errorf("at least one IP address must be provided (IPv4 or IPv6)")
 	}
 
 	if ipv4 != "" {
-		if err := assignIPToInterface(link, ipv4); err != nil {
+		if err := AssignIPToInterface(link, ipv4); err != nil {
 			return fmt.Errorf("failed to assign IPv4 address %s: %w", ipv4, err)
 		}
 	}
 
 	if ipv6 != "" {
-		if err := assignIPToInterface(link, ipv6); err != nil {
+		if err := AssignIPToInterface(link, ipv6); err != nil {
 			return fmt.Errorf("failed to assign IPv6 address %s: %w", ipv6, err)
 		}
 	}

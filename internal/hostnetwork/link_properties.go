@@ -20,10 +20,10 @@ import (
 )
 
 // assingIPToInterface assignes the given address to the link.
-func assignIPToInterface(link netlink.Link, address string) error {
+func AssignIPToInterface(link netlink.Link, address string) error {
 	addr, err := netlink.ParseAddr(address)
 	if err != nil {
-		return fmt.Errorf("assignIPToInterface: failed to parse address %s for interface %s: %w", address, link.Attrs().Name, err)
+		return fmt.Errorf("AssignIPToInterface: failed to parse address %s for interface %s: %w", address, link.Attrs().Name, err)
 	}
 
 	hasIP, err := interfaceHasIP(link, address)
@@ -35,9 +35,44 @@ func assignIPToInterface(link netlink.Link, address string) error {
 	}
 	err = netlink.AddrAdd(link, addr)
 	if err != nil {
-		return fmt.Errorf("assignIPToInterface: failed to add address %s to interface %s, err %v", address, link.Attrs().Name, err)
+		return fmt.Errorf("AssignIPToInterface: failed to add address %s to interface %s, err %v", address, link.Attrs().Name, err)
 	}
 	return nil
+}
+
+type AddressFilter func(netlink.Addr) bool
+
+func ExcludeLinkLocal() AddressFilter {
+	return func(addr netlink.Addr) bool {
+		return !addr.IP.IsLinkLocalMulticast() && !addr.IP.IsLinkLocalUnicast()
+	}
+}
+
+func AddressesForInterface(ifaceName string, filters ...AddressFilter) ([]netlink.Addr, error) {
+	link, err := netlink.LinkByName(ifaceName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find underlay interface %s: %w", ifaceName, err)
+	}
+	all, err := netlink.AddrList(link, netlink.FAMILY_ALL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list addresses on %s: %w", ifaceName, err)
+	}
+
+	var addrs []netlink.Addr
+	for _, addr := range all {
+		keep := true
+		for _, f := range filters {
+			if !f(addr) {
+				keep = false
+				break
+			}
+		}
+		if keep {
+			addrs = append(addrs, addr)
+		}
+	}
+
+	return addrs, nil
 }
 
 // interfaceHasIP tells if the given link has the provided ip.
@@ -173,7 +208,7 @@ func setNeighSuppression(link netlink.Link) error {
 }
 
 // moveInterfaceToNamespace takes the given interface and moves it from the given to the given namespace.
-func moveInterfaceToNamespace(ctx context.Context, intf string, fromHandle, toHandle *netlink.Handle,
+func MoveInterfaceToNamespace(ctx context.Context, intf string, fromHandle, toHandle *netlink.Handle,
 	toNS netns.NsHandle, groupID uint32) error {
 	slog.DebugContext(ctx, "move intf to namespace", "intf", intf, "toNS", toNS.String())
 	defer slog.DebugContext(ctx, "move intf to namespace end", "intf", intf, "toNS", toNS.String())
@@ -239,9 +274,28 @@ func moveInterfaceToNamespace(ctx context.Context, intf string, fromHandle, toHa
 	return nil
 }
 
+func DeleteAddressFromInterface(ifaceName string, addr netlink.Addr) error {
+	link, err := netlink.LinkByName(ifaceName)
+	if err != nil {
+		return fmt.Errorf("failed to find underlay interface %s: %w", ifaceName, err)
+	}
+	return netlink.AddrDel(link, &addr)
+}
+
 func intToInt32(val int) (int32, error) {
 	if val < math.MinInt32 || val > math.MaxInt32 {
 		return 0, fmt.Errorf("can't convert %d to int32", val)
 	}
 	return int32(val), nil
+}
+
+func LinkExists(name string) (bool, error) {
+	_, err := netlink.LinkByName(name)
+	if errors.As(err, &netlink.LinkNotFoundError{}) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("failed to find link %s: %w", name, err)
+	}
+	return true, nil
 }

@@ -18,10 +18,10 @@ const (
 	loopbackName = "lo"
 )
 
-// underlayGroupID is the link group ID assigned to all underlay interfaces
+// UnderlayGroupID is the link group ID assigned to all underlay interfaces
 // moved into the network namespace. This allows us to identify and query
 // all underlay interfaces by their group membership.
-const underlayGroupID = 4242
+const UnderlayGroupID = 4242
 
 type UnderlayParams struct {
 	UnderlayInterfaces []string                      `json:"underlay_interfaces"`
@@ -60,7 +60,7 @@ func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
 	// Check if there are existing underlay interfaces that aren't in the new list.
 	// This means the underlay configuration changed and requires rebuilding
 	// the network namespace.
-	existingIfaces, err := findInterfacesInGroup(targetNetNS, underlayGroupID)
+	existingIfaces, err := FindInterfacesInGroup(targetNetNS, UnderlayGroupID)
 	if err != nil {
 		return fmt.Errorf("failed to check existing underlay interfaces: %w", err)
 	}
@@ -83,8 +83,8 @@ func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
 	defer defaultNetNSHandle.Close()
 
 	for _, underlayInterface := range params.UnderlayInterfaces {
-		if err := moveInterfaceToNamespace(ctx, underlayInterface, defaultNetNSHandle, targetNetNSHandle, targetNetNS,
-			underlayGroupID); err != nil {
+		if err := MoveInterfaceToNamespace(ctx, underlayInterface, defaultNetNSHandle, targetNetNSHandle, targetNetNS,
+			UnderlayGroupID); err != nil {
 			return err
 		}
 	}
@@ -124,7 +124,7 @@ func ensureLoopback(ctx context.Context, ns netns.NsHandle, vtepIPs ...string) e
 		}
 
 		for _, vtepIP := range vtepIPs {
-			err = assignIPToInterface(loopback, vtepIP)
+			err = AssignIPToInterface(loopback, vtepIP)
 			if err != nil {
 				return err
 			}
@@ -163,10 +163,10 @@ func RestoreUnderlay(ctx context.Context, fromNetNSPath string) error {
 
 		var errs []error
 		for _, l := range links {
-			if l.Attrs().Group != underlayGroupID {
+			if l.Attrs().Group != UnderlayGroupID {
 				continue
 			}
-			if err = moveInterfaceToNamespace(ctx, l.Attrs().Name, fromNetNSHandle, defaultNetNSHandle, defaultNetNS,
+			if err = MoveInterfaceToNamespace(ctx, l.Attrs().Name, fromNetNSHandle, defaultNetNSHandle, defaultNetNS,
 				0); err != nil {
 				errs = append(errs, err)
 				continue
@@ -230,7 +230,7 @@ func HasUnderlayInterface(namespace string) (bool, error) {
 		}
 	}()
 
-	ifaces, err := findInterfacesInGroup(ns, underlayGroupID)
+	ifaces, err := FindInterfacesInGroup(ns, UnderlayGroupID)
 	if err != nil {
 		return false, fmt.Errorf("failed to find underlay interfaces: %w", err)
 	}
@@ -239,7 +239,7 @@ func HasUnderlayInterface(namespace string) (bool, error) {
 
 // findInterfacesInGroup returns a slice of interface names
 // for all interfaces in the namespace that belong to the specified group.
-func findInterfacesInGroup(ns netns.NsHandle, groupID uint32) ([]string, error) {
+func FindInterfacesInGroup(ns netns.NsHandle, groupID uint32) ([]string, error) {
 	var result []string
 	err := netnamespace.In(ns, func() error {
 		links, err := netlink.LinkList()
@@ -266,7 +266,7 @@ func findUnderlayMTU(ns netns.NsHandle) (int, error) {
 			return fmt.Errorf("failed to list links: %w", err)
 		}
 		for _, l := range links {
-			if l.Attrs().Group == underlayGroupID {
+			if l.Attrs().Group == UnderlayGroupID {
 				mtu := l.Attrs().MTU
 				if minMTU == 0 || mtu < minMTU {
 					minMTU = mtu
