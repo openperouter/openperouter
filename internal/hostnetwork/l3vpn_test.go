@@ -32,7 +32,7 @@ var _ = Describe("L3 VPN configuration", func() {
 			VRF:              "testred",
 			TargetNS:         testNSPath(),
 			RDAssignedNumber: 100,
-			HostVeth: &Veth{
+			LinkIPs: &LinkIPs{
 				HostIPv4: "192.168.9.1/32",
 				NSIPv4:   "192.168.9.0/32",
 			},
@@ -56,7 +56,7 @@ var _ = Describe("L3 VPN configuration", func() {
 			VRF:              "testred",
 			TargetNS:         testNSPath(),
 			RDAssignedNumber: 100,
-			HostVeth: &Veth{
+			LinkIPs: &LinkIPs{
 				HostIPv6: "2001:db8::1/128",
 				NSIPv6:   "2001:db8::/128",
 			},
@@ -80,7 +80,7 @@ var _ = Describe("L3 VPN configuration", func() {
 			VRF:              "testred",
 			TargetNS:         testNSPath(),
 			RDAssignedNumber: 100,
-			HostVeth: &Veth{
+			LinkIPs: &LinkIPs{
 				HostIPv4: "192.168.9.1/32",
 				NSIPv4:   "192.168.9.0/32",
 				HostIPv6: "2001:db8::1/128",
@@ -107,7 +107,7 @@ var _ = Describe("L3 VPN configuration", func() {
 				VRF:              "testred",
 				TargetNS:         testNSPath(),
 				RDAssignedNumber: 100,
-				HostVeth: &Veth{
+				LinkIPs: &LinkIPs{
 					HostIPv4: "192.168.9.1/32",
 					NSIPv4:   "192.168.9.0/32",
 				},
@@ -116,7 +116,7 @@ var _ = Describe("L3 VPN configuration", func() {
 				VRF:              "testblue",
 				TargetNS:         testNSPath(),
 				RDAssignedNumber: 101,
-				HostVeth: &Veth{
+				LinkIPs: &LinkIPs{
 					HostIPv4: "192.168.9.2/32",
 					NSIPv4:   "192.168.9.3/32",
 				},
@@ -174,7 +174,7 @@ var _ = Describe("L3 VPN configuration", func() {
 				VRF:              "testred",
 				TargetNS:         testNSPath(),
 				RDAssignedNumber: 100,
-				HostVeth: &Veth{
+				LinkIPs: &LinkIPs{
 					HostIPv4: "192.168.9.1/32",
 					NSIPv4:   "192.168.9.0/32",
 				},
@@ -183,7 +183,7 @@ var _ = Describe("L3 VPN configuration", func() {
 				VRF:              "testblue",
 				TargetNS:         testNSPath(),
 				RDAssignedNumber: 101,
-				HostVeth: &Veth{
+				LinkIPs: &LinkIPs{
 					HostIPv4: "192.168.9.2/32",
 					NSIPv4:   "192.168.9.3/32",
 				},
@@ -359,7 +359,7 @@ var _ = Describe("L3 VPN configuration", func() {
 			VRF:              "testred",
 			TargetNS:         testNSPath(),
 			RDAssignedNumber: 100,
-			HostVeth: &Veth{
+			LinkIPs: &LinkIPs{
 				HostIPv4: "192.168.9.1/32",
 				NSIPv4:   "192.168.9.0/32",
 			},
@@ -381,12 +381,12 @@ var _ = Describe("L3 VPN configuration", func() {
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 	})
 
-	It("should configure VRF when HostVeth is nil", func() {
+	It("should configure VRF when LinkIPs is nil", func() {
 		params := L3VPNParams{
 			VRF:              "testred",
 			TargetNS:         testNSPath(),
 			RDAssignedNumber: 100,
-			HostVeth:         nil,
+			LinkIPs:          nil,
 		}
 
 		err := SetupL3VPN(context.Background(), params)
@@ -402,7 +402,7 @@ var _ = Describe("L3 VPN configuration", func() {
 		// Verify that no host veth was created
 		vethNames := vethNamesFromL3VPN(params.RDAssignedNumber)
 		_, err = netlink.LinkByName(vethNames.HostSide)
-		Expect(errors.As(err, &netlink.LinkNotFoundError{})).To(BeTrue(), "host veth should not exist when HostVeth is nil")
+		Expect(errors.As(err, &netlink.LinkNotFoundError{})).To(BeTrue(), "host veth should not exist when LinkIPs is nil")
 	})
 
 	It("should set veth MTU to underlay MTU minus SRv6 overhead when an underlay interface is configured", func() {
@@ -413,7 +413,7 @@ var _ = Describe("L3 VPN configuration", func() {
 			VRF:              "testred",
 			TargetNS:         testNSPath(),
 			RDAssignedNumber: 100,
-			HostVeth: &Veth{
+			LinkIPs: &LinkIPs{
 				HostIPv4: "192.168.9.1/32",
 				NSIPv4:   "192.168.9.0/32",
 			},
@@ -440,7 +440,7 @@ var _ = Describe("L3 VPN configuration", func() {
 			VRF:              "testred",
 			TargetNS:         testNSPath(),
 			RDAssignedNumber: 100,
-			HostVeth: &Veth{
+			LinkIPs: &LinkIPs{
 				HostIPv4: "192.168.9.1/32",
 				NSIPv4:   "192.168.9.0/32",
 			},
@@ -468,24 +468,24 @@ func validateL3VPNHostLeg(g Gomega, params L3VPNParams) {
 	g.Expect(hostLegLink.Attrs().OperState).To(BeEquivalentTo(netlink.OperUp))
 
 	// Check IPv4 address if provided
-	if params.HostVeth.HostIPv4 != "" {
-		hasIP, err := interfaceHasIP(hostLegLink, params.HostVeth.HostIPv4)
+	if params.LinkIPs.HostIPv4 != "" {
+		hasIP, err := interfaceHasIP(hostLegLink, params.LinkIPs.HostIPv4)
 		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(hasIP).To(BeTrue(), "host leg does not have IPv4", params.HostVeth.HostIPv4)
+		g.Expect(hasIP).To(BeTrue(), "host leg does not have IPv4", params.LinkIPs.HostIPv4)
 	}
 
 	// Check IPv6 address if provided
-	if params.HostVeth.HostIPv6 != "" {
-		hasIP, err := interfaceHasIP(hostLegLink, params.HostVeth.HostIPv6)
+	if params.LinkIPs.HostIPv6 != "" {
+		hasIP, err := interfaceHasIP(hostLegLink, params.LinkIPs.HostIPv6)
 		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(hasIP).To(BeTrue(), "host leg does not have IPv6", params.HostVeth.HostIPv6)
+		g.Expect(hasIP).To(BeTrue(), "host leg does not have IPv6", params.LinkIPs.HostIPv6)
 	}
 }
 
 func validateL3VPNNamespaceLeg(g Gomega, params L3VPNParams) {
 	vrfLink, _ := validateVRF(g, params.VRF)
 
-	if params.HostVeth == nil {
+	if params.LinkIPs == nil {
 		return
 	}
 
@@ -496,16 +496,16 @@ func validateL3VPNNamespaceLeg(g Gomega, params L3VPNParams) {
 	g.Expect(peLegLink.Attrs().MasterIndex).To(Equal(vrfLink.Attrs().Index))
 
 	// Check IPv4 address if provided
-	if params.HostVeth.NSIPv4 != "" {
-		hasIP, err := interfaceHasIP(peLegLink, params.HostVeth.NSIPv4)
+	if params.LinkIPs.NSIPv4 != "" {
+		hasIP, err := interfaceHasIP(peLegLink, params.LinkIPs.NSIPv4)
 		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(hasIP).To(BeTrue(), "PE leg does not have IPv4", params.HostVeth.NSIPv4)
+		g.Expect(hasIP).To(BeTrue(), "PE leg does not have IPv4", params.LinkIPs.NSIPv4)
 	}
 
 	// Check IPv6 address if provided
-	if params.HostVeth.NSIPv6 != "" {
-		hasIP, err := interfaceHasIP(peLegLink, params.HostVeth.NSIPv6)
+	if params.LinkIPs.NSIPv6 != "" {
+		hasIP, err := interfaceHasIP(peLegLink, params.LinkIPs.NSIPv6)
 		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(hasIP).To(BeTrue(), "PE leg does not have IPv6", params.HostVeth.NSIPv6)
+		g.Expect(hasIP).To(BeTrue(), "PE leg does not have IPv6", params.LinkIPs.NSIPv6)
 	}
 }

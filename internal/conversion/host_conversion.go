@@ -147,7 +147,7 @@ func passthroughConfigToHost(l3Passthrough []v1alpha1.L3Passthrough, targetNS st
 
 	return &hostnetwork.PassthroughParams{
 		TargetNS: targetNS,
-		HostVeth: hostnetwork.Veth{
+		LinkIPs: hostnetwork.LinkIPs{
 			HostIPv4: ipNetToString(vethIPs.Ipv4.HostSide),
 			NSIPv4:   ipNetToString(vethIPs.Ipv4.PeSide),
 			HostIPv6: ipNetToString(vethIPs.Ipv6.HostSide),
@@ -250,7 +250,7 @@ func l3vniToHost(l3vni v1alpha1.L3VNI, tunnelEndpoint hostnetwork.UnderlayTunnel
 			l3vni.Spec.HostSession.LocalCIDR, nodeIndex, err)
 	}
 
-	hostL3VNI.HostVeth = &hostnetwork.Veth{
+	hostL3VNI.LinkIPs = &hostnetwork.LinkIPs{
 		HostIPv4: ipNetToString(vethIPs.Ipv4.HostSide),
 		NSIPv4:   ipNetToString(vethIPs.Ipv4.PeSide),
 		HostIPv6: ipNetToString(vethIPs.Ipv6.HostSide),
@@ -343,7 +343,7 @@ func l3vpnToHost(l3vpn v1alpha1.L3VPN, targetNS string, nodeIndex int) (hostnetw
 			l3vpn.Spec.HostSession.LocalCIDR, nodeIndex, err)
 	}
 
-	hostL3VPN.HostVeth = &hostnetwork.Veth{
+	hostL3VPN.LinkIPs = &hostnetwork.LinkIPs{
 		HostIPv4: ipNetToString(vethIPs.Ipv4.HostSide),
 		NSIPv4:   ipNetToString(vethIPs.Ipv4.PeSide),
 		HostIPv6: ipNetToString(vethIPs.Ipv6.HostSide),

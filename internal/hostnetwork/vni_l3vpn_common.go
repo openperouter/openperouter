@@ -46,7 +46,7 @@ func RemoveNonConfiguredVRFs(targetNS string, vrfs map[string]bool) error {
 
 // setupHostVeth configures the veth pair that connects the host to the perouter namespace, for
 // L3VNI and L3VPN.
-func setupHostVeth(ctx context.Context, vethNames VethNames, targetNS string, hostVeth *Veth,
+func setupHostVeth(ctx context.Context, vethNames VethNames, targetNS string, linkIPs *LinkIPs,
 	vrfName string, tunnelOverhead int) error {
 	if err := setupNamespacedVeth(ctx, vethNames, targetNS); err != nil {
 		return fmt.Errorf("failed to setup veth: %w", err)
@@ -70,7 +70,7 @@ func setupHostVeth(ctx context.Context, vethNames VethNames, targetNS string, ho
 		return fmt.Errorf("failed to get host veth %s: %w", vethNames.HostSide, err)
 	}
 
-	err = assignIPsToInterface(hostVethLink, hostVeth.HostIPv4, hostVeth.HostIPv6)
+	err = assignIPsToInterface(hostVethLink, linkIPs.HostIPv4, linkIPs.HostIPv6)
 	if err != nil {
 		return fmt.Errorf("failed to assign IPs to host veth: %w", err)
 	}
@@ -105,7 +105,7 @@ func setupHostVeth(ctx context.Context, vethNames VethNames, targetNS string, ho
 		}
 		// Note: since the ipv6 address is removed after enslaving the veth to the vrf, this has to
 		// be performed after the veth is enslaved to the vrf.
-		err = assignIPsToInterface(peVethLink, hostVeth.NSIPv4, hostVeth.NSIPv6)
+		err = assignIPsToInterface(peVethLink, linkIPs.NSIPv4, linkIPs.NSIPv6)
 		if err != nil {
 			return fmt.Errorf("failed to assign IPs to PE veth: %w", err)
 		}

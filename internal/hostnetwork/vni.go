@@ -34,16 +34,16 @@ type VNIParams struct {
 
 type L3VNIParams struct {
 	VNIParams `json:",inline"`
-	Name      string `json:"name"`
-	HostVeth  *Veth  `json:"veth"`
+	Name      string   `json:"name"`
+	LinkIPs   *LinkIPs `json:"link_ips"`
 }
 
 type L3PassthroughParams struct {
-	TargetNS string `json:"targetns"`
-	HostVeth Veth   `json:"veth"`
+	TargetNS string  `json:"targetns"`
+	LinkIPs  LinkIPs `json:"link_ips"`
 }
 
-type Veth struct {
+type LinkIPs struct {
 	HostIPv4 string `json:"hostipv4"`
 	NSIPv4   string `json:"nsipv4"`
 	HostIPv6 string `json:"hostipv6"`
@@ -89,7 +89,7 @@ func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
 	slog.DebugContext(ctx, "setting up l3 VNI", "params", params)
 	defer slog.DebugContext(ctx, "end setting up l3 VNI", "params", params)
 
-	if params.HostVeth == nil {
+	if params.LinkIPs == nil {
 		slog.DebugContext(ctx, "no host veth configured, skipping setup")
 		return nil
 	}
@@ -98,7 +98,7 @@ func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
 		ctx,
 		vethNamesFromVNI(params.VNI),
 		params.TargetNS,
-		params.HostVeth,
+		params.LinkIPs,
 		params.VRF,
 		VXLanOverhead); err != nil {
 		return fmt.Errorf("SetupL3VNI: failed to setup host veth pair: %w", err)
