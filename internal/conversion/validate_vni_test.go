@@ -716,3 +716,109 @@ func TestHasSubnetOverlap(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateRouteTarget(t *testing.T) {
+	tests := []struct {
+		name          string
+		routeTarget   string
+		wantErrString string
+	}{
+		{
+			name:        "ASN route target",
+			routeTarget: "65000:100",
+		},
+		{
+			name:        "single IP route target",
+			routeTarget: "10.0.0.1:100",
+		},
+		{
+			name:        "4-byte ASN route target",
+			routeTarget: "100000:100",
+		},
+		{
+			name:          "invalid route target missing colon",
+			routeTarget:   "65000",
+			wantErrString: "RT \"65000\" must have one of the following formats: 'ASN:MN' or 'IPv4Address:MN'",
+		},
+		{
+			name:          "invalid route target non-numeric ASN",
+			routeTarget:   "abc:100",
+			wantErrString: "RT format must have ASN:MN: abc:100",
+		},
+		{
+			name:          "invalid route target non-numeric member number",
+			routeTarget:   "65000:abc",
+			wantErrString: "RT format must have ASN:MN where MN is a number: 65000:abc",
+		},
+		{
+			name:          "invalid IP route target member number exceeds 65535",
+			routeTarget:   "10.0.0.1:65536",
+			wantErrString: "RT format must have A.B.C.D:MN where MN <= 65535: 10.0.0.1:65536",
+		},
+		{
+			name:          "invalid 4-byte ASN route target member number exceeds 65535",
+			routeTarget:   "100000:65536",
+			wantErrString: "RT format with 4-byte ASN must have ASN:MN where MN <= 65535: 100000:65536",
+		},
+		{
+			name:          "invalid route target 'invalid'",
+			routeTarget:   "invalid",
+			wantErrString: "RT \"invalid\" must have one of the following formats: 'ASN:MN' or 'IPv4Address:MN'",
+		},
+		{
+			name:          "empty string",
+			routeTarget:   "",
+			wantErrString: "RT \"\" must have one of the following formats: 'ASN:MN' or 'IPv4Address:MN'",
+		},
+		{
+			name:          "multiple colons",
+			routeTarget:   "65000:100:200",
+			wantErrString: "RT \"65000:100:200\" must have one of the following formats: 'ASN:MN' or 'IPv4Address:MN'",
+		},
+		{
+			name:          "invalid IP route target non-numeric member number",
+			routeTarget:   "10.0.0.1:abc",
+			wantErrString: "RT format must have A.B.C.D:MN where MN <= 65535: 10.0.0.1:abc",
+		},
+		{
+			name:        "2-byte ASN with max member number",
+			routeTarget: "65535:4294967295",
+		},
+		{
+			name:          "2-byte ASN with member number exceeding max",
+			routeTarget:   "65535:4294967296",
+			wantErrString: "RT format with 2-byte ASN must have ASN:MN where MN <= 4294967295: 65535:4294967296",
+		},
+		{
+			name:        "IP route target with max member number",
+			routeTarget: "10.0.0.1:65535",
+		},
+		{
+			name:        "4-byte ASN with max member number",
+			routeTarget: "100000:65535",
+		},
+		{
+			name:          "invalid IP route target invalid IP address",
+			routeTarget:   "999.999.999.999:100",
+			wantErrString: "RT format must have A.B.C.D:MN where A.B.C.D is a valid IPv4 address: 999.999.999.999:100",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateRouteTarget(tt.routeTarget)
+			if tt.wantErrString != "" {
+				if err == nil {
+					t.Fatalf("validateRouteTarget() expected error %q, got nil", tt.wantErrString)
+				}
+				if err.Error() != tt.wantErrString {
+					t.Fatalf("validateRouteTarget() error = %q, want %q", err.Error(), tt.wantErrString)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("validateRouteTarget() expected no error but got: %v", err)
+			}
+		})
+	}
+}

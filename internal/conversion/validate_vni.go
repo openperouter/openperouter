@@ -568,9 +568,13 @@ func validateRouteTarget(rt string) error {
 		return nil
 	}
 
+	if strings.Contains(rtParam[0], ".") {
+		return fmt.Errorf("RT format must have A.B.C.D:MN where A.B.C.D is a valid IPv4 address: %s", rt)
+	}
+
 	asn, err := strconv.ParseUint(rtParam[0], 10, 32)
 	if err != nil {
-		return fmt.Errorf("RT format must have ASN:MN %s", rt)
+		return fmt.Errorf("RT format must have ASN:MN: %s", rt)
 	}
 
 	memberNumber, err := parseMemberNumber(rtParam[1])
