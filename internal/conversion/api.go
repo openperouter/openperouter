@@ -22,6 +22,7 @@ type HostConfigData struct {
 	Underlay      hostnetwork.UnderlayParams
 	L3VNIs        []hostnetwork.L3VNIParams
 	L2VNIs        []hostnetwork.L2VNIParams
+	L3VPNs        []hostnetwork.L3VPNParams
 	L3Passthrough *hostnetwork.PassthroughParams
 }
 

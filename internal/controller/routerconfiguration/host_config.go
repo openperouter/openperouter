@@ -28,14 +28,14 @@ type interfacesConfiguration struct {
 // Injected into Reconcile so tests can substitute a no-op implementation.
 type HostConfigurator func(ctx context.Context, config interfacesConfiguration) error
 
-func configureInterfaces(ctx context.Context, config interfacesConfiguration) error {
+func configureInterfaces(ctx context.Context, config interfacesConfiguration) error { // nolint:gocognit
 	hasAlreadyUnderlay, err := hostnetwork.HasUnderlayInterface(config.targetNamespace)
 	if err != nil {
 		return fmt.Errorf("failed to check if target namespace %s has underlay: %w", config.targetNamespace, err)
 	}
 	if hasAlreadyUnderlay && len(config.Underlays) == 0 {
 		slog.InfoContext(ctx, "underlay removed, cleaning up VNIs and underlay interfaces")
-		if err := hostnetwork.RemoveAllVNIs(config.targetNamespace); err != nil {
+		if err := hostnetwork.RemoveAllNonConfiguredObjects(config.targetNamespace); err != nil {
 			slog.Warn("failed to remove vnis after underlay removal", "err", err)
 		}
 		bridgerefresh.StopAllVNIs()
@@ -91,6 +91,21 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 		configuredL3VNIs = append(configuredL3VNIs, vni)
 	}
 
+	var configuredL3VPNs []hostnetwork.L3VPNParams
+	for _, l3vpn := range hostConfig.L3VPNs {
+		slog.InfoContext(ctx, "setting up L3 VPN", "VRF", l3vpn.VRF)
+		if err := hostnetwork.SetupL3VPN(ctx, l3vpn); err != nil {
+			resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
+				Obj: v1alpha1.FailedResource{
+					Kind: openpeerrors.KindL3VPN, Name: l3vpn.Name, Reason: reason, Message: err.Error(),
+				},
+			})
+			failedL3Domains.Insert(l3vpn.VRF)
+			continue
+		}
+		configuredL3VPNs = append(configuredL3VPNs, l3vpn)
+	}
+
 	var configuredL2VNIs []hostnetwork.L2VNIParams
 	for _, vni := range hostConfig.L2VNIs {
 		if failedL3Domains.Has(vni.VRF) {
@@ -134,14 +149,22 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 	}
 
 	slog.InfoContext(ctx, "removing deleted vnis")
-	toCheck := make([]hostnetwork.VNIParams, 0, len(configuredL3VNIs)+len(configuredL2VNIs))
-	for _, vni := range configuredL3VNIs {
-		toCheck = append(toCheck, vni.VNIParams)
+	toCheckVRFs := map[string]bool{}
+	toCheckInterfaceIdentifiers := map[int32]bool{}
+	for _, l3vnis := range configuredL3VNIs {
+		toCheckVRFs[l3vnis.VRF] = true
+		toCheckInterfaceIdentifiers[l3vnis.VNI] = true
+	}
+	for _, l3vpn := range configuredL3VPNs {
+		toCheckVRFs[l3vpn.VRF] = true
+		toCheckInterfaceIdentifiers[l3vpn.InterfaceIdentifier] = true
 	}
 	for _, l2vni := range configuredL2VNIs {
-		toCheck = append(toCheck, l2vni.VNIParams)
+		toCheckVRFs[l2vni.VRF] = true
+		toCheckInterfaceIdentifiers[l2vni.VNI] = true
 	}
-	if err := hostnetwork.RemoveNonConfiguredVNIs(config.targetNamespace, toCheck); err != nil {
+	if err := hostnetwork.RemoveNonConfiguredObjects(config.targetNamespace, toCheckVRFs,
+		toCheckInterfaceIdentifiers); err != nil {
 		return fmt.Errorf("failed to remove deleted vnis: %w", err)
 	}
 	bridgerefresh.StopForRemovedVNIs(configuredL2VNIs)

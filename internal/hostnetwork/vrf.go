@@ -12,13 +12,18 @@ import (
 )
 
 // setupVRF creates a new VRF and sets it up.
-func setupVRF(name string, hasSRv6 bool) (*netlink.Vrf, error) {
+func setupVRF(name string, opts ...vrfOption) (*netlink.Vrf, error) {
+	params := vrfParameters{}
+	for _, opt := range opts {
+		opt(&params)
+	}
+
 	vrf, err := createVRF(name)
 	if err != nil {
 		return nil, err
 	}
 
-	if hasSRv6 {
+	if params.hasSRv6 {
 		// VRF strict mode is needed when using SRV6 and we need to do this as close
 		// to VRF creation as possible to minimize the risk of rejected "B>r"
 		// routes in BGP. Likewise, we must disable the RPFilter for SRv6 setups.
@@ -36,6 +41,18 @@ func setupVRF(name string, hasSRv6 bool) (*netlink.Vrf, error) {
 	}
 
 	return vrf, nil
+}
+
+type vrfParameters struct {
+	hasSRv6 bool
+}
+
+type vrfOption func(*vrfParameters)
+
+func withSRv6() vrfOption {
+	return func(p *vrfParameters) {
+		p.hasSRv6 = true
+	}
 }
 
 func createVRF(name string) (*netlink.Vrf, error) {

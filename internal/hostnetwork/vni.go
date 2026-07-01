@@ -22,6 +22,9 @@ import (
 const (
 	// VXLanOverhead is the number of bytes added by VXLan encapsulation.
 	VXLanOverhead = 50
+	// SRv6Overhead is the number of bytes added by SRv6 encapsulation (outer IPv6 header + SRH)
+	// 40 bytes IPv6 header + 24 bytes for the SRH.
+	SRv6Overhead = 64
 
 	// MinVethMTU is the minimum MTU we will set on the veth.
 	// 1280 is the IPv6 minimum MTU (RFC 8200); the kernel will reject
@@ -35,7 +38,6 @@ type VNIParams struct {
 	VTEPIP    string `json:"vtepip"`
 	VNI       int32  `json:"vni"`
 	VXLanPort *int32 `json:"vxlanport,omitempty"`
-	HasSRv6   bool   `json:"hassrv6,omitempty"`
 }
 
 type L3VNIParams struct {
@@ -69,6 +71,14 @@ type HostMaster struct {
 	AutoCreate *bool   `json:"autocreate,omitempty"`
 }
 
+type L3VPNParams struct {
+	Name                string `json:"name"`
+	HostVeth            *Veth  `json:"veth"`
+	VRF                 string `json:"vrf"`
+	TargetNS            string `json:"targetns"`
+	InterfaceIdentifier int32  `json:"vni"`
+}
+
 const (
 	VRFLinkType       = "vrf"
 	BridgeLinkType    = "linux-bridge"
@@ -99,30 +109,76 @@ func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
 		slog.DebugContext(ctx, "no host veth configured, skipping setup")
 		return nil
 	}
-	vethNames := vethNamesFromVNI(params.VNI)
-	if err := setupNamespacedVeth(ctx, vethNames, params.TargetNS); err != nil {
-		return fmt.Errorf("SetupL3VNI: failed to setup VNI veth: %w", err)
+
+	if err := setupHostVeth(
+		ctx,
+		params.VNI,
+		params.TargetNS,
+		params.HostVeth,
+		params.VRF,
+		VXLanOverhead); err != nil {
+		return fmt.Errorf("SetupL3VNI: failed to setup host veth pair: %w", err)
+	}
+	return nil
+}
+
+// SetupL3VPN sets up a Layer 3 VPN in the target namespace.
+// It uses setupL3VPN to create the necessary VRF, and moves the veth to the
+// VRF corresponding to the L3 routing domain, exposing it to the default host
+// namespace.
+func SetupL3VPN(ctx context.Context, params L3VPNParams) error {
+	slog.DebugContext(ctx, "setting up L3VPN", "params", params)
+	defer slog.DebugContext(ctx, "end setting up L3VPN", "params", params)
+
+	if err := setupL3VPN(ctx, params); err != nil {
+		return fmt.Errorf("SetupL3VPN: failed to setup VNI: %w", err)
 	}
 
-	ns, err := netns.GetFromPath(params.TargetNS)
+	if params.HostVeth == nil {
+		slog.DebugContext(ctx, "no host veth configured, skipping setup")
+		return nil
+	}
+
+	if err := setupHostVeth(
+		ctx,
+		params.InterfaceIdentifier,
+		params.TargetNS,
+		params.HostVeth,
+		params.VRF,
+		SRv6Overhead); err != nil {
+		return fmt.Errorf("SetupL3VPN: failed to setup host veth pair: %w", err)
+	}
+	return nil
+}
+
+// setupHostVeth configures the veth pair that connects the host to the perouter namespace, for
+// L3VNI and L3VPN.
+func setupHostVeth(ctx context.Context, interfaceIdentifier int32, targetNS string, hostVeth *Veth,
+	vrfName string, tunnelOverhead int) error {
+	vethNames := vethNamesFromIdentifier(interfaceIdentifier)
+	if err := setupNamespacedVeth(ctx, vethNames, targetNS); err != nil {
+		return fmt.Errorf("failed to setup VNI veth: %w", err)
+	}
+
+	ns, err := netns.GetFromPath(targetNS)
 	if err != nil {
-		return fmt.Errorf("SetupVNI: Failed to get network namespace %s: %w", params.TargetNS, err)
+		return fmt.Errorf("failed to get network namespace %s: %w", targetNS, err)
 	}
 	defer func() {
 		if err := ns.Close(); err != nil {
-			slog.Error("failed to close namespace", "namespace", params.TargetNS, "error", err)
+			slog.Error("failed to close namespace", "namespace", targetNS, "error", err)
 		}
 	}()
 
-	hostVeth, err := netlink.LinkByName(vethNames.HostSide)
+	hostVethLink, err := netlink.LinkByName(vethNames.HostSide)
 	if errors.As(err, &netlink.LinkNotFoundError{}) {
-		return fmt.Errorf("SetupL3VNI: host veth %s does not exist, cannot setup L3 VNI", vethNames.HostSide)
+		return fmt.Errorf("host veth %s does not exist, cannot setup", vethNames.HostSide)
 	}
 	if err != nil {
-		return fmt.Errorf("SetupL3VNI: failed to get host veth %s: %w", vethNames.HostSide, err)
+		return fmt.Errorf("failed to get host veth %s: %w", vethNames.HostSide, err)
 	}
 
-	err = assignIPsToInterface(hostVeth, params.HostVeth.HostIPv4, params.HostVeth.HostIPv6)
+	err = assignIPsToInterface(hostVethLink, hostVeth.HostIPv4, hostVeth.HostIPv6)
 	if err != nil {
 		return fmt.Errorf("failed to assign IPs to host veth: %w", err)
 	}
@@ -132,32 +188,32 @@ func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
 		return fmt.Errorf("could not find underlay MTU: %w", err)
 	}
 
-	if err := setVethMTUForVXLAN(hostVeth, underlayMTU); err != nil {
-		return fmt.Errorf("SetupL3VNI: failed to set MTU on host veth %s: %w", vethNames.HostSide, err)
+	if err := setVethMTUForTunnelOverhead(hostVethLink, underlayMTU, tunnelOverhead); err != nil {
+		return fmt.Errorf("failed to set MTU on host veth %s: %w", vethNames.HostSide, err)
 	}
 
 	if err := netnamespace.In(ns, func() error {
-		peVeth, err := netlink.LinkByName(vethNames.NamespaceSide)
+		peVethLink, err := netlink.LinkByName(vethNames.NamespaceSide)
 		if err != nil {
-			return fmt.Errorf("could not find peer veth %s in namespace %s: %w", vethNames.NamespaceSide, params.TargetNS, err)
+			return fmt.Errorf("could not find peer veth %s in namespace %s: %w", vethNames.NamespaceSide, targetNS, err)
 		}
 
-		if err := setVethMTUForVXLAN(peVeth, underlayMTU); err != nil {
+		if err := setVethMTUForTunnelOverhead(peVethLink, underlayMTU, tunnelOverhead); err != nil {
 			return fmt.Errorf("failed to set MTU on pe veth %s: %w", vethNames.NamespaceSide, err)
 		}
 
-		vrf, err := netlink.LinkByName(params.VRF)
+		vrfLink, err := netlink.LinkByName(vrfName)
 		if err != nil {
-			return fmt.Errorf("could not find vrf %s in namespace %s: %w", params.VRF, params.TargetNS, err)
+			return fmt.Errorf("could not find vrf %s in namespace %s: %w", vrfName, targetNS, err)
 		}
 
-		err = linkSetMaster(peVeth, vrf)
+		err = linkSetMaster(peVethLink, vrfLink)
 		if err != nil {
-			return fmt.Errorf("failed to set vrf %s as master of pe veth %s: %w", params.VRF, peVeth.Attrs().Name, err)
+			return fmt.Errorf("failed to set vrf %s as master of pe veth %s: %w", vrfName, peVethLink.Attrs().Name, err)
 		}
 		// Note: since the ipv6 address is removed after enslaving the veth to the vrf, this has to
 		// be performed after the veth is enslaved to the vrf.
-		err = assignIPsToInterface(peVeth, params.HostVeth.NSIPv4, params.HostVeth.NSIPv6)
+		err = assignIPsToInterface(peVethLink, hostVeth.NSIPv4, hostVeth.NSIPv6)
 		if err != nil {
 			return fmt.Errorf("failed to assign IPs to PE veth: %w", err)
 		}
@@ -177,7 +233,7 @@ func SetupL2VNI(ctx context.Context, params L2VNIParams) error {
 	if err := setupVNI(ctx, params.VNIParams); err != nil {
 		return fmt.Errorf("SetupL2VNI: failed to setup VNI: %w", err)
 	}
-	vethNames := vethNamesFromVNI(params.VNI)
+	vethNames := vethNamesFromIdentifier(params.VNI)
 	if err := setupNamespacedVeth(ctx, vethNames, params.TargetNS); err != nil {
 		return fmt.Errorf("SetupL2VNI: failed to setup VNI veth: %w", err)
 	}
@@ -209,7 +265,7 @@ func SetupL2VNI(ctx context.Context, params L2VNIParams) error {
 		return fmt.Errorf("could not find underlay MTU: %w", err)
 	}
 
-	if err := setVethMTUForVXLAN(hostVeth, underlayMTU); err != nil {
+	if err := setVethMTUForTunnelOverhead(hostVeth, underlayMTU, VXLanOverhead); err != nil {
 		return fmt.Errorf("SetupL2VNI: failed to set MTU on host veth %s: %w", vethNames.HostSide, err)
 	}
 
@@ -234,7 +290,7 @@ func setupL2VNIRouterSide(params L2VNIParams, vethName string, underlayMTU int) 
 		return fmt.Errorf("could not find peer veth %s in namespace %s: %w", vethName, params.TargetNS, err)
 	}
 
-	if err := setVethMTUForVXLAN(peVeth, underlayMTU); err != nil {
+	if err := setVethMTUForTunnelOverhead(peVeth, underlayMTU, VXLanOverhead); err != nil {
 		return fmt.Errorf("failed to set MTU on pe veth %s: %w", vethName, err)
 	}
 
@@ -289,18 +345,14 @@ func setupHostMaster(ctx context.Context, params L2VNIParams, hostVeth netlink.L
 // setupVNI sets up the configuration required by FRR to
 // serve a given VNI in the target namespace. This includes:
 // - a linux VRF (only when params.VRF is non-empty)
-// - a linux Bridge, enslaved to the VRF when one exists (only for EVPN)
-// - a VXLan interface (only for EVPN)
-// - sysctl strict mode and disable RP filter (for SRv6)
-//
-// Additionally, it creates a veth pair and moves one leg in the target
-// namespace.
+// - a linux Bridge, enslaved to the VRF when one exists
+// - a VXLan interface
 func setupVNI(ctx context.Context, params VNIParams, options ...NetlinkOption) error {
 	slog.DebugContext(ctx, "setting up VNI", "params", params)
 	defer slog.DebugContext(ctx, "end setting up VNI", "params", params)
 	ns, err := netns.GetFromPath(params.TargetNS)
 	if err != nil {
-		return fmt.Errorf("SetupVNI: Failed to get network namespace %s: %w", params.TargetNS, err)
+		return fmt.Errorf("failed to get network namespace %s: %w", params.TargetNS, err)
 	}
 	defer func() {
 		if err := ns.Close(); err != nil {
@@ -308,22 +360,15 @@ func setupVNI(ctx context.Context, params VNIParams, options ...NetlinkOption) e
 		}
 	}()
 
-	if err := netnamespace.In(ns, func() error {
-
+	return netnamespace.In(ns, func() error {
 		var vrf *netlink.Vrf
 		if params.VRF != "" {
 			slog.DebugContext(ctx, "setting up vrf", "vrf", params.VRF)
 			var err error
-			vrf, err = setupVRF(params.VRF, params.HasSRv6)
+			vrf, err = setupVRF(params.VRF)
 			if err != nil {
 				return err
 			}
-		}
-
-		// The VXLAN port is set by l3vniToHost and l2vniToHost, but not by l3vpnToHost.
-		// Setup of the VXLAN tunnel and corresponding bridge is only necessary for EVPN.
-		if params.VXLanPort == nil {
-			return nil
 		}
 
 		slog.DebugContext(ctx, "setting up bridge")
@@ -334,34 +379,44 @@ func setupVNI(ctx context.Context, params VNIParams, options ...NetlinkOption) e
 
 		slog.DebugContext(ctx, "setting up vxlan")
 		return setupVXLan(params, bridge)
-	}); err != nil {
+	})
+}
+
+// setupL3VPN sets up the configuration required by FRR to
+// serve a given L3VPN in the target namespace. This includes:
+// - a linux VRF
+// - sysctl strict mode and disable RP filter (for SRv6)
+func setupL3VPN(ctx context.Context, params L3VPNParams) error {
+	ns, err := netns.GetFromPath(params.TargetNS)
+	if err != nil {
+		return fmt.Errorf("failed to get network namespace %s: %w", params.TargetNS, err)
+	}
+	defer func() {
+		if err := ns.Close(); err != nil {
+			slog.Error("failed to close namespace", "namespace", params.TargetNS, "error", err)
+		}
+	}()
+
+	return netnamespace.In(ns, func() error {
+		slog.DebugContext(ctx, "setting up vrf", "vrf", params.VRF)
+		_, err := setupVRF(params.VRF, withSRv6())
 		return err
-	}
-
-	return nil
+	})
 }
 
-// RemoveAllVNIs removes from the target namespace the bridges / VRFs / veths
-// for all VNIs.
-func RemoveAllVNIs(targetNS string) error {
-	return RemoveNonConfiguredVNIs(targetNS, []VNIParams{})
+// RemoveAllNonConfiguredObjects removes from the target namespace all bridges / VRFs / veths / etc.
+func RemoveAllNonConfiguredObjects(targetNS string) error {
+	return RemoveNonConfiguredObjects(targetNS, map[string]bool{}, map[int32]bool{})
 }
 
-// RemoveNonConfiguredVNIs removes from the target namespace the
-// leftovers corresponding to VNIs that are not configured anymore.
-func RemoveNonConfiguredVNIs(targetNS string, params []VNIParams) error {
-	vrfs := map[string]bool{}
-	vnis := map[int32]bool{}
-	for _, p := range params {
-		vrfs[p.VRF] = true
-		vnis[p.VNI] = true
-	}
-
-	failedDeletes := removeHostSideVNIs(vnis)
+// RemoveNonConfiguredObjects removes from the target namespace the
+// leftovers corresponding to VRFs and interface identifiers that are not configured anymore.
+func RemoveNonConfiguredObjects(targetNS string, vrfs map[string]bool, interfaceIdentifiers map[int32]bool) error {
+	failedDeletes := removeHostSideInterfaces(interfaceIdentifiers)
 
 	ns, err := netns.GetFromPath(targetNS)
 	if err != nil {
-		return fmt.Errorf("RemoveNonConfiguredVNIs: Failed to get network namespace %s: %w", targetNS, err)
+		return fmt.Errorf("RemoveNonConfiguredObjects: Failed to get network namespace %s: %w", targetNS, err)
 	}
 	defer func() {
 		if err := ns.Close(); err != nil {
@@ -370,7 +425,7 @@ func RemoveNonConfiguredVNIs(targetNS string, params []VNIParams) error {
 	}()
 
 	if err := netnamespace.In(ns, func() error {
-		nsErrors := removeNamespaceSideVNIs(vnis, vrfs)
+		nsErrors := removeNamespaceSideInterfaces(interfaceIdentifiers, vrfs)
 		failedDeletes = append(failedDeletes, nsErrors...)
 		return errors.Join(failedDeletes...)
 	}); err != nil {
@@ -380,17 +435,17 @@ func RemoveNonConfiguredVNIs(targetNS string, params []VNIParams) error {
 	return errors.Join(failedDeletes...)
 }
 
-func removeHostSideVNIs(vnis map[int32]bool) []error {
+func removeHostSideInterfaces(interfaceIdentifiers map[int32]bool) []error {
 	var failedDeletes []error
 
 	hostLinks, err := netlink.LinkList()
 	if err != nil {
-		return []error{fmt.Errorf("remove non configured vnis: failed to list links: %w", err)}
+		return []error{fmt.Errorf("remove non configured interfaces: failed to list links: %w", err)}
 	}
-	if err := deleteLinksForType(BridgeLinkType, vnis, hostLinks, vniFromHostBridgeName); err != nil {
+	if err := deleteLinksForType(BridgeLinkType, interfaceIdentifiers, hostLinks, interfaceIDFromHostBridgeName); err != nil {
 		failedDeletes = append(failedDeletes, fmt.Errorf("remove bridge links: %w", err))
 	}
-	if err := removeOVSBridgesForVNIs(context.Background(), vnis); err != nil {
+	if err := removeOVSBridgesForInterfaceIDs(context.Background(), interfaceIdentifiers); err != nil {
 		failedDeletes = append(failedDeletes, fmt.Errorf("remove OVS bridges: %w", err))
 	}
 
@@ -401,12 +456,12 @@ func removeHostSideVNIs(vnis map[int32]bool) []error {
 		if !strings.HasPrefix(hl.Attrs().Name, HostVethPrefix) {
 			continue
 		}
-		vni, err := vniFromHostVeth(hl.Attrs().Name)
+		interfaceIdentifier, err := interfaceIdentifierFromHostVeth(hl.Attrs().Name)
 		if err != nil {
 			failedDeletes = append(failedDeletes, fmt.Errorf("remove host leg: %s %w", hl.Attrs().Name, err))
 			continue
 		}
-		if vnis[vni] {
+		if interfaceIdentifiers[interfaceIdentifier] {
 			continue
 		}
 		if err := netlink.LinkDel(hl); err != nil {
@@ -416,17 +471,17 @@ func removeHostSideVNIs(vnis map[int32]bool) []error {
 	return failedDeletes
 }
 
-func removeNamespaceSideVNIs(vnis map[int32]bool, vrfs map[string]bool) []error {
+func removeNamespaceSideInterfaces(interfaceIdentifier map[int32]bool, vrfs map[string]bool) []error {
 	var failedDeletes []error
 
 	links, err := netlink.LinkList()
 	if err != nil {
-		return []error{fmt.Errorf("remove non configured vnis: failed to list links: %w", err)}
+		return []error{fmt.Errorf("remove non configured interfaces: failed to list links: %w", err)}
 	}
-	if err := deleteLinksForType(VXLanLinkType, vnis, links, vniFromVXLanName); err != nil {
+	if err := deleteLinksForType(VXLanLinkType, interfaceIdentifier, links, interfaceIDFromVXLanName); err != nil {
 		failedDeletes = append(failedDeletes, fmt.Errorf("remove vlan links: %w", err))
 	}
-	if err := deleteLinksForType(BridgeLinkType, vnis, links, vniFromBridgeName); err != nil {
+	if err := deleteLinksForType(BridgeLinkType, interfaceIdentifier, links, interfaceIDFromBridgeName); err != nil {
 		failedDeletes = append(failedDeletes, fmt.Errorf("remove bridge links: %w", err))
 	}
 
@@ -438,34 +493,37 @@ func removeNamespaceSideVNIs(vnis map[int32]bool, vrfs map[string]bool) []error 
 			continue
 		}
 		if err := netlink.LinkDel(l); err != nil {
-			failedDeletes = append(failedDeletes, fmt.Errorf("remove non configured vnis: failed to delete vrf %s %w", l.Attrs().Name, err))
+			failedDeletes = append(failedDeletes, fmt.Errorf("remove non configured interfaces: failed to delete vrf %s %w", l.Attrs().Name, err))
 		}
 	}
 	return failedDeletes
 }
 
 // deleteLinks deletes all the links of the given type that do not correspond to
-// any VNI.
-func deleteLinksForType(linkType string, vnis map[int32]bool, links []netlink.Link, vniFromName func(string) (int32, error)) error {
+// any interface identifier.
+func deleteLinksForType(linkType string, interfaceIdentifiers map[int32]bool, links []netlink.Link,
+	interfaceIDFromName func(string) (int32, error)) error {
 	deleteErrors := []error{}
 	for _, l := range links {
 		if l.Type() != netlinkTypeFor(linkType) {
 			continue
 		}
-		vni, err := vniFromName(l.Attrs().Name)
+		interfaceID, err := interfaceIDFromName(l.Attrs().Name)
 		if errors.As(err, &NotRouterInterfaceError{}) {
 			// not a router interface, skip
 			continue
 		}
 		if err != nil {
-			deleteErrors = append(deleteErrors, fmt.Errorf("remove non configured vnis: failed to get vni for %s %w", linkType, err))
+			deleteErrors = append(deleteErrors, fmt.Errorf("remove non configured interfaces: failed to get "+
+				"interface ID for %s %w", linkType, err))
 			continue
 		}
-		if _, ok := vnis[vni]; ok {
+		if _, ok := interfaceIdentifiers[interfaceID]; ok {
 			continue
 		}
 		if err := netlink.LinkDel(l); err != nil {
-			deleteErrors = append(deleteErrors, fmt.Errorf("remove non configured vnis: failed to delete %s %s %w", linkType, l.Attrs().Name, err))
+			deleteErrors = append(deleteErrors, fmt.Errorf("remove non configured interfaces: failed to "+
+				"delete %s %s %w", linkType, l.Attrs().Name, err))
 			continue
 		}
 	}
@@ -481,9 +539,9 @@ func netlinkTypeFor(linkType string) string {
 	return linkType
 }
 
-// removeOVSBridgesForVNIs removes auto-created OVS bridges that are not in the configured VNIs list.
+// removeOVSBridgesForInterfaceIDs removes auto-created OVS bridges that are not in the configured interface ID list.
 // Only deletes bridges with external_id "created-by: openperouter" (auto-created bridges).
-func removeOVSBridgesForVNIs(ctx context.Context, vnis map[int32]bool) error {
+func removeOVSBridgesForInterfaceIDs(ctx context.Context, interfaceIDs map[int32]bool) error {
 	ovs, err := NewOVSClient(ctx)
 	if err != nil {
 		// OVS not available, skip cleanup gracefully
@@ -515,30 +573,33 @@ func removeOVSBridgesForVNIs(ctx context.Context, vnis map[int32]bool) error {
 		managedByUs := hasMarker && createdBy == "openperouter"
 
 		if !managedByUs {
-			// For non-managed bridges, only detach our veth ports for removed VNIs.
-			// vnis is the set of VNIs we want to keep; ports for any other VNI are removed.
-			if err := detachOurPortsFromBridge(ctx, ovs, bridge, vnis); err != nil {
+			// For non-managed bridges, only detach our veth ports for interfaces with removed IDs.
+			// interfaceIDs is the set of IDs we want to keep; ports for any other ID are removed.
+			if err := detachOurPortsFromBridge(ctx, ovs, bridge, interfaceIDs); err != nil {
 				deleteErrors = append(deleteErrors, err)
 			}
 			continue
 		}
 
-		vni, err := vniFromHostBridgeName(bridge.Name)
+		interfaceIdentifier, err := interfaceIDFromHostBridgeName(bridge.Name)
 		if errors.As(err, &NotRouterInterfaceError{}) {
 			slog.Debug("skipping bridge - not our naming pattern", "name", bridge.Name)
 			continue // Not our bridge naming pattern
 		}
 		if err != nil {
-			deleteErrors = append(deleteErrors, fmt.Errorf("failed to parse VNI from bridge %s: %w", bridge.Name, err))
+			deleteErrors = append(deleteErrors, fmt.Errorf("failed to parse interface ID from bridge %s: %w",
+				bridge.Name, err))
 			continue
 		}
 
-		if vnis[vni] {
-			slog.Debug("keeping bridge - VNI is configured", "name", bridge.Name, "vni", vni)
+		if interfaceIDs[interfaceIdentifier] {
+			slog.Debug("keeping bridge - interface ID is configured", "name", bridge.Name,
+				"interfaceIdentifier", interfaceIdentifier)
 			continue // Bridge should be kept
 		}
 
-		slog.Info("deleting auto-created OVS bridge", "name", bridge.Name, "vni", vni, "uuid", bridge.UUID)
+		slog.Info("deleting auto-created OVS bridge", "name", bridge.Name,
+			"interfaceIdentifier", interfaceIdentifier, "uuid", bridge.UUID)
 
 		// Remove the bridge from the OpenVSwitch table's bridges array
 		ovsRow := &ovsmodel.OpenvSwitch{}
@@ -636,17 +697,18 @@ func removePortsFromBridge(ctx context.Context, ovs libovsclient.Client, bridge 
 }
 
 // detachOurPortsFromBridge removes openperouter-managed veth ports from a
-// non-managed OVS bridge for VNIs that are no longer configured.
-func detachOurPortsFromBridge(ctx context.Context, ovs libovsclient.Client, bridge ovsmodel.Bridge, configuredVNIs map[int32]bool) error {
+// non-managed OVS bridge matching identifiers that are no longer configured.
+func detachOurPortsFromBridge(ctx context.Context, ovs libovsclient.Client, bridge ovsmodel.Bridge,
+	configuredInterfacesIDs map[int32]bool) error {
 	filter := func(port *ovsmodel.Port) bool {
 		if !strings.HasPrefix(port.Name, HostVethPrefix) {
 			return false
 		}
-		vni, err := vniFromHostVeth(port.Name)
+		interfaceIdentifier, err := interfaceIdentifierFromHostVeth(port.Name)
 		if err != nil {
 			return false
 		}
-		return !configuredVNIs[vni]
+		return !configuredInterfacesIDs[interfaceIdentifier]
 	}
 
 	ops, err := removePortsFromBridge(ctx, ovs, bridge, filter)
@@ -679,15 +741,15 @@ func hostMaster(vni int32, m HostMaster) (netlink.Link, error) {
 	return bridge, nil
 }
 
-// setVethMTUForVXLAN sets the MTU on a veth interface to account for VXLan overhead.
+// setVethMTUForTunnelOverhead sets the MTU on a veth interface to account for tunnel overhead.
 // If the underlay MTU is not found, or if the resulting MTU would be too small,
 // the MTU is left unchanged.
-func setVethMTUForVXLAN(link netlink.Link, underlayMTU int) error {
+func setVethMTUForTunnelOverhead(link netlink.Link, underlayMTU int, overhead int) error {
 	if underlayMTU == 0 {
 		slog.Debug("No underlay MTU found, leaving veth MTU at default", "veth", link.Attrs().Name)
 		return nil
 	}
-	targetMTU := underlayMTU - VXLanOverhead
+	targetMTU := underlayMTU - overhead
 	if targetMTU <= MinVethMTU {
 		slog.Warn("Calculated veth MTU is too low, leaving at default",
 			"veth", link.Attrs().Name,

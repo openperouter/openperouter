@@ -123,7 +123,7 @@ func vxLanNameFromVNI(vni int32) string {
 	return fmt.Sprintf("%s%d", vniPrefix, vni)
 }
 
-func vniFromVXLanName(name string) (int32, error) {
+func interfaceIDFromVXLanName(name string) (int32, error) {
 	if !strings.HasPrefix(name, vniPrefix) {
 		return 0, NotRouterInterfaceError{Name: name}
 	}

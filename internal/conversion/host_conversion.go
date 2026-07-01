@@ -85,19 +85,14 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig APIConfigData) (H
 		return HostConfigData{}, fmt.Errorf("failed to translate L2VNIs to host, err: %w", err)
 	}
 
-	l3VNIsForSRv6, err := l3vpnsToHost(
+	l3VPNs, err := l3vpnsToHost(
 		apiConfig.L3VPNs,
 		underlay.Spec.SRV6,
-		underlayConfigTunnelEndpoint.IPv6CIDR,
 		targetNS,
 		nodeIndex)
 	if err != nil {
 		return HostConfigData{}, fmt.Errorf("failed to translate L3VPNs to host, err: %w", err)
 	}
-
-	// validateAPIConfigData makes sure that we only have either l3VNIs or l3VNIsForSRv6, so we can safely combine them
-	// here.
-	l3VNIs = append(l3VNIs, l3VNIsForSRv6...)
 
 	return HostConfigData{
 		Underlay: hostnetwork.UnderlayParams{
@@ -107,6 +102,7 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig APIConfigData) (H
 		},
 		L3VNIs:        l3VNIs,
 		L2VNIs:        l2VNIs,
+		L3VPNs:        l3VPNs,
 		L3Passthrough: l3Passthrough,
 	}, nil
 }
@@ -306,34 +302,33 @@ func l2vniToHost(l2vni v1alpha1.L2VNI, tunnelEndpoint hostnetwork.UnderlayTunnel
 }
 
 func l3vpnsToHost(l3vpns []v1alpha1.L3VPN, srv6Config *v1alpha1.SRV6Config,
-	vtepIP, targetNS string, nodeIndex int) ([]hostnetwork.L3VNIParams, error) {
+	targetNS string, nodeIndex int) ([]hostnetwork.L3VPNParams, error) {
 	if srv6Config == nil {
-		return []hostnetwork.L3VNIParams{}, nil
+		return []hostnetwork.L3VPNParams{}, nil
 	}
-	hostL3VNIs := []hostnetwork.L3VNIParams{}
+	hostL3VPNs := []hostnetwork.L3VPNParams{}
 	for _, l3vpn := range l3vpns {
-		hostL3VNI, err := l3vpnToHost(l3vpn, vtepIP, targetNS, nodeIndex)
+		hostL3VPN, err := l3vpnToHost(l3vpn, targetNS, nodeIndex)
 		if err != nil {
 			return nil, fmt.Errorf("failed to translate L3VPN %s, err: %w", l3vpn.Name, err)
 		}
-		hostL3VNIs = append(hostL3VNIs, hostL3VNI)
+		hostL3VPNs = append(hostL3VPNs, hostL3VPN)
 	}
-	return hostL3VNIs, nil
+	return hostL3VPNs, nil
 }
 
-func l3vpnToHost(l3vpn v1alpha1.L3VPN, vtepIP, targetNS string, nodeIndex int) (hostnetwork.L3VNIParams, error) {
-	hostL3VNI := hostnetwork.L3VNIParams{
-		Name: l3vpn.Name,
-		VNIParams: hostnetwork.VNIParams{
-			VRF:      l3vpn.Spec.VRF,
-			TargetNS: targetNS,
-			VTEPIP:   vtepIP,
-			VNI:      l3vpn.Spec.RDAssignedNumber, // We use RDAssignedNumber the same as VNI in L3VNI / L2VNI.
-			HasSRv6:  true,
-		},
+// l3vpnToHost converts a single API L3VPN custom resource into a hostnetwork.L3VPNParams.
+// On the host side, we need to create unique interfaces. As RDAssignedNumber is a unique integers, we use that
+// as the numeric interface identifier, analogous to VNI for L2VNI / L3VNI.
+func l3vpnToHost(l3vpn v1alpha1.L3VPN, targetNS string, nodeIndex int) (hostnetwork.L3VPNParams, error) {
+	hostL3VPN := hostnetwork.L3VPNParams{
+		Name:                l3vpn.Name,
+		VRF:                 l3vpn.Spec.VRF,
+		TargetNS:            targetNS,
+		InterfaceIdentifier: l3vpn.Spec.RDAssignedNumber,
 	}
 	if l3vpn.Spec.HostSession == nil {
-		return hostL3VNI, nil
+		return hostL3VPN, nil
 	}
 
 	vethIPs, err := ipam.VethIPsFromPool(
@@ -341,18 +336,18 @@ func l3vpnToHost(l3vpn v1alpha1.L3VPN, vtepIP, targetNS string, nodeIndex int) (
 		l3vpn.Spec.HostSession.LocalCIDR.IPv6,
 		nodeIndex)
 	if err != nil {
-		return hostnetwork.L3VNIParams{}, fmt.Errorf("failed to get veth ips, cidr %v, nodeIndex %d, err: %w",
+		return hostnetwork.L3VPNParams{}, fmt.Errorf("failed to get veth ips, cidr %v, nodeIndex %d, err: %w",
 			l3vpn.Spec.HostSession.LocalCIDR, nodeIndex, err)
 	}
 
-	hostL3VNI.HostVeth = &hostnetwork.Veth{
+	hostL3VPN.HostVeth = &hostnetwork.Veth{
 		HostIPv4: ipNetToString(vethIPs.Ipv4.HostSide),
 		NSIPv4:   ipNetToString(vethIPs.Ipv4.PeSide),
 		HostIPv6: ipNetToString(vethIPs.Ipv6.HostSide),
 		NSIPv6:   ipNetToString(vethIPs.Ipv6.PeSide),
 	}
 
-	return hostL3VNI, nil
+	return hostL3VPN, nil
 }
 
 func vxlanPort(p *int32) *int32 {

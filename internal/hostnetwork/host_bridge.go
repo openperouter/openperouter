@@ -42,8 +42,8 @@ func hostBridgeName(vni int32) string {
 	return fmt.Sprintf("%s%d", hostBridgePrefix, vni)
 }
 
-// vniFromHostBridgeName extracts the VNI from a host bridge name.
-func vniFromHostBridgeName(name string) (int32, error) {
+// interfaceIDFromHostBridgeName extracts the interface ID from a host bridge name.
+func interfaceIDFromHostBridgeName(name string) (int32, error) {
 	if !strings.HasPrefix(name, hostBridgePrefix) {
 		return 0, NotRouterInterfaceError{Name: name}
 	}
