@@ -17,6 +17,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	openpeerrors "github.com/openperouter/openperouter/internal/errors"
 	"github.com/openperouter/openperouter/internal/netnamespace"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
@@ -99,7 +100,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 		params.UnderlayInterfaces = []string{underlayTestInterfaceEdit}
 
 		err = SetupUnderlay(context.Background(), params)
-		u := UnderlayExistsError("")
+		u := openpeerrors.UnderlayExists("")
 		Expect(errors.As(err, &u)).To(BeTrue())
 	})
 

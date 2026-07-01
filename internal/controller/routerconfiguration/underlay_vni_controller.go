@@ -96,7 +96,7 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	// Best-effort status write: non-recoverable errors must never requeue,
 	// so we ignore any status update failure here.
-	if nonRecoverableHostError(err) {
+	if openpeerrors.NonRecoverableHost(err) {
 		_ = r.reconcileNodeStatus(ctx, err)
 		return ctrl.Result{}, nil
 	}
@@ -156,7 +156,7 @@ func (r *PERouterReconciler) reconcile(ctx context.Context, logger *slog.Logger)
 	}
 
 	err = Reconcile(ctx, config, nodeIndex, r.LogLevel, r.FRRConfigPath, targetNS, updater, configureInterfaces)
-	if nonRecoverableHostError(err) {
+	if openpeerrors.NonRecoverableHost(err) {
 		logger.Error("non recoverable error", "error", err)
 		if err := router.HandleNonRecoverableError(ctx); err != nil {
 			slog.Error("failed to handle non recoverable error", "error", err)

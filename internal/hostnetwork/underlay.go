@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"slices"
 
+	openpeerrors "github.com/openperouter/openperouter/internal/errors"
 	"github.com/openperouter/openperouter/internal/netnamespace"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
@@ -66,7 +67,7 @@ func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
 	}
 	for _, name := range existingIfaces {
 		if !slices.Contains(params.UnderlayInterfaces, name) {
-			return UnderlayExistsError(fmt.Sprintf(
+			return openpeerrors.UnderlayExists(fmt.Sprintf(
 				"existing underlay found: %s, new interfaces are %v", name, params.UnderlayInterfaces))
 		}
 	}
@@ -105,12 +106,6 @@ func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
 	}
 
 	return nil
-}
-
-type UnderlayExistsError string
-
-func (e UnderlayExistsError) Error() string {
-	return string(e)
 }
 
 func ensureLoopback(ctx context.Context, ns netns.NsHandle, vtepIPs ...string) error {

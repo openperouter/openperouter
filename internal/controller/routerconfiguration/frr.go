@@ -9,6 +9,7 @@ import (
 	"log/slog"
 
 	"github.com/openperouter/openperouter/internal/conversion"
+	openpeerrors "github.com/openperouter/openperouter/internal/errors"
 	"github.com/openperouter/openperouter/internal/frr"
 )
 
@@ -23,7 +24,7 @@ type frrConfigData struct {
 func configureFRR(ctx context.Context, data frrConfigData) error {
 	slog.DebugContext(ctx, "reloading FRR config", "config", data)
 	frrConfig, err := conversion.APItoFRR(data.APIConfigData, data.nodeIndex, data.logLevel)
-	emptyConfig := conversion.FRREmptyConfigError("")
+	emptyConfig := openpeerrors.FRREmptyConfig("")
 	if errors.As(err, &emptyConfig) {
 		slog.InfoContext(ctx, "reloading FRR config", "empty config", data, "event", "cleaning the frr configuration")
 		frrConfig = frr.Config{}

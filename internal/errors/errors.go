@@ -52,6 +52,23 @@ func HasUnderlayFailure(err error) bool {
 	return false
 }
 
+type UnderlayExists string
+
+func (e UnderlayExists) Error() string {
+	return string(e)
+}
+
+func NonRecoverableHost(e error) bool {
+	underlayExistsError := UnderlayExists("")
+	return errors.As(e, &underlayExistsError)
+}
+
+type FRREmptyConfig string
+
+func (e FRREmptyConfig) Error() string {
+	return string(e)
+}
+
 // unwrapAll flattens a (possibly nested) error tree into its leaf errors.
 // It handles both errors.Join trees (Unwrap() []error) and single-wrapped
 // errors (Unwrap() error), using an iterative stack to avoid recursion.
