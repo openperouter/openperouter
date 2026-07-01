@@ -26,6 +26,7 @@ func TestAPItoHostConfig(t *testing.T) {
 		wantUnderlay    hostnetwork.UnderlayParams
 		wantL2VNIParams []hostnetwork.L2VNIParams
 		wantL3VNIParams []hostnetwork.L3VNIParams
+		wantL3VPNParams []hostnetwork.L3VPNParams
 		wantPassthrough *hostnetwork.PassthroughParams
 		wantErr         bool
 	}{
@@ -88,6 +89,7 @@ func TestAPItoHostConfig(t *testing.T) {
 				},
 			},
 			wantL2VNIParams: []hostnetwork.L2VNIParams{},
+			wantL3VPNParams: []hostnetwork.L3VPNParams{},
 			wantPassthrough: nil,
 			wantErr:         false,
 		},
@@ -144,6 +146,7 @@ func TestAPItoHostConfig(t *testing.T) {
 				},
 			},
 			wantL2VNIParams: []hostnetwork.L2VNIParams{},
+			wantL3VPNParams: []hostnetwork.L3VPNParams{},
 			wantPassthrough: nil,
 			wantErr:         false,
 		},
@@ -189,15 +192,12 @@ func TestAPItoHostConfig(t *testing.T) {
 					IPv6CIDR: "2001:db8::/128",
 				},
 			},
-			wantL3VNIParams: []hostnetwork.L3VNIParams{
+			wantL3VNIParams: []hostnetwork.L3VNIParams{},
+			wantL3VPNParams: []hostnetwork.L3VPNParams{
 				{
-					VNIParams: hostnetwork.VNIParams{
-						VRF:      "red",
-						VNI:      100,
-						TargetNS: "namespace",
-						VTEPIP:   "2001:db8::/128",
-						HasSRv6:  true,
-					},
+					VRF:              "red",
+					RDAssignedNumber: 100,
+					TargetNS:         "namespace",
 					HostVeth: &hostnetwork.Veth{
 						HostIPv4: "10.1.0.2/24",
 						NSIPv4:   "10.1.0.1/24",
@@ -254,6 +254,7 @@ func TestAPItoHostConfig(t *testing.T) {
 				},
 			},
 			wantL2VNIParams: []hostnetwork.L2VNIParams{},
+			wantL3VPNParams: []hostnetwork.L3VPNParams{},
 			wantPassthrough: nil,
 			wantErr:         false,
 		},
@@ -294,6 +295,7 @@ func TestAPItoHostConfig(t *testing.T) {
 				},
 			},
 			wantL2VNIParams: []hostnetwork.L2VNIParams{},
+			wantL3VPNParams: []hostnetwork.L3VPNParams{},
 			wantPassthrough: nil,
 			wantErr:         false,
 		},
@@ -329,6 +331,7 @@ func TestAPItoHostConfig(t *testing.T) {
 					HostMaster:   nil,
 				},
 			},
+			wantL3VPNParams: []hostnetwork.L3VPNParams{},
 			wantPassthrough: nil,
 			wantErr:         false,
 		},
@@ -369,6 +372,7 @@ func TestAPItoHostConfig(t *testing.T) {
 					HostMaster:   nil,
 				},
 			},
+			wantL3VPNParams: []hostnetwork.L3VPNParams{},
 			wantPassthrough: nil,
 			wantErr:         false,
 		},
@@ -404,6 +408,7 @@ func TestAPItoHostConfig(t *testing.T) {
 					HostMaster:   &hostnetwork.HostMaster{Name: new("br0"), Type: "linux-bridge"},
 				},
 			},
+			wantL3VPNParams: []hostnetwork.L3VPNParams{},
 			wantPassthrough: nil,
 			wantErr:         false,
 		},
@@ -439,6 +444,7 @@ func TestAPItoHostConfig(t *testing.T) {
 				},
 			},
 			wantL2VNIParams: []hostnetwork.L2VNIParams{},
+			wantL3VPNParams: []hostnetwork.L3VPNParams{},
 			wantPassthrough: nil,
 			wantErr:         false,
 		},
@@ -528,6 +534,7 @@ func TestAPItoHostConfig(t *testing.T) {
 			},
 			wantL3VNIParams: []hostnetwork.L3VNIParams{},
 			wantL2VNIParams: []hostnetwork.L2VNIParams{},
+			wantL3VPNParams: []hostnetwork.L3VPNParams{},
 			wantPassthrough: nil,
 			wantErr:         false,
 		},
@@ -557,6 +564,7 @@ func TestAPItoHostConfig(t *testing.T) {
 			},
 			wantL3VNIParams: []hostnetwork.L3VNIParams{},
 			wantL2VNIParams: []hostnetwork.L2VNIParams{},
+			wantL3VPNParams: []hostnetwork.L3VPNParams{},
 			wantErr:         false,
 		},
 		{
@@ -625,6 +633,9 @@ func TestAPItoHostConfig(t *testing.T) {
 			}
 			if !reflect.DeepEqual(gotHostConfig.L2VNIs, tt.wantL2VNIParams) {
 				t.Errorf("APItoHostConfig() gotL2VNIParams = %+v, want %+v", gotHostConfig.L2VNIs, tt.wantL2VNIParams)
+			}
+			if !reflect.DeepEqual(gotHostConfig.L3VPNs, tt.wantL3VPNParams) {
+				t.Errorf("APItoHostConfig() gotL3VPNParams = %+v, want %+v", gotHostConfig.L3VPNs, tt.wantL3VPNParams)
 			}
 			if !reflect.DeepEqual(gotHostConfig.L3Passthrough, tt.wantPassthrough) {
 				t.Errorf("APItoHostConfig() gotPassthrough = %+v, want %+v", gotHostConfig.L3Passthrough, tt.wantPassthrough)
