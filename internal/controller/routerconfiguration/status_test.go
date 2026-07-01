@@ -98,7 +98,7 @@ func TestBuildStatus(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := buildStatus(tt.reconcileErr)
+			s := buildStatus(tt.reconcileErr, nil)
 
 			ready := apimeta.FindStatusCondition(s.Conditions, v1alpha1.ConditionTypeReady)
 			if ready == nil {
