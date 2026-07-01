@@ -67,8 +67,12 @@ func validateUnderlay(underlay v1alpha1.Underlay) error {
 		return fmt.Errorf("underlay %s has duplicate neighbor address: %w", underlay.Name, err)
 	}
 
-	if err := validateNoDuplicates(underlay.Spec.Nics); err != nil {
-		return fmt.Errorf("underlay %s has duplicate nic name: %w", underlay.Name, err)
+	underlayInterfaces, err := underlayNetworkDeviceInterfaceNames(underlay.Spec.Interfaces)
+	if err != nil {
+		return err
+	}
+	if err := validateNoDuplicates(underlayInterfaces); err != nil {
+		return fmt.Errorf("underlay %s has duplicate interface name: %w", underlay.Name, err)
 	}
 
 	if underlay.Spec.TunnelEndpoint != nil {
@@ -77,9 +81,9 @@ func validateUnderlay(underlay v1alpha1.Underlay) error {
 		}
 	}
 
-	for _, n := range underlay.Spec.Nics {
+	for _, n := range underlayInterfaces {
 		if err := isValidInterfaceName(n); err != nil {
-			return fmt.Errorf("invalid nic name for underlay %s: %s - %w", underlay.Name, n, err)
+			return fmt.Errorf("invalid interface name for underlay %s: %s - %w", underlay.Name, n, err)
 		}
 	}
 

@@ -26,8 +26,10 @@ underlays:
     tunnelEndpoint:
       cidrs:
       - 100.65.0.0/24
-    nics:
-      - eth0
+    interfaces:
+      - type: NetworkDevice
+        networkDevice:
+          interfaceName: eth0
     neighbors:
       - asn: 64512
         address: 192.168.111.1
@@ -68,8 +70,10 @@ underlays:
     tunnelEndpoint:
       cidrs:
       - 100.65.0.0/24
-    nics:
-      - eth0
+    interfaces:
+      - type: NetworkDevice
+        networkDevice:
+          interfaceName: eth0
     neighbors:
       - asn: 64512
         address: 192.168.111.1

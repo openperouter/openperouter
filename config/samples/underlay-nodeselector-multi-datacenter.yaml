@@ -13,8 +13,10 @@ spec:
   tunnelEndpoint:
     cidrs:
     - 100.65.0.0/24
-  nics:
-    - eth1
+  interfaces:
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: eth1
   neighbors:
     - asn: 64500
       address: 192.168.10.1  # ToR switch in DC East
@@ -33,8 +35,10 @@ spec:
   tunnelEndpoint:
     cidrs:
     - 100.66.0.0/24
-  nics:
-    - eth1
+  interfaces:
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: eth1
   neighbors:
     - asn: 64501
       address: 192.168.20.1  # ToR switch in DC West

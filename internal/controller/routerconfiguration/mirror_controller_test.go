@@ -42,8 +42,10 @@ func TestMirrorController(t *testing.T) {
 				"openpe_underlay.yaml": `underlays:
   - asn: 64514
     routeridcidr: "10.0.0.0/24"
-    nics:
-      - eth0
+    interfaces:
+      - type: NetworkDevice
+        networkDevice:
+          interfaceName: eth0
     neighbors:
       - asn: 64512
         address: "192.168.11.2"
@@ -62,8 +64,10 @@ func TestMirrorController(t *testing.T) {
 			files: map[string]string{
 				"openpe_underlay.yaml": `underlays:
   - asn: 64514
-    nics:
-      - eth0
+    interfaces:
+      - type: NetworkDevice
+        networkDevice:
+          interfaceName: eth0
     neighbors:
       - asn: 64512
         address: "192.168.11.2"
@@ -95,8 +99,10 @@ func TestMirrorController(t *testing.T) {
 			files: map[string]string{
 				"openpe_underlay.yaml": `underlays:
   - asn: 64514
-    nics:
-      - eth0
+    interfaces:
+      - type: NetworkDevice
+        networkDevice:
+          interfaceName: eth0
     neighbors:
       - asn: 64512
         address: "192.168.11.2"
@@ -112,8 +118,10 @@ func TestMirrorController(t *testing.T) {
 			updateFiles: map[string]string{
 				"openpe_underlay.yaml": `underlays:
   - asn: 64515
-    nics:
-      - eth0
+    interfaces:
+      - type: NetworkDevice
+        networkDevice:
+          interfaceName: eth0
     neighbors:
       - asn: 64512
         address: "192.168.11.2"
@@ -156,8 +164,10 @@ func TestMirrorController(t *testing.T) {
 			files: map[string]string{
 				"openpe_underlay.yaml": `underlays:
   - asn: 64514
-    nics:
-      - eth0
+    interfaces:
+      - type: NetworkDevice
+        networkDevice:
+          interfaceName: eth0
     neighbors:
       - asn: 64512
         address: "192.168.11.2"
@@ -215,8 +225,10 @@ func TestMirrorController(t *testing.T) {
 			files: map[string]string{
 				"openpe_underlay.yaml": `underlays:
   - asn: 64514
-    nics:
-      - eth0
+    interfaces:
+      - type: NetworkDevice
+        networkDevice:
+          interfaceName: eth0
     neighbors:
       - asn: 64512
         address: "192.168.11.2"
@@ -390,8 +402,10 @@ func TestMirrorController_IdempotentMultipleReconciles(t *testing.T) {
 	dir := t.TempDir()
 	writeStaticFile(t, dir, "openpe_underlay.yaml", `underlays:
   - asn: 64514
-    nics:
-      - eth0
+    interfaces:
+      - type: NetworkDevice
+        networkDevice:
+          interfaceName: eth0
     neighbors:
       - asn: 64512
         address: "192.168.11.2"
