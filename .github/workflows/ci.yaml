@@ -279,6 +279,15 @@ jobs:
             make e2etests
           fi
 
+      - name: Upload e2e test reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          retention-days: 1
+          name: e2e-reports-${{ matrix.deployment }}
+          path: /tmp/kind_logs/e2e-report*.json
+          if-no-files-found: ignore
+
       - name: Export kind logs
         if: ${{ failure() }}
         run:
