@@ -44,16 +44,17 @@ import (
 
 type PERouterReconciler struct {
 	client.Client
-	Scheme          *runtime.Scheme
-	MyNode          string
-	MyNamespace     string
-	LogLevel        string
-	Logger          *slog.Logger
-	FRRConfigPath   string
-	FRRReloadSocket string
-	StaticConfigDir string
-	NodeConfigPath  string
-	RouterProvider  RouterProvider
+	Scheme           *runtime.Scheme
+	MyNode           string
+	MyNamespace      string
+	LogLevel         string
+	Logger           *slog.Logger
+	FRRConfigPath    string
+	FRRReloadSocket  string
+	StaticConfigDir  string
+	NodeConfigPath   string
+	RouterProvider   RouterProvider
+	HostConfigurator HostConfigurator
 
 	// TriggerChan receives events from FileWatcher (in host mode)
 	TriggerChan chan event.GenericEvent
@@ -155,7 +156,7 @@ func (r *PERouterReconciler) reconcile(ctx context.Context, logger *slog.Logger)
 		return ctrl.Result{}, err
 	}
 
-	err = Reconcile(ctx, config, nodeIndex, r.LogLevel, r.FRRConfigPath, targetNS, updater, configureInterfaces)
+	err = Reconcile(ctx, config, nodeIndex, r.LogLevel, r.FRRConfigPath, targetNS, updater, r.HostConfigurator)
 	if nonRecoverableHostError(err) {
 		logger.Error("non recoverable error", "error", err)
 		if err := router.HandleNonRecoverableError(ctx); err != nil {
@@ -299,6 +300,9 @@ func (r *PERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return fmt.Errorf("failed to build label requirement: %w", err)
 	}
 	r.notStaticConfigsListOpts = &client.ListOptions{LabelSelector: labels.NewSelector().Add(*notMirrored)}
+	if r.HostConfigurator == nil {
+		r.HostConfigurator = configureInterfaces
+	}
 
 	filterNonRouterPods := predicate.NewPredicateFuncs(func(object client.Object) bool {
 		switch o := object.(type) {
