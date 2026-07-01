@@ -39,11 +39,13 @@ var _ = Describe("Node Router Status", func() {
 
 	It("should ensure RouterNodeConfigurationStatus per each node", func() {
 		assertSingleNodeStatusPerNode(nodes, routerNamespace)
+		openperouter.AssertNodesStatusReady(Updater.Client())
 
 		By("delete all CRs and verify they are recreated")
 		Expect(Updater.Client().DeleteAllOf(context.Background(), &v1alpha1.RouterNodeConfigurationStatus{}, client.InNamespace(routerNamespace))).To(Succeed())
 
 		assertSingleNodeStatusPerNode(nodes, routerNamespace)
+		openperouter.AssertNodesStatusReady(Updater.Client())
 	})
 })
 
