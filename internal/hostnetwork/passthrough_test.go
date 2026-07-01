@@ -36,7 +36,7 @@ var _ = Describe("Passthrough configuration", func() {
 	It("should work with IPv4 only passthrough", func() {
 		params := PassthroughParams{
 			TargetNS: testPassthroughNSPath(),
-			HostVeth: Veth{
+			CrossNsIPs: CrossNsIPs{
 				HostIPv4: "192.168.10.1/32",
 				NSIPv4:   "192.168.10.0/32",
 			},
@@ -53,7 +53,7 @@ var _ = Describe("Passthrough configuration", func() {
 	It("should work with IPv6 only passthrough", func() {
 		params := PassthroughParams{
 			TargetNS: testPassthroughNSPath(),
-			HostVeth: Veth{
+			CrossNsIPs: CrossNsIPs{
 				HostIPv6: "2001:db8::1/128",
 				NSIPv6:   "2001:db8::/128",
 			},
@@ -70,7 +70,7 @@ var _ = Describe("Passthrough configuration", func() {
 	It("should work with dual-stack passthrough", func() {
 		params := PassthroughParams{
 			TargetNS: testPassthroughNSPath(),
-			HostVeth: Veth{
+			CrossNsIPs: CrossNsIPs{
 				HostIPv4: "192.168.10.1/32",
 				NSIPv4:   "192.168.10.0/32",
 				HostIPv6: "2001:db8::1/128",
@@ -89,7 +89,7 @@ var _ = Describe("Passthrough configuration", func() {
 	It("should remove passthrough interfaces correctly", func() {
 		params := PassthroughParams{
 			TargetNS: testPassthroughNSPath(),
-			HostVeth: Veth{
+			CrossNsIPs: CrossNsIPs{
 				HostIPv4: "192.168.10.1/32",
 				NSIPv4:   "192.168.10.0/32",
 			},
@@ -113,7 +113,7 @@ var _ = Describe("Passthrough configuration", func() {
 	It("should be idempotent", func() {
 		params := PassthroughParams{
 			TargetNS: testPassthroughNSPath(),
-			HostVeth: Veth{
+			CrossNsIPs: CrossNsIPs{
 				HostIPv4: "192.168.10.1/32",
 				NSIPv4:   "192.168.10.0/32",
 			},
@@ -137,7 +137,7 @@ var _ = Describe("Passthrough configuration", func() {
 })
 
 func validatePassthrough(g Gomega, params PassthroughParams, testNS netns.NsHandle) {
-	vethHasIPs(g, PassthroughNames.HostSide, params.HostVeth.HostIPv4, params.HostVeth.HostIPv6)
+	vethHasIPs(g, PassthroughNames.HostSide, params.CrossNsIPs.HostIPv4, params.CrossNsIPs.HostIPv6)
 
 	_ = netnamespace.In(testNS, func() error {
 		validatePassthroughInNamespace(g, params)
@@ -146,7 +146,7 @@ func validatePassthrough(g Gomega, params PassthroughParams, testNS netns.NsHand
 }
 
 func validatePassthroughInNamespace(g Gomega, params PassthroughParams) {
-	vethHasIPs(g, PassthroughNames.NamespaceSide, params.HostVeth.NSIPv4, params.HostVeth.NSIPv6)
+	vethHasIPs(g, PassthroughNames.NamespaceSide, params.CrossNsIPs.NSIPv4, params.CrossNsIPs.NSIPv6)
 }
 
 func vethHasIPs(g Gomega, linkName, ipv4, ipv6 string) {

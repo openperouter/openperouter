@@ -49,7 +49,7 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig APIConfigData) (H
 
 		res.L3Passthrough = &hostnetwork.PassthroughParams{
 			TargetNS: targetNS,
-			HostVeth: hostnetwork.Veth{
+			CrossNsIPs: hostnetwork.CrossNsIPs{
 				HostIPv4: ipNetToString(vethIPs.Ipv4.HostSide),
 				NSIPv4:   ipNetToString(vethIPs.Ipv4.PeSide),
 				HostIPv6: ipNetToString(vethIPs.Ipv6.HostSide),
@@ -99,7 +99,7 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig APIConfigData) (H
 			return res, fmt.Errorf("failed to get veth ips, cidr %v, nodeIndex %d", vni.Spec.HostSession.LocalCIDR, nodeIndex)
 		}
 
-		v.HostVeth = &hostnetwork.Veth{
+		v.CrossNsIPs = &hostnetwork.CrossNsIPs{
 			HostIPv4: ipNetToString(vethIPs.Ipv4.HostSide),
 			NSIPv4:   ipNetToString(vethIPs.Ipv4.PeSide),
 			HostIPv6: ipNetToString(vethIPs.Ipv6.HostSide),

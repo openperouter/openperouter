@@ -38,17 +38,17 @@ type VNIParams struct {
 }
 
 type L3VNIParams struct {
-	VNIParams `json:",inline"`
-	Name      string `json:"name"`
-	HostVeth  *Veth  `json:"veth"`
+	VNIParams  `json:",inline"`
+	Name       string      `json:"name"`
+	CrossNsIPs *CrossNsIPs `json:"crossnsips"`
 }
 
 type L3PassthroughParams struct {
-	TargetNS string `json:"targetns"`
-	HostVeth Veth   `json:"veth"`
+	TargetNS   string     `json:"targetns"`
+	CrossNsIPs CrossNsIPs `json:"crossnsips"`
 }
 
-type Veth struct {
+type CrossNsIPs struct {
 	HostIPv4 string `json:"hostipv4"`
 	NSIPv4   string `json:"nsipv4"`
 	HostIPv6 string `json:"hostipv6"`
@@ -94,7 +94,7 @@ func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
 	slog.DebugContext(ctx, "setting up l3 VNI", "params", params)
 	defer slog.DebugContext(ctx, "end setting up l3 VNI", "params", params)
 
-	if params.HostVeth == nil {
+	if params.CrossNsIPs == nil {
 		slog.DebugContext(ctx, "no host veth configured, skipping setup")
 		return nil
 	}
@@ -121,7 +121,7 @@ func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
 		return fmt.Errorf("SetupL3VNI: failed to get host veth %s: %w", vethNames.HostSide, err)
 	}
 
-	err = assignIPsToInterface(hostVeth, params.HostVeth.HostIPv4, params.HostVeth.HostIPv6)
+	err = assignIPsToInterface(hostVeth, params.CrossNsIPs.HostIPv4, params.CrossNsIPs.HostIPv6)
 	if err != nil {
 		return fmt.Errorf("failed to assign IPs to host veth: %w", err)
 	}
@@ -156,7 +156,7 @@ func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
 		}
 		// Note: since the ipv6 address is removed after enslaving the veth to the vrf, this has to
 		// be performed after the veth is enslaved to the vrf.
-		err = assignIPsToInterface(peVeth, params.HostVeth.NSIPv4, params.HostVeth.NSIPv6)
+		err = assignIPsToInterface(peVeth, params.CrossNsIPs.NSIPv4, params.CrossNsIPs.NSIPv6)
 		if err != nil {
 			return fmt.Errorf("failed to assign IPs to PE veth: %w", err)
 		}

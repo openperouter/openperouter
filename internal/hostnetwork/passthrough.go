@@ -14,8 +14,8 @@ import (
 )
 
 type PassthroughParams struct {
-	TargetNS string `json:"namespace"`
-	HostVeth Veth   `json:"veth"`
+	TargetNS   string     `json:"namespace"`
+	CrossNsIPs CrossNsIPs `json:"crossnsips"`
 }
 
 var PassthroughNames = VethNames{
@@ -45,7 +45,7 @@ func SetupPassthrough(ctx context.Context, params PassthroughParams) error {
 		return fmt.Errorf("SetupPassthrough: host veth %s does not exist, cannot setup Passthrough", PassthroughNames.HostSide)
 	}
 
-	err = assignIPsToInterface(hostVeth, params.HostVeth.HostIPv4, params.HostVeth.HostIPv6)
+	err = assignIPsToInterface(hostVeth, params.CrossNsIPs.HostIPv4, params.CrossNsIPs.HostIPv6)
 	if err != nil {
 		return fmt.Errorf("failed to assign IPs to host veth: %w", err)
 	}
@@ -56,7 +56,7 @@ func SetupPassthrough(ctx context.Context, params PassthroughParams) error {
 			return fmt.Errorf("could not find peer veth %s in namespace %s: %w", PassthroughNames.NamespaceSide, params.TargetNS, err)
 		}
 
-		err = assignIPsToInterface(peVeth, params.HostVeth.NSIPv4, params.HostVeth.NSIPv6)
+		err = assignIPsToInterface(peVeth, params.CrossNsIPs.NSIPv4, params.CrossNsIPs.NSIPv6)
 		if err != nil {
 			return fmt.Errorf("failed to assign IPs to PE veth: %w", err)
 		}
