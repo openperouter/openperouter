@@ -49,6 +49,8 @@ type PERouterReconciler struct {
 	MyNamespace     string
 	LogLevel        string
 	Logger          *slog.Logger
+	GroutEnabled    bool
+	GroutSocketPath string
 	FRRConfigPath   string
 	FRRReloadSocket string
 	StaticConfigDir string
@@ -61,6 +63,7 @@ type PERouterReconciler struct {
 	// notStaticConfigsListOpts filters out mirrored resources (source=static) when listing CRDs.
 	// Built once in SetupWithManager since the label is const.
 	notStaticConfigsListOpts *client.ListOptions
+	hostConfigurator         HostConfigurator
 }
 
 type requestKey string
@@ -159,7 +162,7 @@ func (r *PERouterReconciler) reconcile(ctx context.Context, logger *slog.Logger)
 	}
 
 	err = Reconcile(ctx, config, nodeIndex, r.LogLevel, r.FRRConfigPath, targetNS, updater,
-		configureInterfaces, configureFRR)
+		r.hostConfigurator, configureFRR)
 	if nonRecoverableHostError(err) {
 		logger.Error("non recoverable error", "error", err)
 		if err := router.HandleNonRecoverableError(ctx); err != nil {
@@ -380,6 +383,11 @@ func (r *PERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	if r.TriggerChan != nil {
 		builder = builder.WatchesRawSource(source.Channel(r.TriggerChan, &handler.EnqueueRequestForObject{}))
+	}
+
+	r.hostConfigurator = configureInterfaces
+	if r.GroutEnabled {
+		r.hostConfigurator = newGroutConfigurator(r.GroutSocketPath).configure
 	}
 
 	return builder.Complete(r)

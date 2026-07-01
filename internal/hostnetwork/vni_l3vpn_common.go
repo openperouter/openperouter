@@ -70,7 +70,7 @@ func setupHostVeth(ctx context.Context, vethNames VethNames, targetNS string, li
 		return fmt.Errorf("failed to get host veth %s: %w", vethNames.HostSide, err)
 	}
 
-	err = assignIPsToInterface(hostVethLink, linkIPs.HostIPv4, linkIPs.HostIPv6)
+	err = AssignIPsToInterface(hostVethLink, linkIPs.HostIPv4, linkIPs.HostIPv6)
 	if err != nil {
 		return fmt.Errorf("failed to assign IPs to host veth: %w", err)
 	}
@@ -105,7 +105,7 @@ func setupHostVeth(ctx context.Context, vethNames VethNames, targetNS string, li
 		}
 		// Note: since the ipv6 address is removed after enslaving the veth to the vrf, this has to
 		// be performed after the veth is enslaved to the vrf.
-		err = assignIPsToInterface(peVethLink, linkIPs.NSIPv4, linkIPs.NSIPv6)
+		err = AssignIPsToInterface(peVethLink, linkIPs.NSIPv4, linkIPs.NSIPv6)
 		if err != nil {
 			return fmt.Errorf("failed to assign IPs to PE veth: %w", err)
 		}
@@ -113,21 +113,21 @@ func setupHostVeth(ctx context.Context, vethNames VethNames, targetNS string, li
 	})
 }
 
-// assignIPsToInterface assigns both IPv4 and IPv6 addresses to an interface.
+// AssignIPsToInterface assigns both IPv4 and IPv6 addresses to an interface.
 // It fails if no IPs are provided (both IPv4 and IPv6 are empty).
-func assignIPsToInterface(link netlink.Link, ipv4, ipv6 string) error {
+func AssignIPsToInterface(link netlink.Link, ipv4, ipv6 string) error {
 	if ipv4 == "" && ipv6 == "" {
 		return fmt.Errorf("at least one IP address must be provided (IPv4 or IPv6)")
 	}
 
 	if ipv4 != "" {
-		if err := assignIPToInterface(link, ipv4); err != nil {
+		if err := AssignIPToInterface(link, ipv4); err != nil {
 			return fmt.Errorf("failed to assign IPv4 address %s: %w", ipv4, err)
 		}
 	}
 
 	if ipv6 != "" {
-		if err := assignIPToInterface(link, ipv6); err != nil {
+		if err := AssignIPToInterface(link, ipv6); err != nil {
 			return fmt.Errorf("failed to assign IPv6 address %s: %w", ipv6, err)
 		}
 	}

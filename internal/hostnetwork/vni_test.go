@@ -907,7 +907,7 @@ func setupFakeUnderlay(ns netns.NsHandle, name string, mtu int) {
 		if err != nil {
 			return fmt.Errorf("failed to get fake underlay dummy %s: %w", name, err)
 		}
-		if err := netlink.LinkSetGroup(link, int(underlayGroupID)); err != nil {
+		if err := netlink.LinkSetGroup(link, int(UnderlayGroupID)); err != nil {
 			return fmt.Errorf("failed to set underlay group ID on %s: %w", name, err)
 		}
 		return nil
