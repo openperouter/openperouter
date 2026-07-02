@@ -137,6 +137,14 @@ docker-push: ## Push docker image with the manager.
 		$(CONTAINER_ENGINE) push ${IMG}; \
 	fi
 
+.PHONY: verify-cni-binaries
+verify-cni-binaries: docker-build ## Verify CNI plugin binaries are present in the controller image.
+	@if [ "$(CONTAINER_ENGINE)" = "podman" ]; then \
+		hack/verify-cni-binaries.sh "sudo podman" $(IMG); \
+	else \
+		hack/verify-cni-binaries.sh $(CONTAINER_ENGINE) $(IMG); \
+	fi
+
 ##@ Deployment
 
 ifndef ignore-not-found
