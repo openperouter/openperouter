@@ -45,6 +45,7 @@ rules:
   - l2vnis
   - l3passthroughs
   - l3vnis
+  - l3vpns
   - rawfrrconfigs
   - routernodeconfigurationstatuses
   - underlays
@@ -62,6 +63,7 @@ rules:
   - l2vnis/finalizers
   - l3passthroughs/finalizers
   - l3vnis/finalizers
+  - l3vpns/finalizers
   - rawfrrconfigs/finalizers
   - underlays/finalizers
   verbs:
@@ -72,6 +74,7 @@ rules:
   - l2vnis/status
   - l3passthroughs/status
   - l3vnis/status
+  - l3vpns/status
   - rawfrrconfigs/status
   - routernodeconfigurationstatuses/status
   - underlays/status

@@ -122,7 +122,7 @@ func BridgeName(vni int32) string {
 	return fmt.Sprintf("%s%d", bridgePrefix, vni)
 }
 
-func vniFromBridgeName(name string) (int32, error) {
+func interfaceIDFromBridgeName(name string) (int32, error) {
 	if !strings.HasPrefix(name, bridgePrefix) {
 		return 0, NotRouterInterfaceError{Name: name}
 	}

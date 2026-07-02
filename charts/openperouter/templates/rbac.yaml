@@ -33,6 +33,10 @@ rules:
 - apiGroups:
   - openpe.openperouter.github.io
   resources:
+  - l2vnis
+  - l3passthroughs
+  - l3vnis
+  - l3vpns
   - underlays
   verbs:
   - create
@@ -45,91 +49,21 @@ rules:
 - apiGroups:
   - openpe.openperouter.github.io
   resources:
+  - l2vnis/finalizers
+  - l3passthroughs/finalizers
+  - l3vnis/finalizers
+  - l3vpns/finalizers
   - underlays/finalizers
   verbs:
   - update
 - apiGroups:
   - openpe.openperouter.github.io
   resources:
-  - underlays/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - openpe.openperouter.github.io
-  resources:
-  - l2vnis
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - openpe.openperouter.github.io
-  resources:
-  - l2vnis/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - openpe.openperouter.github.io
-  resources:
   - l2vnis/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - openpe.openperouter.github.io
-  resources:
-  - l3vnis
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - openpe.openperouter.github.io
-  resources:
-  - l3vnis/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - openpe.openperouter.github.io
-  resources:
-  - l3vnis/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - openpe.openperouter.github.io
-  resources:
-  - l3passthroughs
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - openpe.openperouter.github.io
-  resources:
-  - l3passthroughs/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - openpe.openperouter.github.io
-  resources:
   - l3passthroughs/status
+  - l3vnis/status
+  - l3vpns/status
+  - underlays/status
   verbs:
   - get
   - patch

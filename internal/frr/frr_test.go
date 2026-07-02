@@ -17,7 +17,11 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 )
 
-const testData = "testdata/"
+const (
+	testData        = "testdata/"
+	isisProcessName = "ISIS"
+	locatorName     = "MAIN"
+)
 
 var update = flag.Bool("update", false, "update .golden files")
 
@@ -539,7 +543,6 @@ func TestNoVNIs(t *testing.T) {
 					ID:   "192.168.1.2",
 					NetworkLayerProtocols: []networklayerprotocol.NLP{
 						{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast},
-						{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN},
 					},
 				},
 			},
@@ -570,7 +573,6 @@ func TestBFDEnabled(t *testing.T) {
 					ID:   "192.168.1.2",
 					NetworkLayerProtocols: []networklayerprotocol.NLP{
 						{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast},
-						{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN},
 					},
 					BFDEnabled: true,
 				},
@@ -602,7 +604,6 @@ func TestBFDProfile(t *testing.T) {
 					ID:   "192.168.1.2",
 					NetworkLayerProtocols: []networklayerprotocol.NLP{
 						{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast},
-						{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN},
 					},
 					BFDEnabled: true,
 					BFDProfile: "foo",
@@ -832,6 +833,7 @@ func TestPassthroughDual(t *testing.T) {
 					ID:   "192.168.1.2",
 					NetworkLayerProtocols: []networklayerprotocol.NLP{ // Override to only IPv4 (auto-detection would be dualstack).
 						{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast},
+						{AFI: networklayerprotocol.IPv6, SAFI: networklayerprotocol.Unicast},
 					},
 				},
 				{
@@ -952,6 +954,263 @@ func TestTunnelEndpointConfig(t *testing.T) {
 	testCheckConfigFile(t)
 }
 
+func TestISIS(t *testing.T) {
+	configFile := testSetup(t)
+	updater := testUpdater(configFile)
+
+	config := Config{
+		Underlay: UnderlayConfig{
+			MyASN:    64512,
+			RouterID: "10.0.0.1",
+			Neighbors: []NeighborConfig{
+				{
+					ASN:                   mustNewPeerASNFromNumber(64512),
+					Addr:                  "192.168.1.2",
+					ID:                    "192.168.1.2",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast}},
+				},
+			},
+			ISIS: &UnderlayISIS{
+				Net:   MustParseISISNet("49.0001.0002.0003.0004.00"),
+				Name:  isisProcessName,
+				Level: 1,
+				Interfaces: []ISISInterface{
+					{Name: "lo", IPv6: true, IsPassive: true},
+					{Name: "eth0", IPv4: true, IPv6: false},
+					{Name: "eth1", IPv4: false, IPv6: true},
+					{Name: "eth2", IPv4: true, IPv6: true},
+				},
+			},
+		},
+	}
+	if err := ApplyConfig(context.TODO(), &config, updater); err != nil {
+		t.Fatalf("Failed to apply config: %s", err)
+	}
+
+	testCheckConfigFile(t)
+}
+
+func TestISISAdvertisePassiveOnly(t *testing.T) {
+	configFile := testSetup(t)
+	updater := testUpdater(configFile)
+
+	config := Config{
+		Underlay: UnderlayConfig{
+			MyASN:    64512,
+			RouterID: "10.0.0.1",
+			Neighbors: []NeighborConfig{
+				{
+					ASN:                   mustNewPeerASNFromNumber(64512),
+					Addr:                  "192.168.1.2",
+					ID:                    "192.168.1.2",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast}},
+				},
+			},
+			ISIS: &UnderlayISIS{
+				Net:                  MustParseISISNet("49.0001.0002.0003.0004.00"),
+				Name:                 isisProcessName,
+				Level:                1,
+				AdvertisePassiveOnly: true,
+				Interfaces: []ISISInterface{
+					{Name: "lo", IPv6: true, IsPassive: true},
+					{Name: "eth0", IPv4: true, IPv6: false},
+					{Name: "eth1", IPv4: false, IPv6: true},
+					{Name: "eth2", IPv4: true, IPv6: true},
+				},
+			},
+		},
+	}
+	if err := ApplyConfig(context.TODO(), &config, updater); err != nil {
+		t.Fatalf("Failed to apply config: %s", err)
+	}
+
+	testCheckConfigFile(t)
+}
+
+func TestSegmentRouting(t *testing.T) {
+	configFile := testSetup(t)
+	updater := testUpdater(configFile)
+
+	config := Config{
+		Underlay: UnderlayConfig{
+			MyASN:    64512,
+			RouterID: "10.0.0.1",
+			Neighbors: []NeighborConfig{
+				{
+					ASN:  mustNewPeerASNFromNumber(64513),
+					Addr: "fc00::2:172:31:1:12",
+					ID:   "fc00::2:172:31:1:12",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{
+						{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.VPN},
+						{AFI: networklayerprotocol.IPv6, SAFI: networklayerprotocol.VPN},
+					},
+					ExtendedNexthop: true,
+					UpdateSource:    "fc00::2:172:31:1:32",
+				},
+			},
+			ISIS: &UnderlayISIS{
+				Net:   MustParseISISNet("49.0001.0002.0003.0004.00"),
+				Name:  isisProcessName,
+				Level: 1,
+				Interfaces: []ISISInterface{
+					{Name: "lo", IPv6: true, IsPassive: true},
+					{Name: "eth0", IPv4: false, IPv6: true},
+				},
+			},
+			SegmentRouting: &UnderlaySegmentRouting{
+				SourceAddress: "fc00::2:172:31:1:32",
+				Locator: SRV6Locator{
+					Name:     locatorName,
+					Prefix:   "fd00:0:32::/48",
+					BlockLen: 32,
+					NodeLen:  16,
+					Behavior: "usid",
+					Format:   "usid-f3216",
+				},
+			},
+		},
+		VPNs: []L3VPNConfig{
+			{
+				ASN:             65000,
+				ToAdvertiseIPv4: []string{"192.168.2.2/32"},
+				ToAdvertiseIPv6: []string{},
+				LocalNeighbor: &NeighborConfig{
+					ASN:  mustNewPeerASNFromNumber(65001),
+					Addr: "192.168.2.2",
+					ID:   "192.168.2.2",
+				},
+				VRF:                "vrf1",
+				ExportRTs:          []string{"65000:100 65000:101"},
+				ImportRTs:          []string{"65001:102 65001:103"},
+				RouteDistinguisher: "10.0.0.1:100",
+				RouterID:           "10.0.0.1",
+			},
+			{
+				ASN:             65000,
+				ToAdvertiseIPv4: []string{},
+				ToAdvertiseIPv6: []string{"2001:db8::2/128"},
+				LocalNeighbor: &NeighborConfig{
+					ASN:  mustNewPeerASNFromNumber(65001),
+					Addr: "2001:db8::2",
+					ID:   "2001:db8::2",
+				},
+				VRF:                "vrf2",
+				ExportRTs:          []string{"65002:100 65002:101"},
+				ImportRTs:          []string{"65003:102 65003:103"},
+				RouteDistinguisher: "10.0.0.1:101",
+				RouterID:           "10.0.0.1",
+			},
+		},
+	}
+	if err := ApplyConfig(context.TODO(), &config, updater); err != nil {
+		t.Fatalf("Failed to apply config: %s", err)
+	}
+
+	testCheckConfigFile(t)
+}
+
+func TestSegmentRoutingWithL2VNI(t *testing.T) {
+	configFile := testSetup(t)
+	updater := testUpdater(configFile)
+
+	config := Config{
+		Underlay: UnderlayConfig{
+			MyASN: 65000,
+			ISIS: &UnderlayISIS{
+				Name:  isisProcessName,
+				Net:   MustParseISISNet("49.0001.0002.0003.0004.00"),
+				Level: 1,
+				Interfaces: []ISISInterface{
+					{Name: "lo", IPv6: true, IsPassive: true},
+					{Name: "eth0", IPv4: true, IPv6: true},
+				},
+			},
+			RouterID: "10.0.0.1",
+			Neighbors: []NeighborConfig{
+				{
+					Name: "65001@192.168.122.1",
+					ASN:  mustNewPeerASNFromNumber(65001),
+					Addr: "192.168.122.1",
+					ID:   "192.168.122.1",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{
+						{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast},
+						{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN},
+					},
+					EBGPMultiHop:    false,
+					ExtendedNexthop: false,
+				},
+				{
+					Name: "65001@2001:db8:192:168:1::1",
+					ASN:  mustNewPeerASNFromNumber(65001),
+					Addr: "2001:db8:192:168:1::1",
+					ID:   "2001:db8:192:168:1::1",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{
+						{AFI: networklayerprotocol.IPv6, SAFI: networklayerprotocol.Unicast},
+						{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN},
+						{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.VPN},
+						{AFI: networklayerprotocol.IPv6, SAFI: networklayerprotocol.VPN},
+					},
+					EBGPMultiHop:    false,
+					ExtendedNexthop: true,
+					UpdateSource:    "2001:db8:1234:5678::",
+				},
+			},
+			TunnelEndpoint: &TunnelEndpoint{
+				IPv4CIDR: "192.168.123.0/32",
+				IPv6CIDR: "2001:db8:1234:5678::/128",
+			},
+			SegmentRouting: &UnderlaySegmentRouting{
+				SourceAddress: "2001:db8:1234:5678::",
+				Locator: SRV6Locator{
+					Name:     locatorName,
+					Prefix:   "fd00:0:32::/48",
+					BlockLen: 32,
+					NodeLen:  16,
+					Behavior: "usid",
+					Format:   "usid-f3216",
+				},
+			},
+		},
+		VPNs: []L3VPNConfig{
+			{
+				ASN:             65000,
+				ToAdvertiseIPv4: []string{"192.168.2.2/32"},
+				ToAdvertiseIPv6: []string{},
+				LocalNeighbor: &NeighborConfig{
+					ASN:  mustNewPeerASNFromNumber(65001),
+					Addr: "192.168.2.2",
+					ID:   "192.168.2.2",
+				},
+				VRF:                "vrf1",
+				ExportRTs:          []string{"65000:100 11110:100"},
+				ImportRTs:          []string{"65001:100 11111:100"},
+				RouteDistinguisher: "10.0.0.1:100",
+				RouterID:           "10.0.0.1",
+			},
+			{
+				ASN:             65000,
+				ToAdvertiseIPv4: []string{},
+				ToAdvertiseIPv6: []string{"2001:db8::2/128"},
+				LocalNeighbor: &NeighborConfig{
+					ASN:  mustNewPeerASNFromNumber(65001),
+					Addr: "2001:db8::2",
+					ID:   "2001:db8::2",
+				},
+				VRF:                "vrf1",
+				ExportRTs:          []string{"65000:100 11110:100"},
+				ImportRTs:          []string{"65001:100 11111:100"},
+				RouteDistinguisher: "10.0.0.1:100",
+				RouterID:           "10.0.0.1",
+			},
+		},
+	}
+	if err := ApplyConfig(context.TODO(), &config, updater); err != nil {
+		t.Fatalf("Failed to apply config: %s", err)
+	}
+
+	testCheckConfigFile(t)
+}
+
 func testCompareFiles(t *testing.T, configFile, goldenFile string) {
 	var lastError error
 
@@ -1011,7 +1270,7 @@ func testCheckConfigFile(t *testing.T) {
 	if !strings.Contains(configFile, "Invalid") {
 		err := testFileIsValid(configFile)
 		if err != nil {
-			t.Fatalf("Failed to verify the file %s", err)
+			t.Fatalf("Failed to verify the file %q", err)
 		}
 	}
 }

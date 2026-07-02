@@ -34,11 +34,13 @@ import (
 var (
 	// NOTE: we can't advertise any ip via EVPN from the leaves, they
 	// must be reacheable otherwise FRR will skip them.
-	leafAVRFRedPrefixes  = []string{"192.168.20.0/24", "2001:db8:20::/64"}
-	leafAVRFBluePrefixes = []string{"192.168.21.0/24", "2001:db8:21::/64"}
-	leafBVRFRedPrefixes  = []string{"192.169.20.0/24", "2001:db8:169:20::/64"}
-	leafBVRFBluePrefixes = []string{"192.169.21.0/24", "2001:db8:169:21::/64"}
-	emptyPrefixes        = []string{}
+	leafAVRFRedPrefixes     = []string{"192.168.20.0/24", "2001:db8:20::/64"}
+	leafAVRFBluePrefixes    = []string{"192.168.21.0/24", "2001:db8:21::/64"}
+	leafBVRFRedPrefixes     = []string{"192.169.20.0/24", "2001:db8:169:20::/64"}
+	leafBVRFBluePrefixes    = []string{"192.169.21.0/24", "2001:db8:169:21::/64"}
+	leafSRV6VRFRedPrefixes  = []string{"192.170.20.0/24", "2001:db8:170:20::/64"}
+	leafSRV6VRFBluePrefixes = []string{"192.170.21.0/24", "2001:db8:170:21::/64"}
+	emptyPrefixes           = []string{}
 )
 
 var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Ordered, func() {
@@ -307,8 +309,8 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Orde
 			nodeSelector := k8s.NodeSelectorForPod(testPod)
 
 			By("Creating the frr-k8s configuration for the node where the test pod runs and advertising all pod ips")
-			frrK8sConfigRedForPod := advertisePodToVNI(testPod, vniRed, nodeSelector)
-			frrK8sConfigBlueForPod := advertisePodToVNI(testPod, vniBlue, nodeSelector)
+			frrK8sConfigRedForPod := advertisePodToVNI(testPod, vniRed.Name, vniRed.Spec.HostSession, nodeSelector)
+			frrK8sConfigBlueForPod := advertisePodToVNI(testPod, vniBlue.Name, vniBlue.Spec.HostSession, nodeSelector)
 
 			err = Updater.Update(config.Resources{
 				L3VNIs: []v1alpha1.L3VNI{
@@ -514,7 +516,7 @@ var _ = Describe("Routes between bgp and the fabric with iBGP testing e2e integr
 		nodeSelector := k8s.NodeSelectorForPod(testPod)
 
 		By("Creating the frr-k8s configuration for the node where the test pod runs and advertising all pod ips")
-		frrK8sConfigRedForPod := advertisePodToVNI(testPod, vniRed, nodeSelector)
+		frrK8sConfigRedForPod := advertisePodToVNI(testPod, vniRed.Name, vniRed.Spec.HostSession, nodeSelector)
 
 		err = Updater.Update(config.Resources{
 			L3VNIs: []v1alpha1.L3VNI{
@@ -613,7 +615,7 @@ var _ = Describe("Routes between bgp and the fabric with iBGP testing e2e integr
 	})
 })
 
-func advertisePodToVNI(pod *corev1.Pod, vni v1alpha1.L3VNI, nodeSelector map[string]string) []frrk8sapi.FRRConfiguration {
+func advertisePodToVNI(pod *corev1.Pod, vniName string, hostSession *v1alpha1.HostSession, nodeSelector map[string]string) []frrk8sapi.FRRConfiguration {
 	res := []frrk8sapi.FRRConfiguration{}
 	for _, podIP := range pod.Status.PodIPs {
 		var cidrSuffix = "/32"
@@ -623,7 +625,7 @@ func advertisePodToVNI(pod *corev1.Pod, vni v1alpha1.L3VNI, nodeSelector map[str
 			cidrSuffix = "/128"
 		}
 
-		config, err := frrk8s.ConfigFromHostSessionForIPFamily(*vni.Spec.HostSession, vni.Name, ipFamily, frrk8s.WithNodeSelector(nodeSelector), frrk8s.AdvertisePrefixes(podIP.IP+cidrSuffix))
+		config, err := frrk8s.ConfigFromHostSessionForIPFamily(*hostSession, vniName, ipFamily, frrk8s.WithNodeSelector(nodeSelector), frrk8s.AdvertisePrefixes(podIP.IP+cidrSuffix))
 		Expect(err).NotTo(HaveOccurred())
 		res = append(res, *config)
 	}

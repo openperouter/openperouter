@@ -22,9 +22,8 @@ type VethNames struct {
 
 const VethLinkType = "veth"
 
-// setupVeth sets up a veth pair with the provided names and one leg in the
+// setupNamespacedVeth sets up a veth pair with the provided names and one leg in the
 // given namespace.
-
 func setupNamespacedVeth(ctx context.Context, vethNames VethNames, namespace string) error {
 	slog.DebugContext(ctx, "setupNamespacedVeth", "hostSide", vethNames.HostSide, "nsSide", vethNames.NamespaceSide)
 	defer slog.DebugContext(ctx, "end setupNamespacedVeth", "hostSide", vethNames.HostSide, "nsSide", vethNames.NamespaceSide)
@@ -139,16 +138,16 @@ func createVeth(ctx context.Context, logger *slog.Logger, vethNames VethNames) (
 const HostVethPrefix = "host-"
 const PEVethPrefix = "pe-"
 
-// vethNamesFromVNI returns the names of the veth legs
+// vethNamesFromIdentifier returns the names of the veth legs
 // corresponding to the default namespace and the target namespace, based on VNI.
-func vethNamesFromVNI(vni int32) VethNames {
+func vethNamesFromIdentifier(vni int32) VethNames {
 	hostSide := fmt.Sprintf("%s%d", HostVethPrefix, vni)
 	peSide := fmt.Sprintf("%s%d", PEVethPrefix, vni)
 	return VethNames{HostSide: hostSide, NamespaceSide: peSide}
 }
 
-// vniFromHostVeth extracts the VNI (as int32) from a host veth name.
-func vniFromHostVeth(hostVethName string) (int32, error) {
+// interfaceIdentifierFromHostVeth extracts the VNI (as int32) from a host veth name.
+func interfaceIdentifierFromHostVeth(hostVethName string) (int32, error) {
 	trimmed := strings.TrimPrefix(hostVethName, HostVethPrefix)
 	res, err := strconv.ParseInt(trimmed, 10, 32)
 	if err != nil {

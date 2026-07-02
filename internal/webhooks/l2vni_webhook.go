@@ -127,15 +127,18 @@ func validateL2VNI(l2vni *v1alpha1.L2VNI) error {
 		return fmt.Errorf("failed to get existing Node objects when validating L2VNI: %w", err)
 	}
 
-	if err := conversion.ValidateL2VNIsForNodes(nodeList.Items, toValidate); err != nil {
-		return fmt.Errorf("validation failed: %w", err)
-	}
-
 	toValidateL3, err := getL3VNIs()
 	if err != nil {
 		return err
 	}
-	if err := conversion.ValidateVRFsForNodes(nodeList.Items, toValidate, toValidateL3.Items); err != nil {
+
+	l3vpnList, err := getL3VPNs()
+	if err != nil {
+		return err
+	}
+
+	if err := conversion.ValidateOverlayResourcesForNodes(nodeList.Items, toValidate,
+		toValidateL3.Items, l3vpnList.Items); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
 	}
 

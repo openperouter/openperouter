@@ -97,7 +97,7 @@ func validateUnderlayUpdate(underlay *v1alpha1.Underlay) error {
 	return validateUnderlay(underlay)
 }
 
-func validateUnderlayDelete(_ *v1alpha1.Underlay) error {
+func validateUnderlayDelete(deletedUnderlay *v1alpha1.Underlay) error {
 	return nil
 }
 
@@ -125,9 +125,21 @@ func validateUnderlay(underlay *v1alpha1.Underlay) error {
 		return fmt.Errorf("failed to get existing Node objects when validating Underlay: %w", err)
 	}
 
+	l3vpns, err := getL3VPNs()
+	if err != nil {
+		return err
+	}
+
+	// This is useful on update, in case that the underlay's SRv6 resource is deleted and L3VPN resources are still
+	// present.
+	if err := conversion.ValidateSRv6ForNodes(nodeList.Items, toValidate, l3vpns.Items); err != nil {
+		return fmt.Errorf("validation failed: %w", err)
+	}
+
 	if err := conversion.ValidateUnderlaysForNodes(nodeList.Items, toValidate); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
 	}
+
 	return nil
 }
 
