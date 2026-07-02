@@ -44,7 +44,8 @@ for NODE in $NODES; do
     $CONTAINER_ENGINE_CLI exec "$NODE" mkdir -p /var/lib/openperouter/configs
 
     $CONTAINER_ENGINE_CLI exec "$NODE" bash -c "cat > /var/lib/openperouter/node-config.yaml <<EOF
-nodeIndex: $NODE_INDEX
+nodeIndex:
+  index: $NODE_INDEX
 logLevel: debug
 EOF"
 
