@@ -137,46 +137,7 @@ func TestParseChartWithCustomValues(t *testing.T) {
 	g.Expect(nodemarkerFound).To(BeTrue())
 }
 
-func TestParseChartWithMultusAnnotation(t *testing.T) {
-	g := NewGomegaWithT(t)
-	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace)
-	g.Expect(err).ToNot(HaveOccurred())
-
-	multusAnnotation := "macvlan-conf"
-	openperouter := &operatorapi.OpenPERouter{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "openperouter",
-			Namespace: openperouterTestNamespace,
-		},
-		Spec: operatorapi.OpenPERouterSpec{
-			LogLevel:                new(operatorapi.LogLevelInfo),
-			MultusNetworkAnnotation: &multusAnnotation,
-		},
-	}
-
-	objs, err := chart.Objects(defaultEnvConfig, openperouter)
-	g.Expect(err).ToNot(HaveOccurred())
-
-	var routerFound bool
-	for _, obj := range objs {
-		objKind := obj.GetKind()
-		if objKind == daemonSetKind && obj.GetName() == routerDaemonSetName {
-			router := appsv1.DaemonSet{}
-			err = runtime.DefaultUnstructuredConverter.FromUnstructured(obj.UnstructuredContent(), &router)
-			g.Expect(err).ToNot(HaveOccurred())
-			g.Expect(router.GetName()).To(Equal(routerDaemonSetName))
-
-			// Verify the multus annotation is present in the router pod template
-			annotations := router.Spec.Template.Annotations
-			g.Expect(annotations).ToNot(BeNil())
-			g.Expect(annotations["k8s.v1.cni.cncf.io/networks"]).To(Equal(multusAnnotation))
-			routerFound = true
-		}
-	}
-	g.Expect(routerFound).To(BeTrue())
-}
-
-func TestParseChartWithoutMultusAnnotation(t *testing.T) {
+func TestParseChartRouterHasNoMultusAnnotation(t *testing.T) {
 	g := NewGomegaWithT(t)
 	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace)
 	g.Expect(err).ToNot(HaveOccurred())
@@ -203,7 +164,7 @@ func TestParseChartWithoutMultusAnnotation(t *testing.T) {
 			g.Expect(err).ToNot(HaveOccurred())
 			g.Expect(router.GetName()).To(Equal(routerDaemonSetName))
 
-			// Verify the multus annotation is not present when not specified
+			// The removed Multus underlay integration must not annotate the router pod.
 			annotations := router.Spec.Template.Annotations
 			if annotations != nil {
 				g.Expect(annotations["k8s.v1.cni.cncf.io/networks"]).To(BeEmpty())

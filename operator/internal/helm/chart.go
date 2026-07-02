@@ -95,9 +95,8 @@ func patchChartValues(envConfig envconfig.EnvConfig, crdConfig *operatorapi.Open
 		cri = ContainerRuntimeCrio
 	}
 	openperouterValues := map[string]any{
-		"logLevel":                logLevelValue(crdConfig),
-		"multusNetworkAnnotation": ptr.Deref(crdConfig.Spec.MultusNetworkAnnotation, ""),
-		"runOnMaster":             ptr.Deref(crdConfig.Spec.RunOnMaster, true),
+		"logLevel":    logLevelValue(crdConfig),
+		"runOnMaster": ptr.Deref(crdConfig.Spec.RunOnMaster, true),
 		"image": map[string]any{
 			"repository": envConfig.ControllerImage.Repo,
 			"tag":        envConfig.ControllerImage.Tag,
