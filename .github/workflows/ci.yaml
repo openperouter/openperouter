@@ -57,6 +57,7 @@ jobs:
         uses: golang/govulncheck-action@v1
         with:
           go-version-file: go.mod
+          repo-checkout: false
 
   check-generated:
     runs-on: ubuntu-22.04
