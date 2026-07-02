@@ -21,27 +21,14 @@ const (
 	UnderlayPortNamePrefix = "u_"
 )
 
-func UnderlayInterfaces(ctx context.Context, client *Client) (map[string]struct{}, error) {
-	interfaces, err := client.listInterfaces(ctx)
-	if err != nil {
-		return map[string]struct{}{}, fmt.Errorf("HasUnderlayInterface: Failed to list interfaces: %w", err)
-	}
-
-	indexedIfaces := make(map[string]struct{}, len(interfaces))
-	for _, iface := range interfaces {
-		if strings.HasPrefix(iface.Name, UnderlayPortNamePrefix) {
-			indexedIfaces[iface.Name] = struct{}{}
-		}
-	}
-	return indexedIfaces, nil
-}
-
-// SetupUnderlay configures the underlay interface via the grout dataplane.
-// It moves the kernel interface into the router namespace, creates a grout
-// TAP port with remote= so TC ingress rules redirect incoming packets from
-// the physical interface to grout, and assigns the underlay IPs to the grout
-// port. Grout handles all L2 (ARP) and L3 forwarding; it also creates a
-// NOARP kernel interface for kernel TCP (used by FRR bgpd for BGP sessions).
+// SetupUnderlay configures the underlay interfaces via the grout dataplane.
+// Every interface is provisioned in the router namespace according to its
+// kind (host network devices are moved in, CNI interfaces are added by
+// invoking their plugin); then a grout TAP port with remote= is created so
+// TC ingress rules redirect incoming packets from the interface to grout,
+// and the underlay IPs are moved to the grout port. Grout handles all L2
+// (ARP) and L3 forwarding; it also creates a NOARP kernel interface for
+// kernel TCP (used by FRR bgpd for BGP sessions).
 func SetupUnderlay(ctx context.Context, client *Client, params hostnetwork.UnderlayParams) error {
 	slog.DebugContext(ctx, "setup underlay", "params", params)
 	defer slog.DebugContext(ctx, "setup underlay done")
@@ -56,46 +43,27 @@ func SetupUnderlay(ctx context.Context, client *Client, params hostnetwork.Under
 		}
 	}()
 
-	defaultNetNS, err := netns.Get()
-	if err != nil {
-		return fmt.Errorf("SetupUnderlay: failed to get netns handle for default namespace: %w", err)
-	}
-	defer func() {
-		if err := defaultNetNS.Close(); err != nil {
-			slog.Error("failed to close default namespace", "error", err)
-		}
-	}()
-
-	existingIfaces, err := hostnetwork.FindInterfacesInGroup(perouterNetNS, hostnetwork.UnderlayGroupID)
+	// If any existing underlay interfaces were removed from the new list,
+	// clean them up before setting up the new ones, tearing down their
+	// grout state first.
+	existing, err := hostnetwork.UnderlayInterfaces(params.TargetNS)
 	if err != nil {
 		return fmt.Errorf("failed to check existing underlay interfaces: %w", err)
 	}
-	if removedInterfaces := hostnetwork.UnderlayInterfacesToRemove(existingIfaces, params.UnderlayInterfaces); len(removedInterfaces) > 0 {
-		slog.InfoContext(ctx, "underlay interfaces changed, restoring old grout state before setup",
-			"removed", removedInterfaces, "requested", params.UnderlayInterfaces)
-		if err := RestoreUnderlay(ctx, client, params.TargetNS, removedInterfaces); err != nil {
-			return fmt.Errorf("failed to restore old underlay interfaces: %w", err)
+	if toRemove := hostnetwork.UnderlayInterfacesToRemove(existing, params.UnderlayInterfaces); len(toRemove) > 0 {
+		slog.InfoContext(ctx, "underlay interfaces changed, removing old interfaces before setup",
+			"toRemove", toRemove, "requested", params.UnderlayInterfaces)
+		if err := RestoreUnderlay(ctx, client, params.TargetNS, toRemove); err != nil {
+			return fmt.Errorf("failed to remove old underlay interfaces: %w", err)
 		}
 	}
 
-	perouterNetNSHandle, err := netlink.NewHandleAt(perouterNetNS)
-	if err != nil {
-		return fmt.Errorf("SetupUnderlay: failed to get netlink handle for namespace %s: %w", perouterNetNS.String(), err)
-	}
-	defer perouterNetNSHandle.Close()
-	defaultNetNSHandle, err := netlink.NewHandleAt(defaultNetNS)
-	if err != nil {
-		return fmt.Errorf("SetupUnderlay: failed to get netlink handle for default namespace: %w", err)
-	}
-	defer defaultNetNSHandle.Close()
-
-	for _, underlayInterface := range params.UnderlayInterfaces {
-		if err := hostnetwork.MoveInterfaceToNamespace(ctx, underlayInterface, defaultNetNSHandle, perouterNetNSHandle, perouterNetNS,
-			hostnetwork.UnderlayGroupID); err != nil {
+	for _, iface := range params.UnderlayInterfaces {
+		if err := hostnetwork.SetupUnderlayInterface(ctx, perouterNetNS, params, iface); err != nil {
 			return err
 		}
 		if err := netnamespace.In(perouterNetNS, func() error {
-			return configureUnderlayPort(ctx, client, underlayInterface)
+			return configureUnderlayPort(ctx, client, iface.InterfaceName)
 		}); err != nil {
 			return err
 		}
@@ -104,18 +72,29 @@ func SetupUnderlay(ctx context.Context, client *Client, params hostnetwork.Under
 	return nil
 }
 
-// RestoreUnderlay tears down the grout underlay ports and resets the kernel
-// group IDs on moved NICs so UnderlayInterfaces returns false on the next
-// reconcile.
-func RestoreUnderlay(ctx context.Context, client *Client, targetNS string, ifacesToRemove map[string]struct{}) error {
+// RestoreUnderlay removes the given underlay interfaces: it tears
+// down their grout ports first (migrating the underlay addresses back to the
+// kernel interfaces), then removes the interfaces from the namespace
+// according to how they were provisioned, exactly like the kernel datapath
+// does.
+func RestoreUnderlay(ctx context.Context, client *Client, targetNS string,
+	toRemove []hostnetwork.UnderlayInterface) error {
+	if len(toRemove) == 0 {
+		return nil
+	}
+
 	interfaces, err := client.listInterfaces(ctx)
 	if err != nil {
-		return fmt.Errorf("HasUnderlayInterface: Failed to list interfaces: %w", err)
+		return fmt.Errorf("RestoreUnderlay: failed to list grout interfaces: %w", err)
+	}
+	existingPorts := map[string]struct{}{}
+	for _, iface := range interfaces {
+		existingPorts[iface.Name] = struct{}{}
 	}
 
 	ns, err := netns.GetFromPath(targetNS)
 	if err != nil {
-		return fmt.Errorf("setupUnderlay: Failed to find network namespace %s: %w", targetNS, err)
+		return fmt.Errorf("RestoreUnderlay: failed to find network namespace %s: %w", targetNS, err)
 	}
 	defer func() {
 		if err := ns.Close(); err != nil {
@@ -123,13 +102,14 @@ func RestoreUnderlay(ctx context.Context, client *Client, targetNS string, iface
 		}
 	}()
 
-	for _, iface := range interfaces {
-		if !strings.HasPrefix(iface.Name, UnderlayPortNamePrefix) {
+	for _, iface := range toRemove {
+		portName := UnderlayPortNamePrefix + iface.InterfaceName
+		if _, found := existingPorts[portName]; !found {
 			continue
 		}
 
 		if err := netnamespace.In(ns, func() error {
-			if err := migrateAddressesToKernel(ctx, client, iface.Name); err != nil {
+			if err := migrateAddressesToKernel(ctx, client, portName); err != nil {
 				return fmt.Errorf("RestoreUnderlay: failed to migrate addresses back to kernel: %w", err)
 			}
 
@@ -138,12 +118,12 @@ func RestoreUnderlay(ctx context.Context, client *Client, targetNS string, iface
 			return err
 		}
 
-		if err := client.deletePort(ctx, iface.Name); err != nil {
-			return fmt.Errorf("RestoreUnderlay: failed to delete grout port %s: %w", iface.Name, err)
+		if err := client.deletePort(ctx, portName); err != nil {
+			return fmt.Errorf("RestoreUnderlay: failed to delete grout port %s: %w", portName, err)
 		}
 	}
 
-	if err := hostnetwork.RestoreUnderlay(ctx, targetNS, ifacesToRemove); err != nil {
+	if err := hostnetwork.RestoreUnderlay(ctx, targetNS, toRemove); err != nil {
 		return fmt.Errorf("RestoreUnderlay: failed to clean kernel underlay state: %w", err)
 	}
 

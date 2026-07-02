@@ -19,12 +19,12 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"log/slog"
 	"os"
-	"strings"
 	"time"
+
+	"github.com/spf13/pflag"
 
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
@@ -49,6 +49,7 @@ import (
 	"github.com/openperouter/openperouter/api/static"
 	periov1alpha1 "github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/buildversion"
+	"github.com/openperouter/openperouter/internal/cni"
 	"github.com/openperouter/openperouter/internal/controller/nodeindex"
 	"github.com/openperouter/openperouter/internal/controller/routerconfiguration"
 	"github.com/openperouter/openperouter/internal/filewatcher"
@@ -101,7 +102,7 @@ type parameters struct {
 	nodeName        string
 	namespace       string
 	logLevel        string
-	cniBinDir       string
+	cniPluginDirs   []string
 	cniCacheDir     string
 	datapath        string
 	groutSocketPath string
@@ -113,42 +114,42 @@ func main() {
 
 	args := parameters{}
 
-	flag.StringVar(&args.probeAddr, "health-probe-bind-address", ":9081", "The address the probe endpoint binds to.")
-	flag.StringVar(&args.logLevel, "loglevel", "info", "the verbosity of the process")
-	flag.StringVar(&args.frrConfigPath, "frrconfig", "/etc/perouter/frr/frr.conf",
+	pflag.StringVar(&args.probeAddr, "health-probe-bind-address", ":9081", "The address the probe endpoint binds to.")
+	pflag.StringVar(&args.logLevel, "loglevel", "info", "the verbosity of the process")
+	pflag.StringVar(&args.frrConfigPath, "frrconfig", "/etc/perouter/frr/frr.conf",
 		"the location of the frr configuration file")
-	flag.StringVar(&args.ovsSocketPath, "ovssocket", "unix:/var/run/openvswitch/db.sock",
+	pflag.StringVar(&args.ovsSocketPath, "ovssocket", "unix:/var/run/openvswitch/db.sock",
 		"the OVS database socket path")
 
-	flag.StringVar(&args.mode, "mode", modeK8s, "the mode to run in (k8s or host)")
+	pflag.StringVar(&args.mode, "mode", modeK8s, "the mode to run in (k8s or host)")
 
-	flag.StringVar(&args.datapath, "datapath", "kernel", "The datapath to use (kernel or grout)")
-	flag.StringVar(&args.groutSocketPath, "grout-socket", "/var/run/grout/grout.sock", "Path to the grout control socket")
+	pflag.StringVar(&args.datapath, "datapath", "kernel", "The datapath to use (kernel or grout)")
+	pflag.StringVar(&args.groutSocketPath, "grout-socket", "/var/run/grout/grout.sock", "Path to the grout control socket")
 
-	flag.StringVar(&args.nodeName, "nodename", "", "The name of the node the controller runs on")
-	flag.StringVar(&args.namespace, "namespace", "", "The namespace the controller runs in")
-	flag.StringVar(&k8sModeParams.criSocket, "crisocket", "/containerd.sock", "the location of the cri socket")
+	pflag.StringVar(&args.nodeName, "nodename", "", "The name of the node the controller runs on")
+	pflag.StringVar(&args.namespace, "namespace", "", "The namespace the controller runs in")
+	pflag.StringVar(&k8sModeParams.criSocket, "crisocket", "/containerd.sock", "the location of the cri socket")
 
-	flag.DurationVar(&hostModeParams.k8sWaitInterval, "k8s-wait-timeout", time.Minute,
+	pflag.DurationVar(&hostModeParams.k8sWaitInterval, "k8s-wait-timeout", time.Minute,
 		"K8s API server waiting interval time")
-	flag.StringVar(&hostModeParams.hostContainerPidPath, "pid-path", "",
+	pflag.StringVar(&hostModeParams.hostContainerPidPath, "pid-path", "",
 		"the path of the pid file of the router container")
-	flag.StringVar(&args.reloaderSocket, "reloader-socket", "",
+	pflag.StringVar(&args.reloaderSocket, "reloader-socket", "",
 		"the path of socket to trigger frr reload in the router container")
-	flag.StringVar(&hostModeParams.configurationDir, "host-configuration-dir",
+	pflag.StringVar(&hostModeParams.configurationDir, "host-configuration-dir",
 		"/etc/openperouter/configs", "the directory containing static router configuration files (openpe_*.yaml)")
-	flag.StringVar(&hostModeParams.nodeConfigPath, "node-config",
+	pflag.StringVar(&hostModeParams.nodeConfigPath, "node-config",
 		"/etc/openperouter/node-config.yaml", "the path to node configuration file")
-	flag.StringVar(&hostModeParams.systemdSocketPath, "systemd-socket",
+	pflag.StringVar(&hostModeParams.systemdSocketPath, "systemd-socket",
 		systemdctl.HostDBusSocket, "the path of systemd control socket")
-	flag.IntVar(&hostModeParams.routerHealthCheckPort, "router-health-check-port",
+	pflag.IntVar(&hostModeParams.routerHealthCheckPort, "router-health-check-port",
 		9080, "the port for router health check endpoint")
-	flag.StringVar(&args.cniBinDir, "cni-bin-dir", "/opt/openperouter/cni/bin/",
-		"colon-separated list of directories to search for CNI plugin binaries")
-	flag.StringVar(&args.cniCacheDir, "cni-cache-dir", "/var/lib/openperouter/cni/cache",
+	pflag.StringSliceVar(&args.cniPluginDirs, "cni-plugin-dirs", []string{"/opt/openperouter/cni/bin/"},
+		"list of directories to search for CNI plugin binaries")
+	pflag.StringVar(&args.cniCacheDir, "cni-cache-dir", "/var/lib/openperouter/cni/cache",
 		"directory to store CNI result cache")
 
-	flag.Parse()
+	pflag.Parse()
 
 	// Initialize OVS socket path for the hostnetwork package
 	hostnetwork.OVSSocketPath = args.ovsSocketPath
@@ -162,27 +163,18 @@ func main() {
 	setupLog.Info("version", "version", buildversion.Version())
 	setupLog.Info("arguments", "args", fmt.Sprintf("%+v", args))
 
-	if args.cniBinDir == "" {
-		setupLog.Info("cni-bin-dir cannot be empty")
+	if len(args.cniPluginDirs) == 0 {
+		setupLog.Info("cni-plugin-dirs cannot be empty")
 		os.Exit(1)
 	}
+
 	if args.cniCacheDir == "" {
 		setupLog.Info("cni-cache-dir cannot be empty")
 		os.Exit(1)
 	}
 
-	var cniPluginDirs []string
-	for dir := range strings.SplitSeq(args.cniBinDir, ":") {
-		if trimmed := strings.TrimSpace(dir); trimmed != "" {
-			cniPluginDirs = append(cniPluginDirs, trimmed)
-		}
-	}
-	if len(cniPluginDirs) == 0 {
-		setupLog.Info("no valid CNI plugin directories specified", "cni-bin-dir", args.cniBinDir)
-		os.Exit(1)
-	}
-
-	setupLog.Info("CNI plugin invoker initialized", "pluginDirs", cniPluginDirs, "cacheDir", args.cniCacheDir)
+	cni.InitInvoker(args.cniPluginDirs, args.cniCacheDir, args.nodeName)
+	setupLog.Info("CNI plugin invoker initialized", "pluginDirs", args.cniPluginDirs, "cacheDir", args.cniCacheDir)
 
 	// Setup signal handler once for the entire process
 	ctx := ctrl.SetupSignalHandler()

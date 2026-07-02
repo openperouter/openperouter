@@ -36,7 +36,7 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 		return fmt.Errorf("failed to check if target namespace %s has underlay: %w", config.targetNamespace, err)
 	}
 	if len(currentUnderlayIfaces) > 0 && len(config.Underlays) == 0 {
-		restoreUnderlay(ctx, config.targetNamespace, indexInterfaces(currentUnderlayIfaces))
+		restoreUnderlay(ctx, config, currentUnderlayIfaces)
 		return nil
 	}
 
@@ -198,19 +198,28 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 	return errors.Join(resourceErrors...)
 }
 
-func restoreUnderlay(ctx context.Context, targetNamespace string, currentUnderlayIfaces map[string]struct{}) {
+func restoreUnderlay(
+	ctx context.Context,
+	config interfacesConfiguration,
+	currentUnderlayIfaces []hostnetwork.UnderlayInterface,
+) {
 	slog.InfoContext(ctx, "underlay removed, cleaning up VNIs and underlay interfaces")
-	if err := hostnetwork.RemoveAllVNIs(targetNamespace); err != nil {
+
+	if err := hostnetwork.RemoveAllVNIs(config.targetNamespace); err != nil {
 		slog.Warn("failed to remove vnis after underlay removal", "err", err)
 	}
-	if err := hostnetwork.RemoveAllL3VPNs(targetNamespace); err != nil {
+
+	if err := hostnetwork.RemoveAllL3VPNs(config.targetNamespace); err != nil {
 		slog.Warn("failed to remove l3vpns after underlay removal", "err", err)
 	}
-	if err := hostnetwork.RemoveAllVRFs(targetNamespace); err != nil {
+
+	if err := hostnetwork.RemoveAllVRFs(config.targetNamespace); err != nil {
 		slog.Warn("failed to remove vrfs after underlay removal", "err", err)
 	}
+
 	bridgerefresh.StopAllVNIs()
-	if err := hostnetwork.RestoreUnderlay(ctx, targetNamespace, currentUnderlayIfaces); err != nil {
+	if err := hostnetwork.RestoreUnderlay(ctx, config.targetNamespace,
+		currentUnderlayIfaces); err != nil {
 		slog.Warn("failed to remove underlay interfaces after underlay removal", "err", err)
 	}
 }
@@ -244,6 +253,9 @@ func isSRV6(underlay v1alpha1.Underlay) bool {
 	return underlay.Spec.SRV6 != nil
 }
 
+// areAllUnderlayInterfacesToBeRemoved tells whether every underlay interface
+// currently in the namespace is being replaced, considering both the host
+// network devices and the CNI-provisioned interfaces.
 func areAllUnderlayInterfacesToBeRemoved(
 	ctx context.Context,
 	config interfacesConfiguration,
@@ -254,21 +266,13 @@ func areAllUnderlayInterfacesToBeRemoved(
 		return false, fmt.Errorf("failed to list existing underlay interfaces: %w", err)
 	}
 
-	removedInterfaces := hostnetwork.UnderlayInterfacesToRemove(existing, hostConfig.Underlay.UnderlayInterfaces)
-	allRemoved := len(removedInterfaces) > 0 && len(removedInterfaces) == len(existing)
+	toRemove := hostnetwork.UnderlayInterfacesToRemove(existing, hostConfig.Underlay.UnderlayInterfaces)
+	allRemoved := len(toRemove) > 0 && len(toRemove) == len(existing)
 	if allRemoved {
 		slog.InfoContext(ctx, "all underlay interfaces removed, cleaning up VNIs before interface swap",
-			"removed", removedInterfaces,
+			"removed", toRemove,
 			"requested", hostConfig.Underlay.UnderlayInterfaces,
 		)
 	}
 	return allRemoved, nil
-}
-
-func indexInterfaces(ifaces []string) map[string]struct{} {
-	indexedIfaces := make(map[string]struct{}, len(ifaces))
-	for _, iface := range ifaces {
-		indexedIfaces[iface] = struct{}{}
-	}
-	return indexedIfaces
 }

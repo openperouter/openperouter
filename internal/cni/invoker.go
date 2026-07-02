@@ -24,12 +24,12 @@ type Invoker struct {
 	containerID string
 }
 
-// SetInvoker set the Invoker singleton with searching pluginDirs for plugin binaries and
+// InitInvoker set the Invoker singleton with searching pluginDirs for plugin binaries and
 // caching the results under cacheDir, keyed by containerID (the stable
 // identifier of this invoker's attachments) generated from nodeName. The cache directory must be
 // stable across controller restarts so Del keeps working for attachments
 // created by previous invocations.
-func SetInvoker(pluginDirs []string, cacheDir, nodeName string) {
+func InitInvoker(pluginDirs []string, cacheDir, nodeName string) {
 	invoker = newInvoker(pluginDirs, cacheDir, nodeName)
 }
 
@@ -40,7 +40,7 @@ func newInvoker(pluginDirs []string, cacheDir, nodeName string) *Invoker {
 	}
 }
 
-// GetInvoker returns the Invoker singleton, or nil when SetInvoker was never
+// GetInvoker returns the Invoker singleton, or nil when InitInvoker was never
 // called.
 func GetInvoker() *Invoker {
 	return invoker

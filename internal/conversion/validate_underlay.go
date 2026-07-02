@@ -67,23 +67,14 @@ func validateUnderlay(underlay v1alpha1.Underlay) error {
 		return fmt.Errorf("underlay %s has duplicate neighbor address: %w", underlay.Name, err)
 	}
 
-	underlayInterfaces, err := underlayNetworkDeviceInterfaceNames(underlay.Spec.Interfaces)
-	if err != nil {
-		return err
-	}
-	if err := validateNoDuplicates(underlayInterfaces); err != nil {
-		return fmt.Errorf("underlay %s has duplicate interface name: %w", underlay.Name, err)
+	// do a no-op conversion to catch validation errors
+	if _, err := underlayInterfacesToHost(underlay.Spec.Interfaces); err != nil {
+		return fmt.Errorf("underlay %s has invalid interfaces: %w", underlay.Name, err)
 	}
 
 	if underlay.Spec.TunnelEndpoint != nil {
 		if err := validateUnderlayTunnelEndpoint(&underlay); err != nil {
 			return err
-		}
-	}
-
-	for _, n := range underlayInterfaces {
-		if err := isValidInterfaceName(n); err != nil {
-			return fmt.Errorf("invalid interface name for underlay %s: %s - %w", underlay.Name, n, err)
 		}
 	}
 

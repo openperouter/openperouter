@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 )
 
 func TestValidateGroutL2VNI(t *testing.T) {
@@ -29,6 +30,47 @@ func TestValidateGroutL3Passthrough(t *testing.T) {
 	}
 }
 
+func TestValidateGroutUnderlayCNI(t *testing.T) {
+	tests := []struct {
+		name          string
+		interfaceName string
+		wantErr       bool
+	}{
+		{
+			name:          "ValidateGroutUnderlay() with a valid cni interface name should return no error",
+			interfaceName: "underlay0",
+			wantErr:       false,
+		},
+		{
+			name:          "ValidateGroutUnderlay() with a cn cni interface name should return error",
+			interfaceName: "a2345678901234",
+			wantErr:       true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			underlay := v1alpha1.Underlay{
+				Spec: v1alpha1.UnderlaySpec{
+					Interfaces: []v1alpha1.UnderlayInterface{
+						{
+							Type: v1alpha1.UnderlayInterfaceTypeCNIDevice,
+							CNIDevice: &v1alpha1.CNIDevice{
+								Type:          v1alpha1.CNIConfigTypeRawConfig,
+								RawConfig:     &apiextensionsv1.JSON{Raw: []byte(`{"cniVersion":"1.0.0","name":"u","type":"macvlan"}`)},
+								InterfaceName: &tt.interfaceName,
+							},
+						},
+					},
+				},
+			}
+			err := ValidateGroutUnderlay(underlay)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateGroutUnderlay() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestValidateGroutUnderlay(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -47,17 +89,17 @@ func TestValidateGroutUnderlay(t *testing.T) {
 		},
 		{
 			name:    "nic name at 13 char limit",
-			nics:    []string{"1234567890123"},
+			nics:    []string{"a234567890123"},
 			wantErr: false,
 		},
 		{
 			name:    "nic name over 13 char limit",
-			nics:    []string{"12345678901234"},
+			nics:    []string{"a2345678901234"},
 			wantErr: true,
 		},
 		{
 			name:    "multiple nics, one too long",
-			nics:    []string{"eth0", "12345678901234"},
+			nics:    []string{"eth0", "a2345678901234"},
 			wantErr: true,
 		},
 	}
