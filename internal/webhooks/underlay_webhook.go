@@ -65,21 +65,25 @@ func (v *UnderlayValidator) Handle(ctx context.Context, req admission.Request) (
 
 	switch req.Operation {
 	case v1.Create:
-		err := validateUnderlayCreate(&underlay)
-		if err != nil {
+		if err := validateUnderlayCreate(&underlay); err != nil {
+			return admission.Denied(err.Error())
+		}
+		if err := DatapathConfigValidator.Validate(conversion.APIConfigData{Underlays: []v1alpha1.Underlay{underlay}}); err != nil {
 			return admission.Denied(err.Error())
 		}
 	case v1.Update:
-		err := validateUnderlayUpdate(&underlay)
-		if err != nil {
+		if err := validateUnderlayUpdate(&underlay); err != nil {
+			return admission.Denied(err.Error())
+		}
+		if err := DatapathConfigValidator.Validate(conversion.APIConfigData{Underlays: []v1alpha1.Underlay{underlay}}); err != nil {
 			return admission.Denied(err.Error())
 		}
 	case v1.Delete:
-		err := validateUnderlayDelete(&underlay)
-		if err != nil {
+		if err := validateUnderlayDelete(&underlay); err != nil {
 			return admission.Denied(err.Error())
 		}
 	}
+
 	return admission.Allowed("")
 }
 

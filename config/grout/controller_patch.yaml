@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: controller
+  namespace: system
+spec:
+  template:
+    spec:
+      containers:
+        - name: controller
+          args:
+          - "--nodename=$(NODE_NAME)"
+          - "--loglevel=debug"
+          - "--namespace=$(NAMESPACE)"
+          - "--frrconfig=/etc/frr/frr.conf"
+          - "--reloader-socket=/etc/frr/reload.sock"
+          - "--datapath=grout"
+          - "--grout-socket=/var/run/grout/grout.sock"
+          volumeMounts:
+          - mountPath: /var/run/grout
+            name: grout-socket
+      volumes:
+      - name: grout-socket
+        hostPath:
+          path: /var/run/openperouter/grout
+          type: DirectoryOrCreate

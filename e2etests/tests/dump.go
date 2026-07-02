@@ -31,7 +31,7 @@ func dumpIfFails(cs clientset.Interface, additionalNamespaces ...string) {
 	additionalNamespaces = slices.Compact(additionalNamespaces)
 
 	if ginkgo.CurrentSpecReport().Failed() {
-		dumpFRRInfo(ReportPath, ginkgo.CurrentSpecReport().FullText(), cs, infra.LeafA, infra.LeafB, infra.KindLeaf)
+		dumpFRRInfo(ReportPath, ginkgo.CurrentSpecReport().FullText(), cs, GroutMode, infra.LeafA, infra.LeafB, infra.KindLeaf)
 		for _, namespace := range additionalNamespaces {
 			dumpWorkloadInfo(ReportPath, ginkgo.CurrentSpecReport().FullText(), cs, namespace)
 		}
@@ -42,7 +42,7 @@ func dumpIfFails(cs clientset.Interface, additionalNamespaces ...string) {
 	}
 }
 
-func dumpFRRInfo(basePath, testName string, cs clientset.Interface, clabContainers ...string) {
+func dumpFRRInfo(basePath, testName string, cs clientset.Interface, groutMode bool, clabContainers ...string) {
 	testPath, err := createTestOutput(basePath, testName)
 	if err != nil {
 		ginkgo.GinkgoWriter.Printf("dumpFRRInfo: failed to create test dir: %v", err)
@@ -74,6 +74,11 @@ func dumpFRRInfo(basePath, testName string, cs clientset.Interface, clabContaine
 	for name, exec := range executors {
 		func() {
 			dump := frr.RawDump(exec)
+			if groutMode {
+				groutDump := frr.GroutDump(exec)
+				dump += "\n\n" + groutDump
+			}
+
 			f, err := logFileFor(testPath, fmt.Sprintf("frrdump-%s", name))
 			if err != nil {
 				ginkgo.GinkgoWriter.Printf("dumpFRRInfo: external frr dump for container %s, failed to open file %v", name, err)

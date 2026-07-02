@@ -86,7 +86,7 @@ func TestAPItoHostConfig(t *testing.T) {
 						VNI:       100,
 						VXLanPort: new(int32(4789)),
 					},
-					HostVeth: &hostnetwork.Veth{
+					CrossNsIPs: &hostnetwork.CrossNsIPs{
 						HostIPv4: "10.1.0.2/24",
 						NSIPv4:   "10.1.0.1/24",
 					},
@@ -142,7 +142,7 @@ func TestAPItoHostConfig(t *testing.T) {
 						VNI:       100,
 						VXLanPort: new(int32(4789)),
 					},
-					HostVeth: &hostnetwork.Veth{
+					CrossNsIPs: &hostnetwork.CrossNsIPs{
 						HostIPv4: "10.1.0.2/24",
 						NSIPv4:   "10.1.0.1/24",
 					},
@@ -180,7 +180,7 @@ func TestAPItoHostConfig(t *testing.T) {
 						VNI:       100,
 						VXLanPort: new(int32(4789)),
 					},
-					HostVeth: &hostnetwork.Veth{
+					CrossNsIPs: &hostnetwork.CrossNsIPs{
 						HostIPv6: "2001:db8::2/64",
 						NSIPv6:   "2001:db8::1/64",
 					},
@@ -218,7 +218,7 @@ func TestAPItoHostConfig(t *testing.T) {
 						VNI:       100,
 						VXLanPort: new(int32(4789)),
 					},
-					HostVeth: &hostnetwork.Veth{
+					CrossNsIPs: &hostnetwork.CrossNsIPs{
 						HostIPv4: "10.1.0.2/24",
 						NSIPv4:   "10.1.0.1/24",
 						HostIPv6: "2001:db8::2/64",
@@ -368,7 +368,7 @@ func TestAPItoHostConfig(t *testing.T) {
 						VNI:       100,
 						VXLanPort: new(int32(4789)),
 					},
-					HostVeth: nil,
+					CrossNsIPs: nil,
 				},
 			},
 			wantL2VNIParams: []hostnetwork.L2VNIParams{},
@@ -424,7 +424,7 @@ func TestAPItoHostConfig(t *testing.T) {
 			wantL2VNIParams: []hostnetwork.L2VNIParams{},
 			wantPassthrough: &hostnetwork.PassthroughParams{
 				TargetNS: "namespace",
-				HostVeth: hostnetwork.Veth{
+				CrossNsIPs: hostnetwork.CrossNsIPs{
 					HostIPv4: "192.168.2.2/24",
 					NSIPv4:   "192.168.2.1/24",
 					HostIPv6: "2001:db8::2/64",

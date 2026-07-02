@@ -46,7 +46,7 @@ var _ = Describe("L3 VNI configuration", func() {
 				VNI:       100,
 				VXLanPort: new(int32(4789)),
 			},
-			HostVeth: &Veth{
+			CrossNsIPs: &CrossNsIPs{
 				HostIPv4: "192.168.9.1/32",
 				NSIPv4:   "192.168.9.0/32",
 			},
@@ -74,7 +74,7 @@ var _ = Describe("L3 VNI configuration", func() {
 				VNI:       100,
 				VXLanPort: new(int32(4789)),
 			},
-			HostVeth: &Veth{
+			CrossNsIPs: &CrossNsIPs{
 				HostIPv6: "2001:db8::1/128",
 				NSIPv6:   "2001:db8::/128",
 			},
@@ -102,7 +102,7 @@ var _ = Describe("L3 VNI configuration", func() {
 				VNI:       100,
 				VXLanPort: new(int32(4789)),
 			},
-			HostVeth: &Veth{
+			CrossNsIPs: &CrossNsIPs{
 				HostIPv4: "192.168.9.1/32",
 				NSIPv4:   "192.168.9.0/32",
 				HostIPv6: "2001:db8::1/128",
@@ -133,7 +133,7 @@ var _ = Describe("L3 VNI configuration", func() {
 					VNI:       100,
 					VXLanPort: new(int32(4789)),
 				},
-				HostVeth: &Veth{
+				CrossNsIPs: &CrossNsIPs{
 					HostIPv4: "192.168.9.1/32",
 					NSIPv4:   "192.168.9.0/32",
 				},
@@ -146,7 +146,7 @@ var _ = Describe("L3 VNI configuration", func() {
 					VNI:       101,
 					VXLanPort: new(int32(4789)),
 				},
-				HostVeth: &Veth{
+				CrossNsIPs: &CrossNsIPs{
 					HostIPv4: "192.168.9.2/32",
 					NSIPv4:   "192.168.9.3/32",
 				},
@@ -201,7 +201,7 @@ var _ = Describe("L3 VNI configuration", func() {
 				VNI:       100,
 				VXLanPort: new(int32(4789)),
 			},
-			HostVeth: &Veth{
+			CrossNsIPs: &CrossNsIPs{
 				HostIPv4: "192.168.9.1/32",
 				NSIPv4:   "192.168.9.0/32",
 			},
@@ -223,7 +223,7 @@ var _ = Describe("L3 VNI configuration", func() {
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 	})
 
-	It("should configure VXLAN and VRF when HostVeth is nil", func() {
+	It("should configure VXLAN and VRF when CrossNsIPs is nil", func() {
 		params := L3VNIParams{
 			VNIParams: VNIParams{
 				VRF:       "testred",
@@ -232,7 +232,7 @@ var _ = Describe("L3 VNI configuration", func() {
 				VNI:       100,
 				VXLanPort: new(int32(4789)),
 			},
-			HostVeth: nil,
+			CrossNsIPs: nil,
 		}
 
 		err := SetupL3VNI(context.Background(), params)
@@ -248,7 +248,7 @@ var _ = Describe("L3 VNI configuration", func() {
 		// Verify that no host veth was created
 		vethNames := vethNamesFromVNI(params.VNI)
 		_, err = netlink.LinkByName(vethNames.HostSide)
-		Expect(errors.As(err, &netlink.LinkNotFoundError{})).To(BeTrue(), "host veth should not exist when HostVeth is nil")
+		Expect(errors.As(err, &netlink.LinkNotFoundError{})).To(BeTrue(), "host veth should not exist when CrossNsIPs is nil")
 	})
 
 	It("should set veth MTU to underlay MTU minus VXLan overhead when an underlay interface is configured", func() {
@@ -263,7 +263,7 @@ var _ = Describe("L3 VNI configuration", func() {
 				VNI:       100,
 				VXLanPort: new(int32(4789)),
 			},
-			HostVeth: &Veth{
+			CrossNsIPs: &CrossNsIPs{
 				HostIPv4: "192.168.9.1/32",
 				NSIPv4:   "192.168.9.0/32",
 			},
@@ -296,7 +296,7 @@ var _ = Describe("L3 VNI configuration", func() {
 				VNI:       100,
 				VXLanPort: new(int32(4789)),
 			},
-			HostVeth: &Veth{
+			CrossNsIPs: &CrossNsIPs{
 				HostIPv4: "192.168.9.1/32",
 				NSIPv4:   "192.168.9.0/32",
 			},
@@ -593,17 +593,17 @@ func validateL3HostLeg(g Gomega, params L3VNIParams) {
 	g.Expect(hostLegLink.Attrs().OperState).To(BeEquivalentTo(netlink.OperUp))
 
 	// Check IPv4 address if provided
-	if params.HostVeth.HostIPv4 != "" {
-		hasIP, err := interfaceHasIP(hostLegLink, params.HostVeth.HostIPv4)
+	if params.CrossNsIPs.HostIPv4 != "" {
+		hasIP, err := interfaceHasIP(hostLegLink, params.CrossNsIPs.HostIPv4)
 		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(hasIP).To(BeTrue(), "host leg does not have IPv4", params.HostVeth.HostIPv4)
+		g.Expect(hasIP).To(BeTrue(), "host leg does not have IPv4", params.CrossNsIPs.HostIPv4)
 	}
 
 	// Check IPv6 address if provided
-	if params.HostVeth.HostIPv6 != "" {
-		hasIP, err := interfaceHasIP(hostLegLink, params.HostVeth.HostIPv6)
+	if params.CrossNsIPs.HostIPv6 != "" {
+		hasIP, err := interfaceHasIP(hostLegLink, params.CrossNsIPs.HostIPv6)
 		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(hasIP).To(BeTrue(), "host leg does not have IPv6", params.HostVeth.HostIPv6)
+		g.Expect(hasIP).To(BeTrue(), "host leg does not have IPv6", params.CrossNsIPs.HostIPv6)
 	}
 }
 
@@ -643,7 +643,7 @@ func validateL2HostLeg(g Gomega, params L2VNIParams) {
 func validateL3VNI(g Gomega, params L3VNIParams) {
 	validateVNI(g, params.VNIParams)
 
-	if params.HostVeth == nil {
+	if params.CrossNsIPs == nil {
 		return
 	}
 	validateVethForVNI(g, params.VNIParams)
@@ -662,17 +662,17 @@ func validateL3VNI(g Gomega, params L3VNIParams) {
 	g.Expect(peLegLink.Attrs().MasterIndex).To(Equal(vrfLink.Attrs().Index))
 
 	// Check IPv4 address if provided
-	if params.HostVeth.NSIPv4 != "" {
-		hasIP, err := interfaceHasIP(peLegLink, params.HostVeth.NSIPv4)
+	if params.CrossNsIPs.NSIPv4 != "" {
+		hasIP, err := interfaceHasIP(peLegLink, params.CrossNsIPs.NSIPv4)
 		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(hasIP).To(BeTrue(), "PE leg does not have IPv4", params.HostVeth.NSIPv4)
+		g.Expect(hasIP).To(BeTrue(), "PE leg does not have IPv4", params.CrossNsIPs.NSIPv4)
 	}
 
 	// Check IPv6 address if provided
-	if params.HostVeth.NSIPv6 != "" {
-		hasIP, err := interfaceHasIP(peLegLink, params.HostVeth.NSIPv6)
+	if params.CrossNsIPs.NSIPv6 != "" {
+		hasIP, err := interfaceHasIP(peLegLink, params.CrossNsIPs.NSIPv6)
 		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(hasIP).To(BeTrue(), "PE leg does not have IPv6", params.HostVeth.NSIPv6)
+		g.Expect(hasIP).To(BeTrue(), "PE leg does not have IPv6", params.CrossNsIPs.NSIPv6)
 	}
 }
 
@@ -898,7 +898,7 @@ func setupFakeUnderlay(ns netns.NsHandle, name string, mtu int) {
 		if err != nil {
 			return fmt.Errorf("failed to get fake underlay dummy %s: %w", name, err)
 		}
-		if err := netlink.LinkSetGroup(link, int(underlayGroupID)); err != nil {
+		if err := netlink.LinkSetGroup(link, int(UnderlayGroupID)); err != nil {
 			return fmt.Errorf("failed to set underlay group ID on %s: %w", name, err)
 		}
 		return nil

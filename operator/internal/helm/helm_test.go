@@ -235,6 +235,118 @@ func validateObject(testcase, name string, obj *unstructured.Unstructured) error
 	return nil
 }*/
 
+func TestParseChartWithGroutEnabled(t *testing.T) {
+	g := NewGomegaWithT(t)
+	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace)
+	g.Expect(err).ToNot(HaveOccurred())
+
+	openperouter := &operatorapi.OpenPERouter{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "openperouter",
+			Namespace: openperouterTestNamespace,
+		},
+		Spec: operatorapi.OpenPERouterSpec{
+			LogLevel: new(operatorapi.LogLevelInfo),
+			Datapath: new("grout"),
+		},
+	}
+
+	envConfig := defaultEnvConfig
+	envConfig.GroutImage = &envconfig.ImageInfo{
+		Repo: "quay.io/openperouter/router",
+		Tag:  "test-grout",
+	}
+
+	objs, err := chart.Objects(envConfig, openperouter)
+	g.Expect(err).ToNot(HaveOccurred())
+
+	var routerFound, controllerFound bool
+	for _, obj := range objs {
+		objKind := obj.GetKind()
+		if objKind == daemonSetKind && obj.GetName() == routerDaemonSetName {
+			router := appsv1.DaemonSet{}
+			err = runtime.DefaultUnstructuredConverter.FromUnstructured(obj.UnstructuredContent(), &router)
+			g.Expect(err).ToNot(HaveOccurred())
+
+			containerNames := make([]string, 0, len(router.Spec.Template.Spec.Containers))
+			for _, c := range router.Spec.Template.Spec.Containers {
+				containerNames = append(containerNames, c.Name)
+			}
+			g.Expect(containerNames).To(ContainElement("grout"))
+
+			for _, c := range router.Spec.Template.Spec.Containers {
+				if c.Name == "grout" {
+					g.Expect(c.Image).To(Equal("quay.io/openperouter/router:test-grout"))
+				}
+			}
+			routerFound = true
+		}
+		if objKind == daemonSetKind && obj.GetName() == controllerDaemonSetName {
+			controller := appsv1.DaemonSet{}
+			err = runtime.DefaultUnstructuredConverter.FromUnstructured(obj.UnstructuredContent(), &controller)
+			g.Expect(err).ToNot(HaveOccurred())
+
+			for _, c := range controller.Spec.Template.Spec.Containers {
+				if c.Name == "controller" {
+					g.Expect(c.Args).To(ContainElement("--datapath=grout"))
+					g.Expect(c.Args).To(ContainElement("--grout-socket=/var/run/grout/grout.sock"))
+				}
+			}
+			controllerFound = true
+		}
+	}
+	g.Expect(routerFound).To(BeTrue())
+	g.Expect(controllerFound).To(BeTrue())
+}
+
+func TestParseChartWithGroutDisabled(t *testing.T) {
+	g := NewGomegaWithT(t)
+	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace)
+	g.Expect(err).ToNot(HaveOccurred())
+
+	openperouter := &operatorapi.OpenPERouter{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "openperouter",
+			Namespace: openperouterTestNamespace,
+		},
+		Spec: operatorapi.OpenPERouterSpec{
+			LogLevel: new(operatorapi.LogLevelInfo),
+		},
+	}
+
+	objs, err := chart.Objects(defaultEnvConfig, openperouter)
+	g.Expect(err).ToNot(HaveOccurred())
+
+	var routerFound, controllerFound bool
+	for _, obj := range objs {
+		objKind := obj.GetKind()
+		if objKind == daemonSetKind && obj.GetName() == routerDaemonSetName {
+			router := appsv1.DaemonSet{}
+			err = runtime.DefaultUnstructuredConverter.FromUnstructured(obj.UnstructuredContent(), &router)
+			g.Expect(err).ToNot(HaveOccurred())
+
+			for _, c := range router.Spec.Template.Spec.Containers {
+				g.Expect(c.Name).ToNot(Equal("grout"))
+			}
+			routerFound = true
+		}
+		if objKind == daemonSetKind && obj.GetName() == controllerDaemonSetName {
+			controller := appsv1.DaemonSet{}
+			err = runtime.DefaultUnstructuredConverter.FromUnstructured(obj.UnstructuredContent(), &controller)
+			g.Expect(err).ToNot(HaveOccurred())
+
+			for _, c := range controller.Spec.Template.Spec.Containers {
+				if c.Name == "controller" {
+					g.Expect(c.Args).ToNot(ContainElement("--datapath=grout"))
+				}
+			}
+			controllerFound = true
+		}
+	}
+	g.Expect(routerFound).To(BeTrue())
+	g.Expect(controllerFound).To(BeTrue())
+}
+
 func TestParseChartWithMasterTolerations(t *testing.T) {
 	g := NewGomegaWithT(t)
 	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace)

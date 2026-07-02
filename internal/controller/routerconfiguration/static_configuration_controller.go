@@ -15,6 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
+	"github.com/openperouter/openperouter/internal/conversion"
 	openpeerrors "github.com/openperouter/openperouter/internal/errors"
 	"github.com/openperouter/openperouter/internal/frrconfig"
 )
@@ -22,16 +23,18 @@ import (
 // StaticConfigReconciler reconciles configuration from a static file.
 // It's designed for host mode where Kubernetes API may not be available.
 type StaticConfigReconciler struct {
-	Scheme          *runtime.Scheme
-	Logger          *slog.Logger
-	NodeIndex       int
-	LogLevel        string
-	FRRConfigPath   string
-	FRRReloadSocket string
-	RouterProvider  RouterProvider
-	ConfigDir       string
-	MyNode          string
-	MyNamespace     string
+	Scheme                  *runtime.Scheme
+	Logger                  *slog.Logger
+	NodeIndex               int
+	LogLevel                string
+	FRRConfigPath           string
+	FRRReloadSocket         string
+	RouterProvider          RouterProvider
+	ConfigDir               string
+	MyNode                  string
+	MyNamespace             string
+	DatapathConfigurator    DatapathConfigurator
+	DatapathConfigValidator conversion.DatapathConfigValidator
 
 	TriggerChan chan event.GenericEvent
 }
@@ -77,7 +80,7 @@ func (r *StaticConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	updater := frrconfig.UpdaterForSocket(r.FRRReloadSocket, r.FRRConfigPath)
 
-	err = Reconcile(ctx, apiConfig, r.NodeIndex, r.LogLevel, r.FRRConfigPath, targetNS, updater, configureInterfaces)
+	err = Reconcile(ctx, apiConfig, r.NodeIndex, r.LogLevel, r.FRRConfigPath, targetNS, updater, r.DatapathConfigurator)
 	for _, f := range openpeerrors.CollectFailures(err) {
 		logger.Warn("resource skipped", "kind", f.Kind, "name", f.Name, "reason", f.Reason, "message", f.Message)
 	}
