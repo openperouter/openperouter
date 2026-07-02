@@ -210,6 +210,24 @@ func (l LeafKind) UpdateConfig(nodes []corev1.Node, config LeafKindConfiguration
 	if config.PeerIPFamily == "" {
 		config.PeerIPFamily = ipfamily.IPv4
 	}
+
+	neighbors := []Neighbor{}
+	for _, node := range nodes {
+		neighbor, err := NeighborForFamily(l.Container.Name, node.Name, config.PeerIPFamily)
+		if err != nil {
+			return err
+		}
+		neighbors = append(neighbors, neighbor)
+	}
+	config.Neighbors = neighbors
+
+	return l.Configure(config)
+}
+
+// Configure renders and reloads the leafkind configuration with the neighbors
+// set explicitly in config instead of deriving them from the node addresses,
+// defaulting the unset fields.
+func (l LeafKind) Configure(config LeafKindConfiguration) error {
 	if len(config.BGPAddressFamilies) == 0 {
 		config.BGPAddressFamilies = []networklayerprotocol.NLP{
 			{
@@ -230,16 +248,6 @@ func (l LeafKind) UpdateConfig(nodes []corev1.Node, config LeafKindConfiguration
 	if config.ToSwitchInterface == "" {
 		config.ToSwitchInterface = l.ToSwitchInterface
 	}
-
-	neighbors := []Neighbor{}
-	for _, node := range nodes {
-		neighbor, err := NeighborForFamily(l.Container.Name, node.Name, config.PeerIPFamily)
-		if err != nil {
-			return err
-		}
-		neighbors = append(neighbors, neighbor)
-	}
-	config.Neighbors = neighbors
 
 	configString, err := LeafKindConfigToFRR(config)
 	if err != nil {
