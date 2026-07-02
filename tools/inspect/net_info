@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+
+# SPDX-License-Identifier:Apache-2.0
+
+NETNS=${NETNS:-""}
+
+args=""
+if [ -n "$NETNS" ]; then
+	args="ip netns exec $NETNS"
+fi
+
+readonly NETNS_INFO=(\
+"ip link" \
+"ip address" \
+"ip route" \
+"ip neigh" \
+"ip vrf" \
+"bridge fdb show" \
+)
+
+echo "### Networking info:"
+for cmd in "${NETNS_INFO[@]}"; do
+	c="$args $cmd"
+	echo "$ $c"
+	$c
+	echo ""
+done
+echo "###"
