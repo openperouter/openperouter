@@ -18,8 +18,6 @@ openperouter:
   # -- If true, enables host mode deployment: deploys hostbridge DaemonSet instead of router and controller,
   # and configures nodemarker to run in webhook-only mode
   hostmode: false
-  # -- Multus network annotation to be added to router pods
-  multusNetworkAnnotation: ""
   # -- Host directory used by libcni to cache the results of the CNI
   # invocations for the underlay interfaces. It must outlive the controller
   # pod so CNI DEL keeps working across restarts and upgrades; living under
