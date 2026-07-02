@@ -17,6 +17,7 @@ require (
 	github.com/ory/dockertest/v3 v3.12.0
 	github.com/ovn-kubernetes/libovsdb v0.8.1
 	github.com/pkg/errors v0.9.1
+	github.com/stretchr/testify v1.11.1
 	github.com/vishvananda/netlink v1.3.1
 	github.com/vishvananda/netns v0.0.5
 	go.yaml.in/yaml/v2 v2.4.3
@@ -154,7 +155,6 @@ require (
 	github.com/spf13/cobra v1.10.2 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect
-	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/tetratelabs/wabin v0.0.0-20230304001439-f6f874872834 // indirect
 	github.com/tetratelabs/wazero v1.12.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect

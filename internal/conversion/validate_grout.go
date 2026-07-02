@@ -23,16 +23,17 @@ func ValidateGroutL2VNI(l2VNI v1alpha1.L2VNI) error {
 }
 
 func ValidateGroutUnderlay(underlay v1alpha1.Underlay) error {
-	for _, iface := range underlay.Spec.Interfaces {
-		if iface.Type != v1alpha1.UnderlayInterfaceTypeNetworkDevice {
-			continue
-		}
-		if iface.NetworkDevice == nil {
-			continue
-		}
-
-		if len(iface.NetworkDevice.InterfaceName)+len(grout.UnderlayPortNamePrefix) >= syscall.IFNAMSIZ {
-			return fmt.Errorf("nic name %s can't be longer than %d characters", iface.NetworkDevice.InterfaceName, syscall.IFNAMSIZ-len(grout.UnderlayPortNamePrefix))
+	// The grout port name is the interface name with the underlay prefix,
+	// so every interface name must leave room for it, regardless of how
+	// the interface is provisioned.
+	underlayInterfaces, err := underlayInterfacesToHost(underlay.Spec.Interfaces)
+	if err != nil {
+		return err
+	}
+	for _, iface := range underlayInterfaces {
+		if len(iface.InterfaceName)+len(grout.UnderlayPortNamePrefix) >= syscall.IFNAMSIZ {
+			return fmt.Errorf("nic name %s can't be longer than %d characters", iface.InterfaceName,
+				syscall.IFNAMSIZ-len(grout.UnderlayPortNamePrefix))
 		}
 	}
 	return nil

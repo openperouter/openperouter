@@ -138,6 +138,6 @@ func readParamsFromFile[T any](filePath string) (T, error) {
 func validateUnderlayIsNotConfigured(g Gomega, params UnderlayParams) {
 	checkInterfaceHasNoNonLoopbackIPs(g, loopbackName)
 	for _, iface := range params.UnderlayInterfaces {
-		checkLinkdeleted(g, iface)
+		checkLinkdeleted(g, iface.InterfaceName)
 	}
 }
