@@ -27,6 +27,7 @@ Kubernetes: `>= 1.19.0-0`
 | fullnameOverride | string | `""` |  |
 | nameOverride | string | `""` |  |
 | openperouter.affinity | object | `{}` |  |
+| openperouter.cniCacheDir | string | `"/var/run/openperouter/cni-cache"` | Host directory used by libcni to cache the results of the CNI invocations for the underlay interfaces. It must outlive the controller pod so CNI DEL keeps working across restarts and upgrades; living under /var/run, it is cleared on reboot together with the router netns. It must be dedicated to openperouter: do not point it at another CNI runtime's cache dir (e.g. /var/lib/cni), whose garbage collection could purge the cached attachments. |
 | openperouter.controller.healthProbePort | int | `9081` | Health probe port for liveness and readiness checks |
 | openperouter.controller.resources | object | `{}` |  |
 | openperouter.cri | string | `"containerd"` |  |

@@ -20,6 +20,14 @@ openperouter:
   hostmode: false
   # -- Multus network annotation to be added to router pods
   multusNetworkAnnotation: ""
+  # -- Host directory used by libcni to cache the results of the CNI
+  # invocations for the underlay interfaces. It must outlive the controller
+  # pod so CNI DEL keeps working across restarts and upgrades; living under
+  # /var/run, it is cleared on reboot together with the router netns. It must
+  # be dedicated to openperouter: do not point it at another CNI runtime's
+  # cache dir (e.g. /var/lib/cni), whose garbage collection could purge the
+  # cached attachments.
+  cniCacheDir: "/var/run/openperouter/cni-cache"
   image:
     repository: quay.io/openperouter/router
     tag: ""
