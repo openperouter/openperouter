@@ -1,9 +1,11 @@
 {{ define "segmentrouting"}}
 segment-routing
   srv6
-    encapsulation
-      source-address {{ .SourceAddress }}
-    exit
+    ! Temporarily disabled until https://github.com/FRRouting/frr/pull/20716 lands in our image.
+    ! Source address will default to Loopback even without this.
+    !encapsulation
+    !  source-address {{ .SourceAddress }}
+    !exit
     locators
       locator {{ .Locator.Name }}
         prefix {{ .Locator.Prefix }} block-len {{ .Locator.BlockLen }} node-len {{ .Locator.NodeLen }}

@@ -158,9 +158,11 @@ exit
 !
 segment-routing
   srv6
-    encapsulation
-      source-address 2001:db8:1234:5678::
-    exit
+    ! Temporarily disabled until https://github.com/FRRouting/frr/pull/20716 lands in our image.
+    ! Source address will default to Loopback even without this.
+    !encapsulation
+    !  source-address 2001:db8:1234:5678::
+    !exit
     locators
       locator MAIN
         prefix fd00:0:32::/48 block-len 32 node-len 16
