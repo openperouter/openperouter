@@ -26,8 +26,10 @@ metadata:
   namespace: openperouter-system
 spec:
   asn: 64514
-  nics:
-    - toswitch
+  interfaces:
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: toswitch
   neighbors:
     - asn: 64512
       address: 192.168.11.2
@@ -38,7 +40,7 @@ spec:
 | Field | Type | Description | Required |
 |-------|------|-------------|----------|
 | `asn` | integer | Local ASN for BGP sessions | Yes |
-| `nics` | array | List of network interface names to move to router namespace (minimum 1) | Yes |
+| `interfaces` | array | List of underlay interfaces to use for connectivity (minimum 1). Each entry is a discriminated union; today only the `NetworkDevice` type is supported, which moves an existing host network device into the router namespace | Yes |
 | `neighbors` | array | List of BGP neighbors to peer with (minimum 1) | Yes |
 | `nodeSelector` | object | Label selector to target specific nodes (applies to all nodes if omitted) | No |
 | `gracefulRestart` | object | Enables BGP Graceful Restart when present. See [Graceful Restart]({{< ref "graceful-restart" >}}). | No |
@@ -59,9 +61,13 @@ spec:
   asn: 64514
   
   # Multiple interfaces for redundancy
-  nics:
-    - toswitch
-    - toswitch2
+  interfaces:
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: toswitch
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: toswitch2
   
   # Multiple neighbors for dual-ToR setup
   neighbors:
@@ -90,7 +96,7 @@ For detailed information and examples, see the [Node Selector Configuration]({{<
 
 ### Alternative: Multus Network for Top of Rack Connectivity
 
-Instead of declaring physical network interfaces in the underlay configuration, you can use Multus networks to provide connectivity to top of rack switches. In this case, the `nics` field in the underlay configuration can be omitted.
+Instead of declaring underlay interfaces in the underlay configuration, you can use Multus networks to provide connectivity to top of rack switches. In this case, the `interfaces` field in the underlay configuration can be omitted.
 
 When using this approach, ensure that the router pods are configured with the appropriate Multus network annotation to connect to your top of rack switches.
 

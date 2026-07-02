@@ -17,6 +17,7 @@ import (
 
 	openpeerrors "github.com/openperouter/openperouter/internal/errors"
 	"github.com/openperouter/openperouter/internal/frrconfig"
+	"github.com/openperouter/openperouter/internal/hostnetwork"
 )
 
 // StaticConfigReconciler reconciles configuration from a static file.
@@ -33,6 +34,10 @@ type StaticConfigReconciler struct {
 	MyNode          string
 	MyNamespace     string
 
+	// CNIRuntime is the node-level environment used to invoke CNI plugins
+	// for CNI-backed underlay interfaces.
+	CNIRuntime hostnetwork.CNIRuntime
+
 	TriggerChan chan event.GenericEvent
 }
 
@@ -47,6 +52,7 @@ func (r *StaticConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to read static router configurations from %s: %w", r.ConfigDir, err)
 	}
+	apiConfig.CNIRuntime = r.CNIRuntime
 
 	logger.Info("using config",
 		"nodeIndex", r.NodeIndex,

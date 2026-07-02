@@ -8,7 +8,9 @@ import (
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 )
 
 func TestValidateUnderlay(t *testing.T) {
@@ -24,8 +26,8 @@ func TestValidateUnderlay(t *testing.T) {
 					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
 						CIDRs: []string{"192.168.1.0/24"},
 					},
-					Nics: []string{"eth0"},
-					ASN:  65001,
+					Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
+					ASN:        65001,
 					Neighbors: []v1alpha1.Neighbor{
 						{
 							ASN:     new(int64(65002)),
@@ -40,8 +42,8 @@ func TestValidateUnderlay(t *testing.T) {
 			name: "missing tunnel endpoint configuration",
 			underlay: v1alpha1.Underlay{
 				Spec: v1alpha1.UnderlaySpec{
-					Nics: []string{"eth0"},
-					ASN:  65001,
+					Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
+					ASN:        65001,
 					Neighbors: []v1alpha1.Neighbor{
 						{
 							ASN:     new(int64(65002)),
@@ -59,8 +61,8 @@ func TestValidateUnderlay(t *testing.T) {
 					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
 						CIDRs: []string{"invalidCIDR"},
 					},
-					Nics: []string{"eth0", "eth1"},
-					ASN:  65001,
+					Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}, {Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth1"}}},
+					ASN:        65001,
 					Neighbors: []v1alpha1.Neighbor{
 						{
 							ASN:     new(int64(65002)),
@@ -78,8 +80,8 @@ func TestValidateUnderlay(t *testing.T) {
 					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
 						CIDRs: []string{""},
 					},
-					Nics: []string{"eth0", "eth1"},
-					ASN:  65001,
+					Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}, {Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth1"}}},
+					ASN:        65001,
 					Neighbors: []v1alpha1.Neighbor{
 						{
 							ASN:     new(int64(65002)),
@@ -97,8 +99,8 @@ func TestValidateUnderlay(t *testing.T) {
 					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
 						CIDRs: []string{"192.168.1.0/24"},
 					},
-					Nics: []string{"eth0", "1$^&invalid"},
-					ASN:  65001,
+					Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}, {Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "1$^&invalid"}}},
+					ASN:        65001,
 					Neighbors: []v1alpha1.Neighbor{
 						{
 							ASN:     new(int64(65002)),
@@ -116,8 +118,8 @@ func TestValidateUnderlay(t *testing.T) {
 					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
 						CIDRs: []string{"192.168.1.0/24"},
 					},
-					Nics: []string{"eth0", "eth1"},
-					ASN:  65001,
+					Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}, {Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth1"}}},
+					ASN:        65001,
 					Neighbors: []v1alpha1.Neighbor{
 						{
 							ASN:     new(int64(65002)),
@@ -152,8 +154,8 @@ func TestValidateUnderlay(t *testing.T) {
 					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
 						CIDRs: []string{"192.168.1.0/24"},
 					},
-					Nics: []string{"eno2.161"},
-					ASN:  65001,
+					Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eno2.161"}}},
+					ASN:        65001,
 					Neighbors: []v1alpha1.Neighbor{
 						{
 							ASN:     new(int64(65002)),
@@ -171,8 +173,8 @@ func TestValidateUnderlay(t *testing.T) {
 					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
 						CIDRs: []string{"192.168.1.0/24"},
 					},
-					Nics: []string{".eth0"},
-					ASN:  65001,
+					Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: ".eth0"}}},
+					ASN:        65001,
 					Neighbors: []v1alpha1.Neighbor{
 						{
 							ASN:     new(int64(65002)),
@@ -190,8 +192,8 @@ func TestValidateUnderlay(t *testing.T) {
 					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
 						CIDRs: []string{"192.168.1.0/24"},
 					},
-					Nics: []string{"verylongname.123"},
-					ASN:  65001,
+					Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "verylongname.123"}}},
+					ASN:        65001,
 					Neighbors: []v1alpha1.Neighbor{
 						{
 							ASN:     new(int64(65002)),
@@ -209,8 +211,8 @@ func TestValidateUnderlay(t *testing.T) {
 					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
 						CIDRs: []string{"192.168.1.0/24"},
 					},
-					Nics: []string{"eth0.100!"},
-					ASN:  65001,
+					Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0.100!"}}},
+					ASN:        65001,
 					Neighbors: []v1alpha1.Neighbor{
 						{
 							ASN:     new(int64(65002)),
@@ -226,7 +228,7 @@ func TestValidateUnderlay(t *testing.T) {
 			underlay: v1alpha1.Underlay{
 				Spec: v1alpha1.UnderlaySpec{
 					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{},
-					Nics:           []string{"eth0"},
+					Interfaces:     []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
 					ASN:            65001,
 					Neighbors: []v1alpha1.Neighbor{
 						{
@@ -245,8 +247,13 @@ func TestValidateUnderlay(t *testing.T) {
 					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
 						CIDRs: []string{"2001:db8::1/128"},
 					},
-					Nics: []string{"eth0"},
-					ASN:  65001,
+					Interfaces: []v1alpha1.UnderlayInterface{
+						{
+							Type:          "NetworkDevice",
+							NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+						},
+					},
+					ASN: 65001,
 					Neighbors: []v1alpha1.Neighbor{
 						{
 							ASN:     new(int64(65002)),
@@ -264,8 +271,13 @@ func TestValidateUnderlay(t *testing.T) {
 					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
 						CIDRs: []string{"192.168.1.0/24", "2001:db8::1/128"},
 					},
-					Nics: []string{"eth0"},
-					ASN:  65001,
+					Interfaces: []v1alpha1.UnderlayInterface{
+						{
+							Type:          "NetworkDevice",
+							NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+						},
+					},
+					ASN: 65001,
 					Neighbors: []v1alpha1.Neighbor{
 						{
 							ASN:     new(int64(65002)),
@@ -275,6 +287,94 @@ func TestValidateUnderlay(t *testing.T) {
 				},
 			},
 			wantErr: false,
+		},
+		{
+			name: "valid cni interface",
+			underlay: v1alpha1.Underlay{
+				Spec: v1alpha1.UnderlaySpec{
+					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+						CIDRs: []string{"192.168.1.0/24"},
+					},
+					Interfaces: []v1alpha1.UnderlayInterface{
+						{
+							Type: v1alpha1.UnderlayInterfaceTypeCNI,
+							CNIDevice: &v1alpha1.CNIDevice{
+								Type:          v1alpha1.CNIConfigTypeRawConfig,
+								RawConfig:     &apiextensionsv1.JSON{Raw: []byte(`{"cniVersion":"1.0.0","name":"macvlan-underlay","type":"macvlan","master":"eth1"}`)},
+								InterfaceName: ptr.To("net1"),
+							},
+						},
+					},
+					ASN: 65001,
+					Neighbors: []v1alpha1.Neighbor{
+						{
+							ASN:     new(int64(65002)),
+							Address: new("192.168.1.1"),
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "cni interface with invalid raw config",
+			underlay: v1alpha1.Underlay{
+				Spec: v1alpha1.UnderlaySpec{
+					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+						CIDRs: []string{"192.168.1.0/24"},
+					},
+					Interfaces: []v1alpha1.UnderlayInterface{
+						{
+							Type: v1alpha1.UnderlayInterfaceTypeCNI,
+							CNIDevice: &v1alpha1.CNIDevice{
+								Type:          v1alpha1.CNIConfigTypeRawConfig,
+								RawConfig:     &apiextensionsv1.JSON{Raw: []byte(`{"cniVersion":"1.0.0","name":"broken","plugins":"notalist"}`)},
+								InterfaceName: ptr.To("net1"),
+							},
+						},
+					},
+					ASN: 65001,
+					Neighbors: []v1alpha1.Neighbor{
+						{
+							ASN:     new(int64(65002)),
+							Address: new("192.168.1.1"),
+						},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "cni interface name duplicates network device name",
+			underlay: v1alpha1.Underlay{
+				Spec: v1alpha1.UnderlaySpec{
+					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+						CIDRs: []string{"192.168.1.0/24"},
+					},
+					Interfaces: []v1alpha1.UnderlayInterface{
+						{
+							Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+							NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+						},
+						{
+							Type: v1alpha1.UnderlayInterfaceTypeCNI,
+							CNIDevice: &v1alpha1.CNIDevice{
+								Type:          v1alpha1.CNIConfigTypeRawConfig,
+								RawConfig:     &apiextensionsv1.JSON{Raw: []byte(`{"cniVersion":"1.0.0","name":"macvlan-underlay","type":"macvlan","master":"eth1"}`)},
+								InterfaceName: ptr.To("eth0"),
+							},
+						},
+					},
+					ASN: 65001,
+					Neighbors: []v1alpha1.Neighbor{
+						{
+							ASN:     new(int64(65002)),
+							Address: new("192.168.1.1"),
+						},
+					},
+				},
+			},
+			wantErr: true,
 		},
 	}
 
@@ -295,8 +395,8 @@ func TestValidateUnderlay(t *testing.T) {
 					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
 						CIDRs: []string{"192.168.1.0/24"},
 					},
-					Nics: []string{"eth0"},
-					ASN:  65001,
+					Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
+					ASN:        65001,
 					Neighbors: []v1alpha1.Neighbor{
 						{
 							ASN:     new(int64(65002)),
@@ -310,8 +410,8 @@ func TestValidateUnderlay(t *testing.T) {
 					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
 						CIDRs: []string{"192.168.2.0/24"},
 					},
-					Nics: []string{"eth1"},
-					ASN:  65002,
+					Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth1"}}},
+					ASN:        65002,
 					Neighbors: []v1alpha1.Neighbor{
 						{
 							ASN:     new(int64(65003)),
@@ -353,8 +453,8 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 						NodeSelector: &metav1.LabelSelector{
 							MatchLabels: map[string]string{"rack": "rack-1"},
 						},
-						ASN:  65001,
-						Nics: []string{"eth0"},
+						ASN:        65001,
+						Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
 						Neighbors: []v1alpha1.Neighbor{
 							{
 								ASN:     new(int64(65002)),
@@ -386,8 +486,8 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 						NodeSelector: &metav1.LabelSelector{
 							MatchLabels: map[string]string{"rack": "rack-2"},
 						},
-						ASN:  65001,
-						Nics: []string{"eth0"},
+						ASN:        65001,
+						Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
 						Neighbors: []v1alpha1.Neighbor{
 							{
 								ASN:     new(int64(65002)),
@@ -416,8 +516,8 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 						NodeSelector: &metav1.LabelSelector{
 							MatchLabels: map[string]string{"rack": "rack-1"},
 						},
-						ASN:  65001,
-						Nics: []string{"eth0"},
+						ASN:        65001,
+						Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
 						Neighbors: []v1alpha1.Neighbor{
 							{
 								ASN:     new(int64(65003)),
@@ -432,8 +532,8 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 						NodeSelector: &metav1.LabelSelector{
 							MatchLabels: map[string]string{"zone": "us-east-1a"},
 						},
-						ASN:  65002,
-						Nics: []string{"eth1"},
+						ASN:        65002,
+						Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth1"}}},
 						Neighbors: []v1alpha1.Neighbor{
 							{
 								ASN:     new(int64(65003)),
@@ -469,8 +569,8 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 						NodeSelector: &metav1.LabelSelector{
 							MatchLabels: map[string]string{"rack": "rack-1"},
 						},
-						ASN:  65001,
-						Nics: []string{"eth0"},
+						ASN:        65001,
+						Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
 						Neighbors: []v1alpha1.Neighbor{
 							{
 								ASN:     new(int64(65002)),
@@ -488,8 +588,8 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 						NodeSelector: &metav1.LabelSelector{
 							MatchLabels: map[string]string{"rack": "rack-2"},
 						},
-						ASN:  65002,
-						Nics: []string{"eth1"},
+						ASN:        65002,
+						Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth1"}}},
 						Neighbors: []v1alpha1.Neighbor{
 							{
 								ASN:     new(int64(65003)),
@@ -520,7 +620,7 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 					Spec: v1alpha1.UnderlaySpec{
 						NodeSelector: nil,
 						ASN:          65001,
-						Nics:         []string{"eth0"},
+						Interfaces:   []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
 						Neighbors: []v1alpha1.Neighbor{
 							{
 								ASN:     new(int64(65002)),
@@ -551,7 +651,7 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 					Spec: v1alpha1.UnderlaySpec{
 						NodeSelector: &metav1.LabelSelector{},
 						ASN:          65001,
-						Nics:         []string{"eth0"},
+						Interfaces:   []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
 						Neighbors: []v1alpha1.Neighbor{
 							{
 								ASN:     new(int64(65002)),
@@ -583,8 +683,8 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 						NodeSelector: &metav1.LabelSelector{
 							MatchLabels: map[string]string{"rack": "rack-1"},
 						},
-						ASN:  0, // Invalid ASN
-						Nics: []string{"eth0"},
+						ASN:        0, // Invalid ASN
+						Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
 						Neighbors: []v1alpha1.Neighbor{
 							{
 								ASN:     new(int64(65002)),
@@ -630,7 +730,7 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
 							CIDRs: []string{"invalid-cidr"}, // Invalid VTEP CIDR
 						},
-						Nics: []string{"eth0"},
+						Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
 					},
 				},
 			},
@@ -653,7 +753,7 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 					Spec: v1alpha1.UnderlaySpec{
 						NodeSelector: nil,
 						ASN:          65001,
-						Nics:         []string{"eth0"},
+						Interfaces:   []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
 						Neighbors: []v1alpha1.Neighbor{
 							{
 								ASN:     new(int64(65003)),
@@ -668,8 +768,8 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 						NodeSelector: &metav1.LabelSelector{
 							MatchLabels: map[string]string{"rack": "rack-1"},
 						},
-						ASN:  65002,
-						Nics: []string{"eth1"},
+						ASN:        65002,
+						Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth1"}}},
 						Neighbors: []v1alpha1.Neighbor{
 							{
 								ASN:     new(int64(65003)),
@@ -689,8 +789,8 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "underlay-1"},
 					Spec: v1alpha1.UnderlaySpec{
-						ASN:  65001,
-						Nics: []string{"eth0"},
+						ASN:        65001,
+						Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
 						Neighbors: []v1alpha1.Neighbor{
 							{
 								ASN:     new(int64(65002)),
@@ -735,8 +835,8 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 								"zone": "us-east-1a",
 							},
 						},
-						ASN:  65001,
-						Nics: []string{"eth0"},
+						ASN:        65001,
+						Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
 						Neighbors: []v1alpha1.Neighbor{
 							{
 								ASN:     new(int64(65002)),
@@ -772,7 +872,7 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 						Neighbors: []v1alpha1.Neighbor{
 							{ASN: new(int64(65001))},
 						},
-						Nics: []string{"eth0"},
+						Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
 					},
 				},
 			},
@@ -799,7 +899,7 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 						Neighbors: []v1alpha1.Neighbor{
 							{ASN: new(int64(0)), Type: new("external")},
 						},
-						Nics: []string{"eth0"},
+						Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
 					},
 				},
 			},
@@ -826,7 +926,7 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 						Neighbors: []v1alpha1.Neighbor{
 							{ASN: new(int64(0)), Type: new("internal")},
 						},
-						Nics: []string{"eth0"},
+						Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
 					},
 				},
 			},

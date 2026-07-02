@@ -56,12 +56,10 @@ spec:
         {{- if eq .Values.openperouter.cri "crio" }}
         - --crisocket=/crio.sock
         {{- end }}
-        {{- if .Values.openperouter.multusNetworkAnnotation }}
-        - --underlay-from-multus=true
-        {{- end }}
         {{- with .Values.openperouter.ovsSocketPath }}
         - --ovssocket={{ . }}
         {{- end }}
+        - --cni-cache-dir={{ .Values.openperouter.cniCacheDir }}
         command:
         - /controller
         env:
@@ -132,6 +130,8 @@ spec:
           mountPropagation: HostToContainer
         - mountPath: /var/run/frr
           name: frr-sockets
+        - mountPath: {{ .Values.openperouter.cniCacheDir }}
+          name: cni-cache
       hostNetwork: true
       hostPID: true
       tolerations:
@@ -175,4 +175,8 @@ spec:
           path: /var/run/openperouter/frr
           type: DirectoryOrCreate
         name: frr-sockets
+      - hostPath:
+          path: {{ .Values.openperouter.cniCacheDir }}
+          type: DirectoryOrCreate
+        name: cni-cache
 {{- end }}

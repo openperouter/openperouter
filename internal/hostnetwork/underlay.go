@@ -27,6 +27,10 @@ type UnderlayParams struct {
 	UnderlayInterfaces []string                      `json:"underlay_interfaces"`
 	TargetNS           string                        `json:"target_ns"`
 	TunnelEndpoint     *UnderlayTunnelEndpointParams `json:"tunnel_endpoint"`
+	// CNI, when set, provisions underlay interfaces inside the namespace by
+	// invoking CNI plugins instead of moving existing host devices. It can be
+	// combined with UnderlayInterfaces.
+	CNI *UnderlayCNIParams `json:"cni,omitempty"`
 }
 
 type UnderlayTunnelEndpointParams struct {
@@ -60,14 +64,18 @@ func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
 	// Check if there are existing underlay interfaces that aren't in the new list.
 	// This means the underlay configuration changed and requires rebuilding
 	// the network namespace.
+	expectedInterfaces := slices.Clone(params.UnderlayInterfaces)
+	if params.CNI != nil {
+		expectedInterfaces = append(expectedInterfaces, cniInterfaceNames(params.CNI.Interfaces)...)
+	}
 	existingIfaces, err := findInterfacesInGroup(targetNetNS, underlayGroupID)
 	if err != nil {
 		return fmt.Errorf("failed to check existing underlay interfaces: %w", err)
 	}
 	for _, name := range existingIfaces {
-		if !slices.Contains(params.UnderlayInterfaces, name) {
+		if !slices.Contains(expectedInterfaces, name) {
 			return UnderlayExistsError(fmt.Sprintf(
-				"existing underlay found: %s, new interfaces are %v", name, params.UnderlayInterfaces))
+				"existing underlay found: %s, new interfaces are %v", name, expectedInterfaces))
 		}
 	}
 
@@ -86,6 +94,12 @@ func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
 		if err := moveInterfaceToNamespace(ctx, underlayInterface, defaultNetNSHandle, targetNetNSHandle, targetNetNS,
 			underlayGroupID); err != nil {
 			return err
+		}
+	}
+
+	if params.CNI != nil {
+		if err := setupCNIInterfaces(ctx, targetNetNS, params); err != nil {
+			return fmt.Errorf("failed to setup underlay via cni: %w", err)
 		}
 	}
 

@@ -120,9 +120,6 @@ spec:
     metadata:
       annotations:
         kubectl.kubernetes.io/default-container: frr
-        {{- if .Values.openperouter.multusNetworkAnnotation }}
-        k8s.v1.cni.cncf.io/networks: {{ .Values.openperouter.multusNetworkAnnotation | quote }}
-        {{- end }}
       labels:
         {{- include "openperouter.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: router

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/openperouter/openperouter/internal/netnamespace"
 	"github.com/openperouter/openperouter/internal/systemdctl"
 	"github.com/vishvananda/netns"
@@ -25,6 +26,9 @@ type RouterHostProvider struct {
 	CurrentNodeIndex      int
 	SystemdSocketPath     string
 	RouterHealthCheckPort int
+	// CNIRuntime is the node-level environment used to tear down CNI-backed
+	// underlay interfaces when the router pod is rebuilt.
+	CNIRuntime hostnetwork.CNIRuntime
 }
 
 var _ RouterProvider = (*RouterHostProvider)(nil)
@@ -62,6 +66,14 @@ func (r *RouterHostContainer) TargetNS(ctx context.Context) (string, error) {
 }
 
 func (r *RouterHostContainer) HandleNonRecoverableError(ctx context.Context) error {
+	// Delete the CNI-provisioned underlay interfaces (releasing their IPAM
+	// allocations) and clear their cached attachments before the router pod
+	// netns goes away with the restart, so the next reconcile provisions
+	// them again with a fresh CNI ADD.
+	if err := hostnetwork.RemoveCNIUnderlay(ctx, r.manager.CNIRuntime); err != nil {
+		slog.Warn("failed to delete cni underlay interfaces during non-recoverable cleanup", "error", err)
+	}
+
 	client, err := systemdctl.NewClient()
 	if err != nil {
 		return fmt.Errorf("failed to create systemd client %w", err)

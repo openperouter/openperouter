@@ -38,6 +38,7 @@ import (
 	openpeerrors "github.com/openperouter/openperouter/internal/errors"
 	"github.com/openperouter/openperouter/internal/filter"
 	"github.com/openperouter/openperouter/internal/frrconfig"
+	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/openperouter/openperouter/internal/staticconfiguration"
 	v1 "k8s.io/api/core/v1"
 )
@@ -54,6 +55,10 @@ type PERouterReconciler struct {
 	StaticConfigDir string
 	NodeConfigPath  string
 	RouterProvider  RouterProvider
+
+	// CNIRuntime is the node-level environment used to invoke CNI plugins
+	// for CNI-backed underlay interfaces.
+	CNIRuntime hostnetwork.CNIRuntime
 
 	// TriggerChan receives events from FileWatcher (in host mode)
 	TriggerChan chan event.GenericEvent
@@ -280,6 +285,7 @@ func (r *PERouterReconciler) getConfigFromAPI(ctx context.Context, logger *slog.
 		L2VNIs:        filteredL2VNIs,
 		L3Passthrough: filteredL3Passthrough,
 		RawFRRConfigs: filteredRawFRRConfigs,
+		CNIRuntime:    r.CNIRuntime,
 	}
 
 	return apiConfig, nil

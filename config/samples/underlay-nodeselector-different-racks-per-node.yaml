@@ -13,8 +13,10 @@ spec:
   tunnelEndpoint:
     cidrs:
     - 100.65.1.0/24
-  nics:
-    - toswitch1
+  interfaces:
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: toswitch1
   neighbors:
     - asn: 64500
       address: 192.168.1.254  # ToR switch for rack 1
@@ -36,8 +38,10 @@ spec:
   tunnelEndpoint:
     cidrs:
     - 100.65.2.0/24
-  nics:
-    - toswitch1
+  interfaces:
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: toswitch1
   neighbors:
     - asn: 64500
       address: 192.168.2.254  # ToR switch for rack 2

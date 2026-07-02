@@ -424,8 +424,8 @@ var _ = Describe("Routes between bgp and the fabric with iBGP testing e2e integr
 			Namespace: openperouter.Namespace,
 		},
 		Spec: v1alpha1.UnderlaySpec{
-			ASN:  64512,
-			Nics: []string{"toswitch1", "toswitch2"},
+			ASN:        64512,
+			Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch1"}}, {Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch2"}}},
 			Neighbors: []v1alpha1.Neighbor{
 				{
 					Type:    new("internal"),

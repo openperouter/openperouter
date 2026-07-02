@@ -59,10 +59,6 @@ spec:
                 - error
                 - none
                 type: string
-              multusNetworkAnnotation:
-                description: multusNetworkAnnotation specifies the Multus network
-                  annotation to be added to the router pod.
-                type: string
               ovsRunDir:
                 description: 'ovsRunDir specifies the OVS run directory to mount.
                   This is the directory containing the OVS socket. (default: /var/run/openvswitch)'

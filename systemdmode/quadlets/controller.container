@@ -56,6 +56,11 @@ Volume=/run/dbus/system_bus_socket:/host/dbus/system_bus_socket:rw
 # The directory is pre-created by ExecStartPre if it doesn't exist.
 Volume=/var/run/openvswitch:/var/run/openvswitch:rshared
 
+# CNI result cache for CNI-backed underlay interfaces - must outlive the
+# controller container so CNI DEL keeps working across restarts. Living
+# under /var/run, it is cleared on reboot together with the router netns.
+Volume=/var/run/openperouter:/var/run/openperouter:rshared
+
 # Environment variables
 Environment=KUBECONFIG=/shared/kubeconfig
 

@@ -830,8 +830,8 @@ var _ = Describe("Underlay BFD Configuration", Ordered, func() {
 					Namespace: openperouter.Namespace,
 				},
 				Spec: v1alpha1.UnderlaySpec{
-					ASN:  64514,
-					Nics: []string{"toswitch1"},
+					ASN:        64514,
+					Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch1"}}},
 					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
 						CIDRs: []string{"100.65.0.0/24"},
 					},
@@ -851,8 +851,8 @@ var _ = Describe("Underlay BFD Configuration", Ordered, func() {
 					Namespace: openperouter.Namespace,
 				},
 				Spec: v1alpha1.UnderlaySpec{
-					ASN:  64514,
-					Nics: []string{"toswitch1"},
+					ASN:        64514,
+					Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch1"}}},
 					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
 						CIDRs: []string{"100.65.0.0/24"},
 					},
@@ -912,8 +912,8 @@ var _ = Describe("Add extra neighbor", Ordered, func() {
 				Namespace: openperouter.Namespace,
 			},
 			Spec: v1alpha1.UnderlaySpec{
-				ASN:  64514,
-				Nics: []string{"toswitch1"},
+				ASN:        64514,
+				Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch1"}}},
 				Neighbors: []v1alpha1.Neighbor{
 					{
 						ASN:     new(int64(64512)),
@@ -962,7 +962,10 @@ var _ = Describe("Add extra neighbor", Ordered, func() {
 			ASN:     new(int64(64513)),
 			Address: new("192.168.12.2"),
 		})
-		twoNeighborUnderlay.Spec.Nics = []string{"toswitch1", "toswitch2"}
+		twoNeighborUnderlay.Spec.Interfaces = []v1alpha1.UnderlayInterface{
+			{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch1"}},
+			{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch2"}},
+		}
 		err = Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{*twoNeighborUnderlay},
 		})

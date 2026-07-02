@@ -39,9 +39,6 @@ type OpenPERouterSpec struct {
 	// +optional
 	// +kubebuilder:validation:Enum=all;debug;info;warn;error;none
 	LogLevel *LogLevel `json:"logLevel,omitempty"`
-	// multusNetworkAnnotation specifies the Multus network annotation to be added to the router pod.
-	// +optional
-	MultusNetworkAnnotation *string `json:"multusNetworkAnnotation,omitempty"`
 	// runOnMaster determines if all pods (router, controller, and nodemarker) will run on master/control-plane nodes. (default: true)
 	// +optional
 	// +default=true

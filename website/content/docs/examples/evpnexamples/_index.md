@@ -53,8 +53,10 @@ spec:
   tunnelEndpoint:
     cidrs:
     - 100.65.0.0/24
-  nics:
-    - toswitch
+  interfaces:
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: toswitch
   neighbors:
     - asn: 64512
       address: 192.168.11.2
