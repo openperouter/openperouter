@@ -120,23 +120,25 @@ function dump_resource() {
 function dump_pod_logs() {
 	local -r ctl="$1"
 	local -r dir="$2"
+	local -r opts="$3"
 
 	mkdir -p "$dir"
 
 	local -r pods="$($ctl get pods -o jsonpath='{.items[*].metadata.name}')"
-	local logfile
+	local logfile ctl_logs
 	for p in $pods; do
 		local containers=()
 		containers=("$($ctl get pods "$p" -o jsonpath='{.spec.containers[*].name}')")
 		containers+=("$($ctl get pods "$p" -o jsonpath='{.spec.initContainers[*].name}')")
 		for c in ${containers[@]}; do
 			logfile="${dir}/${p}_${c}.log"
-			$ctl logs "$p" -c "$c" > "$logfile"
+			ctl_logs="$ctl logs $p -c $c $opts"
+			$ctl_logs > "$logfile"
 			echo "Dumped logs for [$p/$c] to [$logfile]"
 
-			if $ctl logs "$p" -c "$c" --previous &> /dev/null; then
-				logfile="${dir}/${p}_${c}_previous.log"	
-				$ctl logs "$p" -c "$c" --previous > "$logfile"
+			if $ctl_logs --previous &> /dev/null; then
+				logfile="${dir}/${p}_${c}_previous.log"
+				$ctl_logs --previous > "$logfile"
 				echo "Dumped previous logs for [$p/$c] to [$logfile]"
 			fi
 		done
@@ -182,6 +184,7 @@ Options:
   --namespace   OpenPERouter system namespace name (default: "openperouter-system")
   --dest-dir    The directory to store artifacts (default: "openperouter-inspect")
   --k8s-client  Kubernetes client binary path (default: "kubectl")
+  --since       Collect pod logs newer then relative duration, e.g.: 5s, 10m, 2h.
   -h, --help    Show this help message and exit
 EOF
 }
@@ -189,12 +192,14 @@ EOF
 NAMESPACE="openperouter-system"
 ARTIFACTS_DIR="./openperouter-inspect"
 CTL_BIN="kubectl"
+SINCE_DURATION=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --namespace=*)   NAMESPACE="${1#*=}" ;;
         --dest-dir=*)    ARTIFACTS_DIR="${1#*=}" ;;
         --k8s-client=*)  CTL_BIN="${1#*=}" ;;
+        --since=*)       SINCE_DURATION="${1#*=}" ;;
         -h | --help)     help; exit 0 ;;
         *) echo "Unknown option: $1"; help; exit 1 ;;
     esac
@@ -209,6 +214,11 @@ if ! "${CTL_BIN}" get ns "${NAMESPACE}" &> /dev/null; then
 	echo "FATAL: '${NAMESPACE}' namespace not found. Make sure KUBECONFIG is set correctly." && exit 1
 fi
 
+log_opts=""
+if [[ -n $SINCE_DURATION ]]; then
+  log_opts="--since $SINCE_DURATION"
+fi
+
 mkdir -p "${ARTIFACTS_DIR}"
 date --rfc-3339=ns > "${ARTIFACTS_DIR}/timestamp"
 
@@ -216,10 +226,10 @@ date --rfc-3339=ns > "${ARTIFACTS_DIR}/timestamp"
 	readonly CTL="${CTL_BIN} -n ${NAMESPACE}"
 	readonly NS_DIR="${ARTIFACTS_DIR}/${NAMESPACE}"
 	set +e
-	dump_overview  "${CTL}" "${NS_DIR}/overview" 
+	dump_overview  "${CTL}" "${NS_DIR}/overview"
 	dump_core_resources_from_ns       "${CTL_BIN}" "${NAMESPACE}" "${ARTIFACTS_DIR}"
 	dump_config_resources_from_all_ns "${CTL_BIN}" "${ARTIFACTS_DIR}"
-	dump_pod_logs  "${CTL}" "${NS_DIR}/pod_logs"  
+	dump_pod_logs  "${CTL}" "${NS_DIR}/pod_logs" "${log_opts}"
 	dump_node_info "${CTL}" "${ARTIFACTS_DIR}/node_info"
 ) 2>&1 | tee -a "${ARTIFACTS_DIR}/inspect.log"
 

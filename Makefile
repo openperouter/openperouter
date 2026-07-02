@@ -703,7 +703,7 @@ grout-docker-build: docker-build
 INSPECT_DIR ?= /tmp/openperouter-inspect
 .PHONY: inspect
 inspect:
-	tools/inspect/inspect --k8s-client=$(KUBECTL) --namespace=$(NAMESPACE) --dest-dir=$(INSPECT_DIR)
+	tools/inspect/inspect --k8s-client=$(KUBECTL) --namespace=$(NAMESPACE) --dest-dir=$(INSPECT_DIR) --since=$(SINCE)
 
 HOST_INSPECT_DIR = /openperouter-inspect-host
 .PHONY: inspect-host

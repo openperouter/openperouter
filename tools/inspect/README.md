@@ -19,6 +19,9 @@ $ ./inspect --dest-dir=mydir --k8s-client=oc
 # override openperouter namespace
 $ ./inspect --dest-dir=mydir --namespace=myns --k8s-client=oc
 
+# collect logs since relative time duration
+$ ./inspect --since=3m
+
 # via global Make target
 $ make inspect
 
@@ -27,7 +30,8 @@ $ KUBECONFIG_PATH=$KUBECONFIG \
     make inspect \
       NAMESPACE=myns \
       KUBECTL=oc \
-      INSPECT_DIR=./art
+      INSPECT_DIR=./art \
+      SINCE=3m
 ```
 **Note:** Options must be specified with `=`.
 
@@ -37,6 +41,7 @@ $ KUBECONFIG_PATH=$KUBECONFIG \
 | `--namespace`  | OpenPERouter namespace                                            | `openperouter-system`  |
 | `--dest-dir`   | Output directory path                                             | `openperouter-inspect` |
 | `--k8s-client` | Kubernetes client                                                 | `kubectl`              |
+| `--since`      | Collect pod logs newer then relative duration (e.g.: 5s, 10m, 2h) |                        |
 | `-h`, `--help` | Print usage instructions                                          |                        |
 
 ## Output
