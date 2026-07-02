@@ -62,6 +62,8 @@ spec:
         {{- with .Values.openperouter.ovsSocketPath }}
         - --ovssocket={{ . }}
         {{- end }}
+        - --cni-bin-dir={{ .Values.openperouter.controller.cniBinDir | default "/opt/openperouter/cni/bin/" }}
+        - --cni-cache-dir={{ .Values.openperouter.controller.cniCacheDir | default "/var/lib/openperouter/cni/cache" }}
         command:
         - /controller
         env:
@@ -132,6 +134,8 @@ spec:
           mountPropagation: HostToContainer
         - mountPath: /var/run/frr
           name: frr-sockets
+        - mountPath: {{ .Values.openperouter.controller.cniCacheDir | default "/var/lib/openperouter/cni/cache" }}
+          name: cni-cache
       hostNetwork: true
       hostPID: true
       tolerations:
@@ -175,4 +179,8 @@ spec:
           path: /var/run/openperouter/frr
           type: DirectoryOrCreate
         name: frr-sockets
+      - hostPath:
+          path: {{ .Values.openperouter.controller.cniCacheDir | default "/var/lib/openperouter/cni/cache" }}
+          type: DirectoryOrCreate
+        name: cni-cache
 {{- end }}

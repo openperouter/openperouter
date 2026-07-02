@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"k8s.io/apimachinery/pkg/labels"
@@ -48,6 +49,7 @@ import (
 	"github.com/openperouter/openperouter/api/static"
 	periov1alpha1 "github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/buildversion"
+	"github.com/openperouter/openperouter/internal/cni"
 	"github.com/openperouter/openperouter/internal/controller/routerconfiguration"
 	"github.com/openperouter/openperouter/internal/filewatcher"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
@@ -97,6 +99,8 @@ type parameters struct {
 	nodeName       string
 	namespace      string
 	logLevel       string
+	cniBinDir      string
+	cniCacheDir    string
 }
 
 func main() {
@@ -132,6 +136,10 @@ func main() {
 		systemdctl.HostDBusSocket, "the path of systemd control socket")
 	flag.IntVar(&hostModeParams.routerHealthCheckPort, "router-health-check-port",
 		9080, "the port for router health check endpoint")
+	flag.StringVar(&args.cniBinDir, "cni-bin-dir", "/opt/openperouter/cni/bin/",
+		"colon-separated list of directories to search for CNI plugin binaries")
+	flag.StringVar(&args.cniCacheDir, "cni-cache-dir", "/var/lib/openperouter/cni/cache",
+		"directory to store CNI result cache")
 
 	flag.Parse()
 
@@ -146,6 +154,11 @@ func main() {
 	ctrl.SetLogger(logr.FromSlogHandler(logger.Handler()))
 	setupLog.Info("version", "version", buildversion.Version())
 	setupLog.Info("arguments", "args", fmt.Sprintf("%+v", args))
+
+	cniPluginDirs := strings.Split(args.cniBinDir, ":")
+	cniInvoker := cni.NewInvoker(cniPluginDirs, args.cniCacheDir)
+	setupLog.Info("CNI plugin invoker initialized", "pluginDirs", cniInvoker.PluginDirs(), "cacheDir", args.cniCacheDir)
+	_ = cniInvoker
 
 	// Setup signal handler once for the entire process
 	ctx := ctrl.SetupSignalHandler()
