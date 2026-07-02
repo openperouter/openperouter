@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -68,6 +69,12 @@ var _ = ginkgo.BeforeSuite(func() {
 	reporter, err := k8s.InitReporter(kubeconfig, tests.ReportPath, openperouter.Namespace, frrk8s.Namespace)
 	Expect(err).NotTo(HaveOccurred(), "failed to initialize k8s reporter (kubeconfig=%s)", kubeconfig)
 	tests.K8sReporter = reporter
+
+	cs := k8sclient.New()
+	ginkgo.By("validating CNI binaries and cache directory in controller")
+	Eventually(func(g Gomega) {
+		tests.ValidateCNIBinaries(g, cs)
+	}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
 })
 
 var _ = ginkgo.AfterSuite(func() {

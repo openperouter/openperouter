@@ -28,6 +28,18 @@ import (
 
 var ValidatorPath string
 
+var cniBinaries = []string{"macvlan", "ipvlan", "static", "dhcp"}
+
+const (
+	cniBinDir   = "/opt/openperouter/cni/bin"
+	cniCacheDir = "/var/lib/openperouter/cni/cache"
+)
+
+type cniTarget struct {
+	exec  executor.Executor
+	label string
+}
+
 const (
 	underlayConfiguredTestSelector      = "EXTERNAL.*underlay.* is configured.*"
 	underlayNotConfiguredTestSelector   = "EXTERNAL.*underlay.* is not configured.*"
@@ -1492,4 +1504,50 @@ func routerPodsWithValidator(cs clientset.Interface) ([]*corev1.Pod, error) {
 		ensureValidator(cs, pod)
 	}
 	return routerPods, nil
+}
+
+func ValidateCNIBinaries(g Gomega, cs clientset.Interface) {
+	cniTargets := k8sModeCNITarget
+	if HostMode {
+		cniTargets = hostModeCNITarget
+	}
+	for _, t := range cniTargets(g, cs) {
+		for _, bin := range cniBinaries {
+			path := cniBinDir + "/" + bin
+			out, err := t.exec.Exec("test", "-x", path)
+			g.Expect(err).NotTo(HaveOccurred(), "CNI binary %s missing or not executable on %s: %s", path, t.label, out)
+		}
+
+		out, err := t.exec.Exec("test", "-d", cniCacheDir)
+		g.Expect(err).NotTo(HaveOccurred(), "CNI cache directory %s missing on %s: %s", cniCacheDir, t.label, out)
+		out, err = t.exec.Exec("test", "-w", cniCacheDir)
+		g.Expect(err).NotTo(HaveOccurred(), "CNI cache directory %s not writable on %s: %s", cniCacheDir, t.label, out)
+	}
+}
+
+func k8sModeCNITarget(g Gomega, cs clientset.Interface) []cniTarget {
+	pods, err := openperouter.ControllerPods(cs)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(pods).NotTo(BeEmpty(), "no controller pods found")
+	targets := make([]cniTarget, 0, len(pods))
+	for _, pod := range pods {
+		targets = append(targets, cniTarget{
+			exec:  executor.ForPod(pod.Namespace, pod.Name, "controller"),
+			label: pod.Name,
+		})
+	}
+	return targets
+}
+
+func hostModeCNITarget(g Gomega, cs clientset.Interface) []cniTarget {
+	nodes, err := k8s.GetNodes(cs)
+	g.Expect(err).NotTo(HaveOccurred())
+	targets := make([]cniTarget, 0, len(nodes))
+	for _, node := range nodes {
+		targets = append(targets, cniTarget{
+			exec:  executor.ForPodmanInContainer(node.Name, "controller"),
+			label: node.Name,
+		})
+	}
+	return targets
 }

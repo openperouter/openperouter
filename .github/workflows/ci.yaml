@@ -184,6 +184,13 @@ jobs:
           outputs: type=docker,dest=/tmp/openperouter.tar
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Load image for verification
+        run: docker load -i /tmp/openperouter.tar
+
+      - name: Verify CNI binaries in image
+        run: hack/verify-cni-binaries.sh docker quay.io/openperouter/router:main
+
       - name: Upload openperouter artifact
         uses: actions/upload-artifact@v7
         with:
