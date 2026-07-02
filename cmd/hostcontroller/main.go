@@ -49,7 +49,6 @@ import (
 	"github.com/openperouter/openperouter/api/static"
 	periov1alpha1 "github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/buildversion"
-	"github.com/openperouter/openperouter/internal/cni"
 	"github.com/openperouter/openperouter/internal/controller/nodeindex"
 	"github.com/openperouter/openperouter/internal/controller/routerconfiguration"
 	"github.com/openperouter/openperouter/internal/filewatcher"
@@ -183,9 +182,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	cniInvoker := cni.NewInvoker(cniPluginDirs, args.cniCacheDir)
-	setupLog.Info("CNI plugin invoker initialized", "pluginDirs", cniInvoker.PluginDirs(), "cacheDir", args.cniCacheDir)
-	_ = cniInvoker
+	setupLog.Info("CNI plugin invoker initialized", "pluginDirs", cniPluginDirs, "cacheDir", args.cniCacheDir)
 
 	// Setup signal handler once for the entire process
 	ctx := ctrl.SetupSignalHandler()
