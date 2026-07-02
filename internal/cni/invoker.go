@@ -81,6 +81,24 @@ func (e ConfigMismatchError) Error() string {
 		"delete and recreate the Underlay to change it", e.IfName)
 }
 
+// validateCachedAttachment checks whether the cached attachment matches the
+// requested config and capability arguments, returning a ConfigMismatchError
+// when they differ.
+func validateCachedAttachment(attachment *libcni.NetworkAttachment, p AddParams) error {
+	sameConfig, err := jsonEqual(attachment.Config, p.Config)
+	if err != nil {
+		return fmt.Errorf("failed to compare cni config for %q: %w", p.IfName, err)
+	}
+	sameCapabilityArgs, err := capabilityArgsEqual(attachment.CapabilityArgs, p.CapabilityArgs)
+	if err != nil {
+		return fmt.Errorf("failed to compare cni capability args for %q: %w", p.IfName, err)
+	}
+	if !sameConfig || !sameCapabilityArgs {
+		return ConfigMismatchError{IfName: p.IfName}
+	}
+	return nil
+}
+
 // Add invokes CNI ADD for the configured network into AddParams.NetNS. It is
 // idempotent through the libcni result cache: when an attachment for
 // (containerID, IfName) is already cached with the same config and capability
@@ -100,19 +118,7 @@ func (inv *Invoker) Add(ctx context.Context, p AddParams) error {
 		return n.IfName == p.IfName
 	})
 	if idx >= 0 {
-		attachment := cached[idx]
-		sameConfig, err := jsonEqual(attachment.Config, p.Config)
-		if err != nil {
-			return fmt.Errorf("failed to compare cni config for %q: %w", p.IfName, err)
-		}
-		sameCapabilityArgs, err := capabilityArgsEqual(attachment.CapabilityArgs, p.CapabilityArgs)
-		if err != nil {
-			return fmt.Errorf("failed to compare cni capability args for %q: %w", p.IfName, err)
-		}
-		if !sameConfig || !sameCapabilityArgs {
-			return ConfigMismatchError{IfName: p.IfName}
-		}
-		return nil
+		return validateCachedAttachment(cached[idx], p)
 	}
 
 	confList, err := libcni.NetworkConfFromBytes(p.Config)
