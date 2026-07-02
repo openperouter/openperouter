@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"time"
 
 	"k8s.io/apimachinery/pkg/labels"
@@ -97,6 +98,18 @@ type parameters struct {
 	nodeName       string
 	namespace      string
 	logLevel       string
+	cniBinDir      string
+	cniCacheDir    string
+}
+
+// cniRuntime builds the node-level CNI invocation environment used to
+// provision (and tear down) CNI-backed underlay interfaces.
+func (p parameters) cniRuntime() hostnetwork.CNIRuntime {
+	return hostnetwork.CNIRuntime{
+		BinDirs:     filepath.SplitList(p.cniBinDir),
+		CacheDir:    p.cniCacheDir,
+		ContainerID: hostnetwork.CNIContainerIDForNode(p.nodeName),
+	}
 }
 
 func main() {
@@ -132,6 +145,13 @@ func main() {
 		systemdctl.HostDBusSocket, "the path of systemd control socket")
 	flag.IntVar(&hostModeParams.routerHealthCheckPort, "router-health-check-port",
 		9080, "the port for router health check endpoint")
+	flag.StringVar(&args.cniBinDir, "cni-bin-dir", "/opt/openperouter/cni/bin",
+		"the list of directories searched for CNI plugin binaries, colon separated")
+	flag.StringVar(&args.cniCacheDir, "cni-cache-dir", "/var/run/openperouter/cni-cache",
+		"the directory used by libcni to cache CNI results; it must outlive the controller process "+
+			"so CNI DEL keeps working across restarts, and it must be dedicated to openperouter: "+
+			"another CNI runtime's cache dir (e.g. /var/lib/cni) could purge the cached attachments "+
+			"when garbage collecting")
 
 	flag.Parse()
 
@@ -263,6 +283,7 @@ func runK8sConfigReconcilerHostMode(ctx context.Context,
 		CurrentNodeIndex:      nodeConfig.NodeIndex,
 		SystemdSocketPath:     hostModeParams.systemdSocketPath,
 		RouterHealthCheckPort: hostModeParams.routerHealthCheckPort,
+		CNIRuntime:            args.cniRuntime(),
 	}
 
 	// Create trigger channels for both controllers
@@ -281,6 +302,7 @@ func runK8sConfigReconcilerHostMode(ctx context.Context,
 		RouterProvider:  routerProvider,
 		StaticConfigDir: hostModeParams.configurationDir,
 		NodeConfigPath:  hostModeParams.nodeConfigPath,
+		CNIRuntime:      args.cniRuntime(),
 		TriggerChan:     triggerChan,
 	}
 
@@ -358,6 +380,7 @@ func runK8sConfigReconciler(ctx context.Context,
 		FRRReloadSocket: args.reloaderSocket,
 		Client:          mgr.GetClient(),
 		Node:            args.nodeName,
+		CNIRuntime:      args.cniRuntime(),
 	}
 
 	apiReconciler := &routerconfiguration.PERouterReconciler{
@@ -370,6 +393,7 @@ func runK8sConfigReconciler(ctx context.Context,
 		FRRConfigPath:   args.frrConfigPath,
 		RouterProvider:  routerProvider,
 		MyNamespace:     args.namespace,
+		CNIRuntime:      args.cniRuntime(),
 	}
 
 	if err := apiReconciler.SetupWithManager(mgr); err != nil {
@@ -407,6 +431,7 @@ func runStaticConfigReconciler(ctx context.Context,
 		CurrentNodeIndex:      nodeConfig.NodeIndex,
 		SystemdSocketPath:     hostModeParams.systemdSocketPath,
 		RouterHealthCheckPort: hostModeParams.routerHealthCheckPort,
+		CNIRuntime:            args.cniRuntime(),
 	}
 
 	staticReconciler := &routerconfiguration.StaticConfigReconciler{
@@ -420,6 +445,7 @@ func runStaticConfigReconciler(ctx context.Context,
 		ConfigDir:       hostModeParams.configurationDir,
 		MyNode:          args.nodeName,
 		MyNamespace:     args.namespace,
+		CNIRuntime:      args.cniRuntime(),
 	}
 	if err = staticReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create controller: %w", err)

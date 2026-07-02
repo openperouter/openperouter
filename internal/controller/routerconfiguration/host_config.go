@@ -34,14 +34,7 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 		return fmt.Errorf("failed to check if target namespace %s has underlay: %w", config.targetNamespace, err)
 	}
 	if hasAlreadyUnderlay && len(config.Underlays) == 0 {
-		slog.InfoContext(ctx, "underlay removed, cleaning up VNIs and underlay interfaces")
-		if err := hostnetwork.RemoveAllVNIs(config.targetNamespace); err != nil {
-			slog.Warn("failed to remove vnis after underlay removal", "err", err)
-		}
-		bridgerefresh.StopAllVNIs()
-		if err := hostnetwork.RestoreUnderlay(ctx, config.targetNamespace); err != nil {
-			slog.Warn("failed to remove underlay interfaces after underlay removal", "err", err)
-		}
+		cleanupRemovedUnderlay(ctx, config)
 		return nil
 	}
 
@@ -56,6 +49,7 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 		L3VNIs:        config.L3VNIs,
 		L2VNIs:        config.L2VNIs,
 		L3Passthrough: config.L3Passthrough,
+		CNIRuntime:    config.CNIRuntime,
 	}
 	hostConfig, err := conversion.APItoHostConfig(config.nodeIndex, config.targetNamespace, apiConfig)
 	if err != nil {
@@ -167,4 +161,23 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 func nonRecoverableHostError(e error) bool {
 	underlayExistsError := hostnetwork.UnderlayExistsError("")
 	return errors.As(e, &underlayExistsError)
+}
+
+// cleanupRemovedUnderlay tears down all the host configuration when the
+// underlay is removed. CNI-provisioned interfaces are deleted through the CNI
+// cache (the underlay defining them is gone) so their IPAM allocations are
+// released; the remaining underlay devices are moved back to the host.
+// Failures are logged and the cleanup continues.
+func cleanupRemovedUnderlay(ctx context.Context, config interfacesConfiguration) {
+	slog.InfoContext(ctx, "underlay removed, cleaning up VNIs and underlay interfaces")
+	if err := hostnetwork.RemoveAllVNIs(config.targetNamespace); err != nil {
+		slog.Warn("failed to remove vnis after underlay removal", "err", err)
+	}
+	bridgerefresh.StopAllVNIs()
+	if err := hostnetwork.RemoveCNIUnderlay(ctx, config.CNIRuntime); err != nil {
+		slog.Warn("failed to remove cni underlay interfaces after underlay removal", "err", err)
+	}
+	if err := hostnetwork.RestoreUnderlay(ctx, config.targetNamespace); err != nil {
+		slog.Warn("failed to remove underlay interfaces after underlay removal", "err", err)
+	}
 }

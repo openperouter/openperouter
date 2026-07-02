@@ -11,6 +11,7 @@ import (
 	"strconv"
 
 	"github.com/openperouter/openperouter/internal/controller/nodeindex"
+	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/openperouter/openperouter/internal/hostnetwork/bridgerefresh"
 	"github.com/openperouter/openperouter/internal/netnamespace"
 	"github.com/vishvananda/netns"
@@ -23,6 +24,9 @@ type RouterNamedNSProvider struct {
 	Node            string
 	FRRConfigPath   string
 	FRRReloadSocket string
+	// CNIRuntime is the node-level environment used to tear down CNI-backed
+	// underlay interfaces when the netns is rebuilt.
+	CNIRuntime hostnetwork.CNIRuntime
 	client.Client
 }
 
@@ -103,6 +107,14 @@ func (r *RouterNamedNS) CanReconcile(_ context.Context) (bool, error) {
 func (r *RouterNamedNS) HandleNonRecoverableError(ctx context.Context) error {
 	slog.Info("stopping bridge refreshers before netns cleanup")
 	bridgerefresh.StopAllVNIs()
+
+	// Delete the CNI-provisioned underlay interfaces (releasing their IPAM
+	// allocations) and clear their cached attachments before the netns goes
+	// away, so the rebuilt namespace starts from scratch and the next
+	// reconcile provisions them again with a fresh CNI ADD.
+	if err := hostnetwork.RemoveCNIUnderlay(ctx, r.manager.CNIRuntime); err != nil {
+		slog.Warn("failed to delete cni underlay interfaces during non-recoverable cleanup", "error", err)
+	}
 
 	// Delete the named netns so the next pod starts with a clean namespace
 	// rebuilt from scratch by the controller. Without this, the persistent
