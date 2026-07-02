@@ -249,6 +249,39 @@ func (l LeafKind) UpdateConfig(nodes []corev1.Node, config LeafKindConfiguration
 	return l.ReloadConfig(configString)
 }
 
+// Configure renders and reloads the leafkind configuration with the neighbors
+// set explicitly in config instead of deriving them from the node addresses,
+// defaulting the unset fields.
+func (l LeafKind) Configure(config LeafKindConfiguration) error {
+	if len(config.BGPAddressFamilies) == 0 {
+		config.BGPAddressFamilies = []networklayerprotocol.NLP{
+			{
+				AFI:  networklayerprotocol.IPv4,
+				SAFI: networklayerprotocol.Unicast,
+			},
+		}
+	}
+	if config.PERouterASN == 0 {
+		config.PERouterASN = 64514
+	}
+	if config.ASN == 0 {
+		config.ASN = l.ASN
+	}
+	if config.SpinePeerAddress == "" {
+		config.SpinePeerAddress = l.SpinePeerAddress
+	}
+	if config.ToSwitchInterface == "" {
+		config.ToSwitchInterface = l.ToSwitchInterface
+	}
+
+	configString, err := LeafKindConfigToFRR(config)
+	if err != nil {
+		return err
+	}
+
+	return l.ReloadConfig(configString)
+}
+
 func (l Leaf) Configure(leafConfig LeafConfiguration) error {
 	leafConfig.Leaf = l
 

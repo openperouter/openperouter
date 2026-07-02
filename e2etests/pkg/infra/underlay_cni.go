@@ -1,0 +1,110 @@
+// SPDX-License-Identifier:Apache-2.0
+
+package infra
+
+import (
+	"fmt"
+
+	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/openperouter/openperouter/api/v1alpha1"
+	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
+)
+
+const (
+	// CNIUnderlayInterface is the name of the interface the CNI plugin
+	// creates inside the router netns for CNI provisioned underlays.
+	CNIUnderlayInterface = "underlay0"
+
+	// CNIUnderlayASN is the local AS number of the CNI provisioned underlays.
+	CNIUnderlayASN = 64514
+)
+
+// CNIUnderlayNeighborIP returns the static IP assigned to the CNI-provisioned
+// underlay interface of the i-th node, on the subnet shared with leafkind1.
+// The .10+ addresses are clear of the ones the dev environment assigns
+// (leaf .2, nodes .3/.4).
+func CNIUnderlayNeighborIP(nodeIndex int) string {
+	return fmt.Sprintf("192.168.11.%d", 10+nodeIndex)
+}
+
+// CNIUnderlaysForNodes builds one node-scoped Underlay per node, whose
+// interface is provisioned by the macvlan CNI plugin on top of toswitch1
+// (which stays in the host netns) with a per-node static IP. The node index
+// used for addressing is the position in the given slice, so callers must
+// pass a deterministic order.
+func CNIUnderlaysForNodes(nodes []corev1.Node, ifName string) []v1alpha1.Underlay {
+	underlays := make([]v1alpha1.Underlay, 0, len(nodes))
+	for i, node := range nodes {
+		underlays = append(underlays, cniUnderlayForNode(i, node, ifName))
+	}
+	return underlays
+}
+
+// cniUnderlayForNode builds the node-scoped Underlay of the i-th node for
+// the CNI provisioned underlay flavor.
+func cniUnderlayForNode(nodeIndex int, node corev1.Node, ifName string) v1alpha1.Underlay {
+	rawConfig := fmt.Sprintf(`{
+  "cniVersion": "1.0.0",
+  "name": "macvlan-underlay",
+  "plugins": [
+    {
+      "type": "macvlan",
+      "master": "toswitch1",
+      "mode": "bridge",
+      "ipam": {
+        "type": "static",
+        "addresses": [
+          {"address": "%s/24"}
+        ]
+      }
+    }
+  ]
+}`, CNIUnderlayNeighborIP(nodeIndex))
+
+	return v1alpha1.Underlay{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("underlay-cni-%d", nodeIndex),
+			Namespace: openperouter.Namespace,
+		},
+		Spec: v1alpha1.UnderlaySpec{
+			ASN: CNIUnderlayASN,
+			NodeSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{"kubernetes.io/hostname": node.Name},
+			},
+			Interfaces: []v1alpha1.UnderlayInterface{
+				{
+					Type: v1alpha1.UnderlayInterfaceTypeCNIDevice,
+					CNIDevice: &v1alpha1.CNIDevice{
+						Type:          v1alpha1.CNIConfigTypeRawConfig,
+						RawConfig:     &apiextensionsv1.JSON{Raw: []byte(rawConfig)},
+						InterfaceName: new(ifName),
+					},
+				},
+			},
+			Neighbors: []v1alpha1.Neighbor{
+				{
+					ASN:     new(int64(64512)),
+					Address: new("192.168.11.2"),
+				},
+			},
+			TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+				CIDRs: []string{"100.65.0.0/24"},
+			},
+		},
+	}
+}
+
+// ConfigureLeafKind1ForCNIUnderlay points leafkind1 at the static addresses
+// of the CNI provisioned interfaces, since the standard leaf configuration
+// only knows the node addresses. There are no sessions on the leafkind2 side,
+// which keeps the standard configuration.
+func ConfigureLeafKind1ForCNIUnderlay(nodes []corev1.Node) error {
+	neighbors := make([]Neighbor, 0, len(nodes))
+	for i := range nodes {
+		neighbors = append(neighbors, Neighbor{ID: CNIUnderlayNeighborIP(i)})
+	}
+	return LeafKind1Config.Configure(LeafKindConfiguration{Neighbors: neighbors})
+}
