@@ -56,10 +56,6 @@ interface eth1
   ipv6 router isis ISIS
 exit
 !
-interface toswitch1
-  ipv6 router isis ISIS
-exit
-!
-interface toswitch2
+interface {{ .ToSwitchInterface }}
   ipv6 router isis ISIS
 exit

@@ -34,6 +34,7 @@ generate_leaf_configs() {
         -leaf singlecluster/leafkind1 -asn 64512 -spine-ip 192.168.1.4 \
         -ipv4-listen-range 192.168.11.0/24 -ipv6-listen-range 2001:db8:11::/64 \
         -isis-net 49.0001.0000.0000.0004.00 \
+        -toswitch-interface toswitch1 \
         -template generate_leaf_config/frr_template/leafkind.conf.template
 
     # leafkind2: ASN 64513, spine at 192.168.1.6, listen ranges 192.168.12.0/24 (IPv4) and 2001:db8:12::/64 (IPv6)
@@ -42,6 +43,7 @@ generate_leaf_configs() {
         -leaf singlecluster/leafkind2 -asn 64513 -spine-ip 192.168.1.6 \
         -ipv4-listen-range 192.168.12.0/24 -ipv6-listen-range 2001:db8:12::/64 \
         -isis-net 49.0001.0000.0000.0005.00 \
+        -toswitch-interface toswitch2 \
         -template generate_leaf_config/frr_template/leafkind.conf.template
 
     popd

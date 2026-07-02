@@ -13,11 +13,12 @@ import (
 )
 
 type LeafKindConfig struct {
-	ASN             int
-	SpineIP         string
-	IPv4ListenRange string
-	IPv6ListenRange string
-	ISISNet         string
+	ASN               int
+	SpineIP           string
+	IPv4ListenRange   string
+	IPv6ListenRange   string
+	ISISNet           string
+	ToSwitchInterface string
 }
 
 const usage = `Usage:
@@ -39,19 +40,20 @@ Example:
 
 func main() {
 	var (
-		leafName        = flag.String("leaf", "", "LeafKind name (e.g., leafkind1, leafkind2)")
-		asn             = flag.Int("asn", 0, "BGP ASN for leafkind node")
-		spineIP         = flag.String("spine-ip", "", "Spine IP address")
-		ipv4ListenRange = flag.String("ipv4-listen-range", "", "BGP IPv4 listen range (CIDR format)")
-		ipv6ListenRange = flag.String("ipv6-listen-range", "", "BGP IPv6 listen range (CIDR format)")
-		isisNet         = flag.String("isis-net", "", "ISIS net address")
-		outputDir       = flag.String("output", "", "Output directory (default: ../{leaf_name})")
-		templateFile    = flag.String("template", "frr_template/leafkind.conf.template", "Template file path")
+		leafName          = flag.String("leaf", "", "LeafKind name (e.g., leafkind1, leafkind2)")
+		asn               = flag.Int("asn", 0, "BGP ASN for leafkind node")
+		spineIP           = flag.String("spine-ip", "", "Spine IP address")
+		ipv4ListenRange   = flag.String("ipv4-listen-range", "", "BGP IPv4 listen range (CIDR format)")
+		ipv6ListenRange   = flag.String("ipv6-listen-range", "", "BGP IPv6 listen range (CIDR format)")
+		isisNet           = flag.String("isis-net", "", "ISIS net address")
+		toSwitchInterface = flag.String("toswitch-interface", "", "name of interface to switch")
+		outputDir         = flag.String("output", "", "Output directory (default: ../{leaf_name})")
+		templateFile      = flag.String("template", "frr_template/leafkind.conf.template", "Template file path")
 	)
 	flag.Parse()
 
 	if *leafName == "" || *asn == 0 || *spineIP == "" || *ipv4ListenRange == "" || *ipv6ListenRange == "" ||
-		*isisNet == "" {
+		*isisNet == "" || *toSwitchInterface == "" {
 		fmt.Println(usage)
 		flag.PrintDefaults()
 		os.Exit(1)
@@ -62,11 +64,12 @@ func main() {
 	}
 
 	config := LeafKindConfig{
-		ASN:             *asn,
-		SpineIP:         *spineIP,
-		IPv4ListenRange: *ipv4ListenRange,
-		IPv6ListenRange: *ipv6ListenRange,
-		ISISNet:         *isisNet,
+		ASN:               *asn,
+		SpineIP:           *spineIP,
+		IPv4ListenRange:   *ipv4ListenRange,
+		IPv6ListenRange:   *ipv6ListenRange,
+		ISISNet:           *isisNet,
+		ToSwitchInterface: *toSwitchInterface,
 	}
 
 	if err := GenerateFromTemplate(*templateFile, *outputDir, config); err != nil {
