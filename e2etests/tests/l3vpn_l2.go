@@ -126,6 +126,14 @@ var _ = Describe("SRV6 Routes between bgp and the fabric", Ordered, func() {
 			_, err = exec.Exec("ovs-vsctl", "add-br", preExistingOVSBridge)
 			Expect(err).NotTo(HaveOccurred())
 		}
+
+		// In theory, this is not needed for these tests. However, do this here for consistency, as we want to avoid
+		// pollution from other tests.
+		By("resetting the leaf kind nodes")
+		nodes, err := k8s.GetNodes(cs)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(infra.LeafKind1Config.UpdateConfig(nodes, infra.LeafKindConfiguration{})).To(Succeed())
+		Expect(infra.LeafKind2Config.UpdateConfig(nodes, infra.LeafKindConfiguration{})).To(Succeed())
 	})
 
 	AfterAll(func() {

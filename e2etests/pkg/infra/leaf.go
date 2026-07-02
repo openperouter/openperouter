@@ -54,14 +54,16 @@ var (
 		Container:    LeafSRV6Container,
 	}
 	LeafKind1Config = LeafKind{
-		ASN:              64512,
-		SpinePeerAddress: "192.168.1.4",
-		Container:        KindLeaf1Container,
+		ASN:               64512,
+		SpinePeerAddress:  "192.168.1.4",
+		Container:         KindLeaf1Container,
+		ToSwitchInterface: "toswitch1",
 	}
 	LeafKind2Config = LeafKind{
-		ASN:              64513,
-		SpinePeerAddress: "192.168.1.6",
-		Container:        KindLeaf2Container,
+		ASN:               64513,
+		SpinePeerAddress:  "192.168.1.6",
+		Container:         KindLeaf2Container,
+		ToSwitchInterface: "toswitch2",
 	}
 
 	EmptyLeafConfig = LeafConfiguration{
@@ -94,6 +96,7 @@ type LeafConfiguration struct {
 type LeafKindConfiguration struct {
 	ASN                   int
 	SpinePeerAddress      string
+	ToSwitchInterface     string
 	EnableBFD             bool
 	RedistributeConnected bool
 	Neighbors             []Neighbor
@@ -134,8 +137,9 @@ type Leaf struct {
 }
 
 type LeafKind struct {
-	ASN              int
-	SpinePeerAddress string
+	ASN               int
+	SpinePeerAddress  string
+	ToSwitchInterface string
 	frr.Container
 }
 
@@ -222,6 +226,9 @@ func (l LeafKind) UpdateConfig(nodes []corev1.Node, config LeafKindConfiguration
 	}
 	if config.SpinePeerAddress == "" {
 		config.SpinePeerAddress = l.SpinePeerAddress
+	}
+	if config.ToSwitchInterface == "" {
+		config.ToSwitchInterface = l.ToSwitchInterface
 	}
 
 	neighbors := []Neighbor{}

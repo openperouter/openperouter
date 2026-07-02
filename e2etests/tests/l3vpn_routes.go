@@ -107,6 +107,14 @@ var _ = Describe("SRV6 routes between bgp and the fabric", Ordered, func() {
 
 		By("Making sure that the leaf configuration is ready for SRv6 before running the first SRv6 test")
 		Expect(infra.LeafSRV6Config.Reset()).To(Succeed())
+
+		// In theory, this is not needed for these tests. However, do this here for consistency, as we want to avoid
+		// pollution from other tests.
+		By("resetting the leaf kind nodes")
+		nodes, err := k8s.GetNodes(cs)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(infra.LeafKind1Config.UpdateConfig(nodes, infra.LeafKindConfiguration{})).To(Succeed())
+		Expect(infra.LeafKind2Config.UpdateConfig(nodes, infra.LeafKindConfiguration{})).To(Succeed())
 	})
 
 	AfterAll(func() {
@@ -462,6 +470,14 @@ var _ = Describe("SRV6 routes between bgp and the fabric with iBGP testing e2e i
 			Default:     infra.Addresses{RedistributeConnected: true},
 			PERouterASN: 64520,
 		})).To(Succeed())
+
+		// In theory, this is not needed for these tests. However, do this here for consistency, as we want to avoid
+		// pollution from other tests.
+		By("resetting the leaf kind nodes")
+		nodes, err := k8s.GetNodes(cs)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(infra.LeafKind1Config.UpdateConfig(nodes, infra.LeafKindConfiguration{})).To(Succeed())
+		Expect(infra.LeafKind2Config.UpdateConfig(nodes, infra.LeafKindConfiguration{})).To(Succeed())
 
 		By("Creating the test namespace")
 		_, err = k8s.CreateNamespace(cs, testNamespace)
