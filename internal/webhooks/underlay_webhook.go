@@ -7,9 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
 
 	v1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -70,7 +73,7 @@ func (v *UnderlayValidator) Handle(ctx context.Context, req admission.Request) (
 			return admission.Denied(err.Error())
 		}
 	case v1.Update:
-		err := validateUnderlayUpdate(&underlay)
+		err := validateUnderlayUpdate(&underlay, &oldUnderlay)
 		if err != nil {
 			return admission.Denied(err.Error())
 		}
@@ -90,10 +93,13 @@ func validateUnderlayCreate(underlay *v1alpha1.Underlay) error {
 	return validateUnderlay(underlay)
 }
 
-func validateUnderlayUpdate(underlay *v1alpha1.Underlay) error {
+func validateUnderlayUpdate(underlay *v1alpha1.Underlay, oldUnderlay *v1alpha1.Underlay) error {
 	Logger.Debug("webhook underlay", "action", "update", "name", underlay.Name, "namespace", underlay.Namespace)
 	defer Logger.Debug("webhook underlay", "action", "end update", "name", underlay.Name, "namespace", underlay.Namespace)
 
+	if err := validateCNIRawConfigImmutable(oldUnderlay, underlay); err != nil {
+		return err
+	}
 	return validateUnderlay(underlay)
 }
 
@@ -138,4 +144,42 @@ var getUnderlays = func() (*v1alpha1.UnderlayList, error) {
 		return nil, errors.Join(err, errors.New("failed to get existing FRRConfiguration objects"))
 	}
 	return underlayList, nil
+}
+
+// validateCNIRawConfigImmutable rejects in-place changes to a CNI interface's
+// rawConfig. Reconciling a config change in place would require a DEL/ADD
+// cycle with partial-failure states where the old interface is torn down but
+// the new one fails to provision; operators must delete and recreate the
+// Underlay instead. Enforced here because CEL transition rules (oldSelf)
+// cannot be evaluated inside atomic lists.
+func validateCNIRawConfigImmutable(oldUnderlay, newUnderlay *v1alpha1.Underlay) error {
+	oldConfigs := cniRawConfigsByInterface(oldUnderlay.Spec.Interfaces)
+	for _, iface := range newUnderlay.Spec.Interfaces {
+		if iface.Type != v1alpha1.UnderlayInterfaceTypeCNI || iface.CNIDevice == nil {
+			continue
+		}
+		ifName := ptr.Deref(iface.CNIDevice.InterfaceName, "")
+		oldConfig, found := oldConfigs[ifName]
+		if !found {
+			continue
+		}
+		if !reflect.DeepEqual(oldConfig, iface.CNIDevice.RawConfig) {
+			return fmt.Errorf("cni rawConfig for interface %q is immutable, delete and recreate the Underlay to change it",
+				ifName)
+		}
+	}
+	return nil
+}
+
+// cniRawConfigsByInterface indexes the rawConfig of every CNI interface by its
+// interface name inside the router netns.
+func cniRawConfigsByInterface(interfaces []v1alpha1.UnderlayInterface) map[string]*apiextensionsv1.JSON {
+	res := map[string]*apiextensionsv1.JSON{}
+	for _, iface := range interfaces {
+		if iface.Type != v1alpha1.UnderlayInterfaceTypeCNI || iface.CNIDevice == nil {
+			continue
+		}
+		res[ptr.Deref(iface.CNIDevice.InterfaceName, "")] = iface.CNIDevice.RawConfig
+	}
+	return res
 }
