@@ -48,6 +48,47 @@ _Appears in:_
 | `minimumTTL` _integer_ | minimumTTL configures, for multi hop sessions only, the minimum<br />expected TTL for an incoming BFD control packet. |  | Maximum: 254 <br />Minimum: 1 <br />Optional: \{\} <br /> |
 
 
+#### CNIConfigType
+
+_Underlying type:_ _string_
+
+CNIConfigType selects the source of the CNI configuration.
+It is the discriminator of the CNIDevice union and is designed to be
+extended with future config sources (e.g. a NetworkAttachmentDefinition
+reference or a filesystem path).
+
+_Validation:_
+- Enum: [RawConfig]
+
+_Appears in:_
+- [CNIDevice](#cnidevice)
+
+| Field | Description |
+| --- | --- |
+| `RawConfig` | CNIConfigTypeRawConfig embeds the CNI config JSON directly in the spec.<br /> |
+
+
+#### CNIDevice
+
+
+
+CNIDevice invokes a CNI plugin to provision an interface in the router
+netns. The config source is a discriminated union — additional source
+variants can be added later if a concrete user need emerges.
+
+
+
+_Appears in:_
+- [UnderlayInterface](#underlayinterface)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `type` _[CNIConfigType](#cniconfigtype)_ | type selects the source of the CNI configuration. |  | Enum: [RawConfig] <br />Required: \{\} <br /> |
+| `rawConfig` _[JSON](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#json-v1-apiextensions-k8s-io)_ | rawConfig embeds a CNI conf or conflist JSON blob directly in this<br />spec. Immutable once set: to change it, delete and recreate the<br />Underlay. Immutability is enforced by the validation webhook because<br />CEL transition rules cannot be evaluated inside atomic lists. |  | Type: object <br />Optional: \{\} <br /> |
+| `interfaceName` _string_ | interfaceName is the name of the interface the CNI plugin creates<br />inside the router netns (passed as CNI_IFNAME). Defaults to "net1". | net1 | MaxLength: 15 <br />MinLength: 1 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9._-]*$` <br />Optional: \{\} <br /> |
+| `runtimeConfig` _[JSON](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#json-v1-apiextensions-k8s-io)_ | runtimeConfig is opaque JSON passed as capability arguments to the<br />CNI invocation. Only keys that the plugin declares in its<br />"capabilities" config block are forwarded; undeclared keys are<br />silently stripped. Well-known capabilities include ips, mac,<br />bandwidth, portMappings, ipRanges and deviceID. |  | Type: object <br />Optional: \{\} <br /> |
+
+
 #### FailedResource
 
 
@@ -573,7 +614,7 @@ Underlay is the Schema for the underlays API.
 
 UnderlayInterface defines how the router obtains a single underlay link.
 Exactly one of the sub-structs must match the type field.
-The union is designed to be extended with future modes (e.g. cni)
+The union is designed to be extended with future modes
 for controller-provisioned interfaces.
 
 
@@ -583,8 +624,9 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `type` _[UnderlayInterfaceType](#underlayinterfacetype)_ | type selects how the router obtains this underlay link. |  | Enum: [NetworkDevice] <br />Required: \{\} <br /> |
+| `type` _[UnderlayInterfaceType](#underlayinterfacetype)_ | type selects how the router obtains this underlay link. |  | Enum: [NetworkDevice CNI] <br />Required: \{\} <br /> |
 | `networkDevice` _[NetworkDevice](#networkdevice)_ | networkDevice moves an existing host network device into the router netns.<br />The device can be of any kind (physical NIC, bridge, macvlan, etc.).<br />Must be set when type is "NetworkDevice". |  | Optional: \{\} <br /> |
+| `cniDevice` _[CNIDevice](#cnidevice)_ | cniDevice invokes a CNI plugin to provision an interface in the router<br />netns. IPAM is delegated to the CNI plugin. Must be set when type is<br />"CNI". |  | Optional: \{\} <br /> |
 
 
 #### UnderlayInterfaceType
@@ -593,10 +635,10 @@ _Underlying type:_ _string_
 
 UnderlayInterfaceType selects how the router obtains an underlay link.
 It is the discriminator of the UnderlayInterface union and is designed to be
-extended with future modes (e.g. cni).
+extended with future modes.
 
 _Validation:_
-- Enum: [NetworkDevice]
+- Enum: [NetworkDevice CNI]
 
 _Appears in:_
 - [UnderlayInterface](#underlayinterface)
@@ -604,6 +646,7 @@ _Appears in:_
 | Field | Description |
 | --- | --- |
 | `NetworkDevice` | UnderlayInterfaceTypeNetworkDevice moves an existing host network device<br />into the router netns.<br /> |
+| `CNI` | UnderlayInterfaceTypeCNI invokes a CNI plugin to provision an interface<br />in the router netns.<br /> |
 
 
 #### UnderlaySpec
