@@ -72,15 +72,7 @@ func (inv *invoker) Add(ctx context.Context, p AddParams) error {
 		return n.IfName == p.IfName
 	})
 	if idx >= 0 {
-		attachment := cached[idx]
-		sameConfig, err := jsonEqual(attachment.Config, p.Config)
-		if err != nil {
-			return fmt.Errorf("failed to compare cni config for %q: %w", p.IfName, err)
-		}
-		if !sameConfig || !capabilityArgsEqual(attachment.CapabilityArgs, p.CapabilityArgs) {
-			return ConfigMismatchError{IfName: p.IfName}
-		}
-		return nil
+		return validateCachedAttachment(cached[idx], p)
 	}
 
 	confList, err := libcni.NetworkConfFromBytes(p.Config)
@@ -103,6 +95,19 @@ func (inv *invoker) Add(ctx context.Context, p AddParams) error {
 			return errors.Join(addErr, fmt.Errorf("cni del after failed add: %w", delErr))
 		}
 		return addErr
+	}
+	return nil
+}
+
+// validateCachedAttachment returns a ConfigMismatchError when the cached
+// attachment differs from the requested config or capability arguments.
+func validateCachedAttachment(attachment *libcni.NetworkAttachment, p AddParams) error {
+	sameConfig, err := jsonEqual(attachment.Config, p.Config)
+	if err != nil {
+		return fmt.Errorf("failed to compare cni config for %q: %w", p.IfName, err)
+	}
+	if !sameConfig || !capabilityArgsEqual(attachment.CapabilityArgs, p.CapabilityArgs) {
+		return ConfigMismatchError{IfName: p.IfName}
 	}
 	return nil
 }

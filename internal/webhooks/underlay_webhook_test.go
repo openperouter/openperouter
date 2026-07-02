@@ -9,6 +9,7 @@ import (
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/logging"
 	v1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -200,6 +201,193 @@ func TestValidateUnderlay(t *testing.T) {
 			Logger, _ = logging.New("debug")
 
 			err = validateUnderlay(tc.newUnderlay)
+			if tc.errorString == "" {
+				if err != nil {
+					t.Fatalf("expected no error, but got %q", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("expected error to contain %q but got no error", tc.errorString)
+			}
+			if !strings.Contains(err.Error(), tc.errorString) {
+				t.Fatalf("expected error message %q to contain substring %q", err.Error(), tc.errorString)
+			}
+		})
+	}
+}
+
+func TestValidateInterfaceTypeImmutable(t *testing.T) {
+	underlayWith := func(ifaces ...v1alpha1.UnderlayInterface) *v1alpha1.Underlay {
+		return &v1alpha1.Underlay{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "underlay"},
+			Spec:       v1alpha1.UnderlaySpec{Interfaces: ifaces},
+		}
+	}
+	netdev := func(name string) v1alpha1.UnderlayInterface {
+		return v1alpha1.UnderlayInterface{
+			Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+			NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: name},
+		}
+	}
+	cnidev := func(name string) v1alpha1.UnderlayInterface {
+		return v1alpha1.UnderlayInterface{
+			Type: v1alpha1.UnderlayInterfaceTypeCNIDevice,
+			CNIDevice: &v1alpha1.CNIDevice{
+				Type:          v1alpha1.CNIConfigTypeRawConfig,
+				RawConfig:     &apiextensionsv1.JSON{Raw: []byte(`{"cniVersion":"1.0.0","type":"macvlan"}`)},
+				InterfaceName: new(name),
+			},
+		}
+	}
+
+	tcs := []struct {
+		name        string
+		oldUnderlay *v1alpha1.Underlay
+		newUnderlay *v1alpha1.Underlay
+		errorString string
+	}{
+		{
+			name:        "same name and type passes",
+			oldUnderlay: underlayWith(netdev("eth0")),
+			newUnderlay: underlayWith(netdev("eth0")),
+		},
+		{
+			name:        "type change with a different name passes",
+			oldUnderlay: underlayWith(netdev("eth0")),
+			newUnderlay: underlayWith(cnidev("net1")),
+		},
+		{
+			name:        "network device to cni with same name is rejected",
+			oldUnderlay: underlayWith(netdev("net1")),
+			newUnderlay: underlayWith(cnidev("net1")),
+			errorString: "type of interface \"net1\" is immutable",
+		},
+		{
+			name:        "cni to network device with same name is rejected",
+			oldUnderlay: underlayWith(cnidev("net1")),
+			newUnderlay: underlayWith(netdev("net1")),
+			errorString: "type of interface \"net1\" is immutable",
+		},
+	}
+	for _, tc := range tcs {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateInterfaceTypeImmutable(tc.oldUnderlay, tc.newUnderlay)
+			if tc.errorString == "" {
+				if err != nil {
+					t.Fatalf("expected no error, but got %q", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("expected error to contain %q but got no error", tc.errorString)
+			}
+			if !strings.Contains(err.Error(), tc.errorString) {
+				t.Fatalf("expected error message %q to contain substring %q", err.Error(), tc.errorString)
+			}
+		})
+	}
+}
+
+func TestValidateCNIDeviceImmutable(t *testing.T) {
+	underlayWithCNIDevice := func(ifName, rawConfig, runtimeConfig string) *v1alpha1.Underlay {
+		var runtime *apiextensionsv1.JSON
+		if runtimeConfig != "" {
+			runtime = &apiextensionsv1.JSON{Raw: []byte(runtimeConfig)}
+		}
+		return &v1alpha1.Underlay{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "underlay"},
+			Spec: v1alpha1.UnderlaySpec{
+				Interfaces: []v1alpha1.UnderlayInterface{
+					{
+						Type: v1alpha1.UnderlayInterfaceTypeCNIDevice,
+						CNIDevice: &v1alpha1.CNIDevice{
+							Type:          v1alpha1.CNIConfigTypeRawConfig,
+							RawConfig:     &apiextensionsv1.JSON{Raw: []byte(rawConfig)},
+							RuntimeConfig: runtime,
+							InterfaceName: new(ifName),
+						},
+					},
+				},
+			},
+		}
+	}
+	underlayWithCNI := func(ifName, rawConfig string) *v1alpha1.Underlay {
+		return underlayWithCNIDevice(ifName, rawConfig, "")
+	}
+	underlayWithNetworkDevice := func(ifName string) *v1alpha1.Underlay {
+		return &v1alpha1.Underlay{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "underlay"},
+			Spec: v1alpha1.UnderlaySpec{
+				Interfaces: []v1alpha1.UnderlayInterface{
+					{
+						Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+						NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: ifName},
+					},
+				},
+			},
+		}
+	}
+
+	tcs := []struct {
+		name        string
+		oldUnderlay *v1alpha1.Underlay
+		newUnderlay *v1alpha1.Underlay
+		errorString string
+	}{
+		{
+			name:        "unchanged rawConfig passes",
+			oldUnderlay: underlayWithCNI("net1", `{"cniVersion":"1.0.0","type":"macvlan"}`),
+			newUnderlay: underlayWithCNI("net1", `{"cniVersion":"1.0.0","type":"macvlan"}`),
+		},
+		{
+			name:        "changed rawConfig is rejected",
+			oldUnderlay: underlayWithCNI("net1", `{"cniVersion":"1.0.0","type":"macvlan"}`),
+			newUnderlay: underlayWithCNI("net1", `{"cniVersion":"1.0.0","type":"ipvlan"}`),
+			errorString: "rawConfig for interface \"net1\" is immutable",
+		},
+		{
+			name:        "new cni interface name passes",
+			oldUnderlay: underlayWithCNI("net1", `{"cniVersion":"1.0.0","type":"macvlan"}`),
+			newUnderlay: underlayWithCNI("net2", `{"cniVersion":"1.0.0","type":"ipvlan"}`),
+		},
+		{
+			name:        "switching from network device to cni passes",
+			oldUnderlay: underlayWithNetworkDevice("eth0"),
+			newUnderlay: underlayWithCNI("net1", `{"cniVersion":"1.0.0","type":"macvlan"}`),
+		},
+		{
+			name:        "switching from cni to network device passes",
+			oldUnderlay: underlayWithCNI("net1", `{"cniVersion":"1.0.0","type":"macvlan"}`),
+			newUnderlay: underlayWithNetworkDevice("eth0"),
+		},
+		{
+			name:        "unchanged runtimeConfig passes",
+			oldUnderlay: underlayWithCNIDevice("net1", `{"cniVersion":"1.0.0","type":"macvlan"}`, `{"mac":"02:00:00:00:00:01"}`),
+			newUnderlay: underlayWithCNIDevice("net1", `{"cniVersion":"1.0.0","type":"macvlan"}`, `{"mac":"02:00:00:00:00:01"}`),
+		},
+		{
+			name:        "changed runtimeConfig is rejected",
+			oldUnderlay: underlayWithCNIDevice("net1", `{"cniVersion":"1.0.0","type":"macvlan"}`, `{"mac":"02:00:00:00:00:01"}`),
+			newUnderlay: underlayWithCNIDevice("net1", `{"cniVersion":"1.0.0","type":"macvlan"}`, `{"mac":"02:00:00:00:00:02"}`),
+			errorString: "runtimeConfig for interface \"net1\" is immutable",
+		},
+		{
+			name:        "added runtimeConfig is rejected",
+			oldUnderlay: underlayWithCNI("net1", `{"cniVersion":"1.0.0","type":"macvlan"}`),
+			newUnderlay: underlayWithCNIDevice("net1", `{"cniVersion":"1.0.0","type":"macvlan"}`, `{"mac":"02:00:00:00:00:01"}`),
+			errorString: "runtimeConfig for interface \"net1\" is immutable",
+		},
+		{
+			name:        "removed runtimeConfig is rejected",
+			oldUnderlay: underlayWithCNIDevice("net1", `{"cniVersion":"1.0.0","type":"macvlan"}`, `{"mac":"02:00:00:00:00:01"}`),
+			newUnderlay: underlayWithCNI("net1", `{"cniVersion":"1.0.0","type":"macvlan"}`),
+			errorString: "runtimeConfig for interface \"net1\" is immutable",
+		},
+	}
+	for _, tc := range tcs {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateCNIDeviceImmutable(tc.oldUnderlay, tc.newUnderlay)
 			if tc.errorString == "" {
 				if err != nil {
 					t.Fatalf("expected no error, but got %q", err)
