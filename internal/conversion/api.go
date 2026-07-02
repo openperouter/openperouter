@@ -13,6 +13,10 @@ type APIConfigData struct {
 	L2VNIs        []v1alpha1.L2VNI
 	L3Passthrough []v1alpha1.L3Passthrough
 	RawFRRConfigs []v1alpha1.RawFRRConfig
+	// CNIRuntime is the node-level CNI invocation environment used to
+	// provision (and tear down) CNI-backed underlay interfaces. It is
+	// populated by the reconciler, not by the API resources.
+	CNIRuntime hostnetwork.CNIRuntime
 }
 
 type HostConfigData struct {
@@ -39,6 +43,9 @@ func MergeAPIConfigs(configs ...APIConfigData) (APIConfigData, error) {
 		merged.L2VNIs = append(merged.L2VNIs, config.L2VNIs...)
 		merged.L3Passthrough = append(merged.L3Passthrough, config.L3Passthrough...)
 		merged.RawFRRConfigs = append(merged.RawFRRConfigs, config.RawFRRConfigs...)
+		if merged.CNIRuntime.CacheDir == "" {
+			merged.CNIRuntime = config.CNIRuntime
+		}
 	}
 
 	return merged, nil

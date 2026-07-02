@@ -117,6 +117,41 @@ func TestApplyDefaults(t *testing.T) {
 	}
 }
 
+func TestApplyDefaultsCNIInterfaceName(t *testing.T) {
+	obj := newUnstructured("Underlay", map[string]any{
+		"asn": int64(65000),
+		"interfaces": []any{
+			map[string]any{
+				"type": "CNI",
+				"cniDevice": map[string]any{
+					"type":      "RawConfig",
+					"rawConfig": map[string]any{"cniVersion": "1.0.0"},
+				},
+			},
+		},
+	})
+
+	if err := ApplyDefaults(obj, underlayGVK); err != nil {
+		t.Fatalf("ApplyDefaults() returned error: %v", err)
+	}
+
+	interfaces, _, err := unstructured.NestedSlice(obj.Object, "spec", "interfaces")
+	if err != nil || len(interfaces) != 1 {
+		t.Fatalf("failed to get interfaces after applying defaults: %v", err)
+	}
+	iface, ok := interfaces[0].(map[string]any)
+	if !ok {
+		t.Fatalf("interface entry is not a map: %T", interfaces[0])
+	}
+	ifName, _, err := unstructured.NestedString(iface, "cniDevice", "interfaceName")
+	if err != nil {
+		t.Fatalf("failed to get cniDevice.interfaceName: %v", err)
+	}
+	if ifName != "net1" {
+		t.Errorf("cniDevice.interfaceName = %q, want %q", ifName, "net1")
+	}
+}
+
 func TestApplyDefaultsPreservation(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -327,6 +362,73 @@ func TestValidateSuccessful(t *testing.T) {
 			}),
 		},
 		{
+			name: "Underlay with CNI interface",
+			gvk:  underlayGVK,
+			obj: newUnstructured("Underlay", map[string]any{
+				"asn": int64(65000),
+				"interfaces": []any{
+					map[string]any{
+						"type": "CNI",
+						"cniDevice": map[string]any{
+							"type": "RawConfig",
+							"rawConfig": map[string]any{
+								"cniVersion": "1.0.0",
+								"name":       "macvlan-underlay",
+								"plugins": []any{
+									map[string]any{
+										"type":   "macvlan",
+										"master": "eth1",
+										"mode":   "bridge",
+									},
+								},
+							},
+							"runtimeConfig": map[string]any{
+								"mac": "02:42:c0:a8:01:0a",
+							},
+						},
+					},
+				},
+				"neighbors": []any{
+					map[string]any{
+						"address": "192.168.1.1",
+						"asn":     int64(65001),
+					},
+				},
+			}),
+		},
+		{
+			name: "Underlay mixing NetworkDevice and CNI interfaces",
+			gvk:  underlayGVK,
+			obj: newUnstructured("Underlay", map[string]any{
+				"asn": int64(65000),
+				"interfaces": []any{
+					map[string]any{
+						"type":          "NetworkDevice",
+						"networkDevice": map[string]any{"interfaceName": "eth0"},
+					},
+					map[string]any{
+						"type": "CNI",
+						"cniDevice": map[string]any{
+							"type": "RawConfig",
+							"rawConfig": map[string]any{
+								"cniVersion": "1.0.0",
+								"name":       "macvlan-underlay",
+								"type":       "macvlan",
+								"master":     "eth1",
+							},
+							"interfaceName": "underlay0",
+						},
+					},
+				},
+				"neighbors": []any{
+					map[string]any{
+						"address": "192.168.1.1",
+						"asn":     int64(65001),
+					},
+				},
+			}),
+		},
+		{
 			name: "L2VNI with LinuxBridge name set and autoCreate false",
 			gvk:  l2vniGVK,
 			obj: newUnstructured("L2VNI", map[string]any{
@@ -500,6 +602,71 @@ func TestValidateFailure(t *testing.T) {
 				},
 			}),
 			errSubstr: "type/config mismatch",
+		},
+		{
+			name: "Underlay interface type CNI without cniDevice",
+			gvk:  underlayGVK,
+			obj: newUnstructured("Underlay", map[string]any{
+				"asn": int64(65000),
+				"interfaces": []any{
+					map[string]any{
+						"type": "CNI",
+					},
+				},
+				"neighbors": []any{
+					map[string]any{
+						"address": "192.168.1.1",
+						"asn":     int64(65001),
+					},
+				},
+			}),
+			errSubstr: "cniDevice must be set if and only if type is 'CNI'",
+		},
+		{
+			name: "Underlay interface type NetworkDevice with cniDevice",
+			gvk:  underlayGVK,
+			obj: newUnstructured("Underlay", map[string]any{
+				"asn": int64(65000),
+				"interfaces": []any{
+					map[string]any{
+						"type":          "NetworkDevice",
+						"networkDevice": map[string]any{"interfaceName": "eth0"},
+						"cniDevice": map[string]any{
+							"type":      "RawConfig",
+							"rawConfig": map[string]any{"cniVersion": "1.0.0"},
+						},
+					},
+				},
+				"neighbors": []any{
+					map[string]any{
+						"address": "192.168.1.1",
+						"asn":     int64(65001),
+					},
+				},
+			}),
+			errSubstr: "cniDevice must be set if and only if type is 'CNI'",
+		},
+		{
+			name: "Underlay CNI device type RawConfig without rawConfig",
+			gvk:  underlayGVK,
+			obj: newUnstructured("Underlay", map[string]any{
+				"asn": int64(65000),
+				"interfaces": []any{
+					map[string]any{
+						"type": "CNI",
+						"cniDevice": map[string]any{
+							"type": "RawConfig",
+						},
+					},
+				},
+				"neighbors": []any{
+					map[string]any{
+						"address": "192.168.1.1",
+						"asn":     int64(65001),
+					},
+				},
+			}),
+			errSubstr: "rawConfig must be set if and only if type is 'RawConfig'",
 		},
 		{
 			name: "ConnectTimeSeconds below minimum (0)",

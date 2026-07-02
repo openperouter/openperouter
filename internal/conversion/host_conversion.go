@@ -3,6 +3,7 @@
 package conversion
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/openperouter/openperouter/internal/ipam"
 	"github.com/openperouter/openperouter/internal/ipfamily"
+	"k8s.io/utils/ptr"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -42,6 +44,17 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig APIConfigData) (H
 	res.Underlay = hostnetwork.UnderlayParams{
 		TargetNS:           targetNS,
 		UnderlayInterfaces: underlayInterfaces,
+	}
+
+	cniInterfaces, err := underlayCNIInterfaces(underlay.Spec.Interfaces)
+	if err != nil {
+		return res, err
+	}
+	if len(cniInterfaces) > 0 {
+		res.Underlay.CNI = &hostnetwork.UnderlayCNIParams{
+			Interfaces: cniInterfaces,
+			Runtime:    apiConfig.CNIRuntime,
+		}
 	}
 
 	if len(apiConfig.L3Passthrough) == 1 {
@@ -258,8 +271,7 @@ func ipNetToString(ipNet net.IPNet) string {
 }
 
 // underlayNetworkDeviceInterfaceNames extracts the host interface names from the underlay
-// interfaces list. Only the NetworkDevice mode is supported today; entries
-// without a NetworkDevice (or with an empty interface name) are skipped.
+// interfaces list. Entries of other modes (e.g. CNI) are skipped.
 func underlayNetworkDeviceInterfaceNames(interfaces []v1alpha1.UnderlayInterface) ([]string, error) {
 	names := make([]string, 0, len(interfaces))
 	for _, iface := range interfaces {
@@ -277,4 +289,46 @@ func underlayNetworkDeviceInterfaceNames(interfaces []v1alpha1.UnderlayInterface
 		names = append(names, iface.NetworkDevice.InterfaceName)
 	}
 	return names, nil
+}
+
+// defaultCNIInterfaceName is the interface name used for a CNI-provisioned
+// underlay interface when the spec omits it. It matches the API-level default
+// applied by the CRD schema.
+const defaultCNIInterfaceName = "net1"
+
+// underlayCNIInterfaces extracts the CNI-provisioned interfaces from the
+// underlay interfaces list, unmarshalling the opaque runtimeConfig into the
+// capability arguments handed to the plugin.
+func underlayCNIInterfaces(interfaces []v1alpha1.UnderlayInterface) ([]hostnetwork.CNIInterfaceParams, error) {
+	res := make([]hostnetwork.CNIInterfaceParams, 0, len(interfaces))
+	for _, iface := range interfaces {
+		if iface.Type != v1alpha1.UnderlayInterfaceTypeCNI {
+			continue
+		}
+		if iface.CNIDevice == nil {
+			return nil, fmt.Errorf("cniDevice configuration is missing for interface type CNI")
+		}
+		if iface.CNIDevice.RawConfig == nil {
+			return nil, fmt.Errorf("rawConfig is missing for cniDevice %q", ptr.Deref(iface.CNIDevice.InterfaceName, ""))
+		}
+
+		ifName := ptr.Deref(iface.CNIDevice.InterfaceName, defaultCNIInterfaceName)
+		if ifName == "" {
+			ifName = defaultCNIInterfaceName
+		}
+
+		var capabilityArgs map[string]interface{}
+		if iface.CNIDevice.RuntimeConfig != nil {
+			if err := json.Unmarshal(iface.CNIDevice.RuntimeConfig.Raw, &capabilityArgs); err != nil {
+				return nil, fmt.Errorf("invalid runtimeConfig for cni interface %q: %w", ifName, err)
+			}
+		}
+
+		res = append(res, hostnetwork.CNIInterfaceParams{
+			Config:         iface.CNIDevice.RawConfig.Raw,
+			IfName:         ifName,
+			CapabilityArgs: capabilityArgs,
+		})
+	}
+	return res, nil
 }

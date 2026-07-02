@@ -9,7 +9,9 @@ import (
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 )
 
 func TestAPItoHostConfig(t *testing.T) {
@@ -829,5 +831,153 @@ func checkAddressFamilyResult(t *testing.T, got HostConfigData, err error, wantE
 		if got.L2VNIs[0].VTEPIP != wantVTEPIP {
 			t.Errorf("L2VNI VTEPIP = %q, want %q", got.L2VNIs[0].VTEPIP, wantVTEPIP)
 		}
+	}
+}
+
+func TestAPItoHostConfigCNIInterfaces(t *testing.T) {
+	cniRuntime := hostnetwork.CNIRuntime{
+		BinDirs:     []string{"/opt/cni/bin"},
+		CacheDir:    "/var/lib/cni/openperouter",
+		ContainerID: "perouter-underlay-node0",
+	}
+	rawConfig := `{"cniVersion":"1.0.0","name":"macvlan-underlay","type":"macvlan","master":"eth1"}`
+	underlayWithInterfaces := func(interfaces ...v1alpha1.UnderlayInterface) []v1alpha1.Underlay {
+		return []v1alpha1.Underlay{{Spec: v1alpha1.UnderlaySpec{Interfaces: interfaces}}}
+	}
+
+	tests := []struct {
+		name         string
+		underlays    []v1alpha1.Underlay
+		wantUnderlay hostnetwork.UnderlayParams
+		wantErr      string
+	}{
+		{
+			name: "cni interface with runtime config",
+			underlays: underlayWithInterfaces(v1alpha1.UnderlayInterface{
+				Type: v1alpha1.UnderlayInterfaceTypeCNI,
+				CNIDevice: &v1alpha1.CNIDevice{
+					Type:          v1alpha1.CNIConfigTypeRawConfig,
+					RawConfig:     &apiextensionsv1.JSON{Raw: []byte(rawConfig)},
+					InterfaceName: ptr.To("underlay0"),
+					RuntimeConfig: &apiextensionsv1.JSON{Raw: []byte(`{"mac":"02:42:c0:a8:01:0a"}`)},
+				},
+			}),
+			wantUnderlay: hostnetwork.UnderlayParams{
+				TargetNS:           "namespace",
+				UnderlayInterfaces: []string{},
+				CNI: &hostnetwork.UnderlayCNIParams{
+					Interfaces: []hostnetwork.CNIInterfaceParams{
+						{
+							Config:         []byte(rawConfig),
+							IfName:         "underlay0",
+							CapabilityArgs: map[string]interface{}{"mac": "02:42:c0:a8:01:0a"},
+						},
+					},
+					Runtime: cniRuntime,
+				},
+			},
+		},
+		{
+			name: "cni interface name defaults to net1",
+			underlays: underlayWithInterfaces(v1alpha1.UnderlayInterface{
+				Type: v1alpha1.UnderlayInterfaceTypeCNI,
+				CNIDevice: &v1alpha1.CNIDevice{
+					Type:      v1alpha1.CNIConfigTypeRawConfig,
+					RawConfig: &apiextensionsv1.JSON{Raw: []byte(rawConfig)},
+				},
+			}),
+			wantUnderlay: hostnetwork.UnderlayParams{
+				TargetNS:           "namespace",
+				UnderlayInterfaces: []string{},
+				CNI: &hostnetwork.UnderlayCNIParams{
+					Interfaces: []hostnetwork.CNIInterfaceParams{
+						{Config: []byte(rawConfig), IfName: "net1"},
+					},
+					Runtime: cniRuntime,
+				},
+			},
+		},
+		{
+			name: "mixed network device and cni interfaces",
+			underlays: underlayWithInterfaces(
+				v1alpha1.UnderlayInterface{
+					Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+					NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+				},
+				v1alpha1.UnderlayInterface{
+					Type: v1alpha1.UnderlayInterfaceTypeCNI,
+					CNIDevice: &v1alpha1.CNIDevice{
+						Type:      v1alpha1.CNIConfigTypeRawConfig,
+						RawConfig: &apiextensionsv1.JSON{Raw: []byte(rawConfig)},
+					},
+				},
+			),
+			wantUnderlay: hostnetwork.UnderlayParams{
+				TargetNS:           "namespace",
+				UnderlayInterfaces: []string{"eth0"},
+				CNI: &hostnetwork.UnderlayCNIParams{
+					Interfaces: []hostnetwork.CNIInterfaceParams{
+						{Config: []byte(rawConfig), IfName: "net1"},
+					},
+					Runtime: cniRuntime,
+				},
+			},
+		},
+		{
+			name: "cni interface without cniDevice",
+			underlays: underlayWithInterfaces(v1alpha1.UnderlayInterface{
+				Type: v1alpha1.UnderlayInterfaceTypeCNI,
+			}),
+			wantErr: "cniDevice configuration is missing",
+		},
+		{
+			name: "cni interface without rawConfig",
+			underlays: underlayWithInterfaces(v1alpha1.UnderlayInterface{
+				Type: v1alpha1.UnderlayInterfaceTypeCNI,
+				CNIDevice: &v1alpha1.CNIDevice{
+					Type:          v1alpha1.CNIConfigTypeRawConfig,
+					InterfaceName: ptr.To("underlay0"),
+				},
+			}),
+			wantErr: "rawConfig is missing",
+		},
+		{
+			name: "cni interface with invalid runtime config",
+			underlays: underlayWithInterfaces(v1alpha1.UnderlayInterface{
+				Type: v1alpha1.UnderlayInterfaceTypeCNI,
+				CNIDevice: &v1alpha1.CNIDevice{
+					Type:          v1alpha1.CNIConfigTypeRawConfig,
+					RawConfig:     &apiextensionsv1.JSON{Raw: []byte(rawConfig)},
+					RuntimeConfig: &apiextensionsv1.JSON{Raw: []byte(`"notanobject"`)},
+				},
+			}),
+			wantErr: "invalid runtimeConfig",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			apiConfig := APIConfigData{
+				Underlays:  tt.underlays,
+				CNIRuntime: cniRuntime,
+			}
+
+			got, err := APItoHostConfig(0, "namespace", apiConfig)
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("expected error containing %q, got %q", tt.wantErr, err.Error())
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("APItoHostConfig() unexpected error: %v", err)
+			}
+			if !reflect.DeepEqual(got.Underlay, tt.wantUnderlay) {
+				t.Errorf("APItoHostConfig() gotUnderlay = %+v, want %+v", got.Underlay, tt.wantUnderlay)
+			}
+		})
 	}
 }

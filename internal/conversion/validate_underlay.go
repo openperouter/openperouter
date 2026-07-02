@@ -8,6 +8,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
+	"github.com/openperouter/openperouter/internal/cni"
 	openpeerrors "github.com/openperouter/openperouter/internal/errors"
 	"github.com/openperouter/openperouter/internal/filter"
 	"github.com/openperouter/openperouter/internal/ipfamily"
@@ -71,8 +72,23 @@ func validateUnderlay(underlay v1alpha1.Underlay) error {
 	if err != nil {
 		return err
 	}
-	if err := validateNoDuplicates(underlayInterfaces); err != nil {
+	cniInterfaces, err := underlayCNIInterfaces(underlay.Spec.Interfaces)
+	if err != nil {
+		return err
+	}
+	interfaceNames := make([]string, 0, len(underlayInterfaces)+len(cniInterfaces))
+	interfaceNames = append(interfaceNames, underlayInterfaces...)
+	for _, iface := range cniInterfaces {
+		interfaceNames = append(interfaceNames, iface.IfName)
+	}
+	if err := validateNoDuplicates(interfaceNames); err != nil {
 		return fmt.Errorf("underlay %s has duplicate interface name: %w", underlay.Name, err)
+	}
+
+	for _, iface := range cniInterfaces {
+		if err := cni.ValidateConfig(iface.Config); err != nil {
+			return fmt.Errorf("underlay %s has invalid cni config for interface %s: %w", underlay.Name, iface.IfName, err)
+		}
 	}
 
 	if underlay.Spec.TunnelEndpoint != nil {
@@ -81,7 +97,7 @@ func validateUnderlay(underlay v1alpha1.Underlay) error {
 		}
 	}
 
-	for _, n := range underlayInterfaces {
+	for _, n := range interfaceNames {
 		if err := isValidInterfaceName(n); err != nil {
 			return fmt.Errorf("invalid interface name for underlay %s: %s - %w", underlay.Name, n, err)
 		}
