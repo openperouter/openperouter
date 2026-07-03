@@ -1265,6 +1265,134 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 					underlayNIC, node.Name, addrsBefore[node.Name], addrsAfter)
 			}
 		})
+
+		ginkgo.It("changes the underlay NIC without restarting the router pod", func() {
+			nodes, err := k8s.GetNodes(cs)
+			Expect(err).NotTo(HaveOccurred())
+
+			oldNIC := "toswitch1"
+			newNIC := "toswitch2"
+
+			ginkgo.By("recording the router pod UIDs before the change")
+			podUIDs := map[string]string{}
+			for _, p := range routerPods {
+				podUIDs[p.Spec.NodeName] = string(p.UID)
+			}
+
+			ginkgo.By(fmt.Sprintf("recording the %s IP addresses before the change", oldNIC))
+			oldNICAddrsBefore := map[string]string{}
+			for _, node := range nodes {
+				addrs, err := openperouter.InterfaceIPAddresses(node.Name, oldNIC)
+				Expect(err).NotTo(HaveOccurred(), "failed to get %s addresses on %s", oldNIC, node.Name)
+				oldNICAddrsBefore[node.Name] = addrs
+			}
+
+			vniForSwap := v1alpha1.L3VNI{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "swap-test",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.L3VNISpec{
+					VRF: "swap-test",
+					VNI: 500,
+				},
+			}
+			vniBridge := "br-pe-500"
+
+			ginkgo.By("creating the underlay and an L3VNI with " + oldNIC)
+			Expect(Updater.Update(config.Resources{
+				Underlays: []v1alpha1.Underlay{underlay},
+				L3VNIs:    []v1alpha1.L3VNI{vniForSwap},
+			})).To(Succeed())
+
+			ginkgo.By(fmt.Sprintf("waiting for %s to move into the perouter netns", oldNIC))
+			for _, node := range nodes {
+				Eventually(func() bool {
+					return openperouter.IsInterfaceInNS(node.Name, oldNIC, openperouter.NamedNetns)
+				}).WithTimeout(2 * time.Minute).WithPolling(time.Second).Should(BeTrueBecause(
+					"%s should be inside the perouter netns on %s", oldNIC, node.Name))
+			}
+
+			ginkgo.By(fmt.Sprintf("waiting for VNI bridge %s to appear in the perouter netns", vniBridge))
+			for _, node := range nodes {
+				Eventually(func() bool {
+					return openperouter.IsInterfaceInNS(node.Name, vniBridge, openperouter.NamedNetns)
+				}).WithTimeout(2 * time.Minute).WithPolling(time.Second).Should(BeTrueBecause(
+					"%s should exist in the perouter netns on %s", vniBridge, node.Name))
+			}
+
+			ginkgo.By("updating the underlay to use " + newNIC)
+			updatedUnderlay := v1alpha1.Underlay{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "underlay",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.UnderlaySpec{
+					ASN: 64514,
+					Interfaces: []v1alpha1.UnderlayInterface{
+						{
+							Type:          "NetworkDevice",
+							NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: newNIC},
+						},
+					},
+					Neighbors: []v1alpha1.Neighbor{
+						{
+							ASN:     new(int64(64513)),
+							Address: new("192.168.12.2"),
+						},
+					},
+					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+						CIDRs: []string{"100.65.0.0/24"},
+					},
+				},
+			}
+			Expect(Updater.Update(config.Resources{
+				Underlays: []v1alpha1.Underlay{updatedUnderlay},
+				L3VNIs:    []v1alpha1.L3VNI{vniForSwap},
+			})).To(Succeed())
+
+			ginkgo.By(fmt.Sprintf("waiting for %s to move into the perouter netns", newNIC))
+			for _, node := range nodes {
+				Eventually(func() bool {
+					return openperouter.IsInterfaceInNS(node.Name, newNIC, openperouter.NamedNetns)
+				}).WithTimeout(2 * time.Minute).WithPolling(time.Second).Should(BeTrueBecause(
+					"%s should be inside the perouter netns on %s after underlay update", newNIC, node.Name))
+			}
+
+			ginkgo.By(fmt.Sprintf("verifying %s is back in the default netns with original IPs", oldNIC))
+			for _, node := range nodes {
+				Eventually(func() bool {
+					return openperouter.IsInterfaceInDefaultNetns(node.Name, oldNIC)
+				}).WithTimeout(2 * time.Minute).WithPolling(time.Second).Should(BeTrueBecause(
+					"%s should be back in the default netns on %s after underlay update", oldNIC, node.Name))
+
+				Expect(openperouter.InterfaceIsUp(node.Name, oldNIC)).To(BeTrueBecause(
+					"%s should be UP on %s after underlay update", oldNIC, node.Name))
+
+				Expect(openperouter.InterfaceIPAddresses(node.Name, oldNIC)).To(
+					Equal(oldNICAddrsBefore[node.Name]),
+					"%s IP addresses on %s should be preserved after underlay update",
+					oldNIC,
+					node.Name,
+				)
+			}
+
+			ginkgo.By(fmt.Sprintf("waiting for VNI bridge %s to be re-established after underlay swap", vniBridge))
+			for _, node := range nodes {
+				Eventually(func() bool {
+					return openperouter.IsInterfaceInNS(node.Name, vniBridge, openperouter.NamedNetns)
+				}).WithTimeout(2 * time.Minute).WithPolling(time.Second).Should(BeTrueBecause(
+					"%s should be re-established in the perouter netns on %s after underlay swap", vniBridge, node.Name))
+			}
+
+			ginkgo.By("verifying router pods were NOT restarted")
+			currentPods, err := openperouter.RouterPods(cs)
+			Expect(err).NotTo(HaveOccurred())
+			for _, p := range currentPods {
+				Expect(string(p.UID)).To(Equal(podUIDs[p.Spec.NodeName]),
+					"router pod on %s should NOT have been restarted (UID changed)", p.Spec.NodeName)
+			}
+		})
 	})
 
 	ginkgo.Context("L3Passthrough", func() {

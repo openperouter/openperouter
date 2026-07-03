@@ -62,7 +62,23 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 		return err
 	}
 
+	existing, err := hostnetwork.UnderlayInterfaces(config.targetNamespace)
+	if err != nil {
+		return fmt.Errorf("failed to list existing underlay interfaces: %w", err)
+	}
+
+	removedInterfaces := hostnetwork.UnderlayInterfacesWereRemoved(existing, hostConfig.Underlay.UnderlayInterfaces)
+	if hostnetwork.UnderlayInterfacesWereRemoved(existing, hostConfig.Underlay.UnderlayInterfaces) {
+		slog.InfoContext(ctx, "all underlay interfaces removed, cleaning up VNIs before interface swap",
+			"removed", removedInterfaces, "requested", hostConfig.Underlay.UnderlayInterfaces)
+		if err := hostnetwork.RemoveAllVNIs(config.targetNamespace); err != nil {
+			slog.Warn("failed to remove vnis during underlay change", "err", err)
+		}
+		bridgerefresh.StopAllVNIs()
+	}
+
 	slog.InfoContext(ctx, "setting up underlay")
+
 	if err := hostnetwork.SetupUnderlay(ctx, hostConfig.Underlay); err != nil {
 		return fmt.Errorf("failed to setup underlay: %w", err)
 	}
@@ -198,13 +214,6 @@ func restoreUnderlay(ctx context.Context, targetNamespace string) {
 	if err := hostnetwork.RestoreUnderlay(ctx, targetNamespace); err != nil {
 		slog.Warn("failed to remove underlay interfaces after underlay removal", "err", err)
 	}
-}
-
-// nonRecoverableHostError tells whether the router pod
-// should be restarted instead of being reconfigured.
-func nonRecoverableHostError(e error) bool {
-	underlayExistsError := hostnetwork.UnderlayExistsError("")
-	return errors.As(e, &underlayExistsError)
 }
 
 func ensureSysctlsForConfig(ctx context.Context, config interfacesConfiguration) error {

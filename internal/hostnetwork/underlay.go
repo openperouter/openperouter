@@ -57,17 +57,20 @@ func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
 		}
 	}()
 
-	// Check if there are existing underlay interfaces that aren't in the new list.
-	// This means the underlay configuration changed and requires rebuilding
-	// the network namespace.
+	// If any existing underlay interfaces were removed from the new list,
+	// restore them to the default namespace before moving the new ones in.
+	// The caller (setupUnderlayWithCleanup) tears down VNIs beforehand
+	// since they are bound to the old underlay and would be non-functional.
+	// New interfaces are handled below by moveInterfaceToNamespace.
 	existingIfaces, err := FindInterfacesInGroup(targetNetNS, UnderlayGroupID)
 	if err != nil {
 		return fmt.Errorf("failed to check existing underlay interfaces: %w", err)
 	}
-	for _, name := range existingIfaces {
-		if !slices.Contains(params.UnderlayInterfaces, name) {
-			return UnderlayExistsError(fmt.Sprintf(
-				"existing underlay found: %s, new interfaces are %v", name, params.UnderlayInterfaces))
+	if UnderlayInterfacesWereRemoved(existingIfaces, params.UnderlayInterfaces) {
+		slog.InfoContext(ctx, "underlay interfaces changed, restoring old interfaces before setup",
+			"existing", existingIfaces, "requested", params.UnderlayInterfaces)
+		if err := RestoreUnderlay(ctx, params.TargetNS); err != nil {
+			return fmt.Errorf("failed to restore old underlay interfaces: %w", err)
 		}
 	}
 
@@ -107,10 +110,32 @@ func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
 	return nil
 }
 
-type UnderlayExistsError string
+func UnderlayInterfacesWereRemoved(existing, requested []string) bool {
+	if len(existing) == 0 {
+		return false
+	}
+	for _, name := range existing {
+		if !slices.Contains(requested, name) {
+			return true
+		}
+	}
+	return false
+}
 
-func (e UnderlayExistsError) Error() string {
-	return string(e)
+// UnderlayInterfaces returns the names of all underlay interfaces
+// currently present in the given network namespace.
+func UnderlayInterfaces(namespace string) ([]string, error) {
+	ns, err := netns.GetFromPath(namespace)
+	if err != nil {
+		return nil, fmt.Errorf("UnderlayInterfaces: failed to find network namespace %s: %w", namespace, err)
+	}
+	defer func() {
+		if err := ns.Close(); err != nil {
+			slog.Error("failed to close namespace", "namespace", namespace, "error", err)
+		}
+	}()
+
+	return FindInterfacesInGroup(ns, UnderlayGroupID)
 }
 
 func ensureLoopback(ctx context.Context, ns netns.NsHandle, vtepIPs ...string) error {

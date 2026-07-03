@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"slices"
 	"strings"
 	"syscall"
 
@@ -66,8 +65,16 @@ func SetupUnderlay(ctx context.Context, client *Client, params hostnetwork.Under
 		}
 	}()
 
-	if err := validateNoStaleUnderlays(perouterNetNS, params.UnderlayInterfaces); err != nil {
-		return err
+	existingIfaces, err := hostnetwork.FindInterfacesInGroup(perouterNetNS, hostnetwork.UnderlayGroupID)
+	if err != nil {
+		return fmt.Errorf("failed to check existing underlay interfaces: %w", err)
+	}
+	if hostnetwork.UnderlayInterfacesWereRemoved(existingIfaces, params.UnderlayInterfaces) {
+		slog.InfoContext(ctx, "underlay interfaces changed, restoring old grout state before setup",
+			"existing", existingIfaces, "requested", params.UnderlayInterfaces)
+		if err := RestoreUnderlay(ctx, client, params.TargetNS); err != nil {
+			return fmt.Errorf("failed to restore old underlay interfaces: %w", err)
+		}
 	}
 
 	perouterNetNSHandle, err := netlink.NewHandleAt(perouterNetNS)
@@ -139,20 +146,6 @@ func RestoreUnderlay(ctx context.Context, client *Client, targetNS string) error
 		return fmt.Errorf("RestoreUnderlay: failed to clean kernel underlay state: %w", err)
 	}
 
-	return nil
-}
-
-func validateNoStaleUnderlays(ns netns.NsHandle, wanted []string) error {
-	existingIfaces, err := hostnetwork.FindInterfacesInGroup(ns, hostnetwork.UnderlayGroupID)
-	if err != nil {
-		return fmt.Errorf("failed to check existing underlay interfaces: %w", err)
-	}
-	for _, name := range existingIfaces {
-		if !slices.Contains(wanted, name) {
-			return hostnetwork.UnderlayExistsError(fmt.Sprintf(
-				"existing underlay found: %s, new interfaces are %v", name, wanted))
-		}
-	}
 	return nil
 }
 
