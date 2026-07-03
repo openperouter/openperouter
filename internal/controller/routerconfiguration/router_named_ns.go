@@ -31,7 +31,7 @@ type RouterNamedNS struct {
 
 var _ Router = (*RouterNamedNS)(nil)
 
-func (r *RouterNamedNSProvider) New() (Router, error) {
+func (r *RouterNamedNSProvider) New(ctx context.Context) (Router, error) {
 	if err := netnamespace.EnsureNamespace(); err != nil {
 		return nil, fmt.Errorf("failed to ensure named netns: %w", err)
 	}
@@ -64,7 +64,7 @@ func (r *RouterNamedNS) TargetNS(_ context.Context) (string, error) {
 	return netnamespace.NamedNSPath, nil
 }
 
-func (r *RouterNamedNS) CanReconcile(_ context.Context) (bool, error) {
+func (r *RouterNamedNS) CanReconcile() (bool, error) {
 	ns, err := netns.GetFromPath(netnamespace.NamedNSPath)
 	if err != nil {
 		slog.Info("named netns not available", "path", netnamespace.NamedNSPath, "error", err)

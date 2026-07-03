@@ -126,7 +126,7 @@ func (r *PERouterReconciler) reconcile(ctx context.Context, logger *slog.Logger)
 		}
 	}
 
-	router, err := r.RouterProvider.New()
+	router, err := r.RouterProvider.New(ctx)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get router pod instance: %w", err)
 	}
@@ -135,7 +135,7 @@ func (r *PERouterReconciler) reconcile(ctx context.Context, logger *slog.Logger)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to retrieve target namespace: %w", err)
 	}
-	canReconcile, err := router.CanReconcile(ctx)
+	canReconcile, err := router.CanReconcile()
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to check if router can be reconciled: %w", err)
 	}

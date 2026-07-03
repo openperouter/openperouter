@@ -14,6 +14,8 @@ After=network-online.target
 # Pod name - will create Podman pod named "systemd-routerpod"
 PodName=routerpod
 
+Network=ns:/var/run/netns/perouter
+
 # PID namespace sharing - required for FRR process management
 # The reloader needs to see FRR processes to signal configuration reloads
 # Note: Using PodmanArgs because quadlet has no native PodShare= directive
@@ -26,6 +28,10 @@ Restart=on-failure
 
 # Timeout for stopping the pod
 TimeoutStopSec=70
+
+# Create named netns if not present (- prefix = ignore failure when already exists)
+ExecStartPre=-/usr/sbin/ip netns add perouter
+ExecStartPre=/usr/sbin/ip netns exec perouter ip link set lo up
 
 [Install]
 # Automatically enable this pod at boot
