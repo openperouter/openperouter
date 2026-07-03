@@ -36,7 +36,7 @@ spec:
 | Field | Type | Description | Required |
 |-------|------|-------------|----------|
 | `asn` | integer | Local ASN for BGP sessions | Yes |
-| `interfaces` | array | List of underlay interfaces to use for connectivity. Each entry is a discriminated union; today only the `NetworkDevice` type is supported, which moves an existing host network device into the router namespace | Yes |
+| `interfaces` | array | List of underlay interfaces to use for connectivity. Each entry is a discriminated union; the `NetworkDevice` type moves an existing host network device into the router namespace, while the `CNIDevice` type provisions an interface inside the router namespace via a CNI plugin. All entries must use the same type: mixing `NetworkDevice` and `CNIDevice` interfaces is rejected | Yes |
 | `neighbors` | array | List of BGP neighbors to peer with | Yes |
 | `nodeSelector` | object | Label selector to target specific nodes (applies to all nodes if omitted) | No |
 

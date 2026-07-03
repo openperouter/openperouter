@@ -50,10 +50,11 @@ openperouter:
     resources: {}
     # -- Health probe port for liveness and readiness checks
     healthProbePort: 9081
-    # -- CNI plugin binary directory. The default matches the path baked into the
-    # controller image. Override only to use externally-provided binaries (e.g.
-    # host-mounted). Supports colon-separated paths for multiple directories.
-    cniBinDir: "/opt/openperouter/cni/bin/"
+    # -- CNI plugin binary directories. The default matches the path baked into
+    # the controller image. Override only to use externally-provided binaries
+    # (e.g. host-mounted).
+    cniPluginDirs:
+      - "/opt/openperouter/cni/bin/"
     # -- CNI cache directory for persistent CNI state across pod restarts
     cniCacheDir: "/var/lib/openperouter/cni/cache"
   nodemarker:

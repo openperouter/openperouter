@@ -2200,7 +2200,7 @@ spec:
         - --namespace=$(NAMESPACE)
         - --frrconfig=/etc/frr/frr.conf
         - --reloader-socket=/etc/frr/reload.sock
-        - --cni-bin-dir=/opt/openperouter/cni/bin/
+        - --cni-plugin-dirs=/opt/openperouter/cni/bin/
         - --cni-cache-dir=/var/lib/openperouter/cni/cache
         command:
         - /controller
