@@ -24,6 +24,7 @@ import (
 	. "github.com/onsi/gomega"
 	operatorapi "github.com/openperouter/openperouter/operator/api/v1alpha1"
 	"github.com/openperouter/openperouter/operator/internal/envconfig"
+	helmchart "helm.sh/helm/v4/pkg/chart"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -65,7 +66,9 @@ func TestLoadChart(t *testing.T) {
 	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(chart.chart).ToNot(BeNil())
-	g.Expect(chart.chart.Name()).To(Equal(openperouterChartName))
+	chartAccessor, err := helmchart.NewAccessor(chart.chart)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(chartAccessor.Name()).To(Equal(openperouterChartName))
 }
 
 func TestParseChartWithCustomValues(t *testing.T) {
