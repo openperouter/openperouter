@@ -2,7 +2,7 @@
 
 ## Summary
 
-Add a `CNI` provisioning mode to the `interfaces` union introduced by
+Add a `CNIDevice` provisioning mode to the `interfaces` union introduced by
 [PR #341](https://github.com/openperouter/openperouter/pull/341), so the
 controller can invoke any CNI plugin via
 [libcni](https://pkg.go.dev/github.com/containernetworking/cni/libcni)
@@ -109,7 +109,7 @@ infrastructure, with a stable identity across restarts.
 The API improvements enhancement replaces `UnderlaySpec.Nics []string` with
 `Interfaces []UnderlayInterface` — a discriminated-union slice whose `type`
 field selects how each underlay link is obtained. It defines the first mode
-(`NetworkDevice`); this enhancement adds `CNI`.
+(`NetworkDevice`); this enhancement adds `CNIDevice`.
 
 After this enhancement, the two modes are:
 
@@ -142,12 +142,17 @@ via `RawConfig`. The config source is a discriminated union — additional
 source variants (e.g. referencing external NADs or filesystem config files)
 can be added later if a concrete user need emerges.
 
-The `rawConfig` field is **immutable** — once the Underlay is created, the
-CNI configuration cannot be updated in place. To change it, the operator
+The `rawConfig` and `runtimeConfig` fields are **immutable** — once the
+Underlay is created, the CNI configuration cannot be updated in place. To
+change them, the operator
 must delete and recreate the Underlay. This eliminates the need for
 config-drift reconciliation (DEL the old interface, ADD with the new
 config) and avoids a class of partial-failure states where the old
-interface is torn down but the new one fails to provision.
+interface is torn down but the new one fails to provision. Immutability
+is enforced by the validation webhook, correlating the CNI interfaces by
+their interface name: the API server rejects CEL transition rules
+(`oldSelf`) inside atomic lists, so it cannot be expressed in the CRD
+schema.
 
 #### Examples
 
@@ -157,7 +162,7 @@ Replaces Multus-based underlay — the parent NIC stays on the host.
 
 ```yaml
 interfaces:
-  - type: CNI
+  - type: CNIDevice
     cniDevice:
       type: RawConfig
       rawConfig:
@@ -180,7 +185,7 @@ port-security):
 
 ```yaml
 interfaces:
-  - type: CNI
+  - type: CNIDevice
     cniDevice:
       type: RawConfig
       rawConfig:
@@ -209,7 +214,7 @@ spec:
       kubernetes.io/hostname: worker-0
   asn: 64514
   interfaces:
-    - type: CNI
+    - type: CNIDevice
       cniDevice:
         type: RawConfig
         rawConfig:
@@ -238,7 +243,7 @@ Repeat for each node with a different `nodeSelector` and IP — only the
 
 ```yaml
 interfaces:
-  - type: CNI
+  - type: CNIDevice
     cniDevice:
       type: RawConfig
       rawConfig:
@@ -285,7 +290,7 @@ spec:
       kubernetes.io/hostname: worker-0
   asn: 64514
   interfaces:
-    - type: CNI
+    - type: CNIDevice
       cniDevice:
         type: RawConfig
         rawConfig:
@@ -422,7 +427,6 @@ type NetworkDeviceConfig struct {
 // +union
 // +kubebuilder:validation:XValidation:rule="self.type == 'RawConfig' ? has(self.rawConfig) : true",message="rawConfig is required when type is RawConfig"
 // +kubebuilder:validation:XValidation:rule="self.type != 'RawConfig' ? !has(self.rawConfig) : true",message="rawConfig must not be set when type is not RawConfig"
-// +kubebuilder:validation:XValidation:rule="oldSelf.rawConfig == self.rawConfig",message="rawConfig is immutable; delete and recreate the Underlay to change it"
 type CNIDeviceConfig struct {
 	// +kubebuilder:validation:Enum=RawConfig
 	// +required
@@ -430,7 +434,9 @@ type CNIDeviceConfig struct {
 	Type string `json:"type,omitempty"`
 
 	// rawConfig embeds a CNI config JSON blob directly in this spec.
-	// Immutable once set — delete and recreate the Underlay to change.
+	// Immutable once set — delete and recreate the Underlay to change
+	// (enforced by the validation webhook: CEL transition rules cannot
+	// be evaluated inside atomic lists).
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +kubebuilder:validation:Type=object
 	// +optional
@@ -485,7 +491,7 @@ type NativeIPAM struct {
 
 ### Controller Provisioning Flow
 
-The controller's reconciliation pipeline is extended to handle the `CNI`
+The controller's reconciliation pipeline is extended to handle the `CNIDevice`
 type. The provisioning logic runs in the same phase where it currently
 moves host devices.
 
@@ -529,7 +535,7 @@ include `static` and `dhcp`.
     failure.
   - Delete when no cache exists → succeeds gracefully.
 - **Reconciliation tests**: Verify:
-  - Type change (`NetworkDevice` → `CNI`) triggers rebuild.
+  - Type change (`NetworkDevice` → `CNIDevice`) triggers rebuild.
   - Config source change triggers rebuild.
   - Cached CNI result → no re-invocation.
   - CNI ADD fails → error propagated to status.
@@ -558,7 +564,7 @@ include `static` and `dhcp`.
 ### Implementation
 
 - `CNIDeviceConfig` type added to the API;
-  `UnderlayInterface` enum extended with `CNI`.
+  `UnderlayInterface` enum extended with `CNIDevice`.
 - CEL validation rules for `CNIDeviceConfig`
   (RawConfig required/forbidden, immutability).
 - CNI invocation layer (`internal/cni/invoker.go`) wrapping `libcni`:
@@ -600,7 +606,7 @@ include `static` and `dhcp`.
 
 ```yaml
 interfaces:
-  - type: CNI
+  - type: CNIDevice
     nadName: macvlan-underlay
     nadNamespace: default
 ```
@@ -656,7 +662,7 @@ bond breaks.
 Integrate with
 [k8snetworkplumbingwg/bond-cni](https://github.com/k8snetworkplumbingwg/bond-cni)
 as an additional supported CNI interface plugin. With `bond-cni` invoked
-via `CNI` mode, the bond is created directly inside the router netns with
+via `CNIDevice` mode, the bond is created directly inside the router netns with
 its member interfaces already in place, so the BGP session survives a
 single link failure.
 
@@ -685,3 +691,6 @@ it requires API access, day0 would not be possible.
   field is now directly `apiextensionsv1.JSON` (eliminates redundant
   `rawConfig.config` nesting level). Made rawConfig immutable via CEL
   transition rule.
+- 2026-07-02: Moved rawConfig immutability enforcement to the validation
+  webhook — the API server rejects CEL transition rules inside atomic
+  lists.
