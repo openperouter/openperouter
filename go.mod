@@ -19,7 +19,7 @@ require (
 	github.com/vishvananda/netlink v1.3.1
 	github.com/vishvananda/netns v0.0.5
 	go.yaml.in/yaml/v2 v2.4.3
-	golang.org/x/net v0.55.0
+	golang.org/x/net v0.56.0
 	golang.org/x/sys v0.46.0
 	google.golang.org/grpc v1.81.1
 	helm.sh/helm/v4 v4.2.2
