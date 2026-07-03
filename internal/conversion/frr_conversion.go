@@ -458,26 +458,19 @@ func l3vniToFRR(vni v1alpha1.L3VNI, routerID string, underlayASN int64, nodeInde
 		return nil, fmt.Errorf("could not parse HostSession, err: %w", err)
 	}
 
-	veths, err := ipam.VethIPsFromPool(vni.Spec.HostSession.LocalCIDR.IPv4, vni.Spec.HostSession.LocalCIDR.IPv6, nodeIndex)
+	hostSideIPs, err := hostSessionToHostSideIPs(vni.Spec.HostSession, nodeIndex)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get veths ips for vni %s: %w", vni.Name, err)
-	}
-
-	hostSideIPs := []net.IPNet{}
-	if ip := veths.Ipv4.HostSide.IP; ip != nil {
-		hostSideIPs = append(hostSideIPs, net.IPNet{IP: ip, Mask: net.CIDRMask(32, 32)})
-	}
-	if ip := veths.Ipv6.HostSide.IP; ip != nil {
-		hostSideIPs = append(hostSideIPs, net.IPNet{IP: ip, Mask: net.CIDRMask(128, 128)})
-	}
-	if len(hostSideIPs) == 0 {
-		return nil, fmt.Errorf("no valid host side IP found for vni %s", vni.Name)
+		return nil, err
 	}
 
 	configs := []frr.L3VNIConfig{}
-	for _, ipnet := range hostSideIPs {
+	for _, af := range []ipfamily.Family{ipfamily.IPv4, ipfamily.IPv6} {
+		ipnet, hasFamily := hostSideIPs[af]
+		if !hasFamily {
+			continue
+		}
 		toAdvertiseIPv4, toAdvertiseIPv6 := []string{}, []string{}
-		if ipfamily.ForCIDR(&ipnet) == ipfamily.IPv4 {
+		if af == ipfamily.IPv4 {
 			toAdvertiseIPv4 = []string{ipnet.String()}
 		} else {
 			toAdvertiseIPv6 = []string{ipnet.String()}
@@ -558,26 +551,19 @@ func l3vpnToFRR(vpn v1alpha1.L3VPN, routerID string, underlayASN int64, nodeInde
 		return nil, fmt.Errorf("could not parse HostSession, err: %w", err)
 	}
 
-	veths, err := ipam.VethIPsFromPool(vpn.Spec.HostSession.LocalCIDR.IPv4, vpn.Spec.HostSession.LocalCIDR.IPv6, nodeIndex)
+	hostSideIPs, err := hostSessionToHostSideIPs(vpn.Spec.HostSession, nodeIndex)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get veths ips for l3vpn %s: %w", vpn.Name, err)
-	}
-
-	hostSideIPs := []net.IPNet{}
-	if ip := veths.Ipv4.HostSide.IP; ip != nil {
-		hostSideIPs = append(hostSideIPs, net.IPNet{IP: ip, Mask: net.CIDRMask(32, 32)})
-	}
-	if ip := veths.Ipv6.HostSide.IP; ip != nil {
-		hostSideIPs = append(hostSideIPs, net.IPNet{IP: ip, Mask: net.CIDRMask(128, 128)})
-	}
-	if len(hostSideIPs) == 0 {
-		return nil, fmt.Errorf("no valid host side IP found for l3vpn %s", vpn.Name)
+		return nil, err
 	}
 
 	configs := []frr.L3VPNConfig{}
-	for _, ipnet := range hostSideIPs {
+	for _, af := range []ipfamily.Family{ipfamily.IPv4, ipfamily.IPv6} {
+		ipnet, hasFamily := hostSideIPs[af]
+		if !hasFamily {
+			continue
+		}
 		toAdvertiseIPv4, toAdvertiseIPv6 := []string{}, []string{}
-		if ipfamily.ForCIDR(&ipnet) == ipfamily.IPv4 {
+		if af == ipfamily.IPv4 {
 			toAdvertiseIPv4 = []string{ipnet.String()}
 		} else {
 			toAdvertiseIPv6 = []string{ipnet.String()}
@@ -605,6 +591,25 @@ func l3vpnToFRR(vpn v1alpha1.L3VPN, routerID string, underlayASN int64, nodeInde
 
 func routeDistinguisher(left string, right int32) string {
 	return fmt.Sprintf("%s:%d", left, right)
+}
+
+func hostSessionToHostSideIPs(hostSession *v1alpha1.HostSession, nodeIndex int) (map[ipfamily.Family]net.IPNet, error) {
+	veths, err := ipam.VethIPsFromPool(hostSession.LocalCIDR.IPv4, hostSession.LocalCIDR.IPv6, nodeIndex)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get veths ips: %w", err)
+	}
+
+	hostSideIPs := map[ipfamily.Family]net.IPNet{}
+	if ip := veths.Ipv4.HostSide.IP; ip != nil {
+		hostSideIPs[ipfamily.IPv4] = net.IPNet{IP: ip, Mask: net.CIDRMask(32, 32)}
+	}
+	if ip := veths.Ipv6.HostSide.IP; ip != nil {
+		hostSideIPs[ipfamily.IPv6] = net.IPNet{IP: ip, Mask: net.CIDRMask(128, 128)}
+	}
+	if len(hostSideIPs) == 0 {
+		return nil, errors.New("no valid host side IP found")
+	}
+	return hostSideIPs, nil
 }
 
 // convertRTsToSliceOfStrings converts the provided routeTarget []v1alpha1.RouteTarget to slice of strings.
