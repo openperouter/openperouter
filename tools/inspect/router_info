@@ -2,14 +2,40 @@
 
 # SPDX-License-Identifier:Apache-2.0
 
+readonly VTYSH_EXEC="timeout 10s vtysh -c"
 readonly FRR_INFO=(\
-"timeout 10s vtysh -c 'show running-config'" \
-"timeout 10s vtysh -c 'show bgp ipv4'" \
-"timeout 10s vtysh -c 'show bgp ipv6'" \
-"timeout 10s vtysh -c 'show bgp neighbor'" \
-"timeout 10s vtysh -c 'show bfd peer'" \
-"timeout 10s vtysh -c 'show bgp l2vpn evpn'" \
+"$VTYSH_EXEC 'show running-config'" \
+"$VTYSH_EXEC 'show bgp ipv4'" \
+"$VTYSH_EXEC 'show bgp ipv6'" \
+"$VTYSH_EXEC 'show bgp neighbor'" \
+"$VTYSH_EXEC 'show bfd peer'" \
+"$VTYSH_EXEC 'show bgp l2vpn evpn'" \
 )
+
+function get_neighbors_addr() {
+	local -r cmd="$1"
+	$VTYSH_EXEC "$cmd" 2>/dev/null \
+		| sed -n 's/^BGP neighbor is \([^,]*\),.*/\1/p'
+}
+
+function print_neighbor_routes() {
+  local -r route_direction=("advertised-routes" "received-routes")
+  declare -A nei_by_afi
+  nei_by_afi["ipv4"]="$(get_neighbors_addr "show bgp ipv4 neighbors")"
+  nei_by_afi["ipv6"]="$(get_neighbors_addr "show bgp ipv6 neighbors")"
+
+  for afi in "${!nei_by_afi[@]}"; do
+    afi_neis=(${nei_by_afi[$afi]})
+    [[ ${#afi_neis[@]} -eq 0 ]] && continue
+    for nei in "${afi_neis[@]}"; do
+      for direction in "${route_direction[@]}"; do
+        echo "### Neighbor [$nei] BGP ${direction}:"
+        $VTYSH_EXEC "show bgp ${afi} neighbors ${nei} ${direction}"
+      done
+      echo ""
+    done
+  done
+}
 
 echo "### Routing infrastructure info:"
 for cmd in "${FRR_INFO[@]}"; do
@@ -17,4 +43,9 @@ for cmd in "${FRR_INFO[@]}"; do
 	eval "$cmd"
 	echo ""
 done
+echo "###"
+echo ""
+
+echo "### Neighbors BGP routes:"
+print_neighbor_routes
 echo "###"
