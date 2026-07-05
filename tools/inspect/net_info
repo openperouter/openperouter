@@ -18,6 +18,34 @@ readonly NETNS_INFO=(\
 "bridge fdb show" \
 )
 
+readonly VRF_SHOW="ip -br link show type vrf"
+readonly VRF_INFO=(\
+"ip link show type vrf"
+"ip route show vrf"
+"ip address show vrf"
+)
+
+function print_vrf_info {
+  local -r netns_name=$1
+  local -r args="$2"
+
+  vrfs=("$($args $VRF_SHOW | awk '{print $1}')")
+  [[ ${#vrfs} -eq 0 ]] && return
+
+  echo "### netns [$netns_name] VRFs:"
+  $args $VRF_SHOW
+
+  for vrf in "${vrfs[@]}"; do
+    echo "### netns [$netns_name] VRF [$vrf]:"
+    for cmd in "${VRF_INFO[@]}"; do
+      c="$args $cmd $vrf"
+      echo "$ $c"
+      $c
+    done
+  done
+  echo "###"
+}
+
 echo "### Networking info:"
 for cmd in "${NETNS_INFO[@]}"; do
 	c="$args $cmd"
@@ -26,3 +54,10 @@ for cmd in "${NETNS_INFO[@]}"; do
 	echo ""
 done
 echo "###"
+echo ""
+
+if [[ -n $NETNS ]]; then
+  print_vrf_info "$NETNS" "$args"
+else
+  print_vrf_info "root" ""
+fi
