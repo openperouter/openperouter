@@ -3,6 +3,7 @@
 package tests
 
 import (
+	"github.com/onsi/ginkgo/v2"
 	"github.com/openperouter/openperouter/e2etests/pkg/config"
 	"github.com/openshift-kni/k8sreporter"
 )
@@ -14,3 +15,5 @@ var (
 	HostMode                bool
 	SkipUnderlayPassthrough bool
 )
+
+var GroutSupport = ginkgo.Label("grout-support")
