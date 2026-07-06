@@ -60,9 +60,9 @@ spec:
     hostasn: 64515
     localcidr:
       ipv4: 192.169.11.0/24
+  vrf: blue
   rdAssignedNumber: 200
   exportRTs:
   - "64514:200"
   importRTs:
   - "64520:200"
-  vrf: blue
