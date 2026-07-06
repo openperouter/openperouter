@@ -10,18 +10,13 @@ import (
 	"sort"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
+	openpeerrors "github.com/openperouter/openperouter/internal/errors"
 	"github.com/openperouter/openperouter/internal/frr"
 	"github.com/openperouter/openperouter/internal/ipam"
 	"github.com/openperouter/openperouter/internal/ipfamily"
 	"github.com/openperouter/openperouter/internal/networklayerprotocol"
 	"k8s.io/utils/ptr"
 )
-
-type FRREmptyConfigError string
-
-func (e FRREmptyConfigError) Error() string {
-	return string(e)
-}
 
 type L3VNIOption func(*frr.L3VNIConfig) error
 
@@ -62,7 +57,7 @@ func APItoFRR(config APIConfigData, nodeIndex int, logLevel string) (frr.Config,
 	}
 
 	if len(config.Underlays) == 0 {
-		return frr.Config{}, FRREmptyConfigError("no underlays provided")
+		return frr.Config{}, openpeerrors.FRREmptyConfig("no underlays provided")
 	}
 
 	underlay := config.Underlays[0]

@@ -161,10 +161,3 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 	}
 	return errors.Join(resourceErrors...)
 }
-
-// nonRecoverableHostError tells whether the router pod
-// should be restarted instead of being reconfigured.
-func nonRecoverableHostError(e error) bool {
-	underlayExistsError := hostnetwork.UnderlayExistsError("")
-	return errors.As(e, &underlayExistsError)
-}
