@@ -8,13 +8,24 @@ lastmod: "2025-06-15T15:03:22+02:00"
 toc: true
 ---
 
-OpenPERouter requires two main configuration components: the **Underlay** configuration for external router connectivity and a VPN specific configuration for overlays.
+OpenPERouter requires two main configuration components: the **Underlay**
+configuration for external router connectivity and a VPN specific
+configuration for overlays.
 
-All Custom Resources (CRs) must be created in the same namespace where OpenPERouter is deployed (typically `openperouter-system`).
+OpenPERouter supports two overlay technologies:
+
+- **EVPN/VXLAN**: See the
+  [EVPN Configuration]({{< ref "evpn" >}}) page for details.
+- **SRv6 L3VPN**: See the
+  [SRv6 L3VPN Configuration]({{< ref "srv6" >}}) page for details.
+
+All Custom Resources (CRs) must be created in the same namespace where
+OpenPERouter is deployed (typically `openperouter-system`).
 
 ## Underlay Configuration
 
-The underlay configuration establishes BGP sessions with external routers (typically Top-of-Rack switches).
+The underlay configuration establishes BGP sessions with external routers
+(typically Top-of-Rack switches).
 
 ### Basic Underlay Configuration
 
@@ -33,19 +44,14 @@ spec:
       address: 192.168.11.2
 ```
 
-### Configuration Fields
-
-| Field | Type | Description | Required |
-|-------|------|-------------|----------|
-| `asn` | integer | Local ASN for BGP sessions | Yes |
-| `nics` | array | List of network interface names to move to router namespace (minimum 1) | Yes |
-| `neighbors` | array | List of BGP neighbors to peer with (minimum 1) | Yes |
-| `nodeSelector` | object | Label selector to target specific nodes (applies to all nodes if omitted) | No |
-| `gracefulRestart` | object | Enables BGP Graceful Restart when present. See [Graceful Restart]({{< ref "graceful-restart" >}}). | No |
+For the full list of configuration fields, see the
+[API Reference]({{< ref "api-reference.md#underlay" >}}) documentation.
 
 ### Multiple Interfaces and Neighbors
 
-OpenPERouter supports configuring multiple physical network interfaces and multiple BGP neighbors for production deployments with redundancy and multi-path networking.
+OpenPERouter supports configuring multiple physical network interfaces and
+multiple BGP neighbors for production deployments with redundancy and
+multi-path networking.
 
 **Example with multiple neighbors and interfaces**:
 
@@ -84,15 +90,25 @@ spec:
 
 ### Per-Node Configuration
 
-The Underlay resource supports an optional `nodeSelector` field that allows you to target specific configurations to specific nodes. This is useful for multi-rack deployments, multi-datacenter clusters, or heterogeneous hardware environments.
+The Underlay resource supports an optional `nodeSelector` field that
+allows you to target specific configurations to specific nodes. This is
+useful for multi-rack deployments, multi-datacenter clusters, or
+heterogeneous hardware environments.
 
-For detailed information and examples, see the [Node Selector Configuration]({{< ref "node-selector.md" >}}) documentation.
+For detailed information and examples, see the
+[Node Selector Configuration]({{< ref "node-selector.md" >}})
+documentation.
 
 ### Alternative: Multus Network for Top of Rack Connectivity
 
-Instead of declaring physical network interfaces in the underlay configuration, you can use Multus networks to provide connectivity to top of rack switches. In this case, the `nics` field in the underlay configuration can be omitted.
+Instead of declaring physical network interfaces in the underlay
+configuration, you can use Multus networks to provide connectivity to top
+of rack switches. In this case, the `nics` field in the underlay
+configuration can be omitted.
 
-When using this approach, ensure that the router pods are configured with the appropriate Multus network annotation to connect to your top of rack switches.
+When using this approach, ensure that the router pods are configured with
+the appropriate Multus network annotation to connect to your top of rack
+switches.
 
 #### Using Helm Values
 
@@ -111,17 +127,13 @@ helm install openperouter ./charts/openperouter \
   --set openperouter.multusNetworkAnnotation="macvlan-conf"
 ```
 
-This will add the annotation `k8s.v1.cni.cncf.io/networks: macvlan-conf` to the router pods.
-
-## Sysctl Configuration
-
-OpenPERouter automatically tunes several kernel sysctl settings inside the router's network namespace (IP forwarding, ARP accept, IPv6 Neighbor Advertisement accept). Some of these settings require a minimum kernel version.
-
-For the full list of sysctls and kernel requirements, see the [Sysctl Configuration]({{< ref "sysctl.md" >}}) documentation.
+This will add the annotation `k8s.v1.cni.cncf.io/networks: macvlan-conf`
+to the router pods.
 
 #### Using Kustomize
 
-Alternatively, you can use kustomize to add the annotation to the router pod:
+Alternatively, you can use kustomize to add the annotation to the router
+pod:
 
 ```yaml
 # kustomization.yaml
@@ -135,3 +147,13 @@ patches:
       value:
         k8s.v1.cni.cncf.io/networks: macvlan-conf
 ```
+
+## Sysctl Configuration
+
+OpenPERouter automatically tunes several kernel sysctl settings inside the
+router's network namespace (IP forwarding, ARP accept, IPv6 Neighbor
+Advertisement accept). Some of these settings require a minimum kernel
+version.
+
+For the full list of sysctls and kernel requirements, see the
+[Sysctl Configuration]({{< ref "sysctl.md" >}}) documentation.
