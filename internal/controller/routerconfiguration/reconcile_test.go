@@ -5,12 +5,12 @@ package routerconfiguration
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"strings"
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/conversion"
 	openpeerrors "github.com/openperouter/openperouter/internal/errors"
@@ -38,12 +38,19 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 		l2VNIs           []v1alpha1.L2VNI
 		l3Passthroughs   []v1alpha1.L3Passthrough
 		expectedFailures []v1alpha1.FailedResource
+		wantConfig       conversion.APIConfigData
 	}{
 		{
 			name: "all valid L3VNIs pass through",
 			l3VNIs: []v1alpha1.L3VNI{
 				l3VNI("vni-a", "vrfA", 100),
 				l3VNI("vni-b", "vrfB", 200),
+			},
+			wantConfig: conversion.APIConfigData{
+				L3VNIs: []v1alpha1.L3VNI{
+					l3VNI("vni-a", "vrfA", 100),
+					l3VNI("vni-b", "vrfB", 200),
+				},
 			},
 		},
 		{
@@ -52,6 +59,13 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 			l3VPNs: []v1alpha1.L3VPN{
 				l3VPN("vni-a", "vrfA", 100),
 				l3VPN("vni-b", "vrfB", 200),
+			},
+			wantConfig: conversion.APIConfigData{
+				Underlays: srv6Underlays(),
+				L3VPNs: []v1alpha1.L3VPN{
+					l3VPN("vni-a", "vrfA", 100),
+					l3VPN("vni-b", "vrfB", 200),
+				},
 			},
 		},
 		{
@@ -63,6 +77,11 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 			expectedFailures: []v1alpha1.FailedResource{
 				{Kind: openpeerrors.KindL3VNI, Name: "second", Reason: v1alpha1.FailedResourceReasonValidationFailed,
 					Message: "duplicate vni 100:L3VNI/first"},
+			},
+			wantConfig: conversion.APIConfigData{
+				L3VNIs: []v1alpha1.L3VNI{
+					l3VNI("first", "vrfA", 100),
+				},
 			},
 		},
 		{
@@ -76,6 +95,12 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 				{Kind: openpeerrors.KindL3VPN, Name: "second", Reason: v1alpha1.FailedResourceReasonValidationFailed,
 					Message: "duplicate rdAssignedNumber 100:L3VPN/first"},
 			},
+			wantConfig: conversion.APIConfigData{
+				Underlays: srv6Underlays(),
+				L3VPNs: []v1alpha1.L3VPN{
+					l3VPN("first", "vrfA", 100),
+				},
+			},
 		},
 		{
 			name: "invalid VRF name skips L3VNI",
@@ -86,6 +111,11 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 			expectedFailures: []v1alpha1.FailedResource{
 				{Kind: openpeerrors.KindL3VNI, Name: "bad-name", Reason: v1alpha1.FailedResourceReasonValidationFailed,
 					Message: "invalid vrf name for vni \"bad-name\", vrf \"this-is-way-too-long-for-interface\": interface name this-is-way-too-long-for-interface can't be longer than 15 characters"},
+			},
+			wantConfig: conversion.APIConfigData{
+				L3VNIs: []v1alpha1.L3VNI{
+					l3VNI("good", "vrfA", 200),
+				},
 			},
 		},
 		{
@@ -99,6 +129,12 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 				{Kind: openpeerrors.KindL3VPN, Name: "bad-name", Reason: v1alpha1.FailedResourceReasonValidationFailed,
 					Message: "invalid vrf name for vpn \"bad-name\", vrf \"this-is-way-too-long-for-interface\": interface name this-is-way-too-long-for-interface can't be longer than 15 characters"},
 			},
+			wantConfig: conversion.APIConfigData{
+				Underlays: srv6Underlays(),
+				L3VPNs: []v1alpha1.L3VPN{
+					l3VPN("good", "vrfA", 200),
+				},
+			},
 		},
 		{
 			name: "valid connected and disconnected L2VNIs",
@@ -108,6 +144,15 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 			l2VNIs: []v1alpha1.L2VNI{
 				l2VNI("connected", new("vrfA"), 200),
 				l2VNI("disconnected", nil, 201),
+			},
+			wantConfig: conversion.APIConfigData{
+				L3VNIs: []v1alpha1.L3VNI{
+					l3VNI("l3-a", "vrfA", 100),
+				},
+				L2VNIs: []v1alpha1.L2VNI{
+					l2VNI("connected", new("vrfA"), 200),
+					l2VNI("disconnected", nil, 201),
+				},
 			},
 		},
 		{
@@ -120,6 +165,16 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 				l2VNI("connected", new("vrfA"), 200),
 				l2VNI("disconnected", nil, 201),
 			},
+			wantConfig: conversion.APIConfigData{
+				Underlays: srv6Underlays(),
+				L3VPNs: []v1alpha1.L3VPN{
+					l3VPN("l3-a", "vrfA", 100),
+				},
+				L2VNIs: []v1alpha1.L2VNI{
+					l2VNI("connected", new("vrfA"), 200),
+					l2VNI("disconnected", nil, 201),
+				},
+			},
 		},
 		{
 			name: "duplicate vni within L2VNIs skips second",
@@ -130,6 +185,11 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 			expectedFailures: []v1alpha1.FailedResource{
 				{Kind: openpeerrors.KindL2VNI, Name: "second", Reason: v1alpha1.FailedResourceReasonValidationFailed,
 					Message: "duplicate vni 200:L2VNI/first"},
+			},
+			wantConfig: conversion.APIConfigData{
+				L2VNIs: []v1alpha1.L2VNI{
+					l2VNI("first", nil, 200),
+				},
 			},
 		},
 		{
@@ -146,21 +206,40 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 				{Kind: openpeerrors.KindL2VNI, Name: "conflict-l2", Reason: v1alpha1.FailedResourceReasonValidationFailed,
 					Message: "duplicate vni 300:L3VNI/conflict-l3"},
 			},
+			wantConfig: conversion.APIConfigData{
+				L3VNIs: []v1alpha1.L3VNI{
+					l3VNI("conflict-l3", "vrfB", 300),
+					l3VNI("good-l3", "vrfA", 100),
+				},
+				L2VNIs: []v1alpha1.L2VNI{
+					l2VNI("good-l2", nil, 200),
+				},
+			},
 		},
 		{
 			name:      "cross-type VNI conflict skips L2VNI (L3VPN)",
 			underlays: srv6Underlays(),
 			l3VPNs: []v1alpha1.L3VPN{
-				l3VPN("good-l3", "vrfA", 100),
 				l3VPN("conflict-l3", "vrfB", 300),
+				l3VPN("good-l3", "vrfA", 100),
 			},
 			l2VNIs: []v1alpha1.L2VNI{
-				l2VNI("good-l2", nil, 200),
 				l2VNI("conflict-l2", nil, 300),
+				l2VNI("good-l2", nil, 200),
 			},
 			expectedFailures: []v1alpha1.FailedResource{
 				{Kind: openpeerrors.KindL2VNI, Name: "conflict-l2", Reason: v1alpha1.FailedResourceReasonValidationFailed,
 					Message: "duplicate vni 300:L3VPN/conflict-l3"},
+			},
+			wantConfig: conversion.APIConfigData{
+				Underlays: srv6Underlays(),
+				L3VPNs: []v1alpha1.L3VPN{
+					l3VPN("conflict-l3", "vrfB", 300),
+					l3VPN("good-l3", "vrfA", 100),
+				},
+				L2VNIs: []v1alpha1.L2VNI{
+					l2VNI("good-l2", nil, 200),
+				},
 			},
 		},
 		{
@@ -186,6 +265,11 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 				{Kind: openpeerrors.KindL3VNI, Name: "second", Reason: v1alpha1.FailedResourceReasonValidationFailed,
 					Message: `more than one L3VNI detected in VRF "same-vrf": "/first" already exists`},
 			},
+			wantConfig: conversion.APIConfigData{
+				L3VNIs: []v1alpha1.L3VNI{
+					l3VNI("first", "same-vrf", 100),
+				},
+			},
 		},
 		{
 			name:      "duplicate VRF skips second L3VPN",
@@ -197,6 +281,12 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 			expectedFailures: []v1alpha1.FailedResource{
 				{Kind: openpeerrors.KindL3VPN, Name: "second", Reason: v1alpha1.FailedResourceReasonValidationFailed,
 					Message: `more than one L3VPN detected in VRF "same-vrf": "/first" already exists`},
+			},
+			wantConfig: conversion.APIConfigData{
+				Underlays: srv6Underlays(),
+				L3VPNs: []v1alpha1.L3VPN{
+					l3VPN("first", "same-vrf", 100),
+				},
 			},
 		},
 		{
@@ -211,6 +301,14 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 			expectedFailures: []v1alpha1.FailedResource{
 				{Kind: openpeerrors.KindL2VNI, Name: "orphan-l2", Reason: v1alpha1.FailedResourceReasonDependencyFailed,
 					Message: `no valid L3 resource for VRF "vrfMissing"`},
+			},
+			wantConfig: conversion.APIConfigData{
+				L3VNIs: []v1alpha1.L3VNI{
+					l3VNI("good-l3", "vrfA", 100),
+				},
+				L2VNIs: []v1alpha1.L2VNI{
+					l2VNI("good-l2", new("vrfA"), 200),
+				},
 			},
 		},
 		{
@@ -227,6 +325,15 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 				{Kind: openpeerrors.KindL2VNI, Name: "orphan-l2", Reason: v1alpha1.FailedResourceReasonDependencyFailed,
 					Message: `no valid L3 resource for VRF "vrfMissing"`},
 			},
+			wantConfig: conversion.APIConfigData{
+				Underlays: srv6Underlays(),
+				L3VPNs: []v1alpha1.L3VPN{
+					l3VPN("good-l3", "vrfA", 100),
+				},
+				L2VNIs: []v1alpha1.L2VNI{
+					l2VNI("good-l2", new("vrfA"), 200),
+				},
+			},
 		},
 		{
 			name:      "L2VNI with valid L3VPN reports no failures",
@@ -237,15 +344,55 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 			l2VNIs: []v1alpha1.L2VNI{
 				l2VNI("good-l2", new("vrfA"), 200),
 			},
+			wantConfig: conversion.APIConfigData{
+				Underlays: srv6Underlays(),
+				L3VPNs: []v1alpha1.L3VPN{
+					l3VPN("good-l3", "vrfA", 100),
+				},
+				L2VNIs: []v1alpha1.L2VNI{
+					l2VNI("good-l2", new("vrfA"), 200),
+				},
+			},
 		},
 		{
-			name: "L3VPN without underlay reports failure",
+			name: "L3VPN with L3VNI reports failure but reconciles other resources",
+			l3VNIs: []v1alpha1.L3VNI{
+				l3VNI("bad-l3-vni", "vrfA", 100),
+			},
+			l3VPNs: []v1alpha1.L3VPN{
+				l3VPN("bad-l3-vpn", "vrfB", 101),
+			},
+			l2VNIs: []v1alpha1.L2VNI{
+				l2VNI("good-l2", nil, 200),
+			},
+			expectedFailures: []v1alpha1.FailedResource{
+				{Kind: openpeerrors.KindL3VNI, Name: "bad-l3-vni", Reason: v1alpha1.FailedResourceReasonValidationFailed,
+					Message: "cannot specify L3VNI resources and L3VPN resources at the same time"},
+				{Kind: openpeerrors.KindL3VPN, Name: "bad-l3-vpn", Reason: v1alpha1.FailedResourceReasonValidationFailed,
+					Message: "cannot specify L3VPN resources and L3VNI resources at the same time"},
+			},
+			wantConfig: conversion.APIConfigData{
+				L2VNIs: []v1alpha1.L2VNI{
+					l2VNI("good-l2", nil, 200),
+				},
+			},
+		},
+		{
+			name: "L3VPN without underlay reports failure but reconciles other resources",
 			l3VPNs: []v1alpha1.L3VPN{
 				l3VPN("bad-l3", "vrfA", 100),
+			},
+			l2VNIs: []v1alpha1.L2VNI{
+				l2VNI("good-l2", nil, 200),
 			},
 			expectedFailures: []v1alpha1.FailedResource{
 				{Kind: openpeerrors.KindL3VPN, Name: "bad-l3", Reason: v1alpha1.FailedResourceReasonValidationFailed,
 					Message: `cannot specify L3VPN configuration without an underlay with SRV6 configuration`},
+			},
+			wantConfig: conversion.APIConfigData{
+				L2VNIs: []v1alpha1.L2VNI{
+					l2VNI("good-l2", nil, 200),
+				},
 			},
 		},
 		{
@@ -271,10 +418,27 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 				},
 			}},
 			expectedFailures: []v1alpha1.FailedResource{
-				{Kind: openpeerrors.KindUnderlay, Name: "underlay", Reason: v1alpha1.FailedResourceReasonValidationFailed,
-					Message: `cannot have an empty SRv6 section when L3VPNs are present`},
 				{Kind: openpeerrors.KindL3VPN, Name: "bad-l3", Reason: v1alpha1.FailedResourceReasonValidationFailed,
 					Message: `cannot specify L3VPN configuration without an underlay with SRV6 configuration`},
+			},
+			wantConfig: conversion.APIConfigData{
+				Underlays: []v1alpha1.Underlay{{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "underlay",
+					},
+					Spec: v1alpha1.UnderlaySpec{
+						ASN: 100,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN:     new(int64(101)),
+								Address: new("192.168.1.1"),
+							},
+						},
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"2001:db8::/64"},
+						},
+					},
+				}},
 			},
 		},
 		{
@@ -295,6 +459,14 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 					Message: `subnet overlap in VRF "vrfBad": IPNet 10.0.2.0/24 (L2VNI /bad-l2-2) overlaps with IPNet 10.0.2.0/24 (L2VNI /bad-l2-1)`},
 				{Kind: openpeerrors.KindL2VNI, Name: "bad-l2-2", Reason: v1alpha1.FailedResourceReasonValidationFailed,
 					Message: `subnet overlap in VRF "vrfBad": IPNet 10.0.2.0/24 (L2VNI /bad-l2-2) overlaps with IPNet 10.0.2.0/24 (L2VNI /bad-l2-1)`},
+			},
+			wantConfig: conversion.APIConfigData{
+				L3VNIs: []v1alpha1.L3VNI{
+					l3VNI("good-l3", "vrfGood", 100),
+				},
+				L2VNIs: []v1alpha1.L2VNI{
+					l2VNIWithGateway("good-l2", "vrfGood", 300, []string{"10.0.1.1/24"}),
+				},
 			},
 		},
 		{
@@ -317,7 +489,22 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 				{Kind: openpeerrors.KindL2VNI, Name: "bad-l2-2", Reason: v1alpha1.FailedResourceReasonValidationFailed,
 					Message: `subnet overlap in VRF "vrfBad": IPNet 10.0.2.0/24 (L2VNI /bad-l2-2) overlaps with IPNet 10.0.2.0/24 (L2VNI /bad-l2-1)`},
 			},
+			wantConfig: conversion.APIConfigData{
+				Underlays: srv6Underlays(),
+				L3VPNs: []v1alpha1.L3VPN{
+					l3VPN("good-l3", "vrfGood", 100),
+				},
+				L2VNIs: []v1alpha1.L2VNI{
+					l2VNIWithGateway("good-l2", "vrfGood", 300, []string{"10.0.1.1/24"}),
+				},
+			},
 		},
+	}
+
+	var gotConfig conversion.APIConfigData
+	testConfigureFRR := func(_ context.Context, data frrConfigData) error { //nolint:unparam
+		gotConfig = data.APIConfigData
+		return nil
 	}
 
 	for _, tt := range tests {
@@ -329,13 +516,19 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 				L2VNIs:        tt.l2VNIs,
 				L3Passthrough: tt.l3Passthroughs,
 			}
+
+			gotConfig = conversion.APIConfigData{}
 			reconcileErr := Reconcile(context.Background(), config, 0, "",
-				"", "", noopUpdater, noopHostConfigurator)
+				"", "", noopUpdater, noopHostConfigurator, testConfigureFRR)
 
 			failures := openpeerrors.CollectFailures(reconcileErr)
 
-			if !reflect.DeepEqual(failures, tt.expectedFailures) {
+			if !cmp.Equal(failures, tt.expectedFailures) {
 				t.Errorf("FailedResources mismatch:\n  got:  %+v\n  want: %+v", failures, tt.expectedFailures)
+			}
+
+			if compareOutput := cmp.Diff(gotConfig, tt.wantConfig); compareOutput != "" {
+				t.Errorf("Configuration mismatch after reconcile (-got, +want):\n%s", compareOutput)
 			}
 		})
 	}
@@ -343,7 +536,7 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 
 func TestReconcileFrrReloadFailure(t *testing.T) {
 	reconcileErr := Reconcile(context.Background(), conversion.APIConfigData{}, 0, "",
-		"", "", failingUpdater, noopHostConfigurator)
+		"", "", failingUpdater, noopHostConfigurator, configureFRR)
 	if reconcileErr == nil {
 		t.Fatal("expected error from FRR reload failure")
 	}

@@ -140,7 +140,7 @@ func ValidateSRv6ForNodes(nodes []corev1.Node, underlays []v1alpha1.Underlay, l3
 		}
 
 		if HasMissingSRv6ForL3VPNs(filteredUnderlays, filteredL3VPNs) {
-			return MissingSRv6ForL3VPNErrors(filteredUnderlays, filteredL3VPNs, &node)
+			return MissingSRv6ForL3VPNErrors(filteredL3VPNs, &node)
 		}
 	}
 	return nil
@@ -160,24 +160,13 @@ func HasMissingSRv6ForL3VPNs(underlays []v1alpha1.Underlay, l3vpns []v1alpha1.L3
 	return false
 }
 
-// MissingSRv6ForL3VPNErrors adds erros to all underlays / l3vpns about missing underlay SRv6 configuration.
-func MissingSRv6ForL3VPNErrors(underlays []v1alpha1.Underlay, l3vpns []v1alpha1.L3VPN, node *corev1.Node) error {
-	errs := make([]error, 0, len(underlays)+len(l3vpns))
+// MissingSRv6ForL3VPNErrors adds errors to all l3vpns about missing underlay SRv6 configuration.
+func MissingSRv6ForL3VPNErrors(l3vpns []v1alpha1.L3VPN, node *corev1.Node) error {
+	errs := make([]error, 0, len(l3vpns))
 
 	nodeStr := ""
 	if node != nil {
 		nodeStr = fmt.Sprintf(" on node %q", node.Name)
-	}
-
-	for _, underlay := range underlays {
-		errs = append(errs, &openpeerrors.ResourceError{
-			Obj: v1alpha1.FailedResource{
-				Kind:    v1alpha1.FailedResourceKind("Underlay"),
-				Name:    underlay.Name,
-				Reason:  v1alpha1.FailedResourceReasonValidationFailed,
-				Message: "cannot have an empty SRv6 section when L3VPNs are present" + nodeStr,
-			},
-		})
 	}
 
 	for _, l3vpn := range l3vpns {

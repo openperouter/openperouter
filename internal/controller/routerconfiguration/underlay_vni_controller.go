@@ -158,7 +158,8 @@ func (r *PERouterReconciler) reconcile(ctx context.Context, logger *slog.Logger)
 		return ctrl.Result{}, err
 	}
 
-	err = Reconcile(ctx, config, nodeIndex, r.LogLevel, r.FRRConfigPath, targetNS, updater, configureInterfaces)
+	err = Reconcile(ctx, config, nodeIndex, r.LogLevel, r.FRRConfigPath, targetNS, updater,
+		configureInterfaces, configureFRR)
 	if nonRecoverableHostError(err) {
 		logger.Error("non recoverable error", "error", err)
 		if err := router.HandleNonRecoverableError(ctx); err != nil {

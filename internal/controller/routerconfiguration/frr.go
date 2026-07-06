@@ -20,6 +20,8 @@ type frrConfigData struct {
 	logLevel  string
 }
 
+type frrConfiguratorType func(ctx context.Context, data frrConfigData) error
+
 func configureFRR(ctx context.Context, data frrConfigData) error {
 	slog.DebugContext(ctx, "reloading FRR config", "config", data)
 	frrConfig, err := conversion.APItoFRR(data.APIConfigData, data.nodeIndex, data.logLevel)

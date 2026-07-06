@@ -19,14 +19,12 @@ import (
 	"github.com/openperouter/openperouter/internal/frr"
 )
 
-func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeIndex int, logLevel, frrConfigPath, targetNamespace string, updater frr.ConfigUpdater, hostConfigurator HostConfigurator) error {
+func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeIndex int, logLevel, frrConfigPath,
+	targetNamespace string, updater frr.ConfigUpdater,
+	hostConfigurator HostConfigurator, frrConfigurator frrConfiguratorType) error {
 	normalizeConfig(&apiConfig)
 	if err := conversion.ValidateUnderlays(apiConfig.Underlays); err != nil {
 		return fmt.Errorf("failed to validate underlays: %w", err)
-	}
-
-	if conversion.HasMissingSRv6ForL3VPNs(apiConfig.Underlays, apiConfig.L3VPNs) {
-		return conversion.MissingSRv6ForL3VPNErrors(apiConfig.Underlays, apiConfig.L3VPNs, nil)
 	}
 
 	var resourceErrors []error
@@ -41,7 +39,17 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 	resourceErrors = append(resourceErrors, err)
 
 	if err := conversion.DetectMutuallyExclusiveOverlays(validL3VNIs, validL3VPNs); err != nil {
-		return errors.Join(append(resourceErrors, err)...)
+		validL3VNIs = []v1alpha1.L3VNI{}
+		validL3VPNs = []v1alpha1.L3VPN{}
+		resourceErrors = append(resourceErrors, err)
+	}
+
+	if conversion.HasMissingSRv6ForL3VPNs(apiConfig.Underlays, validL3VPNs) {
+		resourceErrors = append(
+			resourceErrors,
+			conversion.MissingSRv6ForL3VPNErrors(validL3VPNs, nil),
+		)
+		validL3VPNs = []v1alpha1.L3VPN{}
 	}
 
 	var validL2VNIs []v1alpha1.L2VNI
@@ -104,7 +112,7 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 	}
 	resourceErrors = append(resourceErrors, err)
 
-	if err = configureFRR(ctx, frrConfigData{
+	if err = frrConfigurator(ctx, frrConfigData{
 		configFile:    frrConfigPath,
 		updater:       updater,
 		APIConfigData: config,

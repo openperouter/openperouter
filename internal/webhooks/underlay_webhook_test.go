@@ -106,8 +106,9 @@ func TestValidateUnderlay(t *testing.T) {
 			},
 			errorString: "can't have more than one underlay per node",
 		},
+		// We do not want to block underlays with invalid configuration, only overlay resources.
 		{
-			name: "webhook fails due to l3vpns present, but the underlay's SRv6 configuration was removed",
+			name: "underlay validation passes even when l3vpns present, but the underlay's SRv6 configuration was removed",
 			nodes: []*v1.Node{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -176,8 +177,6 @@ func TestValidateUnderlay(t *testing.T) {
 					Neighbors: []v1alpha1.Neighbor{{}},
 				},
 			},
-			errorString: "validation failed: Underlay/existingUnderlay: cannot have an empty SRv6 section when L3VPNs are present on node \"node1\"\n" +
-				"L3VPN/newL3VPN: cannot specify L3VPN configuration without an underlay with SRV6 configuration on node \"node1\"",
 		},
 	}
 	for _, tc := range tcs {
