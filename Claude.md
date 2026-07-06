@@ -41,6 +41,23 @@ The development environment uses kind and containerlab. Details can be found in 
 
 You can run `make lint` to run the go linter against the codebase.
 
+### Use Modern Go Features
+
+Always check the Go version in `go.mod` and prefer language features and standard library additions from that version
+over third-party helpers or older patterns.
+
+**Example - Go 1.26 `new()` builtin:**
+```go
+// Good: use the builtin
+val := new("hello")
+
+// Avoid: third-party pointer helpers
+val := ptr.To("hello")
+```
+
+When writing new code, modifying existing code, or reviewing code, prefer the latest idiomatic constructs available in
+the project's Go version rather than relying on utility packages that duplicate standard functionality.
+
 ### Code Readability: Line of Sight
 
 Write code that's easy to scan vertically:
