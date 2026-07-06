@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"time"
 
 	"github.com/onsi/ginkgo/v2"
@@ -22,6 +21,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 	corev1 "k8s.io/api/core/v1"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 )
@@ -431,14 +431,57 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 			err = Updater.Update(resources)
 			Expect(err).NotTo(HaveOccurred())
 
-			ginkgo.By("waiting for the routers to be rolled out again")
-			Eventually(func() error {
-				newRouterPods, err := openperouter.RouterPods(cs)
-				if err != nil {
-					return err
+			ginkgo.By("verifying nodes report degraded status")
+			for _, p := range routerPods {
+				Eventually(func(g Gomega) {
+					status, err := openperouter.GetNodeStatus(Updater.Client(), p.Spec.NodeName)
+					g.Expect(err).NotTo(HaveOccurred())
+
+					readyCond := apimeta.FindStatusCondition(status.Status.Conditions, v1alpha1.ConditionTypeReady)
+					g.Expect(readyCond).NotTo(BeNil())
+					g.Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
+
+					degradedCond := apimeta.FindStatusCondition(status.Status.Conditions, v1alpha1.ConditionTypeDegraded)
+					g.Expect(degradedCond).NotTo(BeNil())
+					g.Expect(degradedCond.Status).To(Equal(metav1.ConditionTrue))
+					g.Expect(degradedCond.Reason).To(Equal(v1alpha1.ConditionReasonConfigFailed))
+				}, time.Minute, time.Second).Should(Succeed())
+			}
+
+			ginkgo.By("verifying router pods were NOT restarted")
+			currentPods, err := openperouter.RouterPods(cs)
+			Expect(err).NotTo(HaveOccurred())
+			for _, p := range currentPods {
+				oldUID := ""
+				for _, old := range routerPods {
+					if old.Spec.NodeName == p.Spec.NodeName {
+						oldUID = string(old.UID)
+					}
 				}
-				return podsRolled(cs, routerPods, newRouterPods)
-			}, time.Minute, time.Second).ShouldNot(HaveOccurred())
+				Expect(string(p.UID)).To(Equal(oldUID),
+					"router pod on %s should NOT have been restarted", p.Spec.NodeName)
+			}
+
+			ginkgo.By("restoring the underlay nic to a valid one")
+			resources.Underlays[0].Spec.Interfaces[0].NetworkDevice.InterfaceName = "toswitch1"
+			err = Updater.Update(resources)
+			Expect(err).NotTo(HaveOccurred())
+
+			ginkgo.By("verifying nodes recover from degraded status")
+			for _, p := range routerPods {
+				Eventually(func(g Gomega) {
+					status, err := openperouter.GetNodeStatus(Updater.Client(), p.Spec.NodeName)
+					g.Expect(err).NotTo(HaveOccurred())
+
+					readyCond := apimeta.FindStatusCondition(status.Status.Conditions, v1alpha1.ConditionTypeReady)
+					g.Expect(readyCond).NotTo(BeNil())
+					g.Expect(readyCond.Status).To(Equal(metav1.ConditionTrue))
+
+					degradedCond := apimeta.FindStatusCondition(status.Status.Conditions, v1alpha1.ConditionTypeDegraded)
+					g.Expect(degradedCond).NotTo(BeNil())
+					g.Expect(degradedCond.Status).To(Equal(metav1.ConditionFalse))
+				}, 2*time.Minute, time.Second).Should(Succeed())
+			}
 		})
 
 		ginkgo.It("works with IPv6-only L3VNI", func() {
@@ -1600,38 +1643,6 @@ func sendConfigToValidate[T any](pod *corev1.Pod, toValidate T) string {
 	err = k8s.SendFileToPod(toValidateFile.Name(), pod)
 	Expect(err).NotTo(HaveOccurred())
 	return filepath.Base(toValidateFile.Name())
-}
-
-func podsRolled(cs clientset.Interface, oldPods, newPods []*corev1.Pod) error {
-	oldPodsNames := []string{}
-	for _, p := range oldPods {
-		oldPodsNames = append(oldPodsNames, p.Name)
-	}
-
-	if len(newPods) != len(oldPodsNames) {
-		return fmt.Errorf("new pods len %d different from old pods len: %d", len(newPods), len(oldPodsNames))
-	}
-
-	for _, p := range newPods {
-		if slices.Contains(oldPodsNames, p.Name) {
-			return fmt.Errorf("old pod %s not deleted yet", p.Name)
-		}
-		if !k8s.PodIsReady(p) {
-			return fmt.Errorf("pod %s is not ready", p.Name)
-		}
-	}
-	return nil
-}
-
-func routerPodsWithValidator(cs clientset.Interface) ([]*corev1.Pod, error) {
-	routerPods, err := openperouter.RouterPods(cs)
-	if err != nil {
-		return nil, err
-	}
-	for _, pod := range routerPods {
-		ensureValidator(cs, pod)
-	}
-	return routerPods, nil
 }
 
 func ValidateCNIBinaries(g Gomega, cs clientset.Interface) {
