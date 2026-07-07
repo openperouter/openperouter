@@ -32,6 +32,8 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 	DescribeTableSubtree("underlay address family", runUnderlayTests,
 		Entry("IPv6", ipfamily.IPv6, infra.UnderlayIPv6),
 		Entry("Unnumbered", ipfamily.Unnumbered, infra.UnderlayUnnumbered),
+		Entry("ListenRange", ipfamily.IPv4, infra.UnderlayListenRange),
+		Entry("ListenRangeIPv6", ipfamily.IPv6, infra.UnderlayListenRangeIPv6),
 	)
 })
 
@@ -147,6 +149,34 @@ var runUnderlayTests = func(af ipfamily.Family, underlay v1alpha1.Underlay) {
 
 		Expect(infra.LeafAConfig.Reset()).To(Succeed())
 		Expect(infra.LeafBConfig.Reset()).To(Succeed())
+	})
+
+	// The explicit control-plane check matters especially for the listen
+	// range entries: the routers never dial the leaves, they only accept
+	// the dynamic sessions the leaves initiate via bgp listen range.
+	It("establishes a session between every router and the leaves", func() {
+		leaves := []string{infra.KindLeaf, infra.KindLeaf2}
+		if af == ipfamily.Unnumbered {
+			// The unnumbered underlay only peers with leafkind1.
+			leaves = []string{infra.KindLeaf}
+		}
+		for _, node := range nodes {
+			exec, err := routers.ExecutorForNode(node.Name)
+			Expect(err).NotTo(HaveOccurred())
+			for _, leaf := range leaves {
+				neighbor, err := infra.NeighborForFamily(node.Name, leaf, af)
+				Expect(err).NotTo(HaveOccurred())
+				validateSessionWithNeighbor(
+					exec,
+					validationParameters{
+						fromName:    node.Name,
+						toName:      leaf,
+						neighborIP:  neighbor.ID,
+						established: Established,
+					},
+				)
+			}
+		}
 	})
 
 	Context("passthrough and frr-k8s", func() {
