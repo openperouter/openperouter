@@ -55,6 +55,9 @@ func init() {
 	addLinkIPs("clab-kind-leafkind1", "pe-kind-worker", "192.168.11.2", "192.168.11.4")
 	addLinkIPv6s("clab-kind-leafkind1", "pe-kind-worker", "2001:db8:11::2", "2001:db8:11::4")
 	addLinkInterfaces("clab-kind-leafkind1", "pe-kind-worker", "tokindworker", "toleafkind1")
+	addLinkIPs("clab-kind-leafkind1", "pe-kind-worker2", "192.168.11.2", "192.168.11.5")
+	addLinkIPv6s("clab-kind-leafkind1", "pe-kind-worker2", "2001:db8:11::2", "2001:db8:11::5")
+	addLinkInterfaces("clab-kind-leafkind1", "pe-kind-worker2", "tokindworker2", "toleafkind1")
 	addLinkIPs("clab-kind-leafkind1", "clab-kind-spine", "192.168.1.5", "192.168.1.4")
 
 	// leafkind2 links - bridge connections use toswitch2
@@ -64,6 +67,9 @@ func init() {
 	addLinkIPs("clab-kind-leafkind2", "pe-kind-worker", "192.168.12.2", "192.168.12.4")
 	addLinkIPv6s("clab-kind-leafkind2", "pe-kind-worker", "2001:db8:12::2", "2001:db8:12::4")
 	addLinkInterfaces("clab-kind-leafkind2", "pe-kind-worker", "tokindworker", "toleafkind2")
+	addLinkIPs("clab-kind-leafkind2", "pe-kind-worker2", "192.168.12.2", "192.168.12.5")
+	addLinkIPv6s("clab-kind-leafkind2", "pe-kind-worker2", "2001:db8:12::2", "2001:db8:12::5")
+	addLinkInterfaces("clab-kind-leafkind2", "pe-kind-worker2", "tokindworker2", "toleafkind2")
 	addLinkIPs("clab-kind-leafkind2", "clab-kind-spine", "192.168.1.7", "192.168.1.6")
 
 	// Other leaf links
