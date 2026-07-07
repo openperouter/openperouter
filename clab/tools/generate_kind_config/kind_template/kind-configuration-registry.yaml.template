@@ -10,6 +10,10 @@ nodes:
 {{- if .NodeImage }}
   image: {{.NodeImage}}
 {{- end }}
+- role: worker
+{{- if .NodeImage }}
+  image: {{.NodeImage}}
+{{- end }}
 networking:
 {{- if .DisableDefaultCNI }}
   disableDefaultCNI: true

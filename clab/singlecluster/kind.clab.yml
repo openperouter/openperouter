@@ -85,6 +85,8 @@ topology:
       kind: ext-container
     pe-kind-worker:
       kind: ext-container
+    pe-kind-worker2:
+      kind: ext-container
 
   links:
     - endpoints: ["leafA:eth1", "spine:eth1"]
@@ -104,11 +106,15 @@ topology:
     # Point to point links for IPv6 unnumbered BGP sessions.
     - endpoints: ["leafkind1:tokindworker", "pe-kind-worker:toleafkind1"]
     - endpoints: ["leafkind2:tokindworker", "pe-kind-worker:toleafkind2"]
+    - endpoints: ["leafkind1:tokindworker2", "pe-kind-worker2:toleafkind1"]
+    - endpoints: ["leafkind2:tokindworker2", "pe-kind-worker2:toleafkind2"]
     - endpoints: ["leafkind1:tokindctrlpl", "pe-kind-control-plane:toleafkind1"]
     - endpoints: ["leafkind2:tokindctrlpl", "pe-kind-control-plane:toleafkind2"]
 
     # All kind nodes connect to both leaf switches for redundancy
     - endpoints: ["pe-kind-control-plane:toswitch1", "leafkind1-sw:kindctrlpl1"]
-    - endpoints: ["pe-kind-worker:toswitch1", "leafkind1-sw:kindworker1"]
+    - endpoints: ["pe-kind-worker:toswitch1", "leafkind1-sw:kindwrk1sw1"]
+    - endpoints: ["pe-kind-worker2:toswitch1", "leafkind1-sw:kindwrk2sw1"]
     - endpoints: ["pe-kind-control-plane:toswitch2", "leafkind2-sw:kindctrlpl2"]
-    - endpoints: ["pe-kind-worker:toswitch2", "leafkind2-sw:kindworker2"]
+    - endpoints: ["pe-kind-worker:toswitch2", "leafkind2-sw:kindwrk1sw2"]
+    - endpoints: ["pe-kind-worker2:toswitch2", "leafkind2-sw:kindwrk2sw2"]
