@@ -32,6 +32,8 @@ spec:
         - "--namespace=$(NAMESPACE)"
         - "--frrconfig=/etc/frr/frr.conf"
         - "--reloader-socket=/etc/frr/reload.sock"
+        - "--cni-bin-dir=/opt/openperouter/cni/bin/"
+        - "--cni-cache-dir=/var/lib/openperouter/cni/cache"
         image: router:latest
         imagePullPolicy: IfNotPresent
         name: controller
@@ -83,6 +85,8 @@ spec:
           mountPropagation: HostToContainer
         - mountPath: /var/run/frr
           name: frr-sockets
+        - mountPath: /var/lib/openperouter/cni/cache
+          name: cni-cache
         resources:
           limits:
             cpu: 500m
@@ -107,6 +111,10 @@ spec:
       - name: frr-sockets
         hostPath:
           path: /var/run/openperouter/frr
+          type: DirectoryOrCreate
+      - name: cni-cache
+        hostPath:
+          path: /var/lib/openperouter/cni/cache
           type: DirectoryOrCreate
       tolerations:
       - effect: NoSchedule
