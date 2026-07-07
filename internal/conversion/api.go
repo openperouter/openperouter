@@ -3,6 +3,8 @@
 package conversion
 
 import (
+	"errors"
+
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
 )
@@ -11,6 +13,7 @@ type APIConfigData struct {
 	Underlays     []v1alpha1.Underlay
 	L3VNIs        []v1alpha1.L3VNI
 	L2VNIs        []v1alpha1.L2VNI
+	L3VPNs        []v1alpha1.L3VPN
 	L3Passthrough []v1alpha1.L3Passthrough
 	RawFRRConfigs []v1alpha1.RawFRRConfig
 }
@@ -19,6 +22,7 @@ type HostConfigData struct {
 	Underlay      hostnetwork.UnderlayParams
 	L3VNIs        []hostnetwork.L3VNIParams
 	L2VNIs        []hostnetwork.L2VNIParams
+	L3VPNs        []hostnetwork.L3VPNParams
 	L3Passthrough *hostnetwork.PassthroughParams
 }
 
@@ -30,6 +34,7 @@ func MergeAPIConfigs(configs ...APIConfigData) (APIConfigData, error) {
 	merged := APIConfigData{
 		L3VNIs:        []v1alpha1.L3VNI{},
 		L2VNIs:        []v1alpha1.L2VNI{},
+		L3VPNs:        []v1alpha1.L3VPN{},
 		L3Passthrough: []v1alpha1.L3Passthrough{},
 	}
 
@@ -37,9 +42,33 @@ func MergeAPIConfigs(configs ...APIConfigData) (APIConfigData, error) {
 		merged.Underlays = append(merged.Underlays, config.Underlays...)
 		merged.L3VNIs = append(merged.L3VNIs, config.L3VNIs...)
 		merged.L2VNIs = append(merged.L2VNIs, config.L2VNIs...)
+		merged.L3VPNs = append(merged.L3VPNs, config.L3VPNs...)
 		merged.L3Passthrough = append(merged.L3Passthrough, config.L3Passthrough...)
 		merged.RawFRRConfigs = append(merged.RawFRRConfigs, config.RawFRRConfigs...)
 	}
 
 	return merged, nil
+}
+
+// validateAPIConfigData flags invalid config data.
+func validateAPIConfigData(config APIConfigData) error {
+	if len(config.L3Passthrough) > 1 {
+		return errors.New("multiple passthroughs defined, can only have one")
+	}
+
+	// TODO: This is a shortcut. We do not want L3VNIs and L3VPNs coexisting inside the same VRF. But across different
+	// VRFs, this should work, in theory, subject to testing.
+	if len(config.L3VNIs) > 0 && len(config.L3VPNs) > 0 {
+		return errors.New("cannot specify L3 VNI configuration and VPN configuration at the same time")
+	}
+
+	if len(config.Underlays) > 1 {
+		return errors.New("multiple underlays defined")
+	}
+
+	if len(config.Underlays) == 0 {
+		return NoUnderlaysError("no underlays provided")
+	}
+
+	return nil
 }

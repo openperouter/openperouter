@@ -949,7 +949,7 @@ var _ = Describe("Configuration Resiliency", Ordered, func() {
 				g.Expect(failedByName).To(HaveKey("cascade-l2"))
 				g.Expect(failedByName["cascade-l2"].Kind).To(Equal(v1alpha1.FailedResourceKind("L2VNI")))
 				g.Expect(failedByName["cascade-l2"].Reason).To(Equal(v1alpha1.FailedResourceReasonDependencyFailed))
-				g.Expect(failedByName["cascade-l2"].Message).To(ContainSubstring("no valid L3VNI for L3 domain"))
+				g.Expect(failedByName["cascade-l2"].Message).To(ContainSubstring("no valid L3 resource for VRF"))
 
 				readyCond := apimeta.FindStatusCondition(status.Status.Conditions, "Ready")
 				g.Expect(readyCond).NotTo(BeNil())
@@ -984,7 +984,7 @@ var _ = Describe("Configuration Resiliency", Ordered, func() {
 				g.Expect(failed.Kind).To(Equal(v1alpha1.FailedResourceKind("L2VNI")))
 				g.Expect(failed.Name).To(Equal("orphan-l2"))
 				g.Expect(failed.Reason).To(Equal(v1alpha1.FailedResourceReasonDependencyFailed))
-				g.Expect(failed.Message).To(ContainSubstring("no valid L3VNI for L3 domain"))
+				g.Expect(failed.Message).To(ContainSubstring("no valid L3 resource for VRF"))
 
 				readyCond := apimeta.FindStatusCondition(status.Status.Conditions, "Ready")
 				g.Expect(readyCond).NotTo(BeNil())

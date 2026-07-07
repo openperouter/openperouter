@@ -23,7 +23,7 @@ var (
 func TestSchemaInitialization(t *testing.T) {
 	gvks := KnownGVKs()
 
-	expectedKinds := []string{"Underlay", "L2VNI", "L3VNI", "L3Passthrough", "RawFRRConfig", "RouterNodeConfigurationStatus"}
+	expectedKinds := []string{"Underlay", "L2VNI", "L3VNI", "L3VPN", "L3Passthrough", "RawFRRConfig", "RouterNodeConfigurationStatus"}
 	sort.Strings(expectedKinds)
 
 	foundKinds := make([]string, 0, len(gvks))

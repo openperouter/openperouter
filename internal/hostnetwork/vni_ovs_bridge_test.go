@@ -56,6 +56,8 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 		By("removing the VNI")
 		err = RemoveNonConfiguredVNIs(testNSPath(), []VNIParams{})
 		Expect(err).NotTo(HaveOccurred())
+		err = RemoveNonConfiguredVRFs(testNSPath(), map[string]bool{})
+		Expect(err).NotTo(HaveOccurred())
 
 		By("checking the VNI and OVS bridge are removed")
 		vethNames := vethNamesFromVNI(params.VNI)
@@ -64,6 +66,9 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 			checkOVSHostBridgeDeleted(g, params)
 			_ = netnamespace.In(testNS, func() error {
 				validateVNIIsNotConfigured(g, params.VNIParams)
+				if params.VRF != "" {
+					checkLinkdeleted(g, params.VRF)
+				}
 				return nil
 			})
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
@@ -93,6 +98,8 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 		By("removing the VNI")
 		err = RemoveNonConfiguredVNIs(testNSPath(), []VNIParams{})
 		Expect(err).NotTo(HaveOccurred())
+		err = RemoveNonConfiguredVRFs(testNSPath(), map[string]bool{})
+		Expect(err).NotTo(HaveOccurred())
 
 		By("checking the bridge persists but veth is cleaned up")
 		vethNames := vethNamesFromVNI(params.VNI)
@@ -102,6 +109,9 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 			checkVethNotAttachedToOVSBridge(g, bridgeName, vethNames.HostSide)
 			_ = netnamespace.In(testNS, func() error {
 				validateVNIIsNotConfigured(g, params.VNIParams)
+				if params.VRF != "" {
+					checkLinkdeleted(g, params.VRF)
+				}
 				return nil
 			})
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
@@ -136,6 +146,8 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 
 		By("removing VNI 100, keeping VNI 101")
 		err = RemoveNonConfiguredVNIs(testNSPath(), []VNIParams{params2.VNIParams})
+		Expect(err).NotTo(HaveOccurred())
+		err = RemoveNonConfiguredVRFs(testNSPath(), map[string]bool{params2.VRF: true})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("checking VNI 100 removed, VNI 101 persists")

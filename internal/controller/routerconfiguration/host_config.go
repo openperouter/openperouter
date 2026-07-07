@@ -28,20 +28,13 @@ type interfacesConfiguration struct {
 // Injected into Reconcile so tests can substitute a no-op implementation.
 type HostConfigurator func(ctx context.Context, config interfacesConfiguration) error
 
-func configureInterfaces(ctx context.Context, config interfacesConfiguration) error {
+func configureInterfaces(ctx context.Context, config interfacesConfiguration) error { // nolint:gocognit
 	hasAlreadyUnderlay, err := hostnetwork.HasUnderlayInterface(config.targetNamespace)
 	if err != nil {
 		return fmt.Errorf("failed to check if target namespace %s has underlay: %w", config.targetNamespace, err)
 	}
 	if hasAlreadyUnderlay && len(config.Underlays) == 0 {
-		slog.InfoContext(ctx, "underlay removed, cleaning up VNIs and underlay interfaces")
-		if err := hostnetwork.RemoveAllVNIs(config.targetNamespace); err != nil {
-			slog.Warn("failed to remove vnis after underlay removal", "err", err)
-		}
-		bridgerefresh.StopAllVNIs()
-		if err := hostnetwork.RestoreUnderlay(ctx, config.targetNamespace); err != nil {
-			slog.Warn("failed to remove underlay interfaces after underlay removal", "err", err)
-		}
+		restoreUnderlay(ctx, config.targetNamespace)
 		return nil
 	}
 
@@ -55,6 +48,7 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 		Underlays:     config.Underlays,
 		L3VNIs:        config.L3VNIs,
 		L2VNIs:        config.L2VNIs,
+		L3VPNs:        config.L3VPNs,
 		L3Passthrough: config.L3Passthrough,
 	}
 	hostConfig, err := conversion.APItoHostConfig(config.nodeIndex, config.targetNamespace, apiConfig)
@@ -62,17 +56,8 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 		return fmt.Errorf("failed to convert config to host configuration: %w", err)
 	}
 
-	slog.InfoContext(ctx, "ensuring sysctls")
-	if err := sysctl.Ensure(
-		config.targetNamespace,
-		sysctl.IPv4Forwarding(),
-		sysctl.IPv6Forwarding(),
-		sysctl.ArpAcceptAll(),
-		sysctl.ArpAcceptDefault(),
-		sysctl.AcceptUntrackedNADefault(),
-		sysctl.AcceptUntrackedNAAll(),
-	); err != nil {
-		return fmt.Errorf("failed to ensure sysctls: %w", err)
+	if err := ensureSysctlsForConfig(ctx, config); err != nil {
+		return err
 	}
 
 	slog.InfoContext(ctx, "setting up underlay")
@@ -97,6 +82,21 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 			continue
 		}
 		configuredL3VNIs = append(configuredL3VNIs, vni)
+	}
+
+	var configuredL3VPNs []hostnetwork.L3VPNParams
+	for _, l3vpn := range hostConfig.L3VPNs {
+		slog.InfoContext(ctx, "setting up L3 VPN", "VRF", l3vpn.VRF)
+		if err := hostnetwork.SetupL3VPN(ctx, l3vpn); err != nil {
+			resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
+				Obj: v1alpha1.FailedResource{
+					Kind: openpeerrors.KindL3VPN, Name: l3vpn.Name, Reason: reason, Message: err.Error(),
+				},
+			})
+			failedL3Domains.Insert(l3vpn.VRF)
+			continue
+		}
+		configuredL3VPNs = append(configuredL3VPNs, l3vpn)
 	}
 
 	var configuredL2VNIs []hostnetwork.L2VNIParams
@@ -141,18 +141,37 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 		}
 	}
 
-	slog.InfoContext(ctx, "removing deleted vnis")
-	toCheck := make([]hostnetwork.VNIParams, 0, len(configuredL3VNIs)+len(configuredL2VNIs))
+	configuredVNIs := make([]hostnetwork.VNIParams, 0, len(configuredL3VNIs)+len(configuredL2VNIs))
+	configuredVRFs := map[string]bool{}
 	for _, vni := range configuredL3VNIs {
-		toCheck = append(toCheck, vni.VNIParams)
+		configuredVNIs = append(configuredVNIs, vni.VNIParams)
+		configuredVRFs[vni.VRF] = true
 	}
 	for _, l2vni := range configuredL2VNIs {
-		toCheck = append(toCheck, l2vni.VNIParams)
+		configuredVNIs = append(configuredVNIs, l2vni.VNIParams)
+		configuredVRFs[l2vni.VRF] = true
 	}
-	if err := hostnetwork.RemoveNonConfiguredVNIs(config.targetNamespace, toCheck); err != nil {
+	for _, l3vpn := range configuredL3VPNs {
+		configuredVRFs[l3vpn.VRF] = true
+	}
+
+	slog.InfoContext(ctx, "removing deleted vnis")
+	if err := hostnetwork.RemoveNonConfiguredVNIs(config.targetNamespace, configuredVNIs); err != nil {
 		return fmt.Errorf("failed to remove deleted vnis: %w", err)
 	}
 	bridgerefresh.StopForRemovedVNIs(configuredL2VNIs)
+
+	slog.InfoContext(ctx, "removing deleted l3vpns")
+	if err := hostnetwork.RemoveNonConfiguredL3VPNs(config.targetNamespace,
+		configuredL3VPNs); err != nil {
+		return fmt.Errorf("failed to remove deleted l3vpns: %w", err)
+	}
+
+	slog.InfoContext(ctx, "removing deleted vrfs")
+	if err := hostnetwork.RemoveNonConfiguredVRFs(config.targetNamespace,
+		configuredVRFs); err != nil {
+		return fmt.Errorf("failed to remove deleted vrfs: %w", err)
+	}
 
 	if len(config.L3Passthrough) == 0 {
 		if err := hostnetwork.RemovePassthrough(config.targetNamespace); err != nil {
@@ -162,9 +181,55 @@ func configureInterfaces(ctx context.Context, config interfacesConfiguration) er
 	return errors.Join(resourceErrors...)
 }
 
+func restoreUnderlay(ctx context.Context, targetNamespace string) {
+	slog.InfoContext(ctx, "underlay removed, cleaning up VNIs and underlay interfaces")
+	if err := hostnetwork.RemoveAllVNIs(targetNamespace); err != nil {
+		slog.Warn("failed to remove vnis after underlay removal", "err", err)
+	}
+	if err := hostnetwork.RemoveAllL3VPNs(targetNamespace); err != nil {
+		slog.Warn("failed to remove l3vpns after underlay removal", "err", err)
+	}
+	if err := hostnetwork.RemoveAllVRFs(targetNamespace); err != nil {
+		slog.Warn("failed to remove vrfs after underlay removal", "err", err)
+	}
+	bridgerefresh.StopAllVNIs()
+	if err := hostnetwork.RestoreUnderlay(ctx, targetNamespace); err != nil {
+		slog.Warn("failed to remove underlay interfaces after underlay removal", "err", err)
+	}
+}
+
 // nonRecoverableHostError tells whether the router pod
 // should be restarted instead of being reconfigured.
 func nonRecoverableHostError(e error) bool {
 	underlayExistsError := hostnetwork.UnderlayExistsError("")
 	return errors.As(e, &underlayExistsError)
+}
+
+func ensureSysctlsForConfig(ctx context.Context, config interfacesConfiguration) error {
+	slog.InfoContext(ctx, "ensuring sysctls")
+	sysctls := []sysctl.Sysctl{
+		sysctl.IPv4Forwarding(),
+		sysctl.IPv6Forwarding(),
+		sysctl.ArpAcceptAll(),
+		sysctl.ArpAcceptDefault(),
+		sysctl.AcceptUntrackedNADefault(),
+		sysctl.AcceptUntrackedNAAll(),
+	}
+	if isSRV6(config.Underlays[0]) {
+		sysctls = append(sysctls,
+			sysctl.Seg6MakeFlowLabel(),
+			sysctl.EnableSeg6All(),
+		)
+	}
+	if err := sysctl.EnsureInNamespace(
+		config.targetNamespace,
+		sysctls...,
+	); err != nil {
+		return fmt.Errorf("failed to ensure sysctls: %w", err)
+	}
+	return nil
+}
+
+func isSRV6(underlay v1alpha1.Underlay) bool {
+	return underlay.Spec.SRV6 != nil
 }

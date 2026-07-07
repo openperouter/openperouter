@@ -15,6 +15,7 @@ const (
 	KindLeaf2  = ClabPrefix + "leafkind2"
 	LeafA      = ClabPrefix + "leafA"
 	LeafB      = ClabPrefix + "leafB"
+	LeafSRV6   = ClabPrefix + "leafSRV6"
 )
 
 var (
@@ -34,6 +35,11 @@ var (
 	LeafBContainer = frr.Container{
 		Name:       LeafB,
 		ConfigPath: "leafB",
+	}
+
+	LeafSRV6Container = frr.Container{
+		Name:       LeafSRV6,
+		ConfigPath: "leafSRV6",
 	}
 )
 

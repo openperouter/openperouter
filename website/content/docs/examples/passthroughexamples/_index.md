@@ -1,5 +1,5 @@
 ---
-weight: 50
+weight: 55
 title: "Passthrough Examples"
 description: "Integration examples with BGP-speaking components"
 icon: "article"

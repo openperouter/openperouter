@@ -184,8 +184,9 @@ func TestReadRouterConfigsFromFiles(t *testing.T) {
 		t.Fatalf("unexpected error reading testdata: %v", err)
 	}
 
-	if len(configs) != 4 {
-		t.Fatalf("expected 4 config files, got %d", len(configs))
+	expectedConfigFiles := 5
+	if len(configs) != expectedConfigFiles {
+		t.Fatalf("expected %d config files, got %d", expectedConfigFiles, len(configs))
 	}
 
 	underlays := make([]v1alpha1.UnderlaySpec, 0, len(configs))

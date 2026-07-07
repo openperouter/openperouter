@@ -97,7 +97,7 @@ func validateUnderlayUpdate(underlay *v1alpha1.Underlay) error {
 	return validateUnderlay(underlay)
 }
 
-func validateUnderlayDelete(_ *v1alpha1.Underlay) error {
+func validateUnderlayDelete(deletedUnderlay *v1alpha1.Underlay) error {
 	return nil
 }
 
@@ -128,6 +128,7 @@ func validateUnderlay(underlay *v1alpha1.Underlay) error {
 	if err := conversion.ValidateUnderlaysForNodes(nodeList.Items, toValidate); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
 	}
+
 	return nil
 }
 
