@@ -33,8 +33,8 @@ var singleSessionUnderlay = v1alpha1.Underlay{
 		Namespace: openperouter.Namespace,
 	},
 	Spec: v1alpha1.UnderlaySpec{
-		ASN:  64514,
-		Nics: []string{"toswitch1"},
+		ASN:        64514,
+		Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch1"}}},
 		Neighbors: []v1alpha1.Neighbor{
 			{
 				ASN:     ptr.To(int64(64512)),

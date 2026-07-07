@@ -91,7 +91,12 @@ func APItoFRR(config APIConfigData, nodeIndex int, logLevel string) (frr.Config,
 		return frr.Config{}, fmt.Errorf("failed to translate tunnel endpoint settings, err: %w", err)
 	}
 
-	underlayConfigISIS, err := underlayISISToFRR(underlay.Spec.ISIS, underlay.Spec.Nics, nodeIndex)
+	underlayInterfaces, err := underlayNetworkDeviceInterfaceNames(underlay.Spec.Interfaces)
+	if err != nil {
+		return frr.Config{}, err
+	}
+
+	underlayConfigISIS, err := underlayISISToFRR(underlay.Spec.ISIS, underlayInterfaces, nodeIndex)
 	if err != nil {
 		return frr.Config{}, fmt.Errorf("failed to translate ISIS settings, err: %w", err)
 	}
@@ -286,7 +291,7 @@ func underlaySegmentRoutingToFRR(srv6Config *v1alpha1.SRV6Config, nodeIndex int,
 	}, nil
 }
 
-func underlayISISToFRR(isisConfig *v1alpha1.ISISConfig, nics []string, nodeIndex int) (*frr.UnderlayISIS, error) {
+func underlayISISToFRR(isisConfig *v1alpha1.ISISConfig, interfaces []string, nodeIndex int) (*frr.UnderlayISIS, error) {
 	if isisConfig == nil {
 		return nil, nil
 	}
@@ -317,16 +322,16 @@ func underlayISISToFRR(isisConfig *v1alpha1.ISISConfig, nics []string, nodeIndex
 		},
 	}
 
-	// Add underlay.Spec.Nics as IPv6 only, non-passive interfaces.
-	for _, nic := range nics {
-		isisInterfaces[nic] = frr.ISISInterface{
-			Name: nic,
+	// Add underlay.Spec.Interfaces as IPv6 only, non-passive interfaces.
+	for _, iface := range interfaces {
+		isisInterfaces[iface] = frr.ISISInterface{
+			Name: iface,
 			IPv6: true,
 		}
 	}
 
 	// The ISISInterface slice may override default settings from loopback and
-	// from nics. CEL enforces uniqueness by name.
+	// from interfaces. CEL enforces uniqueness by name.
 	for _, intf := range isisConfig.Interfaces {
 		hasIPv4 := intf.IPFamily != nil &&
 			(*intf.IPFamily == v1alpha1.IPFamilyIPv4 || *intf.IPFamily == v1alpha1.IPFamilyDualStack)

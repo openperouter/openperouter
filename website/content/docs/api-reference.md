@@ -560,6 +560,22 @@ _Appears in:_
 | `type` _string_ | type is the address family type. |  | Enum: [ipv4unicast ipv6unicast evpn ipv4vpn ipv6vpn] <br />MaxLength: 11 <br />MinLength: 1 <br />Required: \{\} <br /> |
 
 
+#### NetworkDevice
+
+
+
+NetworkDevice moves an existing host network device into the router netns.
+
+
+
+_Appears in:_
+- [UnderlayInterface](#underlayinterface)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `interfaceName` _string_ | interfaceName is the name of the host network device to move into<br />the router netns. |  | MaxLength: 15 <br />MinLength: 1 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9._-]*$` <br />Required: \{\} <br /> |
+
+
 #### OVSBridgeConfig
 
 
@@ -745,6 +761,45 @@ Underlay is the Schema for the underlays API.
 | `status` _[UnderlayStatus](#underlaystatus)_ | status defines the observed state of Underlay. |  | Optional: \{\} <br /> |
 
 
+#### UnderlayInterface
+
+
+
+UnderlayInterface defines how the router obtains a single underlay link.
+Exactly one of the sub-structs must match the type field.
+The union is designed to be extended with future modes (e.g. cni)
+for controller-provisioned interfaces.
+
+
+
+_Appears in:_
+- [UnderlaySpec](#underlayspec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `type` _[UnderlayInterfaceType](#underlayinterfacetype)_ | type selects how the router obtains this underlay link. |  | Enum: [NetworkDevice] <br />Required: \{\} <br /> |
+| `networkDevice` _[NetworkDevice](#networkdevice)_ | networkDevice moves an existing host network device into the router netns.<br />The device can be of any kind (physical NIC, bridge, macvlan, etc.).<br />Must be set when type is "NetworkDevice". |  | Optional: \{\} <br /> |
+
+
+#### UnderlayInterfaceType
+
+_Underlying type:_ _string_
+
+UnderlayInterfaceType selects how the router obtains an underlay link.
+It is the discriminator of the UnderlayInterface union and is designed to be
+extended with future modes (e.g. cni).
+
+_Validation:_
+- Enum: [NetworkDevice]
+
+_Appears in:_
+- [UnderlayInterface](#underlayinterface)
+
+| Field | Description |
+| --- | --- |
+| `NetworkDevice` | UnderlayInterfaceTypeNetworkDevice moves an existing host network device<br />into the router netns.<br /> |
+
+
 #### UnderlaySpec
 
 
@@ -762,7 +817,7 @@ _Appears in:_
 | `asn` _integer_ | asn is the local AS number to use for the session with the TOR switch. |  | Maximum: 4.294967295e+09 <br />Minimum: 1 <br />Required: \{\} <br /> |
 | `routeridcidr` _string_ | routeridcidr is the ipv4 cidr to be used to assign a different routerID on each node. | 10.0.0.0/24 | Optional: \{\} <br /> |
 | `neighbors` _[Neighbor](#neighbor) array_ | neighbors is the list of external BGP neighbors to peer with.<br />Multiple neighbors are supported for connecting to multiple TOR switches<br />or establishing redundant BGP sessions. Each neighbor address must be unique.<br />At least one neighbor is required. |  | MaxItems: 128 <br />MinItems: 1 <br />Required: \{\} <br /> |
-| `nics` _string array_ | nics is the list of physical nics to move under the PERouter namespace to connect<br />to external routers. At least one NIC is required. |  | MinItems: 1 <br />items:MaxLength: 15 <br />items:Pattern: `^[a-zA-Z][a-zA-Z0-9._-]*$` <br />Required: \{\} <br /> |
+| `interfaces` _[UnderlayInterface](#underlayinterface) array_ | interfaces is the list of interfaces the router uses for underlay<br />connectivity. Each entry is a discriminated union describing how the<br />interface is obtained. At least one interface is required. |  | MinItems: 1 <br />Required: \{\} <br /> |
 | `tunnelEndpoint` _[TunnelEndpointConfig](#tunnelendpointconfig)_ | tunnelEndpoint contains tunnel endpoint configuration for the underlay. |  | Optional: \{\} <br /> |
 | `gracefulRestart` _[GracefulRestartConfig](#gracefulrestartconfig)_ | gracefulRestart configures BGP Graceful Restart behaviour.<br />When set, FRR advertises GR capability and preserves forwarding<br />state across restarts so that peers keep stale routes active.<br />Omit to disable graceful restart. |  | Optional: \{\} <br /> |
 | `isis` _[ISISConfig](#isisconfig)_ | isis holds the ISIS configuration for the underlay. |  | Optional: \{\} <br /> |

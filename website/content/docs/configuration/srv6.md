@@ -30,8 +30,10 @@ spec:
   - address: 2001:db8:1234::2
     asn: 64520
     ebgpMultiHop: true
-  nics:
-  - toswitch1
+  interfaces:
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: toswitch1
   routeridcidr: 10.0.0.0/24
   tunnelEndpoint:
     cidrs:
@@ -83,7 +85,7 @@ SRv6 reachability.
 ```
 
 IS-IS with IPv6 is automatically enabled for all interfaces listed in the
-`nics` field of the underlay configuration.
+`interfaces` field of the underlay configuration.
 
 For the full list of IS-IS configuration fields, see the
 [ISISConfig API Reference]({{< ref "api-reference#isisconfig" >}}).

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"slices"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
@@ -35,10 +34,14 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig APIConfigData) (H
 		return HostConfigData{}, err
 	}
 
-	if len(underlay.Spec.Nics) == 0 {
+	if len(underlay.Spec.Interfaces) == 0 {
 		return HostConfigData{}, errors.New("underlay interface must be specified")
 	}
-	underlayInterfaces := slices.Clone(underlay.Spec.Nics)
+
+	underlayInterfaces, err := underlayNetworkDeviceInterfaceNames(underlay.Spec.Interfaces)
+	if err != nil {
+		return HostConfigData{}, err
+	}
 
 	l3Passthrough, err := passthroughConfigToHost(apiConfig.L3Passthrough, targetNS, nodeIndex)
 	if err != nil {
@@ -428,4 +431,26 @@ func ipNetToString(ipNet net.IPNet) string {
 		return ""
 	}
 	return ipNet.String()
+}
+
+// underlayNetworkDeviceInterfaceNames extracts the host interface names from the underlay
+// interfaces list. Only the NetworkDevice mode is supported today; entries
+// without a NetworkDevice (or with an empty interface name) are skipped.
+func underlayNetworkDeviceInterfaceNames(interfaces []v1alpha1.UnderlayInterface) ([]string, error) {
+	names := make([]string, 0, len(interfaces))
+	for _, iface := range interfaces {
+		if iface.Type != v1alpha1.UnderlayInterfaceTypeNetworkDevice {
+			continue
+		}
+		if iface.NetworkDevice == nil {
+			return nil, fmt.Errorf("networkDevice configuration is missing for interface type NetworkDevice")
+		}
+
+		if iface.NetworkDevice.InterfaceName == "" {
+			return nil, fmt.Errorf("interfaceName is empty for networkDevice")
+		}
+
+		names = append(names, iface.NetworkDevice.InterfaceName)
+	}
+	return names, nil
 }

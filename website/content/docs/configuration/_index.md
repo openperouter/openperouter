@@ -37,8 +37,10 @@ metadata:
   namespace: openperouter-system
 spec:
   asn: 64514
-  nics:
-    - toswitch
+  interfaces:
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: toswitch
   neighbors:
     - asn: 64512
       address: 192.168.11.2
@@ -65,9 +67,13 @@ spec:
   asn: 64514
   
   # Multiple interfaces for redundancy
-  nics:
-    - toswitch
-    - toswitch2
+  interfaces:
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: toswitch
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: toswitch2
   
   # Multiple neighbors for dual-ToR setup
   neighbors:
@@ -98,17 +104,6 @@ heterogeneous hardware environments.
 For detailed information and examples, see the
 [Node Selector Configuration]({{< ref "node-selector.md" >}})
 documentation.
-
-### Alternative: Multus Network for Top of Rack Connectivity
-
-Instead of declaring physical network interfaces in the underlay
-configuration, you can use Multus networks to provide connectivity to top
-of rack switches. In this case, the `nics` field in the underlay
-configuration can be omitted.
-
-When using this approach, ensure that the router pods are configured with
-the appropriate Multus network annotation to connect to your top of rack
-switches.
 
 #### Using Helm Values
 

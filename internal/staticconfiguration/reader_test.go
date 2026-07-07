@@ -205,8 +205,8 @@ func TestReadRouterConfigsFromFiles(t *testing.T) {
 
 	// openpe_underlay.yaml
 	wantUnderlay := v1alpha1.UnderlaySpec{
-		ASN:  64514,
-		Nics: []string{"toswitch1", "eth0"},
+		ASN:        64514,
+		Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch1"}}, {Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
 		Neighbors: []v1alpha1.Neighbor{
 			{
 				ASN:     new(int64(64512)),

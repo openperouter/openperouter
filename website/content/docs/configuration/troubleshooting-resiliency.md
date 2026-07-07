@@ -76,7 +76,7 @@ kubectl logs -n openperouter-system <controller-pod> --tail=50
 
 **Symptoms**: Controller logs show a non-recoverable error. BGP sessions are not establishing.
 
-**Cause**: The physical NIC configured in `spec.nics` is not available on the node — cable unplugged, driver issue, or NIC renamed.
+**Cause**: The physical NIC configured in `spec.interfaces` is not available on the node — cable unplugged, driver issue, or NIC renamed.
 
 **Diagnosis**:
 

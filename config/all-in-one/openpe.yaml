@@ -1168,6 +1168,51 @@ spec:
                     minimum: 1
                     type: integer
                 type: object
+              interfaces:
+                description: |-
+                  interfaces is the list of interfaces the router uses for underlay
+                  connectivity. Each entry is a discriminated union describing how the
+                  interface is obtained. At least one interface is required.
+                items:
+                  description: |-
+                    UnderlayInterface defines how the router obtains a single underlay link.
+                    Exactly one of the sub-structs must match the type field.
+                    The union is designed to be extended with future modes (e.g. cni)
+                    for controller-provisioned interfaces.
+                  properties:
+                    networkDevice:
+                      description: |-
+                        networkDevice moves an existing host network device into the router netns.
+                        The device can be of any kind (physical NIC, bridge, macvlan, etc.).
+                        Must be set when type is "NetworkDevice".
+                      properties:
+                        interfaceName:
+                          description: |-
+                            interfaceName is the name of the host network device to move into
+                            the router netns.
+                          maxLength: 15
+                          minLength: 1
+                          pattern: ^[a-zA-Z][a-zA-Z0-9._-]*$
+                          type: string
+                      required:
+                      - interfaceName
+                      type: object
+                    type:
+                      description: type selects how the router obtains this underlay
+                        link.
+                      enum:
+                      - NetworkDevice
+                      type: string
+                  required:
+                  - type
+                  type: object
+                  x-kubernetes-validations:
+                  - message: 'type/config mismatch: networkDevice must be set if and
+                      only if type is ''NetworkDevice'''
+                    rule: has(self.networkDevice) == (self.type == 'NetworkDevice')
+                minItems: 1
+                type: array
+                x-kubernetes-list-type: atomic
               isis:
                 description: isis holds the ISIS configuration for the underlay.
                 properties:
@@ -1493,17 +1538,6 @@ spec:
                 minItems: 1
                 type: array
                 x-kubernetes-list-type: atomic
-              nics:
-                description: |-
-                  nics is the list of physical nics to move under the PERouter namespace to connect
-                  to external routers. At least one NIC is required.
-                items:
-                  maxLength: 15
-                  pattern: ^[a-zA-Z][a-zA-Z0-9._-]*$
-                  type: string
-                minItems: 1
-                type: array
-                x-kubernetes-list-type: atomic
               nodeSelector:
                 description: |-
                   nodeSelector specifies which nodes this Underlay applies to.
@@ -1618,8 +1652,8 @@ spec:
                 type: object
             required:
             - asn
+            - interfaces
             - neighbors
-            - nics
             type: object
             x-kubernetes-validations:
             - message: SRv6 can only be configured if isis is set

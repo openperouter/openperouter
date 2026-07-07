@@ -1923,8 +1923,13 @@ func TestAPItoFRR(t *testing.T) {
 			underlays: []v1alpha1.Underlay{
 				{
 					Spec: v1alpha1.UnderlaySpec{
-						ASN:  65000,
-						Nics: []string{"eth0"},
+						ASN: 65000,
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          "NetworkDevice",
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+						},
 						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
 							CIDRs: []string{
 								"192.168.2.0/24",
@@ -1958,7 +1963,12 @@ func TestAPItoFRR(t *testing.T) {
 			underlays: []v1alpha1.Underlay{
 				{
 					Spec: v1alpha1.UnderlaySpec{
-						Nics: []string{"eth0"},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          "NetworkDevice",
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+						},
 						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
 							CIDRs: []string{
 								"2001:db8:192:168::/64",
@@ -1992,9 +2002,16 @@ func TestAPItoFRR(t *testing.T) {
 						ASN:          65000,
 						RouterIDCIDR: new("10.0.0.0/24"),
 						Neighbors:    []v1alpha1.Neighbor{{Address: new("192.168.1.1"), ASN: new(int64(65001))}},
-						Nics: []string{
-							"eth0",
-							"eth10",
+
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth10"},
+							},
 						},
 						ISIS: &v1alpha1.ISISConfig{
 							BaseNet: "49.0001.0002.0003.0004.00",
@@ -2050,9 +2067,15 @@ func TestAPItoFRR(t *testing.T) {
 						ASN:          65000,
 						RouterIDCIDR: new("10.0.0.0/24"),
 						Neighbors:    []v1alpha1.Neighbor{{Address: new("192.168.1.1"), ASN: new(int64(65001))}},
-						Nics: []string{
-							"eth0",
-							"eth10",
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth10"},
+							},
 						},
 						ISIS: &v1alpha1.ISISConfig{
 							BaseNet: "49.0001.0002.0003.0004.00",
