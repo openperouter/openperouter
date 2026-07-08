@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/frr"
@@ -1113,14 +1114,16 @@ func TestAPItoFRR(t *testing.T) {
 				},
 				Passthrough: &frr.PassthroughConfig{
 					LocalNeighborV4: &frr.NeighborConfig{
-						ASN:  mustNewPeerASNFromNumber(65001),
-						Addr: "192.168.2.2",
-						ID:   "192.168.2.2",
+						ASN:         mustNewPeerASNFromNumber(65001),
+						Addr:        "192.168.2.2",
+						ID:          "192.168.2.2",
+						ConnectTime: ptr.To(int64(5)),
 					},
 					LocalNeighborV6: &frr.NeighborConfig{
-						ASN:  mustNewPeerASNFromNumber(65001),
-						Addr: "2001:db8::2",
-						ID:   "2001:db8::2",
+						ASN:         mustNewPeerASNFromNumber(65001),
+						Addr:        "2001:db8::2",
+						ID:          "2001:db8::2",
+						ConnectTime: ptr.To(int64(5)),
 					},
 					ToAdvertiseIPv4: []string{"192.168.2.2/32"},
 					ToAdvertiseIPv6: []string{"2001:db8::2/128"},
@@ -1187,6 +1190,7 @@ func TestAPItoFRR(t *testing.T) {
 						ASN:  mustNewPeerASNFromNumber(65001),
 						Addr: "192.168.2.2",
 						ID:   "192.168.2.2",
+						ConnectTime: ptr.To(int64(5)),
 					},
 					ToAdvertiseIPv4: []string{"192.168.2.2/32"},
 					ToAdvertiseIPv6: []string{},
@@ -1246,6 +1250,7 @@ func TestAPItoFRR(t *testing.T) {
 						ASN:  mustNewPeerASNFromNumber(65001),
 						Addr: "2001:db8::2",
 						ID:   "2001:db8::2",
+						ConnectTime: ptr.To(int64(5)),
 					},
 					ToAdvertiseIPv4: []string{},
 					ToAdvertiseIPv6: []string{"2001:db8::2/128"},
@@ -1311,6 +1316,7 @@ func TestAPItoFRR(t *testing.T) {
 						ASN:  mustNewPeerASNFromNumber(65001),
 						Addr: "192.168.2.2",
 						ID:   "192.168.2.2",
+						ConnectTime: ptr.To(int64(5)),
 					},
 					ToAdvertiseIPv4: []string{"192.168.2.2/32"},
 					ToAdvertiseIPv6: []string{},
@@ -1372,6 +1378,7 @@ func TestAPItoFRR(t *testing.T) {
 						ASN:  mustNewPeerASNFromNumber(65001),
 						Addr: "2001:db8::2",
 						ID:   "2001:db8::2",
+						ConnectTime: ptr.To(int64(5)),
 					},
 					ToAdvertiseIPv4: []string{},
 					ToAdvertiseIPv6: []string{"2001:db8::2/128"},
@@ -1440,6 +1447,7 @@ func TestAPItoFRR(t *testing.T) {
 						ASN:  mustNewPeerASNFromNumber(65001),
 						Addr: "192.168.2.2",
 						ID:   "192.168.2.2",
+						ConnectTime: ptr.To(int64(5)),
 					},
 					ToAdvertiseIPv4: []string{"192.168.2.2/32"},
 					ToAdvertiseIPv6: []string{},
@@ -1531,11 +1539,13 @@ func TestAPItoFRR(t *testing.T) {
 						ASN:  mustNewPeerASNFromType("external"),
 						Addr: "192.168.2.2",
 						ID:   "192.168.2.2",
+						ConnectTime: ptr.To(int64(5)),
 					},
 					LocalNeighborV6: &frr.NeighborConfig{
 						ASN:  mustNewPeerASNFromType("external"),
 						Addr: "2001:db8::2",
 						ID:   "2001:db8::2",
+						ConnectTime: ptr.To(int64(5)),
 					},
 					ToAdvertiseIPv4: []string{"192.168.2.2/32"},
 					ToAdvertiseIPv6: []string{"2001:db8::2/128"},
@@ -1605,11 +1615,13 @@ func TestAPItoFRR(t *testing.T) {
 						ASN:  mustNewPeerASNFromType("internal"),
 						Addr: "192.168.2.2",
 						ID:   "192.168.2.2",
+						ConnectTime: ptr.To(int64(5)),
 					},
 					LocalNeighborV6: &frr.NeighborConfig{
 						ASN:  mustNewPeerASNFromType("internal"),
 						Addr: "2001:db8::2",
 						ID:   "2001:db8::2",
+						ConnectTime: ptr.To(int64(5)),
 					},
 					ToAdvertiseIPv4: []string{"192.168.2.2/32"},
 					ToAdvertiseIPv6: []string{"2001:db8::2/128"},
