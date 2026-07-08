@@ -26,8 +26,11 @@ import (
 )
 
 var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Ordered, func() {
-	var cs clientset.Interface
-	var routers openperouter.Routers
+	var (
+		cs      clientset.Interface
+		routers openperouter.Routers
+		nodes   []corev1.Node
+	)
 
 	vniRed := v1alpha1.L3VNI{
 		ObjectMeta: metav1.ObjectMeta{
@@ -80,10 +83,10 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Orde
 		Expect(err).NotTo(HaveOccurred())
 
 		// Create pre-existing OVS bridges on Kind nodes for testing
-		nodes := []string{infra.KindControlPlane, infra.KindWorker}
-		for _, nodeName := range nodes {
-			exec := executor.ForContainer(nodeName)
-			// Create OVS bridge (ignore error if bridge already exists)
+		nodes, err = k8s.GetNodes(cs)
+		Expect(err).NotTo(HaveOccurred())
+		for _, node := range nodes {
+			exec := executor.ForContainer(node.Name)
 			_, err = exec.Exec("ovs-vsctl", "add-br", preExistingOVSBridge)
 			Expect(err).NotTo(HaveOccurred())
 		}
@@ -101,10 +104,8 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Orde
 			return openperouter.AreReady(routers)
 		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 
-		// Clean up pre-existing OVS bridges
-		nodes := []string{infra.KindControlPlane, infra.KindWorker}
-		for _, nodeName := range nodes {
-			exec := executor.ForContainer(nodeName)
+		for _, node := range nodes {
+			exec := executor.ForContainer(node.Name)
 			_, err = exec.Exec("ovs-vsctl", "--if-exists", "del-br", preExistingOVSBridge)
 			Expect(err).NotTo(HaveOccurred())
 		}
