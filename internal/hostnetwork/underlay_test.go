@@ -251,19 +251,19 @@ var _ = Describe("Underlay configuration should work when", func() {
 	})
 })
 
-var _ = Describe("UnderlayInterfacesWereRemoved", func() {
-	DescribeTable("should detect removals correctly",
-		func(existing, requested []string, expected bool) {
-			Expect(UnderlayInterfacesWereRemoved(existing, requested)).To(Equal(expected))
+var _ = Describe("UnderlayInterfacesToRemove", func() {
+	DescribeTable("should return interfaces to remove",
+		func(existing, requested []string, expected []string) {
+			Expect(UnderlayInterfacesToRemove(existing, requested)).To(Equal(expected))
 		},
-		Entry("empty existing returns false", []string{}, []string{"nic1"}, false),
-		Entry("nil existing returns false", nil, []string{"nic1"}, false),
-		Entry("same single interface returns false", []string{"nic1"}, []string{"nic1"}, false),
-		Entry("same multiple interfaces returns false", []string{"nic1", "nic2"}, []string{"nic1", "nic2"}, false),
-		Entry("adding interface returns false", []string{"nic1"}, []string{"nic1", "nic2"}, false),
-		Entry("removing interface returns true", []string{"nic1", "nic2"}, []string{"nic1"}, true),
-		Entry("replacing interface returns true", []string{"nic1"}, []string{"nic2"}, true),
-		Entry("completely different set returns true", []string{"nic1", "nic2"}, []string{"nic3", "nic4"}, true),
+		Entry("empty existing returns nil", []string{}, []string{"nic1"}, nil),
+		Entry("nil existing returns nil", nil, []string{"nic1"}, nil),
+		Entry("same single interface returns nil", []string{"nic1"}, []string{"nic1"}, nil),
+		Entry("same multiple interfaces returns nil", []string{"nic1", "nic2"}, []string{"nic1", "nic2"}, nil),
+		Entry("adding interface returns nil", []string{"nic1"}, []string{"nic1", "nic2"}, nil),
+		Entry("removing interface returns removed", []string{"nic1", "nic2"}, []string{"nic1"}, []string{"nic2"}),
+		Entry("replacing interface returns old", []string{"nic1"}, []string{"nic2"}, []string{"nic1"}),
+		Entry("completely different set returns all old", []string{"nic1", "nic2"}, []string{"nic3", "nic4"}, []string{"nic1", "nic2"}),
 	)
 })
 

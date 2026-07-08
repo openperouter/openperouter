@@ -66,9 +66,9 @@ func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
 	if err != nil {
 		return fmt.Errorf("failed to check existing underlay interfaces: %w", err)
 	}
-	if UnderlayInterfacesWereRemoved(existingIfaces, params.UnderlayInterfaces) {
+	if removedInterfaces := UnderlayInterfacesToRemove(existingIfaces, params.UnderlayInterfaces); len(removedInterfaces) > 0 {
 		slog.InfoContext(ctx, "underlay interfaces changed, restoring old interfaces before setup",
-			"existing", existingIfaces, "requested", params.UnderlayInterfaces)
+			"removed", removedInterfaces, "requested", params.UnderlayInterfaces)
 		if err := RestoreUnderlay(ctx, params.TargetNS); err != nil {
 			return fmt.Errorf("failed to restore old underlay interfaces: %w", err)
 		}
@@ -110,16 +110,14 @@ func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
 	return nil
 }
 
-func UnderlayInterfacesWereRemoved(existing, requested []string) bool {
-	if len(existing) == 0 {
-		return false
-	}
+func UnderlayInterfacesToRemove(existing, requested []string) []string {
+	var removed []string
 	for _, name := range existing {
 		if !slices.Contains(requested, name) {
-			return true
+			removed = append(removed, name)
 		}
 	}
-	return false
+	return removed
 }
 
 // UnderlayInterfaces returns the names of all underlay interfaces

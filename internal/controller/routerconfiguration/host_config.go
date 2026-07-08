@@ -67,8 +67,8 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 		return fmt.Errorf("failed to list existing underlay interfaces: %w", err)
 	}
 
-	removedInterfaces := hostnetwork.UnderlayInterfacesWereRemoved(existing, hostConfig.Underlay.UnderlayInterfaces)
-	if hostnetwork.UnderlayInterfacesWereRemoved(existing, hostConfig.Underlay.UnderlayInterfaces) {
+	removedInterfaces := hostnetwork.UnderlayInterfacesToRemove(existing, hostConfig.Underlay.UnderlayInterfaces)
+	if len(removedInterfaces) > 0 && len(removedInterfaces) == len(existing) {
 		slog.InfoContext(ctx, "all underlay interfaces removed, cleaning up VNIs before interface swap",
 			"removed", removedInterfaces, "requested", hostConfig.Underlay.UnderlayInterfaces)
 		if err := hostnetwork.RemoveAllVNIs(config.targetNamespace); err != nil {

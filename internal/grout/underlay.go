@@ -69,9 +69,9 @@ func SetupUnderlay(ctx context.Context, client *Client, params hostnetwork.Under
 	if err != nil {
 		return fmt.Errorf("failed to check existing underlay interfaces: %w", err)
 	}
-	if hostnetwork.UnderlayInterfacesWereRemoved(existingIfaces, params.UnderlayInterfaces) {
+	if removedInterfaces := hostnetwork.UnderlayInterfacesToRemove(existingIfaces, params.UnderlayInterfaces); len(removedInterfaces) > 0 {
 		slog.InfoContext(ctx, "underlay interfaces changed, restoring old grout state before setup",
-			"existing", existingIfaces, "requested", params.UnderlayInterfaces)
+			"removed", removedInterfaces, "requested", params.UnderlayInterfaces)
 		if err := RestoreUnderlay(ctx, client, params.TargetNS); err != nil {
 			return fmt.Errorf("failed to restore old underlay interfaces: %w", err)
 		}

@@ -12,7 +12,6 @@ import (
 	"github.com/openperouter/openperouter/internal/conversion"
 	openpeerrors "github.com/openperouter/openperouter/internal/errors"
 	"github.com/openperouter/openperouter/internal/grout"
-	"github.com/openperouter/openperouter/internal/hostnetwork"
 )
 
 // GroutDatapathConfigurator configures the host via the grout DPDK daemon.
@@ -60,7 +59,8 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 		return fmt.Errorf("failed to convert config to host configuration: %w", err)
 	}
 
-	if err := setupGroutUnderlayWithCleanup(ctx, groutClient, config.targetNamespace, hostConfig.Underlay); err != nil {
+	slog.InfoContext(ctx, "setting up underlay")
+	if err := grout.SetupUnderlay(ctx, groutClient, hostConfig.Underlay); err != nil {
 		return fmt.Errorf("failed to setup underlay: %w", err)
 	}
 
@@ -85,21 +85,4 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 	}
 
 	return errors.Join(resourceErrors...)
-}
-
-func setupGroutUnderlayWithCleanup(ctx context.Context, client *grout.Client, targetNamespace string, underlayParams hostnetwork.UnderlayParams) error {
-	existing, err := hostnetwork.UnderlayInterfaces(targetNamespace)
-	if err != nil {
-		return fmt.Errorf("failed to list existing underlay interfaces: %w", err)
-	}
-	if hostnetwork.UnderlayInterfacesWereRemoved(existing, underlayParams.UnderlayInterfaces) {
-		slog.InfoContext(ctx, "underlay interfaces changed, cleaning up passthrough before interface swap",
-			"existing", existing, "requested", underlayParams.UnderlayInterfaces)
-		if err := grout.RemovePassthrough(ctx, client); err != nil {
-			slog.Warn("failed to remove passthrough during underlay change", "err", err)
-		}
-	}
-
-	slog.InfoContext(ctx, "setting up underlay")
-	return grout.SetupUnderlay(ctx, client, underlayParams)
 }
