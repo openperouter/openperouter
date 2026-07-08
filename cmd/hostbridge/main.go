@@ -3,7 +3,6 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"log/slog"
 	"net"
@@ -47,17 +46,8 @@ func main() {
 	slog.Info("version", "version", buildversion.Version())
 	slog.Info("Starting hostbridge with configuration", "config", config)
 
-	ctx := context.Background()
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	if err := annotateCurrentNode(ctx, config.HostConfigPath, config.NodeName); err != nil {
-		slog.Error("Failed to add node index annotation",
-			"error", err, "config_path", config.HostConfigPath, "node", config.NodeName)
-		os.Exit(1)
-	}
-
-	slog.Info("Successfully added node index annotation", "config_path", config.HostConfigPath, "node", config.NodeName)
 
 	apiServerURL, err := getAPIServer(config)
 	if err != nil {
