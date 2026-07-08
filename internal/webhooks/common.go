@@ -7,6 +7,7 @@ import (
 	"log/slog"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
+	"github.com/openperouter/openperouter/internal/conversion"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -14,8 +15,9 @@ import (
 )
 
 var (
-	Logger        *slog.Logger
-	WebhookClient client.Reader
+	Logger                  *slog.Logger
+	WebhookClient           client.Reader
+	DatapathConfigValidator conversion.DatapathConfigValidator
 )
 
 // setupFakeWebhookClient creates a new fake client from the provided slice of client.Object.

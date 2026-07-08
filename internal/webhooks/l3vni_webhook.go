@@ -68,8 +68,14 @@ func (v *L3VNIValidator) Handle(ctx context.Context, req admission.Request) (res
 		if err := validateL3VNICreate(&l3vni); err != nil {
 			return admission.Denied(err.Error())
 		}
+		if err := DatapathConfigValidator.Validate(conversion.APIConfigData{L3VNIs: []v1alpha1.L3VNI{l3vni}}); err != nil {
+			return admission.Denied(err.Error())
+		}
 	case v1.Update:
 		if err := validateL3VNIUpdate(&l3vni, &oldL3VNI); err != nil {
+			return admission.Denied(err.Error())
+		}
+		if err := DatapathConfigValidator.Validate(conversion.APIConfigData{L3VNIs: []v1alpha1.L3VNI{l3vni}}); err != nil {
 			return admission.Denied(err.Error())
 		}
 	case v1.Delete:

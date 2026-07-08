@@ -45,7 +45,11 @@ data:
     # Check /etc/pam.d/frr if you intend to use "vtysh"!
     #
     vtysh_enable=yes
+    {{- if eq .Values.openperouter.datapath "grout" }}
+    zebra_options="  -A 127.0.0.1 -s 90000000 --limit-fds 100000 -K 60 -M dplane_grout"
+    {{- else }}
     zebra_options="  -A 127.0.0.1 -s 90000000 --limit-fds 100000 -K 60"
+    {{- end }}
     bgpd_options="   -A 127.0.0.1 --limit-fds 100000"
     ospfd_options="  -A 127.0.0.1"
     ospf6d_options=" -A ::1"
@@ -158,6 +162,10 @@ spec:
         env:
           - name: TINI_SUBREAPER
             value: "true"
+          {{- if eq .Values.openperouter.datapath "grout" }}
+          - name: GROUT_SOCK_PATH
+            value: "/var/run/grout/grout.sock"
+          {{- end }}
         volumeMounts:
           - name: frr-sockets
             mountPath: /var/run/frr
@@ -166,6 +174,13 @@ spec:
           - name: netns
             mountPath: /var/run/netns
             mountPropagation: HostToContainer
+          {{- if eq .Values.openperouter.datapath "grout" }}
+          - name: grout-socket
+            mountPath: /var/run/grout
+          {{- end }}
+        # The command is FRR's default entrypoint & waiting for the log file to appear and tailing it.
+        # If the log file isn't created in 60 seconds the tail fails and the container is restarted.
+        # This workaround is needed to have the frr logs as part of kubectl logs -c frr < k8s-frr-podname >.
         command:
           - /bin/sh
           - -c
@@ -245,6 +260,66 @@ spec:
         resources:
           {{- toYaml . | nindent 12 }}
         {{- end }}
+      {{- if eq .Values.openperouter.datapath "grout" }}
+      - name: grout
+        securityContext:
+          privileged: true
+        image: "{{ .Values.openperouter.grout.image.repository }}:{{ .Values.openperouter.grout.image.tag }}"
+        {{- if .Values.openperouter.grout.image.pullPolicy }}
+        imagePullPolicy: {{ .Values.openperouter.grout.image.pullPolicy }}
+        {{- end }}
+        env:
+          - name: GROUT_SOCK_PATH
+            value: "/var/run/grout/grout.sock"
+        command:
+          - /bin/sh
+          - -c
+          - |
+            TIMEOUT=60
+            WAITED=0
+            until [ -e /var/run/netns/perouter ]; do
+              echo "Waiting for named netns /var/run/netns/perouter..."
+              sleep 1
+              WAITED=$((WAITED + 1))
+              if [ "$WAITED" -ge "$TIMEOUT" ]; then
+                echo "Timed out waiting for named netns after ${TIMEOUT}s"
+                exit 1
+              fi
+            done
+            GROUT_ARGS="--test-mode --socket-mode 0666"
+            {{- if eq .Values.openperouter.logLevel "debug" }}
+            GROUT_ARGS="${GROUT_ARGS} --verbose"
+            {{- end }}
+            exec nsenter --net=/var/run/netns/perouter grout ${GROUT_ARGS}
+
+        volumeMounts:
+          - name: grout-socket
+            mountPath: /var/run/grout
+          - name: netns
+            mountPath: /var/run/netns
+            mountPropagation: HostToContainer
+          - name: host-nsenter
+            mountPath: /usr/bin/nsenter
+            readOnly: true
+        {{- with .Values.openperouter.grout.resources }}
+        resources:
+          {{- toYaml . | nindent 12 }}
+        {{- end }}
+        startupProbe:
+          exec:
+            command: ["/bin/sh", "-c", "grcli -e"]
+          initialDelaySeconds: 2
+          periodSeconds: 5
+          failureThreshold: 12
+        readinessProbe:
+          exec:
+            command: ["/bin/sh", "-c", "grcli -e"]
+          periodSeconds: 10
+        livenessProbe:
+          exec:
+            command: ["/bin/sh", "-c", "grcli -e"]
+          periodSeconds: 30
+      {{- end }}
       tolerations:
       {{- if .Values.openperouter.runOnMaster }}
       - effect: NoSchedule
@@ -275,6 +350,16 @@ spec:
         - name: netns
           hostPath:
             path: /var/run/netns
+        {{- if eq .Values.openperouter.datapath "grout" }}
+        - name: grout-socket
+          hostPath:
+            path: /var/run/openperouter/grout
+            type: DirectoryOrCreate
+        - name: host-nsenter
+          hostPath:
+            path: /usr/bin/nsenter
+            type: File
+        {{- end }}
       initContainers:
         # Copies the initial config files with the right permissions to the shared volume.
         - name: cp-frr-files

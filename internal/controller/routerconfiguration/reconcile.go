@@ -19,9 +19,17 @@ import (
 	"github.com/openperouter/openperouter/internal/frr"
 )
 
-func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeIndex int, logLevel, frrConfigPath,
-	targetNamespace string, updater frr.ConfigUpdater,
-	hostConfigurator HostConfigurator, frrConfigurator frrConfiguratorType) error {
+// DatapathConfigurator abstracts host-level network configuration so the
+// reconciler can work with different datapaths (kernel netlink, grout/DPDK).
+type DatapathConfigurator interface {
+	conversion.DatapathConfigValidator
+
+	Configure(ctx context.Context, config interfacesConfiguration) error
+}
+
+func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeIndex int, logLevel,
+	frrConfigPath, targetNamespace string, updater frr.ConfigUpdater,
+	datapathConfigurator DatapathConfigurator, frrConfigurator frrConfiguratorType) error {
 	normalizeConfig(&apiConfig)
 	if err := conversion.ValidateUnderlays(apiConfig.Underlays); err != nil {
 		return fmt.Errorf("failed to validate underlays: %w", err)
@@ -29,6 +37,9 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 
 	var resourceErrors []error
 	var err error
+
+	err = datapathConfigurator.Validate(apiConfig)
+	resourceErrors = append(resourceErrors, err)
 
 	var validL3VNIs []v1alpha1.L3VNI
 	validL3VNIs, err = conversion.FilterValidL3VNIs(apiConfig.L3VNIs)
@@ -102,7 +113,7 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 		RawFRRConfigs: apiConfig.RawFRRConfigs,
 	}
 
-	err = hostConfigurator(ctx, interfacesConfiguration{
+	err = datapathConfigurator.Configure(ctx, interfacesConfiguration{
 		targetNamespace: targetNamespace,
 		APIConfigData:   config,
 		nodeIndex:       nodeIndex,

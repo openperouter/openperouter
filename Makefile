@@ -3,6 +3,7 @@ IMG_TAG ?= main
 IMG_REPO ?= quay.io/openperouter
 IMG_NAME ?= router
 IMG ?= $(IMG_REPO)/$(IMG_NAME):$(IMG_TAG)
+DOCKERFILE ?= Dockerfile
 NAMESPACE ?= "openperouter-system"
 LOGLEVEL ?= "info"
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
@@ -122,9 +123,9 @@ BRANCH = $(shell git rev-parse --abbrev-ref HEAD)
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
 	@if [ "$(CONTAINER_ENGINE)" = "podman" ]; then \
-		sudo $(CONTAINER_ENGINE) build  -t ${IMG} .; \
+		sudo $(CONTAINER_ENGINE) build  -t ${IMG} -f ${DOCKERFILE} .; \
 	else \
-		$(CONTAINER_ENGINE) build -t ${IMG} .; \
+		$(CONTAINER_ENGINE) build -t ${IMG} -f ${DOCKERFILE} .; \
 	fi
 
 
@@ -677,3 +678,25 @@ deploy-olm: operator-sdk ## deploys OLM on the cluster
 
 build-and-push-bundle-images: bundle-build bundle-push catalog-build catalog-push
 
+
+.PHONY: grout-deploy
+grout-deploy: IMG_TAG=main-grout
+grout-deploy: export KUSTOMIZE_LAYER=grout
+grout-deploy: kind deploy-cluster deploy-controller ## Deploy cluster and controller with grout dataplane.
+
+.PHONY: grout-deploy-operator-with-olm
+grout-deploy-operator-with-olm: IMG_TAG=main-grout
+grout-deploy-operator-with-olm: bundle kustomize kind clab-cluster load-on-kind deploy-olm grout-set-image-in-csv build-and-push-bundle-images deploy-operator-with-olm
+
+grout-set-image-in-csv:
+	sed -i 's|quay.io/openperouter/router:main$$|quay.io/openperouter/router:main-grout|g' $(CSV_FILE)
+
+.PHONY: grout-deploy-helm
+grout-deploy-helm: IMG_TAG=main-grout
+grout-deploy-helm: HELM_ARGS=--set openperouter.datapath=grout
+grout-deploy-helm: helm kind deploy-cluster load-on-kind deploy-helm
+
+.PHONY: grout-docker-build
+grout-docker-build: IMG_TAG=main-grout
+grout-docker-build: DOCKERFILE=Dockerfile.grout
+grout-docker-build: docker-build

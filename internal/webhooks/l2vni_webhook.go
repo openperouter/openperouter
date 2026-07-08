@@ -68,8 +68,14 @@ func (v *L2VNIValidator) Handle(ctx context.Context, req admission.Request) (res
 		if err := validateL2VNICreate(&l2vni); err != nil {
 			return admission.Denied(err.Error())
 		}
+		if err := DatapathConfigValidator.Validate(conversion.APIConfigData{L2VNIs: []v1alpha1.L2VNI{l2vni}}); err != nil {
+			return admission.Denied(err.Error())
+		}
 	case v1.Update:
 		if err := validateL2VNIUpdate(&oldL2VNI, &l2vni); err != nil {
+			return admission.Denied(err.Error())
+		}
+		if err := DatapathConfigValidator.Validate(conversion.APIConfigData{L2VNIs: []v1alpha1.L2VNI{l2vni}}); err != nil {
 			return admission.Denied(err.Error())
 		}
 	case v1.Delete:

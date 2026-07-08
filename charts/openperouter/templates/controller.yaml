@@ -64,6 +64,10 @@ spec:
         {{- end }}
         - --cni-bin-dir={{ .Values.openperouter.controller.cniBinDir }}
         - --cni-cache-dir={{ .Values.openperouter.controller.cniCacheDir }}
+        {{- if eq .Values.openperouter.datapath "grout" }}
+        - --datapath=grout
+        - --grout-socket=/var/run/grout/grout.sock
+        {{- end }}
         command:
         - /controller
         env:
@@ -136,6 +140,10 @@ spec:
           name: frr-sockets
         - mountPath: {{ .Values.openperouter.controller.cniCacheDir | default "/var/lib/openperouter/cni/cache" }}
           name: cni-cache
+        {{- if eq .Values.openperouter.datapath "grout" }}
+        - mountPath: /var/run/grout
+          name: grout-socket
+        {{- end }}
       hostNetwork: true
       hostPID: true
       tolerations:
@@ -183,4 +191,10 @@ spec:
           path: {{ .Values.openperouter.controller.cniCacheDir | default "/var/lib/openperouter/cni/cache" }}
           type: DirectoryOrCreate
         name: cni-cache
+      {{- if eq .Values.openperouter.datapath "grout" }}
+      - name: grout-socket
+        hostPath:
+          path: /var/run/openperouter/grout
+          type: DirectoryOrCreate
+      {{- end }}
 {{- end }}

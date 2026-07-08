@@ -202,6 +202,8 @@ spec:
                   value: quay.io/brancz/kube-rbac-proxy:v0.11.0
                 - name: DEPLOY_KUBE_RBAC_PROXIES
                   value: "false"
+                - name: GROUT_IMAGE
+                  value: quay.io/openperouter/router:main-grout
                 image: quay.io/openperouter/router:main
                 imagePullPolicy: IfNotPresent
                 name: operator

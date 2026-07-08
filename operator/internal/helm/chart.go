@@ -135,6 +135,26 @@ func patchChartValues(envConfig envconfig.EnvConfig, crdConfig *operatorapi.Open
 		}
 	}
 
+	datapath := ptr.Deref(crdConfig.Spec.Datapath, "kernel")
+	openperouterValues["datapath"] = datapath
+	if datapath == "grout" {
+		groutImage := envConfig.GroutImage
+		if groutImage == nil {
+			groutImage = &envconfig.ImageInfo{
+				Repo: "quay.io/openperouter/router",
+				Tag:  "main-grout",
+			}
+		}
+
+		openperouterValues["grout"] = map[string]any{
+			"enabled": true,
+			"image": map[string]any{
+				"repository": groutImage.Repo,
+				"tag":        groutImage.Tag,
+			},
+		}
+	}
+
 	valuesMap["openperouter"] = openperouterValues
 
 	valuesMap["webhook"] = map[string]any{

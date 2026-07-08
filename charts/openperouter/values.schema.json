@@ -336,6 +336,73 @@
               "reloader": {}
             }
           },
+          "datapath": {
+            "type": "string",
+            "description": "Datapath to use for L3 forwarding. \"kernel\" uses the standard Linux kernel datapath; \"grout\" adds a DPDK-accelerated sidecar that runs alongside FRR.",
+            "enum": [
+              "kernel",
+              "grout"
+            ],
+            "default": "kernel"
+          },
+          "grout": {
+            "type": "object",
+            "description": "Configuration for the grout DPDK dataplane sidecar. Only used when datapath is set to \"grout\".",
+            "properties": {
+              "image": {
+                "type": "object",
+                "description": "Configuration for the grout container image.",
+                "properties": {
+                  "repository": {
+                    "type": "string",
+                    "description": "The repository for the grout container image.",
+                    "default": "quay.io/openperouter/router"
+                  },
+                  "tag": {
+                    "type": "string",
+                    "description": "The tag for the grout container image."
+                  },
+                  "pullPolicy": {
+                    "type": "string",
+                    "description": "The pull policy for the grout container image."
+                  }
+                },
+                "default": {
+                  "repository": "quay.io/openperouter/router"
+                }
+              },
+              "resources": {
+                "type": "object",
+                "description": "Resource requests and limits for the grout container.",
+                "properties": {
+                  "limits": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": [
+                        "string",
+                        "integer"
+                      ]
+                    }
+                  },
+                  "requests": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": [
+                        "string",
+                        "integer"
+                      ]
+                    }
+                  }
+                },
+                "default": {}
+              }
+            },
+            "default": {
+              "image": {
+                "repository": "quay.io/openperouter/router"
+              }
+            }
+          },
           "cri": {
             "type": "string",
             "description": "cri to bind its socket, can be containerd or crio.",
@@ -378,6 +445,14 @@
           "frr": {
             "resources": {},
             "reloader": {}
+          },
+          "grout": {
+            "enabled": false,
+            "image": {
+              "repository": "quay.io/openperouter/router"
+            },
+            "logLevel": "info",
+            "initScript": ""
           },
           "cri": "containerd"
         }
