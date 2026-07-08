@@ -12,10 +12,40 @@ In systemd mode, OpenPERouter is configured via static files on the host instead
 
 ## Node Configuration
 
-Each node requires a mandatory configuration file at `/var/lib/openperouter/node-config.yaml`. This file must contain the `nodeIndex`, a unique integer used for IPAM address allocation from the configured CIDRs:
+Each node requires a mandatory configuration file at `/var/lib/openperouter/node-config.yaml`. This file identifies the node and configures its unique index used for IPAM address allocation from the configured CIDRs.
+
+The node index can be provided in two ways:
+
+#### Static Node Index
+
+Set `nodeIndex.index` to a unique integer per node:
 
 ```yaml
-nodeIndex: 0
+nodeIndex:
+  index: 0
+logLevel: debug
+```
+
+#### Deriving Node Index from an Interface
+
+Instead of assigning a static index to each node, set `nodeIndex.interfaceName` to the name of a network interface on the host. The node index is derived from the host portion of an IP address on that interface, preferring IPv4 and falling back to IPv6 if no IPv4 address is found. For example, if the interface `eth0` has address `192.168.11.3/24`, the node index is `3`.
+
+This allows deploying the same `node-config.yaml` to every node, since each node's index is determined automatically from its own network address.
+
+`nodeIndex.index` and `nodeIndex.interfaceName` are mutually exclusive.
+
+```yaml
+nodeIndex:
+  interfaceName: eth0
+logLevel: debug
+```
+
+When an interface has multiple IP addresses, you can use the optional `nodeIndex.cidr` field to select which address to use. Only addresses within the specified CIDR are considered. This also allows explicitly selecting an IPv6 address over IPv4.
+
+```yaml
+nodeIndex:
+  interfaceName: eth0
+  cidr: "192.168.11.0/24"
 logLevel: debug
 
 Each `openpe_*.yaml` file contains the `spec` part of the corresponding Kubernetes Custom Resources. A file can contain any combination of `underlay`, `l3vnis`, `l2vnis`, `bgppassthrough`, and `rawfrrconfigs` fields, where each entry follows the same schema as the `spec` section of the equivalent CR (Underlay, L3VNI, L2VNI, L3Passthrough, RawFRRConfig):
