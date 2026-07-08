@@ -23,6 +23,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	clientset "k8s.io/client-go/kubernetes"
 )
 
@@ -451,16 +452,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 			ginkgo.By("verifying router pods were NOT restarted")
 			currentPods, err := openperouter.RouterPods(cs)
 			Expect(err).NotTo(HaveOccurred())
-			for _, p := range currentPods {
-				oldUID := ""
-				for _, old := range routerPods {
-					if old.Spec.NodeName == p.Spec.NodeName {
-						oldUID = string(old.UID)
-					}
-				}
-				Expect(string(p.UID)).To(Equal(oldUID),
-					"router pod on %s should NOT have been restarted", p.Spec.NodeName)
-			}
+			Expect(podNodeToUIDs(currentPods)).To(Equal(podNodeToUIDs(routerPods)))
 
 			ginkgo.By("restoring the underlay nic to a valid one")
 			resources.Underlays[0].Spec.Interfaces[0].NetworkDevice.InterfaceName = "toswitch1"
@@ -1316,12 +1308,6 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 			oldNIC := "toswitch1"
 			newNIC := "toswitch2"
 
-			ginkgo.By("recording the router pod UIDs before the change")
-			podUIDs := map[string]string{}
-			for _, p := range routerPods {
-				podUIDs[p.Spec.NodeName] = string(p.UID)
-			}
-
 			ginkgo.By(fmt.Sprintf("recording the %s IP addresses before the change", oldNIC))
 			oldNICAddrsBefore := map[string]string{}
 			for _, node := range nodes {
@@ -1431,10 +1417,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 			ginkgo.By("verifying router pods were NOT restarted")
 			currentPods, err := openperouter.RouterPods(cs)
 			Expect(err).NotTo(HaveOccurred())
-			for _, p := range currentPods {
-				Expect(string(p.UID)).To(Equal(podUIDs[p.Spec.NodeName]),
-					"router pod on %s should NOT have been restarted (UID changed)", p.Spec.NodeName)
-			}
+			Expect(podNodeToUIDs(currentPods)).To(Equal(podNodeToUIDs(routerPods)))
 		})
 	})
 
@@ -1643,6 +1626,14 @@ func sendConfigToValidate[T any](pod *corev1.Pod, toValidate T) string {
 	err = k8s.SendFileToPod(toValidateFile.Name(), pod)
 	Expect(err).NotTo(HaveOccurred())
 	return filepath.Base(toValidateFile.Name())
+}
+
+func podNodeToUIDs(pods []*corev1.Pod) map[string]types.UID {
+	res := make(map[string]types.UID, len(pods))
+	for _, p := range pods {
+		res[p.Spec.NodeName] = p.UID
+	}
+	return res
 }
 
 func ValidateCNIBinaries(g Gomega, cs clientset.Interface) {
