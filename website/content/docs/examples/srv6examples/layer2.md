@@ -31,12 +31,7 @@ make docker-build demo-metallb-l3vpn-l2vni
 The example configures both an L2 VNI and an L3VPN. The L2 VNI belongs to
 the L3VPN's routing domain. Pods are running on two separate nodes and
 connected via the overlay. Additionally, the pods are able to reach the
-broader L3 domain via the L3VPN path.
-
-> **Note**: `l2GatewayIPs` is not supported when using L3VPN (SRv6).
-> Layer 3 connectivity to external hosts goes through the pod's primary
-> interface (eth0) and the L3VPN path, not through the L2VNI's macvlan
-> interface.
+broader L3 domain via the L2 gateways.
 
 ### Pod-to-Pod Connectivity
 
@@ -47,10 +42,9 @@ corresponding L2 VNI.
 ### Pod-to-External L3 Connectivity
 
 When a pod needs to reach an external host on the L3 domain, the traffic
-leaves via the pod's primary interface (eth0), hits the host namespace
-where FRR-K8s has injected a route via the L3VPN's veth interface
-(host-s-100), and is then SNATed and routed through the L3VPN's VRF
-using SRv6 encapsulation.
+leaves via the pod's secondary interface (added by the NetworkAttachmentDefinition)
+and is routed in the VRF of the OpenPERouter pod that the pod is connected to.
+The packet is subsequently forwarded via the SRv6 overlay.
 
 ## Configuration
 
@@ -90,14 +84,13 @@ spec:
     type: linux-bridge
     linuxBridge:
       autoCreate: true
+  l2gatewayips: ["192.170.1.1/24"]
 ```
 
 **Configuration Notes:**
 
 - **hostmaster.autocreate**: Instructs OpenPERouter to create a bridge
   local to the node that can be used to access the L2 domain
-- **`l2GatewayIPs`** is not supported with L3VPN (SRv6). This field is
-  only available when using L3VNI (EVPN/VXLAN)
 
 ### Underlay Configuration
 
@@ -183,10 +176,13 @@ spec:
   containers:
     - name: agnhost
       image: k8s.gcr.io/e2e-test-images/agnhost:2.45
-      command: ["/agnhost", "netexec", "--http-port=8090"]
+      command: ["/bin/sh", "-c", "ip r del default dev eth0 && /agnhost netexec --http-port=8090"]
       ports:
       - containerPort: 8090
         name: http
+      securityContext:
+        capabilities:
+          add: ["NET_ADMIN"]
 ```
 
 ## Validation
@@ -220,10 +216,11 @@ kubectl exec -it first -- curl 192.170.20.2:8090/clientip
 
 Expected output:
 ```
-192.169.10.2:35722
+192.170.1.3:37144
 ```
 
-The traffic leaves via the pod's eth0 interface, is routed through the
-host namespace to the L3VPN's veth interface (host-s-100), SNATed, and
-then encapsulated using SRv6 towards the destination.
+The pod is able to reach a host on the layer 3 network and the IP is preserved.
 
+The packet comes from the veth interface towards the bridge associated with VNI
+110 (the default gateway), then is routed inside the layer 3 domain via the
+SRv6 overlay.

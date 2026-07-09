@@ -227,11 +227,6 @@ L2VNIs provide Layer 2 connectivity across nodes using EVPN as the control
 plane and VXLAN tunnels as the data plane, contrary to L3VPNs which use
 SRv6.
 
-> **Note**: `l2GatewayIPs` is not supported when using L3VPN (SRv6).
-> L2VNIs with L3VPN provide Layer 2 pod-to-pod connectivity only.
-> The `l2GatewayIPs` field is only available when using L3VNI
-> (EVPN/VXLAN).
-
 For the full list of L2VNI configuration fields, see the
 [L2VNISpec API Reference]({{< ref "api-reference#l2vnispec" >}}).
 
