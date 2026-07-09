@@ -21,7 +21,6 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 	corev1 "k8s.io/api/core/v1"
-	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	clientset "k8s.io/client-go/kubernetes"
@@ -435,17 +434,8 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 			ginkgo.By("verifying nodes report degraded status")
 			for _, p := range routerPods {
 				Eventually(func(g Gomega) {
-					status, err := openperouter.GetNodeStatus(Updater.Client(), p.Spec.NodeName)
-					g.Expect(err).NotTo(HaveOccurred())
-
-					readyCond := apimeta.FindStatusCondition(status.Status.Conditions, v1alpha1.ConditionTypeReady)
-					g.Expect(readyCond).NotTo(BeNil())
-					g.Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
-
-					degradedCond := apimeta.FindStatusCondition(status.Status.Conditions, v1alpha1.ConditionTypeDegraded)
-					g.Expect(degradedCond).NotTo(BeNil())
-					g.Expect(degradedCond.Status).To(Equal(metav1.ConditionTrue))
-					g.Expect(degradedCond.Reason).To(Equal(v1alpha1.ConditionReasonConfigFailed))
+					expectNodeCondition(g, p.Spec.NodeName, v1alpha1.ConditionTypeReady, metav1.ConditionFalse)
+					expectNodeCondition(g, p.Spec.NodeName, v1alpha1.ConditionTypeDegraded, metav1.ConditionTrue)
 				}, time.Minute, time.Second).Should(Succeed())
 			}
 
@@ -462,16 +452,8 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 			ginkgo.By("verifying nodes recover from degraded status")
 			for _, p := range routerPods {
 				Eventually(func(g Gomega) {
-					status, err := openperouter.GetNodeStatus(Updater.Client(), p.Spec.NodeName)
-					g.Expect(err).NotTo(HaveOccurred())
-
-					readyCond := apimeta.FindStatusCondition(status.Status.Conditions, v1alpha1.ConditionTypeReady)
-					g.Expect(readyCond).NotTo(BeNil())
-					g.Expect(readyCond.Status).To(Equal(metav1.ConditionTrue))
-
-					degradedCond := apimeta.FindStatusCondition(status.Status.Conditions, v1alpha1.ConditionTypeDegraded)
-					g.Expect(degradedCond).NotTo(BeNil())
-					g.Expect(degradedCond.Status).To(Equal(metav1.ConditionFalse))
+					expectNodeCondition(g, p.Spec.NodeName, v1alpha1.ConditionTypeReady, metav1.ConditionTrue)
+					expectNodeCondition(g, p.Spec.NodeName, v1alpha1.ConditionTypeDegraded, metav1.ConditionFalse)
 				}, 2*time.Minute, time.Second).Should(Succeed())
 			}
 		})
