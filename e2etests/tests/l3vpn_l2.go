@@ -26,7 +26,7 @@ import (
 	"k8s.io/utils/ptr"
 )
 
-var _ = Describe("SRV6 Routes between bgp and the fabric", Ordered, func() {
+var _ = Describe("SRV6 routes between bgp and the fabric", Ordered, func() {
 	var (
 		cs           clientset.Interface
 		routers      openperouter.Routers
