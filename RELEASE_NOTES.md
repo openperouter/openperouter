@@ -1,3 +1,89 @@
+## Release v0.2.0
+
+### New Features
+- Add AddressFamilies to Neighbor struct (#494, @andreaskaris)
+- Add an optional knob to delay the start of the controller systemd quadlet to start the reconciliation loop after user provided conditions are satisfied. (#487, @fedepaol)
+- Add configurable import / export route-targets to l3vni (#197, @k-akashi)
+- Add generate-all make target to run all code and manifest generation in a single command (#299, @qinqon)
+- Add support for BGP `remote-as external`, `remote-as internal` and for iBGP with ASNs.
+  For underlay, this enables more flexible BGP peering scenarios where
+  the exact remote ASN is unknown respectively it simplifies the L3VPN
+  configuration.
+  
+  Potentially breaking API change due to removal of unused field Neighbor.HostASN. (#260, @andreaskaris)
+- Add support for IPv6 and unnumbered BGP underlay sessions with ToR switches
+  Complete rewrite of check_veths in golang (#286, @andreaskaris)
+- Allow deriving the node index from a network interface address in systemd mode, enabling the same node-config.yaml to be deployed across all nodes. (#472, @yahlifried)
+- Allow ipv6 vteps for evpn / vxlan. (#514, @fedepaol)
+- Allow moving multiple nics in the OpenPERouter network namespace and allow setting multiple neighbors for the underlay. (#307, @fedepaol)
+- Api: Introduce node router status API. 
+  Enable inspecting router configuration status on a spesific node via NodeRouterConfigurationStatus CRD. (#355, @ormergi)
+- Automatically set veth MTU to underlay NIC MTU minus 50 bytes to
+  account for VXLan encapsulation overhead, preventing frame
+  fragmentation at MTU boundaries. (#304, @qinqon)
+- Bump base FRR version to 10.6.0 (#295, @zeeke)
+- Bump to a newer version of containerlab for lab deployment and use new group topology element. (#274, @andreaskaris)
+- DPDK/grout support for Underlay and L3Passthrough (#338, @zeeke)
+- Have configurable vtysh timeout, defined from the helm / operator config. (#189, @maiqueb)
+- Implementation of SRv6 / ISIS enhancement proposal (#485, @andreaskaris)
+- Introduce per-resource configuration resilience.
+  
+  Invalid L3VNI resources cause their VRF to be skipped along with dependent L2VNIs.
+  Invalid L2VNIs are isolated and do not affect other resources.
+  VRF subnet overlaps are detected and all affected resources are skipped.
+  FRR reload failures are reported as FrrConfigurationFailed with automatic retry.
+  
+  All failures are reported via RouterNodeConfigurationStatus with detailed conditions. (#423, @RamLavi)
+- Make the router resilient to data plane crashes. (#317, @maiqueb)
+- Mirror configuration consumed by static files to k8s resources for better visibility. (#469, @fedepaol)
+- The controller now bundles CNI plugin binaries (macvlan, ipvlan, static, dhcp) and exposes a libcni-based invoker, preparing for direct underlay interface provisioning in the router netns without Multus. (#544, @maiqueb)
+
+### Bug fixes
+- Add liveness probe to FRR container to restart the pod when FRR daemons crash and cannot be recovered by watchfrr. (#455, @andreaskaris)
+- Bridge refresher: don't ping ipv6 lla neighbros, listen for neighbor events instead of polling for stale entries (#312, @fedepaol)
+- Correct the router component default container name (#319, @maiqueb)
+- Don't fail when only rawConfig is provided. (#311, @fedepaol)
+- Fix VRF route import failures caused by namespace loopback (lo) being down. The VTEP IP is now assigned directly to lo instead of a separate lound dummy interface. (#467, @andreaskaris)
+- Fix start race condition where k8s api is available already, the static controller dies but the health port is not free yet, causing the k8sapicontroller to die because the port is not ready. (#325, @fedepaol)
+- Fix underlay interface not being moved back to the default network namespace on underlay deletion. The interface is now restored with its original IP addresses and link-up state. (#442, @andreaskaris)
+- Fix vulnerability GO-2026-5026 (#460, @andreaskaris)
+- Fix: add unreachable routes to prevent VRF escape (#242, @fdomain)
+- In order to be able to deploy the lab on aarch64,
+  dynamically set the image architecture in common.sh. (#515, @andreaskaris)
+- Monitor the frr container in systemd mode, if it restarts we reconfigure it. (#479, @fedepaol)
+- Reject l2gatewayip on disconnected L2VNI (#332, @RamLavi)
+- Validate static configuration files with CEL rules and apply defaults. (#310, @fedepaol)
+
+### Other (Cleanup or Flake)
+- API types updated to comply with Kubernetes API conventions via kube-api-linter. Breaking changes: integer fields use int32/int64 instead of uint, duration fields replaced with seconds integers, optional fields use pointers. (#313, @qinqon)
+- API: Rename `EVPNConfig` to `TunnelEndpointConfig` in the Underlay CRD to better reflect its purpose and in preparation for SRv6 implementation. (#471, @andreaskaris)
+- Add RouteTarget type for L3VNI route targets. Also uses for L3VPN route targets in the SRv6 PR. (#518, @andreaskaris)
+- Add exit after router bgp in FRR configuration (#302, @andreaskaris)
+- Allow L2VNIs without a VRF to operate as pure L2 east-west overlays. (#346, @RamLavi)
+- Bump the fsnotify, grpc, net-attach-def-lib, sys, and opencontainers runtime spec dependencies (#529, @maiqueb)
+- Cleanup of E2E Leaf modification logic (#327, @andreaskaris)
+- Cleanup of iBGP E2E test (#404, @andreaskaris)
+- Collect more logs on E2E failure (#308, @andreaskaris)
+- Do not set AddrGenModeNone on L2 VNI bridges. (#351, @maiqueb)
+- Fix duplicate address-family blocks in FRR passthrough configuration by removing unused neighborenableipfamily template calls. Remove IPFamily from frr_test.go for l3vni and passthrough input as it is never set by production code. (#474, @andreaskaris)
+- Fix flake in RawFRRConfig E2E test "should order multiple raw config snippets by priority" (#403, @andreaskaris)
+- Fix generation of operator/config/webhook/webhook/manifests.yaml (#393, @andreaskaris)
+- Fix several issues with the resource dump on failure: (#456, @andreaskaris)
+- Fix typo webook to webhook in cmd/nodemarker/main.go (#476, @andreaskaris)
+- For consistency, replace all occurrences of ptr.To with new() (#445, @andreaskaris)
+- Generation of coredumps when FRR processes crash in CI. (#457, @andreaskaris)
+- Improve logging in testFileIsValid when FRR tests fail (#480, @andreaskaris)
+- Minor cleanup of L3Passthrough E2E test (#318, @andreaskaris)
+- Pre-delete all interfaces in the router netns as part of the recovery procedure. This will greatly reduce the time it take the kernel to async delete the network namespace via `cleanup_net()` (#463, @maiqueb)
+- Remove unused file clab/spine/daemons (#301, @andreaskaris)
+- Remove vtepInterface field from EVPNConfig. vtepCIDR is now the only (required) way to configure the VTEP source. (#461, @qinqon)
+- Run go fmt in github CI (#429, @andreaskaris)
+- Switch FRR logging from file to stdout, simplifying the container entrypoint and enabling native kubectl logs support. (#330, @qinqon)
+- The Underlay `spec.nics` field is replaced by `spec.interfaces`, a discriminated union. Use `interfaces: [{type: NetworkDevice, networkDevice: {interfaceName: <nic>}}]` instead of `nics: [<nic>]`. action required (#517, @qinqon)
+- This change adds BGP summary and ip address info to debug dump in case of failed tests.
+  It also uses current spec report full text to identify multiple failing tests more easily and to avoid overwriting existing tests. (#293, @andreaskaris)
+- Tweak the ConnectTime of the FRR K8s side to 1 second in E2E tests. (#294, @andreaskaris)
+
 ## Release v0.1.0
 
 ### New Features
