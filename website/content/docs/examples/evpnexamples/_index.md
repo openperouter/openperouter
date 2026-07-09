@@ -177,3 +177,16 @@ Configure OpenPERouter for Layer2 EVPN scenarios with direct BGP peering.
 - Simple Layer2 connectivity
 
 [View Layer2 Integration Example →]({{< ref "layer2" >}})
+
+### Route Reflector
+
+Run one node as a pure BGP route reflector that distributes EVPN routes between the other nodes, without a full iBGP mesh or fabric reflection.
+
+**Key Features:**
+
+- Internal BGP (iBGP) route reflection (RFC 4456)
+- Dynamic neighbor acceptance via BGP listen range
+- EVPN Type 2/Type 3 route reflection between nodes
+- Pure reflector node with no data-plane participation
+
+[View Route Reflector Example →]({{< ref "route-reflector" >}})

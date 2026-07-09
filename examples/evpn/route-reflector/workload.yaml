@@ -1,0 +1,79 @@
+apiVersion: "k8s.cni.cncf.io/v1"
+kind: NetworkAttachmentDefinition
+metadata:
+  name: macvlan-conf
+spec:
+  config: '{
+      "cniVersion": "0.3.0",
+      "type": "macvlan",
+      "master": "br-hs-300",
+      "mode": "bridge",
+      "ipam": {
+         "type": "static"
+      }
+    }'
+---
+# The two pods run on the two worker (client) nodes and share the layer 2
+# domain exposed by the reflected L2VNI. They can only learn about each
+# other through the type-2 routes reflected by the control-plane node.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: first
+  annotations:
+    k8s.v1.cni.cncf.io/networks: '[{
+      "name": "macvlan-conf",
+      "namespace": "default",
+      "ips": ["192.171.31.2/24"]
+      }]'
+spec:
+  nodeSelector:
+    kubernetes.io/hostname: pe-kind-worker
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: agnhost
+      image: registry.k8s.io/e2e-test-images/agnhost:2.45
+      command: ["/agnhost", "netexec", "--http-port=8090"]
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+      ports:
+      - containerPort: 8090
+        name: http
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: second
+  annotations:
+    k8s.v1.cni.cncf.io/networks: '[{
+      "name": "macvlan-conf",
+      "namespace": "default",
+      "ips": ["192.171.31.3/24"]
+      }]'
+spec:
+  nodeSelector:
+    kubernetes.io/hostname: pe-kind-worker2
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: agnhost
+      image: registry.k8s.io/e2e-test-images/agnhost:2.45
+      command: ["/agnhost", "netexec", "--http-port=8090"]
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+      ports:
+      - containerPort: 8090
+        name: http
