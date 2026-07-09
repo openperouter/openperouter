@@ -2,6 +2,26 @@ apiVersion: v1
 entries:
   openperouter:
   - apiVersion: v2
+    appVersion: v0.2.0
+    created: "2026-07-09T19:21:17.54541944Z"
+    dependencies:
+    - condition: crds.enabled
+      name: crds
+      repository: ""
+      version: 0.2.0
+    description: An open implementation of a PE router.
+    digest: e4da88c4db5ed2f57c4a0d585e802e890b3a597f29b2de58a5d471528c8056ed
+    home: https://github.com/openperouter/openperouter
+    icon: https://raw.githubusercontent.com/openperouter/openperouter/main/drawings/logo.svg
+    kubeVersion: '>= 1.19.0-0'
+    name: openperouter
+    sources:
+    - https://github.com/openperouter/openperouter
+    type: application
+    urls:
+    - https://github.com/openperouter/openperouter/releases/download/openperouter-chart-0.2.0/openperouter-0.2.0.tgz
+    version: 0.2.0
+  - apiVersion: v2
     appVersion: v0.1.0
     created: "2026-03-27T13:55:33.176414188Z"
     dependencies:
@@ -101,4 +121,4 @@ entries:
     urls:
     - https://github.com/openperouter/openperouter/releases/download/openperouter-chart-0.0.2/openperouter-0.0.2.tgz
     version: 0.0.2
-generated: "2026-03-27T13:55:33.176438343Z"
+generated: "2026-07-09T19:21:17.545444037Z"
