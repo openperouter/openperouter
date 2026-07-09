@@ -64,3 +64,4 @@ spec:
     type: linux-bridge
     linuxBridge:
       autoCreate: true
+  l2gatewayips: ["192.170.1.1/24"]
