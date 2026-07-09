@@ -184,13 +184,18 @@ func main() {
 			datapathConfigValidator = &conversion.GroutDatapathConfigValidator{}
 		}
 
+		operatorNS := args.namespace
+		if operatorNS == "" {
+			operatorNS = os.Getenv("POD_NAMESPACE")
+		}
+
 		if args.webhookMode == WebhookModeEnabled || args.webhookMode == WebhookModeWebhookOnly {
 			setupLog.Info("Starting webhooks")
 			if err := v1alpha1.AddToScheme(mgr.GetScheme()); err != nil {
 				logger.Error("unable to add v1alpha1 scheme", "error", err)
 			}
 
-			err := setupWebhook(mgr, logger, datapathConfigValidator)
+			err := setupWebhook(mgr, logger, datapathConfigValidator, operatorNS)
 			if err != nil {
 				setupLog.Error(err, "unable to create", "webhooks")
 				os.Exit(1)
@@ -258,7 +263,12 @@ func setupCertRotation(notifyFinished chan struct{}, mgr manager.Manager, logger
 	return nil
 }
 
-func setupWebhook(mgr manager.Manager, logger *slog.Logger, configValidator conversion.DatapathConfigValidator) error {
+func setupWebhook(
+	mgr manager.Manager,
+	logger *slog.Logger,
+	configValidator conversion.DatapathConfigValidator,
+	operatorNamespace string,
+) error {
 	logger.Info("webhooks enabled")
 
 	webhooks.Logger = logger
@@ -285,7 +295,7 @@ func setupWebhook(mgr manager.Manager, logger *slog.Logger, configValidator conv
 		logger.Error("unable to create the webhook", "error", err, "webhook", "L3Passthroughs")
 		return err
 	}
-	if err := webhooks.SetupRawFRRConfig(mgr); err != nil {
+	if err := webhooks.SetupRawFRRConfig(mgr, operatorNamespace); err != nil {
 		logger.Error("unable to create the webhook", "error", err, "webhook", "RawFRRConfigs")
 		return err
 	}

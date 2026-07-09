@@ -236,8 +236,12 @@ func (r *PERouterReconciler) getConfigFromAPI(ctx context.Context, logger *slog.
 		return conversion.APIConfigData{}, err
 	}
 
+	if r.MyNamespace == "" {
+		slog.Error("failed to list rawfrrconfigs: operator namespace is not configured")
+		return conversion.APIConfigData{}, fmt.Errorf("operator namespace is not configured")
+	}
 	var rawFRRConfigs v1alpha1.RawFRRConfigList
-	if err := r.List(ctx, &rawFRRConfigs, r.notStaticConfigsListOpts); err != nil {
+	if err := r.List(ctx, &rawFRRConfigs, r.notStaticConfigsListOpts, client.InNamespace(r.MyNamespace)); err != nil {
 		slog.Error("failed to list rawfrrconfigs", "error", err)
 		return conversion.APIConfigData{}, err
 	}
