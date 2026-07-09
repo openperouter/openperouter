@@ -64,6 +64,27 @@ func WithGatewayIPs(cidrs []string) L3VNIOption {
 	}
 }
 
+type L3VPNOption func(*frr.L3VPNConfig) error
+
+func L3VPNWithGatewayIPs(cidrs []string) L3VPNOption {
+	return func(cfg *frr.L3VPNConfig) error {
+		for _, cidr := range cidrs {
+			_, ipnet, err := net.ParseCIDR(cidr)
+			if err != nil {
+				return fmt.Errorf("failed to parse L2 gateway CIDR %s: %w", cidr, err)
+			}
+			prefix := ipnet.String()
+			if ipfamily.ForCIDR(ipnet) == ipfamily.IPv4 {
+				cfg.ToAdvertiseIPv4 = append(cfg.ToAdvertiseIPv4, prefix)
+			}
+			if ipfamily.ForCIDR(ipnet) == ipfamily.IPv6 {
+				cfg.ToAdvertiseIPv6 = append(cfg.ToAdvertiseIPv6, prefix)
+			}
+		}
+		return nil
+	}
+}
+
 func APItoFRR(config APIConfigData, nodeIndex int, logLevel string) (frr.Config, error) {
 	rawSnippets := rawConfigSnippets(config.RawFRRConfigs)
 	if len(rawSnippets) > 0 && len(config.Underlays) == 0 {
@@ -130,7 +151,15 @@ func APItoFRR(config APIConfigData, nodeIndex int, logLevel string) (frr.Config,
 
 	applyGracefulRestart(&underlayConfig, underlay.Spec.GracefulRestart)
 
-	vniConfigs, err := vniConfigsToFRR(config.L3VNIs, config.L2VNIs, routerID, underlay.Spec.ASN, nodeIndex)
+	vrfsWithL2Gateway := vrfsFromVNIsWithL2Gateways(config.L2VNIs)
+
+	vniConfigs, err := vniConfigsToFRR(
+		config.L3VNIs,
+		routerID,
+		underlay.Spec.ASN,
+		nodeIndex,
+		vrfsWithL2Gateway,
+	)
 	if err != nil {
 		return frr.Config{}, err
 	}
@@ -140,7 +169,13 @@ func APItoFRR(config APIConfigData, nodeIndex int, logLevel string) (frr.Config,
 		return frr.Config{}, fmt.Errorf("failed to translate passthrough to frr: %w", err)
 	}
 
-	vpnConfigs, err := l3vpnConfigsToFRR(config.L3VPNs, routerID, underlay.Spec.ASN, nodeIndex)
+	vpnConfigs, err := l3vpnConfigsToFRR(
+		config.L3VPNs,
+		routerID,
+		underlay.Spec.ASN,
+		nodeIndex,
+		vrfsWithL2Gateway,
+	)
 	if err != nil {
 		return frr.Config{}, err
 	}
@@ -236,17 +271,16 @@ func tunnelEndpointToFRR(tunnelEndpointConfig *v1alpha1.TunnelEndpointConfig, no
 
 func vniConfigsToFRR(
 	l3vnis []v1alpha1.L3VNI,
-	l2vnis []v1alpha1.L2VNI,
 	routerID string,
 	underlayASN int64,
 	nodeIndex int,
+	vrfsWithL2Gateway map[string][]string,
 ) ([]frr.L3VNIConfig, error) {
-	vrfsWithL2Gateway := vrfsWithL2Gateways(l2vnis)
 	configs := []frr.L3VNIConfig{}
 	for _, vni := range l3vnis {
 		var opts []L3VNIOption
 		if gatewayCIDRs, ok := vrfsWithL2Gateway[vni.Spec.VRF]; ok {
-			opts = append(opts, WithGatewayIPs(gatewayCIDRs))
+			opts = []L3VNIOption{WithGatewayIPs(gatewayCIDRs)}
 		}
 		frrVNI, err := l3vniToFRR(vni, routerID, underlayASN, nodeIndex, opts...)
 		if err != nil {
@@ -511,10 +545,20 @@ func l3vniToFRR(vni v1alpha1.L3VNI, routerID string, underlayASN int64, nodeInde
 	return configs, nil
 }
 
-func l3vpnConfigsToFRR(l3VPNs []v1alpha1.L3VPN, routerID string, asn int64, nodeIndex int) ([]frr.L3VPNConfig, error) {
+func l3vpnConfigsToFRR(
+	l3VPNs []v1alpha1.L3VPN,
+	routerID string,
+	asn int64,
+	nodeIndex int,
+	vrfsWithL2Gateway map[string][]string,
+) ([]frr.L3VPNConfig, error) {
 	vpnConfigs := []frr.L3VPNConfig{}
 	for _, vpn := range l3VPNs {
-		frrVNI, err := l3vpnToFRR(vpn, routerID, asn, nodeIndex)
+		var opts []L3VPNOption
+		if gatewayCIDRs, ok := vrfsWithL2Gateway[vpn.Spec.VRF]; ok {
+			opts = []L3VPNOption{L3VPNWithGatewayIPs(gatewayCIDRs)}
+		}
+		frrVNI, err := l3vpnToFRR(vpn, routerID, asn, nodeIndex, opts...)
 		if err != nil {
 			return []frr.L3VPNConfig{}, fmt.Errorf("failed to translate l3vpn to frr: %w, vni %v", err, vpn)
 		}
@@ -528,7 +572,13 @@ func l3vpnConfigsToFRR(l3VPNs []v1alpha1.L3VPN, routerID string, asn int64, node
 // Otherwise, it derives veth IPs from the HostSession's local CIDR pool for the given node index
 // and creates a config per IP family (IPv4/IPv6), each with a local neighbor and the corresponding prefixes to
 // advertise.
-func l3vpnToFRR(vpn v1alpha1.L3VPN, routerID string, underlayASN int64, nodeIndex int) ([]frr.L3VPNConfig, error) {
+func l3vpnToFRR(
+	vpn v1alpha1.L3VPN,
+	routerID string,
+	underlayASN int64,
+	nodeIndex int,
+	opts ...L3VPNOption,
+) ([]frr.L3VPNConfig, error) {
 	// importRTs cannot be auto-derived. Unfortunately, FRR does not support wildcard notation, e.g. *:200. And
 	// using 0, e.g. 0:200, imports the route target verbatim.
 	if len(vpn.Spec.ImportRTs) < 1 {
@@ -542,17 +592,20 @@ func l3vpnToFRR(vpn v1alpha1.L3VPN, routerID string, underlayASN int64, nodeInde
 	}
 
 	if vpn.Spec.HostSession == nil { // no neighbor, just the vni / vrf
-		conf := []frr.L3VPNConfig{
-			{
-				ASN:                underlayASN, // Since there is no session, the ASN is arbitrary
-				VRF:                vpn.Spec.VRF,
-				RouterID:           routerID,
-				ExportRTs:          exportRTs,
-				ImportRTs:          importRTs,
-				RouteDistinguisher: routeDistinguisher(routerID, vpn.Spec.RDAssignedNumber),
-			},
+		cfg := frr.L3VPNConfig{
+			ASN:                underlayASN, // Since there is no session, the ASN is arbitrary
+			VRF:                vpn.Spec.VRF,
+			RouterID:           routerID,
+			ExportRTs:          exportRTs,
+			ImportRTs:          importRTs,
+			RouteDistinguisher: routeDistinguisher(routerID, vpn.Spec.RDAssignedNumber),
 		}
-		return conf, nil
+		for _, opt := range opts {
+			if err := opt(&cfg); err != nil {
+				return nil, err
+			}
+		}
+		return []frr.L3VPNConfig{cfg}, nil
 	}
 
 	hostASN, err := frr.NewPeerASN(vpn.Spec.HostSession.HostASN, vpn.Spec.HostSession.HostType)
@@ -594,7 +647,13 @@ func l3vpnToFRR(vpn v1alpha1.L3VPN, routerID string, underlayASN int64, nodeInde
 			ToAdvertiseIPv6: toAdvertiseIPv6,
 		})
 	}
-
+	for i := range configs {
+		for _, opt := range opts {
+			if err := opt(&configs[i]); err != nil {
+				return nil, err
+			}
+		}
+	}
 	return configs, nil
 }
 
@@ -959,7 +1018,7 @@ func routerIDFromUnderlay(underlay v1alpha1.Underlay, nodeIndex int) (string, er
 	return routerID, nil
 }
 
-func vrfsWithL2Gateways(l2vnis []v1alpha1.L2VNI) map[string][]string {
+func vrfsFromVNIsWithL2Gateways(l2vnis []v1alpha1.L2VNI) map[string][]string {
 	res := make(map[string][]string)
 	for _, l2vni := range l2vnis {
 		if len(l2vni.Spec.L2GatewayIPs) > 0 {
