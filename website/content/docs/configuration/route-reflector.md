@@ -111,3 +111,11 @@ A reflector without a `tunnelEndpoint` still renders the `l2vpn evpn` address fa
 - All reflectors that serve the same set of clients must share the same `clusterID` so loop detection works across them.
 - The default `clusterID` (`192.0.2.1`) is an RFC 5737 documentation address, outside the default `routeridcidr` pool. With a custom `routeridcidr` you must still pick a `clusterID` outside of it — a `clusterID` inside the range is rejected at admission.
 - The reflector preserves the BGP next hop of reflected routes, so clients must be able to reach each other's next hops (VTEP addresses). Activating `ipv4unicast` with `routeReflectorClient` on the reflector lets it reflect the client VTEP `/32` routes for this purpose.
+
+## Example
+
+A ready-to-run demo of this setup — a control-plane node reflecting EVPN routes between two workers that share an L2VNI — is available in the [Route Reflector example]({{< ref "../examples/evpnexamples/route-reflector.md" >}}) and can be deployed on the development environment with:
+
+```bash
+make docker-build demo-route-reflector
+```
