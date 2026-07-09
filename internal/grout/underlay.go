@@ -21,18 +21,19 @@ const (
 	UnderlayPortNamePrefix = "u_"
 )
 
-func HasUnderlayInterface(ctx context.Context, client *Client) (bool, error) {
+func UnderlayInterfaces(ctx context.Context, client *Client) (map[string]struct{}, error) {
 	interfaces, err := client.listInterfaces(ctx)
 	if err != nil {
-		return false, fmt.Errorf("HasUnderlayInterface: Failed to list interfaces: %w", err)
+		return map[string]struct{}{}, fmt.Errorf("HasUnderlayInterface: Failed to list interfaces: %w", err)
 	}
 
+	indexedIfaces := make(map[string]struct{}, len(interfaces))
 	for _, iface := range interfaces {
 		if strings.HasPrefix(iface.Name, UnderlayPortNamePrefix) {
-			return true, nil
+			indexedIfaces[iface.Name] = struct{}{}
 		}
 	}
-	return false, nil
+	return indexedIfaces, nil
 }
 
 // SetupUnderlay configures the underlay interface via the grout dataplane.
@@ -72,7 +73,7 @@ func SetupUnderlay(ctx context.Context, client *Client, params hostnetwork.Under
 	if removedInterfaces := hostnetwork.UnderlayInterfacesToRemove(existingIfaces, params.UnderlayInterfaces); len(removedInterfaces) > 0 {
 		slog.InfoContext(ctx, "underlay interfaces changed, restoring old grout state before setup",
 			"removed", removedInterfaces, "requested", params.UnderlayInterfaces)
-		if err := RestoreUnderlay(ctx, client, params.TargetNS); err != nil {
+		if err := RestoreUnderlay(ctx, client, params.TargetNS, removedInterfaces); err != nil {
 			return fmt.Errorf("failed to restore old underlay interfaces: %w", err)
 		}
 	}
@@ -104,9 +105,9 @@ func SetupUnderlay(ctx context.Context, client *Client, params hostnetwork.Under
 }
 
 // RestoreUnderlay tears down the grout underlay ports and resets the kernel
-// group IDs on moved NICs so HasUnderlayInterface returns false on the next
+// group IDs on moved NICs so UnderlayInterfaces returns false on the next
 // reconcile.
-func RestoreUnderlay(ctx context.Context, client *Client, targetNS string) error {
+func RestoreUnderlay(ctx context.Context, client *Client, targetNS string, ifacesToRemove map[string]struct{}) error {
 	interfaces, err := client.listInterfaces(ctx)
 	if err != nil {
 		return fmt.Errorf("HasUnderlayInterface: Failed to list interfaces: %w", err)
@@ -142,7 +143,7 @@ func RestoreUnderlay(ctx context.Context, client *Client, targetNS string) error
 		}
 	}
 
-	if err := hostnetwork.RestoreUnderlay(ctx, targetNS); err != nil {
+	if err := hostnetwork.RestoreUnderlay(ctx, targetNS, ifacesToRemove); err != nil {
 		return fmt.Errorf("RestoreUnderlay: failed to clean kernel underlay state: %w", err)
 	}
 

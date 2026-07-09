@@ -218,7 +218,11 @@ var _ = Describe("Underlay configuration should work when", func() {
 			validateUnderlayInNS(g, testNs, params)
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 
-		Expect(RestoreUnderlay(context.Background(), underlayTestNSPath())).To(Succeed())
+		ifacesToRemove := make(map[string]struct{}, len(underlayInterfaces))
+		for name := range underlayInterfaces {
+			ifacesToRemove[name] = struct{}{}
+		}
+		Expect(RestoreUnderlay(context.Background(), underlayTestNSPath(), ifacesToRemove)).To(Succeed())
 
 		By("verifying the loopback IPs were deleted from the target namespace")
 		Eventually(func(g Gomega) {
@@ -253,17 +257,17 @@ var _ = Describe("Underlay configuration should work when", func() {
 
 var _ = Describe("UnderlayInterfacesToRemove", func() {
 	DescribeTable("should return interfaces to remove",
-		func(existing, requested []string, expected []string) {
+		func(existing, requested []string, expected map[string]struct{}) {
 			Expect(UnderlayInterfacesToRemove(existing, requested)).To(Equal(expected))
 		},
-		Entry("empty existing returns nil", []string{}, []string{"nic1"}, nil),
-		Entry("nil existing returns nil", nil, []string{"nic1"}, nil),
-		Entry("same single interface returns nil", []string{"nic1"}, []string{"nic1"}, nil),
-		Entry("same multiple interfaces returns nil", []string{"nic1", "nic2"}, []string{"nic1", "nic2"}, nil),
-		Entry("adding interface returns nil", []string{"nic1"}, []string{"nic1", "nic2"}, nil),
-		Entry("removing interface returns removed", []string{"nic1", "nic2"}, []string{"nic1"}, []string{"nic2"}),
-		Entry("replacing interface returns old", []string{"nic1"}, []string{"nic2"}, []string{"nic1"}),
-		Entry("completely different set returns all old", []string{"nic1", "nic2"}, []string{"nic3", "nic4"}, []string{"nic1", "nic2"}),
+		Entry("empty existing returns empty", []string{}, []string{"nic1"}, map[string]struct{}{}),
+		Entry("nil existing returns empty", nil, []string{"nic1"}, map[string]struct{}{}),
+		Entry("same single interface returns empty", []string{"nic1"}, []string{"nic1"}, map[string]struct{}{}),
+		Entry("same multiple interfaces returns empty", []string{"nic1", "nic2"}, []string{"nic1", "nic2"}, map[string]struct{}{}),
+		Entry("adding interface returns empty", []string{"nic1"}, []string{"nic1", "nic2"}, map[string]struct{}{}),
+		Entry("removing interface returns removed", []string{"nic1", "nic2"}, []string{"nic1"}, map[string]struct{}{"nic2": {}}),
+		Entry("replacing interface returns old", []string{"nic1"}, []string{"nic2"}, map[string]struct{}{"nic1": {}}),
+		Entry("completely different set returns all old", []string{"nic1", "nic2"}, []string{"nic3", "nic4"}, map[string]struct{}{"nic1": {}, "nic2": {}}),
 	)
 })
 

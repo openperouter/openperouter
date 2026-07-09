@@ -69,7 +69,7 @@ func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
 	if removedInterfaces := UnderlayInterfacesToRemove(existingIfaces, params.UnderlayInterfaces); len(removedInterfaces) > 0 {
 		slog.InfoContext(ctx, "underlay interfaces changed, restoring old interfaces before setup",
 			"removed", removedInterfaces, "requested", params.UnderlayInterfaces)
-		if err := RestoreUnderlay(ctx, params.TargetNS); err != nil {
+		if err := RestoreUnderlay(ctx, params.TargetNS, removedInterfaces); err != nil {
 			return fmt.Errorf("failed to restore old underlay interfaces: %w", err)
 		}
 	}
@@ -110,11 +110,11 @@ func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
 	return nil
 }
 
-func UnderlayInterfacesToRemove(existing, requested []string) []string {
-	var removed []string
+func UnderlayInterfacesToRemove(existing, requested []string) map[string]struct{} {
+	removed := map[string]struct{}{}
 	for _, name := range existing {
 		if !slices.Contains(requested, name) {
-			removed = append(removed, name)
+			removed[name] = struct{}{}
 		}
 	}
 	return removed
@@ -169,9 +169,9 @@ func ensureLoopback(ctx context.Context, ns netns.NsHandle, vtepIPs ...string) e
 // RestoreUnderlay restores the underlay state:
 //   - it clears all non-default IP addresses from the loopback in the namespace identified by fromNetNSPath
 //     (`/var/run/netns/perouter`).
-//   - it moves the interfaces that are identified by the groupID marker from the aforementioned namespace back to the
-//     default network namespace.
-func RestoreUnderlay(ctx context.Context, fromNetNSPath string) error {
+//   - it moves the interfaces to remove that are identified by the groupID marker from the aforementioned
+//     namespace back to the default network namespace.
+func RestoreUnderlay(ctx context.Context, fromNetNSPath string, ifacesToRemove map[string]struct{}) error {
 	restoreUnderlay := func(ctx context.Context, fromNetNSHandle, defaultNetNSHandle *netlink.Handle,
 		defaultNetNS netns.NsHandle) error {
 		if err := clearNonDefaultLoopbackIPs(fromNetNSHandle, loopbackName); err != nil {
@@ -186,6 +186,9 @@ func RestoreUnderlay(ctx context.Context, fromNetNSPath string) error {
 
 		var errs []error
 		for _, l := range links {
+			if _, found := ifacesToRemove[l.Attrs().Name]; !found {
+				continue
+			}
 			if l.Attrs().Group != UnderlayGroupID {
 				continue
 			}
@@ -238,26 +241,6 @@ func restoreUnderlayWithHandles(ctx context.Context, fromNetNSPath string,
 	defer defaultNetNSHandle.Close()
 
 	return restoreFn(ctx, fromNetNSHandle, defaultNetNSHandle, defaultNetNS)
-}
-
-// HasUnderlayInterface returns true if the given network
-// namespace already has a configured underlay interface.
-func HasUnderlayInterface(namespace string) (bool, error) {
-	ns, err := netns.GetFromPath(namespace)
-	if err != nil {
-		return false, fmt.Errorf("HasUnderlayInterface: failed to find network namespace %s: %w", namespace, err)
-	}
-	defer func() {
-		if err := ns.Close(); err != nil {
-			slog.Error("failed to close namespace", "namespace", namespace, "error", err)
-		}
-	}()
-
-	ifaces, err := FindInterfacesInGroup(ns, UnderlayGroupID)
-	if err != nil {
-		return false, fmt.Errorf("failed to find underlay interfaces: %w", err)
-	}
-	return len(ifaces) > 0, nil
 }
 
 // findInterfacesInGroup returns a slice of interface names

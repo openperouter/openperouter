@@ -30,13 +30,13 @@ func NewGroutConfigurator(groutSocketPath string) *GroutDatapathConfigurator {
 func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interfacesConfiguration) error {
 	groutClient := grout.NewClient(g.groutSocketPath)
 
-	hasAlreadyUnderlay, err := grout.HasUnderlayInterface(ctx, groutClient)
+	underlayIfaces, err := grout.UnderlayInterfaces(ctx, groutClient)
 	if err != nil {
 		return fmt.Errorf("failed to check if target namespace %s has underlay: %w", config.targetNamespace, err)
 	}
-	if hasAlreadyUnderlay && len(config.Underlays) == 0 {
+	if len(underlayIfaces) > 0 && len(config.Underlays) == 0 {
 		slog.InfoContext(ctx, "underlay removed, cleaning up grout underlay")
-		if err := grout.RestoreUnderlay(ctx, groutClient, config.targetNamespace); err != nil {
+		if err := grout.RestoreUnderlay(ctx, groutClient, config.targetNamespace, underlayIfaces); err != nil {
 			slog.Warn("failed to remove underlay after underlay removal", "err", err)
 		}
 		return nil
