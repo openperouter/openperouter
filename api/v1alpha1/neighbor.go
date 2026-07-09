@@ -49,6 +49,8 @@ type Neighbor struct {
 
 	// password to be used for establishing the BGP session.
 	// Password and PasswordSecret are mutually exclusive.
+	// +kubebuilder:validation:MaxLength=128
+	// +kubebuilder:validation:Pattern=`^\S+$`
 	// +optional
 	Password *string `json:"password,omitempty"`
 
