@@ -68,6 +68,21 @@ jobs:
     permissions:
       contents: read
       id-token: write # needed for signing the images with GitHub OIDC Token
+    strategy:
+      matrix:
+        include:
+          - name: router
+            dockerfile: Dockerfile
+            platforms: linux/amd64,linux/arm64,linux/s390x,linux/ppc64le,linux/arm/v7
+            tag-suffix: ""
+            image-title: openperouter
+            image-description: a perouter running on the host
+          - name: grout
+            dockerfile: Dockerfile.grout
+            platforms: linux/amd64
+            tag-suffix: ",suffix=-grout"
+            image-title: openperouter-grout
+            image-description: a perouter running on the host with grout dataplane
     steps:
       - name: Free Disk Space
         working-directory: ${{ github.workspace }}
@@ -109,13 +124,12 @@ jobs:
         with:
           images: |
             quay.io/openperouter/router
-          # generate Docker tags based on the following events/attributes
           tags: |
-            type=ref,event=branch
-            type=semver,pattern={{raw}}
+            type=ref,event=branch${{ matrix.tag-suffix }}
+            type=semver,pattern={{raw}}${{ matrix.tag-suffix }}
           labels: |
-            org.opencontainers.image.title=openperouter
-            org.opencontainers.image.description=a perouter running on the host
+            org.opencontainers.image.title=${{ matrix.image-title }}
+            org.opencontainers.image.description=${{ matrix.image-description }}
 
       - name: Build and push
         uses: docker/build-push-action@v7
@@ -124,8 +138,8 @@ jobs:
           context: .
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          file: Dockerfile
-          platforms: linux/amd64,linux/arm64,linux/s390x,linux/ppc64le,linux/arm/v7
+          file: ${{ matrix.dockerfile }}
+          platforms: ${{ matrix.platforms }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           push: true
