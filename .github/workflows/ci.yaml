@@ -258,6 +258,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install linux-modules-extra-$(uname -r)
 
+      # rp_filter is off on CI runners; enable it so kind nodes inherit a production-like default
+      - name: Enable rp_filter
+        run: |
+          sudo sysctl -w net.ipv4.conf.default.rp_filter=1
+          sudo sysctl -w net.ipv4.conf.default.log_martians=1
+
       - name: Disable containerd image store
         run: |
           sudo bash -c 'cat > /etc/docker/daemon.json << EOF
@@ -340,6 +346,12 @@ jobs:
         if: ${{ failure() }}
         run:
           make kind-export-logs
+
+      # Needed to debug kernel "martian source" packets
+      - name: Collect dmesg logs
+        if: ${{ failure() }}
+        run: |
+          sudo dmesg -T > /tmp/kind_logs/dmesg.log
 
       - name: Collect veth monitor logs
         if: ${{ failure() }}
