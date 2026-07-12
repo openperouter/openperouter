@@ -7,33 +7,6 @@ The `inspect` tool makes debugging OpenPERouter deployments easier by collecting
 - Read access to the OpenPERouter namespace; exec access to router pods for node logs.
 
 ## How to use:
-```bash
-$ ./inspect
-
-# overriding output directory path
-$ ./inspect --dest-dir=/tmp/perouter-logs
-
-# use a different Kubernetes client
-$ ./inspect --dest-dir=mydir --k8s-client=oc
-
-# override openperouter namespace
-$ ./inspect --dest-dir=mydir --namespace=myns --k8s-client=oc
-
-# collect logs since relative time duration
-$ ./inspect --since=3m
-
-# via global Make target
-$ make inspect
-
-# override parameters
-$ KUBECONFIG_PATH=$KUBECONFIG \
-    make inspect \
-      NAMESPACE=myns \
-      KUBECTL=oc \
-      INSPECT_DIR=./art \
-      SINCE=3m
-```
-**Note:** Options must be specified with `=`.
 
 ### Options
 | Option         | Description                                                       | Default                |
@@ -43,6 +16,28 @@ $ KUBECONFIG_PATH=$KUBECONFIG \
 | `--k8s-client` | Kubernetes client                                                 | `kubectl`              |
 | `--since`      | Collect pod logs newer then relative duration (e.g.: 5s, 10m, 2h) |                        |
 | `-h`, `--help` | Print usage instructions                                          |                        |
+
+**Note:** Options must be specified with `=`.
+
+### Example:
+```bash 
+$ cd tools/inspect     
+$ ./inspect
+
+# override parameters
+$ ./inspect --dest-dir=mydir --namespace=myns --k8s-client=oc --since=3m
+
+# via repository make target, artifacts stored at /tmp/openperouter-inspect
+$ make inspect
+
+# override parameters
+$ KUBECONFIG_PATH=$KUBECONFIG \
+    make inspect \
+      NAMESPACE=my-namespace \
+      KUBECTL=oc \
+      INSPECT_DIR=./art \
+      SINCE=3m
+```
 
 ## Output
 The output root directory contains the following:
@@ -64,11 +59,6 @@ The OpenPERouter namespace directory structure:
 $ tree /tmp/openperouter-inspect/
 ├── inspect.log
 ├── timestamp
-├── blue
-│   ├── l2vnis
-│   │   └── blue-111.yaml
-│   └── l3vnis
-│       └── blue-101.yaml
 ├── node_info
 │   ├── pe-kind-control-plane
 │   │   ├── root_netns_info.log
@@ -90,9 +80,9 @@ $ tree /tmp/openperouter-inspect/
     ├── deployments
     │   └── nodemarker.yaml
     ├── l2vnis
-    │   └── layer2.yaml
+    │   └── red-110.yaml
     ├── l3vnis
-    │   └── red.yaml
+    │   └── red-100.yaml
     ├── overview
     │   └── all.log
     ├── pod_logs
@@ -128,7 +118,7 @@ $ tree /tmp/openperouter-inspect/
     ├── services
     │   └── openpe-webhook-service.yaml
     └── underlays
-        └── underlay.yaml
+       └── underlay.yaml
 ```
 
 ## Inspect OpenPERouter nodes when running on systemd mode
@@ -140,27 +130,32 @@ managed by the cluster.
 
 Artifacts are stored at the host (default is `/openperouter-inspect-host`), and can be copied to base station for inspection.
 
-How to use:
+### Prerequisites
+- SSH access to the target node.How to use:
+
+### How to use:
+
+#### Example:
 ```bash
 # via ssh
-$ ssh <target node> -- bash <<< $(cat inspect_host)
+$ ssh <target node> -- bash <<< $(cat tools/inspect/inspect_host)
 $ scp -r <target node>/openperouter-inspect-host ./<target node>-perouter-inspect
 
 # troubleshooting kind cluster node running OpenPERouter on host mode
-$ docker exec pe-kind-worker -i bash <<< $(cat inspect_host)
+$ docker exec pe-kind-worker -i bash <<< $(cat tools/inspect/inspect_host)
 $ docker cp pe-kind-worker:/openperouter-inspect-host ./pe-kind-worker-inspect-host
 
-# via global make, each node artifacts stored at /tmp/openperouter-systemd-mode-inspect/<node name>
+# via repository make target, artifacts stored at /tmp/openperouter-systemd-mode-inspect
 $ make inspect-systemd-mode
 ```
 
-## Output
+### Output
 - `router_info_podman_quadlet.log` - router infrastructure information collected via the router Podman Quadlet container
 - `root_netns_info.log` - Root network namespace information
 - `configs/` - Contains collected static config resources in YAML form
 - `config_files.log` - Static config resources collection log
 
-### Example:
+#### Example:
 ```bash
 $ kubectl get no
 NAME                    STATUS   ROLES           AGE     VERSION
@@ -171,13 +166,13 @@ $ make inspect-systemd-mode
 
 $ tree /tmp/openperouter-systemd-mode-inspect/ 
 ├── pe-kind-control-plane
-│   ├── node_infoconfig_files.log
+│   ├── config_files.log
 │   ├── root_netns_info.log
 │   ├── router_info_podman_quadlet.log
 │   └── configs
-│        └── node-config.yaml
+│       └── node-config.yaml
 └── pe-kind-worker
-    ├── node_infoconfig_files.log
+    ├── config_files.log
     ├── root_netns_info.log
     ├── router_info_podman_quadlet.log
     └── configs
