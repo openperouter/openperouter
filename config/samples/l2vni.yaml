@@ -5,7 +5,10 @@ metadata:
   namespace: openperouter-system
 spec:
   vni: 210
-  vrf: red
+  routingDomain:
+    type: L3VNI
+    l3vni:
+      name: red
   hostmaster:
     type: linux-bridge
     linuxBridge:
