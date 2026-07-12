@@ -10,6 +10,7 @@ package v1alpha1
 // +kubebuilder:validation:XValidation:rule="!has(self.holdTimeSeconds) || !has(self.keepaliveTimeSeconds) || self.keepaliveTimeSeconds <= self.holdTimeSeconds",message="keepaliveTimeSeconds must be lower than or equal to holdTimeSeconds"
 // +kubebuilder:validation:XValidation:rule="has(self.address) || has(self.interface)",message="Either a valid Address or Interface name must be provided for Neighbor"
 // +kubebuilder:validation:XValidation:rule="!has(self.address) || !has(self.interface)",message="Address and Interface cannot be set together for Neighbor"
+// +kubebuilder:validation:XValidation:rule="!(has(self.password) && has(self.passwordSecret))",message="password and passwordSecret are mutually exclusive"
 // +kubebuilder:validation:XValidation:rule="!has(self.interface) || !has(self.addressFamilies) || !self.addressFamilies.exists(f, f.type == 'ipv4vpn' || f.type == 'ipv6vpn')",message="ipv4vpn and ipv6vpn address families are not supported for unnumbered (interface) neighbors"
 // +kubebuilder:validation:XValidation:rule="!has(self.address) || !has(self.addressFamilies) || ip(self.address).family() != 4 || !self.addressFamilies.exists(f, f.type == 'ipv4vpn' || f.type == 'ipv6vpn')",message="ipv4vpn and ipv6vpn address families require an IPv6 neighbor address"
 type Neighbor struct {

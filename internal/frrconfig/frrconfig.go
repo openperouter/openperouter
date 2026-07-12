@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"os/exec"
+
+	"github.com/openperouter/openperouter/internal/frr"
 )
 
 type Action string
@@ -37,9 +39,9 @@ func reloadAction(path string, action Action) error {
 	cmd := execCommand("python3", reloaderPath, reloadParameter, path)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		slog.Error("frr update failed", "action", action, "error", err, "output", string(output))
+		slog.Error("frr update failed", "action", action, "error", err, "output", frr.RedactPasswords(string(output)))
 		return fmt.Errorf("frr update %s failed: %w", action, err)
 	}
-	slog.Debug("frr update succeeded", "action", action, "output", string(output))
+	slog.Debug("frr update succeeded", "action", action, "output", frr.RedactPasswords(string(output)))
 	return nil
 }

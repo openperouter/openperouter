@@ -491,6 +491,8 @@ spec:
                     rule: has(self.address) || has(self.interface)
                   - message: Address and Interface cannot be set together for Neighbor
                     rule: '!has(self.address) || !has(self.interface)'
+                  - message: password and passwordSecret are mutually exclusive
+                    rule: '!(has(self.password) && has(self.passwordSecret))'
                   - message: ipv4vpn and ipv6vpn address families are not supported
                       for unnumbered (interface) neighbors
                     rule: '!has(self.interface) || !has(self.addressFamilies) || !self.addressFamilies.exists(f,
