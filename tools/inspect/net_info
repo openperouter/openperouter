@@ -2,13 +2,6 @@
 
 # SPDX-License-Identifier:Apache-2.0
 
-NETNS=${NETNS:-""}
-
-args=""
-if [ -n "$NETNS" ]; then
-	args="ip netns exec $NETNS"
-fi
-
 readonly NETNS_INFO=(\
 "ip link" \
 "ip address" \
@@ -26,19 +19,18 @@ readonly VRF_INFO=(\
 )
 
 function print_vrf_info {
-  local -r netns_name=$1
-  local -r args="$2"
+  local -r cmd_prefix="$1"
 
-  vrfs=("$($args $VRF_SHOW | awk '{print $1}')")
+  local -r vrfs=("$($cmd_prefix $VRF_SHOW | awk '{print $1}')")
   [[ ${#vrfs} -eq 0 ]] && return
 
-  echo "### netns [$netns_name] VRFs:"
-  $args $VRF_SHOW
+  echo "### VRFs:"
+  $cmd_prefix $VRF_SHOW
 
   for vrf in "${vrfs[@]}"; do
-    echo "### netns [$netns_name] VRF [$vrf]:"
+    echo "### VRF [$vrf] info:"
     for cmd in "${VRF_INFO[@]}"; do
-      c="$args $cmd $vrf"
+      c="$cmd_prefix $cmd $vrf"
       echo "$ $c"
       $c
     done
@@ -46,9 +38,18 @@ function print_vrf_info {
   echo "###"
 }
 
+NETNS=${NETNS:-""}
+
+cmd_prefix=""
+dump_vrfs_info=0
+if [ -n "$NETNS" ]; then
+	cmd_prefix="ip netns exec $NETNS"
+	dump_vrfs_info=1
+fi
+
 echo "### Networking info:"
 for cmd in "${NETNS_INFO[@]}"; do
-	c="$args $cmd"
+	c="$cmd_prefix $cmd"
 	echo "$ $c"
 	$c
 	echo ""
@@ -56,8 +57,6 @@ done
 echo "###"
 echo ""
 
-if [[ -n $NETNS ]]; then
-  print_vrf_info "$NETNS" "$args"
-else
-  print_vrf_info "root" ""
+if [[ $dump_vrfs_info -gt 0 ]]; then
+  print_vrf_info "$cmd_prefix"
 fi
