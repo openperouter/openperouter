@@ -42,8 +42,8 @@ It can be found at OpenPERouter repository
 
 #### Output
 The tool store all collected info to output directory (default is `/openperouter-inspect-host`), including: 
-- `router_info_podman_quadlet.log` - router infrastructure information, 
-- collected via the router Podman Quadlet container
+- `router_info_podman.log` - router infrastructure information collected from podman (for Podman Quadlet containers)
+- `router_info_crictl.log` - router infrastructure information collected using crictl (e.g.: from CRI-O, containerd)
 - `root_netns_info.log` - root network namespace information
 - `config_files.log` - static config resources collection log
 - `configs/` - collected static config resources, YAML form

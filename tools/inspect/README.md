@@ -150,7 +150,8 @@ $ make inspect-systemd-mode
 ```
 
 ### Output
-- `router_info_podman_quadlet.log` - router infrastructure information collected via the router Podman Quadlet container
+- `router_info_podman.log` - router infrastructure information collected from podman (for Podman Quadlet containers)
+- `router_info_crictl.log` - router infrastructure information collected using crictl (e.g.: from CRI-O, containerd)
 - `root_netns_info.log` - Root network namespace information
 - `configs/` - Contains collected static config resources in YAML form
 - `config_files.log` - Static config resources collection log
@@ -168,13 +169,13 @@ $ tree /tmp/openperouter-systemd-mode-inspect/
 ├── pe-kind-control-plane
 │   ├── config_files.log
 │   ├── root_netns_info.log
-│   ├── router_info_podman_quadlet.log
+│   ├── router_info_podman.log
 │   └── configs
 │       └── node-config.yaml
 └── pe-kind-worker
     ├── config_files.log
     ├── root_netns_info.log
-    ├── router_info_podman_quadlet.log
+    ├── router_info_podman.log
     └── configs
         └── node-config.yaml
      

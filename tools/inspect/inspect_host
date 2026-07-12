@@ -31,13 +31,14 @@ function dump_netns_info() {
 	printf "###\n\n"
 }
 
-function dump_router_info_via_podman_quadlet() {
-	local -r container_id="$1"
+function dump_router_info() {
+	local -r oci_ctl="$1"
+	local -r container_id="$2"
 
-	echo "### Routing infrastructure info from podman quadlets:"
+	echo "### Routing infrastructure info via [$oci_ctl]:"
 	for cmd in "${FRR_INFO[@]}"; do
 		echo "$ $cmd"
-		podman exec -i "$container_id" bash <<< "$cmd"
+		$oci_ctl exec -i "$container_id" bash -c "$cmd"
 		echo ""
 	done
 	printf "###\n\n"
@@ -75,7 +76,13 @@ pushd "$ARTIFACTS_DIR"
 	if podman info &> /dev/null; then
 		router_container_id="$(podman ps -q -f name="$ROUTER_CONTAINER" -f status=running)"
 		if [[ -n $router_container_id ]]; then
-			dump_router_info_via_podman_quadlet "$router_container_id" > "router_info_podman_quadlet.log"
+			dump_router_info "podman" "$router_container_id" > "router_info_podman.log"
+		fi
+	fi
+	if crictl info &> /dev/null; then
+		router_container_id="$(crictl ps -q --name frr --state Running)"
+		if [[ -n $router_container_id ]]; then
+			dump_router_info "crictl" "$router_container_id" > "router_info_crictl.log"
 		fi
 	fi
 
