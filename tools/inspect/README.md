@@ -150,8 +150,8 @@ $ scp -r <target node>/openperouter-inspect-host ./<target node>-perouter-inspec
 $ docker exec pe-kind-worker -i bash <<< $(cat inspect_host)
 $ docker cp pe-kind-worker:/openperouter-inspect-host ./pe-kind-worker-inspect-host
 
-# via global make, artifacts stored at /tmp/$NODE-inspect
-$ make inspect-host NODE=pe-kind-worker
+# via global make, each node artifacts stored at /tmp/openperouter-systemd-mode-inspect/<node name>
+$ make inspect-systemd-mode
 ```
 
 ## Output
@@ -167,13 +167,22 @@ NAME                    STATUS   ROLES           AGE     VERSION
 pe-kind-control-plane   Ready    control-plane   3h20m   v1.32.2
 pe-kind-worker          Ready    <none>          3h20m   v1.32.2
 
-$ make inspect-host NODE=pe-kind-worker
+$ make inspect-systemd-mode
 
-$ tree /tmp/pe-kind-worker-inspect/
-pe-kind-worker-inspect/
-├── config_files.log
-├── root_netns_info.log
-├── router_info_podman_quadlet.log
-└── configs
-    └── node-config.yaml
+$ tree /tmp/openperouter-systemd-mode-inspect/ 
+├── pe-kind-control-plane
+│   ├── node_infoconfig_files.log
+│   ├── root_netns_info.log
+│   ├── router_info_podman_quadlet.log
+│   └── configs
+│        └── node-config.yaml
+└── pe-kind-worker
+    ├── node_infoconfig_files.log
+    ├── root_netns_info.log
+    ├── router_info_podman_quadlet.log
+    └── configs
+        └── node-config.yaml
+     
+# inspect a specific node     
+$ make inspect-systemd-mode NODES=pe-kind-worker
 ```
