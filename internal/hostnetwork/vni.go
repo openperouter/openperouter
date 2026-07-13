@@ -277,7 +277,7 @@ func RemoveNonConfiguredVNIs(targetNS string, params []VNIParams) error {
 		vnis[p.VNI] = true
 	}
 
-	failedDeletes := removeHostSideVNIs(vnis)
+	errs := removeHostSideVNIs(vnis)
 
 	ns, err := netns.GetFromPath(targetNS)
 	if err != nil {
@@ -291,13 +291,15 @@ func RemoveNonConfiguredVNIs(targetNS string, params []VNIParams) error {
 
 	if err := netnamespace.In(ns, func() error {
 		nsErrors := removeNamespaceSideVNIs(vnis)
-		failedDeletes = append(failedDeletes, nsErrors...)
-		return errors.Join(failedDeletes...)
+		return errors.Join(nsErrors...)
 	}); err != nil {
-		return err
+		errs = append(errs, err)
 	}
 
-	return errors.Join(failedDeletes...)
+	if err := errors.Join(errs...); err != nil {
+		return fmt.Errorf("RemoveNonConfiguredVNIs: %w", err)
+	}
+	return nil
 }
 
 func removeHostSideVNIs(vnis map[int32]bool) []error {
