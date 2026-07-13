@@ -19,3 +19,15 @@ underlays:
     tunnelEndpoint:
       cidrs:
       - "100.65.0.0/24"
+      - "2001:db8:1234:5678::/64"
+    isis:
+      baseNet: "49.0001.0002.0003.0004.00"
+      level: 1
+      interfaces:
+        - name: toswitch1
+          ipFamily: ipv6
+    srv6:
+      encapBehavior: "H.Encaps.Red"
+      locator:
+        basePrefix: "fd00:0:32::/48"
+        format: "usid-f3216"

@@ -258,7 +258,24 @@ func TestReadRouterConfigsFromFiles(t *testing.T) {
 			},
 		},
 		TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
-			CIDRs: []string{"100.65.0.0/24"},
+			CIDRs: []string{"100.65.0.0/24", "2001:db8:1234:5678::/64"},
+		},
+		ISIS: &v1alpha1.ISISConfig{
+			BaseNet: "49.0001.0002.0003.0004.00",
+			Level:   new(int32(1)),
+			Interfaces: []v1alpha1.ISISInterface{
+				{
+					Name:     "toswitch1",
+					IPFamily: new(v1alpha1.IPFamilyIPv6),
+				},
+			},
+		},
+		SRV6: &v1alpha1.SRV6Config{
+			EncapBehavior: new(v1alpha1.HEncapsRed),
+			Locator: v1alpha1.SRV6Locator{
+				BasePrefix: "fd00:0:32::/48",
+				Format:     "usid-f3216",
+			},
 		},
 	}
 
