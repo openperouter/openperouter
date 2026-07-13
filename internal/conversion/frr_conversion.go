@@ -323,9 +323,15 @@ func underlaySegmentRoutingToFRR(srv6Config *v1alpha1.SRV6Config, nodeIndex int,
 		return nil, fmt.Errorf("could not parse tunnel endpoint IPv6CIDR, %w", err)
 	}
 
+	encapBehavior := frr.HEncaps
+	if srv6Config.EncapBehavior != nil && *srv6Config.EncapBehavior == v1alpha1.HEncapsRed {
+		encapBehavior = frr.HEncapsRed
+	}
+
 	return &frr.UnderlaySegmentRouting{
 		SourceAddress: ip.String(),
 		Locator:       locator,
+		EncapBehavior: encapBehavior,
 	}, nil
 }
 

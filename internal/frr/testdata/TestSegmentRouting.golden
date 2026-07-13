@@ -28,6 +28,7 @@ router bgp 64512
   exit-address-family
   !
   segment-routing srv6
+    encap-behavior H_Encaps
     locator MAIN
   exit
 exit

@@ -58,6 +58,7 @@ router bgp 65000
   exit-address-family
   !
   segment-routing srv6
+    encap-behavior H_Encaps_Red
     locator MAIN
   exit
 exit
