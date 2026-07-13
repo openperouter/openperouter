@@ -582,6 +582,9 @@ func createK8sManager(
 						"metadata.namespace": namespace,
 					}.AsSelector(),
 				},
+				&corev1.Secret{}: {
+					Field: fields.Set{"metadata.namespace": namespace}.AsSelector(),
+				},
 			},
 		},
 	}
