@@ -2299,12 +2299,21 @@ spec:
           timeoutSeconds: 10
         name: frr
         securityContext:
+          allowPrivilegeEscalation: false
           capabilities:
             add:
             - NET_ADMIN
             - NET_RAW
             - SYS_ADMIN
             - NET_BIND_SERVICE
+            - SETUID
+            - SETGID
+            - CHOWN
+            - DAC_OVERRIDE
+            drop:
+            - ALL
+          seccompProfile:
+            type: Unconfined
         volumeMounts:
         - mountPath: /var/run/frr
           name: frr-sockets
@@ -2313,6 +2322,7 @@ spec:
         - mountPath: /var/run/netns
           mountPropagation: HostToContainer
           name: netns
+          readOnly: true
       - args:
         - --frrconfig=/etc/perouter/frr.conf
         - --loglevel=debug
@@ -2343,8 +2353,14 @@ spec:
           periodSeconds: 10
           timeoutSeconds: 10
         securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
           seLinuxOptions:
             type: spc_t
+          seccompProfile:
+            type: RuntimeDefault
         volumeMounts:
         - mountPath: /etc/frr
           name: frrconfig
@@ -2361,11 +2377,22 @@ spec:
         image: quay.io/openperouter/router:main
         imagePullPolicy: IfNotPresent
         name: cp-frr-files
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          seccompProfile:
+            type: RuntimeDefault
         volumeMounts:
         - mountPath: /tmp/frr
           name: frr-startup
         - mountPath: /etc/frr
           name: frrconfig
+      securityContext:
+        supplementalGroups:
+        - 92
+        - 102
       serviceAccountName: perouter
       shareProcessNamespace: true
       terminationGracePeriodSeconds: 10

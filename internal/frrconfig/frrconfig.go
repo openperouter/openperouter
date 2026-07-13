@@ -34,7 +34,7 @@ var execCommand = exec.Command
 
 func reloadAction(path string, action Action) error {
 	reloadParameter := "--" + string(action)
-	cmd := execCommand("python3", reloaderPath, reloadParameter, path)
+	cmd := execCommand("python3", reloaderPath, reloadParameter, "--logfile", "/dev/null", path)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		slog.Error("frr update failed", "action", action, "error", err, "output", string(output))

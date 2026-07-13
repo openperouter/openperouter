@@ -21,11 +21,18 @@ spec:
         - name: netns
           mountPath: /var/run/netns
           mountPropagation: HostToContainer
+          readOnly: true
         - name: grout-socket
           mountPath: /var/run/grout
       - name: grout
         securityContext:
-          privileged: true
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+            add: ["SYS_ADMIN", "NET_ADMIN", "NET_RAW", "IPC_LOCK"]
+          seccompProfile:
+            type: Unconfined
         image: quay.io/openperouter/router
         imagePullPolicy: IfNotPresent
         env:
@@ -56,6 +63,10 @@ spec:
         - name: host-nsenter
           mountPath: /usr/bin/nsenter
           readOnly: true
+        - name: dev-net-tun
+          mountPath: /dev/net/tun
+        - name: dpdk-runtime
+          mountPath: /var/run/dpdk
         startupProbe:
           exec:
             command: ["/bin/sh", "-c", "grcli -e"]
@@ -82,3 +93,9 @@ spec:
         hostPath:
           path: /usr/bin/nsenter
           type: File
+      - name: dev-net-tun
+        hostPath:
+          path: /dev/net/tun
+          type: CharDevice
+      - name: dpdk-runtime
+        emptyDir: {}
