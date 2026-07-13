@@ -58,7 +58,7 @@ spec:
           readOnly: true
         startupProbe:
           exec:
-            command: ["/bin/sh", "-c", "grcli -e trace enable all"]
+            command: ["/bin/sh", "-c", "grcli -e"]
           initialDelaySeconds: 2
           periodSeconds: 5
           timeoutSeconds: 5
