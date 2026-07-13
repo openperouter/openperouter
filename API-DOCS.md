@@ -791,7 +791,29 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
+| `encapBehavior` _[SRV6EncapBehavior](#srv6encapbehavior)_ | encapBehavior defines the behavior for SRv6 encapsulation as specified<br />in RFC 8986 sections 5.1 and 5.2.<br />If unset, defaults to H.Encaps. |  | Enum: [H.Encaps H.Encaps.Red] <br />MaxLength: 12 <br />MinLength: 1 <br />Optional: \{\} <br /> |
 | `locator` _[SRV6Locator](#srv6locator)_ | locator defines the locator for this SRv6 VPN. |  | Required: \{\} <br /> |
+
+
+#### SRV6EncapBehavior
+
+_Underlying type:_ _string_
+
+SRV6EncapBehavior defines the behavior for SRv6 encapsulation as specified
+in RFC 8986 sections 5.1 and 5.2.
+
+_Validation:_
+- Enum: [H.Encaps H.Encaps.Red]
+- MaxLength: 12
+- MinLength: 1
+
+_Appears in:_
+- [SRV6Config](#srv6config)
+
+| Field | Description |
+| --- | --- |
+| `H.Encaps` | HEncaps always adds an SRH to SRv6 encapsulated packets. For more details,<br />see RFC 8986 section 5.1.<br /> |
+| `H.Encaps.Red` | HEncapsRed is an optimization of the H.Encaps behavior and reduces the<br />length of the SRH by excluding the first SID in the SRH of the pushed<br />IPv6 header. The SRH is omitted when the SRv6 Policy only contains one<br />segment and there is no need to use any flag, tag or TLV. For more<br />details, see RFC 8986 section 5.2.<br /> |
 
 
 #### SRV6Locator
