@@ -304,12 +304,20 @@ jobs:
             sleep 5; 
             kubectl -n openperouter-system wait --for=condition=Ready pods -l "component in (controller,router,nodemarker)" --timeout 300s; 
           fi
-          if [ ${{ matrix.deployment }} = "operator-grout" ]; then 
-            IMG_TAG="main-grout" IMG_REPO="quay.io/openperouter" make load-on-kind; 
-            kubectl apply -f operator/config/samples/openperouter.yaml; 
-            kubectl patch openperouter openperouter -n openperouter-system --type merge -p '{"spec":{"datapath":"grout"}}'
-            sleep 5; 
-            kubectl -n openperouter-system wait --for=condition=Ready pods -l "component in (controller,router,nodemarker)" --timeout 300s; 
+          if [ ${{ matrix.deployment }} = "operator-grout" ]; then
+            IMG_TAG="main-grout" IMG_REPO="quay.io/openperouter" make load-on-kind;
+            kubectl apply -f - <<EOF
+          apiVersion: openpe.openperouter.github.io/v1alpha1
+          kind: OpenPERouter
+          metadata:
+            name: openperouter
+            namespace: openperouter-system
+          spec:
+            logLevel: debug
+            datapath: grout
+          EOF
+            sleep 5;
+            kubectl -n openperouter-system wait --for=condition=Ready pods -l "component in (controller,router,nodemarker)" --timeout 300s;
           fi
 
 
