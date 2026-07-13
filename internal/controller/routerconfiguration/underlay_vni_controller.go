@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"k8s.io/apimachinery/pkg/labels"
@@ -332,6 +333,9 @@ func (r *PERouterReconciler) resolvePasswordSecrets(ctx context.Context, config 
 					*n.PasswordSecret, neighborAddr(n))
 			}
 			resolved := string(pw)
+			if err := validateSecretPassword(resolved, neighborAddr(n), *n.PasswordSecret); err != nil {
+				return err
+			}
 			n.Password = &resolved
 		}
 	}
@@ -346,6 +350,23 @@ func neighborAddr(n *v1alpha1.Neighbor) string {
 		return *n.Interface
 	}
 	return "<unknown>"
+}
+
+const maxPasswordLength = 128
+
+// validateSecretPassword enforces the same constraints on secret-sourced passwords
+// that the CRD's kubebuilder markers enforce on inline passwords at admission time.
+// Secrets bypass CRD validation, so we must replicate it here.
+func validateSecretPassword(password, neighbor, secretName string) error {
+	if len(password) > maxPasswordLength {
+		return fmt.Errorf("password from secret %q for neighbor %s exceeds maximum length %d",
+			secretName, neighbor, maxPasswordLength)
+	}
+	if strings.ContainsAny(password, "\r\n") {
+		return fmt.Errorf("password from secret %q for neighbor %s contains invalid characters (newline/carriage return)",
+			secretName, neighbor)
+	}
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

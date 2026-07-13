@@ -4,6 +4,7 @@ package routerconfiguration
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
@@ -107,6 +108,60 @@ func TestResolvePasswordSecrets(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{Name: "bad-secret", Namespace: "openperouter-system"},
 					Type:       corev1.SecretTypeBasicAuth,
 					Data:       map[string][]byte{"wrong-key": []byte("value")},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "secret password with newline rejected",
+			neighbors: []v1alpha1.Neighbor{
+				{
+					Address:        new("192.168.1.2"),
+					ASN:            new(int64(64513)),
+					PasswordSecret: new("inject-secret"),
+				},
+			},
+			secrets: []corev1.Secret{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "inject-secret", Namespace: "openperouter-system"},
+					Type:       corev1.SecretTypeBasicAuth,
+					Data:       map[string][]byte{"password": []byte("x\n  redistribute connected")},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "secret password with carriage return rejected",
+			neighbors: []v1alpha1.Neighbor{
+				{
+					Address:        new("192.168.1.2"),
+					ASN:            new(int64(64513)),
+					PasswordSecret: new("cr-secret"),
+				},
+			},
+			secrets: []corev1.Secret{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "cr-secret", Namespace: "openperouter-system"},
+					Type:       corev1.SecretTypeBasicAuth,
+					Data:       map[string][]byte{"password": []byte("pass\rword")},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "secret password exceeding max length rejected",
+			neighbors: []v1alpha1.Neighbor{
+				{
+					Address:        new("192.168.1.2"),
+					ASN:            new(int64(64513)),
+					PasswordSecret: new("long-secret"),
+				},
+			},
+			secrets: []corev1.Secret{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "long-secret", Namespace: "openperouter-system"},
+					Type:       corev1.SecretTypeBasicAuth,
+					Data:       map[string][]byte{"password": []byte(strings.Repeat("a", 129))},
 				},
 			},
 			wantErr: true,
