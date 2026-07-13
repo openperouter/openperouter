@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"slices"
 	"strings"
 	"syscall"
 
@@ -22,18 +21,19 @@ const (
 	UnderlayPortNamePrefix = "u_"
 )
 
-func HasUnderlayInterface(ctx context.Context, client *Client) (bool, error) {
+func UnderlayInterfaces(ctx context.Context, client *Client) (map[string]struct{}, error) {
 	interfaces, err := client.listInterfaces(ctx)
 	if err != nil {
-		return false, fmt.Errorf("HasUnderlayInterface: Failed to list interfaces: %w", err)
+		return map[string]struct{}{}, fmt.Errorf("HasUnderlayInterface: Failed to list interfaces: %w", err)
 	}
 
+	indexedIfaces := make(map[string]struct{}, len(interfaces))
 	for _, iface := range interfaces {
 		if strings.HasPrefix(iface.Name, UnderlayPortNamePrefix) {
-			return true, nil
+			indexedIfaces[iface.Name] = struct{}{}
 		}
 	}
-	return false, nil
+	return indexedIfaces, nil
 }
 
 // SetupUnderlay configures the underlay interface via the grout dataplane.
@@ -66,8 +66,16 @@ func SetupUnderlay(ctx context.Context, client *Client, params hostnetwork.Under
 		}
 	}()
 
-	if err := validateNoStaleUnderlays(perouterNetNS, params.UnderlayInterfaces); err != nil {
-		return err
+	existingIfaces, err := hostnetwork.FindInterfacesInGroup(perouterNetNS, hostnetwork.UnderlayGroupID)
+	if err != nil {
+		return fmt.Errorf("failed to check existing underlay interfaces: %w", err)
+	}
+	if removedInterfaces := hostnetwork.UnderlayInterfacesToRemove(existingIfaces, params.UnderlayInterfaces); len(removedInterfaces) > 0 {
+		slog.InfoContext(ctx, "underlay interfaces changed, restoring old grout state before setup",
+			"removed", removedInterfaces, "requested", params.UnderlayInterfaces)
+		if err := RestoreUnderlay(ctx, client, params.TargetNS, removedInterfaces); err != nil {
+			return fmt.Errorf("failed to restore old underlay interfaces: %w", err)
+		}
 	}
 
 	perouterNetNSHandle, err := netlink.NewHandleAt(perouterNetNS)
@@ -97,9 +105,9 @@ func SetupUnderlay(ctx context.Context, client *Client, params hostnetwork.Under
 }
 
 // RestoreUnderlay tears down the grout underlay ports and resets the kernel
-// group IDs on moved NICs so HasUnderlayInterface returns false on the next
+// group IDs on moved NICs so UnderlayInterfaces returns false on the next
 // reconcile.
-func RestoreUnderlay(ctx context.Context, client *Client, targetNS string) error {
+func RestoreUnderlay(ctx context.Context, client *Client, targetNS string, ifacesToRemove map[string]struct{}) error {
 	interfaces, err := client.listInterfaces(ctx)
 	if err != nil {
 		return fmt.Errorf("HasUnderlayInterface: Failed to list interfaces: %w", err)
@@ -135,24 +143,10 @@ func RestoreUnderlay(ctx context.Context, client *Client, targetNS string) error
 		}
 	}
 
-	if err := hostnetwork.RestoreUnderlay(ctx, targetNS); err != nil {
+	if err := hostnetwork.RestoreUnderlay(ctx, targetNS, ifacesToRemove); err != nil {
 		return fmt.Errorf("RestoreUnderlay: failed to clean kernel underlay state: %w", err)
 	}
 
-	return nil
-}
-
-func validateNoStaleUnderlays(ns netns.NsHandle, wanted []string) error {
-	existingIfaces, err := hostnetwork.FindInterfacesInGroup(ns, hostnetwork.UnderlayGroupID)
-	if err != nil {
-		return fmt.Errorf("failed to check existing underlay interfaces: %w", err)
-	}
-	for _, name := range existingIfaces {
-		if !slices.Contains(wanted, name) {
-			return hostnetwork.UnderlayExistsError(fmt.Sprintf(
-				"existing underlay found: %s, new interfaces are %v", name, wanted))
-		}
-	}
 	return nil
 }
 

@@ -403,11 +403,14 @@ func passthroughToFRR(l3Passthroughs []v1alpha1.L3Passthrough, nodeIndex int) (*
 		return nil, fmt.Errorf("could not parse passthrough HostSession, err: %w", err)
 	}
 
+	const passthroughConnectRetrySeconds = int64(5)
+
 	if vethIPs.Ipv4.HostSide.IP != nil {
 		res.LocalNeighborV4 = &frr.NeighborConfig{
-			ASN:  asn,
-			Addr: vethIPs.Ipv4.HostSide.IP.String(),
-			ID:   vethIPs.Ipv4.HostSide.IP.String(),
+			ASN:         asn,
+			Addr:        vethIPs.Ipv4.HostSide.IP.String(),
+			ID:          vethIPs.Ipv4.HostSide.IP.String(),
+			ConnectTime: new(passthroughConnectRetrySeconds),
 		}
 		ipnet := net.IPNet{
 			IP:   vethIPs.Ipv4.HostSide.IP,
@@ -418,9 +421,10 @@ func passthroughToFRR(l3Passthroughs []v1alpha1.L3Passthrough, nodeIndex int) (*
 	}
 	if vethIPs.Ipv6.HostSide.IP != nil {
 		res.LocalNeighborV6 = &frr.NeighborConfig{
-			ASN:  asn,
-			Addr: vethIPs.Ipv6.HostSide.IP.String(),
-			ID:   vethIPs.Ipv6.HostSide.IP.String(),
+			ASN:         asn,
+			Addr:        vethIPs.Ipv6.HostSide.IP.String(),
+			ID:          vethIPs.Ipv6.HostSide.IP.String(),
+			ConnectTime: new(passthroughConnectRetrySeconds),
 		}
 
 		ipnet := net.IPNet{

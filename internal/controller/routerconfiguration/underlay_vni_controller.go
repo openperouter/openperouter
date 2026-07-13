@@ -98,13 +98,6 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	result, err := r.reconcile(ctx, logger)
 
-	// Best-effort status write: non-recoverable errors must never requeue,
-	// so we ignore any status update failure here.
-	if nonRecoverableHostError(err) {
-		_ = r.reconcileNodeStatus(ctx, err)
-		return ctrl.Result{}, nil
-	}
-
 	if statusErr := r.reconcileNodeStatus(ctx, err); statusErr != nil {
 		return ctrl.Result{}, errors.Join(err, statusErr)
 	}
@@ -133,7 +126,7 @@ func (r *PERouterReconciler) reconcile(ctx context.Context, logger *slog.Logger)
 		}
 	}
 
-	router, err := r.RouterProvider.New(ctx)
+	router, err := r.RouterProvider.New()
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get router pod instance: %w", err)
 	}
@@ -161,15 +154,6 @@ func (r *PERouterReconciler) reconcile(ctx context.Context, logger *slog.Logger)
 
 	err = Reconcile(ctx, config, nodeIndex, r.LogLevel, r.FRRConfigPath, targetNS, updater,
 		r.DatapathConfigurator, configureFRR)
-	if nonRecoverableHostError(err) {
-		logger.Error("non recoverable error", "error", err)
-		if err := router.HandleNonRecoverableError(ctx); err != nil {
-			slog.Error("failed to handle non recoverable error", "error", err)
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{}, err
-	}
-
 	if err != nil {
 		logger.Error("failed to reconcile host configuration", "error", err)
 		return ctrl.Result{}, err

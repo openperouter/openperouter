@@ -9,15 +9,9 @@ import (
 )
 
 // We want to use the same Interfaces for all underlays wherever possible. The reason is that if the underlay is
-// updated and if the interfaces change, the OpenPERouter will be forced to trigger a rebuild of the underlay
-// that leads to the teardown and recreation of the router pod. This can lead to issues with E2E tests which often
-// list the existing router pods in the BeforeAll() sections and the executors of which will then fail.
-// See internal/hostnetwork/underlay.go:
-//
-//	if !slices.Contains(params.UnderlayInterfaces, name) {
-//		return UnderlayExistsError(fmt.Sprintf(
-//			"existing underlay found: %s, new interfaces are %v", name, params.UnderlayInterfaces))
-//	 }
+// updated and the interfaces change, the controller will tear down dependent resources (VNIs, passthrough)
+// and restore the old interfaces before setting up the new ones. While this is now graceful (no pod restart
+// required), changing interfaces mid-test can still disrupt E2E tests that cache router state in BeforeAll().
 
 var defaultInterfaces = []v1alpha1.UnderlayInterface{
 	{

@@ -82,7 +82,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 	})
 
-	It("changing the underlay interface should error", func() {
+	It("changing the underlay interface should restore old and move new", func() {
 		params := UnderlayParams{
 			UnderlayInterfaces: []string{underlayTestInterface},
 			TunnelEndpoint: &UnderlayTunnelEndpointParams{
@@ -96,11 +96,36 @@ var _ = Describe("Underlay configuration should work when", func() {
 			validateUnderlayInNS(g, testNs, params)
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 
-		params.UnderlayInterfaces = []string{underlayTestInterfaceEdit}
+		newParams := UnderlayParams{
+			UnderlayInterfaces: []string{underlayTestInterfaceEdit},
+			TunnelEndpoint: &UnderlayTunnelEndpointParams{
+				IPv4CIDR: "192.168.1.1/32",
+			},
+			TargetNS: underlayTestNSPath(),
+		}
+		err = SetupUnderlay(context.Background(), newParams)
+		Expect(err).NotTo(HaveOccurred())
 
-		err = SetupUnderlay(context.Background(), params)
-		u := UnderlayExistsError("")
-		Expect(errors.As(err, &u)).To(BeTrue())
+		By("verifying the new interface is in the target namespace")
+		Eventually(func(g Gomega) {
+			validateUnderlayInNS(g, testNs, newParams)
+		}, 30*time.Second, 1*time.Second).Should(Succeed())
+
+		By("verifying the old interface was moved back to the default namespace")
+		Eventually(func(g Gomega) {
+			link, err := netlink.LinkByName(underlayTestInterface)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(link).NotTo(BeNil())
+			g.Expect(link.Attrs().Flags & net.FlagUp).To(Equal(net.FlagUp))
+
+			g.Expect(interfaceHasIP(link, externalInterfaceIP)).To(
+				BeTrue(),
+				"old interface should have its original IP after restore",
+			)
+
+			g.Expect(link.Attrs().Group).To(Equal(uint32(0)),
+				"old interface should not have group ID after restore")
+		}, 30*time.Second, 1*time.Second).Should(Succeed())
 	})
 
 	It("changing the vtepip should work", func() {
@@ -193,7 +218,11 @@ var _ = Describe("Underlay configuration should work when", func() {
 			validateUnderlayInNS(g, testNs, params)
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 
-		Expect(RestoreUnderlay(context.Background(), underlayTestNSPath())).To(Succeed())
+		ifacesToRemove := make(map[string]struct{}, len(underlayInterfaces))
+		for name := range underlayInterfaces {
+			ifacesToRemove[name] = struct{}{}
+		}
+		Expect(RestoreUnderlay(context.Background(), underlayTestNSPath(), ifacesToRemove)).To(Succeed())
 
 		By("verifying the loopback IPs were deleted from the target namespace")
 		Eventually(func(g Gomega) {
@@ -223,6 +252,59 @@ var _ = Describe("Underlay configuration should work when", func() {
 				)
 			}
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
+	})
+})
+
+var _ = Describe("UnderlayInterfacesToRemove", func() {
+	DescribeTable("should return interfaces to remove",
+		func(existing, requested []string, expected map[string]struct{}) {
+			Expect(UnderlayInterfacesToRemove(existing, requested)).To(Equal(expected))
+		},
+		Entry("empty existing returns empty", []string{}, []string{"nic1"}, map[string]struct{}{}),
+		Entry("nil existing returns empty", nil, []string{"nic1"}, map[string]struct{}{}),
+		Entry("same single interface returns empty", []string{"nic1"}, []string{"nic1"}, map[string]struct{}{}),
+		Entry("same multiple interfaces returns empty", []string{"nic1", "nic2"}, []string{"nic1", "nic2"}, map[string]struct{}{}),
+		Entry("adding interface returns empty", []string{"nic1"}, []string{"nic1", "nic2"}, map[string]struct{}{}),
+		Entry("removing interface returns removed", []string{"nic1", "nic2"}, []string{"nic1"}, map[string]struct{}{"nic2": {}}),
+		Entry("replacing interface returns old", []string{"nic1"}, []string{"nic2"}, map[string]struct{}{"nic1": {}}),
+		Entry("completely different set returns all old", []string{"nic1", "nic2"}, []string{"nic3", "nic4"}, map[string]struct{}{"nic1": {}, "nic2": {}}),
+	)
+})
+
+var _ = Describe("UnderlayInterfaces", func() {
+	AfterEach(func() {
+		cleanTest(underlayTestNS)
+	})
+
+	BeforeEach(func() {
+		cleanTest(underlayTestNS)
+		Expect(createInterface(underlayTestInterface, externalInterfaceIP)).To(Succeed())
+		createTestNS(underlayTestNS)
+	})
+
+	It("should return empty when no underlay interfaces exist", func() {
+		ifaces, err := UnderlayInterfaces(underlayTestNSPath())
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ifaces).To(BeEmpty())
+	})
+
+	It("should return interface names after setup", func() {
+		params := UnderlayParams{
+			UnderlayInterfaces: []string{underlayTestInterface},
+			TargetNS:           underlayTestNSPath(),
+		}
+		Expect(SetupUnderlay(context.Background(), params)).To(Succeed())
+
+		Eventually(func(g Gomega) {
+			ifaces, err := UnderlayInterfaces(underlayTestNSPath())
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(ifaces).To(ConsistOf(underlayTestInterface))
+		}, 30*time.Second, 1*time.Second).Should(Succeed())
+	})
+
+	It("should error for non-existent namespace", func() {
+		_, err := UnderlayInterfaces("/var/run/netns/doesnotexist")
+		Expect(err).To(HaveOccurred())
 	})
 })
 

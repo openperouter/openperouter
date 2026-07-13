@@ -35,7 +35,7 @@ type RouterHostContainer struct {
 
 var _ Router = (*RouterHostContainer)(nil)
 
-func (r *RouterHostProvider) New(ctx context.Context) (Router, error) {
+func (r *RouterHostProvider) New() (Router, error) {
 	return &RouterHostContainer{
 		manager: r,
 	}, nil
@@ -59,20 +59,6 @@ func (r *RouterHostContainer) TargetNS(ctx context.Context) (string, error) {
 
 	res := fmt.Sprintf("/hostproc/%d/ns/net", pid)
 	return res, nil
-}
-
-func (r *RouterHostContainer) HandleNonRecoverableError(ctx context.Context) error {
-	client, err := systemdctl.NewClient()
-	if err != nil {
-		return fmt.Errorf("failed to create systemd client %w", err)
-	}
-	slog.Info("restarting router systemd unit", "unit", "routerpod-pod.service")
-	if err := client.Restart(ctx, "routerpod-pod.service"); err != nil {
-		return fmt.Errorf("failed to restart routerpod service")
-	}
-	slog.Info("router systemd unit restarted", "unit", "routerpod-pod.service")
-
-	return nil
 }
 
 func (r *RouterHostContainer) CanReconcile(ctx context.Context) (bool, error) {

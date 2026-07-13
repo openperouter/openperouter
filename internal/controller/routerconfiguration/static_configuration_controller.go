@@ -58,7 +58,7 @@ func (r *StaticConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		"underlays", len(apiConfig.Underlays),
 		"l3passthrough", len(apiConfig.L3Passthrough))
 
-	router, err := r.RouterProvider.New(ctx)
+	router, err := r.RouterProvider.New()
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get router instance: %w", err)
 	}
@@ -82,13 +82,6 @@ func (r *StaticConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	err = Reconcile(ctx, apiConfig, r.NodeIndex, r.LogLevel, r.FRRConfigPath, targetNS, updater, r.DatapathConfigurator, configureFRR)
 	for _, f := range openpeerrors.CollectFailures(err) {
 		logger.Warn("resource skipped", "kind", f.Kind, "name", f.Name, "reason", f.Reason, "message", f.Message)
-	}
-	if nonRecoverableHostError(err) {
-		logger.Error("non recoverable error", "error", err)
-		if err := router.HandleNonRecoverableError(ctx); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to handle non recoverable error: %w", err)
-		}
-		return ctrl.Result{}, nil
 	}
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to configure the host: %w", err)
