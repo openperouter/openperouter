@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -430,6 +431,10 @@ func (r *PERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return err
 	}
 
+	filterSecretsInNamespace := predicate.NewPredicateFuncs(func(object client.Object) bool {
+		return object.GetNamespace() == r.MyNamespace
+	})
+
 	builder := ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.Underlay{}).
 		Watches(&v1.Node{}, &handler.EnqueueRequestForObject{}).
@@ -440,6 +445,8 @@ func (r *PERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(&v1alpha1.L3Passthrough{}, &handler.EnqueueRequestForObject{}).
 		Watches(&v1alpha1.RawFRRConfig{}, &handler.EnqueueRequestForObject{}).
 		Watches(&v1alpha1.RouterNodeConfigurationStatus{}, &handler.EnqueueRequestForObject{}).
+		Watches(&v1.Secret{}, &handler.EnqueueRequestForObject{},
+			builder.WithPredicates(filterSecretsInNamespace)).
 		WithEventFilter(filterNonRouterPods).
 		WithEventFilter(filterLocalNodeStatus).
 		WithEventFilter(filterUpdates).
