@@ -11,6 +11,8 @@ import (
 	"net"
 
 	"github.com/openperouter/openperouter/internal/hostnetwork"
+	"github.com/openperouter/openperouter/internal/netnamespace"
+	"github.com/openperouter/openperouter/internal/sysctl"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 )
@@ -51,6 +53,18 @@ func SetupPassthrough(ctx context.Context, client *Client, params hostnetwork.Pa
 	// Assign IPs to the grout port "pt-ns" via grcli.
 	if err := ensurePortAddresses(ctx, client, portName, params.LinkIPs.NSIPv4, params.LinkIPs.NSIPv6); err != nil {
 		return fmt.Errorf("failed to ensure IPs to grout port: %w", err)
+	}
+
+	if err := netnamespace.In(peRouterNs, func() error {
+		// Grout creates a NOARP kernel interface for each port. BGP packets leave
+		// through the `main` interface but return on the port's kernel interface (grout control plane tap),
+		// so rp_filter must be disabled to allow the asymmetric path.
+		if err := sysctl.Ensure(sysctl.DisableRPFilter(portName)); err != nil {
+			return fmt.Errorf("failed to disable rp_filter on passthrough port %s: %w", portName, err)
+		}
+		return nil
+	}); err != nil {
+		return err
 	}
 
 	return nil
