@@ -61,15 +61,18 @@ spec:
             command: ["/bin/sh", "-c", "grcli -e trace enable all"]
           initialDelaySeconds: 2
           periodSeconds: 5
+          timeoutSeconds: 5
           failureThreshold: 12
         readinessProbe:
           exec:
             command: ["/bin/sh", "-c", "grcli -e"]
           periodSeconds: 10
+          timeoutSeconds: 5
         livenessProbe:
           exec:
             command: ["/bin/sh", "-c", "grcli -e"]
           periodSeconds: 30
+          timeoutSeconds: 5
       volumes:
       - name: grout-socket
         hostPath:
