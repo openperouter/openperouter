@@ -58,12 +58,12 @@ func (r *StaticConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		"underlays", len(apiConfig.Underlays),
 		"l3passthrough", len(apiConfig.L3Passthrough))
 
-	router, err := r.RouterProvider.New()
+	router, err := r.RouterProvider.New(ctx)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get router instance: %w", err)
 	}
 
-	canReconcile, err := router.CanReconcile(ctx)
+	canReconcile, err := router.CanReconcile()
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("canReconcile error: %w", err)
 	}
