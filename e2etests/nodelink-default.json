@@ -1,0 +1,24 @@
+{
+  "nodes": {
+    "pe-kind-control-plane": {
+      "ipForKindLeaf": "192.168.11.3",
+      "ipForKindLeaf2": "192.168.12.3",
+      "ipv6ForKindLeaf": "2001:db8:11::3",
+      "ipv6ForKindLeaf2": "2001:db8:12::3",
+      "ifaceForKindLeaf": "toleafkind1",
+      "ifaceForKindLeaf2": "toleafkind2",
+      "leafIfaceForKindLeaf": "tokindctrlpl",
+      "leafIfaceForKindLeaf2": "tokindctrlpl"
+    },
+    "pe-kind-worker": {
+      "ipForKindLeaf": "192.168.11.4",
+      "ipForKindLeaf2": "192.168.12.4",
+      "ipv6ForKindLeaf": "2001:db8:11::4",
+      "ipv6ForKindLeaf2": "2001:db8:12::4",
+      "ifaceForKindLeaf": "toleafkind1",
+      "ifaceForKindLeaf2": "toleafkind2",
+      "leafIfaceForKindLeaf": "tokindworker",
+      "leafIfaceForKindLeaf2": "tokindworker"
+    }
+  }
+}

@@ -14,6 +14,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/config"
 	"github.com/openperouter/openperouter/e2etests/pkg/executor"
 	"github.com/openperouter/openperouter/e2etests/pkg/frrk8s"
+	"github.com/openperouter/openperouter/e2etests/pkg/infra"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
@@ -23,7 +24,8 @@ import (
 )
 
 var (
-	updater *config.Updater
+	updater            *config.Updater
+	nodeLinkConfigPath string
 )
 
 // handleFlags sets up all flags and parses the command line.
@@ -35,6 +37,7 @@ func handleFlags() {
 	flag.BoolVar(&tests.GroutMode, "groutmode", false, "tells if openperouter is running with grout dataplane")
 	flag.BoolVar(&tests.SkipUnderlayPassthrough, "skip-underlay-passthrough", false, "skip creating underlay in passthrough tests")
 	flag.StringVar(&frrk8s.Namespace, "frrk8s-namespace", frrk8s.Namespace, "namespace where FRR-K8s pods run")
+	flag.StringVar(&nodeLinkConfigPath, "nodelink-config", "../nodelink-default.json", "path to node links config JSON")
 	flag.Parse()
 }
 
@@ -73,6 +76,11 @@ var _ = ginkgo.BeforeSuite(func() {
 	tests.K8sReporter = reporter
 
 	cs := k8sclient.New()
+
+	ginkgo.By("Registering fabric and node links from " + nodeLinkConfigPath)
+	err = infra.RegisterLinks(nodeLinkConfigPath)
+	Expect(err).NotTo(HaveOccurred(), "failed to register links")
+
 	ginkgo.By("validating CNI binaries and cache directory in controller")
 	Eventually(func(g Gomega) {
 		tests.ValidateCNIBinaries(g, cs)
