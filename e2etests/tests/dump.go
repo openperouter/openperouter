@@ -111,9 +111,9 @@ func dumpFRRInfo(basePath, testName string, opts ...func(dumpOptions *dumpOption
 
 	for name, exec := range dumpOptions.executors {
 		func() {
-			dump := ""
+			var dump strings.Builder
 			for _, infoRetriever := range dumpOptions.infoRetrievers {
-				dump += infoRetriever(exec) + "\n\n"
+				dump.WriteString(infoRetriever(exec) + "\n\n")
 			}
 
 			f, err := logFileFor(testPath, fmt.Sprintf("frrdump-%s", name))
@@ -127,7 +127,7 @@ func dumpFRRInfo(basePath, testName string, opts ...func(dumpOptions *dumpOption
 				}
 			}()
 			fmt.Fprintf(f, "Dumping information for %s", name)
-			if _, err = fmt.Fprint(f, dump); err != nil {
+			if _, err = fmt.Fprint(f, dump.String()); err != nil {
 				ginkgo.GinkgoWriter.Printf("dumpFRRInfo: external frr dump for container %s, failed to write to file %v", name, err)
 				return
 			}

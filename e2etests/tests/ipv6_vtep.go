@@ -20,7 +20,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
-	"k8s.io/utils/ptr"
 )
 
 var _ = Describe("IPv6 VTEP", Ordered, func() {
@@ -54,12 +53,12 @@ var _ = Describe("IPv6 VTEP", Ordered, func() {
 			},
 			Neighbors: []v1alpha1.Neighbor{
 				{
-					ASN:     ptr.To(int64(64512)),
-					Address: ptr.To("192.168.11.2"),
+					ASN:     new(int64(64512)),
+					Address: new("192.168.11.2"),
 				},
 				{
-					ASN:     ptr.To(int64(64513)),
-					Address: ptr.To("192.168.12.2"),
+					ASN:     new(int64(64513)),
+					Address: new("192.168.12.2"),
 				},
 			},
 			TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
@@ -85,13 +84,13 @@ var _ = Describe("IPv6 VTEP", Ordered, func() {
 			Namespace: openperouter.Namespace,
 		},
 		Spec: v1alpha1.L2VNISpec{
-			VRF:          ptr.To("red"),
+			VRF:          new("red"),
 			VNI:          110,
 			L2GatewayIPs: []string{"192.171.24.1/24"},
 			HostMaster: &v1alpha1.HostMaster{
 				Type: linuxBridgeHostAttachment,
 				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
-					AutoCreate: ptr.To(true),
+					AutoCreate: new(true),
 				},
 			},
 		},
@@ -105,7 +104,7 @@ var _ = Describe("IPv6 VTEP", Ordered, func() {
 		Spec: v1alpha1.L3VNISpec{
 			VRF:                   "green",
 			VNI:                   300,
-			UnderlayAddressFamily: ptr.To("ipv6"),
+			UnderlayAddressFamily: new("ipv6"),
 		},
 	}
 
@@ -115,14 +114,14 @@ var _ = Describe("IPv6 VTEP", Ordered, func() {
 			Namespace: openperouter.Namespace,
 		},
 		Spec: v1alpha1.L2VNISpec{
-			VRF:                   ptr.To("green"),
+			VRF:                   new("green"),
 			VNI:                   310,
-			UnderlayAddressFamily: ptr.To("ipv6"),
+			UnderlayAddressFamily: new("ipv6"),
 			L2GatewayIPs:          []string{"192.173.24.1/24"},
 			HostMaster: &v1alpha1.HostMaster{
 				Type: linuxBridgeHostAttachment,
 				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
-					AutoCreate: ptr.To(true),
+					AutoCreate: new(true),
 				},
 			},
 		},

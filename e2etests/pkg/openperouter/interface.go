@@ -40,7 +40,7 @@ func InterfaceIPAddresses(nodeName, intf string) (string, error) {
 		return "", err
 	}
 	var addrs []string
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		m := addrRegexp.FindStringSubmatch(line)
 		if len(m) < 2 {
 			continue

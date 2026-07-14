@@ -24,7 +24,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
-	"k8s.io/utils/ptr"
 )
 
 var singleSessionUnderlay = v1alpha1.Underlay{
@@ -37,7 +36,7 @@ var singleSessionUnderlay = v1alpha1.Underlay{
 		Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch1"}}},
 		Neighbors: []v1alpha1.Neighbor{
 			{
-				ASN:     ptr.To(int64(64512)),
+				ASN:     new(int64(64512)),
 				Address: new("192.168.11.2"),
 			},
 		},
@@ -56,10 +55,10 @@ var vniRedSingleSession = v1alpha1.L3VNI{
 		VRF: "red",
 		HostSession: &v1alpha1.HostSession{
 			ASN:     64514,
-			HostASN: ptr.To(int64(64515)),
+			HostASN: new(int64(64515)),
 			LocalCIDR: v1alpha1.LocalCIDRConfig{
-				IPv4: ptr.To("192.169.10.0/24"),
-				IPv6: ptr.To("2001:db8:169:10::/64"),
+				IPv4: new("192.169.10.0/24"),
+				IPv6: new("2001:db8:169:10::/64"),
 			},
 		},
 		VNI: 100,
@@ -72,13 +71,13 @@ var l2vniRedSingleSession = v1alpha1.L2VNI{
 		Namespace: openperouter.Namespace,
 	},
 	Spec: v1alpha1.L2VNISpec{
-		VRF:          ptr.To("red"),
+		VRF:          new("red"),
 		VNI:          110,
 		L2GatewayIPs: []string{"192.171.24.1/24"},
 		HostMaster: &v1alpha1.HostMaster{
 			Type: "linux-bridge",
 			LinuxBridge: &v1alpha1.LinuxBridgeConfig{
-				AutoCreate: ptr.To(true),
+				AutoCreate: new(true),
 			},
 		},
 	},

@@ -80,6 +80,7 @@ generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and
 .PHONY: fix
 fix: ## Run go fix against code.
 	@go fix $(shell go list ./... | grep -vE 'internal/ovsmodel')
+	@cd e2etests && go fix ./...
 
 .PHONY: fmt
 fmt: ## Run go fmt against code.
