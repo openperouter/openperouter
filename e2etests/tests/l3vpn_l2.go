@@ -26,7 +26,7 @@ import (
 	"k8s.io/utils/ptr"
 )
 
-var _ = Describe("SRV6 Routes between bgp and the fabric", Ordered, func() {
+var _ = Describe("SRV6 routes between bgp and the fabric", Ordered, func() {
 	var (
 		cs           clientset.Interface
 		routers      openperouter.Routers
@@ -172,18 +172,24 @@ var _ = Describe("SRV6 Routes between bgp and the fabric", Ordered, func() {
 	})
 
 	// This test tests that L2VNI and L3VPN work at the same time.
-	// For L2VNI:
+	// For East/West traffic:
 	// Pods can ping each other across net1 which is a macvlan interface that is connected to br-hs-110 inside the host
 	// network namespace. From there, the packet travels to host-110 (still inside the host netns) which is a veth that
 	// is connected to pe-110 inside the OpenPERouter network namespace. Traffic is bridged via br-pe-110 to the VXLAN
 	// interface vni110 from where it is sent to the other kubernetes nodes.
-	// For L3VPN:
+	// For North/South traffic, we have 2 scenarios:
+	// Scenario a):
 	// This test adds an L3VPN with a hostsession with FRR for L3 connectivity with the hosts behind the leaf nodes
 	// inside VRF red.
 	// Traffic will leave via the default interface of the pod (eth0), will hit the global host namespace, where FRR-K8S
 	// will have injected a route via host-100. host-100 is a veth that's connected to pe-100 which resides inside
 	// the OpenPERouter and which is attached to VRF red. From there, the packet is then SNATed and travels to
-	// the cluster external hosts inside VRF red.
+	// the cluster external hosts inside VRF red via SRv6.
+	// Scenario b):
+	// We set l2GatewayIPs in the l2vni and remove the default route via eth0. Instead, we add a default route via
+	// the pod's secondary interface (net1) to the L2 gateway. Traffic frames leave via net1, br-hs-110, host-110,
+	// pe-110 to br-pe-110. The l2Gateway is on br-pe-110. Once a packet hits the l2Gateway, it is routed via SRv6 to
+	// the destination host.
 	// Diagram:
 	// openperouter|
 	// ------------|
@@ -248,6 +254,15 @@ var _ = Describe("SRV6 Routes between bgp and the fabric", Ordered, func() {
 		secondPod, err = k8s.CreateAgnhostPod(cs, "pod2", testNamespace, k8s.WithNad(netAttachDef.Name, testNamespace, tc.secondPodIPs), k8s.OnNode(nodes[1].Name))
 		Expect(err).NotTo(HaveOccurred())
 
+		// We can reach the host either via the pod's eth0 (passing through the host<->pe veth),
+		// or via the secondary interface directly connected to the perouter namespace. Therefore, with l2GatewayIPs
+		// present, we need to remove the gateway via eth0.
+		if len(tc.l2GatewayIPs) > 0 {
+			By("removing the default gateway via the primary interface")
+			Expect(removeGatewayFromPod(firstPod)).To(Succeed())
+			Expect(removeGatewayFromPod(secondPod)).To(Succeed())
+		}
+
 		By("Getting the pod's node")
 		firstPodNode, err := cs.CoreV1().Nodes().Get(context.Background(), firstPod.Spec.NodeName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
@@ -270,7 +285,12 @@ var _ = Describe("SRV6 Routes between bgp and the fabric", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred())
 		secondPodHostSideV6, err := openperouter.HostIPFromCIDRForNode(localCIDRV6, secondPodNode)
 		Expect(err).NotTo(HaveOccurred())
-		expectedHostIPs := func(podCIDRs []string, podName string) []string {
+		// With l2GatewayIPs, we expect to see the pod IPs. Otherwise, we pass through the host
+		// and we expect to see the host's IPs (NAT).
+		expectedIPsForPod := func(podCIDRs []string, podName string, l2GatewayIPs []string) []string {
+			if len(l2GatewayIPs) > 0 {
+				return podCIDRs
+			}
 			hostIPs := []string{}
 			switch podName {
 			case "firstPod":
@@ -303,6 +323,7 @@ var _ = Describe("SRV6 Routes between bgp and the fabric", Ordered, func() {
 
 		podExecutor := executor.ForPod(firstPod.Namespace, firstPod.Name, "agnhost")
 		secondPodExecutor := executor.ForPod(secondPod.Namespace, secondPod.Name, "agnhost")
+		hostSRV6RedExecutor := executor.ForContainer("clab-kind-hostSRV6_red")
 
 		tests := []struct {
 			exec        executor.Executor
@@ -314,20 +335,40 @@ var _ = Describe("SRV6 Routes between bgp and the fabric", Ordered, func() {
 		}{
 			{
 				exec: podExecutor, from: "firstPod", to: "secondPod",
-				fromIPs: tc.firstPodIPs, toIPs: tc.secondPodIPs, expectedIPs: tc.firstPodIPs,
+				fromIPs: tc.firstPodIPs, toIPs: tc.secondPodIPs,
+				expectedIPs: tc.firstPodIPs,
 			},
 			{
 				exec: secondPodExecutor, from: "secondPod", to: "firstPod",
-				fromIPs: tc.secondPodIPs, toIPs: tc.firstPodIPs, expectedIPs: tc.secondPodIPs,
+				fromIPs: tc.secondPodIPs, toIPs: tc.firstPodIPs,
+				expectedIPs: tc.secondPodIPs,
 			},
 			{
 				exec: podExecutor, from: "firstPod", to: "hostSRV6Red",
-				fromIPs: tc.firstPodIPs, toIPs: tc.hostSRV6RedIPs, expectedIPs: expectedHostIPs(tc.firstPodIPs, "firstPod"),
+				fromIPs: tc.firstPodIPs, toIPs: tc.hostSRV6RedIPs,
+				expectedIPs: expectedIPsForPod(tc.firstPodIPs, "firstPod", tc.l2GatewayIPs),
 			},
 			{
 				exec: secondPodExecutor, from: "secondPod", to: "hostSRV6Red",
-				fromIPs: tc.secondPodIPs, toIPs: tc.hostSRV6RedIPs, expectedIPs: expectedHostIPs(tc.secondPodIPs, "secondPod"),
+				fromIPs: tc.secondPodIPs, toIPs: tc.hostSRV6RedIPs,
+				expectedIPs: expectedIPsForPod(tc.secondPodIPs, "secondPod", tc.l2GatewayIPs),
 			},
+		}
+
+		// Reaching the pods from the host is only possible when traffic passes via the l2GatewayIPs.
+		if len(tc.l2GatewayIPs) > 0 {
+			tests = append(tests, struct {
+				exec        executor.Executor
+				from        string
+				to          string
+				fromIPs     []string
+				toIPs       []string
+				expectedIPs []string
+			}{
+				exec: hostSRV6RedExecutor, from: "hostSRV6Red", to: "firstPod",
+				fromIPs: tc.hostSRV6RedIPs, toIPs: tc.firstPodIPs,
+				expectedIPs: tc.hostSRV6RedIPs,
+			})
 		}
 
 		for _, test := range tests {
@@ -341,7 +382,20 @@ var _ = Describe("SRV6 Routes between bgp and the fabric", Ordered, func() {
 			}
 		}
 	},
+		Entry("for single stack ipv4 without gatewayIPs (traffic via L3 host interface)", testCase{
+			firstPodIPs:    []string{"192.171.24.2/24"},
+			secondPodIPs:   []string{"192.171.24.3/24"},
+			hostSRV6RedIPs: []string{infra.HostSRV6RedIPv4},
+			nadMaster:      fmt.Sprintf("br-hs-%d", vniID),
+			hostMaster: v1alpha1.HostMaster{
+				Type: linuxBridgeHostAttachment,
+				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
+					AutoCreate: ptr.To(true),
+				},
+			},
+		}),
 		Entry("for single stack ipv4", testCase{
+			l2GatewayIPs:   []string{"192.171.24.1/24"},
 			firstPodIPs:    []string{"192.171.24.2/24"},
 			secondPodIPs:   []string{"192.171.24.3/24"},
 			hostSRV6RedIPs: []string{infra.HostSRV6RedIPv4},
@@ -354,6 +408,7 @@ var _ = Describe("SRV6 Routes between bgp and the fabric", Ordered, func() {
 			},
 		}),
 		Entry("for dual stack", testCase{
+			l2GatewayIPs:   []string{"192.171.24.1/24", "fd00:10:245:1::1/64"},
 			firstPodIPs:    []string{"192.171.24.2/24", "fd00:10:245:1::2/64"},
 			secondPodIPs:   []string{"192.171.24.3/24", "fd00:10:245:1::3/64"},
 			hostSRV6RedIPs: []string{infra.HostSRV6RedIPv4, infra.HostSRV6RedIPv6},
@@ -366,6 +421,7 @@ var _ = Describe("SRV6 Routes between bgp and the fabric", Ordered, func() {
 			},
 		}),
 		Entry("for single stack ipv6", testCase{
+			l2GatewayIPs:   []string{"fd00:10:245:1::1/64"},
 			firstPodIPs:    []string{"fd00:10:245:1::2/64"},
 			secondPodIPs:   []string{"fd00:10:245:1::3/64"},
 			hostSRV6RedIPs: []string{infra.HostSRV6RedIPv6},
@@ -378,6 +434,7 @@ var _ = Describe("SRV6 Routes between bgp and the fabric", Ordered, func() {
 			},
 		}),
 		Entry("OVS bridge autocreate for single stack ipv4", testCase{
+			l2GatewayIPs:   []string{"192.171.24.1/24"},
 			firstPodIPs:    []string{"192.171.24.2/24"},
 			secondPodIPs:   []string{"192.171.24.3/24"},
 			hostSRV6RedIPs: []string{infra.HostSRV6RedIPv4},
@@ -390,6 +447,7 @@ var _ = Describe("SRV6 Routes between bgp and the fabric", Ordered, func() {
 			},
 		}),
 		Entry("OVS bridge autocreate for dual stack", testCase{
+			l2GatewayIPs:   []string{"192.171.24.1/24", "fd00:10:245:1::1/64"},
 			firstPodIPs:    []string{"192.171.24.2/24", "fd00:10:245:1::2/64"},
 			secondPodIPs:   []string{"192.171.24.3/24", "fd00:10:245:1::3/64"},
 			hostSRV6RedIPs: []string{infra.HostSRV6RedIPv4, infra.HostSRV6RedIPv6},
@@ -402,6 +460,7 @@ var _ = Describe("SRV6 Routes between bgp and the fabric", Ordered, func() {
 			},
 		}),
 		Entry("OVS bridge autocreate for single stack ipv6", testCase{
+			l2GatewayIPs:   []string{"fd00:10:245:1::1/64"},
 			firstPodIPs:    []string{"fd00:10:245:1::2/64"},
 			secondPodIPs:   []string{"fd00:10:245:1::3/64"},
 			hostSRV6RedIPs: []string{infra.HostSRV6RedIPv6},
@@ -414,6 +473,7 @@ var _ = Describe("SRV6 Routes between bgp and the fabric", Ordered, func() {
 			},
 		}),
 		Entry("OVS bridge existing for single stack ipv4", testCase{
+			l2GatewayIPs:   []string{"192.171.24.1/24"},
 			firstPodIPs:    []string{"192.171.24.2/24"},
 			secondPodIPs:   []string{"192.171.24.3/24"},
 			hostSRV6RedIPs: []string{infra.HostSRV6RedIPv4},
@@ -427,6 +487,7 @@ var _ = Describe("SRV6 Routes between bgp and the fabric", Ordered, func() {
 			},
 		}),
 		Entry("OVS bridge existing for dual stack", testCase{
+			l2GatewayIPs:   []string{"192.171.24.1/24", "fd00:10:245:1::1/64"},
 			firstPodIPs:    []string{"192.171.24.2/24", "fd00:10:245:1::2/64"},
 			secondPodIPs:   []string{"192.171.24.3/24", "fd00:10:245:1::3/64"},
 			hostSRV6RedIPs: []string{infra.HostSRV6RedIPv4, infra.HostSRV6RedIPv6},
@@ -440,6 +501,7 @@ var _ = Describe("SRV6 Routes between bgp and the fabric", Ordered, func() {
 			},
 		}),
 		Entry("OVS bridge existing for single stack ipv6", testCase{
+			l2GatewayIPs:   []string{"fd00:10:245:1::1/64"},
 			firstPodIPs:    []string{"fd00:10:245:1::2/64"},
 			secondPodIPs:   []string{"fd00:10:245:1::3/64"},
 			hostSRV6RedIPs: []string{infra.HostSRV6RedIPv6},
@@ -453,5 +515,4 @@ var _ = Describe("SRV6 Routes between bgp and the fabric", Ordered, func() {
 			},
 		}),
 	)
-
 })

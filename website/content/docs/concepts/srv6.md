@@ -146,12 +146,6 @@ East/West Layer 2 traffic. L2 frames are encapsulated in VXLAN with EVPN as
 the control plane for MAC/IP advertisement, even when the broader L3 domain
 uses SRv6.
 
-> **Note**: `l2GatewayIPs` is not supported when using L3VPN (SRv6).
-> L2VNIs with L3VPN provide Layer 2 pod-to-pod connectivity only.
-> For Layer 3 connectivity to external hosts, use the L3VPN path via the
-> pod's primary interface (eth0). The `l2GatewayIPs` field is only
-> available when using L3VNI (EVPN/VXLAN).
-
 For each Layer 2 VNI, OpenPERouter automatically:
 
 - **Creates a VXLAN Interface**: Handles VXLAN tunnel

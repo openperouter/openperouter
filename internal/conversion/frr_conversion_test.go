@@ -1837,6 +1837,213 @@ func TestAPItoFRR(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name:      "l3vpn with matching L2 gateway IPv4",
+			nodeIndex: 0,
+			underlays: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						ASN:          65000,
+						RouterIDCIDR: new("10.0.0.0/24"),
+						Neighbors:    []v1alpha1.Neighbor{{Address: new("192.168.1.1"), ASN: new(int64(65001))}},
+					},
+				},
+			},
+			vpns: []v1alpha1.L3VPN{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+					Spec: v1alpha1.L3VPNSpec{
+						VRF:              "red",
+						RDAssignedNumber: 200,
+						ImportRTs:        []v1alpha1.RouteTarget{"65000:200"},
+					},
+				},
+			},
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l2vni1"},
+					Spec: v1alpha1.L2VNISpec{
+						VRF:          new("red"),
+						VNI:          100,
+						L2GatewayIPs: []string{"192.168.100.1/24"},
+					},
+				},
+			},
+			l3Passthrough: []v1alpha1.L3Passthrough{},
+			logLevel:      "debug",
+			want: frr.Config{
+				Underlay: frr.UnderlayConfig{
+					MyASN:    65000,
+					RouterID: "10.0.0.1",
+					Neighbors: []frr.NeighborConfig{
+						{
+							Name: "65001@192.168.1.1",
+							ASN:  mustNewPeerASNFromNumber(65001),
+							Addr: "192.168.1.1",
+							ID:   "192.168.1.1",
+							NetworkLayerProtocols: []networklayerprotocol.NLP{
+								{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast},
+								{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN},
+							},
+							EBGPMultiHop: false,
+						},
+					},
+				},
+				VNIs: []frr.L3VNIConfig{},
+				VPNs: []frr.L3VPNConfig{
+					{
+						ASN:                65000,
+						VRF:                "red",
+						RouterID:           "10.0.0.1",
+						ToAdvertiseIPv4:    []string{"192.168.100.0/24"},
+						ExportRTs:          []string{"65000:200"},
+						ImportRTs:          []string{"65000:200"},
+						RouteDistinguisher: "10.0.0.1:200",
+					},
+				},
+				BFDProfiles: []frr.BFDProfile{},
+				Loglevel:    "debug",
+			},
+			wantErr: false,
+		},
+		{
+			name:      "l3vpn with matching L2 gateway dual-stack",
+			nodeIndex: 0,
+			underlays: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						ASN:          65000,
+						RouterIDCIDR: new("10.0.0.0/24"),
+						Neighbors:    []v1alpha1.Neighbor{{Address: new("192.168.1.1"), ASN: new(int64(65001))}},
+					},
+				},
+			},
+			vpns: []v1alpha1.L3VPN{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+					Spec: v1alpha1.L3VPNSpec{
+						VRF:              "red",
+						RDAssignedNumber: 200,
+						ImportRTs:        []v1alpha1.RouteTarget{"65000:200"},
+					},
+				},
+			},
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l2vni1"},
+					Spec: v1alpha1.L2VNISpec{
+						VRF:          new("red"),
+						VNI:          100,
+						L2GatewayIPs: []string{"10.0.0.1/24", "2001:db8::1/64"},
+					},
+				},
+			},
+			l3Passthrough: []v1alpha1.L3Passthrough{},
+			logLevel:      "debug",
+			want: frr.Config{
+				Underlay: frr.UnderlayConfig{
+					MyASN:    65000,
+					RouterID: "10.0.0.1",
+					Neighbors: []frr.NeighborConfig{
+						{
+							Name: "65001@192.168.1.1",
+							ASN:  mustNewPeerASNFromNumber(65001),
+							Addr: "192.168.1.1",
+							ID:   "192.168.1.1",
+							NetworkLayerProtocols: []networklayerprotocol.NLP{
+								{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast},
+								{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN},
+							},
+							EBGPMultiHop: false,
+						},
+					},
+				},
+				VNIs: []frr.L3VNIConfig{},
+				VPNs: []frr.L3VPNConfig{
+					{
+						ASN:                65000,
+						VRF:                "red",
+						RouterID:           "10.0.0.1",
+						ToAdvertiseIPv4:    []string{"10.0.0.0/24"},
+						ToAdvertiseIPv6:    []string{"2001:db8::/64"},
+						ExportRTs:          []string{"65000:200"},
+						ImportRTs:          []string{"65000:200"},
+						RouteDistinguisher: "10.0.0.1:200",
+					},
+				},
+				BFDProfiles: []frr.BFDProfile{},
+				Loglevel:    "debug",
+			},
+			wantErr: false,
+		},
+		{
+			name:      "l3vpn with non-matching L2 gateway VRF",
+			nodeIndex: 0,
+			underlays: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						ASN:          65000,
+						RouterIDCIDR: new("10.0.0.0/24"),
+						Neighbors:    []v1alpha1.Neighbor{{Address: new("192.168.1.1"), ASN: new(int64(65001))}},
+					},
+				},
+			},
+			vpns: []v1alpha1.L3VPN{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+					Spec: v1alpha1.L3VPNSpec{
+						VRF:              "red",
+						RDAssignedNumber: 200,
+						ImportRTs:        []v1alpha1.RouteTarget{"65000:200"},
+					},
+				},
+			},
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l2vni1"},
+					Spec: v1alpha1.L2VNISpec{
+						VRF:          new("blue"),
+						VNI:          100,
+						L2GatewayIPs: []string{"192.168.100.1/24"},
+					},
+				},
+			},
+			l3Passthrough: []v1alpha1.L3Passthrough{},
+			logLevel:      "debug",
+			want: frr.Config{
+				Underlay: frr.UnderlayConfig{
+					MyASN:    65000,
+					RouterID: "10.0.0.1",
+					Neighbors: []frr.NeighborConfig{
+						{
+							Name: "65001@192.168.1.1",
+							ASN:  mustNewPeerASNFromNumber(65001),
+							Addr: "192.168.1.1",
+							ID:   "192.168.1.1",
+							NetworkLayerProtocols: []networklayerprotocol.NLP{
+								{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast},
+								{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN},
+							},
+							EBGPMultiHop: false,
+						},
+					},
+				},
+				VNIs: []frr.L3VNIConfig{},
+				VPNs: []frr.L3VPNConfig{
+					{
+						ASN:                65000,
+						VRF:                "red",
+						RouterID:           "10.0.0.1",
+						ExportRTs:          []string{"65000:200"},
+						ImportRTs:          []string{"65000:200"},
+						RouteDistinguisher: "10.0.0.1:200",
+					},
+				},
+				BFDProfiles: []frr.BFDProfile{},
+				Loglevel:    "debug",
+			},
+			wantErr: false,
+		},
+		{
 			name:      "Neighbor Address and Interface cannot both be set",
 			nodeIndex: 0,
 			underlays: []v1alpha1.Underlay{
@@ -2656,7 +2863,7 @@ func TestAPItoFRR(t *testing.T) {
 			wantErr:  true,
 		},
 		{
-			name:      "SRV6 with L3VPN and L2VNI",
+			name:      "SRV6 with L3VPN and L2VNI with hostsession",
 			nodeIndex: 0,
 			underlays: []v1alpha1.Underlay{
 				{
@@ -2716,8 +2923,8 @@ func TestAPItoFRR(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{Name: "l2vni1"},
 					Spec: v1alpha1.L2VNISpec{
 						VRF:          new("vrf1"),
-						VNI:          101,                                             // TODO: test overlap
-						L2GatewayIPs: []string{"192.168.100.1/24", "2001:db8:1::/64"}, // TODO: test overlap
+						VNI:          101,
+						L2GatewayIPs: []string{"192.168.100.1/24", "2001:db8:1::/64"},
 					},
 				},
 			},
@@ -2786,9 +2993,14 @@ func TestAPItoFRR(t *testing.T) {
 				VNIs:        []frr.L3VNIConfig{},
 				VPNs: []frr.L3VPNConfig{
 					{
-						ASN:             65000,
-						ToAdvertiseIPv4: []string{"192.168.2.2/32"},
-						ToAdvertiseIPv6: []string{},
+						ASN: 65000,
+						ToAdvertiseIPv4: []string{
+							"192.168.2.2/32",
+							"192.168.100.0/24",
+						},
+						ToAdvertiseIPv6: []string{
+							"2001:db8:1::/64",
+						},
 						LocalNeighbor: &frr.NeighborConfig{
 							ASN:  mustNewPeerASNFromNumber(65001),
 							Addr: "192.168.2.2",
@@ -2801,9 +3013,14 @@ func TestAPItoFRR(t *testing.T) {
 						RouterID:           "10.0.0.1",
 					},
 					{
-						ASN:             65000,
-						ToAdvertiseIPv4: []string{},
-						ToAdvertiseIPv6: []string{"2001:db8::2/128"},
+						ASN: 65000,
+						ToAdvertiseIPv4: []string{
+							"192.168.100.0/24",
+						},
+						ToAdvertiseIPv6: []string{
+							"2001:db8::2/128",
+							"2001:db8:1::/64",
+						},
 						LocalNeighbor: &frr.NeighborConfig{
 							ASN:  mustNewPeerASNFromNumber(65001),
 							Addr: "2001:db8::2",
