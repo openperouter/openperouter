@@ -96,7 +96,10 @@ func RemoveNonConfiguredL3VPNs(targetNS string, params []L3VPNParams) error {
 
 	hostLinks, err := netlink.LinkList()
 	if err != nil {
-		return fmt.Errorf("remove non configured l3vpns: failed to list links: %w", err)
+		return fmt.Errorf("RemoveNonConfiguredL3VPNs: failed to list links: %w", err)
 	}
-	return errors.Join(removeHostSideVeths(hostLinks, HostVethPrefix+SRv6Infix, rdAssignedNumbers)...)
+	if err := errors.Join(removeHostSideVeths(hostLinks, HostVethPrefix+SRv6Infix, rdAssignedNumbers)...); err != nil {
+		return fmt.Errorf("RemoveNonConfiguredL3VPNs: failed to remove veths: %w", err)
+	}
+	return nil
 }
