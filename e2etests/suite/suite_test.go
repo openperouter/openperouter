@@ -26,6 +26,7 @@ import (
 var (
 	updater            *config.Updater
 	nodeLinkConfigPath string
+	nodeExecImage      string
 )
 
 // handleFlags sets up all flags and parses the command line.
@@ -38,6 +39,7 @@ func handleFlags() {
 	flag.BoolVar(&tests.SkipUnderlayPassthrough, "skip-underlay-passthrough", false, "skip creating underlay in passthrough tests")
 	flag.StringVar(&frrk8s.Namespace, "frrk8s-namespace", frrk8s.Namespace, "namespace where FRR-K8s pods run")
 	flag.StringVar(&nodeLinkConfigPath, "nodelink-config", "../nodelink-default.json", "path to node links config JSON")
+	flag.StringVar(&nodeExecImage, "node-exec-image", "busybox:1.36", "container image for node-exec-helper pods")
 	flag.Parse()
 }
 
@@ -76,6 +78,8 @@ var _ = ginkgo.BeforeSuite(func() {
 	tests.K8sReporter = reporter
 
 	cs := k8sclient.New()
+	err = executor.SetupNodeExec(cs, frrk8s.Namespace, nodeExecImage)
+	Expect(err).NotTo(HaveOccurred(), "failed to setup node-exec-helper")
 
 	ginkgo.By("Registering fabric and node links from " + nodeLinkConfigPath)
 	err = infra.RegisterLinks(nodeLinkConfigPath)
@@ -88,6 +92,8 @@ var _ = ginkgo.BeforeSuite(func() {
 })
 
 var _ = ginkgo.AfterSuite(func() {
+	Expect(executor.TeardownNodeExec()).NotTo(HaveOccurred())
+
 	if updater == nil {
 		return
 	}

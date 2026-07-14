@@ -79,12 +79,12 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Orde
 		})
 		Expect(err).NotTo(HaveOccurred())
 
-		// Create pre-existing OVS bridges on Kind nodes for testing
-		nodes := []string{infra.KindControlPlane, infra.KindWorker}
-		for _, nodeName := range nodes {
-			exec := executor.ForContainer(nodeName)
-			// Create OVS bridge (ignore error if bridge already exists)
-			_, err = exec.Exec("ovs-vsctl", "add-br", preExistingOVSBridge)
+		// Create pre-existing OVS bridges on cluster nodes for testing
+		ovsNodes, err := k8s.GetNodes(cs)
+		Expect(err).NotTo(HaveOccurred())
+		for _, node := range ovsNodes {
+			exec := executor.ForNode(node.Name)
+			_, err = exec.Exec("ovs-vsctl", "--may-exist", "add-br", preExistingOVSBridge)
 			Expect(err).NotTo(HaveOccurred())
 		}
 	})
@@ -102,9 +102,10 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Orde
 		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 
 		// Clean up pre-existing OVS bridges
-		nodes := []string{infra.KindControlPlane, infra.KindWorker}
-		for _, nodeName := range nodes {
-			exec := executor.ForContainer(nodeName)
+		ovsNodes, err := k8s.GetNodes(cs)
+		Expect(err).NotTo(HaveOccurred())
+		for _, node := range ovsNodes {
+			exec := executor.ForNode(node.Name)
 			_, err = exec.Exec("ovs-vsctl", "--if-exists", "del-br", preExistingOVSBridge)
 			Expect(err).NotTo(HaveOccurred())
 		}

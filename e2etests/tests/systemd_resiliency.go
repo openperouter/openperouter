@@ -91,7 +91,7 @@ var _ = Describe("Systemd Router Restart Resiliency", Label("systemdmode"), Orde
 
 	restartRouterOnNode := func(node corev1.Node) {
 		By("restarting FRR container via systemd on node " + node.Name)
-		nodeExec := executor.ForContainer(node.Name)
+		nodeExec := executor.ForNode(node.Name)
 		Expect(systemd.RestartSystemdUnit(nodeExec, "routerpod-pod.service")).To(Succeed())
 	}
 
@@ -180,7 +180,7 @@ var _ = Describe("Systemd: Named netns and kernel objects survive FRR container 
 	It("should preserve named netns and kernel objects when FRR container is killed", func() {
 		Expect(nodes).NotTo(BeEmpty())
 		nodeName := nodes[0].Name
-		nodeExec := executor.ForContainer(nodeName)
+		nodeExec := executor.ForNode(nodeName)
 
 		By("verifying named netns exists before crash")
 		Expect(openperouter.NamedNetnsExists(nodeName)).To(BeTrue())
@@ -279,7 +279,7 @@ var _ = Describe("Systemd: Controller auto-recovers when operator deletes named 
 	It("should auto-recover after ip netns delete and routerpod restart", func() {
 		Expect(nodes).NotTo(BeEmpty())
 		nodeName := nodes[0].Name
-		nodeExec := executor.ForContainer(nodeName)
+		nodeExec := executor.ForNode(nodeName)
 
 		By("verifying named netns exists")
 		Expect(openperouter.NamedNetnsExists(nodeName)).To(BeTrue())
@@ -423,7 +423,7 @@ var _ = Describe("Systemd: Data plane continuity during FRR restart", Label("sys
 		stopAndCount := measureTrafficLoss(clientExec, urlStr)
 
 		By("restarting routerpod on server's node")
-		serverNodeExec := executor.ForContainer(nodes[0].Name)
+		serverNodeExec := executor.ForNode(nodes[0].Name)
 		_, err = serverNodeExec.Exec("systemctl", "restart", "routerpod-pod.service")
 		Expect(err).NotTo(HaveOccurred())
 

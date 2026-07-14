@@ -102,8 +102,8 @@ func checkFRRDaemons(router routerPodman) error {
 }
 
 func getPodmanRouterPID(nodeName string) (string, error) {
-	exec := executor.ForContainer(nodeName)
 	// Read the PID from the file written by the router pod
+	exec := executor.ForNode(nodeName)
 	out, err := exec.Exec("cat", "/etc/perouter/frr/frr.pid")
 	if err != nil {
 		return "", fmt.Errorf("failed to read PID file: %w, output: %s", err, out)

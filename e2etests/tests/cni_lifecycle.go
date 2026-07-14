@@ -207,8 +207,8 @@ var _ = Describe("CNI underlay lifecycle", Ordered, func() {
 
 		By("deleting the CNI interface directly, behind the controller's back")
 		for _, node := range nodes {
-			exec := executor.ForContainer(node.Name)
-			_, err := exec.Exec("ip", "netns", "exec", openperouter.NamedNetns, "ip", "link", "del", infra.CNIUnderlayInterface)
+			exec := executor.ForNode(node.Name)
+			_, err = exec.Exec("ip", "netns", "exec", openperouter.NamedNetns, "ip", "link", "del", infra.CNIUnderlayInterface)
 			Expect(err).NotTo(HaveOccurred())
 		}
 		validateCNIInterfacesGone(infra.CNIUnderlayInterface)
@@ -413,7 +413,7 @@ var _ = Describe("DHCP underlay lifecycle", Ordered, func() {
 func cniInterfaceIndexes(nodes []corev1.Node, ifName string) (map[string]string, error) {
 	res := map[string]string{}
 	for _, node := range nodes {
-		exec := executor.ForContainer(node.Name)
+		exec := executor.ForNode(node.Name)
 		out, err := exec.Exec("ip", "netns", "exec", openperouter.NamedNetns, "ip", "-o", "link", "show", "dev", ifName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get %s ifindex on %s: %w", ifName, node.Name, err)
@@ -431,6 +431,6 @@ func cniInterfaceIndexes(nodes []corev1.Node, ifName string) (map[string]string,
 // to become active again with a fresh main PID.
 func restartSystemdUnit(node corev1.Node, unit string) {
 	By(fmt.Sprintf("restarting %s via systemd on node %s", unit, node.Name))
-	nodeExec := executor.ForContainer(node.Name)
+	nodeExec := executor.ForNode(node.Name)
 	Expect(systemd.RestartSystemdUnit(nodeExec, unit)).To(Succeed())
 }
