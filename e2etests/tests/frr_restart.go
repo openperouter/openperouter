@@ -45,8 +45,8 @@ var _ = Describe("North/south traffic after FRR container restart", Ordered, fun
 			Namespace: openperouter.Namespace,
 		},
 		Spec: v1alpha1.L2VNISpec{
-			VRF: new("red"),
-			VNI: 110,
+			RoutingDomain: l3vniRoutingDomain("red"),
+			VNI:           110,
 			HostMaster: &v1alpha1.HostMaster{
 				Type: "linux-bridge",
 				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
@@ -99,7 +99,7 @@ var _ = Describe("North/south traffic after FRR container restart", Ordered, fun
 
 	It("should recover north/south traffic after FRR container restart", func() {
 		l2VniRedWithGateway := l2VniRed.DeepCopy()
-		l2VniRedWithGateway.Spec.L2GatewayIPs = []string{"192.171.24.1/24"}
+		l2VniRedWithGateway.Spec.GatewayIPs = []string{"192.171.24.1/24"}
 
 		err := Updater.Update(config.Resources{
 			L3VNIs: []v1alpha1.L3VNI{

@@ -71,9 +71,9 @@ var l2vniRedSingleSession = v1alpha1.L2VNI{
 		Namespace: openperouter.Namespace,
 	},
 	Spec: v1alpha1.L2VNISpec{
-		VRF:          new("red"),
-		VNI:          110,
-		L2GatewayIPs: []string{"192.171.24.1/24"},
+		RoutingDomain: l3vniRoutingDomain("red"),
+		VNI:           110,
+		GatewayIPs:    []string{"192.171.24.1/24"},
 		HostMaster: &v1alpha1.HostMaster{
 			Type: "linux-bridge",
 			LinuxBridge: &v1alpha1.LinuxBridgeConfig{

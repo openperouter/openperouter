@@ -1525,11 +1525,11 @@ type linkIPs struct {
 }
 
 type l2vniParams struct {
-	VRF          string   `json:"vrf"`
-	VTEPIP       string   `json:"vtepip"`
-	VNI          uint32   `json:"vni"`
-	VXLanPort    int      `json:"vxlanport"`
-	L2GatewayIPs []string `json:"l2gatewayips,omitempty"`
+	VRF        string   `json:"vrf"`
+	VTEPIP     string   `json:"vtepip"`
+	VNI        uint32   `json:"vni"`
+	VXLanPort  int      `json:"vxlanport"`
+	GatewayIPs []string `json:"gatewayIPs,omitempty"`
 }
 
 type underlayParams struct {

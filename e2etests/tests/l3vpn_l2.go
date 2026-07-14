@@ -86,8 +86,8 @@ var _ = Describe("SRV6 routes between bgp and the fabric", Ordered, func() {
 			Namespace: openperouter.Namespace,
 		},
 		Spec: v1alpha1.L2VNISpec{
-			VRF: new("red"),
-			VNI: vniID,
+			RoutingDomain: l3vpnRoutingDomain("red"),
+			VNI:           vniID,
 			HostMaster: &v1alpha1.HostMaster{
 				Type: linuxBridgeHostAttachment,
 				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
@@ -221,7 +221,7 @@ var _ = Describe("SRV6 routes between bgp and the fabric", Ordered, func() {
 	DescribeTable("should create two pods connected to the l2 overlay that can reach each other via L2VNI "+
 		"and hosts via L3VPN", func(tc testCase) {
 		l2VniRedWithGateway := l2VniRed.DeepCopy()
-		l2VniRedWithGateway.Spec.L2GatewayIPs = tc.l2GatewayIPs
+		l2VniRedWithGateway.Spec.GatewayIPs = tc.l2GatewayIPs
 		l2VniRedWithGateway.Spec.HostMaster = &tc.hostMaster
 
 		By("configuring FRR to peer with OpenPERouter")

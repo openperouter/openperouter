@@ -57,9 +57,9 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 			Namespace: openperouter.Namespace,
 		},
 		Spec: v1alpha1.L2VNISpec{
-			VRF:          new("red"),
-			VNI:          int32(l2VNI),
-			L2GatewayIPs: []string{l2GatewayIP},
+			RoutingDomain: l3vniRoutingDomain("red"),
+			VNI:           int32(l2VNI),
+			GatewayIPs:    []string{l2GatewayIP},
 			HostMaster: &v1alpha1.HostMaster{
 				Type: linuxBridgeHostAttachment,
 				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
@@ -220,7 +220,7 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 				stationaryPodIPOnly := ipfamily.StripCIDRMask(tc.stationaryPodIP)
 
 				l2VniRedForTC := l2VniRed.DeepCopy()
-				l2VniRedForTC.Spec.L2GatewayIPs = []string{tc.l2GatewayIP}
+				l2VniRedForTC.Spec.GatewayIPs = []string{tc.l2GatewayIP}
 
 				By("Creating L3 VNI and L2 VNI with gateway IPs")
 				err := Updater.Update(config.Resources{

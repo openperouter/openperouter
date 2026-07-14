@@ -227,14 +227,12 @@ func generateL2VNIs(count int, namespace, bridgeType string) []v1alpha1.L2VNI {
 
 	vnis := make([]v1alpha1.L2VNI, count)
 	for i := range count {
-		vrfName := fmt.Sprintf("vrf%03d", i+1)
 		vnis[i] = v1alpha1.L2VNI{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      fmt.Sprintf("l2vni-%03d", i+1),
 				Namespace: namespace,
 			},
 			Spec: v1alpha1.L2VNISpec{
-				VRF:        new(vrfName),
 				VNI:        int32(baseVNI + i + 1),
 				HostMaster: newHostMaster(bridgeType),
 			},
@@ -264,13 +262,17 @@ func generateL3VNIsWithL2VNIs(count int, namespace, bridgeType string) ([]v1alph
 			},
 		}
 
+		l3vniName := fmt.Sprintf("l3vni-%03d", i+1)
 		l2vnis[i] = v1alpha1.L2VNI{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      fmt.Sprintf("l2vni-%03d", i+1),
 				Namespace: namespace,
 			},
 			Spec: v1alpha1.L2VNISpec{
-				VRF:        new(vrfName),
+				RoutingDomain: &v1alpha1.RoutingDomain{
+					Type:  v1alpha1.RoutingDomainTypeL3VNI,
+					L3VNI: &v1alpha1.L3VNIReference{Name: l3vniName},
+				},
 				VNI:        int32(baseL2VNI + i + 1),
 				HostMaster: newHostMaster(bridgeType),
 			},

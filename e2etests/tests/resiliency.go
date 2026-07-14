@@ -51,8 +51,8 @@ var _ = Describe("Alpha: Named netns and kernel objects survive FRR crash", Orde
 			Namespace: openperouter.Namespace,
 		},
 		Spec: v1alpha1.L2VNISpec{
-			VRF: new("red"),
-			VNI: 110,
+			RoutingDomain: l3vniRoutingDomain("red"),
+			VNI:           110,
 			HostMaster: &v1alpha1.HostMaster{
 				Type: "linux-bridge",
 				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
@@ -239,8 +239,8 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 			Namespace: openperouter.Namespace,
 		},
 		Spec: v1alpha1.L2VNISpec{
-			VRF: new("red"),
-			VNI: 110,
+			RoutingDomain: l3vniRoutingDomain("red"),
+			VNI:           110,
 			HostMaster: &v1alpha1.HostMaster{
 				Type: "linux-bridge",
 				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
@@ -363,7 +363,7 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 
 	It("should auto-recover when the named netns is deleted via ip netns delete", func() {
 		l2VniRedWithGateway := l2VniRed.DeepCopy()
-		l2VniRedWithGateway.Spec.L2GatewayIPs = []string{"192.171.24.1/24"}
+		l2VniRedWithGateway.Spec.GatewayIPs = []string{"192.171.24.1/24"}
 
 		err := Updater.Update(config.Resources{
 			L3VNIs: []v1alpha1.L3VNI{vniRed},
@@ -517,7 +517,7 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 
 	It("should maintain stretched L2 traffic across nodes with minimal disruption when a router pod is deleted", func() {
 		l2VniRedWithGateway := l2VniRed.DeepCopy()
-		l2VniRedWithGateway.Spec.L2GatewayIPs = []string{"192.171.24.1/24"}
+		l2VniRedWithGateway.Spec.GatewayIPs = []string{"192.171.24.1/24"}
 
 		err := Updater.Update(config.Resources{
 			L3VNIs: []v1alpha1.L3VNI{vniRed},
@@ -908,8 +908,8 @@ var _ = Describe("Configuration Resiliency", Ordered, func() {
 					Namespace: openperouter.Namespace,
 				},
 				Spec: v1alpha1.L2VNISpec{
-					VRF: new("cascade"),
-					VNI: 401,
+					RoutingDomain: l3vniRoutingDomain("bad-rt-l3"),
+					VNI:           401,
 				},
 			}
 
@@ -935,7 +935,7 @@ var _ = Describe("Configuration Resiliency", Ordered, func() {
 				g.Expect(failedByName).To(HaveKey("cascade-l2"))
 				g.Expect(failedByName["cascade-l2"].Kind).To(Equal(v1alpha1.FailedResourceKind("L2VNI")))
 				g.Expect(failedByName["cascade-l2"].Reason).To(Equal(v1alpha1.FailedResourceReasonDependencyFailed))
-				g.Expect(failedByName["cascade-l2"].Message).To(ContainSubstring("no valid L3 resource for VRF"))
+				g.Expect(failedByName["cascade-l2"].Message).To(ContainSubstring(`referenced L3VNI "bad-rt-l3" not found`))
 
 				expectNodeCondition(g, infra.KindControlPlane, "Ready", metav1.ConditionFalse)
 			}, time.Minute, time.Second).Should(Succeed())
@@ -950,8 +950,8 @@ var _ = Describe("Configuration Resiliency", Ordered, func() {
 					Namespace: openperouter.Namespace,
 				},
 				Spec: v1alpha1.L2VNISpec{
-					VRF: new("nonexistent"),
-					VNI: 500,
+					RoutingDomain: l3vniRoutingDomain("nonexistent"),
+					VNI:           500,
 				},
 			}
 
@@ -968,7 +968,7 @@ var _ = Describe("Configuration Resiliency", Ordered, func() {
 				g.Expect(failed.Kind).To(Equal(v1alpha1.FailedResourceKind("L2VNI")))
 				g.Expect(failed.Name).To(Equal("orphan-l2"))
 				g.Expect(failed.Reason).To(Equal(v1alpha1.FailedResourceReasonDependencyFailed))
-				g.Expect(failed.Message).To(ContainSubstring("no valid L3 resource for VRF"))
+				g.Expect(failed.Message).To(ContainSubstring(`referenced L3VNI "nonexistent" not found`))
 
 				expectNodeCondition(g, infra.KindControlPlane, "Ready", metav1.ConditionFalse)
 			}, time.Minute, time.Second).Should(Succeed())
