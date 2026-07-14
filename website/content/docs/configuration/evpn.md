@@ -157,7 +157,11 @@ L2VNIs provide Layer 2 connectivity across nodes using EVPN tunnels. Unlike L3VN
 | Field | Type | Description | Required |
 |-------|------|-------------|----------|
 | `vni` | integer | Virtual Network Identifier for the EVPN tunnel | Yes |
-| `vrf` | string | Name of the VRF to associate with this L2VNI | Yes |
+| `routingDomain` | object | Attaches this L2VNI to a routing domain provided by an L3VNI or L3VPN. When omitted, the L2VNI is a disconnected overlay (east-west L2 only, no VRF, no gateway). | No |
+| `routingDomain.type` | string | Type of routing domain provider (`L3VNI` or `L3VPN`) | Yes (when routingDomain is set) |
+| `routingDomain.l3vni.name` | string | metadata.name of the L3VNI that provides the routing domain | Yes (when type is `L3VNI`) |
+| `routingDomain.l3vpn.name` | string | metadata.name of the L3VPN that provides the routing domain | Yes (when type is `L3VPN`) |
+| `gatewayIPs` | string array | IP addresses in CIDR notation for the distributed anycast gateway. Cannot be set without routingDomain. Max 2 (one IPv4, one IPv6). | No |
 | `underlayAddressFamily` | string | VTEP address family for this VNI (`ipv4` or `ipv6`). Defaults to available family (IPv4 preferred in dual-stack). | No |
 | `hostmaster.type` | string | Type of host interface management (`linux-bridge` or `ovs-bridge`) | Yes |
 | `hostmaster.linuxBridge.autoCreate` | boolean | Whether to automatically create a Linux bridge | No |
@@ -176,7 +180,10 @@ metadata:
   namespace: openperouter-system
 spec:
   vni: 210
-  vrf: red
+  routingDomain:
+    type: L3VNI
+    l3vni:
+      name: red
   hostmaster:
     type: linux-bridge
     linuxBridge:
@@ -187,7 +194,7 @@ spec:
 
 When you create or update VNI configurations, OpenPERouter automatically:
 
-1. **Creates Network Interfaces**: Sets up VXLAN interface and Linux VRF named after the VNI
+1. **Creates Network Interfaces**: Sets up VXLAN interface, and a Linux VRF named after the VNI only when `routingDomain` is configured
 2. **Establishes Connectivity**: Creates veth pair and moves one end to the router's namespace
 3. **Adjusts Veth MTU**: Sets the MTU on both veth legs to the underlay NIC's MTU minus 50 bytes to account for VXLan encapsulation overhead
 4. **Enslaves the veth**: the veth is connected to the bridge corresponding to the l2 domain

@@ -64,7 +64,8 @@ underlays:
       - asn: 64512
         address: 192.168.111.1
 l3vnis:
-  - vrf: red
+  - name: red
+    vrf: red
     vni: 100
     hostSession:
       asn: 64514
@@ -73,9 +74,13 @@ l3vnis:
         ipv4: "192.169.10.0/24"
         ipv6: "2001:db8:1::/64"
 l2vnis:
-  - vrf: storage
+  - name: storage
     vni: 300
     vxlanport: 4789
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
     hostmaster:
       type: linux-bridge
       linuxBridge:
@@ -89,7 +94,8 @@ Multiple files can coexist in the configs directory. This is useful when nodes s
 ```yaml
 # openpe_vni.yaml - common across nodes
 l3vnis:
-  - vrf: red
+  - name: red
+    vrf: red
     vni: 100
 ```
 

@@ -38,7 +38,7 @@ When a pod needs to reach a host belonging to the L3 domain the L2 VNI belongs t
 
 ### OpenPERouter Configuration
 
-One L3 VNI corresponding to the routing domain, one L2 VNI with the same VRF as the L3 VNI:
+One L3 VNI corresponding to the routing domain, one L2 VNI referencing the L3 VNI via `routingDomain`:
 
 ```yaml
 apiVersion: network.openperouter.io/v1alpha1
@@ -62,17 +62,20 @@ metadata:
   namespace: openperouter-system
 spec:
   vni: 110
-  vrf: red
+  routingDomain:
+    type: L3VNI
+    l3vni:
+      name: red
   hostmaster:
     type: linux-bridge
     linuxBridge:
       autoCreate: true
-  l2gatewayips: ["192.170.1.1/24"]
+  gatewayIPs: ["192.170.1.1/24"]
 ```
 
 **Configuration Notes:**
 
-- **`l2gatewayip` field**: Allows each pod to have the same default gateway and be able to send traffic to the outer L3 domain
+- **`gatewayIPs` field**: Allows each pod to have the same default gateway and be able to send traffic to the outer L3 domain
 - **hostmaster.autocreate**: Instructs OpenPERouter to create a bridge local to the node that can be used to access the L2 domain
 
 ### Network Attachment Definition
