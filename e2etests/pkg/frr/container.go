@@ -55,7 +55,7 @@ func writeFRRConfig(containerName, config string) error {
 		return fmt.Errorf("failed to close temporary file: %w", err)
 	}
 
-	cmd := exec.Command("docker", "cp", tmpFile.Name(), fmt.Sprintf("%s:%s", containerName, frrConfig))
+	cmd := exec.Command(executor.ContainerRuntime, "cp", tmpFile.Name(), fmt.Sprintf("%s:%s", containerName, frrConfig))
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to copy file to container: %s, %w", string(output), err)
 	}
