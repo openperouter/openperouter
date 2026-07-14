@@ -421,15 +421,25 @@ func TestAPItoHostConfig(t *testing.T) {
 			wantErr:         false,
 		},
 		{
-			name:      "l2 vni with hostmaster and l2gatewayips",
+			name:      "l2 vni with hostmaster and gatewayips",
 			nodeIndex: 0,
 			targetNS:  "namespace",
 			underlays: []v1alpha1.Underlay{
 				{Spec: v1alpha1.UnderlaySpec{Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}}, TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: []string{"10.0.0.0/24"}}}},
 			},
-			vnis: []v1alpha1.L3VNI{},
+			vnis: []v1alpha1.L3VNI{
+				{ObjectMeta: metav1.ObjectMeta{Name: "gw-l3"}, Spec: v1alpha1.L3VNISpec{VRF: "red", VNI: 300}},
+			},
 			l2vnis: []v1alpha1.L2VNI{
-				{Spec: v1alpha1.L2VNISpec{VNI: 201, VXLanPort: new(int32(4789)), HostMaster: &v1alpha1.HostMaster{Type: "linux-bridge", LinuxBridge: &v1alpha1.LinuxBridgeConfig{Name: new("br0")}}, L2GatewayIPs: []string{"192.168.100.1/24"}}},
+				{Spec: v1alpha1.L2VNISpec{
+					RoutingDomain: &v1alpha1.RoutingDomain{
+						Type:  v1alpha1.RoutingDomainTypeL3VNI,
+						L3VNI: &v1alpha1.L3VNIReference{Name: "gw-l3"},
+					},
+					VNI: 201, VXLanPort: new(int32(4789)),
+					HostMaster: &v1alpha1.HostMaster{Type: "linux-bridge", LinuxBridge: &v1alpha1.LinuxBridgeConfig{Name: new("br0")}},
+					GatewayIPs: []string{"192.168.100.1/24"},
+				}},
 			},
 			l3Passthrough: []v1alpha1.L3Passthrough{},
 			wantUnderlay: hostnetwork.UnderlayParams{
@@ -439,10 +449,22 @@ func TestAPItoHostConfig(t *testing.T) {
 					IPv4CIDR: "10.0.0.0/32",
 				},
 			},
-			wantL3VNIParams: []hostnetwork.L3VNIParams{},
+			wantL3VNIParams: []hostnetwork.L3VNIParams{
+				{
+					VNIParams: hostnetwork.VNIParams{
+						VRF:       "red",
+						TargetNS:  "namespace",
+						VTEPIP:    "10.0.0.0/32",
+						VNI:       300,
+						VXLanPort: new(int32(4789)),
+					},
+					Name: "gw-l3",
+				},
+			},
 			wantL2VNIParams: []hostnetwork.L2VNIParams{
 				{
 					VNIParams: hostnetwork.VNIParams{
+						VRF:       "red",
 						TargetNS:  "namespace",
 						VTEPIP:    "10.0.0.0/32",
 						VNI:       201,

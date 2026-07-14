@@ -1,5 +1,6 @@
 l3vpns:
-  - hostsession:
+  - name: red
+    hostsession:
       asn: 64514
       hostasn: 64515
       localcidr:
@@ -10,3 +11,16 @@ l3vpns:
     - "64514:100"
     importRTs:
     - "64520:100"
+l2vnis:
+  - name: l2-over-vpn
+    vni: 210
+    routingDomain:
+      type: L3VPN
+      l3vpn:
+        name: red
+    hostmaster:
+      type: linux-bridge
+      linuxBridge:
+        autoCreate: true
+    gatewayIPs:
+    - "192.170.1.1/24"

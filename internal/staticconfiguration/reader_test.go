@@ -223,13 +223,15 @@ func TestReadRouterConfigsFromFiles(t *testing.T) {
 	}
 
 	underlays := make([]v1alpha1.UnderlaySpec, 0, len(configs))
-	l3vnis := make([]v1alpha1.L3VNISpec, 0, len(configs))
-	l2vnis := make([]v1alpha1.L2VNISpec, 0, len(configs))
+	l3vnis := make([]static.StaticL3VNI, 0, len(configs))
+	l3vpns := make([]static.StaticL3VPN, 0, len(configs))
+	l2vnis := make([]static.StaticL2VNI, 0, len(configs))
 	var bgpPassthrough *v1alpha1.L3PassthroughSpec
 
 	for _, cfg := range configs {
 		underlays = append(underlays, cfg.Underlays...)
 		l3vnis = append(l3vnis, cfg.L3VNIs...)
+		l3vpns = append(l3vpns, cfg.L3VPNs...)
 		l2vnis = append(l2vnis, cfg.L2VNIs...)
 		if cfg.BGPPassthrough.HostSession.ASN != 0 {
 			bgpPassthrough = &cfg.BGPPassthrough
@@ -261,55 +263,113 @@ func TestReadRouterConfigsFromFiles(t *testing.T) {
 	}
 
 	// openpe_l3vni.yaml
-	wantL3VNIs := []v1alpha1.L3VNISpec{
+	wantL3VNIs := []static.StaticL3VNI{
 		{
-			VRF: "red",
-			HostSession: &v1alpha1.HostSession{
-				ASN:     64514,
-				HostASN: new(int64(64515)),
-				LocalCIDR: v1alpha1.LocalCIDRConfig{
-					IPv4: new("192.169.10.0/24"),
-					IPv6: new("2001:db8:1::/64"),
+			Name: "l3vni-red",
+			L3VNISpec: v1alpha1.L3VNISpec{
+				VRF: "red",
+				HostSession: &v1alpha1.HostSession{
+					ASN:     64514,
+					HostASN: new(int64(64515)),
+					LocalCIDR: v1alpha1.LocalCIDRConfig{
+						IPv4: new("192.169.10.0/24"),
+						IPv6: new("2001:db8:1::/64"),
+					},
 				},
+				VNI: 100,
 			},
-			VNI: 100,
 		},
 		{
-			VRF: "blue",
-			HostSession: &v1alpha1.HostSession{
-				ASN:     64514,
-				HostASN: new(int64(64516)),
-				LocalCIDR: v1alpha1.LocalCIDRConfig{
-					IPv4: new("192.169.11.0/24"),
-					IPv6: new("2001:db8:2::/64"),
+			Name: "l3vni-blue",
+			L3VNISpec: v1alpha1.L3VNISpec{
+				VRF: "blue",
+				HostSession: &v1alpha1.HostSession{
+					ASN:     64514,
+					HostASN: new(int64(64516)),
+					LocalCIDR: v1alpha1.LocalCIDRConfig{
+						IPv4: new("192.169.11.0/24"),
+						IPv6: new("2001:db8:2::/64"),
+					},
 				},
+				VNI: 200,
 			},
-			VNI: 200,
 		},
 	}
 
 	// openpe_l2vni.yaml
-	wantL2VNIs := []v1alpha1.L2VNISpec{
+	wantL2VNIs := []static.StaticL2VNI{
 		{
-			VRF:       new("storage"),
-			VNI:       300,
-			VXLanPort: new(int32(4789)),
-			HostMaster: &v1alpha1.HostMaster{
-				Type: "linux-bridge",
-				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
-					Name: new("br-storage"),
+			Name: "l2vni-storage",
+			L2VNISpec: v1alpha1.L2VNISpec{
+				RoutingDomain: &v1alpha1.RoutingDomain{
+					Type:  v1alpha1.RoutingDomainTypeL3VNI,
+					L3VNI: &v1alpha1.L3VNIReference{Name: "l3vni-red"},
+				},
+				VNI:       300,
+				VXLanPort: new(int32(4789)),
+				HostMaster: &v1alpha1.HostMaster{
+					Type: "linux-bridge",
+					LinuxBridge: &v1alpha1.LinuxBridgeConfig{
+						Name: new("br-storage"),
+					},
 				},
 			},
 		},
 		{
-			VRF:       new("management"),
-			VNI:       400,
-			VXLanPort: new(int32(4789)),
-			HostMaster: &v1alpha1.HostMaster{
-				Type: "ovs-bridge",
-				OVSBridge: &v1alpha1.OVSBridgeConfig{
-					Name: new("ovsbr0"),
+			Name: "l2vni-management",
+			L2VNISpec: v1alpha1.L2VNISpec{
+				RoutingDomain: &v1alpha1.RoutingDomain{
+					Type:  v1alpha1.RoutingDomainTypeL3VNI,
+					L3VNI: &v1alpha1.L3VNIReference{Name: "l3vni-blue"},
 				},
+				VNI:       400,
+				VXLanPort: new(int32(4789)),
+				HostMaster: &v1alpha1.HostMaster{
+					Type: "ovs-bridge",
+					OVSBridge: &v1alpha1.OVSBridgeConfig{
+						Name: new("ovsbr0"),
+					},
+				},
+			},
+		},
+	}
+
+	// openpe_l3vpn.yaml
+	wantL3VPNs := []static.StaticL3VPN{
+		{
+			Name: "red",
+			L3VPNSpec: v1alpha1.L3VPNSpec{
+				VRF: "red",
+				HostSession: &v1alpha1.HostSession{
+					ASN:     64514,
+					HostASN: new(int64(64515)),
+					LocalCIDR: v1alpha1.LocalCIDRConfig{
+						IPv4: new("192.169.10.0/24"),
+					},
+				},
+				RDAssignedNumber: 100,
+				ExportRTs:        []v1alpha1.RouteTarget{"64514:100"},
+				ImportRTs:        []v1alpha1.RouteTarget{"64520:100"},
+			},
+		},
+	}
+
+	wantL2VNIsFromL3VPN := []static.StaticL2VNI{
+		{
+			Name: "l2-over-vpn",
+			L2VNISpec: v1alpha1.L2VNISpec{
+				RoutingDomain: &v1alpha1.RoutingDomain{
+					Type:  v1alpha1.RoutingDomainTypeL3VPN,
+					L3VPN: &v1alpha1.L3VPNReference{Name: "red"},
+				},
+				VNI: 210,
+				HostMaster: &v1alpha1.HostMaster{
+					Type: "linux-bridge",
+					LinuxBridge: &v1alpha1.LinuxBridgeConfig{
+						AutoCreate: new(true),
+					},
+				},
+				GatewayIPs: []string{"192.170.1.1/24"},
 			},
 		},
 	}
@@ -329,11 +389,14 @@ func TestReadRouterConfigsFromFiles(t *testing.T) {
 	sortNeighbors := cmpopts.SortSlices(func(a, b v1alpha1.Neighbor) bool {
 		return ptr.Deref(a.Address, "") < ptr.Deref(b.Address, "")
 	})
-	sortL3VNIs := cmpopts.SortSlices(func(a, b v1alpha1.L3VNISpec) bool {
+	sortL3VNIs := cmpopts.SortSlices(func(a, b static.StaticL3VNI) bool {
 		return a.VRF < b.VRF
 	})
-	sortL2VNIs := cmpopts.SortSlices(func(a, b v1alpha1.L2VNISpec) bool {
+	sortL2VNIs := cmpopts.SortSlices(func(a, b static.StaticL2VNI) bool {
 		return a.VNI < b.VNI
+	})
+	sortL3VPNs := cmpopts.SortSlices(func(a, b static.StaticL3VPN) bool {
+		return a.VRF < b.VRF
 	})
 
 	if len(underlays) != 1 {
@@ -347,8 +410,13 @@ func TestReadRouterConfigsFromFiles(t *testing.T) {
 		t.Errorf("L3VNIs mismatch (-want +got):\n%s", cmp.Diff(wantL3VNIs, l3vnis, sortL3VNIs))
 	}
 
-	if !cmp.Equal(wantL2VNIs, l2vnis, sortL2VNIs) {
-		t.Errorf("L2VNIs mismatch (-want +got):\n%s", cmp.Diff(wantL2VNIs, l2vnis, sortL2VNIs))
+	allWantL2VNIs := append(wantL2VNIs, wantL2VNIsFromL3VPN...)
+	if !cmp.Equal(allWantL2VNIs, l2vnis, sortL2VNIs) {
+		t.Errorf("L2VNIs mismatch (-want +got):\n%s", cmp.Diff(allWantL2VNIs, l2vnis, sortL2VNIs))
+	}
+
+	if !cmp.Equal(wantL3VPNs, l3vpns, sortL3VPNs) {
+		t.Errorf("L3VPNs mismatch (-want +got):\n%s", cmp.Diff(wantL3VPNs, l3vpns, sortL3VPNs))
 	}
 
 	if bgpPassthrough == nil {

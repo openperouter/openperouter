@@ -15,7 +15,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/utils/ptr"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
@@ -213,12 +212,12 @@ func validateOverlayResourcesForNode(node corev1.Node, l2vnis []v1alpha1.L2VNI, 
 		return fmt.Errorf("duplicate VNIs found in L2VNIs for node %q: %w", node.Name, err)
 	}
 
-	validL3VNIs, _, err = FilterUniqueVRFsForL3VNIs(validL3VNIs)
+	validL3VNIs, err = FilterUniqueVRFsForL3VNIs(validL3VNIs)
 	if err != nil {
 		return fmt.Errorf("duplicate L3VNI VRFs found for node %q: %w", node.Name, err)
 	}
 
-	validL3VPNs, _, err = FilterUniqueVRFsForL3VPNs(validL3VPNs)
+	validL3VPNs, err = FilterUniqueVRFsForL3VPNs(validL3VPNs)
 	if err != nil {
 		return fmt.Errorf("duplicate L3VPN VRFs found for node %q: %w", node.Name, err)
 	}
@@ -233,7 +232,7 @@ func validateOverlayResourcesForNode(node corev1.Node, l2vnis []v1alpha1.L2VNI, 
 
 // FilterUniqueVRFsForL3VNIs checks VRF uniqueness among L3VNIs and returns the valid
 // L3VNIs alongside per-resource errors for duplicates.
-func FilterUniqueVRFsForL3VNIs(l3Vnis []v1alpha1.L3VNI) ([]v1alpha1.L3VNI, sets.Set[string], error) {
+func FilterUniqueVRFsForL3VNIs(l3Vnis []v1alpha1.L3VNI) ([]v1alpha1.L3VNI, error) {
 	reason := v1alpha1.FailedResourceReasonValidationFailed
 	var allErrors []error
 
@@ -255,9 +254,7 @@ func FilterUniqueVRFsForL3VNIs(l3Vnis []v1alpha1.L3VNI) ([]v1alpha1.L3VNI, sets.
 		valid = append(valid, l3Vni)
 	}
 
-	vrfs := sets.New(slices.Collect(maps.Keys(vrfToVNI))...)
-
-	return valid, vrfs, errors.Join(allErrors...)
+	return valid, errors.Join(allErrors...)
 }
 
 // FilterValidVRFSubnets checks for subnet overlaps per VRF and returns valid

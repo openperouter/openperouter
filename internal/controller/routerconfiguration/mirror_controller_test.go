@@ -76,13 +76,16 @@ func TestMirrorController(t *testing.T) {
         - "100.65.0.0/24"
 `,
 				"openpe_l3vni.yaml": `l3vnis:
-  - vrf: red
+  - name: l3vni-red
+    vrf: red
     vni: 100
-  - vrf: blue
+  - name: l3vni-blue
+    vrf: blue
     vni: 200
 `,
 				"openpe_l2vni.yaml": `l2vnis:
-  - vni: 300
+  - name: l2vni-300
+    vni: 300
     vxlanport: 4789
 `,
 			},
@@ -139,9 +142,11 @@ func TestMirrorController(t *testing.T) {
 			name: "deletes stale resources when removed from config",
 			files: map[string]string{
 				"openpe_l3vni.yaml": `l3vnis:
-  - vrf: red
+  - name: l3vni-red
+    vrf: red
     vni: 100
-  - vrf: blue
+  - name: l3vni-blue
+    vrf: blue
     vni: 200
 `,
 			},
@@ -150,7 +155,8 @@ func TestMirrorController(t *testing.T) {
 			},
 			updateFiles: map[string]string{
 				"openpe_l3vni.yaml": `l3vnis:
-  - vrf: red
+  - name: l3vni-red
+    vrf: red
     vni: 100
 `,
 			},
@@ -176,7 +182,8 @@ func TestMirrorController(t *testing.T) {
         - "100.65.0.0/24"
 `,
 				"openpe_l3vni.yaml": `l3vnis:
-  - vrf: red
+  - name: l3vni-red
+    vrf: red
     vni: 100
 `,
 			},
@@ -207,7 +214,8 @@ func TestMirrorController(t *testing.T) {
 			},
 			files: map[string]string{
 				"openpe_l3vni.yaml": `l3vnis:
-  - vrf: red
+  - name: l3vni-red
+    vrf: red
     vni: 100
 `,
 			},
@@ -242,7 +250,8 @@ func TestMirrorController(t *testing.T) {
 			},
 			updateFiles: map[string]string{
 				"openpe_l3vni.yaml": `l3vnis:
-  - vrf: red
+  - name: l3vni-red
+    vrf: red
     vni: 100
 `,
 			},
@@ -374,14 +383,15 @@ func assertExpectedResources(t *testing.T, mc *MirrorController, expected expect
 func TestMirrorController_RecreatesExternallyDeletedResource(t *testing.T) {
 	dir := t.TempDir()
 	writeStaticFile(t, dir, "openpe_l3vni.yaml", `l3vnis:
-  - vrf: red
+  - name: l3vni-red
+    vrf: red
     vni: 100
 `)
 	mc := newMirrorController(t, dir, testNode())
 	reconcile(t, mc)
 
 	ctx := context.Background()
-	key := client.ObjectKey{Name: "static-worker-1-l3vni-0", Namespace: testNamespace}
+	key := client.ObjectKey{Name: "static-worker-1-l3vni-red", Namespace: testNamespace}
 	var v v1alpha1.L3VNI
 	if err := mc.Get(ctx, key, &v); err != nil {
 		t.Fatalf("expected L3VNI to exist: %v", err)
@@ -414,7 +424,8 @@ func TestMirrorController_IdempotentMultipleReconciles(t *testing.T) {
         - "100.65.0.0/24"
 `)
 	writeStaticFile(t, dir, "openpe_l3vni.yaml", `l3vnis:
-  - vrf: red
+  - name: l3vni-red
+    vrf: red
     vni: 100
 `)
 	mc := newMirrorController(t, dir, testNode())
@@ -432,14 +443,15 @@ func TestMirrorController_IdempotentMultipleReconciles(t *testing.T) {
 func TestMirrorController_OverwritesExternallyModifiedResource(t *testing.T) {
 	dir := t.TempDir()
 	writeStaticFile(t, dir, "openpe_l3vni.yaml", `l3vnis:
-  - vrf: red
+  - name: l3vni-red
+    vrf: red
     vni: 100
 `)
 	mc := newMirrorController(t, dir, testNode())
 	reconcile(t, mc)
 
 	ctx := context.Background()
-	key := client.ObjectKey{Name: "static-worker-1-l3vni-0", Namespace: testNamespace}
+	key := client.ObjectKey{Name: "static-worker-1-l3vni-red", Namespace: testNamespace}
 
 	// External actor changes VNI
 	var v v1alpha1.L3VNI
@@ -466,14 +478,15 @@ func TestMirrorController_OverwritesExternallyModifiedResource(t *testing.T) {
 func TestMirrorController_RestoresLabelAfterExternalRemoval(t *testing.T) {
 	dir := t.TempDir()
 	writeStaticFile(t, dir, "openpe_l3vni.yaml", `l3vnis:
-  - vrf: red
+  - name: l3vni-red
+    vrf: red
     vni: 100
 `)
 	mc := newMirrorController(t, dir, testNode())
 	reconcile(t, mc)
 
 	ctx := context.Background()
-	key := client.ObjectKey{Name: "static-worker-1-l3vni-0", Namespace: testNamespace}
+	key := client.ObjectKey{Name: "static-worker-1-l3vni-red", Namespace: testNamespace}
 
 	// External actor removes label
 	var v v1alpha1.L3VNI

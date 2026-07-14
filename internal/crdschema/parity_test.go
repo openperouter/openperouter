@@ -131,14 +131,17 @@ func TestParityDefaults(t *testing.T) {
 				Spec: v1alpha1.L2VNISpec{
 					VNI:       500,
 					VXLanPort: new(int32(5000)),
-					VRF:       new("myvrf"),
+					RoutingDomain: &v1alpha1.RoutingDomain{
+						Type:  v1alpha1.RoutingDomainTypeL3VNI,
+						L3VNI: &v1alpha1.L3VNIReference{Name: "myl3vni"},
+					},
 					HostMaster: &v1alpha1.HostMaster{
 						Type: v1alpha1.LinuxBridge,
 						LinuxBridge: &v1alpha1.LinuxBridgeConfig{
 							Name: new("mybridge"),
 						},
 					},
-					L2GatewayIPs: []string{"10.10.10.1/24"},
+					GatewayIPs: []string{"10.10.10.1/24"},
 				},
 			},
 			validate: func(t *testing.T, u *unstructured.Unstructured) {
@@ -308,7 +311,10 @@ func TestParityRoundTrip(t *testing.T) {
 				Spec: v1alpha1.L2VNISpec{
 					VNI:       1000,
 					VXLanPort: new(int32(4789)),
-					VRF:       new("myvrf"),
+					RoutingDomain: &v1alpha1.RoutingDomain{
+						Type:  v1alpha1.RoutingDomainTypeL3VNI,
+						L3VNI: &v1alpha1.L3VNIReference{Name: "myl3vni"},
+					},
 					HostMaster: &v1alpha1.HostMaster{
 						Type: v1alpha1.LinuxBridge,
 						LinuxBridge: &v1alpha1.LinuxBridgeConfig{
@@ -316,7 +322,7 @@ func TestParityRoundTrip(t *testing.T) {
 							AutoCreate: new(false),
 						},
 					},
-					L2GatewayIPs: []string{"10.10.10.1/24", "fd00::1/64"},
+					GatewayIPs: []string{"10.10.10.1/24", "fd00::1/64"},
 				},
 			},
 		},

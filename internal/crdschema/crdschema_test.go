@@ -569,12 +569,18 @@ func TestValidateOldSelfFiltering(t *testing.T) {
 		errField string
 	}{
 		{
-			name: "L2VNI with l2gatewayips does not trigger oldSelf error",
+			name: "L2VNI with gatewayIPs does not trigger oldSelf error",
 			gvk:  l2vniGVK,
 			obj: newUnstructured("L2VNI", map[string]any{
-				"l2gatewayips": []any{"10.0.0.1/24"},
+				"gatewayIPs": []any{"10.0.0.1/24"},
+				"routingDomain": map[string]any{
+					"type": "L3VNI",
+					"l3vni": map[string]any{
+						"name": "test-l3vni",
+					},
+				},
 			}),
-			errField: "L2GatewayIPs cannot be changed",
+			errField: "GatewayIPs cannot be changed",
 		},
 		{
 			name: "L3VNI with hostsession localcidr does not trigger oldSelf error",

@@ -148,7 +148,7 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 				l3VNI("l3-a", "vrfA", 100),
 			},
 			l2VNIs: []v1alpha1.L2VNI{
-				l2VNI("connected", new("vrfA"), 200),
+				l2VNI("connected", l3vniRoutingDomain("l3-a"), 200),
 				l2VNI("disconnected", nil, 201),
 			},
 			wantConfig: conversion.APIConfigData{
@@ -156,7 +156,7 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 					l3VNI("l3-a", "vrfA", 100),
 				},
 				L2VNIs: []v1alpha1.L2VNI{
-					l2VNI("connected", new("vrfA"), 200),
+					l2VNI("connected", l3vniRoutingDomain("l3-a"), 200),
 					l2VNI("disconnected", nil, 201),
 				},
 			},
@@ -168,7 +168,7 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 				l3VPN("l3-a", "vrfA", 100),
 			},
 			l2VNIs: []v1alpha1.L2VNI{
-				l2VNI("connected", new("vrfA"), 200),
+				l2VNI("connected", l3vpnRoutingDomain("l3-a"), 200),
 				l2VNI("disconnected", nil, 201),
 			},
 			wantConfig: conversion.APIConfigData{
@@ -177,7 +177,7 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 					l3VPN("l3-a", "vrfA", 100),
 				},
 				L2VNIs: []v1alpha1.L2VNI{
-					l2VNI("connected", new("vrfA"), 200),
+					l2VNI("connected", l3vpnRoutingDomain("l3-a"), 200),
 					l2VNI("disconnected", nil, 201),
 				},
 			},
@@ -301,19 +301,19 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 				l3VNI("good-l3", "vrfA", 100),
 			},
 			l2VNIs: []v1alpha1.L2VNI{
-				l2VNI("good-l2", new("vrfA"), 200),
-				l2VNI("orphan-l2", new("vrfMissing"), 300),
+				l2VNI("good-l2", l3vniRoutingDomain("good-l3"), 200),
+				l2VNI("orphan-l2", l3vniRoutingDomain("l3vni-missing"), 300),
 			},
 			expectedFailures: []v1alpha1.FailedResource{
 				{Kind: openpeerrors.KindL2VNI, Name: "orphan-l2", Reason: v1alpha1.FailedResourceReasonDependencyFailed,
-					Message: `no valid L3 resource for VRF "vrfMissing"`},
+					Message: `referenced L3VNI "l3vni-missing" not found`},
 			},
 			wantConfig: conversion.APIConfigData{
 				L3VNIs: []v1alpha1.L3VNI{
 					l3VNI("good-l3", "vrfA", 100),
 				},
 				L2VNIs: []v1alpha1.L2VNI{
-					l2VNI("good-l2", new("vrfA"), 200),
+					l2VNI("good-l2", l3vniRoutingDomain("good-l3"), 200),
 				},
 			},
 		},
@@ -324,12 +324,12 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 				l3VPN("good-l3", "vrfA", 100),
 			},
 			l2VNIs: []v1alpha1.L2VNI{
-				l2VNI("good-l2", new("vrfA"), 200),
-				l2VNI("orphan-l2", new("vrfMissing"), 300),
+				l2VNI("good-l2", l3vpnRoutingDomain("good-l3"), 200),
+				l2VNI("orphan-l2", l3vpnRoutingDomain("vpn-missing"), 300),
 			},
 			expectedFailures: []v1alpha1.FailedResource{
 				{Kind: openpeerrors.KindL2VNI, Name: "orphan-l2", Reason: v1alpha1.FailedResourceReasonDependencyFailed,
-					Message: `no valid L3 resource for VRF "vrfMissing"`},
+					Message: `referenced L3VPN "vpn-missing" not found`},
 			},
 			wantConfig: conversion.APIConfigData{
 				Underlays: srv6Underlays(),
@@ -337,7 +337,7 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 					l3VPN("good-l3", "vrfA", 100),
 				},
 				L2VNIs: []v1alpha1.L2VNI{
-					l2VNI("good-l2", new("vrfA"), 200),
+					l2VNI("good-l2", l3vpnRoutingDomain("good-l3"), 200),
 				},
 			},
 		},
@@ -348,7 +348,7 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 				l3VPN("good-l3", "vrfA", 100),
 			},
 			l2VNIs: []v1alpha1.L2VNI{
-				l2VNI("good-l2", new("vrfA"), 200),
+				l2VNI("good-l2", l3vpnRoutingDomain("good-l3"), 200),
 			},
 			wantConfig: conversion.APIConfigData{
 				Underlays: srv6Underlays(),
@@ -356,7 +356,7 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 					l3VPN("good-l3", "vrfA", 100),
 				},
 				L2VNIs: []v1alpha1.L2VNI{
-					l2VNI("good-l2", new("vrfA"), 200),
+					l2VNI("good-l2", l3vpnRoutingDomain("good-l3"), 200),
 				},
 			},
 		},
@@ -454,9 +454,9 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 				l3VNI("bad-l3", "vrfBad", 200),
 			},
 			l2VNIs: []v1alpha1.L2VNI{
-				l2VNIWithGateway("good-l2", "vrfGood", 300, []string{"10.0.1.1/24"}),
-				l2VNIWithGateway("bad-l2-1", "vrfBad", 400, []string{"10.0.2.1/24"}),
-				l2VNIWithGateway("bad-l2-2", "vrfBad", 500, []string{"10.0.2.100/24"}),
+				l2VNIWithGateway("good-l2", l3vniRoutingDomain("good-l3"), 300, []string{"10.0.1.1/24"}),
+				l2VNIWithGateway("bad-l2-1", l3vniRoutingDomain("bad-l3"), 400, []string{"10.0.2.1/24"}),
+				l2VNIWithGateway("bad-l2-2", l3vniRoutingDomain("bad-l3"), 500, []string{"10.0.2.100/24"}),
 			},
 			expectedFailures: []v1alpha1.FailedResource{
 				{Kind: openpeerrors.KindL3VNI, Name: "bad-l3", Reason: v1alpha1.FailedResourceReasonValidationFailed,
@@ -471,7 +471,7 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 					l3VNI("good-l3", "vrfGood", 100),
 				},
 				L2VNIs: []v1alpha1.L2VNI{
-					l2VNIWithGateway("good-l2", "vrfGood", 300, []string{"10.0.1.1/24"}),
+					l2VNIWithGateway("good-l2", l3vniRoutingDomain("good-l3"), 300, []string{"10.0.1.1/24"}),
 				},
 			},
 		},
@@ -483,9 +483,9 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 				l3VPN("bad-l3", "vrfBad", 200),
 			},
 			l2VNIs: []v1alpha1.L2VNI{
-				l2VNIWithGateway("good-l2", "vrfGood", 300, []string{"10.0.1.1/24"}),
-				l2VNIWithGateway("bad-l2-1", "vrfBad", 400, []string{"10.0.2.1/24"}),
-				l2VNIWithGateway("bad-l2-2", "vrfBad", 500, []string{"10.0.2.100/24"}),
+				l2VNIWithGateway("good-l2", l3vpnRoutingDomain("good-l3"), 300, []string{"10.0.1.1/24"}),
+				l2VNIWithGateway("bad-l2-1", l3vpnRoutingDomain("bad-l3"), 400, []string{"10.0.2.1/24"}),
+				l2VNIWithGateway("bad-l2-2", l3vpnRoutingDomain("bad-l3"), 500, []string{"10.0.2.100/24"}),
 			},
 			expectedFailures: []v1alpha1.FailedResource{
 				{Kind: openpeerrors.KindL3VPN, Name: "bad-l3", Reason: v1alpha1.FailedResourceReasonValidationFailed,
@@ -501,7 +501,7 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 					l3VPN("good-l3", "vrfGood", 100),
 				},
 				L2VNIs: []v1alpha1.L2VNI{
-					l2VNIWithGateway("good-l2", "vrfGood", 300, []string{"10.0.1.1/24"}),
+					l2VNIWithGateway("good-l2", l3vpnRoutingDomain("good-l3"), 300, []string{"10.0.1.1/24"}),
 				},
 			},
 		},
@@ -575,10 +575,27 @@ func l3VPN(name, vrf string, rdAssignedNumber int32) v1alpha1.L3VPN {
 	}
 }
 
-func l2VNI(name string, vrf *string, vni int32) v1alpha1.L2VNI {
+func l3vniRoutingDomain(name string) *v1alpha1.RoutingDomain {
+	return &v1alpha1.RoutingDomain{
+		Type:  v1alpha1.RoutingDomainTypeL3VNI,
+		L3VNI: &v1alpha1.L3VNIReference{Name: name},
+	}
+}
+
+func l3vpnRoutingDomain(name string) *v1alpha1.RoutingDomain {
+	return &v1alpha1.RoutingDomain{
+		Type:  v1alpha1.RoutingDomainTypeL3VPN,
+		L3VPN: &v1alpha1.L3VPNReference{Name: name},
+	}
+}
+
+func l2VNI(name string, rd *v1alpha1.RoutingDomain, vni int32) v1alpha1.L2VNI {
 	return v1alpha1.L2VNI{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
-		Spec:       v1alpha1.L2VNISpec{VRF: vrf, VNI: vni},
+		Spec: v1alpha1.L2VNISpec{
+			VNI:           vni,
+			RoutingDomain: rd,
+		},
 	}
 }
 
@@ -605,13 +622,8 @@ func srv6Underlays() []v1alpha1.Underlay {
 	}}
 }
 
-func l2VNIWithGateway(name, vrf string, vni int32, gatewayIPs []string) v1alpha1.L2VNI {
-	return v1alpha1.L2VNI{
-		ObjectMeta: metav1.ObjectMeta{Name: name},
-		Spec: v1alpha1.L2VNISpec{
-			VRF:          new(vrf),
-			VNI:          vni,
-			L2GatewayIPs: gatewayIPs,
-		},
-	}
+func l2VNIWithGateway(name string, rd *v1alpha1.RoutingDomain, vni int32, gatewayIPs []string) v1alpha1.L2VNI {
+	l2 := l2VNI(name, rd, vni)
+	l2.Spec.GatewayIPs = gatewayIPs
+	return l2
 }

@@ -10,7 +10,6 @@ import (
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 func TestFilterValidL3VPNs(t *testing.T) {
@@ -276,8 +275,8 @@ func TestFilterUniqueVRFsForL3VPNs(t *testing.T) {
 		name      string
 		l3vpns    []v1alpha1.L3VPN
 		wantValid []v1alpha1.L3VPN
-		wantSet   sets.Set[string]
-		wantErr   string
+
+		wantErr string
 	}{
 		{
 			name: "all resources in different VRFs",
@@ -321,7 +320,6 @@ func TestFilterUniqueVRFsForL3VPNs(t *testing.T) {
 					Status: &v1alpha1.L3VPNStatus{},
 				},
 			},
-			wantSet: sets.New("vrf1", "vrf2"),
 		},
 		{
 			name: "filters duplicate VRFs",
@@ -374,19 +372,16 @@ func TestFilterUniqueVRFsForL3VPNs(t *testing.T) {
 					Status: &v1alpha1.L3VPNStatus{},
 				},
 			},
-			wantSet: sets.New("vrf1", "vrf2"),
+
 			wantErr: "L3VPN/vni3: more than one L3VPN detected in VRF \"vrf1\": \"test/vni1\" already exists",
 		},
 	}
 
 	for _, tc := range tcs {
 		t.Run(tc.name, func(t *testing.T) {
-			valid, gotSet, err := FilterUniqueVRFsForL3VPNs(tc.l3vpns)
+			valid, err := FilterUniqueVRFsForL3VPNs(tc.l3vpns)
 			if diff := cmp.Diff(tc.wantValid, valid); diff != "" {
 				t.Fatalf("valid items mismatch (-want +got):\n%s", diff)
-			}
-			if !cmp.Equal(gotSet, tc.wantSet) {
-				t.Fatalf("expected to get the following set of VRFs: %v; but got %v", tc.wantSet, gotSet)
 			}
 
 			if tc.wantErr != "" {

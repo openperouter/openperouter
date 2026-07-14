@@ -1,14 +1,22 @@
 l2vnis:
-  - vrf: storage
+  - name: l2vni-storage
     vni: 300
     vxlanport: 4789
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: l3vni-red
     hostmaster:
       type: linux-bridge
       linuxBridge:
         name: br-storage
-  - vrf: management
+  - name: l2vni-management
     vni: 400
     vxlanport: 4789
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: l3vni-blue
     hostmaster:
       type: ovs-bridge
       ovsBridge:

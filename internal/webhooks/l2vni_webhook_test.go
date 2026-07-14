@@ -66,13 +66,16 @@ func TestValidateL2VNICreate(t *testing.T) {
 				},
 				Spec: v1alpha1.L2VNISpec{
 					VNI: 100,
-					VRF: new("vrfa"),
+					RoutingDomain: &v1alpha1.RoutingDomain{
+						Type:  v1alpha1.RoutingDomainTypeL3VNI,
+						L3VNI: &v1alpha1.L3VNIReference{Name: "existingL3VNI"},
+					},
 					NodeSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{
 							"nodeName": "node1",
 						},
 					},
-					L2GatewayIPs: []string{"192.0.3.0/24"},
+					GatewayIPs: []string{"192.0.3.0/24"},
 				},
 			},
 		},
@@ -104,6 +107,21 @@ func TestValidateL2VNICreate(t *testing.T) {
 								"nodeName": "node1",
 							},
 						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: "default",
+						Name:      "otherL3VNI",
+					},
+					Spec: v1alpha1.L3VNISpec{
+						VRF: "vrfb",
+						VNI: 300,
+						NodeSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{
+								"nodeName": "node1",
+							},
+						},
 						HostSession: &v1alpha1.HostSession{
 							LocalCIDR: v1alpha1.LocalCIDRConfig{
 								IPv4: new("192.0.2.0/24"),
@@ -119,13 +137,16 @@ func TestValidateL2VNICreate(t *testing.T) {
 				},
 				Spec: v1alpha1.L2VNISpec{
 					VNI: 100,
-					VRF: new("vrfb"),
+					RoutingDomain: &v1alpha1.RoutingDomain{
+						Type:  v1alpha1.RoutingDomainTypeL3VNI,
+						L3VNI: &v1alpha1.L3VNIReference{Name: "otherL3VNI"},
+					},
 					NodeSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{
 							"nodeName": "node1",
 						},
 					},
-					L2GatewayIPs: []string{"192.0.3.0/24"},
+					GatewayIPs: []string{"192.0.3.0/24"},
 				},
 			},
 		},
@@ -236,7 +257,10 @@ func TestValidateL2VNICreate(t *testing.T) {
 					Name:      "newL2VNI",
 				},
 				Spec: v1alpha1.L2VNISpec{
-					VRF: new("another"),
+					RoutingDomain: &v1alpha1.RoutingDomain{
+						Type:  v1alpha1.RoutingDomainTypeL3VPN,
+						L3VPN: &v1alpha1.L3VPNReference{Name: "existingL3VPN"},
+					},
 					VNI: 100,
 					NodeSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{
@@ -288,13 +312,16 @@ func TestValidateL2VNICreate(t *testing.T) {
 				},
 				Spec: v1alpha1.L2VNISpec{
 					VNI: 100,
-					VRF: new("vrfa"),
+					RoutingDomain: &v1alpha1.RoutingDomain{
+						Type:  v1alpha1.RoutingDomainTypeL3VNI,
+						L3VNI: &v1alpha1.L3VNIReference{Name: "existingL3VNI"},
+					},
 					NodeSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{
 							"nodeName": "node1",
 						},
 					},
-					L2GatewayIPs: []string{"192.0.2.0/24"},
+					GatewayIPs: []string{"192.0.2.0/24"},
 				},
 			},
 			errorString: "subnet overlap in VRF \"vrfa\": " +
@@ -362,8 +389,8 @@ func TestValidateL2VNIUpdate(t *testing.T) {
 					Name:      "newL2VNI",
 				},
 				Spec: v1alpha1.L2VNISpec{
-					VNI:          100,
-					L2GatewayIPs: []string{"192.0.2.1/24"},
+					VNI:        100,
+					GatewayIPs: []string{"192.0.2.1/24"},
 				},
 			},
 			oldL2VNI: &v1alpha1.L2VNI{
@@ -372,21 +399,21 @@ func TestValidateL2VNIUpdate(t *testing.T) {
 					Name:      "newL2VNI",
 				},
 				Spec: v1alpha1.L2VNISpec{
-					VNI:          100,
-					L2GatewayIPs: []string{"192.0.2.1/24"},
+					VNI:        100,
+					GatewayIPs: []string{"192.0.2.1/24"},
 				},
 			},
 		},
 		{
-			name: "L2GatewayIPs changed",
+			name: "GatewayIPs changed",
 			newL2VNI: &v1alpha1.L2VNI{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: "default",
 					Name:      "newL2VNI",
 				},
 				Spec: v1alpha1.L2VNISpec{
-					VNI:          100,
-					L2GatewayIPs: []string{"192.0.3.1/24"},
+					VNI:        100,
+					GatewayIPs: []string{"192.0.3.1/24"},
 				},
 			},
 			oldL2VNI: &v1alpha1.L2VNI{
@@ -395,11 +422,11 @@ func TestValidateL2VNIUpdate(t *testing.T) {
 					Name:      "newL2VNI",
 				},
 				Spec: v1alpha1.L2VNISpec{
-					VNI:          100,
-					L2GatewayIPs: []string{"192.0.2.1/24"},
+					VNI:        100,
+					GatewayIPs: []string{"192.0.2.1/24"},
 				},
 			},
-			errorString: "L2GatewayIPs cannot be changed",
+			errorString: "GatewayIPs cannot be changed",
 		},
 		{
 			name: "testing validateL2VNI is hit - duplicate VNI",

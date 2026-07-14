@@ -5,16 +5,13 @@ package conversion
 import (
 	"errors"
 	"fmt"
-	"maps"
 	"net"
-	"slices"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	openpeerrors "github.com/openperouter/openperouter/internal/errors"
 	"github.com/openperouter/openperouter/internal/filter"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/utils/ptr"
 )
 
@@ -66,7 +63,7 @@ func FilterUniqueL3VPNs(l3Vpns []v1alpha1.L3VPN) ([]v1alpha1.L3VPN, map[int32]st
 
 // FilterUniqueVRFsForL3VPNs checks VRF uniqueness among L3VPNs and returns the valid
 // L3VPNs alongside per-resource errors for duplicates.
-func FilterUniqueVRFsForL3VPNs(l3vpns []v1alpha1.L3VPN) ([]v1alpha1.L3VPN, sets.Set[string], error) {
+func FilterUniqueVRFsForL3VPNs(l3vpns []v1alpha1.L3VPN) ([]v1alpha1.L3VPN, error) {
 	reason := v1alpha1.FailedResourceReasonValidationFailed
 	var allErrors []error
 
@@ -87,9 +84,7 @@ func FilterUniqueVRFsForL3VPNs(l3vpns []v1alpha1.L3VPN) ([]v1alpha1.L3VPN, sets.
 		valid = append(valid, l3vpn)
 	}
 
-	vrfs := sets.New(slices.Collect(maps.Keys(vrfToVPN))...)
-
-	return valid, vrfs, errors.Join(allErrors...)
+	return valid, errors.Join(allErrors...)
 }
 
 // DetectMutuallyExclusiveOverlays returns a joined error for each conflicting resource if L3VNIs and L3VPNs

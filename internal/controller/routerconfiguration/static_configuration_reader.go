@@ -95,8 +95,13 @@ func staticConfigToAPIConfig(staticConfig *static.PERouterConfig, nodeName, name
 		underlays[i] = *result
 	}
 
+	staticName := func(name string) string {
+		return fmt.Sprintf("static-%s-%s", nodeName, name)
+	}
+
 	l3vnis := make([]v1alpha1.L3VNI, len(staticConfig.L3VNIs))
-	for i, spec := range staticConfig.L3VNIs {
+	for i, staticL3 := range staticConfig.L3VNIs {
+		spec := staticL3.L3VNISpec
 		spec.NodeSelector = nodeSelector
 		l3vnis[i] = v1alpha1.L3VNI{
 			TypeMeta: metav1.TypeMeta{
@@ -104,7 +109,7 @@ func staticConfigToAPIConfig(staticConfig *static.PERouterConfig, nodeName, name
 				APIVersion: "network.openperouter.io/v1alpha1",
 			},
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      fmt.Sprintf("static-%s-l3vni-%d", nodeName, i),
+				Name:      staticName(staticL3.Name),
 				Namespace: namespace,
 				Labels: map[string]string{
 					StaticSourceLabel: StaticSourceValue,
@@ -122,15 +127,24 @@ func staticConfigToAPIConfig(staticConfig *static.PERouterConfig, nodeName, name
 	}
 
 	l2vnis := make([]v1alpha1.L2VNI, len(staticConfig.L2VNIs))
-	for i, spec := range staticConfig.L2VNIs {
+	for i, staticL2 := range staticConfig.L2VNIs {
+		spec := staticL2.L2VNISpec
 		spec.NodeSelector = nodeSelector
+		if spec.RoutingDomain != nil {
+			if spec.RoutingDomain.L3VNI != nil {
+				spec.RoutingDomain.L3VNI.Name = staticName(spec.RoutingDomain.L3VNI.Name)
+			}
+			if spec.RoutingDomain.L3VPN != nil {
+				spec.RoutingDomain.L3VPN.Name = staticName(spec.RoutingDomain.L3VPN.Name)
+			}
+		}
 		l2vnis[i] = v1alpha1.L2VNI{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "L2VNI",
 				APIVersion: "network.openperouter.io/v1alpha1",
 			},
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      fmt.Sprintf("static-%s-l2vni-%d", nodeName, i),
+				Name:      staticName(staticL2.Name),
 				Namespace: namespace,
 				Labels: map[string]string{
 					StaticSourceLabel: StaticSourceValue,
@@ -148,16 +162,21 @@ func staticConfigToAPIConfig(staticConfig *static.PERouterConfig, nodeName, name
 	}
 
 	l3vpns := make([]v1alpha1.L3VPN, len(staticConfig.L3VPNs))
-	for i, spec := range staticConfig.L3VPNs {
+	for i, staticVPN := range staticConfig.L3VPNs {
 		l3vpns[i] = v1alpha1.L3VPN{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "L3VPN",
 				APIVersion: "network.openperouter.io/v1alpha1",
 			},
 			ObjectMeta: metav1.ObjectMeta{
-				Name: fmt.Sprintf("static-l3vpn-%d", i),
+				Name:      staticName(staticVPN.Name),
+				Namespace: namespace,
+				Labels: map[string]string{
+					StaticSourceLabel: StaticSourceValue,
+					StaticNodeLabel:   nodeName,
+				},
 			},
-			Spec: spec,
+			Spec: staticVPN.L3VPNSpec,
 		}
 		result, errs := applyDefaultsAndValidate(&l3vpns[i], l3vpnGVK)
 		if len(errs) > 0 {

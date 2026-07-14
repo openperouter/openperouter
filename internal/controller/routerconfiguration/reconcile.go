@@ -81,19 +81,16 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 	validL2VNIs, err = conversion.FilterUniqueL2VNIs(validL2VNIs, vnis)
 	resourceErrors = append(resourceErrors, err)
 
-	var vrfs sets.Set[string]
-	validL3VNIs, vrfs, err = conversion.FilterUniqueVRFsForL3VNIs(validL3VNIs)
+	validL3VNIs, err = conversion.FilterUniqueVRFsForL3VNIs(validL3VNIs)
 	resourceErrors = append(resourceErrors, err)
 
-	var vrfsForL3VPN sets.Set[string]
-	validL3VPNs, vrfsForL3VPN, err = conversion.FilterUniqueVRFsForL3VPNs(validL3VPNs)
+	validL3VPNs, err = conversion.FilterUniqueVRFsForL3VPNs(validL3VPNs)
 	resourceErrors = append(resourceErrors, err)
-	vrfs = vrfs.Union(vrfsForL3VPN)
+
+	validL2VNIs, err = filterL2VNIsWithInvalidRoutingDomain(validL2VNIs, validL3VNIs, validL3VPNs)
+	resourceErrors = append(resourceErrors, err)
 
 	validL3VNIs, validL3VPNs, validL2VNIs, err = conversion.FilterValidVRFSubnets(validL3VNIs, validL3VPNs, validL2VNIs)
-	resourceErrors = append(resourceErrors, err)
-
-	validL2VNIs, err = filterL2VNIsWithoutVRF(validL2VNIs, vrfs)
 	resourceErrors = append(resourceErrors, err)
 
 	var validPassthrough []v1alpha1.L3Passthrough
@@ -136,21 +133,56 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 	return errors.Join(resourceErrors...)
 }
 
-// filterL2VNIsWithoutVRF must be called after all L3VNI / L3VPN filtering is complete.
-func filterL2VNIsWithoutVRF(l2Vnis []v1alpha1.L2VNI, existingVRFs sets.Set[string]) ([]v1alpha1.L2VNI, error) {
-	var valid []v1alpha1.L2VNI
+// filterL2VNIsWithInvalidRoutingDomain must be called after all L3VNI/L3VPN filtering is complete.
+func filterL2VNIsWithInvalidRoutingDomain(
+	l2Vnis []v1alpha1.L2VNI,
+	validL3VNIs []v1alpha1.L3VNI,
+	validL3VPNs []v1alpha1.L3VPN,
+) ([]v1alpha1.L2VNI, error) {
+	if len(l2Vnis) == 0 {
+		return l2Vnis, nil
+	}
+
+	validL3VNINames := sets.New[string]()
+	for _, l3 := range validL3VNIs {
+		validL3VNINames.Insert(l3.Name)
+	}
+	validL3VPNNames := sets.New[string]()
+	for _, vpn := range validL3VPNs {
+		validL3VPNNames.Insert(vpn.Name)
+	}
+	valid := make([]v1alpha1.L2VNI, 0, len(l2Vnis))
 	var resourceErrors []error
 	for _, l2 := range l2Vnis {
-		if l2.Spec.VRF != nil && *l2.Spec.VRF != "" && !existingVRFs.Has(*l2.Spec.VRF) {
-			resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
-				Obj: v1alpha1.FailedResource{
-					Kind:    openpeerrors.KindL2VNI,
-					Name:    l2.Name,
-					Reason:  v1alpha1.FailedResourceReasonDependencyFailed,
-					Message: fmt.Sprintf("no valid L3 resource for VRF %q", *l2.Spec.VRF),
-				},
-			})
+		if l2.Spec.RoutingDomain == nil {
+			valid = append(valid, l2)
 			continue
+		}
+		switch l2.Spec.RoutingDomain.Type {
+		case v1alpha1.RoutingDomainTypeL3VNI:
+			if l2.Spec.RoutingDomain.L3VNI != nil && !validL3VNINames.Has(l2.Spec.RoutingDomain.L3VNI.Name) {
+				resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
+					Obj: v1alpha1.FailedResource{
+						Kind:    openpeerrors.KindL2VNI,
+						Name:    l2.Name,
+						Reason:  v1alpha1.FailedResourceReasonDependencyFailed,
+						Message: fmt.Sprintf("referenced L3VNI %q not found", l2.Spec.RoutingDomain.L3VNI.Name),
+					},
+				})
+				continue
+			}
+		case v1alpha1.RoutingDomainTypeL3VPN:
+			if l2.Spec.RoutingDomain.L3VPN != nil && !validL3VPNNames.Has(l2.Spec.RoutingDomain.L3VPN.Name) {
+				resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
+					Obj: v1alpha1.FailedResource{
+						Kind:    openpeerrors.KindL2VNI,
+						Name:    l2.Name,
+						Reason:  v1alpha1.FailedResourceReasonDependencyFailed,
+						Message: fmt.Sprintf("referenced L3VPN %q not found", l2.Spec.RoutingDomain.L3VPN.Name),
+					},
+				})
+				continue
+			}
 		}
 		valid = append(valid, l2)
 	}
