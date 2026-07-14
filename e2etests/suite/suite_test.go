@@ -34,6 +34,7 @@ func handleFlags() {
 	flag.BoolVar(&tests.HostMode, "systemdmode", false, "tells if openperouter is running on the host")
 	flag.BoolVar(&tests.GroutMode, "groutmode", false, "tells if openperouter is running with grout dataplane")
 	flag.BoolVar(&tests.SkipUnderlayPassthrough, "skip-underlay-passthrough", false, "skip creating underlay in passthrough tests")
+	flag.StringVar(&frrk8s.Namespace, "frrk8s-namespace", frrk8s.Namespace, "namespace where FRR-K8s pods run")
 	flag.Parse()
 }
 
@@ -60,7 +61,7 @@ var _ = ginkgo.BeforeSuite(func() {
 	log.SetLogger(zap.New(zap.WriteTo(ginkgo.GinkgoWriter), zap.UseDevMode(true)))
 	clientconfig, err := k8sclient.RestConfig()
 	Expect(err).NotTo(HaveOccurred(), "failed to load kubeconfig (KUBECONFIG=%s)", os.Getenv("KUBECONFIG"))
-	updater, err = config.UpdaterForCRs(clientconfig, openperouter.Namespace)
+	updater, err = config.UpdaterForCRs(clientconfig, openperouter.Namespace, frrk8s.Namespace)
 	Expect(err).NotTo(HaveOccurred())
 	tests.Updater = updater
 	kubeconfig := os.Getenv("KUBECONFIG")

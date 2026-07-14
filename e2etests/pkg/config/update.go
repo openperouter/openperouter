@@ -26,11 +26,12 @@ type Resources struct {
 }
 
 type Updater struct {
-	cli       client.Client
-	namespace string
+	cli             client.Client
+	namespace       string
+	frrk8sNamespace string
 }
 
-func UpdaterForCRs(r *rest.Config, ns string) (*Updater, error) {
+func UpdaterForCRs(r *rest.Config, ns, frrk8sNs string) (*Updater, error) {
 	myScheme := runtime.NewScheme()
 
 	if err := v1alpha1.AddToScheme(myScheme); err != nil {
@@ -54,8 +55,9 @@ func UpdaterForCRs(r *rest.Config, ns string) (*Updater, error) {
 	}
 
 	return &Updater{
-		cli:       cl,
-		namespace: ns,
+		cli:             cl,
+		namespace:       ns,
+		frrk8sNamespace: frrk8sNs,
 	}, nil
 }
 
@@ -105,7 +107,13 @@ func (o Updater) Update(r Resources) error {
 
 	// Iterating over the map will return the items in a random order.
 	for i, obj := range objects {
-		obj.SetNamespace(o.namespace)
+		switch obj.(type) {
+		case *frrk8sv1beta1.FRRConfiguration:
+			obj.SetNamespace(o.frrk8sNamespace)
+		default:
+			obj.SetNamespace(o.namespace)
+		}
+
 		_, err := controllerutil.CreateOrUpdate(context.Background(), o.cli, obj, func() error {
 			// the mutate function is expected to change the object when updating.
 			// we always override with the old version, and we change only the spec part.
@@ -182,7 +190,7 @@ func (o Updater) CleanButUnderlay() error {
 		return err
 	}
 	if err := o.cli.DeleteAllOf(context.Background(), &frrk8sv1beta1.FRRConfiguration{},
-		client.InNamespace(o.namespace)); err != nil {
+		client.InNamespace(o.frrk8sNamespace)); err != nil {
 		return err
 	}
 	return nil
