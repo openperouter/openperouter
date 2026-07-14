@@ -967,8 +967,12 @@ func vrfsWithL2Gateways(l2vnis []v1alpha1.L2VNI) map[string][]string {
 			if l2vni.Spec.VRF != nil {
 				vrf = *l2vni.Spec.VRF
 			}
-			res[vrf] = l2vni.Spec.L2GatewayIPs
+			res[vrf] = append(res[vrf], l2vni.Spec.L2GatewayIPs...)
 		}
+	}
+	for vrf := range res {
+		slices.Sort(res[vrf])
+		res[vrf] = slices.Compact(res[vrf])
 	}
 	return res
 }
