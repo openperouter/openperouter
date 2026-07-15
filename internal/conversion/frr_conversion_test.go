@@ -3473,7 +3473,7 @@ func TestTunnelEndpointToFRRDualStack(t *testing.T) {
 	}
 }
 
-func TestVrfsWithL2Gateways(t *testing.T) {
+func TestVRFsFromVNIsWithL2Gateways(t *testing.T) {
 	tests := []struct {
 		name   string
 		l2vnis []v1alpha1.L2VNI
@@ -3629,9 +3629,9 @@ func TestVrfsWithL2Gateways(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := vrfsWithL2Gateways(tt.l2vnis)
+			got := vrfsFromVNIsWithL2Gateways(tt.l2vnis)
 			if diff := cmp.Diff(tt.want, got); diff != "" {
-				t.Errorf("vrfsWithL2Gateways() mismatch (-want +got):\n%s", diff)
+				t.Errorf("vrfsFromVNIsWithL2Gateways() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
