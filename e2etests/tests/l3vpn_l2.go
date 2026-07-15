@@ -390,7 +390,7 @@ var _ = Describe("SRV6 routes between bgp and the fabric", Ordered, func() {
 			hostMaster: v1alpha1.HostMaster{
 				Type: linuxBridgeHostAttachment,
 				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
-					AutoCreate: ptr.To(true),
+					AutoCreate: new(true),
 				},
 			},
 		}),
