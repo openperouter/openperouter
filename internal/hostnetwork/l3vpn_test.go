@@ -405,29 +405,47 @@ var _ = Describe("L3 VPN configuration", func() {
 		Expect(errors.As(err, &netlink.LinkNotFoundError{})).To(BeTrue(), "host veth should not exist when LinkIPs is nil")
 	})
 
-	It("should set veth MTU to underlay MTU minus SRv6 overhead when an underlay interface is configured", func() {
+	It("should set veth MTU to underlay MTU minus SRv6 overhead when an underlay interface "+
+		"is configured with L3VPN + L2VNI", func() {
 		const underlayMTU = 9000
 		setupFakeUnderlay(testNS, "testunderlayl3", underlayMTU)
 
-		params := L3VPNParams{
+		l3vpnParams := L3VPNParams{
 			VRF:              "testred",
 			TargetNS:         testNSPath(),
 			RDAssignedNumber: 100,
+			TunnelOverhead:   SRv6Overhead,
 			LinkIPs: &LinkIPs{
 				HostIPv4: "192.168.9.1/32",
 				NSIPv4:   "192.168.9.0/32",
 			},
 		}
 
-		err := SetupL3VPN(context.Background(), params)
+		l2vniParams := L2VNIParams{
+			VNIParams: VNIParams{
+				VRF:            "testred",
+				TargetNS:       testNSPath(),
+				VTEPIP:         "192.170.0.9/32",
+				VNI:            100,
+				VXLanPort:      new(int32(4789)),
+				TunnelOverhead: SRv6Overhead,
+			},
+		}
+
+		err := SetupL3VPN(context.Background(), l3vpnParams)
+		Expect(err).NotTo(HaveOccurred())
+		err = SetupL2VNI(context.Background(), l2vniParams)
 		Expect(err).NotTo(HaveOccurred())
 
 		expectedMTU := underlayMTU - SRv6Overhead
 		Eventually(func(g Gomega) {
-			vethNames := vethNamesFromL3VPN(params.RDAssignedNumber)
-			validateVethMTU(g, vethNames, expectedMTU)
+			l3vpnVethNames := vethNamesFromL3VPN(l3vpnParams.RDAssignedNumber)
+			validateVethMTU(g, l3vpnVethNames, expectedMTU)
+			l2vniVethNames := vethNamesFromVNI(l2vniParams.VNI)
+			validateVethMTU(g, l2vniVethNames, expectedMTU)
 			_ = netnamespace.In(testNS, func() error {
-				validateNSVethMTU(g, vethNames, expectedMTU)
+				validateNSVethMTU(g, l3vpnVethNames, expectedMTU)
+				validateNSVethMTU(g, l2vniVethNames, expectedMTU)
 				return nil
 			})
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
