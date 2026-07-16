@@ -39,6 +39,14 @@ spec:
           spec:
             description: spec defines the desired state of OpenPERouter.
             properties:
+              datapath:
+                default: kernel
+                description: 'datapath specifies the datapath to use. Allowed values
+                  are: kernel, grout. (default: kernel)'
+                enum:
+                - kernel
+                - grout
+                type: string
               healthProbePort:
                 default: 9081
                 description: 'healthProbePort specifies the port for the controller''s

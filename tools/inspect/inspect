@@ -1,0 +1,236 @@
+#!/usr/bin/env bash
+
+# SPDX-License-Identifier:Apache-2.0
+
+set -ueo pipefail
+
+SCRIPT_DIR="$(dirname "$(realpath -s "$0")")"
+
+# script for collecting routing infrastructure information 
+readonly ROUTER_INFO_SCRIPT="${SCRIPT_DIR}/router_info"
+# script for collecting network information
+readonly NET_INFO_SCRIPT="${SCRIPT_DIR}/net_info"
+# router pod's label selector
+readonly ROUTER_LABEL="app=router"
+# router pod's container who has access to perouter netns (used for collecting routing infra info)
+readonly ROUTER_INFRA_CONTAINER="frr"
+# pod's container who has access to node root netns (used for collecting root netns info)
+readonly HOST_NET_CONTAINER="reloader"
+# router infrastructure netns name
+readonly NETNS="perouter"
+# openperouter system resources to collect
+readonly CORE_RESOURCES=(\
+	"daemonsets" \
+	"deployments" \
+	"pods" \
+	"services" \
+	"configmaps" \
+	"roles" \
+	"rolebindings" \
+	"serviceaccounts" \
+	"routernodeconfigurationstatuses" \
+)
+# openperouter config resources to collect
+readonly CONFIG_RESOURCES=(\
+	"underlays" \
+	"l2vnis" \
+	"l3vnis" \
+	"l3passthroughs" \
+	"rawfrrconfigs" \
+)
+
+function dump_overview() {
+	local -r ctl="$1"
+	local -r dir="$2"
+
+	mkdir -p "$dir"
+
+	local -r logfile="${dir}/all.log"
+	local -r all=("${CORE_RESOURCES[@]}" "${CONFIG_RESOURCES[@]}")
+	{
+		for r in "${all[@]}"; do
+			echo "# $r"
+			$ctl get "$r" -o wide
+			echo "" 
+		done
+	} > "$logfile"
+
+	echo "Dumped namespace resources overview to [$logfile]"
+}
+
+function dump_core_resources_from_ns() {
+	local -r ctl="$1"
+	local -r namespace="$2"
+	local -r base_dir="$3"
+
+	local -r ns_dir="${base_dir}/${namespace}"	
+	mkdir -p "$ns_dir"
+
+	local logfile="${ns_dir}/namespace.yaml"
+	$ctl get namespace "$namespace" -o yaml > "$logfile"
+	echo "Dumped namespace [$namespace] manifest to [$logfile]"
+	
+	logfile="${ns_dir}/events.yaml"
+	$ctl get events -n "$namespace" -o yaml > "$logfile"
+	echo "Dumped events to [$logfile]"
+		
+	for r in "${CORE_RESOURCES[@]}"; do
+		dump_resource "${ctl}" "${namespace}" "${r}" "${ns_dir}"
+	done
+}
+
+function dump_config_resources_from_all_ns() {
+	local -r ctl="$1"
+	local -r base_dir="$2"
+
+	local namespaces
+	for r in "${CONFIG_RESOURCES[@]}"; do
+		namespaces="$($ctl get --all-namespaces "$r" -o jsonpath='{.items[*].metadata.namespace}')"
+		if [[ -z $namespaces ]]; then
+			continue
+		fi
+		for namespace in $namespaces; do
+			dump_resource "${ctl}" "${namespace}" "${r}" "${base_dir}/${namespace}"
+		done
+	done
+}
+
+function dump_resource() {
+	local -r ctl="$1"
+	local -r ns="$2"
+	local -r type="$3"
+	local -r base_dir="$4"
+
+	local -r objs="$($ctl get -n "$ns" "$type" -o jsonpath='{.items[*].metadata.name}')"
+	if [[ -z $objs ]]; then
+		return
+	fi
+
+	local -r dir="${base_dir}/${type}"
+	mkdir -p "$dir"
+
+	local logfile
+	for obj in $objs; do
+		logfile="${dir}/${obj}.yaml"
+		$ctl get -n "$ns" "$type" "$obj" -o yaml > "$logfile" 
+		echo "Dumped resource manifest [$type][$ns/$obj] [$logfile]"
+	done
+}
+
+function dump_pod_logs() {
+	local -r ctl="$1"
+	local -r dir="$2"
+	local -r opts="$3"
+
+	mkdir -p "$dir"
+
+	local -r pods="$($ctl get pods -o jsonpath='{.items[*].metadata.name}')"
+	local logfile ctl_logs
+	for p in $pods; do
+		local containers=()
+		containers=("$($ctl get pods "$p" -o jsonpath='{.spec.containers[*].name}')")
+		containers+=("$($ctl get pods "$p" -o jsonpath='{.spec.initContainers[*].name}')")
+		for c in ${containers[@]}; do
+			logfile="${dir}/${p}_${c}.log"
+			ctl_logs="$ctl logs $p -c $c $opts"
+			$ctl_logs > "$logfile"
+			echo "Dumped logs for [$p/$c] to [$logfile]"
+
+			if $ctl_logs --previous &> /dev/null; then
+				logfile="${dir}/${p}_${c}_previous.log"
+				$ctl_logs --previous > "$logfile"
+				echo "Dumped previous logs for [$p/$c] to [$logfile]"
+			fi
+		done
+	done
+}
+
+function dump_node_info() {
+	local -r ctl="$1"
+	local -r base_dir="$2"
+
+	local -r router_pods="$($ctl get pods -l "$ROUTER_LABEL" -o jsonpath='{.items[*].metadata.name}')"
+	local node_name logfile
+	for p in $router_pods; do
+		node_name="$($ctl get pods "$p" -o jsonpath='{.spec.nodeName}')"
+		node_dir="${base_dir}/${node_name}"
+				
+		mkdir -p "$node_dir"
+		
+		logfile="${node_dir}/root_netns_info.log"
+		$ctl exec -i "$p" -c "$HOST_NET_CONTAINER" -- bash <<< "$(cat "$NET_INFO_SCRIPT")" &> "$logfile"
+		echo "Dumped root netns info of node [$node_name] pod [$p/$HOST_NET_CONTAINER] to [$logfile]"
+
+		logfile="${node_dir}/router_netns_info.log"
+		$ctl exec -i "$p" -c "$ROUTER_INFRA_CONTAINER" -- bash <<< "NETNS=$NETNS $(cat "$NET_INFO_SCRIPT")" &> "$logfile"
+		echo "Dumped router netns info of node [$node_name] pod [$p/$ROUTER_INFRA_CONTAINER] to [$logfile]"
+
+		logfile="${node_dir}/router_info.log"
+		$ctl exec -i "$p" -c "$ROUTER_INFRA_CONTAINER" -- bash <<< "$(cat "$ROUTER_INFO_SCRIPT")" &> "$logfile"
+		echo "Dumped router info of node [$node_name] pod [$p/$ROUTER_INFRA_CONTAINER] to [$logfile]"
+	done
+}
+
+function help() {
+    cat <<EOF
+Inspect OpenPERouter deployment and export related resources and logs.
+
+Usage: inspect [options]=<value>
+
+Example
+  inspect --dest-dir=/tmp/openperouter-logs --k8s-client=./bin/kubectl --namespace=openperouter-system
+
+Options:
+  --namespace   OpenPERouter system namespace name (default: "openperouter-system")
+  --dest-dir    The directory to store artifacts (default: "openperouter-inspect")
+  --k8s-client  Kubernetes client binary path (default: "kubectl")
+  --since       Collect pod logs newer then relative duration, e.g.: 5s, 10m, 2h.
+  -h, --help    Show this help message and exit
+EOF
+}
+
+NAMESPACE="openperouter-system"
+ARTIFACTS_DIR="./openperouter-inspect"
+CTL_BIN="kubectl"
+SINCE_DURATION=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --namespace=*)   NAMESPACE="${1#*=}" ;;
+        --dest-dir=*)    ARTIFACTS_DIR="${1#*=}" ;;
+        --k8s-client=*)  CTL_BIN="${1#*=}" ;;
+        --since=*)       SINCE_DURATION="${1#*=}" ;;
+        -h | --help)     help; exit 0 ;;
+        *) echo "Unknown option: $1"; help; exit 1 ;;
+    esac
+	shift
+done
+
+if ! command -v "${CTL_BIN}" &> /dev/null; then
+	echo "FATAL: '${CTL_BIN}' command not found" && exit 1
+fi
+
+if ! "${CTL_BIN}" get ns "${NAMESPACE}" &> /dev/null; then
+	echo "FATAL: '${NAMESPACE}' namespace not found. Make sure KUBECONFIG is set correctly." && exit 1
+fi
+
+log_opts=""
+if [[ -n $SINCE_DURATION ]]; then
+  log_opts="--since $SINCE_DURATION"
+fi
+
+mkdir -p "${ARTIFACTS_DIR}"
+date --rfc-3339=ns > "${ARTIFACTS_DIR}/timestamp"
+
+(
+	readonly CTL="${CTL_BIN} -n ${NAMESPACE}"
+	readonly NS_DIR="${ARTIFACTS_DIR}/${NAMESPACE}"
+	set +e
+	dump_overview  "${CTL}" "${NS_DIR}/overview"
+	dump_core_resources_from_ns       "${CTL_BIN}" "${NAMESPACE}" "${ARTIFACTS_DIR}"
+	dump_config_resources_from_all_ns "${CTL_BIN}" "${ARTIFACTS_DIR}"
+	dump_pod_logs  "${CTL}" "${NS_DIR}/pod_logs" "${log_opts}"
+	dump_node_info "${CTL}" "${ARTIFACTS_DIR}/node_info"
+) 2>&1 | tee -a "${ARTIFACTS_DIR}/inspect.log"
+
+echo "Inspect completed. Artifacts are stored in ${ARTIFACTS_DIR}"

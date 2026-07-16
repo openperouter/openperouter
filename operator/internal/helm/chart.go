@@ -19,12 +19,11 @@ package helm
 import (
 	operatorapi "github.com/openperouter/openperouter/operator/api/v1alpha1"
 	"github.com/openperouter/openperouter/operator/internal/envconfig"
-	"helm.sh/helm/v3/pkg/action"
-	"helm.sh/helm/v3/pkg/chart"
-	"helm.sh/helm/v3/pkg/chart/loader"
-	"helm.sh/helm/v3/pkg/cli"
-	"helm.sh/helm/v3/pkg/cli/values"
-	"helm.sh/helm/v3/pkg/getter"
+	"helm.sh/helm/v4/pkg/action"
+	"helm.sh/helm/v4/pkg/chart"
+	"helm.sh/helm/v4/pkg/chart/loader"
+	"helm.sh/helm/v4/pkg/cli"
+	"helm.sh/helm/v4/pkg/release"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/utils/ptr"
 )
@@ -41,7 +40,7 @@ const (
 type Chart struct {
 	client      *action.Install
 	envSettings *cli.EnvSettings
-	chart       *chart.Chart
+	chart       chart.Charter
 }
 
 // NewChart initializes helm chart after loading it from given
@@ -52,8 +51,7 @@ func NewChart(chartPath, chartName, namespace string) (*Chart, error) {
 	chart.envSettings = cli.New()
 	chart.client = action.NewInstall(new(action.Configuration))
 	chart.client.ReleaseName = chartName
-	chart.client.DryRun = true
-	chart.client.ClientOnly = true
+	chart.client.DryRunStrategy = action.DryRunClient
 	chart.client.Namespace = namespace
 	cp, err := chart.client.LocateChart(chartPath, chart.envSettings)
 	if err != nil {
@@ -69,18 +67,17 @@ func NewChart(chartPath, chartName, namespace string) (*Chart, error) {
 // Objects retrieves manifests from chart after patching custom values passed in crdConfig
 // and environment variables.
 func (h *Chart) Objects(envConfig envconfig.EnvConfig, crdConfig *operatorapi.OpenPERouter) ([]*unstructured.Unstructured, error) {
-	chartValueOpts := &values.Options{}
-	chartValues, err := chartValueOpts.MergeValues(getter.All(h.envSettings))
-	if err != nil {
-		return nil, err
-	}
-
+	chartValues := map[string]any{}
 	patchChartValues(envConfig, crdConfig, chartValues)
-	release, err := h.client.Run(h.chart, chartValues)
+	rel, err := h.client.Run(h.chart, chartValues)
 	if err != nil {
 		return nil, err
 	}
-	objs, err := parseManifest(release.Manifest)
+	relAccessor, err := release.NewAccessor(rel)
+	if err != nil {
+		return nil, err
+	}
+	objs, err := parseManifest(relAccessor.Manifest())
 	if err != nil {
 		return nil, err
 	}
@@ -135,6 +132,26 @@ func patchChartValues(envConfig envconfig.EnvConfig, crdConfig *operatorapi.Open
 	if crdConfig.Spec.HealthProbePort != nil && *crdConfig.Spec.HealthProbePort != 0 {
 		openperouterValues["controller"] = map[string]any{
 			"healthProbePort": *crdConfig.Spec.HealthProbePort,
+		}
+	}
+
+	datapath := ptr.Deref(crdConfig.Spec.Datapath, "kernel")
+	openperouterValues["datapath"] = datapath
+	if datapath == "grout" {
+		groutImage := envConfig.GroutImage
+		if groutImage == nil {
+			groutImage = &envconfig.ImageInfo{
+				Repo: "quay.io/openperouter/router",
+				Tag:  "main-grout",
+			}
+		}
+
+		openperouterValues["grout"] = map[string]any{
+			"enabled": true,
+			"image": map[string]any{
+				"repository": groutImage.Repo,
+				"tag":        groutImage.Tag,
+			},
 		}
 	}
 

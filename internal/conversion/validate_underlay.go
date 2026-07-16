@@ -67,8 +67,12 @@ func validateUnderlay(underlay v1alpha1.Underlay) error {
 		return fmt.Errorf("underlay %s has duplicate neighbor address: %w", underlay.Name, err)
 	}
 
-	if err := validateNoDuplicates(underlay.Spec.Nics); err != nil {
-		return fmt.Errorf("underlay %s has duplicate nic name: %w", underlay.Name, err)
+	underlayInterfaces, err := underlayNetworkDeviceInterfaceNames(underlay.Spec.Interfaces)
+	if err != nil {
+		return err
+	}
+	if err := validateNoDuplicates(underlayInterfaces); err != nil {
+		return fmt.Errorf("underlay %s has duplicate interface name: %w", underlay.Name, err)
 	}
 
 	if underlay.Spec.TunnelEndpoint != nil {
@@ -77,12 +81,26 @@ func validateUnderlay(underlay v1alpha1.Underlay) error {
 		}
 	}
 
-	for _, n := range underlay.Spec.Nics {
+	for _, n := range underlayInterfaces {
 		if err := isValidInterfaceName(n); err != nil {
-			return fmt.Errorf("invalid nic name for underlay %s: %s - %w", underlay.Name, n, err)
+			return fmt.Errorf("invalid interface name for underlay %s: %s - %w", underlay.Name, n, err)
 		}
 	}
 
+	srv6Config := underlay.Spec.SRV6
+	if srv6Config == nil {
+		return nil
+	}
+	if _, isValid := locatorFormats[srv6Config.Locator.Format]; !isValid {
+		return &openpeerrors.ResourceError{
+			Obj: v1alpha1.FailedResource{
+				Kind:    v1alpha1.FailedResourceKind("Underlay"),
+				Name:    underlay.Name,
+				Reason:  v1alpha1.FailedResourceReasonValidationFailed,
+				Message: fmt.Sprintf("invalid locator format %q", srv6Config.Locator.Format),
+			},
+		}
+	}
 	return nil
 }
 
@@ -101,8 +119,13 @@ func validateUnderlayTunnelEndpoint(underlay *v1alpha1.Underlay) error {
 		return fmt.Errorf("invalid tunnel endpoint CIDRs for underlay %s: %v - %w",
 			underlay.Name, cidrs, err)
 	}
-	if af != ipfamily.IPv4 && af != ipfamily.DualStack {
-		return fmt.Errorf("invalid tunnel endpoint CIDRs for underlay %s, no IPv4 CIDR found: %v",
+
+	if underlay.Spec.SRV6 == nil {
+		return nil
+	}
+
+	if af == ipfamily.IPv4 {
+		return fmt.Errorf("invalid tunnel endpoint CIDRs for underlay %s with SRv6, no IPv6 CIDR found: %v",
 			underlay.Name, cidrs)
 	}
 	return nil

@@ -56,6 +56,9 @@ Volume=/run/dbus/system_bus_socket:/host/dbus/system_bus_socket:rw
 # The directory is pre-created by ExecStartPre if it doesn't exist.
 Volume=/var/run/openvswitch:/var/run/openvswitch:rshared
 
+# CNI result cache - persistent across container restarts
+Volume=/var/lib/openperouter/cni/cache:/var/lib/openperouter/cni/cache:rw
+
 # Environment variables
 Environment=KUBECONFIG=/shared/kubeconfig
 
@@ -69,7 +72,7 @@ PodmanArgs=--pid=host
 PodmanArgs=--uts=host
 
 # Controller command-line arguments
-Exec=--frrconfig /etc/perouter/frr/frr.conf --pid-path /etc/perouter/frr/frr.pid --reloader-socket /etc/perouter/frr/frr.socket --mode host --namespace openperouter-system
+Exec=--frrconfig /etc/perouter/frr/frr.conf --pid-path /etc/perouter/frr/frr.pid --reloader-socket /etc/perouter/frr/frr.socket --mode host --namespace openperouter-system --cni-bin-dir=/opt/openperouter/cni/bin/ --cni-cache-dir=/var/lib/openperouter/cni/cache
 
 # Health check - kill container if controller stops responding,
 # systemd Restart=on-failure handles restart
@@ -92,6 +95,7 @@ ExecStartPre=/usr/bin/mkdir -p /etc/perouter/frr
 ExecStartPre=/usr/bin/mkdir -p /var/lib/hostbridge
 ExecStartPre=/usr/bin/mkdir -p /var/lib/openperouter
 ExecStartPre=/usr/bin/mkdir -p /var/run/openvswitch
+ExecStartPre=/usr/bin/mkdir -p /var/lib/openperouter/cni/cache
 
 # If a can_start.sh script is mounted, run it and wait for success.
 # This allows deferring startup until external dependencies are ready.

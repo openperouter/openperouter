@@ -24,7 +24,6 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/url"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 )
@@ -861,16 +860,8 @@ var _ = Describe("Configuration Resiliency", Ordered, func() {
 		Expect(Updater.CleanButUnderlay()).To(Succeed())
 
 		Eventually(func(g Gomega) {
-			status, err := openperouter.GetNodeStatus(Updater.Client(), infra.KindControlPlane)
-			g.Expect(err).NotTo(HaveOccurred())
-
-			readyCond := apimeta.FindStatusCondition(status.Status.Conditions, "Ready")
-			g.Expect(readyCond).NotTo(BeNil())
-			g.Expect(readyCond.Status).To(Equal(metav1.ConditionTrue))
-
-			degradedCond := apimeta.FindStatusCondition(status.Status.Conditions, "Degraded")
-			g.Expect(degradedCond).NotTo(BeNil())
-			g.Expect(degradedCond.Status).To(Equal(metav1.ConditionFalse))
+			expectNodeCondition(g, infra.KindControlPlane, "Ready", metav1.ConditionTrue)
+			expectNodeCondition(g, infra.KindControlPlane, "Degraded", metav1.ConditionFalse)
 		}, time.Minute, time.Second).Should(Succeed())
 	})
 
@@ -891,13 +882,8 @@ var _ = Describe("Configuration Resiliency", Ordered, func() {
 				g.Expect(failed.Reason).To(Equal(v1alpha1.FailedResourceReasonValidationFailed))
 				g.Expect(failed.Message).To(ContainSubstring("duplicate vni"))
 
-				readyCond := apimeta.FindStatusCondition(status.Status.Conditions, "Ready")
-				g.Expect(readyCond).NotTo(BeNil())
-				g.Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
-
-				degradedCond := apimeta.FindStatusCondition(status.Status.Conditions, "Degraded")
-				g.Expect(degradedCond).NotTo(BeNil())
-				g.Expect(degradedCond.Status).To(Equal(metav1.ConditionTrue))
+				expectNodeCondition(g, infra.KindControlPlane, "Ready", metav1.ConditionFalse)
+				expectNodeCondition(g, infra.KindControlPlane, "Degraded", metav1.ConditionTrue)
 			}, time.Minute, time.Second).Should(Succeed())
 		})
 	})
@@ -949,11 +935,9 @@ var _ = Describe("Configuration Resiliency", Ordered, func() {
 				g.Expect(failedByName).To(HaveKey("cascade-l2"))
 				g.Expect(failedByName["cascade-l2"].Kind).To(Equal(v1alpha1.FailedResourceKind("L2VNI")))
 				g.Expect(failedByName["cascade-l2"].Reason).To(Equal(v1alpha1.FailedResourceReasonDependencyFailed))
-				g.Expect(failedByName["cascade-l2"].Message).To(ContainSubstring("no valid L3VNI for L3 domain"))
+				g.Expect(failedByName["cascade-l2"].Message).To(ContainSubstring("no valid L3 resource for VRF"))
 
-				readyCond := apimeta.FindStatusCondition(status.Status.Conditions, "Ready")
-				g.Expect(readyCond).NotTo(BeNil())
-				g.Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
+				expectNodeCondition(g, infra.KindControlPlane, "Ready", metav1.ConditionFalse)
 			}, time.Minute, time.Second).Should(Succeed())
 		})
 	})
@@ -984,11 +968,9 @@ var _ = Describe("Configuration Resiliency", Ordered, func() {
 				g.Expect(failed.Kind).To(Equal(v1alpha1.FailedResourceKind("L2VNI")))
 				g.Expect(failed.Name).To(Equal("orphan-l2"))
 				g.Expect(failed.Reason).To(Equal(v1alpha1.FailedResourceReasonDependencyFailed))
-				g.Expect(failed.Message).To(ContainSubstring("no valid L3VNI for L3 domain"))
+				g.Expect(failed.Message).To(ContainSubstring("no valid L3 resource for VRF"))
 
-				readyCond := apimeta.FindStatusCondition(status.Status.Conditions, "Ready")
-				g.Expect(readyCond).NotTo(BeNil())
-				g.Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
+				expectNodeCondition(g, infra.KindControlPlane, "Ready", metav1.ConditionFalse)
 			}, time.Minute, time.Second).Should(Succeed())
 		})
 	})
@@ -1022,13 +1004,8 @@ var _ = Describe("Configuration Resiliency", Ordered, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(status.Status.FailedResources).To(BeEmpty())
 
-				readyCond := apimeta.FindStatusCondition(status.Status.Conditions, "Ready")
-				g.Expect(readyCond).NotTo(BeNil())
-				g.Expect(readyCond.Status).To(Equal(metav1.ConditionTrue))
-
-				degradedCond := apimeta.FindStatusCondition(status.Status.Conditions, "Degraded")
-				g.Expect(degradedCond).NotTo(BeNil())
-				g.Expect(degradedCond.Status).To(Equal(metav1.ConditionFalse))
+				expectNodeCondition(g, infra.KindControlPlane, "Ready", metav1.ConditionTrue)
+				expectNodeCondition(g, infra.KindControlPlane, "Degraded", metav1.ConditionFalse)
 			}, time.Minute, time.Second).Should(Succeed())
 		})
 	})

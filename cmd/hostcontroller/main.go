@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"k8s.io/apimachinery/pkg/labels"
@@ -48,6 +49,8 @@ import (
 	"github.com/openperouter/openperouter/api/static"
 	periov1alpha1 "github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/buildversion"
+	"github.com/openperouter/openperouter/internal/cni"
+	"github.com/openperouter/openperouter/internal/controller/nodeindex"
 	"github.com/openperouter/openperouter/internal/controller/routerconfiguration"
 	"github.com/openperouter/openperouter/internal/filewatcher"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
@@ -59,8 +62,10 @@ import (
 )
 
 const (
-	modeK8s  = "k8s"
-	modeHost = "host"
+	datapathKernel = "kernel"
+	datapathGrout  = "grout"
+	modeK8s        = "k8s"
+	modeHost       = "host"
 )
 
 var (
@@ -89,14 +94,18 @@ type k8sModeParameters struct {
 }
 
 type parameters struct {
-	probeAddr      string
-	frrConfigPath  string
-	reloaderSocket string
-	mode           string
-	ovsSocketPath  string
-	nodeName       string
-	namespace      string
-	logLevel       string
+	probeAddr       string
+	frrConfigPath   string
+	reloaderSocket  string
+	mode            string
+	ovsSocketPath   string
+	nodeName        string
+	namespace       string
+	logLevel        string
+	cniBinDir       string
+	cniCacheDir     string
+	datapath        string
+	groutSocketPath string
 }
 
 func main() {
@@ -113,6 +122,9 @@ func main() {
 		"the OVS database socket path")
 
 	flag.StringVar(&args.mode, "mode", modeK8s, "the mode to run in (k8s or host)")
+
+	flag.StringVar(&args.datapath, "datapath", "kernel", "The datapath to use (kernel or grout)")
+	flag.StringVar(&args.groutSocketPath, "grout-socket", "/var/run/grout/grout.sock", "Path to the grout control socket")
 
 	flag.StringVar(&args.nodeName, "nodename", "", "The name of the node the controller runs on")
 	flag.StringVar(&args.namespace, "namespace", "", "The namespace the controller runs in")
@@ -132,6 +144,10 @@ func main() {
 		systemdctl.HostDBusSocket, "the path of systemd control socket")
 	flag.IntVar(&hostModeParams.routerHealthCheckPort, "router-health-check-port",
 		9080, "the port for router health check endpoint")
+	flag.StringVar(&args.cniBinDir, "cni-bin-dir", "/opt/openperouter/cni/bin/",
+		"colon-separated list of directories to search for CNI plugin binaries")
+	flag.StringVar(&args.cniCacheDir, "cni-cache-dir", "/var/lib/openperouter/cni/cache",
+		"directory to store CNI result cache")
 
 	flag.Parse()
 
@@ -146,6 +162,30 @@ func main() {
 	ctrl.SetLogger(logr.FromSlogHandler(logger.Handler()))
 	setupLog.Info("version", "version", buildversion.Version())
 	setupLog.Info("arguments", "args", fmt.Sprintf("%+v", args))
+
+	if args.cniBinDir == "" {
+		setupLog.Info("cni-bin-dir cannot be empty")
+		os.Exit(1)
+	}
+	if args.cniCacheDir == "" {
+		setupLog.Info("cni-cache-dir cannot be empty")
+		os.Exit(1)
+	}
+
+	var cniPluginDirs []string
+	for dir := range strings.SplitSeq(args.cniBinDir, ":") {
+		if trimmed := strings.TrimSpace(dir); trimmed != "" {
+			cniPluginDirs = append(cniPluginDirs, trimmed)
+		}
+	}
+	if len(cniPluginDirs) == 0 {
+		setupLog.Info("no valid CNI plugin directories specified", "cni-bin-dir", args.cniBinDir)
+		os.Exit(1)
+	}
+
+	cniInvoker := cni.NewInvoker(cniPluginDirs, args.cniCacheDir)
+	setupLog.Info("CNI plugin invoker initialized", "pluginDirs", cniInvoker.PluginDirs(), "cacheDir", args.cniCacheDir)
+	_ = cniInvoker
 
 	// Setup signal handler once for the entire process
 	ctx := ctrl.SetupSignalHandler()
@@ -228,6 +268,18 @@ func runHostMode(
 
 	logger.Info("kubernetes API is now available, stopping static reconciler and starting k8s reconciler")
 
+	k8sClientset, err := kubernetes.NewForConfig(k8sConfig)
+	if err != nil {
+		logger.Error("failed to create kubernetes clientset for node annotation", "error", err)
+		os.Exit(1)
+	}
+	if err := nodeindex.AnnotateNodeIndex(ctx, k8sClientset, args.nodeName, nodeConfig.NodeIndex.Index); err != nil {
+		logger.Error("failed to annotate node with node index", "error", err)
+		os.Exit(1)
+	}
+	logger.Info("successfully annotated node with node index",
+		"node", args.nodeName, "nodeIndex", nodeConfig.NodeIndex.Index)
+
 	stopStaticReconciler()
 	// Wait for the static reconciler to fully stop and release the health probe port
 	// before starting the K8s reconciler, which binds the same port.
@@ -260,27 +312,33 @@ func runK8sConfigReconcilerHostMode(ctx context.Context,
 	routerProvider := &routerconfiguration.RouterHostProvider{
 		FRRConfigPath:         args.frrConfigPath,
 		RouterPidFilePath:     hostModeParams.hostContainerPidPath,
-		CurrentNodeIndex:      nodeConfig.NodeIndex,
+		CurrentNodeIndex:      nodeConfig.NodeIndex.Index,
 		SystemdSocketPath:     hostModeParams.systemdSocketPath,
 		RouterHealthCheckPort: hostModeParams.routerHealthCheckPort,
 	}
 
-	// Create trigger channel for file watcher
+	// Create trigger channels for both controllers
 	triggerChan := make(chan event.GenericEvent, 1)
+	mirrorTriggerChan := make(chan event.GenericEvent, 1)
 
+	var datapathConfigurator routerconfiguration.DatapathConfigurator = &routerconfiguration.KernelDatapathConfigurator{}
+	if args.datapath == datapathGrout {
+		datapathConfigurator = routerconfiguration.NewGroutConfigurator(args.groutSocketPath)
+	}
 	apiReconciler := &routerconfiguration.PERouterReconciler{
-		Client:          mgr.GetClient(),
-		Scheme:          mgr.GetScheme(),
-		LogLevel:        args.logLevel,
-		Logger:          logger,
-		MyNode:          args.nodeName,
-		MyNamespace:     args.namespace,
-		FRRReloadSocket: args.reloaderSocket,
-		FRRConfigPath:   args.frrConfigPath,
-		RouterProvider:  routerProvider,
-		StaticConfigDir: hostModeParams.configurationDir,
-		NodeConfigPath:  hostModeParams.nodeConfigPath,
-		TriggerChan:     triggerChan,
+		Client:               mgr.GetClient(),
+		Scheme:               mgr.GetScheme(),
+		LogLevel:             args.logLevel,
+		Logger:               logger,
+		MyNode:               args.nodeName,
+		MyNamespace:          args.namespace,
+		FRRReloadSocket:      args.reloaderSocket,
+		FRRConfigPath:        args.frrConfigPath,
+		RouterProvider:       routerProvider,
+		StaticConfigDir:      hostModeParams.configurationDir,
+		NodeConfigPath:       hostModeParams.nodeConfigPath,
+		TriggerChan:          triggerChan,
+		DatapathConfigurator: datapathConfigurator,
 	}
 
 	if err := apiReconciler.SetupWithManager(mgr); err != nil {
@@ -305,15 +363,32 @@ func runK8sConfigReconcilerHostMode(ctx context.Context,
 		return fmt.Errorf("unable to start FRR restart watcher: %w", err)
 	}
 
-	// Setup file watcher to trigger API reconciler on static file changes
-	fw, err := filewatcher.New(hostModeParams.configurationDir, triggerChan, logger)
-	if err != nil {
-		return fmt.Errorf("unable to create file watcher for API reconciler: %w", err)
+	mirrorController := &routerconfiguration.MirrorController{
+		Client:      mgr.GetClient(),
+		Scheme:      mgr.GetScheme(),
+		Logger:      logger,
+		MyNode:      args.nodeName,
+		MyNamespace: args.namespace,
+		ConfigDir:   hostModeParams.configurationDir,
+		TriggerChan: mirrorTriggerChan,
 	}
 
-	if err := fw.Start(ctx); err != nil {
-		return fmt.Errorf("unable to start file watcher for API reconciler: %w", err)
+	if err := mirrorController.SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to create mirror controller: %w", err)
 	}
+
+	// Setup file watcher to trigger controllers on static file changes
+	filesChangedChan := make(chan event.GenericEvent, 1)
+	watcher, err := filewatcher.New(hostModeParams.configurationDir, filesChangedChan, logger)
+	if err != nil {
+		return fmt.Errorf("unable to create file watcher: %w", err)
+	}
+
+	if err := watcher.Start(ctx); err != nil {
+		return fmt.Errorf("unable to start file watcher: %w", err)
+	}
+
+	go fanOut(ctx, filesChangedChan, triggerChan, mirrorTriggerChan)
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctx); err != nil {
@@ -342,16 +417,22 @@ func runK8sConfigReconciler(ctx context.Context,
 		Node:            args.nodeName,
 	}
 
+	var datapathConfigurator routerconfiguration.DatapathConfigurator = &routerconfiguration.KernelDatapathConfigurator{}
+	if args.datapath == datapathGrout {
+		datapathConfigurator = routerconfiguration.NewGroutConfigurator(args.groutSocketPath)
+	}
+
 	apiReconciler := &routerconfiguration.PERouterReconciler{
-		Client:          mgr.GetClient(),
-		Scheme:          mgr.GetScheme(),
-		LogLevel:        args.logLevel,
-		Logger:          logger,
-		MyNode:          args.nodeName,
-		FRRReloadSocket: args.reloaderSocket,
-		FRRConfigPath:   args.frrConfigPath,
-		RouterProvider:  routerProvider,
-		MyNamespace:     args.namespace,
+		Client:               mgr.GetClient(),
+		Scheme:               mgr.GetScheme(),
+		LogLevel:             args.logLevel,
+		Logger:               logger,
+		MyNode:               args.nodeName,
+		FRRReloadSocket:      args.reloaderSocket,
+		FRRConfigPath:        args.frrConfigPath,
+		RouterProvider:       routerProvider,
+		MyNamespace:          args.namespace,
+		DatapathConfigurator: datapathConfigurator,
 	}
 
 	if err := apiReconciler.SetupWithManager(mgr); err != nil {
@@ -386,20 +467,28 @@ func runStaticConfigReconciler(ctx context.Context,
 	staticRouterProvider := &routerconfiguration.RouterHostProvider{
 		FRRConfigPath:         args.frrConfigPath,
 		RouterPidFilePath:     hostModeParams.hostContainerPidPath,
-		CurrentNodeIndex:      nodeConfig.NodeIndex,
+		CurrentNodeIndex:      nodeConfig.NodeIndex.Index,
 		SystemdSocketPath:     hostModeParams.systemdSocketPath,
 		RouterHealthCheckPort: hostModeParams.routerHealthCheckPort,
 	}
 
+	var datapathConfigurator routerconfiguration.DatapathConfigurator = &routerconfiguration.KernelDatapathConfigurator{}
+	if args.datapath == datapathGrout {
+		datapathConfigurator = routerconfiguration.NewGroutConfigurator(args.groutSocketPath)
+	}
+
 	staticReconciler := &routerconfiguration.StaticConfigReconciler{
-		Scheme:          mgr.GetScheme(),
-		Logger:          logger,
-		NodeIndex:       nodeConfig.NodeIndex,
-		LogLevel:        args.logLevel,
-		FRRConfigPath:   args.frrConfigPath,
-		FRRReloadSocket: args.reloaderSocket,
-		RouterProvider:  staticRouterProvider,
-		ConfigDir:       hostModeParams.configurationDir,
+		Scheme:               mgr.GetScheme(),
+		Logger:               logger,
+		NodeIndex:            nodeConfig.NodeIndex.Index,
+		LogLevel:             args.logLevel,
+		FRRConfigPath:        args.frrConfigPath,
+		FRRReloadSocket:      args.reloaderSocket,
+		RouterProvider:       staticRouterProvider,
+		ConfigDir:            hostModeParams.configurationDir,
+		MyNode:               args.nodeName,
+		MyNamespace:          args.namespace,
+		DatapathConfigurator: datapathConfigurator,
 	}
 	if err = staticReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create controller: %w", err)
@@ -571,4 +660,20 @@ func overrideHostMode(args *parameters, nodeConfig static.NodeConfig) error {
 	}
 	setupLog.Info("nodename not provided, using hostname", "nodename", args.nodeName)
 	return nil
+}
+
+func fanOut(ctx context.Context, in <-chan event.GenericEvent, outs ...chan<- event.GenericEvent) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case evt, ok := <-in:
+			if !ok {
+				return
+			}
+			for _, out := range outs {
+				out <- evt
+			}
+		}
+	}
 }

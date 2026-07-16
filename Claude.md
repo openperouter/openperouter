@@ -23,6 +23,10 @@ Run `make test` to execute unit tests.
 - **Prerequisites:** Requires active deployment
 - **Before running:** Always verify cluster is running and deployment version is current
 - **Validation only:** You can run the command to check if e2e test code compiles, but confirm with the user before executing against a cluster
+- **Filtering tests:** Use `GINKGO_ARGS` with `--focus` to run specific tests, and `TEST_ARGS` for deployment mode:
+  ```
+  KUBECONFIG=bin/kubeconfig TEST_ARGS="--systemdmode" GINKGO_ARGS='--focus="Mirror static config"' make e2etests
+  ```
 
 **Development environment**
 
@@ -36,6 +40,23 @@ The development environment uses kind and containerlab. Details can be found in 
 ## Go Style Guidelines
 
 You can run `make lint` to run the go linter against the codebase.
+
+### Use Modern Go Features
+
+Always check the Go version in `go.mod` and prefer language features and standard library additions from that version
+over third-party helpers or older patterns.
+
+**Example - Go 1.26 `new()` builtin:**
+```go
+// Good: use the builtin
+val := new("hello")
+
+// Avoid: third-party pointer helpers
+val := ptr.To("hello")
+```
+
+When writing new code, modifying existing code, or reviewing code, prefer the latest idiomatic constructs available in
+the project's Go version rather than relying on utility packages that duplicate standard functionality.
 
 ### Code Readability: Line of Sight
 

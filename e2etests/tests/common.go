@@ -3,6 +3,7 @@
 package tests
 
 import (
+	"github.com/onsi/ginkgo/v2"
 	"github.com/openperouter/openperouter/e2etests/pkg/config"
 	"github.com/openshift-kni/k8sreporter"
 )
@@ -12,5 +13,8 @@ var (
 	K8sReporter             *k8sreporter.KubernetesReporter
 	ReportPath              string
 	HostMode                bool
+	GroutMode               bool
 	SkipUnderlayPassthrough bool
 )
+
+var GroutSupport = ginkgo.Label("grout-support")

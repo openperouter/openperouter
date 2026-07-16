@@ -59,7 +59,7 @@ func DisableWebhooksForNamespace(cs clientset.Interface, namespace string) error
 }
 
 func RestoreWebhooks(cs clientset.Interface, namespace string) error {
-	labelPatch, _ := json.Marshal([]map[string]interface{}{
+	labelPatch, _ := json.Marshal([]map[string]any{
 		{
 			"op":   "remove",
 			"path": "/metadata/labels/" + jsonPatchEscape(skipWebhookLabel),

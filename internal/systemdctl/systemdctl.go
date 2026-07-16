@@ -14,6 +14,11 @@ const (
 	HostDBusSocket = "unix:path=/host/dbus/system_bus_socket"
 
 	DefaultTimeout = 30 * time.Second
+
+	StateActive     = "active"
+	StateActivating = "activating"
+	StateInactive   = "inactive"
+	StateFailed     = "failed"
 )
 
 // Client is a systemd client that uses systemctl commands via nsenter
@@ -43,6 +48,26 @@ func (c *Client) Restart(ctx context.Context, unitName string) error {
 
 // IsActive checks if a systemd unit is active
 func (c *Client) IsActive(unitName string) (bool, error) {
+	state, err := c.ActiveState(unitName)
+	if err != nil {
+		return false, err
+	}
+	return state == StateActive, nil
+}
+
+// IsActivating checks if a systemd unit is in the "activating" state
+// (i.e. still starting up).
+func (c *Client) IsActivating(unitName string) (bool, error) {
+	state, err := c.ActiveState(unitName)
+	if err != nil {
+		return false, err
+	}
+	return state == StateActivating, nil
+}
+
+// ActiveState returns the ActiveState of a systemd unit
+// (e.g. "active", "activating", "inactive", "failed").
+func (c *Client) ActiveState(unitName string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
@@ -56,18 +81,17 @@ func (c *Client) IsActive(unitName string) (bool, error) {
 
 	cmd := exec.CommandContext(ctx, "nsenter", cmdArgs...)
 	output, err := cmd.CombinedOutput()
+	state := strings.TrimSpace(string(output))
 
-	// systemctl is-active returns 0 if active, non-zero otherwise
+	// systemctl is-active returns non-zero for anything other than "active"
 	if err != nil {
-		// Check if it's just because the unit is not active
-		if strings.TrimSpace(string(output)) == "inactive" ||
-			strings.TrimSpace(string(output)) == "failed" {
-			return false, nil
+		if state == StateInactive || state == StateFailed || state == StateActivating {
+			return state, nil
 		}
-		return false, fmt.Errorf("systemctl is-active %s failed: %w: %s", unitName, err, string(output))
+		return "", fmt.Errorf("systemctl is-active %s failed: %w: %s", unitName, err, string(output))
 	}
 
-	return strings.TrimSpace(string(output)) == "active", nil
+	return state, nil
 }
 
 // runSystemctl executes a systemctl command in the host's namespaces

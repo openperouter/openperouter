@@ -25,6 +25,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/selection"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -43,19 +44,24 @@ import (
 
 type PERouterReconciler struct {
 	client.Client
-	Scheme          *runtime.Scheme
-	MyNode          string
-	MyNamespace     string
-	LogLevel        string
-	Logger          *slog.Logger
-	FRRConfigPath   string
-	FRRReloadSocket string
-	StaticConfigDir string
-	NodeConfigPath  string
-	RouterProvider  RouterProvider
+	Scheme               *runtime.Scheme
+	MyNode               string
+	MyNamespace          string
+	LogLevel             string
+	Logger               *slog.Logger
+	FRRConfigPath        string
+	FRRReloadSocket      string
+	StaticConfigDir      string
+	NodeConfigPath       string
+	RouterProvider       RouterProvider
+	DatapathConfigurator DatapathConfigurator
 
 	// TriggerChan receives events from FileWatcher (in host mode)
 	TriggerChan chan event.GenericEvent
+
+	// notStaticConfigsListOpts filters out mirrored resources (source=static) when listing CRDs.
+	// Built once in SetupWithManager since the label is const.
+	notStaticConfigsListOpts *client.ListOptions
 }
 
 type requestKey string
@@ -68,14 +74,18 @@ type requestKey string
 // +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l2vnis,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l2vnis/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l2vnis/finalizers,verbs=update
+// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l3vpns,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l3vpns/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l3vpns/finalizers,verbs=update
 // +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=underlays,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=underlays/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=underlays/finalizers,verbs=update
 // +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l3passthroughs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l3passthroughs/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l3passthroughs/finalizers,verbs=update
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=rawfrrconfigs,verbs=get;list;watch
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=rawfrrconfigs/status,verbs=get
+// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=rawfrrconfigs,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=rawfrrconfigs/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=rawfrrconfigs/finalizers,verbs=update
 // +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=routernodeconfigurationstatuses,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=routernodeconfigurationstatuses/status,verbs=get;update;patch
 
@@ -87,13 +97,6 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	ctx = context.WithValue(ctx, requestKey("request"), req.String())
 
 	result, err := r.reconcile(ctx, logger)
-
-	// Best-effort status write: non-recoverable errors must never requeue,
-	// so we ignore any status update failure here.
-	if nonRecoverableHostError(err) {
-		_ = r.reconcileNodeStatus(ctx, err)
-		return ctrl.Result{}, nil
-	}
 
 	if statusErr := r.reconcileNodeStatus(ctx, err); statusErr != nil {
 		return ctrl.Result{}, errors.Join(err, statusErr)
@@ -117,7 +120,7 @@ func (r *PERouterReconciler) reconcile(ctx context.Context, logger *slog.Logger)
 	}
 
 	if r.StaticConfigDir != "" {
-		config, err = mergeStaticConfig(r.StaticConfigDir, config, logger)
+		config, err = mergeStaticConfig(r.StaticConfigDir, r.MyNode, r.MyNamespace, config, logger)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to merge static config: %w", err)
 		}
@@ -132,7 +135,7 @@ func (r *PERouterReconciler) reconcile(ctx context.Context, logger *slog.Logger)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to retrieve target namespace: %w", err)
 	}
-	canReconcile, err := router.CanReconcile(ctx)
+	canReconcile, err := router.CanReconcile()
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to check if router can be reconciled: %w", err)
 	}
@@ -149,16 +152,8 @@ func (r *PERouterReconciler) reconcile(ctx context.Context, logger *slog.Logger)
 		return ctrl.Result{}, err
 	}
 
-	err = Reconcile(ctx, config, nodeIndex, r.LogLevel, r.FRRConfigPath, targetNS, updater, configureInterfaces)
-	if nonRecoverableHostError(err) {
-		logger.Error("non recoverable error", "error", err)
-		if err := router.HandleNonRecoverableError(ctx); err != nil {
-			slog.Error("failed to handle non recoverable error", "error", err)
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{}, err
-	}
-
+	err = Reconcile(ctx, config, nodeIndex, r.LogLevel, r.FRRConfigPath, targetNS, updater,
+		r.DatapathConfigurator, configureFRR)
 	if err != nil {
 		logger.Error("failed to reconcile host configuration", "error", err)
 		return ctrl.Result{}, err
@@ -167,9 +162,9 @@ func (r *PERouterReconciler) reconcile(ctx context.Context, logger *slog.Logger)
 	return ctrl.Result{}, nil
 }
 
-func mergeStaticConfig(staticConfigDir string, config conversion.APIConfigData, logger *slog.Logger) (conversion.APIConfigData, error) {
+func mergeStaticConfig(staticConfigDir, nodeName, namespace string, config conversion.APIConfigData, logger *slog.Logger) (conversion.APIConfigData, error) {
 	var noConfigErr *staticconfiguration.NoConfigAvailable
-	staticConfig, err := readStaticConfigs(staticConfigDir)
+	staticConfig, err := readStaticConfigs(staticConfigDir, nodeName, namespace)
 	// if we don't have a static configuration is fair to continue and use only the dynamic one
 	if errors.As(err, &noConfigErr) {
 		logger.Info("no static configuration available", "dir", staticConfigDir, "reason", noConfigErr.Error())
@@ -191,32 +186,42 @@ func mergeStaticConfig(staticConfigDir string, config conversion.APIConfigData, 
 }
 
 func (r *PERouterReconciler) getConfigFromAPI(ctx context.Context, logger *slog.Logger) (conversion.APIConfigData, error) {
+	// Exclude mirrored resources (source=static) at query time.
+	// These are handled from static files via mergeStaticConfig(); including them
+	// here would cause double-processing.
+
 	var underlays v1alpha1.UnderlayList
-	if err := r.List(ctx, &underlays); err != nil {
+	if err := r.List(ctx, &underlays, r.notStaticConfigsListOpts); err != nil {
 		slog.Error("failed to list underlays", "error", err)
 		return conversion.APIConfigData{}, err
 	}
 
 	var l3vnis v1alpha1.L3VNIList
-	if err := r.List(ctx, &l3vnis); err != nil {
+	if err := r.List(ctx, &l3vnis, r.notStaticConfigsListOpts); err != nil {
 		slog.Error("failed to list l3vnis", "error", err)
 		return conversion.APIConfigData{}, err
 	}
 
 	var l2vnis v1alpha1.L2VNIList
-	if err := r.List(ctx, &l2vnis); err != nil {
+	if err := r.List(ctx, &l2vnis, r.notStaticConfigsListOpts); err != nil {
 		slog.Error("failed to list l2vnis", "error", err)
 		return conversion.APIConfigData{}, err
 	}
 
+	var l3vpns v1alpha1.L3VPNList
+	if err := r.List(ctx, &l3vpns); err != nil {
+		slog.Error("failed to list l3vpns", "error", err)
+		return conversion.APIConfigData{}, err
+	}
+
 	var l3passthrough v1alpha1.L3PassthroughList
-	if err := r.List(ctx, &l3passthrough); err != nil {
+	if err := r.List(ctx, &l3passthrough, r.notStaticConfigsListOpts); err != nil {
 		slog.Error("failed to list l3passthrough", "error", err)
 		return conversion.APIConfigData{}, err
 	}
 
 	var rawFRRConfigs v1alpha1.RawFRRConfigList
-	if err := r.List(ctx, &rawFRRConfigs); err != nil {
+	if err := r.List(ctx, &rawFRRConfigs, r.notStaticConfigsListOpts); err != nil {
 		slog.Error("failed to list rawfrrconfigs", "error", err)
 		return conversion.APIConfigData{}, err
 	}
@@ -246,6 +251,12 @@ func (r *PERouterReconciler) getConfigFromAPI(ctx context.Context, logger *slog.
 		return conversion.APIConfigData{}, err
 	}
 
+	filteredL3VPNs, err := filter.L3VPNsForNode(node, l3vpns.Items)
+	if err != nil {
+		slog.Error("failed to filter l3vpns for node", "node", r.MyNode, "error", err)
+		return conversion.APIConfigData{}, err
+	}
+
 	filteredL3Passthrough, err := filter.L3PassthroughsForNode(node, l3passthrough.Items)
 	if err != nil {
 		slog.Error("failed to filter l3passthrough for node", "node", r.MyNode, "error", err)
@@ -268,6 +279,7 @@ func (r *PERouterReconciler) getConfigFromAPI(ctx context.Context, logger *slog.
 		Underlays:     filteredUnderlays,
 		L3VNIs:        filteredL3VNIs,
 		L2VNIs:        filteredL2VNIs,
+		L3VPNs:        filteredL3VPNs,
 		L3Passthrough: filteredL3Passthrough,
 		RawFRRConfigs: filteredRawFRRConfigs,
 	}
@@ -283,6 +295,12 @@ func (r *PERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		}
 		return true
 	})
+	// Build the not-mirrored list options once (the label is const).
+	notMirrored, err := labels.NewRequirement(StaticSourceLabel, selection.DoesNotExist, nil)
+	if err != nil {
+		return fmt.Errorf("failed to build label requirement: %w", err)
+	}
+	r.notStaticConfigsListOpts = &client.ListOptions{LabelSelector: labels.NewSelector().Add(*notMirrored)}
 
 	filterNonRouterPods := predicate.NewPredicateFuncs(func(object client.Object) bool {
 		switch o := object.(type) {
@@ -336,6 +354,7 @@ func (r *PERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(&v1.Pod{}, &handler.EnqueueRequestForObject{}).
 		Watches(&v1alpha1.L3VNI{}, &handler.EnqueueRequestForObject{}).
 		Watches(&v1alpha1.L2VNI{}, &handler.EnqueueRequestForObject{}).
+		Watches(&v1alpha1.L3VPN{}, &handler.EnqueueRequestForObject{}).
 		Watches(&v1alpha1.L3Passthrough{}, &handler.EnqueueRequestForObject{}).
 		Watches(&v1alpha1.RawFRRConfig{}, &handler.EnqueueRequestForObject{}).
 		Watches(&v1alpha1.RouterNodeConfigurationStatus{}, &handler.EnqueueRequestForObject{}).

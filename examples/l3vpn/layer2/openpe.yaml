@@ -1,0 +1,67 @@
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: Underlay
+metadata:
+  name: underlay
+  namespace: openperouter-system
+spec:
+  tunnelEndpoint:
+    cidrs:
+    - 100.65.0.0/24
+    - 2001:db8:1234:5678::/64
+  asn: 64514
+  neighbors:
+  - address: 2001:db8:1234::1
+    asn: 64520
+    ebgpMultiHop: true
+  - address: 2001:db8:1234::2
+    asn: 64520
+    ebgpMultiHop: true
+  - asn: 64512
+    address: 192.168.11.2
+  interfaces:
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: toswitch1
+  routeridcidr: 10.0.0.0/24
+  isis:
+    baseNet: "49.0001.0002.0003.0004.00"
+    level: 1
+    interfaces:
+    - name: "toswitch1"
+      ipFamily: "ipv6"
+  srv6:
+    locator:
+      basePrefix: "fd00:0:32::/48"
+      format: "usid-f3216"
+---
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: L3VPN
+metadata:
+  name: red
+  namespace: openperouter-system
+spec:
+  hostsession:
+    asn: 64514
+    hostasn: 64515
+    localcidr:
+      ipv4: 192.169.10.0/24
+  vrf: red
+  rdAssignedNumber: 100
+  exportRTs:
+  - "64514:100"
+  importRTs:
+  - "64520:100"
+---
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: L2VNI
+metadata:
+  name: layer2
+  namespace: openperouter-system
+spec:
+  vni: 110
+  vrf: red
+  hostmaster:
+    type: linux-bridge
+    linuxBridge:
+      autoCreate: true
+  l2gatewayips: ["192.170.1.1/24"]

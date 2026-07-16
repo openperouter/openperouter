@@ -17,7 +17,6 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/executor"
 	"github.com/openperouter/openperouter/e2etests/pkg/frr"
 	"github.com/openperouter/openperouter/e2etests/pkg/frrk8s"
-	"github.com/openperouter/openperouter/e2etests/pkg/infra"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 	corev1 "k8s.io/api/core/v1"
@@ -31,7 +30,22 @@ func dumpIfFails(cs clientset.Interface, additionalNamespaces ...string) {
 	additionalNamespaces = slices.Compact(additionalNamespaces)
 
 	if ginkgo.CurrentSpecReport().Failed() {
-		dumpFRRInfo(ReportPath, ginkgo.CurrentSpecReport().FullText(), cs, infra.LeafA, infra.LeafB, infra.KindLeaf)
+		opts := []func(dumpOptions *dumpOptions){
+			onRouterPods(cs),
+			onFRRK8sPods(cs),
+			withFRR(),
+		}
+
+		if GroutMode {
+			opts = append(opts, withGrout())
+		}
+
+		dumpFRRInfo(
+			ReportPath,
+			ginkgo.CurrentSpecReport().FullText(),
+			opts...,
+		)
+
 		for _, namespace := range additionalNamespaces {
 			dumpWorkloadInfo(ReportPath, ginkgo.CurrentSpecReport().FullText(), cs, namespace)
 		}
@@ -42,38 +56,66 @@ func dumpIfFails(cs clientset.Interface, additionalNamespaces ...string) {
 	}
 }
 
-func dumpFRRInfo(basePath, testName string, cs clientset.Interface, clabContainers ...string) {
+type dumpOptions struct {
+	executors      map[string]executor.Executor
+	infoRetrievers []func(executor.Executor) string
+}
+
+func withGrout() func(dumpOptions *dumpOptions) {
+	return func(dumpOptions *dumpOptions) {
+		dumpOptions.infoRetrievers = append(dumpOptions.infoRetrievers, frr.GroutDump)
+	}
+}
+
+func withFRR() func(dumpOptions *dumpOptions) {
+	return func(dumpOptions *dumpOptions) {
+		dumpOptions.infoRetrievers = append(dumpOptions.infoRetrievers, frr.RawDump)
+	}
+}
+
+func onRouterPods(cs clientset.Interface) func(dumpOptions *dumpOptions) {
+	return func(dumpOptions *dumpOptions) {
+		routers, err := openperouter.Get(cs, HostMode)
+		Expect(err).NotTo(HaveOccurred())
+
+		for router := range routers.GetExecutors() {
+			dumpOptions.executors[router.Name()] = router
+		}
+	}
+}
+
+func onFRRK8sPods(cs clientset.Interface) func(dumpOptions *dumpOptions) {
+	return func(dumpOptions *dumpOptions) {
+		frrk8sPods, err := frrk8s.Pods(cs)
+		Expect(err).NotTo(HaveOccurred())
+		for _, pod := range frrk8sPods {
+			dumpOptions.executors[pod.Name] = executor.ForPod(pod.Namespace, pod.Name, "frr")
+		}
+	}
+}
+
+func dumpFRRInfo(basePath, testName string, opts ...func(dumpOptions *dumpOptions)) {
+	dumpOptions := dumpOptions{
+		executors:      map[string]executor.Executor{},
+		infoRetrievers: []func(executor.Executor) string{},
+	}
+	for _, opt := range opts {
+		opt(&dumpOptions)
+	}
+
 	testPath, err := createTestOutput(basePath, testName)
 	if err != nil {
 		ginkgo.GinkgoWriter.Printf("dumpFRRInfo: failed to create test dir: %v", err)
 		return
 	}
 
-	executors := map[string]executor.Executor{}
-	for _, c := range clabContainers {
-		exec := executor.ForContainer(c)
-		executors[c] = exec
-	}
-
-	routers, err := openperouter.Get(cs, HostMode)
-	Expect(err).NotTo(HaveOccurred())
-	routers.Dump(ginkgo.GinkgoWriter)
-
-	for router := range routers.GetExecutors() {
-		executors[router.Name()] = router
-	}
-
-	frrk8sPods, err := frrk8s.Pods(cs)
-	Expect(err).NotTo(HaveOccurred())
-	DumpPods("frrk8s", frrk8sPods)
-	for _, pod := range frrk8sPods {
-		podExec := executor.ForPod(pod.Namespace, pod.Name, "frr")
-		executors[pod.Name] = podExec
-	}
-
-	for name, exec := range executors {
+	for name, exec := range dumpOptions.executors {
 		func() {
-			dump := frr.RawDump(exec)
+			var dump strings.Builder
+			for _, infoRetriever := range dumpOptions.infoRetrievers {
+				dump.WriteString(infoRetriever(exec) + "\n\n")
+			}
+
 			f, err := logFileFor(testPath, fmt.Sprintf("frrdump-%s", name))
 			if err != nil {
 				ginkgo.GinkgoWriter.Printf("dumpFRRInfo: external frr dump for container %s, failed to open file %v", name, err)
@@ -85,7 +127,7 @@ func dumpFRRInfo(basePath, testName string, cs clientset.Interface, clabContaine
 				}
 			}()
 			fmt.Fprintf(f, "Dumping information for %s", name)
-			if _, err = fmt.Fprint(f, dump); err != nil {
+			if _, err = fmt.Fprint(f, dump.String()); err != nil {
 				ginkgo.GinkgoWriter.Printf("dumpFRRInfo: external frr dump for container %s, failed to write to file %v", name, err)
 				return
 			}

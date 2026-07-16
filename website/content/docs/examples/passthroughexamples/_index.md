@@ -1,5 +1,5 @@
 ---
-weight: 50
+weight: 55
 title: "Passthrough Examples"
 description: "Integration examples with BGP-speaking components"
 icon: "article"
@@ -44,8 +44,10 @@ metadata:
   namespace: openperouter-system
 spec:
   asn: 64514
-  nics:
-    - toswitch
+  interfaces:
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: toswitch
   neighbors:
     - asn: 64512
       address: 192.168.11.2

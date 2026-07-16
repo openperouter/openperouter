@@ -12,10 +12,40 @@ In systemd mode, OpenPERouter is configured via static files on the host instead
 
 ## Node Configuration
 
-Each node requires a mandatory configuration file at `/var/lib/openperouter/node-config.yaml`. This file must contain the `nodeIndex`, a unique integer used for IPAM address allocation from the configured CIDRs:
+Each node requires a mandatory configuration file at `/var/lib/openperouter/node-config.yaml`. This file identifies the node and configures its unique index used for IPAM address allocation from the configured CIDRs.
+
+The node index can be provided in two ways:
+
+#### Static Node Index
+
+Set `nodeIndex.index` to a unique integer per node:
 
 ```yaml
-nodeIndex: 0
+nodeIndex:
+  index: 0
+logLevel: debug
+```
+
+#### Deriving Node Index from an Interface
+
+Instead of assigning a static index to each node, set `nodeIndex.interfaceName` to the name of a network interface on the host. The node index is derived from the host portion of an IP address on that interface, preferring IPv4 and falling back to IPv6 if no IPv4 address is found. For example, if the interface `eth0` has address `192.168.11.3/24`, the node index is `3`.
+
+This allows deploying the same `node-config.yaml` to every node, since each node's index is determined automatically from its own network address.
+
+`nodeIndex.index` and `nodeIndex.interfaceName` are mutually exclusive.
+
+```yaml
+nodeIndex:
+  interfaceName: eth0
+logLevel: debug
+```
+
+When an interface has multiple IP addresses, you can use the optional `nodeIndex.cidr` field to select which address to use. Only addresses within the specified CIDR are considered. This also allows explicitly selecting an IPv6 address over IPv4.
+
+```yaml
+nodeIndex:
+  interfaceName: eth0
+  cidr: "192.168.11.0/24"
 logLevel: debug
 
 Each `openpe_*.yaml` file contains the `spec` part of the corresponding Kubernetes Custom Resources. A file can contain any combination of `underlay`, `l3vnis`, `l2vnis`, `bgppassthrough`, and `rawfrrconfigs` fields, where each entry follows the same schema as the `spec` section of the equivalent CR (Underlay, L3VNI, L2VNI, L3Passthrough, RawFRRConfig):
@@ -26,8 +56,10 @@ underlays:
     tunnelEndpoint:
       cidrs:
       - 100.65.0.0/24
-    nics:
-      - eth0
+    interfaces:
+      - type: NetworkDevice
+        networkDevice:
+          interfaceName: eth0
     neighbors:
       - asn: 64512
         address: 192.168.111.1
@@ -68,8 +100,10 @@ underlays:
     tunnelEndpoint:
       cidrs:
       - 100.65.0.0/24
-    nics:
-      - eth0
+    interfaces:
+      - type: NetworkDevice
+        networkDevice:
+          interfaceName: eth0
     neighbors:
       - asn: 64512
         address: 192.168.111.1
@@ -84,6 +118,19 @@ Depending on the CNI, the network configuration might need to be complete before
 ### Dynamic Reload
 
 Configuration files are watched for changes and dynamically reloaded at runtime. Updating a file triggers a reconciliation cycle without restarting the service.
+
+### Kubernetes Visibility
+
+When a kubeconfig is available, the controller mirrors the static configuration to Kubernetes Custom Resources. Each statically-configured resource (underlay, L3VNI, L2VNI, L3Passthrough, RawFRRConfig) is created as a corresponding CR with a `openperouter.io/static-source` label. This makes the full cluster configuration visible via `kubectl`:
+
+```bash
+kubectl get underlays -n openperouter-system -l openperouter.io/static-source=true
+kubectl get l3vnis -n openperouter-system -l openperouter.io/static-source=true
+```
+
+The mirrored resources also go through webhook validation, ensuring that the static configuration is validated against the same rules as API-managed resources.
+
+The static files remain the source of truth: any external modification to the mirrored CRs is reverted on the next reconciliation cycle, and deleting a mirrored CR causes it to be recreated.
 
 ### Merging with API Server Configuration
 

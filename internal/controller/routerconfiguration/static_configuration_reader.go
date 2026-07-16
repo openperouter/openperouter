@@ -23,11 +23,21 @@ var (
 	underlayGVK      = schema.GroupVersionKind{Group: "openpe.openperouter.github.io", Version: "v1alpha1", Kind: "Underlay"}
 	l3vniGVK         = schema.GroupVersionKind{Group: "openpe.openperouter.github.io", Version: "v1alpha1", Kind: "L3VNI"}
 	l2vniGVK         = schema.GroupVersionKind{Group: "openpe.openperouter.github.io", Version: "v1alpha1", Kind: "L2VNI"}
+	l3vpnGVK         = schema.GroupVersionKind{Group: "openpe.openperouter.github.io", Version: "v1alpha1", Kind: "L3VPN"}
 	l3passthroughGVK = schema.GroupVersionKind{Group: "openpe.openperouter.github.io", Version: "v1alpha1", Kind: "L3Passthrough"}
 	rawFRRConfigGVK  = schema.GroupVersionKind{Group: "openpe.openperouter.github.io", Version: "v1alpha1", Kind: "RawFRRConfig"}
 )
 
-func readStaticConfigs(configDir string) (conversion.APIConfigData, error) {
+const (
+	// StaticSourceLabel is the label key used to identify resources mirrored from static config.
+	StaticSourceLabel = "openperouter.github.io/source"
+	// StaticSourceValue is the label value for resources mirrored from static config.
+	StaticSourceValue = "static"
+	// StaticNodeLabel is the label key for the node name that owns static resources.
+	StaticNodeLabel = "openperouter.github.io/static-node"
+)
+
+func readStaticConfigs(configDir, nodeName, namespace string) (conversion.APIConfigData, error) {
 	routerConfigs, err := staticconfiguration.ReadRouterConfigs(configDir)
 	if err != nil {
 		return conversion.APIConfigData{}, fmt.Errorf("failed to read router configs: %w", err)
@@ -35,7 +45,7 @@ func readStaticConfigs(configDir string) (conversion.APIConfigData, error) {
 
 	apiConfigs := make([]conversion.APIConfigData, len(routerConfigs))
 	for i, rc := range routerConfigs {
-		cfg, err := staticConfigToAPIConfig(rc)
+		cfg, err := staticConfigToAPIConfig(rc, nodeName, namespace)
 		if err != nil {
 			return conversion.APIConfigData{}, fmt.Errorf("failed to convert static config to API config: %w", err)
 		}
@@ -50,18 +60,30 @@ func readStaticConfigs(configDir string) (conversion.APIConfigData, error) {
 	return merged, nil
 }
 
-func staticConfigToAPIConfig(staticConfig *static.PERouterConfig) (conversion.APIConfigData, error) {
+func staticConfigToAPIConfig(staticConfig *static.PERouterConfig, nodeName, namespace string) (conversion.APIConfigData, error) {
 	var allErrors field.ErrorList
+
+	nodeSelector := &metav1.LabelSelector{
+		MatchLabels: map[string]string{
+			"kubernetes.io/hostname": nodeName,
+		},
+	}
 
 	underlays := make([]v1alpha1.Underlay, len(staticConfig.Underlays))
 	for i, spec := range staticConfig.Underlays {
+		spec.NodeSelector = nodeSelector
 		underlays[i] = v1alpha1.Underlay{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "Underlay",
 				APIVersion: "openpe.openperouter.github.io/v1alpha1",
 			},
 			ObjectMeta: metav1.ObjectMeta{
-				Name: fmt.Sprintf("static-underlay-%d", i),
+				Name:      fmt.Sprintf("static-%s-underlay-%d", nodeName, i),
+				Namespace: namespace,
+				Labels: map[string]string{
+					StaticSourceLabel: StaticSourceValue,
+					StaticNodeLabel:   nodeName,
+				},
 			},
 			Spec: spec,
 		}
@@ -75,13 +97,19 @@ func staticConfigToAPIConfig(staticConfig *static.PERouterConfig) (conversion.AP
 
 	l3vnis := make([]v1alpha1.L3VNI, len(staticConfig.L3VNIs))
 	for i, spec := range staticConfig.L3VNIs {
+		spec.NodeSelector = nodeSelector
 		l3vnis[i] = v1alpha1.L3VNI{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "L3VNI",
 				APIVersion: "openpe.openperouter.github.io/v1alpha1",
 			},
 			ObjectMeta: metav1.ObjectMeta{
-				Name: fmt.Sprintf("static-l3vni-%d", i),
+				Name:      fmt.Sprintf("static-%s-l3vni-%d", nodeName, i),
+				Namespace: namespace,
+				Labels: map[string]string{
+					StaticSourceLabel: StaticSourceValue,
+					StaticNodeLabel:   nodeName,
+				},
 			},
 			Spec: spec,
 		}
@@ -95,13 +123,19 @@ func staticConfigToAPIConfig(staticConfig *static.PERouterConfig) (conversion.AP
 
 	l2vnis := make([]v1alpha1.L2VNI, len(staticConfig.L2VNIs))
 	for i, spec := range staticConfig.L2VNIs {
+		spec.NodeSelector = nodeSelector
 		l2vnis[i] = v1alpha1.L2VNI{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "L2VNI",
 				APIVersion: "openpe.openperouter.github.io/v1alpha1",
 			},
 			ObjectMeta: metav1.ObjectMeta{
-				Name: fmt.Sprintf("static-l2vni-%d", i),
+				Name:      fmt.Sprintf("static-%s-l2vni-%d", nodeName, i),
+				Namespace: namespace,
+				Labels: map[string]string{
+					StaticSourceLabel: StaticSourceValue,
+					StaticNodeLabel:   nodeName,
+				},
 			},
 			Spec: spec,
 		}
@@ -113,17 +147,44 @@ func staticConfigToAPIConfig(staticConfig *static.PERouterConfig) (conversion.AP
 		l2vnis[i] = *result
 	}
 
+	l3vpns := make([]v1alpha1.L3VPN, len(staticConfig.L3VPNs))
+	for i, spec := range staticConfig.L3VPNs {
+		l3vpns[i] = v1alpha1.L3VPN{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "L3VPN",
+				APIVersion: "openpe.openperouter.github.io/v1alpha1",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name: fmt.Sprintf("static-l3vpn-%d", i),
+			},
+			Spec: spec,
+		}
+		result, errs := applyDefaultsAndValidate(&l3vpns[i], l3vpnGVK)
+		if len(errs) > 0 {
+			allErrors = append(allErrors, errs...)
+			continue
+		}
+		l3vpns[i] = *result
+	}
+
 	var l3passthrough []v1alpha1.L3Passthrough
 	if staticConfig.BGPPassthrough.HostSession.ASN > 0 {
+		passthroughSpec := staticConfig.BGPPassthrough
+		passthroughSpec.NodeSelector = nodeSelector
 		pt := v1alpha1.L3Passthrough{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "L3Passthrough",
 				APIVersion: "openpe.openperouter.github.io/v1alpha1",
 			},
 			ObjectMeta: metav1.ObjectMeta{
-				Name: "static-l3passthrough",
+				Name:      fmt.Sprintf("static-%s-l3passthrough", nodeName),
+				Namespace: namespace,
+				Labels: map[string]string{
+					StaticSourceLabel: StaticSourceValue,
+					StaticNodeLabel:   nodeName,
+				},
 			},
-			Spec: staticConfig.BGPPassthrough,
+			Spec: passthroughSpec,
 		}
 		result, errs := applyDefaultsAndValidate(&pt, l3passthroughGVK)
 		if len(errs) > 0 {
@@ -136,13 +197,19 @@ func staticConfigToAPIConfig(staticConfig *static.PERouterConfig) (conversion.AP
 
 	rawFRRConfigs := make([]v1alpha1.RawFRRConfig, len(staticConfig.RawFRRConfigs))
 	for i, spec := range staticConfig.RawFRRConfigs {
+		spec.NodeSelector = nodeSelector
 		rawFRRConfigs[i] = v1alpha1.RawFRRConfig{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "RawFRRConfig",
 				APIVersion: "openpe.openperouter.github.io/v1alpha1",
 			},
 			ObjectMeta: metav1.ObjectMeta{
-				Name: fmt.Sprintf("static-rawfrrconfig-%d", i),
+				Name:      fmt.Sprintf("static-%s-rawfrrconfig-%d", nodeName, i),
+				Namespace: namespace,
+				Labels: map[string]string{
+					StaticSourceLabel: StaticSourceValue,
+					StaticNodeLabel:   nodeName,
+				},
 			},
 			Spec: spec,
 		}
@@ -162,6 +229,7 @@ func staticConfigToAPIConfig(staticConfig *static.PERouterConfig) (conversion.AP
 		Underlays:     underlays,
 		L3VNIs:        l3vnis,
 		L2VNIs:        l2vnis,
+		L3VPNs:        l3vpns,
 		L3Passthrough: l3passthrough,
 		RawFRRConfigs: rawFRRConfigs,
 	}, nil

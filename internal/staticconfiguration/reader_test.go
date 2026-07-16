@@ -4,6 +4,7 @@ package staticconfiguration
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -24,18 +25,28 @@ func TestReadNodeConfig(t *testing.T) {
 	}{
 		{
 			name:     "valid yaml config",
-			content:  "nodeIndex: 42\nlogLevel: debug\n",
-			expected: &static.NodeConfig{NodeIndex: 42, LogLevel: "debug"},
+			content:  "nodeIndex:\n  index: 42\nlogLevel: debug\n",
+			expected: &static.NodeConfig{NodeIndex: static.NodeIndex{Index: 42}, LogLevel: "debug"},
 		},
 		{
 			name:     "valid yaml with zero value",
-			content:  "nodeIndex: 0\nlogLevel: info\n",
-			expected: &static.NodeConfig{NodeIndex: 0, LogLevel: "info"},
+			content:  "nodeIndex:\n  index: 0\nlogLevel: info\n",
+			expected: &static.NodeConfig{NodeIndex: static.NodeIndex{Index: 0}, LogLevel: "info"},
 		},
 		{
 			name:     "valid yaml with only nodeIndex",
-			content:  "nodeIndex: 1\n",
-			expected: &static.NodeConfig{NodeIndex: 1, LogLevel: ""},
+			content:  "nodeIndex:\n  index: 1\n",
+			expected: &static.NodeConfig{NodeIndex: static.NodeIndex{Index: 1}, LogLevel: ""},
+		},
+		{
+			name:        "interfaceName resolution fails for non-existent interface",
+			content:     "nodeIndex:\n  interfaceName: nonexistent-iface-xyz\n",
+			expectError: true,
+		},
+		{
+			name:        "both index and interfaceName is an error",
+			content:     "nodeIndex:\n  index: 5\n  interfaceName: eth0\n",
+			expectError: true,
 		},
 		{
 			name:        "invalid yaml",
@@ -67,13 +78,35 @@ func TestReadNodeConfig(t *testing.T) {
 			}
 
 			if config.NodeIndex != tt.expected.NodeIndex {
-				t.Errorf("expected NodeIndex %d, got %d", tt.expected.NodeIndex, config.NodeIndex)
+				t.Errorf("expected NodeIndex %+v, got %+v", tt.expected.NodeIndex, config.NodeIndex)
 			}
 
 			if config.LogLevel != tt.expected.LogLevel {
 				t.Errorf("expected LogLevel %s, got %s", tt.expected.LogLevel, config.LogLevel)
 			}
 		})
+	}
+}
+
+func TestReadNodeConfig_InterfaceName(t *testing.T) {
+	loopback := loopbackInterfaceName(t)
+	content := fmt.Sprintf("nodeIndex:\n  interfaceName: %s\n", loopback)
+
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "node-config.yaml")
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test config file: %v", err)
+	}
+
+	config, err := ReadNodeConfig(configPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if config.NodeIndex.InterfaceName != loopback {
+		t.Errorf("expected InterfaceName %s, got %s", loopback, config.NodeIndex.InterfaceName)
+	}
+	if config.NodeIndex.Index == 0 {
+		t.Error("expected resolved Index to be non-zero for loopback")
 	}
 }
 
@@ -184,8 +217,9 @@ func TestReadRouterConfigsFromFiles(t *testing.T) {
 		t.Fatalf("unexpected error reading testdata: %v", err)
 	}
 
-	if len(configs) != 4 {
-		t.Fatalf("expected 4 config files, got %d", len(configs))
+	expectedConfigFiles := 5
+	if len(configs) != expectedConfigFiles {
+		t.Fatalf("expected %d config files, got %d", expectedConfigFiles, len(configs))
 	}
 
 	underlays := make([]v1alpha1.UnderlaySpec, 0, len(configs))
@@ -204,8 +238,8 @@ func TestReadRouterConfigsFromFiles(t *testing.T) {
 
 	// openpe_underlay.yaml
 	wantUnderlay := v1alpha1.UnderlaySpec{
-		ASN:  64514,
-		Nics: []string{"toswitch1", "eth0"},
+		ASN:        64514,
+		Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch1"}}, {Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
 		Neighbors: []v1alpha1.Neighbor{
 			{
 				ASN:     new(int64(64512)),

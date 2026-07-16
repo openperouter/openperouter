@@ -23,7 +23,7 @@ var (
 func TestSchemaInitialization(t *testing.T) {
 	gvks := KnownGVKs()
 
-	expectedKinds := []string{"Underlay", "L2VNI", "L3VNI", "L3Passthrough", "RawFRRConfig", "RouterNodeConfigurationStatus"}
+	expectedKinds := []string{"Underlay", "L2VNI", "L3VNI", "L3VPN", "L3Passthrough", "RawFRRConfig", "RouterNodeConfigurationStatus"}
 	sort.Strings(expectedKinds)
 
 	foundKinds := make([]string, 0, len(gvks))
@@ -268,12 +268,17 @@ func TestValidateSuccessful(t *testing.T) {
 		obj  *unstructured.Unstructured
 	}{
 		{
-			name: "Underlay EVPN with only vtepCIDR",
+			name: "Underlay with tunnel endpoint",
 			gvk:  underlayGVK,
 			obj: newUnstructured("Underlay", map[string]any{
-				"asn":  int64(65000),
-				"nics": []any{"eth0"},
-				"evpn": map[string]any{"vtepCIDR": "10.10.0.0/24"},
+				"asn": int64(65000),
+				"interfaces": []any{
+					map[string]any{
+						"type":          "NetworkDevice",
+						"networkDevice": map[string]any{"interfaceName": "eth0"},
+					},
+				},
+				"tunnelEndpoint": map[string]any{"cidrs": []any{"10.10.0.0/24"}},
 				"neighbors": []any{
 					map[string]any{
 						"address": "192.168.1.1",
@@ -286,8 +291,13 @@ func TestValidateSuccessful(t *testing.T) {
 			name: "Underlay Neighbor without hostasn",
 			gvk:  underlayGVK,
 			obj: newUnstructured("Underlay", map[string]any{
-				"asn":  int64(65000),
-				"nics": []any{"eth0"},
+				"asn": int64(65000),
+				"interfaces": []any{
+					map[string]any{
+						"type":          "NetworkDevice",
+						"networkDevice": map[string]any{"interfaceName": "eth0"},
+					},
+				},
 				"neighbors": []any{
 					map[string]any{
 						"address": "192.168.1.1",
@@ -300,8 +310,13 @@ func TestValidateSuccessful(t *testing.T) {
 			name: "Underlay Neighbor with different hostasn and asn",
 			gvk:  underlayGVK,
 			obj: newUnstructured("Underlay", map[string]any{
-				"asn":  int64(65000),
-				"nics": []any{"eth0"},
+				"asn": int64(65000),
+				"interfaces": []any{
+					map[string]any{
+						"type":          "NetworkDevice",
+						"networkDevice": map[string]any{"interfaceName": "eth0"},
+					},
+				},
 				"neighbors": []any{
 					map[string]any{
 						"address": "192.168.1.1",

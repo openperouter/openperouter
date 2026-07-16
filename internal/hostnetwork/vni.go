@@ -22,11 +22,6 @@ import (
 const (
 	// VXLanOverhead is the number of bytes added by VXLan encapsulation.
 	VXLanOverhead = 50
-
-	// MinVethMTU is the minimum MTU we will set on the veth.
-	// 1280 is the IPv6 minimum MTU (RFC 8200); the kernel will reject
-	// or disable IPv6 on the link below this.
-	MinVethMTU = 1280
 )
 
 type VNIParams struct {
@@ -39,16 +34,16 @@ type VNIParams struct {
 
 type L3VNIParams struct {
 	VNIParams `json:",inline"`
-	Name      string `json:"name"`
-	HostVeth  *Veth  `json:"veth"`
+	Name      string   `json:"name"`
+	LinkIPs   *LinkIPs `json:"link_ips"`
 }
 
 type L3PassthroughParams struct {
-	TargetNS string `json:"targetns"`
-	HostVeth Veth   `json:"veth"`
+	TargetNS string  `json:"targetns"`
+	LinkIPs  LinkIPs `json:"link_ips"`
 }
 
-type Veth struct {
+type LinkIPs struct {
 	HostIPv4 string `json:"hostipv4"`
 	NSIPv4   string `json:"nsipv4"`
 	HostIPv6 string `json:"hostipv6"`
@@ -94,77 +89,20 @@ func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
 	slog.DebugContext(ctx, "setting up l3 VNI", "params", params)
 	defer slog.DebugContext(ctx, "end setting up l3 VNI", "params", params)
 
-	if params.HostVeth == nil {
+	if params.LinkIPs == nil {
 		slog.DebugContext(ctx, "no host veth configured, skipping setup")
 		return nil
 	}
-	vethNames := vethNamesFromVNI(params.VNI)
-	if err := setupNamespacedVeth(ctx, vethNames, params.TargetNS); err != nil {
-		return fmt.Errorf("SetupL3VNI: failed to setup VNI veth: %w", err)
+
+	if err := setupHostVeth(
+		ctx,
+		vethNamesFromVNI(params.VNI),
+		params.TargetNS,
+		params.LinkIPs,
+		params.VRF,
+		VXLanOverhead); err != nil {
+		return fmt.Errorf("SetupL3VNI: failed to setup host veth pair: %w", err)
 	}
-
-	ns, err := netns.GetFromPath(params.TargetNS)
-	if err != nil {
-		return fmt.Errorf("SetupVNI: Failed to get network namespace %s: %w", params.TargetNS, err)
-	}
-	defer func() {
-		if err := ns.Close(); err != nil {
-			slog.Error("failed to close namespace", "namespace", params.TargetNS, "error", err)
-		}
-	}()
-
-	hostVeth, err := netlink.LinkByName(vethNames.HostSide)
-	if errors.As(err, &netlink.LinkNotFoundError{}) {
-		return fmt.Errorf("SetupL3VNI: host veth %s does not exist, cannot setup L3 VNI", vethNames.HostSide)
-	}
-	if err != nil {
-		return fmt.Errorf("SetupL3VNI: failed to get host veth %s: %w", vethNames.HostSide, err)
-	}
-
-	err = assignIPsToInterface(hostVeth, params.HostVeth.HostIPv4, params.HostVeth.HostIPv6)
-	if err != nil {
-		return fmt.Errorf("failed to assign IPs to host veth: %w", err)
-	}
-
-	underlayMTU, err := findUnderlayMTU(ns)
-	if err != nil {
-		return fmt.Errorf("could not find underlay MTU: %w", err)
-	}
-
-	if err := setVethMTUForVXLAN(hostVeth, underlayMTU); err != nil {
-		return fmt.Errorf("SetupL3VNI: failed to set MTU on host veth %s: %w", vethNames.HostSide, err)
-	}
-
-	if err := netnamespace.In(ns, func() error {
-		peVeth, err := netlink.LinkByName(vethNames.NamespaceSide)
-		if err != nil {
-			return fmt.Errorf("could not find peer veth %s in namespace %s: %w", vethNames.NamespaceSide, params.TargetNS, err)
-		}
-
-		if err := setVethMTUForVXLAN(peVeth, underlayMTU); err != nil {
-			return fmt.Errorf("failed to set MTU on pe veth %s: %w", vethNames.NamespaceSide, err)
-		}
-
-		vrf, err := netlink.LinkByName(params.VRF)
-		if err != nil {
-			return fmt.Errorf("could not find vrf %s in namespace %s: %w", params.VRF, params.TargetNS, err)
-		}
-
-		err = linkSetMaster(peVeth, vrf)
-		if err != nil {
-			return fmt.Errorf("failed to set vrf %s as master of pe veth %s: %w", params.VRF, peVeth.Attrs().Name, err)
-		}
-		// Note: since the ipv6 address is removed after enslaving the veth to the vrf, this has to
-		// be performed after the veth is enslaved to the vrf.
-		err = assignIPsToInterface(peVeth, params.HostVeth.NSIPv4, params.HostVeth.NSIPv6)
-		if err != nil {
-			return fmt.Errorf("failed to assign IPs to PE veth: %w", err)
-		}
-		return nil
-	}); err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -208,7 +146,7 @@ func SetupL2VNI(ctx context.Context, params L2VNIParams) error {
 		return fmt.Errorf("could not find underlay MTU: %w", err)
 	}
 
-	if err := setVethMTUForVXLAN(hostVeth, underlayMTU); err != nil {
+	if err := setVethMTUForTunnelOverhead(hostVeth, underlayMTU, VXLanOverhead); err != nil {
 		return fmt.Errorf("SetupL2VNI: failed to set MTU on host veth %s: %w", vethNames.HostSide, err)
 	}
 
@@ -233,7 +171,7 @@ func setupL2VNIRouterSide(params L2VNIParams, vethName string, underlayMTU int) 
 		return fmt.Errorf("could not find peer veth %s in namespace %s: %w", vethName, params.TargetNS, err)
 	}
 
-	if err := setVethMTUForVXLAN(peVeth, underlayMTU); err != nil {
+	if err := setVethMTUForTunnelOverhead(peVeth, underlayMTU, VXLanOverhead); err != nil {
 		return fmt.Errorf("failed to set MTU on pe veth %s: %w", vethName, err)
 	}
 
@@ -247,7 +185,7 @@ func setupL2VNIRouterSide(params L2VNIParams, vethName string, underlayMTU int) 
 	}
 	if len(params.L2GatewayIPs) > 0 {
 		for _, ip := range params.L2GatewayIPs {
-			if err := assignIPToInterface(bridge, ip); err != nil {
+			if err := AssignIPToInterface(bridge, ip); err != nil {
 				return fmt.Errorf("failed to assign L2 gateway IP %s to bridge %s: %w", ip, name, err)
 			}
 		}
@@ -290,15 +228,12 @@ func setupHostMaster(ctx context.Context, params L2VNIParams, hostVeth netlink.L
 // - a linux VRF (only when params.VRF is non-empty)
 // - a linux Bridge, enslaved to the VRF when one exists
 // - a VXLan interface
-//
-// Additionally, it creates a veth pair and moves one leg in the target
-// namespace.
 func setupVNI(ctx context.Context, params VNIParams, options ...NetlinkOption) error {
 	slog.DebugContext(ctx, "setting up VNI", "params", params)
 	defer slog.DebugContext(ctx, "end setting up VNI", "params", params)
 	ns, err := netns.GetFromPath(params.TargetNS)
 	if err != nil {
-		return fmt.Errorf("SetupVNI: Failed to get network namespace %s: %w", params.TargetNS, err)
+		return fmt.Errorf("failed to get network namespace %s: %w", params.TargetNS, err)
 	}
 	defer func() {
 		if err := ns.Close(); err != nil {
@@ -306,8 +241,7 @@ func setupVNI(ctx context.Context, params VNIParams, options ...NetlinkOption) e
 		}
 	}()
 
-	if err := netnamespace.In(ns, func() error {
-
+	return netnamespace.In(ns, func() error {
 		var vrf *netlink.Vrf
 		if params.VRF != "" {
 			slog.DebugContext(ctx, "setting up vrf", "vrf", params.VRF)
@@ -325,20 +259,11 @@ func setupVNI(ctx context.Context, params VNIParams, options ...NetlinkOption) e
 		}
 
 		slog.DebugContext(ctx, "setting up vxlan")
-		err = setupVXLan(params, bridge)
-		if err != nil {
-			return err
-		}
-
-		return nil
-	}); err != nil {
-		return err
-	}
-
-	return nil
+		return setupVXLan(params, bridge)
+	})
 }
 
-// RemoveAllVNIs removes from the target namespace the bridges / VRFs / veths
+// RemoveAllVNIs removes from the target namespace the bridges / veths
 // for all VNIs.
 func RemoveAllVNIs(targetNS string) error {
 	return RemoveNonConfiguredVNIs(targetNS, []VNIParams{})
@@ -347,14 +272,12 @@ func RemoveAllVNIs(targetNS string) error {
 // RemoveNonConfiguredVNIs removes from the target namespace the
 // leftovers corresponding to VNIs that are not configured anymore.
 func RemoveNonConfiguredVNIs(targetNS string, params []VNIParams) error {
-	vrfs := map[string]bool{}
 	vnis := map[int32]bool{}
 	for _, p := range params {
-		vrfs[p.VRF] = true
 		vnis[p.VNI] = true
 	}
 
-	failedDeletes := removeHostSideVNIs(vnis)
+	errs := removeHostSideVNIs(vnis)
 
 	ns, err := netns.GetFromPath(targetNS)
 	if err != nil {
@@ -367,14 +290,16 @@ func RemoveNonConfiguredVNIs(targetNS string, params []VNIParams) error {
 	}()
 
 	if err := netnamespace.In(ns, func() error {
-		nsErrors := removeNamespaceSideVNIs(vnis, vrfs)
-		failedDeletes = append(failedDeletes, nsErrors...)
-		return errors.Join(failedDeletes...)
+		nsErrors := removeNamespaceSideVNIs(vnis)
+		return errors.Join(nsErrors...)
 	}); err != nil {
-		return err
+		errs = append(errs, err)
 	}
 
-	return errors.Join(failedDeletes...)
+	if err := errors.Join(errs...); err != nil {
+		return fmt.Errorf("RemoveNonConfiguredVNIs: %w", err)
+	}
+	return nil
 }
 
 func removeHostSideVNIs(vnis map[int32]bool) []error {
@@ -391,29 +316,10 @@ func removeHostSideVNIs(vnis map[int32]bool) []error {
 		failedDeletes = append(failedDeletes, fmt.Errorf("remove OVS bridges: %w", err))
 	}
 
-	for _, hl := range hostLinks {
-		if hl.Type() != VethLinkType {
-			continue
-		}
-		if !strings.HasPrefix(hl.Attrs().Name, HostVethPrefix) {
-			continue
-		}
-		vni, err := vniFromHostVeth(hl.Attrs().Name)
-		if err != nil {
-			failedDeletes = append(failedDeletes, fmt.Errorf("remove host leg: %s %w", hl.Attrs().Name, err))
-			continue
-		}
-		if vnis[vni] {
-			continue
-		}
-		if err := netlink.LinkDel(hl); err != nil {
-			failedDeletes = append(failedDeletes, fmt.Errorf("remove host leg: %s %w", hl.Attrs().Name, err))
-		}
-	}
-	return failedDeletes
+	return append(failedDeletes, removeHostSideVeths(hostLinks, HostVethPrefix+EvpnInfix, vnis)...)
 }
 
-func removeNamespaceSideVNIs(vnis map[int32]bool, vrfs map[string]bool) []error {
+func removeNamespaceSideVNIs(vnis map[int32]bool) []error {
 	var failedDeletes []error
 
 	links, err := netlink.LinkList()
@@ -425,18 +331,6 @@ func removeNamespaceSideVNIs(vnis map[int32]bool, vrfs map[string]bool) []error 
 	}
 	if err := deleteLinksForType(BridgeLinkType, vnis, links, vniFromBridgeName); err != nil {
 		failedDeletes = append(failedDeletes, fmt.Errorf("remove bridge links: %w", err))
-	}
-
-	for _, l := range links {
-		if l.Type() != VRFLinkType {
-			continue
-		}
-		if vrfs[l.Attrs().Name] {
-			continue
-		}
-		if err := netlink.LinkDel(l); err != nil {
-			failedDeletes = append(failedDeletes, fmt.Errorf("remove non configured vnis: failed to delete vrf %s %w", l.Attrs().Name, err))
-		}
 	}
 	return failedDeletes
 }
@@ -636,10 +530,10 @@ func removePortsFromBridge(ctx context.Context, ovs libovsclient.Client, bridge 
 // non-managed OVS bridge for VNIs that are no longer configured.
 func detachOurPortsFromBridge(ctx context.Context, ovs libovsclient.Client, bridge ovsmodel.Bridge, configuredVNIs map[int32]bool) error {
 	filter := func(port *ovsmodel.Port) bool {
-		if !strings.HasPrefix(port.Name, HostVethPrefix) {
+		if !strings.HasPrefix(port.Name, HostVethPrefix+EvpnInfix) {
 			return false
 		}
-		vni, err := vniFromHostVeth(port.Name)
+		vni, err := interfaceIDFromPrefix(port.Name, HostVethPrefix+EvpnInfix)
 		if err != nil {
 			return false
 		}
@@ -674,45 +568,4 @@ func hostMaster(vni int32, m HostMaster) (netlink.Link, error) {
 		return nil, fmt.Errorf("getHostMaster: failed to create host bridge %d: %w", vni, err)
 	}
 	return bridge, nil
-}
-
-// setVethMTUForVXLAN sets the MTU on a veth interface to account for VXLan overhead.
-// If the underlay MTU is not found, or if the resulting MTU would be too small,
-// the MTU is left unchanged.
-func setVethMTUForVXLAN(link netlink.Link, underlayMTU int) error {
-	if underlayMTU == 0 {
-		slog.Debug("No underlay MTU found, leaving veth MTU at default", "veth", link.Attrs().Name)
-		return nil
-	}
-	targetMTU := underlayMTU - VXLanOverhead
-	if targetMTU <= MinVethMTU {
-		slog.Warn("Calculated veth MTU is too low, leaving at default",
-			"veth", link.Attrs().Name,
-			"underlayMTU", underlayMTU,
-			"calculatedMTU", targetMTU)
-		return nil
-	}
-	return linkSetMTU(link, targetMTU)
-}
-
-// assignIPsToInterface assigns both IPv4 and IPv6 addresses to an interface.
-// It fails if no IPs are provided (both IPv4 and IPv6 are empty).
-func assignIPsToInterface(link netlink.Link, ipv4, ipv6 string) error {
-	if ipv4 == "" && ipv6 == "" {
-		return fmt.Errorf("at least one IP address must be provided (IPv4 or IPv6)")
-	}
-
-	if ipv4 != "" {
-		if err := assignIPToInterface(link, ipv4); err != nil {
-			return fmt.Errorf("failed to assign IPv4 address %s: %w", ipv4, err)
-		}
-	}
-
-	if ipv6 != "" {
-		if err := assignIPToInterface(link, ipv6); err != nil {
-			return fmt.Errorf("failed to assign IPv6 address %s: %w", ipv6, err)
-		}
-	}
-
-	return nil
 }

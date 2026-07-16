@@ -19,6 +19,7 @@ func TestValidateUnderlay(t *testing.T) {
 	tcs := []struct {
 		name        string
 		underlays   []*v1alpha1.Underlay
+		l3vpns      []*v1alpha1.L3VPN
 		nodes       []*v1.Node
 		newUnderlay *v1alpha1.Underlay
 		errorString string
@@ -105,12 +106,86 @@ func TestValidateUnderlay(t *testing.T) {
 			},
 			errorString: "can't have more than one underlay per node",
 		},
+		// We do not want to block underlays with invalid configuration, only overlay resources.
+		{
+			name: "underlay validation passes even when l3vpns present, but the underlay's SRv6 configuration was removed",
+			nodes: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node1",
+						Labels: map[string]string{
+							"nodeName": "node1",
+						},
+					},
+				},
+			},
+			underlays: []*v1alpha1.Underlay{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: "default",
+						Name:      "existingUnderlay",
+					},
+					Spec: v1alpha1.UnderlaySpec{
+						ASN: 65000,
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"10.0.0.0/24"},
+						},
+						NodeSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{
+								"nodeName": "node1",
+							},
+						},
+						Neighbors: []v1alpha1.Neighbor{{}},
+						SRV6:      &v1alpha1.SRV6Config{},
+					},
+				},
+			},
+			l3vpns: []*v1alpha1.L3VPN{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: "default",
+						Name:      "newL3VPN",
+					},
+					Spec: v1alpha1.L3VPNSpec{
+						VRF: "vrfa",
+						HostSession: &v1alpha1.HostSession{
+							LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.0.3.0/24")},
+						},
+						NodeSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{
+								"nodeName": "node1",
+							},
+						},
+					},
+				},
+			},
+			newUnderlay: &v1alpha1.Underlay{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      "existingUnderlay",
+				},
+				Spec: v1alpha1.UnderlaySpec{
+					ASN: 65001,
+					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+						CIDRs: []string{"10.0.1.0/24"},
+					},
+					NodeSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"nodeName": "node1",
+						},
+					},
+					Neighbors: []v1alpha1.Neighbor{{}},
+				},
+			},
+		},
 	}
 	for _, tc := range tcs {
 		t.Run(tc.name, func(t *testing.T) {
 			underlays := objectsFromResources(tc.underlays)
 			nodes := objectsFromResources(tc.nodes)
+			l3vpns := objectsFromResources(tc.l3vpns)
 			objects := append(underlays, nodes...)
+			objects = append(objects, l3vpns...)
 			client, err := setupFakeWebhookClient(objects)
 			if err != nil {
 				t.Fatal(err)

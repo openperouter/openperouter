@@ -1,0 +1,178 @@
+log stdout 
+log timestamp precision 3
+hostname hostname
+ip nht resolve-via-default
+ipv6 nht resolve-via-default
+
+route-map allowall permit 1
+router bgp 65000
+  no bgp ebgp-requires-policy
+  no bgp network import-check
+  no bgp default ipv4-unicast
+  bgp router-id 10.0.0.1
+  neighbor 192.168.122.1 remote-as 65001
+  
+  
+  
+  neighbor 2001:db8:192:168:1::1 remote-as 65001
+  
+  
+  
+  neighbor 2001:db8:192:168:1::1 disable-connected-check
+  neighbor 2001:db8:192:168:1::1 capability extended-nexthop
+  neighbor 2001:db8:192:168:1::1 update-source 2001:db8:1234:5678::
+
+  address-family ipv4 unicast
+    neighbor 192.168.122.1 activate
+    neighbor 192.168.122.1 allowas-in
+  exit-address-family
+
+  address-family ipv6 unicast
+    neighbor 2001:db8:192:168:1::1 activate
+    neighbor 2001:db8:192:168:1::1 allowas-in
+  exit-address-family
+  address-family ipv4 unicast
+    network 192.168.123.0/32
+  exit-address-family
+
+  address-family ipv6 unicast
+    network 2001:db8:1234:5678::/128
+  exit-address-family
+
+  address-family l2vpn evpn
+    neighbor 192.168.122.1 activate
+    neighbor 192.168.122.1 allowas-in
+    neighbor 2001:db8:192:168:1::1 activate
+    neighbor 2001:db8:192:168:1::1 allowas-in
+    advertise-all-vni
+    advertise-svi-ip
+  exit-address-family
+  address-family ipv4 vpn
+    neighbor 2001:db8:192:168:1::1 activate
+    neighbor 2001:db8:192:168:1::1 next-hop-self
+  exit-address-family
+  !
+  address-family ipv6 vpn
+    neighbor 2001:db8:192:168:1::1 activate
+    neighbor 2001:db8:192:168:1::1 next-hop-self
+  exit-address-family
+  !
+  segment-routing srv6
+    locator MAIN
+  exit
+exit
+!
+router bgp 65000 vrf vrf1
+  no bgp ebgp-requires-policy
+  no bgp network import-check
+  no bgp default ipv4-unicast
+  bgp router-id 10.0.0.1
+  sid vpn per-vrf export auto
+  
+  neighbor 192.168.2.2 remote-as 65001
+
+  address-family ipv4 unicast
+    network 192.168.2.2/32
+    neighbor 192.168.2.2 activate
+    neighbor 192.168.2.2 route-map allowall in
+    neighbor 192.168.2.2 route-map allowall out
+  exit-address-family
+
+  address-family ipv6 unicast
+    neighbor 192.168.2.2 activate
+    neighbor 192.168.2.2 route-map allowall in
+    neighbor 192.168.2.2 route-map allowall out
+  exit-address-family
+
+  address-family ipv4 unicast
+    rd vpn export 10.0.0.1:100
+    rt vpn export 65000:100 11110:100
+    rt vpn import 65001:100 11111:100
+    export vpn
+    import vpn
+  exit-address-family
+
+  address-family ipv6 unicast
+    rd vpn export 10.0.0.1:100
+    rt vpn export 65000:100 11110:100
+    rt vpn import 65001:100 11111:100
+    export vpn
+    import vpn
+  exit-address-family
+exit
+router bgp 65000 vrf vrf1
+  no bgp ebgp-requires-policy
+  no bgp network import-check
+  no bgp default ipv4-unicast
+  bgp router-id 10.0.0.1
+  sid vpn per-vrf export auto
+  
+  neighbor 2001:db8::2 remote-as 65001
+
+  address-family ipv4 unicast
+    neighbor 2001:db8::2 activate
+    neighbor 2001:db8::2 route-map allowall in
+    neighbor 2001:db8::2 route-map allowall out
+  exit-address-family
+
+  address-family ipv6 unicast
+    network 2001:db8::2/128
+    neighbor 2001:db8::2 activate
+    neighbor 2001:db8::2 route-map allowall in
+    neighbor 2001:db8::2 route-map allowall out
+  exit-address-family
+
+  address-family ipv4 unicast
+    rd vpn export 10.0.0.1:100
+    rt vpn export 65000:100 11110:100
+    rt vpn import 65001:100 11111:100
+    export vpn
+    import vpn
+  exit-address-family
+
+  address-family ipv6 unicast
+    rd vpn export 10.0.0.1:100
+    rt vpn export 65000:100 11110:100
+    rt vpn import 65001:100 11111:100
+    export vpn
+    import vpn
+  exit-address-family
+exit
+router isis ISIS
+  net 49.0001.0002.0003.0004.00
+  is-type level-1
+  segment-routing srv6
+    locator MAIN
+  exit
+exit
+!
+interface lo
+  ipv6 router isis ISIS
+  isis passive
+exit
+!
+interface eth0
+  ip router isis ISIS
+  ipv6 router isis ISIS
+exit
+!
+segment-routing
+  srv6
+    ! Temporarily disabled until https://github.com/FRRouting/frr/pull/20716 lands in our image.
+    ! Source address will default to Loopback even without this.
+    !encapsulation
+    !  source-address 2001:db8:1234:5678::
+    !exit
+    locators
+      locator MAIN
+        prefix fd00:0:32::/48 block-len 32 node-len 16
+        behavior usid
+        format usid-f3216
+      exit
+      !
+    exit
+    !
+  exit
+  !
+exit
+!

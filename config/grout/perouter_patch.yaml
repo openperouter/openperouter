@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: router
+  namespace: system
+spec:
+  template:
+    spec:
+      containers:
+      - name: frr
+        env:
+        - name: TINI_SUBREAPER
+          value: "true"
+        - name: GROUT_SOCK_PATH
+          value: "/var/run/grout/grout.sock"
+        volumeMounts:
+        - name: frr-sockets
+          mountPath: /var/run/frr
+        - name: frrconfig
+          mountPath: /etc/frr
+        - name: netns
+          mountPath: /var/run/netns
+          mountPropagation: HostToContainer
+        - name: grout-socket
+          mountPath: /var/run/grout
+      - name: grout
+        securityContext:
+          privileged: true
+        image: quay.io/openperouter/router
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: GROUT_SOCK_PATH
+          value: "/var/run/grout/grout.sock"
+        command:
+        - /bin/sh
+        - -c
+        - |
+          TIMEOUT=60
+          WAITED=0
+          until [ -e /var/run/netns/perouter ]; do
+            echo "Waiting for named netns /var/run/netns/perouter..."
+            sleep 1
+            WAITED=$((WAITED + 1))
+            if [ "$WAITED" -ge "$TIMEOUT" ]; then
+              echo "Timed out waiting for named netns after ${TIMEOUT}s"
+              exit 1
+            fi
+          done
+          exec nsenter --net=/var/run/netns/perouter grout --test-mode --socket-mode 0666
+        volumeMounts:
+        - name: grout-socket
+          mountPath: /var/run/grout
+        - name: netns
+          mountPath: /var/run/netns
+          mountPropagation: HostToContainer
+        - name: host-nsenter
+          mountPath: /usr/bin/nsenter
+          readOnly: true
+        startupProbe:
+          exec:
+            command: ["/bin/sh", "-c", "grcli -e"]
+          initialDelaySeconds: 2
+          periodSeconds: 5
+          timeoutSeconds: 5
+          failureThreshold: 12
+        readinessProbe:
+          exec:
+            command: ["/bin/sh", "-c", "grcli -e"]
+          periodSeconds: 10
+          timeoutSeconds: 5
+        livenessProbe:
+          exec:
+            command: ["/bin/sh", "-c", "grcli -e"]
+          periodSeconds: 30
+          timeoutSeconds: 5
+      volumes:
+      - name: grout-socket
+        hostPath:
+          path: /var/run/openperouter/grout
+          type: DirectoryOrCreate
+      - name: host-nsenter
+        hostPath:
+          path: /usr/bin/nsenter
+          type: File

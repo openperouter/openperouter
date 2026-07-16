@@ -369,9 +369,10 @@ General observations:
   `OSPF` are set. 
 - A webhook must ensure that L3VNI and L2VNI resources cannot be created if
   tunnelEndpoint is not set. For SRv6, part of this validation is done by CEL 
-  (SRv6 can only be set when an IPv6 CIDR is present in tunnelEndpoint). However,
-  a webhook will have to enforce that L3VPN can only be created when SRv6
-  configuration is present.
+  (SRv6 can only be set when an IPv6 CIDR is present in tunnelEndpoint).
+- A webhook will have to enforce that L3VPN can only be created when SRv6
+  configuration is present. However, we opt against adding a webhook on underlay
+  deletion.
 
 Fields:
 - **Name:** `TunnelEndpoint`  
@@ -975,11 +976,9 @@ spec:
   - address: 2001:db8:1234::1
     asn: 64520
     ebgpMultiHop: true
-    extendedNexthop: true
   - address: 2001:db8:1234::2
     asn: 64520
     ebgpMultiHop: true
-    extendedNexthop: true
   nics:
   - toswitch1
   routeridcidr: 10.0.0.0/24
@@ -1060,11 +1059,9 @@ spec:
   - address: 2001:db8:1234::1
     asn: 64520
     ebgpMultiHop: true
-    extendedNexthop: true
   - address: 2001:db8:1234::2
     asn: 64520
     ebgpMultiHop: true
-    extendedNexthop: true
   - asn: 64512
     address: 192.168.11.2
   nics:

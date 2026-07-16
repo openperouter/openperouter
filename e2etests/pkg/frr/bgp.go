@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/openperouter/openperouter/e2etests/pkg/executor"
 )
@@ -31,12 +32,7 @@ func (r BGPRoutes) HaveRoute(prefix, expectedNexthop string) bool {
 	if !ok {
 		return false
 	}
-	for _, n := range nextHops {
-		if n == expectedNexthop {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(nextHops, expectedNexthop)
 }
 
 func BGPRoutesFor(exec executor.Executor) (BGPRoutes, BGPRoutes, error) {

@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"time"
 
 	"github.com/onsi/ginkgo/v2"
@@ -23,10 +22,23 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	clientset "k8s.io/client-go/kubernetes"
 )
 
 var ValidatorPath string
+
+var cniBinaries = []string{"macvlan", "ipvlan", "static", "dhcp"}
+
+const (
+	cniBinDir   = "/opt/openperouter/cni/bin"
+	cniCacheDir = "/var/lib/openperouter/cni/cache"
+)
+
+type cniTarget struct {
+	exec  executor.Executor
+	label string
+}
 
 const (
 	underlayConfiguredTestSelector      = "EXTERNAL.*underlay.* is configured.*"
@@ -46,8 +58,8 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 			Namespace: openperouter.Namespace,
 		},
 		Spec: v1alpha1.UnderlaySpec{
-			ASN:  64514,
-			Nics: []string{"toswitch1"},
+			ASN:        64514,
+			Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch1"}}},
 			Neighbors: []v1alpha1.Neighbor{
 				{
 					ASN:     new(int64(64517)),
@@ -191,7 +203,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 
 				validateConfig(l3vniParams{
 					VRF: l3vni100.Name,
-					HostVeth: &veth{
+					LinkIPs: &linkIPs{
 						NSIPv4: routerIPWithNetmask(l3vni100.Spec.HostSession.LocalCIDR.IPv4),
 						NSIPv6: routerIPWithNetmask(l3vni100.Spec.HostSession.LocalCIDR.IPv6),
 					},
@@ -229,7 +241,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				vtepIP := vtepIPv4ForPod(cs, underlay.Spec.TunnelEndpoint, p)
 				validateConfig(l3vniParams{
 					VRF: l3vni100.Name,
-					HostVeth: &veth{
+					LinkIPs: &linkIPs{
 						NSIPv4: routerIPWithNetmask(l3vni100.Spec.HostSession.LocalCIDR.IPv4),
 						NSIPv6: routerIPWithNetmask(l3vni100.Spec.HostSession.LocalCIDR.IPv6),
 					},
@@ -240,7 +252,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 
 				validateConfig(l3vniParams{
 					VRF: l3vni200.Name,
-					HostVeth: &veth{
+					LinkIPs: &linkIPs{
 						NSIPv4: routerIPWithNetmask(l3vni200.Spec.HostSession.LocalCIDR.IPv4),
 						NSIPv6: routerIPWithNetmask(l3vni200.Spec.HostSession.LocalCIDR.IPv6),
 					},
@@ -260,7 +272,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				vtepIP := vtepIPv4ForPod(cs, underlay.Spec.TunnelEndpoint, p)
 				validateConfig(l3vniParams{
 					VRF: l3vni200.Name,
-					HostVeth: &veth{
+					LinkIPs: &linkIPs{
 						NSIPv4: routerIPWithNetmask(l3vni200.Spec.HostSession.LocalCIDR.IPv4),
 						NSIPv6: routerIPWithNetmask(l3vni200.Spec.HostSession.LocalCIDR.IPv6),
 					},
@@ -272,7 +284,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				ginkgo.By(fmt.Sprintf("validating VNI is deleted for pod %s", p.Name))
 				validateConfig(l3vniParams{
 					VRF: l3vni100.Name,
-					HostVeth: &veth{
+					LinkIPs: &linkIPs{
 						NSIPv4: routerIPWithNetmask(l3vni100.Spec.HostSession.LocalCIDR.IPv4),
 						NSIPv6: routerIPWithNetmask(l3vni100.Spec.HostSession.LocalCIDR.IPv6),
 					},
@@ -315,7 +327,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				vtepIP := vtepIPv4ForPod(cs, underlay.Spec.TunnelEndpoint, p)
 				validateConfig(l3vniParams{
 					VRF: l3vni100.Name,
-					HostVeth: &veth{
+					LinkIPs: &linkIPs{
 						NSIPv4: routerIPWithNetmask(l3vni100.Spec.HostSession.LocalCIDR.IPv4),
 						NSIPv6: routerIPWithNetmask(l3vni100.Spec.HostSession.LocalCIDR.IPv6),
 					},
@@ -340,7 +352,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				changedVni := resources.L3VNIs[0]
 				validateConfig(l3vniParams{
 					VRF: changedVni.Name,
-					HostVeth: &veth{
+					LinkIPs: &linkIPs{
 						NSIPv4: routerIPWithNetmask(changedVni.Spec.HostSession.LocalCIDR.IPv4),
 						NSIPv6: routerIPWithNetmask(changedVni.Spec.HostSession.LocalCIDR.IPv6),
 					},
@@ -384,7 +396,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 					vtepIP := vtepIPv4ForPod(cs, tunnelEndpoint, p)
 					validateConfig(l3vniParams{
 						VRF: l3vni100.Name,
-						HostVeth: &veth{
+						LinkIPs: &linkIPs{
 							NSIPv4: routerIPWithNetmask(l3vni100.Spec.HostSession.LocalCIDR.IPv4),
 							NSIPv6: routerIPWithNetmask(l3vni100.Spec.HostSession.LocalCIDR.IPv6),
 						},
@@ -415,18 +427,35 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 			validate(resources.Underlays[0].Spec.TunnelEndpoint)
 
 			ginkgo.By("editing the underlay nic (to non existent one)")
-			resources.Underlays[0].Spec.Nics[0] = "foo"
+			resources.Underlays[0].Spec.Interfaces[0].NetworkDevice.InterfaceName = "foo"
 			err = Updater.Update(resources)
 			Expect(err).NotTo(HaveOccurred())
 
-			ginkgo.By("waiting for the routers to be rolled out again")
-			Eventually(func() error {
-				newRouterPods, err := openperouter.RouterPods(cs)
-				if err != nil {
-					return err
-				}
-				return podsRolled(cs, routerPods, newRouterPods)
-			}, time.Minute, time.Second).ShouldNot(HaveOccurred())
+			ginkgo.By("verifying nodes report degraded status")
+			for _, p := range routerPods {
+				Eventually(func(g Gomega) {
+					expectNodeCondition(g, p.Spec.NodeName, v1alpha1.ConditionTypeReady, metav1.ConditionFalse)
+					expectNodeCondition(g, p.Spec.NodeName, v1alpha1.ConditionTypeDegraded, metav1.ConditionTrue)
+				}, time.Minute, time.Second).Should(Succeed())
+			}
+
+			ginkgo.By("verifying router pods were NOT restarted")
+			currentPods, err := openperouter.RouterPods(cs)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(podNodeToUIDs(currentPods)).To(Equal(podNodeToUIDs(routerPods)))
+
+			ginkgo.By("restoring the underlay nic to a valid one")
+			resources.Underlays[0].Spec.Interfaces[0].NetworkDevice.InterfaceName = "toswitch1"
+			err = Updater.Update(resources)
+			Expect(err).NotTo(HaveOccurred())
+
+			ginkgo.By("verifying nodes recover from degraded status")
+			for _, p := range routerPods {
+				Eventually(func(g Gomega) {
+					expectNodeCondition(g, p.Spec.NodeName, v1alpha1.ConditionTypeReady, metav1.ConditionTrue)
+					expectNodeCondition(g, p.Spec.NodeName, v1alpha1.ConditionTypeDegraded, metav1.ConditionFalse)
+				}, 2*time.Minute, time.Second).Should(Succeed())
+			}
 		})
 
 		ginkgo.It("works with IPv6-only L3VNI", func() {
@@ -446,7 +475,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				vtepIP := vtepIPv4ForPod(cs, underlay.Spec.TunnelEndpoint, p)
 				validateConfig(l3vniParams{
 					VRF: l3vni300.Name,
-					HostVeth: &veth{
+					LinkIPs: &linkIPs{
 						NSIPv4: routerIPWithNetmask(l3vni300.Spec.HostSession.LocalCIDR.IPv4),
 						NSIPv6: routerIPWithNetmask(l3vni300.Spec.HostSession.LocalCIDR.IPv6),
 					},
@@ -483,7 +512,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				vtepIP := vtepIPv4ForPod(cs, underlay.Spec.TunnelEndpoint, p)
 				validateConfig(l3vniParams{
 					VRF: l3vni400.Name,
-					HostVeth: &veth{
+					LinkIPs: &linkIPs{
 						NSIPv4: routerIPWithNetmask(l3vni400.Spec.HostSession.LocalCIDR.IPv4),
 						NSIPv6: routerIPWithNetmask(l3vni400.Spec.HostSession.LocalCIDR.IPv6),
 					},
@@ -523,7 +552,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 
 				validateConfig(l3vniParams{
 					VRF: l3vni100.Name,
-					HostVeth: &veth{
+					LinkIPs: &linkIPs{
 						NSIPv4: routerIPWithNetmask(l3vni100.Spec.HostSession.LocalCIDR.IPv4),
 						NSIPv6: routerIPWithNetmask(l3vni100.Spec.HostSession.LocalCIDR.IPv6),
 					},
@@ -534,7 +563,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 
 				validateConfig(l3vniParams{
 					VRF: l3vni300.Name,
-					HostVeth: &veth{
+					LinkIPs: &linkIPs{
 						NSIPv4: routerIPWithNetmask(l3vni300.Spec.HostSession.LocalCIDR.IPv4),
 						NSIPv6: routerIPWithNetmask(l3vni300.Spec.HostSession.LocalCIDR.IPv6),
 					},
@@ -545,7 +574,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 
 				validateConfig(l3vniParams{
 					VRF: l3vni400.Name,
-					HostVeth: &veth{
+					LinkIPs: &linkIPs{
 						NSIPv4: routerIPWithNetmask(l3vni400.Spec.HostSession.LocalCIDR.IPv4),
 						NSIPv6: routerIPWithNetmask(l3vni400.Spec.HostSession.LocalCIDR.IPv6),
 					},
@@ -606,7 +635,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 
 			l3VNI100Params := l3vniParams{
 				VRF: l3vni100.Name,
-				HostVeth: &veth{
+				LinkIPs: &linkIPs{
 					NSIPv4: routerIPWithNetmask(l3vni100.Spec.HostSession.LocalCIDR.IPv4),
 					NSIPv6: routerIPWithNetmask(l3vni100.Spec.HostSession.LocalCIDR.IPv6),
 				},
@@ -615,7 +644,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 			}
 			l3VNI200Params := l3vniParams{
 				VRF: l3vni200.Name,
-				HostVeth: &veth{
+				LinkIPs: &linkIPs{
 					NSIPv4: routerIPWithNetmask(l3vni200.Spec.HostSession.LocalCIDR.IPv4),
 					NSIPv6: routerIPWithNetmask(l3vni200.Spec.HostSession.LocalCIDR.IPv6),
 				},
@@ -1253,6 +1282,125 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 					underlayNIC, node.Name, addrsBefore[node.Name], addrsAfter)
 			}
 		})
+
+		ginkgo.It("changes the underlay NIC without restarting the router pod", func() {
+			nodes, err := k8s.GetNodes(cs)
+			Expect(err).NotTo(HaveOccurred())
+
+			oldNIC := "toswitch1"
+			newNIC := "toswitch2"
+
+			ginkgo.By(fmt.Sprintf("recording the %s IP addresses before the change", oldNIC))
+			oldNICAddrsBefore := map[string]string{}
+			for _, node := range nodes {
+				addrs, err := openperouter.InterfaceIPAddresses(node.Name, oldNIC)
+				Expect(err).NotTo(HaveOccurred(), "failed to get %s addresses on %s", oldNIC, node.Name)
+				oldNICAddrsBefore[node.Name] = addrs
+			}
+
+			vniForSwap := v1alpha1.L3VNI{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "swap-test",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.L3VNISpec{
+					VRF: "swap-test",
+					VNI: 500,
+				},
+			}
+			vniBridge := "br-pe-500"
+
+			ginkgo.By("creating the underlay and an L3VNI with " + oldNIC)
+			Expect(Updater.Update(config.Resources{
+				Underlays: []v1alpha1.Underlay{underlay},
+				L3VNIs:    []v1alpha1.L3VNI{vniForSwap},
+			})).To(Succeed())
+
+			ginkgo.By(fmt.Sprintf("waiting for %s to move into the perouter netns", oldNIC))
+			for _, node := range nodes {
+				Eventually(func() bool {
+					return openperouter.IsInterfaceInNS(node.Name, oldNIC, openperouter.NamedNetns)
+				}).WithTimeout(2 * time.Minute).WithPolling(time.Second).Should(BeTrueBecause(
+					"%s should be inside the perouter netns on %s", oldNIC, node.Name))
+			}
+
+			ginkgo.By(fmt.Sprintf("waiting for VNI bridge %s to appear in the perouter netns", vniBridge))
+			for _, node := range nodes {
+				Eventually(func() bool {
+					return openperouter.IsInterfaceInNS(node.Name, vniBridge, openperouter.NamedNetns)
+				}).WithTimeout(2 * time.Minute).WithPolling(time.Second).Should(BeTrueBecause(
+					"%s should exist in the perouter netns on %s", vniBridge, node.Name))
+			}
+
+			ginkgo.By("updating the underlay to use " + newNIC)
+			updatedUnderlay := v1alpha1.Underlay{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "underlay",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.UnderlaySpec{
+					ASN: 64514,
+					Interfaces: []v1alpha1.UnderlayInterface{
+						{
+							Type:          "NetworkDevice",
+							NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: newNIC},
+						},
+					},
+					Neighbors: []v1alpha1.Neighbor{
+						{
+							ASN:     new(int64(64513)),
+							Address: new("192.168.12.2"),
+						},
+					},
+					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+						CIDRs: []string{"100.65.0.0/24"},
+					},
+				},
+			}
+			Expect(Updater.Update(config.Resources{
+				Underlays: []v1alpha1.Underlay{updatedUnderlay},
+				L3VNIs:    []v1alpha1.L3VNI{vniForSwap},
+			})).To(Succeed())
+
+			ginkgo.By(fmt.Sprintf("waiting for %s to move into the perouter netns", newNIC))
+			for _, node := range nodes {
+				Eventually(func() bool {
+					return openperouter.IsInterfaceInNS(node.Name, newNIC, openperouter.NamedNetns)
+				}).WithTimeout(2 * time.Minute).WithPolling(time.Second).Should(BeTrueBecause(
+					"%s should be inside the perouter netns on %s after underlay update", newNIC, node.Name))
+			}
+
+			ginkgo.By(fmt.Sprintf("verifying %s is back in the default netns with original IPs", oldNIC))
+			for _, node := range nodes {
+				Eventually(func() bool {
+					return openperouter.IsInterfaceInDefaultNetns(node.Name, oldNIC)
+				}).WithTimeout(2 * time.Minute).WithPolling(time.Second).Should(BeTrueBecause(
+					"%s should be back in the default netns on %s after underlay update", oldNIC, node.Name))
+
+				Expect(openperouter.InterfaceIsUp(node.Name, oldNIC)).To(BeTrueBecause(
+					"%s should be UP on %s after underlay update", oldNIC, node.Name))
+
+				Expect(openperouter.InterfaceIPAddresses(node.Name, oldNIC)).To(
+					Equal(oldNICAddrsBefore[node.Name]),
+					"%s IP addresses on %s should be preserved after underlay update",
+					oldNIC,
+					node.Name,
+				)
+			}
+
+			ginkgo.By(fmt.Sprintf("waiting for VNI bridge %s to be re-established after underlay swap", vniBridge))
+			for _, node := range nodes {
+				Eventually(func() bool {
+					return openperouter.IsInterfaceInNS(node.Name, vniBridge, openperouter.NamedNetns)
+				}).WithTimeout(2 * time.Minute).WithPolling(time.Second).Should(BeTrueBecause(
+					"%s should be re-established in the perouter netns on %s after underlay swap", vniBridge, node.Name))
+			}
+
+			ginkgo.By("verifying router pods were NOT restarted")
+			currentPods, err := openperouter.RouterPods(cs)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(podNodeToUIDs(currentPods)).To(Equal(podNodeToUIDs(routerPods)))
+		})
 	})
 
 	ginkgo.Context("L3Passthrough", func() {
@@ -1302,7 +1450,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 			})).To(Succeed())
 
 			l3PassthroughParams := l3passthroughParams{
-				HostVeth: &veth{
+				LinkIPs: &linkIPs{
 					NSIPv4: routerIPWithNetmask(passthroughWithNodeSelector.Spec.HostSession.LocalCIDR.IPv4),
 					NSIPv6: routerIPWithNetmask(passthroughWithNodeSelector.Spec.HostSession.LocalCIDR.IPv6),
 				},
@@ -1357,19 +1505,19 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 })
 
 type l3passthroughParams struct {
-	TargetNS string `json:"targetns"`
-	HostVeth *veth  `json:"veth"`
+	TargetNS string   `json:"targetns"`
+	LinkIPs  *linkIPs `json:"linkIPs"`
 }
 
 type l3vniParams struct {
-	VRF       string `json:"vrf"`
-	VTEPIP    string `json:"vtepip"`
-	HostVeth  *veth  `json:"veth"`
-	VNI       uint32 `json:"vni"`
-	VXLanPort int    `json:"vxlanport"`
+	VRF       string   `json:"vrf"`
+	VTEPIP    string   `json:"vtepip"`
+	LinkIPs   *linkIPs `json:"linkIPs"`
+	VNI       uint32   `json:"vni"`
+	VXLanPort int      `json:"vxlanport"`
 }
 
-type veth struct {
+type linkIPs struct {
 	HostIPv4 string `json:"hostipv4"`
 	NSIPv4   string `json:"nsipv4"`
 	HostIPv6 string `json:"hostipv6"`
@@ -1462,34 +1610,56 @@ func sendConfigToValidate[T any](pod *corev1.Pod, toValidate T) string {
 	return filepath.Base(toValidateFile.Name())
 }
 
-func podsRolled(cs clientset.Interface, oldPods, newPods []*corev1.Pod) error {
-	oldPodsNames := []string{}
-	for _, p := range oldPods {
-		oldPodsNames = append(oldPodsNames, p.Name)
+func podNodeToUIDs(pods []*corev1.Pod) map[string]types.UID {
+	res := make(map[string]types.UID, len(pods))
+	for _, p := range pods {
+		res[p.Spec.NodeName] = p.UID
 	}
-
-	if len(newPods) != len(oldPodsNames) {
-		return fmt.Errorf("new pods len %d different from old pods len: %d", len(newPods), len(oldPodsNames))
-	}
-
-	for _, p := range newPods {
-		if slices.Contains(oldPodsNames, p.Name) {
-			return fmt.Errorf("old pod %s not deleted yet", p.Name)
-		}
-		if !k8s.PodIsReady(p) {
-			return fmt.Errorf("pod %s is not ready", p.Name)
-		}
-	}
-	return nil
+	return res
 }
 
-func routerPodsWithValidator(cs clientset.Interface) ([]*corev1.Pod, error) {
-	routerPods, err := openperouter.RouterPods(cs)
-	if err != nil {
-		return nil, err
+func ValidateCNIBinaries(g Gomega, cs clientset.Interface) {
+	cniTargets := k8sModeCNITarget
+	if HostMode {
+		cniTargets = hostModeCNITarget
 	}
-	for _, pod := range routerPods {
-		ensureValidator(cs, pod)
+	for _, t := range cniTargets(g, cs) {
+		for _, bin := range cniBinaries {
+			path := cniBinDir + "/" + bin
+			out, err := t.exec.Exec("test", "-x", path)
+			g.Expect(err).NotTo(HaveOccurred(), "CNI binary %s missing or not executable on %s: %s", path, t.label, out)
+		}
+
+		out, err := t.exec.Exec("test", "-d", cniCacheDir)
+		g.Expect(err).NotTo(HaveOccurred(), "CNI cache directory %s missing on %s: %s", cniCacheDir, t.label, out)
+		out, err = t.exec.Exec("test", "-w", cniCacheDir)
+		g.Expect(err).NotTo(HaveOccurred(), "CNI cache directory %s not writable on %s: %s", cniCacheDir, t.label, out)
 	}
-	return routerPods, nil
+}
+
+func k8sModeCNITarget(g Gomega, cs clientset.Interface) []cniTarget {
+	pods, err := openperouter.ControllerPods(cs)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(pods).NotTo(BeEmpty(), "no controller pods found")
+	targets := make([]cniTarget, 0, len(pods))
+	for _, pod := range pods {
+		targets = append(targets, cniTarget{
+			exec:  executor.ForPod(pod.Namespace, pod.Name, "controller"),
+			label: pod.Name,
+		})
+	}
+	return targets
+}
+
+func hostModeCNITarget(g Gomega, cs clientset.Interface) []cniTarget {
+	nodes, err := k8s.GetNodes(cs)
+	g.Expect(err).NotTo(HaveOccurred())
+	targets := make([]cniTarget, 0, len(nodes))
+	for _, node := range nodes {
+		targets = append(targets, cniTarget{
+			exec:  executor.ForPodmanInContainer(node.Name, "controller"),
+			label: node.Name,
+		})
+	}
+	return targets
 }

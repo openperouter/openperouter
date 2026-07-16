@@ -10,6 +10,53 @@ toc: true
 
 ## Release Notes
 
+
+## Release v0.2.0
+
+### New Features
+- SRv6 l3vpn overlay and isis underlay implementation (#485, @andreaskaris)
+- Add support for IPv6 and unnumbered BGP underlay sessions with ToR switches
+- Add configurable import / export route-targets to l3vni (#197, @k-akashi)
+- Add support for BGP `remote-as external`, `remote-as internal` and for iBGP with ASNs.
+- DPDK/grout support for Underlay and L3Passthrough with tap interfaces (#338, @zeeke)
+- Make the router resilient to data plane crashes. (#317, @maiqueb)
+- Introduce per-resource configuration resilience. All failures are reported via RouterNodeConfigurationStatus with detailed conditions. (#423, @RamLavi)
+- Api: Introduce node router status API. Enable inspecting router configuration status on a spesific node via NodeRouterConfigurationStatus CRD. (#355, @ormergi)
+- Allow moving multiple nics in the OpenPERouter network namespace and allow setting multiple neighbors for the underlay. (#307, @fedepaol)
+- Allow ipv6 vteps for evpn / vxlan. (#514, @fedepaol)
+- Add RouteTarget type for L3VNI route targets. Also uses for L3VPN route targets in the SRv6 PR. (#518, @andreaskaris)
+- Allow deriving the node index from a network interface address in systemd mode, enabling the same node-config.yaml to be deployed across all nodes. (#472, @yahlifried)
+- Automatically set veth MTU to underlay NIC MTU minus 50 bytes (#304, @qinqon)
+- Have configurable vtysh timeout, defined from the helm / operator config. (#189, @maiqueb)
+- Mirror configuration consumed by static files to k8s resources for better visibility. (#469, @fedepaol)
+- Add an optional knob to delay the start of the controller systemd quadlet to start the reconciliation loop after user provided conditions are satisfied. (#487, @fedepaol)
+- Allow L2VNIs without a VRF to operate as pure L2 east-west overlays. (#346, @RamLavi)
+
+### Bug fixes
+- Add liveness probe to FRR container to restart the pod when FRR daemons crash and cannot be recovered by watchfrr. (#455, @andreaskaris)
+- Bridge refresher: don't ping ipv6 lla neighbros, listen for neighbor events instead of polling for stale entries (#312, @fedepaol)
+- Correct the router component default container name (#319, @maiqueb)
+- Don't fail when only rawConfig is provided. (#311, @fedepaol)
+- Fix VRF route import failures caused by namespace loopback (lo) being down. The VTEP IP is now assigned directly to lo instead of a separate lound dummy interface. (#467, @andreaskaris)
+- Fix start race condition where k8s api is available already, the static controller dies but the health port is not free yet, causing the k8sapicontroller to die because the port is not ready. (#325, @fedepaol)
+- Fix underlay interface not being moved back to the default network namespace on underlay deletion. The interface is now restored with its original IP addresses and link-up state. (#442, @andreaskaris)
+- Fix vulnerability GO-2026-5026 (#460, @andreaskaris)
+- Fix: add unreachable routes to prevent VRF escape (#242, @fdomain)
+- Monitor the frr container in systemd mode, if it restarts we reconfigure it. (#479, @fedepaol)
+- Reject l2gatewayip on disconnected L2VNI (#332, @RamLavi)
+- Do not set AddrGenModeNone on L2 VNI bridges. (#351, @maiqueb)
+- Fix duplicate address-family blocks in FRR passthrough configuration by removing unused neighborenableipfamily template calls. Remove IPFamily from frr_test.go for l3vni and passthrough input as it is never set by production code. (#474, @andreaskaris)
+- Pre-delete all interfaces in the router netns as part of the recovery procedure. This will greatly reduce the time it take the kernel to async delete the network namespace via `cleanup_net()` (#463, @maiqueb)
+- Switch FRR logging from file to stdout, simplifying the container entrypoint and enabling native kubectl logs support. (#330, @qinqon)
+- Add exit after router bgp in FRR configuration (#302, @andreaskaris)
+
+### Breaking API Changes
+- API types updated to comply with Kubernetes API conventions via kube-api-linter. Breaking changes: integer fields use int32/int64 instead of uint, duration fields replaced with seconds integers, optional fields use pointers. (#313, @qinqon)
+- API: Rename `EVPNConfig` to `TunnelEndpointConfig` in the Underlay CRD to better reflect its purpose and in preparation for SRv6 implementation. (#471, @andreaskaris)
+- Remove vtepInterface field from EVPNConfig. vtepCIDR is now the only (required) way to configure the VTEP source. (#461, @qinqon)
+- The Underlay `spec.nics` field is replaced by `spec.interfaces`, a discriminated union. Use `interfaces: [{type: NetworkDevice, networkDevice: {interfaceName: <nic>}}]` instead of `nics: [<nic>]`. action required (#517, @qinqon)
+
+
 ## Release v0.1.0
 
 ### New Features

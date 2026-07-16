@@ -166,6 +166,15 @@ spec:
                     type: object
                 type: object
                 x-kubernetes-map-type: atomic
+              underlayAddressFamily:
+                description: |-
+                  underlayAddressFamily selects which VTEP address family to use for this VNI's
+                  VXLAN interface. When omitted, defaults to the available family in the underlay
+                  (IPv4 preferred in dual-stack).
+                enum:
+                - ipv4
+                - ipv6
+                type: string
               vni:
                 description: vni is the VXLan VNI to be used
                 format: int32

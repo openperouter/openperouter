@@ -9,6 +9,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -73,4 +74,12 @@ func assertSingleNodeStatusPerNode(nodes []corev1.Node, namespace string) {
 			}}), "node-status %q should have owner reference to the node %q", nodeStatus.Name, node.Name)
 		}
 	}).WithTimeout(10 * time.Second).WithPolling(1 * time.Second).Should(Succeed())
+}
+
+func expectNodeCondition(g Gomega, nodeName string, condType string, status metav1.ConditionStatus) {
+	nodeStatus, err := openperouter.GetNodeStatus(Updater.Client(), nodeName)
+	g.Expect(err).NotTo(HaveOccurred())
+	cond := apimeta.FindStatusCondition(nodeStatus.Status.Conditions, condType)
+	g.Expect(cond).NotTo(BeNil())
+	g.Expect(cond.Status).To(Equal(status))
 }

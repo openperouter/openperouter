@@ -83,6 +83,17 @@ func ForAddress(ip net.IP) Family {
 	return IPv4
 }
 
+// CIDRsForFamily returns all CIDRs matching the given address family.
+func CIDRsForFamily(cidrs []string, family Family) []string {
+	var res []string
+	for _, c := range cidrs {
+		if ForCIDRString(c) == family {
+			res = append(res, c)
+		}
+	}
+	return res
+}
+
 // ForService returns the address family of a given service.
 func ForService(svc *v1.Service) (Family, error) {
 	if len(svc.Spec.ClusterIPs) > 0 {
