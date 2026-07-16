@@ -55,6 +55,13 @@ type OpenPERouterSpec struct {
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=65535
 	HealthProbePort *int32 `json:"healthProbePort,omitempty"`
+	// bgpListenLimit specifies the maximum number of dynamic BGP sessions the
+	// underlay accepts via listen ranges (FRR `bgp listen limit`). (default: 65535)
+	// +optional
+	// +default=65535
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
+	BGPListenLimit *int32 `json:"bgpListenLimit,omitempty"`
 	// datapath specifies the datapath to use. Allowed values are: kernel, grout. (default: kernel)
 	// +optional
 	// +default="kernel"

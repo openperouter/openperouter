@@ -27,6 +27,7 @@ Kubernetes: `>= 1.19.0-0`
 | fullnameOverride | string | `""` |  |
 | nameOverride | string | `""` |  |
 | openperouter.affinity | object | `{}` |  |
+| openperouter.bgpListenLimit | int | `65535` | Maximum number of dynamic BGP sessions accepted via underlay listen ranges (FRR `bgp listen limit`, 1-65535). |
 | openperouter.controller.cniCacheDir | string | `"/var/lib/openperouter/cni/cache"` | CNI cache directory for persistent CNI state across pod restarts |
 | openperouter.controller.cniPluginDirs | list | `["/opt/openperouter/cni/bin/"]` | CNI plugin binary directories. The default matches the path baked into the controller image. Override only to use externally-provided binaries (e.g. host-mounted). |
 | openperouter.controller.healthProbePort | int | `9081` | Health probe port for liveness and readiness checks |

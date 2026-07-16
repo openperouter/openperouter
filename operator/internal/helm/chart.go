@@ -133,6 +133,9 @@ func patchChartValues(envConfig envconfig.EnvConfig, crdConfig *operatorapi.Open
 			"healthProbePort": *crdConfig.Spec.HealthProbePort,
 		}
 	}
+	if crdConfig.Spec.BGPListenLimit != nil && *crdConfig.Spec.BGPListenLimit != 0 {
+		openperouterValues["bgpListenLimit"] = *crdConfig.Spec.BGPListenLimit
+	}
 
 	datapath := ptr.Deref(crdConfig.Spec.Datapath, "kernel")
 	openperouterValues["datapath"] = datapath

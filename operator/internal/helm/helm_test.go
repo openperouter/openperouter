@@ -382,6 +382,46 @@ func hasMasterToleration(tolerations []v1.Toleration) bool {
 	return false
 }
 
+func TestParseChartWithBGPListenLimit(t *testing.T) {
+	g := NewGomegaWithT(t)
+	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace)
+	g.Expect(err).ToNot(HaveOccurred())
+	limit := int32(512)
+	openperouter := &operatorapi.OpenPERouter{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "openperouter",
+			Namespace: openperouterTestNamespace,
+		},
+		Spec: operatorapi.OpenPERouterSpec{
+			BGPListenLimit: &limit,
+		},
+	}
+
+	objs, err := chart.Objects(defaultEnvConfig, openperouter)
+	g.Expect(err).ToNot(HaveOccurred())
+
+	controllerFound := false
+	for _, obj := range objs {
+		if obj.GetKind() != daemonSetKind || obj.GetName() != controllerDaemonSetName {
+			continue
+		}
+		controller := appsv1.DaemonSet{}
+		err = runtime.DefaultUnstructuredConverter.FromUnstructured(obj.UnstructuredContent(), &controller)
+		g.Expect(err).ToNot(HaveOccurred())
+		found := false
+		for _, c := range controller.Spec.Template.Spec.Containers {
+			for _, arg := range c.Args {
+				if arg == fmt.Sprintf("--bgplistenlimit=%d", limit) {
+					found = true
+				}
+			}
+		}
+		g.Expect(found).To(BeTrue(), "controller daemonset has no --bgplistenlimit arg")
+		controllerFound = true
+	}
+	g.Expect(controllerFound).To(BeTrue())
+}
+
 func validateLogLevel(level string, pod v1.PodTemplateSpec) error {
 	foundOne := false
 	for _, c := range pod.Spec.Containers {

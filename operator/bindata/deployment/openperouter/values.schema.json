@@ -41,6 +41,13 @@
             ],
             "default": "info"
           },
+          "bgpListenLimit": {
+            "type": "integer",
+            "description": "Maximum number of dynamic BGP sessions accepted via underlay listen ranges (FRR `bgp listen limit`).",
+            "minimum": 1,
+            "maximum": 65535,
+            "default": 65535
+          },
           "tolerateMaster": {
             "type": "boolean",
             "description": "Specifies if the controller should tolerate running on the master node.",
