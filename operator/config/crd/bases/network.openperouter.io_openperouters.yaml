@@ -39,6 +39,15 @@ spec:
           spec:
             description: spec defines the desired state of OpenPERouter.
             properties:
+              bgpListenLimit:
+                default: 65535
+                description: |-
+                  bgpListenLimit specifies the maximum number of dynamic BGP sessions the
+                  underlay accepts via listen ranges (FRR `bgp listen limit`). (default: 65535)
+                format: int32
+                maximum: 65535
+                minimum: 1
+                type: integer
               datapath:
                 default: kernel
                 description: 'datapath specifies the datapath to use. Allowed values
