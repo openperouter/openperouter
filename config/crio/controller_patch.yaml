@@ -18,6 +18,7 @@ spec:
           - "--namespace=$(NAMESPACE)"
           - "--frrconfig=/etc/frr/frr.conf"
           - "--crisocket=/crio.sock"
+          - "--reloader-socket=/etc/frr/reload.sock"
       volumes:
       - name: varrun
         hostPath:
