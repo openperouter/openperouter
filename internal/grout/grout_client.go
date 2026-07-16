@@ -202,7 +202,12 @@ func (c *Client) ensureVRF(ctx context.Context, name string) error {
 		}
 	}
 
-	args := []string{"interface", "add", "vrf", name}
+	args := []string{
+		"interface", "add", "vrf", name,
+		// Memory optimization: limit the number of routes and FIB table entries per VRF.
+		"rib4-routes", "128", "fib4-tbl8", "128", "rib6-routes", "128", "fib6-tbl8", "128",
+	}
+
 	slog.InfoContext(ctx, "creating grout VRF", "name", name)
 	if err := c.run(ctx, args...); err != nil {
 		return fmt.Errorf("creating grout VRF %s: %w", name, err)
