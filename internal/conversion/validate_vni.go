@@ -24,10 +24,14 @@ import (
 	"github.com/openperouter/openperouter/internal/ipfamily"
 )
 
-var interfaceNameRegexp *regexp.Regexp
+var (
+	interfaceNameRegexp *regexp.Regexp
+	ipv4LikeRegexp      *regexp.Regexp
+)
 
 func init() {
 	interfaceNameRegexp = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9._-]*$`)
+	ipv4LikeRegexp = regexp.MustCompile(`^\d+\.\d+\.\d+\.\d+$`)
 }
 
 // FilterValidL3VNIs validates L3VNIs per-field and returns the valid resources
@@ -630,9 +634,14 @@ func validateRouteTarget(rt string) error {
 		return nil
 	}
 
+	// Catch values that look like an IPv4 address but failed validation (e.g. 999.1.2.3).
+	if ipv4LikeRegexp.MatchString(rtParam[0]) {
+		return fmt.Errorf("RT format must have A.B.C.D:MN where A.B.C.D is a valid IPv4 address: %s", rt)
+	}
+
 	asn, err := strconv.ParseUint(rtParam[0], 10, 32)
 	if err != nil {
-		return fmt.Errorf("RT format must have ASN:MN %s", rt)
+		return fmt.Errorf("RT format must have ASN:MN: %s", rt)
 	}
 
 	memberNumber, err := parseMemberNumber(rtParam[1])
