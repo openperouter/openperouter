@@ -16,11 +16,25 @@ const (
 	srv6VRF = "srv6VRF"
 )
 
+// lookupVRF finds an existing VRF by name and returns an error if it
+// does not exist or is not a VRF.
+func lookupVRF(name string) (*netlink.Vrf, error) {
+	link, err := netlink.LinkByName(name)
+	if err != nil {
+		return nil, fmt.Errorf("could not find vrf %s: %w", name, err)
+	}
+	vrf, ok := link.(*netlink.Vrf)
+	if !ok {
+		return nil, fmt.Errorf("link %s exists but is not a VRF", name)
+	}
+	return vrf, nil
+}
+
 // setupVRF creates a new VRF and sets it up.
-func setupVRF(name string, opts ...string) (*netlink.Vrf, error) {
+func setupVRF(name string, opts ...string) error {
 	vrf, err := createVRF(name)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	if slices.Contains(opts, srv6VRF) {
@@ -28,19 +42,19 @@ func setupVRF(name string, opts ...string) (*netlink.Vrf, error) {
 		// to VRF creation as possible to minimize the risk of rejected "B>r"
 		// routes in BGP. Likewise, we must disable the RPFilter for SRv6 setups.
 		if err := sysctl.Ensure(sysctl.EnableVRFStrictMode()); err != nil {
-			return nil, fmt.Errorf("failed to ensure VRF strict mode after adding VRF %s: %w", name, err)
+			return fmt.Errorf("failed to ensure VRF strict mode after adding VRF %s: %w", name, err)
 		}
 		if err := sysctl.Ensure(sysctl.DisableRPFilter(vrf.Name)); err != nil {
-			return nil, fmt.Errorf("failed to disable rp_filter after adding VRF %s: %w", name, err)
+			return fmt.Errorf("failed to disable rp_filter after adding VRF %s: %w", name, err)
 		}
 	}
 
 	err = linkSetUp(vrf)
 	if err != nil {
-		return nil, fmt.Errorf("could not set link up for VRF %s: %v", name, err)
+		return fmt.Errorf("could not set link up for VRF %s: %v", name, err)
 	}
 
-	return vrf, nil
+	return nil
 }
 
 func createVRF(name string) (*netlink.Vrf, error) {

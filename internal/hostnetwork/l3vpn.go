@@ -73,8 +73,7 @@ func setupL3VPN(ctx context.Context, params L3VPNParams) error {
 
 	return netnamespace.In(ns, func() error {
 		slog.DebugContext(ctx, "setting up vrf", "vrf", params.VRF)
-		_, err := setupVRF(params.VRF, srv6VRF)
-		return err
+		return setupVRF(params.VRF, srv6VRF)
 	})
 }
 
