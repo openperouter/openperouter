@@ -54,17 +54,18 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 
 FROM quay.io/centos/centos:stream10
 
+ARG TARGETARCH
+
 WORKDIR /
 
-RUN dnf install -y iproute iproute-tc catatonit && dnf clean all
+RUN dnf install -y iproute iproute-tc catatonit curl && dnf clean all
 RUN ln -s /usr/libexec/podman/catatonit /sbin/tini
 
-RUN mkdir /rpms
-ADD https://github.com/DPDK/grout/releases/download/v0.16.0/frr.x86_64.rpm /tmp/
-ADD https://github.com/DPDK/grout/releases/download/v0.16.0/grout-frr.x86_64.rpm /tmp/
-ADD https://github.com/DPDK/grout/releases/download/v0.16.0/grout.x86_64.rpm /tmp/
-
-RUN dnf install -y /tmp/*.rpm && dnf clean all && rm -rf /tmp/*.rpm
+RUN RPMARCH=$(case ${TARGETARCH} in amd64) echo x86_64;; arm64) echo aarch64;; *) echo ${TARGETARCH};; esac) && \
+    curl -fsSL -o /tmp/frr.rpm https://github.com/DPDK/grout/releases/download/v0.16.0/frr.${RPMARCH}.rpm && \
+    curl -fsSL -o /tmp/grout-frr.rpm https://github.com/DPDK/grout/releases/download/v0.16.0/grout-frr.${RPMARCH}.rpm && \
+    curl -fsSL -o /tmp/grout.rpm https://github.com/DPDK/grout/releases/download/v0.16.0/grout.${RPMARCH}.rpm && \
+    dnf install -y /tmp/*.rpm && dnf clean all && rm -rf /tmp/*.rpm
 
 COPY --from=builder /go/openperouter/reloader .
 COPY --from=builder /go/openperouter/controller .

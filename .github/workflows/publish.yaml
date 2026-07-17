@@ -79,7 +79,7 @@ jobs:
             image-description: a perouter running on the host
           - name: grout
             dockerfile: Dockerfile.grout
-            platforms: linux/amd64
+            platforms: linux/amd64,linux/arm64
             tag-suffix: ",suffix=-grout"
             image-title: openperouter-grout
             image-description: a perouter running on the host with grout dataplane
