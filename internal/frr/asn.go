@@ -43,12 +43,12 @@ func NewPeerASN(number *int64, t *string) (PeerASN, error) {
 	}
 
 	switch peerType {
-	case "internal":
+	case "Internal":
 		asType = typeInternal
-	case "external", "":
+	case "External", "":
 		asType = typeExternal
 	default:
-		return PeerASN{}, fmt.Errorf("invalid PeerASN type %q, must be 'internal', 'external' or ''", peerType)
+		return PeerASN{}, fmt.Errorf("invalid PeerASN type %q, must be 'Internal', 'External' or ''", peerType)
 	}
 	return PeerASN{
 		asType: asType,

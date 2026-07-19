@@ -22,7 +22,7 @@ func TestPeerASNToString(t *testing.T) {
 		{
 			name:          "numbered (internal ignored)",
 			peerASNNumber: 10,
-			peerASNType:   "internal",
+			peerASNType:   "Internal",
 			wantString:    "10",
 		},
 		{
@@ -34,13 +34,13 @@ func TestPeerASNToString(t *testing.T) {
 		{
 			name:          "unnumbered external",
 			peerASNNumber: 0,
-			peerASNType:   "external",
+			peerASNType:   "External",
 			wantString:    "external",
 		},
 		{
 			name:          "unnumbered internal",
 			peerASNNumber: 0,
-			peerASNType:   "internal",
+			peerASNType:   "Internal",
 			wantString:    "internal",
 		},
 	}
@@ -82,7 +82,7 @@ func TestPeerASNEqual(t *testing.T) {
 		{
 			name:           "numbered (internal ignored)",
 			peerASNNumber:  10,
-			peerASNType:    "internal",
+			peerASNType:    "Internal",
 			otherASNNumber: 11,
 			wantEqual:      false,
 		},
@@ -96,14 +96,14 @@ func TestPeerASNEqual(t *testing.T) {
 		{
 			name:           "unnumbered external",
 			peerASNNumber:  0,
-			peerASNType:    "external",
+			peerASNType:    "External",
 			otherASNNumber: 11,
 			wantEqual:      false,
 		},
 		{
 			name:           "unnumbered internal",
 			peerASNNumber:  0,
-			peerASNType:    "internal",
+			peerASNType:    "Internal",
 			otherASNNumber: 11,
 			wantEqual:      false,
 		},
@@ -146,7 +146,7 @@ func TestPeerASNIsExternalTo(t *testing.T) {
 		{
 			name:             "numbered (internal ignored)",
 			peerASNNumber:    10,
-			peerASNType:      "internal",
+			peerASNType:      "Internal",
 			otherASNNumber:   11,
 			wantIsExternalTo: true,
 		},
@@ -160,14 +160,14 @@ func TestPeerASNIsExternalTo(t *testing.T) {
 		{
 			name:             "unnumbered external",
 			peerASNNumber:    0,
-			peerASNType:      "external",
+			peerASNType:      "External",
 			otherASNNumber:   11,
 			wantIsExternalTo: true,
 		},
 		{
 			name:             "unnumbered internal",
 			peerASNNumber:    0,
-			peerASNType:      "internal",
+			peerASNType:      "Internal",
 			otherASNNumber:   11,
 			wantIsExternalTo: false,
 		},

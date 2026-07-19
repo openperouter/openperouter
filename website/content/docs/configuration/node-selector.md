@@ -227,7 +227,7 @@ spec:
   vni: 10100
   vxlanport: 4789
   hostmaster:
-    type: linux-bridge
+    type: LinuxBridge
     linuxBridge:
       autoCreate: true
   l2gatewayips:

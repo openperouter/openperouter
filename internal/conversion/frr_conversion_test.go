@@ -88,7 +88,7 @@ func TestAPItoFRR(t *testing.T) {
 							CIDRs: []string{"192.168.1.0/24"},
 						},
 						RouterIDCIDR: new("10.0.0.0/24"),
-						Neighbors:    []v1alpha1.Neighbor{{Address: new("192.168.1.1"), Type: new("external")}},
+						Neighbors:    []v1alpha1.Neighbor{{Address: new("192.168.1.1"), Type: new("External")}},
 					},
 				},
 			},
@@ -105,7 +105,7 @@ func TestAPItoFRR(t *testing.T) {
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name:                  "external@192.168.1.1",
-							ASN:                   mustNewPeerASNFromType("external"),
+							ASN:                   mustNewPeerASNFromType("External"),
 							Addr:                  "192.168.1.1",
 							ID:                    "192.168.1.1",
 							NetworkLayerProtocols: []networklayerprotocol.NLP{{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast}},
@@ -134,7 +134,7 @@ func TestAPItoFRR(t *testing.T) {
 						Neighbors: []v1alpha1.Neighbor{
 							{
 								Address: new("192.168.1.1"),
-								Type:    new("internal"),
+								Type:    new("Internal"),
 							},
 						},
 					},
@@ -153,7 +153,7 @@ func TestAPItoFRR(t *testing.T) {
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name:                  "internal@192.168.1.1",
-							ASN:                   mustNewPeerASNFromType("internal"),
+							ASN:                   mustNewPeerASNFromType("Internal"),
 							Addr:                  "192.168.1.1",
 							ID:                    "192.168.1.1",
 							NetworkLayerProtocols: []networklayerprotocol.NLP{{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast}},
@@ -891,7 +891,7 @@ func TestAPItoFRR(t *testing.T) {
 								IPv4: new("192.168.2.0/24"),
 							},
 							HostASN:  new(int64(0)),
-							HostType: new("external"),
+							HostType: new("External"),
 						},
 						VRF: "vni1",
 						VNI: 200,
@@ -930,7 +930,7 @@ func TestAPItoFRR(t *testing.T) {
 						LocalNeighbor: &frr.NeighborConfig{
 							Addr: "192.168.2.2",
 							ID:   "192.168.2.2",
-							ASN:  mustNewPeerASNFromType("external"),
+							ASN:  mustNewPeerASNFromType("External"),
 						},
 						ToAdvertiseIPv4: []string{"192.168.2.2/32"},
 						ToAdvertiseIPv6: []string{},
@@ -969,7 +969,7 @@ func TestAPItoFRR(t *testing.T) {
 								IPv4: new("192.168.2.0/24"),
 							},
 							HostASN:  new(int64(0)),
-							HostType: new("internal"),
+							HostType: new("Internal"),
 						},
 						VRF: "vni1",
 						VNI: 200,
@@ -1008,7 +1008,7 @@ func TestAPItoFRR(t *testing.T) {
 						LocalNeighbor: &frr.NeighborConfig{
 							Addr: "192.168.2.2",
 							ID:   "192.168.2.2",
-							ASN:  mustNewPeerASNFromType("internal"),
+							ASN:  mustNewPeerASNFromType("Internal"),
 						},
 						ToAdvertiseIPv4: []string{"192.168.2.2/32"},
 						ToAdvertiseIPv6: []string{},
@@ -1501,7 +1501,7 @@ func TestAPItoFRR(t *testing.T) {
 					Spec: v1alpha1.L3PassthroughSpec{
 						HostSession: v1alpha1.HostSession{
 							HostASN:  new(int64(0)),
-							HostType: new("external"),
+							HostType: new("External"),
 							ASN:      65000,
 							LocalCIDR: v1alpha1.LocalCIDRConfig{
 								IPv4: new("192.168.2.0/24"),
@@ -1535,13 +1535,13 @@ func TestAPItoFRR(t *testing.T) {
 				},
 				Passthrough: &frr.PassthroughConfig{
 					LocalNeighborV4: &frr.NeighborConfig{
-						ASN:         mustNewPeerASNFromType("external"),
+						ASN:         mustNewPeerASNFromType("External"),
 						Addr:        "192.168.2.2",
 						ID:          "192.168.2.2",
 						ConnectTime: new(int64(5)),
 					},
 					LocalNeighborV6: &frr.NeighborConfig{
-						ASN:         mustNewPeerASNFromType("external"),
+						ASN:         mustNewPeerASNFromType("External"),
 						Addr:        "2001:db8::2",
 						ID:          "2001:db8::2",
 						ConnectTime: new(int64(5)),
@@ -1577,7 +1577,7 @@ func TestAPItoFRR(t *testing.T) {
 					Spec: v1alpha1.L3PassthroughSpec{
 						HostSession: v1alpha1.HostSession{
 							HostASN:  new(int64(0)),
-							HostType: new("internal"),
+							HostType: new("Internal"),
 							ASN:      65000,
 							LocalCIDR: v1alpha1.LocalCIDRConfig{
 								IPv4: new("192.168.2.0/24"),
@@ -1611,13 +1611,13 @@ func TestAPItoFRR(t *testing.T) {
 				},
 				Passthrough: &frr.PassthroughConfig{
 					LocalNeighborV4: &frr.NeighborConfig{
-						ASN:         mustNewPeerASNFromType("internal"),
+						ASN:         mustNewPeerASNFromType("Internal"),
 						Addr:        "192.168.2.2",
 						ID:          "192.168.2.2",
 						ConnectTime: new(int64(5)),
 					},
 					LocalNeighborV6: &frr.NeighborConfig{
-						ASN:         mustNewPeerASNFromType("internal"),
+						ASN:         mustNewPeerASNFromType("Internal"),
 						Addr:        "2001:db8::2",
 						ID:          "2001:db8::2",
 						ConnectTime: new(int64(5)),

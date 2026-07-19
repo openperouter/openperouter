@@ -65,9 +65,9 @@ type HostMaster struct {
 
 const (
 	VRFLinkType       = "vrf"
-	BridgeLinkType    = "linux-bridge"
+	BridgeLinkType    = "LinuxBridge"
 	VXLanLinkType     = "vxlan"
-	OVSBridgeLinkType = "ovs-bridge"
+	OVSBridgeLinkType = "OVSBridge"
 )
 
 type NotRouterInterfaceError struct {

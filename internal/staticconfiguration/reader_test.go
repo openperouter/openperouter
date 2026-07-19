@@ -295,7 +295,7 @@ func TestReadRouterConfigsFromFiles(t *testing.T) {
 			VNI:       300,
 			VXLanPort: new(int32(4789)),
 			HostMaster: &v1alpha1.HostMaster{
-				Type: "linux-bridge",
+				Type: "LinuxBridge",
 				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
 					Name: new("br-storage"),
 				},
@@ -306,7 +306,7 @@ func TestReadRouterConfigsFromFiles(t *testing.T) {
 			VNI:       400,
 			VXLanPort: new(int32(4789)),
 			HostMaster: &v1alpha1.HostMaster{
-				Type: "ovs-bridge",
+				Type: "OVSBridge",
 				OVSBridge: &v1alpha1.OVSBridgeConfig{
 					Name: new("ovsbr0"),
 				},

@@ -429,7 +429,7 @@ func TestAPItoHostConfig(t *testing.T) {
 			},
 			vnis: []v1alpha1.L3VNI{},
 			l2vnis: []v1alpha1.L2VNI{
-				{Spec: v1alpha1.L2VNISpec{VNI: 201, VXLanPort: new(int32(4789)), HostMaster: &v1alpha1.HostMaster{Type: "linux-bridge", LinuxBridge: &v1alpha1.LinuxBridgeConfig{Name: new("br0")}}, L2GatewayIPs: []string{"192.168.100.1/24"}}},
+				{Spec: v1alpha1.L2VNISpec{VNI: 201, VXLanPort: new(int32(4789)), HostMaster: &v1alpha1.HostMaster{Type: "LinuxBridge", LinuxBridge: &v1alpha1.LinuxBridgeConfig{Name: new("br0")}}, L2GatewayIPs: []string{"192.168.100.1/24"}}},
 			},
 			l3Passthrough: []v1alpha1.L3Passthrough{},
 			wantUnderlay: hostnetwork.UnderlayParams{
@@ -449,7 +449,7 @@ func TestAPItoHostConfig(t *testing.T) {
 						VXLanPort: new(int32(4789)),
 					},
 					L2GatewayIPs: []string{"192.168.100.1/24"},
-					HostMaster:   &hostnetwork.HostMaster{Name: new("br0"), Type: "linux-bridge"},
+					HostMaster:   &hostnetwork.HostMaster{Name: new("br0"), Type: "LinuxBridge"},
 				},
 			},
 			wantL3VPNParams: []hostnetwork.L3VPNParams{},
@@ -733,7 +733,7 @@ func TestResolveVTEPIP(t *testing.T) {
 		},
 		{
 			name:          "dual-stack, field=ipv6, returns ipv6",
-			addressFamily: new("ipv6"),
+			addressFamily: new("IPv6"),
 			tunnelEndpoint: hostnetwork.UnderlayTunnelEndpointParams{
 				IPv4CIDR: "10.0.0.1/32",
 				IPv6CIDR: "2001:db8::1/128",
@@ -742,7 +742,7 @@ func TestResolveVTEPIP(t *testing.T) {
 		},
 		{
 			name:          "dual-stack, field=ipv4, returns ipv4",
-			addressFamily: new("ipv4"),
+			addressFamily: new("IPv4"),
 			tunnelEndpoint: hostnetwork.UnderlayTunnelEndpointParams{
 				IPv4CIDR: "10.0.0.1/32",
 				IPv6CIDR: "2001:db8::1/128",
@@ -751,19 +751,19 @@ func TestResolveVTEPIP(t *testing.T) {
 		},
 		{
 			name:          "ipv4 only, field=ipv6, error",
-			addressFamily: new("ipv6"),
+			addressFamily: new("IPv6"),
 			tunnelEndpoint: hostnetwork.UnderlayTunnelEndpointParams{
 				IPv4CIDR: "10.0.0.1/32",
 			},
-			wantErr: "ipv6 address family requested but no IPv6 VTEP IP available",
+			wantErr: "IPv6 address family requested but no IPv6 VTEP IP available",
 		},
 		{
 			name:          "ipv6 only, field=ipv4, error",
-			addressFamily: new("ipv4"),
+			addressFamily: new("IPv4"),
 			tunnelEndpoint: hostnetwork.UnderlayTunnelEndpointParams{
 				IPv6CIDR: "2001:db8::1/128",
 			},
-			wantErr: "ipv4 address family requested but no IPv4 VTEP IP available",
+			wantErr: "IPv4 address family requested but no IPv4 VTEP IP available",
 		},
 		{
 			name:           "empty tunnel endpoint, no field set, error",
@@ -868,7 +868,7 @@ func TestAPItoHostConfigAddressFamily(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "vni-ipv6"},
 				Spec: v1alpha1.L3VNISpec{
 					VRF: "red", VNI: 100, VXLanPort: new(int32(4789)),
-					UnderlayAddressFamily: new("ipv6"),
+					UnderlayAddressFamily: new("IPv6"),
 				},
 			},
 			wantVTEPIP: "2001:db8::/128",
@@ -889,7 +889,7 @@ func TestAPItoHostConfigAddressFamily(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "vni-mismatch"},
 				Spec: v1alpha1.L3VNISpec{
 					VRF: "red", VNI: 100,
-					UnderlayAddressFamily: new("ipv6"),
+					UnderlayAddressFamily: new("IPv6"),
 				},
 			},
 			wantErr: "L3VNI vni-mismatch",

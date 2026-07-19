@@ -836,7 +836,7 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 						},
 						ASN: 65001,
 						Neighbors: []v1alpha1.Neighbor{
-							{ASN: new(int64(0)), Type: new("external")},
+							{ASN: new(int64(0)), Type: new("External")},
 						},
 						Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
 					},
@@ -863,7 +863,7 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 						},
 						ASN: 65001,
 						Neighbors: []v1alpha1.Neighbor{
-							{ASN: new(int64(0)), Type: new("internal")},
+							{ASN: new(int64(0)), Type: new("Internal")},
 						},
 						Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
 					},

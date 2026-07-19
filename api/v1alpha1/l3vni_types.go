@@ -50,7 +50,7 @@ type L3VNISpec struct {
 	// underlayAddressFamily selects which VTEP address family to use for this VNI's
 	// VXLAN interface. When omitted, defaults to the available family in the underlay
 	// (IPv4 preferred in dual-stack).
-	// +kubebuilder:validation:Enum=ipv4;ipv6
+	// +kubebuilder:validation:Enum=IPv4;IPv6
 	// +optional
 	UnderlayAddressFamily *string `json:"underlayAddressFamily,omitempty"`
 

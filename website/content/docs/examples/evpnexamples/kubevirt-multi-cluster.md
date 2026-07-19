@@ -77,7 +77,7 @@ metadata:
   namespace: openperouter-system
 spec:
   hostmaster:
-    type: linux-bridge
+    type: LinuxBridge
     linuxBridge:
       autoCreate: true
   l2gatewayips: ["192.170.1.1/24"]

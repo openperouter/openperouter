@@ -25,7 +25,7 @@ spec:
     level: 1
     interfaces:
     - name: "toswitch1"
-      ipFamily: "ipv6"
+      ipFamily: "IPv6"
     features:
     - "advertisePassiveOnly"
   srv6:
