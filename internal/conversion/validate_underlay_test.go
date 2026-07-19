@@ -328,7 +328,7 @@ func TestValidateUnderlay(t *testing.T) {
 							Type: v1alpha1.UnderlayInterfaceTypeCNIDevice,
 							CNIDevice: &v1alpha1.CNIDevice{
 								Type:          v1alpha1.CNIConfigTypeRawConfig,
-								RawConfig:     &apiextensionsv1.JSON{Raw: []byte(`{"cniVersion":"1.0.0","name":"macvlan-underlay","type":"macvlan","master":"eth1"}`)},
+								RawConfig:     &apiextensionsv1.JSON{Raw: []byte(`{"cniVersion":"1.0.0","name":"macvlan-underlay","plugins":[{"type":"macvlan","master":"eth1"}]}`)},
 								InterfaceName: new("net1"),
 							},
 						},
@@ -388,7 +388,7 @@ func TestValidateUnderlay(t *testing.T) {
 							Type: v1alpha1.UnderlayInterfaceTypeCNIDevice,
 							CNIDevice: &v1alpha1.CNIDevice{
 								Type:          v1alpha1.CNIConfigTypeRawConfig,
-								RawConfig:     &apiextensionsv1.JSON{Raw: []byte(`{"cniVersion":"1.0.0","name":"macvlan-underlay","type":"macvlan","master":"eth1"}`)},
+								RawConfig:     &apiextensionsv1.JSON{Raw: []byte(`{"cniVersion":"1.0.0","name":"macvlan-underlay","plugins":[{"type":"macvlan","master":"eth1"}]}`)},
 								InterfaceName: new("eth0"),
 							},
 						},
@@ -416,7 +416,7 @@ func TestValidateUnderlay(t *testing.T) {
 							Type: v1alpha1.UnderlayInterfaceTypeCNIDevice,
 							CNIDevice: &v1alpha1.CNIDevice{
 								Type:          v1alpha1.CNIConfigTypeRawConfig,
-								RawConfig:     &apiextensionsv1.JSON{Raw: []byte(`{"cniVersion":"1.0.0","name":"macvlan-underlay","type":"macvlan","master":"eth1"}`)},
+								RawConfig:     &apiextensionsv1.JSON{Raw: []byte(`{"cniVersion":"1.0.0","name":"macvlan-underlay","plugins":[{"type":"macvlan","master":"eth1"}]}`)},
 								InterfaceName: new("net1"),
 							},
 						},
@@ -424,7 +424,7 @@ func TestValidateUnderlay(t *testing.T) {
 							Type: v1alpha1.UnderlayInterfaceTypeCNIDevice,
 							CNIDevice: &v1alpha1.CNIDevice{
 								Type:          v1alpha1.CNIConfigTypeRawConfig,
-								RawConfig:     &apiextensionsv1.JSON{Raw: []byte(`{"cniVersion":"1.0.0","name":"ipvlan-underlay","type":"ipvlan","master":"eth2"}`)},
+								RawConfig:     &apiextensionsv1.JSON{Raw: []byte(`{"cniVersion":"1.0.0","name":"ipvlan-underlay","plugins":[{"type":"ipvlan","master":"eth2"}]}`)},
 								InterfaceName: new("net1"),
 							},
 						},

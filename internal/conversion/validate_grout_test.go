@@ -56,7 +56,7 @@ func TestValidateGroutUnderlayCNI(t *testing.T) {
 							Type: v1alpha1.UnderlayInterfaceTypeCNIDevice,
 							CNIDevice: &v1alpha1.CNIDevice{
 								Type:          v1alpha1.CNIConfigTypeRawConfig,
-								RawConfig:     &apiextensionsv1.JSON{Raw: []byte(`{"cniVersion":"1.0.0","name":"u","type":"macvlan"}`)},
+								RawConfig:     &apiextensionsv1.JSON{Raw: []byte(`{"cniVersion":"1.0.0","name":"u","plugins":[{"type":"macvlan"}]}`)},
 								InterfaceName: &tt.interfaceName,
 							},
 						},

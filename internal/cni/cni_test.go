@@ -227,8 +227,11 @@ func TestValidateConfig(t *testing.T) {
 		config  string
 		wantErr string
 	}{
-		{name: "valid conflist", config: fakeConfList},
-		{name: "valid single conf", config: fakeConf},
+		{
+			name:    "single conf without plugins array rejected",
+			config:  fakeConf,
+			wantErr: `CNI config must use conflist format with a "plugins" array`,
+		},
 		{
 			name:    "malformed json",
 			config:  `{"cniVersion": `,
@@ -240,23 +243,87 @@ func TestValidateConfig(t *testing.T) {
 			wantErr: "error parsing configuration list: invalid 'plugins' type string"},
 		{
 			name:    "unsupported cni version",
-			config:  `{"cniVersion": "0.4.0", "name": "u", "plugins": [{"type": "fake"}]}`,
+			config:  `{"cniVersion": "0.4.0", "name": "u", "plugins": [{"type": "macvlan"}]}`,
 			wantErr: "cniVersion \"0.4.0\" is not supported, only CNI >= 1.0.0 is",
 		},
 		{
 			name:    "missing cni version",
-			config:  `{"name": "u", "plugins": [{"type": "fake"}]}`,
+			config:  `{"name": "u", "plugins": [{"type": "macvlan"}]}`,
 			wantErr: "cniVersion \"\" is not supported, only CNI >= 1.0.0 is",
+		},
+		{
+			name:   "valid macvlan plugin",
+			config: `{"cniVersion":"1.0.0","name":"u","plugins":[{"type":"macvlan","master":"eth1"}]}`,
+		},
+		{
+			name:   "valid ipvlan plugin",
+			config: `{"cniVersion":"1.0.0","name":"u","plugins":[{"type":"ipvlan","master":"eth1"}]}`,
+		},
+		{
+			name:   "valid vlan plugin",
+			config: `{"cniVersion":"1.0.0","name":"u","plugins":[{"type":"vlan","master":"eth1","vlanId":100}]}`,
+		},
+		{
+			name:   "valid host-device plugin",
+			config: `{"cniVersion":"1.0.0","name":"u","plugins":[{"type":"host-device","device":"eth1"}]}`,
+		},
+		{
+			name:    "invalid plugin type",
+			config:  `{"cniVersion":"1.0.0","name":"u","plugins":[{"type":"bridge"}]}`,
+			wantErr: `CNI plugin type "bridge" is not supported`,
+		},
+		{
+			name:    "invalid plugin type ptp",
+			config:  `{"cniVersion":"1.0.0","name":"u","plugins":[{"type":"ptp"}]}`,
+			wantErr: `CNI plugin type "ptp" is not supported`,
+		},
+		{
+			name:   "valid static IPAM",
+			config: `{"cniVersion":"1.0.0","name":"u","plugins":[{"type":"macvlan","master":"eth1","ipam":{"type":"static"}}]}`,
+		},
+		{
+			name:    "unsupported dhcp IPAM",
+			config:  `{"cniVersion":"1.0.0","name":"u","plugins":[{"type":"macvlan","master":"eth1","ipam":{"type":"dhcp"}}]}`,
+			wantErr: `IPAM plugin type "dhcp" is not supported`,
+		},
+		{
+			name:   "plugin with no IPAM passes",
+			config: `{"cniVersion":"1.0.0","name":"u","plugins":[{"type":"macvlan","master":"eth1"}]}`,
+		},
+		{
+			name:    "invalid IPAM type",
+			config:  `{"cniVersion":"1.0.0","name":"u","plugins":[{"type":"macvlan","master":"eth1","ipam":{"type":"host-local"}}]}`,
+			wantErr: `IPAM plugin type "host-local" is not supported`,
+		},
+		{
+			name:    "invalid IPAM type whereabouts",
+			config:  `{"cniVersion":"1.0.0","name":"u","plugins":[{"type":"macvlan","master":"eth1","ipam":{"type":"whereabouts"}}]}`,
+			wantErr: `IPAM plugin type "whereabouts" is not supported`,
+		},
+		{
+			name:   "multiple valid plugins",
+			config: `{"cniVersion":"1.0.0","name":"u","plugins":[{"type":"macvlan","master":"eth1","ipam":{"type":"static"}},{"type":"vlan","master":"eth2","ipam":{"type":"static"}}]}`,
+		},
+		{
+			name:    "second plugin invalid type",
+			config:  `{"cniVersion":"1.0.0","name":"u","plugins":[{"type":"macvlan","master":"eth1"},{"type":"tuning"}]}`,
+			wantErr: `CNI plugin type "tuning" is not supported`,
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			err := ValidateConfig([]byte(tc.config))
-			if err != nil && tc.wantErr != err.Error() {
-				t.Fatalf("expected error %q, got %q", tc.wantErr, err.Error())
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("expected no error, got %q", err)
+				}
+				return
 			}
-			if err == nil && tc.wantErr != "" {
-				t.Fatalf("expected error %q, got nil", tc.wantErr)
+			if err == nil {
+				t.Fatalf("expected error containing %q, got nil", tc.wantErr)
+			}
+			if !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("expected error containing %q, got %q", tc.wantErr, err.Error())
 			}
 		})
 	}

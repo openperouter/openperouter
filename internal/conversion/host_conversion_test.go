@@ -985,7 +985,7 @@ func netdevInterfaces(names ...string) []hostnetwork.UnderlayInterface {
 }
 
 func TestAPItoHostConfigCNIInterfaces(t *testing.T) {
-	rawConfig := `{"cniVersion":"1.0.0","name":"macvlan-underlay","type":"macvlan","master":"eth1"}`
+	rawConfig := `{"cniVersion":"1.0.0","name":"macvlan-underlay","plugins":[{"type":"macvlan","master":"eth1"}]}`
 	underlayWithInterfaces := func(interfaces ...v1alpha1.UnderlayInterface) []v1alpha1.Underlay {
 		return []v1alpha1.Underlay{{Spec: v1alpha1.UnderlaySpec{Interfaces: interfaces}}}
 	}
