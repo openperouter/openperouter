@@ -31,7 +31,7 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 	var routers openperouter.Routers
 
 	const (
-		linuxBridgeHostAttachment = "linux-bridge"
+		linuxBridgeHostAttachment = "LinuxBridge"
 		testNamespace             = "bridgerefresh-test"
 		l2VNI                     = 110
 		l3VNI                     = 100

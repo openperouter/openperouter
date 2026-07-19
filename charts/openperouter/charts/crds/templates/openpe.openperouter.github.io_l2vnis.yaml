@@ -50,7 +50,7 @@ spec:
                 properties:
                   linuxBridge:
                     description: linuxBridge configuration. Must be set when Type
-                      is "linux-bridge".
+                      is "LinuxBridge".
                     properties:
                       autoCreate:
                         default: false
@@ -70,7 +70,7 @@ spec:
                       rule: (self.?name.orValue("") != "") != self.?autoCreate.orValue(false)
                   ovsBridge:
                     description: ovsBridge configuration. Must be set when Type is
-                      "ovs-bridge".
+                      "OVSBridge".
                     properties:
                       autoCreate:
                         default: false
@@ -89,20 +89,20 @@ spec:
                         but not both.
                       rule: (self.?name.orValue("") != "") != self.?autoCreate.orValue(false)
                   type:
-                    description: 'type of the host interface. Supported values: "linux-bridge",
-                      "ovs-bridge".'
+                    description: 'type of the host interface. Supported values: "LinuxBridge",
+                      "OVSBridge".'
                     enum:
-                    - linux-bridge
-                    - ovs-bridge
+                    - LinuxBridge
+                    - OVSBridge
                     type: string
                 required:
                 - type
                 type: object
                 x-kubernetes-validations:
-                - message: 'type/config mismatch: ''linux-bridge'' requires linuxBridge
-                    field, ''ovs-bridge'' requires ovsBridge field'
-                  rule: (self.type == 'linux-bridge' && has(self.linuxBridge) && !has(self.ovsBridge))
-                    || (self.type == 'ovs-bridge' && has(self.ovsBridge) && !has(self.linuxBridge))
+                - message: 'type/config mismatch: ''LinuxBridge'' requires linuxBridge
+                    field, ''OVSBridge'' requires ovsBridge field'
+                  rule: (self.type == 'LinuxBridge' && has(self.linuxBridge) && !has(self.ovsBridge))
+                    || (self.type == 'OVSBridge' && has(self.ovsBridge) && !has(self.linuxBridge))
               l2gatewayips:
                 description: |-
                   l2gatewayips is a list of IP addresses in CIDR notation to be used for the L2 gateway. When this is set, the

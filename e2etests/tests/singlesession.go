@@ -75,7 +75,7 @@ var l2vniRedSingleSession = v1alpha1.L2VNI{
 		VNI:          110,
 		L2GatewayIPs: []string{"192.171.24.1/24"},
 		HostMaster: &v1alpha1.HostMaster{
-			Type: "linux-bridge",
+			Type: "LinuxBridge",
 			LinuxBridge: &v1alpha1.LinuxBridgeConfig{
 				AutoCreate: new(true),
 			},

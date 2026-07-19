@@ -7,6 +7,6 @@ spec:
   vni: 210
   vrf: red
   hostmaster:
-    type: ovs-bridge
+    type: OVSBridge
     ovsBridge:
       autoCreate: true

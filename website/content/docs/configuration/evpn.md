@@ -159,7 +159,7 @@ L2VNIs provide Layer 2 connectivity across nodes using EVPN tunnels. Unlike L3VN
 | `vni` | integer | Virtual Network Identifier for the EVPN tunnel | Yes |
 | `vrf` | string | Name of the VRF to associate with this L2VNI | Yes |
 | `underlayAddressFamily` | string | VTEP address family for this VNI (`ipv4` or `ipv6`). Defaults to available family (IPv4 preferred in dual-stack). | No |
-| `hostmaster.type` | string | Type of host interface management (`linux-bridge` or `ovs-bridge`) | Yes |
+| `hostmaster.type` | string | Type of host interface management (`LinuxBridge` or `OVSBridge`) | Yes |
 | `hostmaster.linuxBridge.autoCreate` | boolean | Whether to automatically create a Linux bridge | No |
 | `hostmaster.linuxBridge.name` | string | Name of the Linux bridge to attach to (if not auto-creating) | No |
 | `hostmaster.ovsBridge.autoCreate` | boolean | Whether to automatically create an OVS bridge | No |
@@ -178,7 +178,7 @@ spec:
   vni: 210
   vrf: red
   hostmaster:
-    type: linux-bridge
+    type: LinuxBridge
     linuxBridge:
       autoCreate: true
 ```

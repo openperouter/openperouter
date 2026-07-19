@@ -429,7 +429,7 @@ func TestAPItoHostConfig(t *testing.T) {
 			},
 			vnis: []v1alpha1.L3VNI{},
 			l2vnis: []v1alpha1.L2VNI{
-				{Spec: v1alpha1.L2VNISpec{VNI: 201, VXLanPort: new(int32(4789)), HostMaster: &v1alpha1.HostMaster{Type: "linux-bridge", LinuxBridge: &v1alpha1.LinuxBridgeConfig{Name: new("br0")}}, L2GatewayIPs: []string{"192.168.100.1/24"}}},
+				{Spec: v1alpha1.L2VNISpec{VNI: 201, VXLanPort: new(int32(4789)), HostMaster: &v1alpha1.HostMaster{Type: "LinuxBridge", LinuxBridge: &v1alpha1.LinuxBridgeConfig{Name: new("br0")}}, L2GatewayIPs: []string{"192.168.100.1/24"}}},
 			},
 			l3Passthrough: []v1alpha1.L3Passthrough{},
 			wantUnderlay: hostnetwork.UnderlayParams{
@@ -449,7 +449,7 @@ func TestAPItoHostConfig(t *testing.T) {
 						VXLanPort: new(int32(4789)),
 					},
 					L2GatewayIPs: []string{"192.168.100.1/24"},
-					HostMaster:   &hostnetwork.HostMaster{Name: new("br0"), Type: "linux-bridge"},
+					HostMaster:   &hostnetwork.HostMaster{Name: new("br0"), Type: "LinuxBridge"},
 				},
 			},
 			wantL3VPNParams: []hostnetwork.L3VPNParams{},

@@ -77,7 +77,7 @@ l2vnis:
     vni: 300
     vxlanport: 4789
     hostmaster:
-      type: linux-bridge
+      type: LinuxBridge
       linuxBridge:
         name: br-storage
 ```

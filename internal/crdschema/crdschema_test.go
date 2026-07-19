@@ -72,14 +72,14 @@ func TestApplyDefaults(t *testing.T) {
 		{
 			name:     "L2VNI linuxBridge autoCreate default",
 			gvk:      l2vniGVK,
-			obj:      newUnstructured("L2VNI", map[string]any{"hostmaster": map[string]any{"type": "linux-bridge", "linuxBridge": map[string]any{"name": "br0"}}}),
+			obj:      newUnstructured("L2VNI", map[string]any{"hostmaster": map[string]any{"type": "LinuxBridge", "linuxBridge": map[string]any{"name": "br0"}}}),
 			field:    "spec.hostmaster.linuxBridge.autoCreate",
 			expected: false,
 		},
 		{
 			name:     "L2VNI ovsBridge autoCreate default",
 			gvk:      l2vniGVK,
-			obj:      newUnstructured("L2VNI", map[string]any{"hostmaster": map[string]any{"type": "ovs-bridge", "ovsBridge": map[string]any{"name": "br0"}}}),
+			obj:      newUnstructured("L2VNI", map[string]any{"hostmaster": map[string]any{"type": "OVSBridge", "ovsBridge": map[string]any{"name": "br0"}}}),
 			field:    "spec.hostmaster.ovsBridge.autoCreate",
 			expected: false,
 		},
@@ -158,7 +158,7 @@ func TestApplyDefaultsPreservation(t *testing.T) {
 			gvk:  l2vniGVK,
 			obj: newUnstructured("L2VNI", map[string]any{
 				"hostmaster": map[string]any{
-					"type":        "linux-bridge",
+					"type":        "LinuxBridge",
 					"linuxBridge": map[string]any{"autoCreate": true},
 				},
 			}),
@@ -189,7 +189,7 @@ func TestApplyDefaultsCombinedAndEdgeCases(t *testing.T) {
 	t.Run("multiple defaults applied at once for L2VNI", func(t *testing.T) {
 		obj := newUnstructured("L2VNI", map[string]any{
 			"hostmaster": map[string]any{
-				"type":        "linux-bridge",
+				"type":        "LinuxBridge",
 				"linuxBridge": map[string]any{"name": "br0"},
 			},
 		})
@@ -332,7 +332,7 @@ func TestValidateSuccessful(t *testing.T) {
 			obj: newUnstructured("L2VNI", map[string]any{
 				"vni": int64(100),
 				"hostmaster": map[string]any{
-					"type": "linux-bridge",
+					"type": "LinuxBridge",
 					"linuxBridge": map[string]any{
 						"name":       "br0",
 						"autoCreate": false,
@@ -346,7 +346,7 @@ func TestValidateSuccessful(t *testing.T) {
 			obj: newUnstructured("L2VNI", map[string]any{
 				"vni": int64(100),
 				"hostmaster": map[string]any{
-					"type": "linux-bridge",
+					"type": "LinuxBridge",
 					"linuxBridge": map[string]any{
 						"autoCreate": true,
 					},
@@ -359,7 +359,7 @@ func TestValidateSuccessful(t *testing.T) {
 			obj: newUnstructured("L2VNI", map[string]any{
 				"vni": int64(100),
 				"hostmaster": map[string]any{
-					"type": "linux-bridge",
+					"type": "LinuxBridge",
 					"linuxBridge": map[string]any{
 						"autoCreate": true,
 					},
@@ -441,7 +441,7 @@ func TestValidateFailure(t *testing.T) {
 			gvk:  l2vniGVK,
 			obj: newUnstructured("L2VNI", map[string]any{
 				"hostmaster": map[string]any{
-					"type": "linux-bridge",
+					"type": "LinuxBridge",
 					"linuxBridge": map[string]any{
 						"name":       "br0",
 						"autoCreate": true,
@@ -455,7 +455,7 @@ func TestValidateFailure(t *testing.T) {
 			gvk:  l2vniGVK,
 			obj: newUnstructured("L2VNI", map[string]any{
 				"hostmaster": map[string]any{
-					"type":        "linux-bridge",
+					"type":        "LinuxBridge",
 					"linuxBridge": map[string]any{},
 				},
 			}),
@@ -466,7 +466,7 @@ func TestValidateFailure(t *testing.T) {
 			gvk:  l2vniGVK,
 			obj: newUnstructured("L2VNI", map[string]any{
 				"hostmaster": map[string]any{
-					"type": "ovs-bridge",
+					"type": "OVSBridge",
 					"ovsBridge": map[string]any{
 						"name":       "br0",
 						"autoCreate": true,
@@ -480,7 +480,7 @@ func TestValidateFailure(t *testing.T) {
 			gvk:  l2vniGVK,
 			obj: newUnstructured("L2VNI", map[string]any{
 				"hostmaster": map[string]any{
-					"type": "linux-bridge",
+					"type": "LinuxBridge",
 					"ovsBridge": map[string]any{
 						"autoCreate": true,
 					},
@@ -493,7 +493,7 @@ func TestValidateFailure(t *testing.T) {
 			gvk:  l2vniGVK,
 			obj: newUnstructured("L2VNI", map[string]any{
 				"hostmaster": map[string]any{
-					"type": "ovs-bridge",
+					"type": "OVSBridge",
 					"linuxBridge": map[string]any{
 						"autoCreate": true,
 					},
@@ -627,7 +627,7 @@ func TestValidateMultipleErrors(t *testing.T) {
 	t.Run("LinuxBridge both name and autoCreate plus type mismatch", func(t *testing.T) {
 		obj := newUnstructured("L2VNI", map[string]any{
 			"hostmaster": map[string]any{
-				"type": "ovs-bridge",
+				"type": "OVSBridge",
 				"linuxBridge": map[string]any{
 					"name":       "br0",
 					"autoCreate": true,

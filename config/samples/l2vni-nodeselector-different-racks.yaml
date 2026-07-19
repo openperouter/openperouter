@@ -12,7 +12,7 @@ spec:
   vni: 10200
   vrf: storage
   hostmaster:
-    type: linux-bridge
+    type: LinuxBridge
     linuxBridge:
       name: br-storage
   l2gatewayips:
@@ -31,7 +31,7 @@ spec:
   vni: 10201
   vrf: storage
   hostmaster:
-    type: linux-bridge
+    type: LinuxBridge
     linuxBridge:
       name: br-storage
   l2gatewayips:

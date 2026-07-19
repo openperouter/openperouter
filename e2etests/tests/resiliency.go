@@ -54,7 +54,7 @@ var _ = Describe("Alpha: Named netns and kernel objects survive FRR crash", Orde
 			VRF: new("red"),
 			VNI: 110,
 			HostMaster: &v1alpha1.HostMaster{
-				Type: "linux-bridge",
+				Type: "LinuxBridge",
 				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
 					AutoCreate: new(true),
 				},
@@ -242,7 +242,7 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 			VRF: new("red"),
 			VNI: 110,
 			HostMaster: &v1alpha1.HostMaster{
-				Type: "linux-bridge",
+				Type: "LinuxBridge",
 				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
 					AutoCreate: new(true),
 				},

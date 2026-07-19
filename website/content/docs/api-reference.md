@@ -135,9 +135,9 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `type` _string_ | type of the host interface. Supported values: "linux-bridge", "ovs-bridge". |  | Enum: [linux-bridge ovs-bridge] <br />Required: \{\} <br /> |
-| `linuxBridge` _[LinuxBridgeConfig](#linuxbridgeconfig)_ | linuxBridge configuration. Must be set when Type is "linux-bridge". |  | Optional: \{\} <br /> |
-| `ovsBridge` _[OVSBridgeConfig](#ovsbridgeconfig)_ | ovsBridge configuration. Must be set when Type is "ovs-bridge". |  | Optional: \{\} <br /> |
+| `type` _string_ | type of the host interface. Supported values: "LinuxBridge", "OVSBridge". |  | Enum: [LinuxBridge OVSBridge] <br />Required: \{\} <br /> |
+| `linuxBridge` _[LinuxBridgeConfig](#linuxbridgeconfig)_ | linuxBridge configuration. Must be set when Type is "LinuxBridge". |  | Optional: \{\} <br /> |
+| `ovsBridge` _[OVSBridgeConfig](#ovsbridgeconfig)_ | ovsBridge configuration. Must be set when Type is "OVSBridge". |  | Optional: \{\} <br /> |
 
 
 #### HostSession

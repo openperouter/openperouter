@@ -25,7 +25,7 @@ import (
 var _ = Describe("IPv6 VTEP", Ordered, func() {
 	const (
 		testNamespace             = "test-ipv6-vtep"
-		linuxBridgeHostAttachment = "linux-bridge"
+		linuxBridgeHostAttachment = "LinuxBridge"
 	)
 
 	var (

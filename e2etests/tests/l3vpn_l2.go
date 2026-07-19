@@ -37,8 +37,8 @@ var _ = Describe("SRV6 routes between bgp and the fabric", Ordered, func() {
 	)
 
 	const (
-		linuxBridgeHostAttachment = "linux-bridge"
-		ovsBridgeHostAttachment   = "ovs-bridge"
+		linuxBridgeHostAttachment = "LinuxBridge"
+		ovsBridgeHostAttachment   = "OVSBridge"
 		rdAssignedNumber          = 100
 		vniID                     = 110
 		preExistingOVSBridge      = "br-ovs-test"

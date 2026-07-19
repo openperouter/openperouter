@@ -37,7 +37,7 @@ underlays:
 l2vnis:
   - vni: 300
     hostmaster:
-      type: linux-bridge
+      type: LinuxBridge
       linuxBridge:
         name: "br-storage"
 `)
@@ -140,7 +140,7 @@ l3vnis:
 l2vnis:
   - vni: 300
     hostmaster:
-      type: linux-bridge
+      type: LinuxBridge
       linuxBridge:
         name: "br-storage"
 `)
@@ -181,7 +181,7 @@ l2vnis:
   - vni: 300
     vxlanport: 5000
     hostmaster:
-      type: linux-bridge
+      type: LinuxBridge
       linuxBridge:
         name: "br-storage"
 `)
@@ -246,7 +246,7 @@ underlays:
 l2vnis:
   - vni: 300
     hostmaster:
-      type: linux-bridge
+      type: LinuxBridge
       linuxBridge:
         name: "br-storage"
 `)
@@ -468,7 +468,7 @@ underlays:
 l2vnis:
   - vni: 300
     hostmaster:
-      type: linux-bridge
+      type: LinuxBridge
       linuxBridge:
         name: "mybr"
         autoCreate: true
@@ -507,7 +507,7 @@ underlays:
 l2vnis:
   - vni: 300
     hostmaster:
-      type: linux-bridge
+      type: LinuxBridge
       linuxBridge:
         name: "mybr"
         autoCreate: true
@@ -550,7 +550,7 @@ underlays:
 l2vnis:
   - vni: 300
     hostmaster:
-      type: linux-bridge
+      type: LinuxBridge
       linuxBridge:
         name: "mybr"
         autoCreate: true
@@ -590,7 +590,7 @@ underlays:
 l2vnis:
   - vni: 300
     hostmaster:
-      type: linux-bridge
+      type: LinuxBridge
       linuxBridge:
         name: "mybr"
         autoCreate: true

@@ -41,8 +41,8 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Orde
 	}
 
 	const (
-		linuxBridgeHostAttachment = "linux-bridge"
-		ovsBridgeHostAttachment   = "ovs-bridge"
+		linuxBridgeHostAttachment = "LinuxBridge"
+		ovsBridgeHostAttachment   = "OVSBridge"
 	)
 	l2VniRed := v1alpha1.L2VNI{
 		ObjectMeta: metav1.ObjectMeta{
@@ -355,7 +355,7 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Orde
 var _ = Describe("Disconnected L2VNI east/west traffic", Ordered, func() {
 	const (
 		testNamespace             = "test-disconnected-l2"
-		linuxBridgeHostAttachment = "linux-bridge"
+		linuxBridgeHostAttachment = "LinuxBridge"
 		firstPodIP                = "192.171.30.2"
 		secondPodIP               = "192.171.30.3"
 	)
