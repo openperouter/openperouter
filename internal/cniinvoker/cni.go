@@ -19,6 +19,7 @@ import (
 
 	"github.com/containernetworking/cni/libcni"
 	"github.com/containernetworking/cni/pkg/version"
+	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 const (
@@ -38,8 +39,15 @@ const (
 	containerIDPrefix = "perouter-underlay"
 )
 
+var (
+	AllowedPluginTypes = sets.New("macvlan", "ipvlan", "vlan", "host-device")
+	AllowedIPAMTypes   = sets.New("static")
+)
+
 // ValidateConfig tells whether config parses as a CNI conflist of a
-// supported spec version (>= 1.0.0).
+// supported spec version (>= 1.0.0) in conflist format (with a
+// "plugins" array). Each plugin type and IPAM type is checked against
+// the allowed lists.
 func ValidateConfig(config []byte) error {
 	conf, err := libcni.NetworkConfFromBytes(config)
 	if err != nil {
@@ -51,6 +59,19 @@ func ValidateConfig(config []byte) error {
 	}
 	if !ok {
 		return fmt.Errorf("cniVersion %q is not supported, only CNI >= %s is", conf.CNIVersion, minSupportedCNIVersion)
+	}
+	if len(conf.Plugins) == 0 {
+		return fmt.Errorf("CNI config must use conflist format with a \"plugins\" array")
+	}
+	for _, plugin := range conf.Plugins {
+		if !AllowedPluginTypes.Has(plugin.Network.Type) {
+			return fmt.Errorf("CNI plugin type %q is not supported, allowed types: %v",
+				plugin.Network.Type, sets.List(AllowedPluginTypes))
+		}
+		if ipamType := plugin.Network.IPAM.Type; ipamType != "" && !AllowedIPAMTypes.Has(ipamType) {
+			return fmt.Errorf("IPAM plugin type %q is not supported, allowed types: %v",
+				ipamType, sets.List(AllowedIPAMTypes))
+		}
 	}
 	return nil
 }
