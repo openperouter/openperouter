@@ -176,9 +176,9 @@ spec:
                           description: ipFamily configures which address families
                             ISIS is enabled for on this interface.
                           enum:
-                          - ipv4
-                          - ipv6
-                          - dualstack
+                          - IPv4
+                          - IPv6
+                          - DualStack
                           type: string
                         name:
                           description: name of the interface that these settings shall

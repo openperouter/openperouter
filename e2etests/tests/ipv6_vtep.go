@@ -104,7 +104,7 @@ var _ = Describe("IPv6 VTEP", Ordered, func() {
 		Spec: v1alpha1.L3VNISpec{
 			VRF:                   "green",
 			VNI:                   300,
-			UnderlayAddressFamily: new("ipv6"),
+			UnderlayAddressFamily: new("IPv6"),
 		},
 	}
 
@@ -116,7 +116,7 @@ var _ = Describe("IPv6 VTEP", Ordered, func() {
 		Spec: v1alpha1.L2VNISpec{
 			VRF:                   new("green"),
 			VNI:                   310,
-			UnderlayAddressFamily: new("ipv6"),
+			UnderlayAddressFamily: new("IPv6"),
 			L2GatewayIPs:          []string{"192.173.24.1/24"},
 			HostMaster: &v1alpha1.HostMaster{
 				Type: linuxBridgeHostAttachment,

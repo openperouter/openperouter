@@ -181,8 +181,8 @@ spec:
                   VXLAN interface. When omitted, defaults to the available family in the underlay
                   (IPv4 preferred in dual-stack).
                 enum:
-                - ipv4
-                - ipv6
+                - IPv4
+                - IPv6
                 type: string
               vni:
                 description: vni is the VXLan VNI to be used

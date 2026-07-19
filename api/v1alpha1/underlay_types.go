@@ -233,13 +233,13 @@ type ISISInterface struct {
 type ISISInterfaceFeature string
 
 // IPFamily specifies which address families are enabled.
-// +kubebuilder:validation:Enum:=ipv4;ipv6;dualstack
+// +kubebuilder:validation:Enum=IPv4;IPv6;DualStack
 type IPFamily string
 
 const (
-	IPFamilyIPv4      IPFamily = "ipv4"
-	IPFamilyIPv6      IPFamily = "ipv6"
-	IPFamilyDualStack IPFamily = "dualstack"
+	IPFamilyIPv4      IPFamily = "IPv4"
+	IPFamilyIPv6      IPFamily = "IPv6"
+	IPFamilyDualStack IPFamily = "DualStack"
 )
 
 // SRV6Config contains SRV6 configuration for the underlay.
