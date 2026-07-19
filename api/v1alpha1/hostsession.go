@@ -23,7 +23,7 @@ type HostSession struct {
 
 	// hosttype is the AS type of the BGP speaking component running in the
 	// default network namespace. Either HostASN or HostType must be set.
-	// +kubebuilder:validation:Enum=external;internal
+	// +kubebuilder:validation:Enum=External;Internal
 	// +optional
 	HostType *string `json:"hosttype,omitempty"`
 

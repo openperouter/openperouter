@@ -76,8 +76,8 @@ spec:
                       hosttype is the AS type of the BGP speaking component running in the
                       default network namespace. Either HostASN or HostType must be set.
                     enum:
-                    - external
-                    - internal
+                    - External
+                    - Internal
                     type: string
                   localcidr:
                     description: |-

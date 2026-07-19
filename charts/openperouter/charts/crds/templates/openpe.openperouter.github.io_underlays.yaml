@@ -407,8 +407,8 @@ spec:
                       description: type is the AS type of the neighbor. Either ASN
                         or Type must be set.
                       enum:
-                      - external
-                      - internal
+                      - External
+                      - Internal
                       type: string
                   type: object
                   x-kubernetes-validations:

@@ -142,7 +142,7 @@ func TestValidateHostSessions(t *testing.T) {
 						HostSession: &v1alpha1.HostSession{
 							ASN:       65001,
 							HostASN:   new(int64(0)),
-							HostType:  new("external"),
+							HostType:  new("External"),
 							LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.168.1.0/24")},
 						},
 					},
@@ -160,7 +160,7 @@ func TestValidateHostSessions(t *testing.T) {
 						HostSession: &v1alpha1.HostSession{
 							ASN:       65001,
 							HostASN:   new(int64(0)),
-							HostType:  new("internal"),
+							HostType:  new("Internal"),
 							LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.168.1.0/24")},
 						},
 					},

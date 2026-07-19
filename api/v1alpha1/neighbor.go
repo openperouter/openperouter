@@ -20,7 +20,7 @@ type Neighbor struct {
 	ASN *int64 `json:"asn,omitempty"`
 
 	// type is the AS type of the neighbor. Either ASN or Type must be set.
-	// +kubebuilder:validation:Enum=external;internal
+	// +kubebuilder:validation:Enum=External;Internal
 	// +optional
 	Type *string `json:"type,omitempty"`
 

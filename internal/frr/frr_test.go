@@ -183,7 +183,7 @@ func TestExternal(t *testing.T) {
 			RouterID: "10.0.0.1",
 			Neighbors: []NeighborConfig{
 				{
-					ASN:  mustNewPeerASNFromType("external"),
+					ASN:  mustNewPeerASNFromType("External"),
 					Addr: "192.168.1.2",
 					ID:   "192.168.1.2",
 					NetworkLayerProtocols: []networklayerprotocol.NLP{
@@ -200,7 +200,7 @@ func TestExternal(t *testing.T) {
 				VNI:      100,
 				RouterID: "10.0.0.1",
 				LocalNeighbor: &NeighborConfig{
-					ASN:  mustNewPeerASNFromType("external"),
+					ASN:  mustNewPeerASNFromType("External"),
 					Addr: "192.168.1.2",
 					ID:   "192.168.1.2",
 				},
@@ -230,7 +230,7 @@ func TestInternal(t *testing.T) {
 			RouterID: "10.0.0.1",
 			Neighbors: []NeighborConfig{
 				{
-					ASN:  mustNewPeerASNFromType("internal"),
+					ASN:  mustNewPeerASNFromType("Internal"),
 					Addr: "192.168.1.2",
 					ID:   "192.168.1.2",
 					NetworkLayerProtocols: []networklayerprotocol.NLP{
@@ -766,7 +766,7 @@ func TestPassthroughExternal(t *testing.T) {
 		},
 		Passthrough: &PassthroughConfig{
 			LocalNeighborV4: &NeighborConfig{
-				ASN:         mustNewPeerASNFromType("external"),
+				ASN:         mustNewPeerASNFromType("External"),
 				Addr:        "192.168.1.3",
 				ID:          "192.168.1.3",
 				ConnectTime: new(int64(5)),
