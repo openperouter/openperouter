@@ -3,13 +3,18 @@
 package infra
 
 import (
+	"errors"
 	"fmt"
+	"strconv"
+	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
+	"github.com/openperouter/openperouter/e2etests/pkg/executor"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 )
 
@@ -189,4 +194,42 @@ func ConfigureLeafKind1ForDHCPUnderlay(nodes []corev1.Node, ifName string) error
 // interface inside the perouter netns of nodeName.
 func DHCPNeighborIP(nodeName, ifName string) (string, error) {
 	return openperouter.InterfaceIPv4InNetns(nodeName, ifName, openperouter.NamedNetns)
+}
+
+const dhcpServerContainer = ClabPrefix + "dhcp1"
+
+var (
+	ErrLeaseNotFound = errors.New("no lease found")
+	ErrLeaseExpired  = errors.New("lease expired")
+)
+
+// DHCPServerLeaseValid checks the dnsmasq server's leases file for the
+// given IP address. It returns nil when a valid (non-expired) lease exists,
+// ErrLeaseNotFound when no lease entry is present, and ErrLeaseExpired
+// when the lease exists but its expiry is in the past.
+func DHCPServerLeaseValid(ip string) error {
+	exec := executor.ForContainer(dhcpServerContainer)
+	out, err := exec.Exec("cat", "/var/lib/misc/dnsmasq.leases")
+	if err != nil {
+		return fmt.Errorf("reading dnsmasq leases: %w", err)
+	}
+	now := time.Now().Unix()
+	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 3 {
+			continue
+		}
+		if fields[2] != ip {
+			continue
+		}
+		expiry, err := strconv.ParseInt(fields[0], 10, 64)
+		if err != nil {
+			return fmt.Errorf("parsing lease expiry %q: %w", fields[0], err)
+		}
+		if expiry <= now {
+			return ErrLeaseExpired
+		}
+		return nil
+	}
+	return ErrLeaseNotFound
 }
