@@ -17,7 +17,7 @@ For the conceptual explanation of how this fits into the resiliency architecture
 Add the `gracefulRestart` field to your Underlay CR. An empty object enables Graceful Restart with default values:
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: Underlay
 metadata:
   name: underlay
@@ -47,7 +47,7 @@ Omitting the `gracefulRestart` field entirely disables Graceful Restart.
 ## Full Example
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: Underlay
 metadata:
   name: underlay

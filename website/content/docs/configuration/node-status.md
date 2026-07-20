@@ -37,7 +37,7 @@ pe-kind-worker         True    False       19h
 ```
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: RouterNodeConfigurationStatus
 metadata:
   name: pe-kind-worker 
@@ -79,7 +79,7 @@ pe-kind-worker         True    False       19h
 ```
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: RouterNodeConfigurationStatus
 metadata:
   name: pe-kind-control-plane

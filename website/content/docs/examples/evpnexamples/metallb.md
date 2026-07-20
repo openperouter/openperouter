@@ -59,7 +59,7 @@ When external traffic reaches the service:
 Configure one L3VNI for each overlay:
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3VNI
 metadata:
   name: red
@@ -73,7 +73,7 @@ spec:
     localcidr:
       ipv4: 192.169.10.0/24
 ---
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3VNI
 metadata:
   name: blue

@@ -49,7 +49,7 @@ Configure the underlay with IS-IS, SRv6 locator, and eBGP multihop
 neighbors:
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: Underlay
 metadata:
   name: underlay
@@ -101,7 +101,7 @@ spec:
 Create two L3VPNs with explicit route distinguishers and route targets:
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3VPN
 metadata:
   name: red
@@ -119,7 +119,7 @@ spec:
   importRTs:
   - "64520:100"
 ---
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3VPN
 metadata:
   name: blue

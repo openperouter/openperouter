@@ -16,7 +16,7 @@ the SRv6 underlay requires IS-IS, an SRv6 locator, and at least one IPv6
 tunnel endpoint CIDR.
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: Underlay
 metadata:
   name: underlay
@@ -138,7 +138,7 @@ targets.
 ### Basic L3VPN Configuration
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3VPN
 metadata:
   name: red
@@ -166,7 +166,7 @@ You can create multiple L3VPNs for different network segments:
 
 ```yaml
 # Signal VPN
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3VPN
 metadata:
   name: signal
@@ -185,7 +185,7 @@ spec:
       ipv4: 192.168.10.0/24
 ---
 # OAM VPN
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3VPN
 metadata:
   name: oam
@@ -233,7 +233,7 @@ For the full list of L2VNI configuration fields, see the
 ### L2VNI Example
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L2VNI
 metadata:
   name: l2red

@@ -307,7 +307,7 @@ jobs:
           if [ ${{ matrix.deployment }} = "operator-grout" ]; then
             IMG_TAG="main-grout" IMG_REPO="quay.io/openperouter" make load-on-kind;
             kubectl apply -f - <<EOF
-          apiVersion: openpe.openperouter.github.io/v1alpha1
+          apiVersion: network.openperouter.io/v1alpha1
           kind: OpenPERouter
           metadata:
             name: openperouter

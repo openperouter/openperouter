@@ -1,10 +1,10 @@
 # API Reference
 
 ## Packages
-- [openpe.openperouter.github.io/v1alpha1](#openpeopenperoutergithubiov1alpha1)
+- [network.openperouter.io/v1alpha1](#networkopenperouteriov1alpha1)
 
 
-## openpe.openperouter.github.io/v1alpha1
+## network.openperouter.io/v1alpha1
 
 Package v1alpha1 contains API Schema definitions for the openpe v1alpha1 API group.
 
@@ -272,7 +272,7 @@ from.
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `apiVersion` _string_ | `openpe.openperouter.github.io/v1alpha1` | | |
+| `apiVersion` _string_ | `network.openperouter.io/v1alpha1` | | |
 | `kind` _string_ | `L2VNI` | | |
 | `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  | Optional: \{\} <br /> |
 | `spec` _[L2VNISpec](#l2vnispec)_ | spec defines the desired state of L2VNI. |  | Required: \{\} <br /> |
@@ -327,7 +327,7 @@ takes part to the bgp fabric.
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `apiVersion` _string_ | `openpe.openperouter.github.io/v1alpha1` | | |
+| `apiVersion` _string_ | `network.openperouter.io/v1alpha1` | | |
 | `kind` _string_ | `L3Passthrough` | | |
 | `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  | Optional: \{\} <br /> |
 | `spec` _[L3PassthroughSpec](#l3passthroughspec)_ | spec defines the desired state of L3Passthrough. |  | Required: \{\} <br /> |
@@ -377,7 +377,7 @@ from.
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `apiVersion` _string_ | `openpe.openperouter.github.io/v1alpha1` | | |
+| `apiVersion` _string_ | `network.openperouter.io/v1alpha1` | | |
 | `kind` _string_ | `L3VNI` | | |
 | `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  | Optional: \{\} <br /> |
 | `spec` _[L3VNISpec](#l3vnispec)_ | spec defines the desired state of L3VNI. |  | Required: \{\} <br /> |
@@ -432,7 +432,7 @@ L3VPN represents an SRv6 IP VPN.
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `apiVersion` _string_ | `openpe.openperouter.github.io/v1alpha1` | | |
+| `apiVersion` _string_ | `network.openperouter.io/v1alpha1` | | |
 | `kind` _string_ | `L3VPN` | | |
 | `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  | Optional: \{\} <br /> |
 | `spec` _[L3VPNSpec](#l3vpnspec)_ | spec defines the desired state of L3VPN. |  | Required: \{\} <br /> |
@@ -597,7 +597,7 @@ RawFRRConfig is the Schema for the rawfrrconfigs API.
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `apiVersion` _string_ | `openpe.openperouter.github.io/v1alpha1` | | |
+| `apiVersion` _string_ | `network.openperouter.io/v1alpha1` | | |
 | `kind` _string_ | `RawFRRConfig` | | |
 | `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  | Optional: \{\} <br /> |
 | `spec` _[RawFRRConfigSpec](#rawfrrconfigspec)_ | spec defines the desired state of RawFRRConfig. |  | Required: \{\} <br /> |
@@ -662,7 +662,7 @@ RouterNodeConfigurationStatus describes a node router state.
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `apiVersion` _string_ | `openpe.openperouter.github.io/v1alpha1` | | |
+| `apiVersion` _string_ | `network.openperouter.io/v1alpha1` | | |
 | `kind` _string_ | `RouterNodeConfigurationStatus` | | |
 | `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
 | `status` _[RouterNodeConfigurationStatusStatus](#routernodeconfigurationstatusstatus)_ | status node router configuration status. |  | Optional: \{\} <br /> |
@@ -746,7 +746,7 @@ Underlay is the Schema for the underlays API.
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `apiVersion` _string_ | `openpe.openperouter.github.io/v1alpha1` | | |
+| `apiVersion` _string_ | `network.openperouter.io/v1alpha1` | | |
 | `kind` _string_ | `Underlay` | | |
 | `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  | Optional: \{\} <br /> |
 | `spec` _[UnderlaySpec](#underlayspec)_ | spec defines the desired state of Underlay. |  | Required: \{\} <br /> |

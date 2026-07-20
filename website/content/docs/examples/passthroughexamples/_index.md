@@ -37,7 +37,7 @@ Before running any integration examples, you need to configure OpenPERouter with
 Configure the underlay to peer with the `kind-leaf` node:
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: Underlay
 metadata:
   name: underlay
@@ -64,7 +64,7 @@ spec:
 Create one passthrough configuration:
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3Passthrough
 metadata:
   name: passthrough

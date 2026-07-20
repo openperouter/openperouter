@@ -1,6 +1,6 @@
 ---
 # Rack 1 nodes connect to ToR 1
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: Underlay
 metadata:
   name: underlay-rack-1
@@ -25,7 +25,7 @@ spec:
         transmitInterval: 300
 ---
 # Rack 2 nodes connect to ToR 2
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: Underlay
 metadata:
   name: underlay-rack-2

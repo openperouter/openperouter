@@ -30,7 +30,7 @@ The underlay configuration establishes BGP sessions with external routers
 ### Basic Underlay Configuration
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: Underlay
 metadata:
   name: underlay
@@ -58,7 +58,7 @@ multi-path networking.
 **Example with multiple neighbors and interfaces**:
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: Underlay
 metadata:
   name: underlay

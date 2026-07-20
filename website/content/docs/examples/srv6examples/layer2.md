@@ -54,7 +54,7 @@ One L3VPN corresponding to the routing domain, one L2 VNI with the same
 VRF as the L3VPN:
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3VPN
 metadata:
   name: red
@@ -72,7 +72,7 @@ spec:
   importRTs:
   - "64520:100"
 ---
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L2VNI
 metadata:
   name: layer2
@@ -98,7 +98,7 @@ The underlay for this example includes both VXLAN and SRv6 tunnel
 endpoints, along with IS-IS and SRv6 configuration:
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: Underlay
 metadata:
   name: underlay

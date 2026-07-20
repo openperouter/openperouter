@@ -31,7 +31,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - openpe.openperouter.github.io
+  - network.openperouter.io
   resources:
   - l2vnis
   - l3passthroughs
@@ -47,7 +47,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - openpe.openperouter.github.io
+  - network.openperouter.io
   resources:
   - l2vnis/finalizers
   - l3passthroughs/finalizers
@@ -57,7 +57,7 @@ rules:
   verbs:
   - update
 - apiGroups:
-  - openpe.openperouter.github.io
+  - network.openperouter.io
   resources:
   - l2vnis/status
   - l3passthroughs/status
@@ -69,7 +69,7 @@ rules:
   - patch
   - update
 - apiGroups:
-  - openpe.openperouter.github.io
+  - network.openperouter.io
   resources:
   - rawfrrconfigs
   verbs:
@@ -77,13 +77,13 @@ rules:
   - list
   - watch
 - apiGroups:
-  - openpe.openperouter.github.io
+  - network.openperouter.io
   resources:
   - rawfrrconfigs/status
   verbs:
   - get
 - apiGroups:
-  - openpe.openperouter.github.io
+  - network.openperouter.io
   resources:
   - routernodeconfigurationstatuses
   verbs:
@@ -95,7 +95,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - openpe.openperouter.github.io
+  - network.openperouter.io
   resources:
   - routernodeconfigurationstatuses/status
   verbs:

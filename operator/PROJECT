@@ -2,7 +2,7 @@
 # This file is used to track the info used to scaffold your project
 # and allow the plugins properly work.
 # More info: https://book.kubebuilder.io/reference/project-config.html
-domain: openperouter.github.io
+domain: openperouter.io
 layout:
 - go.kubebuilder.io/v4
 projectName: openperouter-operator
@@ -12,8 +12,8 @@ resources:
     crdVersion: v1
     namespaced: true
   controller: true
-  domain: openperouter.github.io
-  group: openpe
+  domain: openperouter.io
+  group: network
   kind: OpenPERouter
   path: github.com/openperouter/openperouter/operator/api/v1alpha1
   version: v1alpha1

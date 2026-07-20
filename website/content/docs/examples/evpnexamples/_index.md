@@ -43,7 +43,7 @@ Before running any integration examples, you need to configure OpenPERouter with
 Configure the underlay to peer with the `kind-leaf` node:
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: Underlay
 metadata:
   name: underlay
@@ -75,7 +75,7 @@ Create two VNIs that match the fabric configuration:
 
 ```yaml
 # Red VNI (VNI 100)
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3VNI
 metadata:
   name: red
@@ -90,7 +90,7 @@ spec:
       ipv4: 192.169.10.0/24
 ---
 # Blue VNI (VNI 200)
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3VNI
 metadata:
   name: blue

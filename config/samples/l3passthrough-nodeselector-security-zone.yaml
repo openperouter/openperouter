@@ -1,6 +1,6 @@
 ---
 # L3Passthrough for DMZ nodes
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3Passthrough
 metadata:
   name: dmz-passthrough
@@ -16,7 +16,7 @@ spec:
       ipv4: 192.169.21.0/24
 ---
 # L3Passthrough for internal nodes
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3Passthrough
 metadata:
   name: internal-passthrough

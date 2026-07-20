@@ -21,7 +21,7 @@ This is useful for experimenting with FRR features that are not yet exposed thro
 ## Example
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: RawFRRConfig
 metadata:
   name: custom-prefix-list
@@ -46,7 +46,7 @@ When multiple `RawFRRConfig` resources exist, their snippets are ordered by `pri
 
 ```yaml
 # This snippet appears first (priority 5)
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: RawFRRConfig
 metadata:
   name: prefix-list
@@ -57,7 +57,7 @@ spec:
     ip prefix-list my-list seq 10 permit 10.0.0.0/8
 ---
 # This snippet appears second (priority 10)
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: RawFRRConfig
 metadata:
   name: route-map
