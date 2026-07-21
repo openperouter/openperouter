@@ -72,7 +72,7 @@ PodmanArgs=--pid=host
 PodmanArgs=--uts=host
 
 # Controller command-line arguments
-Exec=--frrconfig /etc/perouter/frr/frr.conf --pid-path /etc/perouter/frr/frr.pid --reloader-socket /etc/perouter/frr/frr.socket --mode host --namespace openperouter-system --cni-bin-dir=/opt/openperouter/cni/bin/ --cni-cache-dir=/var/lib/openperouter/cni/cache
+Exec=--frrconfig /etc/perouter/frr/frr.conf --pid-path /etc/perouter/frr/frr.pid --reloader-socket /etc/perouter/frr/frr.socket --mode host --namespace openperouter-system --cni-plugin-dirs=/opt/openperouter/cni/bin/ --cni-cache-dir=/var/lib/openperouter/cni/cache
 
 # Health check - kill container if controller stops responding,
 # systemd Restart=on-failure handles restart

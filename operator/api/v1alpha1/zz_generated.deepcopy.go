@@ -95,11 +95,6 @@ func (in *OpenPERouterSpec) DeepCopyInto(out *OpenPERouterSpec) {
 		*out = new(LogLevel)
 		**out = **in
 	}
-	if in.MultusNetworkAnnotation != nil {
-		in, out := &in.MultusNetworkAnnotation, &out.MultusNetworkAnnotation
-		*out = new(string)
-		**out = **in
-	}
 	if in.RunOnMaster != nil {
 		in, out := &in.RunOnMaster, &out.RunOnMaster
 		*out = new(bool)

@@ -1218,14 +1218,65 @@ spec:
                 description: |-
                   interfaces is the list of interfaces the router uses for underlay
                   connectivity. Each entry is a discriminated union describing how the
-                  interface is obtained. At least one interface is required.
+                  interface is obtained. At least one interface is required. All the
+                  entries must be of the same type: mixing NetworkDevice and CNIDevice
+                  interfaces is not supported.
                 items:
                   description: |-
                     UnderlayInterface defines how the router obtains a single underlay link.
                     Exactly one of the sub-structs must match the type field.
-                    The union is designed to be extended with future modes (e.g. cni)
+                    The union is designed to be extended with future modes
                     for controller-provisioned interfaces.
                   properties:
+                    cniDevice:
+                      description: |-
+                        cniDevice invokes a CNI plugin to provision an interface in the router
+                        netns. IPAM is delegated to the CNI plugin. Must be set when type is
+                        "CNIDevice".
+                      properties:
+                        interfaceName:
+                          default: net1
+                          description: |-
+                            interfaceName is the name of the interface the CNI plugin creates
+                            inside the router netns (passed as CNI_IFNAME). Defaults to "net1".
+                          maxLength: 15
+                          minLength: 1
+                          pattern: ^[a-zA-Z][a-zA-Z0-9._-]*$
+                          type: string
+                        rawConfig:
+                          description: |-
+                            rawConfig embeds a CNI conflist JSON blob directly in this spec.
+                            Only CNI spec >= 1.0.0 configurations are accepted. Immutable once
+                            set: to change it, delete and recreate the
+                            Underlay. Immutability is enforced by the validation webhook because
+                            CEL transition rules cannot be evaluated inside atomic lists.
+                          type: object
+                          x-kubernetes-preserve-unknown-fields: true
+                        runtimeConfig:
+                          description: |-
+                            runtimeConfig is an opaque JSON object mapping CNI capability names
+                            to the payloads passed as capability arguments to the CNI
+                            invocation. Only keys that the plugin declares in its
+                            "capabilities" config block are forwarded; undeclared keys are
+                            silently stripped. Well-known capabilities include ips, mac,
+                            bandwidth, portMappings, ipRanges and deviceID. Immutable once
+                            set: to change it, delete and recreate the Underlay. Immutability
+                            is enforced by the validation webhook because CEL transition rules
+                            cannot be evaluated inside atomic lists.
+                          type: object
+                          x-kubernetes-preserve-unknown-fields: true
+                        type:
+                          description: type selects the source of the CNI configuration.
+                          enum:
+                          - RawConfig
+                          type: string
+                      required:
+                      - type
+                      type: object
+                      x-kubernetes-validations:
+                      - message: 'type/config mismatch: rawConfig must be set if and
+                          only if type is ''RawConfig'''
+                        rule: has(self.rawConfig) == (self.type == 'RawConfig')
                     networkDevice:
                       description: |-
                         networkDevice moves an existing host network device into the router netns.
@@ -1248,6 +1299,7 @@ spec:
                         link.
                       enum:
                       - NetworkDevice
+                      - CNIDevice
                       type: string
                   required:
                   - type
@@ -1256,9 +1308,16 @@ spec:
                   - message: 'type/config mismatch: networkDevice must be set if and
                       only if type is ''NetworkDevice'''
                     rule: has(self.networkDevice) == (self.type == 'NetworkDevice')
+                  - message: 'type/config mismatch: cniDevice must be set if and only
+                      if type is ''CNIDevice'''
+                    rule: has(self.cniDevice) == (self.type == 'CNIDevice')
                 minItems: 1
                 type: array
                 x-kubernetes-list-type: atomic
+                x-kubernetes-validations:
+                - message: all interfaces must be of the same type, mixing NetworkDevice
+                    and CNIDevice is not supported
+                  rule: self.all(i, i.type == self[0].type)
               isis:
                 description: isis holds the ISIS configuration for the underlay.
                 properties:
@@ -2141,7 +2200,7 @@ spec:
         - --namespace=$(NAMESPACE)
         - --frrconfig=/etc/frr/frr.conf
         - --reloader-socket=/etc/frr/reload.sock
-        - --cni-bin-dir=/opt/openperouter/cni/bin/
+        - --cni-plugin-dirs=/opt/openperouter/cni/bin/
         - --cni-cache-dir=/var/lib/openperouter/cni/cache
         command:
         - /controller

@@ -18,7 +18,9 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/executor"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/util/retry"
 )
 
 type PodModifier func(*corev1.Pod)
@@ -111,6 +113,42 @@ func waitForPodReady(cs clientset.Interface, pod *corev1.Pod) (*corev1.Pod, erro
 			}
 		}
 	}
+}
+
+// WaitPodsRolled waits until every pod matching the label is a fresh, ready
+// replacement of the deleted ones.
+func WaitPodsRolled(cs clientset.Interface, namespace, label string, oldPods []*corev1.Pod) error {
+	oldNames := map[string]bool{}
+	for _, pod := range oldPods {
+		oldNames[pod.Name] = true
+	}
+	interval := 2 * time.Second
+	timeout := 3 * time.Minute
+	threeMinutesTimeout := wait.Backoff{
+		Steps:    int(timeout / interval),
+		Duration: interval,
+	}
+	allErrors := func(error) bool {
+		return true
+	}
+	return retry.OnError(threeMinutesTimeout, allErrors, func() error {
+		newPods, err := PodsForLabel(cs, namespace, label)
+		if err != nil {
+			return err
+		}
+		if len(newPods) != len(oldPods) {
+			return fmt.Errorf("number of pods mismatchings")
+		}
+		for _, pod := range newPods {
+			if _, ok := oldNames[pod.Name]; !ok {
+				return fmt.Errorf("missing pod %q", pod.Name)
+			}
+			if !PodIsReady(pod) {
+				return fmt.Errorf("pod %q not ready", pod.Name)
+			}
+		}
+		return nil
+	})
 }
 
 func PodLogsSinceTime(cs clientset.Interface, pod *corev1.Pod,
