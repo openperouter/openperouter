@@ -1527,6 +1527,8 @@ spec:
                       description: |-
                         password to be used for establishing the BGP session.
                         Password and PasswordSecret are mutually exclusive.
+                      maxLength: 128
+                      pattern: ^\S+$
                       type: string
                     passwordSecret:
                       description: |-
