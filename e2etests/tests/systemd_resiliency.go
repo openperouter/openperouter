@@ -145,8 +145,8 @@ var _ = Describe("Systemd: Named netns and kernel objects survive FRR container 
 	l2VniRed := v1alpha1.L2VNI{
 		ObjectMeta: metav1.ObjectMeta{Name: "red110", Namespace: openperouter.Namespace},
 		Spec: v1alpha1.L2VNISpec{
-			VRF: new("red"),
-			VNI: 110,
+			RoutingDomain: l3vniRoutingDomain("red"),
+			VNI:           110,
 			HostMaster: &v1alpha1.HostMaster{
 				Type:        "linux-bridge",
 				LinuxBridge: &v1alpha1.LinuxBridgeConfig{AutoCreate: new(true)},
@@ -370,10 +370,10 @@ var _ = Describe("Systemd: Data plane continuity during FRR restart", Label("sys
 		l2VniRedWithGateway := v1alpha1.L2VNI{
 			ObjectMeta: metav1.ObjectMeta{Name: "red110", Namespace: openperouter.Namespace},
 			Spec: v1alpha1.L2VNISpec{
-				VRF:          new("red"),
-				VNI:          110,
-				L2GatewayIPs: []string{"192.171.24.1/24"},
-				HostMaster:   &v1alpha1.HostMaster{Type: "linux-bridge", LinuxBridge: &v1alpha1.LinuxBridgeConfig{AutoCreate: new(true)}},
+				RoutingDomain: l3vniRoutingDomain("red"),
+				VNI:           110,
+				GatewayIPs:    []string{"192.171.24.1/24"},
+				HostMaster:    &v1alpha1.HostMaster{Type: "linux-bridge", LinuxBridge: &v1alpha1.LinuxBridgeConfig{AutoCreate: new(true)}},
 			},
 		}
 

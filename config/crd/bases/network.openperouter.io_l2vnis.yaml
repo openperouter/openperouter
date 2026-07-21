@@ -41,11 +41,27 @@ spec:
           spec:
             description: spec defines the desired state of L2VNI.
             properties:
+              gatewayIPs:
+                description: |-
+                  gatewayIPs is a list of IP addresses in CIDR notation for the
+                  distributed anycast gateway on this L2 segment's bridge
+                  (Integrated Routing and Bridging interface). It is a property of
+                  the L2 segment itself, so it lives on the L2VNI rather than
+                  inside the routing-domain reference.
+                  Maximum of 2 addresses are allowed. If 2 addresses are provided, one must be IPv4 and one must be IPv6.
+                items:
+                  type: string
+                maxItems: 2
+                type: array
+                x-kubernetes-list-type: atomic
+                x-kubernetes-validations:
+                - message: GatewayIPs cannot be changed
+                  rule: self == oldSelf
               hostmaster:
                 description: |-
-                  hostmaster is the interface on the host the veth should be enslaved to.
-                  If not set, the host veth will not be enslaved to any interface and it must be
-                  enslaved manually (or by some other means). This is useful if another controller
+                  hostmaster is the interface on the host the veth should be attached to.
+                  If not set, the host veth will not be attached to any interface and it must be
+                  attached manually (or by some other means). This is useful if another controller
                   is leveraging the host interface for the VNI.
                 properties:
                   linuxBridge:
@@ -103,20 +119,6 @@ spec:
                     field, ''ovs-bridge'' requires ovsBridge field'
                   rule: (self.type == 'linux-bridge' && has(self.linuxBridge) && !has(self.ovsBridge))
                     || (self.type == 'ovs-bridge' && has(self.ovsBridge) && !has(self.linuxBridge))
-              l2gatewayips:
-                description: |-
-                  l2gatewayips is a list of IP addresses in CIDR notation to be used for the L2 gateway. When this is set, the
-                  bridge the veths are enslaved to will be configured with these IP addresses, effectively
-                  acting as a distributed gateway for the VNI. This allows for dual-stack (IPv4 and IPv6) support.
-                  Maximum of 2 addresses are allowed. If 2 addresses are provided, one must be IPv4 and one must be IPv6.
-                items:
-                  type: string
-                maxItems: 2
-                type: array
-                x-kubernetes-list-type: atomic
-                x-kubernetes-validations:
-                - message: L2GatewayIPs cannot be changed
-                  rule: self == oldSelf
               nodeSelector:
                 description: |-
                   nodeSelector specifies which nodes this L2VNI applies to.
@@ -166,6 +168,54 @@ spec:
                     type: object
                 type: object
                 x-kubernetes-map-type: atomic
+              routingDomain:
+                description: |-
+                  routingDomain optionally attaches this L2VNI to a routing domain
+                  provided by a backing resource (L3VNI or L3VPN). When omitted, the
+                  L2VNI is a disconnected overlay (east-west L2 only, no VRF, no
+                  gateway).
+                properties:
+                  l3vni:
+                    description: |-
+                      l3vni references the L3VNI (metadata.name) in the same namespace that
+                      provides the routing domain for this L2VNI.
+                    properties:
+                      name:
+                        description: name is the metadata.name of the L3VNI in the
+                          same namespace.
+                        minLength: 1
+                        type: string
+                    required:
+                    - name
+                    type: object
+                  l3vpn:
+                    description: |-
+                      l3vpn references the L3VPN (metadata.name) in the same namespace that
+                      provides the routing domain for this L2VNI.
+                    properties:
+                      name:
+                        description: name is the metadata.name of the L3VPN in the
+                          same namespace.
+                        minLength: 1
+                        type: string
+                    required:
+                    - name
+                    type: object
+                  type:
+                    description: type selects the kind of resource that provides this
+                      routing domain.
+                    enum:
+                    - L3VNI
+                    - L3VPN
+                    type: string
+                required:
+                - type
+                type: object
+                x-kubernetes-validations:
+                - message: type L3VNI requires l3vni to be set and l3vpn to be unset
+                  rule: self.type != 'L3VNI' || (has(self.l3vni) && !has(self.l3vpn))
+                - message: type L3VPN requires l3vpn to be set and l3vni to be unset
+                  rule: self.type != 'L3VPN' || (has(self.l3vpn) && !has(self.l3vni))
               underlayAddressFamily:
                 description: |-
                   underlayAddressFamily selects which VTEP address family to use for this VNI's
@@ -181,13 +231,6 @@ spec:
                 maximum: 16777215
                 minimum: 1
                 type: integer
-              vrf:
-                description: |-
-                  vrf is the name of the linux VRF to be used inside the PERouter namespace.
-                  The field is optional, if not set it the name of the VNI instance will be used.
-                maxLength: 15
-                pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
-                type: string
               vxlanport:
                 default: 4789
                 description: vxlanport is the port to be used for VXLan encapsulation.
@@ -196,6 +239,9 @@ spec:
             required:
             - vni
             type: object
+            x-kubernetes-validations:
+            - message: gatewayIPs cannot be set without routingDomain
+              rule: '!has(self.gatewayIPs) || size(self.gatewayIPs) == 0 || has(self.routingDomain)'
           status:
             description: status defines the observed state of L2VNI.
             type: object

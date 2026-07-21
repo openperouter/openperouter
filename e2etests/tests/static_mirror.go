@@ -44,7 +44,8 @@ var staticUnderlayYAML = fmt.Sprintf(`underlays:
 `, infra.Underlay.Spec.ASN)
 
 var staticL3VNIYAML = `l3vnis:
-  - vrf: mirror-red
+  - name: mirror-red
+    vrf: mirror-red
     vni: 8100
     hostsession:
       asn: 64514
@@ -54,7 +55,8 @@ var staticL3VNIYAML = `l3vnis:
 `
 
 var staticL3VNIUpdatedYAML = `l3vnis:
-  - vrf: mirror-red
+  - name: mirror-red
+    vrf: mirror-red
     vni: 8200
     hostsession:
       asn: 64514
@@ -261,9 +263,9 @@ var _ = Describe("Mirror static config to Kubernetes", Label("systemdmode"), Ord
 
 		By("writing a new L2VNI static file on all nodes")
 		l2vniYAML := `l2vnis:
-  - vni: 8300
+  - name: sl2vni8300
+    vni: 8300
     vxlanport: 4789
-    vrf: sl2vni8300
 `
 		for _, pod := range configPods {
 			_, err := execInConfigPod(pod, fmt.Sprintf("cat > %s/openpe_l2vni.yaml << 'EOF'\n%s\nEOF",
@@ -278,9 +280,9 @@ var _ = Describe("Mirror static config to Kubernetes", Label("systemdmode"), Ord
 	It("deletes mirrored resource when static file is removed", func() {
 		By("writing a L2VNI static file on all nodes")
 		l2vniYAML := `l2vnis:
-  - vni: 8300
+  - name: sl2vni8300
+    vni: 8300
     vxlanport: 4789
-    vrf: sl2vni8300
 `
 		for _, pod := range configPods {
 			_, err := execInConfigPod(pod, fmt.Sprintf("cat > %s/openpe_l2vni.yaml << 'EOF'\n%s\nEOF",
@@ -461,9 +463,9 @@ var _ = Describe("Mirror static config to Kubernetes", Label("systemdmode"), Ord
 	It("webhook rejects a new K8s-managed L2VNI with same VNI as mirrored one", func() {
 		By("writing a static L2VNI file on all nodes")
 		l2vniYAML := `l2vnis:
-  - vni: 8400
+  - name: sl2vni8400
+    vni: 8400
     vxlanport: 4789
-    vrf: sl2vni8400
 `
 		for _, pod := range configPods {
 			_, err := execInConfigPod(pod, fmt.Sprintf("cat > %s/openpe_l2vni_webhook.yaml << 'EOF'\n%s\nEOF",

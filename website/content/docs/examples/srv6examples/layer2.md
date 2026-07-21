@@ -79,16 +79,20 @@ metadata:
   namespace: openperouter-system
 spec:
   vni: 110
-  vrf: red
+  routingDomain:
+    type: L3VPN
+    l3vpn:
+      name: red
   hostmaster:
     type: linux-bridge
     linuxBridge:
       autoCreate: true
-  l2gatewayips: ["192.170.1.1/24"]
+  gatewayIPs: ["192.170.1.1/24"]
 ```
 
 **Configuration Notes:**
 
+- **`gatewayIPs` field**: Allows each pod to have the same default gateway and be able to send traffic to the outer L3 domain
 - **hostmaster.autocreate**: Instructs OpenPERouter to create a bridge
   local to the node that can be used to access the L2 domain
 

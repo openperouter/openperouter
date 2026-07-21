@@ -50,8 +50,8 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Orde
 			Namespace: openperouter.Namespace,
 		},
 		Spec: v1alpha1.L2VNISpec{
-			VRF: new("red"),
-			VNI: 110,
+			RoutingDomain: l3vniRoutingDomain("red"),
+			VNI:           110,
 			HostMaster: &v1alpha1.HostMaster{
 				Type: linuxBridgeHostAttachment,
 				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
@@ -144,7 +144,7 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Orde
 		Expect(err).NotTo(HaveOccurred())
 
 		l2VniRedWithGateway := l2VniRed.DeepCopy()
-		l2VniRedWithGateway.Spec.L2GatewayIPs = tc.l2GatewayIPs
+		l2VniRedWithGateway.Spec.GatewayIPs = tc.l2GatewayIPs
 		l2VniRedWithGateway.Spec.HostMaster = &tc.hostMaster
 
 		err = Updater.Update(config.Resources{

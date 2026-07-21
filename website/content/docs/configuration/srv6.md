@@ -240,11 +240,15 @@ metadata:
   namespace: openperouter-system
 spec:
   vni: 210
-  vrf: red
+  routingDomain:
+    type: L3VPN
+    l3vpn:
+      name: red
   hostmaster:
     type: linux-bridge
     linuxBridge:
       autoCreate: true
+  gatewayIPs: ["192.170.1.1/24"]
 ```
 
 ## Validation Rules

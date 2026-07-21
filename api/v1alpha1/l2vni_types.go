@@ -23,9 +23,16 @@ import (
 const (
 	LinuxBridge = "linux-bridge"
 	OVSBridge   = "ovs-bridge"
+
+	// RoutingDomainTypeL3VNI selects an L3VNI as the routing domain provider.
+	RoutingDomainTypeL3VNI = "L3VNI"
+
+	// RoutingDomainTypeL3VPN selects an L3VPN as the routing domain provider.
+	RoutingDomainTypeL3VPN = "L3VPN"
 )
 
 // L2VNISpec defines the desired state of VNI.
+// +kubebuilder:validation:XValidation:rule="!has(self.gatewayIPs) || size(self.gatewayIPs) == 0 || has(self.routingDomain)",message="gatewayIPs cannot be set without routingDomain"
 type L2VNISpec struct {
 	// nodeSelector specifies which nodes this L2VNI applies to.
 	// If empty or not specified, applies to all nodes.
@@ -33,12 +40,12 @@ type L2VNISpec struct {
 	// +optional
 	NodeSelector *metav1.LabelSelector `json:"nodeSelector,omitempty"`
 
-	// vrf is the name of the linux VRF to be used inside the PERouter namespace.
-	// The field is optional, if not set it the name of the VNI instance will be used.
-	// +kubebuilder:validation:Pattern=`^[a-zA-Z][a-zA-Z0-9_-]*$`
-	// +kubebuilder:validation:MaxLength=15
+	// routingDomain optionally attaches this L2VNI to a routing domain
+	// provided by a backing resource (L3VNI or L3VPN). When omitted, the
+	// L2VNI is a disconnected overlay (east-west L2 only, no VRF, no
+	// gateway).
 	// +optional
-	VRF *string `json:"vrf,omitempty"`
+	RoutingDomain *RoutingDomain `json:"routingDomain,omitempty"`
 
 	// vni is the VXLan VNI to be used
 	// +kubebuilder:validation:Minimum=1
@@ -58,22 +65,64 @@ type L2VNISpec struct {
 	// +optional
 	UnderlayAddressFamily *string `json:"underlayAddressFamily,omitempty"`
 
-	// hostmaster is the interface on the host the veth should be enslaved to.
-	// If not set, the host veth will not be enslaved to any interface and it must be
-	// enslaved manually (or by some other means). This is useful if another controller
+	// hostmaster is the interface on the host the veth should be attached to.
+	// If not set, the host veth will not be attached to any interface and it must be
+	// attached manually (or by some other means). This is useful if another controller
 	// is leveraging the host interface for the VNI.
 	// +optional
 	HostMaster *HostMaster `json:"hostmaster,omitempty"`
 
-	// l2gatewayips is a list of IP addresses in CIDR notation to be used for the L2 gateway. When this is set, the
-	// bridge the veths are enslaved to will be configured with these IP addresses, effectively
-	// acting as a distributed gateway for the VNI. This allows for dual-stack (IPv4 and IPv6) support.
+	// gatewayIPs is a list of IP addresses in CIDR notation for the
+	// distributed anycast gateway on this L2 segment's bridge
+	// (Integrated Routing and Bridging interface). It is a property of
+	// the L2 segment itself, so it lives on the L2VNI rather than
+	// inside the routing-domain reference.
 	// Maximum of 2 addresses are allowed. If 2 addresses are provided, one must be IPv4 and one must be IPv6.
 	// +optional
 	// +kubebuilder:validation:MaxItems=2
-	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="L2GatewayIPs cannot be changed"
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="GatewayIPs cannot be changed"
 	// +listType=atomic
-	L2GatewayIPs []string `json:"l2gatewayips,omitempty"`
+	GatewayIPs []string `json:"gatewayIPs,omitempty"`
+}
+
+// RoutingDomain is a discriminated union over the resource kinds that can
+// provide a routing domain. Exactly one sub-struct must match the type
+// discriminator.
+// +union
+// +kubebuilder:validation:XValidation:rule="self.type != 'L3VNI' || (has(self.l3vni) && !has(self.l3vpn))",message="type L3VNI requires l3vni to be set and l3vpn to be unset"
+// +kubebuilder:validation:XValidation:rule="self.type != 'L3VPN' || (has(self.l3vpn) && !has(self.l3vni))",message="type L3VPN requires l3vpn to be set and l3vni to be unset"
+type RoutingDomain struct {
+	// type selects the kind of resource that provides this routing domain.
+	// +kubebuilder:validation:Enum=L3VNI;L3VPN
+	// +required
+	// +unionDiscriminator
+	Type string `json:"type,omitempty"`
+
+	// l3vni references the L3VNI (metadata.name) in the same namespace that
+	// provides the routing domain for this L2VNI.
+	// +optional
+	L3VNI *L3VNIReference `json:"l3vni,omitempty"`
+
+	// l3vpn references the L3VPN (metadata.name) in the same namespace that
+	// provides the routing domain for this L2VNI.
+	// +optional
+	L3VPN *L3VPNReference `json:"l3vpn,omitempty"`
+}
+
+// L3VNIReference references an L3VNI by name.
+type L3VNIReference struct {
+	// name is the metadata.name of the L3VNI in the same namespace.
+	// +kubebuilder:validation:MinLength=1
+	// +required
+	Name string `json:"name,omitempty"`
+}
+
+// L3VPNReference references an L3VPN by name.
+type L3VPNReference struct {
+	// name is the metadata.name of the L3VPN in the same namespace.
+	// +kubebuilder:validation:MinLength=1
+	// +required
+	Name string `json:"name,omitempty"`
 }
 
 // LinuxBridgeConfig contains configuration for Linux bridge type.

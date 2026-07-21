@@ -1657,9 +1657,12 @@ func TestAPItoFRR(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "l2vni1"},
 					Spec: v1alpha1.L2VNISpec{
-						VRF:          new("red"),
-						VNI:          100,
-						L2GatewayIPs: []string{"192.168.100.1/24"},
+						RoutingDomain: &v1alpha1.RoutingDomain{
+							Type:  v1alpha1.RoutingDomainTypeL3VNI,
+							L3VNI: &v1alpha1.L3VNIReference{Name: "vni1"},
+						},
+						VNI:        100,
+						GatewayIPs: []string{"192.168.100.1/24"},
 					},
 				},
 			},
@@ -1725,9 +1728,12 @@ func TestAPItoFRR(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "l2vni1"},
 					Spec: v1alpha1.L2VNISpec{
-						VRF:          new("red"),
-						VNI:          100,
-						L2GatewayIPs: []string{"10.0.0.1/24", "2001:db8::1/64"},
+						RoutingDomain: &v1alpha1.RoutingDomain{
+							Type:  v1alpha1.RoutingDomainTypeL3VNI,
+							L3VNI: &v1alpha1.L3VNIReference{Name: "vni1"},
+						},
+						VNI:        100,
+						GatewayIPs: []string{"10.0.0.1/24", "2001:db8::1/64"},
 					},
 				},
 			},
@@ -1770,7 +1776,7 @@ func TestAPItoFRR(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:      "l3vni with non-matching L2 gateway VRF",
+			name:      "l3vni with L2 gateway in different VRF",
 			nodeIndex: 0,
 			underlays: []v1alpha1.Underlay{
 				{
@@ -1789,14 +1795,24 @@ func TestAPItoFRR(t *testing.T) {
 						VNI: 200,
 					},
 				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "blue-l3"},
+					Spec: v1alpha1.L3VNISpec{
+						VRF: "blue",
+						VNI: 300,
+					},
+				},
 			},
 			l2vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "l2vni1"},
 					Spec: v1alpha1.L2VNISpec{
-						VRF:          new("blue"),
-						VNI:          100,
-						L2GatewayIPs: []string{"192.168.100.1/24"},
+						RoutingDomain: &v1alpha1.RoutingDomain{
+							Type:  v1alpha1.RoutingDomainTypeL3VNI,
+							L3VNI: &v1alpha1.L3VNIReference{Name: "blue-l3"},
+						},
+						VNI:        100,
+						GatewayIPs: []string{"192.168.100.1/24"},
 					},
 				},
 			},
@@ -1828,6 +1844,15 @@ func TestAPItoFRR(t *testing.T) {
 						RouterID:  "10.0.0.1",
 						ExportRTs: []string{},
 						ImportRTs: []string{},
+					},
+					{
+						ASN:             65000,
+						VNI:             300,
+						VRF:             "blue",
+						RouterID:        "10.0.0.1",
+						ExportRTs:       []string{},
+						ImportRTs:       []string{},
+						ToAdvertiseIPv4: []string{"192.168.100.0/24"},
 					},
 				},
 				VPNs:        []frr.L3VPNConfig{},
@@ -1862,9 +1887,9 @@ func TestAPItoFRR(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "l2vni1"},
 					Spec: v1alpha1.L2VNISpec{
-						VRF:          new("red"),
-						VNI:          100,
-						L2GatewayIPs: []string{"192.168.100.1/24"},
+						RoutingDomain: l3vpnRoutingDomain("vni1"),
+						VNI:           100,
+						GatewayIPs:    []string{"192.168.100.1/24"},
 					},
 				},
 			},
@@ -1931,9 +1956,9 @@ func TestAPItoFRR(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "l2vni1"},
 					Spec: v1alpha1.L2VNISpec{
-						VRF:          new("red"),
-						VNI:          100,
-						L2GatewayIPs: []string{"10.0.0.1/24", "2001:db8::1/64"},
+						RoutingDomain: l3vpnRoutingDomain("vni1"),
+						VNI:           100,
+						GatewayIPs:    []string{"10.0.0.1/24", "2001:db8::1/64"},
 					},
 				},
 			},
@@ -1976,7 +2001,7 @@ func TestAPItoFRR(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:      "l3vpn with non-matching L2 gateway VRF",
+			name:      "l3vpn with L2 gateway in different VRF",
 			nodeIndex: 0,
 			underlays: []v1alpha1.Underlay{
 				{
@@ -1996,14 +2021,22 @@ func TestAPItoFRR(t *testing.T) {
 						ImportRTs:        []v1alpha1.RouteTarget{"65000:200"},
 					},
 				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "blue-vpn"},
+					Spec: v1alpha1.L3VPNSpec{
+						VRF:              "blue",
+						RDAssignedNumber: 300,
+						ImportRTs:        []v1alpha1.RouteTarget{"65000:300"},
+					},
+				},
 			},
 			l2vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "l2vni1"},
 					Spec: v1alpha1.L2VNISpec{
-						VRF:          new("blue"),
-						VNI:          100,
-						L2GatewayIPs: []string{"192.168.100.1/24"},
+						RoutingDomain: l3vpnRoutingDomain("blue-vpn"),
+						VNI:           100,
+						GatewayIPs:    []string{"192.168.100.1/24"},
 					},
 				},
 			},
@@ -2036,6 +2069,15 @@ func TestAPItoFRR(t *testing.T) {
 						ExportRTs:          []string{"65000:200"},
 						ImportRTs:          []string{"65000:200"},
 						RouteDistinguisher: "10.0.0.1:200",
+					},
+					{
+						ASN:                65000,
+						VRF:                "blue",
+						RouterID:           "10.0.0.1",
+						ToAdvertiseIPv4:    []string{"192.168.100.0/24"},
+						ExportRTs:          []string{"65000:300"},
+						ImportRTs:          []string{"65000:300"},
+						RouteDistinguisher: "10.0.0.1:300",
 					},
 				},
 				BFDProfiles: []frr.BFDProfile{},
@@ -2922,9 +2964,9 @@ func TestAPItoFRR(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "l2vni1"},
 					Spec: v1alpha1.L2VNISpec{
-						VRF:          new("vrf1"),
-						VNI:          101,
-						L2GatewayIPs: []string{"192.168.100.1/24", "2001:db8:1::/64"},
+						RoutingDomain: l3vpnRoutingDomain("vni1"),
+						VNI:           101,
+						GatewayIPs:    []string{"192.168.100.1/24", "2001:db8:1::/64"},
 					},
 				},
 			},
@@ -2993,14 +3035,9 @@ func TestAPItoFRR(t *testing.T) {
 				VNIs:        []frr.L3VNIConfig{},
 				VPNs: []frr.L3VPNConfig{
 					{
-						ASN: 65000,
-						ToAdvertiseIPv4: []string{
-							"192.168.2.2/32",
-							"192.168.100.0/24",
-						},
-						ToAdvertiseIPv6: []string{
-							"2001:db8:1::/64",
-						},
+						ASN:             65000,
+						ToAdvertiseIPv4: []string{"192.168.2.2/32", "192.168.100.0/24"},
+						ToAdvertiseIPv6: []string{"2001:db8:1::/64"},
 						LocalNeighbor: &frr.NeighborConfig{
 							ASN:  mustNewPeerASNFromNumber(65001),
 							Addr: "192.168.2.2",
@@ -3013,14 +3050,9 @@ func TestAPItoFRR(t *testing.T) {
 						RouterID:           "10.0.0.1",
 					},
 					{
-						ASN: 65000,
-						ToAdvertiseIPv4: []string{
-							"192.168.100.0/24",
-						},
-						ToAdvertiseIPv6: []string{
-							"2001:db8::2/128",
-							"2001:db8:1::/64",
-						},
+						ASN:             65000,
+						ToAdvertiseIPv4: []string{"192.168.100.0/24"},
+						ToAdvertiseIPv6: []string{"2001:db8::2/128", "2001:db8:1::/64"},
 						LocalNeighbor: &frr.NeighborConfig{
 							ASN:  mustNewPeerASNFromNumber(65001),
 							Addr: "2001:db8::2",
@@ -3068,17 +3100,17 @@ func TestAPItoFRR(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "l2vni100"},
 					Spec: v1alpha1.L2VNISpec{
-						VRF:          new("red"),
-						VNI:          100,
-						L2GatewayIPs: []string{"192.168.100.1/24", "2001:db8:100::1/64"},
+						RoutingDomain: l3vniRoutingDomain("vni1"),
+						VNI:           100,
+						GatewayIPs:    []string{"192.168.100.1/24", "2001:db8:100::1/64"},
 					},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "l2vni101"},
 					Spec: v1alpha1.L2VNISpec{
-						VRF:          new("red"),
-						VNI:          101,
-						L2GatewayIPs: []string{"192.168.101.1/24", "2001:db8:101::1/64"},
+						RoutingDomain: l3vniRoutingDomain("vni1"),
+						VNI:           101,
+						GatewayIPs:    []string{"192.168.101.1/24", "2001:db8:101::1/64"},
 					},
 				},
 			},
@@ -3473,11 +3505,18 @@ func TestTunnelEndpointToFRRDualStack(t *testing.T) {
 	}
 }
 
-func TestVRFsFromVNIsWithL2Gateways(t *testing.T) {
+func TestVrfsWithL2Gateways(t *testing.T) {
+	vrfMap := map[string]string{
+		"L3VNI/red":  "red",
+		"L3VNI/blue": "blue",
+	}
+
 	tests := []struct {
-		name   string
-		l2vnis []v1alpha1.L2VNI
-		want   map[string][]string
+		name    string
+		l2vnis  []v1alpha1.L2VNI
+		vrfMap  map[string]string
+		want    map[string][]string
+		wantErr bool
 	}{
 		{
 			name: "single L2VNI with gateway IPs",
@@ -3485,12 +3524,14 @@ func TestVRFsFromVNIsWithL2Gateways(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni100"},
 					Spec: v1alpha1.L2VNISpec{
-						L2GatewayIPs: []string{"192.168.0.1/24", "2001:db8::1/64"},
+						RoutingDomain: l3vniRoutingDomain("red"),
+						GatewayIPs:    []string{"192.168.0.1/24", "2001:db8::1/64"},
 					},
 				},
 			},
+			vrfMap: vrfMap,
 			want: map[string][]string{
-				"vni100": {"192.168.0.1/24", "2001:db8::1/64"},
+				"red": {"192.168.0.1/24", "2001:db8::1/64"},
 			},
 		},
 		{
@@ -3499,18 +3540,19 @@ func TestVRFsFromVNIsWithL2Gateways(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni100"},
 					Spec: v1alpha1.L2VNISpec{
-						VRF:          new("red"),
-						L2GatewayIPs: []string{"192.168.0.1/24", "2001:db8:1::1/64"},
+						RoutingDomain: l3vniRoutingDomain("red"),
+						GatewayIPs:    []string{"192.168.0.1/24", "2001:db8:1::1/64"},
 					},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni101"},
 					Spec: v1alpha1.L2VNISpec{
-						VRF:          new("red"),
-						L2GatewayIPs: []string{"192.168.1.1/24", "2001:db8:2::1/64"},
+						RoutingDomain: l3vniRoutingDomain("red"),
+						GatewayIPs:    []string{"192.168.1.1/24", "2001:db8:2::1/64"},
 					},
 				},
 			},
+			vrfMap: vrfMap,
 			want: map[string][]string{
 				"red": {"192.168.0.1/24", "192.168.1.1/24", "2001:db8:1::1/64", "2001:db8:2::1/64"},
 			},
@@ -3521,18 +3563,19 @@ func TestVRFsFromVNIsWithL2Gateways(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni100"},
 					Spec: v1alpha1.L2VNISpec{
-						VRF:          new("red"),
-						L2GatewayIPs: []string{"192.168.0.1/24", "2001:db8:1::1/64"},
+						RoutingDomain: l3vniRoutingDomain("red"),
+						GatewayIPs:    []string{"192.168.0.1/24", "2001:db8:1::1/64"},
 					},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni200"},
 					Spec: v1alpha1.L2VNISpec{
-						VRF:          new("blue"),
-						L2GatewayIPs: []string{"192.168.1.1/24", "2001:db8:2::1/64"},
+						RoutingDomain: l3vniRoutingDomain("blue"),
+						GatewayIPs:    []string{"192.168.1.1/24", "2001:db8:2::1/64"},
 					},
 				},
 			},
+			vrfMap: vrfMap,
 			want: map[string][]string{
 				"red":  {"192.168.0.1/24", "2001:db8:1::1/64"},
 				"blue": {"192.168.1.1/24", "2001:db8:2::1/64"},
@@ -3544,17 +3587,18 @@ func TestVRFsFromVNIsWithL2Gateways(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni100"},
 					Spec: v1alpha1.L2VNISpec{
-						VRF: new("red"),
+						RoutingDomain: l3vniRoutingDomain("red"),
 					},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni101"},
 					Spec: v1alpha1.L2VNISpec{
-						VRF:          new("red"),
-						L2GatewayIPs: []string{"192.168.1.1/24"},
+						RoutingDomain: l3vniRoutingDomain("red"),
+						GatewayIPs:    []string{"192.168.1.1/24"},
 					},
 				},
 			},
+			vrfMap: vrfMap,
 			want: map[string][]string{
 				"red": {"192.168.1.1/24"},
 			},
@@ -3565,18 +3609,19 @@ func TestVRFsFromVNIsWithL2Gateways(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni100"},
 					Spec: v1alpha1.L2VNISpec{
-						VRF:          new("red"),
-						L2GatewayIPs: []string{"192.168.1.1/24"},
+						RoutingDomain: l3vniRoutingDomain("red"),
+						GatewayIPs:    []string{"192.168.1.1/24"},
 					},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni101"},
 					Spec: v1alpha1.L2VNISpec{
-						VRF:          new("red"),
-						L2GatewayIPs: []string{"192.168.0.1/24"},
+						RoutingDomain: l3vniRoutingDomain("red"),
+						GatewayIPs:    []string{"192.168.0.1/24"},
 					},
 				},
 			},
+			vrfMap: vrfMap,
 			want: map[string][]string{
 				"red": {"192.168.0.1/24", "192.168.1.1/24"},
 			},
@@ -3587,53 +3632,69 @@ func TestVRFsFromVNIsWithL2Gateways(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni100"},
 					Spec: v1alpha1.L2VNISpec{
-						VRF:          new("red"),
-						L2GatewayIPs: []string{"192.168.0.1/24", "192.168.1.1/24"},
+						RoutingDomain: l3vniRoutingDomain("red"),
+						GatewayIPs:    []string{"192.168.0.1/24", "192.168.1.1/24"},
 					},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni101"},
 					Spec: v1alpha1.L2VNISpec{
-						VRF:          new("red"),
-						L2GatewayIPs: []string{"192.168.0.1/24", "192.168.2.1/24"},
+						RoutingDomain: l3vniRoutingDomain("red"),
+						GatewayIPs:    []string{"192.168.0.1/24", "192.168.2.1/24"},
 					},
 				},
 			},
+			vrfMap: vrfMap,
 			want: map[string][]string{
 				"red": {"192.168.0.1/24", "192.168.1.1/24", "192.168.2.1/24"},
 			},
 		},
 		{
-			name: "L2VNIs with and without VRF use separate keys",
+			name: "L2VNI with gatewayIPs but no resolvable VRF errors",
 			l2vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni100"},
 					Spec: v1alpha1.L2VNISpec{
-						VRF:          new("red"),
-						L2GatewayIPs: []string{"192.168.0.1/24"},
-					},
-				},
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni101"},
-					Spec: v1alpha1.L2VNISpec{
-						L2GatewayIPs: []string{"192.168.1.1/24"},
+						RoutingDomain: l3vniRoutingDomain("nonexistent"),
+						GatewayIPs:    []string{"192.168.0.1/24"},
 					},
 				},
 			},
-			want: map[string][]string{
-				"red":    {"192.168.0.1/24"},
-				"vni101": {"192.168.1.1/24"},
-			},
+			vrfMap:  vrfMap,
+			wantErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := vrfsFromVNIsWithL2Gateways(tt.l2vnis)
+			got, err := vrfsWithL2Gateways(tt.l2vnis, tt.vrfMap)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("vrfsWithL2Gateways() expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("vrfsWithL2Gateways() unexpected error: %v", err)
+			}
 			if diff := cmp.Diff(tt.want, got); diff != "" {
-				t.Errorf("vrfsFromVNIsWithL2Gateways() mismatch (-want +got):\n%s", diff)
+				t.Errorf("vrfsWithL2Gateways() mismatch (-want +got):\n%s", diff)
 			}
 		})
+	}
+}
+
+func l3vniRoutingDomain(name string) *v1alpha1.RoutingDomain {
+	return &v1alpha1.RoutingDomain{
+		Type:  v1alpha1.RoutingDomainTypeL3VNI,
+		L3VNI: &v1alpha1.L3VNIReference{Name: name},
+	}
+}
+
+func l3vpnRoutingDomain(name string) *v1alpha1.RoutingDomain {
+	return &v1alpha1.RoutingDomain{
+		Type:  v1alpha1.RoutingDomainTypeL3VPN,
+		L3VPN: &v1alpha1.L3VPNReference{Name: name},
 	}
 }
 

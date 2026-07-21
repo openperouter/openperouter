@@ -74,9 +74,9 @@ var runUnderlayTests = func(af ipfamily.Family, underlay v1alpha1.Underlay) {
 			Namespace: openperouter.Namespace,
 		},
 		Spec: v1alpha1.L2VNISpec{
-			VRF:          new("red"),
-			VNI:          110,
-			L2GatewayIPs: []string{l2GatewayIP},
+			RoutingDomain: l3vniRoutingDomain("red"),
+			VNI:           110,
+			GatewayIPs:    []string{l2GatewayIP},
 			HostMaster: &v1alpha1.HostMaster{
 				Type: linuxBridgeHostAttachment,
 				LinuxBridge: &v1alpha1.LinuxBridgeConfig{

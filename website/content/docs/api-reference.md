@@ -301,12 +301,12 @@ _Appears in:_
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `nodeSelector` _[LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#labelselector-v1-meta)_ | nodeSelector specifies which nodes this L2VNI applies to.<br />If empty or not specified, applies to all nodes.<br />Multiple L2VNIs can match the same node. |  | Optional: \{\} <br /> |
-| `vrf` _string_ | vrf is the name of the linux VRF to be used inside the PERouter namespace.<br />The field is optional, if not set it the name of the VNI instance will be used. |  | MaxLength: 15 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9_-]*$` <br />Optional: \{\} <br /> |
+| `routingDomain` _[RoutingDomain](#routingdomain)_ | routingDomain optionally attaches this L2VNI to a routing domain<br />provided by a backing resource (L3VNI or L3VPN). When omitted, the<br />L2VNI is a disconnected overlay (east-west L2 only, no VRF, no<br />gateway). |  | Optional: \{\} <br /> |
 | `vni` _integer_ | vni is the VXLan VNI to be used |  | Maximum: 1.6777215e+07 <br />Minimum: 1 <br />Required: \{\} <br /> |
 | `vxlanport` _integer_ | vxlanport is the port to be used for VXLan encapsulation. | 4789 | Optional: \{\} <br /> |
 | `underlayAddressFamily` _string_ | underlayAddressFamily selects which VTEP address family to use for this VNI's<br />VXLAN interface. When omitted, defaults to the available family in the underlay<br />(IPv4 preferred in dual-stack). |  | Enum: [ipv4 ipv6] <br />Optional: \{\} <br /> |
-| `hostmaster` _[HostMaster](#hostmaster)_ | hostmaster is the interface on the host the veth should be enslaved to.<br />If not set, the host veth will not be enslaved to any interface and it must be<br />enslaved manually (or by some other means). This is useful if another controller<br />is leveraging the host interface for the VNI. |  | Optional: \{\} <br /> |
-| `l2gatewayips` _string array_ | l2gatewayips is a list of IP addresses in CIDR notation to be used for the L2 gateway. When this is set, the<br />bridge the veths are enslaved to will be configured with these IP addresses, effectively<br />acting as a distributed gateway for the VNI. This allows for dual-stack (IPv4 and IPv6) support.<br />Maximum of 2 addresses are allowed. If 2 addresses are provided, one must be IPv4 and one must be IPv6. |  | MaxItems: 2 <br />Optional: \{\} <br /> |
+| `hostmaster` _[HostMaster](#hostmaster)_ | hostmaster is the interface on the host the veth should be attached to.<br />If not set, the host veth will not be attached to any interface and it must be<br />attached manually (or by some other means). This is useful if another controller<br />is leveraging the host interface for the VNI. |  | Optional: \{\} <br /> |
+| `gatewayIPs` _string array_ | gatewayIPs is a list of IP addresses in CIDR notation for the<br />distributed anycast gateway on this L2 segment's bridge<br />(Integrated Routing and Bridging interface). It is a property of<br />the L2 segment itself, so it lives on the L2VNI rather than<br />inside the routing-domain reference.<br />Maximum of 2 addresses are allowed. If 2 addresses are provided, one must be IPv4 and one must be IPv6. |  | MaxItems: 2 <br />Optional: \{\} <br /> |
 
 
 #### L2VNIStatus
@@ -392,6 +392,22 @@ from.
 | `status` _[L3VNIStatus](#l3vnistatus)_ | status defines the observed state of L3VNI. |  | Optional: \{\} <br /> |
 
 
+#### L3VNIReference
+
+
+
+L3VNIReference references an L3VNI by name.
+
+
+
+_Appears in:_
+- [RoutingDomain](#routingdomain)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `name` _string_ | name is the metadata.name of the L3VNI in the same namespace. |  | MinLength: 1 <br />Required: \{\} <br /> |
+
+
 #### L3VNISpec
 
 
@@ -445,6 +461,22 @@ L3VPN represents an SRv6 IP VPN.
 | `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  | Optional: \{\} <br /> |
 | `spec` _[L3VPNSpec](#l3vpnspec)_ | spec defines the desired state of L3VPN. |  | Required: \{\} <br /> |
 | `status` _[L3VPNStatus](#l3vpnstatus)_ | status defines the observed state of L3VPN. |  | Optional: \{\} <br /> |
+
+
+#### L3VPNReference
+
+
+
+L3VPNReference references an L3VPN by name.
+
+
+
+_Appears in:_
+- [RoutingDomain](#routingdomain)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `name` _string_ | name is the metadata.name of the L3VPN in the same namespace. |  | MinLength: 1 <br />Required: \{\} <br /> |
 
 
 #### L3VPNSpec
@@ -691,6 +723,26 @@ _Appears in:_
 | --- | --- | --- | --- |
 | `failedResources` _[FailedResource](#failedresource) array_ | failedResources list of failed configuration resources on the node. |  | Optional: \{\} <br /> |
 | `conditions` _[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#condition-v1-meta) array_ | conditions list of conditions. |  | Optional: \{\} <br /> |
+
+
+#### RoutingDomain
+
+
+
+RoutingDomain is a discriminated union over the resource kinds that can
+provide a routing domain. Exactly one sub-struct must match the type
+discriminator.
+
+
+
+_Appears in:_
+- [L2VNISpec](#l2vnispec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `type` _string_ | type selects the kind of resource that provides this routing domain. |  | Enum: [L3VNI L3VPN] <br />Required: \{\} <br /> |
+| `l3vni` _[L3VNIReference](#l3vnireference)_ | l3vni references the L3VNI (metadata.name) in the same namespace that<br />provides the routing domain for this L2VNI. |  | Optional: \{\} <br /> |
+| `l3vpn` _[L3VPNReference](#l3vpnreference)_ | l3vpn references the L3VPN (metadata.name) in the same namespace that<br />provides the routing domain for this L2VNI. |  | Optional: \{\} <br /> |
 
 
 #### SRV6Config

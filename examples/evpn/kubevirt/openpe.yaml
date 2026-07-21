@@ -22,9 +22,12 @@ spec:
     type: linux-bridge
     linuxBridge:
       autoCreate: true
-  l2gatewayips: ["192.170.1.1/24"]
+  gatewayIPs: ["192.170.1.1/24"]
   vni: 110
-  vrf: red
+  routingDomain:
+    type: L3VNI
+    l3vni:
+      name: red
   vxlanport: 4789
 ---
 apiVersion: network.openperouter.io/v1alpha1

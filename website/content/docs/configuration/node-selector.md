@@ -226,11 +226,15 @@ spec:
       node-role.kubernetes.io/worker: ""
   vni: 10100
   vxlanport: 4789
+  routingDomain:
+    type: L3VNI
+    l3vni:
+      name: tenant-a-vni
   hostmaster:
     type: linux-bridge
     linuxBridge:
       autoCreate: true
-  l2gatewayips:
+  gatewayIPs:
     - 10.100.0.1/24
 ```
 

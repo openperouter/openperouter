@@ -150,13 +150,16 @@ func TestFilterValidL2VNIs(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "duplicate VRF name",
+			name: "duplicate routingDomain reference",
 			vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
 					Spec: v1alpha1.L2VNISpec{
 						VNI: 1001,
-						VRF: new("vrf1"),
+						RoutingDomain: &v1alpha1.RoutingDomain{
+							Type:  v1alpha1.RoutingDomainTypeL3VNI,
+							L3VNI: &v1alpha1.L3VNIReference{Name: "l3vni1"},
+						},
 					},
 					Status: &v1alpha1.L2VNIStatus{},
 				},
@@ -164,26 +167,15 @@ func TestFilterValidL2VNIs(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{Name: "vni2"},
 					Spec: v1alpha1.L2VNISpec{
 						VNI: 1002,
-						VRF: new("vrf1"),
+						RoutingDomain: &v1alpha1.RoutingDomain{
+							Type:  v1alpha1.RoutingDomainTypeL3VNI,
+							L3VNI: &v1alpha1.L3VNIReference{Name: "l3vni1"},
+						},
 					},
 					Status: &v1alpha1.L2VNIStatus{},
 				},
 			},
 			wantErr: false,
-		},
-		{
-			name: "invalid VRF name",
-			vnis: []v1alpha1.L2VNI{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI: 1001,
-						VRF: new("invalid-vrf-name-with-dashes"),
-					},
-					Status: &v1alpha1.L2VNIStatus{},
-				},
-			},
-			wantErr: true,
 		},
 		{
 			name: "invalid hostmaster name",
@@ -243,14 +235,17 @@ func TestFilterValidL2VNIs(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "valid L2GatewayIPs IPv4 CIDR",
+			name: "valid GatewayIPs IPv4 CIDR",
 			vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
 					Spec: v1alpha1.L2VNISpec{
-						VNI:          1001,
-						VRF:          new("test-vrf"),
-						L2GatewayIPs: []string{"192.168.1.0/24"},
+						VNI: 1001,
+						RoutingDomain: &v1alpha1.RoutingDomain{
+							Type:  v1alpha1.RoutingDomainTypeL3VNI,
+							L3VNI: &v1alpha1.L3VNIReference{Name: "test-l3vni"},
+						},
+						GatewayIPs: []string{"192.168.1.0/24"},
 					},
 					Status: &v1alpha1.L2VNIStatus{},
 				},
@@ -258,14 +253,17 @@ func TestFilterValidL2VNIs(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "valid L2GatewayIPs IPv6 CIDR",
+			name: "valid GatewayIPs IPv6 CIDR",
 			vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
 					Spec: v1alpha1.L2VNISpec{
-						VNI:          1001,
-						VRF:          new("test-vrf"),
-						L2GatewayIPs: []string{"2001:db8::/64"},
+						VNI: 1001,
+						RoutingDomain: &v1alpha1.RoutingDomain{
+							Type:  v1alpha1.RoutingDomainTypeL3VNI,
+							L3VNI: &v1alpha1.L3VNIReference{Name: "test-l3vni"},
+						},
+						GatewayIPs: []string{"2001:db8::/64"},
 					},
 					Status: &v1alpha1.L2VNIStatus{},
 				},
@@ -273,32 +271,22 @@ func TestFilterValidL2VNIs(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "valid L2GatewayIPs dual-stack",
+			name: "valid GatewayIPs dual-stack",
 			vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
 					Spec: v1alpha1.L2VNISpec{
-						VNI:          1001,
-						VRF:          new("test-vrf"),
-						L2GatewayIPs: []string{"192.168.1.0/24", "2001:db8::/64"},
+						VNI: 1001,
+						RoutingDomain: &v1alpha1.RoutingDomain{
+							Type:  v1alpha1.RoutingDomainTypeL3VNI,
+							L3VNI: &v1alpha1.L3VNIReference{Name: "test-l3vni"},
+						},
+						GatewayIPs: []string{"192.168.1.0/24", "2001:db8::/64"},
 					},
 					Status: &v1alpha1.L2VNIStatus{},
 				},
 			},
 			wantErr: false,
-		},
-		{
-			name: "l2gatewayips without VRF",
-			vnis: []v1alpha1.L2VNI{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI:          1001,
-						L2GatewayIPs: []string{"192.168.1.0/24"},
-					},
-				},
-			},
-			wantErr: true,
 		},
 		{
 			name: "disconnected L2VNI with long name passes validation",
@@ -313,14 +301,17 @@ func TestFilterValidL2VNIs(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "ivalid L2GatewayIPs dual-stack both ipv4",
+			name: "invalid GatewayIPs dual-stack both ipv4",
 			vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
 					Spec: v1alpha1.L2VNISpec{
-						VNI:          1001,
-						VRF:          new("test-vrf"),
-						L2GatewayIPs: []string{"192.168.1.0/24", "192.168.2.0/24"},
+						VNI: 1001,
+						RoutingDomain: &v1alpha1.RoutingDomain{
+							Type:  v1alpha1.RoutingDomainTypeL3VNI,
+							L3VNI: &v1alpha1.L3VNIReference{Name: "test-l3vni"},
+						},
+						GatewayIPs: []string{"192.168.1.0/24", "192.168.2.0/24"},
 					},
 					Status: &v1alpha1.L2VNIStatus{},
 				},
@@ -328,14 +319,17 @@ func TestFilterValidL2VNIs(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "ivalid L2GatewayIPs dual-stack both ipv6",
+			name: "invalid GatewayIPs dual-stack both ipv6",
 			vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
 					Spec: v1alpha1.L2VNISpec{
-						VNI:          1001,
-						VRF:          new("test-vrf"),
-						L2GatewayIPs: []string{"2002:db8::/64", "2001:db8::/64"},
+						VNI: 1001,
+						RoutingDomain: &v1alpha1.RoutingDomain{
+							Type:  v1alpha1.RoutingDomainTypeL3VNI,
+							L3VNI: &v1alpha1.L3VNIReference{Name: "test-l3vni"},
+						},
+						GatewayIPs: []string{"2002:db8::/64", "2001:db8::/64"},
 					},
 					Status: &v1alpha1.L2VNIStatus{},
 				},
@@ -343,14 +337,17 @@ func TestFilterValidL2VNIs(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "invalid L2GatewayIPs CIDR",
+			name: "invalid GatewayIPs CIDR",
 			vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
 					Spec: v1alpha1.L2VNISpec{
-						VNI:          1001,
-						VRF:          new("test-vrf"),
-						L2GatewayIPs: []string{"invalid-cidr-format"},
+						VNI: 1001,
+						RoutingDomain: &v1alpha1.RoutingDomain{
+							Type:  v1alpha1.RoutingDomainTypeL3VNI,
+							L3VNI: &v1alpha1.L3VNIReference{Name: "test-l3vni"},
+						},
+						GatewayIPs: []string{"invalid-cidr-format"},
 					},
 					Status: &v1alpha1.L2VNIStatus{},
 				},
@@ -378,108 +375,167 @@ func TestFilterValidVRFSubnets(t *testing.T) {
 		wantErrStr string
 	}{
 		{
-			name: "overlapping L2GatewayIPs CIDR in different VRFs",
+			name: "overlapping GatewayIPs CIDR in different VRFs",
 			l2vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
 					Spec: v1alpha1.L2VNISpec{
-						VNI:          1001,
-						VRF:          new("test"),
-						L2GatewayIPs: []string{"192.168.1.0/24"},
+						VNI: 1001,
+						RoutingDomain: &v1alpha1.RoutingDomain{
+							Type:  v1alpha1.RoutingDomainTypeL3VNI,
+							L3VNI: &v1alpha1.L3VNIReference{Name: "l3vni1"},
+						},
+						GatewayIPs: []string{"192.168.1.0/24"},
 					},
 					Status: &v1alpha1.L2VNIStatus{},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
 					Spec: v1alpha1.L2VNISpec{
-						VNI:          1002,
-						VRF:          new("test2"),
-						L2GatewayIPs: []string{"192.168.1.128/25"},
+						VNI: 1002,
+						RoutingDomain: &v1alpha1.RoutingDomain{
+							Type:  v1alpha1.RoutingDomainTypeL3VNI,
+							L3VNI: &v1alpha1.L3VNIReference{Name: "l3vni2"},
+						},
+						GatewayIPs: []string{"192.168.1.128/25"},
 					},
 					Status: &v1alpha1.L2VNIStatus{},
 				},
 			},
-		},
-		{
-			name: "overlapping L2GatewayIPs CIDR V6 in different VRFs",
-			l2vnis: []v1alpha1.L2VNI{
+			l3vnis: []v1alpha1.L3VNI{
 				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI:          1001,
-						VRF:          new("test"),
-						L2GatewayIPs: []string{"2000::/64"},
-					},
-					Status: &v1alpha1.L2VNIStatus{},
+					ObjectMeta: metav1.ObjectMeta{Name: "l3vni1", Namespace: "test"},
+					Spec:       v1alpha1.L3VNISpec{VNI: 2001, VRF: "test"},
 				},
 				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI:          1002,
-						VRF:          new("test2"),
-						L2GatewayIPs: []string{"2000::/64"},
-					},
-					Status: &v1alpha1.L2VNIStatus{},
+					ObjectMeta: metav1.ObjectMeta{Name: "l3vni2", Namespace: "test"},
+					Spec:       v1alpha1.L3VNISpec{VNI: 2002, VRF: "test2"},
 				},
 			},
 		},
 		{
-			name: "overlapping L2GatewayIPs CIDR in same VRF",
+			name: "overlapping GatewayIPs CIDR V6 in different VRFs",
 			l2vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
 					Spec: v1alpha1.L2VNISpec{
-						VNI:          1001,
-						VRF:          new("test"),
-						L2GatewayIPs: []string{"192.168.1.0/24"},
+						VNI: 1001,
+						RoutingDomain: &v1alpha1.RoutingDomain{
+							Type:  v1alpha1.RoutingDomainTypeL3VNI,
+							L3VNI: &v1alpha1.L3VNIReference{Name: "l3vni1"},
+						},
+						GatewayIPs: []string{"2000::/64"},
 					},
 					Status: &v1alpha1.L2VNIStatus{},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
 					Spec: v1alpha1.L2VNISpec{
-						VNI:          1002,
-						VRF:          new("test"),
-						L2GatewayIPs: []string{"192.168.1.128/25"},
+						VNI: 1002,
+						RoutingDomain: &v1alpha1.RoutingDomain{
+							Type:  v1alpha1.RoutingDomainTypeL3VNI,
+							L3VNI: &v1alpha1.L3VNIReference{Name: "l3vni2"},
+						},
+						GatewayIPs: []string{"2000::/64"},
 					},
 					Status: &v1alpha1.L2VNIStatus{},
+				},
+			},
+			l3vnis: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l3vni1", Namespace: "test"},
+					Spec:       v1alpha1.L3VNISpec{VNI: 2001, VRF: "test"},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l3vni2", Namespace: "test"},
+					Spec:       v1alpha1.L3VNISpec{VNI: 2002, VRF: "test2"},
+				},
+			},
+		},
+		{
+			name: "overlapping GatewayIPs CIDR in same VRF",
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI: 1001,
+						RoutingDomain: &v1alpha1.RoutingDomain{
+							Type:  v1alpha1.RoutingDomainTypeL3VNI,
+							L3VNI: &v1alpha1.L3VNIReference{Name: "l3vni1"},
+						},
+						GatewayIPs: []string{"192.168.1.0/24"},
+					},
+					Status: &v1alpha1.L2VNIStatus{},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI: 1002,
+						RoutingDomain: &v1alpha1.RoutingDomain{
+							Type:  v1alpha1.RoutingDomainTypeL3VNI,
+							L3VNI: &v1alpha1.L3VNIReference{Name: "l3vni1"},
+						},
+						GatewayIPs: []string{"192.168.1.128/25"},
+					},
+					Status: &v1alpha1.L2VNIStatus{},
+				},
+			},
+			l3vnis: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l3vni1", Namespace: "test"},
+					Spec:       v1alpha1.L3VNISpec{VNI: 2001, VRF: "test"},
 				},
 			},
 			wantErrStr: "subnet overlap in VRF \"test\": IPNet 192.168.1.128/25 (L2VNI test/vni2) overlaps with IPNet 192.168.1.0/24 (L2VNI test/vni1)",
 		},
 		{
-			name: "overlapping L2GatewayIPs CIDR V6 in same VRF",
+			name: "overlapping GatewayIPs CIDR V6 in same VRF",
 			l2vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
 					Spec: v1alpha1.L2VNISpec{
-						VNI:          1001,
-						VRF:          new("test"),
-						L2GatewayIPs: []string{"2000::1/64"},
+						VNI: 1001,
+						RoutingDomain: &v1alpha1.RoutingDomain{
+							Type:  v1alpha1.RoutingDomainTypeL3VNI,
+							L3VNI: &v1alpha1.L3VNIReference{Name: "l3vni1"},
+						},
+						GatewayIPs: []string{"2000::1/64"},
 					},
 					Status: &v1alpha1.L2VNIStatus{},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
 					Spec: v1alpha1.L2VNISpec{
-						VNI:          1002,
-						VRF:          new("test"),
-						L2GatewayIPs: []string{"2000:0:0:0:1::1/80"},
+						VNI: 1002,
+						RoutingDomain: &v1alpha1.RoutingDomain{
+							Type:  v1alpha1.RoutingDomainTypeL3VNI,
+							L3VNI: &v1alpha1.L3VNIReference{Name: "l3vni1"},
+						},
+						GatewayIPs: []string{"2000:0:0:0:1::1/80"},
 					},
 					Status: &v1alpha1.L2VNIStatus{},
+				},
+			},
+			l3vnis: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l3vni1", Namespace: "test"},
+					Spec:       v1alpha1.L3VNISpec{VNI: 2001, VRF: "test"},
 				},
 			},
 			wantErrStr: "subnet overlap in VRF \"test\": IPNet 2000::1:0:0:0/80 (L2VNI test/vni2) overlaps with IPNet 2000::/64 (L2VNI test/vni1)",
 		},
 		{
-			name: "l3VNI and L2GatewayIPs CIDR overlap in same VRF",
+			name: "l3VNI and GatewayIPs CIDR overlap in same VRF",
 			l2vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
 					Spec: v1alpha1.L2VNISpec{
-						VNI:          1002,
-						VRF:          new("vni1"),
-						L2GatewayIPs: []string{"192.168.1.128/25"},
+						VNI: 1002,
+						RoutingDomain: &v1alpha1.RoutingDomain{
+							Type:  v1alpha1.RoutingDomainTypeL3VNI,
+							L3VNI: &v1alpha1.L3VNIReference{Name: "vni1"},
+						},
+						GatewayIPs: []string{"192.168.1.128/25"},
 					},
 					Status: &v1alpha1.L2VNIStatus{},
 				},
@@ -498,40 +554,17 @@ func TestFilterValidVRFSubnets(t *testing.T) {
 			wantErrStr: "subnet overlap in VRF \"vni1\": IPNet 192.168.1.128/25 (L2VNI test/vni2) overlaps with IPNet 192.168.1.0/24 (L3VNI test/vni1)",
 		},
 		{
-			name: "l3VPN and L2GatewayIPs CIDR overlap in same VRF",
+			name: "l3VNI and GatewayIPs CIDR V6 overlap in same VRF",
 			l2vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
 					Spec: v1alpha1.L2VNISpec{
-						VNI:          1002,
-						VRF:          new("vni1"),
-						L2GatewayIPs: []string{"192.168.1.128/25"},
-					},
-					Status: &v1alpha1.L2VNIStatus{},
-				},
-			},
-			l3vpns: []v1alpha1.L3VPN{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
-					Spec: v1alpha1.L3VPNSpec{
-						RDAssignedNumber: 1001,
-						VRF:              "vni1",
-						HostSession:      &v1alpha1.HostSession{ASN: 65001, HostASN: new(int64(65002)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.168.1.0/24")}},
-					},
-					Status: &v1alpha1.L3VPNStatus{},
-				},
-			},
-			wantErrStr: "subnet overlap in VRF \"vni1\": IPNet 192.168.1.128/25 (L2VNI test/vni2) overlaps with IPNet 192.168.1.0/24 (L3VPN test/vni1)",
-		},
-		{
-			name: "l3VNI and L2GatewayIPs CIDR V6 overlap in same VRF",
-			l2vnis: []v1alpha1.L2VNI{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI:          1002,
-						VRF:          new("vni1"),
-						L2GatewayIPs: []string{"2000:0:0:0:1::1/80"},
+						VNI: 1002,
+						RoutingDomain: &v1alpha1.RoutingDomain{
+							Type:  v1alpha1.RoutingDomainTypeL3VNI,
+							L3VNI: &v1alpha1.L3VNIReference{Name: "vni1"},
+						},
+						GatewayIPs: []string{"2000:0:0:0:1::1/80"},
 					},
 					Status: &v1alpha1.L2VNIStatus{},
 				},
@@ -550,40 +583,17 @@ func TestFilterValidVRFSubnets(t *testing.T) {
 			wantErrStr: "subnet overlap in VRF \"vni1\": IPNet 2000::1:0:0:0/80 (L2VNI test/vni2) overlaps with IPNet 2000::/64 (L3VNI test/vni1)",
 		},
 		{
-			name: "l3VPN and L2GatewayIPs CIDR V6 overlap in same VRF",
+			name: "l3VNI and GatewayIPs CIDR overlap in different VRFs",
 			l2vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
 					Spec: v1alpha1.L2VNISpec{
-						VNI:          1002,
-						VRF:          new("vni1"),
-						L2GatewayIPs: []string{"2000:0:0:0:1::1/80"},
-					},
-					Status: &v1alpha1.L2VNIStatus{},
-				},
-			},
-			l3vpns: []v1alpha1.L3VPN{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
-					Spec: v1alpha1.L3VPNSpec{
-						RDAssignedNumber: 1001,
-						VRF:              "vni1",
-						HostSession:      &v1alpha1.HostSession{ASN: 65001, HostASN: new(int64(65002)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv6: new("2000::1/64")}},
-					},
-					Status: &v1alpha1.L3VPNStatus{},
-				},
-			},
-			wantErrStr: "subnet overlap in VRF \"vni1\": IPNet 2000::1:0:0:0/80 (L2VNI test/vni2) overlaps with IPNet 2000::/64 (L3VPN test/vni1)",
-		},
-		{
-			name: "l3VNI and L2GatewayIPs CIDR overlap in different VRFs",
-			l2vnis: []v1alpha1.L2VNI{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI:          1002,
-						VRF:          new("test"),
-						L2GatewayIPs: []string{"192.168.1.128/25"},
+						VNI: 1002,
+						RoutingDomain: &v1alpha1.RoutingDomain{
+							Type:  v1alpha1.RoutingDomainTypeL3VNI,
+							L3VNI: &v1alpha1.L3VNIReference{Name: "l3vni2"},
+						},
+						GatewayIPs: []string{"192.168.1.128/25"},
 					},
 					Status: &v1alpha1.L2VNIStatus{},
 				},
@@ -598,17 +608,56 @@ func TestFilterValidVRFSubnets(t *testing.T) {
 					},
 					Status: &v1alpha1.L3VNIStatus{},
 				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l3vni2", Namespace: "test"},
+					Spec:       v1alpha1.L3VNISpec{VNI: 2002, VRF: "test"},
+				},
 			},
 		},
 		{
-			name: "l3VPN and L2GatewayIPs CIDR overlap in different VRFs",
+			name: "l3VNI and GatewayIPs CIDR V6 overlap in different VRFs",
 			l2vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
 					Spec: v1alpha1.L2VNISpec{
-						VNI:          1002,
-						VRF:          new("test"),
-						L2GatewayIPs: []string{"192.168.1.128/25"},
+						VNI: 1002,
+						RoutingDomain: &v1alpha1.RoutingDomain{
+							Type:  v1alpha1.RoutingDomainTypeL3VNI,
+							L3VNI: &v1alpha1.L3VNIReference{Name: "l3vni2"},
+						},
+						GatewayIPs: []string{"2000:0:0:0:1::1/80"},
+					},
+					Status: &v1alpha1.L2VNIStatus{},
+				},
+			},
+			l3vnis: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
+					Spec: v1alpha1.L3VNISpec{
+						VNI:         1001,
+						VRF:         "vni1",
+						HostSession: &v1alpha1.HostSession{ASN: 65001, HostASN: new(int64(65002)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv6: new("2000::1/64")}},
+					},
+					Status: &v1alpha1.L3VNIStatus{},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l3vni2", Namespace: "test"},
+					Spec:       v1alpha1.L3VNISpec{VNI: 2002, VRF: "other"},
+				},
+			},
+		},
+		{
+			name: "l3VPN and GatewayIPs CIDR overlap in same VRF",
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI: 1002,
+						RoutingDomain: &v1alpha1.RoutingDomain{
+							Type:  v1alpha1.RoutingDomainTypeL3VPN,
+							L3VPN: &v1alpha1.L3VPNReference{Name: "vni1"},
+						},
+						GatewayIPs: []string{"192.168.1.128/25"},
 					},
 					Status: &v1alpha1.L2VNIStatus{},
 				},
@@ -619,46 +668,25 @@ func TestFilterValidVRFSubnets(t *testing.T) {
 					Spec: v1alpha1.L3VPNSpec{
 						RDAssignedNumber: 1001,
 						VRF:              "vni1",
+						ImportRTs:        []v1alpha1.RouteTarget{"65000:100"},
 						HostSession:      &v1alpha1.HostSession{ASN: 65001, HostASN: new(int64(65002)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.168.1.0/24")}},
 					},
-					Status: &v1alpha1.L3VPNStatus{},
 				},
 			},
+			wantErrStr: "subnet overlap in VRF \"vni1\": IPNet 192.168.1.128/25 (L2VNI test/vni2) overlaps with IPNet 192.168.1.0/24 (L3VPN test/vni1)",
 		},
 		{
-			name: "l3VNI and L2GatewayIPs CIDR V6 overlap in different VRFs",
+			name: "l3VPN and GatewayIPs CIDR V6 overlap in same VRF",
 			l2vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
 					Spec: v1alpha1.L2VNISpec{
-						VNI:          1002,
-						VRF:          new("vni1"),
-						L2GatewayIPs: []string{"2000:0:0:0:1::1/80"},
-					},
-					Status: &v1alpha1.L2VNIStatus{},
-				},
-			},
-			l3vnis: []v1alpha1.L3VNI{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
-					Spec: v1alpha1.L3VNISpec{
-						VNI:         1001,
-						VRF:         "vni2",
-						HostSession: &v1alpha1.HostSession{ASN: 65001, HostASN: new(int64(65002)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv6: new("2000::1/64")}},
-					},
-					Status: &v1alpha1.L3VNIStatus{},
-				},
-			},
-		},
-		{
-			name: "l3VPN and L2GatewayIPs CIDR V6 overlap in different VRFs",
-			l2vnis: []v1alpha1.L2VNI{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI:          1002,
-						VRF:          new("vni1"),
-						L2GatewayIPs: []string{"2000:0:0:0:1::1/80"},
+						VNI: 1002,
+						RoutingDomain: &v1alpha1.RoutingDomain{
+							Type:  v1alpha1.RoutingDomainTypeL3VPN,
+							L3VPN: &v1alpha1.L3VPNReference{Name: "vni1"},
+						},
+						GatewayIPs: []string{"2000:0:0:0:1::1/80"},
 					},
 					Status: &v1alpha1.L2VNIStatus{},
 				},
@@ -668,10 +696,83 @@ func TestFilterValidVRFSubnets(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
 					Spec: v1alpha1.L3VPNSpec{
 						RDAssignedNumber: 1001,
-						VRF:              "vni2",
+						VRF:              "vni1",
+						ImportRTs:        []v1alpha1.RouteTarget{"65000:100"},
 						HostSession:      &v1alpha1.HostSession{ASN: 65001, HostASN: new(int64(65002)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv6: new("2000::1/64")}},
 					},
-					Status: &v1alpha1.L3VPNStatus{},
+				},
+			},
+			wantErrStr: "subnet overlap in VRF \"vni1\": IPNet 2000::1:0:0:0/80 (L2VNI test/vni2) overlaps with IPNet 2000::/64 (L3VPN test/vni1)",
+		},
+		{
+			name: "l3VPN and GatewayIPs CIDR overlap in different VRFs",
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI: 1002,
+						RoutingDomain: &v1alpha1.RoutingDomain{
+							Type:  v1alpha1.RoutingDomainTypeL3VPN,
+							L3VPN: &v1alpha1.L3VPNReference{Name: "l3vpn2"},
+						},
+						GatewayIPs: []string{"192.168.1.128/25"},
+					},
+					Status: &v1alpha1.L2VNIStatus{},
+				},
+			},
+			l3vpns: []v1alpha1.L3VPN{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
+					Spec: v1alpha1.L3VPNSpec{
+						RDAssignedNumber: 1001,
+						VRF:              "vni1",
+						ImportRTs:        []v1alpha1.RouteTarget{"65000:100"},
+						HostSession:      &v1alpha1.HostSession{ASN: 65001, HostASN: new(int64(65002)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.168.1.0/24")}},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l3vpn2", Namespace: "test"},
+					Spec: v1alpha1.L3VPNSpec{
+						RDAssignedNumber: 2002,
+						VRF:              "test",
+						ImportRTs:        []v1alpha1.RouteTarget{"65000:200"},
+					},
+				},
+			},
+		},
+		{
+			name: "l3VPN and GatewayIPs CIDR V6 overlap in different VRFs",
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI: 1002,
+						RoutingDomain: &v1alpha1.RoutingDomain{
+							Type:  v1alpha1.RoutingDomainTypeL3VPN,
+							L3VPN: &v1alpha1.L3VPNReference{Name: "l3vpn2"},
+						},
+						GatewayIPs: []string{"2000:0:0:0:1::1/80"},
+					},
+					Status: &v1alpha1.L2VNIStatus{},
+				},
+			},
+			l3vpns: []v1alpha1.L3VPN{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
+					Spec: v1alpha1.L3VPNSpec{
+						RDAssignedNumber: 1001,
+						VRF:              "vni1",
+						ImportRTs:        []v1alpha1.RouteTarget{"65000:100"},
+						HostSession:      &v1alpha1.HostSession{ASN: 65001, HostASN: new(int64(65002)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv6: new("2000::1/64")}},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "l3vpn2", Namespace: "test"},
+					Spec: v1alpha1.L3VPNSpec{
+						RDAssignedNumber: 2002,
+						VRF:              "other",
+						ImportRTs:        []v1alpha1.RouteTarget{"65000:200"},
+					},
 				},
 			},
 		},
@@ -758,7 +859,7 @@ func TestFilterUniqueVRFs_DuplicateVRF(t *testing.T) {
 		},
 	}
 
-	valid, _, err := FilterUniqueVRFsForL3VNIs(l3vnis)
+	valid, err := FilterUniqueVRFsForL3VNIs(l3vnis)
 	if err == nil {
 		t.Fatal("expected error for duplicate VRF")
 	}
@@ -856,9 +957,12 @@ func TestValidateOverlayResourcesForNodes(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "l2vni1"},
 					Spec: v1alpha1.L2VNISpec{
-						VNI:          300,
-						VRF:          new("red"),
-						L2GatewayIPs: []string{"10.0.2.0/24"},
+						VNI: 300,
+						RoutingDomain: &v1alpha1.RoutingDomain{
+							Type:  v1alpha1.RoutingDomainTypeL3VNI,
+							L3VNI: &v1alpha1.L3VNIReference{Name: "l3vni1"},
+						},
+						GatewayIPs: []string{"10.0.2.0/24"},
 					},
 				},
 			},
@@ -870,9 +974,12 @@ func TestValidateOverlayResourcesForNodes(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "l2vni1"},
 					Spec: v1alpha1.L2VNISpec{
-						VNI:          300,
-						VRF:          new("red"),
-						L2GatewayIPs: []string{"10.0.2.0/24"},
+						VNI: 300,
+						RoutingDomain: &v1alpha1.RoutingDomain{
+							Type:  v1alpha1.RoutingDomainTypeL3VPN,
+							L3VPN: &v1alpha1.L3VPNReference{Name: "vpn1"},
+						},
+						GatewayIPs: []string{"10.0.2.0/24"},
 					},
 				},
 			},
@@ -958,23 +1065,6 @@ func TestValidateOverlayResourcesForNodes(t *testing.T) {
 				"interface name vrfnametoolong99 can't be longer than 15 characters",
 		},
 		{
-			name:  "invalid L2VNI VRF name too long",
-			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
-			l2vnis: []v1alpha1.L2VNI{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "l2vni1"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI: 100,
-						VRF: new("vrfnametoolong99"),
-					},
-				},
-			},
-			wantErrStr: "failed to validate l2vnis for node \"node1\": " +
-				"L2VNI/l2vni1: " +
-				"invalid vrf name for vni \"l2vni1\", vrf \"vrfnametoolong99\": " +
-				"interface name vrfnametoolong99 can't be longer than 15 characters",
-		},
-		{
 			name:  "duplicate VNI number across L3VNIs",
 			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
 			l3vnis: []v1alpha1.L3VNI{
@@ -1015,7 +1105,7 @@ func TestValidateOverlayResourcesForNodes(t *testing.T) {
 			l2vnis: []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "l2vni1"},
-					Spec:       v1alpha1.L2VNISpec{VNI: 100, VRF: new("red")},
+					Spec:       v1alpha1.L2VNISpec{VNI: 100},
 				},
 			},
 			l3vpns: []v1alpha1.L3VPN{
@@ -1095,9 +1185,12 @@ func TestValidateOverlayResourcesForNodes(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "l2vni1", Namespace: "test"},
 					Spec: v1alpha1.L2VNISpec{
-						VNI:          300,
-						VRF:          new("red"),
-						L2GatewayIPs: []string{"10.0.1.0/24"},
+						VNI: 300,
+						RoutingDomain: &v1alpha1.RoutingDomain{
+							Type:  v1alpha1.RoutingDomainTypeL3VNI,
+							L3VNI: &v1alpha1.L3VNIReference{Name: "l3vni1"},
+						},
+						GatewayIPs: []string{"10.0.1.0/24"},
 					},
 				},
 			},
@@ -1126,9 +1219,12 @@ func TestValidateOverlayResourcesForNodes(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "l2vni1", Namespace: "test"},
 					Spec: v1alpha1.L2VNISpec{
-						VNI:          300,
-						VRF:          new("red"),
-						L2GatewayIPs: []string{"10.0.1.0/24"},
+						VNI: 300,
+						RoutingDomain: &v1alpha1.RoutingDomain{
+							Type:  v1alpha1.RoutingDomainTypeL3VPN,
+							L3VPN: &v1alpha1.L3VPNReference{Name: "vpn1"},
+						},
+						GatewayIPs: []string{"10.0.1.0/24"},
 					},
 				},
 			},
@@ -1152,7 +1248,7 @@ func TestValidateOverlayResourcesForNodes(t *testing.T) {
 					},
 				},
 				{
-					ObjectMeta: metav1.ObjectMeta{Name: "l3vni1", Namespace: "test"},
+					ObjectMeta: metav1.ObjectMeta{Name: "l3vni2", Namespace: "test"},
 					Spec: v1alpha1.L3VNISpec{
 						VNI: 101,
 						VRF: "blue",
@@ -1167,9 +1263,12 @@ func TestValidateOverlayResourcesForNodes(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "l2vni1", Namespace: "test"},
 					Spec: v1alpha1.L2VNISpec{
-						VNI:          300,
-						VRF:          new("blue"),
-						L2GatewayIPs: []string{"10.0.1.0/24"},
+						VNI: 300,
+						RoutingDomain: &v1alpha1.RoutingDomain{
+							Type:  v1alpha1.RoutingDomainTypeL3VNI,
+							L3VNI: &v1alpha1.L3VNIReference{Name: "l3vni2"},
+						},
+						GatewayIPs: []string{"10.0.1.0/24"},
 					},
 				},
 			},
@@ -1268,22 +1367,6 @@ func TestValidateOverlayResourcesForNodes(t *testing.T) {
 				"'ASN:MN' or 'IPv4Address:MN'",
 		},
 		{
-			name:  "L2VNI with L2GatewayIPs but no VRF",
-			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
-			l2vnis: []v1alpha1.L2VNI{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "l2vni1"},
-					Spec: v1alpha1.L2VNISpec{
-						VNI:          100,
-						L2GatewayIPs: []string{"10.0.0.0/24"},
-					},
-				},
-			},
-			wantErrStr: "failed to validate l2vnis for node \"node1\": " +
-				"L2VNI/l2vni1: " +
-				"l2gatewayips cannot be set without spec.vrf for vni \"l2vni1\"",
-		},
-		{
 			name:  "dual-stack subnets no overlap in same VRF",
 			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
 			l3vnis: []v1alpha1.L3VNI{
@@ -1306,9 +1389,12 @@ func TestValidateOverlayResourcesForNodes(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "l2vni1", Namespace: "test"},
 					Spec: v1alpha1.L2VNISpec{
-						VNI:          300,
-						VRF:          new("red"),
-						L2GatewayIPs: []string{"10.0.2.0/24", "2001:db8:2::/64"},
+						VNI: 300,
+						RoutingDomain: &v1alpha1.RoutingDomain{
+							Type:  v1alpha1.RoutingDomainTypeL3VNI,
+							L3VNI: &v1alpha1.L3VNIReference{Name: "l3vni1"},
+						},
+						GatewayIPs: []string{"10.0.2.0/24", "2001:db8:2::/64"},
 					},
 				},
 			},
@@ -1333,9 +1419,12 @@ func TestValidateOverlayResourcesForNodes(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "l2vni1", Namespace: "test"},
 					Spec: v1alpha1.L2VNISpec{
-						VNI:          300,
-						VRF:          new("red"),
-						L2GatewayIPs: []string{"2001:db8:1::/64"},
+						VNI: 300,
+						RoutingDomain: &v1alpha1.RoutingDomain{
+							Type:  v1alpha1.RoutingDomainTypeL3VNI,
+							L3VNI: &v1alpha1.L3VNIReference{Name: "l3vni1"},
+						},
+						GatewayIPs: []string{"2001:db8:1::/64"},
 					},
 				},
 			},

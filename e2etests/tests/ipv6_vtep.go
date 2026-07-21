@@ -84,9 +84,9 @@ var _ = Describe("IPv6 VTEP", Ordered, func() {
 			Namespace: openperouter.Namespace,
 		},
 		Spec: v1alpha1.L2VNISpec{
-			VRF:          new("red"),
-			VNI:          110,
-			L2GatewayIPs: []string{"192.171.24.1/24"},
+			RoutingDomain: l3vniRoutingDomain("red-v4"),
+			VNI:           110,
+			GatewayIPs:    []string{"192.171.24.1/24"},
 			HostMaster: &v1alpha1.HostMaster{
 				Type: linuxBridgeHostAttachment,
 				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
@@ -114,10 +114,10 @@ var _ = Describe("IPv6 VTEP", Ordered, func() {
 			Namespace: openperouter.Namespace,
 		},
 		Spec: v1alpha1.L2VNISpec{
-			VRF:                   new("green"),
+			RoutingDomain:         l3vniRoutingDomain("green-v6"),
 			VNI:                   310,
 			UnderlayAddressFamily: new("ipv6"),
-			L2GatewayIPs:          []string{"192.173.24.1/24"},
+			GatewayIPs:            []string{"192.173.24.1/24"},
 			HostMaster: &v1alpha1.HostMaster{
 				Type: linuxBridgeHostAttachment,
 				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
@@ -219,7 +219,7 @@ var _ = Describe("IPv6 VTEP", Ordered, func() {
 		GinkgoHelper()
 
 		nadMaster := fmt.Sprintf("br-hs-%d", l2vni.Spec.VNI)
-		nad, err := k8s.CreateMacvlanNad(fmt.Sprintf("%d", l2vni.Spec.VNI), testNamespace, nadMaster, l2vni.Spec.L2GatewayIPs)
+		nad, err := k8s.CreateMacvlanNad(fmt.Sprintf("%d", l2vni.Spec.VNI), testNamespace, nadMaster, l2vni.Spec.GatewayIPs)
 		Expect(err).NotTo(HaveOccurred())
 
 		firstPod, err := k8s.CreateAgnhostPod(cs, firstName, testNamespace,

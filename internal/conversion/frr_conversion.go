@@ -151,7 +151,11 @@ func APItoFRR(config APIConfigData, nodeIndex int, logLevel string) (frr.Config,
 
 	applyGracefulRestart(&underlayConfig, underlay.Spec.GracefulRestart)
 
-	vrfsWithL2Gateway := vrfsFromVNIsWithL2Gateways(config.L2VNIs)
+	vrfMap := createVRFMap(config.L3VNIs, config.L3VPNs)
+	vrfsWithL2Gateway, err := vrfsWithL2Gateways(config.L2VNIs, vrfMap)
+	if err != nil {
+		return frr.Config{}, err
+	}
 
 	vniConfigs, err := vniConfigsToFRR(
 		config.L3VNIs,
@@ -1018,20 +1022,21 @@ func routerIDFromUnderlay(underlay v1alpha1.Underlay, nodeIndex int) (string, er
 	return routerID, nil
 }
 
-func vrfsFromVNIsWithL2Gateways(l2vnis []v1alpha1.L2VNI) map[string][]string {
+func vrfsWithL2Gateways(l2vnis []v1alpha1.L2VNI, vrfMap map[string]string) (map[string][]string, error) {
 	res := make(map[string][]string)
 	for _, l2vni := range l2vnis {
-		if len(l2vni.Spec.L2GatewayIPs) > 0 {
-			vrf := l2vni.Name
-			if l2vni.Spec.VRF != nil {
-				vrf = *l2vni.Spec.VRF
-			}
-			res[vrf] = append(res[vrf], l2vni.Spec.L2GatewayIPs...)
+		if len(l2vni.Spec.GatewayIPs) == 0 {
+			continue
 		}
+		vrfName := resolveVRFForL2VNI(l2vni, vrfMap)
+		if vrfName == "" {
+			return nil, fmt.Errorf("L2VNI %q has gatewayIPs but no resolvable VRF", l2vni.Name)
+		}
+		res[vrfName] = append(res[vrfName], l2vni.Spec.GatewayIPs...)
 	}
 	for vrf := range res {
 		slices.Sort(res[vrf])
 		res[vrf] = slices.Compact(res[vrf])
 	}
-	return res
+	return res, nil
 }

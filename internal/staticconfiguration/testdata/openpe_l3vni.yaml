@@ -1,5 +1,6 @@
 l3vnis:
-  - vrf: red
+  - name: l3vni-red
+    vrf: red
     hostSession:
       asn: 64514
       hostASN: 64515
@@ -7,7 +8,8 @@ l3vnis:
         ipv4: "192.169.10.0/24"
         ipv6: "2001:db8:1::/64"
     vni: 100
-  - vrf: blue
+  - name: l3vni-blue
+    vrf: blue
     hostSession:
       asn: 64514
       hostASN: 64516

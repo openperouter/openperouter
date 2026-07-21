@@ -325,7 +325,7 @@ func TestReadStaticConfigs_ExistingTestdata(t *testing.T) {
 			{
 				TypeMeta: metav1.TypeMeta{Kind: "L3VNI", APIVersion: "network.openperouter.io/v1alpha1"},
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "static-test-node-l3vni-0",
+					Name:      "static-test-node-l3vni-red",
 					Namespace: "test-namespace",
 					Labels: map[string]string{
 						StaticSourceLabel: StaticSourceValue,
@@ -344,7 +344,7 @@ func TestReadStaticConfigs_ExistingTestdata(t *testing.T) {
 			{
 				TypeMeta: metav1.TypeMeta{Kind: "L3VNI", APIVersion: "network.openperouter.io/v1alpha1"},
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "static-test-node-l3vni-1",
+					Name:      "static-test-node-l3vni-blue",
 					Namespace: "test-namespace",
 					Labels: map[string]string{
 						StaticSourceLabel: StaticSourceValue,
@@ -365,7 +365,7 @@ func TestReadStaticConfigs_ExistingTestdata(t *testing.T) {
 			{
 				TypeMeta: metav1.TypeMeta{Kind: "L2VNI", APIVersion: "network.openperouter.io/v1alpha1"},
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "static-test-node-l2vni-0",
+					Name:      "static-test-node-l2vni-storage",
 					Namespace: "test-namespace",
 					Labels: map[string]string{
 						StaticSourceLabel: StaticSourceValue,
@@ -373,7 +373,12 @@ func TestReadStaticConfigs_ExistingTestdata(t *testing.T) {
 					},
 				},
 				Spec: v1alpha1.L2VNISpec{
-					VRF: new("storage"), VNI: 300, VXLanPort: new(int32(4789)),
+					RoutingDomain: &v1alpha1.RoutingDomain{
+						Type:  v1alpha1.RoutingDomainTypeL3VNI,
+						L3VNI: &v1alpha1.L3VNIReference{Name: "static-test-node-l3vni-red"},
+					},
+					VNI:       300,
+					VXLanPort: new(int32(4789)),
 					HostMaster: &v1alpha1.HostMaster{
 						Type:        v1alpha1.LinuxBridge,
 						LinuxBridge: &v1alpha1.LinuxBridgeConfig{Name: new("br-storage"), AutoCreate: new(false)},
@@ -384,7 +389,7 @@ func TestReadStaticConfigs_ExistingTestdata(t *testing.T) {
 			{
 				TypeMeta: metav1.TypeMeta{Kind: "L2VNI", APIVersion: "network.openperouter.io/v1alpha1"},
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "static-test-node-l2vni-1",
+					Name:      "static-test-node-l2vni-management",
 					Namespace: "test-namespace",
 					Labels: map[string]string{
 						StaticSourceLabel: StaticSourceValue,
@@ -392,7 +397,12 @@ func TestReadStaticConfigs_ExistingTestdata(t *testing.T) {
 					},
 				},
 				Spec: v1alpha1.L2VNISpec{
-					VRF: new("management"), VNI: 400, VXLanPort: new(int32(4789)),
+					RoutingDomain: &v1alpha1.RoutingDomain{
+						Type:  v1alpha1.RoutingDomainTypeL3VNI,
+						L3VNI: &v1alpha1.L3VNIReference{Name: "static-test-node-l3vni-blue"},
+					},
+					VNI:       400,
+					VXLanPort: new(int32(4789)),
 					HostMaster: &v1alpha1.HostMaster{
 						Type:      v1alpha1.OVSBridge,
 						OVSBridge: &v1alpha1.OVSBridgeConfig{Name: new("ovsbr0"), AutoCreate: new(false)},
@@ -400,11 +410,36 @@ func TestReadStaticConfigs_ExistingTestdata(t *testing.T) {
 					NodeSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"kubernetes.io/hostname": "test-node"}},
 				},
 			},
+			{
+				TypeMeta: metav1.TypeMeta{Kind: "L2VNI", APIVersion: "network.openperouter.io/v1alpha1"},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "static-test-node-l2-over-vpn",
+					Namespace: "test-namespace",
+					Labels: map[string]string{
+						StaticSourceLabel: StaticSourceValue,
+						StaticNodeLabel:   "test-node",
+					},
+				},
+				Spec: v1alpha1.L2VNISpec{
+					RoutingDomain: &v1alpha1.RoutingDomain{
+						Type:  v1alpha1.RoutingDomainTypeL3VPN,
+						L3VPN: &v1alpha1.L3VPNReference{Name: "static-test-node-red"},
+					},
+					VNI:       210,
+					VXLanPort: new(int32(4789)),
+					HostMaster: &v1alpha1.HostMaster{
+						Type:        v1alpha1.LinuxBridge,
+						LinuxBridge: &v1alpha1.LinuxBridgeConfig{AutoCreate: new(true)},
+					},
+					GatewayIPs:   []string{"192.170.1.1/24"},
+					NodeSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"kubernetes.io/hostname": "test-node"}},
+				},
+			},
 		},
 		L3VPNs: []v1alpha1.L3VPN{
 			{
 				TypeMeta:   metav1.TypeMeta{Kind: "L3VPN", APIVersion: "network.openperouter.io/v1alpha1"},
-				ObjectMeta: metav1.ObjectMeta{Name: "static-l3vpn-0"},
+				ObjectMeta: metav1.ObjectMeta{Name: "static-test-node-red", Namespace: "test-namespace", Labels: map[string]string{StaticSourceLabel: StaticSourceValue, StaticNodeLabel: "test-node"}},
 				Spec: v1alpha1.L3VPNSpec{
 					VRF:              "red",
 					RDAssignedNumber: 100,
@@ -643,28 +678,34 @@ func TestStaticConfigToAPIConfig_WithNodeName(t *testing.T) {
 				},
 			},
 		},
-		L3VNIs: []v1alpha1.L3VNISpec{
+		L3VNIs: []static.StaticL3VNI{
 			{
-				VRF: "red",
-				VNI: 100,
-				HostSession: &v1alpha1.HostSession{
-					ASN:       64514,
-					HostASN:   new(int64(64515)),
-					LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.169.10.0/24")},
+				Name: "l3vni-red",
+				L3VNISpec: v1alpha1.L3VNISpec{
+					VRF: "red",
+					VNI: 100,
+					HostSession: &v1alpha1.HostSession{
+						ASN:       64514,
+						HostASN:   new(int64(64515)),
+						LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.169.10.0/24")},
+					},
 				},
 			},
 			{
-				VRF: "blue",
-				VNI: 200,
-				HostSession: &v1alpha1.HostSession{
-					ASN:       64514,
-					HostASN:   new(int64(64516)),
-					LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.169.11.0/24")},
+				Name: "l3vni-blue",
+				L3VNISpec: v1alpha1.L3VNISpec{
+					VRF: "blue",
+					VNI: 200,
+					HostSession: &v1alpha1.HostSession{
+						ASN:       64514,
+						HostASN:   new(int64(64516)),
+						LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.169.11.0/24")},
+					},
 				},
 			},
 		},
-		L2VNIs: []v1alpha1.L2VNISpec{
-			{VNI: 300},
+		L2VNIs: []static.StaticL2VNI{
+			{Name: "l2vni-plain", L2VNISpec: v1alpha1.L2VNISpec{VNI: 300}},
 		},
 		BGPPassthrough: v1alpha1.L3PassthroughSpec{
 			HostSession: v1alpha1.HostSession{
@@ -691,9 +732,9 @@ func TestStaticConfigToAPIConfig_WithNodeName(t *testing.T) {
 	}{
 		{"underlay 0", result.Underlays[0].Name, "static-worker-1-underlay-0"},
 		{"underlay 1", result.Underlays[1].Name, "static-worker-1-underlay-1"},
-		{"l3vni 0", result.L3VNIs[0].Name, "static-worker-1-l3vni-0"},
-		{"l3vni 1", result.L3VNIs[1].Name, "static-worker-1-l3vni-1"},
-		{"l2vni 0", result.L2VNIs[0].Name, "static-worker-1-l2vni-0"},
+		{"l3vni 0", result.L3VNIs[0].Name, "static-worker-1-l3vni-red"},
+		{"l3vni 1", result.L3VNIs[1].Name, "static-worker-1-l3vni-blue"},
+		{"l2vni 0", result.L2VNIs[0].Name, "static-worker-1-l2vni-plain"},
 		{"l3passthrough", result.L3Passthrough[0].Name, "static-worker-1-l3passthrough"},
 		{"rawfrrconfig 0", result.RawFRRConfigs[0].Name, "static-worker-1-rawfrrconfig-0"},
 	}
@@ -746,8 +787,8 @@ func TestStaticConfigToAPIConfig_WithNodeName(t *testing.T) {
 	checkNodeSelector("l3passthrough", result.L3Passthrough[0].Spec.NodeSelector)
 	checkNodeSelector("rawfrrconfig-0", result.RawFRRConfigs[0].Spec.NodeSelector)
 
-	if result.L2VNIs[0].Spec.VRF != nil {
-		t.Errorf("expected L2VNI VRF to be nil when not set, got %s", *result.L2VNIs[0].Spec.VRF)
+	if result.L2VNIs[0].Spec.RoutingDomain != nil {
+		t.Errorf("expected L2VNI RoutingDomain to be nil when not set, got %v", result.L2VNIs[0].Spec.RoutingDomain)
 	}
 }
 
@@ -786,8 +827,8 @@ func TestStaticConfigToAPIConfig_PreservesSpecFields(t *testing.T) {
 				},
 			},
 		},
-		L3VNIs: []v1alpha1.L3VNISpec{
-			{VRF: "red", VNI: 100, VXLanPort: new(int32(4789))},
+		L3VNIs: []static.StaticL3VNI{
+			{Name: "l3vni-red", L3VNISpec: v1alpha1.L3VNISpec{VRF: "red", VNI: 100, VXLanPort: new(int32(4789))}},
 		},
 	}
 
@@ -816,11 +857,19 @@ func TestStaticConfigToAPIConfig_PreservesSpecFields(t *testing.T) {
 	}
 }
 
-func TestStaticConfigToAPIConfig_L2VNIPreservesExplicitVRF(t *testing.T) {
-	explicitVRF := "my-vrf"
+func TestStaticConfigToAPIConfig_L2VNIPreservesExplicitRoutingDomain(t *testing.T) {
 	cfg := &static.PERouterConfig{
-		L2VNIs: []v1alpha1.L2VNISpec{
-			{VNI: 500, VRF: &explicitVRF},
+		L2VNIs: []static.StaticL2VNI{
+			{
+				Name: "l2vni-with-rd",
+				L2VNISpec: v1alpha1.L2VNISpec{
+					VNI: 500,
+					RoutingDomain: &v1alpha1.RoutingDomain{
+						Type:  v1alpha1.RoutingDomainTypeL3VNI,
+						L3VNI: &v1alpha1.L3VNIReference{Name: "my-l3vni"},
+					},
+				},
+			},
 		},
 	}
 
@@ -829,11 +878,14 @@ func TestStaticConfigToAPIConfig_L2VNIPreservesExplicitVRF(t *testing.T) {
 		t.Fatalf("staticConfigToAPIConfig() unexpected error: %v", err)
 	}
 
-	if result.L2VNIs[0].Spec.VRF == nil {
-		t.Fatal("expected VRF to be set, got nil")
+	if result.L2VNIs[0].Spec.RoutingDomain == nil {
+		t.Fatal("expected RoutingDomain to be set, got nil")
 	}
-	if *result.L2VNIs[0].Spec.VRF != "my-vrf" {
-		t.Errorf("expected VRF my-vrf, got %s", *result.L2VNIs[0].Spec.VRF)
+	if result.L2VNIs[0].Spec.RoutingDomain.L3VNI == nil {
+		t.Fatal("expected RoutingDomain.L3VNI to be set, got nil")
+	}
+	if result.L2VNIs[0].Spec.RoutingDomain.L3VNI.Name != "static-worker-1-my-l3vni" {
+		t.Errorf("expected RoutingDomain L3VNI name static-worker-1-my-l3vni, got %s", result.L2VNIs[0].Spec.RoutingDomain.L3VNI.Name)
 	}
 }
 

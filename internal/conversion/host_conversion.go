@@ -80,10 +80,12 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig APIConfigData) (H
 		return HostConfigData{}, fmt.Errorf("failed to translate L3VNIs to host, err: %w", err)
 	}
 
+	vrfMap := createVRFMap(apiConfig.L3VNIs, apiConfig.L3VPNs)
 	l2VNIs, err := l2vnisToHost(
 		apiConfig.L2VNIs,
 		underlayConfigTunnelEndpoint,
-		targetNS)
+		targetNS,
+		vrfMap)
 	if err != nil {
 		return HostConfigData{}, fmt.Errorf("failed to translate L2VNIs to host, err: %w", err)
 	}
@@ -260,10 +262,15 @@ func l3vniToHost(l3vni v1alpha1.L3VNI, tunnelEndpoint hostnetwork.UnderlayTunnel
 	return hostL3VNI, nil
 }
 
-func l2vnisToHost(l2vnis []v1alpha1.L2VNI, tunnelEndpoint hostnetwork.UnderlayTunnelEndpointParams, targetNS string) ([]hostnetwork.L2VNIParams, error) {
+func l2vnisToHost(
+	l2vnis []v1alpha1.L2VNI,
+	tunnelEndpoint hostnetwork.UnderlayTunnelEndpointParams,
+	targetNS string,
+	vrfMap map[string]string,
+) ([]hostnetwork.L2VNIParams, error) {
 	hostL2VNIs := []hostnetwork.L2VNIParams{}
 	for _, l2vni := range l2vnis {
-		vni, err := l2vniToHost(l2vni, tunnelEndpoint, targetNS)
+		vni, err := l2vniToHost(l2vni, tunnelEndpoint, targetNS, vrfMap)
 		if err != nil {
 			return nil, fmt.Errorf("failed to translate L2VNI %s, err: %w", l2vni.Name, err)
 		}
@@ -272,7 +279,12 @@ func l2vnisToHost(l2vnis []v1alpha1.L2VNI, tunnelEndpoint hostnetwork.UnderlayTu
 	return hostL2VNIs, nil
 }
 
-func l2vniToHost(l2vni v1alpha1.L2VNI, tunnelEndpoint hostnetwork.UnderlayTunnelEndpointParams, targetNS string) (hostnetwork.L2VNIParams, error) {
+func l2vniToHost(
+	l2vni v1alpha1.L2VNI,
+	tunnelEndpoint hostnetwork.UnderlayTunnelEndpointParams,
+	targetNS string,
+	vrfMap map[string]string,
+) (hostnetwork.L2VNIParams, error) {
 	vtepIP, err := resolveVTEPIP(l2vni.Spec.UnderlayAddressFamily, tunnelEndpoint)
 	if err != nil {
 		return hostnetwork.L2VNIParams{}, fmt.Errorf("L2VNI %s: %w", l2vni.Name, err)
@@ -287,12 +299,12 @@ func l2vniToHost(l2vni v1alpha1.L2VNI, tunnelEndpoint hostnetwork.UnderlayTunnel
 			VXLanPort: vxlanPort(l2vni.Spec.VXLanPort),
 		},
 	}
-	if hasVRF(l2vni) {
-		hostL2VNI.VRF = *l2vni.Spec.VRF
+	if hasRoutingDomain(l2vni) {
+		hostL2VNI.VRF = resolveVRFForL2VNI(l2vni, vrfMap)
 	}
-	if len(l2vni.Spec.L2GatewayIPs) > 0 {
-		hostL2VNI.L2GatewayIPs = make([]string, len(l2vni.Spec.L2GatewayIPs))
-		copy(hostL2VNI.L2GatewayIPs, l2vni.Spec.L2GatewayIPs)
+	if len(l2vni.Spec.GatewayIPs) > 0 {
+		hostL2VNI.L2GatewayIPs = make([]string, len(l2vni.Spec.GatewayIPs))
+		copy(hostL2VNI.L2GatewayIPs, l2vni.Spec.GatewayIPs)
 	}
 	if l2vni.Spec.HostMaster != nil {
 		hm, err := convertHostMaster(&l2vni)
