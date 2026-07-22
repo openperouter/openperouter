@@ -255,14 +255,17 @@ spec:
 
 ## Validation Rules
 
-- L3VPNs and L3VNIs **cannot coexist**. Use L3VPNs for
-  SRv6 and L3VNIs for EVPN.
+- L3VPNs and L3VNIs **cannot coexist in the same VRF**.
 - L3VPNs **require** an Underlay with SRv6 configuration on every node
   where they are applied.
 - SRv6 **requires** IS-IS to be configured on the Underlay.
 - SRv6 **requires** at least one IPv6 CIDR in `tunnelEndpoint.cidrs`.
 - L3VPN VRF names must be unique across all L3VPNs on a node.
 - L3VPN `rdAssignedNumber` values must be unique across all L3VPNs.
+- L3VPN `rdAssignedNumber` values **must not overlap** with any L3VNI
+  `vni` value, regardless of the VRF. Depending on the configuration,
+  both values may be used as part of the route distinguisher and route
+  target, so overlaps could cause routing conflicts.
 
 ## Per-Node Configuration
 
