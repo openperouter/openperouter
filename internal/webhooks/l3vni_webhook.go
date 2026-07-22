@@ -94,10 +94,15 @@ func validateL3VNICreate(l3vni *v1alpha1.L3VNI) error {
 	if err != nil {
 		return err
 	}
-	if len(existingL3VPNs.Items) > 0 {
-		return fmt.Errorf("cannot create L3VNI %s/%s when L3VPNs already exist",
-			l3vni.GetNamespace(), l3vni.GetName(),
-		)
+	for _, vpn := range existingL3VPNs.Items {
+		if vpn.Spec.VRF == l3vni.Spec.VRF {
+			return fmt.Errorf(
+				"cannot create L3VNI %s/%s: VRF %q is already used by L3VPN %s/%s",
+				l3vni.GetNamespace(), l3vni.GetName(),
+				l3vni.Spec.VRF,
+				vpn.GetNamespace(), vpn.GetName(),
+			)
+		}
 	}
 
 	return validateL3VNI(l3vni)

@@ -185,6 +185,7 @@ func TestFilterUniqueL3VPNs(t *testing.T) {
 	tcs := []struct {
 		name      string
 		l3vpns    []v1alpha1.L3VPN
+		vnis      map[int32]string
 		wantValid []v1alpha1.L3VPN
 		wantMap   map[int32]string
 		wantErr   string
@@ -242,11 +243,35 @@ func TestFilterUniqueL3VPNs(t *testing.T) {
 			wantMap: map[int32]string{1001: "L3VPN/vpn1", 1002: "L3VPN/vpn2"},
 			wantErr: "L3VPN/vpn3: duplicate rdAssignedNumber 1001:L3VPN/vpn1",
 		},
+		{
+			name: "conflict with L3VNI",
+			l3vpns: []v1alpha1.L3VPN{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vpn1"},
+					Spec:       v1alpha1.L3VPNSpec{RDAssignedNumber: 1001, VRF: "vrf1"},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vpn2"},
+					Spec:       v1alpha1.L3VPNSpec{RDAssignedNumber: 1002, VRF: "vrf2"},
+				},
+			},
+			vnis: map[int32]string{
+				1001: "L3VNI/vni1",
+			},
+			wantValid: []v1alpha1.L3VPN{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vpn2"},
+					Spec:       v1alpha1.L3VPNSpec{RDAssignedNumber: 1002, VRF: "vrf2"},
+				},
+			},
+			wantMap: map[int32]string{1002: "L3VPN/vpn2"},
+			wantErr: "L3VPN/vpn1: duplicate rdAssignedNumber 1001 cannot be the same as VNI in L3VNI: L3VNI/vni1",
+		},
 	}
 
 	for _, tc := range tcs {
 		t.Run(tc.name, func(t *testing.T) {
-			valid, gotMap, err := FilterUniqueL3VPNs(tc.l3vpns)
+			valid, gotMap, err := FilterUniqueL3VPNs(tc.l3vpns, tc.vnis)
 			if diff := cmp.Diff(tc.wantValid, valid); diff != "" {
 				t.Fatalf("valid items mismatch (-want +got):\n%s", diff)
 			}
@@ -265,186 +290,6 @@ func TestFilterUniqueL3VPNs(t *testing.T) {
 			}
 			if err != nil {
 				t.Fatalf("expected no error but got %q", err)
-			}
-		})
-	}
-}
-
-func TestFilterUniqueVRFsForL3VPNs(t *testing.T) {
-	tcs := []struct {
-		name      string
-		l3vpns    []v1alpha1.L3VPN
-		wantValid []v1alpha1.L3VPN
-
-		wantErr string
-	}{
-		{
-			name: "all resources in different VRFs",
-			l3vpns: []v1alpha1.L3VPN{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
-					Spec: v1alpha1.L3VPNSpec{
-						RDAssignedNumber: 1001,
-						VRF:              "vrf1",
-						HostSession:      &v1alpha1.HostSession{ASN: 65001, HostASN: new(int64(65002)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.168.1.0/24")}},
-					},
-					Status: &v1alpha1.L3VPNStatus{},
-				},
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
-					Spec: v1alpha1.L3VPNSpec{
-						RDAssignedNumber: 1002,
-						VRF:              "vrf2",
-						HostSession:      &v1alpha1.HostSession{ASN: 65003, HostASN: new(int64(65004)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.168.2.0/24")}},
-					},
-					Status: &v1alpha1.L3VPNStatus{},
-				},
-			},
-			wantValid: []v1alpha1.L3VPN{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
-					Spec: v1alpha1.L3VPNSpec{
-						RDAssignedNumber: 1001,
-						VRF:              "vrf1",
-						HostSession:      &v1alpha1.HostSession{ASN: 65001, HostASN: new(int64(65002)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.168.1.0/24")}},
-					},
-					Status: &v1alpha1.L3VPNStatus{},
-				},
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
-					Spec: v1alpha1.L3VPNSpec{
-						RDAssignedNumber: 1002,
-						VRF:              "vrf2",
-						HostSession:      &v1alpha1.HostSession{ASN: 65003, HostASN: new(int64(65004)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.168.2.0/24")}},
-					},
-					Status: &v1alpha1.L3VPNStatus{},
-				},
-			},
-		},
-		{
-			name: "filters duplicate VRFs",
-			l3vpns: []v1alpha1.L3VPN{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
-					Spec: v1alpha1.L3VPNSpec{
-						RDAssignedNumber: 1001,
-						VRF:              "vrf1",
-						HostSession:      &v1alpha1.HostSession{ASN: 65001, HostASN: new(int64(65002)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.168.1.0/24")}},
-					},
-					Status: &v1alpha1.L3VPNStatus{},
-				},
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
-					Spec: v1alpha1.L3VPNSpec{
-						RDAssignedNumber: 1002,
-						VRF:              "vrf2",
-						HostSession:      &v1alpha1.HostSession{ASN: 65003, HostASN: new(int64(65004)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.168.2.0/24")}},
-					},
-					Status: &v1alpha1.L3VPNStatus{},
-				},
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni3", Namespace: "test"},
-					Spec: v1alpha1.L3VPNSpec{
-						RDAssignedNumber: 1003,
-						HostSession:      &v1alpha1.HostSession{ASN: 65005, HostASN: new(int64(65006)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.168.3.0/24")}},
-						VRF:              "vrf1",
-					},
-					Status: &v1alpha1.L3VPNStatus{},
-				},
-			},
-			wantValid: []v1alpha1.L3VPN{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni1", Namespace: "test"},
-					Spec: v1alpha1.L3VPNSpec{
-						RDAssignedNumber: 1001,
-						VRF:              "vrf1",
-						HostSession:      &v1alpha1.HostSession{ASN: 65001, HostASN: new(int64(65002)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.168.1.0/24")}},
-					},
-					Status: &v1alpha1.L3VPNStatus{},
-				},
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni2", Namespace: "test"},
-					Spec: v1alpha1.L3VPNSpec{
-						RDAssignedNumber: 1002,
-						VRF:              "vrf2",
-						HostSession:      &v1alpha1.HostSession{ASN: 65003, HostASN: new(int64(65004)), LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.168.2.0/24")}},
-					},
-					Status: &v1alpha1.L3VPNStatus{},
-				},
-			},
-
-			wantErr: "L3VPN/vni3: more than one L3VPN detected in VRF \"vrf1\": \"test/vni1\" already exists",
-		},
-	}
-
-	for _, tc := range tcs {
-		t.Run(tc.name, func(t *testing.T) {
-			valid, err := FilterUniqueVRFsForL3VPNs(tc.l3vpns)
-			if diff := cmp.Diff(tc.wantValid, valid); diff != "" {
-				t.Fatalf("valid items mismatch (-want +got):\n%s", diff)
-			}
-
-			if tc.wantErr != "" {
-				if err == nil {
-					t.Fatalf("expected error %q but got nil", tc.wantErr)
-				}
-				if !strings.Contains(err.Error(), tc.wantErr) {
-					t.Errorf("got error = %q, but want error %q", err, tc.wantErr)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("expected no error but got error %q", err)
-			}
-		})
-	}
-}
-
-func TestDetectMutuallyExclusiveOverlays(t *testing.T) {
-	tcs := []struct {
-		name     string
-		l3vnis   []v1alpha1.L3VNI
-		l3vpns   []v1alpha1.L3VPN
-		wantErrs []string
-	}{
-		{
-			name: "both empty",
-		},
-		{
-			name:   "only L3VNIs",
-			l3vnis: []v1alpha1.L3VNI{{ObjectMeta: metav1.ObjectMeta{Name: "vni1"}}},
-		},
-		{
-			name:   "only L3VPNs",
-			l3vpns: []v1alpha1.L3VPN{{ObjectMeta: metav1.ObjectMeta{Name: "vpn1"}}},
-		},
-		{
-			name:   "both present",
-			l3vnis: []v1alpha1.L3VNI{{ObjectMeta: metav1.ObjectMeta{Name: "vni1"}}},
-			l3vpns: []v1alpha1.L3VPN{{ObjectMeta: metav1.ObjectMeta{Name: "vpn1"}}},
-			wantErrs: []string{
-				"L3VNI/vni1: cannot specify L3VNI resources and L3VPN resources at the same time",
-				"L3VPN/vpn1: cannot specify L3VPN resources and L3VNI resources at the same time",
-			},
-		},
-	}
-
-	for _, tc := range tcs {
-		t.Run(tc.name, func(t *testing.T) {
-			err := DetectMutuallyExclusiveOverlays(tc.l3vnis, tc.l3vpns)
-			if len(tc.wantErrs) == 0 {
-				if err != nil {
-					t.Fatalf("expected no error but got %q", err)
-				}
-				return
-			}
-			if err == nil {
-				t.Fatalf("expected error but got nil")
-			}
-			for _, wantErr := range tc.wantErrs {
-				if !strings.Contains(err.Error(), wantErr) {
-					t.Errorf("got error = %q, want it to contain %q", err, wantErr)
-				}
 			}
 		})
 	}
