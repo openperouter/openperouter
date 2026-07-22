@@ -12,6 +12,7 @@ import (
 	"github.com/openperouter/openperouter/internal/conversion"
 	openpeerrors "github.com/openperouter/openperouter/internal/errors"
 	"github.com/openperouter/openperouter/internal/grout"
+	"github.com/openperouter/openperouter/internal/hostnetwork"
 )
 
 // GroutDatapathConfigurator configures the host via the grout DPDK daemon.
@@ -30,13 +31,14 @@ func NewGroutConfigurator(groutSocketPath string) *GroutDatapathConfigurator {
 func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interfacesConfiguration) error {
 	groutClient := grout.NewClient(g.groutSocketPath)
 
-	underlayIfaces, err := grout.UnderlayInterfaces(ctx, groutClient)
+	currentUnderlayIfaces, err := hostnetwork.UnderlayInterfaces(config.targetNamespace)
 	if err != nil {
 		return fmt.Errorf("failed to check if target namespace %s has underlay: %w", config.targetNamespace, err)
 	}
-	if len(underlayIfaces) > 0 && len(config.Underlays) == 0 {
+	if len(currentUnderlayIfaces) > 0 && len(config.Underlays) == 0 {
 		slog.InfoContext(ctx, "underlay removed, cleaning up grout underlay")
-		if err := grout.RestoreUnderlay(ctx, groutClient, config.targetNamespace, underlayIfaces); err != nil {
+		if err := grout.RestoreUnderlay(ctx, groutClient, config.targetNamespace,
+			currentUnderlayIfaces); err != nil {
 			slog.Warn("failed to remove underlay after underlay removal", "err", err)
 		}
 		return nil

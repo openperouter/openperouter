@@ -215,7 +215,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				ginkgo.By(fmt.Sprintf("validating Underlay for pod %s", p.Name))
 
 				validateConfig(underlayParams{
-					UnderlayInterfaces: []string{"toswitch1"},
+					UnderlayInterfaces: []underlayInterface{{InterfaceName: "toswitch1", Kind: "netdev"}},
 					TunnelEndpoint: &tunnelEndpointParams{
 						IPv4: vtepIP,
 					},
@@ -300,7 +300,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				ginkgo.By(fmt.Sprintf("validating Underlay for pod %s", p.Name))
 
 				validateConfig(underlayParams{
-					UnderlayInterfaces: []string{"toswitch1"},
+					UnderlayInterfaces: []underlayInterface{{InterfaceName: "toswitch1", Kind: "netdev"}},
 					TunnelEndpoint: &tunnelEndpointParams{
 						IPv4: vtepIP,
 					},
@@ -368,7 +368,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				ginkgo.By(fmt.Sprintf("validating Underlay for pod %s", p.Name))
 
 				validateConfig(underlayParams{
-					UnderlayInterfaces: []string{"toswitch1"},
+					UnderlayInterfaces: []underlayInterface{{InterfaceName: "toswitch1", Kind: "netdev"}},
 					TunnelEndpoint: &tunnelEndpointParams{
 						IPv4: vtepIP,
 					},
@@ -407,7 +407,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 
 					ginkgo.By(fmt.Sprintf("validating underlay for pod %s", p.Name))
 					validateConfig(underlayParams{
-						UnderlayInterfaces: []string{"toswitch1"},
+						UnderlayInterfaces: []underlayInterface{{InterfaceName: "toswitch1", Kind: "netdev"}},
 						TunnelEndpoint: &tunnelEndpointParams{
 							IPv4: vtepIP,
 						},
@@ -487,7 +487,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				ginkgo.By(fmt.Sprintf("validating Underlay for pod %s", p.Name))
 
 				validateConfig(underlayParams{
-					UnderlayInterfaces: []string{"toswitch1"},
+					UnderlayInterfaces: []underlayInterface{{InterfaceName: "toswitch1", Kind: "netdev"}},
 					TunnelEndpoint: &tunnelEndpointParams{
 						IPv4: vtepIP,
 					},
@@ -524,7 +524,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				ginkgo.By(fmt.Sprintf("validating Underlay for pod %s", p.Name))
 
 				validateConfig(underlayParams{
-					UnderlayInterfaces: []string{"toswitch1"},
+					UnderlayInterfaces: []underlayInterface{{InterfaceName: "toswitch1", Kind: "netdev"}},
 					TunnelEndpoint: &tunnelEndpointParams{
 						IPv4: vtepIP,
 					},
@@ -682,7 +682,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 
 				vtepIP := vtepIPv4ForPod(cs, underlay.Spec.TunnelEndpoint, p)
 				validateConfig(underlayParams{
-					UnderlayInterfaces: []string{"toswitch1"},
+					UnderlayInterfaces: []underlayInterface{{InterfaceName: "toswitch1", Kind: "netdev"}},
 					TunnelEndpoint: &tunnelEndpointParams{
 						IPv4: vtepIP,
 					},
@@ -709,7 +709,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 
 				vtepIP := vtepIPv4ForPod(cs, underlay.Spec.TunnelEndpoint, p)
 				validateConfig(underlayParams{
-					UnderlayInterfaces: []string{"toswitch1"},
+					UnderlayInterfaces: []underlayInterface{{InterfaceName: "toswitch1", Kind: "netdev"}},
 					TunnelEndpoint: &tunnelEndpointParams{
 						IPv4: vtepIP,
 					},
@@ -740,7 +740,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 
 				vtepIP := vtepIPv4ForPod(cs, underlay.Spec.TunnelEndpoint, p)
 				validateConfig(underlayParams{
-					UnderlayInterfaces: []string{"toswitch1"},
+					UnderlayInterfaces: []underlayInterface{{InterfaceName: "toswitch1", Kind: "netdev"}},
 					TunnelEndpoint: &tunnelEndpointParams{
 						IPv4: vtepIP,
 					},
@@ -794,7 +794,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				ginkgo.By(fmt.Sprintf("validating Underlay for pod %s", p.Name))
 
 				validateConfig(underlayParams{
-					UnderlayInterfaces: []string{"toswitch1"},
+					UnderlayInterfaces: []underlayInterface{{InterfaceName: "toswitch1", Kind: "netdev"}},
 					TunnelEndpoint: &tunnelEndpointParams{
 						IPv4: vtepIP,
 					},
@@ -864,7 +864,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				ginkgo.By(fmt.Sprintf("validating Underlay for pod %s", p.Name))
 
 				validateConfig(underlayParams{
-					UnderlayInterfaces: []string{"toswitch1"},
+					UnderlayInterfaces: []underlayInterface{{InterfaceName: "toswitch1", Kind: "netdev"}},
 					TunnelEndpoint: &tunnelEndpointParams{
 						IPv4: vtepIP,
 					},
@@ -922,7 +922,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				ginkgo.By(fmt.Sprintf("validating Underlay for pod %s", p.Name))
 
 				validateConfig(underlayParams{
-					UnderlayInterfaces: []string{"toswitch1"},
+					UnderlayInterfaces: []underlayInterface{{InterfaceName: "toswitch1", Kind: "netdev"}},
 					TunnelEndpoint: &tunnelEndpointParams{
 						IPv4: vtepIP,
 					},
@@ -1016,7 +1016,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 
 				vtepIP := vtepIPv4ForPod(cs, underlay.Spec.TunnelEndpoint, p)
 				validateConfig(underlayParams{
-					UnderlayInterfaces: []string{"toswitch1"},
+					UnderlayInterfaces: []underlayInterface{{InterfaceName: "toswitch1", Kind: "netdev"}},
 					TunnelEndpoint: &tunnelEndpointParams{
 						IPv4: vtepIP,
 					},
@@ -1045,7 +1045,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 
 				vtepIP := vtepIPv4ForPod(cs, underlay.Spec.TunnelEndpoint, p)
 				validateConfig(underlayParams{
-					UnderlayInterfaces: []string{"toswitch1"},
+					UnderlayInterfaces: []underlayInterface{{InterfaceName: "toswitch1", Kind: "netdev"}},
 					TunnelEndpoint: &tunnelEndpointParams{
 						IPv4: vtepIP,
 					},
@@ -1076,7 +1076,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 
 				vtepIP := vtepIPv4ForPod(cs, underlay.Spec.TunnelEndpoint, p)
 				validateConfig(underlayParams{
-					UnderlayInterfaces: []string{"toswitch1"},
+					UnderlayInterfaces: []underlayInterface{{InterfaceName: "toswitch1", Kind: "netdev"}},
 					TunnelEndpoint: &tunnelEndpointParams{
 						IPv4: vtepIP,
 					},
@@ -1138,7 +1138,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 					ginkgo.By(fmt.Sprintf("validating underlay1 configured on node %s", p.Spec.NodeName))
 					vtepIP := vtepIPv4ForPod(cs, underlay1WithNodeSelector.Spec.TunnelEndpoint, p)
 					validateConfig(underlayParams{
-						UnderlayInterfaces: []string{"toswitch1"},
+						UnderlayInterfaces: []underlayInterface{{InterfaceName: "toswitch1", Kind: "netdev"}},
 						TunnelEndpoint: &tunnelEndpointParams{
 							IPv4: vtepIP,
 						},
@@ -1147,7 +1147,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 					ginkgo.By(fmt.Sprintf("validating underlay2 configured on node %s", p.Spec.NodeName))
 					vtepIP := vtepIPv4ForPod(cs, underlay2WithNodeSelector.Spec.TunnelEndpoint, p)
 					validateConfig(underlayParams{
-						UnderlayInterfaces: []string{"toswitch1"},
+						UnderlayInterfaces: []underlayInterface{{InterfaceName: "toswitch1", Kind: "netdev"}},
 						TunnelEndpoint: &tunnelEndpointParams{
 							IPv4: vtepIP,
 						},
@@ -1155,7 +1155,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				default:
 					ginkgo.By(fmt.Sprintf("validating underlay is not configured for pod %q on node %s", p.Name, p.Spec.NodeName))
 					validateConfig(underlayParams{
-						UnderlayInterfaces: []string{"toswitch1"},
+						UnderlayInterfaces: []underlayInterface{{InterfaceName: "toswitch1", Kind: "netdev"}},
 					}, underlayNotConfiguredTestSelector, p)
 				}
 			}
@@ -1169,7 +1169,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 			for _, p := range routerPods {
 				if p.Spec.NodeName == nodes[1].Name {
 					validateConfig(underlayParams{
-						UnderlayInterfaces: []string{"toswitch"},
+						UnderlayInterfaces: []underlayInterface{{InterfaceName: "toswitch", Kind: "netdev"}},
 					}, underlayNotConfiguredTestSelector, p)
 				}
 			}
@@ -1180,7 +1180,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 					ginkgo.By(fmt.Sprintf("validating underlay1 configured on node %s", p.Spec.NodeName))
 					vtepIP := vtepIPv4ForPod(cs, underlay1WithNodeSelector.Spec.TunnelEndpoint, p)
 					validateConfig(underlayParams{
-						UnderlayInterfaces: []string{"toswitch1"},
+						UnderlayInterfaces: []underlayInterface{{InterfaceName: "toswitch1", Kind: "netdev"}},
 						TunnelEndpoint: &tunnelEndpointParams{
 							IPv4: vtepIP,
 						},
@@ -1188,7 +1188,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				} else {
 					ginkgo.By(fmt.Sprintf("validating underlay is not configured on node %s", p.Spec.NodeName))
 					validateConfig(underlayParams{
-						UnderlayInterfaces: []string{"toswitch1"},
+						UnderlayInterfaces: []underlayInterface{{InterfaceName: "toswitch1", Kind: "netdev"}},
 					}, underlayNotConfiguredTestSelector, p)
 				}
 			}
@@ -1206,7 +1206,7 @@ var _ = ginkgo.Describe("Router Host configuration", func() {
 				ginkgo.By(fmt.Sprintf("validating underlay1 configured on node %q", p.Spec.NodeName))
 				vtepIP := vtepIPv4ForPod(cs, underlay1WithNodeSelector.Spec.TunnelEndpoint, p)
 				validateConfig(underlayParams{
-					UnderlayInterfaces: []string{"toswitch1"},
+					UnderlayInterfaces: []underlayInterface{{InterfaceName: "toswitch1", Kind: "netdev"}},
 					TunnelEndpoint: &tunnelEndpointParams{
 						IPv4: vtepIP,
 					},
@@ -1533,8 +1533,14 @@ type l2vniParams struct {
 }
 
 type underlayParams struct {
-	UnderlayInterfaces []string              `json:"underlay_interfaces"`
+	UnderlayInterfaces []underlayInterface   `json:"underlay_interfaces"`
 	TunnelEndpoint     *tunnelEndpointParams `json:"tunnel_endpoint"`
+}
+
+// underlayInterface mirrors hostnetwork.UnderlayInterface.
+type underlayInterface struct {
+	InterfaceName string `json:"interfaceName"`
+	Kind          string `json:"kind"`
 }
 
 type tunnelEndpointParams struct {

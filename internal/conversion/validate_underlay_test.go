@@ -8,6 +8,7 @@ import (
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -309,6 +310,130 @@ func TestValidateUnderlay(t *testing.T) {
 					SRV6: &v1alpha1.SRV6Config{
 						Locator: v1alpha1.SRV6Locator{
 							Format: "usid-finvalid",
+						},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "valid cni interface",
+			underlay: v1alpha1.Underlay{
+				Spec: v1alpha1.UnderlaySpec{
+					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+						CIDRs: []string{"192.168.1.0/24"},
+					},
+					Interfaces: []v1alpha1.UnderlayInterface{
+						{
+							Type: v1alpha1.UnderlayInterfaceTypeCNIDevice,
+							CNIDevice: &v1alpha1.CNIDevice{
+								Type:          v1alpha1.CNIConfigTypeRawConfig,
+								RawConfig:     &apiextensionsv1.JSON{Raw: []byte(`{"cniVersion":"1.0.0","name":"macvlan-underlay","type":"macvlan","master":"eth1"}`)},
+								InterfaceName: new("net1"),
+							},
+						},
+					},
+					ASN: 65001,
+					Neighbors: []v1alpha1.Neighbor{
+						{
+							ASN:     new(int64(65002)),
+							Address: new("192.168.1.1"),
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "cni interface with invalid raw config",
+			underlay: v1alpha1.Underlay{
+				Spec: v1alpha1.UnderlaySpec{
+					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+						CIDRs: []string{"192.168.1.0/24"},
+					},
+					Interfaces: []v1alpha1.UnderlayInterface{
+						{
+							Type: v1alpha1.UnderlayInterfaceTypeCNIDevice,
+							CNIDevice: &v1alpha1.CNIDevice{
+								Type:          v1alpha1.CNIConfigTypeRawConfig,
+								RawConfig:     &apiextensionsv1.JSON{Raw: []byte(`{"cniVersion":"1.0.0","name":"broken","plugins":"notalist"}`)},
+								InterfaceName: new("net1"),
+							},
+						},
+					},
+					ASN: 65001,
+					Neighbors: []v1alpha1.Neighbor{
+						{
+							ASN:     new(int64(65002)),
+							Address: new("192.168.1.1"),
+						},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "mixed network device and cni interfaces",
+			underlay: v1alpha1.Underlay{
+				Spec: v1alpha1.UnderlaySpec{
+					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+						CIDRs: []string{"192.168.1.0/24"},
+					},
+					Interfaces: []v1alpha1.UnderlayInterface{
+						{
+							Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+							NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+						},
+						{
+							Type: v1alpha1.UnderlayInterfaceTypeCNIDevice,
+							CNIDevice: &v1alpha1.CNIDevice{
+								Type:          v1alpha1.CNIConfigTypeRawConfig,
+								RawConfig:     &apiextensionsv1.JSON{Raw: []byte(`{"cniVersion":"1.0.0","name":"macvlan-underlay","type":"macvlan","master":"eth1"}`)},
+								InterfaceName: new("eth0"),
+							},
+						},
+					},
+					ASN: 65001,
+					Neighbors: []v1alpha1.Neighbor{
+						{
+							ASN:     new(int64(65002)),
+							Address: new("192.168.1.1"),
+						},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "duplicate cni interface names",
+			underlay: v1alpha1.Underlay{
+				Spec: v1alpha1.UnderlaySpec{
+					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+						CIDRs: []string{"192.168.1.0/24"},
+					},
+					Interfaces: []v1alpha1.UnderlayInterface{
+						{
+							Type: v1alpha1.UnderlayInterfaceTypeCNIDevice,
+							CNIDevice: &v1alpha1.CNIDevice{
+								Type:          v1alpha1.CNIConfigTypeRawConfig,
+								RawConfig:     &apiextensionsv1.JSON{Raw: []byte(`{"cniVersion":"1.0.0","name":"macvlan-underlay","type":"macvlan","master":"eth1"}`)},
+								InterfaceName: new("net1"),
+							},
+						},
+						{
+							Type: v1alpha1.UnderlayInterfaceTypeCNIDevice,
+							CNIDevice: &v1alpha1.CNIDevice{
+								Type:          v1alpha1.CNIConfigTypeRawConfig,
+								RawConfig:     &apiextensionsv1.JSON{Raw: []byte(`{"cniVersion":"1.0.0","name":"ipvlan-underlay","type":"ipvlan","master":"eth2"}`)},
+								InterfaceName: new("net1"),
+							},
+						},
+					},
+					ASN: 65001,
+					Neighbors: []v1alpha1.Neighbor{
+						{
+							ASN:     new(int64(65002)),
+							Address: new("192.168.1.1"),
 						},
 					},
 				},

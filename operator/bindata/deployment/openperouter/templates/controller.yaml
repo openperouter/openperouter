@@ -56,13 +56,10 @@ spec:
         {{- if eq .Values.openperouter.cri "crio" }}
         - --crisocket=/crio.sock
         {{- end }}
-        {{- if .Values.openperouter.multusNetworkAnnotation }}
-        - --underlay-from-multus=true
-        {{- end }}
         {{- with .Values.openperouter.ovsSocketPath }}
         - --ovssocket={{ . }}
         {{- end }}
-        - --cni-bin-dir={{ .Values.openperouter.controller.cniBinDir }}
+        - --cni-plugin-dirs={{ join "," .Values.openperouter.controller.cniPluginDirs }}
         - --cni-cache-dir={{ .Values.openperouter.controller.cniCacheDir }}
         {{- if eq .Values.openperouter.datapath "grout" }}
         - --datapath=grout

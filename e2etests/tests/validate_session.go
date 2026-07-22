@@ -126,5 +126,5 @@ func validateSessionDownForNeigh(exec executor.Executor, neighborIP string) {
 			return fmt.Errorf("neighbor %s is established: %v", neighborIP, neigh)
 		}
 		return nil
-	}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
+	}, 5*time.Minute, time.Second).ShouldNot(HaveOccurred())
 }

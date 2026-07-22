@@ -105,43 +105,74 @@ For detailed information and examples, see the
 [Node Selector Configuration]({{< ref "node-selector.md" >}})
 documentation.
 
-#### Using Helm Values
+### CNI-Provisioned Interfaces
 
-You can specify the Multus network annotation using Helm values:
+Instead of moving an existing host network device into the router network
+namespace, an underlay interface can be provisioned by a CNI plugin. This
+allows sharing a physical NIC between the host and the router (e.g. via
+`macvlan` or `ipvlan`) and delegating IP address management to the plugin.
 
-```yaml
-# values.yaml
-openperouter:
-  multusNetworkAnnotation: "macvlan-conf"
-```
-
-Or when installing with Helm:
-
-```bash
-helm install openperouter ./charts/openperouter \
-  --set openperouter.multusNetworkAnnotation="macvlan-conf"
-```
-
-This will add the annotation `k8s.v1.cni.cncf.io/networks: macvlan-conf`
-to the router pods.
-
-#### Using Kustomize
-
-Alternatively, you can use kustomize to add the annotation to the router
-pod:
+To use a CNI-provisioned interface, set the interface `type` to `CNIDevice` and
+embed the CNI configuration (a conflist JSON, CNI spec >= 1.0.0) in the
+`rawConfig` field:
 
 ```yaml
-# kustomization.yaml
-patches:
-- target:
-    kind: DaemonSet
-    name: router
-  patch: |-
-    - op: add
-      path: /spec/template/metadata/annotations
-      value:
-        k8s.v1.cni.cncf.io/networks: macvlan-conf
+apiVersion: network.openperouter.io/v1alpha1
+kind: Underlay
+metadata:
+  name: underlay
+  namespace: openperouter-system
+spec:
+  asn: 64514
+  interfaces:
+    - type: CNIDevice
+      cniDevice:
+        type: RawConfig
+        interfaceName: net1
+        rawConfig:
+          cniVersion: "1.0.0"
+          name: macvlan-underlay
+          plugins:
+            - type: macvlan
+              master: toswitch
+              mode: bridge
+              ipam:
+                type: static
+                addresses:
+                  - address: 192.168.11.10/24
+  neighbors:
+    - asn: 64512
+      address: 192.168.11.2
 ```
+
+The controller invokes the plugin with `CNI_IFNAME` set to
+`interfaceName` (defaults to `net1`) and the router network namespace as
+the target. The plugin binaries are looked up in the directories passed
+via the controller's `--cni-plugin-dirs` flag; a set of reference plugins is
+bundled in the controller image.
+
+Key behaviors to be aware of:
+
+- **Interface types cannot be mixed**: all the entries of `interfaces`
+  must be of the same type, either `NetworkDevice` or `CNIDevice`.
+- **IPAM is delegated to the plugin**: use the plugin's `ipam` block
+  (e.g. `static` or `dhcp`) to assign the interface address.
+- **`rawConfig` is immutable**: to change the CNI configuration, delete
+  and recreate the Underlay. This is enforced by the validation webhook,
+  as reconciling a config change in place would require a teardown/re-add
+  cycle with partial-failure states. Configuration paths that bypass the
+  webhook (e.g. static file configuration in host mode) are enforced at
+  reconcile time instead: the controller compares the desired
+  configuration against the one recorded when the interface was
+  provisioned, keeps the existing interface untouched and fails the
+  reconcile if they differ.
+- **`runtimeConfig`** can pass CNI capability arguments (e.g. `ips`,
+  `mac`, `bandwidth`) to plugins that declare the corresponding
+  `capabilities` in their config; undeclared keys are ignored. Like
+  `rawConfig`, it is immutable once the Underlay is created.
+- Since the interface address is typically node-specific, CNI underlays
+  are usually node-scoped via `nodeSelector`, one Underlay per node. See
+  the [example on GitHub](https://github.com/openperouter/openperouter/tree/main/examples/evpn/cni-underlay).
 
 ## Sysctl Configuration
 

@@ -49,7 +49,7 @@ import (
 	"github.com/openperouter/openperouter/api/static"
 	periov1alpha1 "github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/buildversion"
-	"github.com/openperouter/openperouter/internal/cni"
+	"github.com/openperouter/openperouter/internal/cniinvoker"
 	"github.com/openperouter/openperouter/internal/controller/nodeindex"
 	"github.com/openperouter/openperouter/internal/controller/routerconfiguration"
 	"github.com/openperouter/openperouter/internal/filewatcher"
@@ -93,6 +93,32 @@ type k8sModeParameters struct {
 	criSocket string
 }
 
+// stringSliceFlag is a flag.Value collecting comma-separated (or repeated)
+// values into a string slice, trimming whitespace and dropping empty entries.
+// Setting the flag replaces the default value, it can be passed just once
+type stringSliceFlag struct {
+	values []string
+	set    bool
+}
+
+func (s *stringSliceFlag) String() string {
+	return strings.Join(s.values, ",")
+}
+
+func (s *stringSliceFlag) Set(value string) error {
+	if s.set {
+		return fmt.Errorf("cannot be specified more than once")
+	}
+	s.set = true
+
+	for entry := range strings.SplitSeq(value, ",") {
+		if trimmed := strings.TrimSpace(entry); trimmed != "" {
+			s.values = append(s.values, trimmed)
+		}
+	}
+	return nil
+}
+
 type parameters struct {
 	probeAddr       string
 	frrConfigPath   string
@@ -102,7 +128,7 @@ type parameters struct {
 	nodeName        string
 	namespace       string
 	logLevel        string
-	cniBinDir       string
+	cniPluginDirs   stringSliceFlag
 	cniCacheDir     string
 	datapath        string
 	groutSocketPath string
@@ -144,10 +170,13 @@ func main() {
 		systemdctl.HostDBusSocket, "the path of systemd control socket")
 	flag.IntVar(&hostModeParams.routerHealthCheckPort, "router-health-check-port",
 		9080, "the port for router health check endpoint")
-	flag.StringVar(&args.cniBinDir, "cni-bin-dir", "/opt/openperouter/cni/bin/",
-		"colon-separated list of directories to search for CNI plugin binaries")
 	flag.StringVar(&args.cniCacheDir, "cni-cache-dir", "/var/lib/openperouter/cni/cache",
 		"directory to store CNI result cache")
+	args.cniPluginDirs.values = []string{"/opt/openperouter/cni/bin/"}
+	flag.Var(&args.cniPluginDirs, "cni-plugin-dirs",
+		fmt.Sprintf(
+			"comma-separated list of directories to search for CNI plugin binaries, can be specified just once, defaults to %v",
+			args.cniPluginDirs.values))
 
 	flag.Parse()
 
@@ -163,29 +192,15 @@ func main() {
 	setupLog.Info("version", "version", buildversion.Version())
 	setupLog.Info("arguments", "args", fmt.Sprintf("%+v", args))
 
-	if args.cniBinDir == "" {
-		setupLog.Info("cni-bin-dir cannot be empty")
+	if len(args.cniPluginDirs.values) == 0 {
+		setupLog.Info("cni-plugin-dirs cannot be empty")
 		os.Exit(1)
 	}
+
 	if args.cniCacheDir == "" {
 		setupLog.Info("cni-cache-dir cannot be empty")
 		os.Exit(1)
 	}
-
-	var cniPluginDirs []string
-	for dir := range strings.SplitSeq(args.cniBinDir, ":") {
-		if trimmed := strings.TrimSpace(dir); trimmed != "" {
-			cniPluginDirs = append(cniPluginDirs, trimmed)
-		}
-	}
-	if len(cniPluginDirs) == 0 {
-		setupLog.Info("no valid CNI plugin directories specified", "cni-bin-dir", args.cniBinDir)
-		os.Exit(1)
-	}
-
-	cniInvoker := cni.NewInvoker(cniPluginDirs, args.cniCacheDir)
-	setupLog.Info("CNI plugin invoker initialized", "pluginDirs", cniInvoker.PluginDirs(), "cacheDir", args.cniCacheDir)
-	_ = cniInvoker
 
 	// Setup signal handler once for the entire process
 	ctx := ctrl.SetupSignalHandler()
@@ -214,6 +229,12 @@ func runK8sMode(
 		logger.Error("unable to get kubernetes config", "error", err)
 		os.Exit(1)
 	}
+
+	cniinvoker.Init(args.cniPluginDirs.values, args.cniCacheDir, args.nodeName)
+	setupLog.Info("CNI plugin invoker initialized for k8s mode",
+		"pluginDirs", args.cniPluginDirs.values,
+		"cacheDir", args.cniCacheDir)
+
 	// runK8sConfigReconciler is blocking so when running in k8s mode we should stop here
 	if err := runK8sConfigReconciler(ctx, args, k8sConfig, logger, args.probeAddr); err != nil {
 		logger.Error("failed to enable k8s reconciler", "error", err)
@@ -237,6 +258,11 @@ func runHostMode(
 		logger.Error("failed to override host mode arguments", "error", err)
 		os.Exit(1)
 	}
+
+	cniinvoker.Init(args.cniPluginDirs.values, args.cniCacheDir, args.nodeName)
+	setupLog.Info("CNI plugin invoker initialized for host mode",
+		"pluginDirs", args.cniPluginDirs.values,
+		"cacheDir", args.cniCacheDir)
 
 	staticControllerCtx, stopStaticReconciler := context.WithCancel(ctx)
 	defer stopStaticReconciler()

@@ -18,7 +18,9 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/executor"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/util/retry"
 )
 
 type PodModifier func(*corev1.Pod)
@@ -111,6 +113,57 @@ func waitForPodReady(cs clientset.Interface, pod *corev1.Pod) (*corev1.Pod, erro
 			}
 		}
 	}
+}
+
+// DeletePodsByLabel deletes all the pods matching the label in the namespace
+// and returns them.
+func DeletePodsByLabel(cs clientset.Interface, namespace, label string) ([]*corev1.Pod, error) {
+	pods, err := PodsForLabel(cs, namespace, label)
+	if err != nil {
+		return nil, err
+	}
+	for _, pod := range pods {
+		if err := cs.CoreV1().Pods(namespace).Delete(context.Background(), pod.Name, metav1.DeleteOptions{}); err != nil {
+			return nil, fmt.Errorf("failed to delete pod %s/%s: %w", namespace, pod.Name, err)
+		}
+	}
+	return pods, nil
+}
+
+// WaitPodsRolled waits until every pod matching the label is a fresh, ready
+// replacement of the deleted ones.
+func WaitPodsRolled(cs clientset.Interface, namespace, label string, oldPods []*corev1.Pod) error {
+	oldNames := map[string]bool{}
+	for _, pod := range oldPods {
+		oldNames[pod.Name] = true
+	}
+	interval := 2 * time.Second
+	timeout := 3 * time.Minute
+	threeMinutesTimeout := wait.Backoff{
+		Steps:    int(timeout / interval),
+		Duration: interval,
+	}
+	allErrors := func(error) bool {
+		return true
+	}
+	return retry.OnError(threeMinutesTimeout, allErrors, func() error {
+		newPods, err := PodsForLabel(cs, namespace, label)
+		if err != nil {
+			return err
+		}
+		if len(newPods) != len(oldPods) {
+			return fmt.Errorf("number of pods mismatchings")
+		}
+		for _, pod := range newPods {
+			if oldNames[pod.Name] {
+				return fmt.Errorf("pod %q not recreated yet", pod.Name)
+			}
+			if !PodIsReady(pod) {
+				return fmt.Errorf("pod %q not ready", pod.Name)
+			}
+		}
+		return nil
+	})
 }
 
 func PodLogsSinceTime(cs clientset.Interface, pod *corev1.Pod,

@@ -3,14 +3,19 @@
 package conversion
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 
+	"k8s.io/apimachinery/pkg/util/sets"
+
 	"github.com/openperouter/openperouter/api/v1alpha1"
+	"github.com/openperouter/openperouter/internal/cniinvoker"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/openperouter/openperouter/internal/ipam"
 	"github.com/openperouter/openperouter/internal/ipfamily"
+	"k8s.io/utils/ptr"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -38,7 +43,7 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig APIConfigData) (H
 		return HostConfigData{}, errors.New("underlay interface must be specified")
 	}
 
-	underlayInterfaces, err := underlayNetworkDeviceInterfaceNames(underlay.Spec.Interfaces)
+	underlayInterfaces, err := underlayInterfacesToHost(underlay.Spec.Interfaces)
 	if err != nil {
 		return HostConfigData{}, err
 	}
@@ -446,8 +451,7 @@ func ipNetToString(ipNet net.IPNet) string {
 }
 
 // underlayNetworkDeviceInterfaceNames extracts the host interface names from the underlay
-// interfaces list. Only the NetworkDevice mode is supported today; entries
-// without a NetworkDevice (or with an empty interface name) are skipped.
+// interfaces list. Entries of other modes (e.g. CNI) are skipped.
 func underlayNetworkDeviceInterfaceNames(interfaces []v1alpha1.UnderlayInterface) ([]string, error) {
 	names := make([]string, 0, len(interfaces))
 	for _, iface := range interfaces {
@@ -465,4 +469,99 @@ func underlayNetworkDeviceInterfaceNames(interfaces []v1alpha1.UnderlayInterface
 		names = append(names, iface.NetworkDevice.InterfaceName)
 	}
 	return names, nil
+}
+
+// underlayInterfacesToHost translates the underlay interfaces union into the
+// unified host representation, unmarshalling the
+// opaque runtimeConfig of the CNI-provisioned interfaces into the capability
+// arguments handed to the plugin. It rejects duplicate or invalid interface
+// names, invalid CNI configurations and mixes of NetworkDevice and CNIDevice
+// interfaces.
+func underlayInterfacesToHost(interfaces []v1alpha1.UnderlayInterface) ([]hostnetwork.UnderlayInterface, error) {
+	res := make([]hostnetwork.UnderlayInterface, 0, len(interfaces))
+	seenNames := sets.Set[string]{}
+	kinds := sets.Set[hostnetwork.UnderlayInterfaceKind]{}
+	for _, iface := range interfaces {
+		hostIface, err := underlayInterfaceToHost(iface)
+		if err != nil {
+			return nil, err
+		}
+		if seenNames.Has(hostIface.InterfaceName) {
+			return nil, fmt.Errorf("duplicate underlay interface name %s", hostIface.InterfaceName)
+		}
+		seenNames.Insert(hostIface.InterfaceName)
+		if err := isValidInterfaceName(hostIface.InterfaceName); err != nil {
+			return nil, fmt.Errorf("invalid interface name %s: %w", hostIface.InterfaceName, err)
+		}
+		if hostIface.Kind == hostnetwork.UnderlayInterfaceCNIDev {
+			if err := cniinvoker.ValidateConfig(hostIface.CNI.Config); err != nil {
+				return nil, fmt.Errorf("invalid cni config for interface %s: %w", hostIface.InterfaceName, err)
+			}
+		}
+		if kinds.Insert(hostIface.Kind).Len() > 1 {
+			return nil, errors.New("all interfaces must be of the same type")
+		}
+		res = append(res, hostIface)
+	}
+	return res, nil
+}
+
+// underlayInterfaceToHost translates a single underlay interface union entry
+// into its name and host representation.
+func underlayInterfaceToHost(iface v1alpha1.UnderlayInterface) (hostnetwork.UnderlayInterface, error) {
+	switch iface.Type {
+	case v1alpha1.UnderlayInterfaceTypeNetworkDevice:
+		return networkDeviceInterfaceToHost(iface)
+	case v1alpha1.UnderlayInterfaceTypeCNIDevice:
+		return cniDeviceInterfaceToHost(iface)
+	default:
+		return hostnetwork.UnderlayInterface{}, fmt.Errorf("unsupported underlay interface type %q", iface.Type)
+	}
+}
+
+func networkDeviceInterfaceToHost(iface v1alpha1.UnderlayInterface) (hostnetwork.UnderlayInterface, error) {
+	if iface.NetworkDevice == nil {
+		return hostnetwork.UnderlayInterface{},
+			fmt.Errorf("networkDevice configuration is missing for interface type NetworkDevice")
+	}
+	if iface.NetworkDevice.InterfaceName == "" {
+		return hostnetwork.UnderlayInterface{}, fmt.Errorf("interfaceName is empty for networkDevice")
+	}
+	return hostnetwork.UnderlayInterface{
+		InterfaceName: iface.NetworkDevice.InterfaceName,
+		Kind:          hostnetwork.UnderlayInterfaceNetDev,
+	}, nil
+}
+
+func cniDeviceInterfaceToHost(iface v1alpha1.UnderlayInterface) (hostnetwork.UnderlayInterface, error) {
+	if iface.CNIDevice == nil {
+		return hostnetwork.UnderlayInterface{},
+			fmt.Errorf("cniDevice configuration is missing for interface type CNI")
+	}
+	if iface.CNIDevice.RawConfig == nil {
+		return hostnetwork.UnderlayInterface{},
+			fmt.Errorf("rawConfig is missing for cniDevice %q", ptr.Deref(iface.CNIDevice.InterfaceName, ""))
+	}
+
+	ifName := ptr.Deref(iface.CNIDevice.InterfaceName, cniinvoker.DefaultInterfaceName)
+	if ifName == "" {
+		ifName = cniinvoker.DefaultInterfaceName
+	}
+
+	var capabilityArgs map[string]any
+	if iface.CNIDevice.RuntimeConfig != nil {
+		if err := json.Unmarshal(iface.CNIDevice.RuntimeConfig.Raw, &capabilityArgs); err != nil {
+			return hostnetwork.UnderlayInterface{},
+				fmt.Errorf("invalid runtimeConfig for cni interface %q: %w", ifName, err)
+		}
+	}
+
+	return hostnetwork.UnderlayInterface{
+		InterfaceName: ifName,
+		Kind:          hostnetwork.UnderlayInterfaceCNIDev,
+		CNI: &hostnetwork.CNIDeviceParams{
+			Config:         iface.CNIDevice.RawConfig.Raw,
+			CapabilityArgs: capabilityArgs,
+		},
+	}, nil
 }

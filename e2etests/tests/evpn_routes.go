@@ -6,15 +6,20 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"sort"
 	"strings"
 	"time"
 
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/utils/ptr"
 
 	frrk8sapi "github.com/metallb/frr-k8s/api/v1beta1"
-	"github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
+
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/e2etests/pkg/config"
 	"github.com/openperouter/openperouter/e2etests/pkg/executor"
@@ -26,10 +31,23 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 	"github.com/openperouter/openperouter/e2etests/pkg/url"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clientset "k8s.io/client-go/kubernetes"
 )
+
+// evpnUnderlayParams describes how an e2e suite obtains its underlay: the set of
+// Underlay resources to apply and the session side configuration of the kind
+// leaves. It abstracts the different underlay provisioning modes (moving a
+// host device vs CNI provisioned interfaces) so the same tests can run over
+// any of them.
+type evpnUnderlayParams struct {
+	// Underlays returns the Underlay resources to apply for the given nodes.
+	Underlays func(nodes []corev1.Node) []v1alpha1.Underlay
+	// ConfigureLeafKind points the kind leaves at the router addresses of
+	// this underlay mode.
+	ConfigureLeafKind func(nodes []corev1.Node) error
+	// NeighborIP returns the router side session address of the i-th node,
+	// as seen by leafkind1.
+	NeighborIP func(nodeIndex int, node corev1.Node) (string, error)
+}
 
 var (
 	// NOTE: we can't advertise any ip via EVPN from the leaves, they
@@ -41,11 +59,52 @@ var (
 	leafSRV6VRFRedPrefixes  = []string{"192.170.20.0/24", "2001:db8:170:20::/64"}
 	leafSRV6VRFBluePrefixes = []string{"192.170.21.0/24", "2001:db8:170:21::/64"}
 	emptyPrefixes           = []string{}
+
+	// macvlanStaticUnderlay provisions per-node macvlan interfaces on top
+	// of toswitch1 through the CNI mode, with static per-node addresses.
+	macvlanStaticUnderlay = evpnUnderlayParams{
+		Underlays: func(nodes []corev1.Node) []v1alpha1.Underlay {
+			return infra.CNIUnderlaysForNodes(nodes, infra.CNIUnderlayInterface)
+		},
+		ConfigureLeafKind: infra.ConfigureLeafKind1ForCNIUnderlay,
+		NeighborIP: func(nodeIndex int, _ corev1.Node) (string, error) {
+			return infra.CNIUnderlayNeighborIP(nodeIndex), nil
+		},
+	}
+
+	// networkDeviceUnderlay moves the toswitch host devices into the
+	// router netns (the standard fixture).
+	networkDeviceUnderlay = evpnUnderlayParams{
+		Underlays: func([]corev1.Node) []v1alpha1.Underlay {
+			return []v1alpha1.Underlay{infra.Underlay}
+		},
+		ConfigureLeafKind: func(nodes []corev1.Node) error {
+			if err := infra.LeafKind1Config.UpdateConfig(nodes, infra.LeafKindConfiguration{}); err != nil {
+				return err
+			}
+			return infra.LeafKind2Config.UpdateConfig(nodes, infra.LeafKindConfiguration{})
+		},
+		NeighborIP: func(_ int, node corev1.Node) (string, error) {
+			return infra.NeighborIP(infra.KindLeaf, node.Name)
+		},
+	}
 )
 
-var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Ordered, func() {
+// The EVPN routes ipv4 coverage runs once per underlay mode: the specs
+// only exercise the overlay, so they are agnostic to how the underlay link
+// is obtained. Each entry generates an ordered container with its own
+// underlay lifecycle, and the entries are the extension point for the
+// CNI plugins supported in the future (ipvlan, vlan, host-device, dhcp IPAM).
+var _ = DescribeTableSubtree("Routes between bgp and the fabric with Underlay in ipv4",
+	evpnRoutesOverUnderlay,
+	Entry("NetworkDevice", Ordered, networkDeviceUnderlay),
+	Entry("MacvlanStatic", Ordered, macvlanStaticUnderlay),
+)
+
+func evpnRoutesOverUnderlay(params evpnUnderlayParams) {
 	var cs clientset.Interface
 	var routers openperouter.Routers
+	var nodes []corev1.Node
 
 	vniRed := v1alpha1.L3VNI{
 		ObjectMeta: metav1.ObjectMeta{
@@ -98,12 +157,18 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Orde
 			return openperouter.AreReady(routers)
 		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 
-		routers.Dump(ginkgo.GinkgoWriter)
+		routers.Dump(GinkgoWriter)
+
+		nodesItems, err := cs.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		nodes = nodesItems.Items
+		sort.Slice(nodes, func(i, j int) bool { return nodes[i].Name < nodes[j].Name })
+
+		By("configuring the kind leaves for the underlay mode")
+		Expect(params.ConfigureLeafKind(nodes)).To(Succeed())
 
 		err = Updater.Update(config.Resources{
-			Underlays: []v1alpha1.Underlay{
-				infra.Underlay,
-			},
+			Underlays: params.Underlays(nodes),
 		})
 		Expect(err).NotTo(HaveOccurred())
 	})
@@ -111,6 +176,8 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Orde
 	AfterAll(func() {
 		err := Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
+		By("restoring the standard leaf configuration")
+		Expect(infra.LeafKind1Config.UpdateConfig(nodes, infra.LeafKindConfiguration{})).To(Succeed())
 		By("waiting for all router pods to be ready after removing the underlay")
 		Eventually(func() error {
 			routers, err := openperouter.Get(cs, HostMode)
@@ -413,7 +480,7 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Orde
 			Entry("vni blue host B ipv6", vniBlue, "hostB_blue", infra.HostBBlueIPv6, ipfamily.IPv6),
 		)
 	})
-})
+}
 
 var _ = Describe("Routes between bgp and the fabric with iBGP testing e2e integration between a pod and the red hosts", func() {
 	var cs clientset.Interface
@@ -475,7 +542,7 @@ var _ = Describe("Routes between bgp and the fabric with iBGP testing e2e integr
 		routers, err = openperouter.Get(cs, HostMode)
 		Expect(err).NotTo(HaveOccurred())
 
-		routers.Dump(ginkgo.GinkgoWriter)
+		routers.Dump(GinkgoWriter)
 
 		By("setting iBGP next-hop-self force on leaf kind")
 		nodes, err = k8s.GetNodes(cs)
