@@ -1072,6 +1072,7 @@ func TestSegmentRouting(t *testing.T) {
 					Behavior: "usid",
 					Format:   "usid-f3216",
 				},
+				EncapBehavior: HEncaps,
 			},
 		},
 		VPNs: []L3VPNConfig{
@@ -1174,6 +1175,7 @@ func TestSegmentRoutingWithL2VNI(t *testing.T) {
 					Behavior: "usid",
 					Format:   "usid-f3216",
 				},
+				EncapBehavior: HEncapsRed,
 			},
 		},
 		VPNs: []L3VPNConfig{

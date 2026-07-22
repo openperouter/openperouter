@@ -317,10 +317,35 @@ const (
 
 // SRV6Config contains SRV6 configuration for the underlay.
 type SRV6Config struct {
+	// encapBehavior defines the behavior for SRv6 encapsulation as specified
+	// in RFC 8986 sections 5.1 and 5.2.
+	// If unset, defaults to H.Encaps.
+	// +optional
+	EncapBehavior *SRV6EncapBehavior `json:"encapBehavior,omitempty"`
+
 	// locator defines the locator for this SRv6 VPN.
 	// +required
 	Locator SRV6Locator `json:"locator,omitzero"`
 }
+
+// SRV6EncapBehavior defines the behavior for SRv6 encapsulation as specified
+// in RFC 8986 sections 5.1 and 5.2.
+// +kubebuilder:validation:MaxLength:=12
+// +kubebuilder:validation:MinLength:=1
+// +kubebuilder:validation:Enum=H.Encaps;H.Encaps.Red
+type SRV6EncapBehavior string
+
+const (
+	// HEncaps always adds an SRH to SRv6 encapsulated packets. For more details,
+	// see RFC 8986 section 5.1.
+	HEncaps SRV6EncapBehavior = "H.Encaps"
+	// HEncapsRed is an optimization of the H.Encaps behavior and reduces the
+	// length of the SRH by excluding the first SID in the SRH of the pushed
+	// IPv6 header. The SRH is omitted when the SRv6 Policy only contains one
+	// segment and there is no need to use any flag, tag or TLV. For more
+	// details, see RFC 8986 section 5.2.
+	HEncapsRed SRV6EncapBehavior = "H.Encaps.Red"
+)
 
 // SRV6Locator holds the configuration of a locator for SRv6.
 type SRV6Locator struct {

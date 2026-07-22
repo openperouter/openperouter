@@ -122,7 +122,8 @@ Traffic destined for networks learned via SRv6 L3VPN follows this path:
 1. **Host Routing**: Traffic is redirected to the veth interface
    corresponding to the L3VPN
 2. **Encapsulation**: OpenPERouter encapsulates the traffic using SRv6 with
-   the appropriate SID
+   the appropriate SID. The encapsulation mode (`H.Encaps` or
+   `H.Encaps.Red`) is determined by the Underlay's `encapBehavior` setting
 3. **Fabric Routing**: The fabric routes the IPv6-encapsulated packets to
    the destination PE using IS-IS
 4. **Delivery**: The destination PE decapsulates and delivers the traffic

@@ -5,6 +5,7 @@ package tests
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/onsi/ginkgo/v2"
@@ -103,6 +104,7 @@ var _ = Describe("SRV6 routes between bgp and the fabric", Ordered, func() {
 		var err error
 		routers, err = openperouter.Get(cs, HostMode)
 		Expect(err).NotTo(HaveOccurred())
+		Expect(len(slices.Collect(routers.GetExecutors()))).To(BeNumerically(">=", 2))
 		routers.Dump(ginkgo.GinkgoWriter)
 
 		By("Making sure that the leaf configuration is ready for SRv6 before running the first SRv6 test")
@@ -198,6 +200,32 @@ var _ = Describe("SRV6 routes between bgp and the fabric", Ordered, func() {
 			Expect(infra.LeafSRV6Config.ChangePrefixes(emptyPrefixes, leafSRV6VRFRedPrefixes, leafSRV6VRFBluePrefixes)).To(Succeed())
 			checkRouteFromLeaf(infra.LeafSRV6Config, l3vpnRed, Contains, leafSRV6VRFRedPrefixes)
 			checkRouteFromLeaf(infra.LeafSRV6Config, l3vpnBlue, Contains, leafSRV6VRFBluePrefixes)
+
+			By("checking that all routes have the correct encapsulation")
+			checkHostRouteEncap(routers, l3vpnRed, leafSRV6VRFRedPrefixes, frr.HEncaps)
+			checkHostRouteEncap(routers, l3vpnBlue, leafSRV6VRFBluePrefixes, frr.HEncaps)
+
+			By("updating underlay encapsulation to encap reduced")
+			Expect(Updater.Update(config.Resources{
+				Underlays: []v1alpha1.Underlay{
+					infra.UnderlaySRv6EncapRed,
+				},
+			})).To(Succeed())
+
+			By("checking that all routes have the correct encapsulation")
+			checkHostRouteEncap(routers, l3vpnRed, leafSRV6VRFRedPrefixes, frr.HEncapsRed)
+			checkHostRouteEncap(routers, l3vpnBlue, leafSRV6VRFBluePrefixes, frr.HEncapsRed)
+
+			By("updating underlay encapsulation to encap")
+			Expect(Updater.Update(config.Resources{
+				Underlays: []v1alpha1.Underlay{
+					infra.UnderlaySRv6,
+				},
+			})).To(Succeed())
+
+			By("checking that all routes have the correct encapsulation")
+			checkHostRouteEncap(routers, l3vpnRed, leafSRV6VRFRedPrefixes, frr.HEncaps)
+			checkHostRouteEncap(routers, l3vpnBlue, leafSRV6VRFBluePrefixes, frr.HEncaps)
 
 			By("removing a route from leafSRV6 on vni 100")
 			Expect(infra.LeafSRV6Config.ChangePrefixes(emptyPrefixes, emptyPrefixes, leafSRV6VRFBluePrefixes)).To(Succeed())
@@ -594,3 +622,33 @@ var _ = Describe("SRV6 routes between bgp and the fabric with iBGP testing e2e i
 		}, 5*time.Minute, 5*time.Second).ShouldNot(HaveOccurred())
 	})
 })
+
+func checkHostRouteEncap(routers openperouter.Routers, l3vpn v1alpha1.L3VPN, prefixes []string, encapMode frr.EncapMode) {
+	By(fmt.Sprintf("checking host routes in VRF %s, prefixes: %v, encap: %s",
+		l3vpn.Spec.VRF, prefixes, encapMode))
+	Eventually(func() error {
+		for exec := range routers.GetExecutors() {
+			for _, prefix := range prefixes {
+				rt, err := frr.GetKernelRoute(exec, l3vpn.Spec.VRF, prefix)
+				if err != nil {
+					return err
+				}
+				if rt == nil {
+					return fmt.Errorf("cannot find prefix %q route in route table", prefix)
+				}
+				foundNexthopsWithDesiredEncap := 0
+				for _, nextHop := range rt.Nexthops {
+					if nextHop.Encap.EncapType == "seg6" && nextHop.Encap.EncapMode == string(encapMode) {
+						foundNexthopsWithDesiredEncap++
+					}
+				}
+				if foundNexthopsWithDesiredEncap != len(rt.Nexthops) {
+					return fmt.Errorf("route for prefix %q has invalid encap:\n"+
+						"route: %+v\nexpected encapMode for all nexthops: %s",
+						prefix, rt, encapMode)
+				}
+			}
+		}
+		return nil
+	}, 3*time.Minute, 5*time.Second).WithOffset(1).ShouldNot(HaveOccurred())
+}

@@ -18,6 +18,7 @@
   exit-address-family
   !
   segment-routing srv6
+    encap-behavior {{ .Underlay.SegmentRouting.EncapBehavior }}
     locator {{ .Underlay.SegmentRouting.Locator.Name }}
   exit
 {{- end }}

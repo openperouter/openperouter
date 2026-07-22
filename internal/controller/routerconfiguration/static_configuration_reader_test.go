@@ -3,6 +3,7 @@
 package routerconfiguration
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -316,8 +317,34 @@ func TestReadStaticConfigs_ExistingTestdata(t *testing.T) {
 							},
 						},
 					},
-					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: []string{"100.65.0.0/24"}},
-					NodeSelector:   &metav1.LabelSelector{MatchLabels: map[string]string{"kubernetes.io/hostname": "test-node"}},
+					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+						CIDRs: []string{
+							"100.65.0.0/24",
+							"2001:db8:1234:5678::/64",
+						},
+					},
+					ISIS: &v1alpha1.ISISConfig{
+						BaseNet: "49.0001.0002.0003.0004.00",
+						Level:   new(int32(1)),
+						Interfaces: []v1alpha1.ISISInterface{
+							{
+								Name:     "toswitch1",
+								IPFamily: new(v1alpha1.IPFamilyIPv6),
+							},
+						},
+					},
+					SRV6: &v1alpha1.SRV6Config{
+						EncapBehavior: new(v1alpha1.HEncapsRed),
+						Locator: v1alpha1.SRV6Locator{
+							BasePrefix: "fd00:0:32::/48",
+							Format:     "usid-f3216",
+						},
+					},
+					NodeSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"kubernetes.io/hostname": "test-node",
+						},
+					},
 				},
 			},
 		},
@@ -515,6 +542,133 @@ l2vnis:
 	}
 	if !strings.Contains(err.Error(), "either name must be set or autoCreate must be true, but not both") {
 		t.Errorf("expected error containing 'either name must be set or autoCreate must be true, but not both', got: %v", err)
+	}
+}
+
+func TestReadStaticConfigsCELValidationSRv6(t *testing.T) {
+	validSRv6Underlay := `
+underlays:
+  - asn: 64514
+    routeridcidr: "10.0.0.0/24"
+    interfaces:
+      - type: NetworkDevice
+        networkDevice:
+          interfaceName: toswitch1
+    neighbors:
+      - asn: 64520
+        address: "2001:db8:1234::1"
+        ebgpMultiHop: true
+    tunnelEndpoint:
+      cidrs:
+      - "2001:db8:1234:5678::/64"
+    isis:
+      baseNet: "49.0001.0002.0003.0004.00"
+      level: 1
+      interfaces:
+        - name: toswitch1
+          ipFamily: ipv6
+    srv6:
+      locator:
+        basePrefix: "fd00:0:32::/48"
+        format: "usid-f3216"
+`
+	tests := []struct {
+		name       string
+		yaml       string
+		wantErrMsg string
+	}{
+		{
+			name: "valid H.Encaps",
+			yaml: fmt.Sprintf("%s      encapBehavior: \"%s\"\n", validSRv6Underlay, v1alpha1.HEncaps),
+		},
+		{
+			name: "valid H.Encaps.Red",
+			yaml: fmt.Sprintf("%s      encapBehavior: \"%s\"\n", validSRv6Underlay, v1alpha1.HEncapsRed),
+		},
+		{
+			name: "valid no encapBehavior",
+			yaml: validSRv6Underlay,
+		},
+		{
+			name:       "invalid encapBehavior value",
+			yaml:       fmt.Sprintf("%s      encapBehavior: \"%s\"\n", validSRv6Underlay, "H.Encaps.Invalid"),
+			wantErrMsg: `Unsupported value: "H.Encaps.Invalid": supported values: "H.Encaps", "H.Encaps.Red"`,
+		},
+		{
+			name: "srv6 without isis",
+			yaml: `
+underlays:
+  - asn: 64514
+    routeridcidr: "10.0.0.0/24"
+    interfaces:
+      - type: NetworkDevice
+        networkDevice:
+          interfaceName: toswitch1
+    neighbors:
+      - asn: 64520
+        address: "2001:db8:1234::1"
+        ebgpMultiHop: true
+    tunnelEndpoint:
+      cidrs:
+      - "2001:db8:1234:5678::/64"
+    srv6:
+      locator:
+        basePrefix: "fd00:0:32::/48"
+        format: "usid-f3216"
+`,
+			wantErrMsg: "SRv6 can only be configured if isis is set",
+		},
+		{
+			name: "srv6 without ipv6 tunnel endpoint",
+			yaml: `
+underlays:
+  - asn: 64514
+    routeridcidr: "10.0.0.0/24"
+    interfaces:
+      - type: NetworkDevice
+        networkDevice:
+          interfaceName: toswitch1
+    neighbors:
+      - asn: 64520
+        address: "2001:db8:1234::1"
+        ebgpMultiHop: true
+    tunnelEndpoint:
+      cidrs:
+      - "100.65.0.0/24"
+    isis:
+      baseNet: "49.0001.0002.0003.0004.00"
+      level: 1
+      interfaces:
+        - name: toswitch1
+          ipFamily: ipv6
+    srv6:
+      locator:
+        basePrefix: "fd00:0:32::/48"
+        format: "usid-f3216"
+`,
+			wantErrMsg: "SRv6 requires at least one IPv6 CIDR in tunnelEndpoint.cidrs",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeYAMLFile(t, dir, "openpe_srv6.yaml", tc.yaml)
+
+			_, err := readStaticConfigs(dir, "test-node", "test-namespace")
+			if tc.wantErrMsg != "" {
+				if err == nil {
+					t.Fatal("expected validation error, got nil")
+				}
+				if !strings.Contains(err.Error(), tc.wantErrMsg) {
+					t.Errorf("expected error containing %q, got: %v", tc.wantErrMsg, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
 	}
 }
 

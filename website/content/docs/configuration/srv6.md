@@ -44,6 +44,7 @@ spec:
     features:
     - "advertisePassiveOnly"
   srv6:
+    encapBehavior: "H.Encaps.Red"
     locator:
       basePrefix: "fd00:0:32::/48"
       format: "usid-f3216"
@@ -92,11 +93,12 @@ For the full list of IS-IS configuration fields, see the
 
 ### SRv6 Configuration
 
-The `srv6` section configures the SRv6 locator. SRv6 can only be enabled
-when IS-IS is also configured.
+The `srv6` section configures the SRv6 locator and encapsulation
+behavior. SRv6 can only be enabled when IS-IS is also configured.
 
 ```yaml
   srv6:
+    encapBehavior: "H.Encaps.Red"
     locator:
       basePrefix: "fd00:0:32::/48"
       format: "usid-f3216"

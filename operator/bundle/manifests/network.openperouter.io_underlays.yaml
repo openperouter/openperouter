@@ -562,6 +562,17 @@ spec:
                 description: srv6 holds the SRv6 configuration. Requires ISIS or Neighbors
                   configuration.
                 properties:
+                  encapBehavior:
+                    description: |-
+                      encapBehavior defines the behavior for SRv6 encapsulation as specified
+                      in RFC 8986 sections 5.1 and 5.2.
+                      If unset, defaults to H.Encaps.
+                    enum:
+                    - H.Encaps
+                    - H.Encaps.Red
+                    maxLength: 12
+                    minLength: 1
+                    type: string
                   locator:
                     description: locator defines the locator for this SRv6 VPN.
                     properties:

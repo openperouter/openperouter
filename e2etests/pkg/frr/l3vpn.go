@@ -11,6 +11,12 @@ import (
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/e2etests/pkg/executor"
 	"github.com/openperouter/openperouter/e2etests/pkg/ipfamily"
+	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
+)
+
+const (
+	HEncaps    EncapMode = "encap"
+	HEncapsRed EncapMode = "encap.red"
 )
 
 type L3VPNData struct {
@@ -64,6 +70,23 @@ type BestPath struct {
 	SelectionReason string `json:"selectionReason"`
 }
 
+type ipRoute struct {
+	Destination string      `json:"dst"`
+	Encap       *ipEncap    `json:"encap,omitempty"`
+	Nexthops    []ipNexthop `json:"nexthops,omitempty"`
+}
+
+type ipNexthop struct {
+	Encap ipEncap `json:"encap"`
+}
+
+type ipEncap struct {
+	EncapType string `json:"encap_type"`
+	EncapMode string `json:"mode"`
+}
+
+type EncapMode string
+
 func L3VPNInfo(exec executor.Executor, family ipfamily.Family) (L3VPNData, error) {
 	res, err := exec.Exec("vtysh", "-c", fmt.Sprintf("show bgp %s vpn detail json", family))
 	if err != nil {
@@ -98,6 +121,54 @@ func (l3 L3VPNData) ContainsBGPRouteForL3VPN(prefix string, routerID string, imp
 		}
 	}
 	return false
+}
+
+// GetKernelRoute takes an executor, a vrf and a prefix (CIDR string) and returns
+// the ipRoute if found, nil if no route could be found or an error in case of
+// an issue with the input.
+func GetKernelRoute(exec openperouter.RouterExecutor, vrf string, prefix string) (*ipRoute, error) {
+	flag := ""
+	switch ipfamily.ForCIDRString(prefix) {
+	case ipfamily.IPv4:
+		flag = "-4"
+	case ipfamily.IPv6:
+		flag = "-6"
+	default:
+		return nil, fmt.Errorf("unknown ip address family for prefix %q", prefix)
+	}
+
+	output, err := exec.Exec("ip", flag, "-j", "route", "show", "vrf", vrf, prefix)
+	if err != nil {
+		return nil, err
+	}
+
+	parsedRoutes, err := parseIPRoutes(output)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(parsedRoutes) == 0 {
+		return nil, nil
+	}
+
+	parsedRoute := parsedRoutes[0]
+
+	// FRR may install a single nexthop or multiple. Either Encap is set (single nexthop) or Nexthops is
+	// (multiple nexthops). For a single nexthop, let's build our own []ipNexthop so that the caller can
+	// simply check Nexthops for either case.
+	if parsedRoute.Encap != nil && len(parsedRoute.Nexthops) == 0 {
+		parsedRoute.Nexthops = []ipNexthop{{Encap: *parsedRoute.Encap}}
+	}
+
+	return &parsedRoute, nil
+}
+
+func parseIPRoutes(input string) ([]ipRoute, error) {
+	var routes []ipRoute
+	if err := json.Unmarshal([]byte(input), &routes); err != nil {
+		return nil, err
+	}
+	return routes, nil
 }
 
 func parseBGPVPNtoL3VPN(data []byte) (L3VPNData, error) {
