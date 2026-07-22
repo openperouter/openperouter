@@ -238,8 +238,12 @@ var _ = Describe("DHCP underlay lifecycle", GroutSupport, Ordered, func() {
 	validateDHCPSessionUp := func() {
 		leafExec := executor.ForContainer(infra.KindLeaf)
 		for _, node := range nodes {
-			ip, err := infra.DHCPNeighborIP(node.Name, infra.CNIUnderlayInterface)
-			ExpectWithOffset(1, err).NotTo(HaveOccurred())
+			var ip string
+			Eventually(func(g Gomega) {
+				var err error
+				ip, err = infra.DHCPNeighborIP(node.Name, infra.CNIUnderlayInterface)
+				g.Expect(err).NotTo(HaveOccurred())
+			}, 3*time.Minute, time.Second).Should(Succeed())
 			validateSessionWithNeighbor(leafExec, validationParameters{
 				fromName:    infra.KindLeaf,
 				toName:      node.Name,
