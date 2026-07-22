@@ -21,7 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
+	"regexp"
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -311,50 +311,31 @@ func (r *PERouterReconciler) resolvePasswordSecrets(ctx context.Context, config 
 	var allErrors []error
 	for i := range config.Underlays {
 		underlay := &config.Underlays[i]
-		validNeighbors := make([]v1alpha1.Neighbor, 0, len(underlay.Spec.Neighbors))
-		for j := range underlay.Spec.Neighbors {
-			n := underlay.Spec.Neighbors[j]
+		var validNeighbors []v1alpha1.Neighbor
+		for _, n := range underlay.Spec.Neighbors {
 			if n.PasswordSecret == nil || *n.PasswordSecret == "" {
 				validNeighbors = append(validNeighbors, n)
 				continue
 			}
-			if n.Password != nil {
-				slog.InfoContext(ctx, "neighbor already has a password, skipping secret resolution",
-					"neighbor", neighborAddr(&n), "secret", *n.PasswordSecret)
-				validNeighbors = append(validNeighbors, n)
-				continue
-			}
 
-			secret := &v1.Secret{}
-			key := types.NamespacedName{Name: *n.PasswordSecret, Namespace: r.MyNamespace}
-			if err := r.Get(ctx, key, secret); err != nil {
-				if !apierrors.IsNotFound(err) {
+			password, err := r.fetchPasswordFromSecret(ctx, *n.PasswordSecret)
+			if err != nil {
+				var statusErr *apierrors.StatusError
+				if errors.As(err, &statusErr) && !apierrors.IsNotFound(err) {
 					return fmt.Errorf("failed to get password secret %q for neighbor %s: %w",
 						*n.PasswordSecret, neighborAddr(&n), err)
 				}
-				allErrors = append(allErrors, secretResolutionError(ctx, underlay.Name, &n,
-					fmt.Sprintf("secret %q not found", *n.PasswordSecret)))
+				allErrors = append(allErrors, &openpeerrors.ResourceError{
+					Obj: v1alpha1.FailedResource{
+						Kind:    openpeerrors.KindUnderlay,
+						Name:    underlay.Name,
+						Reason:  v1alpha1.FailedResourceReasonValidationFailed,
+						Message: fmt.Sprintf("neighbor %s: %s", neighborAddr(&n), err),
+					},
+				})
 				continue
 			}
-
-			if secret.Type != v1.SecretTypeBasicAuth {
-				allErrors = append(allErrors, secretResolutionError(ctx, underlay.Name, &n,
-					fmt.Sprintf("secret %q has type %q, expected %q", *n.PasswordSecret, secret.Type, v1.SecretTypeBasicAuth)))
-				continue
-			}
-
-			pw, ok := secret.Data["password"]
-			if !ok {
-				allErrors = append(allErrors, secretResolutionError(ctx, underlay.Name, &n,
-					fmt.Sprintf("secret %q missing key %q", *n.PasswordSecret, "password")))
-				continue
-			}
-			resolved := string(pw)
-			if err := validateSecretPassword(resolved, neighborAddr(&n), *n.PasswordSecret); err != nil {
-				allErrors = append(allErrors, secretResolutionError(ctx, underlay.Name, &n, err.Error()))
-				continue
-			}
-			n.Password = &resolved
+			n.Password = &password
 			validNeighbors = append(validNeighbors, n)
 		}
 		underlay.Spec.Neighbors = validNeighbors
@@ -362,20 +343,24 @@ func (r *PERouterReconciler) resolvePasswordSecrets(ctx context.Context, config 
 	return errors.Join(allErrors...)
 }
 
-func secretResolutionError(
-	ctx context.Context, underlayName string, n *v1alpha1.Neighbor, msg string,
-) *openpeerrors.ResourceError {
-	fullMsg := fmt.Sprintf("neighbor %s: %s", neighborAddr(n), msg)
-	slog.WarnContext(ctx, "skipping neighbor due to password secret resolution failure",
-		"underlay", underlayName, "neighbor", neighborAddr(n), "reason", msg)
-	return &openpeerrors.ResourceError{
-		Obj: v1alpha1.FailedResource{
-			Kind:    openpeerrors.KindUnderlay,
-			Name:    underlayName,
-			Reason:  v1alpha1.FailedResourceReasonValidationFailed,
-			Message: fullMsg,
-		},
+func (r *PERouterReconciler) fetchPasswordFromSecret(ctx context.Context, secretName string) (string, error) {
+	secret := &v1.Secret{}
+	key := types.NamespacedName{Name: secretName, Namespace: r.MyNamespace}
+	if err := r.Get(ctx, key, secret); err != nil {
+		return "", err
 	}
+	if secret.Type != v1.SecretTypeBasicAuth {
+		return "", fmt.Errorf("secret %q has type %q, expected %q", secretName, secret.Type, v1.SecretTypeBasicAuth)
+	}
+	pw, ok := secret.Data["password"]
+	if !ok {
+		return "", fmt.Errorf("secret %q missing key %q", secretName, "password")
+	}
+	resolved := string(pw)
+	if err := validatePassword(resolved); err != nil {
+		return "", fmt.Errorf("password from secret %q: %w", secretName, err)
+	}
+	return resolved, nil
 }
 
 func neighborAddr(n *v1alpha1.Neighbor) string {
@@ -388,19 +373,16 @@ func neighborAddr(n *v1alpha1.Neighbor) string {
 	return "<unknown>"
 }
 
-const maxPasswordLength = 128
+const maxPasswordLength = 80
 
-// validateSecretPassword enforces the same constraints on secret-sourced passwords
-// that the CRD's kubebuilder markers enforce on inline passwords at admission time.
-// Secrets bypass CRD validation, so we must replicate it here.
-func validateSecretPassword(password, neighbor, secretName string) error {
+var validPasswordPattern = regexp.MustCompile(`^\S+$`)
+
+func validatePassword(password string) error {
 	if len(password) > maxPasswordLength {
-		return fmt.Errorf("password from secret %q for neighbor %s exceeds maximum length %d",
-			secretName, neighbor, maxPasswordLength)
+		return fmt.Errorf("exceeds maximum length %d", maxPasswordLength)
 	}
-	if strings.ContainsAny(password, "\r\n") {
-		return fmt.Errorf("password from secret %q for neighbor %s contains invalid characters (newline/carriage return)",
-			secretName, neighbor)
+	if !validPasswordPattern.MatchString(password) {
+		return errors.New("contains whitespace or is empty")
 	}
 	return nil
 }

@@ -27,7 +27,7 @@ func TestResolvePasswordSecrets(t *testing.T) {
 		secrets           []corev1.Secret
 		wantPassword      string
 		wantNeighborCount int
-		wantResourceErr   bool
+		wantErrContains   string
 	}{
 		{
 			name: "resolves password from secret",
@@ -49,7 +49,7 @@ func TestResolvePasswordSecrets(t *testing.T) {
 			wantNeighborCount: 1,
 		},
 		{
-			name: "password field takes precedence over passwordSecret",
+			name: "pre-resolved password preserved (systemd mode)",
 			neighbors: []v1alpha1.Neighbor{
 				{
 					Address:  new("192.168.1.2"),
@@ -81,7 +81,7 @@ func TestResolvePasswordSecrets(t *testing.T) {
 				},
 			},
 			wantNeighborCount: 0,
-			wantResourceErr:   true,
+			wantErrContains:   "missing-secret",
 		},
 		{
 			name: "secret with wrong type removes neighbor",
@@ -100,7 +100,7 @@ func TestResolvePasswordSecrets(t *testing.T) {
 				},
 			},
 			wantNeighborCount: 0,
-			wantResourceErr:   true,
+			wantErrContains:   "expected \"kubernetes.io/basic-auth\"",
 		},
 		{
 			name: "secret missing password key removes neighbor",
@@ -119,7 +119,7 @@ func TestResolvePasswordSecrets(t *testing.T) {
 				},
 			},
 			wantNeighborCount: 0,
-			wantResourceErr:   true,
+			wantErrContains:   "missing key",
 		},
 		{
 			name: "secret password with newline removes neighbor",
@@ -138,7 +138,7 @@ func TestResolvePasswordSecrets(t *testing.T) {
 				},
 			},
 			wantNeighborCount: 0,
-			wantResourceErr:   true,
+			wantErrContains:   "whitespace",
 		},
 		{
 			name: "secret password with carriage return removes neighbor",
@@ -157,7 +157,26 @@ func TestResolvePasswordSecrets(t *testing.T) {
 				},
 			},
 			wantNeighborCount: 0,
-			wantResourceErr:   true,
+			wantErrContains:   "whitespace",
+		},
+		{
+			name: "secret password with space removes neighbor",
+			neighbors: []v1alpha1.Neighbor{
+				{
+					Address:        new("192.168.1.2"),
+					ASN:            new(int64(64513)),
+					PasswordSecret: new("space-secret"),
+				},
+			},
+			secrets: []corev1.Secret{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "space-secret", Namespace: "openperouter-system"},
+					Type:       corev1.SecretTypeBasicAuth,
+					Data:       map[string][]byte{"password": []byte("pass word")},
+				},
+			},
+			wantNeighborCount: 0,
+			wantErrContains:   "whitespace",
 		},
 		{
 			name: "secret password exceeding max length removes neighbor",
@@ -172,11 +191,11 @@ func TestResolvePasswordSecrets(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "long-secret", Namespace: "openperouter-system"},
 					Type:       corev1.SecretTypeBasicAuth,
-					Data:       map[string][]byte{"password": []byte(strings.Repeat("a", 129))},
+					Data:       map[string][]byte{"password": []byte(strings.Repeat("a", 81))},
 				},
 			},
 			wantNeighborCount: 0,
-			wantResourceErr:   true,
+			wantErrContains:   "maximum length",
 		},
 		{
 			name: "mix of valid and invalid neighbors keeps valid ones",
@@ -205,7 +224,7 @@ func TestResolvePasswordSecrets(t *testing.T) {
 			},
 			wantPassword:      "valid-password",
 			wantNeighborCount: 2,
-			wantResourceErr:   true,
+			wantErrContains:   "missing-secret",
 		},
 	}
 
@@ -234,14 +253,7 @@ func TestResolvePasswordSecrets(t *testing.T) {
 
 			err := r.resolvePasswordSecrets(context.Background(), &config)
 
-			var resourceErr *openpeerrors.ResourceError
-			hasResourceErr := errors.As(err, &resourceErr)
-			if tt.wantResourceErr && !hasResourceErr {
-				t.Fatalf("expected ResourceError but got: %v", err)
-			}
-			if !tt.wantResourceErr && err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
+			checkResolveError(t, err, tt.wantErrContains)
 
 			neighbors := config.Underlays[0].Spec.Neighbors
 			if len(neighbors) != tt.wantNeighborCount {
@@ -256,6 +268,48 @@ func TestResolvePasswordSecrets(t *testing.T) {
 				if got != tt.wantPassword {
 					t.Errorf("password = %q, want %q", got, tt.wantPassword)
 				}
+			}
+		})
+	}
+}
+
+func checkResolveError(t *testing.T, err error, wantContains string) {
+	t.Helper()
+	if wantContains != "" {
+		var resourceErr *openpeerrors.ResourceError
+		if !errors.As(err, &resourceErr) || !strings.Contains(err.Error(), wantContains) {
+			t.Fatalf("expected ResourceError containing %q, got: %v", wantContains, err)
+		}
+		return
+	}
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidatePassword(t *testing.T) {
+	tests := []struct {
+		name    string
+		pass    string
+		wantErr bool
+	}{
+		{name: "valid", pass: "my-secret-123", wantErr: false},
+		{name: "single char", pass: "x", wantErr: false},
+		{name: "max length", pass: strings.Repeat("a", 80), wantErr: false},
+		{name: "too long", pass: strings.Repeat("a", 81), wantErr: true},
+		{name: "empty", pass: "", wantErr: true},
+		{name: "contains space", pass: "pass word", wantErr: true},
+		{name: "contains tab", pass: "pass\tword", wantErr: true},
+		{name: "contains newline", pass: "pass\nword", wantErr: true},
+		{name: "contains carriage return", pass: "pass\rword", wantErr: true},
+		{name: "leading space", pass: " password", wantErr: true},
+		{name: "trailing space", pass: "password ", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validatePassword(tt.pass)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validatePassword(%q) error = %v, wantErr %v", tt.pass, err, tt.wantErr)
 			}
 		})
 	}

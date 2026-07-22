@@ -10,7 +10,6 @@ package v1alpha1
 // +kubebuilder:validation:XValidation:rule="!has(self.holdTimeSeconds) || !has(self.keepaliveTimeSeconds) || self.keepaliveTimeSeconds <= self.holdTimeSeconds",message="keepaliveTimeSeconds must be lower than or equal to holdTimeSeconds"
 // +kubebuilder:validation:XValidation:rule="has(self.address) || has(self.interface)",message="Either a valid Address or Interface name must be provided for Neighbor"
 // +kubebuilder:validation:XValidation:rule="!has(self.address) || !has(self.interface)",message="Address and Interface cannot be set together for Neighbor"
-// +kubebuilder:validation:XValidation:rule="!(has(self.password) && has(self.passwordSecret))",message="password and passwordSecret are mutually exclusive"
 // +kubebuilder:validation:XValidation:rule="!has(self.interface) || !has(self.addressFamilies) || !self.addressFamilies.exists(f, f.type == 'ipv4vpn' || f.type == 'ipv6vpn')",message="ipv4vpn and ipv6vpn address families are not supported for unnumbered (interface) neighbors"
 // +kubebuilder:validation:XValidation:rule="!has(self.address) || !has(self.addressFamilies) || ip(self.address).family() != 4 || !self.addressFamilies.exists(f, f.type == 'ipv4vpn' || f.type == 'ipv6vpn')",message="ipv4vpn and ipv6vpn address families require an IPv6 neighbor address"
 type Neighbor struct {
@@ -48,18 +47,15 @@ type Neighbor struct {
 	// +kubebuilder:validation:Maximum=16384
 	Port *int32 `json:"port,omitempty"`
 
-	// password to be used for establishing the BGP session.
-	// Password and PasswordSecret are mutually exclusive.
-	// +kubebuilder:validation:MaxLength=128
-	// +kubebuilder:validation:Pattern=`^\S+$`
-	// +optional
-	Password *string `json:"password,omitempty"`
+	// Password is the resolved BGP session password, populated internally.
+	// Not part of the CRD API — Kubernetes users must use PasswordSecret.
+	// In systemd mode, set via the static config types.
+	Password *string `json:"-"`
 
 	// passwordSecret is name of the authentication secret for the neighbor.
-	// the secret must be of type "kubernetes.io/basic-auth", and created in the
+	// The secret must be of type "kubernetes.io/basic-auth", and created in the
 	// same namespace as the perouter daemon. The password is stored in the
 	// secret as the key "password".
-	// Password and PasswordSecret are mutually exclusive.
 	// +optional
 	PasswordSecret *string `json:"passwordSecret,omitempty"`
 
