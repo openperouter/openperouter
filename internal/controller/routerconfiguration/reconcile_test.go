@@ -361,23 +361,77 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 			},
 		},
 		{
-			name: "L3VPN with L3VNI reports failure but reconciles other resources",
+			name:      "L3VPN with L3VNI in same VRF reports failure but reconciles other resources (L2VNI ref: L3VNI)",
+			underlays: srv6Underlays(),
 			l3VNIs: []v1alpha1.L3VNI{
-				l3VNI("bad-l3-vni", "vrfA", 100),
+				l3VNI("good-l3-vni", "vrfA", 100),
 			},
 			l3VPNs: []v1alpha1.L3VPN{
-				l3VPN("bad-l3-vpn", "vrfB", 101),
+				l3VPN("bad-l3-vpn", "vrfA", 101),
+			},
+			l2VNIs: []v1alpha1.L2VNI{
+				l2VNI("good-l2", l3vniRoutingDomain("good-l3-vni"), 200),
+			},
+			expectedFailures: []v1alpha1.FailedResource{
+				{Kind: openpeerrors.KindL3VPN, Name: "bad-l3-vpn", Reason: v1alpha1.FailedResourceReasonValidationFailed,
+					Message: `conflict with L3VNI detected in VRF "vrfA": "/good-l3-vni" already exists`},
+			},
+			wantConfig: conversion.APIConfigData{
+				Underlays: srv6Underlays(),
+				L3VNIs: []v1alpha1.L3VNI{
+					l3VNI("good-l3-vni", "vrfA", 100),
+				},
+				L2VNIs: []v1alpha1.L2VNI{
+					l2VNI("good-l2", l3vniRoutingDomain("good-l3-vni"), 200),
+				},
+			},
+		},
+		{
+			name:      "L3VPN with L3VNI in same VRF reports failure but reconciles other resources (L2VNI ref: L3VPN)",
+			underlays: srv6Underlays(),
+			l3VNIs: []v1alpha1.L3VNI{
+				l3VNI("good-l3-vni", "vrfA", 100),
+			},
+			l3VPNs: []v1alpha1.L3VPN{
+				l3VPN("bad-l3-vpn", "vrfA", 101),
+			},
+			l2VNIs: []v1alpha1.L2VNI{
+				l2VNI("bad-l2", l3vpnRoutingDomain("bad-l3-vpn"), 200),
+			},
+			expectedFailures: []v1alpha1.FailedResource{
+				{Kind: openpeerrors.KindL3VPN, Name: "bad-l3-vpn", Reason: v1alpha1.FailedResourceReasonValidationFailed,
+					Message: `conflict with L3VNI detected in VRF "vrfA": "/good-l3-vni" already exists`},
+				{Kind: openpeerrors.KindL2VNI, Name: "bad-l2", Reason: v1alpha1.FailedResourceReasonDependencyFailed,
+					Message: `referenced L3VPN "bad-l3-vpn" not found`},
+			},
+			wantConfig: conversion.APIConfigData{
+				Underlays: srv6Underlays(),
+				L3VNIs: []v1alpha1.L3VNI{
+					l3VNI("good-l3-vni", "vrfA", 100),
+				},
+				L2VNIs: []v1alpha1.L2VNI{},
+			},
+		},
+		{
+			name:      "L3VPN with L3VNI in different VRFs succeeds",
+			underlays: srv6Underlays(),
+			l3VNIs: []v1alpha1.L3VNI{
+				l3VNI("good-vni", "vrfA", 100),
+			},
+			l3VPNs: []v1alpha1.L3VPN{
+				l3VPN("good-vpn", "vrfB", 101),
 			},
 			l2VNIs: []v1alpha1.L2VNI{
 				l2VNI("good-l2", nil, 200),
 			},
-			expectedFailures: []v1alpha1.FailedResource{
-				{Kind: openpeerrors.KindL3VNI, Name: "bad-l3-vni", Reason: v1alpha1.FailedResourceReasonValidationFailed,
-					Message: "cannot specify L3VNI resources and L3VPN resources at the same time"},
-				{Kind: openpeerrors.KindL3VPN, Name: "bad-l3-vpn", Reason: v1alpha1.FailedResourceReasonValidationFailed,
-					Message: "cannot specify L3VPN resources and L3VNI resources at the same time"},
-			},
 			wantConfig: conversion.APIConfigData{
+				Underlays: srv6Underlays(),
+				L3VNIs: []v1alpha1.L3VNI{
+					l3VNI("good-vni", "vrfA", 100),
+				},
+				L3VPNs: []v1alpha1.L3VPN{
+					l3VPN("good-vpn", "vrfB", 101),
+				},
 				L2VNIs: []v1alpha1.L2VNI{
 					l2VNI("good-l2", nil, 200),
 				},
