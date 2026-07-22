@@ -441,20 +441,12 @@ spec:
                         Defaults to 60.
                       format: int64
                       type: integer
-                    password:
-                      description: |-
-                        password to be used for establishing the BGP session.
-                        Password and PasswordSecret are mutually exclusive.
-                      maxLength: 128
-                      pattern: ^\S+$
-                      type: string
                     passwordSecret:
                       description: |-
                         passwordSecret is name of the authentication secret for the neighbor.
-                        the secret must be of type "kubernetes.io/basic-auth", and created in the
+                        The secret must be of type "kubernetes.io/basic-auth", and created in the
                         same namespace as the perouter daemon. The password is stored in the
                         secret as the key "password".
-                        Password and PasswordSecret are mutually exclusive.
                       type: string
                     port:
                       description: |-
@@ -491,8 +483,6 @@ spec:
                     rule: has(self.address) || has(self.interface)
                   - message: Address and Interface cannot be set together for Neighbor
                     rule: '!has(self.address) || !has(self.interface)'
-                  - message: password and passwordSecret are mutually exclusive
-                    rule: '!(has(self.password) && has(self.passwordSecret))'
                   - message: ipv4vpn and ipv6vpn address families are not supported
                       for unnumbered (interface) neighbors
                     rule: '!has(self.interface) || !has(self.addressFamilies) || !self.addressFamilies.exists(f,
