@@ -42,8 +42,28 @@ type StaticL3VPN struct {
 	v1alpha1.L3VPNSpec `json:",inline" yaml:",inline"`
 }
 
+// StaticNeighbor wraps a Neighbor with a password field for static
+// configuration. The CRD API does not expose a plaintext password —
+// Kubernetes users must use passwordSecret instead. In systemd mode
+// there are no Secrets, so the password is set directly here.
+type StaticNeighbor struct {
+	v1alpha1.Neighbor `json:",inline" yaml:",inline"`
+	Password          *string `json:"password,omitempty" yaml:"password,omitempty"`
+}
+
+// StaticUnderlaySpec mirrors UnderlaySpec but uses StaticNeighbor so
+// that plaintext passwords can be deserialized from static config files.
+type StaticUnderlaySpec struct {
+	v1alpha1.UnderlaySpec `json:",inline" yaml:",inline"`
+	// Neighbors intentionally shadows UnderlaySpec.Neighbors (same JSON
+	// key) so that YAML deserialization populates StaticNeighbor instead
+	// of Neighbor. Access the embedded UnderlaySpec.Neighbors is always
+	// nil after deserialization — use this field instead.
+	Neighbors []StaticNeighbor `json:"neighbors,omitempty" yaml:"neighbors,omitempty"`
+}
+
 type PERouterConfig struct {
-	Underlays      []v1alpha1.UnderlaySpec     `yaml:"underlays"`
+	Underlays      []StaticUnderlaySpec        `yaml:"underlays"`
 	L2VNIs         []StaticL2VNI               `yaml:"l2vnis"`
 	L3VNIs         []StaticL3VNI               `yaml:"l3vnis"`
 	L3VPNs         []StaticL3VPN               `yaml:"l3vpns"`

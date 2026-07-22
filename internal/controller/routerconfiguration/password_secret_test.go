@@ -149,6 +149,24 @@ func TestResolvePasswordSecrets(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name: "secret password with space rejected",
+			neighbors: []v1alpha1.Neighbor{
+				{
+					Address:        new("192.168.1.2"),
+					ASN:            new(int64(64513)),
+					PasswordSecret: new("space-secret"),
+				},
+			},
+			secrets: []corev1.Secret{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "space-secret", Namespace: "openperouter-system"},
+					Type:       corev1.SecretTypeBasicAuth,
+					Data:       map[string][]byte{"password": []byte("pass word")},
+				},
+			},
+			wantErr: true,
+		},
+		{
 			name: "secret password exceeding max length rejected",
 			neighbors: []v1alpha1.Neighbor{
 				{
@@ -161,7 +179,7 @@ func TestResolvePasswordSecrets(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "long-secret", Namespace: "openperouter-system"},
 					Type:       corev1.SecretTypeBasicAuth,
-					Data:       map[string][]byte{"password": []byte(strings.Repeat("a", 129))},
+					Data:       map[string][]byte{"password": []byte(strings.Repeat("a", 81))},
 				},
 			},
 			wantErr: true,
@@ -208,6 +226,34 @@ func TestResolvePasswordSecrets(t *testing.T) {
 			}
 			if got != tt.wantPassword {
 				t.Errorf("password = %q, want %q", got, tt.wantPassword)
+			}
+		})
+	}
+}
+
+func TestValidatePassword(t *testing.T) {
+	tests := []struct {
+		name    string
+		pass    string
+		wantErr bool
+	}{
+		{name: "valid", pass: "my-secret-123", wantErr: false},
+		{name: "single char", pass: "x", wantErr: false},
+		{name: "max length", pass: strings.Repeat("a", 80), wantErr: false},
+		{name: "too long", pass: strings.Repeat("a", 81), wantErr: true},
+		{name: "empty", pass: "", wantErr: true},
+		{name: "contains space", pass: "pass word", wantErr: true},
+		{name: "contains tab", pass: "pass\tword", wantErr: true},
+		{name: "contains newline", pass: "pass\nword", wantErr: true},
+		{name: "contains carriage return", pass: "pass\rword", wantErr: true},
+		{name: "leading space", pass: " password", wantErr: true},
+		{name: "trailing space", pass: "password ", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validatePassword(tt.pass)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validatePassword(%q) error = %v, wantErr %v", tt.pass, err, tt.wantErr)
 			}
 		})
 	}
