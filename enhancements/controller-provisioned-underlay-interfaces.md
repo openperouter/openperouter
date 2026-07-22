@@ -2,7 +2,7 @@
 
 ## Summary
 
-Add a `CNI` provisioning mode to the `interfaces` union introduced by
+Add a `CNIDevice` provisioning mode to the `interfaces` union introduced by
 [PR #341](https://github.com/openperouter/openperouter/pull/341), so the
 controller can invoke any CNI plugin via
 [libcni](https://pkg.go.dev/github.com/containernetworking/cni/libcni)
@@ -109,7 +109,7 @@ infrastructure, with a stable identity across restarts.
 The API improvements enhancement replaces `UnderlaySpec.Nics []string` with
 `Interfaces []UnderlayInterface` — a discriminated-union slice whose `type`
 field selects how each underlay link is obtained. It defines the first mode
-(`NetworkDevice`); this enhancement adds `CNI`.
+(`NetworkDevice`); this enhancement adds `CNIDevice`.
 
 After this enhancement, the two modes are:
 
@@ -157,7 +157,7 @@ Replaces Multus-based underlay — the parent NIC stays on the host.
 
 ```yaml
 interfaces:
-  - type: CNI
+  - type: CNIDevice
     cniDevice:
       type: RawConfig
       rawConfig:
@@ -180,7 +180,7 @@ port-security):
 
 ```yaml
 interfaces:
-  - type: CNI
+  - type: CNIDevice
     cniDevice:
       type: RawConfig
       rawConfig:
@@ -199,7 +199,7 @@ per node** with a `nodeSelector` targeting that node and the node-specific
 IP in the `static` IPAM `addresses` list:
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: Underlay
 metadata:
   name: underlay-worker-0
@@ -209,7 +209,7 @@ spec:
       kubernetes.io/hostname: worker-0
   asn: 64514
   interfaces:
-    - type: CNI
+    - type: CNIDevice
       cniDevice:
         type: RawConfig
         rawConfig:
@@ -238,7 +238,7 @@ Repeat for each node with a different `nodeSelector` and IP — only the
 
 ```yaml
 interfaces:
-  - type: CNI
+  - type: CNIDevice
     cniDevice:
       type: RawConfig
       rawConfig:
@@ -275,7 +275,7 @@ The DHCP DISCOVER is sent with the pinned MAC — no plugin chaining with
 This requires one Underlay per node (same pattern as static IPs):
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: Underlay
 metadata:
   name: underlay-worker-0
@@ -285,7 +285,7 @@ spec:
       kubernetes.io/hostname: worker-0
   asn: 64514
   interfaces:
-    - type: CNI
+    - type: CNIDevice
       cniDevice:
         type: RawConfig
         rawConfig:
@@ -342,11 +342,14 @@ list. The controller enforces no schema on `runtimeConfig`.
 
 ###### DHCP prerequisites
 
-**DHCP daemon:** The CNI `dhcp` IPAM plugin requires a DHCP daemon
-process running on each node (`dhcp daemon` or via systemd socket
-activation at `/run/cni/dhcp.sock`). See
+**DHCP daemon:** The CNI `dhcp` IPAM plugin requires a running DHCP
+daemon on each node. The controller automatically starts and supervises
+the daemon as a child process when the CNI config uses DHCP IPAM —
+starting it on demand, restarting it on exit, and triggering lease
+re-acquisition after each restart. The bundled binary path is
+`/opt/openperouter/cni/bin/dhcp`. See
 [CNI DHCP plugin docs](https://www.cni.dev/plugins/current/ipam/dhcp/)
-for setup.
+for background on the daemon.
 
 **Lease lifecycle across restarts:**
 - **Router pod restart (netns preserved):** The CNI cache survives on
@@ -356,9 +359,11 @@ for setup.
   (releases the DHCP lease), then CNI ADD. With a pinned MAC, the
   server should assign the same IP (if using reservations or sticky
   leases).
-- **DHCP daemon restart:** The daemon loses in-memory lease state. If
-  the lease expires before recovery, the IP may be lost. Mitigate with
-  systemd socket activation for automatic daemon restart.
+- **DHCP daemon restart:** The daemon loses in-memory lease state. The
+  supervisor automatically restarts it; the next CNI ADD or DEL call
+  with DHCP IPAM blocks until the daemon socket is ready via
+  `EnsureUp`. IP stability depends on the DHCP server's allocation
+  policy (sticky leases or static reservations).
 
 ### Risks and Mitigations
 
@@ -370,8 +375,8 @@ for setup.
 | CNI DEL fails during teardown | DEL errors are logged but do not block teardown. CNI spec mandates plugins handle repeated DEL calls gracefully. |
 | `runtimeConfig` keys silently stripped by `libcni` | `libcni` only forwards keys the plugin declares in its `"capabilities"` block. Document prominently; consider logging a warning when `runtimeConfig` is set but the config has no capabilities. |
 | DHCP IPAM: macvlan random MAC causes IP instability | Document that DHCP with macvlan requires MAC pinning via `runtimeConfig.mac`. |
-| DHCP IPAM: DHCP daemon not running | CNI ADD fails immediately with a socket connection error. Document the daemon requirement. |
-| DHCP IPAM: lease expires during daemon downtime | Mitigate with systemd socket activation for fast daemon recovery and long lease times. |
+| DHCP IPAM: DHCP daemon not running | The controller automatically starts and supervises the daemon when the CNI config uses DHCP IPAM. CNI ADD blocks until the daemon socket is ready. |
+| DHCP IPAM: lease expires during daemon downtime | The supervisor restarts the daemon automatically; long lease times further mitigate. |
 | Operator forgets to set the sub-struct matching the type | CEL validation rejects the resource at admission time. |
 | `containernetworking/cni` dependency version conflicts | Pin to `v1.2.x` in `go.mod`. This version targets CNI spec 1.0.0+ (required for CHECK support and capabilities filtering). Minimal transitive dependencies. |
 
@@ -385,7 +390,7 @@ for setup.
 //
 // +union
 type UnderlayInterface struct {
-	// +kubebuilder:validation:Enum=NetworkDevice;CNI
+	// +kubebuilder:validation:Enum=NetworkDevice;CNIDevice
 	// +required
 	// +unionDiscriminator
 	Type string `json:"type,omitempty"`
@@ -394,17 +399,17 @@ type UnderlayInterface struct {
 	// netns. When IPAM is configured, the controller assigns deterministic
 	// per-node IPs from CIDR pools.
 	// +optional
-	NetworkDevice *NetworkDeviceConfig `json:"networkDevice,omitempty"`
+	NetworkDevice *NetworkDevice `json:"networkDevice,omitempty"`
 
 	// cniDevice invokes a CNI plugin to provision an interface in the router
 	// netns. IPAM is handled by the CNI plugin.
 	// +optional
-	CNIDevice *CNIDeviceConfig `json:"cniDevice,omitempty"`
+	CNIDevice *CNIDevice `json:"cniDevice,omitempty"`
 }
 
-// NetworkDeviceConfig specifies which host network device to move into
+// NetworkDevice specifies which host network device to move into
 // the router netns, and optional IPAM configuration.
-type NetworkDeviceConfig struct {
+type NetworkDevice struct {
 	// +kubebuilder:validation:Pattern=`^[a-zA-Z][a-zA-Z0-9._-]*$`
 	// +kubebuilder:validation:MaxLength=15
 	// +required
@@ -414,7 +419,7 @@ type NetworkDeviceConfig struct {
 	IPAM *InterfaceIPAM `json:"ipam,omitempty"`
 }
 
-// CNIDeviceConfig specifies how to invoke a CNI plugin to provision
+// CNIDevice specifies how to invoke a CNI plugin to provision
 // an underlay interface. The config source is a discriminated union —
 // additional source variants (e.g. NAD reference, filesystem path)
 // can be added later if a concrete user need emerges.
@@ -423,7 +428,7 @@ type NetworkDeviceConfig struct {
 // +kubebuilder:validation:XValidation:rule="self.type == 'RawConfig' ? has(self.rawConfig) : true",message="rawConfig is required when type is RawConfig"
 // +kubebuilder:validation:XValidation:rule="self.type != 'RawConfig' ? !has(self.rawConfig) : true",message="rawConfig must not be set when type is not RawConfig"
 // +kubebuilder:validation:XValidation:rule="oldSelf.rawConfig == self.rawConfig",message="rawConfig is immutable; delete and recreate the Underlay to change it"
-type CNIDeviceConfig struct {
+type CNIDevice struct {
 	// +kubebuilder:validation:Enum=RawConfig
 	// +required
 	// +unionDiscriminator
@@ -485,7 +490,7 @@ type NativeIPAM struct {
 
 ### Controller Provisioning Flow
 
-The controller's reconciliation pipeline is extended to handle the `CNI`
+The controller's reconciliation pipeline is extended to handle the `CNIDevice`
 type. The provisioning logic runs in the same phase where it currently
 moves host devices.
 
@@ -529,7 +534,7 @@ include `static` and `dhcp`.
     failure.
   - Delete when no cache exists → succeeds gracefully.
 - **Reconciliation tests**: Verify:
-  - Type change (`NetworkDevice` → `CNI`) triggers rebuild.
+  - Type change (`NetworkDevice` → `CNIDevice`) triggers rebuild.
   - Config source change triggers rebuild.
   - Cached CNI result → no re-invocation.
   - CNI ADD fails → error propagated to status.
@@ -557,9 +562,9 @@ include `static` and `dhcp`.
 
 ### Implementation
 
-- `CNIDeviceConfig` type added to the API;
-  `UnderlayInterface` enum extended with `CNI`.
-- CEL validation rules for `CNIDeviceConfig`
+- `CNIDevice` type added to the API;
+  `UnderlayInterface` enum extended with `CNIDevice`.
+- CEL validation rules for `CNIDevice`
   (RawConfig required/forbidden, immutability).
 - CNI invocation layer (`internal/cni/invoker.go`) wrapping `libcni`:
   config resolution from `RawConfig`, `runtimeConfig` merging, cache
@@ -600,7 +605,7 @@ include `static` and `dhcp`.
 
 ```yaml
 interfaces:
-  - type: CNI
+  - type: CNIDevice
     nadName: macvlan-underlay
     nadNamespace: default
 ```
@@ -656,7 +661,7 @@ bond breaks.
 Integrate with
 [k8snetworkplumbingwg/bond-cni](https://github.com/k8snetworkplumbingwg/bond-cni)
 as an additional supported CNI interface plugin. With `bond-cni` invoked
-via `CNI` mode, the bond is created directly inside the router netns with
+via `CNIDevice` mode, the bond is created directly inside the router netns with
 its member interfaces already in place, so the BGP session survives a
 single link failure.
 
