@@ -166,7 +166,7 @@ func TestValidateL3VNICreate(t *testing.T) {
 			errorString: "more than one L3VNI detected in VRF",
 		},
 		{
-			name: "testing L3VNIs and L3VPNs are mutually exclusive",
+			name: "testing L3VNIs and L3VPNs are mutually exclusive per VRF",
 			nodes: []*v1.Node{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -184,7 +184,7 @@ func TestValidateL3VNICreate(t *testing.T) {
 						Name:      "existingL3VPN",
 					},
 					Spec: v1alpha1.L3VPNSpec{
-						VRF: "0123456789abcdefghijkl",
+						VRF: "vrfa",
 						HostSession: &v1alpha1.HostSession{
 							LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.0.4.0/24")},
 						},
@@ -213,7 +213,41 @@ func TestValidateL3VNICreate(t *testing.T) {
 					},
 				},
 			},
-			errorString: "cannot create L3VNI default/newL3VNI when L3VPNs already exist",
+			errorString: `cannot create L3VNI default/newL3VNI: VRF "vrfa" is already used by L3VPN default/existingL3VPN`,
+		},
+		{
+			name: "L3VNI allowed when L3VPN exists in a different VRF",
+			nodes: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node1",
+						Labels: map[string]string{
+							"nodeName": "node1",
+						},
+					},
+				},
+			},
+			l3vpns: []*v1alpha1.L3VPN{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: "default",
+						Name:      "existingL3VPN",
+					},
+					Spec: v1alpha1.L3VPNSpec{
+						VRF: "vrfa",
+					},
+				},
+			},
+			newL3VNI: &v1alpha1.L3VNI{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      "newL3VNI",
+				},
+				Spec: v1alpha1.L3VNISpec{
+					VRF: "vrfb",
+					VNI: 100,
+				},
+			},
 		},
 	}
 	for _, tc := range tcs {
