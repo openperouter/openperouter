@@ -33,7 +33,7 @@ runs:
         cache-to: type=gha,mode=max,scope=kind-node-openperouter
 
     - name: Upload kind-node-openperouter artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         retention-days: 1
         name: image-tar-kind-node-openperouter
