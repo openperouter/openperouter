@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 	"text/template"
 
@@ -144,6 +145,19 @@ type NeighborConfig struct {
 	UpdateSource    string
 }
 
+var frrPasswordRe = regexp.MustCompile(`(?m)([\s+\-]*neighbor\s+\S+\s+password\s+)\S+(.*)`)
+
+func (nc NeighborConfig) LogValue() slog.Value {
+	type noLogValuer NeighborConfig
+	val := noLogValuer(nc)
+	val.Password = "<REDACTED>"
+	return slog.AnyValue(val)
+}
+
+func RedactPasswords(config string) string {
+	return frrPasswordRe.ReplaceAllString(config, "${1}<REDACTED>${2}")
+}
+
 // templateConfig uses the template library to template
 // 'globalConfigTemplate' using 'data'.
 func templateConfig(data any) (string, error) {
@@ -207,13 +221,13 @@ func generateAndReloadConfigFile(ctx context.Context, config *Config, updater Co
 
 	configString, err := templateConfig(config)
 	if err != nil {
-		slog.Error("failed to generate config from template", "error", err, "cause", "template", "config", config)
+		slog.Error("failed to generate config from template", "error", err, "cause", "template")
 		return err
 	}
-	slog.DebugContext(ctx, "frr generaetd configuration", "config", configString)
+	slog.DebugContext(ctx, "frr generated configuration", "config", RedactPasswords(configString))
 	err = updater(ctx, configString)
 	if err != nil {
-		slog.Error("failed to write frr config", "error", err, "cause", "updater", "config", config)
+		slog.Error("failed to write frr config", "error", err, "cause", "updater")
 		return err
 	}
 	return nil
