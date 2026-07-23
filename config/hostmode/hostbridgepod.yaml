@@ -35,8 +35,12 @@ spec:
             fieldRef:
               fieldPath: spec.nodeName
         securityContext:
-          privileged: true
           runAsUser: 0
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+          seccompProfile:
+            type: RuntimeDefault
         volumeMounts:
         - name: shared-config
           mountPath: /shared

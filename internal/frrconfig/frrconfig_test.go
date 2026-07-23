@@ -83,8 +83,8 @@ func TestFakeReloadHelper(t *testing.T) {
 		}
 		args = args[1:]
 	}
-	if len(args) != 3 {
-		fmt.Printf("expecting 3 args, got %v", args)
+	if len(args) != 5 {
+		fmt.Printf("expecting 5 args, got %v", args)
 		os.Exit(1)
 	}
 
@@ -93,7 +93,7 @@ func TestFakeReloadHelper(t *testing.T) {
 		os.Exit(1)
 	}
 	action, _ := strings.CutPrefix(args[1], "--")
-	path := args[2]
+	path := args[4]
 
 	params, ok := tests[path]
 	if !ok {

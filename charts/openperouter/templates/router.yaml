@@ -143,15 +143,25 @@ spec:
       hostNetwork: true
       terminationGracePeriodSeconds: 10
       shareProcessNamespace: true
+      securityContext:
+        supplementalGroups: [92, 102]
       containers:
       - name: frr
         securityContext:
+          allowPrivilegeEscalation: false
           capabilities:
+            drop: ["ALL"]
             add:
             - NET_ADMIN
             - NET_RAW
             - SYS_ADMIN
             - NET_BIND_SERVICE
+            - SETUID
+            - SETGID
+            - CHOWN
+            - DAC_OVERRIDE
+          seccompProfile:
+            type: Unconfined
         image: {{ .Values.openperouter.image.repository }}:{{ .Values.openperouter.image.tag | default .Chart.AppVersion }}
         {{- if .Values.openperouter.image.pullPolicy }}
         imagePullPolicy: {{ .Values.openperouter.image.pullPolicy }}
@@ -171,6 +181,7 @@ spec:
           - name: netns
             mountPath: /var/run/netns
             mountPropagation: HostToContainer
+            readOnly: true
           {{- if eq .Values.openperouter.datapath "grout" }}
           - name: grout-socket
             mountPath: /var/run/grout
@@ -226,6 +237,11 @@ spec:
         securityContext:
           seLinuxOptions:
             type: spc_t
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+          seccompProfile:
+            type: RuntimeDefault
         volumeMounts:
           - name: frrconfig
             mountPath: /etc/frr
@@ -260,7 +276,17 @@ spec:
       {{- if eq .Values.openperouter.datapath "grout" }}
       - name: grout
         securityContext:
-          privileged: true
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+            add:
+            - SYS_ADMIN
+            - NET_ADMIN
+            - NET_RAW
+            - IPC_LOCK
+          seccompProfile:
+            type: Unconfined
         image: "{{ .Values.openperouter.grout.image.repository }}:{{ .Values.openperouter.grout.image.tag }}"
         {{- if .Values.openperouter.grout.image.pullPolicy }}
         imagePullPolicy: {{ .Values.openperouter.grout.image.pullPolicy }}
@@ -298,6 +324,10 @@ spec:
           - name: host-nsenter
             mountPath: /usr/bin/nsenter
             readOnly: true
+          - name: dev-net-tun
+            mountPath: /dev/net/tun
+          - name: dpdk-runtime
+            mountPath: /var/run/dpdk
         {{- with .Values.openperouter.grout.resources }}
         resources:
           {{- toYaml . | nindent 12 }}
@@ -359,10 +389,22 @@ spec:
           hostPath:
             path: /usr/bin/nsenter
             type: File
+        - name: dev-net-tun
+          hostPath:
+            path: /dev/net/tun
+            type: CharDevice
+        - name: dpdk-runtime
+          emptyDir: {}
         {{- end }}
       initContainers:
         # Copies the initial config files with the right permissions to the shared volume.
         - name: cp-frr-files
+          securityContext:
+            capabilities:
+              drop: ["ALL"]
+            allowPrivilegeEscalation: false
+            seccompProfile:
+              type: RuntimeDefault
           image: {{ .Values.openperouter.image.repository }}:{{ .Values.openperouter.image.tag | default .Chart.AppVersion }}
           {{- if .Values.openperouter.image.pullPolicy }}
           imagePullPolicy: {{ .Values.openperouter.image.pullPolicy }}

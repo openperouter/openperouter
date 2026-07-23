@@ -60,6 +60,17 @@ RUN dnf install -y iproute iproute-tc catatonit && dnf clean all
 RUN ln -s /usr/libexec/podman/catatonit /sbin/tini
 
 RUN mkdir /rpms
+
+# Pin FRR GIDs before RPM install so they match the supplementalGroups
+# in the Kubernetes pod spec. The grout FRR RPM uses sysusers.d which
+# assigns dynamic GIDs; pre-creating the groups forces stable values.
+# GID 92: frr group (VTY sockets are owned frr:frr in this image)
+# GID 102: frrvty group (VTY sockets are owned frr:frrvty in the Alpine image)
+RUN groupadd -r -g 92 frr && \
+    useradd -r -u 92 -g frr -d /var/run/frr -s /sbin/nologin -c "FRRouting suite" frr && \
+    groupadd -r -g 102 frrvty && \
+    usermod -a -G frrvty frr
+
 ADD https://github.com/DPDK/grout/releases/download/v0.16.0/frr.x86_64.rpm /tmp/
 ADD https://github.com/DPDK/grout/releases/download/v0.16.0/grout-frr.x86_64.rpm /tmp/
 ADD https://github.com/DPDK/grout/releases/download/v0.16.0/grout.x86_64.rpm /tmp/
