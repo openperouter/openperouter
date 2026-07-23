@@ -67,7 +67,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: "go.mod"
           cache: true
@@ -99,7 +99,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: "go.mod"
           cache: true
@@ -126,7 +126,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: "go.mod"
           cache: true
@@ -198,12 +198,12 @@ jobs:
       fail-fast: true
     steps:
       - name: Code checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Setup docker buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build and export the image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           tags: quay.io/openperouter/router:main-grout,localhost:5000/router:main-grout
@@ -212,7 +212,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Upload openperouter artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           retention-days: 1
           name: image-tar-openperouter-grout
@@ -248,7 +248,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: "go.mod"
           cache: true
@@ -378,7 +378,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: "go.mod"
           cache: true
