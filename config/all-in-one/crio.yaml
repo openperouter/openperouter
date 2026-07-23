@@ -1805,6 +1805,15 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: openperouter
+  name: nodemarker
+  namespace: openperouter-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: openperouter
   name: perouter
   namespace: openperouter-system
 ---
@@ -1825,15 +1834,41 @@ rules:
   - get
   - list
   - watch
-  - update
 - apiGroups:
   - ""
   resources:
   - pods
   verbs:
+  - delete
   - get
   - list
   - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: openperouter
+  name: nodemarker-role
+  namespace: openperouter-system
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resourceNames:
+  - openpe-webhook-server-cert
+  resources:
+  - secrets
+  verbs:
+  - update
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -1864,33 +1899,7 @@ rules:
   - get
   - list
   - patch
-  - update
   - watch
-- apiGroups:
-  - ""
-  resources:
-  - pods
-  verbs:
-  - delete
-  - get
-  - list
-  - watch
-- apiGroups:
-  - admissionregistration.k8s.io
-  resources:
-  - validatingwebhookconfigurations
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - admissionregistration.k8s.io
-  resourceNames:
-  - openpe-validating-webhook-configuration
-  resources:
-  - validatingwebhookconfigurations
-  verbs:
-  - update
 - apiGroups:
   - network.openperouter.io
   resources:
@@ -1936,6 +1945,51 @@ rules:
   - update
 ---
 apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: nodemarker-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - admissionregistration.k8s.io
+  resources:
+  - validatingwebhookconfigurations
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - admissionregistration.k8s.io
+  resourceNames:
+  - openpe-validating-webhook-configuration
+  resources:
+  - validatingwebhookconfigurations
+  verbs:
+  - update
+- apiGroups:
+  - network.openperouter.io
+  resources:
+  - l2vnis
+  - l3passthroughs
+  - l3vnis
+  - l3vpns
+  - rawfrrconfigs
+  - underlays
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   labels:
@@ -1950,6 +2004,23 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: controller
+  namespace: openperouter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: openperouter
+  name: nodemarker-rolebinding
+  namespace: openperouter-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: nodemarker-role
+subjects:
+- kind: ServiceAccount
+  name: nodemarker
   namespace: openperouter-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -1983,6 +2054,22 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: controller
+  namespace: openperouter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: openperouter
+  name: nodemarker-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: nodemarker-role
+subjects:
+- kind: ServiceAccount
+  name: nodemarker
   namespace: openperouter-system
 ---
 apiVersion: v1
@@ -2167,7 +2254,7 @@ spec:
         - mountPath: /tmp/k8s-webhook-server/serving-certs
           name: cert
           readOnly: true
-      serviceAccountName: controller
+      serviceAccountName: nodemarker
       tolerations:
       - effect: NoSchedule
         key: node-role.kubernetes.io/master

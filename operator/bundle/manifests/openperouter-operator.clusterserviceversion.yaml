@@ -4,7 +4,7 @@ metadata:
   annotations:
     alm-examples: '[]'
     capabilities: Basic Install
-    createdAt: "2026-07-21T08:46:28Z"
+    createdAt: "2026-07-23T12:40:12Z"
     operators.operatorframework.io/builder: operator-sdk-v1.41.1
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
   name: openperouter-operator.v0.0.0
@@ -62,33 +62,7 @@ spec:
           - get
           - list
           - patch
-          - update
           - watch
-        - apiGroups:
-          - ""
-          resources:
-          - pods
-          verbs:
-          - delete
-          - get
-          - list
-          - watch
-        - apiGroups:
-          - admissionregistration.k8s.io
-          resources:
-          - validatingwebhookconfigurations
-          verbs:
-          - get
-          - list
-          - watch
-        - apiGroups:
-          - admissionregistration.k8s.io
-          resourceNames:
-          - openpe-validating-webhook-configuration
-          resources:
-          - validatingwebhookconfigurations
-          verbs:
-          - update
         - apiGroups:
           - network.openperouter.io
           resources:
@@ -133,6 +107,47 @@ spec:
           - patch
           - update
         serviceAccountName: controller
+      - rules:
+        - apiGroups:
+          - ""
+          resources:
+          - nodes
+          verbs:
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - admissionregistration.k8s.io
+          resources:
+          - validatingwebhookconfigurations
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - admissionregistration.k8s.io
+          resourceNames:
+          - openpe-validating-webhook-configuration
+          resources:
+          - validatingwebhookconfigurations
+          verbs:
+          - update
+        - apiGroups:
+          - network.openperouter.io
+          resources:
+          - l2vnis
+          - l3passthroughs
+          - l3vnis
+          - l3vpns
+          - rawfrrconfigs
+          - underlays
+          verbs:
+          - get
+          - list
+          - watch
+        serviceAccountName: nodemarker
       - rules:
         - apiGroups:
           - network.openperouter.io
@@ -268,7 +283,7 @@ spec:
                 - mountPath: /tmp/k8s-webhook-server/serving-certs
                   name: cert
                   readOnly: true
-              serviceAccountName: controller
+              serviceAccountName: nodemarker
               volumes:
               - name: cert
                 secret:
@@ -284,16 +299,34 @@ spec:
           - get
           - list
           - watch
-          - update
         - apiGroups:
           - ""
           resources:
           - pods
           verbs:
+          - delete
           - get
           - list
           - watch
         serviceAccountName: controller
+      - rules:
+        - apiGroups:
+          - ""
+          resources:
+          - secrets
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - ""
+          resourceNames:
+          - openpe-webhook-server-cert
+          resources:
+          - secrets
+          verbs:
+          - update
+        serviceAccountName: nodemarker
       - rules:
         - apiGroups:
           - ""

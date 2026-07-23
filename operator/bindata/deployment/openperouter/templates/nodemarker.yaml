@@ -33,7 +33,7 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ template "openperouter.controller.serviceAccountName" . }}
+      serviceAccountName: {{ template "openperouter.nodemarker.serviceAccountName" . }}
       tolerations:
       {{- if .Values.openperouter.runOnMaster }}
       - effect: NoSchedule

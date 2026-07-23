@@ -36,6 +36,8 @@ openperouter:
     # true, a name is generated using the fullname template
     controller:
       name: ""
+    nodemarker:
+      name: ""
     perouter:
       name: ""
     annotations: {}

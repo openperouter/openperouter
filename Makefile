@@ -63,7 +63,6 @@ help: ## Display this help.
 manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
 	$(CONTROLLER_GEN) crd webhook paths="./api/..." paths="./config/..." output:crd:artifacts:config=config/crd/bases
 	$(CONTROLLER_GEN) crd webhook paths="./operator/api/..." paths="./operator/config/..." output:crd:artifacts:config=operator/config/crd/bases
-	$(CONTROLLER_GEN) rbac:roleName=controller-role paths="./internal/controller/..." output:rbac:artifacts:config=config/rbac/
 	$(CONTROLLER_GEN) rbac:roleName=operator-role paths="./operator/..." output:rbac:artifacts:config=operator/config/rbac/
 	# The following line generates operator/config/webhook/webhook/manifests.yaml
 	$(CONTROLLER_GEN) crd webhook paths="./api/..." paths="./config/..." output:crd:none output:webhook:artifacts:config=operator/config/webhook/webhook
