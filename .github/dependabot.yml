@@ -6,25 +6,25 @@ updates:
       interval: "weekly"
     assignees:
       - "maiqueb"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 0
   - package-ecosystem: "gomod"
     directory: "/e2etests"
     schedule:
       interval: "weekly"
     assignees:
       - "maiqueb"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 0
   - package-ecosystem: "gomod"
     directory: "/website"
     schedule:
       interval: "weekly"
     assignees:
       - "maiqueb"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 0
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
     assignees:
       - "maiqueb"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 0
