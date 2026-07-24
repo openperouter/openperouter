@@ -19,6 +19,42 @@ Package v1alpha1 contains API Schema definitions for the openpe v1alpha1 API gro
 
 
 
+#### AddressFamilyProperty
+
+
+
+AddressFamilyProperty is an optional feature applied to a neighbor
+address family. The type field selects the property; typed sub-fields hold
+parameters for properties that require them.
+
+
+
+_Appears in:_
+- [NeighborAddressFamily](#neighboraddressfamily)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `type` _[AddressFamilyPropertyType](#addressfamilypropertytype)_ | type selects the property. |  | Enum: [routeReflectorClient] <br />Required: \{\} <br /> |
+
+
+#### AddressFamilyPropertyType
+
+_Underlying type:_ _string_
+
+AddressFamilyPropertyType defines an optional feature on a neighbor
+address family.
+
+_Validation:_
+- Enum: [routeReflectorClient]
+
+_Appears in:_
+- [AddressFamilyProperty](#addressfamilyproperty)
+
+| Field | Description |
+| --- | --- |
+| `routeReflectorClient` | AddressFamilyPropertyRouteReflectorClient marks the neighbor as a<br />route reflector client of the local router in this address family (RFC 4456).<br /> |
+
+
 #### BFDSettings
 
 
@@ -597,6 +633,7 @@ _Appears in:_
 | `type` _string_ | type is the AS type of the neighbor. Either ASN or Type must be set. |  | Enum: [external internal] <br />Optional: \{\} <br /> |
 | `address` _string_ | address is the IP address to establish the session with. The IP address<br />can be either IPv4 or IPv6. |  | MaxLength: 39 <br />MinLength: 1 <br />Optional: \{\} <br /> |
 | `interface` _string_ | interface is the interface name for BGP unnumbered sessions. The session will be established via IPv6 link locals. |  | MaxLength: 15 <br />MinLength: 1 <br />Optional: \{\} <br /> |
+| `listenRange` _string_ | listenRange accepts connections from any peers in the specified CIDR.<br />When set, the hostcontroller generates a<br />"bgp listen range <listenRange> peer-group <name>" stanza instead of<br />an explicit neighbor statement. Mutually exclusive with address and<br />interface. |  | MaxLength: 43 <br />MinLength: 1 <br />Optional: \{\} <br /> |
 | `port` _integer_ | port is the port to dial when establishing the session.<br />Defaults to 179. |  | Maximum: 16384 <br />Minimum: 0 <br />Optional: \{\} <br /> |
 | `password` _string_ | password to be used for establishing the BGP session.<br />Password and PasswordSecret are mutually exclusive. |  | MaxLength: 128 <br />Pattern: `^\S+$` <br />Optional: \{\} <br /> |
 | `passwordSecret` _string_ | passwordSecret is name of the authentication secret for the neighbor.<br />the secret must be of type "kubernetes.io/basic-auth", and created in the<br />same namespace as the perouter daemon. The password is stored in the<br />secret as the key "password".<br />Password and PasswordSecret are mutually exclusive. |  | Optional: \{\} <br /> |
@@ -623,6 +660,7 @@ _Appears in:_
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `type` _string_ | type is the address family type. |  | Enum: [ipv4unicast ipv6unicast evpn ipv4vpn ipv6vpn] <br />MaxLength: 11 <br />MinLength: 1 <br />Required: \{\} <br /> |
+| `properties` _[AddressFamilyProperty](#addressfamilyproperty) array_ | properties is the set of optional per-address-family features for this<br />neighbor (for example, marking the neighbor as a route reflector client<br />in this address family). |  | MaxItems: 8 <br />Optional: \{\} <br /> |
 
 
 #### NetworkDevice
@@ -706,6 +744,23 @@ RawFRRConfigStatus defines the observed state of RawFRRConfig.
 _Appears in:_
 - [RawFRRConfig](#rawfrrconfig)
 
+
+
+#### RouteReflectorConfig
+
+
+
+RouteReflectorConfig holds BGP Route Reflector parameters (RFC 4456).
+Its presence on the Underlay enables route reflection on matching nodes.
+
+
+
+_Appears in:_
+- [UnderlaySpec](#underlayspec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `clusterID` _string_ | clusterID is the BGP cluster-id shared by all RR nodes in the same<br />cluster (RFC 4456 §7). All RRs serving the same set of clients must<br />use the same value so that CLUSTER_LIST loop detection prevents<br />duplicate route reflection. The cluster-id is an opaque 32-bit<br />identifier, not a routable address, and must be outside the<br />routeridcidr range to avoid colliding with allocated router-ids.<br />The default (192.0.2.1) is an RFC 5737 documentation address,<br />outside the default routeridcidr pool; with a custom routeridcidr<br />that contains it, the resource is rejected at admission. | 192.0.2.1 | MaxLength: 15 <br />MinLength: 7 <br />Optional: \{\} <br /> |
 
 
 #### RouteTarget
@@ -931,6 +986,7 @@ _Appears in:_
 | `gracefulRestart` _[GracefulRestartConfig](#gracefulrestartconfig)_ | gracefulRestart configures BGP Graceful Restart behaviour.<br />When set, FRR advertises GR capability and preserves forwarding<br />state across restarts so that peers keep stale routes active.<br />Omit to disable graceful restart. |  | Optional: \{\} <br /> |
 | `isis` _[ISISConfig](#isisconfig)_ | isis holds the ISIS configuration for the underlay. |  | Optional: \{\} <br /> |
 | `srv6` _[SRV6Config](#srv6config)_ | srv6 holds the SRv6 configuration. Requires ISIS or Neighbors configuration. |  | Optional: \{\} <br /> |
+| `routeReflector` _[RouteReflectorConfig](#routereflectorconfig)_ | routeReflector configures the local FRR process as a BGP route reflector.<br />When set, the hostcontroller generates bgp cluster-id from clusterID<br />and derives bgp listen range and route-reflector-client stanzas from<br />neighbors with listenRange and the routeReflectorClient property.<br />Omit to run as a standard router without route reflection. |  | Optional: \{\} <br /> |
 
 
 #### UnderlayStatus

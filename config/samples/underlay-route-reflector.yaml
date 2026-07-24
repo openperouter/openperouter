@@ -1,0 +1,55 @@
+---
+# Route reflector running on the control-plane node: no tunnel endpoint, it
+# only reflects ipv4 unicast (VTEP reachability) and evpn routes between the
+# client nodes that connect over the listen range.
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: Underlay
+metadata:
+  name: route-reflector
+  namespace: openperouter-system
+spec:
+  asn: 64514
+  interfaces:
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: toswitch1
+  nodeSelector:
+    matchExpressions:
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+  routeReflector:
+    clusterID: 192.0.2.1
+  neighbors:
+    - type: internal
+      listenRange: 192.168.11.0/24
+      addressFamilies:
+        - type: ipv4unicast
+          properties:
+            - type: routeReflectorClient
+        - type: evpn
+          properties:
+            - type: routeReflectorClient
+---
+# Client nodes (workers): a normal data-plane underlay whose only neighbor is
+# the route reflector, peered as an internal (iBGP) session.
+apiVersion: openpe.openperouter.github.io/v1alpha1
+kind: Underlay
+metadata:
+  name: client
+  namespace: openperouter-system
+spec:
+  asn: 64514
+  interfaces:
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: toswitch1
+  nodeSelector:
+    matchExpressions:
+      - key: node-role.kubernetes.io/control-plane
+        operator: DoesNotExist
+  tunnelEndpoint:
+    cidrs:
+    - 100.65.0.0/24
+  neighbors:
+    - type: internal
+      address: 192.168.11.3  # the route reflector on the cluster subnet

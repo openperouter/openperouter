@@ -49,6 +49,41 @@ type UnderlayConfig struct {
 	GracefulRestart *GracefulRestart
 	ISIS            *UnderlayISIS
 	SegmentRouting  *UnderlaySegmentRouting
+	RouteReflector  *RouteReflector
+	// ListenLimit caps the number of dynamic sessions accepted via bgp
+	// listen range. When zero, DefaultListenLimit is rendered.
+	ListenLimit uint16
+}
+
+// DefaultListenLimit raises the FRR default dynamic neighbors cap (100) to
+// the maximum, needed to properly support listen ranges since we don't know
+// the amount of neighbors from the get go.
+const DefaultListenLimit = 65535
+
+// RouteReflector holds the BGP route reflector parameters of the local
+// router (RFC 4456).
+type RouteReflector struct {
+	ClusterID string
+}
+
+// HasListenRange reports whether at least one underlay neighbor accepts
+// dynamic sessions via bgp listen range.
+func (u UnderlayConfig) HasListenRange() bool {
+	for _, n := range u.Neighbors {
+		if n.ListenRange != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// BGPListenLimit returns the dynamic neighbors cap to render, falling back
+// to DefaultListenLimit when the limit is not set.
+func (u UnderlayConfig) BGPListenLimit() uint16 {
+	if u.ListenLimit == 0 {
+		return DefaultListenLimit
+	}
+	return u.ListenLimit
 }
 
 type TunnelEndpoint struct {
@@ -136,12 +171,55 @@ type NeighborConfig struct {
 	BFDProfile            string
 	EBGPMultiHop          bool
 	NetworkLayerProtocols []networklayerprotocol.NLP
+	// ListenRange turns the neighbor into a peer-group accepting dynamic
+	// sessions from the given CIDR via bgp listen range. ID holds the
+	// peer-group name.
+	ListenRange string
 	// Allow bgp to negotiate the extended-nexthop capability with its peer. If you are peering over a v6 LL address
 	// then this capability is turned on automatically.
 	// If you are peering over a v6 Global Address then turning on this command will allow BGP to install v4 routes
 	// with v6 nexthops if you do not have v4 configured on interfaces.
 	ExtendedNexthop bool
 	UpdateSource    string
+}
+
+// ActivateFor tells whether the neighbor activates the given address family.
+func (n NeighborConfig) ActivateFor(afi networklayerprotocol.AFI, safi networklayerprotocol.SAFI) bool {
+	return networklayerprotocol.HasNLP(n.NetworkLayerProtocols, networklayerprotocol.NLP{AFI: afi, SAFI: safi})
+}
+
+// IsRouteReflectorClientFor tells whether the neighbor is a route reflector
+// client in the given address family.
+func (n NeighborConfig) IsRouteReflectorClientFor(afi networklayerprotocol.AFI, safi networklayerprotocol.SAFI) bool {
+	nlp := networklayerprotocol.FindNLP(
+		n.NetworkLayerProtocols,
+		networklayerprotocol.NLP{
+			AFI:  afi,
+			SAFI: safi,
+		},
+	)
+
+	if nlp == nil {
+		return false
+	}
+
+	return nlp.Properties.RouteReflectorClient
+}
+
+// shouldRenderUnderlayEVPN tells whether the underlay needs the l2vpn evpn
+// address family block. Data-plane underlays render it whenever a tunnel
+// endpoint exists; route-reflector-only nodes render it when a neighbor
+// activates the l2vpn evpn family without a tunnel endpoint.
+func shouldRenderUnderlayEVPN(underlay UnderlayConfig) bool {
+	if underlay.TunnelEndpoint != nil {
+		return true
+	}
+	for _, n := range underlay.Neighbors {
+		if n.ActivateFor(networklayerprotocol.L2VPN, networklayerprotocol.EVPN) {
+			return true
+		}
+	}
+	return false
 }
 
 // templateConfig uses the template library to template
@@ -179,13 +257,10 @@ func templateConfig(data any) (string, error) {
 			"isEBGP": func(myASN int64, peerASN PeerASN) bool {
 				return peerASN.IsExternalTo(myASN)
 			},
-			"activateNeighborFor": func(nlps []networklayerprotocol.NLP, afi networklayerprotocol.AFI,
-				safi networklayerprotocol.SAFI) bool {
-				return networklayerprotocol.HasNLP(nlps, networklayerprotocol.NLP{AFI: afi, SAFI: safi})
-			},
 			"join": func(s []string) string {
 				return strings.Join(s, " ")
 			},
+			"renderUnderlayEVPN": shouldRenderUnderlayEVPN,
 		}).ParseFS(templates, "templates/*")
 	if err != nil {
 		return "", err

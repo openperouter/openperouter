@@ -20,8 +20,9 @@ const (
 // NLP (NetworkLayerProtocol) represents a full address family plus subsequent address family, as defined in RFC4760 for
 // BGP multiprotocol extensions.
 type NLP struct {
-	AFI  AFI
-	SAFI SAFI
+	AFI        AFI
+	SAFI       SAFI
+	Properties NLPProperties
 }
 
 // AFI (Address Family Identifier) holds the Address Family identifier for BGP multiprotocol extensions.
@@ -31,14 +32,34 @@ type AFI string
 // extensions.
 type SAFI string
 
+// NLPProperties holds the per-address-family rendering attributes of a
+// neighbor (for example, whether the neighbor is a route reflector client in
+// that network layer protocol).
+type NLPProperties struct {
+	RouteReflectorClient bool
+}
+
 // String returns a string representation of the NLP with AFI and SAFI separated by a single whitespace.
 func (nlp NLP) String() string {
 	return fmt.Sprintf("%s %s", nlp.AFI, nlp.SAFI)
 }
 
+// Matches returns true if AFI and SAFI properties matches.
+func (nlp NLP) Matches(nlpToCompare NLP) bool {
+	return nlp.AFI == nlpToCompare.AFI && nlp.SAFI == nlpToCompare.SAFI
+}
+
+func FindNLP(nlps []NLP, nlp NLP) *NLP {
+	idx := slices.IndexFunc(nlps, nlp.Matches)
+	if idx == -1 {
+		return nil
+	}
+	return &nlps[idx]
+}
+
 // HasNLP returns true if the given network layer protocol can be found in the slice of network layer protocols.
 func HasNLP(nlps []NLP, nlp NLP) bool {
-	return slices.Contains(nlps, nlp)
+	return FindNLP(nlps, nlp) != nil
 }
 
 // HasUnicastFamily takes a slice of network layer protocols and an AFI and returns true if the unicast version of the

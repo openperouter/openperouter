@@ -12,6 +12,9 @@ rbac:
 openperouter:
   # -- Controller log level. Must be one of: `debug`, `info`, `warn` or `error`.
   logLevel: info
+  # -- Maximum number of dynamic BGP sessions accepted via underlay listen
+  # ranges (FRR `bgp listen limit`, 1-65535).
+  bgpListenLimit: 65535
   tolerateMaster: true
   # -- If true, all pods (router, controller, and nodemarker) are allowed to run on master/control-plane nodes
   runOnMaster: true

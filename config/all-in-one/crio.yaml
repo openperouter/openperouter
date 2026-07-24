@@ -1457,6 +1457,30 @@ spec:
                           NeighborAddressFamily represents a single BGP address family configuration
                           for a neighbor.
                         properties:
+                          properties:
+                            description: |-
+                              properties is the set of optional per-address-family features for this
+                              neighbor (for example, marking the neighbor as a route reflector client
+                              in this address family).
+                            items:
+                              description: |-
+                                AddressFamilyProperty is an optional feature applied to a neighbor
+                                address family. The type field selects the property; typed sub-fields hold
+                                parameters for properties that require them.
+                              properties:
+                                type:
+                                  description: type selects the property.
+                                  enum:
+                                  - routeReflectorClient
+                                  type: string
+                              required:
+                              - type
+                              type: object
+                            maxItems: 8
+                            type: array
+                            x-kubernetes-list-map-keys:
+                            - type
+                            x-kubernetes-list-type: map
                           type:
                             description: type is the address family type.
                             enum:
@@ -1582,6 +1606,21 @@ spec:
                         Defaults to 60.
                       format: int64
                       type: integer
+                    listenRange:
+                      description: |-
+                        listenRange accepts connections from any peers in the specified CIDR.
+                        When set, the hostcontroller generates a
+                        "bgp listen range <listenRange> peer-group <name>" stanza instead of
+                        an explicit neighbor statement. Mutually exclusive with address and
+                        interface.
+                      maxLength: 43
+                      minLength: 1
+                      type: string
+                      x-kubernetes-validations:
+                      - message: listenRange must be a valid CIDR
+                        rule: isCIDR(self)
+                      - message: listenRange must not be an IPv6 link-local range
+                        rule: '!isCIDR(self) || cidr(self).ip().family() != 6 || !cidr(self).ip().isLinkLocalUnicast()'
                     password:
                       description: |-
                         password to be used for establishing the BGP session.
@@ -1627,9 +1666,9 @@ spec:
                   - message: keepaliveTimeSeconds must be lower than or equal to holdTimeSeconds
                     rule: '!has(self.holdTimeSeconds) || !has(self.keepaliveTimeSeconds)
                       || self.keepaliveTimeSeconds <= self.holdTimeSeconds'
-                  - message: Either a valid Address or Interface name must be provided
-                      for Neighbor
-                    rule: has(self.address) || has(self.interface)
+                  - message: Either a valid Address, Interface name or ListenRange
+                      must be provided for Neighbor
+                    rule: has(self.address) || has(self.interface) || has(self.listenRange)
                   - message: Address and Interface cannot be set together for Neighbor
                     rule: '!has(self.address) || !has(self.interface)'
                   - message: ipv4vpn and ipv6vpn address families are not supported
@@ -1641,6 +1680,14 @@ spec:
                     rule: '!has(self.address) || !has(self.addressFamilies) || ip(self.address).family()
                       != 4 || !self.addressFamilies.exists(f, f.type == ''ipv4vpn''
                       || f.type == ''ipv6vpn'')'
+                  - message: listenRange and address are mutually exclusive
+                    rule: '!has(self.listenRange) || !has(self.address)'
+                  - message: listenRange and interface are mutually exclusive
+                    rule: '!has(self.listenRange) || !has(self.interface)'
+                  - message: routeReflectorClient requires type internal
+                    rule: '!(has(self.addressFamilies) && self.addressFamilies.exists(af,
+                      has(af.properties) && af.properties.exists(o, o.type == ''routeReflectorClient'')))
+                      || (has(self.type) && self.type == ''internal'')'
                 maxItems: 128
                 minItems: 1
                 type: array
@@ -1694,6 +1741,33 @@ spec:
                     type: object
                 type: object
                 x-kubernetes-map-type: atomic
+              routeReflector:
+                description: |-
+                  routeReflector configures the local FRR process as a BGP route reflector.
+                  When set, the hostcontroller generates bgp cluster-id from clusterID
+                  and derives bgp listen range and route-reflector-client stanzas from
+                  neighbors with listenRange and the routeReflectorClient property.
+                  Omit to run as a standard router without route reflection.
+                properties:
+                  clusterID:
+                    default: 192.0.2.1
+                    description: |-
+                      clusterID is the BGP cluster-id shared by all RR nodes in the same
+                      cluster (RFC 4456 §7). All RRs serving the same set of clients must
+                      use the same value so that CLUSTER_LIST loop detection prevents
+                      duplicate route reflection. The cluster-id is an opaque 32-bit
+                      identifier, not a routable address, and must be outside the
+                      routeridcidr range to avoid colliding with allocated router-ids.
+                      The default (192.0.2.1) is an RFC 5737 documentation address,
+                      outside the default routeridcidr pool; with a custom routeridcidr
+                      that contains it, the resource is rejected at admission.
+                    maxLength: 15
+                    minLength: 7
+                    type: string
+                    x-kubernetes-validations:
+                    - message: clusterID must be a valid IPv4 address
+                      rule: isIP(self) && ip(self).family() == 4
+                type: object
               routeridcidr:
                 default: 10.0.0.0/24
                 description: routeridcidr is the ipv4 cidr to be used to assign a
@@ -1779,6 +1853,10 @@ spec:
             - message: SRv6 requires at least one IPv6 CIDR in tunnelEndpoint.cidrs
               rule: '!has(self.srv6) || (has(self.tunnelEndpoint) && has(self.tunnelEndpoint.cidrs)
                 && self.tunnelEndpoint.cidrs.exists(c, cidr(c).ip().family() == 6))'
+            - message: routeReflector.clusterID must be outside the routeridcidr range
+              rule: '!has(self.routeReflector) || !has(self.routeReflector.clusterID)
+                || !isIP(self.routeReflector.clusterID) || !has(self.routeridcidr)
+                || !isCIDR(self.routeridcidr) || !cidr(self.routeridcidr).containsIP(self.routeReflector.clusterID)'
           status:
             description: status defines the observed state of Underlay.
             type: object

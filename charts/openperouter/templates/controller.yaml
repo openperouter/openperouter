@@ -47,6 +47,9 @@ spec:
         {{- with .Values.openperouter.logLevel }}
         - --loglevel={{ . }}
         {{- end }}
+        {{- with .Values.openperouter.bgpListenLimit }}
+        - --bgplistenlimit={{ . }}
+        {{- end }}
         {{- with .Values.openperouter.controller.healthProbePort }}
         - --health-probe-bind-address=:{{ . }}
         {{- end }}

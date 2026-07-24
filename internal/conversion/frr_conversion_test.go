@@ -3857,3 +3857,203 @@ func mustNewPeerASNFromType(t string) frr.PeerASN {
 	}
 	return asn
 }
+
+func TestAPItoFRRRouteReflector(t *testing.T) {
+	baseUnderlay := v1alpha1.Underlay{
+		ObjectMeta: metav1.ObjectMeta{Name: "underlay", Namespace: "openperouter-system"},
+		Spec: v1alpha1.UnderlaySpec{
+			ASN: 64514,
+			Neighbors: []v1alpha1.Neighbor{
+				{ASN: new(int64(64517)), Address: new("192.168.11.2")},
+			},
+			TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: []string{"100.65.0.0/24"}},
+		},
+	}
+
+	tests := []struct {
+		name string
+		rr   *v1alpha1.RouteReflectorConfig
+		want *frr.RouteReflector
+	}{
+		{
+			name: "route reflector disabled (nil)",
+			rr:   nil,
+			want: nil,
+		},
+		{
+			name: "route reflector with default cluster id",
+			rr:   &v1alpha1.RouteReflectorConfig{},
+			want: &frr.RouteReflector{ClusterID: "192.0.2.1"},
+		},
+		{
+			name: "route reflector with custom cluster id",
+			rr:   &v1alpha1.RouteReflectorConfig{ClusterID: new("10.1.1.1")},
+			want: &frr.RouteReflector{ClusterID: "10.1.1.1"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			u := baseUnderlay.DeepCopy()
+			u.Spec.RouteReflector = tt.rr
+
+			config := APIConfigData{
+				Underlays: []v1alpha1.Underlay{*u},
+			}
+			got, err := APItoFRR(config, 0, "")
+			if err != nil {
+				t.Fatalf("APItoFRR() unexpected error: %v", err)
+			}
+
+			if !cmp.Equal(got.Underlay.RouteReflector, tt.want) {
+				t.Errorf("RouteReflector diff: %s", cmp.Diff(tt.want, got.Underlay.RouteReflector))
+			}
+		})
+	}
+}
+
+func TestAPItoFRRListenLimit(t *testing.T) {
+	underlay := v1alpha1.Underlay{
+		ObjectMeta: metav1.ObjectMeta{Name: "underlay", Namespace: "openperouter-system"},
+		Spec: v1alpha1.UnderlaySpec{
+			ASN: 64514,
+			Neighbors: []v1alpha1.Neighbor{
+				{Type: new("internal"), ListenRange: new("192.168.10.0/24")},
+			},
+			TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: []string{"100.65.0.0/24"}},
+		},
+	}
+
+	config := APIConfigData{
+		Underlays: []v1alpha1.Underlay{underlay},
+	}
+	BGPListenLimit = 512
+	got, err := APItoFRR(config, 0, "")
+	if err != nil {
+		t.Fatalf("APItoFRR() unexpected error: %v", err)
+	}
+
+	if got.Underlay.ListenLimit != 512 {
+		t.Errorf("ListenLimit = %d, want 512", got.Underlay.ListenLimit)
+	}
+}
+
+func TestAPItoFRRListenRange(t *testing.T) {
+	evpn := networklayerprotocol.NLP{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN}
+	ipv4 := networklayerprotocol.NLP{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast}
+	ipv6 := networklayerprotocol.NLP{AFI: networklayerprotocol.IPv6, SAFI: networklayerprotocol.Unicast}
+
+	evpnWithRRClient := networklayerprotocol.NLP{AFI: evpn.AFI, SAFI: evpn.SAFI,
+		Properties: networklayerprotocol.NLPProperties{RouteReflectorClient: true}}
+
+	baseUnderlay := v1alpha1.Underlay{
+		ObjectMeta: metav1.ObjectMeta{Name: "underlay", Namespace: "openperouter-system"},
+		Spec: v1alpha1.UnderlaySpec{
+			ASN:            64514,
+			TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: []string{"100.65.0.0/24"}},
+		},
+	}
+
+	tests := []struct {
+		name          string
+		neighbors     []v1alpha1.Neighbor
+		wantNeighbors []frr.NeighborConfig
+	}{
+		{
+			name: "ipv4 listen range",
+			neighbors: []v1alpha1.Neighbor{
+				{Type: new("internal"), ListenRange: new("192.168.10.0/24")},
+			},
+			wantNeighbors: []frr.NeighborConfig{
+				{
+					Name:                  "internal@192.168.10.0/24",
+					ASN:                   mustNewPeerASNFromType("internal"),
+					ListenRange:           "192.168.10.0/24",
+					ID:                    "192.168.10.0/24",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{ipv4},
+				},
+			},
+		},
+		{
+			name: "ipv6 listen range",
+			neighbors: []v1alpha1.Neighbor{
+				{Type: new("internal"), ListenRange: new("fd00:10::/64")},
+			},
+			wantNeighbors: []frr.NeighborConfig{
+				{
+					Name:        "internal@fd00:10::/64",
+					ASN:         mustNewPeerASNFromType("internal"),
+					ListenRange: "fd00:10::/64",
+					ID:          "fd00:10::/64",
+					// The base underlay has an IPv4 tunnel endpoint, so the
+					// ipv4 unicast family is enabled by default alongside the
+					// ipv6 unicast of the listen range, which in turn enables
+					// the extended-nexthop capability on the IPv6 session.
+					NetworkLayerProtocols: []networklayerprotocol.NLP{ipv4, ipv6},
+					ExtendedNexthop:       true,
+				},
+			},
+		},
+		{
+			name: "listen range with evpn route reflector client",
+			neighbors: []v1alpha1.Neighbor{
+				{
+					Type:        new("internal"),
+					ListenRange: new("192.168.10.0/24"),
+					AddressFamilies: []v1alpha1.NeighborAddressFamily{
+						{
+							Type: "evpn",
+							Properties: []v1alpha1.AddressFamilyProperty{
+								{Type: v1alpha1.AddressFamilyPropertyRouteReflectorClient},
+							},
+						},
+						{Type: "ipv4unicast"},
+					},
+				},
+			},
+			wantNeighbors: []frr.NeighborConfig{
+				{
+					Name:                  "internal@192.168.10.0/24",
+					ASN:                   mustNewPeerASNFromType("internal"),
+					ListenRange:           "192.168.10.0/24",
+					ID:                    "192.168.10.0/24",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{evpnWithRRClient, ipv4},
+				},
+			},
+		},
+		{
+			name: "no listen range leaves listen limit unset",
+			neighbors: []v1alpha1.Neighbor{
+				{ASN: new(int64(64517)), Address: new("192.168.11.2")},
+			},
+			wantNeighbors: []frr.NeighborConfig{
+				{
+					Name:                  "64517@192.168.11.2",
+					ASN:                   mustNewPeerASNFromNumber(64517),
+					Addr:                  "192.168.11.2",
+					ID:                    "192.168.11.2",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{ipv4},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			u := baseUnderlay.DeepCopy()
+			u.Spec.Neighbors = tt.neighbors
+
+			config := APIConfigData{
+				Underlays: []v1alpha1.Underlay{*u},
+			}
+			got, err := APItoFRR(config, 0, "")
+			if err != nil {
+				t.Fatalf("APItoFRR() unexpected error: %v", err)
+			}
+
+			if !cmp.Equal(got.Underlay.Neighbors, tt.wantNeighbors) {
+				t.Errorf("Neighbors diff: %s", cmp.Diff(tt.wantNeighbors, got.Underlay.Neighbors))
+			}
+		})
+	}
+}
