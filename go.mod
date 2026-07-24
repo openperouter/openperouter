@@ -3,15 +3,15 @@ module github.com/openperouter/openperouter
 go 1.26.4
 
 require (
-	github.com/apparentlymart/go-cidr v1.1.0
+	github.com/apparentlymart/go-cidr v1.1.1
 	github.com/containernetworking/cni v1.3.0
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-kit/log v0.2.1
 	github.com/go-logr/logr v1.4.4
 	github.com/google/go-cmp v0.7.0
-	github.com/onsi/ginkgo/v2 v2.28.3
-	github.com/onsi/gomega v1.40.0
+	github.com/onsi/ginkgo/v2 v2.32.0
+	github.com/onsi/gomega v1.42.1
 	github.com/open-policy-agent/cert-controller v0.16.0
 	github.com/opencontainers/runtime-spec v1.3.0
 	github.com/ory/dockertest/v3 v3.12.0
@@ -20,7 +20,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/vishvananda/netlink v1.3.1
 	github.com/vishvananda/netns v0.0.5
-	go.yaml.in/yaml/v2 v2.4.3
+	go.yaml.in/yaml/v2 v2.4.4
 	golang.org/x/net v0.57.0
 	golang.org/x/sys v0.47.0
 	google.golang.org/grpc v1.82.1
