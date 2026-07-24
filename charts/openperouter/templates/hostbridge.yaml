@@ -32,7 +32,7 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ template "openperouter.controller.serviceAccountName" . }}
+      serviceAccountName: {{ template "openperouter.router.serviceAccountName" . }}
       containers:
       - name: bridge
         command:

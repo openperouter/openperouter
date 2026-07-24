@@ -62,6 +62,7 @@ Kubernetes: `>= 1.19.0-0`
 | openperouter.serviceAccounts.annotations | object | `{}` |  |
 | openperouter.serviceAccounts.controller.name | string | `""` |  |
 | openperouter.serviceAccounts.create | bool | `true` |  |
+| openperouter.serviceAccounts.nodemarker.name | string | `""` |  |
 | openperouter.serviceAccounts.perouter.name | string | `""` |  |
 | openperouter.tolerateMaster | bool | `true` |  |
 | openperouter.tolerations | list | `[]` |  |
