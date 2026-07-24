@@ -5,6 +5,8 @@ package tests
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	nad "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
@@ -30,13 +32,12 @@ var _ = Describe("SRV6 routes between bgp and the fabric", Ordered, func() {
 	var (
 		cs           clientset.Interface
 		routers      openperouter.Routers
-		firstPod     *corev1.Pod
-		secondPod    *corev1.Pod
 		netAttachDef nad.NetworkAttachmentDefinition
 		nodes        []corev1.Node
 	)
 
 	const (
+		icmpOverhead              = 28
 		linuxBridgeHostAttachment = "linux-bridge"
 		ovsBridgeHostAttachment   = "ovs-bridge"
 		rdAssignedNumber          = 100
@@ -229,7 +230,7 @@ var _ = Describe("SRV6 routes between bgp and the fabric", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		By("creating L3VPN and L2VNI")
-		err = Updater.Update(config.Resources{
+		Expect(Updater.Update(config.Resources{
 			L3VPNs: []v1alpha1.L3VPN{
 				vniRed,
 			},
@@ -237,8 +238,7 @@ var _ = Describe("SRV6 routes between bgp and the fabric", Ordered, func() {
 				*l2VniRedWithGateway,
 			},
 			FRRConfigurations: frrK8sConfigRed,
-		})
-		Expect(err).NotTo(HaveOccurred())
+		})).To(Succeed())
 
 		By("creating the namespace")
 		_, err = k8s.CreateNamespace(cs, testNamespace)
@@ -249,9 +249,9 @@ var _ = Describe("SRV6 routes between bgp and the fabric", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		By("creating the pods")
-		firstPod, err = k8s.CreateAgnhostPod(cs, "pod1", testNamespace, k8s.WithNad(netAttachDef.Name, testNamespace, tc.firstPodIPs), k8s.OnNode(nodes[0].Name))
+		firstPod, err := k8s.CreateAgnhostPod(cs, "pod1", testNamespace, k8s.WithNad(netAttachDef.Name, testNamespace, tc.firstPodIPs), k8s.OnNode(nodes[0].Name))
 		Expect(err).NotTo(HaveOccurred())
-		secondPod, err = k8s.CreateAgnhostPod(cs, "pod2", testNamespace, k8s.WithNad(netAttachDef.Name, testNamespace, tc.secondPodIPs), k8s.OnNode(nodes[1].Name))
+		secondPod, err := k8s.CreateAgnhostPod(cs, "pod2", testNamespace, k8s.WithNad(netAttachDef.Name, testNamespace, tc.secondPodIPs), k8s.OnNode(nodes[1].Name))
 		Expect(err).NotTo(HaveOccurred())
 
 		// We can reach the host either via the pod's eth0 (passing through the host<->pe veth),
@@ -515,4 +515,68 @@ var _ = Describe("SRV6 routes between bgp and the fabric", Ordered, func() {
 			},
 		}),
 	)
+
+	It("should be able to ping the SRV6 host from net1 with maximum MTU", func() {
+		l2GatewayIPs := []string{"192.171.24.1/24"}
+		podIPs := []string{"192.171.24.2/24"}
+		nadMaster := fmt.Sprintf("br-hs-%d", vniID)
+
+		l2VniRedWithGateway := l2VniRed.DeepCopy()
+		l2VniRedWithGateway.Spec.L2GatewayIPs = l2GatewayIPs
+		l2VniRedWithGateway.Spec.HostMaster = &v1alpha1.HostMaster{
+			Type: linuxBridgeHostAttachment,
+			LinuxBridge: &v1alpha1.LinuxBridgeConfig{
+				AutoCreate: new(true),
+			},
+		}
+
+		By("configuring FRR to peer with OpenPERouter")
+		frrK8sConfigRed, err := frrk8s.ConfigFromHostSession(*vniRed.Spec.HostSession, vniRed.Name)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("creating L3VPN and L2VNI")
+		Expect(Updater.Update(config.Resources{
+			L3VPNs:            []v1alpha1.L3VPN{vniRed},
+			L2VNIs:            []v1alpha1.L2VNI{*l2VniRedWithGateway},
+			FRRConfigurations: frrK8sConfigRed,
+		})).To(Succeed())
+
+		By("creating the namespace")
+		_, err = k8s.CreateNamespace(cs, testNamespace)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("creating the MacVLAN Network Attachment Definition")
+		netAttachDef, err = k8s.CreateMacvlanNad(fmt.Sprintf("%d", vniID), testNamespace, nadMaster, l2GatewayIPs)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("creating the pod")
+		pod, err := k8s.CreateAgnhostPod(cs, "pod1", testNamespace,
+			k8s.WithNad(netAttachDef.Name, testNamespace, podIPs),
+			k8s.OnNode(nodes[0].Name),
+		)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("removing the default gateway via the primary interface")
+		Expect(removeGatewayFromPod(pod)).To(Succeed())
+
+		podExec := executor.ForPod(pod.Namespace, pod.Name, "agnhost")
+
+		By("getting the net1 MTU")
+		mtuStr, err := podExec.Exec("cat", "/sys/class/net/net1/mtu")
+		Expect(err).NotTo(HaveOccurred())
+		mtu, err := strconv.Atoi(strings.TrimSpace(mtuStr))
+		Expect(err).NotTo(HaveOccurred())
+
+		pingSize := mtu - icmpOverhead
+		By(fmt.Sprintf("pinging %s with payload size %d (MTU %d - %d)",
+			infra.HostSRV6RedIPv4, pingSize, mtu, icmpOverhead))
+		Eventually(func(g Gomega) {
+			out, err := podExec.Exec("ping", "-c", "1", "-W", "1",
+				"-s", fmt.Sprintf("%d", pingSize), infra.HostSRV6RedIPv4)
+			g.Expect(err).ToNot(HaveOccurred(), "ping with max MTU failed: %s", out)
+		}).
+			WithTimeout(60 * time.Second).
+			WithPolling(time.Second).
+			Should(Succeed())
+	})
 })

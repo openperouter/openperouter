@@ -107,11 +107,12 @@ func TestAPItoHostConfig(t *testing.T) {
 			wantL3VNIParams: []hostnetwork.L3VNIParams{
 				{
 					VNIParams: hostnetwork.VNIParams{
-						VRF:       "red",
-						TargetNS:  "namespace",
-						VTEPIP:    "10.0.0.0/32",
-						VNI:       100,
-						VXLanPort: new(int32(4789)),
+						VRF:            "red",
+						TargetNS:       "namespace",
+						VTEPIP:         "10.0.0.0/32",
+						VNI:            100,
+						VXLanPort:      new(int32(4789)),
+						TunnelOverhead: hostnetwork.VXLanOverhead,
 					},
 					LinkIPs: &hostnetwork.LinkIPs{
 						HostIPv4: "10.1.0.2/24",
@@ -173,11 +174,12 @@ func TestAPItoHostConfig(t *testing.T) {
 			wantL3VNIParams: []hostnetwork.L3VNIParams{
 				{
 					VNIParams: hostnetwork.VNIParams{
-						VRF:       "red",
-						TargetNS:  "namespace",
-						VTEPIP:    "10.0.0.0/32",
-						VNI:       100,
-						VXLanPort: new(int32(4789)),
+						VRF:            "red",
+						TargetNS:       "namespace",
+						VTEPIP:         "10.0.0.0/32",
+						VNI:            100,
+						VXLanPort:      new(int32(4789)),
+						TunnelOverhead: hostnetwork.VXLanOverhead,
 					},
 					LinkIPs: &hostnetwork.LinkIPs{
 						HostIPv4: "10.1.0.2/24",
@@ -243,6 +245,7 @@ func TestAPItoHostConfig(t *testing.T) {
 					VRF:              "red",
 					RDAssignedNumber: 100,
 					TargetNS:         "namespace",
+					TunnelOverhead:   hostnetwork.SRv6Overhead,
 					LinkIPs: &hostnetwork.LinkIPs{
 						HostIPv4: "10.1.0.2/24",
 						NSIPv4:   "10.1.0.1/24",
@@ -252,10 +255,11 @@ func TestAPItoHostConfig(t *testing.T) {
 			wantL2VNIParams: []hostnetwork.L2VNIParams{
 				{
 					VNIParams: hostnetwork.VNIParams{
-						TargetNS:  "namespace",
-						VTEPIP:    "10.0.0.0/32",
-						VNI:       200,
-						VXLanPort: new(int32(4789)),
+						TargetNS:       "namespace",
+						VTEPIP:         "10.0.0.0/32",
+						VNI:            200,
+						VXLanPort:      new(int32(4789)),
+						TunnelOverhead: hostnetwork.SRv6Overhead,
 					},
 					L2GatewayIPs: nil,
 					HostMaster:   nil,
@@ -286,11 +290,12 @@ func TestAPItoHostConfig(t *testing.T) {
 			wantL3VNIParams: []hostnetwork.L3VNIParams{
 				{
 					VNIParams: hostnetwork.VNIParams{
-						VRF:       "red",
-						TargetNS:  "namespace",
-						VTEPIP:    "10.0.0.0/32",
-						VNI:       100,
-						VXLanPort: new(int32(4789)),
+						VRF:            "red",
+						TargetNS:       "namespace",
+						VTEPIP:         "10.0.0.0/32",
+						VNI:            100,
+						VXLanPort:      new(int32(4789)),
+						TunnelOverhead: hostnetwork.VXLanOverhead,
 					},
 					LinkIPs: &hostnetwork.LinkIPs{
 						HostIPv6: "2001:db8::2/64",
@@ -325,11 +330,12 @@ func TestAPItoHostConfig(t *testing.T) {
 			wantL3VNIParams: []hostnetwork.L3VNIParams{
 				{
 					VNIParams: hostnetwork.VNIParams{
-						VRF:       "red",
-						TargetNS:  "namespace",
-						VTEPIP:    "10.0.0.0/32",
-						VNI:       100,
-						VXLanPort: new(int32(4789)),
+						VRF:            "red",
+						TargetNS:       "namespace",
+						VTEPIP:         "10.0.0.0/32",
+						VNI:            100,
+						VXLanPort:      new(int32(4789)),
+						TunnelOverhead: hostnetwork.VXLanOverhead,
 					},
 					LinkIPs: &hostnetwork.LinkIPs{
 						HostIPv4: "10.1.0.2/24",
@@ -367,10 +373,11 @@ func TestAPItoHostConfig(t *testing.T) {
 			wantL2VNIParams: []hostnetwork.L2VNIParams{
 				{
 					VNIParams: hostnetwork.VNIParams{
-						TargetNS:  "namespace",
-						VTEPIP:    "10.0.0.0/32",
-						VNI:       200,
-						VXLanPort: new(int32(4789)),
+						TargetNS:       "namespace",
+						VTEPIP:         "10.0.0.0/32",
+						VNI:            200,
+						VXLanPort:      new(int32(4789)),
+						TunnelOverhead: hostnetwork.VXLanOverhead,
 					},
 					L2GatewayIPs: nil,
 					HostMaster:   nil,
@@ -407,11 +414,12 @@ func TestAPItoHostConfig(t *testing.T) {
 				{
 					Name: "my-l2vni",
 					VNIParams: hostnetwork.VNIParams{
-						VRF:       "",
-						TargetNS:  "namespace",
-						VTEPIP:    "10.0.0.0/32",
-						VNI:       200,
-						VXLanPort: new(int32(4789)),
+						VRF:            "",
+						TargetNS:       "namespace",
+						VTEPIP:         "10.0.0.0/32",
+						VNI:            200,
+						VXLanPort:      new(int32(4789)),
+						TunnelOverhead: hostnetwork.VXLanOverhead,
 					},
 					L2GatewayIPs: nil,
 					HostMaster:   nil,
@@ -453,11 +461,12 @@ func TestAPItoHostConfig(t *testing.T) {
 			wantL3VNIParams: []hostnetwork.L3VNIParams{
 				{
 					VNIParams: hostnetwork.VNIParams{
-						VRF:       "red",
-						TargetNS:  "namespace",
-						VTEPIP:    "10.0.0.0/32",
-						VNI:       300,
-						VXLanPort: new(int32(4789)),
+						VRF:            "red",
+						TargetNS:       "namespace",
+						VTEPIP:         "10.0.0.0/32",
+						VNI:            300,
+						VXLanPort:      new(int32(4789)),
+						TunnelOverhead: hostnetwork.VXLanOverhead,
 					},
 					Name: "gw-l3",
 				},
@@ -465,11 +474,12 @@ func TestAPItoHostConfig(t *testing.T) {
 			wantL2VNIParams: []hostnetwork.L2VNIParams{
 				{
 					VNIParams: hostnetwork.VNIParams{
-						VRF:       "red",
-						TargetNS:  "namespace",
-						VTEPIP:    "10.0.0.0/32",
-						VNI:       201,
-						VXLanPort: new(int32(4789)),
+						VRF:            "red",
+						TargetNS:       "namespace",
+						VTEPIP:         "10.0.0.0/32",
+						VNI:            201,
+						VXLanPort:      new(int32(4789)),
+						TunnelOverhead: hostnetwork.VXLanOverhead,
 					},
 					L2GatewayIPs: []string{"192.168.100.1/24"},
 					HostMaster:   &hostnetwork.HostMaster{Name: new("br0"), Type: "linux-bridge"},
@@ -501,11 +511,12 @@ func TestAPItoHostConfig(t *testing.T) {
 			wantL3VNIParams: []hostnetwork.L3VNIParams{
 				{
 					VNIParams: hostnetwork.VNIParams{
-						VRF:       "red",
-						TargetNS:  "namespace",
-						VTEPIP:    "10.0.0.0/32",
-						VNI:       100,
-						VXLanPort: new(int32(4789)),
+						VRF:            "red",
+						TargetNS:       "namespace",
+						VTEPIP:         "10.0.0.0/32",
+						VNI:            100,
+						VXLanPort:      new(int32(4789)),
+						TunnelOverhead: hostnetwork.VXLanOverhead,
 					},
 					LinkIPs: nil,
 				},

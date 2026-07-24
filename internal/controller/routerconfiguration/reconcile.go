@@ -49,12 +49,6 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 	validL3VPNs, err = conversion.FilterValidL3VPNs(apiConfig.L3VPNs)
 	resourceErrors = append(resourceErrors, err)
 
-	if err := conversion.DetectMutuallyExclusiveOverlays(validL3VNIs, validL3VPNs); err != nil {
-		validL3VNIs = []v1alpha1.L3VNI{}
-		validL3VPNs = []v1alpha1.L3VPN{}
-		resourceErrors = append(resourceErrors, err)
-	}
-
 	if conversion.HasMissingSRv6ForL3VPNs(apiConfig.Underlays, validL3VPNs) {
 		resourceErrors = append(
 			resourceErrors,
@@ -72,19 +66,15 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 	resourceErrors = append(resourceErrors, err)
 
 	var rdAssignedNumbers map[int32]string
-	validL3VPNs, rdAssignedNumbers, err = conversion.FilterUniqueL3VPNs(validL3VPNs)
+	validL3VPNs, rdAssignedNumbers, err = conversion.FilterUniqueL3VPNs(validL3VPNs, vnis)
 	resourceErrors = append(resourceErrors, err)
-	// TODO: This is safe today, but may cause issues when we change to per-VRF mutual exclusivity
-	// for L3VNI and L3VPN.
+	// The following action is safe: vnis and rdAssignedNumbers are guaranteed to have unique indexes.
 	maps.Copy(vnis, rdAssignedNumbers)
 
 	validL2VNIs, err = conversion.FilterUniqueL2VNIs(validL2VNIs, vnis)
 	resourceErrors = append(resourceErrors, err)
 
-	validL3VNIs, err = conversion.FilterUniqueVRFsForL3VNIs(validL3VNIs)
-	resourceErrors = append(resourceErrors, err)
-
-	validL3VPNs, err = conversion.FilterUniqueVRFsForL3VPNs(validL3VPNs)
+	validL3VNIs, validL3VPNs, err = conversion.FilterUniqueVRFs(validL3VNIs, validL3VPNs)
 	resourceErrors = append(resourceErrors, err)
 
 	validL2VNIs, err = filterL2VNIsWithInvalidRoutingDomain(validL2VNIs, validL3VNIs, validL3VPNs)
