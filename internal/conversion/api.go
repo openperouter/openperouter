@@ -56,12 +56,6 @@ func validateAPIConfigData(config APIConfigData) error {
 		return errors.New("multiple passthroughs defined, can only have one")
 	}
 
-	// TODO: This is a shortcut. We do not want L3VNIs and L3VPNs coexisting inside the same VRF. But across different
-	// VRFs, this should work, in theory, subject to testing.
-	if len(config.L3VNIs) > 0 && len(config.L3VPNs) > 0 {
-		return errors.New("cannot specify L3 VNI configuration and VPN configuration at the same time")
-	}
-
 	if len(config.Underlays) > 1 {
 		return errors.New("multiple underlays defined")
 	}
