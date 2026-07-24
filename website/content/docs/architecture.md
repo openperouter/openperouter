@@ -103,6 +103,7 @@ The controller pod handles all the complex network configuration logic and is re
 - **EVPNVNI Setup**: Creates and configures network interfaces for each VNI
 - **Configuration Generation**: Generates and applies FRR configuration
 - **State Management**: Maintains the desired state of network configurations
+- **DHCP Daemon Supervision**: Automatically starts the CNI DHCP daemon when the CNI config uses DHCP IPAM, running it as a supervised child process that restarts on exit
 
 #### Reconciliation Process
 

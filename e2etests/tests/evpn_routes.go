@@ -88,6 +88,21 @@ var (
 			return infra.NeighborIP(infra.KindLeaf, node.Name)
 		},
 	}
+
+	// macvlanDHCPUnderlay is the underlay flavor that provisions per-node
+	// macvlan interfaces on top of toswitch1 through the CNI mode, with DHCP
+	// address acquisition from the dhcp1 dnsmasq server.
+	macvlanDHCPUnderlay = evpnUnderlayParams{
+		Underlays: func(nodes []corev1.Node) []v1alpha1.Underlay {
+			return infra.DHCPCNIUnderlaysForNodes(nodes, infra.CNIUnderlayInterface)
+		},
+		ConfigureLeafKind: func(nodes []corev1.Node) error {
+			return infra.ConfigureLeafKind1ForDHCPUnderlay(nodes, infra.CNIUnderlayInterface)
+		},
+		NeighborIP: func(_ int, node corev1.Node) (string, error) {
+			return infra.DHCPNeighborIP(node.Name, infra.CNIUnderlayInterface)
+		},
+	}
 )
 
 // The EVPN routes ipv4 coverage runs once per underlay mode: the specs
@@ -99,6 +114,7 @@ var _ = DescribeTableSubtree("Routes between bgp and the fabric with Underlay in
 	evpnRoutesOverUnderlay,
 	Entry("NetworkDevice", Ordered, networkDeviceUnderlay),
 	Entry("MacvlanStatic", Ordered, macvlanStaticUnderlay),
+	Entry("MacvlanDHCP", Ordered, macvlanDHCPUnderlay),
 )
 
 func evpnRoutesOverUnderlay(params evpnUnderlayParams) {
@@ -164,13 +180,15 @@ func evpnRoutesOverUnderlay(params evpnUnderlayParams) {
 		nodes = nodesItems.Items
 		sort.Slice(nodes, func(i, j int) bool { return nodes[i].Name < nodes[j].Name })
 
-		By("configuring the kind leaves for the underlay mode")
-		Expect(params.ConfigureLeafKind(nodes)).To(Succeed())
-
 		err = Updater.Update(config.Resources{
 			Underlays: params.Underlays(nodes),
 		})
 		Expect(err).NotTo(HaveOccurred())
+
+		By("configuring the kind leaves for the underlay flavor")
+		Eventually(func() error {
+			return params.ConfigureLeafKind(nodes)
+		}, 3*time.Minute, time.Second).Should(Succeed())
 	})
 
 	AfterAll(func() {

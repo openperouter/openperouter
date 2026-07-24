@@ -15,11 +15,18 @@
 package cniinvoker
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/containernetworking/cni/libcni"
 	"github.com/containernetworking/cni/pkg/version"
 )
+
+// DHCPEnabler starts and waits for the DHCP daemon when a CNI config uses DHCP
+// IPAM. Implementations must be safe for concurrent use.
+type DHCPEnabler interface {
+	EnsureUp(ctx context.Context) error
+}
 
 const (
 	// minSupportedCNIVersion is the minimum CNI spec version accepted for the

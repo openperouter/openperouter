@@ -106,7 +106,7 @@ var _ = Describe("Underlay CNI configuration", func() {
 		logPath = filepath.Join(testDir, "invocations.log")
 		Expect(os.Setenv("CNI_TEST_LOG", logPath)).To(Succeed())
 
-		cniinvoker.Init([]string{binDir}, filepath.Join(testDir, "cache"), "testnode")
+		cniinvoker.Init([]string{binDir}, filepath.Join(testDir, "cache"), "testnode", nil)
 	})
 
 	AfterEach(func() {

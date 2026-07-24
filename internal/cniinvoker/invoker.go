@@ -11,6 +11,7 @@ import (
 	"slices"
 
 	"github.com/containernetworking/cni/libcni"
+	"github.com/openperouter/openperouter/internal/dhcp"
 )
 
 // Invoker is the node-level CNI plugin invoker singleton, nil until Init is
@@ -22,15 +23,18 @@ var Invoker *invoker
 type invoker struct {
 	cniConfig   *libcni.CNIConfig
 	containerID string
+	dhcpEnabler DHCPEnabler
 }
 
 // Init sets the Invoker singleton. The cache directory must be stable across
 // controller restarts so Del keeps working for attachments created by
-// previous invocations.
-func Init(pluginDirs []string, cacheDir, nodeName string) {
+// previous invocations. The dhcpEnabler is optional (may be nil) and ensures
+// the DHCP daemon is running before invoking plugins that use DHCP IPAM.
+func Init(pluginDirs []string, cacheDir, nodeName string, dhcpEnabler DHCPEnabler) {
 	Invoker = &invoker{
 		cniConfig:   libcni.NewCNIConfigWithCacheDir(pluginDirs, cacheDir, nil),
 		containerID: containerIDForNode(nodeName),
+		dhcpEnabler: dhcpEnabler,
 	}
 }
 
@@ -63,6 +67,10 @@ func (e ConfigMismatchError) Error() string {
 // same config skips the invocation, one with a different config returns a
 // ConfigMismatchError leaving the interface untouched.
 func (inv *invoker) Add(ctx context.Context, p AddParams) error {
+	if err := inv.ensureDHCP(ctx, p.Config); err != nil {
+		return fmt.Errorf("ensuring dhcp daemon for add %q: %w", p.IfName, err)
+	}
+
 	cached, err := inv.cniConfig.GetCachedAttachments(inv.containerID)
 	if err != nil {
 		return fmt.Errorf("failed to read cni cache for %q: %w", inv.containerID, err)
@@ -123,6 +131,9 @@ func (inv *invoker) Del(ctx context.Context, ifNameToDelete string) error {
 	}
 	if attachmentToDelete == nil {
 		return nil
+	}
+	if err := inv.ensureDHCP(ctx, attachmentToDelete.Config); err != nil {
+		return fmt.Errorf("ensuring dhcp daemon for del %q: %w", ifNameToDelete, err)
 	}
 	confListToDelete, err := libcni.NetworkConfFromBytes(attachmentToDelete.Config)
 	if err != nil {
@@ -186,4 +197,19 @@ func capabilityArgsEqual(a, b map[string]any) bool {
 		return true
 	}
 	return reflect.DeepEqual(a, b)
+}
+
+// ensureDHCP starts the DHCP daemon if the CNI config uses DHCP IPAM.
+func (inv *invoker) ensureDHCP(ctx context.Context, config []byte) error {
+	if inv.dhcpEnabler == nil {
+		return nil
+	}
+	ipamType, err := dhcp.IPAMType(config)
+	if err != nil {
+		return fmt.Errorf("failed to detect IPAM type: %w", err)
+	}
+	if ipamType == dhcp.IPAMTypeDHCP {
+		return inv.dhcpEnabler.EnsureUp(ctx)
+	}
+	return nil
 }

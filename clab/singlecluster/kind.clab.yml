@@ -72,6 +72,13 @@ topology:
       binds:
         - ../hostSRV6_blue/setup.sh:/setup.sh
 
+    dhcp1:
+      kind: linux
+      image: alpine:3.20
+      binds:
+        - dhcp1/dnsmasq.sh:/dnsmasq.sh
+      cmd: /dnsmasq.sh
+
     leafkind1-sw:
       kind: bridge
 
@@ -99,6 +106,7 @@ topology:
     - endpoints: ["leafB:ethblue", "hostB_blue:eth1"]
     - endpoints: ["leafSRV6:ethred", "hostSRV6_red:eth1"]
     - endpoints: ["leafSRV6:ethblue", "hostSRV6_blue:eth1"]
+    - endpoints: ["dhcp1:eth1", "leafkind1-sw:dhcp1"]
     - endpoints: ["leafkind1:toswitch1", "leafkind1-sw:leaf1"]
     - endpoints: ["leafkind2:toswitch2", "leafkind2-sw:leaf2"]
     # Point to point links for IPv6 unnumbered BGP sessions.

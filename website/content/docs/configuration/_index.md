@@ -151,6 +151,52 @@ the target. The plugin binaries are looked up in the directories passed
 via the controller's `--cni-plugin-dirs` flag; a set of reference plugins is
 bundled in the controller image.
 
+#### DHCP IPAM
+
+To use DHCP instead of static addressing, set `ipam.type` to `dhcp`.
+The controller automatically starts and supervises the DHCP daemon when
+it detects a CNI config with DHCP IPAM — no additional configuration is
+needed.
+
+The controller supervises the DHCP daemon as a child process — starting
+it on demand, restarting it automatically on exit, and triggering lease
+re-acquisition for all DHCP-backed underlay interfaces after each daemon
+restart.
+
+```yaml
+apiVersion: network.openperouter.io/v1alpha1
+kind: Underlay
+metadata:
+  name: underlay
+  namespace: openperouter-system
+spec:
+  asn: 64514
+  interfaces:
+    - type: CNIDevice
+      cniDevice:
+        type: RawConfig
+        interfaceName: net1
+        rawConfig:
+          cniVersion: "1.0.0"
+          name: macvlan-underlay
+          plugins:
+            - type: macvlan
+              master: toswitch
+              mode: bridge
+              ipam:
+                type: dhcp
+        runtimeConfig:
+          mac: "aa:bb:cc:00:00:01"
+  neighbors:
+    - asn: 64512
+      address: 192.168.11.2
+```
+
+MAC pinning via `runtimeConfig` (requires the macvlan plugin to declare
+`capabilities: {"mac": true}`) ensures the interface keeps the same MAC
+across netns rebuilds, which helps DHCP servers with MAC-based
+reservations assign a stable IP address.
+
 Key behaviors to be aware of:
 
 - **Interface types cannot be mixed**: all the entries of `interfaces`

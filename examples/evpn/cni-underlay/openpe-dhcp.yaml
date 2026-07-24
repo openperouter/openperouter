@@ -1,0 +1,108 @@
+apiVersion: network.openperouter.io/v1alpha1
+kind: L3VNI
+metadata:
+  name: red
+  namespace: openperouter-system
+spec:
+  vrf: red
+  hostsession:
+    asn: 64514
+    hostasn: 64515
+    localcidr:
+      ipv4: 192.169.10.0/24
+  vni: 100
+---
+apiVersion: network.openperouter.io/v1alpha1
+kind: L2VNI
+metadata:
+  name: layer2
+  namespace: openperouter-system
+spec:
+  vni: 110
+  routingDomain:
+    type: L3VNI
+    l3vni:
+      name: red
+  hostmaster:
+    type: linux-bridge
+    linuxBridge:
+      autoCreate: true
+  gatewayIPs: ["192.170.1.1/24"]
+---
+# The underlay interface is provisioned by the macvlan CNI plugin on top of
+# toswitch1, which stays in the host netns. DHCP is used instead of static
+# addressing — the controller starts the DHCP daemon automatically when the
+# CNI config uses DHCP IPAM.
+#
+# A pinned MAC via runtimeConfig ensures the DHCP server assigns a stable
+# IP across netns rebuilds (requires the macvlan plugin to declare the
+# "mac" capability). Each node gets its own Underlay with a unique MAC.
+apiVersion: network.openperouter.io/v1alpha1
+kind: Underlay
+metadata:
+  name: underlay-control-plane
+  namespace: openperouter-system
+spec:
+  asn: 64514
+  nodeSelector:
+    matchLabels:
+      kubernetes.io/hostname: pe-kind-control-plane
+  tunnelEndpoint:
+    cidrs:
+    - 100.65.0.0/24
+  interfaces:
+    - type: CNIDevice
+      cniDevice:
+        type: RawConfig
+        interfaceName: net1
+        rawConfig:
+          cniVersion: "1.0.0"
+          name: macvlan-underlay
+          plugins:
+            - type: macvlan
+              master: toswitch1
+              mode: bridge
+              capabilities:
+                mac: true
+              ipam:
+                type: dhcp
+        runtimeConfig:
+          mac: "aa:bb:cc:00:00:01"
+  neighbors:
+    - asn: 64512
+      address: 192.168.11.2
+---
+apiVersion: network.openperouter.io/v1alpha1
+kind: Underlay
+metadata:
+  name: underlay-worker
+  namespace: openperouter-system
+spec:
+  asn: 64514
+  nodeSelector:
+    matchLabels:
+      kubernetes.io/hostname: pe-kind-worker
+  tunnelEndpoint:
+    cidrs:
+    - 100.65.0.0/24
+  interfaces:
+    - type: CNIDevice
+      cniDevice:
+        type: RawConfig
+        interfaceName: net1
+        rawConfig:
+          cniVersion: "1.0.0"
+          name: macvlan-underlay
+          plugins:
+            - type: macvlan
+              master: toswitch1
+              mode: bridge
+              capabilities:
+                mac: true
+              ipam:
+                type: dhcp
+        runtimeConfig:
+          mac: "aa:bb:cc:00:00:02"
+  neighbors:
+    - asn: 64512
+      address: 192.168.11.2

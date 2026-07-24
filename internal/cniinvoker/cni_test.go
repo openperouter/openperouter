@@ -270,6 +270,103 @@ const (
 	netNS = "/var/run/netns/perouter-test"
 )
 
+const fakeConfListDHCP = `{
+  "cniVersion": "1.0.0",
+  "name": "underlay-dhcp-test",
+  "plugins": [
+    {
+      "type": "fake",
+      "ipam": {"type": "dhcp"}
+    }
+  ]
+}`
+
+type spyDHCPEnabler struct {
+	called int
+	err    error
+}
+
+func (s *spyDHCPEnabler) EnsureUp(_ context.Context) error {
+	s.called++
+	return s.err
+}
+
+func TestAddCallsEnsureUpForDHCPConfig(t *testing.T) {
+	env := newFakePluginEnv(t)
+	spy := &spyDHCPEnabler{}
+
+	inv := env.invokerWithDHCP(spy)
+	params := env.params("net1", nil)
+	params.Config = []byte(fakeConfListDHCP)
+
+	if err := inv.Add(context.Background(), params); err != nil {
+		t.Fatalf("Add failed: %v", err)
+	}
+	if spy.called != 1 {
+		t.Errorf("EnsureUp called %d times, want 1", spy.called)
+	}
+}
+
+func TestAddSkipsEnsureUpForNonDHCPConfig(t *testing.T) {
+	env := newFakePluginEnv(t)
+	spy := &spyDHCPEnabler{}
+
+	inv := env.invokerWithDHCP(spy)
+	if err := inv.Add(context.Background(), env.params("net1", nil)); err != nil {
+		t.Fatalf("Add failed: %v", err)
+	}
+	if spy.called != 0 {
+		t.Errorf("EnsureUp called %d times for non-DHCP config, want 0", spy.called)
+	}
+}
+
+func TestAddFailsWhenEnsureUpFails(t *testing.T) {
+	env := newFakePluginEnv(t)
+	spy := &spyDHCPEnabler{err: fmt.Errorf("daemon not starting")}
+
+	inv := env.invokerWithDHCP(spy)
+	params := env.params("net1", nil)
+	params.Config = []byte(fakeConfListDHCP)
+
+	err := inv.Add(context.Background(), params)
+	if err == nil {
+		t.Fatal("expected error when EnsureUp fails")
+	}
+}
+
+func TestDelCallsEnsureUpForCachedDHCPConfig(t *testing.T) {
+	env := newFakePluginEnv(t)
+	spy := &spyDHCPEnabler{}
+
+	inv := env.invokerWithDHCP(spy)
+	params := env.params("net1", nil)
+	params.Config = []byte(fakeConfListDHCP)
+
+	if err := inv.Add(context.Background(), params); err != nil {
+		t.Fatalf("Add failed: %v", err)
+	}
+	spy.called = 0
+
+	if err := inv.Del(context.Background(), "net1"); err != nil {
+		t.Fatalf("Del failed: %v", err)
+	}
+	if spy.called != 1 {
+		t.Errorf("EnsureUp called %d times on Del, want 1", spy.called)
+	}
+}
+
+func TestNilDHCPEnablerIsHarmless(t *testing.T) {
+	env := newFakePluginEnv(t)
+
+	inv := env.invoker()
+	params := env.params("net1", nil)
+	params.Config = []byte(fakeConfListDHCP)
+
+	if err := inv.Add(context.Background(), params); err != nil {
+		t.Fatalf("Add failed with nil dhcpEnabler: %v", err)
+	}
+}
+
 // fakePluginEnv provides a fake CNI plugin executable that records its
 // invocations (command + interface name) and the stdin it received, so tests
 // can assert on how libcni drove it without requiring real plugins or root.
@@ -334,6 +431,14 @@ func (e *fakePluginEnv) invoker() *invoker {
 	return &invoker{
 		cniConfig:   libcni.NewCNIConfigWithCacheDir([]string{e.binDir}, e.cacheDir, nil),
 		containerID: containerIDForNode(fakeNodeName),
+	}
+}
+
+func (e *fakePluginEnv) invokerWithDHCP(enabler DHCPEnabler) *invoker {
+	return &invoker{
+		cniConfig:   libcni.NewCNIConfigWithCacheDir([]string{e.binDir}, e.cacheDir, nil),
+		containerID: containerIDForNode(fakeNodeName),
+		dhcpEnabler: enabler,
 	}
 }
 
