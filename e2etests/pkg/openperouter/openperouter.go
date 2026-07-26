@@ -28,6 +28,7 @@ type Routers interface {
 type RouterExecutor interface {
 	executor.Executor
 	Name() string
+	NodeName() string
 }
 
 func Get(cs clientset.Interface, hostMode bool) (Routers, error) {

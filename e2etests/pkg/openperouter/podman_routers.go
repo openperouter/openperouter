@@ -28,6 +28,10 @@ func (r routerPodman) Name() string {
 	return r.nodeName
 }
 
+func (r routerPodman) NodeName() string {
+	return r.nodeName
+}
+
 func (r routerPodmans) GetExecutors() iter.Seq[RouterExecutor] {
 	return func(yield func(RouterExecutor) bool) {
 		for _, router := range r.routers {

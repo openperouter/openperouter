@@ -44,6 +44,10 @@ func (r routerPod) Name() string {
 	return r.Pod.Name
 }
 
+func (r routerPod) NodeName() string {
+	return r.Pod.Spec.NodeName
+}
+
 func (r routerPods) GetExecutors() iter.Seq[RouterExecutor] {
 	return func(yield func(RouterExecutor) bool) {
 		for _, pod := range r.pods {

@@ -169,7 +169,7 @@ var _ = Describe("RawFRRConfig", Ordered, func() {
 					return err
 				}
 				hasConfig := strings.Contains(runningConfig, expected)
-				isTarget := strings.Contains(router.Name(), targetNode.Name)
+				isTarget := router.NodeName() == targetNode.Name
 
 				if isTarget && !hasConfig {
 					return fmt.Errorf("target router %s running config does not contain %q", router.Name(), expected)
