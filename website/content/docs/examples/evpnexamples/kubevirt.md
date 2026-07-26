@@ -88,7 +88,7 @@ spec:
 **Key Configuration Points:**
 
 - The L2VNI references the L3VNI via the `routingDomain` field, enabling routed traffic
-- `hostmaster.autocreate: true` creates a `br-hs-110` bridge on the host
+- `hostmaster.linuxBridge.autoCreate: true` creates a `br-hs-110` bridge on the host
 - `gatewayIPs` defines the gateway IP for the VM subnet
 
 ### 2. Network Attachment Definition
@@ -263,7 +263,7 @@ The ping should continue working throughout the migration process.
 
 ### Common Issues
 
-1. **Bridge not created**: Verify the L2VNI has `hostmaster.autocreate: true`
+1. **Bridge not created**: Verify the L2VNI has `hostmaster.linuxBridge.autoCreate: true`
 2. **VM cannot reach gateway**: Check that the VM's IP is in the same subnet as `gatewayIPs`
 3. **No VM-to-VM connectivity**: Ensure both VMs are connected to the same bridge (`br-hs-110`)
 
