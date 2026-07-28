@@ -24,7 +24,7 @@ import (
 )
 
 var _ = Describe("Node Router Status", func() {
-	const routerNamespace = openperouter.Namespace
+	routerNamespace := openperouter.Namespace
 
 	var nodes []corev1.Node
 	var cs kubernetes.Interface

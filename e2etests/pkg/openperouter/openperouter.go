@@ -14,10 +14,9 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 )
 
-const (
-	Namespace           = "openperouter-system"
-	routerLabelSelector = "app=router"
-)
+const routerLabelSelector = "app=router"
+
+var Namespace = "openperouter-system"
 
 type Routers interface {
 	Dump(writer io.Writer)
