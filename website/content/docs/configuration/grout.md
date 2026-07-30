@@ -35,10 +35,10 @@ Grout support is being delivered incrementally. The current implementation cover
 
 - **Underlay** interface setup via grout ports
 - **L3Passthrough** forwarding via grout
+- **L3VNI** (EVPN Layer 3 overlays) via grout TAP devices
 
 The following are **not yet supported** with grout:
 
-- L3VNI (EVPN Layer 3 overlays)
 - L2VNI (EVPN Layer 2 overlays)
 - Hardware acceleration with SR-IOV NICs
 
