@@ -51,8 +51,22 @@ load_local_image_to_kind() {
     local image_tag=$1
     local file_name=$2
     local temp_file="/tmp/${file_name}.tar"
+    local save_opts=()
+
+    # When docker uses the containerd image store, "docker save" writes an OCI
+    # archive whose index points at the whole multi-platform manifest list,
+    # while only the platform we pulled has its blobs present locally. "kind
+    # load image-archive" then runs "ctr images import --all-platforms", which
+    # tries to resolve every referenced manifest and fails with
+    #   ctr: content digest sha256:...: not found
+    # Restricting the archive to the platform we actually pulled keeps the
+    # index single-manifest and imports cleanly.
+    if [[ $CONTAINER_ENGINE == "docker" ]] && docker save --help 2>&1 | grep -q -- '--platform'; then
+        save_opts=(--platform "${PLATFORM}")
+    fi
+
     rm -f ${temp_file}
-    ${CONTAINER_ENGINE_CLI} save -o ${temp_file} ${image_tag}
+    ${CONTAINER_ENGINE_CLI} save "${save_opts[@]}" -o ${temp_file} ${image_tag}
     ${KIND_COMMAND} load image-archive ${temp_file} --name ${KIND_CLUSTER_NAME}
     load_image_to_podman_on_nodes ${image_tag} ${file_name}
 }
