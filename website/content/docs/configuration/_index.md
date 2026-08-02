@@ -117,6 +117,49 @@ individual knobs are rendered as a BFD peer profile for that neighbor.
 waits for the peer to initiate before replying, per
 [RFC 5880 section 6.1](https://datatracker.ietf.org/doc/html/rfc5880#section-6.1).
 
+### BGP Session Authentication
+
+BGP neighbor sessions can be authenticated with a password (RFC 2385
+TCP MD5). OpenPERouter does not accept a plaintext password in the
+`Underlay` CRD: the password must be stored in a Kubernetes Secret,
+created in the same namespace as the `Underlay`, and referenced
+from the `Neighbor` via `passwordSecret`:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: bgp-auth
+  namespace: openperouter-system
+type: Opaque
+stringData:
+  password: my-bgp-password
+---
+apiVersion: network.openperouter.io/v1alpha1
+kind: Underlay
+metadata:
+  name: underlay-with-auth
+  namespace: openperouter-system
+spec:
+  asn: 64512
+  interfaces:
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: toswitch
+  neighbors:
+    - asn: 64500
+      address: 192.168.10.1
+      passwordSecret:
+        name: bgp-auth
+        key: password
+```
+
+Any Secret type is accepted, as long as the referenced key is present.
+`key` defaults to `password` when omitted. The resolved password must
+be at most 80 characters and contain no whitespace; changing the
+Secret's data triggers reconciliation automatically, so rotating the
+password doesn't require changes to the `Underlay` resource.
+
 ### Per-Node Configuration
 
 The Underlay resource supports an optional `nodeSelector` field that
