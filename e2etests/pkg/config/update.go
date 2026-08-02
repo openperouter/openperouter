@@ -8,6 +8,7 @@ import (
 
 	frrk8sv1beta1 "github.com/metallb/frr-k8s/api/v1beta1"
 	"github.com/openperouter/openperouter/api/v1alpha1"
+	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
@@ -152,6 +153,11 @@ func (o Updater) CleanAll() error {
 		return err
 	}
 	if err := o.CleanButUnderlay(); err != nil {
+		return err
+	}
+	if err := o.cli.DeleteAllOf(context.Background(), &corev1.Secret{},
+		client.InNamespace(o.namespace),
+		client.MatchingLabels{k8s.TestSecretLabel: "true"}); err != nil {
 		return err
 	}
 	return nil

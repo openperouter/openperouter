@@ -104,6 +104,7 @@ type LeafKindConfiguration struct {
 	PERouterASN           uint32
 	PeerIPFamily          ipfamily.Family
 	BGPAddressFamilies    []networklayerprotocol.NLP
+	Password              string
 }
 
 // Neighbor represents a BGP neighbor with its ID (IP address or interface)
@@ -111,6 +112,7 @@ type LeafKindConfiguration struct {
 type Neighbor struct {
 	ID          string
 	IsInterface bool
+	Password    string
 }
 
 type RouteTargets struct {
