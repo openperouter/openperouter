@@ -427,11 +427,24 @@ spec:
                       type: integer
                     passwordSecret:
                       description: |-
-                        passwordSecret is name of the authentication secret for the neighbor.
-                        The secret must be of type "kubernetes.io/basic-auth", and created in the
-                        same namespace as the perouter daemon. The password is stored in the
-                        secret as the key "password".
-                      type: string
+                        passwordSecret references a key in a Kubernetes Secret containing the
+                        BGP session password. The Secret must be created in the same namespace
+                        as the Underlay.
+                      properties:
+                        key:
+                          description: |-
+                            key is the key within the Secret's data to select.
+                            The controller defaults this to "password" when unset.
+                          minLength: 1
+                          type: string
+                        name:
+                          description: name is the name of the Secret in the same
+                            namespace.
+                          minLength: 1
+                          type: string
+                      required:
+                      - name
+                      type: object
                     port:
                       description: |-
                         port is the port to dial when establishing the session.
