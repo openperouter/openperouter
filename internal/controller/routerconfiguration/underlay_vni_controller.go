@@ -307,41 +307,50 @@ func (r *PERouterReconciler) resolvePasswordSecrets(ctx context.Context, config 
 	for i := range config.Underlays {
 		for j := range config.Underlays[i].Spec.Neighbors {
 			n := &config.Underlays[i].Spec.Neighbors[j]
-			if n.PasswordSecret == nil || *n.PasswordSecret == "" {
+			if n.PasswordSecret == nil || n.PasswordSecret.Name == "" {
 				continue
 			}
 			if n.Password != nil {
 				slog.InfoContext(ctx, "neighbor already has a password, skipping secret resolution",
-					"neighbor", neighborAddr(n), "secret", *n.PasswordSecret)
+					"neighbor", neighborAddr(n), "secret", n.PasswordSecret.Name)
 				continue
 			}
 
 			secret := &v1.Secret{}
-			key := types.NamespacedName{Name: *n.PasswordSecret, Namespace: r.MyNamespace}
-			if err := r.Get(ctx, key, secret); err != nil {
+			nsName := types.NamespacedName{Name: n.PasswordSecret.Name, Namespace: config.Underlays[i].Namespace}
+			if err := r.Get(ctx, nsName, secret); err != nil {
 				return fmt.Errorf("failed to get password secret %q for neighbor %s: %w",
-					*n.PasswordSecret, neighborAddr(n), err)
+					n.PasswordSecret.Name, neighborAddr(n), err)
 			}
 
-			if secret.Type != v1.SecretTypeBasicAuth {
-				return fmt.Errorf("secret %q for neighbor %s has type %q, expected %q",
-					*n.PasswordSecret, neighborAddr(n), secret.Type, v1.SecretTypeBasicAuth)
-			}
-
-			pw, ok := secret.Data["password"]
+			dataKey := resolvedSecretKey(n.PasswordSecret)
+			pw, ok := secret.Data[dataKey]
 			if !ok {
-				return fmt.Errorf("secret %q missing key \"password\" for neighbor %s",
-					*n.PasswordSecret, neighborAddr(n))
+				return fmt.Errorf("secret %q missing key %q for neighbor %s",
+					n.PasswordSecret.Name, dataKey, neighborAddr(n))
 			}
 			resolved := string(pw)
 			if err := validatePassword(resolved); err != nil {
 				return fmt.Errorf("password from secret %q for neighbor %s: %w",
-					*n.PasswordSecret, neighborAddr(n), err)
+					n.PasswordSecret.Name, neighborAddr(n), err)
 			}
 			n.Password = &resolved
 		}
 	}
 	return nil
+}
+
+// defaultPasswordSecretKey is the Secret data key used when
+// SecretKeyRef.Key is unset.
+const defaultPasswordSecretKey = "password"
+
+// resolvedSecretKey returns the Secret data key to read the password from,
+// defaulting to defaultPasswordSecretKey when Key is unset.
+func resolvedSecretKey(ref *v1alpha1.SecretKeyRef) string {
+	if ref.Key != nil && *ref.Key != "" {
+		return *ref.Key
+	}
+	return defaultPasswordSecretKey
 }
 
 func neighborAddr(n *v1alpha1.Neighbor) string {

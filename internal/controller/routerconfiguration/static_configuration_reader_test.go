@@ -1192,7 +1192,7 @@ func TestValidateStaticNeighbors(t *testing.T) {
 					Neighbor: v1alpha1.Neighbor{
 						Address:        new("10.0.0.1"),
 						ASN:            new(int64(64512)),
-						PasswordSecret: new("my-secret"),
+						PasswordSecret: &v1alpha1.SecretKeyRef{Name: "my-secret"},
 					},
 					Password: new("staticpass"),
 				},
@@ -1224,7 +1224,7 @@ func TestValidateStaticNeighbors(t *testing.T) {
 				Neighbor: v1alpha1.Neighbor{
 					Address:        new("10.0.0.1"),
 					ASN:            new(int64(64512)),
-					PasswordSecret: new("my-secret"),
+					PasswordSecret: &v1alpha1.SecretKeyRef{Name: "my-secret"},
 				},
 				Password: new("staticpass"),
 			},

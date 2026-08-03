@@ -95,7 +95,7 @@ var _ = Describe("Neighbor passwordSecret", Ordered, func() {
 					{
 						ASN:            new(int64(64512)),
 						Address:        new("192.168.11.2"),
-						PasswordSecret: new(secretName),
+						PasswordSecret: &v1alpha1.SecretKeyRef{Name: secretName},
 					},
 				},
 			},
@@ -171,7 +171,7 @@ var _ = Describe("Neighbor passwordSecret", Ordered, func() {
 					{
 						ASN:            new(int64(64512)),
 						Address:        new("192.168.11.2"),
-						PasswordSecret: new(secretName),
+						PasswordSecret: &v1alpha1.SecretKeyRef{Name: secretName},
 					},
 				},
 			},

@@ -32,7 +32,7 @@ func TestResolvePasswordSecrets(t *testing.T) {
 				{
 					Address:        new("192.168.1.2"),
 					ASN:            new(int64(64513)),
-					PasswordSecret: new("bgp-auth"),
+					PasswordSecret: &v1alpha1.SecretKeyRef{Name: "bgp-auth"},
 				},
 			},
 			secrets: []corev1.Secret{
@@ -43,6 +43,60 @@ func TestResolvePasswordSecrets(t *testing.T) {
 				},
 			},
 			wantPassword: "secret-password",
+		},
+		{
+			name: "any secret type is accepted, not just basic-auth",
+			neighbors: []v1alpha1.Neighbor{
+				{
+					Address:        new("192.168.1.2"),
+					ASN:            new(int64(64513)),
+					PasswordSecret: &v1alpha1.SecretKeyRef{Name: "opaque-secret"},
+				},
+			},
+			secrets: []corev1.Secret{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "opaque-secret", Namespace: "openperouter-system"},
+					Type:       corev1.SecretTypeOpaque,
+					Data:       map[string][]byte{"password": []byte("secret-password")},
+				},
+			},
+			wantPassword: "secret-password",
+		},
+		{
+			name: "resolves password from custom key",
+			neighbors: []v1alpha1.Neighbor{
+				{
+					Address:        new("192.168.1.2"),
+					ASN:            new(int64(64513)),
+					PasswordSecret: &v1alpha1.SecretKeyRef{Name: "bgp-auth-custom-key", Key: new("bgp-password")},
+				},
+			},
+			secrets: []corev1.Secret{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "bgp-auth-custom-key", Namespace: "openperouter-system"},
+					Type:       corev1.SecretTypeOpaque,
+					Data:       map[string][]byte{"bgp-password": []byte("secret-password")},
+				},
+			},
+			wantPassword: "secret-password",
+		},
+		{
+			name: "secret missing the configured custom key",
+			neighbors: []v1alpha1.Neighbor{
+				{
+					Address:        new("192.168.1.2"),
+					ASN:            new(int64(64513)),
+					PasswordSecret: &v1alpha1.SecretKeyRef{Name: "bad-custom-key-secret", Key: new("bgp-password")},
+				},
+			},
+			secrets: []corev1.Secret{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "bad-custom-key-secret", Namespace: "openperouter-system"},
+					Type:       corev1.SecretTypeOpaque,
+					Data:       map[string][]byte{"password": []byte("secret-password")},
+				},
+			},
+			wantErr: true,
 		},
 		{
 			name: "password field takes precedence over passwordSecret",
@@ -71,25 +125,7 @@ func TestResolvePasswordSecrets(t *testing.T) {
 				{
 					Address:        new("192.168.1.2"),
 					ASN:            new(int64(64513)),
-					PasswordSecret: new("missing-secret"),
-				},
-			},
-			wantErr: true,
-		},
-		{
-			name: "secret with wrong type rejected",
-			neighbors: []v1alpha1.Neighbor{
-				{
-					Address:        new("192.168.1.2"),
-					ASN:            new(int64(64513)),
-					PasswordSecret: new("opaque-secret"),
-				},
-			},
-			secrets: []corev1.Secret{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "opaque-secret", Namespace: "openperouter-system"},
-					Type:       corev1.SecretTypeOpaque,
-					Data:       map[string][]byte{"password": []byte("secret-password")},
+					PasswordSecret: &v1alpha1.SecretKeyRef{Name: "missing-secret"},
 				},
 			},
 			wantErr: true,
@@ -100,7 +136,7 @@ func TestResolvePasswordSecrets(t *testing.T) {
 				{
 					Address:        new("192.168.1.2"),
 					ASN:            new(int64(64513)),
-					PasswordSecret: new("bad-secret"),
+					PasswordSecret: &v1alpha1.SecretKeyRef{Name: "bad-secret"},
 				},
 			},
 			secrets: []corev1.Secret{
@@ -118,7 +154,7 @@ func TestResolvePasswordSecrets(t *testing.T) {
 				{
 					Address:        new("192.168.1.2"),
 					ASN:            new(int64(64513)),
-					PasswordSecret: new("inject-secret"),
+					PasswordSecret: &v1alpha1.SecretKeyRef{Name: "inject-secret"},
 				},
 			},
 			secrets: []corev1.Secret{
@@ -136,7 +172,7 @@ func TestResolvePasswordSecrets(t *testing.T) {
 				{
 					Address:        new("192.168.1.2"),
 					ASN:            new(int64(64513)),
-					PasswordSecret: new("cr-secret"),
+					PasswordSecret: &v1alpha1.SecretKeyRef{Name: "cr-secret"},
 				},
 			},
 			secrets: []corev1.Secret{
@@ -154,7 +190,7 @@ func TestResolvePasswordSecrets(t *testing.T) {
 				{
 					Address:        new("192.168.1.2"),
 					ASN:            new(int64(64513)),
-					PasswordSecret: new("space-secret"),
+					PasswordSecret: &v1alpha1.SecretKeyRef{Name: "space-secret"},
 				},
 			},
 			secrets: []corev1.Secret{
@@ -172,7 +208,7 @@ func TestResolvePasswordSecrets(t *testing.T) {
 				{
 					Address:        new("192.168.1.2"),
 					ASN:            new(int64(64513)),
-					PasswordSecret: new("long-secret"),
+					PasswordSecret: &v1alpha1.SecretKeyRef{Name: "long-secret"},
 				},
 			},
 			secrets: []corev1.Secret{
@@ -196,12 +232,13 @@ func TestResolvePasswordSecrets(t *testing.T) {
 
 			r := &PERouterReconciler{
 				Client:      cli,
-				MyNamespace: "openperouter-system",
+				MyNamespace: "operator-namespace",
 			}
 
 			config := conversion.APIConfigData{
 				Underlays: []v1alpha1.Underlay{
 					{
+						ObjectMeta: metav1.ObjectMeta{Namespace: "openperouter-system"},
 						Spec: v1alpha1.UnderlaySpec{
 							Neighbors: tt.neighbors,
 						},
