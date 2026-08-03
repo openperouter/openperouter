@@ -67,7 +67,7 @@ type PERouterReconciler struct {
 type requestKey string
 
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
-// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;delete
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 // +kubebuilder:rbac:groups=network.openperouter.io,resources=l3vnis,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=network.openperouter.io,resources=l3vnis/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=network.openperouter.io,resources=l3vnis/finalizers,verbs=update
