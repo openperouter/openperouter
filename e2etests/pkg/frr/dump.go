@@ -33,6 +33,19 @@ func RawDump(exec executor.Executor) string {
 		{desc: "BGP route table ipv6", cmd: []string{"vtysh", "-c", "show bgp vrf all ipv6"}},
 		{desc: "EVPN Routes", cmd: []string{"vtysh", "-c", "show bgp l2vpn evpn"}},
 		{desc: "Zebra interface information", cmd: []string{"vtysh", "-c", "show interface"}},
+		// The zebra dataplane and EVPN state below is what is needed to
+		// understand a crash or a stall in the dplane thread, which is
+		// invisible in the BGP oriented output above.
+		{desc: "Zebra dplane", cmd: []string{"vtysh", "-c", "show zebra dplane detailed"}, skipLogOnError: true},
+		{desc: "Zebra dplane providers", cmd: []string{"vtysh", "-c", "show zebra dplane providers"}, skipLogOnError: true},
+		{desc: "Zebra clients", cmd: []string{"vtysh", "-c", "show zebra client summary"}, skipLogOnError: true},
+		{desc: "Zebra work queues", cmd: []string{"vtysh", "-c", "show work-queues"}, skipLogOnError: true},
+		{desc: "Event CPU", cmd: []string{"vtysh", "-c", "show event cpu"}, skipLogOnError: true},
+		{desc: "Event poll", cmd: []string{"vtysh", "-c", "show event poll"}, skipLogOnError: true},
+		{desc: "Memory", cmd: []string{"vtysh", "-c", "show memory"}, skipLogOnError: true},
+		{desc: "EVPN VNIs", cmd: []string{"vtysh", "-c", "show evpn vni detail"}, skipLogOnError: true},
+		{desc: "EVPN MACs", cmd: []string{"vtysh", "-c", "show evpn mac vni all"}, skipLogOnError: true},
+		{desc: "EVPN ARP cache", cmd: []string{"vtysh", "-c", "show evpn arp-cache vni all"}, skipLogOnError: true},
 		{desc: "ip link", cmd: []string{"bash", "-c", "ip l"}},
 		{desc: "ip address", cmd: []string{"bash", "-c", "ip address"}},
 		{desc: "ip neigh", cmd: []string{"bash", "-c", "ip neigh"}},

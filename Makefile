@@ -121,12 +121,17 @@ run: manifests generate fmt vet ## Run a controller from your host.
 COMMIT := $(shell git describe --dirty --always)
 BRANCH = $(shell git rev-parse --abbrev-ref HEAD)
 
+# FRR_VARIANT selects the FRR runtime baked into the router image. Set it to
+# "debug" to get an FRR rebuilt with debug information, frame pointers,
+# libunwind and gdb, so that crashes produce a symbolizable backtrace.
+FRR_VARIANT ?= release
+
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
 	@if [ "$(CONTAINER_ENGINE)" = "podman" ]; then \
-		sudo $(CONTAINER_ENGINE) build  -t ${IMG} -f ${DOCKERFILE} .; \
+		sudo $(CONTAINER_ENGINE) build --build-arg FRR_VARIANT=$(FRR_VARIANT) -t ${IMG} -f ${DOCKERFILE} .; \
 	else \
-		$(CONTAINER_ENGINE) build -t ${IMG} -f ${DOCKERFILE} .; \
+		$(CONTAINER_ENGINE) build --build-arg FRR_VARIANT=$(FRR_VARIANT) -t ${IMG} -f ${DOCKERFILE} .; \
 	fi
 
 
