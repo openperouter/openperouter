@@ -142,6 +142,64 @@ var _ = Describe("Neighbor passwordSecret", Ordered, func() {
 		}
 	})
 
+	It("should resolve password from a custom Secret key", func() {
+		const customKey = "bgp-password"
+
+		By("creating an Opaque Secret with the password under a custom key")
+		Expect(
+			k8s.CreateOpaqueSecret(cs, secretName, openperouter.Namespace, customKey, bgpPassword),
+		).To(Succeed())
+
+		By("configuring the leaf switch with the matching password")
+		Expect(infra.LeafKind1Config.UpdateConfig(nodes, infra.LeafKindConfiguration{
+			Password: bgpPassword,
+		})).To(Succeed())
+
+		By("creating the underlay with passwordSecret referencing the custom key")
+		underlay := v1alpha1.Underlay{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "underlay",
+				Namespace: openperouter.Namespace,
+			},
+			Spec: v1alpha1.UnderlaySpec{
+				ASN: 64514,
+				Interfaces: []v1alpha1.UnderlayInterface{
+					{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch1"}},
+				},
+				TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+					CIDRs: []string{"100.65.0.0/24"},
+				},
+				Neighbors: []v1alpha1.Neighbor{
+					{
+						ASN:            new(int64(64512)),
+						Address:        new("192.168.11.2"),
+						PasswordSecret: &v1alpha1.SecretKeyRef{Name: secretName, Key: new(customKey)},
+					},
+				},
+			},
+		}
+
+		Expect(Updater.Update(config.Resources{
+			Underlays: []v1alpha1.Underlay{underlay},
+		})).To(Succeed())
+
+		By("verifying the BGP session is established with the authenticated peer")
+		exec := executor.ForContainer(infra.KindLeaf)
+		for _, node := range nodes {
+			neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
+			Expect(err).NotTo(HaveOccurred())
+			validateSessionWithNeighbor(
+				exec,
+				validationParameters{
+					fromName:    infra.KindLeaf,
+					toName:      node.Name,
+					neighborIP:  neighborIP,
+					established: Established,
+				},
+			)
+		}
+	})
+
 	It("should re-establish the session after a Secret password rotation", func() {
 		const rotatedPassword = "RotatedSecret456"
 

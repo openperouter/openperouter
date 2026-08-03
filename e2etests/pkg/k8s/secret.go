@@ -26,6 +26,21 @@ func CreateBasicAuthSecret(cs clientset.Interface, name, namespace, password str
 	return err
 }
 
+func CreateOpaqueSecret(cs clientset.Interface, name, namespace, key, password string) error {
+	secret := corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Type: corev1.SecretTypeOpaque,
+		Data: map[string][]byte{
+			key: []byte(password),
+		},
+	}
+	_, err := cs.CoreV1().Secrets(namespace).Create(context.Background(), &secret, metav1.CreateOptions{})
+	return err
+}
+
 func UpdateBasicAuthSecret(cs clientset.Interface, name, namespace, password string) error {
 	secret, err := cs.CoreV1().Secrets(namespace).Get(context.Background(), name, metav1.GetOptions{})
 	if err != nil {
