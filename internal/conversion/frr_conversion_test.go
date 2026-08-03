@@ -3917,7 +3917,7 @@ func TestAPItoFRRListenLimit(t *testing.T) {
 		Spec: v1alpha1.UnderlaySpec{
 			ASN: 64514,
 			Neighbors: []v1alpha1.Neighbor{
-				{Type: new("internal"), ListenRange: new("192.168.10.0/24")},
+				{Type: new("Internal"), ListenRange: new("192.168.10.0/24")},
 			},
 			TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: []string{"100.65.0.0/24"}},
 		},
@@ -3961,12 +3961,12 @@ func TestAPItoFRRListenRange(t *testing.T) {
 		{
 			name: "ipv4 listen range",
 			neighbors: []v1alpha1.Neighbor{
-				{Type: new("internal"), ListenRange: new("192.168.10.0/24")},
+				{Type: new("Internal"), ListenRange: new("192.168.10.0/24")},
 			},
 			wantNeighbors: []frr.NeighborConfig{
 				{
 					Name:                  "internal@192.168.10.0/24",
-					ASN:                   mustNewPeerASNFromType("internal"),
+					ASN:                   mustNewPeerASNFromType("Internal"),
 					ListenRange:           "192.168.10.0/24",
 					ID:                    "192.168.10.0/24",
 					NetworkLayerProtocols: []networklayerprotocol.NLP{ipv4},
@@ -3976,12 +3976,12 @@ func TestAPItoFRRListenRange(t *testing.T) {
 		{
 			name: "ipv6 listen range",
 			neighbors: []v1alpha1.Neighbor{
-				{Type: new("internal"), ListenRange: new("fd00:10::/64")},
+				{Type: new("Internal"), ListenRange: new("fd00:10::/64")},
 			},
 			wantNeighbors: []frr.NeighborConfig{
 				{
 					Name:        "internal@fd00:10::/64",
-					ASN:         mustNewPeerASNFromType("internal"),
+					ASN:         mustNewPeerASNFromType("Internal"),
 					ListenRange: "fd00:10::/64",
 					ID:          "fd00:10::/64",
 					// The base underlay has an IPv4 tunnel endpoint, so the
@@ -3997,7 +3997,7 @@ func TestAPItoFRRListenRange(t *testing.T) {
 			name: "listen range with evpn route reflector client",
 			neighbors: []v1alpha1.Neighbor{
 				{
-					Type:        new("internal"),
+					Type:        new("Internal"),
 					ListenRange: new("192.168.10.0/24"),
 					AddressFamilies: []v1alpha1.NeighborAddressFamily{
 						{
@@ -4013,7 +4013,7 @@ func TestAPItoFRRListenRange(t *testing.T) {
 			wantNeighbors: []frr.NeighborConfig{
 				{
 					Name:                  "internal@192.168.10.0/24",
-					ASN:                   mustNewPeerASNFromType("internal"),
+					ASN:                   mustNewPeerASNFromType("Internal"),
 					ListenRange:           "192.168.10.0/24",
 					ID:                    "192.168.10.0/24",
 					NetworkLayerProtocols: []networklayerprotocol.NLP{evpnWithRRClient, ipv4},

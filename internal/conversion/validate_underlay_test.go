@@ -279,23 +279,23 @@ func TestValidateUnderlay(t *testing.T) {
 					ASN: 65001,
 					Neighbors: []v1alpha1.Neighbor{
 						{
-							Type:        new("internal"),
+							Type:        new("Internal"),
 							ListenRange: new("192.168.10.0/24"),
 						},
 						{
-							Type:        new("internal"),
+							Type:        new("Internal"),
 							ListenRange: new("192.168.11.0/24"),
 						},
 						{
-							Type:        new("internal"),
+							Type:        new("Internal"),
 							ListenRange: new("fd00:10::/64"),
 						},
 						{
-							Type:    new("internal"),
+							Type:    new("Internal"),
 							Address: new("192.168.10.3"),
 						},
 						{
-							Type:    new("internal"),
+							Type:    new("Internal"),
 							Address: new("192.168.10.4"),
 						},
 					},
@@ -524,11 +524,11 @@ func TestValidateUnderlay(t *testing.T) {
 					ASN: 65001,
 					Neighbors: []v1alpha1.Neighbor{
 						{
-							Type:        new("internal"),
+							Type:        new("Internal"),
 							ListenRange: new("192.168.10.0/24"),
 						},
 						{
-							Type:        new("internal"),
+							Type:        new("Internal"),
 							ListenRange: new("192.168.10.0/24"),
 						},
 					},
@@ -552,11 +552,11 @@ func TestValidateUnderlay(t *testing.T) {
 					ASN: 65001,
 					Neighbors: []v1alpha1.Neighbor{
 						{
-							Type:        new("internal"),
+							Type:        new("Internal"),
 							ListenRange: new("192.168.10.0/24"),
 						},
 						{
-							Type:        new("internal"),
+							Type:        new("Internal"),
 							ListenRange: new("192.168.10.128/25"),
 						},
 					},
@@ -580,11 +580,11 @@ func TestValidateUnderlay(t *testing.T) {
 					ASN: 65001,
 					Neighbors: []v1alpha1.Neighbor{
 						{
-							Type:        new("internal"),
+							Type:        new("Internal"),
 							ListenRange: new("192.168.10.1/24"),
 						},
 						{
-							Type:        new("internal"),
+							Type:        new("Internal"),
 							ListenRange: new("192.168.10.0/24"),
 						},
 					},
@@ -608,7 +608,7 @@ func TestValidateUnderlay(t *testing.T) {
 					ASN: 65001,
 					Neighbors: []v1alpha1.Neighbor{
 						{
-							Type:        new("internal"),
+							Type:        new("Internal"),
 							ListenRange: new("192.168.10.5"),
 						},
 					},

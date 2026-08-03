@@ -39,7 +39,7 @@ var underlayRR = v1alpha1.Underlay{
 		Neighbors: []v1alpha1.Neighbor{
 			{
 				ListenRange: new("192.168.11.0/24"),
-				Type:        new("internal"),
+				Type:        new("Internal"),
 				AddressFamilies: []v1alpha1.NeighborAddressFamily{
 					{
 						Type: "ipv4unicast",
@@ -79,7 +79,7 @@ var underlayRRClient = v1alpha1.Underlay{
 		Neighbors: []v1alpha1.Neighbor{
 			{
 				Address: new(underlayRRAddress),
-				Type:    new("internal"),
+				Type:    new("Internal"),
 			},
 		},
 	},

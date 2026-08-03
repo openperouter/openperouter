@@ -57,7 +57,7 @@ spec:
   routeReflector:
     clusterID: 192.0.2.1
   neighbors:
-    - type: internal
+    - type: Internal
       listenRange: 192.168.11.0/24
       addressFamilies:
         - type: ipv4unicast
@@ -90,7 +90,7 @@ spec:
     cidrs:
       - 100.65.0.0/24
   neighbors:
-    - type: internal
+    - type: Internal
       address: 192.168.11.3  # the route reflector on the leafkind1 switch subnet
 ```
 

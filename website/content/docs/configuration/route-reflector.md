@@ -45,7 +45,7 @@ spec:
   routeReflector:
     clusterID: 192.0.2.1
   neighbors:
-    - type: internal
+    - type: Internal
       listenRange: 192.168.11.0/24
       addressFamilies:
         - type: ipv4unicast
@@ -80,7 +80,7 @@ spec:
     cidrs:
       - 100.65.0.0/24
   neighbors:
-    - type: internal
+    - type: Internal
       address: 192.168.11.3 # the reflector's address on the cluster subnet
 ```
 
@@ -91,9 +91,9 @@ spec:
 | `routeReflector` | object | Enables route reflection on matching nodes when present. Omit to run as a standard router. | _(disabled)_ | |
 | `routeReflector.clusterID` | string | BGP cluster-id (RFC 4456 §7) shared by all reflectors serving the same clients. Must be a valid IPv4 address and lie **outside** `routeridcidr` so it never collides with an allocated router-id. | `192.0.2.1` | valid IPv4 |
 | `neighbors[].listenRange` | string | CIDR for dynamic neighbor acceptance via `bgp listen range`. Mutually exclusive with `address` and `interface`. IPv6 link-local ranges are rejected. | | valid CIDR |
-| `neighbors[].addressFamilies[].properties[].type` | string | Per-address-family feature. `routeReflectorClient` marks the neighbor as a route reflector client in that address family. Requires the neighbor `type` to be `internal`. | | `routeReflectorClient` |
+| `neighbors[].addressFamilies[].properties[].type` | string | Per-address-family feature. `routeReflectorClient` marks the neighbor as a route reflector client in that address family. Requires the neighbor `type` to be `Internal`. | | `routeReflectorClient` |
 
-> The reflector's listen-range neighbor must use `type: internal`, because route reflection is an iBGP-only concept. Setting `routeReflectorClient` on a neighbor that is not `internal` is rejected at admission.
+> The reflector's listen-range neighbor must use `type: Internal`, because route reflection is an iBGP-only concept. Setting `routeReflectorClient` on a neighbor that is not `Internal` is rejected at admission.
 
 ## What Happens When Route Reflection Is Enabled
 

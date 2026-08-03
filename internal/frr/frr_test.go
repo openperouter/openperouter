@@ -1410,20 +1410,20 @@ func TestRouteReflector(t *testing.T) {
 					NetworkLayerProtocols: []networklayerprotocol.NLP{ipv4, evpn},
 				},
 				{
-					ASN:                   mustNewPeerASNFromType("internal"),
+					ASN:                   mustNewPeerASNFromType("Internal"),
 					ListenRange:           "192.168.10.0/24",
 					ID:                    "192.168.10.0/24",
 					NetworkLayerProtocols: []networklayerprotocol.NLP{evpnWithRRClient},
 				},
 				{
-					ASN:                   mustNewPeerASNFromType("internal"),
+					ASN:                   mustNewPeerASNFromType("Internal"),
 					ListenRange:           "fd00:10::/64",
 					ID:                    "fd00:10::/64",
 					ExtendedNexthop:       true,
 					NetworkLayerProtocols: []networklayerprotocol.NLP{evpnWithRRClient},
 				},
 				{
-					ASN:                   mustNewPeerASNFromType("internal"),
+					ASN:                   mustNewPeerASNFromType("Internal"),
 					Addr:                  "192.168.10.4",
 					ID:                    "192.168.10.4",
 					NetworkLayerProtocols: []networklayerprotocol.NLP{ipv4, evpn},
@@ -1455,13 +1455,13 @@ func TestRouteReflectorOnly(t *testing.T) {
 			},
 			Neighbors: []NeighborConfig{
 				{
-					ASN:                   mustNewPeerASNFromType("internal"),
+					ASN:                   mustNewPeerASNFromType("Internal"),
 					ListenRange:           "192.168.11.0/24",
 					ID:                    "192.168.11.0/24",
 					NetworkLayerProtocols: []networklayerprotocol.NLP{evpnWithRRClient},
 				},
 				{
-					ASN:                   mustNewPeerASNFromType("internal"),
+					ASN:                   mustNewPeerASNFromType("Internal"),
 					Addr:                  "192.168.10.4",
 					ID:                    "192.168.10.4",
 					NetworkLayerProtocols: []networklayerprotocol.NLP{evpn},
@@ -1494,7 +1494,7 @@ func TestRouteReflectorL3VPN(t *testing.T) {
 			},
 			Neighbors: []NeighborConfig{
 				{
-					ASN:                   mustNewPeerASNFromType("internal"),
+					ASN:                   mustNewPeerASNFromType("Internal"),
 					Addr:                  "fc00::2:172:31:1:12",
 					ID:                    "fc00::2:172:31:1:12",
 					NetworkLayerProtocols: []networklayerprotocol.NLP{ipv4vpnWithRRClient, ipv6vpnWithRRClient},
