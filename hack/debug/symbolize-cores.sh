@@ -22,6 +22,16 @@ CONTAINER_ENGINE="${CONTAINER_ENGINE:-docker}"
 CORE_DIR="${KIND_EXPORT_LOGS}/core_dumps"
 OUT_DIR="${KIND_EXPORT_LOGS}/core_backtraces"
 
+# Always state which FRR the router image carries. A run is worthless as
+# evidence if nobody can tell afterwards which patches were compiled in.
+if "${CONTAINER_ENGINE}" image inspect "${ROUTER_IMAGE}" >/dev/null 2>&1; then
+  echo "FRR build in ${ROUTER_IMAGE}:"
+  "${CONTAINER_ENGINE}" run --rm --entrypoint cat "${ROUTER_IMAGE}" \
+    /etc/frr-build-info 2>/dev/null ||
+    echo "  no /etc/frr-build-info, this is a stock FRR image"
+  echo
+fi
+
 if [ ! -d "${CORE_DIR}" ]; then
   echo "No core dump directory at ${CORE_DIR}, nothing to symbolize."
   exit 0

@@ -23,6 +23,50 @@ up in the `ListenRange` e2e specs. None of this is meant to be merged as is.
 * The e2e lanes default to `--focus='ListenRange' --repeat=20`, which gives 20
   attempts at the race per run instead of one.
 
+## FRR patches under test
+
+`hack/debug/frr-patches/*.patch` is applied to the FRR source before it is
+built, in file name order. The patches are vendored instead of fetched from
+GitHub so the build is reproducible and a reviewer can see what went in.
+
+Currently applied:
+
+| patch | upstream |
+| --- | --- |
+| `0001-frr-pr-22884-clear-remote-flag-on-gw-svi-mac.patch` | [FRRouting/frr#22884](https://github.com/FRRouting/frr/pull/22884) |
+
+To test a different upstream PR, drop its diff in that directory:
+
+```bash
+curl -sL https://github.com/FRRouting/frr/pull/<N>.diff \
+  -o hack/debug/frr-patches/00XX-frr-pr-<N>.patch
+```
+
+The PR targets `master`, but it applies cleanly to the `frr-10.6.0` tag, so
+`FRR_REF` stays at 10.6.0. That keeps the patch as the only variable against a
+baseline run.
+
+## Knowing what is inside an image
+
+Every debug image carries `/etc/frr-build-info`:
+
+```bash
+docker run --rm --entrypoint cat quay.io/openperouter/router:main /etc/frr-build-info
+```
+
+```
+frr_ref=frr-10.6.0
+frr_commit=3fcbae55ef03cd1786aaa027668f92368fd877ef
+frr_describe=frr-10.6.0
+built=2026-08-03T11:26:51Z
+patch=0001-frr-pr-22884-clear-remote-flag-on-gw-svi-mac.patch sha256=cf475ead...
+```
+
+`hack/debug/symbolize-cores.sh` prints it at the start of every CI run, so a
+run's evidence can always be tied back to the exact FRR it exercised. Not
+having this has already produced one wrong conclusion: a tagged image named
+after one PR was used to argue about a different PR.
+
 ## Building the debug image locally
 
 ```bash

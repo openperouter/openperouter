@@ -1,0 +1,12 @@
+diff --git a/zebra/zebra_evpn_mac.c b/zebra/zebra_evpn_mac.c
+index 6e0f1bbeeb99..df4f31e99def 100644
+--- a/zebra/zebra_evpn_mac.c
++++ b/zebra/zebra_evpn_mac.c
+@@ -2473,6 +2473,7 @@ void zebra_evpn_mac_gw_macip_add(struct interface *ifp, struct zebra_evpn *zevpn
+ 	mac->gr_refresh_time = monotime(NULL);
+ 	/* Set "local" forwarding info. */
+ 	zebra_evpn_mac_clear_fwd_info(mac);
++	UNSET_FLAG(mac->flags, ZEBRA_MAC_REMOTE);
+ 	SET_FLAG(mac->flags, ZEBRA_MAC_LOCAL);
+ 	SET_FLAG(mac->flags, ZEBRA_MAC_AUTO);
+ 	if (def_gw)

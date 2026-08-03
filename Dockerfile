@@ -107,6 +107,31 @@ RUN apk add --no-cache \
 WORKDIR /src
 RUN git clone --depth 1 --branch ${FRR_REF} https://github.com/FRRouting/frr.git .
 
+# Apply the FRR patches under test. They are vendored rather than fetched from
+# GitHub so that the build is reproducible and a reviewer can see exactly what
+# went into the image.
+COPY hack/debug/frr-patches /frr-patches
+RUN for patch in /frr-patches/*.patch; do \
+  [ -e "$patch" ] || continue; \
+  echo "applying $patch"; \
+  git apply --verbose "$patch"; \
+  done
+
+# Record what actually went into this image. Not knowing which patches a
+# router image carries has already cost us one wrong conclusion, so the answer
+# travels with the binary and can be read back with
+# "docker run --entrypoint cat <image> /etc/frr-build-info".
+RUN { \
+  echo "frr_ref=${FRR_REF}"; \
+  echo "frr_commit=$(git rev-parse HEAD)"; \
+  echo "frr_describe=$(git describe --always --tags 2>/dev/null || echo unknown)"; \
+  echo "built=$(date -u +%Y-%m-%dT%H:%M:%SZ)"; \
+  for patch in /frr-patches/*.patch; do \
+  [ -e "$patch" ] || continue; \
+  echo "patch=$(basename "$patch") sha256=$(sha256sum "$patch" | cut -d' ' -f1)"; \
+  done; \
+  } > /frr-build-info
+
 RUN ./bootstrap.sh && \
   ./configure \
   --prefix=/usr \
@@ -138,7 +163,9 @@ RUN mkdir -p /frr-debug-out/usr/lib/frr /frr-debug-out/usr/lib /frr-debug-out/us
   cp -a /frr-install/usr/lib/libfrr*.so* /frr-debug-out/usr/lib/ && \
   cp -a /frr-install/usr/lib/libmlag_pb*.so* /frr-debug-out/usr/lib/ && \
   cp -a /frr-install/usr/bin/vtysh /frr-debug-out/usr/bin/vtysh && \
-  cp -a /usr/lib/libyang.so* /frr-debug-out/usr/lib/
+  cp -a /usr/lib/libyang.so* /frr-debug-out/usr/lib/ && \
+  mkdir -p /frr-debug-out/etc && \
+  cp -a /frr-build-info /frr-debug-out/etc/frr-build-info
 
 FROM ${FRR_IMAGE} AS frr-release
 
