@@ -1,4 +1,8 @@
-ARG FRR_IMAGE=quay.io/frrouting/frr:10.6.0
+# DNM: FRR 10.6.0 plus the fix from https://github.com/FRRouting/frr/pull/22858
+# ("zebra: Don't leave stale interface pointers in the VNI databases").
+# Used only to verify that the e2e failures are caused by that zebra bug.
+# Revert to quay.io/frrouting/frr:10.6.0 before merging.
+ARG FRR_IMAGE=quay.io/ellorent/frr:10.6.0-frr22858
 ARG CNI_PLUGINS_VERSION=v1.6.2
 
 # Build CNI plugin binaries
