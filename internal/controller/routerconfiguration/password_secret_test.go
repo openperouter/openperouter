@@ -4,10 +4,13 @@ package routerconfiguration
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/conversion"
+	openpeerrors "github.com/openperouter/openperouter/internal/errors"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -19,11 +22,12 @@ func TestResolvePasswordSecrets(t *testing.T) {
 	_ = corev1.AddToScheme(scheme)
 
 	tests := []struct {
-		name         string
-		neighbors    []v1alpha1.Neighbor
-		secrets      []corev1.Secret
-		wantPassword string
-		wantErr      bool
+		name              string
+		neighbors         []v1alpha1.Neighbor
+		secrets           []corev1.Secret
+		wantPassword      string
+		wantNeighborCount int
+		wantResourceErr   bool
 	}{
 		{
 			name: "resolves password from secret",
@@ -41,7 +45,8 @@ func TestResolvePasswordSecrets(t *testing.T) {
 					Data:       map[string][]byte{"password": []byte("secret-password")},
 				},
 			},
-			wantPassword: "secret-password",
+			wantPassword:      "secret-password",
+			wantNeighborCount: 1,
 		},
 		{
 			name: "password field takes precedence over passwordSecret",
@@ -52,7 +57,8 @@ func TestResolvePasswordSecrets(t *testing.T) {
 					Password: new("inline-password"),
 				},
 			},
-			wantPassword: "inline-password",
+			wantPassword:      "inline-password",
+			wantNeighborCount: 1,
 		},
 		{
 			name: "no password fields set",
@@ -62,10 +68,11 @@ func TestResolvePasswordSecrets(t *testing.T) {
 					ASN:     new(int64(64513)),
 				},
 			},
-			wantPassword: "",
+			wantPassword:      "",
+			wantNeighborCount: 1,
 		},
 		{
-			name: "secret not found",
+			name: "secret not found removes neighbor",
 			neighbors: []v1alpha1.Neighbor{
 				{
 					Address:        new("192.168.1.2"),
@@ -73,10 +80,11 @@ func TestResolvePasswordSecrets(t *testing.T) {
 					PasswordSecret: new("missing-secret"),
 				},
 			},
-			wantErr: true,
+			wantNeighborCount: 0,
+			wantResourceErr:   true,
 		},
 		{
-			name: "secret with wrong type rejected",
+			name: "secret with wrong type removes neighbor",
 			neighbors: []v1alpha1.Neighbor{
 				{
 					Address:        new("192.168.1.2"),
@@ -91,10 +99,11 @@ func TestResolvePasswordSecrets(t *testing.T) {
 					Data:       map[string][]byte{"password": []byte("secret-password")},
 				},
 			},
-			wantErr: true,
+			wantNeighborCount: 0,
+			wantResourceErr:   true,
 		},
 		{
-			name: "secret missing password key",
+			name: "secret missing password key removes neighbor",
 			neighbors: []v1alpha1.Neighbor{
 				{
 					Address:        new("192.168.1.2"),
@@ -109,7 +118,94 @@ func TestResolvePasswordSecrets(t *testing.T) {
 					Data:       map[string][]byte{"wrong-key": []byte("value")},
 				},
 			},
-			wantErr: true,
+			wantNeighborCount: 0,
+			wantResourceErr:   true,
+		},
+		{
+			name: "secret password with newline removes neighbor",
+			neighbors: []v1alpha1.Neighbor{
+				{
+					Address:        new("192.168.1.2"),
+					ASN:            new(int64(64513)),
+					PasswordSecret: new("inject-secret"),
+				},
+			},
+			secrets: []corev1.Secret{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "inject-secret", Namespace: "openperouter-system"},
+					Type:       corev1.SecretTypeBasicAuth,
+					Data:       map[string][]byte{"password": []byte("x\n  redistribute connected")},
+				},
+			},
+			wantNeighborCount: 0,
+			wantResourceErr:   true,
+		},
+		{
+			name: "secret password with carriage return removes neighbor",
+			neighbors: []v1alpha1.Neighbor{
+				{
+					Address:        new("192.168.1.2"),
+					ASN:            new(int64(64513)),
+					PasswordSecret: new("cr-secret"),
+				},
+			},
+			secrets: []corev1.Secret{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "cr-secret", Namespace: "openperouter-system"},
+					Type:       corev1.SecretTypeBasicAuth,
+					Data:       map[string][]byte{"password": []byte("pass\rword")},
+				},
+			},
+			wantNeighborCount: 0,
+			wantResourceErr:   true,
+		},
+		{
+			name: "secret password exceeding max length removes neighbor",
+			neighbors: []v1alpha1.Neighbor{
+				{
+					Address:        new("192.168.1.2"),
+					ASN:            new(int64(64513)),
+					PasswordSecret: new("long-secret"),
+				},
+			},
+			secrets: []corev1.Secret{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "long-secret", Namespace: "openperouter-system"},
+					Type:       corev1.SecretTypeBasicAuth,
+					Data:       map[string][]byte{"password": []byte(strings.Repeat("a", 129))},
+				},
+			},
+			wantNeighborCount: 0,
+			wantResourceErr:   true,
+		},
+		{
+			name: "mix of valid and invalid neighbors keeps valid ones",
+			neighbors: []v1alpha1.Neighbor{
+				{
+					Address:        new("192.168.1.2"),
+					ASN:            new(int64(64513)),
+					PasswordSecret: new("good-secret"),
+				},
+				{
+					Address:        new("192.168.1.3"),
+					ASN:            new(int64(64514)),
+					PasswordSecret: new("missing-secret"),
+				},
+				{
+					Address: new("192.168.1.4"),
+					ASN:     new(int64(64515)),
+				},
+			},
+			secrets: []corev1.Secret{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "good-secret", Namespace: "openperouter-system"},
+					Type:       corev1.SecretTypeBasicAuth,
+					Data:       map[string][]byte{"password": []byte("valid-password")},
+				},
+			},
+			wantPassword:      "valid-password",
+			wantNeighborCount: 2,
+			wantResourceErr:   true,
 		},
 	}
 
@@ -137,22 +233,29 @@ func TestResolvePasswordSecrets(t *testing.T) {
 			}
 
 			err := r.resolvePasswordSecrets(context.Background(), &config)
-			if tt.wantErr {
-				if err == nil {
-					t.Fatal("expected error but got nil")
-				}
-				return
+
+			var resourceErr *openpeerrors.ResourceError
+			hasResourceErr := errors.As(err, &resourceErr)
+			if tt.wantResourceErr && !hasResourceErr {
+				t.Fatalf("expected ResourceError but got: %v", err)
 			}
-			if err != nil {
+			if !tt.wantResourceErr && err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
 
-			got := ""
-			if pw := config.Underlays[0].Spec.Neighbors[0].Password; pw != nil {
-				got = *pw
+			neighbors := config.Underlays[0].Spec.Neighbors
+			if len(neighbors) != tt.wantNeighborCount {
+				t.Fatalf("neighbor count = %d, want %d", len(neighbors), tt.wantNeighborCount)
 			}
-			if got != tt.wantPassword {
-				t.Errorf("password = %q, want %q", got, tt.wantPassword)
+
+			if tt.wantPassword != "" && len(neighbors) > 0 {
+				got := ""
+				if pw := neighbors[0].Password; pw != nil {
+					got = *pw
+				}
+				if got != tt.wantPassword {
+					t.Errorf("password = %q, want %q", got, tt.wantPassword)
+				}
 			}
 		})
 	}
