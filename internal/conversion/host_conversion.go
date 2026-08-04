@@ -76,11 +76,14 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig APIConfigData) (H
 		return HostConfigData{}, err
 	}
 
+	tunnelOverheadsForL3VNIs, tunnelOverheadsForL3VPNs, tunnelOverheadsForL2VNIs := computeTunnelOverheads(apiConfig)
+
 	l3VNIs, err := l3vnisToHost(
 		apiConfig.L3VNIs,
 		underlayConfigTunnelEndpoint,
 		targetNS,
-		nodeIndex)
+		nodeIndex,
+		tunnelOverheadsForL3VNIs)
 	if err != nil {
 		return HostConfigData{}, fmt.Errorf("failed to translate L3VNIs to host, err: %w", err)
 	}
@@ -90,7 +93,8 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig APIConfigData) (H
 		apiConfig.L2VNIs,
 		underlayConfigTunnelEndpoint,
 		targetNS,
-		vrfMap)
+		vrfMap,
+		tunnelOverheadsForL2VNIs)
 	if err != nil {
 		return HostConfigData{}, fmt.Errorf("failed to translate L2VNIs to host, err: %w", err)
 	}
@@ -99,7 +103,8 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig APIConfigData) (H
 		apiConfig.L3VPNs,
 		underlay.Spec.SRV6,
 		targetNS,
-		nodeIndex)
+		nodeIndex,
+		tunnelOverheadsForL3VPNs)
 	if err != nil {
 		return HostConfigData{}, fmt.Errorf("failed to translate L3VPNs to host, err: %w", err)
 	}
@@ -215,11 +220,16 @@ func tunnelEndpointToHost(tunnelEndpointConfig *v1alpha1.TunnelEndpointConfig, n
 	return tunnelEndpoint, nil
 }
 
-func l3vnisToHost(l3vnis []v1alpha1.L3VNI, tunnelEndpoint hostnetwork.UnderlayTunnelEndpointParams,
-	targetNS string, nodeIndex int) ([]hostnetwork.L3VNIParams, error) {
+func l3vnisToHost(
+	l3vnis []v1alpha1.L3VNI,
+	tunnelEndpoint hostnetwork.UnderlayTunnelEndpointParams,
+	targetNS string,
+	nodeIndex int,
+	tunnelOverheads map[string]int,
+) ([]hostnetwork.L3VNIParams, error) {
 	hostL3VNIs := []hostnetwork.L3VNIParams{}
 	for _, l3vni := range l3vnis {
-		hostL3VNI, err := l3vniToHost(l3vni, tunnelEndpoint, targetNS, nodeIndex)
+		hostL3VNI, err := l3vniToHost(l3vni, tunnelEndpoint, targetNS, nodeIndex, tunnelOverheads)
 		if err != nil {
 			return nil, fmt.Errorf("failed to translate L3VNI %s, err: %w", l3vni.Name, err)
 		}
@@ -228,20 +238,32 @@ func l3vnisToHost(l3vnis []v1alpha1.L3VNI, tunnelEndpoint hostnetwork.UnderlayTu
 	return hostL3VNIs, nil
 }
 
-func l3vniToHost(l3vni v1alpha1.L3VNI, tunnelEndpoint hostnetwork.UnderlayTunnelEndpointParams, targetNS string, nodeIndex int) (hostnetwork.L3VNIParams, error) {
+func l3vniToHost(
+	l3vni v1alpha1.L3VNI,
+	tunnelEndpoint hostnetwork.UnderlayTunnelEndpointParams,
+	targetNS string,
+	nodeIndex int,
+	tunnelOverheads map[string]int,
+) (hostnetwork.L3VNIParams, error) {
 	vtepIP, err := resolveVTEPIP(l3vni.Spec.UnderlayAddressFamily, tunnelEndpoint)
 	if err != nil {
-		return hostnetwork.L3VNIParams{}, fmt.Errorf("L2VNI %s: %w", l3vni.Name, err)
+		return hostnetwork.L3VNIParams{}, fmt.Errorf("L3VNI %s: %w", l3vni.Name, err)
+	}
+	tunnelOverhead, found := tunnelOverheads[l3vni.Name]
+	if !found {
+		return hostnetwork.L3VNIParams{}, fmt.Errorf("L3VNI %s not found in map of tunnel overheads: %+v",
+			l3vni.Name, tunnelOverheads)
 	}
 
 	hostL3VNI := hostnetwork.L3VNIParams{
 		Name: l3vni.Name,
 		VNIParams: hostnetwork.VNIParams{
-			VRF:       l3vni.Spec.VRF,
-			TargetNS:  targetNS,
-			VTEPIP:    vtepIP,
-			VNI:       l3vni.Spec.VNI,
-			VXLanPort: vxlanPort(l3vni.Spec.VXLanPort),
+			VRF:            l3vni.Spec.VRF,
+			TargetNS:       targetNS,
+			VTEPIP:         vtepIP,
+			VNI:            l3vni.Spec.VNI,
+			VXLanPort:      vxlanPort(l3vni.Spec.VXLanPort),
+			TunnelOverhead: tunnelOverhead,
 		},
 	}
 	if l3vni.Spec.HostSession == nil {
@@ -272,10 +294,11 @@ func l2vnisToHost(
 	tunnelEndpoint hostnetwork.UnderlayTunnelEndpointParams,
 	targetNS string,
 	vrfMap map[string]string,
+	tunnelOverheads map[string]int,
 ) ([]hostnetwork.L2VNIParams, error) {
 	hostL2VNIs := []hostnetwork.L2VNIParams{}
 	for _, l2vni := range l2vnis {
-		vni, err := l2vniToHost(l2vni, tunnelEndpoint, targetNS, vrfMap)
+		vni, err := l2vniToHost(l2vni, tunnelEndpoint, targetNS, vrfMap, tunnelOverheads)
 		if err != nil {
 			return nil, fmt.Errorf("failed to translate L2VNI %s, err: %w", l2vni.Name, err)
 		}
@@ -289,19 +312,26 @@ func l2vniToHost(
 	tunnelEndpoint hostnetwork.UnderlayTunnelEndpointParams,
 	targetNS string,
 	vrfMap map[string]string,
+	tunnelOverheads map[string]int,
 ) (hostnetwork.L2VNIParams, error) {
 	vtepIP, err := resolveVTEPIP(l2vni.Spec.UnderlayAddressFamily, tunnelEndpoint)
 	if err != nil {
 		return hostnetwork.L2VNIParams{}, fmt.Errorf("L2VNI %s: %w", l2vni.Name, err)
 	}
+	tunnelOverhead, found := tunnelOverheads[l2vni.Name]
+	if !found {
+		return hostnetwork.L2VNIParams{}, fmt.Errorf("L2VNI %s not found in map of tunnel overheads: %+v",
+			l2vni.Name, tunnelOverheads)
+	}
 
 	hostL2VNI := hostnetwork.L2VNIParams{
 		Name: l2vni.Name,
 		VNIParams: hostnetwork.VNIParams{
-			TargetNS:  targetNS,
-			VTEPIP:    vtepIP,
-			VNI:       l2vni.Spec.VNI,
-			VXLanPort: vxlanPort(l2vni.Spec.VXLanPort),
+			TargetNS:       targetNS,
+			VTEPIP:         vtepIP,
+			VNI:            l2vni.Spec.VNI,
+			VXLanPort:      vxlanPort(l2vni.Spec.VXLanPort),
+			TunnelOverhead: tunnelOverhead,
 		},
 	}
 	if hasRoutingDomain(l2vni) {
@@ -321,14 +351,19 @@ func l2vniToHost(
 	return hostL2VNI, nil
 }
 
-func l3vpnsToHost(l3vpns []v1alpha1.L3VPN, srv6Config *v1alpha1.SRV6Config,
-	targetNS string, nodeIndex int) ([]hostnetwork.L3VPNParams, error) {
+func l3vpnsToHost(
+	l3vpns []v1alpha1.L3VPN,
+	srv6Config *v1alpha1.SRV6Config,
+	targetNS string,
+	nodeIndex int,
+	tunnelOverheads map[string]int,
+) ([]hostnetwork.L3VPNParams, error) {
 	if srv6Config == nil {
 		return []hostnetwork.L3VPNParams{}, nil
 	}
 	hostL3VPNs := []hostnetwork.L3VPNParams{}
 	for _, l3vpn := range l3vpns {
-		hostL3VPN, err := l3vpnToHost(l3vpn, targetNS, nodeIndex)
+		hostL3VPN, err := l3vpnToHost(l3vpn, targetNS, nodeIndex, tunnelOverheads)
 		if err != nil {
 			return nil, fmt.Errorf("failed to translate L3VPN %s, err: %w", l3vpn.Name, err)
 		}
@@ -337,15 +372,24 @@ func l3vpnsToHost(l3vpns []v1alpha1.L3VPN, srv6Config *v1alpha1.SRV6Config,
 	return hostL3VPNs, nil
 }
 
-// l3vpnToHost converts a single API L3VPN custom resource into a hostnetwork.L3VPNParams.
-// On the host side, we need to create unique interfaces. As RDAssignedNumber is a unique integer, we use that
-// as the numeric interface identifier, analogous to VNI for L2VNI / L3VNI.
-func l3vpnToHost(l3vpn v1alpha1.L3VPN, targetNS string, nodeIndex int) (hostnetwork.L3VPNParams, error) {
+func l3vpnToHost(
+	l3vpn v1alpha1.L3VPN,
+	targetNS string,
+	nodeIndex int,
+	tunnelOverheads map[string]int,
+) (hostnetwork.L3VPNParams, error) {
+	tunnelOverhead, found := tunnelOverheads[l3vpn.Name]
+	if !found {
+		return hostnetwork.L3VPNParams{}, fmt.Errorf("L3VPN %s not found in map of tunnel overheads: %+v",
+			l3vpn.Name, tunnelOverheads)
+	}
+
 	hostL3VPN := hostnetwork.L3VPNParams{
 		Name:             l3vpn.Name,
 		VRF:              l3vpn.Spec.VRF,
 		TargetNS:         targetNS,
 		RDAssignedNumber: l3vpn.Spec.RDAssignedNumber,
+		TunnelOverhead:   tunnelOverhead,
 	}
 	if l3vpn.Spec.HostSession == nil {
 		return hostL3VPN, nil
@@ -368,6 +412,55 @@ func l3vpnToHost(l3vpn v1alpha1.L3VPN, targetNS string, nodeIndex int) (hostnetw
 	}
 
 	return hostL3VPN, nil
+}
+
+// computeTunnelOverheads returns a map[resource name] -> calculated tunnel overhead for each L3 type.
+func computeTunnelOverheads(apiConfig APIConfigData) (forL3VNIs, forL3VPNs, forL2VNIs map[string]int) {
+	srv6Overhead := hostnetwork.SRv6Overhead
+	if hasEncapsRed(apiConfig) {
+		srv6Overhead = hostnetwork.SRv6OverheadEncapReduced
+	}
+
+	forL3VNIs = make(map[string]int, len(apiConfig.L3VNIs))
+	forL3VPNs = make(map[string]int, len(apiConfig.L3VPNs))
+	forL2VNIs = make(map[string]int, len(apiConfig.L2VNIs))
+	for _, l3vni := range apiConfig.L3VNIs {
+		forL3VNIs[l3vni.Name] = hostnetwork.VXLanOverhead
+	}
+	for _, l3vpn := range apiConfig.L3VPNs {
+		forL3VPNs[l3vpn.Name] = srv6Overhead
+	}
+
+	for _, l2vni := range apiConfig.L2VNIs {
+		forL2VNIs[l2vni.Name] = hostnetwork.VXLanOverhead
+		if l2vni.Spec.RoutingDomain == nil || l2vni.Spec.RoutingDomain.Type == v1alpha1.RoutingDomainTypeL3VNI {
+			continue
+		}
+		l3vpnName := l2vni.Spec.RoutingDomain.L3VPN.Name
+		l3vpnOverhead, found := forL3VPNs[l3vpnName]
+		if !found {
+			continue
+		}
+		newOverhead := max(hostnetwork.VXLanOverhead, l3vpnOverhead)
+		forL3VPNs[l3vpnName] = newOverhead
+		forL2VNIs[l2vni.Name] = newOverhead
+	}
+
+	return forL3VNIs, forL3VPNs, forL2VNIs
+}
+
+func hasEncapsRed(apiConfig APIConfigData) bool {
+	if len(apiConfig.Underlays) < 1 {
+		return false
+	}
+	srv6 := apiConfig.Underlays[0].Spec.SRV6
+	if srv6 == nil {
+		return false
+	}
+	if srv6.EncapBehavior == nil {
+		return false
+	}
+	return *srv6.EncapBehavior == v1alpha1.HEncapsRed
 }
 
 func vxlanPort(p *int32) *int32 {

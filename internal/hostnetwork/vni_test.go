@@ -262,11 +262,12 @@ var _ = Describe("L3 VNI configuration", func() {
 
 		params := L3VNIParams{
 			VNIParams: VNIParams{
-				VRF:       "testred",
-				TargetNS:  testNSPath(),
-				VTEPIP:    "192.170.0.9/32",
-				VNI:       100,
-				VXLanPort: new(int32(4789)),
+				VRF:            "testred",
+				TargetNS:       testNSPath(),
+				VTEPIP:         "192.170.0.9/32",
+				VNI:            100,
+				VXLanPort:      new(int32(4789)),
+				TunnelOverhead: VXLanOverhead,
 			},
 			LinkIPs: &LinkIPs{
 				HostIPv4: "192.168.9.1/32",
@@ -550,11 +551,12 @@ var _ = Describe("L2 VNI configuration", func() {
 
 		params := L2VNIParams{
 			VNIParams: VNIParams{
-				VRF:       "testred",
-				TargetNS:  testNSPath(),
-				VTEPIP:    "192.170.0.9/32",
-				VNI:       100,
-				VXLanPort: new(int32(4789)),
+				VRF:            "testred",
+				TargetNS:       testNSPath(),
+				VTEPIP:         "192.170.0.9/32",
+				VNI:            100,
+				VXLanPort:      new(int32(4789)),
+				TunnelOverhead: VXLanOverhead,
 			},
 			L2GatewayIPs: []string{"192.168.1.0/24"},
 			HostMaster: &HostMaster{

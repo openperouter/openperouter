@@ -32,6 +32,11 @@ const (
 	HostBBlueIPv6    = "2001:db8:169:21::2"
 	HostSRV6RedIPv6  = "2001:db8:170:20::2"
 	HostSRV6BlueIPv6 = "2001:db8:170:21::2"
+
+	HEncaps    SRv6EncapBehavior = "H_Encaps"
+	HEncapsRed SRv6EncapBehavior = "H_Encaps_Red"
+
+	EnableBFD = true
 )
 
 var (
@@ -48,10 +53,12 @@ var (
 	LeafSRV6Config = Leaf{
 		RouterID:     "100.65.0.1",
 		UpdateSource: "2001:db8:1234::1",
-		SRV6Prefix:   "fd00:0:10::/48",
 		ISISNet:      "49.0001.0000.0000.0001.00",
-		SRv6:         true,
-		Container:    LeafSRV6Container,
+		SRv6: &SRv6Config{
+			Prefix:        "fd00:0:10::/48",
+			EncapBehavior: HEncapsRed,
+		},
+		Container: LeafSRV6Container,
 	}
 	LeafKind1Config = LeafKind{
 		ASN:               64512,
@@ -130,11 +137,17 @@ type Leaf struct {
 	SpineAddress string
 	RouterID     string
 	UpdateSource string
-	SRV6Prefix   string
 	ISISNet      string
-	SRv6         bool
+	SRv6         *SRv6Config
 	frr.Container
 }
+
+type SRv6Config struct {
+	Prefix        string
+	EncapBehavior SRv6EncapBehavior
+}
+
+type SRv6EncapBehavior string
 
 type LeafKind struct {
 	ASN               int
@@ -200,8 +213,6 @@ func LeafKindConfigToFRR(config LeafKindConfiguration) (string, error) {
 
 	return result.String(), nil
 }
-
-const EnableBFD = true
 
 // UpdateConfig updates the leafkind configuration file with the given configuration.
 // It takes nodes and automatically builds the neighbors list from their IPs.
@@ -285,7 +296,7 @@ func (l LeafKind) Configure(config LeafKindConfiguration) error {
 func (l Leaf) Configure(leafConfig LeafConfiguration) error {
 	leafConfig.Leaf = l
 
-	if l.SRv6 {
+	if l.SRv6 != nil {
 		leafConfig.TemplateName = "leaf.srv6.tmpl"
 	}
 
