@@ -24,6 +24,11 @@ var defaultInterfaces = []v1alpha1.UnderlayInterface{
 	},
 }
 
+// DefaultInterfaces exposes the interfaces shared by all the underlay
+// fixtures, so underlays defined outside this package can keep the
+// interface parity described above.
+var DefaultInterfaces = defaultInterfaces
+
 // Underlay is the multi-session configuration with multiple interfaces and neighbors
 var Underlay = v1alpha1.Underlay{
 	ObjectMeta: metav1.ObjectMeta{
@@ -90,6 +95,84 @@ var UnderlayUnnumbered = v1alpha1.Underlay{
 			{
 				ASN:       new(int64(64512)),
 				Interface: new("toleafkind1"),
+			},
+		},
+		TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+			CIDRs: []string{"100.65.0.0/24"},
+		},
+	},
+}
+
+// UnderlayListenRange accepts dynamic eBGP sessions from the leaf switches
+// via bgp listen range instead of configuring them as explicit neighbors.
+// The leaves actively dial the nodes from addresses inside the ranges
+// (192.168.11.2 and 192.168.12.2), so the sessions establish with the node
+// side acting as the passive end. The address families are set explicitly:
+// dynamic peers negotiate their multiprotocol capabilities when the session
+// is accepted, so every family the tests rely on must be active on the
+// peer-group before the leaves connect.
+var UnderlayListenRange = v1alpha1.Underlay{
+	ObjectMeta: metav1.ObjectMeta{
+		Name:      "underlay",
+		Namespace: openperouter.Namespace,
+	},
+	Spec: v1alpha1.UnderlaySpec{
+		ASN:        64514,
+		Interfaces: defaultInterfaces,
+		Neighbors: []v1alpha1.Neighbor{
+			{
+				ASN:         new(int64(64512)),
+				ListenRange: new("192.168.11.0/24"),
+				AddressFamilies: []v1alpha1.NeighborAddressFamily{
+					{Type: "ipv4unicast"},
+					{Type: "evpn"},
+				},
+			},
+			{
+				ASN:         new(int64(64513)),
+				ListenRange: new("192.168.12.0/24"),
+				AddressFamilies: []v1alpha1.NeighborAddressFamily{
+					{Type: "ipv4unicast"},
+					{Type: "evpn"},
+				},
+			},
+		},
+		TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+			CIDRs: []string{"100.65.0.0/24"},
+		},
+	},
+}
+
+// UnderlayListenRangeIPv6 is the IPv6 variant of UnderlayListenRange: the
+// leaves dial the nodes over IPv6 from 2001:db8:11::2 and 2001:db8:12::2.
+// The ipv4 unicast family carries the IPv4 VTEP reachability over the IPv6
+// sessions.
+var UnderlayListenRangeIPv6 = v1alpha1.Underlay{
+	ObjectMeta: metav1.ObjectMeta{
+		Name:      "underlay",
+		Namespace: openperouter.Namespace,
+	},
+	Spec: v1alpha1.UnderlaySpec{
+		ASN:        64514,
+		Interfaces: defaultInterfaces,
+		Neighbors: []v1alpha1.Neighbor{
+			{
+				ASN:         new(int64(64512)),
+				ListenRange: new("2001:db8:11::/64"),
+				AddressFamilies: []v1alpha1.NeighborAddressFamily{
+					{Type: "ipv6unicast"},
+					{Type: "ipv4unicast"},
+					{Type: "evpn"},
+				},
+			},
+			{
+				ASN:         new(int64(64513)),
+				ListenRange: new("2001:db8:12::/64"),
+				AddressFamilies: []v1alpha1.NeighborAddressFamily{
+					{Type: "ipv6unicast"},
+					{Type: "ipv4unicast"},
+					{Type: "evpn"},
+				},
 			},
 		},
 		TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{

@@ -115,6 +115,11 @@ func (in *OpenPERouterSpec) DeepCopyInto(out *OpenPERouterSpec) {
 		*out = new(int32)
 		**out = **in
 	}
+	if in.BGPListenLimit != nil {
+		in, out := &in.BGPListenLimit, &out.BGPListenLimit
+		*out = new(int32)
+		**out = **in
+	}
 	if in.Datapath != nil {
 		in, out := &in.Datapath, &out.Datapath
 		*out = new(string)

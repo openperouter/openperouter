@@ -14,7 +14,30 @@ on:
       - "main"
       - "v**"
   workflow_dispatch:
+    inputs:
+      frr_variant:
+        description: 'FRR runtime baked into the router image: release or debug'
+        default: 'debug'
+        type: string
+      ginkgo_args:
+        description: 'Extra ginkgo arguments for the e2e lanes, e.g. --focus=ListenRange --repeat=20'
+        default: "--focus='ListenRange' --repeat=20"
+        type: string
+      deployments:
+        description: 'JSON array of e2e deployment lanes to run'
+        default: '["manifests","helm"]'
+        type: string
   workflow_call:
+    inputs:
+      frr_variant:
+        default: 'debug'
+        type: string
+      ginkgo_args:
+        default: "--focus='ListenRange' --repeat=20"
+        type: string
+      deployments:
+        default: '["manifests","helm"]'
+        type: string
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -182,6 +205,8 @@ jobs:
           context: .
           tags: quay.io/openperouter/router:main,localhost:5000/router:main
           file: Dockerfile
+          build-args: |
+            FRR_VARIANT=${{ inputs.frr_variant || 'debug' }}
           outputs: type=docker,dest=/tmp/openperouter.tar
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -230,7 +255,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        deployment: [manifests, helm, operator, systemdmode, hostmode-boot, grout, helm-grout, operator-grout]
+        deployment: ${{ fromJSON(inputs.deployments || '["manifests","helm"]') }}
     steps:
       - name: Free Disk Space
         working-directory: ${{ github.workspace }}
@@ -328,17 +353,19 @@ jobs:
 
 
       - name: Run e2e tests
+        env:
+          EXTRA_GINKGO_ARGS: ${{ inputs.ginkgo_args || '--focus=''ListenRange'' --repeat=20' }}
         run: |
           if [ ${{ matrix.deployment }} = "systemdmode" ]; then
             export TEST_ARGS="--systemdmode"
-            export GINKGO_ARGS="--skip='Router Host configuration' --skip='North/south traffic after FRR container restart' --skip='Alpha: Named netns' --skip='Beta: Named netns'"
+            export GINKGO_ARGS="--skip='Router Host configuration' --skip='North/south traffic after FRR container restart' --skip='Alpha: Named netns' --skip='Beta: Named netns' $EXTRA_GINKGO_ARGS"
             make e2etests
           elif [ ${{ matrix.deployment }} = "hostmode-boot" ]; then
             make e2etests-hostmode-boot
           elif [ ${{ matrix.deployment }} = "helm-grout" ] || [ ${{ matrix.deployment }} = "grout" ] || [ ${{ matrix.deployment }} = "operator-grout" ]; then
-            make e2etests GINKGO_ARGS="--label-filter='grout-support'" TEST_ARGS="--groutmode"
+            make e2etests GINKGO_ARGS="--label-filter='grout-support' $EXTRA_GINKGO_ARGS" TEST_ARGS="--groutmode"
           else
-            export GINKGO_ARGS="--label-filter='!systemdmode'"
+            export GINKGO_ARGS="--label-filter='!systemdmode' $EXTRA_GINKGO_ARGS"
             make e2etests
           fi
 
@@ -351,8 +378,10 @@ jobs:
           path: /tmp/kind_logs/e2e-report*.json
           if-no-files-found: ignore
 
+      # DNM: the crash we are chasing is sometimes recovered by watchfrr, so the
+      # suite can pass while a daemon died. Always export and always upload.
       - name: Export kind logs
-        if: ${{ failure() }}
+        if: ${{ always() }}
         run:
           make kind-export-logs
 
@@ -363,12 +392,22 @@ jobs:
           sudo dmesg -T > /tmp/kind_logs/dmesg.log
 
       - name: Collect veth monitor logs
-        if: ${{ failure() }}
+        if: ${{ always() }}
         run: |
           cp /tmp/check_veths.log /tmp/kind_logs/check_veths.log 2>/dev/null || true
 
+      - name: Symbolize FRR core dumps
+        if: ${{ always() }}
+        run: |
+          ./hack/debug/symbolize-cores.sh /tmp/kind_logs quay.io/openperouter/router:main
+
+      - name: Detect FRR daemon crashes
+        if: ${{ always() }}
+        run: |
+          ./hack/debug/detect-frr-crashes.sh /tmp/kind_logs
+
       - name: Collect Logs
-        if: ${{ failure() }}
+        if: ${{ always() }}
         uses: ./.github/workflows/composite/collectlogs
         with:
           artifact-name: kind-logs-${{ matrix.deployment }}
