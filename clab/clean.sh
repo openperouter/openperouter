@@ -63,6 +63,18 @@ for iface in $(ip link show | awk -F': ' '/^[0-9]+: leafkind/ {print $2}' | cut 
     fi
 done
 
+# containerlab wires the kind nodes through veths named clab-<hash>. It removes
+# them on destroy, but only for nodes it knows about: if the kind cluster failed
+# to come up, "clab destroy" reports "no containerlab containers found" and the
+# veths are left dangling in the host namespace. Deleting one end drops the pair.
+echo "=== Cleaning up leftover containerlab veths ==="
+for iface in $(ip -br link show type veth | awk '{print $1}' | cut -d'@' -f1 | grep -E '^clab-' || true); do
+    if [[ -d "/sys/class/net/${iface}" ]]; then
+        echo "Removing veth: ${iface}"
+        sudo ip link delete ${iface} 2>/dev/null || true
+    fi
+done
+
 echo "=== Cleaning up kubeconfig files ==="
 rm -f "${KUBECONFIG_PATH}*" || true
 
