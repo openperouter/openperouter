@@ -331,26 +331,26 @@ func (r *PERouterReconciler) resolvePasswordSecrets(ctx context.Context, config 
 					return fmt.Errorf("failed to get password secret %q for neighbor %s: %w",
 						*n.PasswordSecret, neighborAddr(&n), err)
 				}
-				allErrors = append(allErrors, secretResolutionError(underlay.Name, &n,
+				allErrors = append(allErrors, secretResolutionError(ctx, underlay.Name, &n,
 					fmt.Sprintf("secret %q not found", *n.PasswordSecret)))
 				continue
 			}
 
 			if secret.Type != v1.SecretTypeBasicAuth {
-				allErrors = append(allErrors, secretResolutionError(underlay.Name, &n,
+				allErrors = append(allErrors, secretResolutionError(ctx, underlay.Name, &n,
 					fmt.Sprintf("secret %q has type %q, expected %q", *n.PasswordSecret, secret.Type, v1.SecretTypeBasicAuth)))
 				continue
 			}
 
 			pw, ok := secret.Data["password"]
 			if !ok {
-				allErrors = append(allErrors, secretResolutionError(underlay.Name, &n,
+				allErrors = append(allErrors, secretResolutionError(ctx, underlay.Name, &n,
 					fmt.Sprintf("secret %q missing key %q", *n.PasswordSecret, "password")))
 				continue
 			}
 			resolved := string(pw)
 			if err := validateSecretPassword(resolved, neighborAddr(&n), *n.PasswordSecret); err != nil {
-				allErrors = append(allErrors, secretResolutionError(underlay.Name, &n, err.Error()))
+				allErrors = append(allErrors, secretResolutionError(ctx, underlay.Name, &n, err.Error()))
 				continue
 			}
 			n.Password = &resolved
@@ -362,9 +362,11 @@ func (r *PERouterReconciler) resolvePasswordSecrets(ctx context.Context, config 
 }
 
 func secretResolutionError(
-	underlayName string, n *v1alpha1.Neighbor, msg string,
+	ctx context.Context, underlayName string, n *v1alpha1.Neighbor, msg string,
 ) *openpeerrors.ResourceError {
 	fullMsg := fmt.Sprintf("neighbor %s: %s", neighborAddr(n), msg)
+	slog.WarnContext(ctx, "skipping neighbor due to password secret resolution failure",
+		"underlay", underlayName, "neighbor", neighborAddr(n), "reason", msg)
 	return &openpeerrors.ResourceError{
 		Obj: v1alpha1.FailedResource{
 			Kind:    openpeerrors.KindUnderlay,
