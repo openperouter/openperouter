@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/selection"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -124,6 +125,10 @@ func (r *PERouterReconciler) reconcile(ctx context.Context, logger *slog.Logger)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to merge static config: %w", err)
 		}
+	}
+
+	if err := r.resolvePasswordSecrets(ctx, &config); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to resolve password secrets: %w", err)
 	}
 
 	router, err := r.RouterProvider.New(ctx)
@@ -277,7 +282,12 @@ func (r *PERouterReconciler) getConfigFromAPI(ctx context.Context, logger *slog.
 		logger.Info("RawFRRConfig is applied, but please note that this feature is for experimentation only and not supported")
 	}
 
-	logger.Debug("using config", "l3vnis", l3vnis.Items, "l2vnis", l2vnis.Items, "underlays", underlays.Items, "l3passthrough", l3passthrough.Items, "rawfrrconfigs", rawFRRConfigs.Items)
+	logger.Debug("using config",
+		"underlays", len(filteredUnderlays),
+		"l3vnis", l3vnis.Items,
+		"l2vnis", l2vnis.Items,
+		"l3passthrough", l3passthrough.Items,
+		"rawfrrconfigs", rawFRRConfigs.Items)
 
 	apiConfig := conversion.APIConfigData{
 		Underlays:     filteredUnderlays,
@@ -289,6 +299,53 @@ func (r *PERouterReconciler) getConfigFromAPI(ctx context.Context, logger *slog.
 	}
 
 	return apiConfig, nil
+}
+
+func (r *PERouterReconciler) resolvePasswordSecrets(ctx context.Context, config *conversion.APIConfigData) error {
+	for i := range config.Underlays {
+		for j := range config.Underlays[i].Spec.Neighbors {
+			n := &config.Underlays[i].Spec.Neighbors[j]
+			if n.PasswordSecret == nil || *n.PasswordSecret == "" {
+				continue
+			}
+			if n.Password != nil {
+				slog.InfoContext(ctx, "neighbor already has a password, skipping secret resolution",
+					"neighbor", neighborAddr(n), "secret", *n.PasswordSecret)
+				continue
+			}
+
+			secret := &v1.Secret{}
+			key := types.NamespacedName{Name: *n.PasswordSecret, Namespace: r.MyNamespace}
+			if err := r.Get(ctx, key, secret); err != nil {
+				return fmt.Errorf("failed to get password secret %q for neighbor %s: %w",
+					*n.PasswordSecret, neighborAddr(n), err)
+			}
+
+			if secret.Type != v1.SecretTypeBasicAuth {
+				return fmt.Errorf("secret %q for neighbor %s has type %q, expected %q",
+					*n.PasswordSecret, neighborAddr(n), secret.Type, v1.SecretTypeBasicAuth)
+			}
+
+			pw, ok := secret.Data["password"]
+			if !ok {
+				return fmt.Errorf("secret %q missing key \"password\" for neighbor %s",
+					*n.PasswordSecret, neighborAddr(n))
+			}
+			resolved := string(pw)
+			n.Password = &resolved
+		}
+	}
+	return nil
+}
+
+func neighborAddr(n *v1alpha1.Neighbor) string {
+	if n.Address != nil {
+		return *n.Address
+	}
+	if n.Interface != nil {
+		return *n.Interface
+	}
+	return "<unknown>"
 }
 
 // SetupWithManager sets up the controller with the Manager.

@@ -1,0 +1,159 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package routerconfiguration
+
+import (
+	"context"
+	"testing"
+
+	"github.com/openperouter/openperouter/api/v1alpha1"
+	"github.com/openperouter/openperouter/internal/conversion"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+)
+
+func TestResolvePasswordSecrets(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+
+	tests := []struct {
+		name         string
+		neighbors    []v1alpha1.Neighbor
+		secrets      []corev1.Secret
+		wantPassword string
+		wantErr      bool
+	}{
+		{
+			name: "resolves password from secret",
+			neighbors: []v1alpha1.Neighbor{
+				{
+					Address:        new("192.168.1.2"),
+					ASN:            new(int64(64513)),
+					PasswordSecret: new("bgp-auth"),
+				},
+			},
+			secrets: []corev1.Secret{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "bgp-auth", Namespace: "openperouter-system"},
+					Type:       corev1.SecretTypeBasicAuth,
+					Data:       map[string][]byte{"password": []byte("secret-password")},
+				},
+			},
+			wantPassword: "secret-password",
+		},
+		{
+			name: "password field takes precedence over passwordSecret",
+			neighbors: []v1alpha1.Neighbor{
+				{
+					Address:  new("192.168.1.2"),
+					ASN:      new(int64(64513)),
+					Password: new("inline-password"),
+				},
+			},
+			wantPassword: "inline-password",
+		},
+		{
+			name: "no password fields set",
+			neighbors: []v1alpha1.Neighbor{
+				{
+					Address: new("192.168.1.2"),
+					ASN:     new(int64(64513)),
+				},
+			},
+			wantPassword: "",
+		},
+		{
+			name: "secret not found",
+			neighbors: []v1alpha1.Neighbor{
+				{
+					Address:        new("192.168.1.2"),
+					ASN:            new(int64(64513)),
+					PasswordSecret: new("missing-secret"),
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "secret with wrong type rejected",
+			neighbors: []v1alpha1.Neighbor{
+				{
+					Address:        new("192.168.1.2"),
+					ASN:            new(int64(64513)),
+					PasswordSecret: new("opaque-secret"),
+				},
+			},
+			secrets: []corev1.Secret{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "opaque-secret", Namespace: "openperouter-system"},
+					Type:       corev1.SecretTypeOpaque,
+					Data:       map[string][]byte{"password": []byte("secret-password")},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "secret missing password key",
+			neighbors: []v1alpha1.Neighbor{
+				{
+					Address:        new("192.168.1.2"),
+					ASN:            new(int64(64513)),
+					PasswordSecret: new("bad-secret"),
+				},
+			},
+			secrets: []corev1.Secret{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "bad-secret", Namespace: "openperouter-system"},
+					Type:       corev1.SecretTypeBasicAuth,
+					Data:       map[string][]byte{"wrong-key": []byte("value")},
+				},
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var objs []runtime.Object
+			for i := range tt.secrets {
+				objs = append(objs, &tt.secrets[i])
+			}
+			cli := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(objs...).Build()
+
+			r := &PERouterReconciler{
+				Client:      cli,
+				MyNamespace: "openperouter-system",
+			}
+
+			config := conversion.APIConfigData{
+				Underlays: []v1alpha1.Underlay{
+					{
+						Spec: v1alpha1.UnderlaySpec{
+							Neighbors: tt.neighbors,
+						},
+					},
+				},
+			}
+
+			err := r.resolvePasswordSecrets(context.Background(), &config)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error but got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			got := ""
+			if pw := config.Underlays[0].Spec.Neighbors[0].Password; pw != nil {
+				got = *pw
+			}
+			if got != tt.wantPassword {
+				t.Errorf("password = %q, want %q", got, tt.wantPassword)
+			}
+		})
+	}
+}
