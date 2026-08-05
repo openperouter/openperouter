@@ -734,7 +734,7 @@ func dumpUnderlayVeths(cs clientset.Interface, label string) {
 		}
 	}
 
-	for _, port := range []string{"kindctrlpl1", "kindworker1", "kindctrlpl2", "kindworker2"} {
+	for _, port := range []string{"kindctrlpl1", "kindwrk1sw1", "kindwrk2sw1", "kindctrlpl2", "kindwrk1sw2", "kindwrk2sw2"} {
 		out, err := executor.Host.Exec("ip", "-d", "link", "show", port)
 		if err != nil {
 			w.Printf("DIAG [%s]: bridge port %s: not found\n", label, port)
