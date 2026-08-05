@@ -213,6 +213,27 @@ func PodIsReady(p *corev1.Pod) bool {
 		podConditionStatus(p, corev1.ContainersReady) == corev1.ConditionTrue
 }
 
+// WaitForPodReadyConsistently waits until the provided pod is consistently ready.
+// We make sure that the pod is consistently ready 10 consecutive times (roughly 10'ish seconds) to avoid that we catch
+// an invalid ready state early in case the pod is transitioning from ready to not ready.
+// Note: kubernetes' MaxCrashLoopBackOff is hardcoded to 5 minutes:
+// https://github.com/kubernetes/kubernetes/blob/ec9448ceef13adbbcd3fa9f09b4d3c1fa54cc674/pkg/kubelet/kubelet.go#L166
+// https://github.com/kubernetes/kubernetes/issues/57291
+// Therefore, before calling this function, make sure that the crashloop timer is reset, e.g. by a new rollout of the
+// pod.
+func WaitForPodReadyConsistently(cs clientset.Interface, podNamespace, podName string) {
+	By(fmt.Sprintf("waiting for pod %s/%s to become ready", podNamespace, podName))
+	Eventually(func(g Gomega) bool {
+		pod, err := cs.CoreV1().Pods(podNamespace).Get(context.Background(), podName, metav1.GetOptions{})
+		g.Expect(err).NotTo(HaveOccurred())
+		return PodIsReady(pod)
+	}).
+		WithTimeout(2 * time.Minute).
+		WithPolling(time.Second).
+		MustPassRepeatedly(10).
+		Should(BeTrue())
+}
+
 func PodsForLabel(cs clientset.Interface, namespace, labelSelector string) ([]*corev1.Pod, error) {
 	pods, err := cs.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{
 		LabelSelector: labelSelector,

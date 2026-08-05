@@ -22,7 +22,6 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 	"github.com/openperouter/openperouter/e2etests/pkg/url"
-	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -67,6 +66,9 @@ var _ = Describe("Alpha: Named netns and kernel objects survive FRR crash", Orde
 
 		var err error
 		cs = k8sclient.New()
+
+		openperouter.RestartDaemonSetPods(cs, openperouter.Namespace, openperouter.RouterDaemonSetLabelSelector)
+
 		Eventually(func() error {
 			routers, err = openperouter.Get(cs, HostMode)
 			if err != nil {
@@ -123,6 +125,8 @@ var _ = Describe("Alpha: Named netns and kernel objects survive FRR crash", Orde
 				g.Expect(k8s.PodIsReady(p)).To(BeTrue(), "pod %s must be ready", p.Name)
 			}
 		}).WithTimeout(2 * time.Minute).WithPolling(time.Second).Should(Succeed())
+
+		openperouter.RestartDaemonSetPods(cs, openperouter.Namespace, openperouter.RouterDaemonSetLabelSelector)
 	})
 
 	It("should preserve named netns at /var/run/netns/perouter when FRR process crashes", func() {
@@ -159,23 +163,7 @@ var _ = Describe("Alpha: Named netns and kernel objects survive FRR crash", Orde
 			Expect(present).To(BeTrue(), "interface type %s must survive FRR crash immediately", ifType)
 		}
 
-		By("waiting for the FRR container to restart and become ready")
-		Eventually(func(g Gomega) []v1.PodCondition {
-			pod, err := cs.CoreV1().Pods(openperouter.Namespace).Get(context.Background(), routerPod.Name, metav1.GetOptions{})
-			g.Expect(err).NotTo(HaveOccurred())
-			return pod.Status.Conditions
-		}).
-			WithTimeout(2*time.Minute).
-			WithPolling(time.Second).
-			Should(
-				ContainElement(
-					SatisfyAll(
-						HaveField("Type", Equal(v1.PodReady)),
-						HaveField("Status", Equal(v1.ConditionTrue)),
-					),
-				),
-				"router pod should become ready after FRR restart",
-			)
+		k8s.WaitForPodReadyConsistently(cs, openperouter.Namespace, routerPod.Name)
 
 		By("waiting for BGP sessions to re-establish")
 		neighborIP, err := infra.NeighborIP(infra.KindLeaf, nodeName)
