@@ -135,7 +135,9 @@ func SetupUnderlayNetDevInterface(ctx context.Context, ns netns.NsHandle,
 
 // SetupUnderlayCNIDevInterface provisions a single underlay cni dev interface.
 // A CNI CHECK runs first and, if it fails, the interface is torn down so the
-// subsequent Add provisions it fresh.
+// subsequent Add provisions it fresh. When the cached CNI config differs from
+// the requested one (e.g. after a delete-and-recreate with different IPAM),
+// the stale attachment is removed and the Add is retried.
 func SetupUnderlayCNIDevInterface(ctx context.Context, ns string,
 	iface UnderlayInterface) error {
 	if err := cniinvoker.Invoker.Check(ctx, iface.InterfaceName); err != nil {
@@ -146,12 +148,22 @@ func SetupUnderlayCNIDevInterface(ctx context.Context, ns string,
 		}
 	}
 
-	if err := cniinvoker.Invoker.Add(ctx, cniinvoker.AddParams{
+	addParams := cniinvoker.AddParams{
 		Config:         iface.CNI.Config,
 		NetNS:          ns,
 		IfName:         iface.InterfaceName,
 		CapabilityArgs: iface.CNI.CapabilityArgs,
-	}); err != nil {
+	}
+	err := cniinvoker.Invoker.Add(ctx, addParams)
+	if errors.As(err, &cniinvoker.ConfigMismatchError{}) {
+		slog.WarnContext(ctx, "cni config changed, rebuilding underlay cni device",
+			"interface", iface.InterfaceName)
+		if delErr := cniinvoker.Invoker.Del(ctx, iface.InterfaceName); delErr != nil {
+			return fmt.Errorf("failed to delete mismatched underlay cni device %s: %w", iface.InterfaceName, delErr)
+		}
+		err = cniinvoker.Invoker.Add(ctx, addParams)
+	}
+	if err != nil {
 		return fmt.Errorf("failed to setup underlay cni device %s: %w", iface.InterfaceName, err)
 	}
 	return nil

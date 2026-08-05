@@ -243,6 +243,33 @@ var _ = Describe("Underlay CNI configuration", func() {
 		Expect(loggedCommands()).To(ConsistOf("ADD net1", "DEL net1"))
 	})
 
+	It("rebuilds the cni interface when the config changes", func() {
+		Expect(SetupUnderlay(context.Background(), cniParams("net1"))).To(Succeed())
+
+		// Build a second config with a different network name so the
+		// cached attachment does not match, simulating a delete-and-
+		// recreate with different IPAM (e.g. static -> dhcp).
+		altConfig := fmt.Sprintf(`{
+		  "cniVersion": "1.0.0",
+		  "name": "underlay-cni-alt",
+		  "plugins": [{"type": %q}]
+		}`, underlayCNITestPlugin)
+		altParams := UnderlayParams{
+			TargetNS: underlayCNITestNSPath(),
+			UnderlayInterfaces: []UnderlayInterface{{
+				InterfaceName: "net1",
+				Kind:          UnderlayInterfaceCNIDev,
+				CNI:           &CNIDeviceParams{Config: []byte(altConfig)},
+			}},
+		}
+		Expect(SetupUnderlay(context.Background(), altParams)).To(Succeed())
+
+		Expect(loggedCommands()).To(HaveExactElements(
+			"ADD net1", "CHECK net1", "DEL net1", "ADD net1"),
+			"a config mismatch should tear down and re-provision the interface")
+		validateCNIInterfaceInNS(testNs, "net1")
+	})
+
 	It("provisions again after the namespace is rebuilt and the cache cleared", func() {
 		Expect(SetupUnderlay(context.Background(), cniParams("net1"))).To(Succeed())
 
