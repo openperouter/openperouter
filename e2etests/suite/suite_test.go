@@ -14,6 +14,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/config"
 	"github.com/openperouter/openperouter/e2etests/pkg/executor"
 	"github.com/openperouter/openperouter/e2etests/pkg/frrk8s"
+	"github.com/openperouter/openperouter/e2etests/pkg/infra"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
@@ -23,7 +24,9 @@ import (
 )
 
 var (
-	updater *config.Updater
+	updater            *config.Updater
+	nodeLinkConfigPath string
+	nodeExecImage      string
 )
 
 // handleFlags sets up all flags and parses the command line.
@@ -34,6 +37,10 @@ func handleFlags() {
 	flag.BoolVar(&tests.HostMode, "systemdmode", false, "tells if openperouter is running on the host")
 	flag.BoolVar(&tests.GroutMode, "groutmode", false, "tells if openperouter is running with grout dataplane")
 	flag.BoolVar(&tests.SkipUnderlayPassthrough, "skip-underlay-passthrough", false, "skip creating underlay in passthrough tests")
+	flag.StringVar(&frrk8s.Namespace, "frrk8s-namespace", frrk8s.Namespace, "namespace where FRR-K8s pods run")
+	flag.StringVar(&openperouter.Namespace, "openperouter-namespace", openperouter.Namespace, "namespace where OpenPERouter pods run")
+	flag.StringVar(&nodeLinkConfigPath, "nodelink-config", "../nodelink-default.json", "path to node links config JSON")
+	flag.StringVar(&nodeExecImage, "node-exec-image", "busybox:1.36", "container image for node-exec-helper pods")
 	flag.Parse()
 }
 
@@ -60,7 +67,7 @@ var _ = ginkgo.BeforeSuite(func() {
 	log.SetLogger(zap.New(zap.WriteTo(ginkgo.GinkgoWriter), zap.UseDevMode(true)))
 	clientconfig, err := k8sclient.RestConfig()
 	Expect(err).NotTo(HaveOccurred(), "failed to load kubeconfig (KUBECONFIG=%s)", os.Getenv("KUBECONFIG"))
-	updater, err = config.UpdaterForCRs(clientconfig, openperouter.Namespace)
+	updater, err = config.UpdaterForCRs(clientconfig, openperouter.Namespace, frrk8s.Namespace)
 	Expect(err).NotTo(HaveOccurred())
 	tests.Updater = updater
 	kubeconfig := os.Getenv("KUBECONFIG")
@@ -72,6 +79,13 @@ var _ = ginkgo.BeforeSuite(func() {
 	tests.K8sReporter = reporter
 
 	cs := k8sclient.New()
+	err = executor.SetupNodeExec(cs, frrk8s.Namespace, nodeExecImage)
+	Expect(err).NotTo(HaveOccurred(), "failed to setup node-exec-helper")
+
+	ginkgo.By("Registering fabric and node links from " + nodeLinkConfigPath)
+	err = infra.RegisterLinks(nodeLinkConfigPath)
+	Expect(err).NotTo(HaveOccurred(), "failed to register links")
+
 	ginkgo.By("validating CNI binaries and cache directory in controller")
 	Eventually(func(g Gomega) {
 		tests.ValidateCNIBinaries(g, cs)
@@ -79,6 +93,8 @@ var _ = ginkgo.BeforeSuite(func() {
 })
 
 var _ = ginkgo.AfterSuite(func() {
+	Expect(executor.TeardownNodeExec()).NotTo(HaveOccurred())
+
 	if updater == nil {
 		return
 	}

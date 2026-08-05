@@ -15,7 +15,7 @@ import (
 // network namespace on nodeName. Pass NamedNetns for the perouter netns,
 // or an empty string for the default netns.
 func IsInterfaceInNS(nodeName, intf string, ns string) bool {
-	exec := executor.ForContainer(nodeName)
+	exec := executor.ForNode(nodeName)
 	if ns == "" {
 		_, err := exec.Exec("ip", "link", "show", intf)
 		return err == nil
@@ -35,7 +35,7 @@ var addrRegexp = regexp.MustCompile(`\s(inet6?\s+\S+)`)
 // InterfaceIPAddresses returns the non-link-local IP addresses assigned to the
 // interface in the default netns on nodeName, sorted and newline-joined.
 func InterfaceIPAddresses(nodeName, intf string) (string, error) {
-	exec := executor.ForContainer(nodeName)
+	exec := executor.ForNode(nodeName)
 	out, err := exec.Exec("ip", "-o", "a", "ls", "dev", intf, "scope", "global")
 	if err != nil {
 		return "", err
@@ -57,7 +57,7 @@ func InterfaceIPAddresses(nodeName, intf string) (string, error) {
 // prefix length) assigned to intf inside the named netns on nodeName, or an
 // error if none is found.
 func InterfaceIPv4InNetns(nodeName, intf, ns string) (string, error) {
-	exec := executor.ForContainer(nodeName)
+	exec := executor.ForNode(nodeName)
 	out, err := exec.Exec("ip", "netns", "exec", ns, "ip", "-4", "-o", "a", "ls", "dev", intf, "scope", "global")
 	if err != nil {
 		return "", err
@@ -81,7 +81,7 @@ func InterfaceIPv4InNetns(nodeName, intf, ns string) (string, error) {
 // InterfaceIsUp checks whether the interface in the default netns
 // on nodeName has state UP.
 func InterfaceIsUp(nodeName, intf string) bool {
-	exec := executor.ForContainer(nodeName)
+	exec := executor.ForNode(nodeName)
 	out, err := exec.Exec("ip", "link", "show", intf, "up")
 	if err != nil {
 		return false

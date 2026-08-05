@@ -47,32 +47,30 @@ var linksForFamily map[ipfamily.Family]map[link]linkAddresses
 
 func init() {
 	linksForFamily = map[ipfamily.Family]map[link]linkAddresses{}
+}
 
-	// leafkind1 links - bridge connections use toswitch1
-	addLinkIPs("clab-kind-leafkind1", "pe-kind-control-plane", "192.168.11.2", "192.168.11.3")
-	addLinkIPv6s("clab-kind-leafkind1", "pe-kind-control-plane", "2001:db8:11::2", "2001:db8:11::3")
-	addLinkInterfaces("clab-kind-leafkind1", "pe-kind-control-plane", "tokindctrlpl", "toleafkind1")
-	addLinkIPs("clab-kind-leafkind1", "pe-kind-worker", "192.168.11.2", "192.168.11.4")
-	addLinkIPv6s("clab-kind-leafkind1", "pe-kind-worker", "2001:db8:11::2", "2001:db8:11::4")
-	addLinkInterfaces("clab-kind-leafkind1", "pe-kind-worker", "tokindworker", "toleafkind1")
-	addLinkIPs("clab-kind-leafkind1", "clab-kind-spine", "192.168.1.5", "192.168.1.4")
+func registerFabricLinks() {
+	spine := ClabPrefix + "spine"
 
-	// leafkind2 links - bridge connections use toswitch2
-	addLinkIPs("clab-kind-leafkind2", "pe-kind-control-plane", "192.168.12.2", "192.168.12.3")
-	addLinkIPv6s("clab-kind-leafkind2", "pe-kind-control-plane", "2001:db8:12::2", "2001:db8:12::3")
-	addLinkInterfaces("clab-kind-leafkind2", "pe-kind-control-plane", "tokindctrlpl", "toleafkind2")
-	addLinkIPs("clab-kind-leafkind2", "pe-kind-worker", "192.168.12.2", "192.168.12.4")
-	addLinkIPv6s("clab-kind-leafkind2", "pe-kind-worker", "2001:db8:12::2", "2001:db8:12::4")
-	addLinkInterfaces("clab-kind-leafkind2", "pe-kind-worker", "tokindworker", "toleafkind2")
-	addLinkIPs("clab-kind-leafkind2", "clab-kind-spine", "192.168.1.7", "192.168.1.6")
+	addLinkIPs(KindLeaf, spine, "192.168.1.5", "192.168.1.4")
+	addLinkIPs(KindLeaf2, spine, "192.168.1.7", "192.168.1.6")
+	addLinkIPs(LeafA, spine, "192.168.1.1", "192.168.1.0")
+	addLinkIPs(LeafB, spine, "192.168.1.3", "192.168.1.2")
+	addLinkIPs(LeafA, ClabPrefix+"hostA_red", "192.168.20.1", HostARedIPv4)
+	addLinkIPs(LeafA, ClabPrefix+"hostA_blue", "192.168.21.1", HostABlueIPv4)
+	addLinkIPs(LeafB, ClabPrefix+"hostB_red", "192.169.20.1", HostBRedIPv4)
+	addLinkIPs(LeafB, ClabPrefix+"hostB_blue", "192.169.21.1", HostBBlueIPv4)
+}
 
-	// Other leaf links
-	addLinkIPs("clab-kind-leafA", "clab-kind-spine", "192.168.1.1", "192.168.1.0")
-	addLinkIPs("clab-kind-leafB", "clab-kind-spine", "192.168.1.3", "192.168.1.2")
-	addLinkIPs("clab-kind-leafA", "clab-kind-hostA_red", "192.168.20.1", HostARedIPv4)
-	addLinkIPs("clab-kind-leafA", "clab-kind-hostA_blue", "192.168.21.1", HostABlueIPv4)
-	addLinkIPs("clab-kind-leafB", "clab-kind-hostB_red", "192.169.20.1", HostBRedIPv4)
-	addLinkIPs("clab-kind-leafB", "clab-kind-hostB_blue", "192.169.21.1", HostBBlueIPv4)
+func registerNodeLinks(cfg nodeLinksConfig) {
+	for nodeName, nc := range cfg.Nodes {
+		addLinkIPs(KindLeaf, nodeName, kindLeafIP, nc.IPForKindLeaf)
+		addLinkIPs(KindLeaf2, nodeName, kindLeaf2IP, nc.IPForKindLeaf2)
+		addLinkIPv6s(KindLeaf, nodeName, kindLeafIPv6, nc.IPv6ForKindLeaf)
+		addLinkIPv6s(KindLeaf2, nodeName, kindLeaf2IPv6, nc.IPv6ForKindLeaf2)
+		addLinkInterfaces(KindLeaf, nodeName, nc.LeafIfaceForKindLeaf, nc.IfaceForKindLeaf)
+		addLinkInterfaces(KindLeaf2, nodeName, nc.LeafIfaceForKindLeaf2, nc.IfaceForKindLeaf2)
+	}
 }
 
 type link struct {
