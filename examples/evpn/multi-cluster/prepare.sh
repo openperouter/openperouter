@@ -2,10 +2,11 @@
 set -euo pipefail
 set -x
 CURRENT_PATH=$(dirname "$0")
+REPO_ROOT=$(git -C "${CURRENT_PATH}" rev-parse --show-toplevel)
 
 source "${CURRENT_PATH}/../../common.sh"
 
-DEMO_MODE=true make deploy-multi
+DEMO_MODE=true make -C "${REPO_ROOT}" deploy-multi
 
 provision_migration_network() {
     local kubeconfig="$1"
@@ -133,7 +134,7 @@ apply_demo_manifests() {
 
 declare -A kubeconfigs
 
-for kubeconfig in $(pwd)/bin/kubeconfig-*; do
+for kubeconfig in "${REPO_ROOT}"/bin/kubeconfig-*; do
     if [[ -f "$kubeconfig" ]]; then
         cluster_name=$(basename "$kubeconfig" | sed 's/kubeconfig-//')
         kubeconfigs["$cluster_name"]="$kubeconfig"

@@ -2,11 +2,12 @@
 set -euo pipefail
 set -x
 CURRENT_PATH=$(dirname "$0")
+REPO_ROOT=$(git -C "${CURRENT_PATH}" rev-parse --show-toplevel)
 
 source "${CURRENT_PATH}/../../common.sh"
 
-DEMO_MODE=true make deploy
-export KUBECONFIG=$(pwd)/bin/kubeconfig
+DEMO_MODE=true make -C "${REPO_ROOT}" deploy
+export KUBECONFIG="${REPO_ROOT}/bin/kubeconfig"
 
 kubectl apply -f https://github.com/kubevirt/kubevirt/releases/download/v1.5.2/kubevirt-operator.yaml
 kubectl apply -f https://github.com/kubevirt/kubevirt/releases/download/v1.5.2/kubevirt-cr.yaml
