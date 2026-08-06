@@ -58,12 +58,14 @@ var (
 		SpinePeerAddress:  "192.168.1.4",
 		Container:         KindLeaf1Container,
 		ToSwitchInterface: "toswitch1",
+		ISISNet:           "49.0001.0000.0000.0004.00",
 	}
 	LeafKind2Config = LeafKind{
 		ASN:               64513,
 		SpinePeerAddress:  "192.168.1.6",
 		Container:         KindLeaf2Container,
 		ToSwitchInterface: "toswitch2",
+		ISISNet:           "49.0001.0000.0000.0005.00",
 	}
 
 	EmptyLeafConfig = LeafConfiguration{
@@ -97,6 +99,7 @@ type LeafKindConfiguration struct {
 	ASN                   int
 	SpinePeerAddress      string
 	ToSwitchInterface     string
+	ISISNet               string
 	EnableBFD             bool
 	RedistributeConnected bool
 	Neighbors             []Neighbor
@@ -140,6 +143,10 @@ type LeafKind struct {
 	ASN               int
 	SpinePeerAddress  string
 	ToSwitchInterface string
+	// ISISNet must match the net the clab topology assigns to this leaf. Every
+	// leaf in the area needs its own system ID: two leaves sharing one makes
+	// them fight over the same LSP forever, which stops ISIS from converging.
+	ISISNet string
 	frr.Container
 }
 
@@ -230,6 +237,9 @@ func (l LeafKind) UpdateConfig(nodes []corev1.Node, config LeafKindConfiguration
 	if config.ToSwitchInterface == "" {
 		config.ToSwitchInterface = l.ToSwitchInterface
 	}
+	if config.ISISNet == "" {
+		config.ISISNet = l.ISISNet
+	}
 
 	neighbors := []Neighbor{}
 	for _, node := range nodes {
@@ -272,6 +282,9 @@ func (l LeafKind) Configure(config LeafKindConfiguration) error {
 	}
 	if config.ToSwitchInterface == "" {
 		config.ToSwitchInterface = l.ToSwitchInterface
+	}
+	if config.ISISNet == "" {
+		config.ISISNet = l.ISISNet
 	}
 
 	configString, err := LeafKindConfigToFRR(config)
