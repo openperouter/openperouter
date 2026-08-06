@@ -125,6 +125,8 @@ spec:
                         not be set when it is Managed.
                       rule: (self.?name.orValue("") != "") != (self.?lifecycle.orValue("")
                         == 'Managed')
+                    - message: lifecycle is immutable once set
+                      rule: self.lifecycle == oldSelf.lifecycle
                   ovsBridge:
                     description: ovsBridge configuration. Must be set when Type is
                       "OVSBridge".
@@ -153,6 +155,8 @@ spec:
                         not be set when it is Managed.
                       rule: (self.?name.orValue("") != "") != (self.?lifecycle.orValue("")
                         == 'Managed')
+                    - message: lifecycle is immutable once set
+                      rule: self.lifecycle == oldSelf.lifecycle
                   type:
                     description: 'type of the host interface. Supported values: "LinuxBridge",
                       "OVSBridge".'
