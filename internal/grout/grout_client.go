@@ -29,6 +29,13 @@ type groutInterface struct {
 	Type string `json:"type"`
 }
 
+type groutVXLANInfo struct {
+	VNI     int32  `json:"vni"`
+	Local   string `json:"local"`
+	DstPort int32  `json:"dst_port"`
+	VRF     string `json:"vrf"`
+}
+
 // NewClient creates a new grout client pointing at the given UNIX socket.
 func NewClient(socketPath string) *Client {
 	return &Client{socketPath: socketPath}
@@ -215,14 +222,39 @@ func (c *Client) ensureVRF(ctx context.Context, name string) error {
 	return nil
 }
 
-func (c *Client) ensureVXLAN(ctx context.Context, name string, localIP, vrf string, vni int32, dstPort int32) error {
-	exists, err := c.portExists(ctx, name)
+func (c *Client) getVXLANInterfaceInfo(ctx context.Context, name string) (*groutVXLANInfo, error) {
+	out, err := c.runOutput(ctx, "interface", "show", "name", name)
 	if err != nil {
-		return fmt.Errorf("checking if VXLAN %s exists: %w", name, err)
+		if strings.Contains(err.Error(), "No such") || strings.Contains(out, "No such") {
+			return nil, nil
+		}
+		return nil, err
 	}
-	if exists {
-		slog.InfoContext(ctx, "grout VXLAN already exists", "name", name)
-		return nil
+	var info groutVXLANInfo
+	if err := json.Unmarshal([]byte(out), &info); err != nil {
+		return nil, fmt.Errorf("parsing VXLAN info for %s: %w", name, err)
+	}
+	return &info, nil
+}
+
+func (c *Client) ensureVXLAN(ctx context.Context, name string, localIP, vrf string, vni int32, dstPort int32) error {
+	info, err := c.getVXLANInterfaceInfo(ctx, name)
+	if err != nil {
+		return fmt.Errorf("checking VXLAN %s: %w", name, err)
+	}
+	if info != nil {
+		if info.VNI == vni && info.Local == localIP && info.DstPort == dstPort && info.VRF == vrf {
+			slog.InfoContext(ctx, "grout VXLAN already configured", "name", name)
+			return nil
+		}
+		slog.InfoContext(ctx, "grout VXLAN config changed, recreating",
+			"name", name, "oldVNI", info.VNI, "newVNI", vni,
+			"oldLocal", info.Local, "newLocal", localIP,
+			"oldDstPort", info.DstPort, "newDstPort", dstPort,
+			"oldVRF", info.VRF, "newVRF", vrf)
+		if err := c.deleteInterface(ctx, name); err != nil {
+			return fmt.Errorf("deleting VXLAN %s for reconfiguration: %w", name, err)
+		}
 	}
 
 	args := []string{"interface", "add", "vxlan", name,

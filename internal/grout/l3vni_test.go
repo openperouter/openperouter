@@ -233,15 +233,59 @@ func TestEnsureVXLAN(t *testing.T) {
 		)
 	})
 
-	t.Run("no-op when VXLAN already exists", func(t *testing.T) {
+	t.Run("no-op when VXLAN already exists with same config", func(t *testing.T) {
 		defer mockCmdExec(
 			cmdCall{
 				cmd:    "grcli --err-exit --json --socket sock interface show name vni100",
-				output: `{"name":"vni100","type":"vxlan"}`,
+				output: `{"name":"vni100","type":"vxlan","vni":100,"local":"10.0.0.1","dst_port":4789,"vrf":"red"}`,
 			})()
 
 		assert.NoError(t,
 			NewClient("sock").ensureVXLAN(context.Background(), "vni100", "10.0.0.1", "red", 100, 4789),
+		)
+	})
+
+	t.Run("recreates VXLAN when config changed", func(t *testing.T) {
+		defer mockCmdExec(
+			cmdCall{
+				cmd:    "grcli --err-exit --json --socket sock interface show name vni100",
+				output: `{"name":"vni100","type":"vxlan","vni":100,"local":"10.0.0.1","dst_port":4789,"vrf":"red"}`,
+			},
+			cmdCall{
+				cmd:    "grcli --err-exit --json --socket sock interface show name vni100",
+				output: `{"name":"vni100","type":"vxlan","vni":100,"local":"10.0.0.1","dst_port":4789,"vrf":"red"}`,
+			},
+			cmdCall{
+				cmd: "grcli --err-exit --json --socket sock interface del vni100",
+			},
+			cmdCall{
+				cmd: "grcli --err-exit --json --socket sock interface add vxlan vni100 vni 100 local 10.0.0.2 dst_port 4789 vrf red encap_vrf main",
+			})()
+
+		assert.NoError(t,
+			NewClient("sock").ensureVXLAN(context.Background(), "vni100", "10.0.0.2", "red", 100, 4789),
+		)
+	})
+
+	t.Run("recreates VXLAN when port changed", func(t *testing.T) {
+		defer mockCmdExec(
+			cmdCall{
+				cmd:    "grcli --err-exit --json --socket sock interface show name vni100",
+				output: `{"name":"vni100","type":"vxlan","vni":100,"local":"10.0.0.1","dst_port":4789,"vrf":"red"}`,
+			},
+			cmdCall{
+				cmd:    "grcli --err-exit --json --socket sock interface show name vni100",
+				output: `{"name":"vni100","type":"vxlan","vni":100,"local":"10.0.0.1","dst_port":4789,"vrf":"red"}`,
+			},
+			cmdCall{
+				cmd: "grcli --err-exit --json --socket sock interface del vni100",
+			},
+			cmdCall{
+				cmd: "grcli --err-exit --json --socket sock interface add vxlan vni100 vni 100 local 10.0.0.1 dst_port 5000 vrf red encap_vrf main",
+			})()
+
+		assert.NoError(t,
+			NewClient("sock").ensureVXLAN(context.Background(), "vni100", "10.0.0.1", "red", 100, 5000),
 		)
 	})
 }
