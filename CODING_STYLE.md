@@ -10,14 +10,123 @@ Please refer to our comprehensive contributing guide at [website/content/docs/co
 - Commit message guidelines
 - How to extend the end-to-end test suite
 
-Also see [Claude.md](../Claude.md) for detailed Go style guidelines including:
+### Use Modern Go Features
 
-- Code readability and "line of sight" principles
-- Line length guidelines (120 character limit)
-- Package organization best practices
-- Error handling patterns
-- Dependency management
-- Control flow recommendations
+Always check the Go version in `go.mod` and prefer language features and standard library additions from that version
+over third-party helpers or older patterns.
+
+**Example - Go 1.26 `new()` builtin:**
+```go
+// Good: use the builtin
+val := new("hello")
+
+// Avoid: third-party pointer helpers
+val := ptr.To("hello")
+```
+
+When writing new code, modifying existing code, or reviewing code, prefer the latest idiomatic constructs available in
+the project's Go version rather than relying on utility packages that duplicate standard functionality.
+
+### Code Readability: Line of Sight
+
+Write code that's easy to scan vertically:
+
+1. **Happy Path Left-Aligned:** Keep the main execution path with minimal indentation
+2. **Early Returns:** Exit as soon as conditions are met to reduce nesting
+3. **Avoid else-returns:** Invert conditions to return early instead of using else blocks
+4. **Extract Functions:** Break large functions into smaller, single-purpose functions
+
+**Example:**
+```go
+// Good
+func Process(data string) error {
+    if data == "" {
+        return errors.New("empty data")
+    }
+    if !isValid(data) {
+        return errors.New("invalid data")
+    }
+    // happy path continues here
+    return doWork(data)
+}
+
+// Avoid
+func Process(data string) error {
+    if data != "" {
+        if isValid(data) {
+            return doWork(data)
+        } else {
+            return errors.New("invalid data")
+        }
+    } else {
+        return errors.New("empty data")
+    }
+}
+```
+
+### Code Readability: Line Length
+
+Limit line length to 120 characters whenever possible:
+- Break long function calls, struct definitions, and statements into multiple lines
+- Use appropriate indentation for continuation lines
+- Prioritize readability over strict adherence when necessary
+
+### Package Organization
+
+**Naming:**
+- Use descriptive, single-word names that convey purpose
+- AVOID generic names: `util`, `common`, `lib`, `misc`, `helpers`
+- Package name should be an "elevator pitch" for its functionality
+
+**File Structure:**
+- Name the primary file after the package (e.g., `network.go` in package `network`)
+- Place public APIs and important types at the top of files
+- **Place helper functions at the bottom of files, after where they are used**
+  - This applies to ALL files (production code and tests)
+  - Main/exported functions first, internal helpers last
+  - In test files: test functions first, helper functions at the bottom
+- Utility functions should be in separate files within the package
+
+### Error Handling
+
+1. **Type-Safe Checking:** Use `errors.Is` and `errors.As` instead of string comparison
+2. **Add Context:** Wrap errors with `fmt.Errorf` and `%w` to preserve the error chain
+3. **Propagate Context:** Each layer should add meaningful context about what operation failed
+
+**Example:**
+```go
+if err := fetchData(id); err != nil {
+    return fmt.Errorf("failed to fetch data for id %s: %w", id, err)
+}
+```
+
+### Dependency Management
+
+**Environment Variables:**
+- NEVER read environment variables from packages
+- ALWAYS read them in `main()` function
+- Pass values explicitly through function parameters or configuration structs
+
+**Function Arguments:**
+- Use pointer arguments when the function needs to modify the argument
+- Use value arguments for read-only parameters
+
+### Control Flow
+
+**Switch vs If-Else:**
+- Prefer `switch` statements for multiple conditions
+- Go's switch supports embedded conditions - use this feature
+
+**Named Returns:**
+- Avoid named return values - they can obscure control flow
+- Use explicit return statements for clarity
+
+**Goroutines in Controllers:**
+- Exercise caution when spawning goroutines in Kubernetes controllers
+- Controller lifecycle management makes goroutine cleanup complex
+- Prefer controller-runtime's built-in concurrency patterns
+
+
 
 ### Unnecessary Comments
 Remove obvious comments that restate what the code already says. Comments should explain *why*, never *what*. AI-generated boilerplate comments are especially problematic — they add noise without value.
@@ -186,3 +295,16 @@ When reviewing code, pay special attention to:
 - [Effective Go](https://golang.org/doc/effective_go)
 - [Go Code Review Comments](https://github.com/golang/go/wiki/CodeReviewComments)
 - [Kubernetes API Conventions](https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md)
+
+## Code Review Checklist
+
+When reviewing or writing code, verify:
+- [ ] Happy path is left-aligned with early returns
+- [ ] No generic package names (util, common, etc.)
+- [ ] Errors wrapped with context using `%w`
+- [ ] No environment variable reads outside main()
+- [ ] Package-named entry point file exists
+- [ ] Helper functions placed at bottom of file (after where they are used)
+- [ ] Switch used instead of long if-else chains
+- [ ] No named returns unless absolutely necessary
+- [ ] Goroutines in controllers are carefully managed
