@@ -38,6 +38,22 @@ func RawDump(exec executor.Executor) string {
 		{desc: "ISIS interfaces", cmd: []string{"vtysh", "-c", "show isis interface"}},
 		{desc: "ISIS neighbors", cmd: []string{"vtysh", "-c", "show isis neighbor"}},
 		{desc: "Zebra interface information", cmd: []string{"vtysh", "-c", "show interface"}},
+		// Zebra dataplane and EVPN state. The BGP oriented output above says
+		// nothing about the dplane thread or the EVPN tables zebra keeps, which
+		// is what is needed when a router stops programming routes rather than
+		// losing a session. skipLogOnError keeps this quiet on FRR versions
+		// that do not have a given command.
+		{desc: "Zebra dplane", cmd: []string{"vtysh", "-c", "show zebra dplane detailed"}, skipLogOnError: true},
+		{desc: "Zebra dplane providers", cmd: []string{"vtysh", "-c", "show zebra dplane providers"}, skipLogOnError: true},
+		{desc: "Zebra clients", cmd: []string{"vtysh", "-c", "show zebra client summary"}, skipLogOnError: true},
+		{desc: "Zebra work queues", cmd: []string{"vtysh", "-c", "show work-queues"}, skipLogOnError: true},
+		// "show thread cpu" up to FRR 10.5, renamed to "show event cpu" in 10.6.
+		{desc: "Event CPU", cmd: []string{"vtysh", "-c", "show event cpu"}, skipLogOnError: true},
+		{desc: "Event poll", cmd: []string{"vtysh", "-c", "show event poll"}, skipLogOnError: true},
+		{desc: "Memory", cmd: []string{"vtysh", "-c", "show memory"}, skipLogOnError: true},
+		{desc: "EVPN VNIs", cmd: []string{"vtysh", "-c", "show evpn vni detail"}, skipLogOnError: true},
+		{desc: "EVPN MACs", cmd: []string{"vtysh", "-c", "show evpn mac vni all"}, skipLogOnError: true},
+		{desc: "EVPN ARP cache", cmd: []string{"vtysh", "-c", "show evpn arp-cache vni all"}, skipLogOnError: true},
 		{desc: "ip link", cmd: []string{"bash", "-c", "ip l"}},
 		{desc: "ip address", cmd: []string{"bash", "-c", "ip address"}},
 		{desc: "ip neigh", cmd: []string{"bash", "-c", "ip neigh"}},
