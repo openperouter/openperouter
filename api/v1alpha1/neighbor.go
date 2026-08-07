@@ -47,20 +47,16 @@ type Neighbor struct {
 	// +kubebuilder:validation:Maximum=16384
 	Port *int32 `json:"port,omitempty"`
 
-	// password to be used for establishing the BGP session.
-	// Password and PasswordSecret are mutually exclusive.
-	// +kubebuilder:validation:MaxLength=128
-	// +kubebuilder:validation:Pattern=`^\S+$`
-	// +optional
-	Password *string `json:"password,omitempty"`
+	// Password is the resolved BGP session password, populated internally.
+	// Not part of the CRD API — Kubernetes users must use PasswordSecret.
+	// In systemd mode, set via the static config types.
+	Password *string `json:"-"`
 
-	// passwordSecret is name of the authentication secret for the neighbor.
-	// the secret must be of type "kubernetes.io/basic-auth", and created in the
-	// same namespace as the perouter daemon. The password is stored in the
-	// secret as the key "password".
-	// Password and PasswordSecret are mutually exclusive.
+	// passwordSecret references a key in a Kubernetes Secret containing the
+	// BGP session password. The Secret must be created in the same namespace
+	// as the Underlay.
 	// +optional
-	PasswordSecret *string `json:"passwordSecret,omitempty"`
+	PasswordSecret *SecretKeyRef `json:"passwordSecret,omitempty"`
 
 	// holdTimeSeconds is the requested BGP hold time in seconds, per RFC4271.
 	// Defaults to 180.
@@ -205,6 +201,21 @@ type BFDSettings struct {
 	// +kubebuilder:validation:Minimum:=1
 	// +optional
 	MinimumTTL *int32 `json:"minimumTTL,omitempty"`
+}
+
+// SecretKeyRef references a key within a Kubernetes Secret in the same
+// namespace as the perouter daemon.
+type SecretKeyRef struct {
+	// name is the name of the Secret in the same namespace.
+	// +required
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name,omitempty"`
+
+	// key is the key within the Secret's data to select.
+	// The controller defaults this to "password" when unset.
+	// +kubebuilder:validation:MinLength=1
+	// +optional
+	Key *string `json:"key,omitempty"`
 }
 
 // NeighborAddressFamily represents a single BGP address family configuration

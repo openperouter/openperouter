@@ -280,7 +280,7 @@ func TestParityRoundTrip(t *testing.T) {
 							ASN:             new(int64(65200)),
 							Address:         new("10.0.0.1"),
 							Port:            new(int32(179)),
-							Password:        new("secret"),
+							PasswordSecret:  &v1alpha1.SecretKeyRef{Name: "my-bgp-secret"},
 							HoldTimeSeconds: new(int64(90)),
 							Properties: []v1alpha1.NeighborProperty{
 								{

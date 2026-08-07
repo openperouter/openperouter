@@ -34,6 +34,11 @@ router bgp {{ .ASN }}
  neighbor {{ .ID }} remote-as {{ $.PERouterASN }}
 {{- end }}
  neighbor {{ .ID }} timers connect 5
+{{- if $.Password }}
+ neighbor {{ .ID }} password {{ $.Password }}
+{{- else if .Password }}
+ neighbor {{ .ID }} password {{ .Password }}
+{{- end }}
 {{- if $.EnableBFD }}
  neighbor {{ .ID }} bfd
 {{- end }}
