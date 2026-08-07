@@ -451,14 +451,19 @@ var _ = Describe("Systemd: Data plane continuity during FRR restart", Label("sys
 			},
 		)
 
+		By("verifying stretched L2 traffic works after restart")
+		Eventually(func() error {
+			_, err := clientExec.Exec("curl", "-sS", "--max-time", "2", urlStr)
+			return err
+		}).WithTimeout(2 * time.Minute).WithPolling(time.Second).Should(Succeed())
+
 		By("asserting data plane disruption is within acceptable bounds")
 		result := stopAndCount()
 		By(fmt.Sprintf("==> %s", result.String()))
 		Expect(result.eval()).To(
 			Succeed(),
-			"curl failures exceeded threshold during routerpod restart (%d/%d failed)",
-			result.failCount,
-			result.totalCount,
+			"curl failures exceeded threshold during routerpod restart. Result: %s",
+			result.String(),
 		)
 	})
 })
