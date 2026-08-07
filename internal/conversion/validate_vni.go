@@ -201,10 +201,11 @@ func validateOverlayResourcesForNode(node corev1.Node, l2vnis []v1alpha1.L2VNI, 
 	}
 
 	var rdAssignedNumbers map[int32]string
-	validL3VPNs, rdAssignedNumbers, err = FilterUniqueL3VPNs(validL3VPNs)
+	validL3VPNs, rdAssignedNumbers, err = FilterUniqueL3VPNs(validL3VPNs, vnis)
 	if err != nil {
 		return fmt.Errorf("duplicate L3VPNs found for node %q: %w", node.Name, err)
 	}
+	// The following action is safe: vnis and rdAssignedNumbers are guaranteed to have unique indexes.
 	maps.Copy(vnis, rdAssignedNumbers)
 
 	validL2VNIs, err = FilterUniqueL2VNIs(validL2VNIs, vnis)
@@ -212,14 +213,9 @@ func validateOverlayResourcesForNode(node corev1.Node, l2vnis []v1alpha1.L2VNI, 
 		return fmt.Errorf("duplicate VNIs found in L2VNIs for node %q: %w", node.Name, err)
 	}
 
-	validL3VNIs, err = FilterUniqueVRFsForL3VNIs(validL3VNIs)
+	validL3VNIs, validL3VPNs, err = FilterUniqueVRFs(validL3VNIs, validL3VPNs)
 	if err != nil {
-		return fmt.Errorf("duplicate L3VNI VRFs found for node %q: %w", node.Name, err)
-	}
-
-	validL3VPNs, err = FilterUniqueVRFsForL3VPNs(validL3VPNs)
-	if err != nil {
-		return fmt.Errorf("duplicate L3VPN VRFs found for node %q: %w", node.Name, err)
+		return fmt.Errorf("duplicate L3 resources found in VRFs for node %q: %w", node.Name, err)
 	}
 
 	_, _, _, err = FilterValidVRFSubnets(validL3VNIs, validL3VPNs, validL2VNIs)
@@ -228,33 +224,6 @@ func validateOverlayResourcesForNode(node corev1.Node, l2vnis []v1alpha1.L2VNI, 
 	}
 
 	return nil
-}
-
-// FilterUniqueVRFsForL3VNIs checks VRF uniqueness among L3VNIs and returns the valid
-// L3VNIs alongside per-resource errors for duplicates.
-func FilterUniqueVRFsForL3VNIs(l3Vnis []v1alpha1.L3VNI) ([]v1alpha1.L3VNI, error) {
-	reason := v1alpha1.FailedResourceReasonValidationFailed
-	var allErrors []error
-
-	vrfToVNI := map[string]types.NamespacedName{}
-	var valid []v1alpha1.L3VNI
-	for _, l3Vni := range l3Vnis {
-		namespaceName := types.NamespacedName{Namespace: l3Vni.Namespace, Name: l3Vni.Name}
-		existing, ok := vrfToVNI[l3Vni.Spec.VRF]
-		if ok {
-			allErrors = append(allErrors, &openpeerrors.ResourceError{
-				Obj: v1alpha1.FailedResource{
-					Kind: "L3VNI", Name: l3Vni.Name, Reason: reason,
-					Message: fmt.Sprintf("more than one L3VNI detected in VRF %q: %q already exists", l3Vni.Spec.VRF, existing),
-				},
-			})
-			continue
-		}
-		vrfToVNI[l3Vni.Spec.VRF] = namespaceName
-		valid = append(valid, l3Vni)
-	}
-
-	return valid, errors.Join(allErrors...)
 }
 
 // FilterValidVRFSubnets checks for subnet overlaps per VRF and returns valid

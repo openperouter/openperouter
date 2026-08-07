@@ -204,7 +204,7 @@ func TestValidateL3VPNCreate(t *testing.T) {
 				"underlay with SRV6 configuration",
 		},
 		{
-			name: "testing L3VNIs and L3VPNs are mutually exclusive",
+			name: "testing L3VNIs and L3VPNs are mutually exclusive per VRF",
 			nodes: []*v1.Node{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -240,7 +240,9 @@ func TestValidateL3VPNCreate(t *testing.T) {
 					Name:      "newL3VPN",
 				},
 				Spec: v1alpha1.L3VPNSpec{
-					VRF: "0123456789abcdefghijkl",
+					VRF:              "vrfa",
+					RDAssignedNumber: 200,
+					ImportRTs:        []v1alpha1.RouteTarget{"65000:200"},
 					HostSession: &v1alpha1.HostSession{
 						LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.0.4.0/24")},
 					},
@@ -251,7 +253,57 @@ func TestValidateL3VPNCreate(t *testing.T) {
 					},
 				},
 			},
-			errorString: "cannot create L3VPN default/newL3VPN when L3VNIs already exist",
+			errorString: `cannot create L3VPN default/newL3VPN: VRF "vrfa" is already used by L3VNI default/existingL3VNI`,
+		},
+		{
+			name: "L3VPN allowed when L3VNI exists in a different VRF",
+			underlays: []*v1alpha1.Underlay{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "underlay1",
+					},
+					Spec: v1alpha1.UnderlaySpec{
+						SRV6: &v1alpha1.SRV6Config{},
+					},
+				},
+			},
+			nodes: []*v1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "node1",
+						Labels: map[string]string{
+							"nodeName": "node1",
+						},
+					},
+				},
+			},
+			l3vnis: []*v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: "default",
+						Name:      "existingL3VNI",
+					},
+					Spec: v1alpha1.L3VNISpec{
+						VRF: "vrfa",
+					},
+				},
+			},
+			newL3VPN: &v1alpha1.L3VPN{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      "newL3VPN",
+				},
+				Spec: v1alpha1.L3VPNSpec{
+					VRF:              "vrfb",
+					RDAssignedNumber: 200,
+					ImportRTs:        []v1alpha1.RouteTarget{"65000:200"},
+					NodeSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"nodeName": "node1",
+						},
+					},
+				},
+			},
 		},
 	}
 	for _, tc := range tcs {
