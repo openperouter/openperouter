@@ -3,7 +3,6 @@
 package tests
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"time"
@@ -19,7 +18,6 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 	"github.com/openperouter/openperouter/e2etests/pkg/url"
-	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 )
@@ -57,10 +55,13 @@ var _ = Describe("North/south traffic after FRR container restart", Ordered, fun
 	}
 
 	BeforeAll(func() {
-		err := Updater.CleanAll()
-		Expect(err).NotTo(HaveOccurred())
+		Expect(Updater.CleanAll()).To(Succeed())
 
+		var err error
 		cs = k8sclient.New()
+
+		openperouter.RestartDaemonSetPods(cs, openperouter.Namespace, openperouter.RouterDaemonSetLabelSelector)
+
 		Eventually(func() error {
 			routers, err = openperouter.Get(cs, HostMode)
 			if err != nil {
@@ -71,20 +72,18 @@ var _ = Describe("North/south traffic after FRR container restart", Ordered, fun
 
 		routers.Dump(ginkgo.GinkgoWriter)
 
-		err = Updater.Update(config.Resources{
+		Expect(Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{
 				infra.Underlay,
 			},
-		})
-		Expect(err).NotTo(HaveOccurred())
+		})).To(Succeed())
 
 		Expect(infra.LeafAConfig.RedistributeConnected()).To(Succeed())
 		Expect(infra.LeafBConfig.RedistributeConnected()).To(Succeed())
 	})
 
 	AfterAll(func() {
-		err := Updater.CleanAll()
-		Expect(err).NotTo(HaveOccurred())
+		Expect(Updater.CleanAll()).To(Succeed())
 		By("waiting for all router pods to be ready after removing the underlay")
 		Eventually(func() error {
 			routers, err := openperouter.Get(cs, HostMode)
@@ -93,6 +92,8 @@ var _ = Describe("North/south traffic after FRR container restart", Ordered, fun
 			}
 			return openperouter.AreReady(routers)
 		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
+
+		openperouter.RestartDaemonSetPods(cs, openperouter.Namespace, openperouter.RouterDaemonSetLabelSelector)
 	})
 
 	const testNamespace = "test-namespace"
@@ -101,17 +102,16 @@ var _ = Describe("North/south traffic after FRR container restart", Ordered, fun
 		l2VniRedWithGateway := l2VniRed.DeepCopy()
 		l2VniRedWithGateway.Spec.GatewayIPs = []string{"192.171.24.1/24"}
 
-		err := Updater.Update(config.Resources{
+		Expect(Updater.Update(config.Resources{
 			L3VNIs: []v1alpha1.L3VNI{
 				vniRed,
 			},
 			L2VNIs: []v1alpha1.L2VNI{
 				*l2VniRedWithGateway,
 			},
-		})
-		Expect(err).NotTo(HaveOccurred())
+		})).To(Succeed())
 
-		_, err = k8s.CreateNamespace(cs, testNamespace)
+		_, err := k8s.CreateNamespace(cs, testNamespace)
 		Expect(err).NotTo(HaveOccurred())
 
 		nad, err := k8s.CreateMacvlanNad("110", testNamespace, "br-hs-110", []string{"192.171.24.1/24"})
@@ -121,10 +121,8 @@ var _ = Describe("North/south traffic after FRR container restart", Ordered, fun
 			dumpIfFails(cs, testNamespace)
 			Expect(infra.LeafAConfig.Reset()).To(Succeed())
 			Expect(infra.LeafBConfig.Reset()).To(Succeed())
-			err := Updater.CleanButUnderlay()
-			Expect(err).NotTo(HaveOccurred())
-			err = k8s.DeleteNamespace(cs, testNamespace)
-			Expect(err).NotTo(HaveOccurred())
+			Expect(Updater.CleanButUnderlay()).To(Succeed())
+			Expect(k8s.DeleteNamespace(cs, testNamespace)).To(Succeed())
 		})
 
 		nodes, err := k8s.GetNodes(cs)
@@ -169,23 +167,7 @@ var _ = Describe("North/south traffic after FRR container restart", Ordered, fun
 		By("killing the FRR container entrypoint process")
 		killFRREntrypoint(frrExec)
 
-		By("waiting for the FRR container to restart and become ready")
-		Eventually(func(g Gomega) []v1.PodCondition {
-			pod, err := cs.CoreV1().Pods(openperouter.Namespace).Get(context.Background(), routerPod.Name, metav1.GetOptions{})
-			g.Expect(err).NotTo(HaveOccurred())
-			return pod.Status.Conditions
-		}).
-			WithTimeout(2*time.Minute).
-			WithPolling(time.Second).
-			Should(
-				ContainElement(
-					SatisfyAll(
-						HaveField("Type", Equal(v1.PodReady)),
-						HaveField("Status", Equal(v1.ConditionTrue)),
-					),
-				),
-				"router pod should become ready after FRR restart",
-			)
+		k8s.WaitForPodReadyConsistently(cs, openperouter.Namespace, routerPod.Name)
 
 		By("waiting for BGP sessions to re-establish")
 		nodeName := routerPod.Spec.NodeName
