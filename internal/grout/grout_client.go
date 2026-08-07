@@ -26,6 +26,14 @@ type groutAddress struct {
 
 type groutInterface struct {
 	Name string `json:"name"`
+	Type string `json:"type"`
+}
+
+type groutVXLANInfo struct {
+	VNI     int32  `json:"vni"`
+	Local   string `json:"local"`
+	DstPort int32  `json:"dst_port"`
+	VRF     string `json:"vrf"`
 }
 
 // NewClient creates a new grout client pointing at the given UNIX socket.
@@ -138,15 +146,26 @@ func (c *Client) listInterfaces(ctx context.Context) ([]groutInterface, error) {
 
 // portExists checks whether a port with the given name exists in grout.
 func (c *Client) portExists(ctx context.Context, name string) (bool, error) {
-	out, err := c.runOutput(ctx, "interface", "show", "name", name)
+	info, err := c.getInterfaceInfo(ctx, name)
 	if err != nil {
-		// grcli returns an error when the interface doesn't exist
-		if strings.Contains(err.Error(), "No such") || strings.Contains(out, "No such") {
-			return false, nil
-		}
 		return false, err
 	}
-	return true, nil
+	return info != nil, nil
+}
+
+func (c *Client) getInterfaceInfo(ctx context.Context, name string) (*groutInterface, error) {
+	out, err := c.runOutput(ctx, "interface", "show", "name", name)
+	if err != nil {
+		if strings.Contains(err.Error(), "No such") || strings.Contains(out, "No such") {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var info groutInterface
+	if err := json.Unmarshal([]byte(out), &info); err != nil {
+		return nil, fmt.Errorf("parsing interface info for %s: %w", name, err)
+	}
+	return &info, nil
 }
 
 // run executes a grcli command and returns any error.
@@ -171,4 +190,104 @@ func (c *Client) runOutput(ctx context.Context, args ...string) (string, error) 
 		return output, fmt.Errorf("grcli %s failed: %w, output: %s", strings.Join(args, " "), err, output)
 	}
 	return output, nil
+}
+
+func (c *Client) ensureVRF(ctx context.Context, name string) error {
+	info, err := c.getInterfaceInfo(ctx, name)
+	if err != nil {
+		return fmt.Errorf("checking if VRF %s exists: %w", name, err)
+	}
+	if info != nil {
+		if info.Type == "vrf" {
+			slog.InfoContext(ctx, "grout VRF already exists", "name", name)
+			return nil
+		}
+		slog.InfoContext(ctx, "interface exists with wrong type, recreating as VRF",
+			"name", name, "currentType", info.Type)
+		if err := c.deleteInterface(ctx, name); err != nil {
+			return fmt.Errorf("deleting interface %s for VRF reconfiguration: %w", name, err)
+		}
+	}
+
+	args := []string{
+		"interface", "add", "vrf", name,
+		// Memory optimization: limit the number of routes and FIB table entries per VRF.
+		"rib4-routes", "128", "fib4-tbl8", "128", "rib6-routes", "128", "fib6-tbl8", "128",
+	}
+
+	slog.InfoContext(ctx, "creating grout VRF", "name", name)
+	if err := c.run(ctx, args...); err != nil {
+		return fmt.Errorf("creating grout VRF %s: %w", name, err)
+	}
+	return nil
+}
+
+func (c *Client) getVXLANInterfaceInfo(ctx context.Context, name string) (*groutVXLANInfo, error) {
+	out, err := c.runOutput(ctx, "interface", "show", "name", name)
+	if err != nil {
+		if strings.Contains(err.Error(), "No such") || strings.Contains(out, "No such") {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var info groutVXLANInfo
+	if err := json.Unmarshal([]byte(out), &info); err != nil {
+		return nil, fmt.Errorf("parsing VXLAN info for %s: %w", name, err)
+	}
+	return &info, nil
+}
+
+func (c *Client) ensureVXLAN(ctx context.Context, name string, localIP, vrf string, vni int32, dstPort int32) error {
+	info, err := c.getVXLANInterfaceInfo(ctx, name)
+	if err != nil {
+		return fmt.Errorf("checking VXLAN %s: %w", name, err)
+	}
+	if info != nil {
+		if info.VNI == vni && info.Local == localIP && info.DstPort == dstPort && info.VRF == vrf {
+			slog.InfoContext(ctx, "grout VXLAN already configured", "name", name)
+			return nil
+		}
+		slog.InfoContext(ctx, "grout VXLAN config changed, recreating",
+			"name", name, "oldVNI", info.VNI, "newVNI", vni,
+			"oldLocal", info.Local, "newLocal", localIP,
+			"oldDstPort", info.DstPort, "newDstPort", dstPort,
+			"oldVRF", info.VRF, "newVRF", vrf)
+		if err := c.deleteInterface(ctx, name); err != nil {
+			return fmt.Errorf("deleting VXLAN %s for reconfiguration: %w", name, err)
+		}
+	}
+
+	args := []string{"interface", "add", "vxlan", name,
+		"vni", fmt.Sprintf("%d", vni),
+		"local", localIP,
+		"dst_port", fmt.Sprintf("%d", dstPort),
+	}
+
+	if vrf != "" {
+		args = append(args, "vrf", vrf)
+	}
+
+	args = append(args, "encap_vrf", defaultVRFName)
+
+	slog.InfoContext(ctx, "creating grout VXLAN", "name", name, "vni", vni, "local", localIP, "vrf", vrf)
+	if err := c.run(ctx, args...); err != nil {
+		return fmt.Errorf("creating grout VXLAN %s: %w", name, err)
+	}
+	return nil
+}
+
+func (c *Client) deleteInterface(ctx context.Context, name string) error {
+	exists, err := c.portExists(ctx, name)
+	if err != nil {
+		return fmt.Errorf("checking if interface %s exists: %w", name, err)
+	}
+	if !exists {
+		return nil
+	}
+
+	slog.InfoContext(ctx, "deleting grout interface", "name", name)
+	if err := c.run(ctx, "interface", "del", name); err != nil {
+		return fmt.Errorf("deleting grout interface %s: %w", name, err)
+	}
+	return nil
 }

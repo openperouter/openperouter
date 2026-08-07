@@ -34,7 +34,7 @@ var (
 	frrk8sBluePrefixes = []string{"10.200.0.0/24"}
 )
 
-var _ = Describe("Routes with RT between bgp and the fabric", Ordered, func() {
+var _ = Describe("Routes with RT between bgp and the fabric", GroutSupport, Ordered, func() {
 	var cs clientset.Interface
 	var routers openperouter.Routers
 
