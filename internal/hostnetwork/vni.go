@@ -277,20 +277,23 @@ func setupVNI(ctx context.Context, params VNIParams, bridgeOptions ...NetlinkOpt
 }
 
 // RemoveAllVNIs removes from the target namespace the bridges / veths
-// for all VNIs.
-func RemoveAllVNIs(targetNS string) error {
-	return RemoveNonConfiguredVNIs(targetNS, []VNIParams{})
+// for all VNIs. Bridges whose name appears in externalBridges are never
+// deleted — they are user-managed.
+func RemoveAllVNIs(targetNS string, externalBridges map[string]struct{}) error {
+	return RemoveNonConfiguredVNIs(targetNS, []VNIParams{}, externalBridges)
 }
 
 // RemoveNonConfiguredVNIs removes from the target namespace the
 // leftovers corresponding to VNIs that are not configured anymore.
-func RemoveNonConfiguredVNIs(targetNS string, params []VNIParams) error {
+// Bridges whose name appears in externalBridges are never deleted —
+// they are user-managed; only veth ports are detached.
+func RemoveNonConfiguredVNIs(targetNS string, params []VNIParams, externalBridges map[string]struct{}) error {
 	vnis := map[int32]bool{}
 	for _, p := range params {
 		vnis[p.VNI] = true
 	}
 
-	errs := removeHostSideVNIs(vnis)
+	errs := removeHostSideVNIs(vnis, externalBridges)
 
 	ns, err := netns.GetFromPath(targetNS)
 	if err != nil {
@@ -315,17 +318,17 @@ func RemoveNonConfiguredVNIs(targetNS string, params []VNIParams) error {
 	return nil
 }
 
-func removeHostSideVNIs(vnis map[int32]bool) []error {
+func removeHostSideVNIs(vnis map[int32]bool, externalBridges map[string]struct{}) []error {
 	var failedDeletes []error
 
 	hostLinks, err := netlink.LinkList()
 	if err != nil {
 		return []error{fmt.Errorf("remove non configured vnis: failed to list links: %w", err)}
 	}
-	if err := deleteLinksForType(BridgeLinkType, vnis, hostLinks, vniFromHostBridgeName); err != nil {
+	if err := deleteLinksForType(BridgeLinkType, vnis, hostLinks, vniFromHostBridgeName, externalBridges); err != nil {
 		failedDeletes = append(failedDeletes, fmt.Errorf("remove bridge links: %w", err))
 	}
-	if err := removeOVSBridgesForVNIs(context.Background(), vnis); err != nil {
+	if err := removeOVSBridgesForVNIs(context.Background(), vnis, externalBridges); err != nil {
 		failedDeletes = append(failedDeletes, fmt.Errorf("remove OVS bridges: %w", err))
 	}
 
@@ -339,21 +342,26 @@ func removeNamespaceSideVNIs(vnis map[int32]bool) []error {
 	if err != nil {
 		return []error{fmt.Errorf("remove non configured vnis: failed to list links: %w", err)}
 	}
-	if err := deleteLinksForType(VXLanLinkType, vnis, links, vniFromVXLanName); err != nil {
+	if err := deleteLinksForType(VXLanLinkType, vnis, links, vniFromVXLanName, nil); err != nil {
 		failedDeletes = append(failedDeletes, fmt.Errorf("remove vlan links: %w", err))
 	}
-	if err := deleteLinksForType(BridgeLinkType, vnis, links, vniFromBridgeName); err != nil {
+	if err := deleteLinksForType(BridgeLinkType, vnis, links, vniFromBridgeName, nil); err != nil {
 		failedDeletes = append(failedDeletes, fmt.Errorf("remove bridge links: %w", err))
 	}
 	return failedDeletes
 }
 
-// deleteLinks deletes all the links of the given type that do not correspond to
-// any VNI.
-func deleteLinksForType(linkType string, vnis map[int32]bool, links []netlink.Link, vniFromName func(string) (int32, error)) error {
+// deleteLinksForType deletes all the links of the given type that do not
+// correspond to any configured VNI. Links whose name appears in
+// externalBridges are never deleted — they are user-managed.
+func deleteLinksForType(linkType string, vnis map[int32]bool, links []netlink.Link, vniFromName func(string) (int32, error), externalBridges map[string]struct{}) error {
 	deleteErrors := []error{}
 	for _, l := range links {
 		if l.Type() != netlinkTypeFor(linkType) {
+			continue
+		}
+		if _, ok := externalBridges[l.Attrs().Name]; ok {
+			slog.Debug("skipping externally managed bridge", "name", l.Attrs().Name)
 			continue
 		}
 		vni, err := vniFromName(l.Attrs().Name)
@@ -385,9 +393,10 @@ func netlinkTypeFor(linkType string) string {
 	return linkType
 }
 
-// removeOVSBridgesForVNIs removes auto-created OVS bridges that are not in the configured VNIs list.
-// Only deletes bridges with external_id "created-by: openperouter" (auto-created bridges).
-func removeOVSBridgesForVNIs(ctx context.Context, vnis map[int32]bool) error {
+// removeOVSBridgesForVNIs removes OVS bridges that are not in the configured
+// VNIs list. Bridges whose name appears in externalBridges are never deleted —
+// only veth ports are detached.
+func removeOVSBridgesForVNIs(ctx context.Context, vnis map[int32]bool, externalBridges map[string]struct{}) error {
 	ovs, err := NewOVSClient(ctx)
 	if err != nil {
 		// OVS not available, skip cleanup gracefully
@@ -413,14 +422,10 @@ func removeOVSBridgesForVNIs(ctx context.Context, vnis map[int32]bool) error {
 	deleteErrors := []error{}
 	var ops []ovsdb.Operation
 	for _, bridge := range bridges {
-		slog.Debug("checking OVS bridge for cleanup", "name", bridge.Name, "uuid", bridge.UUID, "external_ids", bridge.ExternalIDs)
+		slog.Debug("checking OVS bridge for cleanup", "name", bridge.Name, "uuid", bridge.UUID)
 
-		createdBy, hasMarker := bridge.ExternalIDs["created-by"]
-		managedByUs := hasMarker && createdBy == "openperouter"
-
-		if !managedByUs {
-			// For non-managed bridges, only detach our veth ports for removed VNIs.
-			// vnis is the set of VNIs we want to keep; ports for any other VNI are removed.
+		if _, ok := externalBridges[bridge.Name]; ok {
+			slog.Debug("skipping externally managed OVS bridge, detaching ports only", "name", bridge.Name)
 			if err := detachOurPortsFromBridge(ctx, ovs, bridge, vnis); err != nil {
 				deleteErrors = append(deleteErrors, err)
 			}
