@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -39,10 +40,19 @@ type OpenPERouterSpec struct {
 	// +optional
 	// +kubebuilder:validation:Enum=all;debug;info;warn;error;none
 	LogLevel *LogLevel `json:"logLevel,omitempty"`
-	// runOnMaster determines if all pods (router, controller, and nodemarker) will run on master/control-plane nodes. (default: true)
+	// nodeSelector constrains all openperouter pods (router, controller,
+	// nodemarker, hostbridge) to nodes with matching labels.
 	// +optional
-	// +default=true
-	RunOnMaster *bool `json:"runOnMaster,omitempty"`
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+	// tolerations for all openperouter pods (router, controller, nodemarker,
+	// hostbridge).
+	// +optional
+	// +listType=atomic
+	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
+	// affinity scheduling rules for all openperouter pods (router, controller,
+	// nodemarker, hostbridge).
+	// +optional
+	Affinity *corev1.Affinity `json:"affinity,omitempty"`
 	// ovsSocketPath specifies the OVS database socket path. Defaults to standard OVS location if not specified.
 	// +optional
 	OVSSocketPath *string `json:"ovsSocketPath,omitempty"`

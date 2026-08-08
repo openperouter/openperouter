@@ -26,7 +26,7 @@ Kubernetes: `>= 1.19.0-0`
 | crds.validationFailurePolicy | string | `"Fail"` |  |
 | fullnameOverride | string | `""` |  |
 | nameOverride | string | `""` |  |
-| openperouter.affinity | object | `{}` |  |
+| openperouter.affinity | object | `{}` | Affinity rules for all openperouter pods (router, controller, nodemarker, hostbridge). |
 | openperouter.bgpListenLimit | int | `65535` | Maximum number of dynamic BGP sessions accepted via underlay listen ranges (FRR `bgp listen limit`, 1-65535). |
 | openperouter.controller.cniCacheDir | string | `"/var/lib/openperouter/cni/cache"` | CNI cache directory for persistent CNI state across pod restarts |
 | openperouter.controller.cniPluginDirs | list | `["/opt/openperouter/cni/bin/"]` | CNI plugin binary directories. The default matches the path baked into the controller image. Override only to use externally-provided binaries (e.g. host-mounted). |
@@ -53,20 +53,19 @@ Kubernetes: `>= 1.19.0-0`
 | openperouter.image.tag | string | `""` |  |
 | openperouter.labels | object | `{}` |  |
 | openperouter.logLevel | string | `"info"` | Controller log level. Must be one of: `debug`, `info`, `warn` or `error`. |
+| openperouter.nodeSelector | object | `{}` | Node selector to constrain all openperouter pods (router, controller, nodemarker, hostbridge) to nodes with matching labels. |
 | openperouter.nodemarker.resources | object | `{}` |  |
 | openperouter.ovsRunDir | string | `"/var/run/openvswitch"` | OVS run directory to mount. This is the directory containing the OVS socket. |
 | openperouter.ovsSocketPath | string | `""` | OVS database socket path. Defaults to standard OVS location if not specified. |
 | openperouter.podAnnotations | object | `{}` |  |
 | openperouter.priorityClassName | string | `""` |  |
-| openperouter.runOnMaster | bool | `true` | If true, all pods (router, controller, and nodemarker) are allowed to run on master/control-plane nodes |
 | openperouter.runtimeClassName | string | `""` |  |
 | openperouter.serviceAccounts.annotations | object | `{}` |  |
 | openperouter.serviceAccounts.controller.name | string | `""` |  |
 | openperouter.serviceAccounts.create | bool | `true` |  |
 | openperouter.serviceAccounts.nodemarker.name | string | `""` |  |
 | openperouter.serviceAccounts.perouter.name | string | `""` |  |
-| openperouter.tolerateMaster | bool | `true` |  |
-| openperouter.tolerations | list | `[]` |  |
+| openperouter.tolerations | list | `[{"effect":"NoSchedule","key":"node-role.kubernetes.io/master","operator":"Exists"},{"effect":"NoSchedule","key":"node-role.kubernetes.io/control-plane","operator":"Exists"}]` | Tolerations for all openperouter pods (router, controller, nodemarker, hostbridge). Defaults to tolerating control-plane/master node taints so the pods can run there. |
 | openperouter.updateStrategy.type | string | `"RollingUpdate"` |  |
 | rbac.create | bool | `true` |  |
 | webhook.enabled | bool | `true` |  |

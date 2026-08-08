@@ -15,7 +15,7 @@ add_vrf() {
     sysctl -w net.vrf.strict_mode=1
 }
 
-# this is to avoid to loose the ipv6 address after enslaving to the vrf
+# this is to avoid to loose the ipv6 address after attaching to the vrf
 sysctl -w net.ipv6.conf.all.keep_addr_on_down=1
 sysctl -w net.ipv6.seg6_flowlabel=1
 sysctl -w net.ipv6.conf.all.seg6_enabled=1

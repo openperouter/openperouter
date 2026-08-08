@@ -34,14 +34,17 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ template "openperouter.nodemarker.serviceAccountName" . }}
+      {{- with .Values.openperouter.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.openperouter.tolerations }}
       tolerations:
-      {{- if .Values.openperouter.runOnMaster }}
-      - effect: NoSchedule
-        key: node-role.kubernetes.io/master
-        operator: Exists
-      - effect: NoSchedule
-        key: node-role.kubernetes.io/control-plane
-        operator: Exists
+      {{- toYaml . | nindent 6 }}
+      {{- end }}
+      {{- with .Values.openperouter.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
       {{- end }}
       containers:
       - args:

@@ -103,8 +103,8 @@ func setupHostVeth(ctx context.Context, vethNames VethNames, targetNS string, li
 		if err != nil {
 			return fmt.Errorf("failed to set vrf %s as master of pe veth %s: %w", vrfName, peVethLink.Attrs().Name, err)
 		}
-		// Note: since the ipv6 address is removed after enslaving the veth to the vrf, this has to
-		// be performed after the veth is enslaved to the vrf.
+		// Note: since the ipv6 address is removed after attaching the veth to the vrf, this has to
+		// be performed after the veth is attached to the vrf.
 		err = AssignIPsToInterface(peVethLink, linkIPs.NSIPv4, linkIPs.NSIPv6)
 		if err != nil {
 			return fmt.Errorf("failed to assign IPs to PE veth: %w", err)

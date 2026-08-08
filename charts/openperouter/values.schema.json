@@ -48,11 +48,6 @@
             "maximum": 65535,
             "default": 65535
           },
-          "tolerateMaster": {
-            "type": "boolean",
-            "description": "Specifies if the controller should tolerate running on the master node.",
-            "default": true
-          },
           "image": {
             "type": "object",
             "description": "Configuration for the openperouter controller image.",
@@ -140,13 +135,29 @@
               "annotations": {}
             }
           },
+          "nodeSelector": {
+            "type": "object",
+            "description": "Node selector to constrain all openperouter pods (router, controller, nodemarker, hostbridge) to nodes with matching labels.",
+            "default": {}
+          },
           "tolerations": {
             "type": "array",
-            "description": "Tolerations to add to the controller pods.",
+            "description": "Tolerations for all openperouter pods (router, controller, nodemarker, hostbridge). Defaults to tolerating control-plane/master node taints.",
             "items": {
               "type": "object"
             },
-            "default": []
+            "default": [
+              {
+                "key": "node-role.kubernetes.io/master",
+                "operator": "Exists",
+                "effect": "NoSchedule"
+              },
+              {
+                "key": "node-role.kubernetes.io/control-plane",
+                "operator": "Exists",
+                "effect": "NoSchedule"
+              }
+            ]
           },
           "priorityClassName": {
             "type": "string",
@@ -155,7 +166,7 @@
           },
           "affinity": {
             "type": "object",
-            "description": "Affinity settings for the controller pods.",
+            "description": "Affinity rules for all openperouter pods (router, controller, nodemarker, hostbridge).",
             "default": {}
           },
           "runtimeClassName": {
@@ -422,7 +433,6 @@
         },
         "default": {
           "logLevel": "info",
-          "tolerateMaster": true,
           "image": {
             "repository": "quay.io/openperouter/router"
           },
@@ -435,7 +445,19 @@
             "perouter": {},
             "annotations": {}
           },
-          "tolerations": [],
+          "nodeSelector": {},
+          "tolerations": [
+            {
+              "key": "node-role.kubernetes.io/master",
+              "operator": "Exists",
+              "effect": "NoSchedule"
+            },
+            {
+              "key": "node-role.kubernetes.io/control-plane",
+              "operator": "Exists",
+              "effect": "NoSchedule"
+            }
+          ],
           "priorityClassName": "",
           "affinity": {},
           "runtimeClassName": "",

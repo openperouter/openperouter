@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 
-# this is to avoid to loose the ipv6 address after enslaving to the vrf
+# this is to avoid to loose the ipv6 address after attaching to the vrf
 sysctl -w net.ipv6.conf.all.keep_addr_on_down=1
 
 # VTEP IP

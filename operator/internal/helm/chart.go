@@ -17,6 +17,9 @@ limitations under the License.
 package helm
 
 import (
+	"encoding/json"
+	"fmt"
+
 	operatorapi "github.com/openperouter/openperouter/operator/api/v1alpha1"
 	"github.com/openperouter/openperouter/operator/internal/envconfig"
 	"helm.sh/helm/v4/pkg/action"
@@ -68,7 +71,9 @@ func NewChart(chartPath, chartName, namespace string) (*Chart, error) {
 // and environment variables.
 func (h *Chart) Objects(envConfig envconfig.EnvConfig, crdConfig *operatorapi.OpenPERouter) ([]*unstructured.Unstructured, error) {
 	chartValues := map[string]any{}
-	patchChartValues(envConfig, crdConfig, chartValues)
+	if err := patchChartValues(envConfig, crdConfig, chartValues); err != nil {
+		return nil, err
+	}
 	rel, err := h.client.Run(h.chart, chartValues)
 	if err != nil {
 		return nil, err
@@ -89,14 +94,13 @@ func (h *Chart) Objects(envConfig envconfig.EnvConfig, crdConfig *operatorapi.Op
 	return objs, nil
 }
 
-func patchChartValues(envConfig envconfig.EnvConfig, crdConfig *operatorapi.OpenPERouter, valuesMap map[string]any) {
+func patchChartValues(envConfig envconfig.EnvConfig, crdConfig *operatorapi.OpenPERouter, valuesMap map[string]any) error {
 	cri := ContainerRuntimeContainerd
 	if envConfig.IsOpenshift {
 		cri = ContainerRuntimeCrio
 	}
 	openperouterValues := map[string]any{
-		"logLevel":    logLevelValue(crdConfig),
-		"runOnMaster": ptr.Deref(crdConfig.Spec.RunOnMaster, true),
+		"logLevel": logLevelValue(crdConfig),
 		"image": map[string]any{
 			"repository": envConfig.ControllerImage.Repo,
 			"tag":        envConfig.ControllerImage.Tag,
@@ -123,6 +127,34 @@ func patchChartValues(envConfig envconfig.EnvConfig, crdConfig *operatorapi.Open
 			"enabled": false,
 		},
 		"cri": cri,
+	}
+
+	// Only set nodeSelector/tolerations/affinity when explicitly provided on the
+	// CRD, so an unset field falls back to the chart's own default (e.g., the
+	// default tolerations for control-plane/master nodes).
+	// The typed API structs are converted to plain map/slice values via JSON, so
+	// the chart's values.schema.json (which only knows generic JSON types) can
+	// validate them.
+	if crdConfig.Spec.NodeSelector != nil {
+		v, err := toJSONValue(crdConfig.Spec.NodeSelector)
+		if err != nil {
+			return fmt.Errorf("failed to convert nodeSelector to helm value: %w", err)
+		}
+		openperouterValues["nodeSelector"] = v
+	}
+	if crdConfig.Spec.Tolerations != nil {
+		v, err := toJSONValue(crdConfig.Spec.Tolerations)
+		if err != nil {
+			return fmt.Errorf("failed to convert tolerations to helm value: %w", err)
+		}
+		openperouterValues["tolerations"] = v
+	}
+	if crdConfig.Spec.Affinity != nil {
+		v, err := toJSONValue(crdConfig.Spec.Affinity)
+		if err != nil {
+			return fmt.Errorf("failed to convert affinity to helm value: %w", err)
+		}
+		openperouterValues["affinity"] = v
 	}
 
 	if crdConfig.Spec.OVSSocketPath != nil && *crdConfig.Spec.OVSSocketPath != "" {
@@ -165,4 +197,21 @@ func patchChartValues(envConfig envconfig.EnvConfig, crdConfig *operatorapi.Open
 	valuesMap["webhook"] = map[string]any{
 		"enabled": false,
 	}
+
+	return nil
+}
+
+// toJSONValue converts a typed Go value (e.g. a Kubernetes API struct) into
+// the plain map[string]any/[]any/etc. representation that Helm's value
+// schema validation expects.
+func toJSONValue(v any) (any, error) {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	var out any
+	if err := json.Unmarshal(data, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }

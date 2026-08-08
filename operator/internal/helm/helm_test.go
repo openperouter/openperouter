@@ -18,6 +18,7 @@ package helm
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -27,6 +28,7 @@ import (
 	helmchart "helm.sh/helm/v4/pkg/chart"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -311,75 +313,119 @@ func TestParseChartWithGroutDisabled(t *testing.T) {
 	g.Expect(controllerFound).To(BeTrue())
 }
 
-func TestParseChartWithMasterTolerations(t *testing.T) {
+func TestParseChartWithSchedulingPrimitives(t *testing.T) {
 	g := NewGomegaWithT(t)
 	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace)
 	g.Expect(err).ToNot(HaveOccurred())
 
-	tests := []struct {
-		name              string
-		runOnMaster       bool
-		expectTolerations bool
-	}{
-		{
-			name:              "runOnMaster enabled",
-			runOnMaster:       true,
-			expectTolerations: true,
-		},
-		{
-			name:              "runOnMaster disabled",
-			runOnMaster:       false,
-			expectTolerations: false,
-		},
+	testTolerations := []v1.Toleration{{
+		Key:      "dedicated",
+		Operator: v1.TolerationOpEqual,
+		Value:    "openperouter",
+		Effect:   v1.TaintEffectNoSchedule,
+	}}
+	testNodeSelector := map[string]string{"kubernetes.io/os": "linux"}
+	terms := []v1.NodeSelectorTerm{{MatchExpressions: []v1.NodeSelectorRequirement{{
+		Key: "kubernetes.io/os", Operator: v1.NodeSelectorOpIn, Values: []string{"linux"},
+	}}}}
+	testAffinity := &v1.Affinity{NodeAffinity: &v1.NodeAffinity{
+		RequiredDuringSchedulingIgnoredDuringExecution: &v1.NodeSelector{
+			NodeSelectorTerms: terms,
+		}},
 	}
 
+	tests := []struct {
+		name               string
+		spec               operatorapi.OpenPERouterSpec
+		expectTolerations  []v1.Toleration
+		expectNodeSelector map[string]string
+		expectAffinity     *v1.Affinity
+	}{
+		{
+			name: "expect control-plane toleration (default)",
+			spec: operatorapi.OpenPERouterSpec{
+				LogLevel: new(operatorapi.LogLevelInfo),
+			},
+			expectTolerations: []v1.Toleration{
+				{
+					Key:               "node-role.kubernetes.io/master",
+					Operator:          "Exists",
+					Value:             "",
+					Effect:            "NoSchedule",
+					TolerationSeconds: nil,
+				},
+				{
+					Key:               "node-role.kubernetes.io/control-plane",
+					Operator:          "Exists",
+					Value:             "",
+					Effect:            "NoSchedule",
+					TolerationSeconds: nil,
+				},
+			},
+		},
+		{
+			name: "explicit tolerations/nodeSelector/affinity override chart defaults",
+			spec: operatorapi.OpenPERouterSpec{
+				LogLevel:     new(operatorapi.LogLevelInfo),
+				Tolerations:  testTolerations,
+				NodeSelector: testNodeSelector,
+				Affinity:     testAffinity,
+			},
+			expectTolerations:  testTolerations,
+			expectNodeSelector: testNodeSelector,
+			expectAffinity:     testAffinity,
+		},
+		{
+			name: "empty tolerations list opts out of default control-plane tolerations",
+			spec: operatorapi.OpenPERouterSpec{
+				LogLevel:    new(operatorapi.LogLevelInfo),
+				Tolerations: []v1.Toleration{},
+			},
+			expectTolerations: []v1.Toleration{},
+		},
+	}
+	daemonSets := []string{controllerDaemonSetName, routerDaemonSetName, "hostbridge"}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			g := NewGomegaWithT(t)
 			openperouter := &operatorapi.OpenPERouter{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "openperouter",
 					Namespace: openperouterTestNamespace,
 				},
-				Spec: operatorapi.OpenPERouterSpec{
-					LogLevel:    new(operatorapi.LogLevelInfo),
-					RunOnMaster: &tt.runOnMaster,
-				},
+				Spec: tt.spec,
 			}
-
 			objs, err := chart.Objects(defaultEnvConfig, openperouter)
 			g.Expect(err).ToNot(HaveOccurred())
 
+			var podSpecs []v1.PodSpec
 			for _, obj := range objs {
 				objKind := obj.GetKind()
-				if objKind == daemonSetKind && (obj.GetName() == controllerDaemonSetName || obj.GetName() == routerDaemonSetName) {
+				if objKind == daemonSetKind && slices.Index(daemonSets, obj.GetName()) != -1 {
 					ds := appsv1.DaemonSet{}
 					err = runtime.DefaultUnstructuredConverter.FromUnstructured(obj.UnstructuredContent(), &ds)
 					g.Expect(err).ToNot(HaveOccurred())
-					g.Expect(hasMasterToleration(ds.Spec.Template.Spec.Tolerations)).To(Equal(tt.expectTolerations),
-						fmt.Sprintf("DaemonSet %s should have master toleration=%v", obj.GetName(), tt.expectTolerations))
+					podSpecs = append(podSpecs, ds.Spec.Template.Spec)
 				}
-
 				if objKind == deploymentKind && obj.GetName() == nodemarkerDeploymentName {
 					deployment := appsv1.Deployment{}
 					err = runtime.DefaultUnstructuredConverter.FromUnstructured(obj.UnstructuredContent(), &deployment)
 					g.Expect(err).ToNot(HaveOccurred())
-					g.Expect(hasMasterToleration(deployment.Spec.Template.Spec.Tolerations)).To(Equal(tt.expectTolerations),
-						fmt.Sprintf("Deployment %s should have master toleration=%v", obj.GetName(), tt.expectTolerations))
+					podSpecs = append(podSpecs, deployment.Spec.Template.Spec)
+				}
+			}
+			for _, podSpec := range podSpecs {
+				if tt.expectTolerations != nil {
+					g.Expect(podSpec.Tolerations).To(ConsistOf(tt.expectTolerations))
+				}
+				if tt.expectNodeSelector != nil {
+					g.Expect(podSpec.NodeSelector).To(Equal(tt.expectNodeSelector))
+				}
+				if tt.expectAffinity != nil {
+					g.Expect(equality.Semantic.DeepEqual(podSpec.Affinity, tt.expectAffinity)).To(BeTrue())
 				}
 			}
 		})
 	}
-}
-
-func hasMasterToleration(tolerations []v1.Toleration) bool {
-	for _, tol := range tolerations {
-		if (tol.Key == "node-role.kubernetes.io/master" || tol.Key == "node-role.kubernetes.io/control-plane") &&
-			tol.Effect == v1.TaintEffectNoSchedule {
-			return true
-		}
-	}
-	return false
 }
 
 func TestParseChartWithBGPListenLimit(t *testing.T) {

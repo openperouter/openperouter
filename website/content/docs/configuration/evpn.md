@@ -197,7 +197,7 @@ When you create or update VNI configurations, OpenPERouter automatically:
 1. **Creates Network Interfaces**: Sets up VXLAN interface, and a Linux VRF named after the VNI only when `routingDomain` is configured
 2. **Establishes Connectivity**: Creates veth pair and moves one end to the router's namespace
 3. **Adjusts Veth MTU**: Sets the MTU on both veth legs to the underlay NIC's MTU minus 50 bytes to account for VXLan encapsulation overhead
-4. **Enslaves the veth**: the veth is connected to the bridge corresponding to the l2 domain
+4. **Attaches the veth**: the veth is connected to the bridge corresponding to the l2 domain
 5. **Optionally creates a bridge on the host**: if the bridge `lifecycle` is `Managed`, named `br-hs-<VNI>`
 6. **Optionally connects the host veth to the bridge on the host**: if the bridge `lifecycle` is `Managed` or a name
 is set

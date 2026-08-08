@@ -15,7 +15,7 @@ SRv6 as the underlay.
 ## Overview
 
 A layer 2 VNI is created, exposing a layer 2 domain on the host. On each
-node, a pod is created with a macvlan interface enslaved to that domain
+node, a pod is created with a macvlan interface attached to that domain
 via a Linux bridge.
 
 ### Example Setup

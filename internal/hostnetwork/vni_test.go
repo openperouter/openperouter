@@ -290,10 +290,10 @@ var _ = Describe("L3 VNI configuration", func() {
 
 	It("should leave veth MTU at default when no underlay interface is configured", func() {
 		// No fake underlay is set up here, so findUnderlayMTU returns 0
-		// and setVethMTUForTunnelOverhead must leave the veth MTU untouched. The
-		// host-side veth is not enslaved to any bridge in the L3 path
-		// (it is only attached to a VRF in the target ns), so the host
-		// leg's MTU reflects only what the code under test set.
+		// and setVethMTUForTunnelOverhead must leave the veth MTU untouched.
+		// The host-side veth is not attached to any bridge in the L3 path.
+		// The peer veth is attached to a VRF in the target namespace.
+		// The host leg's MTU reflects only what the code under test set.
 		params := L3VNIParams{
 			VNIParams: VNIParams{
 				VRF:       "testred",
@@ -582,7 +582,7 @@ var _ = Describe("L2 VNI configuration", func() {
 		// No fake underlay is set up here, so findUnderlayMTU returns 0
 		// and setVethMTUForTunnelOverhead must leave the veth MTU untouched.
 		// HostMaster is intentionally omitted so the host veth is not
-		// enslaved to a bridge — Linux bridges auto-clamp their MTU to
+		// attached to a bridge — Linux bridges auto-clamp their MTU to
 		// the smallest member, which would couple this assertion to
 		// bridge default MTU rather than to the code under test.
 		params := L2VNIParams{
@@ -758,7 +758,7 @@ func validateVNI(g Gomega, params VNIParams) {
 	g.Expect(bridge.OperState).To(BeEquivalentTo(netlink.OperUp))
 
 	if params.VRF == "" {
-		g.Expect(bridge.MasterIndex).To(BeZero(), "disconnected bridge should not be enslaved to a VRF")
+		g.Expect(bridge.MasterIndex).To(BeZero(), "disconnected bridge should not be attached to a VRF")
 
 		err = checkVXLanConfigured(vxlan, bridge.Index, vtepDev.Attrs().Index, params)
 		g.Expect(err).NotTo(HaveOccurred())

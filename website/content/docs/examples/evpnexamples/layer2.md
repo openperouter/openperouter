@@ -12,7 +12,7 @@ This example demonstrates how to integrate OpenPERouter with Multus to have a po
 
 ## Overview
 
-A layer 2 VNI is created, exposing a layer 2 domain on the host. On each node, a pod is created with a macvlan interface enslaved to that domain via a Linux bridge.
+A layer 2 VNI is created, exposing a layer 2 domain on the host. On each node, a pod is created with a macvlan interface attached to that domain via a Linux bridge.
 
 ### Example Setup
 

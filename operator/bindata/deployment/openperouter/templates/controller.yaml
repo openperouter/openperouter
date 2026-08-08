@@ -146,17 +146,17 @@ spec:
         {{- end }}
       hostNetwork: true
       hostPID: true
-      tolerations:
-      {{- if .Values.openperouter.runOnMaster }}
-      - effect: NoSchedule
-        key: node-role.kubernetes.io/master
-        operator: Exists
-      - effect: NoSchedule
-        key: node-role.kubernetes.io/control-plane
-        operator: Exists
+      {{- with .Values.openperouter.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.openperouter.tolerations }}
-        {{- toYaml . | nindent 6 }}
+      tolerations:
+      {{- toYaml . | nindent 6 }}
+      {{- end }}
+      {{- with .Values.openperouter.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.openperouter.priorityClassName }}
       priorityClassName: {{ . | quote }}
