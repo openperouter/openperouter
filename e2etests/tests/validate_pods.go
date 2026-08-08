@@ -39,14 +39,18 @@ func checkPodIsReachableWithExpected(exec executor.Executor, from, to, expected 
 		Should(Equal(expected), "curl should return the expected clientip")
 }
 
-func canPingFromPod(exec executor.Executor, ip string) {
+func canPingFromPod(exec executor.Executor, ip string, timeout ...int) {
 	GinkgoHelper()
+	withTimeout := 40
+	if len(timeout) > 0 {
+		withTimeout = timeout[0]
+	}
 	Eventually(func(g Gomega) {
 		By(fmt.Sprintf("pinging %s via net1", ip))
 		out, err := exec.Exec("ping", "-c", "1", "-W", "2", "-I", "net1", ip)
 		g.Expect(err).ToNot(HaveOccurred(), "ping to %s failed: %s", ip, out)
 	}).
-		WithTimeout(40 * time.Second).
+		WithTimeout(time.Duration(withTimeout) * time.Second).
 		WithPolling(time.Second).
 		Should(Succeed())
 }

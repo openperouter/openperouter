@@ -340,7 +340,11 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 				By(fmt.Sprintf("Verifying stationary pod (%s) can reach migrating pod (%s) before migration",
 					stationaryPod.Name, migratingPod.Name))
 				stationaryExec := executor.ForPod(testNamespace, stationaryPod.Name, "agnhost")
-				checkPodIsReachable(stationaryExec, stationaryPodIPOnly, migratingPodIPOnly)
+				// Use a ping here instead of checkPodIsReachable which uses curl. The reason: TCP sessions exchange
+				// a bunch of packets during the FIN/ACK dance and we want to get reliably into STALE, so we want to
+				// test connectivity yet be sure that no more packets are exchanged between the hosts once connectivity
+				// is confirmed (stray packets might otherwise bring us from STALE to REACHABLE or from STALE to FAILED).
+				canPingFromPod(stationaryExec, migratingPodIPOnly)
 
 				By(fmt.Sprintf("Verifying Type 2 MAC+IP route exists for migrating pod (%s) on node A (%s)",
 					migratingPod.Name, nodes[0].Name))
@@ -353,6 +357,34 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 				Eventually(func() error {
 					return checkType2RouteExists(cs, migratingPodIPOnly, vtepIPOnly, l2VNI)
 				}, 3*time.Minute, 5*time.Second).ShouldNot(HaveOccurred())
+
+				// We need the entry for the pod IP to be STALE before the migration.
+				// "STALE: The entry has not been used for a certain period, making the mapping potentially outdated.
+				// The kernel does not immediately remove it but will transition the entry to another state if further
+				// communication occurs." (https://blogs.oracle.com/linux/arp-internals)
+				// Being stale before the migration is important to trigger the deadlock situation described in
+				// https://github.com/FRRouting/frr/issues/14156.
+				// Given that we sent traffic from/to the pod moments ago, we have to wait here until all traffic
+				// between the pods / between the gateway and the pod settles so that we eventually get into STALE state.
+				// To complicate things further, for some reason, the router at br-be-110 often sends an ARP request
+				// a bit later.
+				// If we delete the pod now without waiting, it is much more likely that we trigger a state transition
+				// to FAILED because the aforementioned ARP request will occur while the pod is deleted.
+				// In theory, we are guaranteed to go STALE eventually: we're not sending any more traffic, and the
+				// bridge refresher runs every 30 seconds. However, in case we do not meet this condition for some
+				// reason, skip instead of failing.
+				By(fmt.Sprintf("Waiting for neighbor entry (%s) on bridge br-pe-%d to go STALE on the "+
+					"router on the same node (%s)",
+					migratingPodIPOnly, l2VNI, migratingPod.Spec.NodeName))
+				for range 90 {
+					if err = checkNeighborStale(cs, migratingPodIPOnly, l2VNI, migratingPod.Spec.NodeName); err == nil {
+						break
+					}
+					time.Sleep(2 * time.Second)
+				}
+				if err != nil {
+					Skip(fmt.Sprintf("Skipping this test. Stale condition was not met due to %q", err))
+				}
 
 				By("Deleting migrating pod (simulating pod eviction/migration)")
 				err = cs.CoreV1().Pods(testNamespace).Delete(
@@ -372,14 +404,6 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 					return err != nil
 				}, 2*time.Minute, time.Second).Should(BeTrue())
 
-				// This is important to trigger the deadlock situation described in https://github.com/FRRouting/frr/issues/14156
-				By(fmt.Sprintf("Waiting for neighbor entry (%s) on bridge br-pe-%d to go STALE or FAILED on the "+
-					"router on the same node (%s)",
-					migratingPodIPOnly, l2VNI, migratingPod.Spec.NodeName))
-				Eventually(func() error {
-					return checkNeighborStale(cs, migratingPodIPOnly, l2VNI, migratingPod.Spec.NodeName)
-				}, 3*time.Minute, 2*time.Second).ShouldNot(HaveOccurred())
-
 				By(fmt.Sprintf("Recreating migrating pod on node B (%s) with same IP (%s)",
 					nodes[1].Name, tc.migratingPodIP))
 				migratingPod, err = k8s.CreateAgnhostPod(
@@ -396,7 +420,7 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 
 				By(fmt.Sprintf("Verifying migrating pod (%s) can ping the local gateway", migratingPod.Name))
 				newMigratingExec := executor.ForPod(testNamespace, migratingPod.Name, "agnhost")
-				canPingFromPod(newMigratingExec, l2GatewayIPOnly)
+				canPingFromPod(newMigratingExec, l2GatewayIPOnly, 60)
 
 				By(fmt.Sprintf("Verifying stationary pod (%s) can reach migrating pod (%s) after migration",
 					stationaryPod.Name, migratingPod.Name))
@@ -451,7 +475,7 @@ func checkNeighborStale(cs clientset.Interface, podIP string, vni int, nodeName 
 	if out == "" {
 		return fmt.Errorf("no neighbor entry for %s on %s in router %s", podIP, bridgeDev, exec.Name())
 	}
-	if strings.Contains(out, "STALE") || strings.Contains(out, "FAILED") {
+	if strings.Contains(out, "STALE") {
 		return nil
 	}
 	return fmt.Errorf("neighbor %s on %s in router %s is not STALE yet: %s", podIP, bridgeDev, exec.Name(), out)
