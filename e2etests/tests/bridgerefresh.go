@@ -72,17 +72,20 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 	}
 
 	BeforeAll(func() {
+		By("Cleaning all perouter objects before running the tests")
 		Expect(Updater.CleanAll()).To(Succeed())
 
 		cs = k8sclient.New()
 
-		err := Updater.Update(config.Resources{
+		By("Creating the underlay")
+		Expect(Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{
 				infra.Underlay,
 			},
-		})
-		Expect(err).NotTo(HaveOccurred())
+		})).To(Succeed())
 
+		By("Getting and dumping the router pods")
+		var err error
 		Eventually(func() error {
 			routers, err = openperouter.Get(cs, HostMode)
 			if err != nil {
@@ -93,15 +96,16 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 
 		routers.Dump(ginkgo.GinkgoWriter)
 
-		By("setting redistribute connected on leaves")
+		By("Setting redistribute connected on leaves")
 		Expect(infra.LeafAConfig.RedistributeConnected()).To(Succeed())
 		Expect(infra.LeafBConfig.RedistributeConnected()).To(Succeed())
 	})
 
 	AfterAll(func() {
+		By("Cleaning all perouter objects after running the tests")
 		Expect(Updater.CleanAll()).To(Succeed())
 
-		By("waiting for all router pods to be ready after removing the underlay")
+		By("Waiting for all router pods to be ready after removing the underlay")
 		Eventually(func() error {
 			routers, err := openperouter.Get(cs, HostMode)
 			if err != nil {
@@ -110,6 +114,7 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 			return openperouter.AreReady(routers)
 		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 
+		By("Resetting leaves")
 		Expect(infra.LeafAConfig.Reset()).To(Succeed())
 		Expect(infra.LeafBConfig.Reset()).To(Succeed())
 	})
@@ -202,7 +207,7 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 	})
 
 	// This test validates the corner case where a pod migrates from one node to another while having a stale route
-	// to its ip on the local router. The stale router is reflected in a corresponding NOARP route
+	// to its ip on the local router. The stale router is reflected in a corresponding NOARP extern_learn neighbor entry
 	// on other routers, leading to a deadlock situation where the route advertised belongs to the wrong
 	// node and arp coming from the right node are ignored because frr installs the route with NOARP.
 
@@ -286,7 +291,7 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 					Expect(Updater.CleanButUnderlay()).To(Succeed())
 				})
 
-				By("Creating stationary pod on node B")
+				By(fmt.Sprintf("Creating stationary pod on node B (%s)", nodes[1].Name))
 				stationaryPod, err := k8s.CreateAgnhostPod(
 					cs,
 					"stationary-pod",
@@ -296,7 +301,7 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 				)
 				Expect(err).NotTo(HaveOccurred())
 
-				By("Creating migrating pod on node A")
+				By(fmt.Sprintf("Creating migrating pod on node A (%s)", nodes[0].Name))
 				migratingPod, err := k8s.CreateAgnhostPod(
 					cs,
 					"migrating-pod",
@@ -310,15 +315,17 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 				Expect(removeGatewayFromPod(stationaryPod)).To(Succeed())
 				Expect(removeGatewayFromPod(migratingPod)).To(Succeed())
 
-				By("Verifying migrating pod can ping the local gateway")
+				By(fmt.Sprintf("Verifying migrating pod (%s) can ping the local gateway", migratingPod.Name))
 				migratingExec := executor.ForPod(testNamespace, migratingPod.Name, "agnhost")
 				canPingFromPod(migratingExec, l2GatewayIPOnly)
 
-				By("Verifying stationary pod can reach migrating pod before migration")
+				By(fmt.Sprintf("Verifying stationary pod (%s) can reach migrating pod (%s) before migration",
+					stationaryPod.Name, migratingPod.Name))
 				stationaryExec := executor.ForPod(testNamespace, stationaryPod.Name, "agnhost")
 				checkPodIsReachable(stationaryExec, stationaryPodIPOnly, migratingPodIPOnly)
 
-				By("Verifying Type 2 MAC+IP route exists for migrating pod on node A")
+				By(fmt.Sprintf("Verifying Type 2 MAC+IP route exists for migrating pod (%s) on node A (%s)",
+					migratingPod.Name, nodes[0].Name))
 				migratingPodNode, err := cs.CoreV1().Nodes().Get(context.Background(), migratingPod.Spec.NodeName, metav1.GetOptions{})
 				Expect(err).NotTo(HaveOccurred())
 				vtepIP, err := openperouter.GetVtepIPv4ForNode(infra.Underlay.Spec.TunnelEndpoint, migratingPodNode)
@@ -348,12 +355,15 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 				}, 2*time.Minute, time.Second).Should(BeTrue())
 
 				// This is important to trigger the deadlock situation described in https://github.com/FRRouting/frr/issues/14156
-				By("Waiting for neighbor entry to go STALE on the router on the same node")
+				By(fmt.Sprintf("Waiting for neighbor entry (%s) on bridge br-pe-%d to go STALE or FAILED on the "+
+					"router on the same node (%s)",
+					migratingPodIPOnly, l2VNI, migratingPod.Spec.NodeName))
 				Eventually(func() error {
 					return checkNeighborStale(cs, migratingPodIPOnly, l2VNI, migratingPod.Spec.NodeName)
 				}, 3*time.Minute, 2*time.Second).ShouldNot(HaveOccurred())
 
-				By("Recreating migrating pod on node B (the other node) with same IP")
+				By(fmt.Sprintf("Recreating migrating pod on node B (%s) with same IP (%s)",
+					nodes[1].Name, tc.migratingPodIP))
 				migratingPod, err = k8s.CreateAgnhostPod(
 					cs,
 					"migrating-pod-new",
@@ -366,11 +376,12 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 				By("Removing default gateway on recreated pod")
 				Expect(removeGatewayFromPod(migratingPod)).To(Succeed())
 
-				By("Verifying migrated pod can ping the local gateway on new node")
+				By(fmt.Sprintf("Verifying migrating pod (%s) can ping the local gateway", migratingPod.Name))
 				newMigratingExec := executor.ForPod(testNamespace, migratingPod.Name, "agnhost")
 				canPingFromPod(newMigratingExec, l2GatewayIPOnly)
 
-				By("Verifying stationary pod can reach migrated pod on new node")
+				By(fmt.Sprintf("Verifying stationary pod (%s) can reach migrating pod (%s) after migration",
+					stationaryPod.Name, migratingPod.Name))
 				checkPodIsReachable(stationaryExec, stationaryPodIPOnly, migratingPodIPOnly)
 			},
 			Entry("ipv4", migrationTestCase{
