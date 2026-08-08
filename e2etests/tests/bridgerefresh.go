@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	nad "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
@@ -214,6 +215,8 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 	// In order to have a solid reproducer we need to ping the local gateway so the neighbor table is filled, and
 	// then trigger the migration to the other node.
 	Context("Pod migrates to a different node", func() {
+		var cancelIPNeighMonitorNodeA, cancelIPNeighMonitorNodeB func() (string, error)
+
 		type migrationTestCase struct {
 			l2GatewayIP     string
 			migratingPodIP  string
@@ -289,6 +292,21 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 
 					By("Cleaning VNI resources")
 					Expect(Updater.CleanButUnderlay()).To(Succeed())
+				})
+
+				By("Collecting ip neigh monitor during the test")
+				exec := executor.ForContainer(nodes[0].Name)
+				cancelIPNeighMonitorNodeA = ipNeighMonitor(exec, openperouter.NamedNetns)
+				exec = executor.ForContainer(nodes[1].Name)
+				cancelIPNeighMonitorNodeB = ipNeighMonitor(exec, openperouter.NamedNetns)
+				DeferCleanup(func() {
+					By("Printing ip neigh monitor output after the test for NodeA")
+					output, err := cancelIPNeighMonitorNodeA()
+					fmt.Fprintf(GinkgoWriter, "ip neigh monitor output: %s; err: %q\n", output, err)
+
+					By("Printing ip neigh monitor output after the test for NodeB")
+					output, err = cancelIPNeighMonitorNodeB()
+					fmt.Fprintf(GinkgoWriter, "ip neigh monitor output: %s; err: %q\n", output, err)
 				})
 
 				By(fmt.Sprintf("Creating stationary pod on node B (%s)", nodes[1].Name))
@@ -437,4 +455,24 @@ func checkNeighborStale(cs clientset.Interface, podIP string, vni int, nodeName 
 		return nil
 	}
 	return fmt.Errorf("neighbor %s on %s in router %s is not STALE yet: %s", podIP, bridgeDev, exec.Name(), out)
+}
+
+func ipNeighMonitor(exec executor.ExecutorWithContext, namespace string) func() (string, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	var mu sync.Mutex
+	var output string
+	var err error
+	go func() {
+		mu.Lock()
+		defer mu.Unlock()
+		output, err = exec.CommandContext(ctx, "ip", "netns", "exec", namespace, "ip", "-ts", "monitor", "neigh")
+	}()
+
+	return func() (string, error) {
+		cancel()
+		mu.Lock()
+		defer mu.Unlock()
+		return output, err
+	}
 }

@@ -3,6 +3,7 @@
 package executor
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -15,6 +16,11 @@ var Kubectl string
 
 type Executor interface {
 	Exec(cmd string, args ...string) (string, error)
+}
+
+type ExecutorWithContext interface {
+	Executor
+	CommandContext(ctx context.Context, cmd string, args ...string) (string, error)
 }
 
 type hostExecutor struct{}
@@ -35,7 +41,7 @@ func (hostExecutor) Exec(cmd string, args ...string) (string, error) {
 	return string(out), err
 }
 
-func ForContainer(containerName string) Executor {
+func ForContainer(containerName string) ExecutorWithContext {
 	return &containerExecutor{container: containerName}
 }
 
@@ -46,6 +52,12 @@ type containerExecutor struct {
 func (e *containerExecutor) Exec(cmd string, args ...string) (string, error) {
 	newArgs := append([]string{"exec", e.container, cmd}, args...)
 	out, err := exec.Command(ContainerRuntime, newArgs...).CombinedOutput()
+	return string(out), err
+}
+
+func (e *containerExecutor) CommandContext(ctx context.Context, cmd string, args ...string) (string, error) {
+	newArgs := append([]string{"exec", e.container, cmd}, args...)
+	out, err := exec.CommandContext(ctx, ContainerRuntime, newArgs...).CombinedOutput()
 	return string(out), err
 }
 
