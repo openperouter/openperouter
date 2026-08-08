@@ -5,6 +5,7 @@ package tests
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
+	"github.com/openperouter/openperouter/e2etests/pkg/sysctl"
 	"github.com/openperouter/openperouter/internal/ipfamily"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -212,6 +214,34 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 			migratingPodIP  string
 			stationaryPodIP string
 		}
+
+		BeforeAll(func() {
+			if os.Geteuid() != 0 {
+				Skip("Bridge refresher pod migration tests require root to set gc_thresh values")
+			}
+			By("Storing original neighbor GC thresholds")
+			ipv4GcThresh1 := sysctl.IPv4NeighDefaultGcThresh1("")
+			ipv4GcThresh2 := sysctl.IPv4NeighDefaultGcThresh2("")
+			ipv4GcThresh3 := sysctl.IPv4NeighDefaultGcThresh3("")
+			ipv6GcThresh1 := sysctl.IPv6NeighDefaultGcThresh1("")
+			ipv6GcThresh2 := sysctl.IPv6NeighDefaultGcThresh2("")
+			ipv6GcThresh3 := sysctl.IPv6NeighDefaultGcThresh3("")
+			Expect(sysctl.Read(&ipv4GcThresh1, &ipv4GcThresh2, &ipv4GcThresh3, &ipv6GcThresh1, &ipv6GcThresh2, &ipv6GcThresh3)).To(Succeed())
+			DeferCleanup(func() {
+				By("Resetting neighbor GC thresholds to original values")
+				Expect(sysctl.Ensure(ipv4GcThresh1, ipv4GcThresh2, ipv4GcThresh3, ipv6GcThresh1, ipv6GcThresh2, ipv6GcThresh3)).To(Succeed())
+			})
+
+			By("Setting neighbor GC thresholds to max")
+			Expect(sysctl.Ensure(
+				sysctl.IPv4NeighDefaultGcThresh1(sysctl.NeighDefaultGcThreshMax),
+				sysctl.IPv4NeighDefaultGcThresh2(sysctl.NeighDefaultGcThreshMax),
+				sysctl.IPv4NeighDefaultGcThresh3(sysctl.NeighDefaultGcThreshMax),
+				sysctl.IPv6NeighDefaultGcThresh1(sysctl.NeighDefaultGcThreshMax),
+				sysctl.IPv6NeighDefaultGcThresh2(sysctl.NeighDefaultGcThreshMax),
+				sysctl.IPv6NeighDefaultGcThresh3(sysctl.NeighDefaultGcThreshMax),
+			)).To(Succeed())
+		})
 
 		DescribeTable("should maintain connectivity after pod migrates to another node",
 			func(tc migrationTestCase) {
