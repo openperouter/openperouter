@@ -327,6 +327,23 @@ jobs:
           fi
 
 
+      - name: DEBUG check rp_filter on clab containers
+        run: |
+          echo "=== Host rp_filter ==="
+          sysctl net.ipv4.conf.default.rp_filter net.ipv4.conf.all.rp_filter
+          echo "=== Clab container rp_filter ==="
+          for c in spine leafA leafB leafkind1 leafkind2 leafSRV6; do
+            VAL=$(docker exec clab-kind-${c} sysctl -n net.ipv4.conf.default.rp_filter 2>/dev/null || echo "N/A")
+            ALL=$(docker exec clab-kind-${c} sysctl -n net.ipv4.conf.all.rp_filter 2>/dev/null || echo "N/A")
+            echo "  ${c}: default=${VAL} all=${ALL}"
+          done
+          echo "=== Kind node rp_filter (perouter) ==="
+          for node in pe-kind-control-plane pe-kind-worker pe-kind-worker2; do
+            VAL=$(docker exec ${node} ip netns exec perouter sysctl -n net.ipv4.conf.default.rp_filter 2>/dev/null || echo "no-perouter")
+            echo "  ${node}: perouter.default=${VAL}"
+          done
+          exit 1
+
       - name: Run e2e tests
         run: |
           if [ ${{ matrix.deployment }} = "systemdmode" ]; then
