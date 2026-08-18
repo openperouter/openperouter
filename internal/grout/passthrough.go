@@ -56,6 +56,15 @@ func SetupPassthrough(ctx context.Context, client *Client, params hostnetwork.Pa
 	}
 
 	if err := netnamespace.In(peRouterNs, func() error {
+		for _, addr := range []string{params.LinkIPs.NSIPv4, params.LinkIPs.NSIPv6} {
+			if addr == "" {
+				continue
+			}
+			if err := ensureKernelSubnetRoute("main", addr); err != nil {
+				return fmt.Errorf("failed to add kernel route for passthrough subnet %s: %w", addr, err)
+			}
+		}
+
 		// Grout creates a NOARP kernel interface for each port. BGP packets leave
 		// through the `main` interface but return on the port's kernel interface (grout control plane tap),
 		// so rp_filter must be disabled to allow the asymmetric path.
