@@ -237,27 +237,50 @@ func staticConfigToAPIConfig(staticConfig *static.PERouterConfig, nodeName, name
 func applyDefaultsAndValidate[T any](obj *T, gvk schema.GroupVersionKind) (*T, field.ErrorList) {
 	rawMap, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj)
 	if err != nil {
-		return nil, field.ErrorList{field.InternalError(field.NewPath(""), fmt.Errorf("converting to unstructured: %w", err))}
+		return nil, field.ErrorList{
+			field.InternalError(
+				field.NewPath(""),
+				fmt.Errorf("converting to unstructured: %T: %w", *obj, err),
+			),
+		}
 	}
 
 	normalizedMap, err := normalizeGoTypes(rawMap)
 	if err != nil {
-		return nil, field.ErrorList{field.InternalError(field.NewPath(""), fmt.Errorf("normalizing Go types: %w", err))}
+		return nil, field.ErrorList{
+			field.InternalError(
+				field.NewPath(""),
+				fmt.Errorf("normalizing Go types: %T: %w", *obj, err),
+			),
+		}
 	}
 
 	unstrObj := &unstructured.Unstructured{Object: normalizedMap}
 
 	if err := crdschema.ApplyDefaults(unstrObj, gvk); err != nil {
-		return nil, field.ErrorList{field.InternalError(field.NewPath(""), fmt.Errorf("applying defaults: %w", err))}
+		return nil, field.ErrorList{
+			field.InternalError(
+				field.NewPath(""),
+				fmt.Errorf("applying defaults: %T: %w", *obj, err),
+			),
+		}
 	}
 
 	if valErrs := crdschema.Validate(context.Background(), unstrObj, gvk); len(valErrs) > 0 {
+		for i := range valErrs {
+			valErrs[i].Field = fmt.Sprintf("%T: %s", *obj, valErrs[i].Field)
+		}
 		return nil, valErrs
 	}
 
 	var result T
 	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstrObj.Object, &result); err != nil {
-		return nil, field.ErrorList{field.InternalError(field.NewPath(""), fmt.Errorf("converting from unstructured: %w", err))}
+		return nil, field.ErrorList{
+			field.InternalError(
+				field.NewPath(""),
+				fmt.Errorf("converting from unstructured: %T: %w", *obj, err),
+			),
+		}
 	}
 
 	return &result, nil
