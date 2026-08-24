@@ -44,7 +44,8 @@ $ KUBECONFIG_PATH=$KUBECONFIG \
 The output root directory contains the following:
 - `timestamp` - Execution timestamp
 - `inspect.log` - Execution log
-- `node_info/` - Per node network and routing infrastructure information
+- `node_info/` - Per node network and routing infrastructure information, and grout device state files
+  (`device_state/<interface>.json`, only with the grout datapath)
 - `<openperouter namespace>/` - OpenPERouter namespace objects and workload logs (defaults to `openperouter-system`)
 - `<additional namespace>/` - Objects and workload logs for each requested additional namespace
 - `nodes.yaml` - Kubernetes node manifests
@@ -69,6 +70,8 @@ $ tree /tmp/openperouter-inspect/
 │   │   ├── router_info.log
 │   │   └── router_netns_info.log
 │   └── pe-kind-worker
+│       ├── device_state
+│       │   └── eth1.json
 │       ├── root_netns_info.log
 │       ├── router_info.log
 │       └── router_netns_info.log
