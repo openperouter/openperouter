@@ -18,6 +18,8 @@ readonly ROUTER_INFRA_CONTAINER="frr"
 readonly HOST_NET_CONTAINER="reloader"
 # router infrastructure netns name
 readonly NETNS="perouter"
+# grout device state directory, as mounted in the router infra container
+readonly DEVICE_STATE_DIR="/var/run/grout/device-state"
 # openperouter system resources to collect
 readonly CORE_RESOURCES=(\
 	"daemonsets" \
@@ -179,6 +181,32 @@ function dump_node_info() {
 		logfile="${node_dir}/router_info.log"
 		$ctl exec -i "$p" -c "$ROUTER_INFRA_CONTAINER" -- bash <<< "$(cat "$ROUTER_INFO_SCRIPT")" &> "$logfile"
 		echo "Dumped router info of node [$node_name] pod [$p/$ROUTER_INFRA_CONTAINER] to [$logfile]"
+
+		dump_device_state "$ctl" "$p" "$node_name" "${node_dir}/device_state"
+	done
+}
+
+function dump_device_state() {
+	local -r ctl="$1"
+	local -r pod="$2"
+	local -r node_name="$3"
+	local -r dir="$4"
+
+	# Only present with the grout datapath, which keeps the original state
+	# of the devices handed to grout to restore them on teardown.
+	local -r files="$($ctl exec "$pod" -c "$ROUTER_INFRA_CONTAINER" -- \
+		find "$DEVICE_STATE_DIR" -maxdepth 1 -type f -name '*.json' 2> /dev/null)"
+	if [[ -z $files ]]; then
+		return
+	fi
+
+	mkdir -p "$dir"
+
+	local logfile
+	for f in $files; do
+		logfile="${dir}/$(basename "$f")"
+		$ctl exec "$pod" -c "$ROUTER_INFRA_CONTAINER" -- cat "$f" > "$logfile"
+		echo "Dumped device state [$f] of node [$node_name] pod [$pod/$ROUTER_INFRA_CONTAINER] to [$logfile]"
 	done
 }
 

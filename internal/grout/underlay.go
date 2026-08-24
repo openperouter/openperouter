@@ -8,29 +8,44 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"strings"
 	"syscall"
 
+	"github.com/openperouter/openperouter/internal/grout/devicestate"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/openperouter/openperouter/internal/netnamespace"
+	"github.com/openperouter/openperouter/internal/pci"
 	"github.com/openperouter/openperouter/internal/sysctl"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 )
 
+const UnderlayPortNamePrefix = "u_"
+
+// UnderlayPortName returns the name of the grout port attached to the given
+// underlay interface.
+func UnderlayPortName(underlayInterface string) string {
+	return UnderlayPortNamePrefix + underlayInterface
+}
+
+// UnderlayPortMode selects how grout attaches to an underlay device.
+type UnderlayPortMode string
+
 const (
-	UnderlayPortNamePrefix = "u_"
+	PortModeAccelerated UnderlayPortMode = "accelerated"
+	PortModeTAP         UnderlayPortMode = "tap"
 )
 
 // SetupUnderlay configures the underlay interfaces via the grout dataplane.
-// Every interface is provisioned in the router namespace according to its
-// kind (host network devices are moved in, CNI interfaces are added by
-// invoking their plugin); then a grout TAP port with remote= is created so
-// TC ingress rules redirect incoming packets from the interface to grout,
-// and the underlay IPs are moved to the grout port. Grout handles all L2
-// (ARP) and L3 forwarding; it also creates a NOARP kernel interface for
-// kernel TCP (used by FRR bgpd for BGP sessions).
-func SetupUnderlay(ctx context.Context, client *Client, params hostnetwork.UnderlayParams) error {
+// PortModeTAP selects TAP+remote= ports; otherwise kernel netdevs are bound
+// directly as PCI ports. Grout owns the underlay addresses and forwarding.
+func SetupUnderlay(
+	ctx context.Context,
+	client *Client,
+	params hostnetwork.UnderlayParams,
+	mode UnderlayPortMode,
+	store devicestate.Store,
+	sysfs pci.Sysfs,
+) error {
 	slog.DebugContext(ctx, "setup underlay", "params", params)
 	defer slog.DebugContext(ctx, "setup underlay done")
 
@@ -47,34 +62,39 @@ func SetupUnderlay(ctx context.Context, client *Client, params hostnetwork.Under
 	// If any existing underlay interfaces were removed from the new list,
 	// clean them up before setting up the new ones, tearing down their
 	// grout state first.
-	existing, err := hostnetwork.UnderlayInterfaces(params.TargetNS)
+	existing, err := UnderlayInterfaces(store)
 	if err != nil {
 		return fmt.Errorf("failed to check existing underlay interfaces: %w", err)
 	}
 	if toRemove := hostnetwork.UnderlayInterfacesToRemove(existing, params.UnderlayInterfaces); len(toRemove) > 0 {
 		slog.InfoContext(ctx, "underlay interfaces changed, removing old interfaces before setup",
 			"toRemove", toRemove, "requested", params.UnderlayInterfaces)
-		if err := RestoreUnderlay(ctx, client, params.TargetNS, toRemove); err != nil {
+		if err := RestoreUnderlay(ctx, client, params.TargetNS, toRemove, store, sysfs); err != nil {
 			return fmt.Errorf("failed to remove old underlay interfaces: %w", err)
 		}
 	}
 
 	for _, iface := range params.UnderlayInterfaces {
-		switch iface.Kind {
-		case hostnetwork.UnderlayInterfaceNetDev:
-			if err := hostnetwork.SetupUnderlayNetDevInterface(ctx, perouterNetNS, iface); err != nil {
-				return err
-			}
-		case hostnetwork.UnderlayInterfaceCNIDev:
-			if err := hostnetwork.SetupUnderlayCNIDevInterface(ctx, params.TargetNS, iface); err != nil {
-				return err
-			}
-		default:
-			return fmt.Errorf("underlay interface %s has unsupported kind %q", iface.InterfaceName, iface.Kind)
+		if iface.Kind != hostnetwork.UnderlayInterfaceNetDev {
+			return fmt.Errorf("underlay interface has unsupported kind %q", iface.Kind)
 		}
-		if err := netnamespace.In(perouterNetNS, func() error {
-			return configureUnderlayPort(ctx, client, iface.InterfaceName)
-		}); err != nil {
+
+		// device state is the source of truth for the underlay interface, it is created as the first step
+		// of the setup process with the information contained in the UnderlayInterface struct and the state
+		// of the netlink interface.
+		// In the teardown process, it is removed as the last step.
+		state, err := ensureDeviceState(iface.InterfaceName, mode, store, sysfs)
+		if err != nil {
+			return err
+		}
+
+		opts := underlayPortOptions(iface)
+		if mode == PortModeTAP {
+			err = setupTapUnderlay(ctx, client, perouterNetNS, opts, state)
+		} else {
+			err = setupAcceleratedUnderlay(ctx, client, perouterNetNS, opts, state, sysfs)
+		}
+		if err != nil {
 			return err
 		}
 	}
@@ -88,37 +108,41 @@ func SetupUnderlay(ctx context.Context, client *Client, params hostnetwork.Under
 	return nil
 }
 
-func setupTunnelEndpoint(ctx context.Context, client *Client, ep hostnetwork.UnderlayTunnelEndpointParams) error {
-	if err := assignIPsToGroutPort(ctx, client, defaultVRFName,
-		ep.IPv4CIDR, ep.IPv6CIDR); err != nil {
-		return fmt.Errorf("failed to assign tunnel endpoint IPs to grout underlay: %w", err)
+// UnderlayInterfaces returns the netdev underlays currently tracked as underlays, read
+// from the saved device states. An underlay is tracked from the moment its
+// state is saved, before grout or the namespace are touched, until its
+// teardown completes, so an interrupted setup or teardown is resumed on the
+// next reconcile.
+func UnderlayInterfaces(store devicestate.Store) ([]hostnetwork.UnderlayInterface, error) {
+	states, err := store.List()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list saved device states: %w", err)
 	}
-
-	return nil
+	ret := make([]hostnetwork.UnderlayInterface, 0, len(states))
+	for _, state := range states {
+		ret = append(ret, hostnetwork.UnderlayInterface{
+			InterfaceName: state.InterfaceName,
+			Kind:          hostnetwork.UnderlayInterfaceNetDev,
+		})
+	}
+	return ret, nil
 }
 
-// RestoreUnderlay removes the given underlay interfaces: it tears
-// down their grout ports first (migrating the underlay addresses back to the
-// kernel interfaces), then removes the interfaces from the namespace
-// according to how they were provisioned, exactly like the kernel datapath
-// does.
+// RestoreUnderlay removes the given underlay interfaces: it tears down their
+// grout ports first (migrating the underlay addresses back to the kernel
+// interfaces), then hands the devices back to the kernel as described by
+// their saved device state. Every step is idempotent and the device state is
+// deleted last, so a failed teardown is resumed by the next call.
 func RestoreUnderlay(
 	ctx context.Context,
 	client *Client,
 	targetNS string,
 	toRemove []hostnetwork.UnderlayInterface,
+	store devicestate.Store,
+	sysfs pci.Sysfs,
 ) error {
 	if len(toRemove) == 0 {
 		return nil
-	}
-
-	interfaces, err := client.listInterfaces(ctx)
-	if err != nil {
-		return fmt.Errorf("RestoreUnderlay: failed to list grout interfaces: %w", err)
-	}
-	existingPorts := map[string]struct{}{}
-	for _, iface := range interfaces {
-		existingPorts[iface.Name] = struct{}{}
 	}
 
 	ns, err := netns.GetFromPath(targetNS)
@@ -132,86 +156,314 @@ func RestoreUnderlay(
 	}()
 
 	for _, iface := range toRemove {
-		portName := UnderlayPortNamePrefix + iface.InterfaceName
-		if _, found := existingPorts[portName]; !found {
-			slog.Debug("RestoreUnderlay: port already removed", "namespace", targetNS, "port", portName)
-			continue
+		if iface.Kind != hostnetwork.UnderlayInterfaceNetDev {
+			return fmt.Errorf("underlay interface has unsupported kind %q", iface.Kind)
 		}
 
-		if err := netnamespace.In(ns, func() error {
-			if err := migrateAddressesToKernel(ctx, client, portName); err != nil {
-				return fmt.Errorf("RestoreUnderlay: failed to migrate addresses back to kernel: %w", err)
-			}
+		// An underlay without saved state is still torn down, but its driver
+		// and addresses cannot be restored.
+		state, err := store.Load(iface.InterfaceName)
+		if errors.Is(err, devicestate.ErrNotFound) {
+			slog.WarnContext(ctx, "no saved device state, cannot restore driver/IPs", "interfaceName", iface.InterfaceName)
+			state, err = devicestate.State{InterfaceName: iface.InterfaceName}, nil
+		}
+		if err != nil {
+			return fmt.Errorf("RestoreUnderlay: failed to load device state for %s: %w", iface.InterfaceName, err)
+		}
 
-			return nil
-		}); err != nil {
+		if err := teardownUnderlayInterface(ctx, client, ns, targetNS, state, sysfs); err != nil {
 			return err
 		}
 
-		if err := client.deletePort(ctx, portName); err != nil {
-			return fmt.Errorf("RestoreUnderlay: failed to delete grout port %s: %w", portName, err)
+		if err := store.Delete(iface.InterfaceName); err != nil {
+			return fmt.Errorf("RestoreUnderlay: failed to delete device state for %s: %w", iface.InterfaceName, err)
 		}
-	}
-
-	if err := hostnetwork.RestoreUnderlay(ctx, targetNS, toRemove); err != nil {
-		return fmt.Errorf("RestoreUnderlay: failed to clean kernel underlay state: %w", err)
 	}
 
 	return nil
 }
 
-func configureUnderlayPort(ctx context.Context, client *Client, underlayInterface string) error {
-	underlayAddrs, err := hostnetwork.AddressesForInterface(underlayInterface, hostnetwork.ExcludeLinkLocal())
+// ensureDeviceState returns the saved state of the given underlay, retrieving
+// it from the host device and saving it when missing. The state is retrieved
+// once, before the device is touched, and never updated afterwards. The saved
+// addresses are then removed from the host device, as from here on the state
+// is their only owner.
+func ensureDeviceState(
+	interfaceName string,
+	mode UnderlayPortMode,
+	store devicestate.Store,
+	sysfs pci.Sysfs,
+) (devicestate.State, error) {
+	state, err := store.Load(interfaceName)
+	if errors.Is(err, devicestate.ErrNotFound) {
+		state, err = retrieveAndSaveDeviceState(interfaceName, mode, store, sysfs)
+		if err != nil {
+			return devicestate.State{}, err
+		}
+	}
 	if err != nil {
-		return fmt.Errorf("failed to read underlay interface addresses: %w", err)
+		return devicestate.State{}, fmt.Errorf("failed to load device state for %s: %w", interfaceName, err)
+	}
+	if err := removeSavedAddressesFromKernel(state); err != nil {
+		return devicestate.State{}, err
+	}
+	return state, nil
+}
+
+func retrieveAndSaveDeviceState(
+	interfaceName string,
+	mode UnderlayPortMode,
+	store devicestate.Store,
+	sysfs pci.Sysfs,
+) (devicestate.State, error) {
+	state, err := retrieveDeviceState(interfaceName, mode, sysfs)
+	if err != nil {
+		return devicestate.State{}, err
+	}
+	if err := store.Save(state); err != nil {
+		return devicestate.State{}, fmt.Errorf("failed to save device state for %s: %w", interfaceName, err)
+	}
+	return state, nil
+}
+
+func setupTapUnderlay(
+	ctx context.Context,
+	client *Client,
+	perouterNetNS netns.NsHandle,
+	opts portOptions,
+	state devicestate.State,
+) error {
+	if err := hostnetwork.SetupUnderlayNetDevInterface(
+		ctx,
+		perouterNetNS,
+		hostnetwork.UnderlayInterface{
+			InterfaceName: state.InterfaceName,
+			Kind:          hostnetwork.UnderlayInterfaceNetDev,
+		}); err != nil {
+		return err
+	}
+	return netnamespace.In(perouterNetNS, func() error {
+		return configureUnderlayTapPort(ctx, client, opts, state)
+	})
+}
+
+func setupTunnelEndpoint(ctx context.Context, client *Client, ep hostnetwork.UnderlayTunnelEndpointParams) error {
+	var addrs []string
+	for _, addr := range []string{ep.IPv4CIDR, ep.IPv6CIDR} {
+		if addr != "" {
+			addrs = append(addrs, addr)
+		}
+	}
+	if len(addrs) == 0 {
+		return fmt.Errorf("at least one tunnel endpoint IP must be provided (IPv4 or IPv6)")
 	}
 
-	// Suppress the veth's kernel IPv6 link-local so it doesn't collide with the
-	// identical EUI-64 link-local on grout's shadow (u_<iface>, which shares the
-	// veth's MAC). The collision makes DAD strip the shadow's link-local,
-	// breaking any session with an IPv6 nexthop. The veth's link-local is unused
-	// since grout owns all forwarding.
+	if err := assignAddressesToGroutPort(ctx, client, defaultVRFName, addrs); err != nil {
+		return fmt.Errorf("failed to assign tunnel endpoint IPs to grout underlay: %w", err)
+	}
+	return nil
+}
+
+func teardownUnderlayInterface(
+	ctx context.Context,
+	client *Client,
+	ns netns.NsHandle,
+	targetNS string,
+	state devicestate.State,
+	sysfs pci.Sysfs,
+) error {
+	// The port must be gone before the device is handed back to the kernel:
+	// DPDK may still own it.
+	if err := deleteUnderlayPort(ctx, client, ns, UnderlayPortName(state.InterfaceName)); err != nil {
+		return err
+	}
+	if state.PCIAddress != "" {
+		return restoreAcceleratedDevice(ctx, targetNS, state, sysfs)
+	}
+	return restoreNetdev(ctx, targetNS, state)
+}
+
+func deleteUnderlayPort(ctx context.Context, client *Client, ns netns.NsHandle, portName string) error {
+	exists, err := client.portExists(ctx, portName)
+	if err != nil {
+		return fmt.Errorf("RestoreUnderlay: failed to inspect grout port %s: %w", portName, err)
+	}
+	if !exists {
+		return nil
+	}
+	if err := removeAddressFromGroutPort(ctx, client, ns, portName); err != nil {
+		return err
+	}
+	if err := client.deletePort(ctx, portName); err != nil {
+		return fmt.Errorf("RestoreUnderlay: failed to delete grout port %s: %w", portName, err)
+	}
+	return nil
+}
+
+// restoreNetdev moves a netdev that grout shares with the kernel (the one
+// backing a TAP port, or a bifurcated device) back to the host namespace and
+// re-applies its saved addresses.
+func restoreNetdev(ctx context.Context, targetNS string, state devicestate.State) error {
+	if err := hostnetwork.RestoreUnderlayNetDevInterface(ctx, targetNS, state.InterfaceName); err != nil {
+		return fmt.Errorf("failed to move netdev %s back to the host namespace: %w", state.InterfaceName, err)
+	}
+
+	link, err := netlink.LinkByName(state.InterfaceName)
+	if errors.As(err, &netlink.LinkNotFoundError{}) {
+		slog.WarnContext(ctx, "kernel netdev is gone, nothing to restore", "interfaceName", state.InterfaceName)
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("failed to find kernel netdev %s: %w", state.InterfaceName, err)
+	}
+
+	return applyStateToLink(ctx, link, state)
+}
+
+func applyStateToLink(ctx context.Context, link netlink.Link, state devicestate.State) error {
+	name := link.Attrs().Name
+	for _, addr := range state.Addresses {
+		if err := hostnetwork.AssignIPToInterface(link, addr); err != nil {
+			return fmt.Errorf("failed to restore IP address %s to kernel netdev [%s]: %w", addr, name, err)
+		}
+		slog.InfoContext(ctx, "restored IP addresses to kernel netdev",
+			"interfaceName", name, "addresses", addr)
+	}
+	return nil
+}
+
+func configureUnderlayTapPort(
+	ctx context.Context,
+	client *Client,
+	opts portOptions,
+	state devicestate.State,
+) error {
+	underlayInterface := state.InterfaceName
+	portName := UnderlayPortName(underlayInterface)
+
+	// Suppress the netdev's kernel IPv6 link-local so it doesn't collide with
+	// the identical EUI-64 link-local on the grout port's kernel interface,
+	// which shares the netdev's MAC. The collision makes DAD strip the port's
+	// link-local, breaking any session with an IPv6 nexthop. The netdev's
+	// link-local is unused since grout owns all forwarding.
 	slog.InfoContext(ctx, "suppressing kernel link-local on underlay interface", "iface", underlayInterface)
 	if err := hostnetwork.SuppressLinkLocal(underlayInterface); err != nil {
 		return fmt.Errorf("failed to suppress link-local on underlay interface %s: %w", underlayInterface, err)
 	}
 
-	devargs := fmt.Sprintf("net_tap%s,remote=%s,iface=%s", makeTapRandomString(), underlayInterface, "tap_"+underlayInterface)
-	if err := client.ensurePort(ctx, UnderlayPortNamePrefix+underlayInterface, devargs); err != nil {
+	opts.Devargs = fmt.Sprintf("net_tap%s,remote=%s,iface=%s",
+		makeTapRandomString(), underlayInterface, "tap_"+underlayInterface)
+	if err := client.ensurePort(ctx, portName, opts); err != nil {
 		return fmt.Errorf("failed to create grout underlay port: %w", err)
 	}
 
-	if err := migrateAddressesToGrout(ctx, client, underlayInterface, underlayAddrs); err != nil {
+	// Disable SLAAC on the underlying netlink interface: once the intended
+	// addresses are migrated to the grout port, the kernel must not
+	// autoconfigure new ones from Router Advertisements. A SLAAC address
+	// on the netlink device would be picked up on the next reconcile and
+	// clash with the existing connected route in grout's RIB (EBUSY).
+	if err := sysctl.Ensure(sysctl.DisableAcceptRA(underlayInterface)); err != nil {
+		return fmt.Errorf("failed to disable accept_ra on underlay interface %s: %w", underlayInterface, err)
+	}
+
+	if err := assignAddressesToGroutPort(ctx, client, portName, state.Addresses); err != nil {
 		return err
 	}
 
-	if err := client.setPortUp(ctx, UnderlayPortNamePrefix+underlayInterface); err != nil {
+	if err := client.setPortUp(ctx, portName); err != nil {
 		return fmt.Errorf("failed to set grout port up: %w", err)
 	}
 
 	return nil
 }
 
-func migrateAddressesToGrout(ctx context.Context, client *Client, underlayInterface string, addrs []netlink.Addr) error {
-	for _, addr := range addrs {
-		cidr := addr.IPNet.String()
+func underlayPortOptions(iface hostnetwork.UnderlayInterface) portOptions {
+	if iface.AcceleratedConfig == nil {
+		return portOptions{}
+	}
+	return portOptions{RXQueues: iface.AcceleratedConfig.RXQueues, QSize: iface.AcceleratedConfig.QSize}
+}
 
-		// Move the address to the grout underlay port, so grout can register routes and nexthops
-		if err := client.ensureAddress(ctx, UnderlayPortNamePrefix+underlayInterface, cidr); err != nil {
-			return fmt.Errorf("failed to assign address %s to grout underlay port: %w", cidr, err)
+func retrieveDeviceState(
+	interfaceName string,
+	mode UnderlayPortMode,
+	sysfs pci.Sysfs,
+) (devicestate.State, error) {
+	state := devicestate.State{InterfaceName: interfaceName}
+
+	if mode == PortModeAccelerated {
+		pciAddr, driver, err := retrievePCIState(interfaceName, sysfs)
+		if err != nil {
+			return devicestate.State{}, err
 		}
+		state.PCIAddress = pciAddr
+		state.OriginalDriver = driver
+	}
 
-		if err := hostnetwork.DeleteAddressFromInterface(underlayInterface, addr); err != nil {
-			return fmt.Errorf("failed to remove address %s from underlay interface: %w", cidr, err)
+	netlinkAddrs, err := hostnetwork.AddressesForInterface(interfaceName, hostnetwork.ExcludeLinkLocal())
+	if err != nil {
+		return devicestate.State{}, fmt.Errorf("failed to read addresses from %s: %w", interfaceName, err)
+	}
+	for _, a := range netlinkAddrs {
+		state.Addresses = append(state.Addresses, a.IPNet.String())
+	}
+	return state, nil
+}
+
+// retrievePCIState returns the PCI address of netdev and the driver it is
+// currently bound to.
+func retrievePCIState(netdev string, sysfs pci.Sysfs) (string, string, error) {
+	pciAddr, err := sysfs.PCIAddressForNetDevice(netdev)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to resolve PCI address for %s: %w", netdev, err)
+	}
+	driver, err := sysfs.DriverForPCIAddress(pciAddr)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to read driver for %s: %w", pciAddr, err)
+	}
+	return pciAddr, driver, nil
+}
+
+// removeSavedAddressesFromKernel removes the addresses recorded in the device
+// state from the kernel netdev, so they do not follow it into the router
+// namespace and clash with the grout port. It runs on every reconcile, as a
+// failure right after the state was saved would otherwise leave them behind.
+// A netdev no longer in the host namespace (moved, or unbound from its kernel
+// driver) has nothing left to remove.
+func removeSavedAddressesFromKernel(state devicestate.State) error {
+	link, err := netlink.LinkByName(state.InterfaceName)
+	if errors.As(err, &netlink.LinkNotFoundError{}) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("failed to find kernel interface %s: %w", state.InterfaceName, err)
+	}
+	for _, cidr := range state.Addresses {
+		addr, err := netlink.ParseAddr(cidr)
+		if err != nil {
+			return fmt.Errorf("failed to parse saved address %s: %w", cidr, err)
+		}
+		err = netlink.AddrDel(link, addr)
+		if err != nil && !errors.Is(err, syscall.EADDRNOTAVAIL) {
+			return fmt.Errorf("failed to remove address %s from kernel interface %s: %w", cidr, state.InterfaceName, err)
+		}
+	}
+	return nil
+}
+
+func assignAddressesToGroutPort(ctx context.Context, client *Client, portName string, addrs []string) error {
+	for _, cidr := range addrs {
+		if err := client.ensureAddress(ctx, portName, cidr); err != nil {
+			return fmt.Errorf("failed to assign address %s to grout underlay port %s: %w", cidr, portName, err)
 		}
 
 		// FRR needs kernel routes to establish BGP connections. Grout requires that all the kernel
 		// traffic must enter grout via the `main` TAP device.
-		if err := ensureKernelSubnetRoute(defaultVRFName, addr.IPNet.String()); err != nil {
-			return fmt.Errorf("failed to add kernel route for underlay subnet %s: %w", addr, err)
+		if err := ensureKernelSubnetRoute(defaultVRFName, cidr); err != nil {
+			return fmt.Errorf("failed to add kernel route for underlay subnet %s: %w", cidr, err)
 		}
 
-		slog.InfoContext(ctx, "migrated underlay address to grout", "cidr", cidr, "iface", UnderlayPortNamePrefix+underlayInterface)
+		slog.InfoContext(ctx, "assigned underlay address to grout port", "cidr", cidr, "port", portName)
 	}
 
 	// for each port, grout creates a NOARP kernel interface to make FRR zebra daemon work.
@@ -221,55 +473,29 @@ func migrateAddressesToGrout(ctx context.Context, client *Client, underlayInterf
 	//    alias Grout control plane interface
 	// bgpd packets will leave through the `main` interface and will come back on the `u_xxx` interface, hence the
 	// need to disable rp_filter on the `u_xxx` interface.
-	if err := sysctl.Ensure(sysctl.DisableRPFilter(UnderlayPortNamePrefix + underlayInterface)); err != nil {
-		return fmt.Errorf("failed to disable rp_filter on underlay interface %s: %w", UnderlayPortNamePrefix+underlayInterface, err)
+	if err := sysctl.Ensure(sysctl.DisableRPFilter(portName)); err != nil {
+		return fmt.Errorf("failed to disable rp_filter on underlay interface %s: %w", portName, err)
 	}
 
 	return nil
 }
 
-func migrateAddressesToKernel(ctx context.Context, client *Client, underlayPortName string) error {
-	addrs, err := client.getAddresses(ctx, underlayPortName)
-	if err != nil {
-		return fmt.Errorf("failed to read addresses from grout port %s: %w", underlayPortName, err)
-	}
-	if len(addrs) == 0 {
-		return nil
-	}
-
-	underlayLinkName := strings.Replace(underlayPortName, UnderlayPortNamePrefix, "", 1)
-
-	link, err := netlink.LinkByName(underlayLinkName)
-	if err != nil {
-		return fmt.Errorf("failed to find link %s: %w", underlayLinkName, err)
-	}
-
-	for _, addr := range addrs {
-		ip, _, err := net.ParseCIDR(addr)
+func removeAddressFromGroutPort(ctx context.Context, client *Client, ns netns.NsHandle, portName string) error {
+	return netnamespace.In(ns, func() error {
+		addrs, err := client.getAddresses(ctx, portName)
 		if err != nil {
-			return fmt.Errorf("failed to parse address %s: %w", addr, err)
+			return fmt.Errorf("RestoreUnderlay: failed to get addresses for grout port %s: %w", portName, err)
 		}
-		if ip.IsLinkLocalMulticast() || ip.IsLinkLocalUnicast() {
-			continue
+		for _, addr := range addrs {
+			if err := removeKernelSubnetRoute(defaultVRFName, addr); err != nil {
+				return fmt.Errorf("RestoreUnderlay: failed to remove kernel route for %s: %w", addr, err)
+			}
+			if err := client.deleteAddress(ctx, portName, addr); err != nil {
+				return fmt.Errorf("RestoreUnderlay: failed to delete address %s from grout port %s: %w", addr, portName, err)
+			}
 		}
-
-		if err := hostnetwork.AssignIPToInterface(link, addr); err != nil {
-			return fmt.Errorf("failed to assign address %s to link %s: %w", addr, underlayLinkName, err)
-		}
-	}
-
-	for _, addr := range addrs {
-		if err := removeKernelSubnetRoute(defaultVRFName, addr); err != nil {
-			return fmt.Errorf("failed to remove kernel route for %s: %w", addr, err)
-		}
-
-		if err := client.deleteAddress(ctx, underlayPortName, addr); err != nil {
-			return fmt.Errorf("failed to delete addresses on grout port %s: %w", underlayPortName, err)
-		}
-
-	}
-
-	return nil
+		return nil
+	})
 }
 
 func ensureKernelSubnetRoute(ifaceName, addr string) error {
@@ -314,24 +540,6 @@ func removeKernelSubnetRoute(ifaceName, addr string) error {
 	}
 
 	slog.Info("removed kernel route for subnet", "cidr", addr, "src", route.Src, "ipnet", route.Dst, "iface", ifaceName)
-	return nil
-}
-
-// assignIPsToGroutPort assigns IPv4 and IPv6 addresses to a grout port via grcli.
-func assignIPsToGroutPort(ctx context.Context, client *Client, portName string, ipv4, ipv6 string) error {
-	if ipv4 == "" && ipv6 == "" {
-		return fmt.Errorf("at least one IP address must be provided (IPv4 or IPv6)")
-	}
-
-	for _, addr := range []string{ipv4, ipv6} {
-		if addr == "" {
-			continue
-		}
-		slog.DebugContext(ctx, "assigning IP to grout port", "port", portName, "addr", addr)
-		if err := client.ensureAddress(ctx, portName, addr); err != nil {
-			return fmt.Errorf("failed to assign address %s to grout port %s: %w", addr, portName, err)
-		}
-	}
 	return nil
 }
 

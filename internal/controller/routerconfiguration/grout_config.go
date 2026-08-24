@@ -12,8 +12,10 @@ import (
 	"github.com/openperouter/openperouter/internal/conversion"
 	openpeerrors "github.com/openperouter/openperouter/internal/errors"
 	"github.com/openperouter/openperouter/internal/grout"
+	"github.com/openperouter/openperouter/internal/grout/devicestate"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/openperouter/openperouter/internal/hostnetwork/bridgerefresh"
+	"github.com/openperouter/openperouter/internal/pci"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
@@ -21,25 +23,28 @@ import (
 type GroutDatapathConfigurator struct {
 	conversion.GroutDatapathConfigValidator
 
-	groutSocketPath string
+	groutSocketPath  string
+	deviceStateStore devicestate.Store
+	sysfs            pci.Sysfs
 }
 
 func NewGroutConfigurator(groutSocketPath string) *GroutDatapathConfigurator {
 	return &GroutDatapathConfigurator{
-		groutSocketPath: groutSocketPath,
+		groutSocketPath:  groutSocketPath,
+		deviceStateStore: devicestate.Store{Dir: "/var/run/grout/device-state"},
+		sysfs:            pci.Sysfs{Root: "/sys"},
 	}
 }
 
 func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interfacesConfiguration) error {
 	groutClient := grout.NewClient(g.groutSocketPath)
 
-	currentUnderlayIfaces, err := hostnetwork.UnderlayInterfaces(config.targetNamespace)
+	currentUnderlayIfaces, err := grout.UnderlayInterfaces(g.deviceStateStore)
 	if err != nil {
-		return fmt.Errorf("failed to check if target namespace %s has underlay: %w", config.targetNamespace, err)
+		return fmt.Errorf("failed to list current grout underlay interfaces: %w", err)
 	}
 	if len(currentUnderlayIfaces) > 0 && len(config.Underlays) == 0 {
-		cleanupGroutInterfaces(ctx, groutClient, config.targetNamespace, currentUnderlayIfaces)
-		return nil
+		return g.cleanupGroutInterfaces(ctx, groutClient, config.targetNamespace, currentUnderlayIfaces)
 	}
 
 	if len(config.Underlays) == 0 {
@@ -60,7 +65,8 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 	}
 
 	slog.InfoContext(ctx, "setting up underlay")
-	if err := grout.SetupUnderlay(ctx, groutClient, hostConfig.Underlay); err != nil {
+	if err := grout.SetupUnderlay(ctx, groutClient, hostConfig.Underlay,
+		g.deviceStateStore, g.sysfs); err != nil {
 		return fmt.Errorf("failed to setup underlay: %w", err)
 	}
 
@@ -161,7 +167,12 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 	return errors.Join(resourceErrors...)
 }
 
-func cleanupGroutInterfaces(ctx context.Context, groutClient *grout.Client, targetNamespace string, currentUnderlayIfaces []hostnetwork.UnderlayInterface) {
+func (g *GroutDatapathConfigurator) cleanupGroutInterfaces(
+	ctx context.Context,
+	groutClient *grout.Client,
+	targetNamespace string,
+	currentUnderlayIfaces []hostnetwork.UnderlayInterface,
+) error {
 	slog.InfoContext(ctx, "underlay removed, cleaning up VNIs and underlay interfaces")
 	if err := grout.RemoveAllVNIs(ctx, groutClient, targetNamespace); err != nil {
 		slog.Warn("failed to remove vnis after underlay removal", "err", err)
@@ -170,7 +181,9 @@ func cleanupGroutInterfaces(ctx context.Context, groutClient *grout.Client, targ
 	if err := grout.RemoveAllVRFs(ctx, groutClient, targetNamespace); err != nil {
 		slog.Warn("failed to remove vrfs after underlay removal", "err", err)
 	}
-	if err := grout.RestoreUnderlay(ctx, groutClient, targetNamespace, currentUnderlayIfaces); err != nil {
-		slog.Warn("failed to remove underlay after underlay removal", "err", err)
+	if err := grout.RestoreUnderlay(ctx, groutClient, targetNamespace,
+		currentUnderlayIfaces, g.deviceStateStore, g.sysfs); err != nil {
+		return fmt.Errorf("failed to remove underlay after underlay removal: %w", err)
 	}
+	return nil
 }

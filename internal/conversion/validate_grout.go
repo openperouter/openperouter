@@ -17,17 +17,16 @@ func ValidateGroutUnderlay(underlay v1alpha1.Underlay) error {
 		}
 	}
 
-	// The grout port name is the interface name with the underlay prefix,
-	// so every interface name must leave room for it, regardless of how
-	// the interface is provisioned.
 	underlayInterfaces, err := underlayInterfacesToHost(underlay.Spec.Interfaces)
 	if err != nil {
 		return err
 	}
 	for _, iface := range underlayInterfaces {
-		if len(iface.InterfaceName)+len(grout.UnderlayPortNamePrefix) >= syscall.IFNAMSIZ {
-			return fmt.Errorf("nic name %s can't be longer than %d characters", iface.InterfaceName,
-				syscall.IFNAMSIZ-len(grout.UnderlayPortNamePrefix))
+		if portName := grout.UnderlayPortName(iface.InterfaceName); len(portName) >= syscall.IFNAMSIZ {
+			return fmt.Errorf("nic name %s can't be longer than %d characters, as its grout port name %s "+
+				"adds the %q prefix",
+				iface.InterfaceName, syscall.IFNAMSIZ-1-len(grout.UnderlayPortNamePrefix), portName,
+				grout.UnderlayPortNamePrefix)
 		}
 	}
 	return nil

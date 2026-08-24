@@ -41,6 +41,7 @@ const interfaceShowP0Output = `{
 	"name": "p0",
 	"type": "port",
 	"id": 2,
+	"devargs": "net_tap0,remote=remote_i,iface=p0_tap",
 	"flags": ["up", "running", "allmulti", "tracing"],
 	"mode": "VRF",
 	"domain": "main",
@@ -60,7 +61,6 @@ func TestSetPortUp(t *testing.T) {
 
 func TestEnsurePort(t *testing.T) {
 	t.Run("ensure port when no port exists", func(t *testing.T) {
-
 		defer mockCmdExec(
 			cmdCall{
 				cmd:    "grcli --err-exit --json --socket sock interface show name p0",
@@ -75,7 +75,7 @@ func TestEnsurePort(t *testing.T) {
 			NewClient("sock").ensurePort(
 				context.Background(),
 				"p0",
-				"net_tap0,remote=remote_i,iface=p0_tap",
+				portOptions{Devargs: "net_tap0,remote=remote_i,iface=p0_tap"},
 			),
 		)
 	})
@@ -91,13 +91,13 @@ func TestEnsurePort(t *testing.T) {
 			NewClient("sock").ensurePort(
 				context.Background(),
 				"p0",
-				"net_tap0,remote=remote_i,iface=p0_tap",
+				portOptions{Devargs: "net_tap0,remote=remote_i,iface=p0_tap"},
 			),
 		)
 	})
 }
 
-func TestEnsurePortInVRF(t *testing.T) {
+func TestEnsurePortWithVRF(t *testing.T) {
 	defer mockCmdExec(
 		cmdCall{
 			cmd:    "grcli --err-exit --json --socket sock interface show name pe-100",
@@ -109,8 +109,8 @@ func TestEnsurePortInVRF(t *testing.T) {
 		},
 	)()
 
-	assert.NoError(t, NewClient("sock").ensurePortInVRF(
-		context.Background(), "pe-100", "net_tap0,iface=host-100", "red"))
+	assert.NoError(t, NewClient("sock").ensurePort(
+		context.Background(), "pe-100", portOptions{Devargs: "net_tap0,iface=host-100", VRF: "red"}))
 }
 
 func TestEnsureBridge(t *testing.T) {
@@ -399,4 +399,264 @@ func TestGetAddresses(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Empty(t, addrs)
 	})
+}
+
+const interfaceShowUnderlayPortOutput = `{
+	"name": "u_enp3s0f0v0",
+	"type": "port",
+	"id": 2,
+	"devargs": "0000:03:02.0",
+	"mac": "aa:bb:cc:dd:ee:ff",
+	"n_rxq": 4,
+	"rxq_size": 1024,
+	"description": "underlay"
+}`
+
+func TestEnsurePortOptions(t *testing.T) {
+	rxqs := int32(4)
+	qsize := int32(1024)
+	opts := portOptions{
+		Devargs:  "0000:03:02.0",
+		RXQueues: &rxqs,
+		QSize:    &qsize,
+	}
+
+	t.Run("appends optional port arguments", func(t *testing.T) {
+		defer mockCmdExec(
+			cmdCall{
+				cmd:    "grcli --err-exit --json --socket sock interface show name u_enp3s0f0v0",
+				output: interfaceNotFoundOutput,
+				err:    fmt.Errorf("exit status 1"),
+			},
+			cmdCall{
+				cmd: "grcli --err-exit --json --socket sock interface add port u_enp3s0f0v0 devargs 0000:03:02.0 rxqs 4 qsize 1024 down",
+			})()
+
+		assert.NoError(t,
+			NewClient("sock").ensurePort(
+				context.Background(),
+				"u_enp3s0f0v0",
+				opts,
+			),
+		)
+	})
+
+	t.Run("omits unset options", func(t *testing.T) {
+		defer mockCmdExec(
+			cmdCall{
+				cmd:    "grcli --err-exit --json --socket sock interface show name u_enp3s0f0v0",
+				output: interfaceNotFoundOutput,
+				err:    fmt.Errorf("exit status 1"),
+			},
+			cmdCall{
+				cmd: "grcli --err-exit --json --socket sock interface add port u_enp3s0f0v0 devargs 0000:03:02.0 down",
+			})()
+
+		assert.NoError(t,
+			NewClient("sock").ensurePort(
+				context.Background(),
+				"u_enp3s0f0v0",
+				portOptions{Devargs: "0000:03:02.0"},
+			),
+		)
+	})
+
+	t.Run("no-op when existing port already matches", func(t *testing.T) {
+		defer mockCmdExec(
+			cmdCall{
+				cmd:    "grcli --err-exit --json --socket sock interface show name u_enp3s0f0v0",
+				output: interfaceShowUnderlayPortOutput,
+			})()
+
+		assert.NoError(t,
+			NewClient("sock").ensurePort(
+				context.Background(),
+				"u_enp3s0f0v0",
+				opts,
+			),
+		)
+	})
+
+	t.Run("deletes and recreates when existing port options differ", func(t *testing.T) {
+		defer mockCmdExec(
+			cmdCall{
+				cmd:    "grcli --err-exit --json --socket sock interface show name u_enp3s0f0v0",
+				output: `{"name":"u_enp3s0f0v0","type":"port","devargs":"0000:03:02.0","n_rxq":1,"rxq_size":256,"description":"underlay","flags":["up"]}`,
+			},
+			cmdCall{
+				cmd: "grcli --err-exit --json --socket sock interface del u_enp3s0f0v0",
+			},
+			cmdCall{
+				cmd: "grcli --err-exit --json --socket sock interface add port u_enp3s0f0v0 devargs 0000:03:02.0 rxqs 4 qsize 1024 down",
+			})()
+
+		assert.NoError(t,
+			NewClient("sock").ensurePort(
+				context.Background(),
+				"u_enp3s0f0v0",
+				opts,
+			),
+		)
+	})
+
+	t.Run("recreates the port when devargs change without options", func(t *testing.T) {
+		defer mockCmdExec(
+			cmdCall{
+				cmd: "grcli --err-exit --json --socket sock interface show name u_enp3s0f0v0",
+				output: `{"name":"u_enp3s0f0v0","type":"port",` +
+					`"devargs":"net_tap0,remote=enp3s0f0v0,iface=tap_enp3s0f0v0"}`,
+			},
+			cmdCall{
+				cmd: "grcli --err-exit --json --socket sock interface del u_enp3s0f0v0",
+			},
+			cmdCall{
+				cmd: "grcli --err-exit --json --socket sock interface add port u_enp3s0f0v0 devargs 0000:03:02.0 down",
+			})()
+
+		assert.NoError(t,
+			NewClient("sock").ensurePort(context.Background(), "u_enp3s0f0v0", portOptions{Devargs: "0000:03:02.0"}))
+	})
+}
+
+func TestGetInterfaceInfoParsesPortDetails(t *testing.T) {
+	t.Run("parses port details", func(t *testing.T) {
+		defer mockCmdExec(
+			cmdCall{
+				cmd:    "grcli --err-exit --json --socket sock interface show name u_enp3s0f0v0",
+				output: interfaceShowUnderlayPortOutput,
+			})()
+
+		details, err := NewClient("sock").getInterfaceInfo(context.Background(), "u_enp3s0f0v0")
+		assert.NoError(t, err)
+		assert.Equal(t, "u_enp3s0f0v0", details.Name)
+		assert.Equal(t, "port", details.Type)
+		assert.Equal(t, "0000:03:02.0", details.Devargs)
+		assert.Equal(t, "aa:bb:cc:dd:ee:ff", details.MAC)
+		assert.Equal(t, int32(4), details.NRxq)
+		assert.Equal(t, int32(1024), details.RxqSize)
+	})
+}
+
+func TestMatchesRequested(t *testing.T) {
+	rxqs := int32(4)
+	qsize := int32(1024)
+	matching := groutInterface{
+		Devargs: "0000:03:02.0",
+		MAC:     "aa:bb:cc:dd:ee:ff",
+		NRxq:    4,
+		RxqSize: 1024,
+	}
+	opts := portOptions{
+		Devargs:  "0000:03:02.0",
+		RXQueues: &rxqs,
+		QSize:    &qsize,
+	}
+
+	t.Run("matching options", func(t *testing.T) {
+		assert.True(t, matching.matchesRequested(opts))
+	})
+
+	t.Run("mismatching rx queues", func(t *testing.T) {
+		details := matching
+		details.NRxq = 1
+		assert.False(t, details.matchesRequested(opts))
+	})
+
+	t.Run("mismatching queue size", func(t *testing.T) {
+		details := matching
+		details.RxqSize = 256
+		assert.False(t, details.matchesRequested(opts))
+	})
+
+	t.Run("mismatching devargs", func(t *testing.T) {
+		requested := opts
+		requested.Devargs = "0000:ff:00.0"
+		assert.False(t, matching.matchesRequested(requested))
+	})
+
+	t.Run("mismatching vrf", func(t *testing.T) {
+		details := matching
+		details.VRF = "blue"
+		requested := opts
+		requested.VRF = "red"
+		assert.False(t, details.matchesRequested(requested))
+	})
+
+	t.Run("unspecified fields are ignored", func(t *testing.T) {
+		assert.True(t, matching.matchesRequested(portOptions{Devargs: "0000:03:02.0"}))
+	})
+
+	t.Run("tap devargs with random suffix still match", func(t *testing.T) {
+		tap := groutInterface{
+			Devargs: "net_tapabc123,remote=eth0,iface=tap_eth0",
+		}
+		assert.True(t, tap.matchesRequested(portOptions{Devargs: "net_tapxyz789,remote=eth0,iface=tap_eth0"}))
+		assert.False(t, tap.matchesRequested(portOptions{Devargs: "net_tapxyz789,remote=eth1,iface=tap_eth1"}))
+	})
+
+	t.Run("tap vs pci is a mismatch", func(t *testing.T) {
+		requested := opts
+		requested.Devargs = "net_tap0,remote=eth0,iface=tap_eth0"
+		assert.False(t, matching.matchesRequested(requested))
+	})
+}
+
+func TestDevargsMatch(t *testing.T) {
+	tests := []struct {
+		name      string
+		requested string
+		existing  string
+		want      bool
+	}{
+		{
+			name:      "identical pci",
+			requested: "0000:03:02.0",
+			existing:  "0000:03:02.0",
+			want:      true,
+		},
+		{
+			name:      "different pci",
+			requested: "0000:03:02.0",
+			existing:  "0000:ff:00.0",
+			want:      false,
+		},
+		{
+			name:      "taps with different suffix and same arguments",
+			requested: "net_tapabc123,remote=eth0,iface=tap_eth0",
+			existing:  "net_tapxyz789,remote=eth0,iface=tap_eth0",
+			want:      true,
+		},
+		{
+			name:      "taps with different arguments",
+			requested: "net_tapabc123,remote=eth0,iface=tap_eth0",
+			existing:  "net_tapabc123,remote=eth1,iface=tap_eth1",
+			want:      false,
+		},
+		{
+			name:      "tap with arguments vs pci",
+			requested: "net_tap0,remote=eth0,iface=tap_eth0",
+			existing:  "0000:03:02.0",
+			want:      false,
+		},
+		{
+			// Both sides have empty arguments, so comparing arguments
+			// instead of the whole string would wrongly report a match.
+			name:      "tap without arguments vs pci",
+			requested: "net_tap0",
+			existing:  "0000:03:02.0",
+			want:      false,
+		},
+		{
+			name:      "pci vs tap without arguments",
+			requested: "0000:03:02.0",
+			existing:  "net_tap0",
+			want:      false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, devargsMatch(tc.requested, tc.existing))
+		})
+	}
 }

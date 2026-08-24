@@ -98,8 +98,11 @@ func ensureTapPortInHostNamespace(ctx context.Context, client *Client, portName,
 	if !portExists {
 		slog.InfoContext(ctx, "creating grout port",
 			"port", portName, "tap", tapName)
-		devargs := fmt.Sprintf("net_tap%s,iface=%s", makeTapRandomString(), tapName)
-		if err := client.ensurePortInVRF(ctx, portName, devargs, vrf); err != nil {
+		opts := portOptions{
+			Devargs: fmt.Sprintf("net_tap%s,iface=%s", makeTapRandomString(), tapName),
+			VRF:     vrf,
+		}
+		if err := client.ensurePort(ctx, portName, opts); err != nil {
 			return fmt.Errorf("failed to create grout port %s in VRF %s: %w", portName, vrf, err)
 		}
 	}

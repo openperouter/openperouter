@@ -27,9 +27,13 @@ type groutAddress struct {
 }
 
 type groutInterface struct {
-	Name string `json:"name"`
-	Type string `json:"type"`
-	VRF  string `json:"vrf"`
+	Name    string `json:"name"`
+	Type    string `json:"type"`
+	VRF     string `json:"vrf"`
+	Devargs string `json:"devargs"`
+	MAC     string `json:"mac"`
+	NRxq    int32  `json:"n_rxq"`
+	RxqSize int32  `json:"rxq_size"`
 }
 
 type groutVXLANInfo struct {
@@ -52,36 +56,50 @@ func (c *Client) deleteAddress(ctx context.Context, iface, addr string) error {
 	return nil
 }
 
-func (c *Client) ensurePort(ctx context.Context, name, devargs string) error {
-	exists, err := c.portExists(ctx, name)
-	if err != nil {
-		return fmt.Errorf("checking if port %s exists: %w", name, err)
-	}
-	if exists {
-		slog.InfoContext(ctx, "grout port already exists", "name", name)
-		return nil
-	}
-
-	slog.InfoContext(ctx, "creating grout port", "name", name, "devargs", devargs)
-	if err := c.run(ctx, "interface", "add", "port", name, "devargs", devargs, "down"); err != nil {
-		return fmt.Errorf("creating grout port %s: %w", name, err)
-	}
-	return nil
+// portOptions holds the parameters for port creation.
+type portOptions struct {
+	Devargs  string
+	VRF      string
+	RXQueues *int32
+	QSize    *int32
 }
 
-func (c *Client) ensurePortInVRF(ctx context.Context, name, devargs, vrf string) error {
-	exists, err := c.portExists(ctx, name)
+// ensurePort creates the port, recreating it when an existing port with the
+// same name was created with different devargs or options.
+func (c *Client) ensurePort(ctx context.Context, name string, opts portOptions) error {
+	info, err := c.getInterfaceInfo(ctx, name)
 	if err != nil {
 		return fmt.Errorf("checking if port %s exists: %w", name, err)
 	}
-	if exists {
+	if info == nil {
+		return c.createPort(ctx, name, opts)
+	}
+	if info.matchesRequested(opts) {
 		slog.InfoContext(ctx, "grout port already exists", "name", name)
 		return nil
 	}
+	slog.InfoContext(ctx, "grout port exists with different options, deleting", "name", name)
+	if err := c.deletePort(ctx, name); err != nil {
+		return err
+	}
+	return c.createPort(ctx, name, opts)
+}
 
-	slog.InfoContext(ctx, "creating grout port in VRF", "name", name, "devargs", devargs, "vrf", vrf)
-	if err := c.run(ctx, "interface", "add", "port", name, "devargs", devargs, "vrf", vrf, "down"); err != nil {
-		return fmt.Errorf("creating grout port %s in VRF %s: %w", name, vrf, err)
+func (c *Client) createPort(ctx context.Context, name string, opts portOptions) error {
+	args := []string{"interface", "add", "port", name, "devargs", opts.Devargs}
+	if opts.VRF != "" {
+		args = append(args, "vrf", opts.VRF)
+	}
+	if opts.RXQueues != nil {
+		args = append(args, "rxqs", fmt.Sprintf("%d", *opts.RXQueues))
+	}
+	if opts.QSize != nil {
+		args = append(args, "qsize", fmt.Sprintf("%d", *opts.QSize))
+	}
+	args = append(args, "down")
+	slog.InfoContext(ctx, "creating grout port", "name", name, "opts", opts)
+	if err := c.run(ctx, args...); err != nil {
+		return fmt.Errorf("creating grout port %s: %w", name, err)
 	}
 	return nil
 }
@@ -153,6 +171,38 @@ func (c *Client) listInterfaces(ctx context.Context) ([]groutInterface, error) {
 		return nil, fmt.Errorf("parsing interface list JSON: %w", err)
 	}
 	return ifaces, nil
+}
+
+// matchesRequested reports whether the existing grout port already has the
+// requested configuration.
+func (d *groutInterface) matchesRequested(opts portOptions) bool {
+	if !devargsMatch(opts.Devargs, d.Devargs) {
+		return false
+	}
+	if opts.VRF != "" && d.VRF != opts.VRF {
+		return false
+	}
+	if opts.RXQueues != nil && d.NRxq != *opts.RXQueues {
+		return false
+	}
+	if opts.QSize != nil && d.RxqSize != *opts.QSize {
+		return false
+	}
+	return true
+}
+
+// devargsMatch reports whether two port devargs describe the same device.
+func devargsMatch(requested, existing string) bool {
+	if isTapDevargs(requested) != isTapDevargs(existing) {
+		return false
+	}
+
+	if isTapDevargs(requested) && isTapDevargs(existing) {
+		return tapDevargsArguments(requested) == tapDevargsArguments(existing)
+	}
+
+	// Both are PCI devices, compare the devargs exactly.
+	return requested == existing
 }
 
 // portExists checks whether a port with the given name exists in grout.
@@ -401,4 +451,18 @@ func isGroutErrno(err error, errno syscall.Errno) bool {
 		return false
 	}
 	return groutErr.Errno == int(errno)
+}
+
+// isTapDevargs reports whether devargs describe a DPDK TAP virtual device.
+// grout doesn't report the port driver, but DPDK virtual device names are
+// prefixed by their driver name, so the prefix identifies a TAP device.
+func isTapDevargs(devargs string) bool {
+	return strings.HasPrefix(devargs, "net_tap")
+}
+
+// tapDevargsArguments returns the arguments of TAP devargs
+// ("net_tap<random>,iface=..."), without the device name.
+func tapDevargsArguments(devargs string) string {
+	_, args, _ := strings.Cut(devargs, ",")
+	return args
 }
