@@ -169,7 +169,7 @@ var _ = Describe("L3 VNI configuration", func() {
 		toDelete := params[1]
 
 		By("removing non configured L3VNIs")
-		err := RemoveNonConfiguredVNIs(testNSPath(), []VNIParams{remaining.VNIParams})
+		err := RemoveNonConfiguredVNIs(testNSPath(), []VNIParams{remaining.VNIParams}, nil)
 		Expect(err).NotTo(HaveOccurred())
 		err = RemoveNonConfiguredVRFs(testNSPath(), map[string]bool{remaining.VRF: true})
 		Expect(err).NotTo(HaveOccurred())
@@ -366,7 +366,7 @@ var _ = Describe("L2 VNI configuration", func() {
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 
 		By("removing the VNI")
-		err = RemoveNonConfiguredVNIs(testNSPath(), []VNIParams{})
+		err = RemoveNonConfiguredVNIs(testNSPath(), []VNIParams{}, nil)
 		Expect(err).NotTo(HaveOccurred())
 		err = RemoveNonConfiguredVRFs(testNSPath(), map[string]bool{})
 		Expect(err).NotTo(HaveOccurred())
@@ -382,6 +382,101 @@ var _ = Describe("L2 VNI configuration", func() {
 				if params.VRF != "" {
 					checkLinkdeleted(g, params.VRF)
 				}
+				return nil
+			})
+		}, 30*time.Second, 1*time.Second).Should(Succeed())
+	})
+
+	It("should not delete an external bridge whose name matches br-hs-*", func() {
+		const externalBridgeName = "br-hs-666"
+		createLinuxBridge(externalBridgeName)
+
+		params := L2VNIParams{
+			VNIParams: VNIParams{
+				VRF:       "testred",
+				TargetNS:  testNSPath(),
+				VTEPIP:    "192.170.0.9/32",
+				VNI:       100,
+				VXLanPort: new(int32(4789)),
+			},
+			L2GatewayIPs: []string{"192.168.1.0/24"},
+			HostMaster: &HostMaster{
+				Name: new(externalBridgeName),
+				Type: BridgeLinkType,
+			},
+		}
+
+		createVRFInNamespace(testNS, params.VRF)
+		err := SetupL2VNI(context.Background(), params)
+		Expect(err).NotTo(HaveOccurred())
+
+		Eventually(func(g Gomega) {
+			validateL2HostLeg(g, params)
+			_ = netnamespace.In(testNS, func() error {
+				validateL2VNI(g, params)
+				return nil
+			})
+		}, 30*time.Second, 1*time.Second).Should(Succeed())
+
+		By("removing the L2VNI")
+		err = RemoveNonConfiguredVNIs(testNSPath(), []VNIParams{}, map[string]struct{}{externalBridgeName: {}})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("checking the external bridge still exists")
+		Eventually(func(g Gomega) {
+			checkLinkExists(g, externalBridgeName)
+
+			vethNames := vethNamesFromVNI(params.VNI)
+			checkLinkdeleted(g, vethNames.HostSide)
+			_ = netnamespace.In(testNS, func() error {
+				validateVNIIsNotConfigured(g, params.VNIParams)
+				return nil
+			})
+		}, 30*time.Second, 1*time.Second).Should(Succeed())
+	})
+
+	It("should delete a managed bridge whose name matches br-hs-*", func() {
+		params := L2VNIParams{
+			VNIParams: VNIParams{
+				VRF:       "testred",
+				TargetNS:  testNSPath(),
+				VTEPIP:    "192.170.0.9/32",
+				VNI:       100,
+				VXLanPort: new(int32(4789)),
+			},
+			L2GatewayIPs: []string{"192.168.1.0/24"},
+			HostMaster: &HostMaster{
+				AutoCreate: new(true),
+				Type:       BridgeLinkType,
+			},
+		}
+
+		createVRFInNamespace(testNS, params.VRF)
+		err := SetupL2VNI(context.Background(), params)
+		Expect(err).NotTo(HaveOccurred())
+
+		managedBridgeName := hostBridgeName(params.VNI)
+		Eventually(func(g Gomega) {
+			checkLinkExists(g, managedBridgeName)
+			validateL2HostLeg(g, params)
+			_ = netnamespace.In(testNS, func() error {
+				validateL2VNI(g, params)
+				return nil
+			})
+		}, 30*time.Second, 1*time.Second).Should(Succeed())
+
+		By("removing the L2VNI")
+		err = RemoveNonConfiguredVNIs(testNSPath(), []VNIParams{}, nil)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("checking the managed bridge is deleted")
+		Eventually(func(g Gomega) {
+			checkLinkdeleted(g, managedBridgeName)
+
+			vethNames := vethNamesFromVNI(params.VNI)
+			checkLinkdeleted(g, vethNames.HostSide)
+			_ = netnamespace.In(testNS, func() error {
+				validateVNIIsNotConfigured(g, params.VNIParams)
 				return nil
 			})
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
@@ -436,7 +531,7 @@ var _ = Describe("L2 VNI configuration", func() {
 		toDelete := params[1]
 
 		By("removing non configured L2VNIs")
-		err := RemoveNonConfiguredVNIs(testNSPath(), []VNIParams{remaining.VNIParams})
+		err := RemoveNonConfiguredVNIs(testNSPath(), []VNIParams{remaining.VNIParams}, nil)
 		Expect(err).NotTo(HaveOccurred())
 		err = RemoveNonConfiguredVRFs(testNSPath(), map[string]bool{remaining.VRF: true})
 		Expect(err).NotTo(HaveOccurred())
