@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os/exec"
+	"slices"
 	"strings"
 )
 
@@ -36,6 +37,18 @@ type groutVXLANInfo struct {
 	VRF     string `json:"vrf"`
 }
 
+type groutInterfaceProperties struct {
+	Name        string   `json:"name"`
+	Type        string   `json:"type"`
+	Description string   `json:"description"`
+	Devargs     string   `json:"devargs"`
+	MAC         string   `json:"mac"`
+	MTU         int32    `json:"mtu"`
+	NRxq        int32    `json:"n_rxq"`
+	RxqSize     int32    `json:"rxq_size"`
+	Flags       []string `json:"flags"`
+}
+
 // NewClient creates a new grout client pointing at the given UNIX socket.
 func NewClient(socketPath string) *Client {
 	return &Client{socketPath: socketPath}
@@ -49,18 +62,62 @@ func (c *Client) deleteAddress(ctx context.Context, iface, addr string) error {
 	return nil
 }
 
+// PortOptions holds optional parameters for DPDK port creation.
+type PortOptions struct {
+	MTU         *int32
+	RXQueues    *int32
+	QSize       *int32
+	Promiscuous *bool
+	MAC         *string
+	Description string
+}
+
 func (c *Client) ensurePort(ctx context.Context, name, devargs string) error {
-	exists, err := c.portExists(ctx, name)
-	if err != nil {
+	return c.ensurePortWithOptions(ctx, name, devargs, PortOptions{})
+}
+
+func (c *Client) ensurePortWithOptions(ctx context.Context, name, devargs string, opts PortOptions) error {
+	details, err := c.getInterfaceDetails(ctx, name)
+	if err != nil && !isNoSuchDevice(err) {
 		return fmt.Errorf("checking if port %s exists: %w", name, err)
 	}
-	if exists {
+	if err == nil && (!portOptionsSpecified(opts) || details.matchesRequested(devargs, opts)) {
 		slog.InfoContext(ctx, "grout port already exists", "name", name)
 		return nil
 	}
+	if err == nil {
+		slog.InfoContext(ctx, "grout port exists with different options, deleting", "name", name)
+		if err := c.deletePort(ctx, name); err != nil {
+			return err
+		}
+	}
 
-	slog.InfoContext(ctx, "creating grout port", "name", name, "devargs", devargs)
-	if err := c.run(ctx, "interface", "add", "port", name, "devargs", devargs); err != nil {
+	args := []string{"interface", "add", "port", name, "devargs", devargs}
+	if opts.MTU != nil {
+		args = append(args, "mtu", fmt.Sprintf("%d", *opts.MTU))
+	}
+	if opts.RXQueues != nil {
+		args = append(args, "rxqs", fmt.Sprintf("%d", *opts.RXQueues))
+	}
+	if opts.QSize != nil {
+		args = append(args, "qsize", fmt.Sprintf("%d", *opts.QSize))
+	}
+	if opts.Promiscuous != nil {
+		if *opts.Promiscuous {
+			args = append(args, "promisc", "on")
+		} else {
+			args = append(args, "promisc", "off")
+		}
+	}
+	if opts.MAC != nil {
+		args = append(args, "mac", *opts.MAC)
+	}
+	if opts.Description != "" {
+		args = append(args, "description", opts.Description)
+	}
+
+	slog.InfoContext(ctx, "creating grout port", "name", name, "devargs", devargs, "opts", opts)
+	if err := c.run(ctx, args...); err != nil {
 		return fmt.Errorf("creating grout port %s: %w", name, err)
 	}
 	return nil
@@ -144,10 +201,81 @@ func (c *Client) listInterfaces(ctx context.Context) ([]groutInterface, error) {
 	return ifaces, nil
 }
 
+func (c *Client) getInterfaceDetails(ctx context.Context, name string) (*groutInterfaceProperties, error) {
+	out, err := c.runOutput(ctx, "interface", "show", "name", name)
+	if err != nil {
+		return nil, fmt.Errorf("getting interface details for %s: %w", name, err)
+	}
+	var details groutInterfaceProperties
+	if err := json.Unmarshal([]byte(out), &details); err != nil {
+		return nil, fmt.Errorf("parsing interface details JSON for %s (raw %s): %w", name, out, err)
+	}
+	return &details, nil
+}
+
+// matchesRequested reports whether the existing grout port already has the
+// requested configuration. TAP devargs include a random suffix, so they are
+// not compared for equality.
+func (d *groutInterfaceProperties) matchesRequested(devargs string, opts PortOptions) bool {
+	if isTAPDevargs(devargs) || isTAPDevargs(d.Devargs) {
+		if isTAPDevargs(devargs) != isTAPDevargs(d.Devargs) {
+			return false
+		}
+	} else if d.Devargs != devargs {
+		return false
+	}
+	if opts.Description != "" && d.Description != opts.Description {
+		return false
+	}
+	if opts.MTU != nil && d.MTU != *opts.MTU {
+		return false
+	}
+	if opts.RXQueues != nil && d.NRxq != *opts.RXQueues {
+		return false
+	}
+	if opts.QSize != nil && d.RxqSize != *opts.QSize {
+		return false
+	}
+	if opts.MAC != nil && !strings.EqualFold(d.MAC, *opts.MAC) {
+		return false
+	}
+	if opts.Promiscuous != nil && hasPromiscFlag(d.Flags) != *opts.Promiscuous {
+		return false
+	}
+	return true
+}
+
+func isTAPDevargs(devargs string) bool {
+	return strings.Contains(devargs, "net_tap")
+}
+
+func portOptionsSpecified(opts PortOptions) bool {
+	return opts.MTU != nil || opts.RXQueues != nil || opts.QSize != nil || opts.Promiscuous != nil || opts.MAC != nil || opts.Description != ""
+}
+
+func hasPromiscFlag(flags []string) bool {
+	// when promisc is set, the flags field contains "promisc". if it's not set, the flags field
+	// does not contain "promisc", even if the port has been created with explicit`promisc off`
+	//
+	// grout# interface add port p1 devargs net_null1 promisc on
+	// grout# interface show name p1
+	// ...
+	// flags: up running promisc allmulti
+	//
+	// grout# interface add port p2 devargs net_null2 promisc off
+	// grout# interface show name p2
+	// flags: up running allmulti
+	return slices.Contains(flags, "promisc")
+}
+
 // portExists checks whether a port with the given name exists in grout.
 func (c *Client) portExists(ctx context.Context, name string) (bool, error) {
 	info, err := c.getInterfaceInfo(ctx, name)
 	if err != nil {
+		// grcli returns an error when the interface doesn't exist
+		if isNoSuchDevice(err) {
+			return false, nil
+		}
 		return false, err
 	}
 	return info != nil, nil
@@ -166,6 +294,10 @@ func (c *Client) getInterfaceInfo(ctx context.Context, name string) (*groutInter
 		return nil, fmt.Errorf("parsing interface info for %s: %w", name, err)
 	}
 	return &info, nil
+}
+
+func isNoSuchDevice(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "No such")
 }
 
 // run executes a grcli command and returns any error.
