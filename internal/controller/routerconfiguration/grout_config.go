@@ -32,7 +32,7 @@ func NewGroutConfigurator(groutSocketPath string) *GroutDatapathConfigurator {
 func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interfacesConfiguration) error {
 	groutClient := grout.NewClient(g.groutSocketPath)
 
-	currentUnderlayIfaces, err := hostnetwork.UnderlayInterfaces(config.targetNamespace)
+	currentUnderlayIfaces, err := grout.UnderlayInterfaces(ctx, groutClient, config.targetNamespace)
 	if err != nil {
 		return fmt.Errorf("failed to check if target namespace %s has underlay: %w", config.targetNamespace, err)
 	}

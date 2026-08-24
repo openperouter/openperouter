@@ -140,6 +140,17 @@ func EnableVRFStrictMode() Sysctl {
 	}
 }
 
+// DisableAcceptRA returns the sysctl definition for disabling IPv6 Router
+// Advertisement processing on the given interface, which prevents the kernel
+// from autoconfiguring SLAAC addresses.
+func DisableAcceptRA(ifname string) Sysctl {
+	return Sysctl{
+		Path:        fmt.Sprintf("net/ipv6/conf/%s/accept_ra", ifname),
+		Description: fmt.Sprintf("disable accept_ra on interface %s", ifname),
+		Value:       "0",
+	}
+}
+
 // DisableRPFilter returns the sysctl definition for disabling reverse path filtering on the
 // given interface. Disabling rp_filter (setting it to 0) is necessary for interfaces that receive
 // packets with source addresses that may not match the local routing table, such as SRv6 decapsulated
