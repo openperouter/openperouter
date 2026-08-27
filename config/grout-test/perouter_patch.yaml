@@ -26,21 +26,13 @@ spec:
           mountPath: /var/run/grout
       - name: grout
         securityContext:
-          allowPrivilegeEscalation: false
-          readOnlyRootFilesystem: true
-          capabilities:
-            drop: ["ALL"]
-            add: ["SYS_ADMIN", "NET_ADMIN", "NET_RAW", "IPC_LOCK"]
-          seccompProfile:
-            type: Unconfined
+          privileged: true
         image: quay.io/openperouter/router
         imagePullPolicy: IfNotPresent
         env:
         - name: GROUT_SOCK_PATH
           value: "/var/run/grout/grout.sock"
-        # TAP/test-mode sizing. Grout defaults target a full-table router and
-        # would exhaust typical pod memory when allocating per-VRF FIBs.
-        # _DUMMY_ skips the LPM tables that dominate that cost.
+        # TAP/test-mode sizing (smaller mempool and RX/TX rings than config/grout).
         - name: GROUT_MAX_IFACES
           value: "128"
         - name: GROUT_MEMPOOL_CHUNK_SIZE
@@ -62,10 +54,10 @@ spec:
         resources:
           requests:
             memory: "1Gi"
-            hugepages-1Gi: "2Gi"
+            hugepages-1Gi: null
           limits:
             memory: "2Gi"
-            hugepages-1Gi: "2Gi"
+            hugepages-1Gi: null
         command:
         - /bin/sh
         - -c
@@ -81,7 +73,9 @@ spec:
               exit 1
             fi
           done
-          exec nsenter --net=/var/run/netns/perouter grout --socket-mode 0666
+          ulimit -l unlimited
+          date
+          exec nsenter --net=/var/run/netns/perouter grout --socket-mode 0666 --verbose --trace-packets --test-mode
         volumeMounts:
         - name: grout-socket
           mountPath: /var/run/grout
@@ -96,7 +90,7 @@ spec:
         - name: dpdk-runtime
           mountPath: /var/run/dpdk
         - name: hugepages
-          mountPath: /dev/hugepages
+          $patch: delete
         - name: vfio
           mountPath: /dev/vfio
         startupProbe:
@@ -132,9 +126,8 @@ spec:
       - name: dpdk-runtime
         emptyDir: {}
       - name: hugepages
-        emptyDir:
-          medium: HugePages
+        $patch: delete
       - name: vfio
         hostPath:
           path: /dev/vfio
-          type: DirectoryOrCreate
+          type: Directory
