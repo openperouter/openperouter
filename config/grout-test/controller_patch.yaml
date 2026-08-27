@@ -1,0 +1,5 @@
+# grout-test config is used in CI kind clusters, where veth netlinks
+# can be used as underlays only via TAP ports.
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: "--grout-tap-underlay"
