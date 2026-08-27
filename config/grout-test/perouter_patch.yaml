@@ -1,0 +1,51 @@
+# Test mode for CI kind clusters: TAP underlays only, so no hugepages and no
+# VFIO devices. DUMMY FIBs skip the LPM tables that dominate the per-VRF FIB
+# memory cost.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: router
+  namespace: system
+spec:
+  template:
+    spec:
+      containers:
+      # Listed only to keep frr as the first (default) container.
+      - name: frr
+      - name: grout
+        env:
+        - name: GROUT_FIB4_ALGORITHM
+          value: DUMMY
+        - name: GROUT_FIB6_ALGORITHM
+          value: DUMMY
+        resources:
+          requests:
+            hugepages-1Gi: null
+          limits:
+            hugepages-1Gi: null
+        command:
+        - /bin/sh
+        - -c
+        - |
+          TIMEOUT=60
+          WAITED=0
+          until [ -e /var/run/netns/perouter ]; do
+            echo "Waiting for named netns /var/run/netns/perouter..."
+            sleep 1
+            WAITED=$((WAITED + 1))
+            if [ "$WAITED" -ge "$TIMEOUT" ]; then
+              echo "Timed out waiting for named netns after ${TIMEOUT}s"
+              exit 1
+            fi
+          done
+          exec nsenter --net=/var/run/netns/perouter grout --socket-mode 0666 --test-mode
+        volumeMounts:
+        - mountPath: /dev/hugepages
+          $patch: delete
+        - mountPath: /dev/vfio
+          $patch: delete
+      volumes:
+      - name: hugepages
+        $patch: delete
+      - name: vfio
+        $patch: delete

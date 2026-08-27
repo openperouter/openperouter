@@ -358,6 +358,12 @@ spec:
             mountPath: /dev/net/tun
           - name: dpdk-runtime
             mountPath: /var/run/dpdk
+          - name: vfio
+            mountPath: /dev/vfio
+          {{- if not .Values.openperouter.grout.testMode }}
+          - name: hugepages
+            mountPath: /dev/hugepages
+          {{- end }}
         {{- with .Values.openperouter.grout.resources }}
         resources:
           {{- toYaml . | nindent 12 }}
@@ -425,6 +431,15 @@ spec:
             type: CharDevice
         - name: dpdk-runtime
           emptyDir: {}
+        - name: vfio
+          hostPath:
+            path: /dev/vfio
+            type: DirectoryOrCreate
+        {{- if not .Values.openperouter.grout.testMode }}
+        - name: hugepages
+          emptyDir:
+            medium: HugePages
+        {{- end }}
         {{- end }}
       initContainers:
         # Copies the initial config files with the right permissions to the shared volume.
