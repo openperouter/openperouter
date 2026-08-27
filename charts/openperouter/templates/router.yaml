@@ -349,6 +349,8 @@ spec:
             mountPath: /dev/net/tun
           - name: dpdk-runtime
             mountPath: /var/run/dpdk
+          - name: vfio
+            mountPath: /dev/vfio
         {{- with .Values.openperouter.grout.resources }}
         resources:
           {{- toYaml . | nindent 12 }}
@@ -416,6 +418,10 @@ spec:
             type: CharDevice
         - name: dpdk-runtime
           emptyDir: {}
+        - name: vfio
+          hostPath:
+            path: /dev/vfio
+            type: DirectoryOrCreate
         {{- end }}
       initContainers:
         # Copies the initial config files with the right permissions to the shared volume.
