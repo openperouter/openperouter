@@ -26,13 +26,7 @@ spec:
           mountPath: /var/run/grout
       - name: grout
         securityContext:
-          allowPrivilegeEscalation: false
-          readOnlyRootFilesystem: true
-          capabilities:
-            drop: ["ALL"]
-            add: ["SYS_ADMIN", "NET_ADMIN", "NET_RAW", "IPC_LOCK"]
-          seccompProfile:
-            type: Unconfined
+          privileged: true
         image: quay.io/openperouter/router
         imagePullPolicy: IfNotPresent
         env:
