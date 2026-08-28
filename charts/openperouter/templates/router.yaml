@@ -276,17 +276,7 @@ spec:
       {{- if eq .Values.openperouter.datapath "grout" }}
       - name: grout
         securityContext:
-          allowPrivilegeEscalation: false
-          readOnlyRootFilesystem: true
-          capabilities:
-            drop: ["ALL"]
-            add:
-            - SYS_ADMIN
-            - NET_ADMIN
-            - NET_RAW
-            - IPC_LOCK
-          seccompProfile:
-            type: Unconfined
+          privileged: true
         image: "{{ .Values.openperouter.grout.image.repository }}:{{ .Values.openperouter.grout.image.tag }}"
         {{- if .Values.openperouter.grout.image.pullPolicy }}
         imagePullPolicy: {{ .Values.openperouter.grout.image.pullPolicy }}
