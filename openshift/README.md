@@ -26,8 +26,12 @@ podman build -v "$TMPDIR/entitlement:/run/secrets/etc-pki-entitlement:Z"  \
 ## Refreshing RPM lockfiles
 
 The `rpms.in.yaml` and `rpms.lock.yaml` files declare the RPM dependencies
-needed by the `grout-builder` stage in `Dockerfile.openshift`. Konflux uses
-them to prefetch packages for hermetic builds.
+needed by the OpenShift images. Konflux uses them to prefetch packages for
+hermetic builds.
+
+FRR is consumed from Fast Datapath (FDP): the `frr` daemon (runtime) and
+`frr-headers` (used to compile the `grout-frr` zebra dataplane plugin) come from
+the `fast-datapath-for-rhel-10-x86_64-rpms` repository, not from a source build.
 
 ## When to refresh
 
@@ -59,7 +63,7 @@ podman run -it -v `pwd`:/src:Z -v "$TMPDIR/entitlement:/run/secrets/etc-pki-enti
 dnf install -y pip skopeo
 pip install https://github.com/konflux-ci/rpm-lockfile-prototype/archive/refs/tags/v0.13.1.tar.gz
 
-dnf config-manager --set-enabled "codeready-builder-for-rhel-10-x86_64-rpms,rhel-10-for-x86_64-baseos-rpms,rhel-10-for-x86_64-appstream-rpms";
+dnf config-manager --set-enabled "codeready-builder-for-rhel-10-x86_64-rpms,rhel-10-for-x86_64-baseos-rpms,rhel-10-for-x86_64-appstream-rpms,fast-datapath-for-rhel-10-x86_64-rpms";
 
 # clean redhat.repo by removing all the disabled repositories
 awk 'BEGIN{RS=""; ORS="\n\n"} /^#/ || /enabled = 1/' /etc/yum.repos.d/redhat.repo > /src/openshift/redhat.repo

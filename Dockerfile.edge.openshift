@@ -28,7 +28,7 @@ FROM ${BASE_IMAGE} AS grout-builder
 
 RUN . /etc/os-release && \
       if [ "$ID" = "rhel" ] || [ "$ID" = "ubi" ]; then \
-        dnf config-manager --set-enabled "codeready-builder-for-rhel-10-x86_64-rpms,rhel-10-for-x86_64-baseos-rpms,rhel-10-for-x86_64-appstream-rpms"; \
+        dnf config-manager --set-enabled "codeready-builder-for-rhel-10-x86_64-rpms,rhel-10-for-x86_64-baseos-rpms,rhel-10-for-x86_64-appstream-rpms,fast-datapath-for-rhel-10-x86_64-rpms"; \
       else \
         dnf config-manager --set-enabled "crb,baseos,appstream"; \
       fi
@@ -56,7 +56,6 @@ RUN dnf --nogpgcheck install --setopt=install_weak_deps=0 --nodocs -y \
 COPY openshift/grout /src
 COPY openshift/deps/dpdk /src/subprojects/dpdk-stable-25.11.2
 COPY openshift/deps/libecoli /src/subprojects/libecoli-0.11.3
-COPY openshift/deps/frr /src/subprojects/frr-frr-10.6.1
 
 WORKDIR /src
 
@@ -65,24 +64,12 @@ RUN for p in `sed -En 's%[[:space:]]*(dpdk/.*\.patch),?$%\1%p' subprojects/dpdk-
                patch -d subprojects/dpdk-stable-25.11.2 -p1 < "subprojects/packagefiles/$p" || exit; \
        done
 
-# Apply frr overlay files (meson skips patch_directory for pre-existing directories)
-RUN cp subprojects/packagefiles/frr/* subprojects/frr-frr-10.6.1/
+# FRR is consumed from Fast Datapath (FDP), not built from source. Install the
+# FDP frr-headers so the grout-frr zebra dataplane plugin is compiled against the
+# same FRR version (10.7) that ships in the final image.
+RUN dnf --nogpgcheck install -y frr-headers
 
-# Create frr tarball in packagecache (make frr-rpm expects it there)
-RUN mkdir -p subprojects/packagecache && \
-    tar -C subprojects -czf subprojects/packagecache/frr-10.6.1.tar.gz frr-frr-10.6.1/
-
-
-# Update frr.wrap source_hash to match the locally created tarball
-RUN HASH=$(sha256sum subprojects/packagecache/frr-10.6.1.tar.gz | cut -d' ' -f1) && \
-    sed -i "s/^source_hash = .*/source_hash = $HASH/" subprojects/frr-10.6.wrap
-
-RUN make frr-rpm FRR=10.6
-
-RUN dnf --nogpgcheck install -y \
-   frr-headers.noarch.rpm
-
-RUN make rpm FRR=10.6 WITHOUT="tests docs systemd"
+RUN make rpm FRR=10.7 WITHOUT="tests docs systemd"
 
 ENTRYPOINT ["/bin/bash"]
 
@@ -113,7 +100,7 @@ RUN dnf --nogpgcheck install --setopt=install_weak_deps=0 --nodocs -y \
 RUN ln -s /usr/libexec/podman/catatonit /sbin/tini
 
 # Pin FRR GIDs before RPM install so they match the supplementalGroups
-# in the Kubernetes pod spec. The grout FRR RPM uses sysusers.d which
+# in the Kubernetes pod spec. The FDP FRR RPM uses sysusers.d which
 # assigns dynamic GIDs; pre-creating the groups forces stable values.
 # GID 92: frr group (VTY sockets are owned frr:frr in this image)
 # GID 102: frrvty group (VTY sockets are owned frr:frrvty in the Alpine image)
@@ -122,19 +109,20 @@ RUN groupadd --system --gid 92 frr && \
     groupadd --system --gid 102 frrvty && \
     usermod --append --groups frrvty frr
 
+# FRR comes from Fast Datapath (FDP); grout and its grout-frr plugin are built
+# from source and installed from the grout-builder stage.
 COPY --from=grout-builder /src/*.rpm /grout/
 RUN dnf --nogpgcheck install -y \
-    /grout/frr.x86_64.rpm \
+    frr \
     /grout/grout.x86_64.rpm \
     /grout/grout-frr.x86_64.rpm \
-    /grout/frr-debuginfo.x86_64.rpm \
     /grout/grout-debuginfo.x86_64.rpm \
     /grout/grout-frr-debuginfo.x86_64.rpm
 
 
 RUN . /etc/os-release && \
       if [ "$ID" = "rhel" ] || [ "$ID" = "ubi" ]; then \
-        dnf config-manager --set-enabled "codeready-builder-for-rhel-10-x86_64-rpms,rhel-10-for-x86_64-baseos-rpms,rhel-10-for-x86_64-appstream-rpms"; \
+        dnf config-manager --set-enabled "codeready-builder-for-rhel-10-x86_64-rpms,rhel-10-for-x86_64-baseos-rpms,rhel-10-for-x86_64-appstream-rpms,fast-datapath-for-rhel-10-x86_64-rpms"; \
       else \
         dnf config-manager --set-enabled "crb,baseos,appstream"; \
       fi
@@ -145,8 +133,6 @@ COPY systemdmode/frrconfig/daemons /etc/frr/daemons
 COPY systemdmode/frrconfig/vtysh.conf /etc/frr/vtysh.conf
 COPY systemdmode/frrconfig/frr.conf /etc/frr/frr.conf
 COPY openshift/frr-docker-start /usr/lib/frr/docker-start
-
-RUN ln -s /usr/libexec/frr/frr-reload.py /usr/lib/frr/frr-reload.py
 
 RUN chmod 640 /etc/frr/* && chown -R frr:frr /etc/frr
 

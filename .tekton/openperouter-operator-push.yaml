@@ -37,7 +37,7 @@ spec:
   - name: hermetic
     value: "true"
   - name: prefetch-input
-    value: '[{"type": "gomod", "path": "."}]'
+    value: '[{"type": "gomod", "path": "."}, {"type": "rpm", "path": "openshift"}]'
   - name: build-source-image
     value: 'true'
   - name: skip-sast-coverity
@@ -99,7 +99,8 @@ spec:
       description: Add built image into an OCI image index
       name: build-image-index
       type: string
-    - default: []
+    - default:
+        - BASE_IMAGE=registry.redhat.io/ubi10/ubi:10.1-1774545609
       description: Array of --build-arg values ("arg=value" strings) for buildah
       name: build-args
       type: array

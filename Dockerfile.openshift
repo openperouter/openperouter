@@ -1,3 +1,6 @@
+# Tekton piplines override this with a UBI image
+ARG BASE_IMAGE=registry.redhat.io/ubi10/ubi:10.1-1774545609
+
 # Build the manager binary
 FROM brew.registry.redhat.io/rh-osbs/openshift-golang-builder:rhel_9_golang_1.26 AS builder
 
@@ -22,15 +25,28 @@ RUN GOEXPERIMENT=strictfipsruntime CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=
 
 FROM registry.redhat.io/openshift4/ose-container-networking-plugins-rhel9:v4.22.0-202606220442.p2.g659bc0a.assembly.stream.el9 as openshift-cni-binaries
 
-FROM registry.redhat.io/openshift4/frr-rhel9:v4.22
+FROM ${BASE_IMAGE}
+
+# Enable the repositories that provide FRR (Fast Datapath) and its dependencies.
+RUN . /etc/os-release && \
+      if [ "$ID" = "rhel" ] || [ "$ID" = "ubi" ]; then \
+        dnf config-manager --set-enabled "rhel-10-for-x86_64-baseos-rpms,rhel-10-for-x86_64-appstream-rpms,fast-datapath-for-rhel-10-x86_64-rpms"; \
+      else \
+        dnf config-manager --set-enabled "baseos,appstream"; \
+      fi
 
 # Pin FRR GIDs to 92/102 to match the pod spec supplementalGroups.
-# The RHEL FRR RPM assigns dynamic GIDs (997/998) which differ from
-# the values hardcoded in the Helm chart and operator bindata (92/102).
-RUN userdel frr 2>/dev/null; groupdel frrvty 2>/dev/null; groupdel frr 2>/dev/null; \
-    groupadd -r -g 92 frr && \
-    groupadd -r -g 102 frrvty && \
-    useradd -r -u 92 -g frr -G frrvty -d /var/run/frr -s /sbin/nologin -c "FRRouting suite" frr && \
+# The RHEL FRR RPM assigns dynamic GIDs which differ from the values
+# hardcoded in the Helm chart and operator bindata (92/102). Pre-creating
+# the groups/user before the RPM install forces stable values.
+RUN groupadd --system --gid 92 frr && \
+    useradd --system --uid 92 --gid frr --home-dir /var/run/frr --shell /sbin/nologin --comment "FRRouting suite" frr && \
+    groupadd --system --gid 102 frrvty && \
+    usermod --append --groups frrvty frr
+
+# FRR is consumed from Fast Datapath (FDP) instead of a prebuilt FRR base image.
+RUN dnf --nogpgcheck install --setopt=install_weak_deps=0 --nodocs -y \
+    frr shadow-utils && \
     chown -R frr:frr /etc/frr /var/run/frr
 
 WORKDIR /
