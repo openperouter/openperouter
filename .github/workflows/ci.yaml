@@ -220,6 +220,8 @@ jobs:
 
   e2etests:
     runs-on: ubuntu-22.04
+    permissions:
+      contents: read
     env:
       NODE_IMAGE: quay.io/openperouter/kind-node-openperouter:${{ needs.build-kind-node-image.outputs.kind-node-version }}
     needs:
@@ -247,6 +249,8 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-go@v7
         with:
@@ -366,6 +370,40 @@ jobs:
         if: ${{ failure() }}
         run: |
           cp /tmp/check_veths.log /tmp/kind_logs/check_veths.log 2>/dev/null || true
+
+      - name: Analyze e2e test failure
+        if: ${{ failure() }}
+        continue-on-error: true
+        env:
+          WORKFLOW_NAME: ${{ github.workflow }}
+        run: |
+          set -o pipefail
+          PROMPT="A GitHub Actions e2e test job failed.
+          Deployment/matrix variant: ${{ matrix.deployment }}
+          Workflow: ${WORKFLOW_NAME}
+          Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          Job: ${{ github.job }}
+
+          The e2e test logs for this job are in /tmp/kind_logs/. Analyze the first test failure:
+          - Identify the root cause from the logs (router/FRR/CNI/kind logs, Ginkgo failures, etc.)
+          - Determine if this looks like a flake or a real regression
+          - Give specific, actionable fix suggestions referencing file paths where relevant
+          Be concise and concrete."
+
+          OPENCODE_VERSION=v1.18.25
+          OPENCODE_SHA256=58a3729a6f3432dd6d2917fcc4a949788891a035818646ad480e12c947f56e78
+          curl --proto '=https' --tlsv1.2 --connect-timeout 30 --max-time 120 -fsSLo /tmp/opencode.tar.gz \
+            "https://github.com/anomalyco/opencode/releases/download/${OPENCODE_VERSION}/opencode-linux-x64.tar.gz"
+          echo "${OPENCODE_SHA256}  /tmp/opencode.tar.gz" | sha256sum --check --status -
+          mkdir -p "$HOME/.local/bin"
+          timeout 60s tar -xzf /tmp/opencode.tar.gz -C "$HOME/.local/bin"
+          export PATH="$HOME/.local/bin:$PATH"
+          OPENCODE_PERMISSION='{"*":"deny","read":"allow","glob":"allow","grep":"allow","bash":"deny","edit":"deny","task":"deny","webfetch":"deny","websearch":"deny"}' \
+            timeout 10m opencode --pure run \
+            --model opencode/big-pickle \
+            --auto \
+            "$PROMPT" \
+            | tee /tmp/kind_logs/e2e-failure-analysis.md
 
       - name: Collect Logs
         if: ${{ failure() }}
