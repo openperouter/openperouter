@@ -385,6 +385,7 @@ func (r *PERouterReconciler) fetchPasswordFromSecret(ctx context.Context, ref *v
 	return resolved, nil
 }
 
+// maxPasswordLength matches Linux TCP_MD5SIG_MAXKEYLEN, the BGP MD5 key limit.
 const maxPasswordLength = 80
 
 var validPasswordPattern = regexp.MustCompile(`^\S+$`)

@@ -303,6 +303,8 @@ func staticUnderlaysToAPI(
 		for j, sn := range staticUnderlay.Neighbors {
 			neighbor := sn.Neighbor
 			if sn.Password != nil {
+				// The static plaintext value supplies authentication, so retaining a
+				// Secret reference would make the mirrored CR misleading.
 				neighbor.PasswordSecret = nil
 			}
 			spec.Neighbors[j] = neighbor
