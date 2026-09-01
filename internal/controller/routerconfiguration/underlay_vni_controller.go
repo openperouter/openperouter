@@ -322,6 +322,8 @@ func (r *PERouterReconciler) resolvePasswordSecrets(ctx context.Context, config 
 				continue
 			}
 
+			// A password already in the map comes from static (systemd) plaintext
+			// config, which takes precedence over the Secret.
 			if _, alreadyResolved := config.Passwords[conversion.NeighborID(n)]; alreadyResolved {
 				validNeighbors = append(validNeighbors, n)
 				continue
