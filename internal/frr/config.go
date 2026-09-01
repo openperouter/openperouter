@@ -213,7 +213,7 @@ func (n NeighborConfig) IsRouteReflectorClientFor(afi networklayerprotocol.AFI, 
 	return nlp.Properties.RouteReflectorClient
 }
 
-var frrPasswordRe = regexp.MustCompile(`(neighbor .*) password (.*)`)
+var frrPasswordRe = regexp.MustCompile(`(neighbor[ \t]+\S+[ \t]+password[ \t]+)[^\r\n]*`)
 
 func (nc NeighborConfig) LogValue() slog.Value {
 	type noLogValuer NeighborConfig
@@ -223,7 +223,7 @@ func (nc NeighborConfig) LogValue() slog.Value {
 }
 
 func RedactPasswords(config string) string {
-	return frrPasswordRe.ReplaceAllString(config, "${1} password <REDACTED>")
+	return frrPasswordRe.ReplaceAllString(config, "${1}<REDACTED>")
 }
 
 // shouldRenderUnderlayEVPN tells whether the underlay needs the l2vpn evpn

@@ -24,6 +24,7 @@ type frrConfigData struct {
 type frrConfiguratorType func(ctx context.Context, data frrConfigData) error
 
 func configureFRR(ctx context.Context, data frrConfigData) error {
+	slog.DebugContext(ctx, "reloading FRR config", "config", redactFrrConfigData(data))
 	frrConfig, err := conversion.APItoFRR(data.APIConfigData, data.nodeIndex, data.logLevel)
 	emptyConfig := conversion.NoUnderlaysError("")
 	if errors.As(err, &emptyConfig) {
@@ -51,4 +52,11 @@ func configureFRR(ctx context.Context, data frrConfigData) error {
 		slog.InfoContext(ctx, "FRR configuration updated", "config", frr.RedactPasswords(string(newConfig)))
 	}
 	return nil
+}
+
+// redactFrrConfigData returns a copy of data safe for logging, with resolved
+// BGP passwords and any passwords in raw FRR snippets redacted.
+func redactFrrConfigData(data frrConfigData) frrConfigData {
+	data.APIConfigData = conversion.RedactAPIConfigData(data.APIConfigData)
+	return data
 }
