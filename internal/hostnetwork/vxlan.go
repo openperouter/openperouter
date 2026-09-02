@@ -26,6 +26,13 @@ func setupVXLan(params VNIParams, bridge *netlink.Bridge) error {
 	if err := netlink.LinkSetBrNeighSuppress(vxlan, true); err != nil {
 		return fmt.Errorf("failed to set neigh suppression for %s: %w", vxlan.Name, err)
 	}
+	// LinkSetLearning disables MAC learning for the bridge_slave. ip link syntax is:
+	// ip link set <...> type bridge_slave learning off
+	// Note that this is different from the VXLAN's 'nolearning' parameter (which we set inside createVXLan via
+	// Learning: false) and which disables VTEP learning.
+	if err := netlink.LinkSetLearning(vxlan, false); err != nil {
+		return fmt.Errorf("failed to disable MAC learning (learning off) for %s: %w", vxlan.Name, err)
+	}
 
 	if err = linkSetUp(vxlan); err != nil {
 		return fmt.Errorf("could not set link up for vxlan %s: %v", vxlan.Name, err)
@@ -54,7 +61,7 @@ func checkVXLanConfigured(vxLan *netlink.Vxlan, bridgeIndex, loopbackIndex int, 
 		return fmt.Errorf("port is not one coming from params: %d, %d", vxLan.Port, paramsVXLanPort)
 	}
 	if vxLan.Learning {
-		return fmt.Errorf("learning is enabled")
+		return errors.New("VTEP learning is enabled")
 	}
 	if err := validateVxlan(vxLan, params); err != nil {
 		return err
@@ -88,7 +95,7 @@ func createVXLan(params VNIParams, bridge *netlink.Bridge) (*netlink.Vxlan, erro
 		},
 		VxlanId:      int(params.VNI),
 		Port:         int(*params.VXLanPort),
-		Learning:     false,
+		Learning:     false, // Disable VTEP learning (ip link add <...> type vxlan <...> nolearning).
 		VtepDevIndex: loopback.Index,
 		SrcAddr:      vtepIP,
 	}
