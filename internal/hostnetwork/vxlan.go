@@ -23,7 +23,7 @@ func setupVXLan(params VNIParams, bridge *netlink.Bridge) error {
 	if err := setAddrGenModeNone(vxlan); err != nil {
 		return fmt.Errorf("failed to set addr_gen_mode to 1 for %s: %w", vxlan.Name, err)
 	}
-	if err := setNeighSuppression(vxlan); err != nil {
+	if err := netlink.LinkSetBrNeighSuppress(vxlan, true); err != nil {
 		return fmt.Errorf("failed to set neigh suppression for %s: %w", vxlan.Name, err)
 	}
 
