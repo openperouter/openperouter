@@ -1,0 +1,65 @@
+apiVersion: network.openperouter.io/v1alpha1
+kind: L3VNI
+metadata:
+  name: red
+  namespace: openperouter-system
+spec:
+  vrf: red
+  hostSession:
+    asn: 64514
+    hostASN: 64515
+    localCIDR:
+      ipv4: 192.169.10.0/24
+  vni: 100
+---
+apiVersion: network.openperouter.io/v1alpha1
+kind: L2VNI
+metadata:
+  name: finance-net
+  namespace: openperouter-system
+spec:
+  vni: 110
+  routingDomain:
+    type: L3VNI
+    l3vni:
+      name: red
+  hostMaster:
+    type: LinuxBridge
+    linuxBridge:
+      lifecycle: Managed
+  gatewayIPs: ["192.170.1.1/24"]
+---
+apiVersion: network.openperouter.io/v1alpha1
+kind: L2VNI
+metadata:
+  name: hr-net
+  namespace: openperouter-system
+spec:
+  vni: 120
+  routingDomain:
+    type: L3VNI
+    l3vni:
+      name: red
+  hostMaster:
+    type: LinuxBridge
+    linuxBridge:
+      lifecycle: Managed
+  gatewayIPs: ["192.170.2.1/24"]
+---
+apiVersion: network.openperouter.io/v1alpha1
+kind: Underlay
+metadata:
+  name: underlay
+  namespace: openperouter-system
+spec:
+  asn: 64514
+  tunnelEndpoint:
+    cidrs:
+    - 100.65.0.0/24
+  interfaces:
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: toswitch1
+  neighbors:
+    - asn: 64512
+      address: 192.168.11.2

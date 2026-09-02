@@ -58,7 +58,7 @@ func TestAPItoFRR(t *testing.T) {
 					TunnelEndpoint: &frr.TunnelEndpoint{
 						IPv4CIDR: "192.168.1.0/32",
 					},
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name:                  "65001@192.168.1.1",
@@ -101,7 +101,7 @@ func TestAPItoFRR(t *testing.T) {
 					TunnelEndpoint: &frr.TunnelEndpoint{
 						IPv4CIDR: "192.168.1.0/32",
 					},
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name:                  "external@192.168.1.1",
@@ -149,7 +149,7 @@ func TestAPItoFRR(t *testing.T) {
 					TunnelEndpoint: &frr.TunnelEndpoint{
 						IPv4CIDR: "192.168.1.0/32",
 					},
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name:                  "internal@192.168.1.1",
@@ -197,7 +197,7 @@ func TestAPItoFRR(t *testing.T) {
 					TunnelEndpoint: &frr.TunnelEndpoint{
 						IPv4CIDR: "192.168.1.0/32",
 					},
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name:                  "65000@192.168.1.1",
@@ -255,7 +255,7 @@ func TestAPItoFRR(t *testing.T) {
 					TunnelEndpoint: &frr.TunnelEndpoint{
 						IPv4CIDR: "192.168.1.0/32",
 					},
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name: "65001@192.168.1.1",
@@ -275,7 +275,7 @@ func TestAPItoFRR(t *testing.T) {
 						ASN:      65000,
 						VNI:      200,
 						VRF:      "vrf1",
-						RouterID: "10.0.0.1",
+						RouterID: "10.0.0.0",
 						LocalNeighbor: &frr.NeighborConfig{
 							Addr: "192.168.2.2",
 							ID:   "192.168.2.2",
@@ -334,7 +334,7 @@ func TestAPItoFRR(t *testing.T) {
 					TunnelEndpoint: &frr.TunnelEndpoint{
 						IPv4CIDR: "192.168.1.0/32",
 					},
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name: "65001@2001:db8::1:192:168:1:1",
@@ -356,7 +356,7 @@ func TestAPItoFRR(t *testing.T) {
 						ASN:      65000,
 						VNI:      200,
 						VRF:      "vrf1",
-						RouterID: "10.0.0.1",
+						RouterID: "10.0.0.0",
 						LocalNeighbor: &frr.NeighborConfig{
 							Addr: "2001:db8::2",
 							ID:   "2001:db8::2",
@@ -414,7 +414,7 @@ func TestAPItoFRR(t *testing.T) {
 					TunnelEndpoint: &frr.TunnelEndpoint{
 						IPv4CIDR: "192.168.1.0/32",
 					},
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name: "65001@192.168.1.1",
@@ -434,7 +434,7 @@ func TestAPItoFRR(t *testing.T) {
 						ASN:      65000,
 						VNI:      200,
 						VRF:      "vrf1",
-						RouterID: "10.0.0.1",
+						RouterID: "10.0.0.0",
 						LocalNeighbor: &frr.NeighborConfig{
 							Addr: "192.168.2.2",
 							ID:   "192.168.2.2",
@@ -449,7 +449,7 @@ func TestAPItoFRR(t *testing.T) {
 						ASN:      65000,
 						VNI:      200,
 						VRF:      "vrf1",
-						RouterID: "10.0.0.1",
+						RouterID: "10.0.0.0",
 						LocalNeighbor: &frr.NeighborConfig{
 							Addr: "2001:db8::2",
 							ID:   "2001:db8::2",
@@ -502,7 +502,7 @@ func TestAPItoFRR(t *testing.T) {
 					TunnelEndpoint: &frr.TunnelEndpoint{
 						IPv4CIDR: "192.168.1.0/32",
 					},
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name:                  "65001@192.168.1.100",
@@ -560,7 +560,7 @@ func TestAPItoFRR(t *testing.T) {
 					TunnelEndpoint: &frr.TunnelEndpoint{
 						IPv4CIDR: "192.168.1.0/32",
 					},
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name:                  "65001@192.168.1.100",
@@ -613,7 +613,7 @@ func TestAPItoFRR(t *testing.T) {
 					TunnelEndpoint: &frr.TunnelEndpoint{
 						IPv4CIDR: "192.168.1.0/32",
 					},
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name: "65001@192.168.1.1",
@@ -633,7 +633,7 @@ func TestAPItoFRR(t *testing.T) {
 						ASN:       65000,
 						VNI:       200,
 						VRF:       "vrf1",
-						RouterID:  "10.0.0.1",
+						RouterID:  "10.0.0.0",
 						ExportRTs: []string{},
 						ImportRTs: []string{},
 					},
@@ -685,7 +685,7 @@ func TestAPItoFRR(t *testing.T) {
 					TunnelEndpoint: &frr.TunnelEndpoint{
 						IPv4CIDR: "192.168.1.0/32",
 					},
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name: "65001@192.168.1.1",
@@ -705,7 +705,7 @@ func TestAPItoFRR(t *testing.T) {
 						ASN:      65000,
 						VNI:      200,
 						VRF:      "vrf1",
-						RouterID: "10.0.0.1",
+						RouterID: "10.0.0.0",
 						LocalNeighbor: &frr.NeighborConfig{
 							Addr: "192.168.2.2",
 							ID:   "192.168.2.2",
@@ -757,7 +757,7 @@ func TestAPItoFRR(t *testing.T) {
 					TunnelEndpoint: &frr.TunnelEndpoint{
 						IPv4CIDR: "192.168.1.0/32",
 					},
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name: "65001@192.168.1.1",
@@ -777,7 +777,7 @@ func TestAPItoFRR(t *testing.T) {
 						ASN:       65000,
 						VNI:       200,
 						VRF:       "vrf1",
-						RouterID:  "10.0.0.1",
+						RouterID:  "10.0.0.0",
 						ExportRTs: []string{"65000:100"},
 						ImportRTs: []string{"65000:200"},
 					},
@@ -827,7 +827,7 @@ func TestAPItoFRR(t *testing.T) {
 					TunnelEndpoint: &frr.TunnelEndpoint{
 						IPv4CIDR: "192.168.1.0/32",
 					},
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name: "65001@192.168.1.1",
@@ -847,7 +847,7 @@ func TestAPItoFRR(t *testing.T) {
 						ASN:      65000,
 						VNI:      200,
 						VRF:      "vni1",
-						RouterID: "10.0.0.1",
+						RouterID: "10.0.0.0",
 						LocalNeighbor: &frr.NeighborConfig{
 							Addr: "192.168.2.2",
 							ID:   "192.168.2.2",
@@ -905,7 +905,7 @@ func TestAPItoFRR(t *testing.T) {
 					TunnelEndpoint: &frr.TunnelEndpoint{
 						IPv4CIDR: "192.168.1.0/32",
 					},
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name: "65001@192.168.1.1",
@@ -925,7 +925,7 @@ func TestAPItoFRR(t *testing.T) {
 						ASN:      65000,
 						VNI:      200,
 						VRF:      "vni1",
-						RouterID: "10.0.0.1",
+						RouterID: "10.0.0.0",
 						LocalNeighbor: &frr.NeighborConfig{
 							Addr: "192.168.2.2",
 							ID:   "192.168.2.2",
@@ -983,7 +983,7 @@ func TestAPItoFRR(t *testing.T) {
 					TunnelEndpoint: &frr.TunnelEndpoint{
 						IPv4CIDR: "192.168.1.0/32",
 					},
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name: "65001@192.168.1.1",
@@ -1003,7 +1003,7 @@ func TestAPItoFRR(t *testing.T) {
 						ASN:      65000,
 						VNI:      200,
 						VRF:      "vni1",
-						RouterID: "10.0.0.1",
+						RouterID: "10.0.0.0",
 						LocalNeighbor: &frr.NeighborConfig{
 							Addr: "192.168.2.2",
 							ID:   "192.168.2.2",
@@ -1039,7 +1039,7 @@ func TestAPItoFRR(t *testing.T) {
 			want: frr.Config{
 				Underlay: frr.UnderlayConfig{
 					MyASN:    65000,
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name:                  "65001@192.168.1.1",
@@ -1095,7 +1095,7 @@ func TestAPItoFRR(t *testing.T) {
 					TunnelEndpoint: &frr.TunnelEndpoint{
 						IPv4CIDR: "192.168.1.0/32",
 					},
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name: "65001@192.168.1.1",
@@ -1169,7 +1169,7 @@ func TestAPItoFRR(t *testing.T) {
 					TunnelEndpoint: &frr.TunnelEndpoint{
 						IPv4CIDR: "192.168.1.0/32",
 					},
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name: "65001@192.168.1.1",
@@ -1230,7 +1230,7 @@ func TestAPItoFRR(t *testing.T) {
 			want: frr.Config{
 				Underlay: frr.UnderlayConfig{
 					MyASN:    65000,
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name: "65001@2001:db8::1",
@@ -1296,7 +1296,7 @@ func TestAPItoFRR(t *testing.T) {
 					TunnelEndpoint: &frr.TunnelEndpoint{
 						IPv4CIDR: "192.168.1.0/32",
 					},
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name: "65001@192.168.1.1",
@@ -1356,7 +1356,7 @@ func TestAPItoFRR(t *testing.T) {
 			want: frr.Config{
 				Underlay: frr.UnderlayConfig{
 					MyASN:    65000,
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name: "65001@2001:db8::1",
@@ -1426,7 +1426,7 @@ func TestAPItoFRR(t *testing.T) {
 			want: frr.Config{
 				Underlay: frr.UnderlayConfig{
 					MyASN:    65000,
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name: "65001@2001:db8::1",
@@ -1517,7 +1517,7 @@ func TestAPItoFRR(t *testing.T) {
 					TunnelEndpoint: &frr.TunnelEndpoint{
 						IPv4CIDR: "192.168.1.0/32",
 					},
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name: "65001@192.168.1.1",
@@ -1593,7 +1593,7 @@ func TestAPItoFRR(t *testing.T) {
 					TunnelEndpoint: &frr.TunnelEndpoint{
 						IPv4CIDR: "192.168.1.0/32",
 					},
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name: "65001@192.168.1.1",
@@ -1670,7 +1670,7 @@ func TestAPItoFRR(t *testing.T) {
 			want: frr.Config{
 				Underlay: frr.UnderlayConfig{
 					MyASN:    65000,
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name: "65001@192.168.1.1",
@@ -1690,7 +1690,7 @@ func TestAPItoFRR(t *testing.T) {
 						ASN:             65000,
 						VNI:             200,
 						VRF:             "red",
-						RouterID:        "10.0.0.1",
+						RouterID:        "10.0.0.0",
 						ToAdvertiseIPv4: []string{"192.168.100.0/24"},
 						ExportRTs:       []string{},
 						ImportRTs:       []string{},
@@ -1741,7 +1741,7 @@ func TestAPItoFRR(t *testing.T) {
 			want: frr.Config{
 				Underlay: frr.UnderlayConfig{
 					MyASN:    65000,
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name: "65001@192.168.1.1",
@@ -1761,7 +1761,7 @@ func TestAPItoFRR(t *testing.T) {
 						ASN:             65000,
 						VNI:             200,
 						VRF:             "red",
-						RouterID:        "10.0.0.1",
+						RouterID:        "10.0.0.0",
 						ToAdvertiseIPv4: []string{"10.0.0.0/24"},
 						ToAdvertiseIPv6: []string{"2001:db8::/64"},
 						ExportRTs:       []string{},
@@ -1820,7 +1820,7 @@ func TestAPItoFRR(t *testing.T) {
 			want: frr.Config{
 				Underlay: frr.UnderlayConfig{
 					MyASN:    65000,
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name: "65001@192.168.1.1",
@@ -1840,7 +1840,7 @@ func TestAPItoFRR(t *testing.T) {
 						ASN:       65000,
 						VNI:       200,
 						VRF:       "red",
-						RouterID:  "10.0.0.1",
+						RouterID:  "10.0.0.0",
 						ExportRTs: []string{},
 						ImportRTs: []string{},
 					},
@@ -1848,7 +1848,7 @@ func TestAPItoFRR(t *testing.T) {
 						ASN:             65000,
 						VNI:             300,
 						VRF:             "blue",
-						RouterID:        "10.0.0.1",
+						RouterID:        "10.0.0.0",
 						ExportRTs:       []string{},
 						ImportRTs:       []string{},
 						ToAdvertiseIPv4: []string{"192.168.100.0/24"},
@@ -1897,7 +1897,7 @@ func TestAPItoFRR(t *testing.T) {
 			want: frr.Config{
 				Underlay: frr.UnderlayConfig{
 					MyASN:    65000,
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name: "65001@192.168.1.1",
@@ -1917,11 +1917,11 @@ func TestAPItoFRR(t *testing.T) {
 					{
 						ASN:                65000,
 						VRF:                "red",
-						RouterID:           "10.0.0.1",
+						RouterID:           "10.0.0.0",
 						ToAdvertiseIPv4:    []string{"192.168.100.0/24"},
 						ExportRTs:          []string{"65000:200"},
 						ImportRTs:          []string{"65000:200"},
-						RouteDistinguisher: "10.0.0.1:200",
+						RouteDistinguisher: "10.0.0.0:200",
 					},
 				},
 				BFDProfiles: []frr.BFDProfile{},
@@ -1966,7 +1966,7 @@ func TestAPItoFRR(t *testing.T) {
 			want: frr.Config{
 				Underlay: frr.UnderlayConfig{
 					MyASN:    65000,
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name: "65001@192.168.1.1",
@@ -1986,12 +1986,12 @@ func TestAPItoFRR(t *testing.T) {
 					{
 						ASN:                65000,
 						VRF:                "red",
-						RouterID:           "10.0.0.1",
+						RouterID:           "10.0.0.0",
 						ToAdvertiseIPv4:    []string{"10.0.0.0/24"},
 						ToAdvertiseIPv6:    []string{"2001:db8::/64"},
 						ExportRTs:          []string{"65000:200"},
 						ImportRTs:          []string{"65000:200"},
-						RouteDistinguisher: "10.0.0.1:200",
+						RouteDistinguisher: "10.0.0.0:200",
 					},
 				},
 				BFDProfiles: []frr.BFDProfile{},
@@ -2044,7 +2044,7 @@ func TestAPItoFRR(t *testing.T) {
 			want: frr.Config{
 				Underlay: frr.UnderlayConfig{
 					MyASN:    65000,
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name: "65001@192.168.1.1",
@@ -2064,19 +2064,19 @@ func TestAPItoFRR(t *testing.T) {
 					{
 						ASN:                65000,
 						VRF:                "red",
-						RouterID:           "10.0.0.1",
+						RouterID:           "10.0.0.0",
 						ExportRTs:          []string{"65000:200"},
 						ImportRTs:          []string{"65000:200"},
-						RouteDistinguisher: "10.0.0.1:200",
+						RouteDistinguisher: "10.0.0.0:200",
 					},
 					{
 						ASN:                65000,
 						VRF:                "blue",
-						RouterID:           "10.0.0.1",
+						RouterID:           "10.0.0.0",
 						ToAdvertiseIPv4:    []string{"192.168.100.0/24"},
 						ExportRTs:          []string{"65000:300"},
 						ImportRTs:          []string{"65000:300"},
-						RouteDistinguisher: "10.0.0.1:300",
+						RouteDistinguisher: "10.0.0.0:300",
 					},
 				},
 				BFDProfiles: []frr.BFDProfile{},
@@ -2154,7 +2154,7 @@ func TestAPItoFRR(t *testing.T) {
 					TunnelEndpoint: &frr.TunnelEndpoint{
 						IPv4CIDR: "192.168.1.0/32",
 					},
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name:      "65001@test",
@@ -2208,7 +2208,7 @@ func TestAPItoFRR(t *testing.T) {
 						IPv4CIDR: "192.168.2.0/32",
 						IPv6CIDR: "2001:db8:192:168::/128",
 					},
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 				},
 				VNIs:        []frr.L3VNIConfig{},
 				VPNs:        []frr.L3VPNConfig{},
@@ -2244,7 +2244,7 @@ func TestAPItoFRR(t *testing.T) {
 					TunnelEndpoint: &frr.TunnelEndpoint{
 						IPv6CIDR: "2001:db8:192:168::/128",
 					},
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 				},
 				VNIs:        []frr.L3VNIConfig{},
 				VPNs:        []frr.L3VPNConfig{},
@@ -2294,7 +2294,7 @@ func TestAPItoFRR(t *testing.T) {
 							{Name: "lo", IPv6: true, IsPassive: true},
 						},
 					},
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name: "65001@192.168.1.1",
@@ -2373,7 +2373,7 @@ func TestAPItoFRR(t *testing.T) {
 							{Name: "lo"},
 						},
 					},
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name: "65001@192.168.1.1",
@@ -2434,7 +2434,7 @@ func TestAPItoFRR(t *testing.T) {
 							{Name: "lo", IPv6: true, IsPassive: true},
 						},
 					},
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name: "65001@192.168.1.1",
@@ -2485,7 +2485,7 @@ func TestAPItoFRR(t *testing.T) {
 							{Name: "lo", IPv6: true, IsPassive: true},
 						},
 					},
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name: "65001@192.168.1.1",
@@ -2646,7 +2646,7 @@ func TestAPItoFRR(t *testing.T) {
 							{Name: "lo", IPv6: true, IsPassive: true},
 						},
 					},
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name: "65001@2001:db8:192:168:1::1",
@@ -2693,8 +2693,8 @@ func TestAPItoFRR(t *testing.T) {
 						VRF:                "vrf1",
 						ExportRTs:          []string{"65000:100", "11110:100"},
 						ImportRTs:          []string{"65001:100", "11111:100"},
-						RouteDistinguisher: "10.0.0.1:100",
-						RouterID:           "10.0.0.1",
+						RouteDistinguisher: "10.0.0.0:100",
+						RouterID:           "10.0.0.0",
 					},
 					{
 						ASN:             65000,
@@ -2708,8 +2708,8 @@ func TestAPItoFRR(t *testing.T) {
 						VRF:                "vrf1",
 						ExportRTs:          []string{"65000:100", "11110:100"},
 						ImportRTs:          []string{"65001:100", "11111:100"},
-						RouteDistinguisher: "10.0.0.1:100",
-						RouterID:           "10.0.0.1",
+						RouteDistinguisher: "10.0.0.0:100",
+						RouterID:           "10.0.0.0",
 					},
 				},
 				BFDProfiles: []frr.BFDProfile{},
@@ -2783,7 +2783,7 @@ func TestAPItoFRR(t *testing.T) {
 							{Name: "lo", IPv6: true, IsPassive: true},
 						},
 					},
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name: "65001@2001:db8:192:168:1::1",
@@ -2830,8 +2830,8 @@ func TestAPItoFRR(t *testing.T) {
 						VRF:                "vrf1",
 						ExportRTs:          []string{"65000:100", "11110:100"},
 						ImportRTs:          []string{"65001:100", "11111:100"},
-						RouteDistinguisher: "10.0.0.1:100",
-						RouterID:           "10.0.0.1",
+						RouteDistinguisher: "10.0.0.0:100",
+						RouterID:           "10.0.0.0",
 					},
 					{
 						ASN:             65000,
@@ -2845,8 +2845,8 @@ func TestAPItoFRR(t *testing.T) {
 						VRF:                "vrf1",
 						ExportRTs:          []string{"65000:100", "11110:100"},
 						ImportRTs:          []string{"65001:100", "11111:100"},
-						RouteDistinguisher: "10.0.0.1:100",
-						RouterID:           "10.0.0.1",
+						RouteDistinguisher: "10.0.0.0:100",
+						RouterID:           "10.0.0.0",
 					},
 				},
 				BFDProfiles: []frr.BFDProfile{},
@@ -2918,7 +2918,7 @@ func TestAPItoFRR(t *testing.T) {
 							{Name: "lo", IPv6: true, IsPassive: true},
 						},
 					},
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					TunnelEndpoint: &frr.TunnelEndpoint{
 						IPv6CIDR: "2001:db8:1234:5678::/128",
 					},
@@ -2965,8 +2965,8 @@ func TestAPItoFRR(t *testing.T) {
 						VRF:                "vrf1",
 						ExportRTs:          []string{"65000:100"},
 						ImportRTs:          []string{"65001:100"},
-						RouteDistinguisher: "10.0.0.1:100",
-						RouterID:           "10.0.0.1",
+						RouteDistinguisher: "10.0.0.0:100",
+						RouterID:           "10.0.0.0",
 					},
 					{
 						ASN:             65000,
@@ -2980,8 +2980,8 @@ func TestAPItoFRR(t *testing.T) {
 						VRF:                "vrf1",
 						ExportRTs:          []string{"65000:100"},
 						ImportRTs:          []string{"65001:100"},
-						RouteDistinguisher: "10.0.0.1:100",
-						RouterID:           "10.0.0.1",
+						RouteDistinguisher: "10.0.0.0:100",
+						RouterID:           "10.0.0.0",
 					},
 				},
 				BFDProfiles: []frr.BFDProfile{},
@@ -3121,7 +3121,7 @@ func TestAPItoFRR(t *testing.T) {
 							{Name: "lo", IPv6: true, IsPassive: true},
 						},
 					},
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name: "65001@192.168.122.1",
@@ -3185,8 +3185,8 @@ func TestAPItoFRR(t *testing.T) {
 						VRF:                "vrf1",
 						ExportRTs:          []string{"65000:100", "11110:100"},
 						ImportRTs:          []string{"65001:100", "11111:100"},
-						RouteDistinguisher: "10.0.0.1:100",
-						RouterID:           "10.0.0.1",
+						RouteDistinguisher: "10.0.0.0:100",
+						RouterID:           "10.0.0.0",
 					},
 					{
 						ASN:             65000,
@@ -3200,8 +3200,8 @@ func TestAPItoFRR(t *testing.T) {
 						VRF:                "vrf1",
 						ExportRTs:          []string{"65000:100", "11110:100"},
 						ImportRTs:          []string{"65001:100", "11111:100"},
-						RouteDistinguisher: "10.0.0.1:100",
-						RouterID:           "10.0.0.1",
+						RouteDistinguisher: "10.0.0.0:100",
+						RouterID:           "10.0.0.0",
 					},
 				},
 				BFDProfiles: []frr.BFDProfile{},
@@ -3258,7 +3258,7 @@ func TestAPItoFRR(t *testing.T) {
 			want: frr.Config{
 				Underlay: frr.UnderlayConfig{
 					MyASN:    65000,
-					RouterID: "10.0.0.1",
+					RouterID: "10.0.0.0",
 					Neighbors: []frr.NeighborConfig{
 						{
 							Name: "65001@192.168.1.1",
@@ -3278,7 +3278,7 @@ func TestAPItoFRR(t *testing.T) {
 						ASN:      65000,
 						VNI:      200,
 						VRF:      "red",
-						RouterID: "10.0.0.1",
+						RouterID: "10.0.0.0",
 						ToAdvertiseIPv4: []string{
 							"192.168.100.0/24",
 							"192.168.101.0/24",

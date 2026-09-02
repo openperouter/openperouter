@@ -214,13 +214,17 @@ When you create or update L3VPN configurations, OpenPERouter automatically:
    L3VPN
 2. **Establishes Connectivity**: Creates veth pair and moves one end to
    the router's namespace
-3. **Assigns IP Addresses**: Allocates IPs from the `localCIDR` range:
+3. **Adjusts Veth MTU**: Sets the MTU on both veth legs to the underlay NIC's MTU
+   minus overhead. The overhead is calculated depending on if H.Encaps.Red is
+   used or not, and depending on if L2VNIs are used in combination
+   with the L3VPN. MTU calculation is per VRF.
+4. **Assigns IP Addresses**: Allocates IPs from the `localCIDR` range:
    - Router side: First IP in the CIDR (e.g., `192.169.10.1`)
    - Host side: Each node gets a free IP in the CIDR, starting from the
      second (e.g., `192.169.10.15`)
-4. **Creates BGP Session**: Opens BGP session between router and host
+5. **Creates BGP Session**: Opens BGP session between router and host
    using the specified ASNs
-5. **Configures SRv6**: Sets up the SRv6 locator and SID allocation for
+6. **Configures SRv6**: Sets up the SRv6 locator and SID allocation for
    the VRF
 
 ## L2VNI Configuration

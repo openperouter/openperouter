@@ -30,8 +30,6 @@ var _ = Describe("SRV6 routes between bgp and the fabric", Ordered, func() {
 	var (
 		cs           clientset.Interface
 		routers      openperouter.Routers
-		firstPod     *corev1.Pod
-		secondPod    *corev1.Pod
 		netAttachDef nad.NetworkAttachmentDefinition
 		nodes        []corev1.Node
 	)
@@ -229,7 +227,7 @@ var _ = Describe("SRV6 routes between bgp and the fabric", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		By("creating L3VPN and L2VNI")
-		err = Updater.Update(config.Resources{
+		Expect(Updater.Update(config.Resources{
 			L3VPNs: []v1alpha1.L3VPN{
 				vniRed,
 			},
@@ -237,8 +235,7 @@ var _ = Describe("SRV6 routes between bgp and the fabric", Ordered, func() {
 				*l2VniRedWithGateway,
 			},
 			FRRConfigurations: frrK8sConfigRed,
-		})
-		Expect(err).NotTo(HaveOccurred())
+		})).To(Succeed())
 
 		By("creating the namespace")
 		_, err = k8s.CreateNamespace(cs, testNamespace)
@@ -249,9 +246,9 @@ var _ = Describe("SRV6 routes between bgp and the fabric", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		By("creating the pods")
-		firstPod, err = k8s.CreateAgnhostPod(cs, "pod1", testNamespace, k8s.WithNad(netAttachDef.Name, testNamespace, tc.firstPodIPs), k8s.OnNode(nodes[0].Name))
+		firstPod, err := k8s.CreateAgnhostPod(cs, "pod1", testNamespace, k8s.WithNad(netAttachDef.Name, testNamespace, tc.firstPodIPs), k8s.OnNode(nodes[0].Name))
 		Expect(err).NotTo(HaveOccurred())
-		secondPod, err = k8s.CreateAgnhostPod(cs, "pod2", testNamespace, k8s.WithNad(netAttachDef.Name, testNamespace, tc.secondPodIPs), k8s.OnNode(nodes[1].Name))
+		secondPod, err := k8s.CreateAgnhostPod(cs, "pod2", testNamespace, k8s.WithNad(netAttachDef.Name, testNamespace, tc.secondPodIPs), k8s.OnNode(nodes[1].Name))
 		Expect(err).NotTo(HaveOccurred())
 
 		// We can reach the host either via the pod's eth0 (passing through the host<->pe veth),

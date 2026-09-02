@@ -243,6 +243,13 @@ func TestParseChartWithGroutEnabled(t *testing.T) {
 			for _, c := range router.Spec.Template.Spec.Containers {
 				if c.Name == "grout" {
 					g.Expect(c.Image).To(Equal("quay.io/openperouter/router:test-grout"))
+					env := map[string]string{}
+					for _, e := range c.Env {
+						env[e.Name] = e.Value
+					}
+					g.Expect(env["GROUT_SOCK_PATH"]).To(Equal("/var/run/grout/grout.sock"))
+					g.Expect(env["GROUT_MEMPOOL_CHUNK_SIZE"]).To(Equal("2047"))
+					g.Expect(env["GROUT_PORT_QUEUE_SIZE"]).To(Equal("128"))
 				}
 			}
 			routerFound = true

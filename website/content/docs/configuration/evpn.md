@@ -142,7 +142,8 @@ When you create or update VNI configurations, OpenPERouter automatically:
 
 1. **Creates Network Interfaces**: Sets up VXLAN interface and Linux VRF named after the VNI
 2. **Establishes Connectivity**: Creates veth pair and moves one end to the router's namespace
-3. **Adjusts Veth MTU**: Sets the MTU on both veth legs to the underlay NIC's MTU minus 50 bytes to account for VXLan encapsulation overhead
+3. **Adjusts Veth MTU**: Sets the MTU on both veth legs to the underlay NIC's MTU minus 50 bytes to
+   account for VXLan encapsulation overhead. MTU calculation is per VRF.
 4. **Assigns IP Addresses**: Allocates IPs from the `localCIDR` range:
    - Router side: First IP in the CIDR (e.g., `192.169.11.1`)
    - Host side: Each node gets a free IP in the CIDR, starting from the second (e.g., `192.169.11.15`)

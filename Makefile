@@ -527,6 +527,10 @@ demo-metallb:
 demo-l2:
 	examples/evpn/layer2/prepare.sh
 
+.PHONY: demo-l2vnis-with-same-l3vni
+demo-l2vnis-with-same-l3vni:
+	examples/evpn/l2vnis-with-same-l3vni/prepare.sh
+
 .PHONY: demo-route-reflector
 demo-route-reflector:
 	examples/evpn/route-reflector/prepare.sh

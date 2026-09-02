@@ -39,7 +39,7 @@ For details about the configuration fields, see the [Route Reflector configurati
 The route reflector underlay is selected on the control-plane node. It has no `tunnelEndpoint`, and accepts dynamic neighbors from the cluster subnet via `listenRange` instead of enumerating each node:
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: Underlay
 metadata:
   name: route-reflector
@@ -57,7 +57,7 @@ spec:
   routeReflector:
     clusterID: 192.0.2.1
   neighbors:
-    - type: internal
+    - type: Internal
       listenRange: 192.168.11.0/24
       addressFamilies:
         - type: ipv4unicast
@@ -71,7 +71,7 @@ spec:
 The client underlay is selected on the worker nodes. It is a normal data-plane underlay whose only neighbor is the route reflector, peered as an internal (iBGP) session:
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: Underlay
 metadata:
   name: client
@@ -90,14 +90,14 @@ spec:
     cidrs:
       - 100.65.0.0/24
   neighbors:
-    - type: internal
+    - type: Internal
       address: 192.168.11.3  # the route reflector on the leafkind1 switch subnet
 ```
 
 Finally, a disconnected L2VNI (no VRF) is stretched between the client nodes. The node selector keeps it off the route reflector node, which has no tunnel endpoint:
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L2VNI
 metadata:
   name: reflected
@@ -108,10 +108,10 @@ spec:
     matchExpressions:
       - key: node-role.kubernetes.io/control-plane
         operator: DoesNotExist
-  hostmaster:
-    type: linux-bridge
+  hostMaster:
+    type: LinuxBridge
     linuxBridge:
-      autoCreate: true
+      lifecycle: Managed
 ```
 
 **Configuration Notes:**
@@ -119,7 +119,7 @@ spec:
 - **`routeReflector`**: marks the control-plane router as a route reflector and sets the BGP `cluster-id`
 - **`listenRange`**: accepts dynamic iBGP sessions from any node in the cluster subnet, so nodes can be added without touching the reflector configuration
 - **`routeReflectorClient`**: reflects the routes received in that address family to the other clients; `ipv4unicast` carries the VTEP `/32` reachability, `evpn` carries the type-2/type-3 routes
-- **`hostmaster.autoCreate`**: instructs OpenPERouter to create a bridge local to the node that can be used to access the L2 domain
+- **`hostMaster.lifecycle: Managed`**: instructs OpenPERouter to create a bridge local to the node that can be used to access the L2 domain
 
 ### Network Attachment Definition
 

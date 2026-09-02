@@ -17,6 +17,8 @@ const (
 	// SRv6Overhead is the number of bytes added by SRv6 encapsulation (outer IPv6 header + SRH)
 	// 40 bytes IPv6 header + 24 bytes for the SRH.
 	SRv6Overhead = 64
+	// SRv6OverheadEncapReduced is the number of bytes added by SRv6 reduced encapsulation: 40 bytes for the IPv6 header.
+	SRv6OverheadEncapReduced = 40
 )
 
 type L3VPNParams struct {
@@ -25,6 +27,7 @@ type L3VPNParams struct {
 	VRF              string   `json:"vrf"`
 	TargetNS         string   `json:"targetns"`
 	RDAssignedNumber int32    `json:"rdassignednumber"`
+	TunnelOverhead   int      `json:"tunneloverhead"`
 }
 
 // SetupL3VPN sets up a Layer 3 VPN in the target namespace.
@@ -50,7 +53,7 @@ func SetupL3VPN(ctx context.Context, params L3VPNParams) error {
 		params.TargetNS,
 		params.LinkIPs,
 		params.VRF,
-		SRv6Overhead); err != nil {
+		params.TunnelOverhead); err != nil {
 		return fmt.Errorf("SetupL3VPN: failed to setup host veth pair: %w", err)
 	}
 	return nil

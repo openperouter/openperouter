@@ -84,6 +84,19 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Labe
 
 		err := Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
+
+		nodesItems, err := cs.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("waiting for the underlay to be removed from all nodes")
+		for _, node := range nodesItems.Items {
+			Eventually(func(g Gomega) {
+				isConfigured, err := openperouter.UnderlayConfigured(node.Name)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(isConfigured).To(BeFalse())
+			}, 2*time.Minute, time.Second).Should(Succeed())
+		}
+
 		By("waiting for all router pods to be ready after removing the underlay")
 		Eventually(func() error {
 			routers, err := openperouter.Get(cs, HostMode)

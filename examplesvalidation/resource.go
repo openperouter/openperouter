@@ -15,9 +15,17 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// containsOpenPERouterCR checks if YAML contains OpenPERouter custom resources
-func containsOpenPERouterCR(content string) bool {
-	return strings.Contains(content, "network.openperouter.io")
+const (
+	apiVersionSearchString = "openperouter"
+	apiGroup               = "network.openperouter.io"
+)
+
+func containsAPIVersionSearchString(content string) bool {
+	return strings.Contains(content, apiVersionSearchString)
+}
+
+func containsOpenPERouterAPIGroup(group string) bool {
+	return strings.Contains(group, apiGroup)
 }
 
 // validateResourceFromFile reads a YAML file and validates its resources by
@@ -30,7 +38,6 @@ func validateResourceFromFile(k8sClient client.Client, filePath string) error {
 		return err
 	}
 	return validateResourceYAML(k8sClient, string(data))
-
 }
 
 // validateResourceYAML validates YAML content by attempting to create
@@ -39,12 +46,11 @@ func validateResourceFromFile(k8sClient client.Client, filePath string) error {
 // each resource using the Kubernetes API server for validation.
 // Returns an error if YAML decoding fails, namespace is empty, or resource creation fails.
 func validateResourceYAML(k8sClient client.Client, content string) error {
-
 	documents := strings.SplitSeq(content, "---")
 
 	for doc := range documents {
 		doc = strings.TrimSpace(doc)
-		if doc == "" {
+		if doc == "" || !strings.Contains(doc, "apiVersion:") {
 			continue
 		}
 
@@ -55,7 +61,7 @@ func validateResourceYAML(k8sClient client.Client, content string) error {
 			return fmt.Errorf("failed to decode YAML: %w", err)
 		}
 
-		if !strings.Contains(obj.GetAPIVersion(), "network.openperouter.io") {
+		if !containsAPIVersionSearchString(obj.GetAPIVersion()) {
 			continue
 		}
 
@@ -83,7 +89,7 @@ func cleanupResources(k8sClient client.Client, namespace string) error {
 	}
 
 	for _, crd := range crdList.Items {
-		if !containsOpenPERouterCR(crd.Spec.Group) {
+		if !containsOpenPERouterAPIGroup(crd.Spec.Group) {
 			continue
 		}
 

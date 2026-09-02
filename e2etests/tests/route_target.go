@@ -3,6 +3,7 @@
 package tests
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -34,7 +35,7 @@ var (
 	frrk8sBluePrefixes = []string{"10.200.0.0/24"}
 )
 
-var _ = Describe("Routes with RT between bgp and the fabric", Ordered, func() {
+var _ = Describe("Routes with RT between bgp and the fabric", GroutSupport, Ordered, func() {
 	var cs clientset.Interface
 	var routers openperouter.Routers
 
@@ -102,6 +103,16 @@ var _ = Describe("Routes with RT between bgp and the fabric", Ordered, func() {
 	AfterAll(func() {
 		err := Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
+		nodesItems, err := cs.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		By("waiting for the underlay to be removed from all nodes")
+		for _, node := range nodesItems.Items {
+			Eventually(func(g Gomega) {
+				isConfigured, err := openperouter.UnderlayConfigured(node.Name)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(isConfigured).To(BeFalse())
+			}, 2*time.Minute, time.Second).Should(Succeed())
+		}
 		By("waiting for all router pods to be ready after removing the underlay")
 		Eventually(func() error {
 			routers, err := openperouter.Get(cs, HostMode)

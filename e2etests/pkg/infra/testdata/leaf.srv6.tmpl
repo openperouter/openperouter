@@ -43,6 +43,7 @@ router bgp 64520
  bgp listen range 2001:db8:1234:5678::/64 peer-group PE
  !
  segment-routing srv6
+  encap-behavior {{ .Leaf.SRv6.EncapBehavior }}
   locator MAIN
  exit
  !
@@ -149,7 +150,7 @@ segment-routing
   exit
   locators
    locator MAIN
-    prefix {{ .Leaf.SRV6Prefix }} block-len 32 node-len 16
+    prefix {{ .Leaf.SRv6.Prefix }} block-len 32 node-len 16
     behavior usid
     format usid-f3216
    exit

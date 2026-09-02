@@ -75,12 +75,12 @@ func setupHostVeth(ctx context.Context, vethNames VethNames, targetNS string, li
 		return fmt.Errorf("failed to assign IPs to host veth: %w", err)
 	}
 
-	underlayMTU, err := findUnderlayMTU(ns)
+	underlayMTU, err := FindUnderlayMTU(ns)
 	if err != nil {
 		return fmt.Errorf("could not find underlay MTU: %w", err)
 	}
 
-	if err := setVethMTUForTunnelOverhead(hostVethLink, underlayMTU, tunnelOverhead); err != nil {
+	if err := SetVethMTUForTunnelOverhead(hostVethLink, underlayMTU, tunnelOverhead); err != nil {
 		return fmt.Errorf("failed to set MTU on host veth %s: %w", vethNames.HostSide, err)
 	}
 
@@ -90,7 +90,7 @@ func setupHostVeth(ctx context.Context, vethNames VethNames, targetNS string, li
 			return fmt.Errorf("could not find peer veth %s in namespace %s: %w", vethNames.NamespaceSide, targetNS, err)
 		}
 
-		if err := setVethMTUForTunnelOverhead(peVethLink, underlayMTU, tunnelOverhead); err != nil {
+		if err := SetVethMTUForTunnelOverhead(peVethLink, underlayMTU, tunnelOverhead); err != nil {
 			return fmt.Errorf("failed to set MTU on pe veth %s: %w", vethNames.NamespaceSide, err)
 		}
 
@@ -135,10 +135,10 @@ func AssignIPsToInterface(link netlink.Link, ipv4, ipv6 string) error {
 	return nil
 }
 
-// setVethMTUForTunnelOverhead sets the MTU on a veth interface to account for tunnel overhead.
+// SetVethMTUForTunnelOverhead sets the MTU on a veth interface to account for tunnel overhead.
 // If the underlay MTU is not found, or if the resulting MTU would be too small,
 // the MTU is left unchanged.
-func setVethMTUForTunnelOverhead(link netlink.Link, underlayMTU int, overhead int) error {
+func SetVethMTUForTunnelOverhead(link netlink.Link, underlayMTU int, overhead int) error {
 	if underlayMTU == 0 {
 		slog.Debug("No underlay MTU found, leaving veth MTU at default", "veth", link.Attrs().Name)
 		return nil

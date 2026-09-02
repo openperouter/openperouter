@@ -83,7 +83,7 @@ func RouterID(pool string, index int) (string, error) {
 		return "", fmt.Errorf("failed to parse pool %s: %w", pool, err)
 	}
 
-	ip, err := gocidr.Host(cidr, index+1)
+	ip, err := gocidr.Host(cidr, index)
 	if err != nil {
 		return "", fmt.Errorf("failed to get router id for node %d from cidr %s: %w", index, cidr, err)
 	}

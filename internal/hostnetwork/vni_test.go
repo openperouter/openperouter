@@ -262,11 +262,12 @@ var _ = Describe("L3 VNI configuration", func() {
 
 		params := L3VNIParams{
 			VNIParams: VNIParams{
-				VRF:       "testred",
-				TargetNS:  testNSPath(),
-				VTEPIP:    "192.170.0.9/32",
-				VNI:       100,
-				VXLanPort: new(int32(4789)),
+				VRF:            "testred",
+				TargetNS:       testNSPath(),
+				VTEPIP:         "192.170.0.9/32",
+				VNI:            100,
+				VXLanPort:      new(int32(4789)),
+				TunnelOverhead: VXLanOverhead,
 			},
 			LinkIPs: &LinkIPs{
 				HostIPv4: "192.168.9.1/32",
@@ -290,7 +291,7 @@ var _ = Describe("L3 VNI configuration", func() {
 
 	It("should leave veth MTU at default when no underlay interface is configured", func() {
 		// No fake underlay is set up here, so findUnderlayMTU returns 0
-		// and setVethMTUForTunnelOverhead must leave the veth MTU untouched.
+		// and SetVethMTUForTunnelOverhead must leave the veth MTU untouched.
 		// The host-side veth is not attached to any bridge in the L3 path.
 		// The peer veth is attached to a VRF in the target namespace.
 		// The host leg's MTU reflects only what the code under test set.
@@ -550,11 +551,12 @@ var _ = Describe("L2 VNI configuration", func() {
 
 		params := L2VNIParams{
 			VNIParams: VNIParams{
-				VRF:       "testred",
-				TargetNS:  testNSPath(),
-				VTEPIP:    "192.170.0.9/32",
-				VNI:       100,
-				VXLanPort: new(int32(4789)),
+				VRF:            "testred",
+				TargetNS:       testNSPath(),
+				VTEPIP:         "192.170.0.9/32",
+				VNI:            100,
+				VXLanPort:      new(int32(4789)),
+				TunnelOverhead: VXLanOverhead,
 			},
 			L2GatewayIPs: []string{"192.168.1.0/24"},
 			HostMaster: &HostMaster{
@@ -579,8 +581,8 @@ var _ = Describe("L2 VNI configuration", func() {
 	})
 
 	It("should leave veth MTU at default when no underlay interface is configured", func() {
-		// No fake underlay is set up here, so findUnderlayMTU returns 0
-		// and setVethMTUForTunnelOverhead must leave the veth MTU untouched.
+		// No fake underlay is set up here, so FindUnderlayMTU returns 0
+		// and SetVethMTUForTunnelOverhead must leave the veth MTU untouched.
 		// HostMaster is intentionally omitted so the host veth is not
 		// attached to a bridge — Linux bridges auto-clamp their MTU to
 		// the smallest member, which would couple this assertion to
@@ -896,7 +898,7 @@ func validateNSVethMTU(g Gomega, vethNames VethNames, expectedMTU int) {
 const defaultVethMTU = 1500
 
 // setupFakeUnderlay creates a dummy interface inside the given namespace with
-// the underlay special address and a configurable MTU, so that findUnderlayMTU
+// the underlay special address and a configurable MTU, so that FindUnderlayMTU
 // can locate it. It is intended for unit tests exercising the MTU propagation
 // behavior of SetupL2VNI / SetupL3VNI.
 func setupFakeUnderlay(ns netns.NsHandle, name string, mtu int) {

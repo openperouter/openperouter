@@ -4,6 +4,8 @@ package tests
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -19,6 +21,13 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
+)
+
+const (
+	icmpOverhead  = 28
+	vxlanOverhead = 50
+	srv6Overhead  = 64
+	baseMTU       = 9500
 )
 
 var _ = Describe("Mixed L3VPN and L3VNI coexistence in different VRFs", Ordered, func() {
@@ -151,22 +160,9 @@ var _ = Describe("Mixed L3VPN and L3VNI coexistence in different VRFs", Ordered,
 		By("resetting the leaf kind nodes")
 		Expect(infra.LeafKind1Config.UpdateConfig(nodes, infra.LeafKindConfiguration{})).To(Succeed())
 		Expect(infra.LeafKind2Config.UpdateConfig(nodes, infra.LeafKindConfiguration{})).To(Succeed())
-
-		By("setting redistribute connected on leaves")
-		Expect(infra.LeafAConfig.RedistributeConnected()).To(Succeed())
-		Expect(infra.LeafSRV6Config.RedistributeConnected()).To(Succeed())
-
-		By("cleaning all but the underlay")
-		Expect(Updater.CleanButUnderlay()).To(Succeed())
 	})
 
 	AfterAll(func() {
-		dumpIfFails(cs, testNamespace)
-		Expect(infra.LeafAConfig.Reset()).To(Succeed())
-		Expect(infra.LeafSRV6Config.Reset()).To(Succeed())
-		Expect(Updater.CleanButUnderlay()).To(Succeed())
-		Expect(k8s.DeleteNamespace(cs, testNamespace)).To(Succeed())
-
 		By("cleaning all resources")
 		Expect(Updater.CleanAll()).To(Succeed())
 
@@ -178,6 +174,23 @@ var _ = Describe("Mixed L3VPN and L3VNI coexistence in different VRFs", Ordered,
 			}
 			return openperouter.AreReady(routers)
 		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
+	})
+
+	BeforeEach(func() {
+		By("setting redistribute connected on leaves")
+		Expect(infra.LeafAConfig.RedistributeConnected()).To(Succeed())
+		Expect(infra.LeafSRV6Config.RedistributeConnected()).To(Succeed())
+
+		By("cleaning all but the underlay")
+		Expect(Updater.CleanButUnderlay()).To(Succeed())
+	})
+
+	AfterEach(func() {
+		dumpIfFails(cs, testNamespace)
+		Expect(infra.LeafAConfig.Reset()).To(Succeed())
+		Expect(infra.LeafSRV6Config.Reset()).To(Succeed())
+		Expect(Updater.CleanButUnderlay()).To(Succeed())
+		Expect(k8s.DeleteNamespace(cs, testNamespace)).To(Succeed())
 	})
 
 	It("should support traffic in different VRFs", func() {
@@ -267,4 +280,148 @@ var _ = Describe("Mixed L3VPN and L3VNI coexistence in different VRFs", Ordered,
 		toEVPNHost := infra.HostABlueIPv4
 		checkPodIsReachable(l3vniClientPodExecutor, fromL3vniClientPod, toEVPNHost)
 	})
+
+	// This test verifies maximum MTU via the secondary network net1 for setups with L3VPN + L2VNI in one VRF and
+	// L3VNI + L2VNI in the other. The test is repeated for H.Encaps where we expect to see SRv6 overhead in one VRF
+	// and VXLAN overhead in the other, as well as for H.Encaps.Red where we expect to see VXLAN overhead in both VRFs
+	// (because max(VXLAN overhead, encaps reduced overhead) is VXLAN overhead). This test does not verify deployments
+	// with SRv6 H.Encaps.Red and only an L3VPN but no L2VNI. (The reason for not running that last test: packets leave
+	// via eth0 which is managed by the default CNI plugin and which always has an MTU of 1500).
+	DescribeTable("should allow packets with maximum MTU in different VRFs", func(
+		encapsBehavior v1alpha1.SRV6EncapBehavior,
+		expectedL3VPNOverhead int,
+		expectedL3VNIOverhead int,
+	) {
+		By(fmt.Sprintf("updating underlay encapsulation to encap behavior %s", encapsBehavior))
+		underlay := infra.UnderlayEVPNandSRv6.DeepCopy()
+		underlay.Spec.SRV6.EncapBehavior = new(encapsBehavior)
+		Expect(Updater.Update(config.Resources{
+			Underlays: []v1alpha1.Underlay{
+				*underlay,
+			},
+		})).To(Succeed())
+
+		By("deriving the FRR K8s configuration from the hostsessions")
+		frrK8sConfigRed, err := frrk8s.ConfigFromHostSession(*l3vpnRed.Spec.HostSession, l3vpnRed.Name)
+		Expect(err).NotTo(HaveOccurred())
+		frrK8sConfigBlue, err := frrk8s.ConfigFromHostSession(*l3vniBlue.Spec.HostSession, l3vniBlue.Name)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("creating L3VPN, L3VNI, and L2VNIs alongside FRR K8s configuration for red and blue peers")
+		Expect(Updater.Update(config.Resources{
+			L3VPNs:            []v1alpha1.L3VPN{l3vpnRed},
+			L3VNIs:            []v1alpha1.L3VNI{l3vniBlue},
+			L2VNIs:            []v1alpha1.L2VNI{l2vniForL3VNI, l2vniForL3VPN},
+			FRRConfigurations: append(frrK8sConfigRed, frrK8sConfigBlue...),
+		})).To(Succeed())
+
+		By("creating the namespace")
+		_, err = k8s.CreateNamespace(cs, testNamespace)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("creating the MacVLAN Network Attachment Definitions for L3VPN")
+		nadMasterL3VPN := fmt.Sprintf("br-hs-%d", l3vpnL2VNI)
+		netAttachDefL3VPN, err := k8s.CreateMacvlanNad(
+			fmt.Sprintf("%d", l3vpnL2VNI), testNamespace, nadMasterL3VPN, []string{l3vpnL2GatewayIP})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("creating the MacVLAN Network Attachment Definitions for L3VNI")
+		nadMasterL3VNI := fmt.Sprintf("br-hs-%d", l3vniL2VNI)
+		netAttachDefL3VNI, err := k8s.CreateMacvlanNad(
+			fmt.Sprintf("%d", l3vniL2VNI), testNamespace, nadMasterL3VNI, []string{l3vniL2GatewayIP})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("creating the pods connected to L3VPN")
+		l3vpnClientPod, err := k8s.CreateAgnhostPod(cs, l3vpnClientPodName, testNamespace,
+			k8s.WithNad(netAttachDefL3VPN.Name, testNamespace, []string{l3vpnClientPodIP}),
+			k8s.OnNode(nodes[0].Name))
+		Expect(err).NotTo(HaveOccurred())
+		l3vpnServerPod, err := k8s.CreateAgnhostPod(cs, l3vpnServerPodName, testNamespace,
+			k8s.WithNad(netAttachDefL3VPN.Name, testNamespace, []string{l3vpnServerPodIP}),
+			k8s.OnNode(nodes[1].Name))
+		Expect(err).NotTo(HaveOccurred())
+
+		By("creating the pods connected to L3VNI")
+		l3vniClientPod, err := k8s.CreateAgnhostPod(cs, l3vniClientPodName, testNamespace,
+			k8s.WithNad(netAttachDefL3VNI.Name, testNamespace, []string{l3vniClientPodIP}),
+			k8s.OnNode(nodes[0].Name))
+		Expect(err).NotTo(HaveOccurred())
+		l3vniServerPod, err := k8s.CreateAgnhostPod(cs, l3vniServerPodName, testNamespace,
+			k8s.WithNad(netAttachDefL3VNI.Name, testNamespace, []string{l3vniServerPodIP}),
+			k8s.OnNode(nodes[1].Name))
+		Expect(err).NotTo(HaveOccurred())
+
+		By("removing the default gateway via the primary interface for pods connected to L3VPN")
+		Expect(removeGatewayFromPod(l3vpnClientPod)).To(Succeed())
+		Expect(removeGatewayFromPod(l3vpnServerPod)).To(Succeed())
+
+		By("removing the default gateway via the primary interface for pods connected to L3VNI")
+		Expect(removeGatewayFromPod(l3vniClientPod)).To(Succeed())
+		Expect(removeGatewayFromPod(l3vniServerPod)).To(Succeed())
+
+		By("getting the pod executor for client pod connected to L3VPN")
+		l3vpnClientPodExecutor := executor.ForPod(l3vpnClientPod.Namespace, l3vpnClientPod.Name, "agnhost")
+
+		By("getting the pod executor for client pod connected to L3VNI")
+		l3vniClientPodExecutor := executor.ForPod(l3vniClientPod.Namespace, l3vniClientPod.Name, "agnhost")
+
+		By(fmt.Sprintf("checking MTU correctly configured on L3VPN client pod - expecting overhead %d", expectedL3VPNOverhead))
+		checkMaximumMTU(l3vpnClientPodExecutor, "net1", baseMTU-expectedL3VPNOverhead)
+
+		By("checking ping with maximum MTU works from L3VPN client pod to L3VPN server pod")
+		pingWithMaximumMTU(l3vpnClientPodExecutor, discardAddressLength(l3vpnServerPodIP), baseMTU-expectedL3VPNOverhead)
+
+		By("checking ping with maximum MTU works from L3VPN client pod via L3VPN to hostSRV6Red")
+		pingWithMaximumMTU(l3vpnClientPodExecutor, infra.HostSRV6RedIPv4, baseMTU-expectedL3VPNOverhead)
+
+		By(fmt.Sprintf("checking MTU correctly configured on L3VNI client pod - expecting overhead %d", expectedL3VNIOverhead))
+		checkMaximumMTU(l3vniClientPodExecutor, "net1", baseMTU-expectedL3VNIOverhead)
+
+		By("checking ping with maximum MTU works from L3VNI client pod to L3VNI server pod")
+		pingWithMaximumMTU(l3vniClientPodExecutor, discardAddressLength(l3vniServerPodIP), baseMTU-expectedL3VNIOverhead)
+
+		By("checking ping with maximum MTU works from L3VNI client pod via L3VNI to hostABlue")
+		pingWithMaximumMTU(l3vniClientPodExecutor, infra.HostABlueIPv4, baseMTU-expectedL3VNIOverhead)
+	},
+		Entry("h.encaps", v1alpha1.HEncaps, srv6Overhead, vxlanOverhead),
+		Entry("h.encaps.red", v1alpha1.HEncapsRed, vxlanOverhead, vxlanOverhead),
+	)
 })
+
+func checkMaximumMTU(podExecutor executor.Executor, intfName string, expectedMTU int) {
+	Eventually(func() error {
+		fileName := fmt.Sprintf("/sys/class/net/%s/mtu", intfName)
+		By(fmt.Sprintf("reading the MTU from %s", fileName))
+		mtuStr, err := podExecutor.Exec("cat", fileName)
+		if err != nil {
+			return err
+		}
+		mtu, err := strconv.Atoi(strings.TrimSpace(mtuStr))
+		if err != nil {
+			return err
+		}
+		if mtu != expectedMTU {
+			return fmt.Errorf("MTU %d does not match expected MTU %d", mtu, expectedMTU)
+		}
+		return nil
+	}).
+		WithOffset(1).
+		WithTimeout(60 * time.Second).
+		WithPolling(time.Second).
+		Should(Succeed())
+}
+
+func pingWithMaximumMTU(podExecutor executor.Executor, destination string, mtu int) {
+	pingSize := mtu - icmpOverhead
+	By(fmt.Sprintf("pinging %s with maximum payload size %d (MTU %d - %d)",
+		destination, pingSize, mtu, icmpOverhead))
+	Eventually(func(g Gomega) {
+		out, err := podExecutor.Exec("ping", "-c", "1", "-W", "1",
+			"-s", fmt.Sprintf("%d", pingSize), destination)
+		g.Expect(err).ToNot(HaveOccurred(), "ping with max MTU failed: %s", out)
+	}).
+		WithOffset(1).
+		WithTimeout(60 * time.Second).
+		WithPolling(time.Second).
+		Should(Succeed())
+}

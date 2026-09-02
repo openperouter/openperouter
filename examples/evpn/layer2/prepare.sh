@@ -5,8 +5,7 @@ CURRENT_PATH=$(dirname "$0")
 
 source "${CURRENT_PATH}/../../common.sh"
 
-DEMO_MODE=true make deploy
-export KUBECONFIG=$(pwd)/bin/kubeconfig
+DEMO_MODE=true make -C "${REPO_ROOT}" deploy
 
 apply_manifests_with_retries openpe.yaml workload.yaml
 

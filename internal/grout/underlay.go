@@ -79,6 +79,21 @@ func SetupUnderlay(ctx context.Context, client *Client, params hostnetwork.Under
 		}
 	}
 
+	if params.TunnelEndpoint != nil {
+		if err := setupTunnelEndpoint(ctx, client, *params.TunnelEndpoint); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func setupTunnelEndpoint(ctx context.Context, client *Client, ep hostnetwork.UnderlayTunnelEndpointParams) error {
+	if err := assignIPsToGroutPort(ctx, client, defaultVRFName,
+		ep.IPv4CIDR, ep.IPv6CIDR); err != nil {
+		return fmt.Errorf("failed to assign tunnel endpoint IPs to grout underlay: %w", err)
+	}
+
 	return nil
 }
 
@@ -176,9 +191,9 @@ func migrateAddressesToGrout(ctx context.Context, client *Client, underlayInterf
 			return fmt.Errorf("failed to remove address %s from underlay interface: %w", cidr, err)
 		}
 
-		// FRR needs kernel routes to enstabilish BGP connections. Grout requires that all the kernel
+		// FRR needs kernel routes to establish BGP connections. Grout requires that all the kernel
 		// traffic must enter grout via the `main` TAP device.
-		if err := ensureKernelSubnetRoute("main", addr.IPNet.String()); err != nil {
+		if err := ensureKernelSubnetRoute(defaultVRFName, addr.IPNet.String()); err != nil {
 			return fmt.Errorf("failed to add kernel route for underlay subnet %s: %w", addr, err)
 		}
 
@@ -190,7 +205,7 @@ func migrateAddressesToGrout(ctx context.Context, client *Client, underlayInterf
 	//    link/ether 00:09:a8:38:8e:3b brd ff:ff:ff:ff:ff:ff promiscuity 0 allmulti 0 minmtu 68 maxmtu 65521
 	//    tun type tap ...
 	//    alias Grout control plane interface
-	// bgpd packets will leave through the `main` intrerface and will come back on the `u_xxx` interface, hence the
+	// bgpd packets will leave through the `main` interface and will come back on the `u_xxx` interface, hence the
 	// need to disable rp_filter on the `u_xxx` interface.
 	if err := sysctl.Ensure(sysctl.DisableRPFilter(UnderlayPortNamePrefix + underlayInterface)); err != nil {
 		return fmt.Errorf("failed to disable rp_filter on underlay interface %s: %w", UnderlayPortNamePrefix+underlayInterface, err)
@@ -230,7 +245,7 @@ func migrateAddressesToKernel(ctx context.Context, client *Client, underlayPortN
 	}
 
 	for _, addr := range addrs {
-		if err := removeKernelSubnetRoute("main", addr); err != nil {
+		if err := removeKernelSubnetRoute(defaultVRFName, addr); err != nil {
 			return fmt.Errorf("failed to remove kernel route for %s: %w", addr, err)
 		}
 
@@ -285,6 +300,24 @@ func removeKernelSubnetRoute(ifaceName, addr string) error {
 	}
 
 	slog.Info("removed kernel route for subnet", "cidr", addr, "src", route.Src, "ipnet", route.Dst, "iface", ifaceName)
+	return nil
+}
+
+// assignIPsToGroutPort assigns IPv4 and IPv6 addresses to a grout port via grcli.
+func assignIPsToGroutPort(ctx context.Context, client *Client, portName string, ipv4, ipv6 string) error {
+	if ipv4 == "" && ipv6 == "" {
+		return fmt.Errorf("at least one IP address must be provided (IPv4 or IPv6)")
+	}
+
+	for _, addr := range []string{ipv4, ipv6} {
+		if addr == "" {
+			continue
+		}
+		slog.DebugContext(ctx, "assigning IP to grout port", "port", portName, "addr", addr)
+		if err := client.ensureAddress(ctx, portName, addr); err != nil {
+			return fmt.Errorf("failed to assign address %s to grout port %s: %w", addr, portName, err)
+		}
+	}
 	return nil
 }
 

@@ -11,6 +11,7 @@ import (
 )
 
 const NamedNetns = "perouter"
+const underlayPortNamePrefix = "u_"
 
 // NamedNetnsExists checks whether /var/run/netns/perouter is present on nodeName.
 func NamedNetnsExists(nodeName string) (bool, error) {
@@ -86,6 +87,17 @@ func UnderlayConfigured(nodeName string) (bool, error) {
 		return true, nil
 	}
 
+	// Check if some Grout underlay has been configured
+	out, err = exec.Exec("ip", "netns", "exec", NamedNetns, "ip", "-brief", "link", "show")
+	if err != nil {
+		return false, err
+	}
+	for line := range strings.SplitSeq(out, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) > 0 && strings.HasPrefix(fields[0], underlayPortNamePrefix) {
+			return true, nil
+		}
+	}
 	return false, nil
 }
 
