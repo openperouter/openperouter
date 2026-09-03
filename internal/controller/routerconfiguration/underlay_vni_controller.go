@@ -190,7 +190,10 @@ func mergeStaticConfig(staticConfigDir, nodeName, namespace string, config conve
 		return config, fmt.Errorf("failed to merge api config and static config: %w", err)
 	}
 
-	logger.Info("merge static config using", "from api", config, "static config", staticConfig, "merged", merged)
+	logger.Info("merge static config using",
+		"from api", conversion.RedactAPIConfigData(config),
+		"static config", conversion.RedactAPIConfigData(staticConfig),
+		"merged", conversion.RedactAPIConfigData(merged))
 	return merged, nil
 }
 
@@ -291,7 +294,7 @@ func (r *PERouterReconciler) getConfigFromAPI(ctx context.Context, logger *slog.
 		"l3vnis", l3vnis.Items,
 		"l2vnis", l2vnis.Items,
 		"l3passthrough", l3passthrough.Items,
-		"rawfrrconfigs", rawFRRConfigs.Items)
+		"rawfrrconfigs", conversion.RedactRawFRRConfigs(rawFRRConfigs.Items))
 
 	apiConfig := conversion.APIConfigData{
 		Underlays:     filteredUnderlays,
@@ -319,6 +322,8 @@ func (r *PERouterReconciler) resolvePasswordSecrets(ctx context.Context, config 
 				continue
 			}
 
+			// A password already in the map comes from static (systemd) plaintext
+			// config, which takes precedence over the Secret.
 			if _, alreadyResolved := config.Passwords[conversion.NeighborID(n)]; alreadyResolved {
 				validNeighbors = append(validNeighbors, n)
 				continue
@@ -380,6 +385,7 @@ func (r *PERouterReconciler) fetchPasswordFromSecret(ctx context.Context, ref *v
 	return resolved, nil
 }
 
+// maxPasswordLength matches Linux TCP_MD5SIG_MAXKEYLEN, the BGP MD5 key limit.
 const maxPasswordLength = 80
 
 var validPasswordPattern = regexp.MustCompile(`^\S+$`)

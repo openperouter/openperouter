@@ -92,3 +92,35 @@ func TestFRRReloadOutputPasswordRedacted(t *testing.T) {
 		t.Fatalf("redacted reload output mismatch:\nwant:\n%s\ngot:\n%s", want, got)
 	}
 }
+
+func TestRedactPasswordsHandlesRawFRRPasswordFormatting(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "quoted password with whitespace",
+			in:   `neighbor 192.168.1.2 password "a password with spaces"`,
+			want: "neighbor 192.168.1.2 password <REDACTED>",
+		},
+		{
+			name: "uppercase keyword in a diff",
+			in:   `+ NEIGHBOR 192.168.1.2 PASSWORD secret`,
+			want: "+ NEIGHBOR 192.168.1.2 PASSWORD <REDACTED>",
+		},
+		{
+			name: "password deletion command",
+			in:   `no neighbor 192.0.2.1 password old-secret`,
+			want: "no neighbor 192.0.2.1 password <REDACTED>",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := RedactPasswords(tt.in); got != tt.want {
+				t.Errorf("RedactPasswords() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
