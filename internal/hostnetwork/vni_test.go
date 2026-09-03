@@ -678,7 +678,9 @@ func validateL3VNI(g Gomega, params L3VNIParams) {
 
 	bridgeLink, err := netlink.LinkByName(BridgeName(params.VNI))
 	g.Expect(err).NotTo(HaveOccurred(), "bridge not found for addr_gen_mode check", BridgeName(params.VNI))
-	g.Expect(checkAddrGenModeNone(bridgeLink)).To(BeTrue(), "L3VNI bridge must have addr_gen_mode=1")
+	addrGenModeNone, err := checkAddrGenModeNone(bridgeLink)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(addrGenModeNone).To(BeTrue(), "L3VNI bridge must have addr_gen_mode=1")
 
 	vethNames := vethNamesFromVNI(params.VNI)
 	peLegLink, err := netlink.LinkByName(vethNames.NamespaceSide)
@@ -710,7 +712,9 @@ func validateL2VNI(g Gomega, params L2VNIParams) {
 
 	bridgeLinkForMode, err := netlink.LinkByName(BridgeName(params.VNI))
 	g.Expect(err).NotTo(HaveOccurred(), "bridge not found for addr_gen_mode check", BridgeName(params.VNI))
-	g.Expect(checkAddrGenModeNone(bridgeLinkForMode)).To(BeFalse(), "L2VNI bridge must NOT have addr_gen_mode=1")
+	addrGenModeNone, err := checkAddrGenModeNone(bridgeLinkForMode)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(addrGenModeNone).To(BeFalse(), "L2VNI bridge must NOT have addr_gen_mode=1")
 
 	vethNames := vethNamesFromVNI(params.VNI)
 	peLegLink, err := netlink.LinkByName(vethNames.NamespaceSide)
@@ -750,8 +754,7 @@ func validateVNI(g Gomega, params VNIParams) {
 	vxlan := vxlanLink.(*netlink.Vxlan)
 	g.Expect(vxlan.OperState).To(BeEquivalentTo(netlink.OperUnknown))
 
-	addrGenModeNone := checkAddrGenModeNone(vxlan)
-	g.Expect(addrGenModeNone).To(BeTrue())
+	g.Expect(checkVXLanPostSetup(vxlan)).To(Succeed())
 
 	bridgeLink, err := netlink.LinkByName(BridgeName(params.VNI))
 	g.Expect(err).NotTo(HaveOccurred(), "bridge not found", BridgeName(params.VNI))
@@ -773,6 +776,28 @@ func validateVNI(g Gomega, params VNIParams) {
 
 	err = checkVXLanConfigured(vxlan, bridge.Index, vtepDev.Attrs().Index, params)
 	g.Expect(err).NotTo(HaveOccurred())
+}
+
+func checkVXLanPostSetup(vxlan *netlink.Vxlan) error {
+	// Verify 'bridge_slave learning off' to make sure that MAC learning is disabled (note: different from 'nolearning').
+	protinfo, err := netlink.LinkGetProtinfo(vxlan)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve VXLAN protinfo, err: %q", err)
+	}
+	if protinfo.Learning {
+		return errors.New("MAC learning is enabled")
+	}
+	if !protinfo.NeighSuppress {
+		return errors.New("neighbor suppression is disabled")
+	}
+	addrGenModeNone, err := checkAddrGenModeNone(vxlan)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve addr_gen_mode, err: %q", err)
+	}
+	if !addrGenModeNone {
+		return errors.New("addr_gen_mode is not set to none")
+	}
+	return nil
 }
 
 func validateVRF(g Gomega, vrfName string) (netlink.Link, *netlink.Vrf) {
@@ -835,12 +860,14 @@ func validateVNIIsNotConfigured(g Gomega, params VNIParams) {
 	checkLinkdeleted(g, vethNames.NamespaceSide)
 }
 
-func checkAddrGenModeNone(l netlink.Link) bool {
+func checkAddrGenModeNone(l netlink.Link) (bool, error) {
 	fileName := fmt.Sprintf("/proc/sys/net/ipv6/conf/%s/addr_gen_mode", l.Attrs().Name)
 	addrGenMode, err := os.ReadFile(fileName)
-	Expect(err).NotTo(HaveOccurred())
+	if err != nil {
+		return false, err
+	}
 
-	return strings.Trim(string(addrGenMode), "\n") == "1"
+	return strings.Trim(string(addrGenMode), "\n") == "1", nil
 }
 
 func setupLoopback(ns netns.NsHandle) {
