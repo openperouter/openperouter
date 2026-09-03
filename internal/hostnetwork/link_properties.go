@@ -7,14 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"math"
 	"net"
 	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/vishvananda/netlink"
-	"github.com/vishvananda/netlink/nl"
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
 )
@@ -108,36 +104,8 @@ func interfaceHasNoIP(link netlink.Link, family int) (bool, error) {
 }
 
 // setAddrGenModeNone sets addr_gen_mode to none (value "1") on the given link.
-// It is idempotent: if already set, it does nothing to avoid unnecessary netlink events.
 func setAddrGenModeNone(l netlink.Link) error {
-	fileName := fmt.Sprintf("/proc/sys/net/ipv6/conf/%s/addr_gen_mode", l.Attrs().Name)
-	fileName = filepath.Clean(fileName)
-	if !strings.HasPrefix(fileName, "/proc/sys/") {
-		panic(fmt.Errorf("attempt to escape")) // TODO: replace with os.Root when Go 1.24 is out
-	}
-
-	currentValue, err := os.ReadFile(fileName)
-	if err != nil {
-		return fmt.Errorf("addrGenModeNone: error reading file: %w", err)
-	}
-	if strings.TrimSpace(string(currentValue)) == "1" {
-		return nil
-	}
-
-	file, err := os.OpenFile(fileName, os.O_WRONLY, 0)
-	if err != nil {
-		return fmt.Errorf("addrGenModeNone: error opening file: %w", err)
-	}
-	defer func() {
-		if err := file.Close(); err != nil {
-			slog.Error("failed to close file", "file", fileName, "error", err)
-		}
-	}()
-
-	if _, err := fmt.Fprintf(file, "%s\n", "1"); err != nil {
-		return fmt.Errorf("addrGenModeNone: error writing to file: %w", err)
-	}
-	return nil
+	return netlink.LinkSetIP6AddrGenMode(l, 1)
 }
 
 // linkSetUp sets the link up only if it's not already up.
@@ -183,28 +151,6 @@ func linkSetMaster(link, master netlink.Link) error {
 	}
 
 	return netlink.LinkSetMaster(link, master)
-}
-
-// setNeighSuppression sets neighbor suppression to the given link.
-func setNeighSuppression(link netlink.Link) error {
-	req := nl.NewNetlinkRequest(unix.RTM_SETLINK, unix.NLM_F_ACK)
-
-	msg := nl.NewIfInfomsg(unix.AF_BRIDGE)
-	var err error
-	msg.Index, err = intToInt32(link.Attrs().Index)
-	if err != nil {
-		return fmt.Errorf("invalid index for %s", link.Attrs().Name)
-	}
-	req.AddData(msg)
-
-	br := nl.NewRtAttr(unix.IFLA_PROTINFO|unix.NLA_F_NESTED, nil)
-	br.AddRtAttr(32, []byte{1})
-	req.AddData(br)
-	_, err = req.Execute(unix.NETLINK_ROUTE, 0)
-	if err != nil {
-		return fmt.Errorf("error executing request: %w", err)
-	}
-	return nil
 }
 
 // moveInterfaceToNamespace takes the given interface and moves it from the given to the given namespace.
@@ -280,13 +226,6 @@ func DeleteAddressFromInterface(ifaceName string, addr netlink.Addr) error {
 		return fmt.Errorf("failed to find underlay interface %s: %w", ifaceName, err)
 	}
 	return netlink.AddrDel(link, &addr)
-}
-
-func intToInt32(val int) (int32, error) {
-	if val < math.MinInt32 || val > math.MaxInt32 {
-		return 0, fmt.Errorf("can't convert %d to int32", val)
-	}
-	return int32(val), nil
 }
 
 func LinkExists(name string) (bool, error) {
