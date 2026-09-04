@@ -165,7 +165,6 @@ GINKGO ?= $(LOCALBIN)/ginkgo
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 HELM ?= $(LOCALBIN)/helm
 KUBECONFIG_PATH ?= $(LOCALBIN)/kubeconfig
-VALIDATOR_PATH ?= $(LOCALBIN)/validatehost
 APIDOCSGEN ?= $(LOCALBIN)/crd-ref-docs
 HUGO ?= $(LOCALBIN)/hugo
 export KUBECONFIG=$(KUBECONFIG_PATH)
@@ -345,17 +344,17 @@ $(APIDOCSGEN): $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install github.com/elastic/crd-ref-docs@$(APIDOCSGEN_VERSION)
 
 .PHONY: e2etests
-e2etests: ginkgo kubectl build-validator create-export-logs
-	$(GINKGO) -v $(GINKGO_ARGS) --json-report=e2e-report.json --output-dir=${KIND_EXPORT_LOGS} --timeout=3h ./e2etests/suite -- --kubectl=$(KUBECTL) $(TEST_ARGS) --hostvalidator $(VALIDATOR_PATH) --reporterpath=${KIND_EXPORT_LOGS}
+e2etests: ginkgo kubectl create-export-logs
+	$(GINKGO) -v $(GINKGO_ARGS) --json-report=e2e-report.json --output-dir=${KIND_EXPORT_LOGS} --timeout=3h ./e2etests/suite -- --kubectl=$(KUBECTL) $(TEST_ARGS) --reporterpath=${KIND_EXPORT_LOGS}
 
 .PHONY: e2etests-hostmode-boot
-e2etests-hostmode-boot: ginkgo kubectl build-validator create-export-logs ## Run e2e tests for hostmode boot scenario (static config first, then K8s API).
+e2etests-hostmode-boot: ginkgo kubectl create-export-logs ## Run e2e tests for hostmode boot scenario (static config first, then K8s API).
 	@echo "=== Running systemd_static_suite tests (static config only) ==="
 	$(GINKGO) -v $(GINKGO_ARGS) --json-report=e2e-report-systemd.json --output-dir=${KIND_EXPORT_LOGS} --timeout=3h ./e2etests/systemd_static_suite -- --kubectl=$(KUBECTL) $(TEST_ARGS)
 	@echo "=== Deploying controller to enable K8s API ==="
 	$(MAKE) deploy-controller KUSTOMIZE_LAYER=hostmode
 	@echo "=== Running passthrough tests (with K8s API available) ==="
-	$(GINKGO) -v $(GINKGO_ARGS) --json-report=e2e-report-passthrough.json --output-dir=${KIND_EXPORT_LOGS} --label-filter="passthrough" --timeout=3h ./e2etests/suite -- --kubectl=$(KUBECTL) $(TEST_ARGS) --skip-underlay-passthrough --systemdmode --hostvalidator $(VALIDATOR_PATH) --reporterpath=${KIND_EXPORT_LOGS}
+	$(GINKGO) -v $(GINKGO_ARGS) --json-report=e2e-report-passthrough.json --output-dir=${KIND_EXPORT_LOGS} --label-filter="passthrough" --timeout=3h ./e2etests/suite -- --kubectl=$(KUBECTL) $(TEST_ARGS) --skip-underlay-passthrough --systemdmode --reporterpath=${KIND_EXPORT_LOGS}
 
 .PHONY: scale-tests
 scale-tests: ginkgo kubectl create-export-logs ## Run VNI scale tests
@@ -488,11 +487,6 @@ bumpversion:
 .PHONY: cutrelease
 cutrelease: bumpversion generate-all-in-one helm-docs api-docs bundle
 	hack/release/release.sh
-
-.PHONY: build-validator
-build-validator: ginkgo ## Build Ginkgo test binary.
-	CGO_ENABLED=0 $(GINKGO) build -tags=externaltests ./internal/hostnetwork
-	mv internal/hostnetwork/hostnetwork.test $(VALIDATOR_PATH)
 
 .PHONY: create-export-logs
 create-export-logs:

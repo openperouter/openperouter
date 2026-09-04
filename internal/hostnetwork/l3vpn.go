@@ -22,12 +22,12 @@ const (
 )
 
 type L3VPNParams struct {
-	Name             string   `json:"name"`
-	LinkIPs          *LinkIPs `json:"link_ips"`
-	VRF              string   `json:"vrf"`
-	TargetNS         string   `json:"targetns"`
-	RDAssignedNumber int32    `json:"rdassignednumber"`
-	TunnelOverhead   int      `json:"tunneloverhead"`
+	Name             string
+	LinkIPs          *LinkIPs
+	VRF              string
+	TargetNS         string
+	RDAssignedNumber int32
+	TunnelOverhead   int
 }
 
 // SetupL3VPN sets up a Layer 3 VPN in the target namespace.

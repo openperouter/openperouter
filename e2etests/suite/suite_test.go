@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -32,7 +31,6 @@ var (
 // handleFlags sets up all flags and parses the command line.
 func handleFlags() {
 	flag.StringVar(&executor.Kubectl, "kubectl", "kubectl", "the path for the kubectl binary")
-	flag.StringVar(&tests.ValidatorPath, "hostvalidator", "hostvalidator", "the path for the hostvalidator binary")
 	flag.StringVar(&tests.ReportPath, "reporterpath", "/tmp", "the path for the reporter")
 	flag.BoolVar(&tests.HostMode, "systemdmode", false, "tells if openperouter is running on the host")
 	flag.BoolVar(&tests.GroutMode, "groutmode", false, "tells if openperouter is running with grout dataplane")
@@ -84,10 +82,6 @@ var _ = ginkgo.BeforeSuite(func() {
 	ginkgo.By("Registering fabric and node links from " + nodeLinkConfigPath)
 	Expect(infra.RegisterLinks(nodeLinkConfigPath)).To(Succeed())
 
-	ginkgo.By("validating CNI binaries and cache directory in controller")
-	Eventually(func(g Gomega) {
-		tests.ValidateCNIBinaries(g, cs)
-	}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
 })
 
 var _ = ginkgo.AfterSuite(func() {

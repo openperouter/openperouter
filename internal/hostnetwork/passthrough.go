@@ -14,8 +14,8 @@ import (
 )
 
 type PassthroughParams struct {
-	TargetNS string  `json:"namespace"`
-	LinkIPs  LinkIPs `json:"link_ips"`
+	TargetNS string
+	LinkIPs  LinkIPs
 }
 
 var PassthroughNames = VethNames{
