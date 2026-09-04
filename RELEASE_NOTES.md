@@ -1,3 +1,44 @@
+## Release v0.2.1
+
+### New Features
+
+- The underlay `interfaces` union supports a new `CNI` type: the controller provisions underlay interfaces in the router namespace by invoking a CNI plugin defined inline in the Underlay spec (`cniDevice.rawConfig`), with IPAM delegated to the plugin. The macvlan and static CNI plugins are bundled in the controller image. The non-functional `multusNetworkAnnotation` chart value and operator API field were removed. (#543, @qinqon)
+- The controller now manages a DHCP daemon subprocess that handles lease acquisition and renewal for CNI-provisioned underlay interfaces, with automatic lease re-acquisition after controller restarts. (#596, @maiqueb)
+- Introduce route reflector support: some nodes can be instructed to have route reflector clients. This enables scenarios where the TOR can't be modified in order to propagate routes across the nodes.
+  Also, support listenRange to configure neighbors. (#509, @qinqon)
+- Enable Encaps.Red encapsulation for SRV6 overlays (#570, @andreaskaris)
+- Introduce tool for inspecting OpenPERouter deployments for easier troubleshooting. (#484, @ormergi)
+- L3VPN + L2VNI combinations now support l2gatewayIPs. (#562, @andreaskaris)
+- Run systemd mode frr containers in a separate network namespace, like the k8s variant does. (#546, @fedepaol)
+- TAP device based support for Grout / L3VNI (#635, @zeeke)
+- The OpenPERouter now supports setups with both L3VPNs and L3VNIs across different VRFs. (#608, @andreaskaris)
+
+### Bug fixes
+
+- Calculate MTU correctly per VRF for mixed L3VPN + L2VNI deployments (both with and without encaps.red), L3VNI + L2VNI deployments, and all other possible combinations of L3 overlay resources. (#584, @andreaskaris)
+- Bump DPDK/grout dataplane to v0.17.1, including the IPv6 NDP/RA flag fix. (#708, @RamLavi)
+- Disable rp_filter sysctl on grout ports (#564, @zeeke)
+- Do not add advertise-svi-ip in the generated frr configuration as it's not needed (ip and mac are the same at all nodes) and triggers crash on zebra. (#647, @qinqon)
+- Fix DHCP lease cleanup on pod deletion by consuming the upstream ciaddr fix (containernetworking/plugins#1279). (#643, @maiqueb)
+- Fix RouterID derivation to be consistent with loopback and other per-node address assignments by removing the +1 index offset. (#693, @andreaskaris)
+- Fix reconcile storm caused by status being re-patched on every reconcile due to LastTransitionTime mismatch. (#542, @RamLavi)
+- Fix: logLevel is ignored in controller container when specified in the nodeConfig when running in systemd mode (#674, @andreaskaris)
+- Fix: session reset after configuration reload when default graceful restart timers are applied (#668, @fedepaol)
+- Fixed CRI-O (e.g. OpenShift) deployments failing because the controller was missing the FRR reloader socket path. (#588, @maiqueb)
+- Fixed a crash of the FRR bgpd daemon that could happen while VNIs were being created, by applying the FRR configuration before the corresponding kernel objects. (#630, @qinqon)
+- CNI-provisioned underlay interfaces are now validated with a CNI CHECK on every reconcile. If an interface was removed or misconfigured outside of OpenPERouter, 
+the next reconcile tears it down and re-provisions it instead of trusting a stale cache entry. (#614, @RamLavi)
+
+### Breaking API changes
+
+- API: OpenPERouter CRD:  `spec.tolerateMaster` and `spec.runOnMaster` replaced with Kubernetes native scheduling primitives `nodeSelector` and `tolerations`, `spec.affinity` now affect all OpenPERouter pods. (#649, @ormergi)
+- API: Renamed enum values to PascalCase (External/Internal, LinuxBridge/OVSBridge, IPv4/IPv6/DualStack). This is a breaking change for v1alpha1 users who must update their CR manifests. (#593, @RamLavi)
+- API: Neighbor.passwordSecret now references a Secret key via {name, key} instead of a bare secret name (key defaults to "password"). (#638, @RamLavi)
+- The `passiveMode` field on `Underlay` `neighbors[].bfd` has been replaced by a `sessionMode` enum: replace `passiveMode: true` with `sessionMode: Passive`. The `echoMode` and `echoInterval` fields have been removed; BFD echo mode only works between FRR instances and is inert against a physical fabric. (#627, @qinqon)
+- The `ebgpMultiHop` field on `Underlay` `neighbors[]` has been replaced by a session level `properties` list. Replace `ebgpMultiHop: true` with a `properties` entry of `type: ebgpMultiHop`, which now also accepts an optional `ttl` (1-255, FRR defaults to 255). (#628, @qinqon)
+- The `autoCreate` field on `L2VNI` `hostmaster.linuxBridge` and `hostmaster.ovsBridge` has been replaced by a `lifecycle` enum. Replace `autoCreate: true` with `lifecycle: Managed`, and a bare `name: <bridge>` with `lifecycle: External` plus `name: <bridge>`. As before, a name may only be set for user provided (External) bridges; Managed bridges are named `br-hs-<VNI>`. (#626, @qinqon)
+- CRD field names in YAML/JSON are renamed from flat-lowercase to lowerCamelCase. Existing manifests must be updated. (#636, @maiqueb)
+
 ## Release v0.2.0
 
 ### New Features
