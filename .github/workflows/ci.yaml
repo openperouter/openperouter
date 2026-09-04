@@ -331,7 +331,7 @@ jobs:
         run: |
           if [ ${{ matrix.deployment }} = "systemdmode" ]; then
             export TEST_ARGS="--systemdmode"
-            export GINKGO_ARGS="--skip='Router Host configuration' --skip='North/south traffic after FRR container restart' --skip='Alpha: Named netns' --skip='Beta: Named netns'"
+            export GINKGO_ARGS="--skip='North/south traffic after FRR container restart' --skip='Alpha: Named netns' --skip='Beta: Named netns'"
             make e2etests
           elif [ ${{ matrix.deployment }} = "hostmode-boot" ]; then
             make e2etests-hostmode-boot

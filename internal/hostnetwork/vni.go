@@ -25,43 +25,43 @@ const (
 )
 
 type VNIParams struct {
-	VRF            string `json:"vrf"`
-	TargetNS       string `json:"targetns"`
-	VTEPIP         string `json:"vtepip"`
-	VNI            int32  `json:"vni"`
-	VXLanPort      *int32 `json:"vxlanPort,omitempty"`
-	TunnelOverhead int    `json:"tunneloverhead"`
+	VRF            string
+	TargetNS       string
+	VTEPIP         string
+	VNI            int32
+	VXLanPort      *int32
+	TunnelOverhead int
 }
 
 type L3VNIParams struct {
-	VNIParams `json:",inline"`
-	Name      string   `json:"name"`
-	LinkIPs   *LinkIPs `json:"link_ips"`
+	VNIParams
+	Name    string
+	LinkIPs *LinkIPs
 }
 
 type L3PassthroughParams struct {
-	TargetNS string  `json:"targetns"`
-	LinkIPs  LinkIPs `json:"link_ips"`
+	TargetNS string
+	LinkIPs  LinkIPs
 }
 
 type LinkIPs struct {
-	HostIPv4 string `json:"hostipv4"`
-	NSIPv4   string `json:"nsipv4"`
-	HostIPv6 string `json:"hostipv6"`
-	NSIPv6   string `json:"nsipv6"`
+	HostIPv4 string
+	NSIPv4   string
+	HostIPv6 string
+	NSIPv6   string
 }
 
 type L2VNIParams struct {
-	VNIParams    `json:",inline"`
-	Name         string      `json:"name"`
-	L2GatewayIPs []string    `json:"l2gatewayips"`
-	HostMaster   *HostMaster `json:"hostMaster"`
+	VNIParams
+	Name         string
+	L2GatewayIPs []string
+	HostMaster   *HostMaster
 }
 
 type HostMaster struct {
-	Name       *string `json:"name,omitempty"`
-	Type       string  `json:"type,omitempty"`
-	AutoCreate *bool   `json:"autocreate,omitempty"`
+	Name       *string
+	Type       string
+	AutoCreate *bool
 }
 
 const (

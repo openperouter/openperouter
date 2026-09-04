@@ -25,7 +25,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 )
 
-var _ = Describe("Router Host configuration", Ordered, GroutSupport, func() {
+var _ = Describe("Router BGP sessions", Ordered, GroutSupport, func() {
 	var cs clientset.Interface
 	frrk8sPods := []*corev1.Pod{}
 	nodes := []corev1.Node{}

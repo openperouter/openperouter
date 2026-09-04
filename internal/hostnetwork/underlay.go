@@ -27,36 +27,36 @@ type UnderlayParams struct {
 	// UnderlayInterfaces are the underlay interfaces to provision: either
 	// host network devices moved into the namespace or CNI-provisioned
 	// interfaces; an underlay uses one mode or the other.
-	UnderlayInterfaces []UnderlayInterface           `json:"underlay_interfaces"`
-	TargetNS           string                        `json:"target_ns"`
-	TunnelEndpoint     *UnderlayTunnelEndpointParams `json:"tunnel_endpoint"`
+	UnderlayInterfaces []UnderlayInterface
+	TargetNS           string
+	TunnelEndpoint     *UnderlayTunnelEndpointParams
 }
 
 // UnderlayInterface describes how a single underlay interface is
 // provisioned.
 type UnderlayInterface struct {
 	// InterfaceName tells the nic name inside the router pod.
-	InterfaceName string `json:"interfaceName"`
+	InterfaceName string
 	// Kind tells how the interface is provisioned.
-	Kind UnderlayInterfaceKind `json:"kind"`
+	Kind UnderlayInterfaceKind
 	// CNI holds the CNI provisioning data; set when Kind is
 	// UnderlayInterfaceCNIDev.
-	CNI *CNIDeviceParams `json:"cni,omitempty"`
+	CNI *CNIDeviceParams
 }
 
 // CNIDeviceParams holds the data needed to provision an underlay interface
 // through a CNI plugin.
 type CNIDeviceParams struct {
 	// Config is the CNI conf or conflist JSON.
-	Config []byte `json:"config"`
+	Config []byte
 	// CapabilityArgs are the runtime parameters forwarded to the plugin as
 	// capability arguments (the CNI runtimeConfig).
-	CapabilityArgs map[string]any `json:"capability_args,omitempty"`
+	CapabilityArgs map[string]any
 }
 
 type UnderlayTunnelEndpointParams struct {
-	IPv4CIDR string `json:"ipv4_cidr"`
-	IPv6CIDR string `json:"ipv6_cidr"`
+	IPv4CIDR string
+	IPv6CIDR string
 }
 
 func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
