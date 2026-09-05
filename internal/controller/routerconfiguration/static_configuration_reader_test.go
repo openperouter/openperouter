@@ -14,6 +14,7 @@ import (
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/conversion"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/utils/ptr"
 )
@@ -546,8 +547,11 @@ l2vnis:
 	if err == nil {
 		t.Fatal("expected validation error for L2VNI with bridge name and Managed lifecycle, got nil")
 	}
-	if !strings.Contains(err.Error(), "name must be set when lifecycle is External, and must not be set when it is Managed.") {
-		t.Errorf("expected error containing 'name must be set when lifecycle is External, and must not be set when it is Managed.', got: %v", err)
+	wantErrMsg := `failed to convert static config to API config: validation errors in static config: ` +
+		`v1alpha1.L2VNI: [].spec.hostMaster.linuxBridge: Invalid value: ` +
+		`name must be set when lifecycle is External, and must not be set when it is Managed.`
+	if !strings.Contains(err.Error(), wantErrMsg) {
+		t.Errorf("expected error containing %q, got: %v", wantErrMsg, err)
 	}
 }
 
@@ -597,9 +601,12 @@ underlays:
 			yaml: validSRv6Underlay,
 		},
 		{
-			name:       "invalid encapBehavior value",
-			yaml:       fmt.Sprintf("%s      encapBehavior: \"%s\"\n", validSRv6Underlay, "H.Encaps.Invalid"),
-			wantErrMsg: `Unsupported value: "H.Encaps.Invalid": supported values: "H.Encaps", "H.Encaps.Red"`,
+			name: "invalid encapBehavior value",
+			yaml: fmt.Sprintf("%s      encapBehavior: \"%s\"\n", validSRv6Underlay, "H.Encaps.Invalid"),
+			wantErrMsg: `failed to convert static config to API config: validation errors in static config: ` +
+				`[v1alpha1.Underlay: [].spec.srv6.encapBehavior: Too long: may not be more than 12 bytes, ` +
+				`v1alpha1.Underlay: [].spec.srv6.encapBehavior: Unsupported value: "H.Encaps.Invalid": supported ` +
+				`values: "H.Encaps", "H.Encaps.Red"`,
 		},
 		{
 			name: "srv6 without isis",
@@ -624,7 +631,8 @@ underlays:
         basePrefix: "fd00:0:32::/48"
         format: "usid-f3216"
 `,
-			wantErrMsg: "SRv6 can only be configured if isis is set",
+			wantErrMsg: `failed to convert static config to API config: validation errors in static config: ` +
+				`v1alpha1.Underlay: [].spec: Invalid value: SRv6 can only be configured if isis is set`,
 		},
 		{
 			name: "srv6 without ipv6 tunnel endpoint",
@@ -655,7 +663,9 @@ underlays:
         basePrefix: "fd00:0:32::/48"
         format: "usid-f3216"
 `,
-			wantErrMsg: "SRv6 requires at least one IPv6 CIDR in tunnelEndpoint.cidrs",
+			wantErrMsg: `failed to convert static config to API config: validation errors in static config: ` +
+				`v1alpha1.Underlay: [].spec: Invalid value: ` +
+				`SRv6 requires at least one IPv6 CIDR in tunnelEndpoint.cidrs`,
 		},
 	}
 
@@ -710,7 +720,9 @@ l2vnis:
         name: "mybr"
         lifecycle: Managed
 `,
-			wantContains: "name must be set when lifecycle is External, and must not be set when it is Managed.",
+			wantContains: `failed to convert static config to API config: validation errors in static config: ` +
+				`v1alpha1.L2VNI: [].spec.hostMaster.linuxBridge: Invalid value: ` +
+				`name must be set when lifecycle is External, and must not be set when it is Managed.`,
 		},
 	}
 
@@ -760,11 +772,18 @@ l2vnis:
 	}
 
 	errMsg := err.Error()
-	if !strings.Contains(errMsg, "asn") {
-		t.Errorf("expected error from underlay missing required ASN field, got: %v", err)
+	wantPrefix := `failed to convert static config to API config: validation errors in static config:`
+	if !strings.Contains(errMsg, wantPrefix) {
+		t.Errorf("expected error containing %q, got: %v", wantPrefix, err)
 	}
-	if !strings.Contains(errMsg, "name must be set when lifecycle is External, and must not be set when it is Managed.") {
-		t.Errorf("expected error from L2VNI bridge validation, got: %v", err)
+	wantUnderlayErr := `v1alpha1.Underlay: [].spec.asn: Required value`
+	if !strings.Contains(errMsg, wantUnderlayErr) {
+		t.Errorf("expected error containing %q, got: %v", wantUnderlayErr, err)
+	}
+	wantL2VNIErr := `v1alpha1.L2VNI: [].spec.hostMaster.linuxBridge: Invalid value: ` +
+		`name must be set when lifecycle is External, and must not be set when it is Managed.`
+	if !strings.Contains(errMsg, wantL2VNIErr) {
+		t.Errorf("expected error containing %q, got: %v", wantL2VNIErr, err)
 	}
 }
 
@@ -799,9 +818,11 @@ l2vnis:
 		t.Fatal("expected error for config with 1 valid underlay and 1 invalid L2VNI, got nil -- partial result should not be returned")
 	}
 
-	// Verify the error is about the L2VNI validation, not about the underlay
-	if !strings.Contains(err.Error(), "name must be set when lifecycle is External, and must not be set when it is Managed.") {
-		t.Errorf("expected L2VNI validation error, got: %v", err)
+	wantErr := `failed to convert static config to API config: validation errors in static config: ` +
+		`v1alpha1.L2VNI: [].spec.hostMaster.linuxBridge: Invalid value: ` +
+		`name must be set when lifecycle is External, and must not be set when it is Managed.`
+	if !strings.Contains(err.Error(), wantErr) {
+		t.Errorf("expected error containing %q, got: %v", wantErr, err)
 	}
 }
 
@@ -1298,5 +1319,45 @@ func TestStaticConfigInvalidPassword(t *testing.T) {
 				t.Fatal("expected error for invalid password, got nil")
 			}
 		})
+	}
+}
+
+func TestApplyDefaultsAndValidateToUnstructuredError(t *testing.T) {
+	type unconvertible struct {
+		Bad chan int `json:"bad"`
+	}
+	obj := &unconvertible{Bad: make(chan int)}
+	_, errs := applyDefaultsAndValidate(obj, underlayGVK)
+	if len(errs) == 0 {
+		t.Fatal("expected error for unconvertible type")
+	}
+	errMsg := errs.ToAggregate().Error()
+	wantErrMsg := `Internal error: converting to unstructured: routerconfiguration.unconvertible:`
+	if !strings.Contains(errMsg, wantErrMsg) {
+		t.Errorf("expected error containing %q, got: %s", wantErrMsg, errMsg)
+	}
+}
+
+func TestApplyDefaultsAndValidateApplyDefaultsError(t *testing.T) {
+	obj := &v1alpha1.Underlay{
+		Spec: v1alpha1.UnderlaySpec{
+			ASN: 64514,
+			Interfaces: []v1alpha1.UnderlayInterface{
+				{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}},
+			},
+			Neighbors: []v1alpha1.Neighbor{
+				{ASN: new(int64(64512)), Address: new("192.168.11.2")},
+			},
+		},
+	}
+	unknownGVK := schema.GroupVersionKind{Group: "fake.io", Version: "v1", Kind: "Fake"}
+	_, errs := applyDefaultsAndValidate(obj, unknownGVK)
+	if len(errs) == 0 {
+		t.Fatal("expected error for unknown GVK")
+	}
+	errMsg := errs.ToAggregate().Error()
+	wantErrMsg := `Internal error: applying defaults: v1alpha1.Underlay: no CRD schema found for fake.io/v1, Kind=Fake`
+	if !strings.Contains(errMsg, wantErrMsg) {
+		t.Errorf("expected error containing %q, got: %s", wantErrMsg, errMsg)
 	}
 }
