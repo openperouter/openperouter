@@ -58,9 +58,8 @@ func EnsureBridge(ctx context.Context, ovs libovsclient.Client, bridgeName strin
 
 	namedUUID := "new_bridge"
 	br = &ovsmodel.Bridge{
-		UUID:        namedUUID,
-		Name:        bridgeName,
-		ExternalIDs: map[string]string{"created-by": "openperouter"},
+		UUID: namedUUID,
+		Name: bridgeName,
 	}
 
 	insertOp, err := ovs.Create(br)

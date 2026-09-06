@@ -142,6 +142,7 @@ const (
 
 // LinuxBridgeConfig contains configuration for Linux bridge type.
 // +kubebuilder:validation:XValidation:rule="(self.?name.orValue(\"\") != \"\") != (self.?lifecycle.orValue(\"\") == 'Managed')",message="name must be set when lifecycle is External, and must not be set when it is Managed."
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf) || self.lifecycle == oldSelf.lifecycle",message="lifecycle is immutable once set"
 type LinuxBridgeConfig struct {
 	// lifecycle determines if the bridge is managed by the controller or
 	// provided by the user.
@@ -159,6 +160,7 @@ type LinuxBridgeConfig struct {
 
 // OVSBridgeConfig contains configuration for OVS bridge type.
 // +kubebuilder:validation:XValidation:rule="(self.?name.orValue(\"\") != \"\") != (self.?lifecycle.orValue(\"\") == 'Managed')",message="name must be set when lifecycle is External, and must not be set when it is Managed."
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf) || self.lifecycle == oldSelf.lifecycle",message="lifecycle is immutable once set"
 type OVSBridgeConfig struct {
 	// lifecycle determines if the OVS bridge is managed by the controller or
 	// provided by the user.
