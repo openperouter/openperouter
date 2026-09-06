@@ -149,12 +149,35 @@ jobs:
           echo "Disk space after cleanup:"
           df -h
 
+      - name: Build resource monitor
+        run: go build -o bin/ci-monitor-resources ./hack/ci-monitor-resources/
+
       - name: Load kind-node-openperouter image
         uses: ./.github/workflows/composite/load-kind-node-image
+
+      - name: Start resource monitor
+        run: bin/ci-monitor-resources start --log /tmp/kind_logs/resource_monitor_unit_tests.log
 
       - name: Unit Tests
         run: |
           make test
+
+      - name: Stop resource monitor
+        if: ${{ always() }}
+        run: bin/ci-monitor-resources stop
+
+      - name: Analyze resources
+        if: ${{ failure() }}
+        run: bin/ci-monitor-resources analyze --log /tmp/kind_logs/resource_monitor_unit_tests.log
+
+      - name: Upload resource monitor log
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v7
+        with:
+          retention-days: 7
+          name: resource-monitor-unit-tests
+          path: /tmp/kind_logs/resource_monitor_unit_tests.log
+          if-no-files-found: ignore
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9.3.0
@@ -276,6 +299,9 @@ jobs:
           sudo systemctl restart docker
           docker info -f '{{ .DriverStatus }}'
 
+      - name: Build resource monitor
+        run: go build -o bin/ci-monitor-resources ./hack/ci-monitor-resources/
+
       - name: Load kind-node-openperouter image
         uses: ./.github/workflows/composite/load-kind-node-image
 
@@ -327,6 +353,9 @@ jobs:
           fi
 
 
+      - name: Start resource monitor
+        run: bin/ci-monitor-resources start --log /tmp/kind_logs/resource_monitor_e2e_${{ matrix.deployment }}.log
+
       - name: Run e2e tests
         run: |
           if [ ${{ matrix.deployment }} = "systemdmode" ]; then
@@ -350,6 +379,14 @@ jobs:
           name: e2e-reports-${{ matrix.deployment }}
           path: /tmp/kind_logs/e2e-report*.json
           if-no-files-found: ignore
+
+      - name: Stop resource monitor
+        if: ${{ always() }}
+        run: bin/ci-monitor-resources stop
+
+      - name: Analyze resources
+        if: ${{ failure() }}
+        run: bin/ci-monitor-resources analyze --log /tmp/kind_logs/resource_monitor_e2e_${{ matrix.deployment }}.log
 
       - name: Export kind logs
         if: ${{ failure() }}
@@ -446,6 +483,9 @@ jobs:
         run: |
           docker load -i image-tar-openperouter/openperouter.tar
 
+      - name: Build resource monitor
+        run: go build -o bin/ci-monitor-resources ./hack/ci-monitor-resources/
+
       - name: Deploy the cluster
         run: |
           make deploy-scale
@@ -453,9 +493,20 @@ jobs:
       - name: Wait for metrics-server to collect initial metrics
         run: sleep 60
 
+      - name: Start resource monitor
+        run: bin/ci-monitor-resources start --log /tmp/kind_logs/resource_monitor_scale_tests.log
+
       - name: Run scale tests
         run: |
           make scale-tests
+
+      - name: Stop resource monitor
+        if: ${{ always() }}
+        run: bin/ci-monitor-resources stop
+
+      - name: Analyze resources
+        if: ${{ failure() }}
+        run: bin/ci-monitor-resources analyze --log /tmp/kind_logs/resource_monitor_scale_tests.log
 
       - name: Parse scale test report
         if: ${{ always() }}
