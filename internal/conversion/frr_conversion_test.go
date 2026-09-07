@@ -3274,6 +3274,48 @@ func TestAPItoFRR(t *testing.T) {
 	}
 }
 
+func TestL2VNIConfigsToFRR(t *testing.T) {
+	tests := []struct {
+		name   string
+		l2vnis []v1alpha1.L2VNI
+		want   []frr.L2VNIConfig
+	}{
+		{
+			name: "no route targets",
+			l2vnis: []v1alpha1.L2VNI{
+				{Spec: v1alpha1.L2VNISpec{VNI: 100}},
+			},
+		},
+		{
+			name: "import and export route targets",
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					Spec: v1alpha1.L2VNISpec{
+						VNI:       100,
+						ExportRTs: []v1alpha1.RouteTarget{"65000:100", "192.0.2.1:100"},
+						ImportRTs: []v1alpha1.RouteTarget{"65001:100"},
+					},
+				},
+			},
+			want: []frr.L2VNIConfig{
+				{
+					VNI:       100,
+					ExportRTs: []string{"65000:100", "192.0.2.1:100"},
+					ImportRTs: []string{"65001:100"},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if diff := cmp.Diff(tt.want, l2vniConfigsToFRR(tt.l2vnis)); diff != "" {
+				t.Fatalf("l2vniConfigsToFRR() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
 func TestAPItoFRRRawConfig(t *testing.T) {
 	baseUnderlay := []v1alpha1.Underlay{
 		{
