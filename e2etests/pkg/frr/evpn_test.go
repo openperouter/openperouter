@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"reflect"
 	"testing"
+
+	"github.com/openperouter/openperouter/api/v1alpha1"
 )
 
 var data = []byte(`{
@@ -140,5 +142,38 @@ func TestParseL2VPNEVPN1(t *testing.T) {
 		parsedJSON, _ := json.MarshalIndent(parsedData, "", "  ")
 		expectedJSON, _ := json.MarshalIndent(expectedData, "", "  ")
 		t.Errorf("Parsed data does not match expected data.\nParsed:\n%s\nExpected:\n%s", parsedJSON, expectedJSON)
+	}
+}
+
+func TestPathHasAllRouteTargets(t *testing.T) {
+	path := Path{
+		ExtendedCommunity: ExtendedCommunity{
+			String: "RT:65000:10 RT:65000:2 ET:8",
+		},
+	}
+
+	tests := []struct {
+		name         string
+		routeTargets []v1alpha1.RouteTarget
+		want         bool
+	}{
+		{
+			name:         "exact route target match",
+			routeTargets: []v1alpha1.RouteTarget{"65000:10", "65000:2"},
+			want:         true,
+		},
+		{
+			name:         "route target prefix does not match",
+			routeTargets: []v1alpha1.RouteTarget{"65000:1"},
+			want:         false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := pathHasAllRouteTargets(path, tt.routeTargets); got != tt.want {
+				t.Errorf("pathHasAllRouteTargets() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
