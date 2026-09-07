@@ -50,6 +50,17 @@ spec:
           spec:
             description: spec defines the desired state of L2VNI.
             properties:
+              exportRTs:
+                description: exportRTs are the Route Targets to be used for exporting
+                  L2 EVPN routes.
+                items:
+                  description: RouteTarget defines a BGP Extended Community for route
+                    filtering.
+                  maxLength: 21
+                  type: string
+                maxItems: 100
+                type: array
+                x-kubernetes-list-type: atomic
               gatewayIPs:
                 description: |-
                   gatewayIPs is a list of IP addresses in CIDR notation for the
@@ -144,6 +155,17 @@ spec:
                     field, ''OVSBridge'' requires ovsBridge field'
                   rule: (self.type == 'LinuxBridge' && has(self.linuxBridge) && !has(self.ovsBridge))
                     || (self.type == 'OVSBridge' && has(self.ovsBridge) && !has(self.linuxBridge))
+              importRTs:
+                description: importRTs are the Route Targets to be used for importing
+                  L2 EVPN routes.
+                items:
+                  description: RouteTarget defines a BGP Extended Community for route
+                    filtering.
+                  maxLength: 21
+                  type: string
+                maxItems: 100
+                type: array
+                x-kubernetes-list-type: atomic
               nodeSelector:
                 description: |-
                   nodeSelector specifies which nodes this L2VNI applies to.

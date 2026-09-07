@@ -427,6 +427,8 @@ _Appears in:_
 | `underlayAddressFamily` _string_ | underlayAddressFamily selects which VTEP address family to use for this VNI's<br />VXLAN interface. When omitted, defaults to the available family in the underlay<br />(IPv4 preferred in dual-stack). |  | Enum: [IPv4 IPv6] <br />Optional: \{\} <br /> |
 | `hostMaster` _[HostMaster](#hostmaster)_ | hostMaster is the interface on the host the veth should be attached to.<br />If not set, the host veth will not be attached to any interface and it must be<br />attached manually (or by some other means). This is useful if another controller<br />is leveraging the host interface for the VNI. |  | Optional: \{\} <br /> |
 | `gatewayIPs` _string array_ | gatewayIPs is a list of IP addresses in CIDR notation for the<br />distributed anycast gateway on this L2 segment's bridge<br />(Integrated Routing and Bridging interface). It is a property of<br />the L2 segment itself, so it lives on the L2VNI rather than<br />inside the routing-domain reference.<br />Maximum of 2 addresses are allowed. If 2 addresses are provided, one must be IPv4 and one must be IPv6. |  | MaxItems: 2 <br />Optional: \{\} <br /> |
+| `exportRTs` _[RouteTarget](#routetarget) array_ | exportRTs are the Route Targets to be used for exporting L2 EVPN routes. |  | MaxItems: 100 <br />MaxLength: 21 <br />Optional: \{\} <br /> |
+| `importRTs` _[RouteTarget](#routetarget) array_ | importRTs are the Route Targets to be used for importing L2 EVPN routes. |  | MaxItems: 100 <br />MaxLength: 21 <br />Optional: \{\} <br /> |
 
 
 #### L2VNIStatus
@@ -844,6 +846,7 @@ _Validation:_
 - MaxLength: 21
 
 _Appears in:_
+- [L2VNISpec](#l2vnispec)
 - [L3VNISpec](#l3vnispec)
 - [L3VPNSpec](#l3vpnspec)
 

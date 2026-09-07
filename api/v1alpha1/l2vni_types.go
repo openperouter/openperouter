@@ -83,6 +83,18 @@ type L2VNISpec struct {
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="GatewayIPs cannot be changed"
 	// +listType=atomic
 	GatewayIPs []string `json:"gatewayIPs,omitempty"`
+
+	// exportRTs are the Route Targets to be used for exporting L2 EVPN routes.
+	// +kubebuilder:validation:MaxItems:=100
+	// +listType=atomic
+	// +optional
+	ExportRTs []RouteTarget `json:"exportRTs,omitempty"`
+
+	// importRTs are the Route Targets to be used for importing L2 EVPN routes.
+	// +kubebuilder:validation:MaxItems:=100
+	// +listType=atomic
+	// +optional
+	ImportRTs []RouteTarget `json:"importRTs,omitempty"`
 }
 
 // RoutingDomain is a discriminated union over the resource kinds that can
