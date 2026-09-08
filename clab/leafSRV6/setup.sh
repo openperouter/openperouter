@@ -48,3 +48,5 @@ ip link set br200 addr aa:bb:cc:00:00:70
 ip link set br200 up
 
 ip address add dev lo 2001:db8:1234::1/128
+
+echo "Setup leafSRV6 complete"
