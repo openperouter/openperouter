@@ -40,6 +40,9 @@ func InitReporter(kubeconfig, path string, namespaces ...string) (*k8sreporter.K
 		{Cr: &v1alpha1.L3VNIList{}},
 		{Cr: &v1alpha1.L2VNIList{}},
 		{Cr: &v1alpha1.L3VPNList{}},
+		{Cr: &v1alpha1.L3PassthroughList{}},
+		{Cr: &v1alpha1.RawFRRConfigList{}},
+		{Cr: &v1alpha1.RouterNodeConfigurationStatusList{}},
 		{Cr: &frrk8sv1beta1.FRRConfigurationList{}},
 	}
 
