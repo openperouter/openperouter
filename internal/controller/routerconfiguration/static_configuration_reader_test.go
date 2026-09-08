@@ -14,7 +14,6 @@ import (
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/conversion"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/utils/ptr"
 )
 
@@ -1084,8 +1083,6 @@ func TestStaticConfigToAPIConfig_EmptyConfig(t *testing.T) {
 }
 
 func TestValidateStaticNeighbors(t *testing.T) {
-	basePath := field.NewPath("underlays").Index(0).Child("neighbors")
-
 	tests := []struct {
 		name            string
 		neighbors       []static.StaticNeighbor
@@ -1136,46 +1133,10 @@ func TestValidateStaticNeighbors(t *testing.T) {
 			},
 			wantErrContains: "whitespace",
 		},
-		{
-			name: "duplicate address",
-			neighbors: []static.StaticNeighbor{
-				{Neighbor: v1alpha1.Neighbor{Address: new("10.0.0.1"), ASN: new(int64(64512))}},
-				{Neighbor: v1alpha1.Neighbor{Address: new("10.0.0.1"), ASN: new(int64(64513))}},
-			},
-			wantErrContains: "duplicate",
-		},
-		{
-			name: "same address different ports is duplicate",
-			neighbors: []static.StaticNeighbor{
-				{Neighbor: v1alpha1.Neighbor{Address: new("10.0.0.1"), ASN: new(int64(64512)), Port: new(int32(179))}},
-				{Neighbor: v1alpha1.Neighbor{Address: new("10.0.0.1"), ASN: new(int64(64513)), Port: new(int32(1179))}},
-			},
-			wantErrContains: "duplicate",
-		},
-		{
-			name: "nil address and interface",
-			neighbors: []static.StaticNeighbor{
-				{Neighbor: v1alpha1.Neighbor{ASN: new(int64(64512))}},
-			},
-			wantErrContains: "neither address nor interface",
-		},
-		{
-			name: "password clears passwordSecret",
-			neighbors: []static.StaticNeighbor{
-				{
-					Neighbor: v1alpha1.Neighbor{
-						Address:        new("10.0.0.1"),
-						ASN:            new(int64(64512)),
-						PasswordSecret: &v1alpha1.SecretKeyRef{Name: "my-secret"},
-					},
-					Password: new("staticpass"),
-				},
-			},
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			errs := validateStaticNeighbors(tt.neighbors, basePath)
+			errs := validateStaticNeighbors(tt.neighbors)
 			if tt.wantErrContains != "" {
 				if len(errs) == 0 {
 					t.Fatal("expected validation error, got none")
@@ -1190,27 +1151,76 @@ func TestValidateStaticNeighbors(t *testing.T) {
 			}
 		})
 	}
+}
 
-	// Verify passwordSecret was cleared when password takes priority.
-	t.Run("verify passwordSecret cleared", func(t *testing.T) {
-		neighbors := []static.StaticNeighbor{
-			{
-				Neighbor: v1alpha1.Neighbor{
-					Address:        new("10.0.0.1"),
-					ASN:            new(int64(64512)),
-					PasswordSecret: &v1alpha1.SecretKeyRef{Name: "my-secret"},
-				},
-				Password: new("staticpass"),
+func TestStaticUnderlaysToAPIClearsPasswordSecretWhenPlaintextSet(t *testing.T) {
+	underlays := []static.StaticUnderlaySpec{{
+		UnderlaySpec: v1alpha1.UnderlaySpec{
+			ASN: 64512,
+			Interfaces: []v1alpha1.UnderlayInterface{
+				{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}},
 			},
-		}
-		errs := validateStaticNeighbors(neighbors, basePath)
-		if len(errs) > 0 {
-			t.Fatalf("unexpected errors: %v", errs.ToAggregate())
-		}
-		if neighbors[0].PasswordSecret != nil {
-			t.Error("expected PasswordSecret to be cleared, got non-nil")
-		}
-	})
+		},
+		Neighbors: []static.StaticNeighbor{{
+			Neighbor: v1alpha1.Neighbor{
+				Address:        new("10.0.0.1"),
+				ASN:            new(int64(64513)),
+				PasswordSecret: &v1alpha1.SecretKeyRef{Name: "my-secret"},
+			},
+			Password: new("staticpass"),
+		}},
+	}}
+
+	built, passwords, errs := staticUnderlaysToAPI(underlays, "node1", "ns", testNodeSelector("node1"))
+	if len(errs) > 0 {
+		t.Fatalf("unexpected errors: %v", errs.ToAggregate())
+	}
+	if built[0].Spec.Neighbors[0].PasswordSecret != nil {
+		t.Error("expected PasswordSecret cleared on the built underlay, got non-nil")
+	}
+	if passwords[conversion.NeighborID(built[0].Spec.Neighbors[0])] != "staticpass" {
+		t.Error("expected plaintext static password in the passwords map")
+	}
+}
+
+func TestStaticDuplicateNeighborRejectedAtReconcile(t *testing.T) {
+	underlays := []static.StaticUnderlaySpec{{
+		UnderlaySpec: v1alpha1.UnderlaySpec{
+			ASN: 64512,
+			Interfaces: []v1alpha1.UnderlayInterface{
+				{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}},
+			},
+		},
+		Neighbors: []static.StaticNeighbor{
+			{Neighbor: v1alpha1.Neighbor{Address: new("10.0.0.1"), ASN: new(int64(64513))}},
+			{Neighbor: v1alpha1.Neighbor{Address: new("10.0.0.1"), ASN: new(int64(64514))}},
+		},
+	}}
+
+	built, _, errs := staticUnderlaysToAPI(underlays, "node1", "ns", testNodeSelector("node1"))
+	if len(errs) > 0 {
+		t.Fatalf("staticUnderlaysToAPI should not reject duplicates itself: %v", errs.ToAggregate())
+	}
+	if err := conversion.ValidateUnderlays(built); err == nil {
+		t.Fatal("expected ValidateUnderlays to reject duplicate static neighbors")
+	}
+}
+
+func TestStaticUnderlaysToAPIRejectsEmptyNeighbor(t *testing.T) {
+	underlays := []static.StaticUnderlaySpec{{
+		UnderlaySpec: v1alpha1.UnderlaySpec{
+			ASN: 64512,
+			Interfaces: []v1alpha1.UnderlayInterface{
+				{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}},
+			},
+		},
+		Neighbors: []static.StaticNeighbor{{Neighbor: v1alpha1.Neighbor{ASN: new(int64(64513))}}},
+	}}
+
+	_, _, errs := staticUnderlaysToAPI(underlays, "node1", "ns", testNodeSelector("node1"))
+	if len(errs) == 0 {
+		t.Fatal("expected an empty neighbor to be rejected")
+	}
 }
 
 func TestStaticConfigPasswordsMap(t *testing.T) {
@@ -1299,4 +1309,8 @@ func TestStaticConfigInvalidPassword(t *testing.T) {
 			}
 		})
 	}
+}
+
+func testNodeSelector(nodeName string) *metav1.LabelSelector {
+	return &metav1.LabelSelector{MatchLabels: map[string]string{"kubernetes.io/hostname": nodeName}}
 }

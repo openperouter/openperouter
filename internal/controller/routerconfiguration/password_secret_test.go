@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/conversion"
 	openpeerrors "github.com/openperouter/openperouter/internal/errors"
@@ -22,13 +24,13 @@ func TestResolvePasswordSecrets(t *testing.T) {
 	_ = corev1.AddToScheme(scheme)
 
 	tests := []struct {
-		name              string
-		neighbors         []v1alpha1.Neighbor
-		secrets           []corev1.Secret
-		prePasswords      map[string]string
-		wantPassword      string
-		wantNeighborCount int
-		wantErrContains   string
+		name            string
+		neighbors       []v1alpha1.Neighbor
+		secrets         []corev1.Secret
+		prePasswords    map[string]string
+		wantNeighbors   []v1alpha1.Neighbor
+		wantPasswords   map[string]string
+		wantErrContains string
 	}{
 		{
 			name: "resolves password from secret",
@@ -46,8 +48,12 @@ func TestResolvePasswordSecrets(t *testing.T) {
 					Data:       map[string][]byte{"password": []byte("secret-password")},
 				},
 			},
-			wantPassword:      "secret-password",
-			wantNeighborCount: 1,
+			wantNeighbors: []v1alpha1.Neighbor{{
+				Address:        new("192.168.1.2"),
+				ASN:            new(int64(64513)),
+				PasswordSecret: &v1alpha1.SecretKeyRef{Name: "bgp-auth"},
+			}},
+			wantPasswords: map[string]string{"192.168.1.2": "secret-password"},
 		},
 		{
 			name: "any secret type is accepted, not just basic-auth",
@@ -65,8 +71,12 @@ func TestResolvePasswordSecrets(t *testing.T) {
 					Data:       map[string][]byte{"password": []byte("secret-password")},
 				},
 			},
-			wantPassword:      "secret-password",
-			wantNeighborCount: 1,
+			wantNeighbors: []v1alpha1.Neighbor{{
+				Address:        new("192.168.1.2"),
+				ASN:            new(int64(64513)),
+				PasswordSecret: &v1alpha1.SecretKeyRef{Name: "opaque-secret"},
+			}},
+			wantPasswords: map[string]string{"192.168.1.2": "secret-password"},
 		},
 		{
 			name: "resolves password from custom key",
@@ -84,8 +94,12 @@ func TestResolvePasswordSecrets(t *testing.T) {
 					Data:       map[string][]byte{"bgp-password": []byte("secret-password")},
 				},
 			},
-			wantPassword:      "secret-password",
-			wantNeighborCount: 1,
+			wantNeighbors: []v1alpha1.Neighbor{{
+				Address:        new("192.168.1.2"),
+				ASN:            new(int64(64513)),
+				PasswordSecret: &v1alpha1.SecretKeyRef{Name: "bgp-auth-custom-key", Key: new("bgp-password")},
+			}},
+			wantPasswords: map[string]string{"192.168.1.2": "secret-password"},
 		},
 		{
 			name: "secret missing the configured custom key",
@@ -103,8 +117,7 @@ func TestResolvePasswordSecrets(t *testing.T) {
 					Data:       map[string][]byte{"password": []byte("secret-password")},
 				},
 			},
-			wantNeighborCount: 0,
-			wantErrContains:   "missing key",
+			wantErrContains: "missing key \"bgp-password\"",
 		},
 		{
 			name: "pre-resolved password preserved (systemd mode)",
@@ -114,9 +127,12 @@ func TestResolvePasswordSecrets(t *testing.T) {
 					ASN:     new(int64(64513)),
 				},
 			},
-			prePasswords:      map[string]string{"192.168.1.2": "inline-password"},
-			wantPassword:      "inline-password",
-			wantNeighborCount: 1,
+			prePasswords: map[string]string{"192.168.1.2": "inline-password"},
+			wantNeighbors: []v1alpha1.Neighbor{{
+				Address: new("192.168.1.2"),
+				ASN:     new(int64(64513)),
+			}},
+			wantPasswords: map[string]string{"192.168.1.2": "inline-password"},
 		},
 		{
 			name: "no password fields set",
@@ -126,8 +142,10 @@ func TestResolvePasswordSecrets(t *testing.T) {
 					ASN:     new(int64(64513)),
 				},
 			},
-			wantPassword:      "",
-			wantNeighborCount: 1,
+			wantNeighbors: []v1alpha1.Neighbor{{
+				Address: new("192.168.1.2"),
+				ASN:     new(int64(64513)),
+			}},
 		},
 		{
 			name: "secret not found removes neighbor",
@@ -138,8 +156,7 @@ func TestResolvePasswordSecrets(t *testing.T) {
 					PasswordSecret: &v1alpha1.SecretKeyRef{Name: "missing-secret"},
 				},
 			},
-			wantNeighborCount: 0,
-			wantErrContains:   "missing-secret",
+			wantErrContains: "secrets \"missing-secret\" not found",
 		},
 		{
 			name: "secret missing password key removes neighbor",
@@ -157,8 +174,7 @@ func TestResolvePasswordSecrets(t *testing.T) {
 					Data:       map[string][]byte{"wrong-key": []byte("value")},
 				},
 			},
-			wantNeighborCount: 0,
-			wantErrContains:   "missing key",
+			wantErrContains: "missing key \"password\"",
 		},
 		{
 			name: "secret password with newline removes neighbor",
@@ -176,8 +192,7 @@ func TestResolvePasswordSecrets(t *testing.T) {
 					Data:       map[string][]byte{"password": []byte("x\n  redistribute connected")},
 				},
 			},
-			wantNeighborCount: 0,
-			wantErrContains:   "whitespace",
+			wantErrContains: "contains whitespace or is empty",
 		},
 		{
 			name: "secret password with carriage return removes neighbor",
@@ -195,8 +210,7 @@ func TestResolvePasswordSecrets(t *testing.T) {
 					Data:       map[string][]byte{"password": []byte("pass\rword")},
 				},
 			},
-			wantNeighborCount: 0,
-			wantErrContains:   "whitespace",
+			wantErrContains: "contains whitespace or is empty",
 		},
 		{
 			name: "secret password with space removes neighbor",
@@ -214,8 +228,7 @@ func TestResolvePasswordSecrets(t *testing.T) {
 					Data:       map[string][]byte{"password": []byte("pass word")},
 				},
 			},
-			wantNeighborCount: 0,
-			wantErrContains:   "whitespace",
+			wantErrContains: "contains whitespace or is empty",
 		},
 		{
 			name: "secret password exceeding max length removes neighbor",
@@ -233,8 +246,7 @@ func TestResolvePasswordSecrets(t *testing.T) {
 					Data:       map[string][]byte{"password": []byte(strings.Repeat("a", 81))},
 				},
 			},
-			wantNeighborCount: 0,
-			wantErrContains:   "maximum length",
+			wantErrContains: "exceeds maximum length 80",
 		},
 		{
 			name: "mix of valid and invalid neighbors keeps valid ones",
@@ -261,9 +273,29 @@ func TestResolvePasswordSecrets(t *testing.T) {
 					Data:       map[string][]byte{"password": []byte("valid-password")},
 				},
 			},
-			wantPassword:      "valid-password",
-			wantNeighborCount: 2,
-			wantErrContains:   "missing-secret",
+			wantNeighbors: []v1alpha1.Neighbor{
+				{
+					Address:        new("192.168.1.2"),
+					ASN:            new(int64(64513)),
+					PasswordSecret: &v1alpha1.SecretKeyRef{Name: "good-secret"},
+				},
+				{Address: new("192.168.1.4"), ASN: new(int64(64515))},
+			},
+			wantPasswords:   map[string]string{"192.168.1.2": "valid-password"},
+			wantErrContains: "secrets \"missing-secret\" not found",
+		},
+		{
+			name: "secret password empty removes neighbor",
+			neighbors: []v1alpha1.Neighbor{{
+				Address:        new("192.168.1.2"),
+				ASN:            new(int64(64513)),
+				PasswordSecret: &v1alpha1.SecretKeyRef{Name: "empty-secret"},
+			}},
+			secrets: []corev1.Secret{{
+				ObjectMeta: metav1.ObjectMeta{Name: "empty-secret", Namespace: "openperouter-system"},
+				Data:       map[string][]byte{"password": []byte("")},
+			}},
+			wantErrContains: "contains whitespace or is empty",
 		},
 	}
 
@@ -296,16 +328,12 @@ func TestResolvePasswordSecrets(t *testing.T) {
 
 			checkResolveError(t, err, tt.wantErrContains)
 
-			neighbors := config.Underlays[0].Spec.Neighbors
-			if len(neighbors) != tt.wantNeighborCount {
-				t.Fatalf("neighbor count = %d, want %d", len(neighbors), tt.wantNeighborCount)
+			gotNeighbors := config.Underlays[0].Spec.Neighbors
+			if diff := cmp.Diff(tt.wantNeighbors, gotNeighbors, cmpopts.EquateEmpty()); diff != "" {
+				t.Errorf("neighbors mismatch (-want +got):\n%s", diff)
 			}
-
-			if tt.wantPassword != "" && len(neighbors) > 0 {
-				got := config.Passwords[conversion.NeighborID(neighbors[0])]
-				if got != tt.wantPassword {
-					t.Errorf("password = %q, want %q", got, tt.wantPassword)
-				}
+			if diff := cmp.Diff(tt.wantPasswords, config.Passwords, cmpopts.EquateEmpty()); diff != "" {
+				t.Errorf("passwords mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

@@ -78,6 +78,11 @@ func validateUnderlay(underlay v1alpha1.Underlay) error {
 		return fmt.Errorf("underlay %s: %w", underlay.Name, err)
 	}
 
+	if err := validateNoDuplicates(neighborIDsOf(underlay.Spec.Neighbors)); err != nil {
+		return fmt.Errorf("underlay %s has neighbors sharing an identity (address, listen range or interface): %w",
+			underlay.Name, err)
+	}
+
 	// do a no-op conversion to catch validation errors
 	if _, err := underlayInterfacesToHost(underlay.Spec.Interfaces); err != nil {
 		return fmt.Errorf("underlay %s has invalid interfaces: %w", underlay.Name, err)
@@ -151,6 +156,18 @@ func interfaceNamesOf(neighbors []v1alpha1.Neighbor) []string {
 			continue
 		}
 		res = append(res, *n.Interface)
+	}
+	return res
+}
+
+func neighborIDsOf(neighbors []v1alpha1.Neighbor) []string {
+	res := []string{}
+	for _, n := range neighbors {
+		id := NeighborID(n)
+		if id == "" {
+			continue
+		}
+		res = append(res, id)
 	}
 	return res
 }

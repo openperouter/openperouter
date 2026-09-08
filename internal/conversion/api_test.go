@@ -184,3 +184,29 @@ func TestMergeAPIConfigs_ResourcesConcatenated(t *testing.T) {
 		t.Errorf("merged config mismatch (-want +got):\n%s", cmp.Diff(want, merged))
 	}
 }
+
+func TestRedactAPIConfigData(t *testing.T) {
+	in := APIConfigData{
+		Passwords: map[string]string{"10.0.0.1": "s3cret", "10.0.0.2": "hunter2"},
+		RawFRRConfigs: []v1alpha1.RawFRRConfig{
+			{Spec: v1alpha1.RawFRRConfigSpec{RawConfig: "neighbor 10.0.0.1 password topsecret"}},
+		},
+	}
+
+	got := RedactAPIConfigData(in)
+
+	for id, password := range got.Passwords {
+		if password != "<REDACTED>" {
+			t.Errorf("password for %s = %q, want <REDACTED>", id, password)
+		}
+	}
+	if want := "neighbor 10.0.0.1 password <REDACTED>"; got.RawFRRConfigs[0].Spec.RawConfig != want {
+		t.Errorf("raw config = %q, want %q", got.RawFRRConfigs[0].Spec.RawConfig, want)
+	}
+	if in.Passwords["10.0.0.1"] != "s3cret" {
+		t.Error("input Passwords map was mutated")
+	}
+	if in.RawFRRConfigs[0].Spec.RawConfig != "neighbor 10.0.0.1 password topsecret" {
+		t.Error("input RawFRRConfigs was mutated")
+	}
+}

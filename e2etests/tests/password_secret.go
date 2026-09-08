@@ -27,6 +27,7 @@ var _ = Describe("Neighbor passwordSecret", Ordered, func() {
 		rotatedPassword     = "RotatedSecret456"
 		secretName          = "bgp-auth-test"
 		customKeySecretName = "bgp-auth-test-custom-key"
+		customKey           = "bgp-password"
 	)
 
 	var cs clientset.Interface
@@ -138,8 +139,6 @@ var _ = Describe("Neighbor passwordSecret", Ordered, func() {
 	})
 
 	It("should resolve password from a custom Secret key", func() {
-		const customKey = "bgp-password"
-
 		By("creating an Opaque Secret with the password under a custom key")
 		Expect(
 			k8s.CreateOpaqueSecret(cs, customKeySecretName, openperouter.Namespace, customKey, bgpPassword),
