@@ -22,6 +22,8 @@ import (
 const (
 	// VXLanOverhead is the number of bytes added by VXLan encapsulation.
 	VXLanOverhead = 50
+	// IPv6VXLanOverhead is the number of bytes added by VXLan over IPv6 encapsulation.
+	IPv6VXLanOverhead = 70
 )
 
 type VNIParams struct {
