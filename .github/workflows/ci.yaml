@@ -373,6 +373,88 @@ jobs:
         with:
           artifact-name: kind-logs-${{ matrix.deployment }}
 
+  e2etests-qemu-grout:
+    runs-on: ubuntu-24.04
+    needs:
+      - build-grout-images
+    steps:
+      - name: Free Disk Space
+        working-directory: ${{ github.workspace }}
+        run: |
+          echo "Disk space before cleanup:"
+          df -h
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo apt-get clean
+          echo "Disk space after cleanup:"
+          df -h
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: "go.mod"
+          cache: true
+
+      - name: Install kernel modules
+        run: |
+          sudo apt-get update
+          sudo apt-get install linux-modules-extra-$(uname -r)
+
+      - name: Install QEMU and dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 qemu-utils genisoimage sshpass
+
+      - name: Verify KVM support
+        run: |
+          if [ ! -e /dev/kvm ]; then
+            echo "ERROR: /dev/kvm not available. KVM support is required."
+            exit 1
+          fi
+          sudo chmod 666 /dev/kvm
+          echo "KVM is available."
+
+      - name: Download openperouter image
+        uses: actions/download-artifact@v8
+        with:
+          name: image-tar-openperouter-grout
+          path: image
+
+      - name: Load openperouter image
+        run: |
+          docker load -i image/openperouter-grout.tar
+
+      - name: Deploy the QEMU cluster
+        run: |
+          KUSTOMIZE_LAYER=grout \
+            make qemu-deploy IMG_TAG=main-grout
+
+      - name: Run QEMU e2e tests
+        run: |
+          make qemu-e2etests TEST_ARGS="--groutmode"
+
+      - name: Collect QEMU logs
+        if: ${{ failure() }}
+        run: |
+          make qemu-collect-logs
+
+      - name: Upload QEMU logs
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v7
+        with:
+          retention-days: 5
+          name: qemu-e2e-logs
+          path: /tmp/kind_logs/
+
+      - name: Cleanup
+        if: always()
+        run: |
+          make qemu-clean clean
+
   scale-tests:
     if: contains(github.event.pull_request.labels.*.name, 'run-scale-tests')
     runs-on: ubuntu-22.04
