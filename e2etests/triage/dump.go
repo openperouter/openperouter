@@ -1,6 +1,6 @@
 // SPDX-License-Identifier:Apache-2.0
 
-package tests
+package triage
 
 import (
 	"context"
@@ -20,40 +20,57 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/infra"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
+	"github.com/openshift-kni/k8sreporter"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/yaml"
 )
 
-func dumpIfFails(cs clientset.Interface, additionalNamespaces ...string) {
+// Config controls which environment-specific diagnostics are collected.
+type Config struct {
+	ReportPath           string
+	HostMode             bool
+	GroutMode            bool
+	K8sReporter          *k8sreporter.KubernetesReporter
+	IncludeFRRK8sPods    bool
+	IncludeFRRContainers bool
+	IncludePodman        bool
+}
+
+// DumpIfFails collects diagnostics for a failed Ginkgo spec.
+func DumpIfFails(cs clientset.Interface, config Config, additionalNamespaces ...string) {
 	slices.Sort(additionalNamespaces)
 	additionalNamespaces = slices.Compact(additionalNamespaces)
 
 	if ginkgo.CurrentSpecReport().Failed() {
 		opts := []func(dumpOptions *dumpOptions){
-			onRouterPods(cs),
-			onFRRK8sPods(cs),
-			onFRRContainers(),
+			onRouterPods(cs, config.HostMode),
 			withFRR(),
 		}
+		if config.IncludeFRRK8sPods {
+			opts = append(opts, onFRRK8sPods(cs))
+		}
+		if config.IncludeFRRContainers {
+			opts = append(opts, onFRRContainers())
+		}
 
-		if GroutMode {
+		if config.GroutMode {
 			opts = append(opts, withGrout())
 		}
 
 		dumpFRRInfo(
-			ReportPath,
+			config.ReportPath,
 			ginkgo.CurrentSpecReport().FullText(),
 			opts...,
 		)
 
 		for _, namespace := range additionalNamespaces {
-			dumpWorkloadInfo(ReportPath, ginkgo.CurrentSpecReport().FullText(), cs, namespace)
+			dumpWorkloadInfo(config.ReportPath, ginkgo.CurrentSpecReport().FullText(), cs, namespace)
 		}
-		k8s.DumpInfo(K8sReporter, ginkgo.CurrentSpecReport().FullText())
-		if HostMode {
-			dumpPodmanInfo(cs, ReportPath, ginkgo.CurrentSpecReport().FullText())
+		k8s.DumpInfo(config.K8sReporter, ginkgo.CurrentSpecReport().FullText())
+		if config.IncludePodman {
+			dumpPodmanInfo(cs, config.ReportPath, ginkgo.CurrentSpecReport().FullText())
 		}
 	}
 }
@@ -75,9 +92,9 @@ func withFRR() func(dumpOptions *dumpOptions) {
 	}
 }
 
-func onRouterPods(cs clientset.Interface) func(dumpOptions *dumpOptions) {
+func onRouterPods(cs clientset.Interface, hostMode bool) func(dumpOptions *dumpOptions) {
 	return func(dumpOptions *dumpOptions) {
-		routers, err := openperouter.Get(cs, HostMode)
+		routers, err := openperouter.Get(cs, hostMode)
 		Expect(err).NotTo(HaveOccurred())
 
 		for router := range routers.GetExecutors() {
