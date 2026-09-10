@@ -18,6 +18,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
+	"github.com/openperouter/openperouter/e2etests/pkg/validate"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -163,13 +164,13 @@ var runUnderlayTests = func(af ipfamily.Family, underlay v1alpha1.Underlay) {
 			for _, leaf := range leaves {
 				neighbor, err := infra.NeighborForFamily(node.Name, leaf, af)
 				Expect(err).NotTo(HaveOccurred())
-				validateSessionWithNeighbor(
+				validate.SessionWithNeighbor(
 					exec,
-					validationParameters{
-						fromName:    node.Name,
-						toName:      leaf,
-						neighborIP:  neighbor.ID,
-						established: Established,
+					validate.SessionParameters{
+						FromName:    node.Name,
+						ToName:      leaf,
+						NeighborIP:  neighbor.ID,
+						Established: Established,
 					},
 				)
 			}

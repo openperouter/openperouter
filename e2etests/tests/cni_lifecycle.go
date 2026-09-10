@@ -19,6 +19,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 	"github.com/openperouter/openperouter/e2etests/pkg/systemd"
+	"github.com/openperouter/openperouter/e2etests/pkg/validate"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -56,11 +57,11 @@ var _ = Describe("CNI underlay lifecycle", Ordered, func() {
 	validateSessionUp := func() {
 		leafExec := executor.ForContainer(infra.KindLeaf)
 		for i, node := range nodes {
-			validateSessionWithNeighbor(leafExec, validationParameters{
-				fromName:    infra.KindLeaf,
-				toName:      node.Name,
-				neighborIP:  infra.CNIUnderlayNeighborIP(i),
-				established: true,
+			validate.SessionWithNeighbor(leafExec, validate.SessionParameters{
+				FromName:    infra.KindLeaf,
+				ToName:      node.Name,
+				NeighborIP:  infra.CNIUnderlayNeighborIP(i),
+				Established: true,
 			})
 		}
 	}
@@ -267,11 +268,11 @@ var _ = Describe("DHCP underlay lifecycle", Ordered, func() {
 				ip, err = infra.DHCPNeighborIP(node.Name, lcUnderlayDHCPInterface)
 				g.Expect(err).NotTo(HaveOccurred())
 			}, 3*time.Minute, time.Second).Should(Succeed())
-			validateSessionWithNeighbor(leafExec, validationParameters{
-				fromName:    infra.KindLeaf,
-				toName:      node.Name,
-				neighborIP:  ip,
-				established: true,
+			validate.SessionWithNeighbor(leafExec, validate.SessionParameters{
+				FromName:    infra.KindLeaf,
+				ToName:      node.Name,
+				NeighborIP:  ip,
+				Established: true,
 			})
 		}
 	}

@@ -17,6 +17,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
+	"github.com/openperouter/openperouter/e2etests/pkg/validate"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 )
@@ -52,13 +53,13 @@ var _ = Describe("RawFRRConfig", Ordered, func() {
 		for _, node := range nodes {
 			neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
 			Expect(err).NotTo(HaveOccurred())
-			validateSessionWithNeighbor(
+			validate.SessionWithNeighbor(
 				leafExec,
-				validationParameters{
-					fromName:    infra.KindLeaf,
-					toName:      node.Name,
-					neighborIP:  neighborIP,
-					established: Established,
+				validate.SessionParameters{
+					FromName:    infra.KindLeaf,
+					ToName:      node.Name,
+					NeighborIP:  neighborIP,
+					Established: Established,
 				},
 			)
 		}

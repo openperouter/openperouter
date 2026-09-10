@@ -5,7 +5,6 @@ package tests
 import (
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -13,8 +12,8 @@ import (
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/e2etests/pkg/executor"
 	"github.com/openperouter/openperouter/e2etests/pkg/frr"
-	"github.com/openperouter/openperouter/e2etests/pkg/networklayerprotocol"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
+	"github.com/openperouter/openperouter/e2etests/pkg/validate"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -32,61 +31,17 @@ func validateFRRK8sSessionForHostSession(name string, hostsession v1alpha1.HostS
 		for _, p := range frrk8sPods {
 			By(fmt.Sprintf("checking the session between %s and session %s for CIDR %s", p.Name, name, cidr))
 			exec := executor.ForPod(p.Namespace, p.Name, "frr")
-			validateSessionWithNeighbor(
+			validate.SessionWithNeighbor(
 				exec,
-				validationParameters{
-					fromName:    p.Name,
-					toName:      name,
-					neighborIP:  neighborIP,
-					established: established,
+				validate.SessionParameters{
+					FromName:    p.Name,
+					ToName:      name,
+					NeighborIP:  neighborIP,
+					Established: established,
 				},
 			)
 		}
 	}
-}
-
-func validateSessionWithNeighbor(exec executor.Executor, parameters validationParameters) {
-	Eventually(func() error {
-		neigh, err := frr.NeighborInfo(parameters.neighborIP, exec)
-		if err != nil {
-			return err
-		}
-		if !parameters.established && neigh.BgpState == "Established" {
-			return fmt.Errorf("neighbor from %s to %s - %s is established", parameters.fromName, parameters.toName, parameters.neighborIP)
-		}
-		if parameters.established && neigh.BgpState != "Established" {
-			return fmt.Errorf("neighbor %s to %s - %s is not established", parameters.fromName, parameters.toName, parameters.neighborIP)
-		}
-
-		// receivedAddressFamilies check is optional and will be skipped if the slice is empty or established == false.
-		if !parameters.established {
-			return nil
-		}
-		for _, expectedReceivedAF := range parameters.receivedAddressFamilies {
-			isRxReceived := false
-			for pathName, addPath := range neigh.NeighborCapabilities.AddPath {
-				if strings.ToLower(pathName) == fmt.Sprintf("%s%s", expectedReceivedAF.AFI, expectedReceivedAF.SAFI) {
-					isRxReceived = addPath.RxReceived
-					break
-				}
-			}
-			if isRxReceived {
-				continue
-			}
-			return fmt.Errorf("neighbor %s to %s - %s is established but expectedReceivedAF %s not found",
-				parameters.fromName, parameters.toName, parameters.neighborIP, expectedReceivedAF)
-		}
-
-		return nil
-	}, 5*time.Minute, time.Second).ShouldNot(HaveOccurred())
-}
-
-type validationParameters struct {
-	fromName                string
-	toName                  string
-	neighborIP              string
-	receivedAddressFamilies []networklayerprotocol.NLP
-	established             bool
 }
 
 func waitForType5Route(exec executor.Executor, prefix string) {
