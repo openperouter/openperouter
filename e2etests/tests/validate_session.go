@@ -5,7 +5,6 @@ package tests
 import (
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -15,6 +14,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/frr"
 	"github.com/openperouter/openperouter/e2etests/pkg/networklayerprotocol"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
+	"github.com/openperouter/openperouter/e2etests/pkg/validate"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -46,39 +46,13 @@ func validateFRRK8sSessionForHostSession(name string, hostsession v1alpha1.HostS
 }
 
 func validateSessionWithNeighbor(exec executor.Executor, parameters validationParameters) {
-	Eventually(func() error {
-		neigh, err := frr.NeighborInfo(parameters.neighborIP, exec)
-		if err != nil {
-			return err
-		}
-		if !parameters.established && neigh.BgpState == "Established" {
-			return fmt.Errorf("neighbor from %s to %s - %s is established", parameters.fromName, parameters.toName, parameters.neighborIP)
-		}
-		if parameters.established && neigh.BgpState != "Established" {
-			return fmt.Errorf("neighbor %s to %s - %s is not established", parameters.fromName, parameters.toName, parameters.neighborIP)
-		}
-
-		// receivedAddressFamilies check is optional and will be skipped if the slice is empty or established == false.
-		if !parameters.established {
-			return nil
-		}
-		for _, expectedReceivedAF := range parameters.receivedAddressFamilies {
-			isRxReceived := false
-			for pathName, addPath := range neigh.NeighborCapabilities.AddPath {
-				if strings.ToLower(pathName) == fmt.Sprintf("%s%s", expectedReceivedAF.AFI, expectedReceivedAF.SAFI) {
-					isRxReceived = addPath.RxReceived
-					break
-				}
-			}
-			if isRxReceived {
-				continue
-			}
-			return fmt.Errorf("neighbor %s to %s - %s is established but expectedReceivedAF %s not found",
-				parameters.fromName, parameters.toName, parameters.neighborIP, expectedReceivedAF)
-		}
-
-		return nil
-	}, 5*time.Minute, time.Second).ShouldNot(HaveOccurred())
+	validate.SessionWithNeighbor(exec, validate.SessionParameters{
+		FromName:                parameters.fromName,
+		ToName:                  parameters.toName,
+		NeighborIP:              parameters.neighborIP,
+		ReceivedAddressFamilies: parameters.receivedAddressFamilies,
+		Established:             parameters.established,
+	})
 }
 
 type validationParameters struct {
@@ -90,16 +64,7 @@ type validationParameters struct {
 }
 
 func waitForType5Route(exec executor.Executor, prefix string) {
-	Eventually(func() error {
-		evpn, err := frr.EVPNInfo(exec)
-		if err != nil {
-			return err
-		}
-		if !evpn.ContainsType5Prefix(prefix) {
-			return fmt.Errorf("Type-5 route for %s not yet present", prefix)
-		}
-		return nil
-	}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
+	validate.Type5RouteExists(exec, prefix)
 }
 
 // validateSessionDownForNeigh validates that the neighbor is down

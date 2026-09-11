@@ -1,0 +1,13 @@
+# QEMU VM artifacts
+vm/qemu-vm-key
+vm/qemu-vm-key.pub
+vm/fedora-cloud.qcow2*
+vm/overlay.qcow2
+vm/cloud-init.iso
+vm/serial.log
+vm/qemu.pid
+vm/monitor.sock
+vm/kubeconfig
+
+# Containerlab state
+clab-kind/
