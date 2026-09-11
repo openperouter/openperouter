@@ -52,6 +52,120 @@ func TestReload(t *testing.T) {
 	}
 }
 
+func TestNeedsISISTeardown(t *testing.T) {
+	const runningWithISIS = `interface lo
+ ipv6 router isis ISIS
+ isis passive
+exit
+!
+interface toswitch1
+ ipv6 router isis ISIS
+exit
+!
+router isis ISIS
+ net 49.0001.0002.0003.0004.00
+exit
+!`
+
+	for name, tc := range map[string]struct {
+		running string
+		desired string
+		want    []string
+	}{
+		"no isis in running config": {
+			running: "router bgp 64512\nexit\n",
+			desired: "router bgp 64512\nexit\n",
+			want:    nil,
+		},
+		"isis kept in desired config": {
+			running: runningWithISIS,
+			desired: runningWithISIS,
+			want:    nil,
+		},
+		"isis removed clears passive before instance": {
+			running: runningWithISIS,
+			desired: "router bgp 64512\nexit\n",
+			want: []string{
+				"configure terminal",
+				"interface lo",
+				"no isis passive",
+				"exit",
+				"no router isis ISIS",
+				"end",
+			},
+		},
+		"desired keeps only interface reference without instance": {
+			running: runningWithISIS,
+			desired: "interface lo\n ipv6 router isis ISIS\nexit\n",
+			want: []string{
+				"configure terminal",
+				"interface lo",
+				"no isis passive",
+				"exit",
+				"no router isis ISIS",
+				"end",
+			},
+		},
+		"multiple instances are all removed": {
+			running: `interface lo
+ isis passive
+exit
+!
+router isis ISIS
+ net 49.0001.0002.0003.0004.00
+exit
+!
+router isis OTHER
+ net 49.0002.0002.0003.0004.00
+exit
+!`,
+			desired: "router bgp 64512\nexit\n",
+			want: []string{
+				"configure terminal",
+				"interface lo",
+				"no isis passive",
+				"exit",
+				"no router isis ISIS",
+				"no router isis OTHER",
+				"end",
+			},
+		},
+		"multiple passive interfaces": {
+			running: `interface lo
+ isis passive
+exit
+!
+interface toswitch1
+ isis passive
+exit
+!
+router isis ISIS
+ net 49.0001.0002.0003.0004.00
+exit
+!`,
+			desired: "router bgp 64512\nexit\n",
+			want: []string{
+				"configure terminal",
+				"interface lo",
+				"no isis passive",
+				"exit",
+				"interface toswitch1",
+				"no isis passive",
+				"exit",
+				"no router isis ISIS",
+				"end",
+			},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := needsISISTeardown(tc.running, tc.desired)
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("expected %v, got %v", tc.want, got)
+			}
+		})
+	}
+}
+
 // helper function that redirects the execution to a mock process implemented by
 // TestHelperProcess
 func fakeExecCommand(name string, args ...string) *exec.Cmd {
@@ -83,6 +197,14 @@ func TestFakeReloadHelper(t *testing.T) {
 		}
 		args = args[1:]
 	}
+
+	// vtysh calls are invoked as "-c <command>". The reload tests never have
+	// ISIS in the running config, so return an empty running config and let the
+	// stale-ISIS teardown short-circuit.
+	if len(args) > 0 && args[0] == "-c" {
+		os.Exit(0)
+	}
+
 	if len(args) != 5 {
 		fmt.Printf("expecting 5 args, got %v", args)
 		os.Exit(1)
