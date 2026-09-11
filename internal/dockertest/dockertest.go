@@ -156,6 +156,29 @@ func FRRReload(fileName, mode string) error {
 	return nil
 }
 
+func RunVtysh(commands ...string) (string, error) {
+	args := make([]string, 0, len(commands)*2+1)
+	args = append(args, "vtysh")
+	for _, c := range commands {
+		args = append(args, "-c", c)
+	}
+
+	ctx := context.Background()
+	code, reader, err := frrContainer.Exec(ctx, args)
+	if err != nil {
+		return "", errors.Join(err, errors.New("failed to run vtysh command inside container"))
+	}
+
+	bufOut := new(bytes.Buffer)
+	if reader != nil {
+		_, _ = bufOut.ReadFrom(reader)
+	}
+	if code != 0 {
+		return "", fmt.Errorf("code: %d, buffer out: %q", code, bufOut.String())
+	}
+	return bufOut.String(), nil
+}
+
 func getTestDataDir() string {
 	_, file, _, _ := runtime.Caller(0)
 	return filepath.Join(filepath.Dir(file), "testdata")

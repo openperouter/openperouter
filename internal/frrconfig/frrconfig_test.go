@@ -74,6 +74,14 @@ func TestFakeReloadHelper(t *testing.T) {
 		}
 		args = args[1:]
 	}
+
+	// vtysh calls are invoked as "-c <command>". The reload tests never have
+	// ISIS in the running config, so return an empty running config and let the
+	// stale-ISIS teardown short-circuit.
+	if len(args) > 0 && args[0] == "-c" {
+		os.Exit(0)
+	}
+
 	if len(args) != 5 {
 		fmt.Printf("expecting 5 args, got %v", args)
 		os.Exit(1)
@@ -991,255 +999,250 @@ func TestUpdate(t *testing.T) {
 				},
 			},
 		},
-		/*
-			// Disabled due to https://github.com/openperouter/openperouter/issues/645
-			{
-				name: "ISIS standalone configuration",
-				before: frr.Config{
-					Underlay: frr.UnderlayConfig{
-						MyASN:    64512,
-						RouterID: "10.0.0.1",
-						Neighbors: []frr.NeighborConfig{
-							{
-								ASN:                   mustNewPeerASNFromNumber(64512),
-								Addr:                  "192.168.1.2",
-								ID:                    "192.168.1.2",
-								NetworkLayerProtocols: []networklayerprotocol.NLP{{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast}},
-							},
-						},
-					},
-				},
-				after: frr.Config{
-					Underlay: frr.UnderlayConfig{
-						MyASN:    64512,
-						RouterID: "10.0.0.1",
-						Neighbors: []frr.NeighborConfig{
-							{
-								ASN:                   mustNewPeerASNFromNumber(64512),
-								Addr:                  "192.168.1.2",
-								ID:                    "192.168.1.2",
-								NetworkLayerProtocols: []networklayerprotocol.NLP{{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast}},
-							},
-						},
-						ISIS: &frr.UnderlayISIS{
-							Net:   frr.MustParseISISNet("49.0001.0002.0003.0004.00"),
-							Name:  "ISIS",
-							Level: 1,
-							Interfaces: []frr.ISISInterface{
-								{Name: "lo", IPv6: true, IsPassive: true},
-								{Name: "eth0", IPv4: true, IPv6: false},
-								{Name: "eth1", IPv4: false, IPv6: true},
-								{Name: "eth2", IPv4: true, IPv6: true},
-							},
+		{
+			name: "ISIS standalone configuration",
+			before: frr.Config{
+				Underlay: frr.UnderlayConfig{
+					MyASN:    64512,
+					RouterID: "10.0.0.1",
+					Neighbors: []frr.NeighborConfig{
+						{
+							ASN:                   mustNewPeerASNFromNumber(64512),
+							Addr:                  "192.168.1.2",
+							ID:                    "192.168.1.2",
+							NetworkLayerProtocols: []networklayerprotocol.NLP{{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast}},
 						},
 					},
 				},
 			},
-				// Disabled due to https://github.com/openperouter/openperouter/issues/645
-				{
-					name:   "SegmentRoutingWithL2VNI",
-					before: frr.Config{},
-					after: frr.Config{
-						Underlay: frr.UnderlayConfig{
-							MyASN: 65000,
-							ISIS: &frr.UnderlayISIS{
-								Name:  "ISIS",
-								Net:   frr.MustParseISISNet("49.0001.0002.0003.0004.00"),
-								Level: 1,
-								Interfaces: []frr.ISISInterface{
-									{Name: "lo", IPv6: true, IsPassive: true},
-									{Name: "eth0", IPv4: true, IPv6: true},
-								},
-							},
-							RouterID: "10.0.0.1",
-							Neighbors: []frr.NeighborConfig{
-								{
-									Name: "65001@192.168.122.1",
-									ASN:  mustNewPeerASNFromNumber(65001),
-									Addr: "192.168.122.1",
-									ID:   "192.168.122.1",
-									NetworkLayerProtocols: []networklayerprotocol.NLP{
-										{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast},
-										{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN},
-									},
-									EBGPMultiHop:    false,
-									ExtendedNexthop: false,
-								},
-								{
-									Name: "65001@2001:db8:192:168:1::1",
-									ASN:  mustNewPeerASNFromNumber(65001),
-									Addr: "2001:db8:192:168:1::1",
-									ID:   "2001:db8:192:168:1::1",
-									NetworkLayerProtocols: []networklayerprotocol.NLP{
-										{AFI: networklayerprotocol.IPv6, SAFI: networklayerprotocol.Unicast},
-										{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN},
-										{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.VPN},
-										{AFI: networklayerprotocol.IPv6, SAFI: networklayerprotocol.VPN},
-									},
-									EBGPMultiHop:    false,
-									ExtendedNexthop: true,
-									UpdateSource:    "2001:db8:1234:5678::",
-								},
-							},
-							TunnelEndpoint: &frr.TunnelEndpoint{
-								IPv4CIDR: "192.168.123.0/32",
-								IPv6CIDR: "2001:db8:1234:5678::/128",
-							},
-							SegmentRouting: &frr.UnderlaySegmentRouting{
-								SourceAddress: "2001:db8:1234:5678::",
-								Locator: frr.SRV6Locator{
-									Name:     "MAIN",
-									Prefix:   "fd00:0:32::/48",
-									BlockLen: 32,
-									NodeLen:  16,
-									Behavior: "usid",
-									Format:   "usid-f3216",
-								},
-								EncapBehavior: frr.HEncapsRed,
-							},
+			after: frr.Config{
+				Underlay: frr.UnderlayConfig{
+					MyASN:    64512,
+					RouterID: "10.0.0.1",
+					Neighbors: []frr.NeighborConfig{
+						{
+							ASN:                   mustNewPeerASNFromNumber(64512),
+							Addr:                  "192.168.1.2",
+							ID:                    "192.168.1.2",
+							NetworkLayerProtocols: []networklayerprotocol.NLP{{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast}},
 						},
-						VPNs: []frr.L3VPNConfig{
-							{
-								ASN:             65000,
-								ToAdvertiseIPv4: []string{"192.168.2.2/32"},
-								ToAdvertiseIPv6: []string{},
-								LocalNeighbor: &frr.NeighborConfig{
-									ASN:  mustNewPeerASNFromNumber(65001),
-									Addr: "192.168.2.2",
-									ID:   "192.168.2.2",
-								},
-								VRF:                "vrf1",
-								ExportRTs:          []string{"65000:100 11110:100"},
-								ImportRTs:          []string{"65001:100 11111:100"},
-								RouteDistinguisher: "10.0.0.1:100",
-								RouterID:           "10.0.0.1",
-							},
-							{
-								ASN:             65000,
-								ToAdvertiseIPv4: []string{},
-								ToAdvertiseIPv6: []string{"2001:db8::2/128"},
-								LocalNeighbor: &frr.NeighborConfig{
-									ASN:  mustNewPeerASNFromNumber(65001),
-									Addr: "2001:db8::2",
-									ID:   "2001:db8::2",
-								},
-								VRF:                "vrf1",
-								ExportRTs:          []string{"65000:100 11110:100"},
-								ImportRTs:          []string{"65001:100 11111:100"},
-								RouteDistinguisher: "10.0.0.1:100",
-								RouterID:           "10.0.0.1",
-							},
+					},
+					ISIS: &frr.UnderlayISIS{
+						Net:   frr.MustParseISISNet("49.0001.0002.0003.0004.00"),
+						Name:  "ISIS",
+						Level: 1,
+						Interfaces: []frr.ISISInterface{
+							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "eth0", IPv4: true, IPv6: false},
+							{Name: "eth1", IPv4: false, IPv6: true},
+							{Name: "eth2", IPv4: true, IPv6: true},
 						},
 					},
 				},
-				// Disabled due to https://github.com/openperouter/openperouter/issues/645
-				{
-					name:   "ISISAdvertisePassiveOnly",
-					before: frr.Config{},
-					after: frr.Config{
-						Underlay: frr.UnderlayConfig{
-							MyASN:    64512,
-							RouterID: "10.0.0.1",
-							Neighbors: []frr.NeighborConfig{
-								{
-									ASN:                   mustNewPeerASNFromNumber(64512),
-									Addr:                  "192.168.1.2",
-									ID:                    "192.168.1.2",
-									NetworkLayerProtocols: []networklayerprotocol.NLP{{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast}},
-								},
+			},
+		},
+		{
+			name:   "SegmentRoutingWithL2VNI",
+			before: frr.Config{},
+			after: frr.Config{
+				Underlay: frr.UnderlayConfig{
+					MyASN: 65000,
+					ISIS: &frr.UnderlayISIS{
+						Name:  "ISIS",
+						Net:   frr.MustParseISISNet("49.0001.0002.0003.0004.00"),
+						Level: 1,
+						Interfaces: []frr.ISISInterface{
+							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "eth0", IPv4: true, IPv6: true},
+						},
+					},
+					RouterID: "10.0.0.1",
+					Neighbors: []frr.NeighborConfig{
+						{
+							Name: "65001@192.168.122.1",
+							ASN:  mustNewPeerASNFromNumber(65001),
+							Addr: "192.168.122.1",
+							ID:   "192.168.122.1",
+							NetworkLayerProtocols: []networklayerprotocol.NLP{
+								{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast},
+								{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN},
 							},
-							ISIS: &frr.UnderlayISIS{
-								Net:                  frr.MustParseISISNet("49.0001.0002.0003.0004.00"),
-								Name:                 "ISIS",
-								Level:                1,
-								AdvertisePassiveOnly: true,
-								Interfaces: []frr.ISISInterface{
-									{Name: "lo", IPv6: true, IsPassive: true},
-									{Name: "eth0", IPv4: true, IPv6: false},
-									{Name: "eth1", IPv4: false, IPv6: true},
-									{Name: "eth2", IPv4: true, IPv6: true},
-								},
+							EBGPMultiHop:    false,
+							ExtendedNexthop: false,
+						},
+						{
+							Name: "65001@2001:db8:192:168:1::1",
+							ASN:  mustNewPeerASNFromNumber(65001),
+							Addr: "2001:db8:192:168:1::1",
+							ID:   "2001:db8:192:168:1::1",
+							NetworkLayerProtocols: []networklayerprotocol.NLP{
+								{AFI: networklayerprotocol.IPv6, SAFI: networklayerprotocol.Unicast},
+								{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN},
+								{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.VPN},
+								{AFI: networklayerprotocol.IPv6, SAFI: networklayerprotocol.VPN},
 							},
+							EBGPMultiHop:    false,
+							ExtendedNexthop: true,
+							UpdateSource:    "2001:db8:1234:5678::",
+						},
+					},
+					TunnelEndpoint: &frr.TunnelEndpoint{
+						IPv4CIDR: "192.168.123.0/32",
+						IPv6CIDR: "2001:db8:1234:5678::/128",
+					},
+					SegmentRouting: &frr.UnderlaySegmentRouting{
+						SourceAddress: "2001:db8:1234:5678::",
+						Locator: frr.SRV6Locator{
+							Name:     "MAIN",
+							Prefix:   "fd00:0:32::/48",
+							BlockLen: 32,
+							NodeLen:  16,
+							Behavior: "usid",
+							Format:   "usid-f3216",
+						},
+						EncapBehavior: frr.HEncapsRed,
+					},
+				},
+				VPNs: []frr.L3VPNConfig{
+					{
+						ASN:             65000,
+						ToAdvertiseIPv4: []string{"192.168.2.2/32"},
+						ToAdvertiseIPv6: []string{},
+						LocalNeighbor: &frr.NeighborConfig{
+							ASN:  mustNewPeerASNFromNumber(65001),
+							Addr: "192.168.2.2",
+							ID:   "192.168.2.2",
+						},
+						VRF:                "vrf1",
+						ExportRTs:          []string{"65000:100 11110:100"},
+						ImportRTs:          []string{"65001:100 11111:100"},
+						RouteDistinguisher: "10.0.0.1:100",
+						RouterID:           "10.0.0.1",
+					},
+					{
+						ASN:             65000,
+						ToAdvertiseIPv4: []string{},
+						ToAdvertiseIPv6: []string{"2001:db8::2/128"},
+						LocalNeighbor: &frr.NeighborConfig{
+							ASN:  mustNewPeerASNFromNumber(65001),
+							Addr: "2001:db8::2",
+							ID:   "2001:db8::2",
+						},
+						VRF:                "vrf1",
+						ExportRTs:          []string{"65000:100 11110:100"},
+						ImportRTs:          []string{"65001:100 11111:100"},
+						RouteDistinguisher: "10.0.0.1:100",
+						RouterID:           "10.0.0.1",
+					},
+				},
+			},
+		},
+		{
+			name:   "ISISAdvertisePassiveOnly",
+			before: frr.Config{},
+			after: frr.Config{
+				Underlay: frr.UnderlayConfig{
+					MyASN:    64512,
+					RouterID: "10.0.0.1",
+					Neighbors: []frr.NeighborConfig{
+						{
+							ASN:                   mustNewPeerASNFromNumber(64512),
+							Addr:                  "192.168.1.2",
+							ID:                    "192.168.1.2",
+							NetworkLayerProtocols: []networklayerprotocol.NLP{{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast}},
+						},
+					},
+					ISIS: &frr.UnderlayISIS{
+						Net:                  frr.MustParseISISNet("49.0001.0002.0003.0004.00"),
+						Name:                 "ISIS",
+						Level:                1,
+						AdvertisePassiveOnly: true,
+						Interfaces: []frr.ISISInterface{
+							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "eth0", IPv4: true, IPv6: false},
+							{Name: "eth1", IPv4: false, IPv6: true},
+							{Name: "eth2", IPv4: true, IPv6: true},
 						},
 					},
 				},
-				// Disabled due to https://github.com/openperouter/openperouter/issues/645
-				{
-					name:   "SegmentRouting full configuration",
-					before: frr.Config{},
-					after: frr.Config{
-						Underlay: frr.UnderlayConfig{
-							MyASN:    64512,
-							RouterID: "10.0.0.1",
-							Neighbors: []frr.NeighborConfig{
-								{
-									ASN:  mustNewPeerASNFromNumber(64513),
-									Addr: "fc00::2:172:31:1:12",
-									ID:   "fc00::2:172:31:1:12",
-									NetworkLayerProtocols: []networklayerprotocol.NLP{
-										{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.VPN},
-										{AFI: networklayerprotocol.IPv6, SAFI: networklayerprotocol.VPN},
-									},
-									ExtendedNexthop: true,
-									UpdateSource:    "fc00::2:172:31:1:32",
-								},
+			},
+		},
+		{
+			name:   "SegmentRouting full configuration",
+			before: frr.Config{},
+			after: frr.Config{
+				Underlay: frr.UnderlayConfig{
+					MyASN:    64512,
+					RouterID: "10.0.0.1",
+					Neighbors: []frr.NeighborConfig{
+						{
+							ASN:  mustNewPeerASNFromNumber(64513),
+							Addr: "fc00::2:172:31:1:12",
+							ID:   "fc00::2:172:31:1:12",
+							NetworkLayerProtocols: []networklayerprotocol.NLP{
+								{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.VPN},
+								{AFI: networklayerprotocol.IPv6, SAFI: networklayerprotocol.VPN},
 							},
-							ISIS: &frr.UnderlayISIS{
-								Net:   frr.MustParseISISNet("49.0001.0002.0003.0004.00"),
-								Name:  "ISIS",
-								Level: 1,
-								Interfaces: []frr.ISISInterface{
-									{Name: "lo", IPv6: true, IsPassive: true},
-									{Name: "eth0", IPv4: false, IPv6: true},
-								},
-							},
-							SegmentRouting: &frr.UnderlaySegmentRouting{
-								SourceAddress: "fc00::2:172:31:1:32",
-								Locator: frr.SRV6Locator{
-									Name:     "MAIN",
-									Prefix:   "fd00:0:32::/48",
-									BlockLen: 32,
-									NodeLen:  16,
-									Behavior: "usid",
-									Format:   "usid-f3216",
-								},
-								EncapBehavior: frr.HEncaps,
-							},
-						},
-						VPNs: []frr.L3VPNConfig{
-							{
-								ASN:             65000,
-								ToAdvertiseIPv4: []string{"192.168.2.2/32"},
-								ToAdvertiseIPv6: []string{},
-								LocalNeighbor: &frr.NeighborConfig{
-									ASN:  mustNewPeerASNFromNumber(65001),
-									Addr: "192.168.2.2",
-									ID:   "192.168.2.2",
-								},
-								VRF:                "vrf1",
-								ExportRTs:          []string{"65000:100 65000:101"},
-								ImportRTs:          []string{"65001:102 65001:103"},
-								RouteDistinguisher: "10.0.0.1:100",
-								RouterID:           "10.0.0.1",
-							},
-							{
-								ASN:             65000,
-								ToAdvertiseIPv4: []string{},
-								ToAdvertiseIPv6: []string{"2001:db8::2/128"},
-								LocalNeighbor: &frr.NeighborConfig{
-									ASN:  mustNewPeerASNFromNumber(65001),
-									Addr: "2001:db8::2",
-									ID:   "2001:db8::2",
-								},
-								VRF:                "vrf2",
-								ExportRTs:          []string{"65002:100 65002:101"},
-								ImportRTs:          []string{"65003:102 65003:103"},
-								RouteDistinguisher: "10.0.0.1:101",
-								RouterID:           "10.0.0.1",
-							},
+							ExtendedNexthop: true,
+							UpdateSource:    "fc00::2:172:31:1:32",
 						},
 					},
-				},*/
+					ISIS: &frr.UnderlayISIS{
+						Net:   frr.MustParseISISNet("49.0001.0002.0003.0004.00"),
+						Name:  "ISIS",
+						Level: 1,
+						Interfaces: []frr.ISISInterface{
+							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "eth0", IPv4: false, IPv6: true},
+						},
+					},
+					SegmentRouting: &frr.UnderlaySegmentRouting{
+						SourceAddress: "fc00::2:172:31:1:32",
+						Locator: frr.SRV6Locator{
+							Name:     "MAIN",
+							Prefix:   "fd00:0:32::/48",
+							BlockLen: 32,
+							NodeLen:  16,
+							Behavior: "usid",
+							Format:   "usid-f3216",
+						},
+						EncapBehavior: frr.HEncaps,
+					},
+				},
+				VPNs: []frr.L3VPNConfig{
+					{
+						ASN:             65000,
+						ToAdvertiseIPv4: []string{"192.168.2.2/32"},
+						ToAdvertiseIPv6: []string{},
+						LocalNeighbor: &frr.NeighborConfig{
+							ASN:  mustNewPeerASNFromNumber(65001),
+							Addr: "192.168.2.2",
+							ID:   "192.168.2.2",
+						},
+						VRF:                "vrf1",
+						ExportRTs:          []string{"65000:100 65000:101"},
+						ImportRTs:          []string{"65001:102 65001:103"},
+						RouteDistinguisher: "10.0.0.1:100",
+						RouterID:           "10.0.0.1",
+					},
+					{
+						ASN:             65000,
+						ToAdvertiseIPv4: []string{},
+						ToAdvertiseIPv6: []string{"2001:db8::2/128"},
+						LocalNeighbor: &frr.NeighborConfig{
+							ASN:  mustNewPeerASNFromNumber(65001),
+							Addr: "2001:db8::2",
+							ID:   "2001:db8::2",
+						},
+						VRF:                "vrf2",
+						ExportRTs:          []string{"65002:100 65002:101"},
+						ImportRTs:          []string{"65003:102 65003:103"},
+						RouteDistinguisher: "10.0.0.1:101",
+						RouterID:           "10.0.0.1",
+					},
+				},
+			},
+		},
 	}
 
 	dir := t.TempDir()
@@ -1256,7 +1259,7 @@ func TestUpdate(t *testing.T) {
 		if err := frr.ApplyConfig(context.TODO(), &config, updaterFn); err != nil {
 			t.Fatalf("Failed to apply config: %s", err)
 		}
-		err := update(configFile, dockertest.FRRReload)
+		err := update(configFile, dockertest.FRRReload, dockertest.RunVtysh)
 		if err != nil {
 			t.Fatalf("Failed to update FRR with config: %s", err)
 		}
