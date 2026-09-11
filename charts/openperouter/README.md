@@ -32,7 +32,6 @@ Kubernetes: `>= 1.19.0-0`
 | openperouter.controller.cniPluginDirs | list | `["/opt/openperouter/cni/bin/"]` | CNI plugin binary directories. The default matches the path baked into the controller image. Override only to use externally-provided binaries (e.g. host-mounted). |
 | openperouter.controller.healthProbePort | int | `9081` | Health probe port for liveness and readiness checks |
 | openperouter.controller.resources | object | `{}` |  |
-| openperouter.cri | string | `"containerd"` |  |
 | openperouter.datapath | string | `"kernel"` | Datapath to use for L3 forwarding. "kernel" uses the standard Linux kernel datapath; "grout" adds a DPDK-accelerated sidecar that runs alongside FRR (FRR's dplane_grout module syncs routes automatically). |
 | openperouter.frr.image.pullPolicy | string | `""` |  |
 | openperouter.frr.image.repository | string | `"quay.io/openperouter/openperouter"` |  |
