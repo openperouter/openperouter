@@ -50,6 +50,14 @@ const interfaceShowP0Output = `{
 
 const interfaceNotFoundOutput = `{"error":"interface lookup failed","errno":19}`
 
+func TestSetPortUp(t *testing.T) {
+	defer mockCmdExec(cmdCall{
+		cmd: "grcli --err-exit --json --socket sock interface set port pe-100 up",
+	})()
+
+	assert.NoError(t, NewClient("sock").setPortUp(context.Background(), "pe-100"))
+}
+
 func TestEnsurePort(t *testing.T) {
 	t.Run("ensure port when no port exists", func(t *testing.T) {
 
@@ -87,6 +95,21 @@ func TestEnsurePort(t *testing.T) {
 			),
 		)
 	})
+}
+
+func TestEnsurePortInVRF(t *testing.T) {
+	defer mockCmdExec(
+		cmdCall{
+			cmd:    "grcli --err-exit --json --socket sock interface show name p0",
+			output: interfaceNotFoundOutput,
+			err:    fmt.Errorf("exit status 1"),
+		},
+		cmdCall{
+			cmd: "grcli --err-exit --json --socket sock interface add port p0 devargs tap0 vrf red down",
+		},
+	)()
+
+	assert.NoError(t, NewClient("sock").ensurePortInVRF(context.Background(), "p0", "tap0", "red"))
 }
 
 func TestDeletePort(t *testing.T) {
