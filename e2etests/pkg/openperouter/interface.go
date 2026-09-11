@@ -78,6 +78,32 @@ func InterfaceIPv4InNetns(nodeName, intf, ns string) (string, error) {
 	return "", fmt.Errorf("no global IPv4 address on %s/%s in netns %s", nodeName, intf, ns)
 }
 
+// NetnsLinkLocalOwners returns, for the given netns on nodeName, a map from
+// each IPv6 link-local (fe80::/10) address to the interfaces that carry it.
+// A correct setup has a single owner per address; a link-local shared across
+// interfaces (the issue #720 failure signature, caused by a duplicate MAC)
+// shows up as more than one owner.
+func NetnsLinkLocalOwners(nodeName, ns string) (map[string][]string, error) {
+	exec := executor.ForNode(nodeName)
+	out, err := exec.Exec("ip", "netns", "exec", ns, "ip", "-o", "-6", "addr", "show", "scope", "link")
+	if err != nil {
+		return nil, fmt.Errorf("listing link-local addresses in netns %s on %s: %w", ns, nodeName, err)
+	}
+
+	owners := map[string][]string{}
+	for line := range strings.SplitSeq(out, "\n") {
+		// e.g. "36: u_toswitch1    inet6 fe80::a8c1:abff:fe84:5cc8/128 scope link nodad"
+		fields := strings.Fields(line)
+		if len(fields) < 4 || fields[2] != "inet6" {
+			continue
+		}
+		iface := fields[1]
+		addr, _, _ := strings.Cut(fields[3], "/")
+		owners[addr] = append(owners[addr], iface)
+	}
+	return owners, nil
+}
+
 // InterfaceIsUp checks whether the interface in the default netns
 // on nodeName has state UP.
 func InterfaceIsUp(nodeName, intf string) bool {
