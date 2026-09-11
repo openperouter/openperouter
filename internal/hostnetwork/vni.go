@@ -173,7 +173,7 @@ func SetupL2VNI(ctx context.Context, params L2VNIParams) error {
 	}
 
 	if params.HostMaster != nil {
-		if err := setupHostMaster(ctx, params, hostVeth); err != nil {
+		if err := SetupHostMaster(ctx, params, hostVeth); err != nil {
 			return err
 		}
 	}
@@ -220,7 +220,7 @@ func setupL2VNIRouterSide(params L2VNIParams, vethName string, underlayMTU int) 
 	return nil
 }
 
-func setupHostMaster(ctx context.Context, params L2VNIParams, hostVeth netlink.Link) error {
+func SetupHostMaster(ctx context.Context, params L2VNIParams, hostVeth netlink.Link) error {
 	bridgeConfig := *params.HostMaster
 	switch bridgeConfig.Type {
 	case OVSBridgeLinkType:
