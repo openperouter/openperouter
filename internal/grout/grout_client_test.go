@@ -68,7 +68,7 @@ func TestEnsurePort(t *testing.T) {
 				err:    fmt.Errorf("exit status 1"),
 			},
 			cmdCall{
-				cmd: "grcli --err-exit --json --socket sock interface add port p0 devargs net_tap0,remote=remote_i,iface=p0_tap",
+				cmd: "grcli --err-exit --json --socket sock interface add port p0 devargs net_tap0,remote=remote_i,iface=p0_tap down",
 			})()
 
 		assert.NoError(t,
@@ -100,16 +100,63 @@ func TestEnsurePort(t *testing.T) {
 func TestEnsurePortInVRF(t *testing.T) {
 	defer mockCmdExec(
 		cmdCall{
-			cmd:    "grcli --err-exit --json --socket sock interface show name p0",
+			cmd:    "grcli --err-exit --json --socket sock interface show name pe-100",
 			output: interfaceNotFoundOutput,
 			err:    fmt.Errorf("exit status 1"),
 		},
 		cmdCall{
-			cmd: "grcli --err-exit --json --socket sock interface add port p0 devargs tap0 vrf red down",
+			cmd: "grcli --err-exit --json --socket sock interface add port pe-100 devargs net_tap0,iface=host-100 vrf red down",
 		},
 	)()
 
-	assert.NoError(t, NewClient("sock").ensurePortInVRF(context.Background(), "p0", "tap0", "red"))
+	assert.NoError(t, NewClient("sock").ensurePortInVRF(
+		context.Background(), "pe-100", "net_tap0,iface=host-100", "red"))
+}
+
+func TestEnsureBridge(t *testing.T) {
+	t.Run("creates bridge in VRF with neighbor suppression", func(t *testing.T) {
+		defer mockCmdExec(
+			cmdCall{
+				cmd:    "grcli --err-exit --json --socket sock interface show name br-pe-100",
+				output: interfaceNotFoundOutput,
+				err:    fmt.Errorf("exit status 1"),
+			},
+			cmdCall{
+				cmd: "grcli --err-exit --json --socket sock interface add bridge br-pe-100 vrf red neigh_suppress on",
+			},
+		)()
+
+		assert.NoError(t, NewClient("sock").ensureBridge(context.Background(), "br-pe-100", "red"))
+	})
+
+	t.Run("keeps an existing bridge", func(t *testing.T) {
+		defer mockCmdExec(cmdCall{
+			cmd:    "grcli --err-exit --json --socket sock interface show name br-pe-100",
+			output: `{"name":"br-pe-100","type":"bridge"}`,
+		})()
+
+		assert.NoError(t, NewClient("sock").ensureBridge(context.Background(), "br-pe-100", "red"))
+	})
+}
+
+func TestConfigureBridge(t *testing.T) {
+	client := NewClient("sock")
+
+	t.Run("sets the anycast MAC", func(t *testing.T) {
+		defer mockCmdExec(cmdCall{
+			cmd: "grcli --err-exit --json --socket sock interface set bridge br-pe-100 mac 00:f3:00:00:00:65",
+		})()
+
+		assert.NoError(t, client.setBridgeMAC(context.Background(), "br-pe-100", "00:f3:00:00:00:65"))
+	})
+
+	t.Run("attaches a member", func(t *testing.T) {
+		defer mockCmdExec(cmdCall{
+			cmd: "grcli --err-exit --json --socket sock interface set vxlan vni100 domain br-pe-100",
+		})()
+
+		assert.NoError(t, client.ensureBridgeMember(context.Background(), "vxlan", "br-pe-100", "vni100"))
+	})
 }
 
 func TestDeletePort(t *testing.T) {
