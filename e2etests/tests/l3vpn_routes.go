@@ -113,8 +113,14 @@ var _ = Describe("SRV6 routes between bgp and the fabric", Ordered, func() {
 	})
 
 	AfterAll(func() {
-		err := Updater.CleanAll()
+		Expect(Updater.CleanAll()).To(Succeed())
+
+		By("resetting stale ISIS state left by the failed removal reload (issue #645)")
+		var err error
+		routers, err = openperouter.Get(cs, HostMode)
 		Expect(err).NotTo(HaveOccurred())
+		Expect(openperouter.ResetISIS(routers, "ISIS")).To(Succeed())
+
 		By("waiting for all router pods to be ready after removing the underlay")
 		Eventually(func() error {
 			routers, err := openperouter.Get(cs, HostMode)
