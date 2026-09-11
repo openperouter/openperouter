@@ -26,6 +26,11 @@ type tunnelOverheads struct {
 	forL2VNIs map[string]int
 }
 
+type tunnelVtepIPs struct {
+	forL3VNIs map[string]string
+	forL2VNIs map[string]string
+}
+
 func APItoHostConfig(nodeIndex int, targetNS string, apiConfig APIConfigData) (HostConfigData, error) {
 	err := validateAPIConfigData(apiConfig)
 	e := NoUnderlaysError("")
@@ -82,11 +87,19 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig APIConfigData) (H
 		return HostConfigData{}, err
 	}
 
-	tunnelOverheads := overheadForTunnels(apiConfig)
+	vtepIPs, err := resolveVTEPIPs(apiConfig, underlayConfigTunnelEndpoint)
+	if err != nil {
+		return HostConfigData{}, fmt.Errorf("failed to determine VNI tunnel endpoint addresses, err: %w", err)
+	}
+
+	tunnelOverheads, err := overheadForTunnels(apiConfig, vtepIPs)
+	if err != nil {
+		return HostConfigData{}, fmt.Errorf("failed to determine tunnel overheads, err: %w", err)
+	}
 
 	l3VNIs, err := l3vnisToHost(
 		apiConfig.L3VNIs,
-		underlayConfigTunnelEndpoint,
+		vtepIPs,
 		targetNS,
 		nodeIndex,
 		tunnelOverheads.forL3VNIs)
@@ -97,7 +110,7 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig APIConfigData) (H
 	vrfMap := createVRFMap(apiConfig.L3VNIs, apiConfig.L3VPNs)
 	l2VNIs, err := l2vnisToHost(
 		apiConfig.L2VNIs,
-		underlayConfigTunnelEndpoint,
+		vtepIPs,
 		targetNS,
 		vrfMap,
 		tunnelOverheads.forL2VNIs)
@@ -228,14 +241,14 @@ func tunnelEndpointToHost(tunnelEndpointConfig *v1alpha1.TunnelEndpointConfig, n
 
 func l3vnisToHost(
 	l3vnis []v1alpha1.L3VNI,
-	tunnelEndpoint hostnetwork.UnderlayTunnelEndpointParams,
+	vtepIPs tunnelVtepIPs,
 	targetNS string,
 	nodeIndex int,
 	tunnelOverheads map[string]int,
 ) ([]hostnetwork.L3VNIParams, error) {
 	hostL3VNIs := []hostnetwork.L3VNIParams{}
 	for _, l3vni := range l3vnis {
-		hostL3VNI, err := l3vniToHost(l3vni, tunnelEndpoint, targetNS, nodeIndex, tunnelOverheads)
+		hostL3VNI, err := l3vniToHost(l3vni, vtepIPs, targetNS, nodeIndex, tunnelOverheads)
 		if err != nil {
 			return nil, fmt.Errorf("failed to translate L3VNI %s, err: %w", l3vni.Name, err)
 		}
@@ -246,14 +259,15 @@ func l3vnisToHost(
 
 func l3vniToHost(
 	l3vni v1alpha1.L3VNI,
-	tunnelEndpoint hostnetwork.UnderlayTunnelEndpointParams,
+	vtepIPs tunnelVtepIPs,
 	targetNS string,
 	nodeIndex int,
 	tunnelOverheads map[string]int,
 ) (hostnetwork.L3VNIParams, error) {
-	vtepIP, err := resolveVTEPIP(l3vni.Spec.UnderlayAddressFamily, tunnelEndpoint)
-	if err != nil {
-		return hostnetwork.L3VNIParams{}, fmt.Errorf("L3VNI %s: %w", l3vni.Name, err)
+	vtepIP, found := vtepIPs.forL3VNIs[l3vni.Name]
+	if !found {
+		return hostnetwork.L3VNIParams{}, fmt.Errorf("L3VNI %s: not found in map of tunnel VTEP IPs: %+v",
+			l3vni.Name, vtepIPs)
 	}
 	tunnelOverhead, found := tunnelOverheads[l3vni.Name]
 	if !found {
@@ -296,14 +310,14 @@ func l3vniToHost(
 
 func l2vnisToHost(
 	l2vnis []v1alpha1.L2VNI,
-	tunnelEndpoint hostnetwork.UnderlayTunnelEndpointParams,
+	vtepIPs tunnelVtepIPs,
 	targetNS string,
 	vrfMap map[string]string,
 	tunnelOverheads map[string]int,
 ) ([]hostnetwork.L2VNIParams, error) {
 	hostL2VNIs := []hostnetwork.L2VNIParams{}
 	for _, l2vni := range l2vnis {
-		vni, err := l2vniToHost(l2vni, tunnelEndpoint, targetNS, vrfMap, tunnelOverheads)
+		vni, err := l2vniToHost(l2vni, vtepIPs, targetNS, vrfMap, tunnelOverheads)
 		if err != nil {
 			return nil, fmt.Errorf("failed to translate L2VNI %s, err: %w", l2vni.Name, err)
 		}
@@ -314,14 +328,15 @@ func l2vnisToHost(
 
 func l2vniToHost(
 	l2vni v1alpha1.L2VNI,
-	tunnelEndpoint hostnetwork.UnderlayTunnelEndpointParams,
+	vtepIPs tunnelVtepIPs,
 	targetNS string,
 	vrfMap map[string]string,
 	tunnelOverheads map[string]int,
 ) (hostnetwork.L2VNIParams, error) {
-	vtepIP, err := resolveVTEPIP(l2vni.Spec.UnderlayAddressFamily, tunnelEndpoint)
-	if err != nil {
-		return hostnetwork.L2VNIParams{}, fmt.Errorf("L2VNI %s: %w", l2vni.Name, err)
+	vtepIP, found := vtepIPs.forL2VNIs[l2vni.Name]
+	if !found {
+		return hostnetwork.L2VNIParams{}, fmt.Errorf("L2VNI %s: not found in map of tunnel VTEP IPs: %+v",
+			l2vni.Name, vtepIPs)
 	}
 	tunnelOverhead, found := tunnelOverheads[l2vni.Name]
 	if !found {
@@ -421,42 +436,146 @@ func l3vpnToHost(
 	return hostL3VPN, nil
 }
 
-// overheadForTunnels returns a map[resource name] -> calculated tunnel overhead for each L3 type.
-func overheadForTunnels(apiConfig APIConfigData) tunnelOverheads {
-	srv6Overhead := hostnetwork.SRv6Overhead
-	if hasEncapsRed(apiConfig) {
-		srv6Overhead = hostnetwork.SRv6OverheadEncapReduced
+// resolveVTEPIPs returns a map[resource name] -> calculated VTEP IP (can be IPv4 or IPv6) for each VNI type.
+func resolveVTEPIPs(
+	apiConfig APIConfigData,
+	tunnelEndpoint hostnetwork.UnderlayTunnelEndpointParams,
+) (tunnelVtepIPs, error) {
+	forL3VNIs := make(map[string]string, len(apiConfig.L3VNIs))
+	forL2VNIs := make(map[string]string, len(apiConfig.L2VNIs))
+	errs := []error{}
+	for _, l3vni := range apiConfig.L3VNIs {
+		vtepIP, err := resolveVTEPIP(l3vni.Spec.UnderlayAddressFamily, tunnelEndpoint)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("L3VNI %q, err: %w", l3vni.Name, err))
+			continue
+		}
+		forL3VNIs[l3vni.Name] = vtepIP
 	}
+	for _, l2vni := range apiConfig.L2VNIs {
+		vtepIP, err := resolveVTEPIP(l2vni.Spec.UnderlayAddressFamily, tunnelEndpoint)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("L2VNI %q, err: %w", l2vni.Name, err))
+			continue
+		}
+		forL2VNIs[l2vni.Name] = vtepIP
+	}
+	return tunnelVtepIPs{
+		forL3VNIs: forL3VNIs,
+		forL2VNIs: forL2VNIs,
+	}, errors.Join(errs...)
+}
 
+// overheadForTunnels returns a map[resource name] -> calculated tunnel overhead for each L3/L2 type.
+func overheadForTunnels(apiConfig APIConfigData, vtepIPs tunnelVtepIPs) (tunnelOverheads, error) {
 	forL3VNIs := make(map[string]int, len(apiConfig.L3VNIs))
 	forL3VPNs := make(map[string]int, len(apiConfig.L3VPNs))
 	forL2VNIs := make(map[string]int, len(apiConfig.L2VNIs))
+
+	// Seed L3VNIs with their own overhead.
 	for _, l3vni := range apiConfig.L3VNIs {
-		forL3VNIs[l3vni.Name] = hostnetwork.VXLanOverhead
+		vxlanOverhead, err := overheadForVXLANTunnel(l3vni.Name, vtepIPs.forL3VNIs)
+		if err != nil {
+			return tunnelOverheads{}, fmt.Errorf("L3VNI %s: %w", l3vni.Name, err)
+		}
+		forL3VNIs[l3vni.Name] = vxlanOverhead
+	}
+
+	// Seed L3VPNs with their own overhead.
+	srv6Overhead := hostnetwork.SRv6Overhead
+	if hasEncapsRed(apiConfig) {
+		srv6Overhead = hostnetwork.SRv6OverheadEncapReduced
 	}
 	for _, l3vpn := range apiConfig.L3VPNs {
 		forL3VPNs[l3vpn.Name] = srv6Overhead
 	}
 
+	// For all routing domains with l2vnis, we must calculate the routing domain's overhead from the max of the L3 +
+	// all L2VNIs in the routing domain.
 	for _, l2vni := range apiConfig.L2VNIs {
-		forL2VNIs[l2vni.Name] = hostnetwork.VXLanOverhead
-		if l2vni.Spec.RoutingDomain == nil || l2vni.Spec.RoutingDomain.Type == v1alpha1.RoutingDomainTypeL3VNI {
+		if l2vni.Spec.RoutingDomain == nil {
 			continue
 		}
+
+		l2VXLANOverhead, err := overheadForVXLANTunnel(l2vni.Name, vtepIPs.forL2VNIs)
+		if err != nil {
+			return tunnelOverheads{}, fmt.Errorf("L2VNI %s: %w", l2vni.Name, err)
+		}
+
+		if l2vni.Spec.RoutingDomain.Type == v1alpha1.RoutingDomainTypeL3VNI {
+			l3vniName := l2vni.Spec.RoutingDomain.L3VNI.Name
+			l3vniOverhead, found := forL3VNIs[l3vniName]
+			if !found {
+				return tunnelOverheads{}, fmt.Errorf("L2VNI %s: could not find corresponding L3VNI %q in tunnel overheads %+v",
+					l2vni.Name, l3vniName, forL3VNIs)
+			}
+			forL3VNIs[l3vniName] = max(l2VXLANOverhead, l3vniOverhead)
+			continue
+		}
+
 		l3vpnName := l2vni.Spec.RoutingDomain.L3VPN.Name
 		l3vpnOverhead, found := forL3VPNs[l3vpnName]
 		if !found {
+			return tunnelOverheads{}, fmt.Errorf("L2VNI %s: could not find corresponding L3VPN %q in tunnel overheads %+v",
+				l2vni.Name, l3vpnName, forL3VPNs)
+		}
+		forL3VPNs[l3vpnName] = max(l2VXLANOverhead, l3vpnOverhead)
+	}
+
+	// We now know the correct overheads for the L3VNI and L3VPN routing domains. Iterate over all l2vnis. For the l2vnis
+	// with routing domains, set the overhead to that of the entire domain. Otherwise, the L2's overhead is the overhead
+	// of its VXLAN tunnel.
+	for _, l2vni := range apiConfig.L2VNIs {
+		if l2vni.Spec.RoutingDomain == nil {
+			vxlanOverhead, err := overheadForVXLANTunnel(l2vni.Name, vtepIPs.forL2VNIs)
+			if err != nil {
+				return tunnelOverheads{}, fmt.Errorf("L2VNI %s: %w", l2vni.Name, err)
+			}
+			forL2VNIs[l2vni.Name] = vxlanOverhead
 			continue
 		}
-		newOverhead := max(hostnetwork.VXLanOverhead, l3vpnOverhead)
-		forL3VPNs[l3vpnName] = newOverhead
-		forL2VNIs[l2vni.Name] = newOverhead
+
+		if l2vni.Spec.RoutingDomain.Type == v1alpha1.RoutingDomainTypeL3VNI {
+			l3vniName := l2vni.Spec.RoutingDomain.L3VNI.Name
+			l3vniOverhead, found := forL3VNIs[l3vniName]
+			if !found {
+				return tunnelOverheads{}, fmt.Errorf("L2VNI %s: could not find corresponding L3VNI %s in tunnel overheads %+v",
+					l2vni.Name, l3vniName, forL3VNIs)
+			}
+			forL2VNIs[l2vni.Name] = l3vniOverhead
+			continue
+		}
+
+		l3vpnName := l2vni.Spec.RoutingDomain.L3VPN.Name
+		l3vpnOverhead, found := forL3VPNs[l3vpnName]
+		if !found {
+			return tunnelOverheads{}, fmt.Errorf("L2VNI %s: could not find corresponding L3VPN %s in tunnel overheads %+v",
+				l2vni.Name, l3vpnName, forL3VPNs)
+		}
+		forL2VNIs[l2vni.Name] = l3vpnOverhead
 	}
 
 	return tunnelOverheads{
 		forL3VNIs: forL3VNIs,
 		forL3VPNs: forL3VPNs,
 		forL2VNIs: forL2VNIs,
+	}, nil
+}
+
+// overheadForVXLANTunnel takes a mapping of VNI -> VTEP IP (which is either the IPv4 or IPv6 tunnel endpoint).
+// It returns the corresponding VXLAN overhead (50 bytes for IPv4, 70 bytes for IPv6 underlay).
+func overheadForVXLANTunnel(vniName string, forVNIs map[string]string) (int, error) {
+	vtepIP, found := forVNIs[vniName]
+	if !found {
+		return 0, fmt.Errorf("not found in map of tunnel VTEP IPs: %+v", forVNIs)
+	}
+	switch ipfamily.ForCIDRString(vtepIP) {
+	case ipfamily.IPv4:
+		return hostnetwork.VXLanOverhead, nil
+	case ipfamily.IPv6:
+		return hostnetwork.IPv6VXLanOverhead, nil
+	default:
+		return 0, fmt.Errorf("could not determine AF of tunnel VTEP IP: %q", vtepIP)
 	}
 }
 
