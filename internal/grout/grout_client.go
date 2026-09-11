@@ -49,7 +49,7 @@ func (c *Client) deleteAddress(ctx context.Context, iface, addr string) error {
 	return nil
 }
 
-func (c *Client) ensurePort(ctx context.Context, name, devargs string) error {
+func (c *Client) ensurePort(ctx context.Context, name, devargs, mac string) error {
 	exists, err := c.portExists(ctx, name)
 	if err != nil {
 		return fmt.Errorf("checking if port %s exists: %w", name, err)
@@ -59,8 +59,12 @@ func (c *Client) ensurePort(ctx context.Context, name, devargs string) error {
 		return nil
 	}
 
-	slog.InfoContext(ctx, "creating grout port", "name", name, "devargs", devargs)
-	if err := c.run(ctx, "interface", "add", "port", name, "devargs", devargs); err != nil {
+	args := []string{"interface", "add", "port", name, "devargs", devargs}
+	if mac != "" {
+		args = append(args, "mac", mac)
+	}
+	slog.InfoContext(ctx, "creating grout port", "name", name, "devargs", devargs, "mac", mac)
+	if err := c.run(ctx, args...); err != nil {
 		return fmt.Errorf("creating grout port %s: %w", name, err)
 	}
 	return nil
