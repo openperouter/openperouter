@@ -1493,6 +1493,56 @@ func TestAPItoHostConfigCNIInterfaces(t *testing.T) {
 	}
 }
 
+func TestAPItoHostConfigAcceleratedConfig(t *testing.T) {
+	rxqs := int32(4)
+	qsize := int32(1024)
+	promisc := false
+
+	apiConfig := APIConfigData{
+		Underlays: []v1alpha1.Underlay{
+			{
+				Spec: v1alpha1.UnderlaySpec{
+					Interfaces: []v1alpha1.UnderlayInterface{
+						{
+							Type: v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+							NetworkDevice: &v1alpha1.NetworkDevice{
+								InterfaceName: "enp3s0f0v0",
+								AcceleratedConfig: &v1alpha1.AcceleratedConfig{
+									RXQueues:    &rxqs,
+									QSize:       &qsize,
+									Promiscuous: &promisc,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	got, err := APItoHostConfig(0, "namespace", apiConfig)
+	if err != nil {
+		t.Fatalf("APItoHostConfig() unexpected error: %v", err)
+	}
+
+	expected := []hostnetwork.UnderlayInterface{
+		{
+			InterfaceName: "enp3s0f0v0",
+			Kind:          hostnetwork.UnderlayInterfaceNetDev,
+			AcceleratedConfig: &hostnetwork.AcceleratedConfigParams{
+				RXQueues:    new(int32(4)),
+				QSize:       new(int32(1024)),
+				Promiscuous: new(bool(false)),
+			},
+		}}
+	if len(got.Underlay.UnderlayInterfaces) != 1 {
+		t.Fatalf("expected 1 underlay interface, got %d", len(got.Underlay.UnderlayInterfaces))
+	}
+	if !reflect.DeepEqual(got.Underlay.UnderlayInterfaces, expected) {
+		t.Errorf("APItoHostConfig() gotUnderlay = %+v, want %+v", got.Underlay.UnderlayInterfaces, expected)
+	}
+}
+
 func TestOverheadForTunnels(t *testing.T) {
 	ipv4VTEP := "10.0.0.1/32"
 	ipv6VTEP := "2001:db8::1/128"
