@@ -108,6 +108,36 @@ func setAddrGenModeNone(l netlink.Link) error {
 	return netlink.LinkSetIP6AddrGenMode(l, 1)
 }
 
+// SuppressLinkLocal stops the kernel from managing an IPv6 link-local address on
+// the named interface: it sets addr_gen_mode to none so no new one is generated
+// and removes any that already exists. Called on grout underlay interfaces whose
+// kernel link-local is unused (grout owns forwarding) but would otherwise
+// collide with grout's control-plane shadow, see issue #720.
+func SuppressLinkLocal(ifaceName string) error {
+	link, err := netlink.LinkByName(ifaceName)
+	if err != nil {
+		return fmt.Errorf("failed to find interface %s: %w", ifaceName, err)
+	}
+
+	if err := setAddrGenModeNone(link); err != nil {
+		return fmt.Errorf("failed to set addr_gen_mode none on %s: %w", ifaceName, err)
+	}
+
+	addrs, err := netlink.AddrList(link, netlink.FAMILY_V6)
+	if err != nil {
+		return fmt.Errorf("failed to list addresses on %s: %w", ifaceName, err)
+	}
+	for _, addr := range addrs {
+		if !addr.IP.IsLinkLocalUnicast() {
+			continue
+		}
+		if err := netlink.AddrDel(link, &addr); err != nil {
+			return fmt.Errorf("failed to remove link-local %s from %s: %w", addr.IPNet, ifaceName, err)
+		}
+	}
+	return nil
+}
+
 // linkSetUp sets the link up only if it's not already up.
 // This avoids unnecessary RTM_NEWLINK events that can cause FRR to flush neighbor entries.
 func linkSetUp(l netlink.Link) error {
