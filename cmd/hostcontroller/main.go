@@ -94,10 +94,6 @@ type hostModeParameters struct {
 	routerHealthCheckPort int
 }
 
-type k8sModeParameters struct {
-	criSocket string
-}
-
 // stringSliceFlag is a flag.Value collecting comma-separated (or repeated)
 // values into a string slice, trimming whitespace and dropping empty entries.
 // Setting the flag replaces the default value, it can be passed just once
@@ -142,7 +138,6 @@ type parameters struct {
 
 func main() {
 	hostModeParams := hostModeParameters{}
-	k8sModeParams := k8sModeParameters{}
 
 	args := parameters{}
 
@@ -162,7 +157,8 @@ func main() {
 
 	flag.StringVar(&args.nodeName, "nodename", "", "The name of the node the controller runs on")
 	flag.StringVar(&args.namespace, "namespace", "", "The namespace the controller runs in")
-	flag.StringVar(&k8sModeParams.criSocket, "crisocket", "/containerd.sock", "the location of the cri socket")
+	// Kept so that existing manifests passing it do not make flag parsing fail.
+	flag.String("crisocket", "", "Deprecated: ignored, the controller no longer connects to the container runtime")
 
 	flag.DurationVar(&hostModeParams.k8sWaitInterval, "k8s-wait-timeout", time.Minute,
 		"K8s API server waiting interval time")

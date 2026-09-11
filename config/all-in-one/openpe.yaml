@@ -2524,9 +2524,6 @@ spec:
             - NET_BIND_SERVICE
           privileged: true
         volumeMounts:
-        - mountPath: /containerd.sock
-          name: varrun
-          subPath: containerd.sock
         - mountPath: /run/netns
           mountPropagation: Bidirectional
           name: runns
@@ -2554,9 +2551,6 @@ spec:
       - hostPath:
           path: /run/netns
         name: runns
-      - hostPath:
-          path: /run/containerd
-        name: varrun
       - hostPath:
           path: /etc/perouter/frr
           type: DirectoryOrCreate
