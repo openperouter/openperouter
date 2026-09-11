@@ -56,7 +56,7 @@ func setupNamespacedVeth(ctx context.Context, vethNames VethNames, namespace str
 			return err
 		}
 		slog.DebugContext(ctx, "pe leg already in ns", "pe veth", namespaceSideLink.Attrs().Name)
-		return nil
+		return netlink.LinkSetUp(namespaceSideLink)
 	})
 	if err != nil && !errors.As(err, &netlink.LinkNotFoundError{}) { // real error
 		return fmt.Errorf("could not find peer by name for %s: %w", vethNames.HostSide, err)

@@ -27,6 +27,18 @@ systemctl start openperouter
 
 ## Configuration
 
+### Host-network VNF proof of concept
+
+The host-mode controller accepts `--router-netns` (default:
+`/var/run/netns/perouter`). Point it at `/hostproc/1/ns/net` and configure the
+router Quadlet to join the host network namespace to run in a dedicated VNF VM.
+Namespace identity is detected automatically, including bind-mounted aliases.
+In this mode uplinks are externally managed and the Underlay may omit
+`interfaces`; automatic attachment MTU adjustment is skipped.
+
+See [the PoC installation guide](https://github.com/openperouter/openperouter/tree/main/systemdmode/host-network)
+for Quadlet drop-ins, static configuration and lifecycle limitations.
+
 See the [Systemd Mode configuration guide]({{< ref "../configuration/systemd-mode.md" >}}) for details on node configuration, router configuration files, and how static and API server configuration are merged.
 
 ## Kubernetes-Side Deployment

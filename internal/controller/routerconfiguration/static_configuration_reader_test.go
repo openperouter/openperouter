@@ -20,6 +20,43 @@ import (
 
 const defaultRouterIDCIDR = "10.0.0.0/24"
 
+func TestStaticHostNetworkWithoutUplinks(t *testing.T) {
+	dir := t.TempDir()
+	writeYAMLFile(t, dir, "openpe_host.yaml", `
+underlays:
+  - asn: 64514
+    neighbors:
+      - asn: 64512
+        address: 192.168.111.1
+    tunnelEndpoint:
+      cidrs: [100.65.0.0/24]
+l3vnis:
+  - name: red
+    vrf: red
+    vni: 100
+`)
+	config, err := readStaticConfigs(dir, "vnf-0", "openperouter-system")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hostConfig, err := conversion.APItoHostConfig(0, "/proc/self/ns/net", config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hostConfig.Underlay.UnderlayInterfaces) != 0 || len(hostConfig.L3VNIs) != 1 {
+		t.Fatalf("expected an overlay with unmanaged uplinks, got %+v", hostConfig)
+	}
+	if _, err := conversion.APItoFRR(config, 0, "info"); err != nil {
+		t.Fatalf("generate BGP/EVPN config without uplinks: %v", err)
+	}
+	if _, err := conversion.APItoHostConfig(0, dir, config); err == nil {
+		t.Fatal("target other than host namespace must require uplinks")
+	}
+	if err := conversion.ValidateGroutUnderlay(config.Underlays[0]); err == nil {
+		t.Fatal("grout must require uplinks")
+	}
+}
+
 func TestReadStaticConfigs_L2VNI_DefaultVXLanPort(t *testing.T) {
 	dir := t.TempDir()
 	writeYAMLFile(t, dir, "openpe_l2vni.yaml", `

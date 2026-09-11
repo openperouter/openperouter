@@ -5,6 +5,7 @@ package netnamespace
 import (
 	"fmt"
 	"log/slog"
+	"os"
 	"runtime"
 
 	"github.com/vishvananda/netns"
@@ -14,6 +15,22 @@ type SetNamespaceError string
 
 func (i SetNamespaceError) Error() string {
 	return string(i)
+}
+
+// IsCurrent compares namespace identities, including paths that alias the same
+// namespace. Call it from the host-networked controller, outside In callbacks.
+func IsCurrent(path string) (bool, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	target, err := os.Stat(path)
+	if err != nil {
+		return false, fmt.Errorf("stat target namespace %s: %w", path, err)
+	}
+	current, err := os.Stat("/proc/thread-self/ns/net")
+	if err != nil {
+		return false, fmt.Errorf("stat current namespace: %w", err)
+	}
+	return os.SameFile(target, current), nil
 }
 
 // In execs the provided function in the given network namespace.

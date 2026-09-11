@@ -73,6 +73,22 @@ func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
 		}
 	}()
 
+	hostNetwork, err := netnamespace.IsCurrent(params.TargetNS)
+	if err != nil {
+		return err
+	}
+	if hostNetwork {
+		for _, iface := range params.UnderlayInterfaces {
+			if iface.Kind != UnderlayInterfaceNetDev {
+				return fmt.Errorf("host networking requires externally provisioned network devices")
+			}
+			if _, err := netlink.LinkByName(iface.InterfaceName); err != nil {
+				return fmt.Errorf("find host uplink %s: %w", iface.InterfaceName, err)
+			}
+		}
+		return setupTunnelEndpoint(ctx, targetNetNS, params.TunnelEndpoint)
+	}
+
 	// If any existing underlay interfaces were removed from the new list,
 	// clean them up before setting up the new ones: network devices are
 	// restored to the default namespace, CNI-provisioned interfaces are
@@ -106,22 +122,7 @@ func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
 
 	}
 
-	if params.TunnelEndpoint == nil {
-		return nil
-	}
-
-	vtepIPs := make([]string, 0, 2)
-	if ip := params.TunnelEndpoint.IPv4CIDR; ip != "" {
-		vtepIPs = append(vtepIPs, ip)
-	}
-	if ip := params.TunnelEndpoint.IPv6CIDR; ip != "" {
-		vtepIPs = append(vtepIPs, ip)
-	}
-	if err := ensureLoopback(ctx, targetNetNS, vtepIPs...); err != nil {
-		return err
-	}
-
-	return nil
+	return setupTunnelEndpoint(ctx, targetNetNS, params.TunnelEndpoint)
 }
 
 // SetupUnderlayNetDevInterface provisions a single underlay net dev interface
@@ -368,6 +369,17 @@ func FindInterfacesInGroup(ns netns.NsHandle, groupID uint32) ([]string, error) 
 // FindUnderlayMTU retrieves the lowest MTU among all underlay interfaces.
 // This ensures that packets can traverse all underlay paths.
 func FindUnderlayMTU(ns netns.NsHandle) (int, error) {
+	current, err := netns.Get()
+	if err != nil {
+		return 0, fmt.Errorf("get host namespace for MTU discovery: %w", err)
+	}
+	hostNetwork := ns.Equal(current)
+	if err := current.Close(); err != nil {
+		return 0, fmt.Errorf("close host namespace: %w", err)
+	}
+	if hostNetwork {
+		return 0, nil // Host-network MTUs are managed by VM provisioning.
+	}
 	underlayInterfaces, err := underlayInterfaces(ns)
 	if err != nil {
 		return 0, fmt.Errorf("failed finding underlay interfaces to calculate MTU: %w", err)
@@ -452,4 +464,18 @@ func moveInterfaceFromDefaultNetns(ctx context.Context, ns netns.NsHandle, name 
 	defer defaultNetNSHandle.Close()
 
 	return MoveInterfaceToNamespace(ctx, name, defaultNetNSHandle, nsHandle, ns, UnderlayGroupID)
+}
+
+func setupTunnelEndpoint(ctx context.Context, ns netns.NsHandle, endpoint *UnderlayTunnelEndpointParams) error {
+	if endpoint == nil {
+		return nil
+	}
+	vtepIPs := make([]string, 0, 2)
+	if ip := endpoint.IPv4CIDR; ip != "" {
+		vtepIPs = append(vtepIPs, ip)
+	}
+	if ip := endpoint.IPv6CIDR; ip != "" {
+		vtepIPs = append(vtepIPs, ip)
+	}
+	return ensureLoopback(ctx, ns, vtepIPs...)
 }

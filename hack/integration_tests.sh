@@ -47,11 +47,16 @@ echo "OVS is ready"
 ovs-vsctl show
 
 umask 0
-for test_bin in "$@"; do
+for test_spec in "$@"; do
+    test_dir="${test_spec%%:*}"
+    test_bin="${test_spec#*:}"
     echo "Running $test_bin..."
+    # Match go test's package working directory so relative fixtures resolve.
+    pushd "$test_dir" > /dev/null
     if "$test_bin" -help 2>&1 | grep -q ginkgo; then
         "$test_bin" -test.v -ginkgo.v
     else
         "$test_bin" -test.v
     fi
+    popd > /dev/null
 done

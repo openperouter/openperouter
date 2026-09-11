@@ -15,6 +15,7 @@ import (
 	openpeerrors "github.com/openperouter/openperouter/internal/errors"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/openperouter/openperouter/internal/hostnetwork/bridgerefresh"
+	"github.com/openperouter/openperouter/internal/netnamespace"
 	"github.com/openperouter/openperouter/internal/sysctl"
 )
 
@@ -31,17 +32,12 @@ type KernelDatapathConfigurator struct {
 }
 
 func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config interfacesConfiguration) error { // nolint:gocognit
-	currentUnderlayIfaces, err := hostnetwork.UnderlayInterfaces(config.targetNamespace)
+	hostNetwork, err := netnamespace.IsCurrent(config.targetNamespace)
 	if err != nil {
-		return fmt.Errorf("failed to check if target namespace %s has underlay: %w", config.targetNamespace, err)
+		return err
 	}
-	if len(currentUnderlayIfaces) > 0 && len(config.Underlays) == 0 {
-		restoreUnderlay(ctx, config.targetNamespace, currentUnderlayIfaces)
-		return nil
-	}
-
 	if len(config.Underlays) == 0 {
-		return nil // nothing to do
+		return removeUnderlay(ctx, config.targetNamespace, hostNetwork)
 	}
 
 	slog.InfoContext(ctx, "configure interface start", "namespace", config.targetNamespace)
@@ -62,9 +58,12 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 		return err
 	}
 
-	removeAllVNIs, err := areAllUnderlayInterfacesToBeRemoved(ctx, config, hostConfig)
-	if err != nil {
-		return err
+	var removeAllVNIs bool
+	if !hostNetwork {
+		removeAllVNIs, err = areAllUnderlayInterfacesToBeRemoved(ctx, config, hostConfig)
+		if err != nil {
+			return err
+		}
 	}
 	if removeAllVNIs {
 		// VXLAN tunnels are bound to the current underlay interfaces. If all underlay interfaces are being
@@ -196,6 +195,26 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 		}
 	}
 	return errors.Join(resourceErrors...)
+}
+
+func removeUnderlay(ctx context.Context, targetNS string, hostNetwork bool) error {
+	if hostNetwork {
+		bridgerefresh.StopAllVNIs()
+		return errors.Join(
+			hostnetwork.RemoveAllVNIs(targetNS),
+			hostnetwork.RemoveAllL3VPNs(targetNS),
+			hostnetwork.RemoveAllVRFs(targetNS),
+			hostnetwork.RemovePassthrough(targetNS),
+		)
+	}
+	current, err := hostnetwork.UnderlayInterfaces(targetNS)
+	if err != nil {
+		return fmt.Errorf("failed to discover underlay: %w", err)
+	}
+	if len(current) > 0 {
+		restoreUnderlay(ctx, targetNS, current)
+	}
+	return nil
 }
 
 func restoreUnderlay(

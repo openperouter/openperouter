@@ -20,6 +20,7 @@ import (
 )
 
 type RouterHostProvider struct {
+	NamespacePath         string
 	FRRConfigPath         string
 	RouterPidFilePath     string
 	CurrentNodeIndex      int
@@ -39,7 +40,7 @@ func (r *RouterHostProvider) New(ctx context.Context) (Router, error) {
 	// If the service is running but the netns is gone, restart the service so it
 	// recreates the netns on startup. Without this, CanReconcile() loops forever
 	// returning false and the netns is never recovered.
-	missing, err := isRouterPodActiveWithNoNamespace()
+	missing, err := isRouterPodActiveWithNoNamespace(r.NamespacePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check router pod netns state: %w", err)
 	}
@@ -49,7 +50,7 @@ func (r *RouterHostProvider) New(ctx context.Context) (Router, error) {
 		}, nil
 	}
 	slog.Info("named netns missing while service is active, restarting service to recover",
-		"path", netnamespace.NamedNSPath)
+		"path", r.NamespacePath)
 	sdClient, err := systemdctl.NewClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create systemd client for restart: %w", err)
@@ -67,7 +68,7 @@ func (r *RouterHostProvider) NodeIndex(ctx context.Context) (int, error) {
 }
 
 func (r *RouterHostContainer) TargetNS(_ context.Context) (string, error) {
-	return netnamespace.NamedNSPath, nil
+	return r.manager.NamespacePath, nil
 }
 
 func (r *RouterHostContainer) CanReconcile() (bool, error) {
@@ -84,14 +85,14 @@ func (r *RouterHostContainer) CanReconcile() (bool, error) {
 		return false, nil
 	}
 
-	ns, err := netns.GetFromPath(netnamespace.NamedNSPath)
+	ns, err := netns.GetFromPath(r.manager.NamespacePath)
 	if errors.Is(err, os.ErrNotExist) {
 		slog.Info("named netns not found, will retry on next reconcile",
-			"path", netnamespace.NamedNSPath, "error", err)
+			"path", r.manager.NamespacePath, "error", err)
 		return false, nil
 	}
 	if err != nil {
-		return false, fmt.Errorf("failed to open named netns %s: %w", netnamespace.NamedNSPath, err)
+		return false, fmt.Errorf("failed to open router netns %s: %w", r.manager.NamespacePath, err)
 	}
 	defer func() {
 		if err := ns.Close(); err != nil {
@@ -205,7 +206,12 @@ func (r *RouterHostProvider) StartFRRRestartWatcher(ctx context.Context, onResta
 	return nil
 }
 
-func isRouterPodActiveWithNoNamespace() (bool, error) {
+func isRouterPodActiveWithNoNamespace(path string) (bool, error) {
+	// Only the default named namespace is created by the stock Quadlet.
+	// Custom namespaces are supplied by the installation, not recovered here.
+	if path != netnamespace.NamedNSPath {
+		return false, nil
+	}
 	sdClient, err := systemdctl.NewClient()
 	if err != nil {
 		return false, fmt.Errorf("failed to create systemd client: %w", err)
@@ -217,7 +223,7 @@ func isRouterPodActiveWithNoNamespace() (bool, error) {
 	if state != systemdctl.StateActive {
 		return false, nil
 	}
-	ns, err := netns.GetFromPath(netnamespace.NamedNSPath)
+	ns, err := netns.GetFromPath(path)
 	if err == nil {
 		if closeErr := ns.Close(); closeErr != nil {
 			slog.Error("failed to close namespace handle", "error", closeErr)

@@ -59,6 +59,7 @@ import (
 	"github.com/openperouter/openperouter/internal/frr"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/openperouter/openperouter/internal/logging"
+	"github.com/openperouter/openperouter/internal/netnamespace"
 	"github.com/openperouter/openperouter/internal/staticconfiguration"
 	"github.com/openperouter/openperouter/internal/systemdctl"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
@@ -86,6 +87,7 @@ func init() {
 }
 
 type hostModeParameters struct {
+	routerNetNS           string
 	k8sWaitInterval       time.Duration
 	hostContainerPidPath  string
 	configurationDir      string
@@ -166,6 +168,8 @@ func main() {
 
 	flag.DurationVar(&hostModeParams.k8sWaitInterval, "k8s-wait-timeout", time.Minute,
 		"K8s API server waiting interval time")
+	flag.StringVar(&hostModeParams.routerNetNS, "router-netns", netnamespace.NamedNSPath,
+		"router network namespace path visible to the host-mode controller")
 	flag.StringVar(&hostModeParams.hostContainerPidPath, "pid-path", "",
 		"the path of the pid file of the router container")
 	flag.StringVar(&args.reloaderSocket, "reloader-socket", "",
@@ -359,6 +363,7 @@ func runK8sConfigReconcilerHostMode(ctx context.Context,
 	}
 
 	routerProvider := &routerconfiguration.RouterHostProvider{
+		NamespacePath:         hostModeParams.routerNetNS,
 		FRRConfigPath:         args.frrConfigPath,
 		RouterPidFilePath:     hostModeParams.hostContainerPidPath,
 		CurrentNodeIndex:      nodeConfig.NodeIndex.Index,
@@ -537,6 +542,7 @@ func runStaticConfigReconciler(ctx context.Context,
 	}
 
 	staticRouterProvider := &routerconfiguration.RouterHostProvider{
+		NamespacePath:         hostModeParams.routerNetNS,
 		FRRConfigPath:         args.frrConfigPath,
 		RouterPidFilePath:     hostModeParams.hostContainerPidPath,
 		CurrentNodeIndex:      nodeConfig.NodeIndex.Index,
@@ -714,6 +720,9 @@ func validateParameters(args parameters, hostModeParams hostModeParameters) erro
 	}
 
 	if args.mode == modeHost {
+		if hostModeParams.routerNetNS == "" {
+			return fmt.Errorf("router-netns is required in %s mode", modeHost)
+		}
 		if hostModeParams.hostContainerPidPath == "" {
 			return fmt.Errorf("pid-path is required in %s mode", modeHost)
 		}

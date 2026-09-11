@@ -23,6 +23,9 @@ func ValidateGroutL2VNI(l2VNI v1alpha1.L2VNI) error {
 }
 
 func ValidateGroutUnderlay(underlay v1alpha1.Underlay) error {
+	if len(underlay.Spec.Interfaces) == 0 {
+		return fmt.Errorf("underlay interfaces are required with the grout datapath")
+	}
 	for _, iface := range underlay.Spec.Interfaces {
 		if iface.Type == v1alpha1.UnderlayInterfaceTypeCNIDevice {
 			return fmt.Errorf("CNI dev underlays are not supported with the grout datapath")

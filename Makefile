@@ -103,7 +103,7 @@ test: fmt vet envtest $(LOCALBIN) kind-node-image-build ## Run tests.
 	for pkg in $$(grep -rl "//go:build runasroot" --include="*_test.go" $$(go list -f '{{.Dir}}' ./...) | xargs -I{} dirname {} | sort -u); do \
 		name=$$(basename $$pkg); \
 		go test -tags=runasroot -c -race -o $(LOCALBIN)/$$name.test $$pkg; \
-		RUNASROOT_TESTS="$$RUNASROOT_TESTS /src/bin/$$name.test"; \
+		RUNASROOT_TESTS="$$RUNASROOT_TESTS /src/$${pkg#$$(pwd)/}:/src/bin/$$name.test"; \
 	done; \
 	$(CONTAINER_ENGINE) run --rm --privileged -v $$(pwd):/src -w /src --entrypoint /src/hack/integration_tests.sh $(KIND_NODE_IMG) $$RUNASROOT_TESTS
 

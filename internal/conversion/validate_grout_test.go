@@ -85,7 +85,7 @@ func TestValidateGroutUnderlay(t *testing.T) {
 		{
 			name:    "no nics",
 			nics:    nil,
-			wantErr: false,
+			wantErr: true,
 		},
 		{
 			name:    "valid nic name",

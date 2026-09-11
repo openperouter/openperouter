@@ -5,11 +5,57 @@
 package netnamespace
 
 import (
+	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
+	"golang.org/x/sys/unix"
 )
+
+func TestIsCurrentBindMount(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "host-netns")
+	if err := os.WriteFile(path, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := unix.Mount("/proc/self/ns/net", path, "", unix.MS_BIND, ""); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := unix.Unmount(path, 0); err != nil {
+			t.Error(err)
+		}
+	})
+	got, err := IsCurrent(path)
+	if err != nil || !got {
+		t.Fatalf("bind-mounted host namespace: got %v, %v; want true", got, err)
+	}
+}
+
+func TestIsCurrentOtherNamespace(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	original, err := netns.Get()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer original.Close()
+	other, err := netns.NewNamed("identity-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	defer netns.DeleteNamed("identity-test")
+	if err := netns.Set(original); err != nil {
+		t.Fatal(err)
+	}
+	got, err := IsCurrent("/run/netns/identity-test")
+	if err != nil || got {
+		t.Fatalf("different namespace: got %v, %v; want false", got, err)
+	}
+}
 
 func TestEnsureNamespace(t *testing.T) {
 	// First call should create the namespace

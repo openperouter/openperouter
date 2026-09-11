@@ -59,12 +59,13 @@ type UnderlaySpec struct {
 
 	// interfaces is the list of interfaces the router uses for underlay
 	// connectivity. Each entry is a discriminated union describing how the
-	// interface is obtained. At least one interface is required. All the
+	// interface is obtained. Interfaces may be omitted when the kernel router
+	// uses the host network namespace and uplinks are externally managed. All the
 	// entries must be of the same type: mixing NetworkDevice and CNIDevice
 	// interfaces is not supported.
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:XValidation:rule="self.all(i, i.type == self[0].type)",message="all interfaces must be of the same type, mixing NetworkDevice and CNIDevice is not supported"
-	// +required
+	// +optional
 	// +listType=atomic
 	Interfaces []UnderlayInterface `json:"interfaces,omitempty"`
 

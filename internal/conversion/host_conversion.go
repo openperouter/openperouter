@@ -15,6 +15,7 @@ import (
 	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/openperouter/openperouter/internal/ipam"
 	"github.com/openperouter/openperouter/internal/ipfamily"
+	"github.com/openperouter/openperouter/internal/netnamespace"
 	"k8s.io/utils/ptr"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -46,7 +47,13 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig APIConfigData) (H
 	}
 
 	if len(underlay.Spec.Interfaces) == 0 {
-		return HostConfigData{}, errors.New("underlay interface must be specified")
+		hostNetwork, err := netnamespace.IsCurrent(targetNS)
+		if err != nil {
+			return HostConfigData{}, err
+		}
+		if !hostNetwork {
+			return HostConfigData{}, errors.New("underlay interface must be specified outside the host network namespace")
+		}
 	}
 
 	underlayInterfaces, err := underlayInterfacesToHost(underlay.Spec.Interfaces)
