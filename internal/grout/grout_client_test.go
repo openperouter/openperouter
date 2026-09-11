@@ -47,6 +47,14 @@ const interfaceShowP0Output = `{
 	"speed": "unknown"
 }`
 
+func TestSetPortUp(t *testing.T) {
+	defer mockCmdExec(cmdCall{
+		cmd: "grcli --err-exit --json --socket sock interface set port pe-100 up",
+	})()
+
+	assert.NoError(t, NewClient("sock").setPortUp(context.Background(), "pe-100"))
+}
+
 func TestEnsurePort(t *testing.T) {
 	t.Run("ensure port when no port exists", func(t *testing.T) {
 
@@ -56,7 +64,7 @@ func TestEnsurePort(t *testing.T) {
 				err: fmt.Errorf("error: command failed: No such device (ENODEV)"),
 			},
 			cmdCall{
-				cmd: "grcli --err-exit --json --socket sock interface add port p0 devargs net_tap0,remote=remote_i,iface=p0_tap",
+				cmd: "grcli --err-exit --json --socket sock interface add port p0 devargs net_tap0,remote=remote_i,iface=p0_tap down",
 			})()
 
 		assert.NoError(t,

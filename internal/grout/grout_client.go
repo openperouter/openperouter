@@ -77,8 +77,16 @@ func (c *Client) ensurePortInVRF(ctx context.Context, name, devargs, vrf string)
 	}
 
 	slog.InfoContext(ctx, "creating grout port in VRF", "name", name, "devargs", devargs, "vrf", vrf)
-	if err := c.run(ctx, "interface", "add", "port", name, "devargs", devargs, "vrf", vrf, "up"); err != nil {
+	if err := c.run(ctx, "interface", "add", "port", name, "devargs", devargs, "vrf", vrf, "down"); err != nil {
 		return fmt.Errorf("creating grout port %s in VRF %s: %w", name, vrf, err)
+	}
+	return nil
+}
+
+func (c *Client) setPortUp(ctx context.Context, name string) error {
+	slog.InfoContext(ctx, "setting grout port up", "name", name)
+	if err := c.run(ctx, "interface", "set", "port", name, "up"); err != nil {
+		return fmt.Errorf("setting grout port %s up: %w", name, err)
 	}
 	return nil
 }
