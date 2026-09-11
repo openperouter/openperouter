@@ -25,7 +25,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 )
 
-var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Ordered, func() {
+var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", GroutSupport, Ordered, func() {
 	var (
 		cs      clientset.Interface
 		routers openperouter.Routers
@@ -355,7 +355,7 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Orde
 
 })
 
-var _ = Describe("Disconnected L2VNI east/west traffic", Ordered, func() {
+var _ = Describe("Disconnected L2VNI east/west traffic", GroutSupport, Ordered, func() {
 	const (
 		testNamespace             = "test-disconnected-l2"
 		linuxBridgeHostAttachment = "LinuxBridge"
