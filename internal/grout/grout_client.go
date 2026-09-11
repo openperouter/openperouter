@@ -29,6 +29,7 @@ type groutAddress struct {
 type groutInterface struct {
 	Name string `json:"name"`
 	Type string `json:"type"`
+	VRF  string `json:"vrf"`
 }
 
 type groutVXLANInfo struct {
@@ -62,7 +63,7 @@ func (c *Client) ensurePort(ctx context.Context, name, devargs string) error {
 	}
 
 	slog.InfoContext(ctx, "creating grout port", "name", name, "devargs", devargs)
-	if err := c.run(ctx, "interface", "add", "port", name, "devargs", devargs); err != nil {
+	if err := c.run(ctx, "interface", "add", "port", name, "devargs", devargs, "down"); err != nil {
 		return fmt.Errorf("creating grout port %s: %w", name, err)
 	}
 	return nil
@@ -217,6 +218,61 @@ func (c *Client) runOutput(ctx context.Context, args ...string) (string, error) 
 
 	groutErr.cmdErr = fmt.Errorf("grcli %s failed: %w, output: %s", strings.Join(args, " "), err, output)
 	return output, groutErr
+}
+
+func (c *Client) ensureBridge(ctx context.Context, name, vrf string) error {
+	info, err := c.getInterfaceInfo(ctx, name)
+	if err != nil {
+		return fmt.Errorf("checking if bridge %s exists: %w", name, err)
+	}
+	expectedVRF := vrf
+	if expectedVRF == "" {
+		expectedVRF = defaultVRFName
+	}
+	if info != nil && info.Type == "bridge" && info.VRF == expectedVRF {
+		slog.InfoContext(ctx, "grout bridge already exists", "name", name)
+		return nil
+	}
+
+	if info != nil && info.Type != "bridge" {
+		return fmt.Errorf("interface %s is not a bridge", name)
+	}
+
+	if info != nil {
+		// VRF mismatch, recreate the bridge.
+		slog.InfoContext(ctx, "grout bridge vrf mismatch, recreating",
+			"name", name, "oldVRF", info.VRF, "newVRF", expectedVRF)
+		if err := c.deleteInterface(ctx, name); err != nil {
+			return fmt.Errorf("deleting bridge %s for reconfiguration: %w", name, err)
+		}
+	}
+
+	args := []string{"interface", "add", "bridge", name}
+	if vrf != "" {
+		args = append(args, "vrf", vrf)
+	}
+	args = append(args, "neigh_suppress", "on")
+	slog.InfoContext(ctx, "creating grout bridge", "name", name, "vrf", vrf)
+	if err := c.run(ctx, args...); err != nil {
+		return fmt.Errorf("creating grout bridge %s: %w", name, err)
+	}
+	return nil
+}
+
+func (c *Client) setBridgeMAC(ctx context.Context, bridgeName, mac string) error {
+	slog.InfoContext(ctx, "setting bridge MAC", "bridge", bridgeName, "mac", mac)
+	if err := c.run(ctx, "interface", "set", "bridge", bridgeName, "mac", mac); err != nil {
+		return fmt.Errorf("setting MAC %s on bridge %s: %w", mac, bridgeName, err)
+	}
+	return nil
+}
+
+func (c *Client) ensureBridgeMember(ctx context.Context, portType, bridgeName, memberName string) error {
+	slog.InfoContext(ctx, "adding bridge member", "bridge", bridgeName, "member", memberName)
+	if err := c.run(ctx, "interface", "set", portType, memberName, "domain", bridgeName); err != nil {
+		return fmt.Errorf("adding %s to bridge %s: %w", memberName, bridgeName, err)
+	}
+	return nil
 }
 
 func (c *Client) ensureVRF(ctx context.Context, name string) error {
