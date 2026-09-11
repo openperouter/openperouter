@@ -1108,8 +1108,7 @@ var _ = Describe("Underlay explicit address family configuration", Ordered, Grou
 	// shadow shares its link-local with grout's own tap_<iface> by design; only a
 	// collision with the veth is the failure signature.
 	//
-	// This test is marked as failing until we fix this bug.
-	XIt("assigns each underlay port a unique IPv6 link-local", func() {
+	It("assigns each underlay port a link-local distinct from its veth", func() {
 		By("deploying an underlay with both ToR neighbors carrying ipv4unicast and ipv6unicast")
 		underlay := *infra.Underlay.DeepCopy()
 		for i := range underlay.Spec.Neighbors {

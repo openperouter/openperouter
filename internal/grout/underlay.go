@@ -166,6 +166,19 @@ func configureUnderlayPort(ctx context.Context, client *Client, underlayInterfac
 		return fmt.Errorf("failed to read underlay interface addresses: %w", err)
 	}
 
+	// grout adopts the backing veth's MAC (via remote=) for the port, so its
+	// control-plane kernel shadow u_<iface> derives the same EUI-64 IPv6
+	// link-local as the veth. When grout adds that link-local to the shadow it
+	// collides with the veth's copy, DAD strips it, and the shadow ends up
+	// without a link-local, breaking any session carrying an IPv6 nexthop
+	// (ipv6unicast/ipv6vpn). The veth's kernel link-local is unused (grout owns
+	// all forwarding), so suppress it before creating the port to remove the
+	// collision. See https://github.com/openperouter/openperouter/issues/720.
+	slog.InfoContext(ctx, "suppressing kernel link-local on underlay interface", "iface", underlayInterface)
+	if err := hostnetwork.SuppressLinkLocal(underlayInterface); err != nil {
+		return fmt.Errorf("failed to suppress link-local on underlay interface %s: %w", underlayInterface, err)
+	}
+
 	devargs := fmt.Sprintf("net_tap%s,remote=%s,iface=%s", makeTapRandomString(), underlayInterface, "tap_"+underlayInterface)
 	if err := client.ensurePort(ctx, UnderlayPortNamePrefix+underlayInterface, devargs); err != nil {
 		return fmt.Errorf("failed to create grout underlay port: %w", err)
