@@ -64,6 +64,7 @@ func TestEnsurePort(t *testing.T) {
 				context.Background(),
 				"p0",
 				"net_tap0,remote=remote_i,iface=p0_tap",
+				"",
 			),
 		)
 	})
@@ -80,6 +81,28 @@ func TestEnsurePort(t *testing.T) {
 				context.Background(),
 				"p0",
 				"net_tap0,remote=remote_i,iface=p0_tap",
+				"",
+			),
+		)
+	})
+
+	t.Run("ensure port with explicit MAC", func(t *testing.T) {
+		defer mockCmdExec(
+			cmdCall{
+				cmd: "grcli --err-exit --json --socket sock interface show name p0",
+				err: fmt.Errorf("error: command failed: No such device (ENODEV)"),
+			},
+			cmdCall{
+				cmd: "grcli --err-exit --json --socket sock interface add port p0 devargs net_tap0,remote=remote_i,iface=p0_tap mac 02:00:00:00:00:01",
+			},
+		)()
+
+		assert.NoError(t,
+			NewClient("sock").ensurePort(
+				context.Background(),
+				"p0",
+				"net_tap0,remote=remote_i,iface=p0_tap",
+				"02:00:00:00:00:01",
 			),
 		)
 	})

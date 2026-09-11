@@ -166,8 +166,13 @@ func configureUnderlayPort(ctx context.Context, client *Client, underlayInterfac
 		return fmt.Errorf("failed to read underlay interface addresses: %w", err)
 	}
 
+	mac, err := randomMAC()
+	if err != nil {
+		return fmt.Errorf("failed to generate MAC for grout underlay port: %w", err)
+	}
+
 	devargs := fmt.Sprintf("net_tap%s,remote=%s,iface=%s", makeTapRandomString(), underlayInterface, "tap_"+underlayInterface)
-	if err := client.ensurePort(ctx, UnderlayPortNamePrefix+underlayInterface, devargs); err != nil {
+	if err := client.ensurePort(ctx, UnderlayPortNamePrefix+underlayInterface, devargs, mac.String()); err != nil {
 		return fmt.Errorf("failed to create grout underlay port: %w", err)
 	}
 
