@@ -54,6 +54,9 @@ func SetupPassthrough(ctx context.Context, client *Client, params hostnetwork.Pa
 	if err := ensurePortAddresses(ctx, client, portName, params.LinkIPs.NSIPv4, params.LinkIPs.NSIPv6); err != nil {
 		return fmt.Errorf("failed to ensure IPs to grout port: %w", err)
 	}
+	if err := client.setPortUp(ctx, portName); err != nil {
+		return fmt.Errorf("failed to set grout port up: %w", err)
+	}
 
 	if err := netnamespace.In(peRouterNs, func() error {
 		// Grout creates a NOARP kernel interface for each port. BGP packets leave

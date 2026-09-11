@@ -185,6 +185,10 @@ func configureUnderlayPort(ctx context.Context, client *Client, underlayInterfac
 		return err
 	}
 
+	if err := client.setPortUp(ctx, UnderlayPortNamePrefix+underlayInterface); err != nil {
+		return fmt.Errorf("failed to set grout port up: %w", err)
+	}
+
 	return nil
 }
 
