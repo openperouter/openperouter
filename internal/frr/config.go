@@ -30,6 +30,7 @@ type Config struct {
 	Loglevel    string
 	Hostname    string
 	Underlay    UnderlayConfig
+	L2VNIs      []L2VNIConfig
 	VNIs        []L3VNIConfig
 	VPNs        []L3VPNConfig
 	Passthrough *PassthroughConfig
@@ -132,6 +133,12 @@ type L3VNIConfig struct {
 	RouterID        string
 	ExportRTs       []string
 	ImportRTs       []string
+}
+
+type L2VNIConfig struct {
+	VNI       int32
+	ExportRTs []string
+	ImportRTs []string
 }
 
 type L3VPNConfig struct {

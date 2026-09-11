@@ -94,6 +94,23 @@ func (e *EVPNData) ContainsType2MACIPRouteForVNI(ip string, vtep string, vni int
 	return false
 }
 
+// ContainsType2MACIPRouteWithRT tells if a Type 2 MAC+IP route has the given
+// next hop and every specified route target.
+func (e *EVPNData) ContainsType2MACIPRouteWithRT(ip string, vtep string, routeTargets []v1alpha1.RouteTarget) bool {
+	isType2MACIPRoute := func(p Path) bool {
+		return p.RouteType == 2 && p.IPLen > 0
+	}
+	for _, path := range e.matchingPaths(isType2MACIPRoute) {
+		if path.IP != ip || !pathHasVTEP(path, vtep) {
+			continue
+		}
+		if pathHasAllRouteTargets(path, routeTargets) {
+			return true
+		}
+	}
+	return false
+}
+
 // allPaths returns a flat slice of paths from all entries and prefixes.
 func (e *EVPNData) allPaths() []Path {
 	var paths []Path
@@ -127,6 +144,25 @@ func pathHasRouteTarget(path Path, routeTargets []v1alpha1.RouteTarget) bool {
 	for _, rt := range routeTargets {
 		routeTarget := fmt.Sprintf("RT:%s", rt)
 		if strings.Contains(path.ExtendedCommunity.String, routeTarget) {
+			return true
+		}
+	}
+	return false
+}
+
+func pathHasAllRouteTargets(path Path, routeTargets []v1alpha1.RouteTarget) bool {
+	communityValues := strings.Fields(path.ExtendedCommunity.String)
+	for _, rt := range routeTargets {
+		if !slices.Contains(communityValues, fmt.Sprintf("RT:%s", rt)) {
+			return false
+		}
+	}
+	return true
+}
+
+func pathHasVTEP(path Path, vtep string) bool {
+	for _, n := range path.Nexthops {
+		if n.IP == vtep {
 			return true
 		}
 	}

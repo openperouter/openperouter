@@ -366,6 +366,52 @@ func TestFilterValidL2VNIs(t *testing.T) {
 	}
 }
 
+func TestFilterValidL2VNIsRouteTargets(t *testing.T) {
+	tests := []struct {
+		name    string
+		vni     v1alpha1.L2VNI
+		wantErr string
+	}{
+		{
+			name: "valid route targets",
+			vni: v1alpha1.L2VNI{
+				ObjectMeta: metav1.ObjectMeta{Name: "l2vni"},
+				Spec: v1alpha1.L2VNISpec{
+					VNI:       100,
+					ExportRTs: []v1alpha1.RouteTarget{"65000:100"},
+					ImportRTs: []v1alpha1.RouteTarget{"192.0.2.1:100"},
+				},
+			},
+		},
+		{
+			name: "invalid export route target",
+			vni: v1alpha1.L2VNI{
+				ObjectMeta: metav1.ObjectMeta{Name: "l2vni"},
+				Spec: v1alpha1.L2VNISpec{
+					VNI:       100,
+					ExportRTs: []v1alpha1.RouteTarget{"invalid"},
+				},
+			},
+			wantErr: `invalid route targets for vni "l2vni": RT "invalid"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := FilterValidL2VNIs([]v1alpha1.L2VNI{tt.vni})
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("FilterValidL2VNIs() error = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("FilterValidL2VNIs() error = %v, want containing %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestFilterValidVRFSubnets(t *testing.T) {
 	tests := []struct {
 		name       string

@@ -114,6 +114,44 @@ func TestBasicWithASNRT(t *testing.T) {
 			},
 		},
 	}
+
+	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+		t.Fatalf("Failed to apply config: %s", err)
+	}
+
+	testCheckConfigFile(t)
+}
+
+func TestL2VNIWithRouteTargets(t *testing.T) {
+	configFile := testSetup(t)
+	updater := testUpdater(configFile)
+
+	config := Config{
+		Underlay: UnderlayConfig{
+			MyASN:    64512,
+			RouterID: "10.0.0.1",
+			TunnelEndpoint: &TunnelEndpoint{
+				IPv4CIDR: "100.64.0.1/32",
+			},
+			Neighbors: []NeighborConfig{
+				{
+					ASN:  mustNewPeerASNFromNumber(64513),
+					Addr: "192.168.1.2",
+					ID:   "192.168.1.2",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{
+						{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN},
+					},
+				},
+			},
+		},
+		L2VNIs: []L2VNIConfig{
+			{
+				VNI:       100,
+				ExportRTs: []string{"65000:100", "192.0.2.1:100"},
+				ImportRTs: []string{"65001:100"},
+			},
+		},
+	}
 	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}

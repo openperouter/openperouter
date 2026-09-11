@@ -25,5 +25,15 @@
 {{- if .Underlay.TunnelEndpoint }}
     advertise-all-vni
 {{- end }}
+{{- range .L2VNIs }}
+    vni {{ .VNI }}
+{{- range .ExportRTs }}
+      route-target export {{ . }}
+{{- end }}
+{{- range .ImportRTs }}
+      route-target import {{ . }}
+{{- end }}
+    exit-vni
+{{- end }}
   exit-address-family
 {{- end }}
