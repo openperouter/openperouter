@@ -19,7 +19,7 @@ func ValidateGroutL3VNI(l3VNI v1alpha1.L3VNI) error {
 }
 
 func ValidateGroutL2VNI(l2VNI v1alpha1.L2VNI) error {
-	return fmt.Errorf("L2VNI resources are not supported when grout datapath is enabled")
+	return nil
 }
 
 func ValidateGroutUnderlay(underlay v1alpha1.Underlay) error {

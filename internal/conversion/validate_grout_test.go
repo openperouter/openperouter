@@ -11,8 +11,8 @@ import (
 
 func TestValidateGroutL2VNI(t *testing.T) {
 	err := ValidateGroutL2VNI(v1alpha1.L2VNI{})
-	if err == nil {
-		t.Error("ValidateGroutL2VNI() expected error, got nil")
+	if err != nil {
+		t.Errorf("ValidateGroutL2VNI() unexpected error: %v", err)
 	}
 }
 
