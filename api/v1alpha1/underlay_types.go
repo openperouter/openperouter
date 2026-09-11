@@ -148,6 +148,25 @@ type NetworkDevice struct {
 	// +kubebuilder:validation:MaxLength=15
 	// +required
 	InterfaceName string `json:"interfaceName,omitempty"`
+
+	// acceleratedConfig sets optional grout port parameters. Only valid when --datapath=grout.
+	// +optional
+	AcceleratedConfig *AcceleratedConfig `json:"acceleratedConfig,omitempty"`
+}
+
+// AcceleratedConfig holds optional grout port parameters for underlay interfaces.
+type AcceleratedConfig struct {
+	// rxQueues is the number of receive queues to allocate on the DPDK port.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=64
+	// +optional
+	RXQueues *int32 `json:"rxQueues,omitempty"`
+	// qSize is the descriptor ring size for each receive queue. Larger
+	// rings absorb traffic bursts at the cost of memory.
+	// +kubebuilder:validation:Minimum=64
+	// +kubebuilder:validation:Maximum=32768
+	// +optional
+	QSize *int32 `json:"qSize,omitempty"`
 }
 
 // CNIConfigType selects the source of the CNI configuration.
