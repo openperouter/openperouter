@@ -4,7 +4,7 @@ title: "Grout (DPDK Dataplane)"
 description: "Using the optional DPDK-accelerated grout dataplane with OpenPERouter"
 icon: "article"
 date: "2026-05-07T09:00:00+02:00"
-lastmod: "2026-05-07T09:00:00+02:00"
+lastmod: "2026-09-11T09:00:00+02:00"
 toc: true
 ---
 
@@ -36,10 +36,10 @@ Grout support is being delivered incrementally. The current implementation cover
 - **Underlay** interface setup via grout ports
 - **L3Passthrough** forwarding via grout
 - **L3VNI** (EVPN Layer 3 overlays) via grout TAP devices
+- **L2VNI** (EVPN Layer 2 overlays) via grout bridge domains and TAP devices
 
 The following are **not yet supported** with grout:
 
-- L2VNI (EVPN Layer 2 overlays)
 - Hardware acceleration with SR-IOV NICs
 
 Additionally, grout currently:
@@ -142,6 +142,20 @@ spec:
 ```
 
 When grout is enabled, the controller configures FRR as usual but delegates the host network setup to the grout data path instead of kernel interfaces.
+
+## Enabling Grout for EVPN
+
+`L3VNI` and `L2VNI` resources use the same configuration with the grout data
+path as with the kernel data path. See the [EVPN
+Configuration]({{< ref "evpn.md" >}}) documentation for the available fields and
+examples.
+
+For each `L2VNI`, grout creates a VXLAN-backed bridge domain and connects it to
+the host through a TAP device. Disconnected L2VNIs provide east-west Layer 2
+connectivity. When an L2VNI references an `L3VNI` routing domain, grout places
+the bridge in that VRF and configures any addresses in `gatewayIPs` as the
+distributed anycast gateway. The `hostMaster` settings continue to control the
+Linux or OVS bridge attachment on the host.
 
 ## Verification
 
