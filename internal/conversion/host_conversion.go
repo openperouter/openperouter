@@ -631,10 +631,19 @@ func networkDeviceInterfaceToHost(iface v1alpha1.UnderlayInterface) (hostnetwork
 	if iface.NetworkDevice.InterfaceName == "" {
 		return hostnetwork.UnderlayInterface{}, fmt.Errorf("interfaceName is empty for networkDevice")
 	}
-	return hostnetwork.UnderlayInterface{
+	res := hostnetwork.UnderlayInterface{
 		InterfaceName: iface.NetworkDevice.InterfaceName,
 		Kind:          hostnetwork.UnderlayInterfaceNetDev,
-	}, nil
+	}
+	if iface.NetworkDevice.AcceleratedConfig != nil {
+		res.AcceleratedConfig = &hostnetwork.AcceleratedConfigParams{
+			RXQueues:    iface.NetworkDevice.AcceleratedConfig.RXQueues,
+			QSize:       iface.NetworkDevice.AcceleratedConfig.QSize,
+			Promiscuous: iface.NetworkDevice.AcceleratedConfig.Promiscuous,
+			PortName:    iface.NetworkDevice.AcceleratedConfig.PortName,
+		}
+	}
+	return res, nil
 }
 
 func cniDeviceInterfaceToHost(iface v1alpha1.UnderlayInterface) (hostnetwork.UnderlayInterface, error) {

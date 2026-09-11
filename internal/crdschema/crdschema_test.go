@@ -383,6 +383,54 @@ func TestValidateSuccessful(t *testing.T) {
 			}),
 		},
 		{
+			name: "Underlay NetworkDevice with empty acceleratedConfig",
+			gvk:  underlayGVK,
+			obj: newUnstructured("Underlay", map[string]any{
+				"asn": int64(65000),
+				"interfaces": []any{
+					map[string]any{
+						"type": "NetworkDevice",
+						"networkDevice": map[string]any{
+							"interfaceName":     "enp3s0f0v0",
+							"acceleratedConfig": map[string]any{},
+						},
+					},
+				},
+				"neighbors": []any{
+					map[string]any{
+						"address": "192.168.1.1",
+						"asn":     int64(65001),
+					},
+				},
+			}),
+		},
+		{
+			name: "Underlay NetworkDevice with acceleratedConfig port options",
+			gvk:  underlayGVK,
+			obj: newUnstructured("Underlay", map[string]any{
+				"asn": int64(65000),
+				"interfaces": []any{
+					map[string]any{
+						"type": "NetworkDevice",
+						"networkDevice": map[string]any{
+							"interfaceName": "enp3s0f0v0",
+							"acceleratedConfig": map[string]any{
+								"rxQueues":    int64(4),
+								"qSize":       int64(1024),
+								"promiscuous": false,
+							},
+						},
+					},
+				},
+				"neighbors": []any{
+					map[string]any{
+						"address": "192.168.1.1",
+						"asn":     int64(65001),
+					},
+				},
+			}),
+		},
+		{
 			name: "L2VNI with LinuxBridge External lifecycle and name set",
 			gvk:  l2vniGVK,
 			obj: newUnstructured("L2VNI", map[string]any{
@@ -764,6 +812,56 @@ func TestValidateFailure(t *testing.T) {
 				},
 			}),
 			errSubstr: "must have at most 2 items",
+		},
+		{
+			name: "Underlay acceleratedConfig rxQueues below minimum",
+			gvk:  underlayGVK,
+			obj: newUnstructured("Underlay", map[string]any{
+				"asn": int64(65000),
+				"interfaces": []any{
+					map[string]any{
+						"type": "NetworkDevice",
+						"networkDevice": map[string]any{
+							"interfaceName": "enp3s0f0v0",
+							"acceleratedConfig": map[string]any{
+								"rxQueues": int64(0),
+							},
+						},
+					},
+				},
+				"neighbors": []any{
+					map[string]any{
+						"address": "192.168.1.1",
+						"asn":     int64(65001),
+					},
+				},
+			}),
+			errSubstr: "should be greater than or equal to 1",
+		},
+		{
+			name: "Underlay acceleratedConfig qSize below minimum",
+			gvk:  underlayGVK,
+			obj: newUnstructured("Underlay", map[string]any{
+				"asn": int64(65000),
+				"interfaces": []any{
+					map[string]any{
+						"type": "NetworkDevice",
+						"networkDevice": map[string]any{
+							"interfaceName": "enp3s0f0v0",
+							"acceleratedConfig": map[string]any{
+								"qSize": int64(32),
+							},
+						},
+					},
+				},
+				"neighbors": []any{
+					map[string]any{
+						"address": "192.168.1.1",
+						"asn":     int64(65001),
+					},
+				},
+			}),
+			errSubstr: "should be greater than or equal to 64",
 		},
 	}
 
