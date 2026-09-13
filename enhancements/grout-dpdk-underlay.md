@@ -112,7 +112,7 @@ reconcile time via `/sys/class/net/<name>/device`.
      the perouter namespace. The kernel driver stays; DPDK shares the
      device via the bifurcated model.
 4. **Create grout port** —
-   `grcli interface add port u_<name> devargs <pci> [rxqs N_RXQ] [qsize Q_SIZE] [mac MAC] [promisc (on|off)`
+   `grcli interface add port u_<name> devargs <pci> [rxqs N_RXQ] [qsize Q_SIZE] [promisc (on|off)`
    Options are appended only when set in `acceleratedConfig`.
 5. **Assign addresses** —
    `grcli address add <cidr> iface u_<name>` for each saved IP address.
@@ -163,7 +163,6 @@ spec:
           rxQueues: 4
           qSize: 1024
           promiscuous: false
-          mac: aa:bb:cc:dd:ee:ff
   neighbors:
     - address: 192.168.1.1
       asn: 65000
@@ -226,11 +225,6 @@ type PortOptions struct {
   // destination MAC address. Defaults to false.
   // +optional
   Promiscuous *bool `json:"promiscuous,omitempty"`
-  // mac overrides the MAC address on the DPDK port. When unset, the
-  // port inherits the NIC's hardware MAC address.
-  // +kubebuilder:validation:Pattern=`^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$`
-  // +optional
-  MAC *string `json:"mac,omitempty"`
 }
 ```
 
@@ -239,12 +233,6 @@ type PortOptions struct {
 `promiscuous` defaults to **false**. When enabled, the NIC accepts all
 frames regardless of destination MAC — intended for debugging or
 environments with unusual L2 requirements.
-
-`mac` overrides the MAC address on the DPDK port. When unset, the port
-inherits the NIC's hardware MAC address. This is useful for
-environments where the underlay peer expects a specific MAC (e.g. when
-replacing a device behind a static ARP entry) or when multiple ports
-share the same physical NIC and need distinct L2 identities.
 
 The `UnderlayInterface` union is unchanged — no new discriminator
 variant is needed:
@@ -344,8 +332,7 @@ On Underlay deletion or netns rebuild:
   implemented for this lane, using a simple FRR BGP peer in a container.
 - **Validation tests**: `acceleratedConfig` field rejected when grout disabled;
   verify field validation ranges for RXQueues, QSize; verify
-  promiscuous boolean field is accepted; verify mac field format
-  validation rejects invalid MAC addresses.
+  promiscuous boolean field is accepted.
 
 ## Alternatives
 

@@ -27,6 +27,26 @@ Package v1alpha1 contains API Schema definitions for the openpe v1alpha1 API gro
 
 
 
+#### AcceleratedConfig
+
+
+
+AcceleratedConfig holds optional DPDK port parameters for accelerated
+underlay interfaces bound directly to grout.
+
+
+
+_Appears in:_
+- [NetworkDevice](#networkdevice)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `rxQueues` _integer_ | rxQueues is the number of receive queues to allocate on the DPDK port. |  | Maximum: 64 <br />Minimum: 1 <br />Optional: \{\} <br /> |
+| `qSize` _integer_ | qSize is the descriptor ring size for each receive queue. Larger<br />rings absorb traffic bursts at the cost of memory. |  | Maximum: 32768 <br />Minimum: 64 <br />Optional: \{\} <br /> |
+| `promiscuous` _boolean_ | promiscuous enables promiscuous mode on the DPDK port.<br />When true, the NIC accepts all incoming frames regardless of<br />destination MAC address. Defaults to false. |  | Optional: \{\} <br /> |
+| `portName` _string_ | portName overrides the grout port name. When unset, the port is<br />named "u_<interfaceName>". |  | MaxLength: 15 <br />MinLength: 1 <br />Optional: \{\} <br /> |
+
+
 #### AddressFamilyProperty
 
 
@@ -756,6 +776,7 @@ _Appears in:_
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `interfaceName` _string_ | interfaceName is the name of the host network device to move into<br />the router netns. |  | MaxLength: 15 <br />MinLength: 1 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9._-]*$` <br />Required: \{\} <br /> |
+| `acceleratedConfig` _[AcceleratedConfig](#acceleratedconfig)_ | acceleratedConfig when set binds the device as a DPDK port instead of<br />creating a TAP+remote= bridge. Only valid when --datapath=grout. |  | Optional: \{\} <br /> |
 
 
 #### OVSBridgeConfig

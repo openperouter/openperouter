@@ -42,6 +42,22 @@ type UnderlayInterface struct {
 	// CNI holds the CNI provisioning data; set when Kind is
 	// UnderlayInterfaceCNIDev.
 	CNI *CNIDeviceParams
+	// AcceleratedConfig holds DPDK port parameters; set when the device is
+	// bound directly to grout instead of using a TAP+remote= bridge.
+	AcceleratedConfig *AcceleratedConfigParams
+}
+
+// AcceleratedConfigParams holds the data needed to provision an underlay
+// interface as a DPDK port bound directly to grout.
+type AcceleratedConfigParams struct {
+	// RXQueues is the optional number of receive queues.
+	RXQueues *int32
+	// QSize is the optional queue size.
+	QSize *int32
+	// Promiscuous enables promiscuous mode on the DPDK port.
+	Promiscuous *bool
+	// PortName overrides the grout port name.
+	PortName *string
 }
 
 // CNIDeviceParams holds the data needed to provision an underlay interface
@@ -133,6 +149,16 @@ func SetupUnderlayNetDevInterface(ctx context.Context, ns netns.NsHandle,
 	return nil
 }
 
+// RestoreUnderlayNetDevInterface moves a single underlay netdev from the
+// router namespace back to the default namespace. It is a no-op if the
+// device is already in the default namespace.
+func RestoreUnderlayNetDevInterface(ctx context.Context, fromNetNSPath, name string) error {
+	return restoreUnderlayWithHandles(ctx, fromNetNSPath,
+		func(ctx context.Context, fromHandle, defaultHandle *netlink.Handle, defaultNS netns.NsHandle) error {
+			return MoveInterfaceToNamespace(ctx, name, fromHandle, defaultHandle, defaultNS, 0)
+		})
+}
+
 // SetupUnderlayCNIDevInterface provisions a single underlay cni dev interface.
 // A CNI CHECK runs first and, if it fails, the interface is torn down so the
 // subsequent Add provisions it fresh.
@@ -222,11 +248,16 @@ func UnderlayInterfacesToRemove(existing,
 	}
 	removed := []UnderlayInterface{}
 	for _, iface := range existing {
-		if req, found := requestedByName[iface.InterfaceName]; !found || req.Kind != iface.Kind {
+		req, found := requestedByName[iface.InterfaceName]
+		if !found || req.Kind != iface.Kind || isAccelerated(req) != isAccelerated(iface) {
 			removed = append(removed, iface)
 		}
 	}
 	return removed
+}
+
+func isAccelerated(iface UnderlayInterface) bool {
+	return iface.AcceleratedConfig != nil
 }
 
 func ensureLoopback(ctx context.Context, ns netns.NsHandle, vtepIPs ...string) error {

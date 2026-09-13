@@ -1194,6 +1194,61 @@ func netdevInterfaces(names ...string) []hostnetwork.UnderlayInterface {
 	return res
 }
 
+func TestAPItoHostConfigAcceleratedConfig(t *testing.T) {
+	rxqs := int32(4)
+	qsize := int32(1024)
+	promisc := false
+
+	apiConfig := APIConfigData{
+		Underlays: []v1alpha1.Underlay{
+			{
+				Spec: v1alpha1.UnderlaySpec{
+					Interfaces: []v1alpha1.UnderlayInterface{
+						{
+							Type: v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+							NetworkDevice: &v1alpha1.NetworkDevice{
+								InterfaceName: "enp3s0f0v0",
+								AcceleratedConfig: &v1alpha1.AcceleratedConfig{
+									RXQueues:    &rxqs,
+									QSize:       &qsize,
+									Promiscuous: &promisc,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	got, err := APItoHostConfig(0, "namespace", apiConfig)
+	if err != nil {
+		t.Fatalf("APItoHostConfig() unexpected error: %v", err)
+	}
+	if len(got.Underlay.UnderlayInterfaces) != 1 {
+		t.Fatalf("expected 1 underlay interface, got %d", len(got.Underlay.UnderlayInterfaces))
+	}
+	iface := got.Underlay.UnderlayInterfaces[0]
+	if iface.InterfaceName != "enp3s0f0v0" {
+		t.Errorf("InterfaceName = %q, want enp3s0f0v0", iface.InterfaceName)
+	}
+	if iface.Kind != hostnetwork.UnderlayInterfaceNetDev {
+		t.Errorf("Kind = %q, want %q", iface.Kind, hostnetwork.UnderlayInterfaceNetDev)
+	}
+	if iface.AcceleratedConfig == nil {
+		t.Fatal("expected AcceleratedConfig to be set")
+	}
+	if iface.AcceleratedConfig.RXQueues == nil || *iface.AcceleratedConfig.RXQueues != rxqs {
+		t.Errorf("RXQueues = %v, want %d", iface.AcceleratedConfig.RXQueues, rxqs)
+	}
+	if iface.AcceleratedConfig.QSize == nil || *iface.AcceleratedConfig.QSize != qsize {
+		t.Errorf("QSize = %v, want %d", iface.AcceleratedConfig.QSize, qsize)
+	}
+	if iface.AcceleratedConfig.Promiscuous == nil || *iface.AcceleratedConfig.Promiscuous != promisc {
+		t.Errorf("Promiscuous = %v, want %v", iface.AcceleratedConfig.Promiscuous, promisc)
+	}
+}
+
 func TestAPItoHostConfigCNIInterfaces(t *testing.T) {
 	rawConfig := `{"cniVersion":"1.0.0","name":"macvlan-underlay","type":"macvlan","master":"eth1"}`
 	underlayWithInterfaces := func(interfaces ...v1alpha1.UnderlayInterface) []v1alpha1.Underlay {
