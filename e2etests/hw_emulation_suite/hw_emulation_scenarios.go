@@ -3,6 +3,8 @@
 package qemu_e2e
 
 import (
+	"encoding/json"
+	"path/filepath"
 	"time"
 
 	frrk8sv1beta1 "github.com/metallb/frr-k8s/api/v1beta1"
@@ -103,7 +105,7 @@ var _ = Describe("HWEmulation", Ordered, GroutSupport, func() {
 		leafExec := executor.ForContainer(infra.KindLeaf)
 		for _, node := range nodes {
 			neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
-			Expect(err).NotTo(HaveOccurred())
+			Expect(err).To(Succeed())
 			validate.SessionWithNeighbor(leafExec, validate.SessionParameters{
 				FromName:    infra.KindLeaf,
 				ToName:      node.Name,
@@ -216,4 +218,73 @@ var _ = Describe("HWEmulation", Ordered, GroutSupport, func() {
 			}, 2*time.Minute, time.Second).Should(Succeed())
 		}
 	})
+
+	It("should apply the acceleratedConfig port parameters", func() {
+		const (
+			rxQueues = int32(2)
+			qSize    = int32(512)
+		)
+		underlay := AcceleratedUnderlay.DeepCopy()
+		customized := underlay.Spec.Interfaces[0].NetworkDevice
+		portName := "u_" + customized.InterfaceName
+		customized.AcceleratedConfig = &v1alpha1.AcceleratedConfig{
+			RXQueues: new(rxQueues),
+			QSize:    new(qSize),
+		}
+		DeferCleanup(func() {
+			Expect(Updater.Update(config.Resources{
+				Underlays: []v1alpha1.Underlay{AcceleratedUnderlay},
+			})).To(Succeed())
+		})
+
+		By("Updating an underlay interface with custom port parameters")
+		Expect(Updater.Update(config.Resources{
+			Underlays: []v1alpha1.Underlay{*underlay},
+		})).To(Succeed())
+
+		By("Verifying the grout port is recreated with the custom parameters")
+		for router := range routers.GetExecutors() {
+			Eventually(func(g Gomega) {
+				port := showGroutPort(g, router, portName)
+				g.Expect(port.RXQueues).To(Equal(rxQueues))
+				g.Expect(port.QSize).To(Equal(qSize))
+				expectBoundToVFIO(g, router, port.Devargs)
+			}, time.Minute, time.Second).Should(Succeed(), "router %s, port %s", router.Name(), portName)
+		}
+
+		By("Verifying BGP sessions with leafkind1")
+		leafExec := executor.ForContainer(infra.KindLeaf)
+		for _, node := range nodes {
+			neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
+			Expect(err).To(Succeed())
+			validate.SessionWithNeighbor(leafExec, validate.SessionParameters{
+				FromName:    infra.KindLeaf,
+				ToName:      node.Name,
+				NeighborIP:  neighborIP,
+				Established: Established,
+			})
+		}
+	})
 })
+
+type groutPort struct {
+	Devargs  string `json:"devargs"`
+	RXQueues int32  `json:"n_rxq"`
+	QSize    int32  `json:"rxq_size"`
+}
+
+func showGroutPort(g Gomega, router openperouter.RouterExecutor, portName string) groutPort {
+	var port groutPort
+	out, err := router.Exec("grcli", "--json", "interface", "show", "name", portName)
+	g.Expect(err).NotTo(HaveOccurred(), out)
+	g.Expect(json.Unmarshal([]byte(out), &port)).To(Succeed(), out)
+	return port
+}
+
+// expectBoundToVFIO checks that the PCI device is bound to vfio-pci on the
+// node hosting the router.
+func expectBoundToVFIO(g Gomega, router openperouter.RouterExecutor, pciAddr string) {
+	nodeExec := executor.ForNode(router.NodeName())
+	g.Expect(nodeExec.Exec("readlink", filepath.Join("/sys/bus/pci/devices", pciAddr, "driver"))).
+		To(MatchRegexp(`/vfio-pci\s*$`), "node %s, device %s", router.NodeName(), pciAddr)
+}
