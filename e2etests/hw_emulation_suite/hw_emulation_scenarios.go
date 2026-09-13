@@ -41,13 +41,15 @@ var AcceleratedUnderlay = v1alpha1.Underlay{
 			{
 				Type: "NetworkDevice",
 				NetworkDevice: &v1alpha1.NetworkDevice{
-					InterfaceName: "toswitch1",
+					InterfaceName:     "toswitch1",
+					AcceleratedConfig: &v1alpha1.AcceleratedConfig{},
 				},
 			},
 			{
 				Type: "NetworkDevice",
 				NetworkDevice: &v1alpha1.NetworkDevice{
-					InterfaceName: "toswitch2",
+					InterfaceName:     "toswitch2",
+					AcceleratedConfig: &v1alpha1.AcceleratedConfig{},
 				},
 			},
 		},
