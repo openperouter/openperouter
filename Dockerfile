@@ -72,4 +72,8 @@ COPY systemdmode/frrconfig/daemons /etc/frr/daemons
 COPY systemdmode/frrconfig/vtysh.conf /etc/frr/vtysh.conf
 COPY systemdmode/frrconfig/frr.conf /etc/frr/frr.conf
 
+COPY 0001-frr-reload-fix-double-deletion-of-segment-routing-sr.patch .
+RUN apk update && apk add patch
+RUN patch /usr/lib/frr/frr-reload.py 0001-frr-reload-fix-double-deletion-of-segment-routing-sr.patch
+
 ENTRYPOINT ["/controller"]
