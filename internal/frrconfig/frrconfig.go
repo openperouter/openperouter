@@ -10,22 +10,24 @@ import (
 	"github.com/openperouter/openperouter/internal/frr"
 )
 
-type Action string
-
 const (
-	Test         Action = "test"
-	Reload       Action = "reload"
-	reloaderPath        = "/usr/lib/frr/frr-reload.py"
+	test         = "test"
+	reload       = "reload"
+	reloaderPath = "/usr/lib/frr/frr-reload.py"
 )
 
 // Update reloads the frr configuration at the given path.
 func Update(path string) error {
+	return update(path, reloadAction)
+}
+
+func update(path string, reloadAction func(path string, action string) error) error {
 	slog.Info("config update", "path", path)
-	err := reloadAction(path, Test)
+	err := reloadAction(path, test)
 	if err != nil {
 		return err
 	}
-	err = reloadAction(path, Reload)
+	err = reloadAction(path, reload)
 	if err != nil {
 		return err
 	}
@@ -34,8 +36,8 @@ func Update(path string) error {
 
 var execCommand = exec.Command
 
-func reloadAction(path string, action Action) error {
-	reloadParameter := "--" + string(action)
+func reloadAction(path string, action string) error {
+	reloadParameter := "--" + action
 	cmd := execCommand("python3", reloaderPath, reloadParameter, "--logfile", "/dev/null", path)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
