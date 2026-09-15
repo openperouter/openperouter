@@ -1,0 +1,111 @@
+# grout kubelet DRA plugin (driver grout.openperouter.io).
+# Image: make groutdra-docker-build (quay.io/oshoval/groutdra:dev).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: groutdra
+  namespace: openperouter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: groutdra
+rules:
+- apiGroups: ["resource.k8s.io"]
+  resources: ["resourceclaims"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["resource.k8s.io"]
+  resources: ["resourceclaims/status"]
+  verbs: ["update"]
+- apiGroups: ["resource.k8s.io"]
+  resources: ["resourceclaims/driver"]
+  verbs: ["associated-node:update", "associated-node:patch"]
+  resourceNames: ["grout.openperouter.io"]
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get"]
+- apiGroups: ["resource.k8s.io"]
+  resources: ["resourceslices"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: groutdra
+subjects:
+- kind: ServiceAccount
+  name: groutdra
+  namespace: openperouter-system
+roleRef:
+  kind: ClusterRole
+  name: groutdra
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: resource.k8s.io/v1
+kind: DeviceClass
+metadata:
+  name: grout-vhostuser
+spec:
+  selectors:
+  - cel:
+      expression: "device.driver == 'grout.openperouter.io'"
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: groutdra
+  namespace: openperouter-system
+spec:
+  selector:
+    matchLabels:
+      app: groutdra
+  template:
+    metadata:
+      labels:
+        app: groutdra
+    spec:
+      serviceAccountName: groutdra
+      containers:
+      - name: plugin
+        image: quay.io/oshoval/groutdra:dev
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          privileged: true
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        volumeMounts:
+        - name: kubelet-plugin
+          mountPath: /var/lib/kubelet/plugins/grout.openperouter.io
+        - name: kubelet-plugins-registry
+          mountPath: /var/lib/kubelet/plugins_registry
+        - name: grout-sock
+          mountPath: /var/run/grout
+        - name: grout-vhost
+          mountPath: /var/run/grout-vhost
+        - name: cdi
+          mountPath: /var/run/cdi
+      volumes:
+      - name: kubelet-plugin
+        hostPath:
+          path: /var/lib/kubelet/plugins/grout.openperouter.io
+          type: DirectoryOrCreate
+      - name: kubelet-plugins-registry
+        hostPath:
+          path: /var/lib/kubelet/plugins_registry
+          type: Directory
+      - name: grout-sock
+        hostPath:
+          # Helm grout datapath: host /var/run/openperouter/grout → in-pod /var/run/grout
+          path: /var/run/openperouter/grout
+          type: DirectoryOrCreate
+      - name: grout-vhost
+        hostPath:
+          path: /var/run/grout-vhost
+          type: DirectoryOrCreate
+      - name: cdi
+        hostPath:
+          path: /var/run/cdi
+          type: DirectoryOrCreate
