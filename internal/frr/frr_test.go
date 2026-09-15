@@ -1349,11 +1349,14 @@ func testCheckConfigFile(t *testing.T) {
 
 	testCompareFiles(t, configFile, goldenFile)
 
-	if !strings.Contains(configFile, "Invalid") {
-		err := testFileIsValid(configFile)
-		if err != nil {
-			t.Fatalf("Failed to verify the file %q", err)
-		}
+	if strings.Contains(configFile, "Invalid") {
+		return
+	}
+	if testing.Short() {
+		return
+	}
+	if err := frrReload(configFile, "test"); err != nil {
+		t.Fatalf("Failed to verify the file %q", err)
 	}
 }
 
