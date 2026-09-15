@@ -182,7 +182,7 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `kind` _[FailedResourceKind](#failedresourcekind)_ | kind resource type name (e.g.: L3VNI, L2VNI). |  | Enum: [Underlay L2VNI L3VNI FrrConfiguration L3Passthrough] <br />Required: \{\} <br /> |
+| `kind` _[FailedResourceKind](#failedresourcekind)_ | kind resource type name (e.g.: L3VNI, L2VNI). |  | Enum: [Underlay L2VNI L3VNI L3VPN FrrConfiguration L3Passthrough] <br />Required: \{\} <br /> |
 | `name` _string_ | name failed API resource metadata.name. |  | MaxLength: 253 <br />MinLength: 1 <br />Required: \{\} <br /> |
 | `reason` _[FailedResourceReason](#failedresourcereason)_ | reason failure reason. |  | Enum: [ValidationFailed DependencyFailed OverlayAttachmentFailed FrrConfigurationFailed] <br />MaxLength: 100 <br />MinLength: 1 <br />Required: \{\} <br /> |
 | `message` _string_ | message human-readable failure description. |  | MaxLength: 500 <br />MinLength: 1 <br />Required: \{\} <br /> |
@@ -195,7 +195,7 @@ _Underlying type:_ _string_
 
 
 _Validation:_
-- Enum: [Underlay L2VNI L3VNI FrrConfiguration L3Passthrough]
+- Enum: [Underlay L2VNI L3VNI L3VPN FrrConfiguration L3Passthrough]
 
 _Appears in:_
 - [FailedResource](#failedresource)
