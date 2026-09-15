@@ -1,0 +1,40 @@
+# groutdra: kubelet DRA plugin. Includes grcli from the same grout RPM as Dockerfile.grout.
+ARG GROUT_VERSION=v0.17.1
+
+FROM golang:1.26.4 AS builder
+
+ARG TARGETOS
+ARG TARGETARCH
+
+WORKDIR $GOPATH/openperouter
+RUN --mount=type=cache,target=/go/pkg/mod/ \
+  --mount=type=bind,source=go.sum,target=go.sum \
+  --mount=type=bind,source=go.mod,target=go.mod \
+  go mod download -x
+
+RUN --mount=type=cache,target=/root/.cache/go-build \
+  --mount=type=cache,target=/go/pkg/mod \
+  --mount=type=bind,source=go.sum,target=go.sum \
+  --mount=type=bind,source=go.mod,target=go.mod \
+  --mount=type=bind,source=internal,target=internal \
+  --mount=type=bind,source=api,target=api \
+  --mount=type=bind,source=cmd,target=cmd \
+  --mount=type=bind,source=operator,target=operator \
+  --mount=type=bind,source=config,target=config \
+  CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -o groutdra ./cmd/groutdra
+
+FROM quay.io/centos/centos:stream10
+
+ARG TARGETARCH
+ARG GROUT_VERSION
+
+RUN dnf install -y curl && \
+    RPMARCH=$(case ${TARGETARCH} in amd64) echo x86_64;; arm64) echo aarch64;; *) echo ${TARGETARCH};; esac) && \
+    curl -fsSL -o /tmp/grout.rpm "https://github.com/DPDK/grout/releases/download/${GROUT_VERSION}/grout.${RPMARCH}.rpm" && \
+    dnf install -y /tmp/grout.rpm && \
+    dnf clean all && \
+    rm -f /tmp/grout.rpm
+
+COPY --from=builder /go/openperouter/groutdra /usr/bin/groutdra
+
+ENTRYPOINT ["/usr/bin/groutdra"]
