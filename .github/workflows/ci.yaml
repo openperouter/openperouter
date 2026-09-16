@@ -331,14 +331,14 @@ jobs:
         run: |
           if [ ${{ matrix.deployment }} = "systemdmode" ]; then
             export TEST_ARGS="--systemdmode"
-            export GINKGO_ARGS="--skip='North/south traffic after FRR container restart' --skip='Alpha: Named netns' --skip='Beta: Named netns'"
+            export GINKGO_ARGS="--label-filter='!grout-only' --skip='North/south traffic after FRR container restart' --skip='Alpha: Named netns' --skip='Beta: Named netns'"
             make e2etests
           elif [ ${{ matrix.deployment }} = "hostmode-boot" ]; then
             make e2etests-hostmode-boot
           elif [ ${{ matrix.deployment }} = "helm-grout" ] || [ ${{ matrix.deployment }} = "grout" ] || [ ${{ matrix.deployment }} = "operator-grout" ]; then
-            make e2etests GINKGO_ARGS="--label-filter='grout-support'" TEST_ARGS="--groutmode"
+            make e2etests GINKGO_ARGS="--label-filter='grout-support || grout-only'" TEST_ARGS="--groutmode"
           else
-            export GINKGO_ARGS="--label-filter='!systemdmode'"
+            export GINKGO_ARGS="--label-filter='!systemdmode && !grout-only'"
             make e2etests
           fi
 

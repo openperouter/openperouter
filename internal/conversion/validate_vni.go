@@ -55,12 +55,14 @@ func FilterValidL3VNIs(l3Vnis []v1alpha1.L3VNI) ([]v1alpha1.L3VNI, error) {
 
 // validateL3VNI validates a single L3VNI's fields (VRF name, route targets).
 func validateL3VNI(l3Vni v1alpha1.L3VNI) error {
-	vni := vniFromL3VNI(l3Vni)
-	if err := isValidInterfaceName(vni.vrfName); err != nil {
-		return fmt.Errorf("invalid vrf name for vni %q, vrf %q: %w", vni.name, vni.vrfName, err)
+	if err := isValidInterfaceName(l3Vni.Spec.VRF); err != nil {
+		return fmt.Errorf("invalid vrf name for vni %q, vrf %q: %w", l3Vni.Name, l3Vni.Spec.VRF, err)
 	}
-	if err := ValidateRouteTargets(vni); err != nil {
-		return fmt.Errorf("invalid route targets for vni %q: %w", vni.name, err)
+	if err := ValidateRouteTargets(
+		convertRTsToSliceOfStrings(l3Vni.Spec.ExportRTs),
+		convertRTsToSliceOfStrings(l3Vni.Spec.ImportRTs),
+	); err != nil {
+		return fmt.Errorf("invalid route targets for vni %q: %w", l3Vni.Name, err)
 	}
 	return nil
 }
@@ -140,7 +142,7 @@ func FilterUniqueL2VNIs(
 	return validL2, errors.Join(allErrors...)
 }
 
-// validateL2VNI validates a single L2VNI's fields (HostMaster, GatewayIPs).
+// validateL2VNI validates a single L2VNI's fields (HostMaster, GatewayIPs, route targets).
 func validateL2VNI(l2Vni v1alpha1.L2VNI) error {
 	if l2Vni.Spec.HostMaster != nil {
 		if err := validateHostMaster(l2Vni.Name, l2Vni.Spec.HostMaster); err != nil {
@@ -151,6 +153,12 @@ func validateL2VNI(l2Vni v1alpha1.L2VNI) error {
 		if _, err := ipfamily.ForCIDRStrings(l2Vni.Spec.GatewayIPs...); err != nil {
 			return fmt.Errorf("invalid gatewayIPs for vni %q = %v: %w", l2Vni.Name, l2Vni.Spec.GatewayIPs, err)
 		}
+	}
+	if err := ValidateRouteTargets(
+		convertRTsToSliceOfStrings(l2Vni.Spec.ExportRTs),
+		convertRTsToSliceOfStrings(l2Vni.Spec.ImportRTs),
+	); err != nil {
+		return fmt.Errorf("invalid route targets for vni %q: %w", l2Vni.Name, err)
 	}
 	return nil
 }
@@ -375,25 +383,6 @@ func ValidateVRFSubnets(l2Vnis []v1alpha1.L2VNI, l3Vnis []v1alpha1.L3VNI, l3Vpns
 	return failedVRFs
 }
 
-// vni holds VNI validation data
-type VNI struct {
-	name      string
-	vni       uint32
-	vrfName   string
-	exportRTs []string
-	importRTs []string
-}
-
-func vniFromL3VNI(l3vni v1alpha1.L3VNI) VNI {
-	return VNI{
-		name:      l3vni.Name,
-		vni:       uint32(l3vni.Spec.VNI),
-		vrfName:   l3vni.Spec.VRF,
-		exportRTs: convertRTsToSliceOfStrings(l3vni.Spec.ExportRTs),
-		importRTs: convertRTsToSliceOfStrings(l3vni.Spec.ImportRTs),
-	}
-}
-
 func cidrsOverlap(cidr1, cidr2 string) (bool, error) {
 	net1, ipNet1, err1 := net.ParseCIDR(cidr1)
 	if err1 != nil {
@@ -611,13 +600,13 @@ func hasSubnetOverlap(vniSubnets subnets) error {
 	return nil
 }
 
-func ValidateRouteTargets(vni VNI) error {
-	for _, rt := range vni.exportRTs {
+func ValidateRouteTargets(exportRTs, importRTs []string) error {
+	for _, rt := range exportRTs {
 		if err := validateRouteTarget(rt); err != nil {
 			return err
 		}
 	}
-	for _, rt := range vni.importRTs {
+	for _, rt := range importRTs {
 		if err := validateRouteTarget(rt); err != nil {
 			return err
 		}

@@ -48,7 +48,7 @@ func TestBasic(t *testing.T) {
 				},
 			},
 		},
-		VNIs: []L3VNIConfig{
+		L3VNIs: []L3VNIConfig{
 			{
 				VRF:      "red",
 				ASN:      64512,
@@ -95,7 +95,7 @@ func TestBasicWithASNRT(t *testing.T) {
 				},
 			},
 		},
-		VNIs: []L3VNIConfig{
+		L3VNIs: []L3VNIConfig{
 			{
 				VRF:      "red",
 				ASN:      64512,
@@ -111,6 +111,44 @@ func TestBasicWithASNRT(t *testing.T) {
 				},
 				ExportRTs: []string{"65000:1000"},
 				ImportRTs: []string{"65000:1000"},
+			},
+		},
+	}
+
+	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+		t.Fatalf("Failed to apply config: %s", err)
+	}
+
+	testCheckConfigFile(t)
+}
+
+func TestL2VNIWithRouteTargets(t *testing.T) {
+	configFile := testSetup(t)
+	updater := testUpdater(configFile)
+
+	config := Config{
+		Underlay: UnderlayConfig{
+			MyASN:    64512,
+			RouterID: "10.0.0.1",
+			TunnelEndpoint: &TunnelEndpoint{
+				IPv4CIDR: "100.64.0.1/32",
+			},
+			Neighbors: []NeighborConfig{
+				{
+					ASN:  mustNewPeerASNFromNumber(64513),
+					Addr: "192.168.1.2",
+					ID:   "192.168.1.2",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{
+						{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN},
+					},
+				},
+			},
+		},
+		L2VNIs: []L2VNIConfig{
+			{
+				VNI:       100,
+				ExportRTs: []string{"65000:100", "192.0.2.1:100"},
+				ImportRTs: []string{"65001:100"},
 			},
 		},
 	}
@@ -144,7 +182,7 @@ func TestBasicWithIPRT(t *testing.T) {
 				},
 			},
 		},
-		VNIs: []L3VNIConfig{
+		L3VNIs: []L3VNIConfig{
 			{
 				VRF:      "red",
 				ASN:      64512,
@@ -193,7 +231,7 @@ func TestExternal(t *testing.T) {
 				},
 			},
 		},
-		VNIs: []L3VNIConfig{
+		L3VNIs: []L3VNIConfig{
 			{
 				VRF:      "red",
 				ASN:      64512,
@@ -240,7 +278,7 @@ func TestInternal(t *testing.T) {
 				},
 			},
 		},
-		VNIs: []L3VNIConfig{
+		L3VNIs: []L3VNIConfig{
 			{
 				VRF:      "red",
 				ASN:      64512,
@@ -287,7 +325,7 @@ func TestDualStack(t *testing.T) {
 				},
 			},
 		},
-		VNIs: []L3VNIConfig{
+		L3VNIs: []L3VNIConfig{
 			{
 				VRF:      "red",
 				ASN:      64512,
@@ -337,7 +375,7 @@ func TestDualStackWithRT(t *testing.T) {
 				},
 			},
 		},
-		VNIs: []L3VNIConfig{
+		L3VNIs: []L3VNIConfig{
 			{
 				VRF:      "red",
 				ASN:      64512,
@@ -391,7 +429,7 @@ func TestIPv6Only(t *testing.T) {
 				},
 			},
 		},
-		VNIs: []L3VNIConfig{
+		L3VNIs: []L3VNIConfig{
 			{
 				VRF:      "red",
 				ASN:      64512,
@@ -439,7 +477,7 @@ func TestBGPUnnumbered(t *testing.T) {
 				},
 			},
 		},
-		VNIs: []L3VNIConfig{
+		L3VNIs: []L3VNIConfig{
 			{
 				VRF:      "red",
 				ASN:      64512,
@@ -524,7 +562,7 @@ func TestIPv6OnlyWithRT(t *testing.T) {
 				},
 			},
 		},
-		VNIs: []L3VNIConfig{
+		L3VNIs: []L3VNIConfig{
 			{
 				VRF:      "red",
 				ASN:      64512,
@@ -684,7 +722,7 @@ func TestL3VNIWithoutLocalNeighborAndAdvertise(t *testing.T) {
 				},
 			},
 		},
-		VNIs: []L3VNIConfig{
+		L3VNIs: []L3VNIConfig{
 			{
 				RouterID: "10.0.0.1",
 				VRF:      "red",
@@ -723,7 +761,7 @@ func TestL3VNIWithLocalNeighborAndRedistributeConnected(t *testing.T) {
 				},
 			},
 		},
-		VNIs: []L3VNIConfig{
+		L3VNIs: []L3VNIConfig{
 			{
 				VRF:      "red",
 				ASN:      64512,
@@ -909,7 +947,7 @@ func TestPassthroughDual(t *testing.T) {
 				"2001:db8:21::/64",
 			},
 		},
-		VNIs: []L3VNIConfig{},
+		L3VNIs: []L3VNIConfig{},
 	}
 	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
@@ -972,7 +1010,7 @@ func TestTunnelEndpointConfig(t *testing.T) {
 				IPv6CIDR: "2001:db8:192:168::1/64",
 			},
 		},
-		VNIs: []L3VNIConfig{
+		L3VNIs: []L3VNIConfig{
 			{
 				VRF:      "red",
 				ASN:      64512,

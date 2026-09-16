@@ -70,7 +70,7 @@ func TestAPItoFRR(t *testing.T) {
 						},
 					},
 				},
-				VNIs:        []frr.L3VNIConfig{},
+				L3VNIs:      []frr.L3VNIConfig{},
 				VPNs:        []frr.L3VPNConfig{},
 				BFDProfiles: []frr.BFDProfile{},
 				Loglevel:    "debug",
@@ -113,7 +113,7 @@ func TestAPItoFRR(t *testing.T) {
 						},
 					},
 				},
-				VNIs:        []frr.L3VNIConfig{},
+				L3VNIs:      []frr.L3VNIConfig{},
 				VPNs:        []frr.L3VPNConfig{},
 				BFDProfiles: []frr.BFDProfile{},
 				Loglevel:    "debug",
@@ -161,7 +161,7 @@ func TestAPItoFRR(t *testing.T) {
 						},
 					},
 				},
-				VNIs:        []frr.L3VNIConfig{},
+				L3VNIs:      []frr.L3VNIConfig{},
 				VPNs:        []frr.L3VPNConfig{},
 				BFDProfiles: []frr.BFDProfile{},
 				Loglevel:    "debug",
@@ -209,7 +209,7 @@ func TestAPItoFRR(t *testing.T) {
 						},
 					},
 				},
-				VNIs:        []frr.L3VNIConfig{},
+				L3VNIs:      []frr.L3VNIConfig{},
 				VPNs:        []frr.L3VPNConfig{},
 				BFDProfiles: []frr.BFDProfile{},
 				Loglevel:    "debug",
@@ -268,7 +268,7 @@ func TestAPItoFRR(t *testing.T) {
 						},
 					},
 				},
-				VNIs: []frr.L3VNIConfig{
+				L3VNIs: []frr.L3VNIConfig{
 					{
 						ASN:      65000,
 						VNI:      200,
@@ -347,7 +347,7 @@ func TestAPItoFRR(t *testing.T) {
 						},
 					},
 				},
-				VNIs: []frr.L3VNIConfig{
+				L3VNIs: []frr.L3VNIConfig{
 					{
 						ASN:      65000,
 						VNI:      200,
@@ -422,7 +422,7 @@ func TestAPItoFRR(t *testing.T) {
 						},
 					},
 				},
-				VNIs: []frr.L3VNIConfig{
+				L3VNIs: []frr.L3VNIConfig{
 					{
 						ASN:      65000,
 						VNI:      200,
@@ -509,8 +509,8 @@ func TestAPItoFRR(t *testing.T) {
 						},
 					},
 				},
-				VNIs: []frr.L3VNIConfig{},
-				VPNs: []frr.L3VPNConfig{},
+				L3VNIs: []frr.L3VNIConfig{},
+				VPNs:   []frr.L3VPNConfig{},
 				BFDProfiles: []frr.BFDProfile{
 					{
 						Name:             "neighbor-192.168.1.100",
@@ -567,7 +567,7 @@ func TestAPItoFRR(t *testing.T) {
 						},
 					},
 				},
-				VNIs:        []frr.L3VNIConfig{},
+				L3VNIs:      []frr.L3VNIConfig{},
 				VPNs:        []frr.L3VPNConfig{},
 				BFDProfiles: []frr.BFDProfile{},
 				Loglevel:    "debug",
@@ -621,7 +621,7 @@ func TestAPItoFRR(t *testing.T) {
 						},
 					},
 				},
-				VNIs: []frr.L3VNIConfig{
+				L3VNIs: []frr.L3VNIConfig{
 					{
 						ASN:       65000,
 						VNI:       200,
@@ -691,7 +691,7 @@ func TestAPItoFRR(t *testing.T) {
 						},
 					},
 				},
-				VNIs: []frr.L3VNIConfig{
+				L3VNIs: []frr.L3VNIConfig{
 					{
 						ASN:      65000,
 						VNI:      200,
@@ -763,7 +763,7 @@ func TestAPItoFRR(t *testing.T) {
 						},
 					},
 				},
-				VNIs: []frr.L3VNIConfig{
+				L3VNIs: []frr.L3VNIConfig{
 					{
 						ASN:       65000,
 						VNI:       200,
@@ -831,7 +831,7 @@ func TestAPItoFRR(t *testing.T) {
 						},
 					},
 				},
-				VNIs: []frr.L3VNIConfig{
+				L3VNIs: []frr.L3VNIConfig{
 					{
 						ASN:      65000,
 						VNI:      200,
@@ -907,7 +907,7 @@ func TestAPItoFRR(t *testing.T) {
 						},
 					},
 				},
-				VNIs: []frr.L3VNIConfig{
+				L3VNIs: []frr.L3VNIConfig{
 					{
 						ASN:      65000,
 						VNI:      200,
@@ -983,7 +983,7 @@ func TestAPItoFRR(t *testing.T) {
 						},
 					},
 				},
-				VNIs: []frr.L3VNIConfig{
+				L3VNIs: []frr.L3VNIConfig{
 					{
 						ASN:      65000,
 						VNI:      200,
@@ -1036,7 +1036,7 @@ func TestAPItoFRR(t *testing.T) {
 						},
 					},
 				},
-				VNIs:        []frr.L3VNIConfig{},
+				L3VNIs:      []frr.L3VNIConfig{},
 				VPNs:        []frr.L3VPNConfig{},
 				BFDProfiles: []frr.BFDProfile{},
 				Loglevel:    "debug",
@@ -1108,7 +1108,7 @@ func TestAPItoFRR(t *testing.T) {
 					ToAdvertiseIPv4: []string{"192.168.2.2/32"},
 					ToAdvertiseIPv6: []string{"2001:db8::2/128"},
 				},
-				VNIs:        []frr.L3VNIConfig{},
+				L3VNIs:      []frr.L3VNIConfig{},
 				VPNs:        []frr.L3VPNConfig{},
 				BFDProfiles: []frr.BFDProfile{},
 				Loglevel:    "debug",
@@ -1173,7 +1173,7 @@ func TestAPItoFRR(t *testing.T) {
 					ToAdvertiseIPv4: []string{"192.168.2.2/32"},
 					ToAdvertiseIPv6: []string{},
 				},
-				VNIs:        []frr.L3VNIConfig{},
+				L3VNIs:      []frr.L3VNIConfig{},
 				VPNs:        []frr.L3VPNConfig{},
 				BFDProfiles: []frr.BFDProfile{},
 				Loglevel:    "debug",
@@ -1231,7 +1231,7 @@ func TestAPItoFRR(t *testing.T) {
 					ToAdvertiseIPv4: []string{},
 					ToAdvertiseIPv6: []string{"2001:db8::2/128"},
 				},
-				VNIs:        []frr.L3VNIConfig{},
+				L3VNIs:      []frr.L3VNIConfig{},
 				VPNs:        []frr.L3VPNConfig{},
 				BFDProfiles: []frr.BFDProfile{},
 				Loglevel:    "debug",
@@ -1295,7 +1295,7 @@ func TestAPItoFRR(t *testing.T) {
 					ToAdvertiseIPv4: []string{"192.168.2.2/32"},
 					ToAdvertiseIPv6: []string{},
 				},
-				VNIs:        []frr.L3VNIConfig{},
+				L3VNIs:      []frr.L3VNIConfig{},
 				VPNs:        []frr.L3VPNConfig{},
 				BFDProfiles: []frr.BFDProfile{},
 				Loglevel:    "debug",
@@ -1355,7 +1355,7 @@ func TestAPItoFRR(t *testing.T) {
 					ToAdvertiseIPv4: []string{},
 					ToAdvertiseIPv6: []string{"2001:db8::2/128"},
 				},
-				VNIs:        []frr.L3VNIConfig{},
+				L3VNIs:      []frr.L3VNIConfig{},
 				VPNs:        []frr.L3VPNConfig{},
 				BFDProfiles: []frr.BFDProfile{},
 				Loglevel:    "debug",
@@ -1422,7 +1422,7 @@ func TestAPItoFRR(t *testing.T) {
 					ToAdvertiseIPv4: []string{"192.168.2.2/32"},
 					ToAdvertiseIPv6: []string{},
 				},
-				VNIs:        []frr.L3VNIConfig{},
+				L3VNIs:      []frr.L3VNIConfig{},
 				VPNs:        []frr.L3VPNConfig{},
 				BFDProfiles: []frr.BFDProfile{},
 				Loglevel:    "debug",
@@ -1517,7 +1517,7 @@ func TestAPItoFRR(t *testing.T) {
 					ToAdvertiseIPv4: []string{"192.168.2.2/32"},
 					ToAdvertiseIPv6: []string{"2001:db8::2/128"},
 				},
-				VNIs:        []frr.L3VNIConfig{},
+				L3VNIs:      []frr.L3VNIConfig{},
 				VPNs:        []frr.L3VPNConfig{},
 				BFDProfiles: []frr.BFDProfile{},
 				Loglevel:    "debug",
@@ -1590,7 +1590,7 @@ func TestAPItoFRR(t *testing.T) {
 					ToAdvertiseIPv4: []string{"192.168.2.2/32"},
 					ToAdvertiseIPv6: []string{"2001:db8::2/128"},
 				},
-				VNIs:        []frr.L3VNIConfig{},
+				L3VNIs:      []frr.L3VNIConfig{},
 				VPNs:        []frr.L3VPNConfig{},
 				BFDProfiles: []frr.BFDProfile{},
 				Loglevel:    "debug",
@@ -1651,7 +1651,7 @@ func TestAPItoFRR(t *testing.T) {
 						},
 					},
 				},
-				VNIs: []frr.L3VNIConfig{
+				L3VNIs: []frr.L3VNIConfig{
 					{
 						ASN:             65000,
 						VNI:             200,
@@ -1722,7 +1722,7 @@ func TestAPItoFRR(t *testing.T) {
 						},
 					},
 				},
-				VNIs: []frr.L3VNIConfig{
+				L3VNIs: []frr.L3VNIConfig{
 					{
 						ASN:             65000,
 						VNI:             200,
@@ -1801,7 +1801,7 @@ func TestAPItoFRR(t *testing.T) {
 						},
 					},
 				},
-				VNIs: []frr.L3VNIConfig{
+				L3VNIs: []frr.L3VNIConfig{
 					{
 						ASN:       65000,
 						VNI:       200,
@@ -1878,7 +1878,7 @@ func TestAPItoFRR(t *testing.T) {
 						},
 					},
 				},
-				VNIs: []frr.L3VNIConfig{},
+				L3VNIs: []frr.L3VNIConfig{},
 				VPNs: []frr.L3VPNConfig{
 					{
 						ASN:                65000,
@@ -1947,7 +1947,7 @@ func TestAPItoFRR(t *testing.T) {
 						},
 					},
 				},
-				VNIs: []frr.L3VNIConfig{},
+				L3VNIs: []frr.L3VNIConfig{},
 				VPNs: []frr.L3VPNConfig{
 					{
 						ASN:                65000,
@@ -2025,7 +2025,7 @@ func TestAPItoFRR(t *testing.T) {
 						},
 					},
 				},
-				VNIs: []frr.L3VNIConfig{},
+				L3VNIs: []frr.L3VNIConfig{},
 				VPNs: []frr.L3VPNConfig{
 					{
 						ASN:                65000,
@@ -2135,7 +2135,7 @@ func TestAPItoFRR(t *testing.T) {
 						},
 					},
 				},
-				VNIs:        []frr.L3VNIConfig{},
+				L3VNIs:      []frr.L3VNIConfig{},
 				VPNs:        []frr.L3VPNConfig{},
 				BFDProfiles: []frr.BFDProfile{},
 				Loglevel:    "debug",
@@ -2176,7 +2176,7 @@ func TestAPItoFRR(t *testing.T) {
 					},
 					RouterID: "10.0.0.0",
 				},
-				VNIs:        []frr.L3VNIConfig{},
+				L3VNIs:      []frr.L3VNIConfig{},
 				VPNs:        []frr.L3VPNConfig{},
 				BFDProfiles: []frr.BFDProfile{},
 			},
@@ -2212,7 +2212,7 @@ func TestAPItoFRR(t *testing.T) {
 					},
 					RouterID: "10.0.0.0",
 				},
-				VNIs:        []frr.L3VNIConfig{},
+				L3VNIs:      []frr.L3VNIConfig{},
 				VPNs:        []frr.L3VPNConfig{},
 				BFDProfiles: []frr.BFDProfile{},
 			},
@@ -2275,7 +2275,7 @@ func TestAPItoFRR(t *testing.T) {
 					},
 				},
 				Passthrough: nil,
-				VNIs:        []frr.L3VNIConfig{},
+				L3VNIs:      []frr.L3VNIConfig{},
 				VPNs:        []frr.L3VPNConfig{},
 				BFDProfiles: []frr.BFDProfile{},
 				Loglevel:    "debug",
@@ -2354,7 +2354,7 @@ func TestAPItoFRR(t *testing.T) {
 					},
 				},
 				Passthrough: nil,
-				VNIs:        []frr.L3VNIConfig{},
+				L3VNIs:      []frr.L3VNIConfig{},
 				VPNs:        []frr.L3VPNConfig{},
 				BFDProfiles: []frr.BFDProfile{},
 				Loglevel:    "debug",
@@ -2415,7 +2415,7 @@ func TestAPItoFRR(t *testing.T) {
 					},
 				},
 				Passthrough: nil,
-				VNIs:        []frr.L3VNIConfig{},
+				L3VNIs:      []frr.L3VNIConfig{},
 				VPNs:        []frr.L3VPNConfig{},
 				BFDProfiles: []frr.BFDProfile{},
 				Loglevel:    "debug",
@@ -2466,7 +2466,7 @@ func TestAPItoFRR(t *testing.T) {
 					},
 				},
 				Passthrough: nil,
-				VNIs:        []frr.L3VNIConfig{},
+				L3VNIs:      []frr.L3VNIConfig{},
 				VPNs:        []frr.L3VPNConfig{},
 				BFDProfiles: []frr.BFDProfile{},
 				Loglevel:    "debug",
@@ -2642,7 +2642,7 @@ func TestAPItoFRR(t *testing.T) {
 					},
 				},
 				Passthrough: nil,
-				VNIs:        []frr.L3VNIConfig{},
+				L3VNIs:      []frr.L3VNIConfig{},
 				VPNs: []frr.L3VPNConfig{
 					{
 						ASN:             65000,
@@ -2776,7 +2776,7 @@ func TestAPItoFRR(t *testing.T) {
 					},
 				},
 				Passthrough: nil,
-				VNIs:        []frr.L3VNIConfig{},
+				L3VNIs:      []frr.L3VNIConfig{},
 				VPNs: []frr.L3VPNConfig{
 					{
 						ASN:             65000,
@@ -2908,7 +2908,7 @@ func TestAPItoFRR(t *testing.T) {
 					},
 				},
 				Passthrough: nil,
-				VNIs:        []frr.L3VNIConfig{},
+				L3VNIs:      []frr.L3VNIConfig{},
 				VPNs: []frr.L3VPNConfig{
 					{
 						ASN:             65000,
@@ -3122,7 +3122,7 @@ func TestAPItoFRR(t *testing.T) {
 					},
 				},
 				Passthrough: nil,
-				VNIs:        []frr.L3VNIConfig{},
+				L3VNIs:      []frr.L3VNIConfig{},
 				VPNs: []frr.L3VPNConfig{
 					{
 						ASN:             65000,
@@ -3224,7 +3224,7 @@ func TestAPItoFRR(t *testing.T) {
 						},
 					},
 				},
-				VNIs: []frr.L3VNIConfig{
+				L3VNIs: []frr.L3VNIConfig{
 					{
 						ASN:      65000,
 						VNI:      200,
@@ -3269,6 +3269,48 @@ func TestAPItoFRR(t *testing.T) {
 			}
 			if !cmp.Equal(got, tt.want) {
 				t.Errorf("APItoFRR() = %v, diff %s", got, cmp.Diff(got, tt.want))
+			}
+		})
+	}
+}
+
+func TestL2VNIConfigsToFRR(t *testing.T) {
+	tests := []struct {
+		name   string
+		l2vnis []v1alpha1.L2VNI
+		want   []frr.L2VNIConfig
+	}{
+		{
+			name: "no route targets",
+			l2vnis: []v1alpha1.L2VNI{
+				{Spec: v1alpha1.L2VNISpec{VNI: 100}},
+			},
+		},
+		{
+			name: "import and export route targets",
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					Spec: v1alpha1.L2VNISpec{
+						VNI:       100,
+						ExportRTs: []v1alpha1.RouteTarget{"65000:100", "192.0.2.1:100"},
+						ImportRTs: []v1alpha1.RouteTarget{"65001:100"},
+					},
+				},
+			},
+			want: []frr.L2VNIConfig{
+				{
+					VNI:       100,
+					ExportRTs: []string{"65000:100", "192.0.2.1:100"},
+					ImportRTs: []string{"65001:100"},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if diff := cmp.Diff(tt.want, l2vniConfigsToFRR(tt.l2vnis)); diff != "" {
+				t.Fatalf("l2vniConfigsToFRR() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

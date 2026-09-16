@@ -166,7 +166,7 @@ func APItoFRR(config APIConfigData, nodeIndex int, logLevel string) (frr.Config,
 		return frr.Config{}, err
 	}
 
-	vniConfigs, err := vniConfigsToFRR(
+	l3VNIConfigs, err := l3vniConfigsToFRR(
 		config.L3VNIs,
 		routerID,
 		underlay.Spec.ASN,
@@ -195,13 +195,31 @@ func APItoFRR(config APIConfigData, nodeIndex int, logLevel string) (frr.Config,
 
 	return frr.Config{
 		Underlay:    underlayConfig,
-		VNIs:        vniConfigs,
+		L2VNIs:      l2vniConfigsToFRR(config.L2VNIs),
+		L3VNIs:      l3VNIConfigs,
 		Passthrough: passthroughConfig,
 		BFDProfiles: bfdProfilesFromNeighbors(underlay.Spec.Neighbors),
 		VPNs:        vpnConfigs,
 		Loglevel:    logLevel,
 		RawConfig:   rawSnippets,
 	}, nil
+}
+
+func l2vniConfigsToFRR(l2vnis []v1alpha1.L2VNI) []frr.L2VNIConfig {
+	var configs []frr.L2VNIConfig
+	for _, l2vni := range l2vnis {
+		exportRTs := convertRTsToSliceOfStrings(l2vni.Spec.ExportRTs)
+		importRTs := convertRTsToSliceOfStrings(l2vni.Spec.ImportRTs)
+		if len(exportRTs) == 0 && len(importRTs) == 0 {
+			continue
+		}
+		configs = append(configs, frr.L2VNIConfig{
+			VNI:       l2vni.Spec.VNI,
+			ExportRTs: exportRTs,
+			ImportRTs: importRTs,
+		})
+	}
+	return configs
 }
 
 func neighborsToFRR(apiNeighbors []v1alpha1.Neighbor, segmentRouting *frr.UnderlaySegmentRouting,
@@ -300,7 +318,7 @@ func tunnelEndpointToFRR(tunnelEndpointConfig *v1alpha1.TunnelEndpointConfig, no
 	return tunnelEndpoint, nil
 }
 
-func vniConfigsToFRR(
+func l3vniConfigsToFRR(
 	l3vnis []v1alpha1.L3VNI,
 	routerID string,
 	underlayASN int64,

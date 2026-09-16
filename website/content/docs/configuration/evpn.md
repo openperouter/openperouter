@@ -163,6 +163,8 @@ L2VNIs provide Layer 2 connectivity across nodes using EVPN tunnels. Unlike L3VN
 | `routingDomain.l3vni.name` | string | metadata.name of the L3VNI that provides the routing domain | Yes (when type is `L3VNI`) |
 | `routingDomain.l3vpn.name` | string | metadata.name of the L3VPN that provides the routing domain | Yes (when type is `L3VPN`) |
 | `gatewayIPs` | string array | IP addresses in CIDR notation for the distributed anycast gateway. Cannot be set without routingDomain. Max 2 (one IPv4, one IPv6). | No |
+| `exportRTs` | string array | Route targets attached to Type-2 EVPN routes advertised by this L2VNI. Maximum 100 entries. | No |
+| `importRTs` | string array | Route targets accepted when importing Type-2 EVPN routes for this L2VNI. Maximum 100 entries. | No |
 | `underlayAddressFamily` | string | VTEP address family for this VNI (`IPv4` or `IPv6`). Defaults to available family (IPv4 preferred in dual-stack). | No |
 | `hostMaster.type` | string | Type of host interface management (`LinuxBridge` or `OVSBridge`) | Yes |
 | `hostMaster.linuxBridge.lifecycle` | string | How the Linux bridge is provisioned (`Managed` or `External`) | Yes |
@@ -189,7 +191,15 @@ spec:
     type: LinuxBridge
     linuxBridge:
       lifecycle: Managed
+  exportRTs:
+  - "64514:210"
+  importRTs:
+  - "64514:210"
 ```
+
+Route targets use the same `ASN:member` or `IPv4-address:member` formats as
+L3VNIs and L3VPNs. Both lists are optional. When they are omitted, the L2VNI
+retains the default route-target behavior.
 
 ## What Happens During Reconciliation
 

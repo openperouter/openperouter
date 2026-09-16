@@ -166,6 +166,16 @@ func configureUnderlayPort(ctx context.Context, client *Client, underlayInterfac
 		return fmt.Errorf("failed to read underlay interface addresses: %w", err)
 	}
 
+	// Suppress the veth's kernel IPv6 link-local so it doesn't collide with the
+	// identical EUI-64 link-local on grout's shadow (u_<iface>, which shares the
+	// veth's MAC). The collision makes DAD strip the shadow's link-local,
+	// breaking any session with an IPv6 nexthop. The veth's link-local is unused
+	// since grout owns all forwarding.
+	slog.InfoContext(ctx, "suppressing kernel link-local on underlay interface", "iface", underlayInterface)
+	if err := hostnetwork.SuppressLinkLocal(underlayInterface); err != nil {
+		return fmt.Errorf("failed to suppress link-local on underlay interface %s: %w", underlayInterface, err)
+	}
+
 	devargs := fmt.Sprintf("net_tap%s,remote=%s,iface=%s", makeTapRandomString(), underlayInterface, "tap_"+underlayInterface)
 	if err := client.ensurePort(ctx, UnderlayPortNamePrefix+underlayInterface, devargs); err != nil {
 		return fmt.Errorf("failed to create grout underlay port: %w", err)

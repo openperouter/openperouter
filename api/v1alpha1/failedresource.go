@@ -2,7 +2,7 @@
 
 package v1alpha1
 
-// +kubebuilder:validation:Enum=Underlay;L2VNI;L3VNI;FrrConfiguration;L3Passthrough
+// +kubebuilder:validation:Enum=Underlay;L2VNI;L3VNI;L3VPN;FrrConfiguration;L3Passthrough
 type FailedResourceKind string
 
 // FailedResourceReason machine-readable reason for a failure.

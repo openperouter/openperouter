@@ -171,33 +171,20 @@ func MissingSRv6ForL3VPNErrors(l3vpns []v1alpha1.L3VPN, node *corev1.Node) error
 
 // validateL3VPN validates a single L3VPN's fields (VRF name, route targets).
 func validateL3VPN(l3Vni v1alpha1.L3VPN) error {
-	vni := vniFromL3VPN(l3Vni)
-	if err := isValidInterfaceName(vni.vrfName); err != nil {
-		return fmt.Errorf("invalid vrf name for vpn %q, vrf %q: %w", vni.name, vni.vrfName, err)
+	if err := isValidInterfaceName(l3Vni.Spec.VRF); err != nil {
+		return fmt.Errorf("invalid vrf name for vpn %q, vrf %q: %w", l3Vni.Name, l3Vni.Spec.VRF, err)
 	}
-	if len(vni.importRTs) == 0 {
+	if len(l3Vni.Spec.ImportRTs) == 0 {
 		return fmt.Errorf("invalid import route targets for vpn %q: import route targets cannot be empty",
-			vni.name)
+			l3Vni.Name)
 	}
-	if err := ValidateRouteTargets(vni); err != nil {
-		return fmt.Errorf("invalid route targets for vpn %q: %w", vni.name, err)
+	if err := ValidateRouteTargets(
+		convertRTsToSliceOfStrings(l3Vni.Spec.ExportRTs),
+		convertRTsToSliceOfStrings(l3Vni.Spec.ImportRTs),
+	); err != nil {
+		return fmt.Errorf("invalid route targets for vpn %q: %w", l3Vni.Name, err)
 	}
 	return nil
-}
-
-// vniFromL3VPN converts an L3VPN to a vni.
-// We set vni to the value of RDAssignedNumber - this is analogous to EVPN which uses the VNI value for interfaces
-// and which builds RTs implicitly based on the VNI value.
-// In the API to host conversion, for L3VPN we use the RDAssignedNumber as the numeric identifier for interfaces.
-// In the API to FRR conversion, for L3VPN we use the RDAssignedNumber to create exportRTs.
-func vniFromL3VPN(l3vpn v1alpha1.L3VPN) VNI {
-	return VNI{
-		name:      l3vpn.Name,
-		vni:       uint32(l3vpn.Spec.RDAssignedNumber),
-		vrfName:   l3vpn.Spec.VRF,
-		exportRTs: convertRTsToSliceOfStrings(l3vpn.Spec.ExportRTs),
-		importRTs: convertRTsToSliceOfStrings(l3vpn.Spec.ImportRTs),
-	}
 }
 
 // v4SubnetForL3VPN extracts the valid IPv4 subnet from the l3vni, or returns nil.

@@ -22,7 +22,7 @@ hostname {{.Hostname}}
 ip nht resolve-via-default
 ipv6 nht resolve-via-default
 
-{{- range .VNIs }}
+{{- range .L3VNIs }}
 vrf {{ .VRF }}
   vni {{ .VNI }}
 exit-vrf
@@ -93,7 +93,7 @@ exit
 !
 {{- end }}
 
-{{- range $n := .VNIs }}
+{{- range $n := .L3VNIs }}
 {{- template "vni" dict
     "vni" $n
     "routerASN" $.Underlay.MyASN -}}

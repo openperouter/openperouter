@@ -18,3 +18,7 @@ var (
 )
 
 var GroutSupport = ginkgo.Label("grout-support")
+
+// GroutOnly marks specs that must run exclusively on the grout lanes. The grout
+// lanes select them via the label filter and the non-grout lanes exclude them.
+var GroutOnly = ginkgo.Label("grout-only")
