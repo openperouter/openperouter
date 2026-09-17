@@ -945,6 +945,27 @@ func TestValidateUnderlay(t *testing.T) {
 	}
 }
 
+func TestValidateUnderlayRejectsDuplicateNeighborIdentity(t *testing.T) {
+	underlay := v1alpha1.Underlay{
+		ObjectMeta: metav1.ObjectMeta{Name: "u1"},
+		Spec: v1alpha1.UnderlaySpec{
+			ASN: 64512,
+			Neighbors: []v1alpha1.Neighbor{
+				{Address: new("10.0.0.1"), ASN: new(int64(64513))},
+				{Interface: new("10.0.0.1"), ASN: new(int64(64514))},
+			},
+		},
+	}
+
+	err := validateUnderlay(underlay)
+	if err == nil {
+		t.Fatal("expected error for neighbors sharing an identity, got nil")
+	}
+	if !strings.Contains(err.Error(), "identity") {
+		t.Fatalf("error = %q, want it to mention identity", err.Error())
+	}
+}
+
 func TestValidateUnderlaysForNodes(t *testing.T) {
 	tests := []struct {
 		name      string
