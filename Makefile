@@ -708,6 +708,16 @@ grout-docker-build: IMG_TAG=main-grout
 grout-docker-build: DOCKERFILE=Dockerfile.grout
 grout-docker-build: docker-build
 
+GROUTDRA_IMG ?= quay.io/oshoval/groutdra:dev
+
+.PHONY: groutdra-docker-build
+groutdra-docker-build: ## Build the grout kubelet DRA plugin image (includes grcli).
+	@if [ "$(CONTAINER_ENGINE)" = "podman" ]; then \
+		sudo $(CONTAINER_ENGINE) build -t $(GROUTDRA_IMG) -f Dockerfile.groutdra .; \
+	else \
+		$(CONTAINER_ENGINE) build -t $(GROUTDRA_IMG) -f Dockerfile.groutdra .; \
+	fi
+
 INSPECT_DIR ?= /tmp/openperouter-inspect
 .PHONY: inspect
 inspect:
