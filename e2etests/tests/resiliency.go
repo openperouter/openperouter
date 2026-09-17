@@ -4,6 +4,7 @@ package tests
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -638,15 +639,19 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 			},
 		)
 
+		By("verifying stretched L2 traffic works after router pod deletion")
+		Eventually(func() error {
+			_, err := clientExec.Exec("curl", "-sS", "--max-time", "2", urlStr)
+			return err
+		}).WithTimeout(2 * time.Minute).WithPolling(time.Second).Should(Succeed())
+
 		By("asserting stretched L2 disruption is within acceptable bounds during router pod deletion and recovery")
 		result := stopAndCount()
 		By(fmt.Sprintf("==> %s", result.String()))
 		Expect(result.eval()).To(
 			Succeed(),
-			"curl failures exceeded threshold during router pod deletion and recovery (%d/%d failed). Failed timestamps: %+v",
-			result.failCount,
-			result.totalCount,
-			result.failedTimestamps,
+			"curl failures exceeded threshold during router pod deletion and recovery. Result: %s",
+			result.String(),
 		)
 	})
 })
@@ -663,21 +668,22 @@ func measureTrafficLoss(exec executor.Executor, urlStr string) func() trafficTes
 	ctx, cancel := context.WithCancel(context.Background())
 	DeferCleanup(cancel)
 	go func() {
+		t := time.NewTicker(500 * time.Millisecond)
+		defer t.Stop()
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			default:
+			case <-t.C:
+				_, err := exec.Exec("curl", "-sS", "--max-time", "0.4", urlStr)
+				mu.Lock()
+				if err != nil {
+					trafficTestCount.failCount++
+					trafficTestCount.failedTimestamps = append(trafficTestCount.failedTimestamps, time.Now())
+				}
+				trafficTestCount.totalCount++
+				mu.Unlock()
 			}
-			_, err := exec.Exec("curl", "-sS", "--max-time", "2", urlStr)
-			mu.Lock()
-			if err != nil {
-				trafficTestCount.failCount++
-				trafficTestCount.failedTimestamps = append(trafficTestCount.failedTimestamps, time.Now())
-			}
-			trafficTestCount.totalCount++
-			mu.Unlock()
-			time.Sleep(300 * time.Millisecond)
 		}
 	}()
 	return func() trafficTestResult {
@@ -688,19 +694,21 @@ func measureTrafficLoss(exec executor.Executor, urlStr string) func() trafficTes
 	}
 }
 
+// eval evaluates the trafficTestResult. We allow for up to 24 failures.
+// Meaning that with a tick interval of 500ms, we allow up to ca. 12 seconds of downtime.
 func (tr trafficTestResult) eval() error {
-	const maxAllowedFailures = 5
+	const maxAllowedFailures = 24
 	if tr.totalCount == 0 {
-		return fmt.Errorf("no traffic was measured")
+		return errors.New("no traffic was measured")
 	}
 	if tr.failCount > maxAllowedFailures {
-		return fmt.Errorf(tr.String())
+		return errors.New(tr.String())
 	}
 	return nil
 }
 
 func (tr trafficTestResult) String() string {
-	return fmt.Sprintf("failed %d/%d times", tr.failCount, tr.totalCount)
+	return fmt.Sprintf("failed %d/%d times, timestamps: %+v", tr.failCount, tr.totalCount, tr.failedTimestamps)
 }
 
 func dumpUnderlayVeths(cs clientset.Interface, label string) {
