@@ -333,7 +333,7 @@ var _ = Describe("L3 VPN configuration", func() {
 		deletedL3vpnParams = l3vpnParams[1:2]
 		l3vpnParams = l3vpnParams[0:1]
 		Expect(RemoveNonConfiguredL3VPNs(testNSPath(), l3vpnParams)).To(Succeed())
-		Expect(RemoveNonConfiguredVNIs(testNSPath(), allVNIParams())).To(Succeed())
+		Expect(RemoveNonConfiguredVNIs(testNSPath(), allVNIParams(), nil)).To(Succeed())
 		Expect(RemoveNonConfiguredVRFs(testNSPath(), allVRFs())).To(Succeed())
 		validateAll()
 
@@ -341,7 +341,7 @@ var _ = Describe("L3 VPN configuration", func() {
 		deletedL2vniParams = l2vniParams[0:1]
 		l2vniParams = []L2VNIParams{}
 		Expect(RemoveNonConfiguredL3VPNs(testNSPath(), l3vpnParams)).To(Succeed())
-		Expect(RemoveNonConfiguredVNIs(testNSPath(), allVNIParams())).To(Succeed())
+		Expect(RemoveNonConfiguredVNIs(testNSPath(), allVNIParams(), nil)).To(Succeed())
 		Expect(RemoveNonConfiguredVRFs(testNSPath(), allVRFs())).To(Succeed())
 		validateAll()
 
@@ -349,7 +349,7 @@ var _ = Describe("L3 VPN configuration", func() {
 		deletedL3vpnParams = append(deletedL3vpnParams, l3vpnParams[0])
 		l3vpnParams = []L3VPNParams{}
 		Expect(RemoveNonConfiguredL3VPNs(testNSPath(), l3vpnParams)).To(Succeed())
-		Expect(RemoveNonConfiguredVNIs(testNSPath(), allVNIParams())).To(Succeed())
+		Expect(RemoveNonConfiguredVNIs(testNSPath(), allVNIParams(), nil)).To(Succeed())
 		Expect(RemoveNonConfiguredVRFs(testNSPath(), allVRFs())).To(Succeed())
 		validateAll()
 	})

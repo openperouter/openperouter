@@ -55,7 +55,7 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 
 		By("removing the VNI")
-		err = RemoveNonConfiguredVNIs(testNSPath(), []VNIParams{})
+		err = RemoveNonConfiguredVNIs(testNSPath(), []VNIParams{}, nil)
 		Expect(err).NotTo(HaveOccurred())
 		err = RemoveNonConfiguredVRFs(testNSPath(), map[string]bool{})
 		Expect(err).NotTo(HaveOccurred())
@@ -98,7 +98,7 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 
 		By("removing the VNI")
-		err = RemoveNonConfiguredVNIs(testNSPath(), []VNIParams{})
+		err = RemoveNonConfiguredVNIs(testNSPath(), []VNIParams{}, map[string]struct{}{bridgeName: {}})
 		Expect(err).NotTo(HaveOccurred())
 		err = RemoveNonConfiguredVRFs(testNSPath(), map[string]bool{})
 		Expect(err).NotTo(HaveOccurred())
@@ -149,7 +149,7 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 
 		By("removing VNI 100, keeping VNI 101")
-		err = RemoveNonConfiguredVNIs(testNSPath(), []VNIParams{params2.VNIParams})
+		err = RemoveNonConfiguredVNIs(testNSPath(), []VNIParams{params2.VNIParams}, nil)
 		Expect(err).NotTo(HaveOccurred())
 		err = RemoveNonConfiguredVRFs(testNSPath(), map[string]bool{params2.VRF: true})
 		Expect(err).NotTo(HaveOccurred())
