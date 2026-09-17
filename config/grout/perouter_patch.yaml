@@ -40,7 +40,7 @@ spec:
           value: "/var/run/grout/grout.sock"
         # TAP/test-mode sizing. Grout defaults target a full-table router and
         # would exhaust typical pod memory when allocating per-VRF FIBs.
-        # _DUMMY_ skips the LPM tables that dominate that cost.
+        # DUMMY skips the LPM tables that dominate that cost.
         - name: GROUT_MAX_IFACES
           value: "128"
         - name: GROUT_MEMPOOL_CHUNK_SIZE
@@ -56,9 +56,9 @@ spec:
         - name: GROUT_PORT_QUEUE_SIZE
           value: "128"
         - name: GROUT_FIB4_ALGORITHM
-          value: _DUMMY_
+          value: DUMMY
         - name: GROUT_FIB6_ALGORITHM
-          value: _DUMMY_
+          value: DUMMY
         command:
         - /bin/sh
         - -c

@@ -47,6 +47,7 @@ Kubernetes: `>= 1.19.0-0`
 | openperouter.grout.resources.limits.memory | string | `"2Gi"` |  |
 | openperouter.grout.resources.requests.cpu | string | `"250m"` |  |
 | openperouter.grout.resources.requests.memory | string | `"512Mi"` |  |
+| openperouter.grout.testMode | bool | `false` | Run grout in test mode. Test mode requires no hugepages and uses dummy FIB algorithms, which keeps memory usage low at the cost of real longest prefix match lookups. Leave it disabled for a hugepage-backed dataplane, requesting hugepages under grout.resources. |
 | openperouter.hostmode | bool | `false` | If true, enables host mode deployment: deploys hostbridge DaemonSet instead of router and controller, and configures nodemarker to run in webhook-only mode |
 | openperouter.image.pullPolicy | string | `""` |  |
 | openperouter.image.repository | string | `"quay.io/openperouter/router"` |  |

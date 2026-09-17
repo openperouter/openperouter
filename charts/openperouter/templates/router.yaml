@@ -294,9 +294,8 @@ spec:
         env:
           - name: GROUT_SOCK_PATH
             value: "/var/run/grout/grout.sock"
-          # TAP/test-mode sizing. Grout defaults target a full-table router and
-          # would exhaust typical pod memory when allocating per-VRF FIBs.
-          # _DUMMY_ skips the LPM tables that dominate that cost.
+          # Grout defaults target a full-table router and would exhaust typical
+          # pod memory when allocating per-VRF FIBs.
           - name: GROUT_MAX_IFACES
             value: "128"
           - name: GROUT_MEMPOOL_CHUNK_SIZE
@@ -311,10 +310,13 @@ spec:
             value: "128"
           - name: GROUT_PORT_QUEUE_SIZE
             value: "128"
+          {{- if .Values.openperouter.grout.testMode }}
+          # DUMMY skips the LPM tables that dominate the per-VRF FIB cost.
           - name: GROUT_FIB4_ALGORITHM
-            value: _DUMMY_
+            value: DUMMY
           - name: GROUT_FIB6_ALGORITHM
-            value: _DUMMY_
+            value: DUMMY
+          {{- end }}
         command:
           - /bin/sh
           - -c
@@ -330,7 +332,10 @@ spec:
                 exit 1
               fi
             done
-            GROUT_ARGS="--test-mode --socket-mode 0666"
+            GROUT_ARGS="--socket-mode 0666"
+            {{- if .Values.openperouter.grout.testMode }}
+            GROUT_ARGS="${GROUT_ARGS} --test-mode"
+            {{- end }}
             {{- if eq .Values.openperouter.logLevel "debug" }}
             GROUT_ARGS="${GROUT_ARGS} --verbose"
             {{- end }}

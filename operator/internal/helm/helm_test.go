@@ -43,6 +43,8 @@ const (
 	controllerDaemonSetName   = "controller"
 	routerDaemonSetName       = "router"
 	nodemarkerDeploymentName  = "nodemarker"
+	groutContainerName        = "grout"
+	groutDatapath             = "grout"
 	daemonSetKind             = "DaemonSet"
 	deploymentKind            = "Deployment"
 )
@@ -213,7 +215,7 @@ func TestParseChartWithGroutEnabled(t *testing.T) {
 		},
 		Spec: operatorapi.OpenPERouterSpec{
 			LogLevel: new(operatorapi.LogLevelInfo),
-			Datapath: new("grout"),
+			Datapath: new(groutDatapath),
 		},
 	}
 
@@ -238,10 +240,10 @@ func TestParseChartWithGroutEnabled(t *testing.T) {
 			for _, c := range router.Spec.Template.Spec.Containers {
 				containerNames = append(containerNames, c.Name)
 			}
-			g.Expect(containerNames).To(ContainElement("grout"))
+			g.Expect(containerNames).To(ContainElement(groutContainerName))
 
 			for _, c := range router.Spec.Template.Spec.Containers {
-				if c.Name == "grout" {
+				if c.Name == groutContainerName {
 					g.Expect(c.Image).To(Equal("quay.io/openperouter/router:test-grout"))
 					env := map[string]string{}
 					for _, e := range c.Env {
@@ -250,6 +252,9 @@ func TestParseChartWithGroutEnabled(t *testing.T) {
 					g.Expect(env["GROUT_SOCK_PATH"]).To(Equal("/var/run/grout/grout.sock"))
 					g.Expect(env["GROUT_MEMPOOL_CHUNK_SIZE"]).To(Equal("2047"))
 					g.Expect(env["GROUT_PORT_QUEUE_SIZE"]).To(Equal("128"))
+					g.Expect(env).ToNot(HaveKey("GROUT_FIB4_ALGORITHM"))
+					g.Expect(env).ToNot(HaveKey("GROUT_FIB6_ALGORITHM"))
+					g.Expect(c.Command).ToNot(ContainElement(ContainSubstring("--test-mode")))
 				}
 			}
 			routerFound = true
@@ -270,6 +275,54 @@ func TestParseChartWithGroutEnabled(t *testing.T) {
 	}
 	g.Expect(routerFound).To(BeTrue())
 	g.Expect(controllerFound).To(BeTrue())
+}
+
+func TestParseChartWithGroutTestMode(t *testing.T) {
+	g := NewGomegaWithT(t)
+	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace)
+	g.Expect(err).ToNot(HaveOccurred())
+
+	openperouter := &operatorapi.OpenPERouter{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "openperouter",
+			Namespace: openperouterTestNamespace,
+		},
+		Spec: operatorapi.OpenPERouterSpec{
+			LogLevel: new(operatorapi.LogLevelInfo),
+			Datapath: new(groutDatapath),
+		},
+	}
+
+	envConfig := defaultEnvConfig
+	envConfig.GroutTestMode = true
+
+	objs, err := chart.Objects(envConfig, openperouter)
+	g.Expect(err).ToNot(HaveOccurred())
+
+	var groutFound bool
+	for _, obj := range objs {
+		if obj.GetKind() != daemonSetKind || obj.GetName() != routerDaemonSetName {
+			continue
+		}
+		router := appsv1.DaemonSet{}
+		err = runtime.DefaultUnstructuredConverter.FromUnstructured(obj.UnstructuredContent(), &router)
+		g.Expect(err).ToNot(HaveOccurred())
+
+		for _, c := range router.Spec.Template.Spec.Containers {
+			if c.Name != groutContainerName {
+				continue
+			}
+			env := map[string]string{}
+			for _, e := range c.Env {
+				env[e.Name] = e.Value
+			}
+			g.Expect(env["GROUT_FIB4_ALGORITHM"]).To(Equal("DUMMY"))
+			g.Expect(env["GROUT_FIB6_ALGORITHM"]).To(Equal("DUMMY"))
+			g.Expect(c.Command).To(ContainElement(ContainSubstring("--test-mode")))
+			groutFound = true
+		}
+	}
+	g.Expect(groutFound).To(BeTrue())
 }
 
 func TestParseChartWithGroutDisabled(t *testing.T) {
@@ -299,7 +352,7 @@ func TestParseChartWithGroutDisabled(t *testing.T) {
 			g.Expect(err).ToNot(HaveOccurred())
 
 			for _, c := range router.Spec.Template.Spec.Containers {
-				g.Expect(c.Name).ToNot(Equal("grout"))
+				g.Expect(c.Name).ToNot(Equal(groutContainerName))
 			}
 			routerFound = true
 		}

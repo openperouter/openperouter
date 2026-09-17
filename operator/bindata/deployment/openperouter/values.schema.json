@@ -367,6 +367,11 @@
             "type": "object",
             "description": "Configuration for the grout DPDK dataplane sidecar. Only used when datapath is set to \"grout\".",
             "properties": {
+              "testMode": {
+                "type": "boolean",
+                "description": "Run grout in test mode. Test mode requires no hugepages and uses dummy FIB algorithms. Leave it disabled for a hugepage-backed dataplane, requesting hugepages under grout.resources.",
+                "default": false
+              },
               "image": {
                 "type": "object",
                 "description": "Configuration for the grout container image.",
@@ -416,6 +421,7 @@
               }
             },
             "default": {
+              "testMode": false,
               "image": {
                 "repository": "quay.io/openperouter/router"
               }
