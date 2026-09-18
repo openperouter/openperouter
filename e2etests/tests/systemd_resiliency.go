@@ -21,6 +21,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 	"github.com/openperouter/openperouter/e2etests/pkg/systemd"
 	"github.com/openperouter/openperouter/e2etests/pkg/url"
+	"github.com/openperouter/openperouter/e2etests/pkg/validate"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -77,11 +78,11 @@ var _ = Describe("Systemd Router Restart Resiliency", Label("systemdmode"), Orde
 				for _, node := range nodes {
 					neighborIP, err := infra.NeighborIP(leaf, node.Name)
 					Expect(err).NotTo(HaveOccurred())
-					validateSessionWithNeighbor(exec, validationParameters{
-						fromName:    leaf,
-						toName:      node.Name,
-						neighborIP:  neighborIP,
-						established: Established,
+					validate.SessionWithNeighbor(exec, validate.SessionParameters{
+						FromName:    leaf,
+						ToName:      node.Name,
+						NeighborIP:  neighborIP,
+						Established: Established,
 					})
 				}
 				return nil
@@ -216,13 +217,13 @@ var _ = Describe("Systemd: Named netns and kernel objects survive FRR container 
 		By("waiting for BGP sessions to re-establish")
 		neighborIP, err := infra.NeighborIP(infra.KindLeaf, nodeName)
 		Expect(err).NotTo(HaveOccurred())
-		validateSessionWithNeighbor(
+		validate.SessionWithNeighbor(
 			executor.ForContainer(infra.KindLeaf),
-			validationParameters{
-				fromName:    infra.KindLeaf,
-				toName:      nodeName,
-				neighborIP:  neighborIP,
-				established: Established,
+			validate.SessionParameters{
+				FromName:    infra.KindLeaf,
+				ToName:      nodeName,
+				NeighborIP:  neighborIP,
+				Established: Established,
 			},
 		)
 	})
@@ -305,13 +306,13 @@ var _ = Describe("Systemd: Controller auto-recovers when operator deletes named 
 		By("waiting for BGP sessions to re-establish")
 		neighborIP, err := infra.NeighborIP(infra.KindLeaf, nodeName)
 		Expect(err).NotTo(HaveOccurred())
-		validateSessionWithNeighbor(
+		validate.SessionWithNeighbor(
 			executor.ForContainer(infra.KindLeaf),
-			validationParameters{
-				fromName:    infra.KindLeaf,
-				toName:      nodeName,
-				neighborIP:  neighborIP,
-				established: Established,
+			validate.SessionParameters{
+				FromName:    infra.KindLeaf,
+				ToName:      nodeName,
+				NeighborIP:  neighborIP,
+				Established: Established,
 			},
 		)
 	})
@@ -402,13 +403,13 @@ var _ = Describe("Systemd: Data plane continuity during FRR restart", Label("sys
 		for _, node := range nodes {
 			neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
 			Expect(err).NotTo(HaveOccurred())
-			validateSessionWithNeighbor(
+			validate.SessionWithNeighbor(
 				executor.ForContainer(infra.KindLeaf),
-				validationParameters{
-					fromName:    infra.KindLeaf,
-					toName:      node.Name,
-					neighborIP:  neighborIP,
-					established: Established,
+				validate.SessionParameters{
+					FromName:    infra.KindLeaf,
+					ToName:      node.Name,
+					NeighborIP:  neighborIP,
+					Established: Established,
 				},
 			)
 		}
@@ -441,13 +442,13 @@ var _ = Describe("Systemd: Data plane continuity during FRR restart", Label("sys
 
 		neighborIP, err := infra.NeighborIP(infra.KindLeaf, nodes[0].Name)
 		Expect(err).NotTo(HaveOccurred())
-		validateSessionWithNeighbor(
+		validate.SessionWithNeighbor(
 			executor.ForContainer(infra.KindLeaf),
-			validationParameters{
-				fromName:    infra.KindLeaf,
-				toName:      nodes[0].Name,
-				neighborIP:  neighborIP,
-				established: Established,
+			validate.SessionParameters{
+				FromName:    infra.KindLeaf,
+				ToName:      nodes[0].Name,
+				NeighborIP:  neighborIP,
+				Established: Established,
 			},
 		)
 

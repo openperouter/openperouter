@@ -22,6 +22,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 	"github.com/openperouter/openperouter/e2etests/pkg/url"
+	"github.com/openperouter/openperouter/e2etests/pkg/validate"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -183,13 +184,13 @@ var _ = Describe("Alpha: Named netns and kernel objects survive FRR crash", Orde
 		By("waiting for BGP sessions to re-establish")
 		neighborIP, err := infra.NeighborIP(infra.KindLeaf, nodeName)
 		Expect(err).NotTo(HaveOccurred())
-		validateSessionWithNeighbor(
+		validate.SessionWithNeighbor(
 			executor.ForContainer(infra.KindLeaf),
-			validationParameters{
-				fromName:    infra.KindLeaf,
-				toName:      nodeName,
-				neighborIP:  neighborIP,
-				established: Established,
+			validate.SessionParameters{
+				FromName:    infra.KindLeaf,
+				ToName:      nodeName,
+				NeighborIP:  neighborIP,
+				Established: Established,
 			},
 		)
 	})
@@ -305,13 +306,13 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 		for _, node := range nodes {
 			neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
 			Expect(err).NotTo(HaveOccurred())
-			validateSessionWithNeighbor(
+			validate.SessionWithNeighbor(
 				leafExec,
-				validationParameters{
-					fromName:    infra.KindLeaf,
-					toName:      node.Name,
-					neighborIP:  neighborIP,
-					established: Established,
+				validate.SessionParameters{
+					FromName:    infra.KindLeaf,
+					ToName:      node.Name,
+					NeighborIP:  neighborIP,
+					Established: Established,
 				},
 			)
 		}
@@ -399,13 +400,13 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 		By("waiting for BGP sessions to establish before traffic check")
 		neighborIP, err := infra.NeighborIP(infra.KindLeaf, nodes[0].Name)
 		Expect(err).NotTo(HaveOccurred())
-		validateSessionWithNeighbor(
+		validate.SessionWithNeighbor(
 			executor.ForContainer(infra.KindLeaf),
-			validationParameters{
-				fromName:    infra.KindLeaf,
-				toName:      nodes[0].Name,
-				neighborIP:  neighborIP,
-				established: Established,
+			validate.SessionParameters{
+				FromName:    infra.KindLeaf,
+				ToName:      nodes[0].Name,
+				NeighborIP:  neighborIP,
+				Established: Established,
 			},
 		)
 
@@ -476,13 +477,13 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 		By("waiting for BGP sessions to re-establish")
 		neighborIP, err = infra.NeighborIP(infra.KindLeaf, nodeName)
 		Expect(err).NotTo(HaveOccurred())
-		validateSessionWithNeighbor(
+		validate.SessionWithNeighbor(
 			executor.ForContainer(infra.KindLeaf),
-			validationParameters{
-				fromName:    infra.KindLeaf,
-				toName:      nodeName,
-				neighborIP:  neighborIP,
-				established: Established,
+			validate.SessionParameters{
+				FromName:    infra.KindLeaf,
+				ToName:      nodeName,
+				NeighborIP:  neighborIP,
+				Established: Established,
 			},
 		)
 
@@ -584,13 +585,13 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 		for _, node := range nodes {
 			neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
 			Expect(err).NotTo(HaveOccurred())
-			validateSessionWithNeighbor(
+			validate.SessionWithNeighbor(
 				leafExec,
-				validationParameters{
-					fromName:    infra.KindLeaf,
-					toName:      node.Name,
-					neighborIP:  neighborIP,
-					established: Established,
+				validate.SessionParameters{
+					FromName:    infra.KindLeaf,
+					ToName:      node.Name,
+					NeighborIP:  neighborIP,
+					Established: Established,
 				},
 			)
 		}
@@ -628,13 +629,13 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 		By("waiting for BGP sessions to re-establish")
 		neighborIP, err := infra.NeighborIP(infra.KindLeaf, nodeName)
 		Expect(err).NotTo(HaveOccurred())
-		validateSessionWithNeighbor(
+		validate.SessionWithNeighbor(
 			executor.ForContainer(infra.KindLeaf),
-			validationParameters{
-				fromName:    infra.KindLeaf,
-				toName:      nodeName,
-				neighborIP:  neighborIP,
-				established: Established,
+			validate.SessionParameters{
+				FromName:    infra.KindLeaf,
+				ToName:      nodeName,
+				NeighborIP:  neighborIP,
+				Established: Established,
 			},
 		)
 

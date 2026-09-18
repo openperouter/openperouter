@@ -19,6 +19,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 	"github.com/openperouter/openperouter/e2etests/pkg/url"
+	"github.com/openperouter/openperouter/e2etests/pkg/validate"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -191,13 +192,13 @@ var _ = Describe("North/south traffic after FRR container restart", Ordered, fun
 		nodeName := routerPod.Spec.NodeName
 		neighborIP, err := infra.NeighborIP(infra.KindLeaf, nodeName)
 		Expect(err).NotTo(HaveOccurred())
-		validateSessionWithNeighbor(
+		validate.SessionWithNeighbor(
 			executor.ForContainer(infra.KindLeaf),
-			validationParameters{
-				fromName:    infra.KindLeaf,
-				toName:      nodeName,
-				neighborIP:  neighborIP,
-				established: Established,
+			validate.SessionParameters{
+				FromName:    infra.KindLeaf,
+				ToName:      nodeName,
+				NeighborIP:  neighborIP,
+				Established: Established,
 			},
 		)
 
