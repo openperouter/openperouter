@@ -2494,8 +2494,9 @@ spec:
         - --loglevel=debug
         - --namespace=$(NAMESPACE)
         - --frrconfig=/etc/frr/frr.conf
-        - --crisocket=/crio.sock
         - --reloader-socket=/etc/frr/reload.sock
+        - --cni-plugin-dirs=/opt/openperouter/cni/bin/
+        - --cni-cache-dir=/var/lib/openperouter/cni/cache
         command:
         - /controller
         env:
@@ -2546,12 +2547,6 @@ spec:
             - NET_BIND_SERVICE
           privileged: true
         volumeMounts:
-        - mountPath: /crio.sock
-          name: varrun
-          subPath: crio.sock
-        - mountPath: /containerd.sock
-          name: varrun
-          subPath: containerd.sock
         - mountPath: /run/netns
           mountPropagation: Bidirectional
           name: runns
@@ -2576,9 +2571,6 @@ spec:
         key: node-role.kubernetes.io/control-plane
         operator: Exists
       volumes:
-      - hostPath:
-          path: /var/run/crio
-        name: varrun
       - hostPath:
           path: /run/netns
         name: runns

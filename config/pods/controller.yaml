@@ -71,9 +71,6 @@ spec:
             fieldRef:
               fieldPath: metadata.namespace
         volumeMounts:
-        - mountPath: /containerd.sock
-          name: varrun
-          subPath: containerd.sock
         - mountPath: /run/netns
           name: runns
           mountPropagation: Bidirectional
@@ -98,9 +95,6 @@ spec:
       - name: runns
         hostPath:
           path: /run/netns
-      - name: varrun
-        hostPath:
-          path: /run/containerd
       - name: frr-config
         hostPath:
           path: /etc/perouter/frr

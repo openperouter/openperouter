@@ -29,7 +29,10 @@ OpenPERouter offers several deployment methods to suit different environments an
 
 The simplest way to install OpenPERouter is using the all-in-one manifests. This method is ideal for testing and development environments.
 
-#### Standard Installation (containerd)
+#### Standard Installation
+
+The manifests do not depend on the container runtime, so the same manifest works
+with containerd, CRI-O, or clusters mixing both:
 
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/openperouter/openperouter/main/config/all-in-one/openpe.yaml
@@ -37,7 +40,8 @@ kubectl apply -f https://raw.githubusercontent.com/openperouter/openperouter/mai
 
 #### CRI-O Variant
 
-If your cluster uses CRI-O as the container runtime:
+The CRI-O manifest is kept for backward compatibility and is identical to the
+standard one:
 
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/openperouter/openperouter/main/config/all-in-one/crio.yaml

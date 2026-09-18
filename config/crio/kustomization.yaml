@@ -1,4 +1,4 @@
+# Kept for backward compatibility: the controller no longer mounts the
+# container runtime socket, so this overlay is identical to config/default.
 resources:
 - ../default
-patchesStrategicMerge:
-  - controller_patch.yaml
