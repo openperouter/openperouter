@@ -12,7 +12,6 @@ import (
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/e2etests/pkg/executor"
 	"github.com/openperouter/openperouter/e2etests/pkg/frr"
-	"github.com/openperouter/openperouter/e2etests/pkg/networklayerprotocol"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 	"github.com/openperouter/openperouter/e2etests/pkg/validate"
 	corev1 "k8s.io/api/core/v1"
@@ -32,35 +31,17 @@ func validateFRRK8sSessionForHostSession(name string, hostsession v1alpha1.HostS
 		for _, p := range frrk8sPods {
 			By(fmt.Sprintf("checking the session between %s and session %s for CIDR %s", p.Name, name, cidr))
 			exec := executor.ForPod(p.Namespace, p.Name, "frr")
-			validateSessionWithNeighbor(
+			validate.SessionWithNeighbor(
 				exec,
-				validationParameters{
-					fromName:    p.Name,
-					toName:      name,
-					neighborIP:  neighborIP,
-					established: established,
+				validate.SessionParameters{
+					FromName:    p.Name,
+					ToName:      name,
+					NeighborIP:  neighborIP,
+					Established: established,
 				},
 			)
 		}
 	}
-}
-
-func validateSessionWithNeighbor(exec executor.Executor, parameters validationParameters) {
-	validate.SessionWithNeighbor(exec, validate.SessionParameters{
-		FromName:                parameters.fromName,
-		ToName:                  parameters.toName,
-		NeighborIP:              parameters.neighborIP,
-		ReceivedAddressFamilies: parameters.receivedAddressFamilies,
-		Established:             parameters.established,
-	})
-}
-
-type validationParameters struct {
-	fromName                string
-	toName                  string
-	neighborIP              string
-	receivedAddressFamilies []networklayerprotocol.NLP
-	established             bool
 }
 
 func waitForType5Route(exec executor.Executor, prefix string) {
