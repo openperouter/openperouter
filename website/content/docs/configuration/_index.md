@@ -214,8 +214,10 @@ spec:
 The controller invokes the plugin with `CNI_IFNAME` set to
 `interfaceName` (defaults to `net1`) and the router network namespace as
 the target. The plugin binaries are looked up in the directories passed
-via the controller's `--cni-plugin-dirs` flag; a set of reference plugins is
-bundled in the controller image.
+via the controller's `--cni-plugin-dirs` flag. The controller image bundles
+`macvlan`, `ipvlan`, `vlan`, `tuning`, `static`, and `dhcp`. The `vlan` plugin
+creates a tagged underlay interface; `tuning` can be chained after an interface
+plugin to adjust properties such as its MTU or interface sysctls.
 
 #### DHCP IPAM
 

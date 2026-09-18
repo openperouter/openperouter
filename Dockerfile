@@ -67,6 +67,8 @@ COPY --from=cni-plugins-builder /cni-plugins/bin/macvlan /opt/openperouter/cni/b
 COPY --from=cni-plugins-builder /cni-plugins/bin/ipvlan /opt/openperouter/cni/bin/
 COPY --from=cni-plugins-builder /cni-plugins/bin/static /opt/openperouter/cni/bin/
 COPY --from=cni-plugins-builder /cni-plugins/bin/dhcp /opt/openperouter/cni/bin/
+COPY --from=cni-plugins-builder /cni-plugins/bin/vlan /opt/openperouter/cni/bin/
+COPY --from=cni-plugins-builder /cni-plugins/bin/tuning /opt/openperouter/cni/bin/
 # Copy FRR startup configuration to the default location
 COPY systemdmode/frrconfig/daemons /etc/frr/daemons
 COPY systemdmode/frrconfig/vtysh.conf /etc/frr/vtysh.conf
