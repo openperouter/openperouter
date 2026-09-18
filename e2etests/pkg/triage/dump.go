@@ -36,6 +36,7 @@ type Config struct {
 	AdditionalNamespaces []string
 	CollectFRRK8sPods    bool
 	CollectFRRContainers bool
+	CollectNodePCIInfo   bool
 }
 
 // DumpIfFails collects diagnostics for a failed Ginkgo spec.
@@ -67,6 +68,9 @@ func DumpIfFails(cs clientset.Interface, config Config) {
 
 		for _, namespace := range config.AdditionalNamespaces {
 			dumpWorkloadInfo(config.ReportPath, ginkgo.CurrentSpecReport().FullText(), cs, namespace)
+		}
+		if config.CollectNodePCIInfo {
+			dumpNodePCIInfo(cs, config.ReportPath, ginkgo.CurrentSpecReport().FullText())
 		}
 		k8s.DumpInfo(config.K8sReporter, ginkgo.CurrentSpecReport().FullText())
 		if config.HostMode {
@@ -245,6 +249,48 @@ func logFileFor(base string, kind string) (*os.File, error) {
 		return nil, err
 	}
 	return f, nil
+}
+
+// dumpNodePCIInfo collects PCI device details and their bound kernel drivers
+// from every Kubernetes node. The node executor enters the node's namespaces,
+// so this captures the node rather than the node-exec helper container.
+func dumpNodePCIInfo(cs clientset.Interface, basePath, testName string) {
+	testPath, err := createTestOutput(basePath, testName)
+	if err != nil {
+		ginkgo.GinkgoWriter.Printf("dumpNodePCIInfo: failed to create test dir: %s", err)
+		return
+	}
+
+	nodes, err := k8s.GetNodes(cs)
+	if err != nil {
+		ginkgo.GinkgoWriter.Printf("dumpNodePCIInfo: failed to get nodes: %v", err)
+		return
+	}
+
+	for _, node := range nodes {
+		func() {
+			f, err := logFileFor(testPath, fmt.Sprintf("pci-dump-%s", node.Name))
+			if err != nil {
+				ginkgo.GinkgoWriter.Printf("dumpNodePCIInfo: failed to open file for node %s: %v", node.Name, err)
+				return
+			}
+			defer func() {
+				if err := f.Close(); err != nil {
+					ginkgo.GinkgoWriter.Printf("dumpNodePCIInfo: failed to close file %s: %v", f.Name(), err)
+				}
+			}()
+
+			exec := executor.ForNode(node.Name)
+			for _, command := range [][]string{{"lspci", "-vvv"}, {"lspci", "-k"}} {
+				fmt.Fprintf(f, "\n######## %s\n\n", strings.Join(command, " "))
+				out, err := exec.Exec(command[0], command[1:]...)
+				if err != nil {
+					fmt.Fprintf(f, "Failed exec %q: %v\n", strings.Join(command, " "), err)
+				}
+				fmt.Fprint(f, out)
+			}
+		}()
+	}
 }
 
 func dumpPodmanInfo(cs clientset.Interface, basePath, testName string) {

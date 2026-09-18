@@ -29,5 +29,6 @@ func dumpIfFails(cs clientset.Interface, additionalNamespaces ...string) {
 		AdditionalNamespaces: additionalNamespaces,
 		CollectFRRK8sPods:    true,
 		CollectFRRContainers: true,
+		CollectNodePCIInfo:   true,
 	})
 }
