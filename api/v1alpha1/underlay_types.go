@@ -148,6 +148,38 @@ type NetworkDevice struct {
 	// +kubebuilder:validation:MaxLength=15
 	// +required
 	InterfaceName string `json:"interfaceName,omitempty"`
+
+	// acceleratedConfig when set binds the device as a DPDK port instead of
+	// creating a TAP+remote= bridge. Only valid when --datapath=grout.
+	// +optional
+	AcceleratedConfig *AcceleratedConfig `json:"acceleratedConfig,omitempty"`
+}
+
+// AcceleratedConfig holds optional DPDK port parameters for accelerated
+// underlay interfaces bound directly to grout.
+type AcceleratedConfig struct {
+	// rxQueues is the number of receive queues to allocate on the DPDK port.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=64
+	// +optional
+	RXQueues *int32 `json:"rxQueues,omitempty"`
+	// qSize is the descriptor ring size for each receive queue. Larger
+	// rings absorb traffic bursts at the cost of memory.
+	// +kubebuilder:validation:Minimum=64
+	// +kubebuilder:validation:Maximum=32768
+	// +optional
+	QSize *int32 `json:"qSize,omitempty"`
+	// promiscuous enables promiscuous mode on the DPDK port.
+	// When true, the NIC accepts all incoming frames regardless of
+	// destination MAC address. Defaults to false.
+	// +optional
+	Promiscuous *bool `json:"promiscuous,omitempty"`
+	// portName overrides the grout port name. When unset, the port is
+	// named "u_<interfaceName>".
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=15
+	// +optional
+	PortName *string `json:"portName,omitempty"`
 }
 
 // CNIConfigType selects the source of the CNI configuration.

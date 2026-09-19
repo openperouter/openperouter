@@ -33,25 +33,28 @@ Compared to the default kernel-based deployment, enabling grout adds:
 
 Grout support is being delivered incrementally. The current implementation covers:
 
-- **Underlay** interface setup via grout ports
+- **Underlay** interface setup via grout ports, including optional DPDK
+  acceleration (`acceleratedConfig` on `NetworkDevice`)
 - **L3Passthrough** forwarding via grout
 - **L3VNI** (EVPN Layer 3 overlays) via grout TAP devices
 
 The following are **not yet supported** with grout:
 
 - L2VNI (EVPN Layer 2 overlays)
-- Hardware acceleration with SR-IOV NICs
+- Hardware acceleration of workload-facing VF pairs
 
-Additionally, grout currently:
-
-- Uses **TAP devices** rather than DPDK poll-mode drivers bound to physical NICs
-- Runs in **`--test-mode`**, meaning no hugepages are required
-
-These limitations will be addressed in subsequent milestones.
+By default grout uses **TAP devices** (`net_tap` with `remote=`) rather than
+binding physical NICs to a DPDK poll-mode driver. Add `acceleratedConfig` to a
+`NetworkDevice` to bind that device as a DPDK port instead. CI and Kind still
+run grout in **`--test-mode`**, meaning no hugepages are required unless you
+enable DPDK-bound ports on real hardware.
 
 ## Prerequisites
 
-For the current scope, no special hardware is required — grout uses TAP devices and test-mode. In future milestones, DPDK-capable NICs and hugepage configuration will be needed for hardware-accelerated forwarding.
+For TAP-based grout underlays, no special hardware is required — grout uses TAP
+devices and test-mode. DPDK-accelerated underlay ports need a DPDK-capable NIC
+(and `vfio-pci` loaded for non-bifurcated devices). Hugepage configuration is
+required outside of grout `--test-mode`.
 
 ## Helm Configuration
 
@@ -142,6 +145,50 @@ spec:
 ```
 
 When grout is enabled, the controller configures FRR as usual but delegates the host network setup to the grout data path instead of kernel interfaces.
+
+## DPDK-Accelerated Underlay Ports
+
+`NetworkDevice` entries without `acceleratedConfig` keep the TAP+`remote=` path.
+When `acceleratedConfig` is set, the controller binds the device as a DPDK port:
+
+1. Resolves the PCI address from `/sys/class/net/<interfaceName>/device`
+2. Saves the kernel driver and IP addresses to `/var/run/openperouter/grout/<interfaceName>.json`
+3. Binds non-bifurcated NICs (for example Intel) to `vfio-pci`, or moves
+   bifurcated devices (for example Mellanox mlx5) into the router namespace
+4. Creates the grout port with `grcli interface add port u_<name> devargs <pci>`
+5. Applies the scraped addresses to the grout port and adds a connected route
+   on `main` so FRR can establish BGP sessions
+
+The kernel netdev must already exist and typically already has its IP
+configuration. The controller scrapes those addresses; they are not duplicated
+in the Underlay spec. On teardown the original driver and addresses are restored.
+
+`acceleratedConfig` is rejected when `--datapath=kernel`.
+
+```yaml
+apiVersion: network.openperouter.io/v1alpha1
+kind: Underlay
+metadata:
+  name: underlay-dpdk
+  namespace: openperouter-system
+spec:
+  asn: 64514
+  interfaces:
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: enp3s0f0v0
+        acceleratedConfig:
+          rxQueues: 4
+          qSize: 1024
+  neighbors:
+    - asn: 64512
+      address: 192.168.1.1
+```
+
+All `acceleratedConfig` fields are optional. `acceleratedConfig: {}` enables
+DPDK attachment with grout defaults. `promiscuous` defaults to false. `mac`
+overrides the NIC hardware address when set. `portName` overrides the grout
+port name (`u_<interfaceName>` when unset).
 
 ## Verification
 
