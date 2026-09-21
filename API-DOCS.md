@@ -315,7 +315,7 @@ _Appears in:_
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `baseNet` _[ISISNet](#isisnet)_ | baseNet holds the ISIS NET address.<br />The configured Net address is a base address which is offset by the node index of each node.<br />Only accepts the simplified NSAP format with a fixed AreaID length of 3 bytes and a 6 byte SystemID in compliance<br />with the U.S. GOSIP version 2.0 for a total of 10 bytes. |  | MaxLength: 25 <br />MinLength: 25 <br />Required: \{\} <br /> |
-| `features` _[ISISFeature](#isisfeature) array_ | features enables ISIS boolean features.<br />Supported features are:<br />advertisePassiveOnly: configures ISIS to advertise only prefixes that belong to passive interfaces. |  | Enum: [advertisePassiveOnly] <br />MaxItems: 32 <br />MaxLength: 128 <br />MinLength: 1 <br />Optional: \{\} <br /> |
+| `features` _[ISISFeature](#isisfeature) array_ | features enables ISIS boolean features.<br />Supported features are:<br />advertisePassiveOnly: configures ISIS to advertise only prefixes that belong to passive interfaces.<br />multiTopology: configures multi-topology mode for IPv4 and IPv6. |  | Enum: [advertisePassiveOnly multiTopology] <br />MaxItems: 32 <br />MaxLength: 128 <br />MinLength: 1 <br />Optional: \{\} <br /> |
 | `interfaces` _[ISISInterface](#isisinterface) array_ | interfaces holds additional ISIS interface level configuration and / or per<br />interface overrides. By default, OpenPERouter enables IPv6 on all required<br />interfaces with default settings. |  | MaxItems: 128 <br />Optional: \{\} <br /> |
 | `level` _integer_ | level configures the ISIS type, system wide. It defaults to level-1-2 unless specified otherwise. |  | Enum: [1 2] <br />Optional: \{\} <br /> |
 
@@ -327,13 +327,17 @@ _Underlying type:_ _string_
 ISISFeature represents a single ISIS feature.
 
 _Validation:_
-- Enum: [advertisePassiveOnly]
+- Enum: [advertisePassiveOnly multiTopology]
 - MaxLength: 128
 - MinLength: 1
 
 _Appears in:_
 - [ISISConfig](#isisconfig)
 
+| Field | Description |
+| --- | --- |
+| `advertisePassiveOnly` | AdvertisePassiveOnly instructs ISIS to advertise passive interfaces only.<br /> |
+| `multiTopology` | MultiTopology enables ISIS multi-topology mode (RFC5120) for IPv4 and IPv6 families.<br /> |
 
 
 #### ISISInterface
