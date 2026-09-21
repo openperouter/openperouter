@@ -11,6 +11,9 @@ router isis {{ .isisconf.Name }}
 {{- if .isisconf.AdvertisePassiveOnly }}
   advertise-passive-only
 {{- end }}
+{{- if .isisconf.MultiTopology }}
+  topology ipv6-unicast
+{{- end }}
 {{- if .segmentrouting }}
   segment-routing srv6
     locator {{ .segmentrouting.Locator.Name }}

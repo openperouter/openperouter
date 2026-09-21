@@ -1071,7 +1071,7 @@ func TestISIS(t *testing.T) {
 	testCheckConfigFile(t)
 }
 
-func TestISISAdvertisePassiveOnly(t *testing.T) {
+func TestISISFeatures(t *testing.T) {
 	configFile := testSetup(t)
 	updater := testUpdater(configFile)
 
@@ -1092,6 +1092,7 @@ func TestISISAdvertisePassiveOnly(t *testing.T) {
 				Name:                 isisProcessName,
 				Level:                1,
 				AdvertisePassiveOnly: true,
+				MultiTopology:        true,
 				Interfaces: []ISISInterface{
 					{Name: "lo", IPv6: true, IsPassive: true},
 					{Name: "eth0", IPv4: true, IPv6: false},
