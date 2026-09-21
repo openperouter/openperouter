@@ -59,6 +59,21 @@ spec:
                 maxItems: 100
                 type: array
                 x-kubernetes-list-type: atomic
+              features:
+                description: |-
+                  features enables L3VPN boolean features.
+                  Supported features are:
+                  uDT4uDT6: configures the OpenPERouter to create separate functions for uDT4 and uDT6 (default: unified uDT46).
+                items:
+                  description: L3VPNFeature represents a single L3VPN feature.
+                  enum:
+                  - uDT4uDT6
+                  maxLength: 128
+                  minLength: 1
+                  type: string
+                maxItems: 32
+                type: array
+                x-kubernetes-list-type: atomic
               hostSession:
                 description: hostSession is the configuration for the host session.
                 properties:
