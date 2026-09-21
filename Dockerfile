@@ -1,4 +1,4 @@
-ARG FRR_IMAGE=quay.io/frrouting/frr:10.6.0
+ARG FRR_IMAGE=quay.io/frrouting/frr:10.7.1
 ARG CNI_PLUGINS_VERSION=012159164d7f552ee7a8ee840447c61611958e87
 
 # Build CNI plugin binaries
