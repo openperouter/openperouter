@@ -76,7 +76,6 @@ router bgp 65000 vrf vrf2
   no bgp network import-check
   no bgp default ipv4-unicast
   bgp router-id 10.0.0.1
-  sid vpn per-vrf export auto
   
   neighbor 2001:db8::2 remote-as 65001
 
@@ -94,6 +93,7 @@ router bgp 65000 vrf vrf2
   exit-address-family
 
   address-family ipv4 unicast
+    sid vpn export auto
     rd vpn export 10.0.0.1:101
     rt vpn export 65002:100 65002:101
     rt vpn import 65003:102 65003:103
@@ -102,6 +102,7 @@ router bgp 65000 vrf vrf2
   exit-address-family
 
   address-family ipv6 unicast
+    sid vpn export auto
     rd vpn export 10.0.0.1:101
     rt vpn export 65002:100 65002:101
     rt vpn import 65003:102 65003:103

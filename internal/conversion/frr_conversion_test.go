@@ -2582,7 +2582,7 @@ func TestAPItoFRR(t *testing.T) {
 			},
 			vpns: []v1alpha1.L3VPN{
 				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+					ObjectMeta: metav1.ObjectMeta{Name: "vrf1"},
 					Spec: v1alpha1.L3VPNSpec{
 						HostSession: &v1alpha1.HostSession{
 							ASN:        65000,
@@ -2593,6 +2593,23 @@ func TestAPItoFRR(t *testing.T) {
 						ExportRTs:        []v1alpha1.RouteTarget{"65000:100", "11110:100"},
 						ImportRTs:        []v1alpha1.RouteTarget{"65001:100", "11111:100"},
 						RDAssignedNumber: 100,
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vrf2"},
+					Spec: v1alpha1.L3VPNSpec{
+						HostSession: &v1alpha1.HostSession{
+							ASN:        65000,
+							LocalCIDRs: []string{"192.168.2.0/24", "2001:db8::/64"},
+							HostASN:    new(int64(65001)),
+						},
+						VRF:              "vrf2",
+						ExportRTs:        []v1alpha1.RouteTarget{"65000:101", "11110:101"},
+						ImportRTs:        []v1alpha1.RouteTarget{"65001:101", "11111:101"},
+						RDAssignedNumber: 101,
+						Features: []v1alpha1.L3VPNFeature{
+							v1alpha1.UDT4UDT6,
+						},
 					},
 				},
 			},
@@ -2673,6 +2690,165 @@ func TestAPItoFRR(t *testing.T) {
 						ImportRTs:          []string{"65001:100", "11111:100"},
 						RouteDistinguisher: "10.0.0.0:100",
 						RouterID:           "10.0.0.0",
+					},
+					{
+						ASN:             65000,
+						ToAdvertiseIPv4: []string{"192.168.2.2/32"},
+						ToAdvertiseIPv6: []string{},
+						LocalNeighbor: &frr.NeighborConfig{
+							ASN:  mustNewPeerASNFromNumber(65001),
+							Addr: "192.168.2.2",
+							ID:   "192.168.2.2",
+						},
+						VRF:                "vrf2",
+						ExportRTs:          []string{"65000:101", "11110:101"},
+						ImportRTs:          []string{"65001:101", "11111:101"},
+						RouteDistinguisher: "10.0.0.0:101",
+						RouterID:           "10.0.0.0",
+						UDT4UDT6:           true,
+					},
+					{
+						ASN:             65000,
+						ToAdvertiseIPv4: []string{},
+						ToAdvertiseIPv6: []string{"2001:db8::2/128"},
+						LocalNeighbor: &frr.NeighborConfig{
+							ASN:  mustNewPeerASNFromNumber(65001),
+							Addr: "2001:db8::2",
+							ID:   "2001:db8::2",
+						},
+						VRF:                "vrf2",
+						ExportRTs:          []string{"65000:101", "11110:101"},
+						ImportRTs:          []string{"65001:101", "11111:101"},
+						RouteDistinguisher: "10.0.0.0:101",
+						RouterID:           "10.0.0.0",
+						UDT4UDT6:           true,
+					},
+				},
+				BFDProfiles: []frr.BFDProfile{},
+				Loglevel:    "debug",
+			},
+			wantErr: false,
+		},
+		{
+			name:      "SRV6 with L3VPN only without host session",
+			nodeIndex: 0,
+			underlays: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						ASN:          65000,
+						RouterIDCIDR: new("10.0.0.0/24"),
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								Address: new("2001:db8:192:168:1::1"),
+								ASN:     new(int64(65001)),
+							},
+						},
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"2001:db8:1234:5678::/64"},
+						},
+						ISIS: &v1alpha1.ISISConfig{
+							BaseNet: "49.0001.0002.0003.0004.00",
+							Level:   new(int32(1)),
+							Interfaces: []v1alpha1.ISISInterface{
+								{Name: "eth0", IPFamily: new(v1alpha1.IPFamilyDualStack)},
+							},
+						},
+						SRV6: &v1alpha1.SRV6Config{
+							Locator: v1alpha1.SRV6Locator{
+								BasePrefix: "fd00:0:32::/48",
+								Format:     "usid-f3216",
+							},
+						},
+					},
+				},
+			},
+			vpns: []v1alpha1.L3VPN{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vrf1"},
+					Spec: v1alpha1.L3VPNSpec{
+						VRF:              "vrf1",
+						ExportRTs:        []v1alpha1.RouteTarget{"65000:100", "11110:100"},
+						ImportRTs:        []v1alpha1.RouteTarget{"65001:100", "11111:100"},
+						RDAssignedNumber: 100,
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vrf2"},
+					Spec: v1alpha1.L3VPNSpec{
+						VRF:              "vrf2",
+						ExportRTs:        []v1alpha1.RouteTarget{"65000:101", "11110:101"},
+						ImportRTs:        []v1alpha1.RouteTarget{"65001:101", "11111:101"},
+						RDAssignedNumber: 101,
+						Features: []v1alpha1.L3VPNFeature{
+							v1alpha1.UDT4UDT6,
+						},
+					},
+				},
+			},
+			logLevel: "debug",
+			want: frr.Config{
+				Underlay: frr.UnderlayConfig{
+					MyASN: 65000,
+					ISIS: &frr.UnderlayISIS{
+						Name:  isisProcessName,
+						Net:   frr.MustParseISISNet("49.0001.0002.0003.0004.00"),
+						Level: 1,
+						Interfaces: []frr.ISISInterface{
+							{Name: "eth0", IPv4: true, IPv6: true},
+							{Name: "lo", IPv6: true, IsPassive: true},
+						},
+					},
+					RouterID: "10.0.0.0",
+					Neighbors: []frr.NeighborConfig{
+						{
+							Name: "65001@2001:db8:192:168:1::1",
+							ASN:  mustNewPeerASNFromNumber(65001),
+							Addr: "2001:db8:192:168:1::1",
+							ID:   "2001:db8:192:168:1::1",
+							NetworkLayerProtocols: []networklayerprotocol.NLP{
+								{AFI: networklayerprotocol.IPv6, SAFI: networklayerprotocol.Unicast},
+								{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.VPN},
+								{AFI: networklayerprotocol.IPv6, SAFI: networklayerprotocol.VPN},
+							},
+							UpdateSource:    "2001:db8:1234:5678::",
+							ExtendedNexthop: true,
+						},
+					},
+					TunnelEndpoint: &frr.TunnelEndpoint{
+						IPv6CIDR: "2001:db8:1234:5678::/128",
+					},
+					SegmentRouting: &frr.UnderlaySegmentRouting{
+						SourceAddress: "2001:db8:1234:5678::",
+						Locator: frr.SRV6Locator{
+							Name:     locatorName,
+							Prefix:   "fd00:0:32::/48",
+							BlockLen: 32,
+							NodeLen:  16,
+							Behavior: "usid",
+							Format:   "usid-f3216",
+						},
+						EncapBehavior: frr.HEncaps,
+					},
+				},
+				Passthrough: nil,
+				L3VNIs:      []frr.L3VNIConfig{},
+				VPNs: []frr.L3VPNConfig{
+					{
+						ASN:                65000,
+						VRF:                "vrf1",
+						ExportRTs:          []string{"65000:100", "11110:100"},
+						ImportRTs:          []string{"65001:100", "11111:100"},
+						RouteDistinguisher: "10.0.0.0:100",
+						RouterID:           "10.0.0.0",
+					},
+					{
+						ASN:                65000,
+						VRF:                "vrf2",
+						ExportRTs:          []string{"65000:101", "11110:101"},
+						ImportRTs:          []string{"65001:101", "11111:101"},
+						RouteDistinguisher: "10.0.0.0:101",
+						RouterID:           "10.0.0.0",
+						UDT4UDT6:           true,
 					},
 				},
 				BFDProfiles: []frr.BFDProfile{},
