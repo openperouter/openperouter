@@ -275,6 +275,7 @@ type ISISConfig struct {
 	// features enables ISIS boolean features.
 	// Supported features are:
 	// advertisePassiveOnly: configures ISIS to advertise only prefixes that belong to passive interfaces.
+	// multiTopology: configures multi-topology mode for IPv4 and IPv6.
 	// +kubebuilder:validation:MaxItems:=32
 	// +listType=atomic
 	// +optional
@@ -304,8 +305,15 @@ type ISISNet string
 // ISISFeature represents a single ISIS feature.
 // +kubebuilder:validation:MinLength:=1
 // +kubebuilder:validation:MaxLength:=128
-// +kubebuilder:validation:Enum:=advertisePassiveOnly
+// +kubebuilder:validation:Enum:=advertisePassiveOnly;multiTopology
 type ISISFeature string
+
+const (
+	// AdvertisePassiveOnly instructs ISIS to advertise passive interfaces only.
+	AdvertisePassiveOnly ISISFeature = "advertisePassiveOnly"
+	// MultiTopology enables ISIS multi-topology mode (RFC5120) for IPv4 and IPv6 families.
+	MultiTopology ISISFeature = "multiTopology"
+)
 
 // ISISInterface holds ISIS interface level configuration.
 type ISISInterface struct {
