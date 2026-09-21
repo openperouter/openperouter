@@ -1,0 +1,74 @@
+From 08c17b567449d766570657a101177b7343530c24 Mon Sep 17 00:00:00 2001
+From: Andreas Karis <ak.karis@gmail.com>
+Date: Tue, 15 Sep 2026 17:03:06 +0200
+Subject: [PATCH] tools: frr-reload.py fix double deletion of segment-routing
+ srv6
+
+In the frr-reload.py script, going from:
+
+        frr defaults traditional
+        segment-routing
+         srv6
+          locators
+           locator MAIN
+            prefix fd00:0:33::/48 block-len 32 node-len 16
+           exit
+          exit
+         exit
+        exit
+
+to:
+        frr defaults traditional
+
+Failed due to the fact that no srv6 was run first, followed by
+deletion of the locator:
+
+        Lines To Delete
+        ===============
+        no hostname centos
+        segment-routing
+         no srv6
+        exit
+        segment-routing
+         srv6
+          locators
+           no locator MAIN
+          exit
+         exit
+        exit
+
+        2026-09-15 17:07:12,652   ERROR: % Can't find SRv6 locator
+
+Stanza segment-routing srv6 is automatically removed when
+all of its children are removed. Therefore, we can forego the
+explicit cleanup of segment-routing srv6.
+
+Signed-off-by: Andreas Karis <ak.karis@gmail.com>
+---
+ tools/frr-reload.py | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/tools/frr-reload.py b/tools/frr-reload.py
+index 7fcd9fb995..9a678362da 100755
+--- a/tools/frr-reload.py
++++ b/tools/frr-reload.py
+@@ -2212,10 +2212,15 @@ def compare_context_objects(newconf, running):
+             ):
+                 continue
+ 
+-            # Segment routing never needs to be deleted
++            # Segment routing and its srv6 stanza never need to be deleted (they are automatically
++            # removed if they are empty)
+             elif (
+                 running_ctx_keys[0].startswith("segment-routing")
+                 and len(running_ctx_keys) == 1
++            ) or (
++                running_ctx_keys[0].startswith("segment-routing")
++                and running_ctx_keys[1].startswith("srv6")
++                and len(running_ctx_keys) == 2
+             ):
+                 continue
+ 
+-- 
+2.50.1 (Apple Git-155)
+

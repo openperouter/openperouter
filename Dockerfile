@@ -72,4 +72,10 @@ COPY systemdmode/frrconfig/daemons /etc/frr/daemons
 COPY systemdmode/frrconfig/vtysh.conf /etc/frr/vtysh.conf
 COPY systemdmode/frrconfig/frr.conf /etc/frr/frr.conf
 
+# Hack for https://github.com/FRRouting/frr/issues/23383
+#          https://github.com/FRRouting/frr/pull/23382
+COPY 0001-tools-frr-reload.py-fix-double-deletion-of-segment-r.patch .
+RUN apk update && apk add patch
+RUN patch /usr/lib/frr/frr-reload.py 0001-tools-frr-reload.py-fix-double-deletion-of-segment-r.patch
+
 ENTRYPOINT ["/controller"]
