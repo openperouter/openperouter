@@ -43,9 +43,10 @@ $ KUBECONFIG_PATH=$KUBECONFIG \
 The output root directory contains the following:
 - `timestamp` - Execution timestamp
 - `inspect.log` - Execution log
+- `nodes.yaml` - Kubernetes Node manifests
 - `node_info/` - Per node network and routing infrastructure information
 - `<openperouter namesapce>/` - OpenPERouter namespace objects and workloads logs (defaults is `openperouter-system`)
-- `<namespace name>/` - Per namespaces containing config resources directory (Underlay, L3VNI, L2VNI, etc.)
+- `<namespace name>/` - Per namespaces containing config resources directory (Underlay, L2VNI, L3VNI, L3VPN, FRRConfiguration, etc.)
 
 The OpenPERouter namespace directory structure:
 - `overview/all.log` - Existing resources in summary
@@ -58,6 +59,7 @@ The OpenPERouter namespace directory structure:
 ```bash
 $ tree /tmp/openperouter-inspect/
 ├── inspect.log
+├── nodes.yaml
 ├── timestamp
 ├── node_info
 │   ├── pe-kind-control-plane

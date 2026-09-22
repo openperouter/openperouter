@@ -28,7 +28,6 @@ readonly CORE_RESOURCES=(\
 	"roles" \
 	"rolebindings" \
 	"serviceaccounts" \
-	"routernodeconfigurationstatuses" \
 )
 # openperouter config resources to collect
 readonly CONFIG_RESOURCES=(\
@@ -36,7 +35,10 @@ readonly CONFIG_RESOURCES=(\
 	"l2vnis" \
 	"l3vnis" \
 	"l3passthroughs" \
+	"l3vpns" \
 	"rawfrrconfigs" \
+	"frrconfigurations" \
+	"routernodeconfigurationstatuses" \
 )
 
 function dump_overview() {
@@ -93,6 +95,15 @@ function dump_config_resources_from_all_ns() {
 			dump_resource "${ctl}" "${namespace}" "${r}" "${base_dir}/${namespace}"
 		done
 	done
+}
+
+function dump_nodes() {
+	local -r ctl="$1"
+	local -r base_dir="$2"
+	local -r logfile="${base_dir}/nodes.yaml"
+
+	$ctl get nodes -o yaml > "$logfile"
+	echo "Dumped node manifests to [$logfile]"
 }
 
 function dump_resource() {
@@ -226,6 +237,7 @@ date --rfc-3339=ns > "${ARTIFACTS_DIR}/timestamp"
 	readonly CTL="${CTL_BIN} -n ${NAMESPACE}"
 	readonly NS_DIR="${ARTIFACTS_DIR}/${NAMESPACE}"
 	set +e
+	dump_nodes                         "${CTL_BIN}" "${ARTIFACTS_DIR}"
 	dump_overview  "${CTL}" "${NS_DIR}/overview"
 	dump_core_resources_from_ns       "${CTL_BIN}" "${NAMESPACE}" "${ARTIFACTS_DIR}"
 	dump_config_resources_from_all_ns "${CTL_BIN}" "${ARTIFACTS_DIR}"
