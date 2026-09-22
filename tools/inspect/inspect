@@ -36,6 +36,7 @@ readonly CONFIG_RESOURCES=(\
 	"l2vnis" \
 	"l3vnis" \
 	"l3passthroughs" \
+	"l3vpns" \
 	"rawfrrconfigs" \
 )
 
