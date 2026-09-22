@@ -140,7 +140,7 @@ func APItoFRR(config APIConfigData, nodeIndex int, logLevel string) (frr.Config,
 		config.L3VNIs,
 		config.L3VPNs,
 		config.L3Passthrough,
-		underlay.Spec.TunnelEndpoint,
+		tunnelEndpoint,
 		config.Passwords,
 	)
 	if err != nil {
@@ -224,7 +224,7 @@ func l2vniConfigsToFRR(l2vnis []v1alpha1.L2VNI) []frr.L2VNIConfig {
 
 func neighborsToFRR(apiNeighbors []v1alpha1.Neighbor, segmentRouting *frr.UnderlaySegmentRouting,
 	l2vnis []v1alpha1.L2VNI, l3vnis []v1alpha1.L3VNI, l3vpns []v1alpha1.L3VPN, l3passthroughs []v1alpha1.L3Passthrough,
-	tunnelEndpoint *v1alpha1.TunnelEndpointConfig,
+	tunnelEndpoint *frr.TunnelEndpoint,
 	passwords map[string]string,
 ) ([]frr.NeighborConfig, error) {
 	neighbors := make([]frr.NeighborConfig, 0, len(apiNeighbors))
@@ -756,7 +756,7 @@ func neighborToFRR(n v1alpha1.Neighbor,
 	l3vnis []v1alpha1.L3VNI,
 	l3vpns []v1alpha1.L3VPN,
 	l3passthroughs []v1alpha1.L3Passthrough,
-	tunnelEndpoint *v1alpha1.TunnelEndpointConfig,
+	tunnelEndpoint *frr.TunnelEndpoint,
 	segmentRouting *frr.UnderlaySegmentRouting,
 	password string,
 ) (*frr.NeighborConfig, error) {
@@ -777,9 +777,9 @@ func neighborToFRR(n v1alpha1.Neighbor,
 		return nil, fmt.Errorf("neighbor %s: could not get network layer protocols, err: %w", neighName, err)
 	}
 
-	var updateSource string
-	if neighborNeedsUpdateSource(segmentRouting, nlps) {
-		updateSource = segmentRouting.SourceAddress
+	updateSource, err := resolveUpdateSource(n, tunnelEndpoint, segmentRouting, nlps)
+	if err != nil {
+		return nil, fmt.Errorf("neighbor %s: could not resolve update source, err: %w", neighName, err)
 	}
 
 	ebgpMultiHop, ebgpMultiHopTTL := ebgpMultiHopForNeighbor(n)
@@ -823,6 +823,60 @@ func neighborToFRR(n v1alpha1.Neighbor,
 	res.BFDProfile = bfdProfileNameForNeighbor(n)
 
 	return res, nil
+}
+
+func resolveUpdateSource(
+	n v1alpha1.Neighbor,
+	tunnelEndpoint *frr.TunnelEndpoint,
+	segmentRouting *frr.UnderlaySegmentRouting,
+	nlpsForNeighbor []networklayerprotocol.NLP,
+) (string, error) {
+	if neighborNeedsUpdateSource(segmentRouting, nlpsForNeighbor) {
+		return segmentRouting.SourceAddress, nil
+	}
+
+	manualUpdateSource := ptr.Deref(n.UpdateSource, "")
+	if manualUpdateSource == "" {
+		return "", nil
+	}
+	if manualUpdateSource != "loopback" {
+		return "", fmt.Errorf("invalid value for update source %q", manualUpdateSource)
+	}
+
+	af := ipfamily.ForAddressString(ptr.Deref(n.Address, ""))
+	if af == ipfamily.Unknown {
+		af = ipfamily.ForCIDRString(ptr.Deref(n.ListenRange, ""))
+	}
+
+	switch af {
+	case ipfamily.IPv4:
+		ipv4CIDR := ""
+		if tunnelEndpoint != nil {
+			ipv4CIDR = tunnelEndpoint.IPv4CIDR
+		}
+		ip, _, err := net.ParseCIDR(ipv4CIDR)
+		if err != nil {
+			return "", fmt.Errorf(
+				"neighbor is of type IPv4 (%s, %s) but no valid IPv4 tunnel endpoint present (%+v), err: %w",
+				ptr.Deref(n.Address, ""), ptr.Deref(n.ListenRange, ""), tunnelEndpoint, err,
+			)
+		}
+		return ip.String(), nil
+	case ipfamily.IPv6:
+		ipv6CIDR := ""
+		if tunnelEndpoint != nil {
+			ipv6CIDR = tunnelEndpoint.IPv6CIDR
+		}
+		ip, _, err := net.ParseCIDR(ipv6CIDR)
+		if err != nil {
+			return "", fmt.Errorf(
+				"neighbor is of type IPv6 (%s, %s) but no valid IPv6 tunnel endpoint present (%+v), err: %w",
+				ptr.Deref(n.Address, ""), ptr.Deref(n.ListenRange, ""), tunnelEndpoint, err,
+			)
+		}
+		return ip.String(), nil
+	}
+	return loopbackName, nil
 }
 
 // neighborNeedsUpdateSource determines if update source shall be set, or not. We set the update source only for
@@ -973,7 +1027,7 @@ func addressFamilyProperty(properties []v1alpha1.AddressFamilyProperty,
 // - ipv6vpn if L3VPNs and SRv6 configuration are present.
 func defaultNLPsForNeighbor(n v1alpha1.Neighbor,
 	l2vnis []v1alpha1.L2VNI, l3vnis []v1alpha1.L3VNI, l3vpns []v1alpha1.L3VPN, l3passthroughs []v1alpha1.L3Passthrough,
-	tunnelEndpoint *v1alpha1.TunnelEndpointConfig,
+	tunnelEndpoint *frr.TunnelEndpoint,
 ) ([]networklayerprotocol.NLP, error) {
 	addIPv4Unicast := false
 	addIPv6Unicast := false
@@ -1006,13 +1060,11 @@ func defaultNLPsForNeighbor(n v1alpha1.Neighbor,
 	}
 
 	if tunnelEndpoint != nil {
-		for _, cidr := range tunnelEndpoint.CIDRs {
-			switch ipfamily.ForCIDRString(cidr) {
-			case ipfamily.IPv4:
-				addIPv4Unicast = true
-			case ipfamily.IPv6:
-				addIPv6Unicast = true
-			}
+		if tunnelEndpoint.IPv4CIDR != "" {
+			addIPv4Unicast = true
+		}
+		if tunnelEndpoint.IPv6CIDR != "" {
+			addIPv6Unicast = true
 		}
 	}
 

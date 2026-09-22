@@ -3,6 +3,7 @@
 package conversion
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -265,6 +266,88 @@ func TestAPItoFRR(t *testing.T) {
 								{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN},
 							},
 							EBGPMultiHop: false,
+						},
+					},
+				},
+				L3VNIs: []frr.L3VNIConfig{
+					{
+						ASN:      65000,
+						VNI:      200,
+						VRF:      "vrf1",
+						RouterID: "10.0.0.0",
+						LocalNeighbor: &frr.NeighborConfig{
+							Addr: "192.168.2.2",
+							ID:   "192.168.2.2",
+							ASN:  mustNewPeerASNFromNumber(65001),
+						},
+						ToAdvertiseIPv4: []string{"192.168.2.2/32"},
+						ToAdvertiseIPv6: []string{},
+						ExportRTs:       []string{},
+						ImportRTs:       []string{},
+					},
+				},
+				VPNs:        []frr.L3VPNConfig{},
+				BFDProfiles: []frr.BFDProfile{},
+				Loglevel:    "debug",
+			},
+			wantErr: false,
+		},
+		{
+			name:      "ipv4 only with loopback update source",
+			nodeIndex: 0,
+			underlays: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						ASN: 65000,
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"192.168.1.0/24"},
+						},
+						RouterIDCIDR: new("10.0.0.0/24"),
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								Address:      new("192.168.1.1"),
+								ASN:          new(int64(65001)),
+								UpdateSource: new("loopback"),
+							},
+						},
+					},
+				},
+			},
+			vnis: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni1"},
+					Spec: v1alpha1.L3VNISpec{
+						HostSession: &v1alpha1.HostSession{
+							ASN:        65000,
+							LocalCIDRs: []string{"192.168.2.0/24"},
+							HostASN:    new(int64(65001)),
+						},
+						VRF: "vrf1",
+						VNI: 200,
+					},
+				},
+			},
+			l3Passthrough: []v1alpha1.L3Passthrough{},
+			logLevel:      "debug",
+			want: frr.Config{
+				Underlay: frr.UnderlayConfig{
+					MyASN: 65000,
+					TunnelEndpoint: &frr.TunnelEndpoint{
+						IPv4CIDR: "192.168.1.0/32",
+					},
+					RouterID: "10.0.0.0",
+					Neighbors: []frr.NeighborConfig{
+						{
+							Name: "65001@192.168.1.1",
+							ASN:  mustNewPeerASNFromNumber(65001),
+							Addr: "192.168.1.1",
+							ID:   "192.168.1.1",
+							NetworkLayerProtocols: []networklayerprotocol.NLP{
+								{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast},
+								{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN},
+							},
+							EBGPMultiHop: false,
+							UpdateSource: "192.168.1.0",
 						},
 					},
 				},
@@ -4039,6 +4122,168 @@ func TestAPItoFRRListenRange(t *testing.T) {
 
 			if !cmp.Equal(got.Underlay.Neighbors, tt.wantNeighbors) {
 				t.Errorf("Neighbors diff: %s", cmp.Diff(tt.wantNeighbors, got.Underlay.Neighbors))
+			}
+		})
+	}
+}
+
+func TestResolveUpdateSource(t *testing.T) {
+	tests := []struct {
+		name           string
+		neighbor       v1alpha1.Neighbor
+		tunnelEndpoint *frr.TunnelEndpoint
+		segmentRouting *frr.UnderlaySegmentRouting
+		nlps           []networklayerprotocol.NLP
+		want           string
+		errStr         string
+	}{
+		{
+			name:     "no update source, no segment routing returns empty",
+			neighbor: v1alpha1.Neighbor{Address: new("192.168.1.1")},
+			want:     "",
+		},
+		{
+			name:           "no update source, segment routing with IPv4 VPN NLP returns source address",
+			neighbor:       v1alpha1.Neighbor{Address: new("192.168.1.1")},
+			segmentRouting: &frr.UnderlaySegmentRouting{SourceAddress: "2001:db8::1"},
+			nlps: []networklayerprotocol.NLP{
+				{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.VPN},
+			},
+			want: "2001:db8::1",
+		},
+		{
+			name:           "no update source, segment routing with IPv6 VPN NLP returns source address",
+			neighbor:       v1alpha1.Neighbor{Address: new("2001:db8::1")},
+			segmentRouting: &frr.UnderlaySegmentRouting{SourceAddress: "fc00::1"},
+			nlps: []networklayerprotocol.NLP{
+				{AFI: networklayerprotocol.IPv6, SAFI: networklayerprotocol.VPN},
+			},
+			want: "fc00::1",
+		},
+		{
+			name:           "update source, segment routing with IPv6 VPN NLP returns SR source address",
+			neighbor:       v1alpha1.Neighbor{Interface: new("eth0"), UpdateSource: new("loopback")},
+			segmentRouting: &frr.UnderlaySegmentRouting{SourceAddress: "fc00::1"},
+			nlps: []networklayerprotocol.NLP{
+				{AFI: networklayerprotocol.IPv6, SAFI: networklayerprotocol.VPN},
+			},
+			want: "fc00::1",
+		},
+		{
+			name:           "no update source, segment routing without VPN NLP returns empty",
+			neighbor:       v1alpha1.Neighbor{Address: new("192.168.1.1")},
+			segmentRouting: &frr.UnderlaySegmentRouting{SourceAddress: "2001:db8::1"},
+			nlps: []networklayerprotocol.NLP{
+				{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast},
+			},
+			want: "",
+		},
+		// We currently only support 'loopback' as a valid value. The API will not allow users to set
+		// anything else, but in the case of static resources, make sure that invalid values return
+		// an error.
+		{
+			name:           "non-loopback update source without segment routing returns error",
+			neighbor:       v1alpha1.Neighbor{Address: new("192.168.1.1"), UpdateSource: new("eth0")},
+			tunnelEndpoint: &frr.TunnelEndpoint{IPv4CIDR: "10.0.0.1/32"},
+			errStr:         "invalid value for update source \"eth0\"",
+		},
+		{
+			name:           "loopback with IPv4 neighbor returns IPv4 tunnel endpoint",
+			neighbor:       v1alpha1.Neighbor{Address: new("192.168.1.1"), UpdateSource: new("loopback")},
+			tunnelEndpoint: &frr.TunnelEndpoint{IPv4CIDR: "10.0.0.1/32"},
+			want:           "10.0.0.1",
+		},
+		{
+			name:           "loopback with IPv6 neighbor returns IPv6 tunnel endpoint",
+			neighbor:       v1alpha1.Neighbor{Address: new("2001:db8::1"), UpdateSource: new("loopback")},
+			tunnelEndpoint: &frr.TunnelEndpoint{IPv6CIDR: "2001:db8:1234::/128"},
+			want:           "2001:db8:1234::",
+		},
+		{
+			name:           "loopback with IPv4 listen range returns IPv4 tunnel endpoint",
+			neighbor:       v1alpha1.Neighbor{ListenRange: new("192.168.10.0/24"), UpdateSource: new("loopback")},
+			tunnelEndpoint: &frr.TunnelEndpoint{IPv4CIDR: "10.0.0.1/32"},
+			want:           "10.0.0.1",
+		},
+		{
+			name:           "loopback with IPv6 listen range returns IPv6 tunnel endpoint",
+			neighbor:       v1alpha1.Neighbor{ListenRange: new("fd00:10::/64"), UpdateSource: new("loopback")},
+			tunnelEndpoint: &frr.TunnelEndpoint{IPv6CIDR: "2001:db8::/128"},
+			want:           "2001:db8::",
+		},
+		{
+			name:           "loopback with interface neighbor returns lo",
+			neighbor:       v1alpha1.Neighbor{UpdateSource: new("loopback"), Interface: new("eth0")},
+			tunnelEndpoint: &frr.TunnelEndpoint{IPv4CIDR: "10.0.0.1/32"},
+			want:           loopbackName,
+		},
+		{
+			name:           "loopback with IPv4 neighbor but no IPv4 tunnel endpoint errors",
+			neighbor:       v1alpha1.Neighbor{Address: new("192.168.1.1"), UpdateSource: new("loopback")},
+			tunnelEndpoint: &frr.TunnelEndpoint{},
+			errStr: "neighbor is of type IPv4 (192.168.1.1, ) " +
+				"but no valid IPv4 tunnel endpoint present (&{IPv4CIDR: IPv6CIDR:}), err: invalid CIDR address: ",
+		},
+		{
+			name:           "loopback with IPv6 neighbor but no IPv6 tunnel endpoint errors",
+			neighbor:       v1alpha1.Neighbor{Address: new("2001:db8::1"), UpdateSource: new("loopback")},
+			tunnelEndpoint: &frr.TunnelEndpoint{IPv4CIDR: "10.0.0.1/32"},
+			errStr: "neighbor is of type IPv6 (2001:db8::1, ) " +
+				"but no valid IPv6 tunnel endpoint present (&{IPv4CIDR:10.0.0.1/32 IPv6CIDR:}), err: invalid CIDR address: ",
+		},
+		{
+			name:           "loopback with IPv4 neighbor (listen range) but no IPv4 tunnel endpoint errors",
+			neighbor:       v1alpha1.Neighbor{ListenRange: new("192.168.1.0/24"), UpdateSource: new("loopback")},
+			tunnelEndpoint: &frr.TunnelEndpoint{},
+			errStr: "neighbor is of type IPv4 (, 192.168.1.0/24) " +
+				"but no valid IPv4 tunnel endpoint present (&{IPv4CIDR: IPv6CIDR:}), err: invalid CIDR address: ",
+		},
+		{
+			name:           "loopback with IPv6 neighbor (listen range) but no IPv6 tunnel endpoint errors",
+			neighbor:       v1alpha1.Neighbor{ListenRange: new("2001:db8::/64"), UpdateSource: new("loopback")},
+			tunnelEndpoint: &frr.TunnelEndpoint{IPv4CIDR: "10.0.0.1/32"},
+			errStr: "neighbor is of type IPv6 (, 2001:db8::/64) " +
+				"but no valid IPv6 tunnel endpoint present (&{IPv4CIDR:10.0.0.1/32 IPv6CIDR:}), err: invalid CIDR address: ",
+		},
+		{
+			name:           "loopback with IPv4 neighbor but nil tunnel endpoint errors",
+			neighbor:       v1alpha1.Neighbor{Address: new("192.168.1.1"), UpdateSource: new("loopback")},
+			tunnelEndpoint: nil,
+			errStr: "neighbor is of type IPv4 (192.168.1.1, ) " +
+				"but no valid IPv4 tunnel endpoint present (<nil>), err: invalid CIDR address: ",
+		},
+		{
+			name:           "loopback with IPv6 neighbor but nil tunnel endpoint errors",
+			neighbor:       v1alpha1.Neighbor{Address: new("2001:db8::1"), UpdateSource: new("loopback")},
+			tunnelEndpoint: nil,
+			errStr: "neighbor is of type IPv6 (2001:db8::1, ) " +
+				"but no valid IPv6 tunnel endpoint present (<nil>), err: invalid CIDR address: ",
+		},
+		{
+			name:           "loopback with interface neighbor but nil tunnel endpoint returns \"lo\"",
+			neighbor:       v1alpha1.Neighbor{Interface: new("eth0"), UpdateSource: new("loopback")},
+			tunnelEndpoint: nil,
+			want:           "lo",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := resolveUpdateSource(tt.neighbor, tt.tunnelEndpoint, tt.segmentRouting, tt.nlps)
+			if tt.errStr != "" {
+				if err == nil {
+					t.Fatalf("resolveUpdateSource() expected error %q, got nil", tt.errStr)
+				}
+				if !strings.Contains(err.Error(), tt.errStr) {
+					t.Fatalf("resolveUpdateSource() error = %q, want it to contain %q", err.Error(), tt.errStr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("resolveUpdateSource() expected no error but got error: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("resolveUpdateSource() = %q, want %q", got, tt.want)
 			}
 		})
 	}

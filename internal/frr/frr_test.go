@@ -72,6 +72,54 @@ func TestBasic(t *testing.T) {
 	testCheckConfigFile(t)
 }
 
+func TestBasicWithUpdateSource(t *testing.T) {
+	configFile := testSetup(t)
+	updater := testUpdater(configFile)
+
+	config := Config{
+		Underlay: UnderlayConfig{
+			MyASN: 64512,
+			TunnelEndpoint: &TunnelEndpoint{
+				IPv4CIDR: "100.64.0.1/32",
+			},
+			RouterID: "10.0.0.1",
+			Neighbors: []NeighborConfig{
+				{
+					ASN:  mustNewPeerASNFromNumber(64513),
+					Addr: "192.168.1.2",
+					ID:   "192.168.1.2",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{
+						{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast},
+						{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN},
+					},
+					UpdateSource: "100.64.0.1",
+				},
+			},
+		},
+		L3VNIs: []L3VNIConfig{
+			{
+				VRF:      "red",
+				ASN:      64512,
+				VNI:      100,
+				RouterID: "10.0.0.1",
+				LocalNeighbor: &NeighborConfig{
+					ASN:  mustNewPeerASNFromNumber(64513),
+					Addr: "192.168.1.2",
+					ID:   "192.168.1.2",
+				},
+				ToAdvertiseIPv4: []string{
+					"192.169.10.2/24",
+				},
+			},
+		},
+	}
+	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+		t.Fatalf("Failed to apply config: %s", err)
+	}
+
+	testCheckConfigFile(t)
+}
+
 func TestBasicWithASNRT(t *testing.T) {
 	configFile := testSetup(t)
 	updater := testUpdater(configFile)
