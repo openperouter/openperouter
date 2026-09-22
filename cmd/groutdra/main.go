@@ -1,7 +1,7 @@
 // SPDX-License-Identifier:Apache-2.0
 
-// groutdra is a POC kubelet DRA plugin. See kubevirt#18444 for the
-// registration / ResourceSlice / CDI pattern this copies.
+// groutdra is a kubelet DRA plugin. It publishes KEP-5304 device metadata
+// (vhost-user-path) for kubevirt/vhostuser-network-binding-plugin.
 package main
 
 import (
@@ -14,6 +14,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	metadatav1alpha1 "k8s.io/dynamic-resource-allocation/api/metadata/v1alpha1"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 
 	"github.com/openperouter/openperouter/internal/groutdra"
@@ -51,6 +52,9 @@ func run(ctx context.Context) error {
 		kubeletplugin.KubeClient(client),
 		kubeletplugin.NodeName(nodeName),
 		kubeletplugin.PluginDataDirectoryPath(pluginDir),
+		kubeletplugin.CDIDirectory(groutdra.CDIDir),
+		kubeletplugin.EnableDeviceMetadata(true),
+		kubeletplugin.MetadataVersions(metadatav1alpha1.SchemeGroupVersion),
 	)
 	if err != nil {
 		return err

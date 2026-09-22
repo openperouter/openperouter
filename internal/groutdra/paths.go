@@ -11,36 +11,51 @@ import (
 )
 
 const (
-	DriverName = "grout.openperouter.io"
-	PoolName   = "grout-vhost"
+	DriverName      = "grout.openperouter.io"
+	PoolName        = "grout-vhost"
 	DeviceClassName = "grout-vhostuser"
 
-	// Align with kubevirt#19044 DefaultSocketFileName so quay.io/anbanerj/test-vhostuser-nbp:client
-	// can join socketDir + "vhost.sock" without extra env.
 	SocketFileName = "vhost.sock"
 	HostVhostRoot  = "/var/run/grout-vhost"
-	PodVhostDir    = "/var/run/grout-vhost"
-	GroutSockPath  = "/var/run/grout/grout.sock"
-	CDIDir         = "/var/run/cdi"
-	CDIVendor      = "grout.openperouter.io"
-	CDIClass       = "vhost"
-	MaxDevices     = 8
-	GuestMAC       = "52:54:00:67:72:01"
-	QEMUUID        = 107
-	QEMUGID        = 107
+	// PodVhostRoot is the container mount root. Per-request sockets land at
+	// PodVhostRoot/<requestName>/vhost.sock (same shape as ovsdpdk DRA).
+	PodVhostRoot  = "/var/run/grout-vhost"
+	GroutSockPath = "/var/run/grout/grout.sock"
+	CDIDir        = "/var/run/cdi"
+	CDIVendor     = "grout.openperouter.io"
+	CDIClass      = "vhost"
+	MaxDevices    = 8
+	QEMUUID       = 107
+	QEMUGID       = 107
 
-	EnvHostpathMountpoint = "KUBEVIRT_HOSTPATH_MOUNTPOINT"
-	EnvHostpathSocket     = "KUBEVIRT_HOSTPATH_SOCKET"
-	EnvVhostMode          = "KUBEVIRT_VHOSTUSER_MODE"
-	EnvGroutSocket        = "GROUT_VHOST_SOCKET"
+	// VhostPathAttr is the KEP-5304 attribute kubevirt/vhostuser-network-binding-plugin
+	// reads from DRA device metadata (same key as ovsdpdk.k8snetworkplumbingwg.io).
+	VhostPathAttr = "vhost-user-path"
 )
 
-func ClaimDir(claimUID types.UID) string {
-	return filepath.Join(HostVhostRoot, string(claimUID))
+func ClaimDir(claimUID types.UID, requestName string) string {
+	if requestName == "" {
+		requestName = "vhu"
+	}
+	return filepath.Join(HostVhostRoot, string(claimUID), requestName)
 }
 
-func SocketPath(claimUID types.UID) string {
-	return filepath.Join(ClaimDir(claimUID), SocketFileName)
+func SocketPath(claimUID types.UID, requestName string) string {
+	return filepath.Join(ClaimDir(claimUID, requestName), SocketFileName)
+}
+
+func PodSocketPath(requestName string) string {
+	if requestName == "" {
+		requestName = "vhu"
+	}
+	return filepath.Join(PodVhostRoot, requestName, SocketFileName)
+}
+
+func PodMountPath(requestName string) string {
+	if requestName == "" {
+		requestName = "vhu"
+	}
+	return filepath.Join(PodVhostRoot, requestName)
 }
 
 // PortName is a grout interface name unique per claim (DNS-ish, short).
