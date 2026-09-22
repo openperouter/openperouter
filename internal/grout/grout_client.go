@@ -28,14 +28,37 @@ type groutAddress struct {
 }
 
 type groutInterface struct {
-	Name    string `json:"name"`
-	Type    string `json:"type"`
-	VRF     string `json:"vrf"`
-	Devargs string `json:"devargs"`
-	MAC     string `json:"mac"`
-	NRxq    int32  `json:"n_rxq"`
-	RxqSize int32  `json:"rxq_size"`
-	MTU     int    `json:"mtu"`
+	Name    string   `json:"name"`
+	Type    string   `json:"type"`
+	VRF     string   `json:"vrf"`
+	Devargs string   `json:"devargs"`
+	MAC     string   `json:"mac"`
+	NRxq    int32    `json:"n_rxq"`
+	RxqSize int32    `json:"rxq_size"`
+	MTU     int      `json:"mtu"`
+	Flags   []string `json:"flags"`
+}
+
+func (i *groutInterface) hasFlag(flag string) bool {
+	if i == nil {
+		return false
+	}
+	for _, f := range i.Flags {
+		if f == flag {
+			return true
+		}
+	}
+	return false
+}
+
+// PortIsRunning reports whether grout lists the named port with the running flag
+// (vhost-user handshake completed). Missing ports are not running.
+func (c *Client) PortIsRunning(ctx context.Context, name string) (bool, error) {
+	info, err := c.getInterfaceInfo(ctx, name)
+	if err != nil {
+		return false, err
+	}
+	return info.hasFlag("running"), nil
 }
 
 type groutVXLANInfo struct {
