@@ -553,6 +553,18 @@ spec:
                       - External
                       - Internal
                       type: string
+                    updateSource:
+                      description: |-
+                        updateSource explicitly specifies the BGP update-source for this neighbor. It currently only
+                        supports the special keyword `loopback` which instructs the OpenPERouter to derive a
+                        valid update source chosen among the tunnel endpoint IP addresses and the `lo` interface.
+                        This setting has no effect in those cases where the OpenPERouter already chose to set the
+                        update-source to the loopback IPv6 address by default, i.e. for SRv6 neighbors.
+                      enum:
+                      - loopback
+                      maxLength: 8
+                      minLength: 8
+                      type: string
                   type: object
                   x-kubernetes-validations:
                   - message: either ASN or Type must be set
