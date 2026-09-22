@@ -1783,6 +1783,18 @@ spec:
                       - External
                       - Internal
                       type: string
+                    updateSource:
+                      description: |-
+                        updateSource explicitly specifies the BGP update-source for this neighbor. It currently only
+                        supports the special keyword `loopback`, which instructs the OpenPERouter to derive the update
+                        source from the IPv4 or IPv6 tunnel endpoint IP address matching the neighbor's address family.
+                        It is only valid for neighbors identified by `address` or `listenRange` and must not be set
+                        together with `interface`.
+                      enum:
+                      - loopback
+                      maxLength: 8
+                      minLength: 8
+                      type: string
                   type: object
                   x-kubernetes-validations:
                   - message: either ASN or Type must be set
@@ -1820,6 +1832,9 @@ spec:
                     rule: '!(has(self.addressFamilies) && self.addressFamilies.exists(af,
                       has(af.properties) && af.properties.exists(o, o.type == ''routeReflectorClient'')))
                       || (has(self.type) && self.type == ''Internal'')'
+                  - message: updateSource cannot be set together with Interface for
+                      Neighbor
+                    rule: '!has(self.updateSource) || !has(self.interface)'
                 maxItems: 128
                 minItems: 1
                 type: array
