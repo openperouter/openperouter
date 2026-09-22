@@ -4,8 +4,7 @@ package groutdra
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
+	"strings"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/types"
@@ -18,31 +17,25 @@ func TestPortName(t *testing.T) {
 	}
 }
 
-func TestWriteCDISpec(t *testing.T) {
-	dir := t.TempDir()
-	origCDI := CDIDir
-	t.Cleanup(func() { /* restore via reassignment below */ })
-	_ = origCDI
-	// CDIDir is a package const; write into a fake by using ClaimDir only.
-	// writeCDISpec uses CDIDir const — skip filesystem if we cannot override.
-	// Test JSON shape via marshal of the same struct.
+func TestPodSocketPath(t *testing.T) {
+	got := PodSocketPath("vhu")
+	if got != "/var/run/grout-vhost/vhu/vhost.sock" {
+		t.Fatalf("PodSocketPath = %q", got)
+	}
+}
+
+func TestCDISpecHasMountNoEnv(t *testing.T) {
 	uid := types.UID("claim-uid-1")
-	hostDir := filepath.Join(dir, string(uid))
+	hostDir := "/var/run/grout-vhost/" + string(uid) + "/vhu"
 	spec := cdiSpec{
 		Version: "0.5.0",
 		Kind:    CDIVendor + "/" + CDIClass,
 		Devices: []cdiDevice{{
 			Name: string(uid),
 			ContainerEdits: cdiEdits{
-				Env: []string{
-					EnvHostpathMountpoint + "=" + PodVhostDir,
-					EnvHostpathSocket + "=" + SocketFileName,
-					EnvVhostMode + "=client",
-					EnvGroutSocket + "=" + filepathJoinPodSocket(),
-				},
 				Mounts: []cdiMount{{
 					HostPath:      hostDir,
-					ContainerPath: PodVhostDir,
+					ContainerPath: PodMountPath("vhu"),
 					Options:       []string{"rbind"},
 				}},
 			},
@@ -52,36 +45,14 @@ func TestWriteCDISpec(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !containsAll(string(b), []string{
-		`"kind":"grout.openperouter.io/vhost"`,
-		`"KUBEVIRT_HOSTPATH_MOUNTPOINT=/var/run/grout-vhost"`,
-		`"KUBEVIRT_HOSTPATH_SOCKET=vhost.sock"`,
-		`"KUBEVIRT_VHOSTUSER_MODE=client"`,
-		hostDir,
-	}) {
+	s := string(b)
+	if !strings.Contains(s, `"kind":"grout.openperouter.io/vhost"`) {
 		t.Fatalf("unexpected spec: %s", b)
 	}
-	_ = os.Remove
-}
-
-func containsAll(s string, parts []string) bool {
-	for _, p := range parts {
-		if !contains(s, p) {
-			return false
-		}
+	if strings.Contains(s, "KUBEVIRT_") || strings.Contains(s, `"env"`) {
+		t.Fatalf("CDI must not inject sidecar env vars: %s", b)
 	}
-	return true
-}
-
-func contains(s, sub string) bool {
-	return len(s) >= len(sub) && (s == sub || len(sub) == 0 || indexOf(s, sub) >= 0)
-}
-
-func indexOf(s, sub string) int {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		if s[i:i+len(sub)] == sub {
-			return i
-		}
+	if !strings.Contains(s, hostDir) || !strings.Contains(s, "/var/run/grout-vhost/vhu") {
+		t.Fatalf("missing mount paths: %s", b)
 	}
-	return -1
 }
