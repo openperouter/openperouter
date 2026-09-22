@@ -89,6 +89,10 @@ func validateUnderlay(underlay v1alpha1.Underlay) error {
 		}
 	}
 
+	if err := validateUpdateSources(underlay.Spec.Neighbors, underlay.Spec.TunnelEndpoint); err != nil {
+		return fmt.Errorf("underlay %s: %w", underlay.Name, err)
+	}
+
 	srv6Config := underlay.Spec.SRV6
 	if srv6Config == nil {
 		return nil
@@ -188,6 +192,22 @@ func validateNoDuplicates(items []string) error {
 			return fmt.Errorf("duplicate entry %s", item)
 		}
 		seen[item] = struct{}{}
+	}
+	return nil
+}
+
+// validateUpdateSources rejects misconfigured updateSource settings, and updateSource settings
+// that are incompatible with the tunnel endpoint config.
+func validateUpdateSources(neighbors []v1alpha1.Neighbor, tunnelEndpointConfig *v1alpha1.TunnelEndpointConfig) error {
+	// We are only validating, so we can parse the TunnelEndpointConfig with a dummy node index of 0.
+	tunnelEndpoint, err := tunnelEndpointToFRR(tunnelEndpointConfig, 0)
+	if err != nil {
+		return fmt.Errorf("failed to translate tunnel endpoint settings, err: %w", err)
+	}
+	for _, n := range neighbors {
+		if _, err := resolveUpdateSource(n, tunnelEndpoint); err != nil {
+			return fmt.Errorf("neighbor %s: could not resolve update source, err: %w", NeighborID(n), err)
+		}
 	}
 	return nil
 }
