@@ -35,11 +35,14 @@ type VhostPortParams struct {
 	Queues      uint
 	MAC         string // optional; applied with interface set port … mac
 	GatewayCIDR string // optional; empty skips address add
+	// Client is DPDK net_vhost client=1: grout connects, QEMU binds (libvirt mode=server).
+	Client bool
 }
 
-// VhostDevargs builds DPDK net_vhost server (client=0) device args.
+// VhostDevargs builds DPDK net_vhost device args.
 // Instance index is stable per port name so create is idempotent on a node.
-func VhostDevargs(name, socketPath string, queues uint) (string, error) {
+// client=true adds client=1 (grout reconnects to a QEMU-owned Unix socket).
+func VhostDevargs(name, socketPath string, queues uint, client bool) (string, error) {
 	if name == "" {
 		return "", fmt.Errorf("vhost port name is required")
 	}
@@ -50,6 +53,9 @@ func VhostDevargs(name, socketPath string, queues uint) (string, error) {
 		queues = 1
 	}
 	devargs := fmt.Sprintf("net_vhost%d,iface=%s,queues=%d", vhostInstanceIndex(name), socketPath, queues)
+	if client {
+		devargs += ",client=1"
+	}
 	if len(devargs) > GRPortDevargsSize {
 		return "", fmt.Errorf("vhost devargs length %d exceeds GR_PORT_DEVARGS_SIZE %d: %s", len(devargs), GRPortDevargsSize, devargs)
 	}
@@ -67,7 +73,7 @@ func (c *Client) CreateVhostPort(ctx context.Context, p VhostPortParams) error {
 	if p.Queues == 0 {
 		p.Queues = 1
 	}
-	devargs, err := VhostDevargs(p.Name, p.SocketPath, p.Queues)
+	devargs, err := VhostDevargs(p.Name, p.SocketPath, p.Queues, p.Client)
 	if err != nil {
 		return err
 	}
@@ -76,14 +82,26 @@ func (c *Client) CreateVhostPort(ctx context.Context, p VhostPortParams) error {
 		return fmt.Errorf("creating vhost socket dir for %s: %w", p.Name, err)
 	}
 
-	exists, err := c.portExists(ctx, p.Name)
+	info, err := c.getInterfaceInfo(ctx, p.Name)
 	if err != nil {
 		return fmt.Errorf("checking vhost port %s: %w", p.Name, err)
 	}
-	if !exists {
-		// Stale Unix socket blocks grout bind after a previous crash.
-		_ = os.Remove(p.SocketPath)
-		slog.InfoContext(ctx, "creating grout vhost port", "name", p.Name, "devargs", devargs)
+	// Client=1 connect is one-shot on grout 0.17. A port that exists but is not
+	// running never completes the QEMU handshake unless we delete and add again.
+	if p.Client && info != nil && !info.hasFlag("running") {
+		slog.InfoContext(ctx, "grout vhost client port exists without running; recreating", "name", p.Name, "flags", info.Flags)
+		if err := c.deletePort(ctx, p.Name); err != nil {
+			return fmt.Errorf("deleting stuck vhost port %s: %w", p.Name, err)
+		}
+		info = nil
+	}
+	if info == nil {
+		// Server-mode grout binds the socket; a leftover file blocks bind.
+		// Client-mode grout connects to QEMU's socket — do not unlink it.
+		if !p.Client {
+			_ = os.Remove(p.SocketPath)
+		}
+		slog.InfoContext(ctx, "creating grout vhost port", "name", p.Name, "devargs", devargs, "client", p.Client)
 		if err := c.run(ctx, "interface", "add", "port", p.Name, "devargs", devargs,
 			"rxqs", fmt.Sprintf("%d", p.Queues), "qsize", fmt.Sprintf("%d", vhostQSize), "up"); err != nil {
 			return fmt.Errorf("creating grout vhost port %s: %w", p.Name, err)
@@ -108,8 +126,10 @@ func (c *Client) CreateVhostPort(ctx context.Context, p VhostPortParams) error {
 		}
 	}
 
-	if err := os.Chmod(p.SocketPath, vhostSocketPerm); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("chmod vhost socket %s: %w", p.SocketPath, err)
+	if !p.Client {
+		if err := os.Chmod(p.SocketPath, vhostSocketPerm); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("chmod vhost socket %s: %w", p.SocketPath, err)
+		}
 	}
 	return nil
 }

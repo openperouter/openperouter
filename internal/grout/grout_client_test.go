@@ -36,6 +36,26 @@ func mockCmdExec(cmdCalls ...cmdCall) func() {
 	}
 }
 
+func mockCmdExecSeq(cmdCalls ...cmdCall) func() {
+	original := execCmd
+	i := 0
+	execCmd = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		cmd := name + " " + strings.Join(args, " ")
+		if i >= len(cmdCalls) {
+			return nil, fmt.Errorf("unexpected extra command: [%s]", cmd)
+		}
+		call := cmdCalls[i]
+		i++
+		if call.cmd != cmd {
+			return nil, fmt.Errorf("unexpected command: [%s] want [%s]", cmd, call.cmd)
+		}
+		return []byte(call.output), call.err
+	}
+	return func() {
+		execCmd = original
+	}
+}
+
 const interfaceShowP0Output = `{
 	"name": "p0",
 	"type": "port",
