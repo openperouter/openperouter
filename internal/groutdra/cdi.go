@@ -10,7 +10,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-// cdiSpec is a minimal CDI 0.5 spec (same shape as kubevirt#18444 hostpath.go).
+// cdiSpec bind-mounts the vhost socket directory. Socket path is advertised
+// via KEP-5304 device metadata (vhost-user-path), not CDI env vars.
 type cdiSpec struct {
 	Version string      `json:"cdiVersion"`
 	Kind    string      `json:"kind"`
@@ -18,12 +19,11 @@ type cdiSpec struct {
 }
 
 type cdiDevice struct {
-	Name           string         `json:"name"`
-	ContainerEdits cdiEdits       `json:"containerEdits"`
+	Name           string   `json:"name"`
+	ContainerEdits cdiEdits `json:"containerEdits"`
 }
 
 type cdiEdits struct {
-	Env    []string   `json:"env,omitempty"`
 	Mounts []cdiMount `json:"mounts,omitempty"`
 }
 
@@ -33,7 +33,7 @@ type cdiMount struct {
 	Options       []string `json:"options,omitempty"`
 }
 
-func writeCDISpec(claimUID types.UID, hostDir string) (string, error) {
+func writeCDISpec(claimUID types.UID, hostDir, containerDir string) (string, error) {
 	if err := os.MkdirAll(CDIDir, 0o755); err != nil {
 		return "", fmt.Errorf("creating CDI dir: %w", err)
 	}
@@ -43,15 +43,9 @@ func writeCDISpec(claimUID types.UID, hostDir string) (string, error) {
 		Devices: []cdiDevice{{
 			Name: string(claimUID),
 			ContainerEdits: cdiEdits{
-				Env: []string{
-					EnvHostpathMountpoint + "=" + PodVhostDir,
-					EnvHostpathSocket + "=" + SocketFileName,
-					EnvVhostMode + "=" + "client",
-					EnvGroutSocket + "=" + filepathJoinPodSocket(),
-				},
 				Mounts: []cdiMount{{
 					HostPath:      hostDir,
-					ContainerPath: PodVhostDir,
+					ContainerPath: containerDir,
 					Options:       []string{"rbind"},
 				}},
 			},
@@ -66,10 +60,6 @@ func writeCDISpec(claimUID types.UID, hostDir string) (string, error) {
 		return "", fmt.Errorf("writing CDI spec: %w", err)
 	}
 	return CDIDeviceID(claimUID), nil
-}
-
-func filepathJoinPodSocket() string {
-	return PodVhostDir + "/" + SocketFileName
 }
 
 func removeCDISpec(claimUID types.UID) {
