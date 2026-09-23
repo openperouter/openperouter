@@ -174,7 +174,7 @@ func parseIPRoutes(input string) ([]ipRoute, error) {
 func parseBGPVPNtoL3VPN(data []byte) (L3VPNData, error) {
 	res := L3VPNData{}
 	if err := json.Unmarshal(data, &res); err != nil {
-		return L3VPNData{}, fmt.Errorf("error unmarshalling JSON: %v", err)
+		return L3VPNData{}, fmt.Errorf("error unmarshalling JSON: %w", err)
 	}
 
 	return res, nil
