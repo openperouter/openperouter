@@ -233,7 +233,13 @@ func (c *Client) ensureBridge(ctx context.Context, name, vrf string) error {
 	if vrf != "" {
 		args = append(args, "vrf", vrf)
 	}
-	args = append(args, "neigh_suppress", "on")
+	// neigh_suppress answers ARP/NDP locally from the EVPN neighbor table, and
+	// neigh_snoop populates that table from the traffic of the locally attached
+	// hosts. Without snooping grout never learns the local IP/MAC bindings, so
+	// FRR advertises MAC-only type-2 routes and the remote VTEPs have nothing to
+	// suppress with. A disconnected L2VNI has no address on the bridge, so
+	// snooping is the only way its neighbors get learned.
+	args = append(args, "neigh_suppress", "on", "neigh_snoop", "on")
 	slog.InfoContext(ctx, "creating grout bridge", "name", name, "vrf", vrf)
 	if err := c.run(ctx, args...); err != nil {
 		return fmt.Errorf("creating grout bridge %s: %w", name, err)
