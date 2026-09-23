@@ -5,8 +5,10 @@ package conversion
 import (
 	"errors"
 	"maps"
+	"slices"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
+	"github.com/openperouter/openperouter/internal/frr"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
 )
 
@@ -52,6 +54,38 @@ func MergeAPIConfigs(configs ...APIConfigData) (APIConfigData, error) {
 	}
 
 	return merged, nil
+}
+
+const passwordRedactionMarker = "<REDACTED>"
+
+// RedactAPIConfigData returns a copy of data safe for logging: resolved BGP
+// passwords and any passwords embedded in raw FRR snippets are replaced with a
+// redaction marker. Underlays and VNIs carry only secret references, never
+// plaintext credentials, so they are shared unchanged.
+func RedactAPIConfigData(data APIConfigData) APIConfigData {
+	if data.Passwords != nil {
+		passwords := make(map[string]string, len(data.Passwords))
+		for id := range data.Passwords {
+			passwords[id] = passwordRedactionMarker
+		}
+		data.Passwords = passwords
+	}
+	data.RawFRRConfigs = RedactRawFRRConfigs(data.RawFRRConfigs)
+	return data
+}
+
+// RedactRawFRRConfigs returns a copy of configs with the passwords in each raw
+// FRR snippet replaced, safe for logging.
+func RedactRawFRRConfigs(configs []v1alpha1.RawFRRConfig) []v1alpha1.RawFRRConfig {
+	if configs == nil {
+		return nil
+	}
+
+	redacted := slices.Clone(configs)
+	for i := range redacted {
+		redacted[i].Spec.RawConfig = frr.RedactPasswords(redacted[i].Spec.RawConfig)
+	}
+	return redacted
 }
 
 // validateAPIConfigData flags invalid config data.
