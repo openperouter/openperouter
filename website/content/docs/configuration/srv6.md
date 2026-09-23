@@ -86,6 +86,22 @@ SRv6 reachability.
 IS-IS with IPv6 is automatically enabled for all interfaces listed in the
 `interfaces` field of the underlay configuration.
 
+#### IS-IS Features
+
+The `features` list enables optional IS-IS behaviors:
+
+- **advertisePassiveOnly**: Only advertise prefixes belonging to passive interfaces.
+- **multiTopology**: Maintain separate SPF topologies for IPv4 and IPv6 (RFC 5120), allowing each address family to use independent link sets.
+
+```yaml
+  isis:
+    baseNet: "49.0001.0002.0003.0004.00"
+    level: 1
+    features:
+    - "advertisePassiveOnly"
+    - "multiTopology"
+```
+
 For the full list of IS-IS configuration fields, see the
 [ISISConfig API Reference]({{< ref "api-reference#isisconfig" >}}).
 
