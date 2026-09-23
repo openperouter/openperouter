@@ -157,8 +157,6 @@ func main() {
 
 	flag.StringVar(&args.nodeName, "nodename", "", "The name of the node the controller runs on")
 	flag.StringVar(&args.namespace, "namespace", "", "The namespace the controller runs in")
-	// Kept so that existing manifests passing it do not make flag parsing fail.
-	flag.String("crisocket", "", "Deprecated: ignored, the controller no longer connects to the container runtime")
 
 	flag.DurationVar(&hostModeParams.k8sWaitInterval, "k8s-wait-timeout", time.Minute,
 		"K8s API server waiting interval time")

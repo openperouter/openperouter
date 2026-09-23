@@ -38,15 +38,6 @@ with containerd, CRI-O, or clusters mixing both:
 kubectl apply -f https://raw.githubusercontent.com/openperouter/openperouter/main/config/all-in-one/openpe.yaml
 ```
 
-#### CRI-O Variant
-
-The CRI-O manifest is kept for backward compatibility and is identical to the
-standard one:
-
-```bash
-kubectl apply -f https://raw.githubusercontent.com/openperouter/openperouter/main/config/all-in-one/crio.yaml
-```
-
 ### Method 2: Kustomize Installation
 
 Kustomize provides more flexibility for customizing the deployment. This method is recommended for production environments.
@@ -66,14 +57,6 @@ Then apply it:
 
 ```bash
 kubectl apply -k .
-```
-
-#### CRI-O Variant with Kustomize
-
-```yaml
-namespace: openperouter-system
-resources:
-  - github.com/openperouter/openperouter/config/crio?ref=main
 ```
 
 ### Method 3: Helm Installation
@@ -101,7 +84,6 @@ You can customize the installation by creating a values file:
 # values.yaml
 openperouter:
   logLevel: "info"
-  cri: "containerd"
   frr:
     image:
       repository: "quay.io/frrouting/frr"

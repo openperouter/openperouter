@@ -158,24 +158,29 @@ func TestParseChartControllerHasNoCRISocket(t *testing.T) {
 				controller := appsv1.DaemonSet{}
 				err = runtime.DefaultUnstructuredConverter.FromUnstructured(obj.UnstructuredContent(), &controller)
 				g.Expect(err).ToNot(HaveOccurred())
-				pod := controller.Spec.Template.Spec
-				for _, volume := range pod.Volumes {
-					if volume.HostPath != nil {
-						g.Expect(volume.HostPath.Path).ToNot(Or(ContainSubstring("containerd"), ContainSubstring("crio")))
-					}
-				}
-				for _, container := range pod.Containers {
-					for _, arg := range container.Args {
-						g.Expect(arg).ToNot(HavePrefix("--crisocket"))
-					}
-					for _, mount := range container.VolumeMounts {
-						g.Expect(mount.MountPath).ToNot(Or(ContainSubstring("containerd"), ContainSubstring("crio")))
-					}
-				}
+				expectNoCRISocket(t, controller.Spec.Template.Spec)
 				controllerFound = true
 			}
 			g.Expect(controllerFound).To(BeTrue())
 		})
+	}
+}
+
+func expectNoCRISocket(t *testing.T, pod v1.PodSpec) {
+	t.Helper()
+	g := NewGomegaWithT(t)
+	for _, volume := range pod.Volumes {
+		if volume.HostPath != nil {
+			g.Expect(volume.HostPath.Path).ToNot(Or(ContainSubstring("containerd"), ContainSubstring("crio")))
+		}
+	}
+	for _, container := range pod.Containers {
+		for _, arg := range container.Args {
+			g.Expect(arg).ToNot(HavePrefix("--crisocket"))
+		}
+		for _, mount := range container.VolumeMounts {
+			g.Expect(mount.MountPath).ToNot(Or(ContainSubstring("containerd"), ContainSubstring("crio")))
+		}
 	}
 }
 
