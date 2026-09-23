@@ -80,7 +80,7 @@ func (c *Client) ensurePort(ctx context.Context, name, devargs string) error {
 
 func (c *Client) ensurePortWithOptions(ctx context.Context, name, devargs string, opts PortOptions) error {
 	details, err := c.getInterfaceDetails(ctx, name)
-	if err != nil && !isNoSuchDevice(err) {
+	if err != nil && !isGroutErrno(err, syscall.ENODEV) {
 		return fmt.Errorf("checking if port %s exists: %w", name, err)
 	}
 	if err == nil && (!portOptionsSpecified(opts) || details.matchesRequested(devargs, opts)) {
@@ -274,10 +274,6 @@ func hasPromiscFlag(flags []string) bool {
 func (c *Client) portExists(ctx context.Context, name string) (bool, error) {
 	info, err := c.getInterfaceInfo(ctx, name)
 	if err != nil {
-		// grcli returns an error when the interface doesn't exist
-		if isNoSuchDevice(err) {
-			return false, nil
-		}
 		return false, err
 	}
 	return info != nil, nil
@@ -296,10 +292,6 @@ func (c *Client) getInterfaceInfo(ctx context.Context, name string) (*groutInter
 		return nil, fmt.Errorf("parsing interface info for %s: %w", name, err)
 	}
 	return &info, nil
-}
-
-func isNoSuchDevice(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "No such")
 }
 
 // run executes a grcli command and returns any error.
