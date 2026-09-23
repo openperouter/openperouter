@@ -15,6 +15,7 @@ import (
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/e2etests/pkg/config"
 	"github.com/openperouter/openperouter/e2etests/pkg/executor"
+	"github.com/openperouter/openperouter/e2etests/pkg/frr"
 	"github.com/openperouter/openperouter/e2etests/pkg/infra"
 	"github.com/openperouter/openperouter/e2etests/pkg/ipfamily"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
@@ -26,8 +27,10 @@ import (
 )
 
 var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Ordered, func() {
-	var cs clientset.Interface
-	var routers openperouter.Routers
+	var (
+		cs      clientset.Interface
+		routers openperouter.Routers
+	)
 
 	vniRed := v1alpha1.L3VNI{
 		ObjectMeta: metav1.ObjectMeta{
@@ -41,8 +44,8 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Orde
 	}
 
 	const (
-		linuxBridgeHostAttachment = "linux-bridge"
-		ovsBridgeHostAttachment   = "ovs-bridge"
+		linuxBridgeHostAttachment = "LinuxBridge"
+		ovsBridgeHostAttachment   = "OVSBridge"
 	)
 	l2VniRed := v1alpha1.L2VNI{
 		ObjectMeta: metav1.ObjectMeta{
@@ -50,12 +53,12 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Orde
 			Namespace: openperouter.Namespace,
 		},
 		Spec: v1alpha1.L2VNISpec{
-			VRF: new("red"),
-			VNI: 110,
+			RoutingDomain: l3vniRoutingDomain("red"),
+			VNI:           110,
 			HostMaster: &v1alpha1.HostMaster{
 				Type: linuxBridgeHostAttachment,
 				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
-					AutoCreate: new(true),
+					Lifecycle: v1alpha1.BridgeLifecycleManaged,
 				},
 			},
 		},
@@ -79,12 +82,12 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Orde
 		})
 		Expect(err).NotTo(HaveOccurred())
 
-		// Create pre-existing OVS bridges on Kind nodes for testing
-		nodes := []string{infra.KindControlPlane, infra.KindWorker}
-		for _, nodeName := range nodes {
-			exec := executor.ForContainer(nodeName)
-			// Create OVS bridge (ignore error if bridge already exists)
-			_, err = exec.Exec("ovs-vsctl", "add-br", preExistingOVSBridge)
+		// Create pre-existing OVS bridges on cluster nodes for testing
+		ovsNodes, err := k8s.GetNodes(cs)
+		Expect(err).NotTo(HaveOccurred())
+		for _, node := range ovsNodes {
+			exec := executor.ForNode(node.Name)
+			_, err = exec.Exec("ovs-vsctl", "--may-exist", "add-br", preExistingOVSBridge)
 			Expect(err).NotTo(HaveOccurred())
 		}
 	})
@@ -102,9 +105,10 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Orde
 		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 
 		// Clean up pre-existing OVS bridges
-		nodes := []string{infra.KindControlPlane, infra.KindWorker}
-		for _, nodeName := range nodes {
-			exec := executor.ForContainer(nodeName)
+		ovsNodes, err := k8s.GetNodes(cs)
+		Expect(err).NotTo(HaveOccurred())
+		for _, node := range ovsNodes {
+			exec := executor.ForNode(node.Name)
 			_, err = exec.Exec("ovs-vsctl", "--if-exists", "del-br", preExistingOVSBridge)
 			Expect(err).NotTo(HaveOccurred())
 		}
@@ -144,7 +148,7 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Orde
 		Expect(err).NotTo(HaveOccurred())
 
 		l2VniRedWithGateway := l2VniRed.DeepCopy()
-		l2VniRedWithGateway.Spec.L2GatewayIPs = tc.l2GatewayIPs
+		l2VniRedWithGateway.Spec.GatewayIPs = tc.l2GatewayIPs
 		l2VniRedWithGateway.Spec.HostMaster = &tc.hostMaster
 
 		err = Updater.Update(config.Resources{
@@ -229,7 +233,7 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Orde
 			hostMaster: v1alpha1.HostMaster{
 				Type: linuxBridgeHostAttachment,
 				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
-					AutoCreate: new(true),
+					Lifecycle: v1alpha1.BridgeLifecycleManaged,
 				},
 			},
 		}),
@@ -243,7 +247,7 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Orde
 			hostMaster: v1alpha1.HostMaster{
 				Type: linuxBridgeHostAttachment,
 				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
-					AutoCreate: new(true),
+					Lifecycle: v1alpha1.BridgeLifecycleManaged,
 				},
 			},
 		}),
@@ -257,11 +261,11 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Orde
 			hostMaster: v1alpha1.HostMaster{
 				Type: linuxBridgeHostAttachment,
 				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
-					AutoCreate: new(true),
+					Lifecycle: v1alpha1.BridgeLifecycleManaged,
 				},
 			},
 		}),
-		Entry("OVS bridge autocreate for single stack ipv4", testCase{
+		Entry("OVS bridge managed for single stack ipv4", testCase{
 			l2GatewayIPs: []string{"192.171.24.1/24"},
 			firstPodIPs:  []string{"192.171.24.2/24"},
 			secondPodIPs: []string{"192.171.24.3/24"},
@@ -271,11 +275,11 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Orde
 			hostMaster: v1alpha1.HostMaster{
 				Type: ovsBridgeHostAttachment,
 				OVSBridge: &v1alpha1.OVSBridgeConfig{
-					AutoCreate: new(true),
+					Lifecycle: v1alpha1.BridgeLifecycleManaged,
 				},
 			},
 		}),
-		Entry("OVS bridge autocreate for dual stack", testCase{
+		Entry("OVS bridge managed for dual stack", testCase{
 			l2GatewayIPs: []string{"192.171.24.1/24", "fd00:10:245:1::1/64"},
 			firstPodIPs:  []string{"192.171.24.2/24", "fd00:10:245:1::2/64"},
 			secondPodIPs: []string{"192.171.24.3/24", "fd00:10:245:1::3/64"},
@@ -285,11 +289,11 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Orde
 			hostMaster: v1alpha1.HostMaster{
 				Type: ovsBridgeHostAttachment,
 				OVSBridge: &v1alpha1.OVSBridgeConfig{
-					AutoCreate: new(true),
+					Lifecycle: v1alpha1.BridgeLifecycleManaged,
 				},
 			},
 		}),
-		Entry("OVS bridge autocreate for single stack ipv6", testCase{
+		Entry("OVS bridge managed for single stack ipv6", testCase{
 			l2GatewayIPs: []string{"fd00:10:245:1::1/64"},
 			firstPodIPs:  []string{"fd00:10:245:1::2/64"},
 			secondPodIPs: []string{"fd00:10:245:1::3/64"},
@@ -299,7 +303,7 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Orde
 			hostMaster: v1alpha1.HostMaster{
 				Type: ovsBridgeHostAttachment,
 				OVSBridge: &v1alpha1.OVSBridgeConfig{
-					AutoCreate: new(true),
+					Lifecycle: v1alpha1.BridgeLifecycleManaged,
 				},
 			},
 		}),
@@ -313,8 +317,8 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Orde
 			hostMaster: v1alpha1.HostMaster{
 				Type: ovsBridgeHostAttachment,
 				OVSBridge: &v1alpha1.OVSBridgeConfig{
-					Name:       new(preExistingOVSBridge),
-					AutoCreate: new(false),
+					Name:      new(preExistingOVSBridge),
+					Lifecycle: v1alpha1.BridgeLifecycleExternal,
 				},
 			},
 		}),
@@ -328,8 +332,8 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Orde
 			hostMaster: v1alpha1.HostMaster{
 				Type: ovsBridgeHostAttachment,
 				OVSBridge: &v1alpha1.OVSBridgeConfig{
-					Name:       new(preExistingOVSBridge),
-					AutoCreate: new(false),
+					Name:      new(preExistingOVSBridge),
+					Lifecycle: v1alpha1.BridgeLifecycleExternal,
 				},
 			},
 		}),
@@ -343,8 +347,8 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Orde
 			hostMaster: v1alpha1.HostMaster{
 				Type: ovsBridgeHostAttachment,
 				OVSBridge: &v1alpha1.OVSBridgeConfig{
-					Name:       new(preExistingOVSBridge),
-					AutoCreate: new(false),
+					Name:      new(preExistingOVSBridge),
+					Lifecycle: v1alpha1.BridgeLifecycleExternal,
 				},
 			},
 		}),
@@ -355,7 +359,7 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Orde
 var _ = Describe("Disconnected L2VNI east/west traffic", Ordered, func() {
 	const (
 		testNamespace             = "test-disconnected-l2"
-		linuxBridgeHostAttachment = "linux-bridge"
+		linuxBridgeHostAttachment = "LinuxBridge"
 		firstPodIP                = "192.171.30.2"
 		secondPodIP               = "192.171.30.3"
 	)
@@ -372,7 +376,7 @@ var _ = Describe("Disconnected L2VNI east/west traffic", Ordered, func() {
 			HostMaster: &v1alpha1.HostMaster{
 				Type: linuxBridgeHostAttachment,
 				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
-					AutoCreate: new(true),
+					Lifecycle: v1alpha1.BridgeLifecycleManaged,
 				},
 			},
 		},
@@ -405,23 +409,27 @@ var _ = Describe("Disconnected L2VNI east/west traffic", Ordered, func() {
 		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 	})
 
-	AfterEach(func() {
-		dumpIfFails(cs)
-		err := Updater.CleanButUnderlay()
-		Expect(err).NotTo(HaveOccurred())
-		err = k8s.DeleteNamespace(cs, testNamespace)
-		Expect(err).NotTo(HaveOccurred())
-	})
+	var (
+		nodes       []corev1.Node
+		l2VNIs      []v1alpha1.L2VNI
+		firstL2VNI  v1alpha1.L2VNI
+		secondL2VNI v1alpha1.L2VNI
+		firstPod    *corev1.Pod
+		secondPod   *corev1.Pod
+	)
 
-	It("should allow pod-to-pod L2 connectivity without a VRF", func() {
-		nodes, err := k8s.GetNodes(cs)
+	BeforeEach(func() {
+		var err error
+		nodes, err = k8s.GetNodes(cs)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(len(nodes)).To(BeNumerically(">=", 2))
 
+	})
+
+	JustBeforeEach(func() {
+		var err error
 		err = Updater.Update(config.Resources{
-			L2VNIs: []v1alpha1.L2VNI{
-				l2vniDisconnected,
-			},
+			L2VNIs: l2VNIs,
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -432,11 +440,11 @@ var _ = Describe("Disconnected L2VNI east/west traffic", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		By("creating two pods on different nodes")
-		firstPod, err := k8s.CreateAgnhostPod(cs, "pod1", testNamespace,
+		firstPod, err = k8s.CreateAgnhostPod(cs, "pod1", testNamespace,
 			k8s.WithNad(nadObj.Name, testNamespace, []string{firstPodIP + "/24"}),
 			k8s.OnNode(nodes[0].Name))
 		Expect(err).NotTo(HaveOccurred())
-		secondPod, err := k8s.CreateAgnhostPod(cs, "pod2", testNamespace,
+		secondPod, err = k8s.CreateAgnhostPod(cs, "pod2", testNamespace,
 			k8s.WithNad(nadObj.Name, testNamespace, []string{secondPodIP + "/24"}),
 			k8s.OnNode(nodes[1].Name))
 		Expect(err).NotTo(HaveOccurred())
@@ -444,10 +452,77 @@ var _ = Describe("Disconnected L2VNI east/west traffic", Ordered, func() {
 		By("removing the default gateway via the primary interface")
 		Expect(removeGatewayFromPod(firstPod)).To(Succeed())
 		Expect(removeGatewayFromPod(secondPod)).To(Succeed())
+	})
 
-		By("checking bidirectional L2 reachability")
-		canPingFromPod(executor.ForPod(firstPod.Namespace, firstPod.Name, "agnhost"), secondPodIP)
-		canPingFromPod(executor.ForPod(secondPod.Namespace, secondPod.Name, "agnhost"), firstPodIP)
+	AfterEach(func() {
+		dumpIfFails(cs)
+		err := Updater.CleanButUnderlay()
+		Expect(err).NotTo(HaveOccurred())
+		err = k8s.DeleteNamespace(cs, testNamespace)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	Context("without route targets", func() {
+		BeforeEach(func() {
+			l2VNIs = []v1alpha1.L2VNI{l2vniDisconnected}
+		})
+
+		It("should allow pod-to-pod L2 connectivity without a VRF", func() {
+			By("checking bidirectional L2 reachability")
+			canPingFromPod(executor.ForPod(firstPod.Namespace, firstPod.Name, "agnhost"), secondPodIP)
+			canPingFromPod(executor.ForPod(secondPod.Namespace, secondPod.Name, "agnhost"), firstPodIP)
+		})
+	})
+
+	Context("with route targets", func() {
+		BeforeEach(func() {
+			firstL2VNI = l2VNIForNode(
+				l2vniDisconnected, "disconnected-first", nodes[0].Name, "64514:300", "64514:301",
+			)
+			secondL2VNI = l2VNIForNode(
+				l2vniDisconnected, "disconnected-second", nodes[1].Name, "64514:301", "64514:300",
+			)
+			l2VNIs = []v1alpha1.L2VNI{firstL2VNI, secondL2VNI}
+		})
+
+		It("should retain configured route targets on imported type-2 routes", func() {
+			By("checking imported type-2 routes retain the configured route target")
+			routers, err := openperouter.Get(cs, HostMode)
+			Expect(err).NotTo(HaveOccurred())
+			firstRouter, err := routers.ExecutorForNode(nodes[0].Name)
+			Expect(err).NotTo(HaveOccurred())
+			secondRouter, err := routers.ExecutorForNode(nodes[1].Name)
+			Expect(err).NotTo(HaveOccurred())
+
+			firstVTEPCIDR, err := openperouter.GetVtepIPv4ForNode(infra.Underlay.Spec.TunnelEndpoint, &nodes[0])
+			Expect(err).NotTo(HaveOccurred())
+			secondVTEPCIDR, err := openperouter.GetVtepIPv4ForNode(infra.Underlay.Spec.TunnelEndpoint, &nodes[1])
+			Expect(err).NotTo(HaveOccurred())
+			firstVTEP := ipfamily.StripCIDRMask(firstVTEPCIDR)
+			secondVTEP := ipfamily.StripCIDRMask(secondVTEPCIDR)
+
+			Eventually(func(g Gomega) {
+				firstEVPN, err := frr.EVPNInfo(firstRouter)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(firstEVPN.ContainsType2MACIPRouteWithRT(
+					secondPodIP,
+					secondVTEP,
+					firstL2VNI.Spec.ImportRTs,
+				)).To(BeTrue(), "first node should import the second pod's type-2 route with its configured route target")
+
+				secondEVPN, err := frr.EVPNInfo(secondRouter)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(secondEVPN.ContainsType2MACIPRouteWithRT(
+					firstPodIP,
+					firstVTEP,
+					secondL2VNI.Spec.ImportRTs,
+				)).To(BeTrue(), "second node should import the first pod's type-2 route with its configured route target")
+			}, time.Minute, time.Second).Should(Succeed())
+
+			By("checking bidirectional L2 reachability")
+			canPingFromPod(executor.ForPod(firstPod.Namespace, firstPod.Name, "agnhost"), secondPodIP)
+			canPingFromPod(executor.ForPod(secondPod.Namespace, secondPod.Name, "agnhost"), firstPodIP)
+		})
 	})
 })
 
@@ -504,4 +579,21 @@ func findNextHopIPv6(exec executor.Executor, destination, device string) (string
 
 func discardAddressLength(address string) string {
 	return strings.Split(address, "/")[0]
+}
+
+func l2VNIForNode(
+	l2vni v1alpha1.L2VNI,
+	name, nodeName string,
+	exportRT, importRT v1alpha1.RouteTarget,
+) v1alpha1.L2VNI {
+	configured := l2vni.DeepCopy()
+	configured.Name = name
+	configured.Spec.NodeSelector = &metav1.LabelSelector{
+		MatchLabels: map[string]string{
+			"kubernetes.io/hostname": nodeName,
+		},
+	}
+	configured.Spec.ExportRTs = []v1alpha1.RouteTarget{exportRT}
+	configured.Spec.ImportRTs = []v1alpha1.RouteTarget{importRT}
+	return *configured
 }

@@ -91,6 +91,15 @@ func ForCIDR(cidr *net.IPNet) Family {
 	return IPv4
 }
 
+// ForAddress return the address family from a given address in string format
+func ForAddressString(ipString string) Family {
+	ip := net.ParseIP(ipString)
+	if ip == nil {
+		return Unknown
+	}
+	return ForAddress(ip)
+}
+
 // ForAddress returns the address family for a given address.
 func ForAddress(ip net.IP) Family {
 	if ip.To4() == nil {
@@ -107,6 +116,16 @@ func ForService(svc *v1.Service) (Family, error) {
 	// fallback to clusterip if clusterips are not set
 	addresses := []string{svc.Spec.ClusterIP}
 	return ForAddresses(addresses...)
+}
+
+// CIDRForFamily returns the first CIDR in cidrs that matches family, or "".
+func CIDRForFamily(cidrs []string, family Family) string {
+	for _, cidr := range cidrs {
+		if ForCIDRString(cidr) == family {
+			return cidr
+		}
+	}
+	return ""
 }
 
 // StripCIDRMask removes the CIDR mask from an IP address string.

@@ -29,7 +29,6 @@ router bgp 64512
 
   address-family l2vpn evpn
     advertise-all-vni
-    advertise-svi-ip
   exit-address-family
 exit
 !

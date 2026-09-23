@@ -36,13 +36,11 @@ setup_veth_monitoring() {
 
     CHECK_VETHS_LOG="/tmp/check_veths.log"
     if [[ ${#CLUSTER_NAMES[@]} -eq 1 && "${CLUSTER_NAMES[0]}" == "pe-kind" ]]; then
-        # Single cluster mode
-        sudo tools/check_veths/bin/check_veths -f singlecluster/check-veths.yaml -p "${PID_FILE}" 2>&1 | \
-          awk '{print strftime("%Y-%m-%dT%H:%M:%S"), $0; fflush()}' > "$CHECK_VETHS_LOG" &
+        sudo tools/check_veths/bin/check_veths -f singlecluster/check-veths.yaml -p "${PID_FILE}" \
+          > "$CHECK_VETHS_LOG" 2>&1 &
     else
-        # Multi-cluster mode
-        sudo tools/check_veths/bin/check_veths -f multicluster/check-veths.yaml -p "${PID_FILE}" 2>&1 | \
-          awk '{print strftime("%Y-%m-%dT%H:%M:%S"), $0; fflush()}' > "$CHECK_VETHS_LOG" &
+        sudo tools/check_veths/bin/check_veths -f multicluster/check-veths.yaml -p "${PID_FILE}" \
+          > "$CHECK_VETHS_LOG" 2>&1 &
     fi
 
     popd

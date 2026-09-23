@@ -4,6 +4,8 @@ package conversion
 
 import (
 	"fmt"
+	"net/netip"
+	"slices"
 
 	corev1 "k8s.io/api/core/v1"
 
@@ -67,8 +69,18 @@ func validateUnderlay(underlay v1alpha1.Underlay) error {
 		return fmt.Errorf("underlay %s has duplicate neighbor address: %w", underlay.Name, err)
 	}
 
-	if err := validateNoDuplicates(underlay.Spec.Nics); err != nil {
-		return fmt.Errorf("underlay %s has duplicate nic name: %w", underlay.Name, err)
+	if err := validateNoDuplicates(interfaceNamesOf(underlay.Spec.Neighbors)); err != nil {
+		return fmt.Errorf("underlay %s has duplicate neighbor interface names, "+
+			"only one peer is allowed per interface: %w", underlay.Name, err)
+	}
+
+	if err := validateListenRanges(underlay.Spec.Neighbors); err != nil {
+		return fmt.Errorf("underlay %s: %w", underlay.Name, err)
+	}
+
+	// do a no-op conversion to catch validation errors
+	if _, err := underlayInterfacesToHost(underlay.Spec.Interfaces); err != nil {
+		return fmt.Errorf("underlay %s has invalid interfaces: %w", underlay.Name, err)
 	}
 
 	if underlay.Spec.TunnelEndpoint != nil {
@@ -77,12 +89,20 @@ func validateUnderlay(underlay v1alpha1.Underlay) error {
 		}
 	}
 
-	for _, n := range underlay.Spec.Nics {
-		if err := isValidInterfaceName(n); err != nil {
-			return fmt.Errorf("invalid nic name for underlay %s: %s - %w", underlay.Name, n, err)
+	srv6Config := underlay.Spec.SRV6
+	if srv6Config == nil {
+		return nil
+	}
+	if _, isValid := locatorFormats[srv6Config.Locator.Format]; !isValid {
+		return &openpeerrors.ResourceError{
+			Obj: v1alpha1.FailedResource{
+				Kind:    v1alpha1.FailedResourceKind("Underlay"),
+				Name:    underlay.Name,
+				Reason:  v1alpha1.FailedResourceReasonValidationFailed,
+				Message: fmt.Sprintf("invalid locator format %q", srv6Config.Locator.Format),
+			},
 		}
 	}
-
 	return nil
 }
 
@@ -101,22 +121,64 @@ func validateUnderlayTunnelEndpoint(underlay *v1alpha1.Underlay) error {
 		return fmt.Errorf("invalid tunnel endpoint CIDRs for underlay %s: %v - %w",
 			underlay.Name, cidrs, err)
 	}
-	if af != ipfamily.IPv4 && af != ipfamily.DualStack {
-		return fmt.Errorf("invalid tunnel endpoint CIDRs for underlay %s, no IPv4 CIDR found: %v",
+
+	if underlay.Spec.SRV6 == nil {
+		return nil
+	}
+
+	if af == ipfamily.IPv4 {
+		return fmt.Errorf("invalid tunnel endpoint CIDRs for underlay %s with SRv6, no IPv6 CIDR found: %v",
 			underlay.Name, cidrs)
 	}
 	return nil
 }
 
 func neighborAddressesOf(neighbors []v1alpha1.Neighbor) []string {
-	res := make([]string, len(neighbors))
-	for i, n := range neighbors {
+	res := []string{}
+	for _, n := range neighbors {
 		if n.Address == nil {
 			continue
 		}
-		res[i] = *n.Address
+		res = append(res, *n.Address)
 	}
 	return res
+}
+
+func interfaceNamesOf(neighbors []v1alpha1.Neighbor) []string {
+	res := []string{}
+	for _, n := range neighbors {
+		if n.Interface == nil {
+			continue
+		}
+		res = append(res, *n.Interface)
+	}
+	return res
+}
+
+// validateListenRanges rejects malformed, duplicate and overlapping listen
+// ranges. FRR refuses overlapping bgp listen range stanzas, so admitting
+// them would break the router configuration at reload time.
+func validateListenRanges(neighbors []v1alpha1.Neighbor) error {
+	ranges := make([]netip.Prefix, 0, len(neighbors))
+	for _, n := range neighbors {
+		if n.ListenRange == nil {
+			continue
+		}
+		prefix, err := netip.ParsePrefix(*n.ListenRange)
+		if err != nil {
+			return fmt.Errorf("invalid listenRange %s: %w", *n.ListenRange, err)
+		}
+		ranges = append(ranges, prefix.Masked())
+	}
+
+	slices.SortFunc(ranges, netip.Prefix.Compare)
+
+	for i := 0; i < len(ranges)-1; i++ {
+		if ranges[i].Overlaps(ranges[i+1]) {
+			return fmt.Errorf("listenRange %s overlaps with listenRange %s", ranges[i], ranges[i+1])
+		}
+	}
+	return nil
 }
 
 func validateNoDuplicates(items []string) error {

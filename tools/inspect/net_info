@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+
+# SPDX-License-Identifier:Apache-2.0
+
+readonly NETNS_INFO=(\
+"ip link" \
+"ip address" \
+"ip route" \
+"ip neigh" \
+"ip vrf" \
+"bridge fdb show" \
+)
+
+readonly VRF_SHOW="ip -br link show type vrf"
+readonly VRF_INFO=(\
+"ip link show type vrf"
+"ip route show vrf"
+"ip address show vrf"
+)
+
+function print_vrf_info {
+  local -r cmd_prefix="$1"
+
+  local -r vrfs=("$($cmd_prefix $VRF_SHOW | awk '{print $1}')")
+  [[ ${#vrfs} -eq 0 ]] && return
+
+  echo "### VRFs:"
+  $cmd_prefix $VRF_SHOW
+
+  for vrf in "${vrfs[@]}"; do
+    echo "### VRF [$vrf] info:"
+    for cmd in "${VRF_INFO[@]}"; do
+      c="$cmd_prefix $cmd $vrf"
+      echo "$ $c"
+      $c
+    done
+  done
+  echo "###"
+}
+
+NETNS=${NETNS:-""}
+
+cmd_prefix=""
+dump_vrfs_info=0
+if [ -n "$NETNS" ]; then
+	cmd_prefix="ip netns exec $NETNS"
+	dump_vrfs_info=1
+fi
+
+echo "### Networking info:"
+for cmd in "${NETNS_INFO[@]}"; do
+	c="$cmd_prefix $cmd"
+	echo "$ $c"
+	$c
+	echo ""
+done
+echo "###"
+echo ""
+
+if [[ $dump_vrfs_info -gt 0 ]]; then
+  print_vrf_info "$cmd_prefix"
+fi

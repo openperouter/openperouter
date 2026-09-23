@@ -5,6 +5,7 @@ package ipfamily // import "go.universe.tf/metallb/internal/ipfamily"
 import (
 	"fmt"
 	"net"
+	"strings"
 
 	v1 "k8s.io/api/core/v1"
 )
@@ -83,6 +84,27 @@ func ForAddress(ip net.IP) Family {
 	return IPv4
 }
 
+// CIDRForFamily returns the first CIDR in cidrs that matches family, or "".
+func CIDRForFamily(cidrs []string, family Family) string {
+	for _, cidr := range cidrs {
+		if ForCIDRString(cidr) == family {
+			return cidr
+		}
+	}
+	return ""
+}
+
+// CIDRsForFamily returns all CIDRs matching the given address family.
+func CIDRsForFamily(cidrs []string, family Family) []string {
+	var res []string
+	for _, c := range cidrs {
+		if ForCIDRString(c) == family {
+			res = append(res, c)
+		}
+	}
+	return res
+}
+
 // ForService returns the address family of a given service.
 func ForService(svc *v1.Service) (Family, error) {
 	if len(svc.Spec.ClusterIPs) > 0 {
@@ -91,4 +113,11 @@ func ForService(svc *v1.Service) (Family, error) {
 	// fallback to clusterip if clusterips are not set
 	addresses := []string{svc.Spec.ClusterIP}
 	return ForAddresses(addresses...)
+}
+
+// StripCIDRMask removes the CIDR mask from an IP address string.
+// e.g., "192.168.1.1/24" -> "192.168.1.1"
+func StripCIDRMask(ipCIDR string) string {
+	parts := strings.SplitN(ipCIDR, "/", 2)
+	return parts[0]
 }

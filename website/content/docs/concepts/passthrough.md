@@ -43,7 +43,7 @@ OpenPERouter automatically creates a veth pair for passthrough connectivity:
 
 ### IP Allocation Strategy
 
-The IP addresses for the veth pair are allocated from the configured `localcidr`:
+The IP addresses for the veth pair are allocated from the configured `localCIDRs`:
 
 - **Router side**: Gets the first IP in the CIDR (e.g., `192.169.10.1`)
 - **Host side**: Gets the second IP in the CIDR (e.g., `192.169.10.2`)

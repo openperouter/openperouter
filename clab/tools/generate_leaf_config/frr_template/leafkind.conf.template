@@ -19,11 +19,16 @@ router bgp {{ .ASN }}
  no bgp ebgp-requires-policy
  no bgp network import-check
  no bgp default ipv4-unicast
+ timers bgp 3 9
 
  neighbor {{ .SpineIP }} remote-as 64612
+ neighbor {{ .SpineIP }} advertisement-interval 0
+ neighbor {{ .SpineIP }} timers connect 5
 
  neighbor kind-nodes peer-group
  neighbor kind-nodes remote-as 64514
+ neighbor kind-nodes advertisement-interval 0
+ neighbor kind-nodes timers connect 5
 
  bgp listen range {{ .IPv4ListenRange }} peer-group kind-nodes
  bgp listen range {{ .IPv6ListenRange }} peer-group kind-nodes
@@ -46,3 +51,16 @@ router bgp {{ .ASN }}
  exit-address-family
 exit
 !
+router isis ISIS
+  is-type level-1
+  advertise-passive-only
+  net {{ .ISISNet }}
+exit
+!
+interface eth1
+  ipv6 router isis ISIS
+exit
+!
+interface {{ .ToSwitchInterface }}
+  ipv6 router isis ISIS
+exit

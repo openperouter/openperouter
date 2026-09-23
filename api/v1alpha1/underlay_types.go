@@ -17,10 +17,14 @@ limitations under the License.
 package v1alpha1
 
 import (
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // UnderlaySpec defines the desired state of Underlay.
+// +kubebuilder:validation:XValidation:rule="!has(self.srv6) || has(self.isis)",message="SRv6 can only be configured if isis is set"
+// +kubebuilder:validation:XValidation:rule="!has(self.srv6) || (has(self.tunnelEndpoint) && has(self.tunnelEndpoint.cidrs) && self.tunnelEndpoint.cidrs.exists(c, cidr(c).ip().family() == 6))",message="SRv6 requires at least one IPv6 CIDR in tunnelEndpoint.cidrs"
+// +kubebuilder:validation:XValidation:rule="!has(self.routeReflector) || !has(self.routeReflector.clusterID) || !isIP(self.routeReflector.clusterID) || !has(self.routerIDCIDR) || !isCIDR(self.routerIDCIDR) || !cidr(self.routerIDCIDR).containsIP(self.routeReflector.clusterID)",message="routeReflector.clusterID must be outside the routerIDCIDR range"
 type UnderlaySpec struct {
 	// nodeSelector specifies which nodes this Underlay applies to.
 	// If empty or not specified, applies to all nodes (backward compatible).
@@ -34,32 +38,35 @@ type UnderlaySpec struct {
 	// +required
 	ASN int64 `json:"asn,omitempty"`
 
-	// routeridcidr is the ipv4 cidr to be used to assign a different routerID on each node.
+	// routerIDCIDR is the ipv4 cidr to be used to assign a different routerID on each node.
 	// +default="10.0.0.0/24"
 	// +optional
-	RouterIDCIDR *string `json:"routeridcidr,omitempty"`
+	RouterIDCIDR *string `json:"routerIDCIDR,omitempty"`
 
-	// neighbors is the list of external BGP neighbors to peer with.
-	// Note: MaxItems=128 is arbitrarily chosen to keep total CEL cost low
+	// Note: MaxItems:=128 is arbitrarily chosen to keep total CEL cost low
 	// Note: kubeapilinter complained about 'the struct has no required fields', but CEL enforces either/or choices
 	// for Address and Interface.
+
+	// neighbors is the list of external BGP neighbors to peer with.
 	// Multiple neighbors are supported for connecting to multiple TOR switches
 	// or establishing redundant BGP sessions. Each neighbor address must be unique.
 	// At least one neighbor is required.
-	// +kubebuilder:validation:MinItems=1
-	// +kubebuilder:validation:MaxItems=128
+	// +kubebuilder:validation:MinItems:=1
+	// +kubebuilder:validation:MaxItems:=128
 	// +required
 	// +listType=atomic
 	Neighbors []Neighbor `json:"neighbors,omitempty"` //nolint:kubeapilinter
 
-	// nics is the list of physical nics to move under the PERouter namespace to connect
-	// to external routers. At least one NIC is required.
+	// interfaces is the list of interfaces the router uses for underlay
+	// connectivity. Each entry is a discriminated union describing how the
+	// interface is obtained. At least one interface is required. All the
+	// entries must be of the same type: mixing NetworkDevice and CNIDevice
+	// interfaces is not supported.
 	// +kubebuilder:validation:MinItems=1
-	// +kubebuilder:validation:items:Pattern=`^[a-zA-Z][a-zA-Z0-9._-]*$`
-	// +kubebuilder:validation:items:MaxLength=15
+	// +kubebuilder:validation:XValidation:rule="self.all(i, i.type == self[0].type)",message="all interfaces must be of the same type, mixing NetworkDevice and CNIDevice is not supported"
 	// +required
 	// +listType=atomic
-	Nics []string `json:"nics,omitempty"`
+	Interfaces []UnderlayInterface `json:"interfaces,omitempty"`
 
 	// tunnelEndpoint contains tunnel endpoint configuration for the underlay.
 	// +optional
@@ -71,6 +78,154 @@ type UnderlaySpec struct {
 	// Omit to disable graceful restart.
 	// +optional
 	GracefulRestart *GracefulRestartConfig `json:"gracefulRestart,omitempty"`
+
+	// isis holds the ISIS configuration for the underlay.
+	// +optional
+	ISIS *ISISConfig `json:"isis,omitempty"`
+
+	// srv6 holds the SRv6 configuration. Requires ISIS or Neighbors configuration.
+	// +optional
+	SRV6 *SRV6Config `json:"srv6,omitempty"`
+
+	// routeReflector configures the local FRR process as a BGP route reflector.
+	// When set, the hostcontroller generates bgp cluster-id from clusterID
+	// and derives bgp listen range and route-reflector-client stanzas from
+	// neighbors with listenRange and the routeReflectorClient property.
+	// Omit to run as a standard router without route reflection.
+	// +optional
+	RouteReflector *RouteReflectorConfig `json:"routeReflector,omitempty"`
+}
+
+// UnderlayInterfaceType selects how the router obtains an underlay link.
+// It is the discriminator of the UnderlayInterface union and is designed to be
+// extended with future modes.
+// +kubebuilder:validation:Enum=NetworkDevice;CNIDevice
+type UnderlayInterfaceType string
+
+const (
+	// UnderlayInterfaceTypeNetworkDevice moves an existing host network device
+	// into the router netns.
+	UnderlayInterfaceTypeNetworkDevice UnderlayInterfaceType = "NetworkDevice"
+
+	// UnderlayInterfaceTypeCNIDevice invokes a CNI plugin to provision an interface
+	// in the router netns.
+	UnderlayInterfaceTypeCNIDevice UnderlayInterfaceType = "CNIDevice"
+)
+
+// UnderlayInterface defines how the router obtains a single underlay link.
+// Exactly one of the sub-structs must match the type field.
+// The union is designed to be extended with future modes
+// for controller-provisioned interfaces.
+//
+// +union
+// +kubebuilder:validation:XValidation:rule="has(self.networkDevice) == (self.type == 'NetworkDevice')",message="type/config mismatch: networkDevice must be set if and only if type is 'NetworkDevice'"
+// +kubebuilder:validation:XValidation:rule="has(self.cniDevice) == (self.type == 'CNIDevice')",message="type/config mismatch: cniDevice must be set if and only if type is 'CNIDevice'"
+type UnderlayInterface struct {
+	// type selects how the router obtains this underlay link.
+	// +required
+	// +unionDiscriminator
+	Type UnderlayInterfaceType `json:"type,omitempty"`
+
+	// networkDevice moves an existing host network device into the router netns.
+	// The device can be of any kind (physical NIC, bridge, macvlan, etc.).
+	// Must be set when type is "NetworkDevice".
+	// +optional
+	NetworkDevice *NetworkDevice `json:"networkDevice,omitempty"`
+
+	// cniDevice invokes a CNI plugin to provision an interface in the router
+	// netns. IPAM is delegated to the CNI plugin. Must be set when type is
+	// "CNIDevice".
+	// +optional
+	CNIDevice *CNIDevice `json:"cniDevice,omitempty"`
+}
+
+// NetworkDevice moves an existing host network device into the router netns.
+type NetworkDevice struct {
+	// interfaceName is the name of the host network device to move into
+	// the router netns.
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z][a-zA-Z0-9._-]*$`
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=15
+	// +required
+	InterfaceName string `json:"interfaceName,omitempty"`
+}
+
+// CNIConfigType selects the source of the CNI configuration.
+// It is the discriminator of the CNIDevice union and is designed to be
+// extended with future config sources (e.g. a NetworkAttachmentDefinition
+// reference or a filesystem path).
+// +kubebuilder:validation:Enum=RawConfig
+type CNIConfigType string
+
+const (
+	// CNIConfigTypeRawConfig embeds the CNI config JSON directly in the spec.
+	CNIConfigTypeRawConfig CNIConfigType = "RawConfig"
+)
+
+// CNIDevice invokes a CNI plugin to provision an interface in the router
+// netns. The config source is a discriminated union — additional source
+// variants can be added later if a concrete user need emerges.
+//
+// +union
+// +kubebuilder:validation:XValidation:rule="has(self.rawConfig) == (self.type == 'RawConfig')",message="type/config mismatch: rawConfig must be set if and only if type is 'RawConfig'"
+type CNIDevice struct {
+	// type selects the source of the CNI configuration.
+	// +required
+	// +unionDiscriminator
+	Type CNIConfigType `json:"type,omitempty"`
+
+	// rawConfig embeds a CNI conflist JSON blob directly in this spec.
+	// Only CNI spec >= 1.0.0 configurations are accepted. Immutable once
+	// set: to change it, delete and recreate the
+	// Underlay. Immutability is enforced by the validation webhook because
+	// CEL transition rules cannot be evaluated inside atomic lists.
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +kubebuilder:validation:Type=object
+	// +optional
+	RawConfig *apiextensionsv1.JSON `json:"rawConfig,omitempty"`
+
+	// interfaceName is the name of the interface the CNI plugin creates
+	// inside the router netns (passed as CNI_IFNAME). Defaults to "net1".
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z][a-zA-Z0-9._-]*$`
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=15
+	// +default="net1"
+	// +optional
+	InterfaceName *string `json:"interfaceName,omitempty"`
+
+	// runtimeConfig is an opaque JSON object mapping CNI capability names
+	// to the payloads passed as capability arguments to the CNI
+	// invocation. Only keys that the plugin declares in its
+	// "capabilities" config block are forwarded; undeclared keys are
+	// silently stripped. Well-known capabilities include ips, mac,
+	// bandwidth, portMappings, ipRanges and deviceID. Immutable once
+	// set: to change it, delete and recreate the Underlay. Immutability
+	// is enforced by the validation webhook because CEL transition rules
+	// cannot be evaluated inside atomic lists.
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +kubebuilder:validation:Type=object
+	// +optional
+	RuntimeConfig *apiextensionsv1.JSON `json:"runtimeConfig,omitempty"`
+}
+
+// RouteReflectorConfig holds BGP Route Reflector parameters (RFC 4456).
+// Its presence on the Underlay enables route reflection on matching nodes.
+type RouteReflectorConfig struct {
+	// clusterID is the BGP cluster-id shared by all RR nodes in the same
+	// cluster (RFC 4456 §7). All RRs serving the same set of clients must
+	// use the same value so that CLUSTER_LIST loop detection prevents
+	// duplicate route reflection. The cluster-id is an opaque 32-bit
+	// identifier, not a routable address, and must be outside the
+	// routerIDCIDR range to avoid colliding with allocated router-ids.
+	// The default (192.0.2.1) is an RFC 5737 documentation address,
+	// outside the default routerIDCIDR pool; with a custom routerIDCIDR
+	// that contains it, the resource is rejected at admission.
+	// +default="192.0.2.1"
+	// +kubebuilder:validation:XValidation:rule="isIP(self) && ip(self).family() == 4",message="clusterID must be a valid IPv4 address"
+	// +kubebuilder:validation:MaxLength:=15
+	// +kubebuilder:validation:MinLength:=7
+	// +optional
+	ClusterID *string `json:"clusterID,omitempty"`
 }
 
 // GracefulRestartConfig holds BGP Graceful Restart parameters.
@@ -97,17 +252,145 @@ type GracefulRestartConfig struct {
 // TunnelEndpointConfig contains tunnel endpoint configuration for the underlay.
 type TunnelEndpointConfig struct {
 	// cidrs is a list of CIDRs to be used to assign IPs to the local tunnel endpoint on
-	// each node. A loopback interface will be created with IPs derived from
-	// these CIDRs. Exactly one IPv4 CIDR is required, and an optional IPv6
-	// CIDR may also be specified for dual-stack operation.
+	// each node. IPs derived from these CIDRs will be assigned to the local loopback.
+	// At least one IPv4 or IPv6 CIDR is required. At most one of each family may be specified.
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=2
 	// +kubebuilder:validation:XValidation:rule="self.all(c, isCIDR(c))",message="all entries must be valid CIDRs"
-	// +kubebuilder:validation:XValidation:rule="self.filter(c, isCIDR(c) && cidr(c).ip().family() == 4).size() == 1",message="exactly one IPv4 CIDR is required"
+	// +kubebuilder:validation:XValidation:rule="self.filter(c, isCIDR(c) && cidr(c).ip().family() == 4).size() <= 1",message="at most one IPv4 CIDR is allowed"
 	// +kubebuilder:validation:XValidation:rule="self.filter(c, isCIDR(c) && cidr(c).ip().family() == 6).size() <= 1",message="at most one IPv6 CIDR is allowed"
 	// +listType=atomic
 	// +required
 	CIDRs []string `json:"cidrs,omitempty"`
+}
+
+// ISISConfig contains ISIS configuration for the underlay.
+type ISISConfig struct {
+	// baseNet holds the ISIS NET address.
+	// The configured Net address is a base address which is offset by the node index of each node.
+	// Only accepts the simplified NSAP format with a fixed AreaID length of 3 bytes and a 6 byte SystemID in compliance
+	// with the U.S. GOSIP version 2.0 for a total of 10 bytes.
+	// +required
+	BaseNet ISISNet `json:"baseNet,omitempty"`
+	// features enables ISIS boolean features.
+	// Supported features are:
+	// advertisePassiveOnly: configures ISIS to advertise only prefixes that belong to passive interfaces.
+	// +kubebuilder:validation:MaxItems:=32
+	// +listType=atomic
+	// +optional
+	Features []ISISFeature `json:"features,omitempty"`
+	// interfaces holds additional ISIS interface level configuration and / or per
+	// interface overrides. By default, OpenPERouter enables IPv6 on all required
+	// interfaces with default settings.
+	// +listType=map
+	// +listMapKey=name
+	// +kubebuilder:validation:MaxItems:=128
+	// +optional
+	Interfaces []ISISInterface `json:"interfaces,omitempty"`
+	// level configures the ISIS type, system wide. It defaults to level-1-2 unless specified otherwise.
+	// +kubebuilder:validation:Enum:=1;2
+	// +optional
+	Level *int32 `json:"level,omitempty"`
+}
+
+// ISISNet represents a single ISIS NET address.
+// Only accepts the simplified NSAP format with a fixed AreaID length of 3 bytes and a 6 byte SystemID in compliance
+// with the U.S. GOSIP version 2.0 for a total of 10 bytes.
+// +kubebuilder:validation:MinLength:=25
+// +kubebuilder:validation:MaxLength:=25
+// +kubebuilder:validation:XValidation:rule=`self.matches('^[0-9a-f]{2}\\.([0-9a-f]{4}\\.){4}[0-9a-f]{2}$')`,message="Provided net address must match canonical format"
+type ISISNet string
+
+// ISISFeature represents a single ISIS feature.
+// +kubebuilder:validation:MinLength:=1
+// +kubebuilder:validation:MaxLength:=128
+// +kubebuilder:validation:Enum:=advertisePassiveOnly
+type ISISFeature string
+
+// ISISInterface holds ISIS interface level configuration.
+type ISISInterface struct {
+	// name of the interface that these settings shall apply to.
+	// +kubebuilder:validation:XValidation:rule=`self.matches('^[^\\/:\\s]+$')`,message="Interface must not contain /, :, or whitespace"
+	// +kubebuilder:validation:XValidation:rule=`self != '.' && self != '..'`,message="Interface cannot be . or .."
+	// +kubebuilder:validation:MaxLength:=15
+	// +kubebuilder:validation:MinLength:=1
+	// +required
+	Name string `json:"name,omitempty"`
+	// ipFamily configures which address families ISIS is enabled for on this interface.
+	// +optional
+	IPFamily *IPFamily `json:"ipFamily,omitempty"`
+	// features enables ISIS interface boolean features.
+	// Supported features are:
+	// passive: configures ISIS passive mode on this interface.
+	// +kubebuilder:validation:MaxItems:=32
+	// +listType=atomic
+	// +optional
+	Features []ISISInterfaceFeature `json:"features,omitempty"`
+}
+
+// ISISInterfaceFeature represents a single ISIS feature of an ISIS interface.
+// +kubebuilder:validation:MinLength:=1
+// +kubebuilder:validation:MaxLength:=128
+// +kubebuilder:validation:Enum:=passive
+type ISISInterfaceFeature string
+
+// IPFamily specifies which address families are enabled.
+// +kubebuilder:validation:Enum=IPv4;IPv6;DualStack
+type IPFamily string
+
+const (
+	IPFamilyIPv4      IPFamily = "IPv4"
+	IPFamilyIPv6      IPFamily = "IPv6"
+	IPFamilyDualStack IPFamily = "DualStack"
+)
+
+// SRV6Config contains SRV6 configuration for the underlay.
+type SRV6Config struct {
+	// encapBehavior defines the behavior for SRv6 encapsulation as specified
+	// in RFC 8986 sections 5.1 and 5.2.
+	// If unset, defaults to H.Encaps.
+	// +optional
+	EncapBehavior *SRV6EncapBehavior `json:"encapBehavior,omitempty"`
+
+	// locator defines the locator for this SRv6 VPN.
+	// +required
+	Locator SRV6Locator `json:"locator,omitzero"`
+}
+
+// SRV6EncapBehavior defines the behavior for SRv6 encapsulation as specified
+// in RFC 8986 sections 5.1 and 5.2.
+// +kubebuilder:validation:MaxLength:=12
+// +kubebuilder:validation:MinLength:=1
+// +kubebuilder:validation:Enum=H.Encaps;H.Encaps.Red
+type SRV6EncapBehavior string
+
+const (
+	// HEncaps always adds an SRH to SRv6 encapsulated packets. For more details,
+	// see RFC 8986 section 5.1.
+	HEncaps SRV6EncapBehavior = "H.Encaps"
+	// HEncapsRed is an optimization of the H.Encaps behavior and reduces the
+	// length of the SRH by excluding the first SID in the SRH of the pushed
+	// IPv6 header. The SRH is omitted when the SRv6 Policy only contains one
+	// segment and there is no need to use any flag, tag or TLV. For more
+	// details, see RFC 8986 section 5.2.
+	HEncapsRed SRV6EncapBehavior = "H.Encaps.Red"
+)
+
+// SRV6Locator holds the configuration of a locator for SRv6.
+type SRV6Locator struct {
+	// basePrefix is the CIDR to be used for the locator, offset by the router index.
+	// +kubebuilder:validation:XValidation:rule="isCIDR(self) && cidr(self).ip().family() == 6",message="prefix must be an IPv6 CIDR"
+	// +kubebuilder:validation:MaxLength:=43
+	// +kubebuilder:validation:MinLength:=1
+	// +required
+	BasePrefix string `json:"basePrefix,omitempty"`
+
+	// format specifies the format of the locator. Defaults to usid-f3216
+	// +kubebuilder:validation:MaxLength:=40
+	// +kubebuilder:validation:MinLength:=1
+	// +kubebuilder:validation:Enum:=usid-f3216
+	// +required
+	Format string `json:"format,omitempty"`
 }
 
 // UnderlayStatus defines the observed state of Underlay.
@@ -118,7 +401,11 @@ type UnderlayStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:webhook:verbs=create;update,path=/validate-openperouter-io-v1alpha1-underlay,mutating=false,failurePolicy=fail,groups=openpe.openperouter.github.io,resources=underlays,versions=v1alpha1,name=underlayvalidationwebhook.openperouter.io,sideEffects=None,admissionReviewVersions=v1
+// +kubebuilder:webhook:verbs=create;update,path=/validate-openperouter-io-v1alpha1-underlay,mutating=false,failurePolicy=fail,groups=network.openperouter.io,resources=underlays,versions=v1alpha1,name=underlayvalidationwebhook.openperouter.io,sideEffects=None,admissionReviewVersions=v1
+// +kubebuilder:printcolumn:name="ASN",type=integer,JSONPath=`.spec.asn`
+// +kubebuilder:printcolumn:name="Router ID Pool",type=string,JSONPath=`.spec.routerIDCIDR`
+// +kubebuilder:printcolumn:name="VTEP CIDR",type=string,JSONPath=`.spec.tunnelEndpoint.cidrs`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // Underlay is the Schema for the underlays API.
 type Underlay struct {

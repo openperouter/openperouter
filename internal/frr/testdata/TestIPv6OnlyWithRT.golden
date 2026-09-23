@@ -35,7 +35,6 @@ router bgp 64512
     neighbor 2001:db8::2 activate
     neighbor 2001:db8::2 allowas-in
     advertise-all-vni
-    advertise-svi-ip
   exit-address-family
 exit
 !

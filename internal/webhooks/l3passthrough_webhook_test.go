@@ -43,7 +43,7 @@ func TestValidateL3Passthrough(t *testing.T) {
 				},
 				Spec: v1alpha1.L3PassthroughSpec{
 					HostSession: v1alpha1.HostSession{
-						LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.0.2.0/24")},
+						LocalCIDRs: []string{"192.0.2.0/24"},
 					},
 					NodeSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{
@@ -73,7 +73,7 @@ func TestValidateL3Passthrough(t *testing.T) {
 					},
 					Spec: v1alpha1.L3PassthroughSpec{
 						HostSession: v1alpha1.HostSession{
-							LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.0.2.0/24")},
+							LocalCIDRs: []string{"192.0.2.0/24"},
 						},
 						NodeSelector: &metav1.LabelSelector{
 							MatchLabels: map[string]string{
@@ -90,7 +90,7 @@ func TestValidateL3Passthrough(t *testing.T) {
 				},
 				Spec: v1alpha1.L3PassthroughSpec{
 					HostSession: v1alpha1.HostSession{
-						LocalCIDR: v1alpha1.LocalCIDRConfig{IPv4: new("192.0.3.0/24")},
+						LocalCIDRs: []string{"192.0.3.0/24"},
 					},
 					NodeSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{
@@ -120,7 +120,7 @@ func TestValidateL3Passthrough(t *testing.T) {
 				},
 				Spec: v1alpha1.L3PassthroughSpec{
 					HostSession: v1alpha1.HostSession{
-						LocalCIDR: v1alpha1.LocalCIDRConfig{},
+						LocalCIDRs: nil,
 					},
 					NodeSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{

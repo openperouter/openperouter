@@ -15,6 +15,8 @@ import (
 // is not to test each called function (functions themselves should have unit tests for that),
 // but to make sure that the webhook's logic overall is sound.
 func TestValidateRawFRRConfig(t *testing.T) {
+	const operatorNamespace = "openperouter-system"
+
 	tcs := []struct {
 		name         string
 		rawFRRConfig *v1alpha1.RawFRRConfig
@@ -24,7 +26,7 @@ func TestValidateRawFRRConfig(t *testing.T) {
 			name: "webhook passes",
 			rawFRRConfig: &v1alpha1.RawFRRConfig{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "default",
+					Namespace: operatorNamespace,
 					Name:      "rawfrrconfig",
 				},
 				Spec: v1alpha1.RawFRRConfigSpec{
@@ -36,7 +38,7 @@ func TestValidateRawFRRConfig(t *testing.T) {
 			name: "empty rawConfig",
 			rawFRRConfig: &v1alpha1.RawFRRConfig{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "default",
+					Namespace: operatorNamespace,
 					Name:      "rawfrrconfig",
 				},
 				Spec: v1alpha1.RawFRRConfigSpec{
@@ -44,6 +46,19 @@ func TestValidateRawFRRConfig(t *testing.T) {
 				},
 			},
 			errorString: "rawConfig must not be empty",
+		},
+		{
+			name: "wrong namespace is rejected",
+			rawFRRConfig: &v1alpha1.RawFRRConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "other-namespace",
+					Name:      "rawfrrconfig",
+				},
+				Spec: v1alpha1.RawFRRConfigSpec{
+					RawConfig: "some config",
+				},
+			},
+			errorString: "RawFRRConfig must be created in the operator namespace \"openperouter-system\", got \"other-namespace\"",
 		},
 	}
 	for _, tc := range tcs {
@@ -54,7 +69,7 @@ func TestValidateRawFRRConfig(t *testing.T) {
 			}()
 			Logger, _ = logging.New("debug")
 
-			err := validateRawFRRConfig(tc.rawFRRConfig)
+			err := validateRawFRRConfig(tc.rawFRRConfig, operatorNamespace)
 			if tc.errorString == "" {
 				if err != nil {
 					t.Fatalf("expected no error, but got %q", err)
@@ -69,4 +84,29 @@ func TestValidateRawFRRConfig(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("empty operator namespace rejects", func(t *testing.T) {
+		origLogger := Logger
+		defer func() {
+			Logger = origLogger
+		}()
+		Logger, _ = logging.New("debug")
+
+		cr := &v1alpha1.RawFRRConfig{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: "any-namespace",
+				Name:      "rawfrrconfig",
+			},
+			Spec: v1alpha1.RawFRRConfigSpec{
+				RawConfig: "some config",
+			},
+		}
+		err := validateRawFRRConfig(cr, "")
+		if err == nil {
+			t.Fatal("expected error with empty operator namespace, but got none")
+		}
+		if !strings.Contains(err.Error(), "not configured") {
+			t.Fatalf("expected error about namespace not configured, got %q", err)
+		}
+	})
 }

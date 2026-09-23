@@ -66,8 +66,14 @@ func (v *L3PassthroughValidator) Handle(ctx context.Context, req admission.Reque
 		if err := validateL3PassthroughCreate(&l3passthrough); err != nil {
 			return admission.Denied(err.Error())
 		}
+		if err := DatapathConfigValidator.Validate(conversion.APIConfigData{L3Passthrough: []v1alpha1.L3Passthrough{l3passthrough}}); err != nil {
+			return admission.Denied(err.Error())
+		}
 	case v1.Update:
 		if err := validateL3PassthroughUpdate(&l3passthrough, &oldL3Passthrough); err != nil {
+			return admission.Denied(err.Error())
+		}
+		if err := DatapathConfigValidator.Validate(conversion.APIConfigData{L3Passthrough: []v1alpha1.L3Passthrough{l3passthrough}}); err != nil {
 			return admission.Denied(err.Error())
 		}
 	case v1.Delete:
@@ -75,6 +81,7 @@ func (v *L3PassthroughValidator) Handle(ctx context.Context, req admission.Reque
 			return admission.Denied(err.Error())
 		}
 	}
+
 	return admission.Allowed("")
 }
 

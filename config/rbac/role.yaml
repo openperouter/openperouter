@@ -12,39 +12,15 @@ rules:
   - get
   - list
   - patch
-  - update
   - watch
 - apiGroups:
-  - ""
-  resources:
-  - pods
-  verbs:
-  - delete
-  - get
-  - list
-  - watch
-- apiGroups:
-  - admissionregistration.k8s.io
-  resources:
-  - validatingwebhookconfigurations
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - admissionregistration.k8s.io
-  resourceNames:
-  - openpe-validating-webhook-configuration
-  resources:
-  - validatingwebhookconfigurations
-  verbs:
-  - update
-- apiGroups:
-  - openpe.openperouter.github.io
+  - network.openperouter.io
   resources:
   - l2vnis
   - l3passthroughs
   - l3vnis
+  - l3vpns
+  - rawfrrconfigs
   - routernodeconfigurationstatuses
   - underlays
   verbs:
@@ -56,37 +32,27 @@ rules:
   - update
   - watch
 - apiGroups:
-  - openpe.openperouter.github.io
+  - network.openperouter.io
   resources:
   - l2vnis/finalizers
   - l3passthroughs/finalizers
   - l3vnis/finalizers
+  - l3vpns/finalizers
+  - rawfrrconfigs/finalizers
   - underlays/finalizers
   verbs:
   - update
 - apiGroups:
-  - openpe.openperouter.github.io
+  - network.openperouter.io
   resources:
   - l2vnis/status
   - l3passthroughs/status
   - l3vnis/status
+  - l3vpns/status
+  - rawfrrconfigs/status
   - routernodeconfigurationstatuses/status
   - underlays/status
   verbs:
   - get
   - patch
   - update
-- apiGroups:
-  - openpe.openperouter.github.io
-  resources:
-  - rawfrrconfigs
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - openpe.openperouter.github.io
-  resources:
-  - rawfrrconfigs/status
-  verbs:
-  - get

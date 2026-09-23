@@ -4,6 +4,7 @@ package staticconfiguration
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -24,18 +25,28 @@ func TestReadNodeConfig(t *testing.T) {
 	}{
 		{
 			name:     "valid yaml config",
-			content:  "nodeIndex: 42\nlogLevel: debug\n",
-			expected: &static.NodeConfig{NodeIndex: 42, LogLevel: "debug"},
+			content:  "nodeIndex:\n  index: 42\nlogLevel: debug\n",
+			expected: &static.NodeConfig{NodeIndex: static.NodeIndex{Index: 42}, LogLevel: "debug"},
 		},
 		{
 			name:     "valid yaml with zero value",
-			content:  "nodeIndex: 0\nlogLevel: info\n",
-			expected: &static.NodeConfig{NodeIndex: 0, LogLevel: "info"},
+			content:  "nodeIndex:\n  index: 0\nlogLevel: info\n",
+			expected: &static.NodeConfig{NodeIndex: static.NodeIndex{Index: 0}, LogLevel: "info"},
 		},
 		{
 			name:     "valid yaml with only nodeIndex",
-			content:  "nodeIndex: 1\n",
-			expected: &static.NodeConfig{NodeIndex: 1, LogLevel: ""},
+			content:  "nodeIndex:\n  index: 1\n",
+			expected: &static.NodeConfig{NodeIndex: static.NodeIndex{Index: 1}, LogLevel: ""},
+		},
+		{
+			name:        "interfaceName resolution fails for non-existent interface",
+			content:     "nodeIndex:\n  interfaceName: nonexistent-iface-xyz\n",
+			expectError: true,
+		},
+		{
+			name:        "both index and interfaceName is an error",
+			content:     "nodeIndex:\n  index: 5\n  interfaceName: eth0\n",
+			expectError: true,
 		},
 		{
 			name:        "invalid yaml",
@@ -67,13 +78,35 @@ func TestReadNodeConfig(t *testing.T) {
 			}
 
 			if config.NodeIndex != tt.expected.NodeIndex {
-				t.Errorf("expected NodeIndex %d, got %d", tt.expected.NodeIndex, config.NodeIndex)
+				t.Errorf("expected NodeIndex %+v, got %+v", tt.expected.NodeIndex, config.NodeIndex)
 			}
 
 			if config.LogLevel != tt.expected.LogLevel {
 				t.Errorf("expected LogLevel %s, got %s", tt.expected.LogLevel, config.LogLevel)
 			}
 		})
+	}
+}
+
+func TestReadNodeConfig_InterfaceName(t *testing.T) {
+	loopback := loopbackInterfaceName(t)
+	content := fmt.Sprintf("nodeIndex:\n  interfaceName: %s\n", loopback)
+
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "node-config.yaml")
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test config file: %v", err)
+	}
+
+	config, err := ReadNodeConfig(configPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if config.NodeIndex.InterfaceName != loopback {
+		t.Errorf("expected InterfaceName %s, got %s", loopback, config.NodeIndex.InterfaceName)
+	}
+	if config.NodeIndex.Index == 0 {
+		t.Error("expected resolved Index to be non-zero for loopback")
 	}
 }
 
@@ -98,7 +131,7 @@ func TestReadRouterConfigs(t *testing.T) {
 
 	t.Run("single file", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		writeTestFile(t, tmpDir, "openpe_underlay.yaml", "underlays:\n  - asn: 64515\n    routeridcidr: \"10.0.0.0/24\"\n")
+		writeTestFile(t, tmpDir, "openpe_underlay.yaml", "underlays:\n  - asn: 64515\n    routerIDCIDR: \"10.0.0.0/24\"\n")
 
 		configs, err := ReadRouterConfigs(tmpDir)
 		if err != nil {
@@ -114,7 +147,7 @@ func TestReadRouterConfigs(t *testing.T) {
 
 	t.Run("multiple files", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		writeTestFile(t, tmpDir, "openpe_underlay.yaml", "underlays:\n  - asn: 64515\n    routeridcidr: \"10.0.0.0/24\"\n")
+		writeTestFile(t, tmpDir, "openpe_underlay.yaml", "underlays:\n  - asn: 64515\n    routerIDCIDR: \"10.0.0.0/24\"\n")
 		writeTestFile(t, tmpDir, "openpe_l3vni.yaml", "l3vnis:\n  - vrf: \"vrf-test\"\n    vni: 1000\n")
 		writeTestFile(t, tmpDir, "other.yaml", "test: value\n")
 
@@ -184,18 +217,21 @@ func TestReadRouterConfigsFromFiles(t *testing.T) {
 		t.Fatalf("unexpected error reading testdata: %v", err)
 	}
 
-	if len(configs) != 4 {
-		t.Fatalf("expected 4 config files, got %d", len(configs))
+	expectedConfigFiles := 5
+	if len(configs) != expectedConfigFiles {
+		t.Fatalf("expected %d config files, got %d", expectedConfigFiles, len(configs))
 	}
 
-	underlays := make([]v1alpha1.UnderlaySpec, 0, len(configs))
-	l3vnis := make([]v1alpha1.L3VNISpec, 0, len(configs))
-	l2vnis := make([]v1alpha1.L2VNISpec, 0, len(configs))
+	underlays := make([]static.StaticUnderlaySpec, 0, len(configs))
+	l3vnis := make([]static.StaticL3VNI, 0, len(configs))
+	l3vpns := make([]static.StaticL3VPN, 0, len(configs))
+	l2vnis := make([]static.StaticL2VNI, 0, len(configs))
 	var bgpPassthrough *v1alpha1.L3PassthroughSpec
 
 	for _, cfg := range configs {
 		underlays = append(underlays, cfg.Underlays...)
 		l3vnis = append(l3vnis, cfg.L3VNIs...)
+		l3vpns = append(l3vpns, cfg.L3VPNs...)
 		l2vnis = append(l2vnis, cfg.L2VNIs...)
 		if cfg.BGPPassthrough.HostSession.ASN != 0 {
 			bgpPassthrough = &cfg.BGPPassthrough
@@ -203,79 +239,154 @@ func TestReadRouterConfigsFromFiles(t *testing.T) {
 	}
 
 	// openpe_underlay.yaml
-	wantUnderlay := v1alpha1.UnderlaySpec{
-		ASN:  64514,
-		Nics: []string{"toswitch1", "eth0"},
-		Neighbors: []v1alpha1.Neighbor{
-			{
-				ASN:     new(int64(64512)),
-				Address: new("192.168.11.2"),
+	wantUnderlay := static.StaticUnderlaySpec{
+		UnderlaySpec: v1alpha1.UnderlaySpec{
+			ASN:        64514,
+			Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch1"}}, {Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
+			TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+				CIDRs: []string{"100.65.0.0/24", "2001:db8:1234:5678::/64"},
 			},
-			{
-				ASN:     new(int64(64512)),
-				Address: new("192.168.11.3"),
-				BFD: &v1alpha1.BFDSettings{
-					ReceiveInterval:  new(int32(300)),
-					TransmitInterval: new(int32(300)),
-					DetectMultiplier: new(int32(3)),
+			ISIS: &v1alpha1.ISISConfig{
+				BaseNet: "49.0001.0002.0003.0004.00",
+				Level:   new(int32(1)),
+				Interfaces: []v1alpha1.ISISInterface{
+					{
+						Name:     "toswitch1",
+						IPFamily: new(v1alpha1.IPFamilyIPv6),
+					},
+				},
+			},
+			SRV6: &v1alpha1.SRV6Config{
+				EncapBehavior: new(v1alpha1.HEncapsRed),
+				Locator: v1alpha1.SRV6Locator{
+					BasePrefix: "fd00:0:32::/48",
+					Format:     "usid-f3216",
 				},
 			},
 		},
-		TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
-			CIDRs: []string{"100.65.0.0/24"},
+		Neighbors: []static.StaticNeighbor{
+			{
+				Neighbor: v1alpha1.Neighbor{
+					ASN:     new(int64(64512)),
+					Address: new("192.168.11.2"),
+				},
+			},
+			{
+				Neighbor: v1alpha1.Neighbor{
+					ASN:     new(int64(64512)),
+					Address: new("192.168.11.3"),
+					BFD: &v1alpha1.BFDSettings{
+						ReceiveInterval:  new(int32(300)),
+						TransmitInterval: new(int32(300)),
+						DetectMultiplier: new(int32(3)),
+					},
+				},
+			},
 		},
 	}
 
 	// openpe_l3vni.yaml
-	wantL3VNIs := []v1alpha1.L3VNISpec{
+	wantL3VNIs := []static.StaticL3VNI{
 		{
-			VRF: "red",
-			HostSession: &v1alpha1.HostSession{
-				ASN:     64514,
-				HostASN: new(int64(64515)),
-				LocalCIDR: v1alpha1.LocalCIDRConfig{
-					IPv4: new("192.169.10.0/24"),
-					IPv6: new("2001:db8:1::/64"),
+			Name: "l3vni-red",
+			L3VNISpec: v1alpha1.L3VNISpec{
+				VRF: "red",
+				HostSession: &v1alpha1.HostSession{
+					ASN:        64514,
+					HostASN:    new(int64(64515)),
+					LocalCIDRs: []string{"192.169.10.0/24", "2001:db8:1::/64"},
 				},
+				VNI: 100,
 			},
-			VNI: 100,
 		},
 		{
-			VRF: "blue",
-			HostSession: &v1alpha1.HostSession{
-				ASN:     64514,
-				HostASN: new(int64(64516)),
-				LocalCIDR: v1alpha1.LocalCIDRConfig{
-					IPv4: new("192.169.11.0/24"),
-					IPv6: new("2001:db8:2::/64"),
+			Name: "l3vni-blue",
+			L3VNISpec: v1alpha1.L3VNISpec{
+				VRF: "blue",
+				HostSession: &v1alpha1.HostSession{
+					ASN:        64514,
+					HostASN:    new(int64(64516)),
+					LocalCIDRs: []string{"192.169.11.0/24", "2001:db8:2::/64"},
 				},
+				VNI: 200,
 			},
-			VNI: 200,
 		},
 	}
 
 	// openpe_l2vni.yaml
-	wantL2VNIs := []v1alpha1.L2VNISpec{
+	wantL2VNIs := []static.StaticL2VNI{
 		{
-			VRF:       new("storage"),
-			VNI:       300,
-			VXLanPort: new(int32(4789)),
-			HostMaster: &v1alpha1.HostMaster{
-				Type: "linux-bridge",
-				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
-					Name: new("br-storage"),
+			Name: "l2vni-storage",
+			L2VNISpec: v1alpha1.L2VNISpec{
+				RoutingDomain: &v1alpha1.RoutingDomain{
+					Type:  v1alpha1.RoutingDomainTypeL3VNI,
+					L3VNI: &v1alpha1.L3VNIReference{Name: "l3vni-red"},
+				},
+				VNI:       300,
+				VXLanPort: new(int32(4789)),
+				HostMaster: &v1alpha1.HostMaster{
+					Type: "LinuxBridge",
+					LinuxBridge: &v1alpha1.LinuxBridgeConfig{
+						Lifecycle: v1alpha1.BridgeLifecycleExternal,
+						Name:      new("br-storage"),
+					},
 				},
 			},
 		},
 		{
-			VRF:       new("management"),
-			VNI:       400,
-			VXLanPort: new(int32(4789)),
-			HostMaster: &v1alpha1.HostMaster{
-				Type: "ovs-bridge",
-				OVSBridge: &v1alpha1.OVSBridgeConfig{
-					Name: new("ovsbr0"),
+			Name: "l2vni-management",
+			L2VNISpec: v1alpha1.L2VNISpec{
+				RoutingDomain: &v1alpha1.RoutingDomain{
+					Type:  v1alpha1.RoutingDomainTypeL3VNI,
+					L3VNI: &v1alpha1.L3VNIReference{Name: "l3vni-blue"},
 				},
+				VNI:       400,
+				VXLanPort: new(int32(4789)),
+				HostMaster: &v1alpha1.HostMaster{
+					Type: "OVSBridge",
+					OVSBridge: &v1alpha1.OVSBridgeConfig{
+						Lifecycle: v1alpha1.BridgeLifecycleExternal,
+						Name:      new("ovsbr0"),
+					},
+				},
+			},
+		},
+	}
+
+	// openpe_l3vpn.yaml
+	wantL3VPNs := []static.StaticL3VPN{
+		{
+			Name: "red",
+			L3VPNSpec: v1alpha1.L3VPNSpec{
+				VRF: "red",
+				HostSession: &v1alpha1.HostSession{
+					ASN:        64514,
+					HostASN:    new(int64(64515)),
+					LocalCIDRs: []string{"192.169.10.0/24"},
+				},
+				RDAssignedNumber: 100,
+				ExportRTs:        []v1alpha1.RouteTarget{"64514:100"},
+				ImportRTs:        []v1alpha1.RouteTarget{"64520:100"},
+			},
+		},
+	}
+
+	wantL2VNIsFromL3VPN := []static.StaticL2VNI{
+		{
+			Name: "l2-over-vpn",
+			L2VNISpec: v1alpha1.L2VNISpec{
+				RoutingDomain: &v1alpha1.RoutingDomain{
+					Type:  v1alpha1.RoutingDomainTypeL3VPN,
+					L3VPN: &v1alpha1.L3VPNReference{Name: "red"},
+				},
+				VNI: 210,
+				HostMaster: &v1alpha1.HostMaster{
+					Type: "LinuxBridge",
+					LinuxBridge: &v1alpha1.LinuxBridgeConfig{
+						Lifecycle: v1alpha1.BridgeLifecycleManaged,
+					},
+				},
+				GatewayIPs: []string{"192.170.1.1/24"},
 			},
 		},
 	}
@@ -283,23 +394,23 @@ func TestReadRouterConfigsFromFiles(t *testing.T) {
 	// openpe_bgppassthrough.yaml
 	wantBGPPassthrough := v1alpha1.L3PassthroughSpec{
 		HostSession: v1alpha1.HostSession{
-			ASN:     64514,
-			HostASN: new(int64(64517)),
-			LocalCIDR: v1alpha1.LocalCIDRConfig{
-				IPv4: new("192.169.100.0/24"),
-				IPv6: new("2001:db8:100::/64"),
-			},
+			ASN:        64514,
+			HostASN:    new(int64(64517)),
+			LocalCIDRs: []string{"192.169.100.0/24", "2001:db8:100::/64"},
 		},
 	}
 
-	sortNeighbors := cmpopts.SortSlices(func(a, b v1alpha1.Neighbor) bool {
+	sortNeighbors := cmpopts.SortSlices(func(a, b static.StaticNeighbor) bool {
 		return ptr.Deref(a.Address, "") < ptr.Deref(b.Address, "")
 	})
-	sortL3VNIs := cmpopts.SortSlices(func(a, b v1alpha1.L3VNISpec) bool {
+	sortL3VNIs := cmpopts.SortSlices(func(a, b static.StaticL3VNI) bool {
 		return a.VRF < b.VRF
 	})
-	sortL2VNIs := cmpopts.SortSlices(func(a, b v1alpha1.L2VNISpec) bool {
+	sortL2VNIs := cmpopts.SortSlices(func(a, b static.StaticL2VNI) bool {
 		return a.VNI < b.VNI
+	})
+	sortL3VPNs := cmpopts.SortSlices(func(a, b static.StaticL3VPN) bool {
+		return a.VRF < b.VRF
 	})
 
 	if len(underlays) != 1 {
@@ -313,12 +424,18 @@ func TestReadRouterConfigsFromFiles(t *testing.T) {
 		t.Errorf("L3VNIs mismatch (-want +got):\n%s", cmp.Diff(wantL3VNIs, l3vnis, sortL3VNIs))
 	}
 
-	if !cmp.Equal(wantL2VNIs, l2vnis, sortL2VNIs) {
-		t.Errorf("L2VNIs mismatch (-want +got):\n%s", cmp.Diff(wantL2VNIs, l2vnis, sortL2VNIs))
+	allWantL2VNIs := append(wantL2VNIs, wantL2VNIsFromL3VPN...)
+	if !cmp.Equal(allWantL2VNIs, l2vnis, sortL2VNIs) {
+		t.Errorf("L2VNIs mismatch (-want +got):\n%s", cmp.Diff(allWantL2VNIs, l2vnis, sortL2VNIs))
+	}
+
+	if !cmp.Equal(wantL3VPNs, l3vpns, sortL3VPNs) {
+		t.Errorf("L3VPNs mismatch (-want +got):\n%s", cmp.Diff(wantL3VPNs, l3vpns, sortL3VPNs))
 	}
 
 	if bgpPassthrough == nil {
 		t.Fatal("expected BGP passthrough configuration")
+		return
 	}
 	if !cmp.Equal(wantBGPPassthrough, *bgpPassthrough) {
 		t.Errorf("BGP passthrough mismatch (-want +got):\n%s", cmp.Diff(wantBGPPassthrough, *bgpPassthrough))

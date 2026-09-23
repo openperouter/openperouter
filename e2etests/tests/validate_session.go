@@ -16,20 +16,12 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/networklayerprotocol"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/utils/ptr"
 )
 
 const Established = true
 
 func validateFRRK8sSessionForHostSession(name string, hostsession v1alpha1.HostSession, established bool, frrk8sPods ...*corev1.Pod) {
-	var cidrs []string
-
-	if ipv4CIDR := ptr.Deref(hostsession.LocalCIDR.IPv4, ""); ipv4CIDR != "" {
-		cidrs = append(cidrs, ipv4CIDR)
-	}
-	if ipv6CIDR := ptr.Deref(hostsession.LocalCIDR.IPv6, ""); ipv6CIDR != "" {
-		cidrs = append(cidrs, ipv6CIDR)
-	}
+	cidrs := hostsession.LocalCIDRs
 
 	Expect(cidrs).NotTo(BeEmpty(), "either IPv4 or IPv6 CIDR must be provided")
 
@@ -126,5 +118,5 @@ func validateSessionDownForNeigh(exec executor.Executor, neighborIP string) {
 			return fmt.Errorf("neighbor %s is established: %v", neighborIP, neigh)
 		}
 		return nil
-	}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
+	}, 5*time.Minute, time.Second).ShouldNot(HaveOccurred())
 }

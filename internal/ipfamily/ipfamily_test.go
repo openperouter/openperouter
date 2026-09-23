@@ -179,6 +179,67 @@ func TestIPFamilyForAddress(t *testing.T) {
 	}
 }
 
+func TestCIDRForFamily(t *testing.T) {
+	tests := []struct {
+		desc   string
+		cidrs  []string
+		family Family
+		want   string
+	}{
+		{
+			desc:   "ipv4 only",
+			cidrs:  []string{"192.168.1.0/24"},
+			family: IPv4,
+			want:   "192.168.1.0/24",
+		},
+		{
+			desc:   "ipv6 only",
+			cidrs:  []string{"2001:db8::/64"},
+			family: IPv6,
+			want:   "2001:db8::/64",
+		},
+		{
+			desc:   "dual stack ipv4",
+			cidrs:  []string{"192.168.1.0/24", "2001:db8::/64"},
+			family: IPv4,
+			want:   "192.168.1.0/24",
+		},
+		{
+			desc:   "dual stack ipv6",
+			cidrs:  []string{"192.168.1.0/24", "2001:db8::/64"},
+			family: IPv6,
+			want:   "2001:db8::/64",
+		},
+		{
+			desc:   "dual stack ipv6 first, lookup ipv4",
+			cidrs:  []string{"2001:db8::/64", "192.168.1.0/24"},
+			family: IPv4,
+			want:   "192.168.1.0/24",
+		},
+		{
+			desc:   "dual stack ipv6 first, lookup ipv6",
+			cidrs:  []string{"2001:db8::/64", "192.168.1.0/24"},
+			family: IPv6,
+			want:   "2001:db8::/64",
+		},
+		{
+			desc:   "missing family",
+			cidrs:  []string{"192.168.1.0/24"},
+			family: IPv6,
+			want:   "",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.desc, func(t *testing.T) {
+			got := CIDRForFamily(test.cidrs, test.family)
+			if got != test.want {
+				t.Fatalf("CIDRForFamily() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func ipnet(s string) *net.IPNet {
 	_, n, err := net.ParseCIDR(s)
 	if err != nil {

@@ -7,8 +7,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -18,33 +20,71 @@ import (
 	"github.com/openperouter/openperouter/internal/frr"
 )
 
-func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeIndex int, logLevel, frrConfigPath, targetNamespace string, updater frr.ConfigUpdater, hostConfigurator HostConfigurator) error {
+// DatapathConfigurator abstracts host-level network configuration so the
+// reconciler can work with different datapaths (kernel netlink, grout/DPDK).
+type DatapathConfigurator interface {
+	conversion.DatapathConfigValidator
+
+	Configure(ctx context.Context, config interfacesConfiguration) error
+}
+
+func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeIndex int, logLevel string,
+	frrConfigPath, targetNamespace string, updater frr.ConfigUpdater,
+	datapathConfigurator DatapathConfigurator, frrConfigurator frrConfiguratorType) error {
 	normalizeConfig(&apiConfig)
 	if err := conversion.ValidateUnderlays(apiConfig.Underlays); err != nil {
-		return err
+		return fmt.Errorf("failed to validate underlays: %w", err)
 	}
 
 	var resourceErrors []error
 	var err error
 
+	err = datapathConfigurator.Validate(apiConfig)
+	resourceErrors = append(resourceErrors, err)
+
 	var validL3VNIs []v1alpha1.L3VNI
 	validL3VNIs, err = conversion.FilterValidL3VNIs(apiConfig.L3VNIs)
 	resourceErrors = append(resourceErrors, err)
+
+	var validL3VPNs []v1alpha1.L3VPN
+	validL3VPNs, err = conversion.FilterValidL3VPNs(apiConfig.L3VPNs)
+	resourceErrors = append(resourceErrors, err)
+
+	if conversion.HasMissingSRv6ForL3VPNs(apiConfig.Underlays, validL3VPNs) {
+		resourceErrors = append(
+			resourceErrors,
+			conversion.MissingSRv6ForL3VPNErrors(validL3VPNs, nil),
+		)
+		validL3VPNs = []v1alpha1.L3VPN{}
+	}
 
 	var validL2VNIs []v1alpha1.L2VNI
 	validL2VNIs, err = conversion.FilterValidL2VNIs(apiConfig.L2VNIs)
 	resourceErrors = append(resourceErrors, err)
 
-	validL3VNIs, validL2VNIs, err = conversion.FilterUniqueVNIs(validL3VNIs, validL2VNIs)
+	var allocatedRDAssignedNumberToOwner map[int32]string
+	validL3VNIs, allocatedRDAssignedNumberToOwner, err = conversion.FilterUniqueL3VNIs(validL3VNIs)
 	resourceErrors = append(resourceErrors, err)
 
-	validL3VNIs, err = conversion.FilterUniqueVRFs(validL3VNIs)
+	var allocatedRDAssignedNumberToVPN map[int32]string
+	validL3VPNs, allocatedRDAssignedNumberToVPN, err = conversion.FilterUniqueL3VPNs(validL3VPNs, allocatedRDAssignedNumberToOwner)
+	resourceErrors = append(resourceErrors, err)
+	maps.Copy(allocatedRDAssignedNumberToOwner, allocatedRDAssignedNumberToVPN)
+
+	validL2VNIs, err = conversion.FilterUniqueL2VNIs(validL2VNIs, allocatedRDAssignedNumberToOwner)
 	resourceErrors = append(resourceErrors, err)
 
-	validL3VNIs, validL2VNIs, err = conversion.FilterValidVRFSubnets(validL3VNIs, validL2VNIs)
+	var vrfToVNI map[string]types.NamespacedName
+	validL3VNIs, vrfToVNI, err = conversion.FilterUniqueVRFsForL3VNIs(validL3VNIs)
 	resourceErrors = append(resourceErrors, err)
 
-	validL2VNIs, err = filterL2VNIsWithoutL3VNI(validL2VNIs, validL3VNIs)
+	validL3VPNs, err = conversion.FilterUniqueVRFsForL3VPNs(validL3VPNs, vrfToVNI)
+	resourceErrors = append(resourceErrors, err)
+
+	validL2VNIs, err = filterL2VNIsWithInvalidRoutingDomain(validL2VNIs, validL3VNIs, validL3VPNs)
+	resourceErrors = append(resourceErrors, err)
+
+	validL3VNIs, validL3VPNs, validL2VNIs, err = conversion.FilterValidVRFSubnets(validL3VNIs, validL3VPNs, validL2VNIs)
 	resourceErrors = append(resourceErrors, err)
 
 	var validPassthrough []v1alpha1.L3Passthrough
@@ -58,22 +98,21 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 	config := conversion.APIConfigData{
 		Underlays:     apiConfig.Underlays,
 		L3VNIs:        validL3VNIs,
+		L3VPNs:        validL3VPNs,
 		L2VNIs:        validL2VNIs,
 		L3Passthrough: validPassthrough,
 		RawFRRConfigs: apiConfig.RawFRRConfigs,
+		Passwords:     apiConfig.Passwords,
 	}
 
-	err = hostConfigurator(ctx, interfacesConfiguration{
-		targetNamespace: targetNamespace,
-		APIConfigData:   config,
-		nodeIndex:       nodeIndex,
-	})
-	if openpeerrors.IsNonResourceError(err) {
-		return err
-	}
-	resourceErrors = append(resourceErrors, err)
-
-	if err = configureFRR(ctx, frrConfigData{
+	// The FRR configuration must be applied before the datapath creates the kernel
+	// objects it references. bgpd handles ZEBRA_VNI_ADD in bgp_evpn_local_vni_add(),
+	// which dereferences the instance returned by bgp_get_evpn() without checking it
+	// for NULL, so a VXLAN interface showing up while FRR has no EVPN instance
+	// configured crashes bgpd. See https://github.com/FRRouting/frr/issues/22851.
+	// Removals keep working in this order because ZEBRA_VNI_DEL does not touch the
+	// EVPN instance, and FRR stops referencing the objects before they are deleted.
+	if err = frrConfigurator(ctx, frrConfigData{
 		configFile:    frrConfigPath,
 		updater:       updater,
 		APIConfigData: config,
@@ -83,28 +122,69 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 		return err
 	}
 
+	err = datapathConfigurator.Configure(ctx, interfacesConfiguration{
+		targetNamespace: targetNamespace,
+		APIConfigData:   config,
+		nodeIndex:       nodeIndex,
+	})
+	if openpeerrors.IsNonResourceError(err) {
+		return err
+	}
+	resourceErrors = append(resourceErrors, err)
+
 	return errors.Join(resourceErrors...)
 }
 
-// filterL2VNIsWithoutL3VNI must be called after all L3VNI filtering is complete.
-func filterL2VNIsWithoutL3VNI(l2Vnis []v1alpha1.L2VNI, l3Vnis []v1alpha1.L3VNI) ([]v1alpha1.L2VNI, error) {
-	vrfs := sets.New[string]()
-	for _, l3 := range l3Vnis {
-		vrfs.Insert(l3.Spec.VRF)
+// filterL2VNIsWithInvalidRoutingDomain must be called after all L3VNI/L3VPN filtering is complete.
+func filterL2VNIsWithInvalidRoutingDomain(
+	l2Vnis []v1alpha1.L2VNI,
+	validL3VNIs []v1alpha1.L3VNI,
+	validL3VPNs []v1alpha1.L3VPN,
+) ([]v1alpha1.L2VNI, error) {
+	if len(l2Vnis) == 0 {
+		return l2Vnis, nil
 	}
-	var valid []v1alpha1.L2VNI
+
+	validL3VNINames := sets.New[string]()
+	for _, l3 := range validL3VNIs {
+		validL3VNINames.Insert(l3.Name)
+	}
+	validL3VPNNames := sets.New[string]()
+	for _, vpn := range validL3VPNs {
+		validL3VPNNames.Insert(vpn.Name)
+	}
+	valid := make([]v1alpha1.L2VNI, 0, len(l2Vnis))
 	var resourceErrors []error
 	for _, l2 := range l2Vnis {
-		if l2.Spec.VRF != nil && *l2.Spec.VRF != "" && !vrfs.Has(*l2.Spec.VRF) {
-			resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
-				Obj: v1alpha1.FailedResource{
-					Kind:    openpeerrors.KindL2VNI,
-					Name:    l2.Name,
-					Reason:  v1alpha1.FailedResourceReasonDependencyFailed,
-					Message: fmt.Sprintf("no valid L3VNI for L3 domain %q", *l2.Spec.VRF),
-				},
-			})
+		if l2.Spec.RoutingDomain == nil {
+			valid = append(valid, l2)
 			continue
+		}
+		switch l2.Spec.RoutingDomain.Type {
+		case v1alpha1.RoutingDomainTypeL3VNI:
+			if l2.Spec.RoutingDomain.L3VNI != nil && !validL3VNINames.Has(l2.Spec.RoutingDomain.L3VNI.Name) {
+				resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
+					Obj: v1alpha1.FailedResource{
+						Kind:    openpeerrors.KindL2VNI,
+						Name:    l2.Name,
+						Reason:  v1alpha1.FailedResourceReasonDependencyFailed,
+						Message: fmt.Sprintf("referenced L3VNI %q not found", l2.Spec.RoutingDomain.L3VNI.Name),
+					},
+				})
+				continue
+			}
+		case v1alpha1.RoutingDomainTypeL3VPN:
+			if l2.Spec.RoutingDomain.L3VPN != nil && !validL3VPNNames.Has(l2.Spec.RoutingDomain.L3VPN.Name) {
+				resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
+					Obj: v1alpha1.FailedResource{
+						Kind:    openpeerrors.KindL2VNI,
+						Name:    l2.Name,
+						Reason:  v1alpha1.FailedResourceReasonDependencyFailed,
+						Message: fmt.Sprintf("referenced L3VPN %q not found", l2.Spec.RoutingDomain.L3VPN.Name),
+					},
+				})
+				continue
+			}
 		}
 		valid = append(valid, l2)
 	}
@@ -114,6 +194,10 @@ func filterL2VNIsWithoutL3VNI(l2Vnis []v1alpha1.L2VNI, l3Vnis []v1alpha1.L3VNI) 
 // normalizeConfig sorts resources by namespace/name so validation order is deterministic.
 func normalizeConfig(config *conversion.APIConfigData) {
 	slices.SortFunc(config.L3VNIs, func(a, b v1alpha1.L3VNI) int {
+		return cmp.Compare(objectKey(&a), objectKey(&b))
+	})
+
+	slices.SortFunc(config.L3VPNs, func(a, b v1alpha1.L3VPN) int {
 		return cmp.Compare(objectKey(&a), objectKey(&b))
 	})
 

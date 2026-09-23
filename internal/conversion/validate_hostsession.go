@@ -6,10 +6,10 @@ import (
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/utils/ptr"
 
 	v1alpha1 "github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/filter"
+	"github.com/openperouter/openperouter/internal/ipfamily"
 )
 
 type hostSessionInfo struct {
@@ -49,14 +49,14 @@ func ValidateHostSessions(l3VNIs []v1alpha1.L3VNI, l3Passthrough []v1alpha1.L3Pa
 	existingCIDRsV4 := map[string]string{}
 	existingCIDRsV6 := map[string]string{}
 	for _, s := range hostSessions {
-		localIPv4CIDR := ptr.Deref(s.LocalCIDR.IPv4, "")
+		localIPv4CIDR := ipfamily.CIDRForFamily(s.LocalCIDRs, ipfamily.IPv4)
 		if localIPv4CIDR != "" {
 			if err := validateCIDR(s, localIPv4CIDR, existingCIDRsV4); err != nil {
 				return err
 			}
 			existingCIDRsV4[localIPv4CIDR] = s.name
 		}
-		localIPv6CIDR := ptr.Deref(s.LocalCIDR.IPv6, "")
+		localIPv6CIDR := ipfamily.CIDRForFamily(s.LocalCIDRs, ipfamily.IPv6)
 		if localIPv6CIDR != "" {
 			if err := validateCIDR(s, localIPv6CIDR, existingCIDRsV6); err != nil {
 				return err

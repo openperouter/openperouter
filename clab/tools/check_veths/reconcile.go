@@ -81,8 +81,11 @@ func prepareVethPair(pair vethPair) error {
 		// will auto-generate a random MAC for the link during the first call
 		// of resolveMAC() and will have a stable MAC from then on.
 		if err := v.discoverMAC(); err != nil {
-			log.Printf("Discovered MAC address %s for link %s", v.macAddress, v)
+			log.Printf("Could not discover MAC address on start-up for link %s, will choose one later, err: %v",
+				v, err)
+			continue
 		}
+		log.Printf("Discovered MAC address %s for link %s", v.macAddress, v)
 	}
 	return nil
 }
@@ -94,6 +97,13 @@ func prepareVethPair(pair vethPair) error {
 // We always only check the left veth for existence, as this is either on the bridge, or on the leafkind.
 // The right side could have been moved into the OpenPERouter pods, already.
 func reconcile(ctx context.Context, container string, pairs []vethPair) error { // nolint:gocognit
+	// Always reconcile at least once at startup.
+	for _, pair := range pairs {
+		if err := applyVeth(pair); err != nil {
+			log.Printf("ERROR: %v", err)
+		}
+	}
+
 	linkUpdatesCh := make(chan netlink.LinkUpdate)
 
 	// Reconciler function consuming link updates from channel.
@@ -115,20 +125,8 @@ func reconcile(ctx context.Context, container string, pairs []vethPair) error { 
 					if pair.Left.Name != updatedLink {
 						continue
 					}
-					log.Printf("Found matching monitored pair %s <-> %s", pair.Left, pair.Right)
-					exists, err := pair.Left.exists()
-					if err != nil {
-						log.Printf("ERROR: when checking if left veth %s exists, %v", pair.Left, err)
-						continue
-					}
-					if exists {
-						log.Printf("Skipping pair %s <-> %s as it exists", pair.Left, pair.Right)
-						continue
-					}
-					log.Printf("=== Applying pair %s <-> %s ===", pair.Left, pair.Right)
 					if err := applyVeth(pair); err != nil {
-						log.Printf("ERROR: cannot ensure that veths exist, %v", err)
-						continue
+						log.Printf("ERROR: %v", err)
 					}
 				}
 			}
@@ -161,8 +159,9 @@ func reconcile(ctx context.Context, container string, pairs []vethPair) error { 
 	return nil
 }
 
-// applyVeth creates a veth pair and configures both ends.
-// It performs the following steps:
+// applyVeth reconciles a single veth pair. It checks if the left side exists, and if not, it
+// creates the veth pair and configures both ends.
+// It performs the following steps after the initial check:
 //  1. Cleans up any existing interfaces with the same names
 //  2. Creates the veth pair in the host namespace
 //  3. Moves interfaces to their target containers (if specified)
@@ -173,17 +172,32 @@ func reconcile(ctx context.Context, container string, pairs []vethPair) error { 
 //
 // Assumes left and right have been validated and prepared.
 func applyVeth(pair vethPair) error {
+	log.Printf("Found matching monitored pair %s <-> %s", pair.Left, pair.Right)
+	exists, err := pair.Left.exists()
+	if err != nil {
+		return fmt.Errorf("when checking if left veth %s exists, %w", pair.Left, err)
+	}
+	if exists {
+		log.Printf("Skipping pair %s <-> %s as it exists", pair.Left, pair.Right)
+		return nil
+	}
+
+	log.Printf("=== Applying pair %s <-> %s ===", pair.Left, pair.Right)
+
 	log.Print("\tCleanup and create the veth pair")
 	if err := pair.init(); err != nil {
-		return err
+		return fmt.Errorf("cannot ensure that veths exist, %w", err)
 	}
 
 	log.Print("\tApply left config")
 	if err := pair.Left.applyConfig(); err != nil {
-		return err
+		return fmt.Errorf("cannot ensure that veths exist, %w", err)
 	}
 	log.Print("\tApply right config")
-	return pair.Right.applyConfig()
+	if err := pair.Right.applyConfig(); err != nil {
+		return fmt.Errorf("cannot ensure that veths exist, %w", err)
+	}
+	return nil
 }
 
 // getContainerPID gets the PID of the main process inside the docker container.

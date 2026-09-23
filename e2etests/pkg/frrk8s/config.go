@@ -26,11 +26,11 @@ var (
 // ConfigFromHostSession converts a HostSession object to FRRConfiguration objects.
 // Returns a slice with one configuration for each IP family (IPv4 and/or IPv6).
 func ConfigFromHostSession(hostsession v1alpha1.HostSession, name string, tweak ...func(*frrk8sapi.FRRConfiguration)) ([]frrk8sapi.FRRConfiguration, error) {
-	ipv4 := ptr.Deref(hostsession.LocalCIDR.IPv4, "")
-	ipv6 := ptr.Deref(hostsession.LocalCIDR.IPv6, "")
+	ipv4 := ipfamily.CIDRForFamily(hostsession.LocalCIDRs, ipfamily.IPv4)
+	ipv6 := ipfamily.CIDRForFamily(hostsession.LocalCIDRs, ipfamily.IPv6)
 
 	if ipv4 == "" && ipv6 == "" {
-		return nil, fmt.Errorf("LocalCIDR is required for HostSession %s", name)
+		return nil, fmt.Errorf("localCIDRs is required for HostSession %s", name)
 	}
 
 	var configs []frrk8sapi.FRRConfiguration
@@ -60,11 +60,11 @@ func ConfigFromHostSession(hostsession v1alpha1.HostSession, name string, tweak 
 // ConfigFromHostSessionForIPFamily converts a HostSession object to FRRConfiguration objects for a specific IP family.
 // Returns a slice with one configuration for the specified IP family.
 func ConfigFromHostSessionForIPFamily(hostsession v1alpha1.HostSession, name string, family ipfamily.Family, tweak ...func(*frrk8sapi.FRRConfiguration)) (*frrk8sapi.FRRConfiguration, error) {
-	ipv4 := ptr.Deref(hostsession.LocalCIDR.IPv4, "")
-	ipv6 := ptr.Deref(hostsession.LocalCIDR.IPv6, "")
+	ipv4 := ipfamily.CIDRForFamily(hostsession.LocalCIDRs, ipfamily.IPv4)
+	ipv6 := ipfamily.CIDRForFamily(hostsession.LocalCIDRs, ipfamily.IPv6)
 
 	if ipv4 == "" && ipv6 == "" {
-		return nil, fmt.Errorf("LocalCIDR is required for HostSession %s", name)
+		return nil, fmt.Errorf("localCIDRs is required for HostSession %s", name)
 	}
 	if family == ipfamily.IPv4 {
 		if ipv4 == "" {

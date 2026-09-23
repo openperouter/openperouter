@@ -21,6 +21,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
@@ -95,15 +96,24 @@ func (in *OpenPERouterSpec) DeepCopyInto(out *OpenPERouterSpec) {
 		*out = new(LogLevel)
 		**out = **in
 	}
-	if in.MultusNetworkAnnotation != nil {
-		in, out := &in.MultusNetworkAnnotation, &out.MultusNetworkAnnotation
-		*out = new(string)
-		**out = **in
+	if in.NodeSelector != nil {
+		in, out := &in.NodeSelector, &out.NodeSelector
+		*out = make(map[string]string, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val
+		}
 	}
-	if in.RunOnMaster != nil {
-		in, out := &in.RunOnMaster, &out.RunOnMaster
-		*out = new(bool)
-		**out = **in
+	if in.Tolerations != nil {
+		in, out := &in.Tolerations, &out.Tolerations
+		*out = make([]v1.Toleration, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
+	if in.Affinity != nil {
+		in, out := &in.Affinity, &out.Affinity
+		*out = new(v1.Affinity)
+		(*in).DeepCopyInto(*out)
 	}
 	if in.OVSSocketPath != nil {
 		in, out := &in.OVSSocketPath, &out.OVSSocketPath
@@ -118,6 +128,16 @@ func (in *OpenPERouterSpec) DeepCopyInto(out *OpenPERouterSpec) {
 	if in.HealthProbePort != nil {
 		in, out := &in.HealthProbePort, &out.HealthProbePort
 		*out = new(int32)
+		**out = **in
+	}
+	if in.BGPListenLimit != nil {
+		in, out := &in.BGPListenLimit, &out.BGPListenLimit
+		*out = new(int32)
+		**out = **in
+	}
+	if in.Datapath != nil {
+		in, out := &in.Datapath, &out.Datapath
+		*out = new(string)
 		**out = **in
 	}
 }

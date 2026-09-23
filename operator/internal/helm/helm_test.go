@@ -18,14 +18,17 @@ package helm
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
 	. "github.com/onsi/gomega"
 	operatorapi "github.com/openperouter/openperouter/operator/api/v1alpha1"
 	"github.com/openperouter/openperouter/operator/internal/envconfig"
+	helmchart "helm.sh/helm/v4/pkg/chart"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -40,6 +43,8 @@ const (
 	controllerDaemonSetName   = "controller"
 	routerDaemonSetName       = "router"
 	nodemarkerDeploymentName  = "nodemarker"
+	groutContainerName        = "grout"
+	groutDatapath             = "grout"
 	daemonSetKind             = "DaemonSet"
 	deploymentKind            = "Deployment"
 )
@@ -65,7 +70,9 @@ func TestLoadChart(t *testing.T) {
 	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(chart.chart).ToNot(BeNil())
-	g.Expect(chart.chart.Name()).To(Equal(openperouterChartName))
+	chartAccessor, err := helmchart.NewAccessor(chart.chart)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(chartAccessor.Name()).To(Equal(openperouterChartName))
 }
 
 func TestParseChartWithCustomValues(t *testing.T) {
@@ -134,46 +141,7 @@ func TestParseChartWithCustomValues(t *testing.T) {
 	g.Expect(nodemarkerFound).To(BeTrue())
 }
 
-func TestParseChartWithMultusAnnotation(t *testing.T) {
-	g := NewGomegaWithT(t)
-	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace)
-	g.Expect(err).ToNot(HaveOccurred())
-
-	multusAnnotation := "macvlan-conf"
-	openperouter := &operatorapi.OpenPERouter{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "openperouter",
-			Namespace: openperouterTestNamespace,
-		},
-		Spec: operatorapi.OpenPERouterSpec{
-			LogLevel:                new(operatorapi.LogLevelInfo),
-			MultusNetworkAnnotation: &multusAnnotation,
-		},
-	}
-
-	objs, err := chart.Objects(defaultEnvConfig, openperouter)
-	g.Expect(err).ToNot(HaveOccurred())
-
-	var routerFound bool
-	for _, obj := range objs {
-		objKind := obj.GetKind()
-		if objKind == daemonSetKind && obj.GetName() == routerDaemonSetName {
-			router := appsv1.DaemonSet{}
-			err = runtime.DefaultUnstructuredConverter.FromUnstructured(obj.UnstructuredContent(), &router)
-			g.Expect(err).ToNot(HaveOccurred())
-			g.Expect(router.GetName()).To(Equal(routerDaemonSetName))
-
-			// Verify the multus annotation is present in the router pod template
-			annotations := router.Spec.Template.Annotations
-			g.Expect(annotations).ToNot(BeNil())
-			g.Expect(annotations["k8s.v1.cni.cncf.io/networks"]).To(Equal(multusAnnotation))
-			routerFound = true
-		}
-	}
-	g.Expect(routerFound).To(BeTrue())
-}
-
-func TestParseChartWithoutMultusAnnotation(t *testing.T) {
+func TestParseChartRouterHasNoMultusAnnotation(t *testing.T) {
 	g := NewGomegaWithT(t)
 	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace)
 	g.Expect(err).ToNot(HaveOccurred())
@@ -200,7 +168,7 @@ func TestParseChartWithoutMultusAnnotation(t *testing.T) {
 			g.Expect(err).ToNot(HaveOccurred())
 			g.Expect(router.GetName()).To(Equal(routerDaemonSetName))
 
-			// Verify the multus annotation is not present when not specified
+			// The removed Multus underlay integration must not annotate the router pod.
 			annotations := router.Spec.Template.Annotations
 			if annotations != nil {
 				g.Expect(annotations["k8s.v1.cni.cncf.io/networks"]).To(BeEmpty())
@@ -235,75 +203,329 @@ func validateObject(testcase, name string, obj *unstructured.Unstructured) error
 	return nil
 }*/
 
-func TestParseChartWithMasterTolerations(t *testing.T) {
+func TestParseChartWithGroutEnabled(t *testing.T) {
 	g := NewGomegaWithT(t)
 	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace)
 	g.Expect(err).ToNot(HaveOccurred())
 
-	tests := []struct {
-		name              string
-		runOnMaster       bool
-		expectTolerations bool
-	}{
-		{
-			name:              "runOnMaster enabled",
-			runOnMaster:       true,
-			expectTolerations: true,
+	openperouter := &operatorapi.OpenPERouter{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "openperouter",
+			Namespace: openperouterTestNamespace,
 		},
-		{
-			name:              "runOnMaster disabled",
-			runOnMaster:       false,
-			expectTolerations: false,
+		Spec: operatorapi.OpenPERouterSpec{
+			LogLevel: new(operatorapi.LogLevelInfo),
+			Datapath: new(groutDatapath),
 		},
 	}
 
+	envConfig := defaultEnvConfig
+	envConfig.GroutImage = &envconfig.ImageInfo{
+		Repo: "quay.io/openperouter/router",
+		Tag:  "test-grout",
+	}
+
+	objs, err := chart.Objects(envConfig, openperouter)
+	g.Expect(err).ToNot(HaveOccurred())
+
+	var routerFound, controllerFound bool
+	for _, obj := range objs {
+		objKind := obj.GetKind()
+		if objKind == daemonSetKind && obj.GetName() == routerDaemonSetName {
+			router := appsv1.DaemonSet{}
+			err = runtime.DefaultUnstructuredConverter.FromUnstructured(obj.UnstructuredContent(), &router)
+			g.Expect(err).ToNot(HaveOccurred())
+
+			containerNames := make([]string, 0, len(router.Spec.Template.Spec.Containers))
+			for _, c := range router.Spec.Template.Spec.Containers {
+				containerNames = append(containerNames, c.Name)
+			}
+			g.Expect(containerNames).To(ContainElement(groutContainerName))
+
+			for _, c := range router.Spec.Template.Spec.Containers {
+				if c.Name == groutContainerName {
+					g.Expect(c.Image).To(Equal("quay.io/openperouter/router:test-grout"))
+					env := map[string]string{}
+					for _, e := range c.Env {
+						env[e.Name] = e.Value
+					}
+					g.Expect(env["GROUT_SOCK_PATH"]).To(Equal("/var/run/grout/grout.sock"))
+					g.Expect(env["GROUT_MEMPOOL_CHUNK_SIZE"]).To(Equal("2047"))
+					g.Expect(env["GROUT_PORT_QUEUE_SIZE"]).To(Equal("128"))
+					g.Expect(env).ToNot(HaveKey("GROUT_FIB4_ALGORITHM"))
+					g.Expect(env).ToNot(HaveKey("GROUT_FIB6_ALGORITHM"))
+					g.Expect(c.Command).ToNot(ContainElement(ContainSubstring("--test-mode")))
+				}
+			}
+			routerFound = true
+		}
+		if objKind == daemonSetKind && obj.GetName() == controllerDaemonSetName {
+			controller := appsv1.DaemonSet{}
+			err = runtime.DefaultUnstructuredConverter.FromUnstructured(obj.UnstructuredContent(), &controller)
+			g.Expect(err).ToNot(HaveOccurred())
+
+			for _, c := range controller.Spec.Template.Spec.Containers {
+				if c.Name == "controller" {
+					g.Expect(c.Args).To(ContainElement("--datapath=grout"))
+					g.Expect(c.Args).To(ContainElement("--grout-socket=/var/run/grout/grout.sock"))
+				}
+			}
+			controllerFound = true
+		}
+	}
+	g.Expect(routerFound).To(BeTrue())
+	g.Expect(controllerFound).To(BeTrue())
+}
+
+func TestParseChartWithGroutTestMode(t *testing.T) {
+	g := NewGomegaWithT(t)
+	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace)
+	g.Expect(err).ToNot(HaveOccurred())
+
+	openperouter := &operatorapi.OpenPERouter{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "openperouter",
+			Namespace: openperouterTestNamespace,
+		},
+		Spec: operatorapi.OpenPERouterSpec{
+			LogLevel: new(operatorapi.LogLevelInfo),
+			Datapath: new(groutDatapath),
+		},
+	}
+
+	envConfig := defaultEnvConfig
+	envConfig.GroutTestMode = true
+
+	objs, err := chart.Objects(envConfig, openperouter)
+	g.Expect(err).ToNot(HaveOccurred())
+
+	var groutFound bool
+	for _, obj := range objs {
+		if obj.GetKind() != daemonSetKind || obj.GetName() != routerDaemonSetName {
+			continue
+		}
+		router := appsv1.DaemonSet{}
+		err = runtime.DefaultUnstructuredConverter.FromUnstructured(obj.UnstructuredContent(), &router)
+		g.Expect(err).ToNot(HaveOccurred())
+
+		for _, c := range router.Spec.Template.Spec.Containers {
+			if c.Name != groutContainerName {
+				continue
+			}
+			env := map[string]string{}
+			for _, e := range c.Env {
+				env[e.Name] = e.Value
+			}
+			g.Expect(env["GROUT_FIB4_ALGORITHM"]).To(Equal("DUMMY"))
+			g.Expect(env["GROUT_FIB6_ALGORITHM"]).To(Equal("DUMMY"))
+			g.Expect(c.Command).To(ContainElement(ContainSubstring("--test-mode")))
+			groutFound = true
+		}
+	}
+	g.Expect(groutFound).To(BeTrue())
+}
+
+func TestParseChartWithGroutDisabled(t *testing.T) {
+	g := NewGomegaWithT(t)
+	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace)
+	g.Expect(err).ToNot(HaveOccurred())
+
+	openperouter := &operatorapi.OpenPERouter{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "openperouter",
+			Namespace: openperouterTestNamespace,
+		},
+		Spec: operatorapi.OpenPERouterSpec{
+			LogLevel: new(operatorapi.LogLevelInfo),
+		},
+	}
+
+	objs, err := chart.Objects(defaultEnvConfig, openperouter)
+	g.Expect(err).ToNot(HaveOccurred())
+
+	var routerFound, controllerFound bool
+	for _, obj := range objs {
+		objKind := obj.GetKind()
+		if objKind == daemonSetKind && obj.GetName() == routerDaemonSetName {
+			router := appsv1.DaemonSet{}
+			err = runtime.DefaultUnstructuredConverter.FromUnstructured(obj.UnstructuredContent(), &router)
+			g.Expect(err).ToNot(HaveOccurred())
+
+			for _, c := range router.Spec.Template.Spec.Containers {
+				g.Expect(c.Name).ToNot(Equal(groutContainerName))
+			}
+			routerFound = true
+		}
+		if objKind == daemonSetKind && obj.GetName() == controllerDaemonSetName {
+			controller := appsv1.DaemonSet{}
+			err = runtime.DefaultUnstructuredConverter.FromUnstructured(obj.UnstructuredContent(), &controller)
+			g.Expect(err).ToNot(HaveOccurred())
+
+			for _, c := range controller.Spec.Template.Spec.Containers {
+				if c.Name == "controller" {
+					g.Expect(c.Args).ToNot(ContainElement("--datapath=grout"))
+				}
+			}
+			controllerFound = true
+		}
+	}
+	g.Expect(routerFound).To(BeTrue())
+	g.Expect(controllerFound).To(BeTrue())
+}
+
+func TestParseChartWithSchedulingPrimitives(t *testing.T) {
+	g := NewGomegaWithT(t)
+	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace)
+	g.Expect(err).ToNot(HaveOccurred())
+
+	testTolerations := []v1.Toleration{{
+		Key:      "dedicated",
+		Operator: v1.TolerationOpEqual,
+		Value:    "openperouter",
+		Effect:   v1.TaintEffectNoSchedule,
+	}}
+	testNodeSelector := map[string]string{"kubernetes.io/os": "linux"}
+	terms := []v1.NodeSelectorTerm{{MatchExpressions: []v1.NodeSelectorRequirement{{
+		Key: "kubernetes.io/os", Operator: v1.NodeSelectorOpIn, Values: []string{"linux"},
+	}}}}
+	testAffinity := &v1.Affinity{NodeAffinity: &v1.NodeAffinity{
+		RequiredDuringSchedulingIgnoredDuringExecution: &v1.NodeSelector{
+			NodeSelectorTerms: terms,
+		}},
+	}
+
+	tests := []struct {
+		name               string
+		spec               operatorapi.OpenPERouterSpec
+		expectTolerations  []v1.Toleration
+		expectNodeSelector map[string]string
+		expectAffinity     *v1.Affinity
+	}{
+		{
+			name: "expect control-plane toleration (default)",
+			spec: operatorapi.OpenPERouterSpec{
+				LogLevel: new(operatorapi.LogLevelInfo),
+			},
+			expectTolerations: []v1.Toleration{
+				{
+					Key:               "node-role.kubernetes.io/master",
+					Operator:          "Exists",
+					Value:             "",
+					Effect:            "NoSchedule",
+					TolerationSeconds: nil,
+				},
+				{
+					Key:               "node-role.kubernetes.io/control-plane",
+					Operator:          "Exists",
+					Value:             "",
+					Effect:            "NoSchedule",
+					TolerationSeconds: nil,
+				},
+			},
+		},
+		{
+			name: "explicit tolerations/nodeSelector/affinity override chart defaults",
+			spec: operatorapi.OpenPERouterSpec{
+				LogLevel:     new(operatorapi.LogLevelInfo),
+				Tolerations:  testTolerations,
+				NodeSelector: testNodeSelector,
+				Affinity:     testAffinity,
+			},
+			expectTolerations:  testTolerations,
+			expectNodeSelector: testNodeSelector,
+			expectAffinity:     testAffinity,
+		},
+		{
+			name: "empty tolerations list opts out of default control-plane tolerations",
+			spec: operatorapi.OpenPERouterSpec{
+				LogLevel:    new(operatorapi.LogLevelInfo),
+				Tolerations: []v1.Toleration{},
+			},
+			expectTolerations: []v1.Toleration{},
+		},
+	}
+	daemonSets := []string{controllerDaemonSetName, routerDaemonSetName, "hostbridge"}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			g := NewGomegaWithT(t)
 			openperouter := &operatorapi.OpenPERouter{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "openperouter",
 					Namespace: openperouterTestNamespace,
 				},
-				Spec: operatorapi.OpenPERouterSpec{
-					LogLevel:    new(operatorapi.LogLevelInfo),
-					RunOnMaster: &tt.runOnMaster,
-				},
+				Spec: tt.spec,
 			}
-
 			objs, err := chart.Objects(defaultEnvConfig, openperouter)
 			g.Expect(err).ToNot(HaveOccurred())
 
+			var podSpecs []v1.PodSpec
 			for _, obj := range objs {
 				objKind := obj.GetKind()
-				if objKind == daemonSetKind && (obj.GetName() == controllerDaemonSetName || obj.GetName() == routerDaemonSetName) {
+				if objKind == daemonSetKind && slices.Index(daemonSets, obj.GetName()) != -1 {
 					ds := appsv1.DaemonSet{}
 					err = runtime.DefaultUnstructuredConverter.FromUnstructured(obj.UnstructuredContent(), &ds)
 					g.Expect(err).ToNot(HaveOccurred())
-					g.Expect(hasMasterToleration(ds.Spec.Template.Spec.Tolerations)).To(Equal(tt.expectTolerations),
-						fmt.Sprintf("DaemonSet %s should have master toleration=%v", obj.GetName(), tt.expectTolerations))
+					podSpecs = append(podSpecs, ds.Spec.Template.Spec)
 				}
-
 				if objKind == deploymentKind && obj.GetName() == nodemarkerDeploymentName {
 					deployment := appsv1.Deployment{}
 					err = runtime.DefaultUnstructuredConverter.FromUnstructured(obj.UnstructuredContent(), &deployment)
 					g.Expect(err).ToNot(HaveOccurred())
-					g.Expect(hasMasterToleration(deployment.Spec.Template.Spec.Tolerations)).To(Equal(tt.expectTolerations),
-						fmt.Sprintf("Deployment %s should have master toleration=%v", obj.GetName(), tt.expectTolerations))
+					podSpecs = append(podSpecs, deployment.Spec.Template.Spec)
+				}
+			}
+			for _, podSpec := range podSpecs {
+				if tt.expectTolerations != nil {
+					g.Expect(podSpec.Tolerations).To(ConsistOf(tt.expectTolerations))
+				}
+				if tt.expectNodeSelector != nil {
+					g.Expect(podSpec.NodeSelector).To(Equal(tt.expectNodeSelector))
+				}
+				if tt.expectAffinity != nil {
+					g.Expect(equality.Semantic.DeepEqual(podSpec.Affinity, tt.expectAffinity)).To(BeTrue())
 				}
 			}
 		})
 	}
 }
 
-func hasMasterToleration(tolerations []v1.Toleration) bool {
-	for _, tol := range tolerations {
-		if (tol.Key == "node-role.kubernetes.io/master" || tol.Key == "node-role.kubernetes.io/control-plane") &&
-			tol.Effect == v1.TaintEffectNoSchedule {
-			return true
-		}
+func TestParseChartWithBGPListenLimit(t *testing.T) {
+	g := NewGomegaWithT(t)
+	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace)
+	g.Expect(err).ToNot(HaveOccurred())
+	limit := int32(512)
+	openperouter := &operatorapi.OpenPERouter{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "openperouter",
+			Namespace: openperouterTestNamespace,
+		},
+		Spec: operatorapi.OpenPERouterSpec{
+			BGPListenLimit: &limit,
+		},
 	}
-	return false
+
+	objs, err := chart.Objects(defaultEnvConfig, openperouter)
+	g.Expect(err).ToNot(HaveOccurred())
+
+	controllerFound := false
+	for _, obj := range objs {
+		if obj.GetKind() != daemonSetKind || obj.GetName() != controllerDaemonSetName {
+			continue
+		}
+		controller := appsv1.DaemonSet{}
+		err = runtime.DefaultUnstructuredConverter.FromUnstructured(obj.UnstructuredContent(), &controller)
+		g.Expect(err).ToNot(HaveOccurred())
+		found := false
+		for _, c := range controller.Spec.Template.Spec.Containers {
+			for _, arg := range c.Args {
+				if arg == fmt.Sprintf("--bgplistenlimit=%d", limit) {
+					found = true
+				}
+			}
+		}
+		g.Expect(found).To(BeTrue(), "controller daemonset has no --bgplistenlimit arg")
+		controllerFound = true
+	}
+	g.Expect(controllerFound).To(BeTrue())
 }
 
 func validateLogLevel(level string, pod v1.PodTemplateSpec) error {

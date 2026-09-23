@@ -40,6 +40,7 @@ type NodesReconciler struct {
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups="admissionregistration.k8s.io",resources=validatingwebhookconfigurations,verbs=get;list;watch
 // +kubebuilder:rbac:groups="admissionregistration.k8s.io",resources=validatingwebhookconfigurations,resourceNames="openpe-validating-webhook-configuration",verbs=update
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=l2vnis;l3passthroughs;l3vnis;l3vpns;rawfrrconfigs;underlays,verbs=get;list;watch
 
 func (r *NodesReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := r.Logger.With("controller", "NodeIndex", "request", req.String())

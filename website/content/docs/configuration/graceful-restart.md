@@ -17,15 +17,17 @@ For the conceptual explanation of how this fits into the resiliency architecture
 Add the `gracefulRestart` field to your Underlay CR. An empty object enables Graceful Restart with default values:
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: Underlay
 metadata:
   name: underlay
   namespace: openperouter-system
 spec:
   asn: 64514
-  nics:
-    - toswitch
+  interfaces:
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: toswitch
   neighbors:
     - asn: 64512
       address: 192.168.11.2
@@ -45,7 +47,7 @@ Omitting the `gracefulRestart` field entirely disables Graceful Restart.
 ## Full Example
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: Underlay
 metadata:
   name: underlay
@@ -55,8 +57,10 @@ spec:
   tunnelEndpoint:
     cidrs:
     - 100.65.0.0/24
-  nics:
-    - toswitch
+  interfaces:
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: toswitch
   neighbors:
     - asn: 64512
       address: 192.168.11.2

@@ -43,7 +43,7 @@ Before running any integration examples, you need to configure OpenPERouter with
 Configure the underlay to peer with the `kind-leaf` node:
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: Underlay
 metadata:
   name: underlay
@@ -53,8 +53,10 @@ spec:
   tunnelEndpoint:
     cidrs:
     - 100.65.0.0/24
-  nics:
-    - toswitch
+  interfaces:
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: toswitch
   neighbors:
     - asn: 64512
       address: 192.168.11.2
@@ -73,7 +75,7 @@ Create two VNIs that match the fabric configuration:
 
 ```yaml
 # Red VNI (VNI 100)
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3VNI
 metadata:
   name: red
@@ -81,14 +83,14 @@ metadata:
 spec:
   vrf: red
   vni: 100
-  hostsession:
+  hostSession:
     asn: 64514
-    hostasn: 64515
-    localcidr:
-      ipv4: 192.169.10.0/24
+    hostASN: 64515
+    localCIDRs:
+      - 192.169.10.0/24
 ---
 # Blue VNI (VNI 200)
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3VNI
 metadata:
   name: blue
@@ -96,11 +98,11 @@ metadata:
 spec:
   vrf: blue
   vni: 200
-  hostsession:
+  hostSession:
     asn: 64514
-    hostasn: 64515
-    localcidr:
-      ipv4: 192.169.11.0/24
+    hostASN: 64515
+    localCIDRs:
+      - 192.169.11.0/24
 ```
 
 **VNI Details:**
@@ -175,3 +177,16 @@ Configure OpenPERouter for Layer2 EVPN scenarios with direct BGP peering.
 - Simple Layer2 connectivity
 
 [View Layer2 Integration Example →]({{< ref "layer2" >}})
+
+### Route Reflector
+
+Run one node as a pure BGP route reflector that distributes EVPN routes between the other nodes, without a full iBGP mesh or fabric reflection.
+
+**Key Features:**
+
+- Internal BGP (iBGP) route reflection (RFC 4456)
+- Dynamic neighbor acceptance via BGP listen range
+- EVPN Type 2/Type 3 route reflection between nodes
+- Pure reflector node with no data-plane participation
+
+[View Route Reflector Example →]({{< ref "route-reflector" >}})

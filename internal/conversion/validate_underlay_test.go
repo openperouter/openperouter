@@ -8,286 +8,941 @@ import (
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestValidateUnderlay(t *testing.T) {
 	tests := []struct {
-		name     string
-		underlay v1alpha1.Underlay
-		wantErr  bool
+		name       string
+		underlay   []v1alpha1.Underlay
+		wantErrStr string
 	}{
 		{
 			name: "valid underlay",
-			underlay: v1alpha1.Underlay{
-				Spec: v1alpha1.UnderlaySpec{
-					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
-						CIDRs: []string{"192.168.1.0/24"},
-					},
-					Nics: []string{"eth0"},
-					ASN:  65001,
-					Neighbors: []v1alpha1.Neighbor{
-						{
-							ASN:     new(int64(65002)),
-							Address: new("192.168.1.1"),
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"192.168.1.0/24"},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN:     new(int64(65002)),
+								Address: new("192.168.1.1"),
+							},
 						},
 					},
 				},
 			},
-			wantErr: false,
 		},
 		{
 			name: "missing tunnel endpoint configuration",
-			underlay: v1alpha1.Underlay{
-				Spec: v1alpha1.UnderlaySpec{
-					Nics: []string{"eth0"},
-					ASN:  65001,
-					Neighbors: []v1alpha1.Neighbor{
-						{
-							ASN:     new(int64(65002)),
-							Address: new("192.168.1.1"),
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN:     new(int64(65002)),
+								Address: new("192.168.1.1"),
+							},
 						},
 					},
 				},
 			},
-			wantErr: false,
 		},
 		{
 			name: "invalid VTEP CIDR",
-			underlay: v1alpha1.Underlay{
-				Spec: v1alpha1.UnderlaySpec{
-					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
-						CIDRs: []string{"invalidCIDR"},
-					},
-					Nics: []string{"eth0", "eth1"},
-					ASN:  65001,
-					Neighbors: []v1alpha1.Neighbor{
-						{
-							ASN:     new(int64(65002)),
-							Address: new("192.168.1.1"),
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"invalidCIDR"},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth1"},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN:     new(int64(65002)),
+								Address: new("192.168.1.1"),
+							},
 						},
 					},
 				},
 			},
-			wantErr: true,
+			wantErrStr: "Underlay/: invalid tunnel endpoint CIDRs for underlay : [invalidCIDR] - " +
+				"invalid cidr: invalid CIDR address: invalidCIDR",
 		},
 		{
 			name: "empty VTEP CIDR",
-			underlay: v1alpha1.Underlay{
-				Spec: v1alpha1.UnderlaySpec{
-					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
-						CIDRs: []string{""},
-					},
-					Nics: []string{"eth0", "eth1"},
-					ASN:  65001,
-					Neighbors: []v1alpha1.Neighbor{
-						{
-							ASN:     new(int64(65002)),
-							Address: new("192.168.1.1"),
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{""},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth1"},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN:     new(int64(65002)),
+								Address: new("192.168.1.1"),
+							},
 						},
 					},
 				},
 			},
-			wantErr: true,
+			wantErrStr: "Underlay/: invalid tunnel endpoint CIDRs for underlay : [] - " +
+				"invalid cidr: invalid CIDR address:",
 		},
 		{
 			name: "invalid NIC name",
-			underlay: v1alpha1.Underlay{
-				Spec: v1alpha1.UnderlaySpec{
-					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
-						CIDRs: []string{"192.168.1.0/24"},
-					},
-					Nics: []string{"eth0", "1$^&invalid"},
-					ASN:  65001,
-					Neighbors: []v1alpha1.Neighbor{
-						{
-							ASN:     new(int64(65002)),
-							Address: new("192.168.1.1"),
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"192.168.1.0/24"},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+							{
+								Type: v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{
+									InterfaceName: "1$^&invalid",
+								},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN:     new(int64(65002)),
+								Address: new("192.168.1.1"),
+							},
 						},
 					},
 				},
 			},
-			wantErr: true,
+			wantErrStr: "underlay  has invalid interfaces: invalid interface name 1$^&invalid: interface name " +
+				"1$^&invalid contains invalid characters",
 		},
 		{
 			name: "more than one nic",
-			underlay: v1alpha1.Underlay{
-				Spec: v1alpha1.UnderlaySpec{
-					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
-						CIDRs: []string{"192.168.1.0/24"},
-					},
-					Nics: []string{"eth0", "eth1"},
-					ASN:  65001,
-					Neighbors: []v1alpha1.Neighbor{
-						{
-							ASN:     new(int64(65002)),
-							Address: new("192.168.1.1"),
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"192.168.1.0/24"},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth1"},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN:     new(int64(65002)),
+								Address: new("192.168.1.1"),
+							},
 						},
 					},
 				},
 			},
-			wantErr: false,
 		},
 		{
 			name: "same local and remote ASN (iBGP)",
-			underlay: v1alpha1.Underlay{
-				Spec: v1alpha1.UnderlaySpec{
-					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
-						CIDRs: []string{"192.168.1.0/24"},
-					},
-					ASN: 65001,
-					Neighbors: []v1alpha1.Neighbor{
-						{
-							ASN: new(int64(65001)),
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"192.168.1.0/24"},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN: new(int64(65001)),
+							},
 						},
 					},
 				},
 			},
-			wantErr: false,
 		},
 		{
 			name: "underlay NIC is a vlan sub-interface",
-			underlay: v1alpha1.Underlay{
-				Spec: v1alpha1.UnderlaySpec{
-					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
-						CIDRs: []string{"192.168.1.0/24"},
-					},
-					Nics: []string{"eno2.161"},
-					ASN:  65001,
-					Neighbors: []v1alpha1.Neighbor{
-						{
-							ASN:     new(int64(65002)),
-							Address: new("192.168.1.1"),
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"192.168.1.0/24"},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eno2.161"},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN:     new(int64(65002)),
+								Address: new("192.168.1.1"),
+							},
 						},
 					},
 				},
 			},
-			wantErr: false,
 		},
 		{
 			name: "underlay NIC starts with dot",
-			underlay: v1alpha1.Underlay{
-				Spec: v1alpha1.UnderlaySpec{
-					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
-						CIDRs: []string{"192.168.1.0/24"},
-					},
-					Nics: []string{".eth0"},
-					ASN:  65001,
-					Neighbors: []v1alpha1.Neighbor{
-						{
-							ASN:     new(int64(65002)),
-							Address: new("192.168.1.1"),
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"192.168.1.0/24"},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: ".eth0"},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN:     new(int64(65002)),
+								Address: new("192.168.1.1"),
+							},
 						},
 					},
 				},
 			},
-			wantErr: true,
+			wantErrStr: "underlay  has invalid interfaces: invalid interface name .eth0: " +
+				"interface name .eth0 contains invalid characters",
 		},
 		{
 			name: "a vlan sub interface whose name is too long",
-			underlay: v1alpha1.Underlay{
-				Spec: v1alpha1.UnderlaySpec{
-					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
-						CIDRs: []string{"192.168.1.0/24"},
-					},
-					Nics: []string{"verylongname.123"},
-					ASN:  65001,
-					Neighbors: []v1alpha1.Neighbor{
-						{
-							ASN:     new(int64(65002)),
-							Address: new("192.168.1.1"),
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"192.168.1.0/24"},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "verylongname.123"},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN:     new(int64(65002)),
+								Address: new("192.168.1.1"),
+							},
 						},
 					},
 				},
 			},
-			wantErr: true,
+			wantErrStr: "underlay  has invalid interfaces: invalid interface name verylongname.123: " +
+				"interface name verylongname.123 can't be longer than 15 characters",
 		},
 		{
 			name: "underlay NIC with invalid characters after dot",
-			underlay: v1alpha1.Underlay{
-				Spec: v1alpha1.UnderlaySpec{
-					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
-						CIDRs: []string{"192.168.1.0/24"},
-					},
-					Nics: []string{"eth0.100!"},
-					ASN:  65001,
-					Neighbors: []v1alpha1.Neighbor{
-						{
-							ASN:     new(int64(65002)),
-							Address: new("192.168.1.1"),
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"192.168.1.0/24"},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0.100!"},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN:     new(int64(65002)),
+								Address: new("192.168.1.1"),
+							},
 						},
 					},
 				},
 			},
-			wantErr: true,
+			wantErrStr: "underlay  has invalid interfaces: invalid interface name eth0.100!: " +
+				"interface name eth0.100! contains invalid characters",
 		},
 		{
 			name: "empty vtepCIDR specified",
-			underlay: v1alpha1.Underlay{
-				Spec: v1alpha1.UnderlaySpec{
-					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{},
-					Nics:           []string{"eth0"},
-					ASN:            65001,
-					Neighbors: []v1alpha1.Neighbor{
-						{
-							ASN:     new(int64(65002)),
-							Address: new("192.168.1.1"),
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN:     new(int64(65002)),
+								Address: new("192.168.1.1"),
+							},
 						},
 					},
 				},
 			},
-			wantErr: true,
+			wantErrStr: "underlay : tunnel endpoint CIDRs must be specified",
+		},
+		{
+			name: "valid IPv6-only tunnel endpoint",
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"2001:db8::1/128"},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN:     new(int64(65002)),
+								Address: new("2001:db8::2"),
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "multiple listen range neighbors with explicit neighbors",
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"192.168.1.0/24"},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          "NetworkDevice",
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								Type:        new("internal"),
+								ListenRange: new("192.168.10.0/24"),
+							},
+							{
+								Type:        new("internal"),
+								ListenRange: new("192.168.11.0/24"),
+							},
+							{
+								Type:        new("internal"),
+								ListenRange: new("fd00:10::/64"),
+							},
+							{
+								Type:    new("internal"),
+								Address: new("192.168.10.3"),
+							},
+							{
+								Type:    new("internal"),
+								Address: new("192.168.10.4"),
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "valid dual-stack tunnel endpoint",
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"192.168.1.0/24", "2001:db8::1/128"},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN:     new(int64(65002)),
+								Address: new("192.168.1.1"),
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "multiple neighbors without address do not collide",
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"192.168.1.0/24"},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          "NetworkDevice",
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN:       new(int64(65002)),
+								Interface: new("eth0"),
+							},
+							{
+								ASN:       new(int64(65002)),
+								Interface: new("eth1"),
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "valid SRv6 Locator Format",
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						ASN:       65001,
+						Neighbors: []v1alpha1.Neighbor{{}},
+						SRV6: &v1alpha1.SRV6Config{
+							Locator: v1alpha1.SRV6Locator{
+								Format: "usid-f3216",
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "invalid SRv6 Locator Format",
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						ASN:       65001,
+						Neighbors: []v1alpha1.Neighbor{{}},
+						SRV6: &v1alpha1.SRV6Config{
+							Locator: v1alpha1.SRV6Locator{
+								Format: "usid-finvalid",
+							},
+						},
+					},
+				},
+			},
+			wantErrStr: "invalid locator format \"usid-finvalid\"",
+		},
+		{
+			name: "valid cni interface",
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"192.168.1.0/24"},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type: v1alpha1.UnderlayInterfaceTypeCNIDevice,
+								CNIDevice: &v1alpha1.CNIDevice{
+									Type: v1alpha1.CNIConfigTypeRawConfig,
+									RawConfig: &apiextensionsv1.JSON{
+										Raw: []byte(
+											`{"cniVersion":"1.0.0","name":"macvlan-underlay","type":"macvlan","master":"eth1"}`,
+										),
+									},
+									InterfaceName: new("net1"),
+								},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN:     new(int64(65002)),
+								Address: new("192.168.1.1"),
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "cni interface with invalid raw config",
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"192.168.1.0/24"},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type: v1alpha1.UnderlayInterfaceTypeCNIDevice,
+								CNIDevice: &v1alpha1.CNIDevice{
+									Type: v1alpha1.CNIConfigTypeRawConfig,
+									RawConfig: &apiextensionsv1.JSON{
+										Raw: []byte(
+											`{"cniVersion":"1.0.0","name":"broken","plugins":"notalist"}`,
+										),
+									},
+									InterfaceName: new("net1"),
+								},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN:     new(int64(65002)),
+								Address: new("192.168.1.1"),
+							},
+						},
+					},
+				},
+			},
+			wantErrStr: "underlay  has invalid interfaces: invalid cni config for interface net1: " +
+				"error parsing configuration list: invalid 'plugins' type string",
+		},
+		{
+			name: "duplicate interface name",
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"192.168.1.0/24"},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN:     new(int64(65002)),
+								Address: new("192.168.1.1"),
+							},
+						},
+					},
+				},
+			},
+			wantErrStr: "underlay  has invalid interfaces: duplicate underlay interface name eth0",
+		},
+		{
+			name: "mixed network device and cni interfaces",
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"192.168.1.0/24"},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+							{
+								Type: v1alpha1.UnderlayInterfaceTypeCNIDevice,
+								CNIDevice: &v1alpha1.CNIDevice{
+									Type: v1alpha1.CNIConfigTypeRawConfig,
+									RawConfig: &apiextensionsv1.JSON{
+										Raw: []byte(
+											`{"cniVersion":"1.0.0","name":"macvlan-underlay","type":"macvlan","master":"eth1"}`,
+										),
+									},
+									InterfaceName: new("eth1"),
+								},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN:     new(int64(65002)),
+								Address: new("192.168.1.1"),
+							},
+						},
+					},
+				},
+			},
+			wantErrStr: "underlay  has invalid interfaces: all interfaces must be of the same type",
+		},
+		{
+			name: "duplicate cni interface names",
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"192.168.1.0/24"},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type: v1alpha1.UnderlayInterfaceTypeCNIDevice,
+								CNIDevice: &v1alpha1.CNIDevice{
+									Type: v1alpha1.CNIConfigTypeRawConfig,
+									RawConfig: &apiextensionsv1.JSON{
+										Raw: []byte(
+											`{"cniVersion":"1.0.0","name":"macvlan-underlay","type":"macvlan","master":"eth1"}`,
+										),
+									},
+									InterfaceName: new("net1"),
+								},
+							},
+							{
+								Type: v1alpha1.UnderlayInterfaceTypeCNIDevice,
+								CNIDevice: &v1alpha1.CNIDevice{
+									Type: v1alpha1.CNIConfigTypeRawConfig,
+									RawConfig: &apiextensionsv1.JSON{
+										Raw: []byte(
+											`{"cniVersion":"1.0.0","name":"ipvlan-underlay","type":"ipvlan","master":"eth2"}`,
+										),
+									},
+									InterfaceName: new("net1"),
+								},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN:     new(int64(65002)),
+								Address: new("192.168.1.1"),
+							},
+						},
+					},
+				},
+			},
+			wantErrStr: "underlay  has invalid interfaces: duplicate underlay interface name net1",
+		},
+		{
+			name: "duplicate neighbor address",
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"192.168.1.0/24"},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN:     new(int64(65002)),
+								Address: new("192.168.1.1"),
+							},
+							{
+								ASN:     new(int64(65002)),
+								Address: new("192.168.1.1"),
+							},
+						},
+					},
+				},
+			},
+			wantErrStr: "underlay  has duplicate neighbor address: duplicate entry 192.168.1.1",
+		},
+		{
+			name: "neighbors via different interfaces",
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"192.168.1.0/24"},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN:       new(int64(65002)),
+								Interface: new("eth0"),
+							},
+							{
+								ASN:       new(int64(65002)),
+								Interface: new("eth1"),
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "neighbors with the same interface name",
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"192.168.1.0/24"},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN:       new(int64(65002)),
+								Interface: new("eth0"),
+							},
+							{
+								ASN:       new(int64(65002)),
+								Interface: new("eth0"),
+							},
+						},
+					},
+				},
+			},
+			wantErrStr: "underlay  has duplicate neighbor interface names, only one peer is allowed per interface: " +
+				"duplicate entry eth0",
+		},
+		{
+			name: "multiple underlays",
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"192.168.1.0/24"},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN:     new(int64(65002)),
+								Address: new("192.168.1.1"),
+							},
+						},
+					},
+				},
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"192.168.2.0/24"},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth1"},
+							},
+						},
+						ASN: 65002,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN:     new(int64(65003)),
+								Address: new("192.168.2.1"),
+							},
+						},
+					},
+				},
+			},
+			wantErrStr: "can't have more than one underlay per node",
+		},
+		{
+			name: "duplicate listen range",
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"192.168.1.0/24"},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          "NetworkDevice",
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								Type:        new("internal"),
+								ListenRange: new("192.168.10.0/24"),
+							},
+							{
+								Type:        new("internal"),
+								ListenRange: new("192.168.10.0/24"),
+							},
+						},
+					},
+				},
+			},
+			wantErrStr: "listenRange 192.168.10.0/24 overlaps with listenRange 192.168.10.0/24",
+		},
+		{
+			name: "overlapping listen ranges",
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"192.168.1.0/24"},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          "NetworkDevice",
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								Type:        new("internal"),
+								ListenRange: new("192.168.10.0/24"),
+							},
+							{
+								Type:        new("internal"),
+								ListenRange: new("192.168.10.128/25"),
+							},
+						},
+					},
+				},
+			},
+			wantErrStr: "listenRange 192.168.10.0/24 overlaps with listenRange 192.168.10.128/25",
+		},
+		{
+			name: "listen ranges equal after masking host bits",
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"192.168.1.0/24"},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          "NetworkDevice",
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								Type:        new("internal"),
+								ListenRange: new("192.168.10.1/24"),
+							},
+							{
+								Type:        new("internal"),
+								ListenRange: new("192.168.10.0/24"),
+							},
+						},
+					},
+				},
+			},
+			wantErrStr: "listenRange 192.168.10.0/24 overlaps with listenRange 192.168.10.0/24",
+		},
+		{
+			name: "invalid listen range",
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"192.168.1.0/24"},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          "NetworkDevice",
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								Type:        new("internal"),
+								ListenRange: new("192.168.10.5"),
+							},
+						},
+					},
+				},
+			},
+			wantErrStr: "invalid listenRange 192.168.10.5",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateUnderlays([]v1alpha1.Underlay{tt.underlay})
-			if (err != nil) != tt.wantErr {
-				t.Errorf("validateUnderlay() error = %v, wantErr %v", err, tt.wantErr)
+			err := ValidateUnderlays(tt.underlay)
+			if tt.wantErrStr == "" {
+				if err != nil {
+					t.Fatalf("expected no error but got error %q instead", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("expected error %q but got nil instead", tt.wantErrStr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErrStr) {
+				t.Errorf("expected error to contain %q but instead got error: %q", tt.wantErrStr, err)
 			}
 		})
 	}
-
-	// Additional test: more than one underlay should error
-	t.Run("multiple underlays", func(t *testing.T) {
-		underlays := []v1alpha1.Underlay{
-			{
-				Spec: v1alpha1.UnderlaySpec{
-					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
-						CIDRs: []string{"192.168.1.0/24"},
-					},
-					Nics: []string{"eth0"},
-					ASN:  65001,
-					Neighbors: []v1alpha1.Neighbor{
-						{
-							ASN:     new(int64(65002)),
-							Address: new("192.168.1.1"),
-						},
-					},
-				},
-			},
-			{
-				Spec: v1alpha1.UnderlaySpec{
-					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
-						CIDRs: []string{"192.168.2.0/24"},
-					},
-					Nics: []string{"eth1"},
-					ASN:  65002,
-					Neighbors: []v1alpha1.Neighbor{
-						{
-							ASN:     new(int64(65003)),
-							Address: new("192.168.2.1"),
-						},
-					},
-				},
-			},
-		}
-		err := ValidateUnderlays(underlays)
-		if err == nil {
-			t.Errorf("expected error for multiple underlays, got nil")
-		}
-	})
 }
 
 func TestValidateUnderlaysForNodes(t *testing.T) {
@@ -315,8 +970,8 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 						NodeSelector: &metav1.LabelSelector{
 							MatchLabels: map[string]string{"rack": "rack-1"},
 						},
-						ASN:  65001,
-						Nics: []string{"eth0"},
+						ASN:        65001,
+						Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
 						Neighbors: []v1alpha1.Neighbor{
 							{
 								ASN:     new(int64(65002)),
@@ -348,8 +1003,8 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 						NodeSelector: &metav1.LabelSelector{
 							MatchLabels: map[string]string{"rack": "rack-2"},
 						},
-						ASN:  65001,
-						Nics: []string{"eth0"},
+						ASN:        65001,
+						Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
 						Neighbors: []v1alpha1.Neighbor{
 							{
 								ASN:     new(int64(65002)),
@@ -378,8 +1033,8 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 						NodeSelector: &metav1.LabelSelector{
 							MatchLabels: map[string]string{"rack": "rack-1"},
 						},
-						ASN:  65001,
-						Nics: []string{"eth0"},
+						ASN:        65001,
+						Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
 						Neighbors: []v1alpha1.Neighbor{
 							{
 								ASN:     new(int64(65003)),
@@ -394,8 +1049,8 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 						NodeSelector: &metav1.LabelSelector{
 							MatchLabels: map[string]string{"zone": "us-east-1a"},
 						},
-						ASN:  65002,
-						Nics: []string{"eth1"},
+						ASN:        65002,
+						Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth1"}}},
 						Neighbors: []v1alpha1.Neighbor{
 							{
 								ASN:     new(int64(65003)),
@@ -431,8 +1086,8 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 						NodeSelector: &metav1.LabelSelector{
 							MatchLabels: map[string]string{"rack": "rack-1"},
 						},
-						ASN:  65001,
-						Nics: []string{"eth0"},
+						ASN:        65001,
+						Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
 						Neighbors: []v1alpha1.Neighbor{
 							{
 								ASN:     new(int64(65002)),
@@ -450,8 +1105,8 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 						NodeSelector: &metav1.LabelSelector{
 							MatchLabels: map[string]string{"rack": "rack-2"},
 						},
-						ASN:  65002,
-						Nics: []string{"eth1"},
+						ASN:        65002,
+						Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth1"}}},
 						Neighbors: []v1alpha1.Neighbor{
 							{
 								ASN:     new(int64(65003)),
@@ -482,7 +1137,7 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 					Spec: v1alpha1.UnderlaySpec{
 						NodeSelector: nil,
 						ASN:          65001,
-						Nics:         []string{"eth0"},
+						Interfaces:   []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
 						Neighbors: []v1alpha1.Neighbor{
 							{
 								ASN:     new(int64(65002)),
@@ -513,7 +1168,7 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 					Spec: v1alpha1.UnderlaySpec{
 						NodeSelector: &metav1.LabelSelector{},
 						ASN:          65001,
-						Nics:         []string{"eth0"},
+						Interfaces:   []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
 						Neighbors: []v1alpha1.Neighbor{
 							{
 								ASN:     new(int64(65002)),
@@ -545,8 +1200,8 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 						NodeSelector: &metav1.LabelSelector{
 							MatchLabels: map[string]string{"rack": "rack-1"},
 						},
-						ASN:  0, // Invalid ASN
-						Nics: []string{"eth0"},
+						ASN:        0, // Invalid ASN
+						Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
 						Neighbors: []v1alpha1.Neighbor{
 							{
 								ASN:     new(int64(65002)),
@@ -592,7 +1247,7 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
 							CIDRs: []string{"invalid-cidr"}, // Invalid VTEP CIDR
 						},
-						Nics: []string{"eth0"},
+						Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
 					},
 				},
 			},
@@ -615,7 +1270,7 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 					Spec: v1alpha1.UnderlaySpec{
 						NodeSelector: nil,
 						ASN:          65001,
-						Nics:         []string{"eth0"},
+						Interfaces:   []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
 						Neighbors: []v1alpha1.Neighbor{
 							{
 								ASN:     new(int64(65003)),
@@ -630,8 +1285,8 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 						NodeSelector: &metav1.LabelSelector{
 							MatchLabels: map[string]string{"rack": "rack-1"},
 						},
-						ASN:  65002,
-						Nics: []string{"eth1"},
+						ASN:        65002,
+						Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth1"}}},
 						Neighbors: []v1alpha1.Neighbor{
 							{
 								ASN:     new(int64(65003)),
@@ -651,8 +1306,8 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "underlay-1"},
 					Spec: v1alpha1.UnderlaySpec{
-						ASN:  65001,
-						Nics: []string{"eth0"},
+						ASN:        65001,
+						Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
 						Neighbors: []v1alpha1.Neighbor{
 							{
 								ASN:     new(int64(65002)),
@@ -697,8 +1352,8 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 								"zone": "us-east-1a",
 							},
 						},
-						ASN:  65001,
-						Nics: []string{"eth0"},
+						ASN:        65001,
+						Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
 						Neighbors: []v1alpha1.Neighbor{
 							{
 								ASN:     new(int64(65002)),
@@ -734,7 +1389,7 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 						Neighbors: []v1alpha1.Neighbor{
 							{ASN: new(int64(65001))},
 						},
-						Nics: []string{"eth0"},
+						Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
 					},
 				},
 			},
@@ -759,9 +1414,9 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 						},
 						ASN: 65001,
 						Neighbors: []v1alpha1.Neighbor{
-							{ASN: new(int64(0)), Type: new("external")},
+							{ASN: new(int64(0)), Type: new("External")},
 						},
-						Nics: []string{"eth0"},
+						Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
 					},
 				},
 			},
@@ -786,9 +1441,9 @@ func TestValidateUnderlaysForNodes(t *testing.T) {
 						},
 						ASN: 65001,
 						Neighbors: []v1alpha1.Neighbor{
-							{ASN: new(int64(0)), Type: new("internal")},
+							{ASN: new(int64(0)), Type: new("Internal")},
 						},
-						Nics: []string{"eth0"},
+						Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}}},
 					},
 				},
 			},

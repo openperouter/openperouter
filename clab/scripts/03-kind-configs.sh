@@ -29,6 +29,15 @@ generate_kind_configs() {
     echo "=== Kind configuration generation diagnostics ==="
     echo "NODE_IMAGE environment variable: ${NODE_IMAGE:-<not set>}"
 
+    # The singlecluster topology wires two workers so the control plane can act as
+    # a pure non forwarding route reflector, the multicluster labs keep a single worker.
+    if [[ ${#CLUSTER_NAMES[@]} -eq 1 ]]; then
+        KIND_WORKERS=${KIND_WORKERS:-2}
+    else
+        KIND_WORKERS=${KIND_WORKERS:-1}
+    fi
+    echo "Worker nodes per cluster: ${KIND_WORKERS}"
+
     for cluster_name in "${CLUSTER_NAMES[@]}"; do
         KIND_CONFIG_NAME="${cluster_name}-configuration-registry.yaml"
 
@@ -40,7 +49,7 @@ generate_kind_configs() {
         fi
         go run generate_kind_config/generate_kind_config.go \
             --template generate_kind_config/kind_template/kind-configuration-registry.yaml.template \
-            $KIND_CONFIG_ARGS -cluster-name "${cluster_name}" -output "../${KIND_CONFIG_NAME}"
+            $KIND_CONFIG_ARGS -cluster-name "${cluster_name}" -workers "${KIND_WORKERS}" -output "../${KIND_CONFIG_NAME}"
 
         echo "Generated configuration file content:"
         cat "../${KIND_CONFIG_NAME}"

@@ -8,19 +8,26 @@ lastmod: "2025-06-15T15:03:22+02:00"
 toc: true
 ---
 
-This section provides practical examples of integrating OpenPERouter with various BGP-speaking components commonly used in Kubernetes environments.
+This section provides practical examples of integrating OpenPERouter with
+various BGP-speaking components commonly used in Kubernetes environments.
 
 ## Overview
 
-OpenPERouter behaves exactly like a physical Provider Edge (PE) router, enabling seamless integration with any BGP-speaking component. This router-like behavior ensures that integration is straightforward and follows standard BGP peering practices.
+OpenPERouter behaves exactly like a physical Provider Edge (PE) router,
+enabling seamless integration with any BGP-speaking component. This
+router-like behavior ensures that integration is straightforward and
+follows standard BGP peering practices.
 
 ## Prerequisites
 
 All examples in this section assume you have:
 
-- OpenPERouter installed and configured (see [Installation]({{< ref "installation" >}}))
-- A container lab based development environment with the relevant VPN endpoints configured
-- Basic understanding of BGP and the VPN of your choice (currently EVPN only) concepts
+- OpenPERouter installed and configured
+  (see [Installation]({{< ref "installation" >}}))
+- A container lab based development environment with the relevant VPN
+  endpoints configured
+- Basic understanding of BGP and the VPN of your choice (currently EVPN
+  only) concepts
 
 ## Development Environment
 
@@ -33,8 +40,21 @@ The examples require a container lab based environment that provides:
 
 ### EVPN Examples
 
-For comprehensive EVPN integration examples, including detailed configurations and step-by-step guides, see the dedicated EVPN examples section:
+For comprehensive EVPN integration examples, including detailed
+configurations and step-by-step guides, see the dedicated EVPN examples
+section:
 
 [View EVPN Examples →]({{< ref "evpnexamples" >}})
 
-This section contains practical examples of integrating OpenPERouter with various BGP-speaking components in EVPN environments.
+This section contains practical examples of integrating OpenPERouter with
+various BGP-speaking components in EVPN environments.
+
+### SRv6 L3VPN Examples
+
+For SRv6 L3VPN integration examples using IS-IS and SRv6 as the data
+plane, see the dedicated SRv6 examples section:
+
+[View SRv6 L3VPN Examples →]({{< ref "srv6examples" >}})
+
+This section contains practical examples of integrating OpenPERouter with
+various BGP-speaking components using SRv6 L3VPN.

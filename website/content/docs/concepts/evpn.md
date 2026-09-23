@@ -61,9 +61,9 @@ In addition to what's described in the [concepts page]({{< ref "concepts/#l3-vpn
 
 #### IP Allocation Strategy
 
-The IP addresses for the veth pair are allocated from the configured `localcidr` for each VNI:
+The IP addresses for the veth pair are allocated from the configured `localCIDRs` for each VNI:
 
-- **Router side**: Always gets the first IP in the CIDR (e.g., `192.169.11.0`)
+- **Router side**: Always gets the first IP in the CIDR (e.g., `192.169.11.1`)
 - **Host side**: Each node gets a different IP from the CIDR, starting from the second value (e.g., `192.169.11.15`)
 
 This consistent allocation strategy of the router IP simplifies configuration across all nodes, as any BGP-speaking

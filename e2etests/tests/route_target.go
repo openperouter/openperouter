@@ -3,6 +3,7 @@
 package tests
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -34,7 +35,7 @@ var (
 	frrk8sBluePrefixes = []string{"10.200.0.0/24"}
 )
 
-var _ = Describe("Routes with RT between bgp and the fabric", Ordered, func() {
+var _ = Describe("Routes with RT between bgp and the fabric", GroutSupport, Ordered, func() {
 	var cs clientset.Interface
 	var routers openperouter.Routers
 
@@ -46,12 +47,9 @@ var _ = Describe("Routes with RT between bgp and the fabric", Ordered, func() {
 		Spec: v1alpha1.L3VNISpec{
 			VRF: "red",
 			HostSession: &v1alpha1.HostSession{
-				ASN:     64514,
-				HostASN: new(int64(64515)),
-				LocalCIDR: v1alpha1.LocalCIDRConfig{
-					IPv4: new("192.169.10.0/24"),
-					IPv6: new("2001:db8:1::/64"),
-				},
+				ASN:        64514,
+				HostASN:    new(int64(64515)),
+				LocalCIDRs: []string{"192.169.10.0/24", "2001:db8:1::/64"},
 			},
 			VNI:       100,
 			ExportRTs: redRouteTargets.ExportRTs,
@@ -67,12 +65,9 @@ var _ = Describe("Routes with RT between bgp and the fabric", Ordered, func() {
 		Spec: v1alpha1.L3VNISpec{
 			VRF: "blue",
 			HostSession: &v1alpha1.HostSession{
-				ASN:     64514,
-				HostASN: new(int64(64515)),
-				LocalCIDR: v1alpha1.LocalCIDRConfig{
-					IPv4: new("192.169.11.0/24"),
-					IPv6: new("2001:db8:2::/64"),
-				},
+				ASN:        64514,
+				HostASN:    new(int64(64515)),
+				LocalCIDRs: []string{"192.169.11.0/24", "2001:db8:2::/64"},
 			},
 			VNI:       200,
 			ExportRTs: blueRouteTargets.ExportRTs,
@@ -102,6 +97,16 @@ var _ = Describe("Routes with RT between bgp and the fabric", Ordered, func() {
 	AfterAll(func() {
 		err := Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
+		nodesItems, err := cs.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		By("waiting for the underlay to be removed from all nodes")
+		for _, node := range nodesItems.Items {
+			Eventually(func(g Gomega) {
+				isConfigured, err := openperouter.UnderlayConfigured(node.Name)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(isConfigured).To(BeFalse())
+			}, 2*time.Minute, time.Second).Should(Succeed())
+		}
 		By("waiting for all router pods to be ready after removing the underlay")
 		Eventually(func() error {
 			routers, err := openperouter.Get(cs, HostMode)

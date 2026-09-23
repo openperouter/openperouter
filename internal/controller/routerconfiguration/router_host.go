@@ -4,12 +4,12 @@ package routerconfiguration
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -36,6 +36,27 @@ type RouterHostContainer struct {
 var _ Router = (*RouterHostContainer)(nil)
 
 func (r *RouterHostProvider) New(ctx context.Context) (Router, error) {
+	// If the service is running but the netns is gone, restart the service so it
+	// recreates the netns on startup. Without this, CanReconcile() loops forever
+	// returning false and the netns is never recovered.
+	missing, err := isRouterPodActiveWithNoNamespace()
+	if err != nil {
+		return nil, fmt.Errorf("failed to check router pod netns state: %w", err)
+	}
+	if !missing {
+		return &RouterHostContainer{
+			manager: r,
+		}, nil
+	}
+	slog.Info("named netns missing while service is active, restarting service to recover",
+		"path", netnamespace.NamedNSPath)
+	sdClient, err := systemdctl.NewClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create systemd client for restart: %w", err)
+	}
+	if err := sdClient.Restart(ctx, "routerpod-pod.service"); err != nil {
+		slog.Warn("failed to restart routerpod service after missing netns", "error", err)
+	}
 	return &RouterHostContainer{
 		manager: r,
 	}, nil
@@ -45,64 +66,36 @@ func (r *RouterHostProvider) NodeIndex(ctx context.Context) (int, error) {
 	return r.CurrentNodeIndex, nil
 }
 
-func (r *RouterHostContainer) TargetNS(ctx context.Context) (string, error) {
-	pidData, err := os.ReadFile(r.manager.RouterPidFilePath)
-	if err != nil {
-		return "", fmt.Errorf("failed to read PID file %s: %w", r.manager.RouterPidFilePath, err)
-	}
-
-	pidStr := strings.TrimSpace(string(pidData))
-	pid, err := strconv.Atoi(pidStr)
-	if err != nil {
-		return "", fmt.Errorf("failed to parse PID from file %s: %w", r.manager.RouterPidFilePath, err)
-	}
-
-	res := fmt.Sprintf("/hostproc/%d/ns/net", pid)
-	return res, nil
+func (r *RouterHostContainer) TargetNS(_ context.Context) (string, error) {
+	return netnamespace.NamedNSPath, nil
 }
 
-func (r *RouterHostContainer) HandleNonRecoverableError(ctx context.Context) error {
+func (r *RouterHostContainer) CanReconcile() (bool, error) {
 	client, err := systemdctl.NewClient()
 	if err != nil {
-		return fmt.Errorf("failed to create systemd client %w", err)
-	}
-	slog.Info("restarting router systemd unit", "unit", "routerpod-pod.service")
-	if err := client.Restart(ctx, "routerpod-pod.service"); err != nil {
-		return fmt.Errorf("failed to restart routerpod service")
-	}
-	slog.Info("router systemd unit restarted", "unit", "routerpod-pod.service")
-
-	return nil
-}
-
-func (r *RouterHostContainer) CanReconcile(ctx context.Context) (bool, error) {
-	client, err := systemdctl.NewClient()
-	if err != nil {
-		return false, fmt.Errorf("failed to create systemd client %w", err)
+		return false, fmt.Errorf("failed to create systemd client: %w", err)
 	}
 	isActive, err := client.IsActive("routerpod-pod.service")
 	if err != nil {
-		return false, fmt.Errorf("failed to check if router pod service is active")
+		return false, fmt.Errorf("failed to check if router pod service is active: %w", err)
 	}
 	if !isActive {
 		slog.Info("router pod service is not active")
 		return false, nil
 	}
 
-	targetNS, err := r.TargetNS(ctx)
-	if err != nil {
-		slog.Error("failed to get router target namespace", "error", err)
+	ns, err := netns.GetFromPath(netnamespace.NamedNSPath)
+	if errors.Is(err, os.ErrNotExist) {
+		slog.Info("named netns not found, will retry on next reconcile",
+			"path", netnamespace.NamedNSPath, "error", err)
 		return false, nil
 	}
-
-	ns, err := netns.GetFromPath(targetNS)
 	if err != nil {
-		slog.Info("failed to open router network namespace", "namespace", targetNS, "error", err)
-		return false, nil
+		return false, fmt.Errorf("failed to open named netns %s: %w", netnamespace.NamedNSPath, err)
 	}
 	defer func() {
 		if err := ns.Close(); err != nil {
-			slog.Error("failed to close namespace", "namespace", targetNS, "error", err)
+			slog.Error("failed to close namespace", "error", err)
 		}
 	}()
 
@@ -210,4 +203,26 @@ func (r *RouterHostProvider) StartFRRRestartWatcher(ctx context.Context, onResta
 	}()
 
 	return nil
+}
+
+func isRouterPodActiveWithNoNamespace() (bool, error) {
+	sdClient, err := systemdctl.NewClient()
+	if err != nil {
+		return false, fmt.Errorf("failed to create systemd client: %w", err)
+	}
+	state, err := sdClient.ActiveState("routerpod-pod.service")
+	if err != nil {
+		return false, fmt.Errorf("failed to check router pod service state: %w", err)
+	}
+	if state != systemdctl.StateActive {
+		return false, nil
+	}
+	ns, err := netns.GetFromPath(netnamespace.NamedNSPath)
+	if err == nil {
+		if closeErr := ns.Close(); closeErr != nil {
+			slog.Error("failed to close namespace handle", "error", closeErr)
+		}
+		return false, nil
+	}
+	return errors.Is(err, os.ErrNotExist), nil
 }

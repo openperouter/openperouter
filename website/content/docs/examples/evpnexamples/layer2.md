@@ -12,7 +12,7 @@ This example demonstrates how to integrate OpenPERouter with Multus to have a po
 
 ## Overview
 
-A layer 2 VNI is created, exposing a layer 2 domain on the host. On each node, a pod is created with a macvlan interface enslaved to that domain via a Linux bridge.
+A layer 2 VNI is created, exposing a layer 2 domain on the host. On each node, a pod is created with a macvlan interface attached to that domain via a Linux bridge.
 
 ### Example Setup
 
@@ -38,10 +38,10 @@ When a pod needs to reach a host belonging to the L3 domain the L2 VNI belongs t
 
 ### OpenPERouter Configuration
 
-One L3 VNI corresponding to the routing domain, one L2 VNI with the same VRF as the L3 VNI:
+One L3 VNI corresponding to the routing domain, one L2 VNI referencing the L3 VNI via `routingDomain`:
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3VNI
 metadata:
   name: red
@@ -49,31 +49,34 @@ metadata:
 spec:
   vrf: red
   vni: 100
-  hostsession:
+  hostSession:
     asn: 64514
-    hostasn: 64515
-    localcidr:
-      ipv4: 192.169.10.0/24
+    hostASN: 64515
+    localCIDRs:
+      - 192.169.10.0/24
 ---
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L2VNI
 metadata:
   name: layer2
   namespace: openperouter-system
 spec:
   vni: 110
-  vrf: red
-  hostmaster:
-    type: linux-bridge
+  routingDomain:
+    type: L3VNI
+    l3vni:
+      name: red
+  hostMaster:
+    type: LinuxBridge
     linuxBridge:
-      autoCreate: true
-  l2gatewayips: ["192.170.1.1/24"]
+      lifecycle: Managed
+  gatewayIPs: ["192.170.1.1/24"]
 ```
 
 **Configuration Notes:**
 
-- **`l2gatewayip` field**: Allows each pod to have the same default gateway and be able to send traffic to the outer L3 domain
-- **hostmaster.autocreate**: Instructs OpenPERouter to create a bridge local to the node that can be used to access the L2 domain
+- **`gatewayIPs` field**: Allows each pod to have the same default gateway and be able to send traffic to the outer L3 domain
+- **hostMaster.linuxBridge.lifecycle**: `Managed` instructs OpenPERouter to create a bridge local to the node that can be used to access the L2 domain
 
 ### Network Attachment Definition
 

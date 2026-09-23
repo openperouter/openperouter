@@ -1,7 +1,9 @@
 underlays:
   - asn: 64514
-    nics:
-      - toswitch1
+    interfaces:
+      - type: NetworkDevice
+        networkDevice:
+          interfaceName: toswitch1
     neighbors:
       - asn: 64512
         address: "192.168.11.2"

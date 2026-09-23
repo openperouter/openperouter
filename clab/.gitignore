@@ -5,3 +5,4 @@
 /kubeconfig
 /leafA/frr.conf
 /leafB/frr.conf
+/leafSRV6/frr.conf

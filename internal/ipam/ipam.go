@@ -7,8 +7,9 @@ import (
 	"net"
 
 	gocidr "github.com/apparentlymart/go-cidr/cidr"
+	"k8s.io/apimachinery/pkg/util/sets"
+
 	"github.com/openperouter/openperouter/internal/ipfamily"
-	"k8s.io/utils/ptr"
 )
 
 type VethIPs struct {
@@ -23,37 +24,47 @@ type VethIPsForFamily struct {
 
 // VethIPsFromPool returns the IPs for the host side and the PE side
 // for both IPv4 and IPv6 pools on the ith node.
-func VethIPsFromPool(poolIPv4, poolIPv6 *string, index int) (VethIPs, error) {
-	pIPv4 := ptr.Deref(poolIPv4, "")
-	pIPv6 := ptr.Deref(poolIPv6, "")
-
-	if pIPv4 == "" && pIPv6 == "" {
+func VethIPsFromPool(cidrs []string, index int) (VethIPs, error) {
+	if len(cidrs) == 0 {
 		return VethIPs{}, fmt.Errorf("at least one pool must be provided (IPv4 or IPv6)")
 	}
 
 	veths := VethIPs{}
+	seenFamilies := sets.New[ipfamily.Family]()
 
-	if pIPv4 != "" {
-		ips, err := vethIPsForFamily(pIPv4, index)
-		if err != nil {
-			return VethIPs{}, fmt.Errorf("failed to get IPv4 veth IPs: %w", err)
+	for _, cidr := range cidrs {
+		if cidr == "" {
+			return VethIPs{}, fmt.Errorf("empty CIDR entry is not allowed")
 		}
-		veths.Ipv4 = ips
-	}
 
-	if pIPv6 != "" {
-		ips, err := vethIPsForFamily(pIPv6, index)
-		if err != nil {
-			return VethIPs{}, fmt.Errorf("failed to get IPv6 veth IPs: %w", err)
+		family := ipfamily.ForCIDRString(cidr)
+		switch family {
+		case ipfamily.IPv4, ipfamily.IPv6:
+		default:
+			return VethIPs{}, fmt.Errorf("unknown or invalid CIDR family for %q", cidr)
 		}
-		veths.Ipv6 = ips
+		if seenFamilies.Has(family) {
+			return VethIPs{}, fmt.Errorf("duplicate %s CIDR in pool", family)
+		}
+		seenFamilies.Insert(family)
+
+		ips, err := vethIPsForFamily(cidr, index)
+		if err != nil {
+			return VethIPs{}, fmt.Errorf("failed to get %s veth IPs: %w", family, err)
+		}
+		switch family {
+		case ipfamily.IPv4:
+			veths.Ipv4 = ips
+		case ipfamily.IPv6:
+			veths.Ipv6 = ips
+		}
 	}
 
 	return veths, nil
 }
 
-// VTEPIp returns the IP to be used for the local VTEP on the ith node.
-func VTEPIp(pool string, index int) (net.IPNet, error) {
+// TunnelEndpointIP returns the IP to be used for the local VTEP on the ith node.
+func TunnelEndpointIP(pool string, index int) (net.IPNet, error) {
 	_, cidr, err := net.ParseCIDR(pool)
 	if err != nil {
 		return net.IPNet{}, fmt.Errorf("failed to parse pool %s: %w", pool, err)
@@ -83,7 +94,7 @@ func RouterID(pool string, index int) (string, error) {
 		return "", fmt.Errorf("failed to parse pool %s: %w", pool, err)
 	}
 
-	ip, err := gocidr.Host(cidr, index+1)
+	ip, err := gocidr.Host(cidr, index)
 	if err != nil {
 		return "", fmt.Errorf("failed to get router id for node %d from cidr %s: %w", index, cidr, err)
 	}
@@ -131,6 +142,26 @@ func IPsInCIDR(pool string) (uint64, error) {
 	}
 
 	return gocidr.AddressCount(ipNet), nil
+}
+
+// OffsetWithPrefix adds nodeIndex to the network portion of an IPv4 or IPv6 basePrefix.
+// For example, with basePrefix "fd00:0:11::/48", nodeIndex 2, and prefixLen 48,
+// it returns "fd00:0:13::/48" (0x11 + 2 = 0x13). The host portion of the CIDR
+// will be discarded.
+func OffsetWithPrefix(basePrefix string, nodeIndex, prefixLen int) (string, error) {
+	_, ipNet, err := net.ParseCIDR(basePrefix)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse prefix %s: %w", basePrefix, err)
+	}
+
+	var endOfRange bool
+	for ; nodeIndex > 0; nodeIndex-- {
+		ipNet, endOfRange = gocidr.NextSubnet(ipNet, prefixLen)
+		if endOfRange {
+			return "", fmt.Errorf("failed to offset prefix %s by nodeIndex %d, end of range", basePrefix, nodeIndex)
+		}
+	}
+	return ipNet.String(), nil
 }
 
 // vethIPsForFamily returns the host side and PE side IPs for a given pool and index.

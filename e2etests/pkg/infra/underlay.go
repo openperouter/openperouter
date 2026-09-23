@@ -8,6 +8,27 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// We want to use the same Interfaces for all underlays wherever possible. The reason is that if the underlay is
+// updated and the interfaces change, the controller will tear down dependent resources (VNIs, passthrough)
+// and restore the old interfaces before setting up the new ones. While this is now graceful (no pod restart
+// required), changing interfaces mid-test can still disrupt E2E tests that cache router state in BeforeAll().
+
+var defaultInterfaces = []v1alpha1.UnderlayInterface{
+	{
+		Type:          "NetworkDevice",
+		NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch1"},
+	},
+	{
+		Type:          "NetworkDevice",
+		NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch2"},
+	},
+}
+
+// DefaultInterfaces exposes the interfaces shared by all the underlay
+// fixtures, so underlays defined outside this package can keep the
+// interface parity described above.
+var DefaultInterfaces = defaultInterfaces
+
 // Underlay is the multi-session configuration with multiple interfaces and neighbors
 var Underlay = v1alpha1.Underlay{
 	ObjectMeta: metav1.ObjectMeta{
@@ -15,16 +36,22 @@ var Underlay = v1alpha1.Underlay{
 		Namespace: openperouter.Namespace,
 	},
 	Spec: v1alpha1.UnderlaySpec{
-		ASN:  64514,
-		Nics: []string{"toswitch1", "toswitch2"},
+		ASN:        64514,
+		Interfaces: defaultInterfaces,
 		Neighbors: []v1alpha1.Neighbor{
 			{
-				ASN:     new(int64(64512)),
-				Address: new("192.168.11.2"),
+				ASN:                  new(int64(64512)),
+				Address:              new("192.168.11.2"),
+				ConnectTimeSeconds:   new(int64(5)),
+				KeepaliveTimeSeconds: new(int64(3)),
+				HoldTimeSeconds:      new(int64(9)),
 			},
 			{
-				ASN:     new(int64(64513)),
-				Address: new("192.168.12.2"),
+				ASN:                  new(int64(64513)),
+				Address:              new("192.168.12.2"),
+				ConnectTimeSeconds:   new(int64(5)),
+				KeepaliveTimeSeconds: new(int64(3)),
+				HoldTimeSeconds:      new(int64(9)),
 			},
 		},
 		TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
@@ -39,16 +66,22 @@ var UnderlayIPv6 = v1alpha1.Underlay{
 		Namespace: openperouter.Namespace,
 	},
 	Spec: v1alpha1.UnderlaySpec{
-		ASN:  64514,
-		Nics: []string{"toswitch1", "toswitch2"},
+		ASN:        64514,
+		Interfaces: defaultInterfaces,
 		Neighbors: []v1alpha1.Neighbor{
 			{
-				ASN:     new(int64(64512)),
-				Address: new("2001:db8:11::2"),
+				ASN:                  new(int64(64512)),
+				Address:              new("2001:db8:11::2"),
+				ConnectTimeSeconds:   new(int64(5)),
+				KeepaliveTimeSeconds: new(int64(3)),
+				HoldTimeSeconds:      new(int64(9)),
 			},
 			{
-				ASN:     new(int64(64513)),
-				Address: new("2001:db8:12::2"),
+				ASN:                  new(int64(64513)),
+				Address:              new("2001:db8:12::2"),
+				ConnectTimeSeconds:   new(int64(5)),
+				KeepaliveTimeSeconds: new(int64(3)),
+				HoldTimeSeconds:      new(int64(9)),
 			},
 		},
 		TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
@@ -63,16 +96,242 @@ var UnderlayUnnumbered = v1alpha1.Underlay{
 		Namespace: openperouter.Namespace,
 	},
 	Spec: v1alpha1.UnderlaySpec{
-		ASN:  64514,
-		Nics: []string{"toleafkind1"},
+		ASN: 64514,
+		Interfaces: []v1alpha1.UnderlayInterface{
+			{
+				Type:          "NetworkDevice",
+				NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toleafkind1"},
+			},
+		},
 		Neighbors: []v1alpha1.Neighbor{
 			{
-				ASN:       new(int64(64512)),
-				Interface: new("toleafkind1"),
+				ASN:                  new(int64(64512)),
+				Interface:            new("toleafkind1"),
+				ConnectTimeSeconds:   new(int64(5)),
+				KeepaliveTimeSeconds: new(int64(3)),
+				HoldTimeSeconds:      new(int64(9)),
 			},
 		},
 		TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
 			CIDRs: []string{"100.65.0.0/24"},
+		},
+	},
+}
+
+// UnderlayListenRange accepts dynamic eBGP sessions from the leaf switches
+// via bgp listen range instead of configuring them as explicit neighbors.
+// The leaves actively dial the nodes from addresses inside the ranges
+// (192.168.11.2 and 192.168.12.2), so the sessions establish with the node
+// side acting as the passive end. The address families are set explicitly:
+// dynamic peers negotiate their multiprotocol capabilities when the session
+// is accepted, so every family the tests rely on must be active on the
+// peer-group before the leaves connect.
+var UnderlayListenRange = v1alpha1.Underlay{
+	ObjectMeta: metav1.ObjectMeta{
+		Name:      "underlay",
+		Namespace: openperouter.Namespace,
+	},
+	Spec: v1alpha1.UnderlaySpec{
+		ASN:        64514,
+		Interfaces: defaultInterfaces,
+		Neighbors: []v1alpha1.Neighbor{
+			{
+				ASN:         new(int64(64512)),
+				ListenRange: new("192.168.11.0/24"),
+				AddressFamilies: []v1alpha1.NeighborAddressFamily{
+					{Type: "ipv4unicast"},
+					{Type: "evpn"},
+				},
+			},
+			{
+				ASN:         new(int64(64513)),
+				ListenRange: new("192.168.12.0/24"),
+				AddressFamilies: []v1alpha1.NeighborAddressFamily{
+					{Type: "ipv4unicast"},
+					{Type: "evpn"},
+				},
+			},
+		},
+		TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+			CIDRs: []string{"100.65.0.0/24"},
+		},
+	},
+}
+
+// UnderlayListenRangeIPv6 is the IPv6 variant of UnderlayListenRange: the
+// leaves dial the nodes over IPv6 from 2001:db8:11::2 and 2001:db8:12::2.
+// The ipv4 unicast family carries the IPv4 VTEP reachability over the IPv6
+// sessions.
+var UnderlayListenRangeIPv6 = v1alpha1.Underlay{
+	ObjectMeta: metav1.ObjectMeta{
+		Name:      "underlay",
+		Namespace: openperouter.Namespace,
+	},
+	Spec: v1alpha1.UnderlaySpec{
+		ASN:        64514,
+		Interfaces: defaultInterfaces,
+		Neighbors: []v1alpha1.Neighbor{
+			{
+				ASN:         new(int64(64512)),
+				ListenRange: new("2001:db8:11::/64"),
+				AddressFamilies: []v1alpha1.NeighborAddressFamily{
+					{Type: "ipv6unicast"},
+					{Type: "ipv4unicast"},
+					{Type: "evpn"},
+				},
+			},
+			{
+				ASN:         new(int64(64513)),
+				ListenRange: new("2001:db8:12::/64"),
+				AddressFamilies: []v1alpha1.NeighborAddressFamily{
+					{Type: "ipv6unicast"},
+					{Type: "ipv4unicast"},
+					{Type: "evpn"},
+				},
+			},
+		},
+		TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+			CIDRs: []string{"100.65.0.0/24"},
+		},
+	},
+}
+
+var UnderlaySRv6 = v1alpha1.Underlay{
+	ObjectMeta: metav1.ObjectMeta{
+		Name:      "underlay",
+		Namespace: openperouter.Namespace,
+	},
+	Spec: v1alpha1.UnderlaySpec{
+		ASN:        64514,
+		Interfaces: defaultInterfaces,
+		Neighbors: []v1alpha1.Neighbor{
+			{
+				ASN:                  new(int64(64520)),
+				Address:              new("2001:db8:1234::1"),
+				Properties:           []v1alpha1.NeighborProperty{{Type: v1alpha1.NeighborPropertyEBGPMultiHop}},
+				ConnectTimeSeconds:   new(int64(5)),
+				KeepaliveTimeSeconds: new(int64(3)),
+				HoldTimeSeconds:      new(int64(9)),
+			},
+		},
+		RouterIDCIDR: new("10.0.0.0/24"),
+		TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+			CIDRs: []string{
+				"2001:db8:1234:5678::/64",
+			},
+		},
+		ISIS: &v1alpha1.ISISConfig{
+			BaseNet: "49.0001.0002.0003.0004.00",
+			Level:   new(int32(1)),
+			Interfaces: []v1alpha1.ISISInterface{
+				{
+					Name:     "toswitch1",
+					IPFamily: new(v1alpha1.IPFamilyIPv6),
+				},
+			},
+		},
+		SRV6: &v1alpha1.SRV6Config{
+			Locator: v1alpha1.SRV6Locator{
+				BasePrefix: "fd00:0:32::/48",
+				Format:     "usid-f3216",
+			},
+		},
+	},
+}
+
+var UnderlaySRv6EncapRed = v1alpha1.Underlay{
+	ObjectMeta: metav1.ObjectMeta{
+		Name:      "underlay",
+		Namespace: openperouter.Namespace,
+	},
+	Spec: v1alpha1.UnderlaySpec{
+		ASN:        64514,
+		Interfaces: defaultInterfaces,
+		Neighbors: []v1alpha1.Neighbor{
+			{
+				ASN:                  new(int64(64520)),
+				Address:              new("2001:db8:1234::1"),
+				Properties:           []v1alpha1.NeighborProperty{{Type: v1alpha1.NeighborPropertyEBGPMultiHop}},
+				ConnectTimeSeconds:   new(int64(5)),
+				KeepaliveTimeSeconds: new(int64(3)),
+				HoldTimeSeconds:      new(int64(9)),
+			},
+		},
+		RouterIDCIDR: new("10.0.0.0/24"),
+		TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+			CIDRs: []string{
+				"2001:db8:1234:5678::/64",
+			},
+		},
+		ISIS: &v1alpha1.ISISConfig{
+			BaseNet: "49.0001.0002.0003.0004.00",
+			Level:   new(int32(1)),
+			Interfaces: []v1alpha1.ISISInterface{
+				{
+					Name:     "toswitch1",
+					IPFamily: new(v1alpha1.IPFamilyIPv6),
+				},
+			},
+		},
+		SRV6: &v1alpha1.SRV6Config{
+			EncapBehavior: new(v1alpha1.HEncapsRed),
+			Locator: v1alpha1.SRV6Locator{
+				BasePrefix: "fd00:0:32::/48",
+				Format:     "usid-f3216",
+			},
+		},
+	},
+}
+
+var UnderlayEVPNandSRv6 = v1alpha1.Underlay{
+	ObjectMeta: metav1.ObjectMeta{
+		Name:      "underlay",
+		Namespace: openperouter.Namespace,
+	},
+	Spec: v1alpha1.UnderlaySpec{
+		ASN:        64514,
+		Interfaces: defaultInterfaces,
+		Neighbors: []v1alpha1.Neighbor{
+			// leafSRV6 - use automatically derived address families.
+			{
+				ASN:                  new(int64(64520)),
+				Address:              new("2001:db8:1234::1"),
+				Properties:           []v1alpha1.NeighborProperty{{Type: v1alpha1.NeighborPropertyEBGPMultiHop}},
+				ConnectTimeSeconds:   new(int64(5)),
+				KeepaliveTimeSeconds: new(int64(3)),
+				HoldTimeSeconds:      new(int64(9)),
+			},
+			// leafkind
+			{
+				ASN:                  new(int64(64512)),
+				Address:              new("192.168.11.2"),
+				ConnectTimeSeconds:   new(int64(5)),
+				KeepaliveTimeSeconds: new(int64(3)),
+				HoldTimeSeconds:      new(int64(9)),
+			},
+		},
+		TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+			CIDRs: []string{
+				"2001:db8:1234:5678::/64",
+				"100.65.0.0/24",
+			},
+		},
+		RouterIDCIDR: new("10.0.0.0/24"),
+		ISIS: &v1alpha1.ISISConfig{
+			BaseNet: "49.0001.0002.0003.0004.00",
+			Level:   new(int32(1)),
+			Interfaces: []v1alpha1.ISISInterface{
+				{
+					Name:     "toswitch1",
+					IPFamily: new(v1alpha1.IPFamilyIPv6),
+				},
+			},
+		},
+		SRV6: &v1alpha1.SRV6Config{
+			Locator: v1alpha1.SRV6Locator{
+				BasePrefix: "fd00:0:32::/48",
+				Format:     "usid-f3216",
+			},
 		},
 	},
 }

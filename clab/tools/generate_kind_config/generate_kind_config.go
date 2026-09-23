@@ -14,6 +14,9 @@ type KindConfig struct {
 	DisableDefaultCNI bool
 	ClusterName       string
 	NodeImage         string
+	// Workers is only used to repeat the worker node block in the template,
+	// its elements carry no data.
+	Workers []struct{}
 }
 
 func main() {
@@ -21,11 +24,16 @@ func main() {
 		disableDefaultCNI = flag.Bool("disable-default-cni", false, "Disable default CNI in kind config")
 		clusterName       = flag.String("cluster-name", "pe-kind", "Name of the kind cluster")
 		nodeImage         = flag.String("node-image", os.Getenv("NODE_IMAGE"), "Kind node image to use")
+		workers           = flag.Int("workers", 1, "Number of worker nodes in the kind cluster")
 		outputFile        = flag.String("output", "../kind-configuration-registry.yaml", "Kind configuration output file")
 		templateFile      = flag.String("template",
 			"../kind_template/kind-configuration-registry.yaml.template", "Kind template file path")
 	)
 	flag.Parse()
+
+	if *workers < 0 {
+		log.Fatalf("Invalid number of workers: %d", *workers)
+	}
 
 	tmplContent, err := os.ReadFile(*templateFile)
 	if err != nil {
@@ -41,6 +49,7 @@ func main() {
 		DisableDefaultCNI: *disableDefaultCNI,
 		ClusterName:       *clusterName,
 		NodeImage:         *nodeImage,
+		Workers:           make([]struct{}, *workers),
 	}
 
 	outputDir := filepath.Dir(*outputFile)

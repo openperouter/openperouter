@@ -1,6 +1,6 @@
 ---
 # Rack 1 nodes connect to ToR 1
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: Underlay
 metadata:
   name: underlay-rack-1
@@ -13,8 +13,10 @@ spec:
   tunnelEndpoint:
     cidrs:
     - 100.65.1.0/24
-  nics:
-    - toswitch1
+  interfaces:
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: toswitch1
   neighbors:
     - asn: 64500
       address: 192.168.1.254  # ToR switch for rack 1
@@ -23,7 +25,7 @@ spec:
         transmitInterval: 300
 ---
 # Rack 2 nodes connect to ToR 2
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: Underlay
 metadata:
   name: underlay-rack-2
@@ -36,8 +38,10 @@ spec:
   tunnelEndpoint:
     cidrs:
     - 100.65.2.0/24
-  nics:
-    - toswitch1
+  interfaces:
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: toswitch1
   neighbors:
     - asn: 64500
       address: 192.168.2.254  # ToR switch for rack 2

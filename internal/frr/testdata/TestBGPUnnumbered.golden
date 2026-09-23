@@ -30,7 +30,6 @@ router bgp 64512
   address-family l2vpn evpn
     neighbor eth1 activate
     advertise-all-vni
-    advertise-svi-ip
   exit-address-family
 exit
 !

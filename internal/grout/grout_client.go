@@ -1,0 +1,334 @@
+// SPDX-License-Identifier:Apache-2.0
+
+// Package grout provides a client for managing grout DPDK dataplane interfaces.
+// It communicates with the grout daemon via grcli commands over the UNIX socket.
+package grout
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log/slog"
+	"os/exec"
+	"strings"
+	"syscall"
+)
+
+// Client communicates with the grout daemon via grcli.
+type Client struct {
+	socketPath string
+}
+
+type groutAddress struct {
+	Iface   string `json:"iface"`
+	Family  string `json:"family"`
+	Address string `json:"address"`
+}
+
+type groutInterface struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+}
+
+type groutVXLANInfo struct {
+	VNI     int32  `json:"vni"`
+	Local   string `json:"local"`
+	DstPort int32  `json:"dst_port"`
+	VRF     string `json:"vrf"`
+}
+
+// NewClient creates a new grout client pointing at the given UNIX socket.
+func NewClient(socketPath string) *Client {
+	return &Client{socketPath: socketPath}
+}
+
+func (c *Client) deleteAddress(ctx context.Context, iface, addr string) error {
+	slog.InfoContext(ctx, "deleting grout address", "addr", addr, "iface", iface)
+	if err := c.run(ctx, "address", "del", addr, "iface", iface); err != nil {
+		return fmt.Errorf("deleting grout address %s from iface %s: %w", addr, iface, err)
+	}
+	return nil
+}
+
+func (c *Client) ensurePort(ctx context.Context, name, devargs string) error {
+	exists, err := c.portExists(ctx, name)
+	if err != nil {
+		return fmt.Errorf("checking if port %s exists: %w", name, err)
+	}
+	if exists {
+		slog.InfoContext(ctx, "grout port already exists", "name", name)
+		return nil
+	}
+
+	slog.InfoContext(ctx, "creating grout port", "name", name, "devargs", devargs)
+	if err := c.run(ctx, "interface", "add", "port", name, "devargs", devargs); err != nil {
+		return fmt.Errorf("creating grout port %s: %w", name, err)
+	}
+	return nil
+}
+
+func (c *Client) ensurePortInVRF(ctx context.Context, name, devargs, vrf string) error {
+	exists, err := c.portExists(ctx, name)
+	if err != nil {
+		return fmt.Errorf("checking if port %s exists: %w", name, err)
+	}
+	if exists {
+		slog.InfoContext(ctx, "grout port already exists", "name", name)
+		return nil
+	}
+
+	slog.InfoContext(ctx, "creating grout port in VRF", "name", name, "devargs", devargs, "vrf", vrf)
+	if err := c.run(ctx, "interface", "add", "port", name, "devargs", devargs, "vrf", vrf, "up"); err != nil {
+		return fmt.Errorf("creating grout port %s in VRF %s: %w", name, vrf, err)
+	}
+	return nil
+}
+
+func (c *Client) deletePort(ctx context.Context, name string) error {
+	exists, err := c.portExists(ctx, name)
+	if err != nil {
+		return fmt.Errorf("checking if port %s exists: %w", name, err)
+	}
+	if !exists {
+		return nil
+	}
+
+	slog.InfoContext(ctx, "deleting grout port", "name", name)
+	if err := c.run(ctx, "interface", "del", name); err != nil {
+		return fmt.Errorf("deleting grout port %s: %w", name, err)
+	}
+	return nil
+}
+
+// ensureAddress assigns an IP address (in CIDR notation) to a grout port.
+// If the address is already assigned to that port, it is a no-op.
+func (c *Client) ensureAddress(ctx context.Context, ifaceName, cidr string) error {
+	slog.InfoContext(ctx, "assigning IP to grout port", "iface", ifaceName, "cidr", cidr)
+	err := c.run(ctx, "address", "add", cidr, "iface", ifaceName)
+	if isGroutErrno(err, syscall.EEXIST) {
+		slog.DebugContext(ctx, "address already assigned", "iface", ifaceName, "cidr", cidr)
+		return nil
+	}
+	return err
+}
+
+func (c *Client) getAddresses(ctx context.Context, ifaceName string) ([]string, error) {
+	out, err := c.runOutput(ctx, "address", "show", "iface", ifaceName)
+	if err != nil {
+		return nil, err
+	}
+
+	var entries []groutAddress
+	if err := json.Unmarshal([]byte(out), &entries); err != nil {
+		return nil, fmt.Errorf("parsing address JSON for %s: %w", ifaceName, err)
+	}
+
+	addrs := make([]string, 0, len(entries))
+	for _, e := range entries {
+		addrs = append(addrs, e.Address)
+	}
+	return addrs, nil
+}
+
+func (c *Client) listInterfaces(ctx context.Context) ([]groutInterface, error) {
+	out, err := c.runOutput(ctx, "interface", "show")
+	if err != nil {
+		return nil, fmt.Errorf("listing interfaces: %w", err)
+	}
+	if out == "" || out == "[]" {
+		return nil, nil
+	}
+	var ifaces []groutInterface
+	if err := json.Unmarshal([]byte(out), &ifaces); err != nil {
+		return nil, fmt.Errorf("parsing interface list JSON: %w", err)
+	}
+	return ifaces, nil
+}
+
+// portExists checks whether a port with the given name exists in grout.
+func (c *Client) portExists(ctx context.Context, name string) (bool, error) {
+	info, err := c.getInterfaceInfo(ctx, name)
+	if err != nil {
+		return false, err
+	}
+	return info != nil, nil
+}
+
+func (c *Client) getInterfaceInfo(ctx context.Context, name string) (*groutInterface, error) {
+	out, err := c.runOutput(ctx, "interface", "show", "name", name)
+	if err != nil {
+		if isGroutErrno(err, syscall.ENODEV) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var info groutInterface
+	if err := json.Unmarshal([]byte(out), &info); err != nil {
+		return nil, fmt.Errorf("parsing interface info for %s: %w", name, err)
+	}
+	return &info, nil
+}
+
+// run executes a grcli command and returns any error.
+func (c *Client) run(ctx context.Context, args ...string) error {
+	_, err := c.runOutput(ctx, args...)
+	return err
+}
+
+var execCmd = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, name, args...)
+	return cmd.CombinedOutput()
+}
+
+// runOutput executes a grcli command and returns stdout and any error. A failing
+// grcli prints a JSON payload carrying the errno of the underlying failure: that
+// errno is attached to the returned error so callers can classify it with
+// isGroutErrno instead of matching on the message.
+func (c *Client) runOutput(ctx context.Context, args ...string) (string, error) {
+	cmdArgs := append([]string{"--err-exit", "--json", "--socket", c.socketPath}, args...)
+
+	slog.DebugContext(ctx, "running grcli", "args", strings.Join(cmdArgs, " "))
+	out, err := execCmd(ctx, "grcli", cmdArgs...)
+	output := strings.TrimSpace(string(out))
+	if err == nil {
+		return output, nil
+	}
+
+	groutErr := &groutError{}
+	jsonErr := json.Unmarshal([]byte(output), groutErr)
+	if jsonErr != nil {
+		// If the output is not a valid JSON, return the output as is.
+		return output, fmt.Errorf("grcli %s failed: %w, output: %s, unmarshalling error: %w", strings.Join(args, " "), err, output, jsonErr)
+	}
+
+	if groutErr.Errno == 0 {
+		// If the errno is 0, return a generic error.
+		return output, fmt.Errorf("grcli %s failed: %w, output: %s", strings.Join(args, " "), err, output)
+	}
+
+	groutErr.cmdErr = fmt.Errorf("grcli %s failed: %w, output: %s", strings.Join(args, " "), err, output)
+	return output, groutErr
+}
+
+func (c *Client) ensureVRF(ctx context.Context, name string) error {
+	info, err := c.getInterfaceInfo(ctx, name)
+	if err != nil {
+		return fmt.Errorf("checking if VRF %s exists: %w", name, err)
+	}
+	if info != nil {
+		if info.Type == "vrf" {
+			slog.InfoContext(ctx, "grout VRF already exists", "name", name)
+			return nil
+		}
+		slog.InfoContext(ctx, "interface exists with wrong type, recreating as VRF",
+			"name", name, "currentType", info.Type)
+		if err := c.deleteInterface(ctx, name); err != nil {
+			return fmt.Errorf("deleting interface %s for VRF reconfiguration: %w", name, err)
+		}
+	}
+
+	args := []string{"interface", "add", "vrf", name}
+	slog.InfoContext(ctx, "creating grout VRF", "name", name)
+	if err := c.run(ctx, args...); err != nil {
+		return fmt.Errorf("creating grout VRF %s: %w", name, err)
+	}
+	return nil
+}
+
+func (c *Client) getVXLANInterfaceInfo(ctx context.Context, name string) (*groutVXLANInfo, error) {
+	out, err := c.runOutput(ctx, "interface", "show", "name", name)
+	if err != nil {
+		if isGroutErrno(err, syscall.ENODEV) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var info groutVXLANInfo
+	if err := json.Unmarshal([]byte(out), &info); err != nil {
+		return nil, fmt.Errorf("parsing VXLAN info for %s: %w", name, err)
+	}
+	return &info, nil
+}
+
+func (c *Client) ensureVXLAN(ctx context.Context, name string, localIP, vrf string, vni int32, dstPort int32) error {
+	info, err := c.getVXLANInterfaceInfo(ctx, name)
+	if err != nil {
+		return fmt.Errorf("checking VXLAN %s: %w", name, err)
+	}
+	if info != nil {
+		if info.VNI == vni && info.Local == localIP && info.DstPort == dstPort && info.VRF == vrf {
+			slog.InfoContext(ctx, "grout VXLAN already configured", "name", name)
+			return nil
+		}
+		slog.InfoContext(ctx, "grout VXLAN config changed, recreating",
+			"name", name, "oldVNI", info.VNI, "newVNI", vni,
+			"oldLocal", info.Local, "newLocal", localIP,
+			"oldDstPort", info.DstPort, "newDstPort", dstPort,
+			"oldVRF", info.VRF, "newVRF", vrf)
+		if err := c.deleteInterface(ctx, name); err != nil {
+			return fmt.Errorf("deleting VXLAN %s for reconfiguration: %w", name, err)
+		}
+	}
+
+	args := []string{"interface", "add", "vxlan", name,
+		"vni", fmt.Sprintf("%d", vni),
+		"local", localIP,
+		"dst_port", fmt.Sprintf("%d", dstPort),
+	}
+
+	if vrf != "" {
+		args = append(args, "vrf", vrf)
+	}
+
+	args = append(args, "encap_vrf", defaultVRFName)
+
+	slog.InfoContext(ctx, "creating grout VXLAN", "name", name, "vni", vni, "local", localIP, "vrf", vrf)
+	if err := c.run(ctx, args...); err != nil {
+		return fmt.Errorf("creating grout VXLAN %s: %w", name, err)
+	}
+	return nil
+}
+
+func (c *Client) deleteInterface(ctx context.Context, name string) error {
+	exists, err := c.portExists(ctx, name)
+	if err != nil {
+		return fmt.Errorf("checking if interface %s exists: %w", name, err)
+	}
+	if !exists {
+		return nil
+	}
+
+	slog.InfoContext(ctx, "deleting grout interface", "name", name)
+	if err := c.run(ctx, "interface", "del", name); err != nil {
+		return fmt.Errorf("deleting grout interface %s: %w", name, err)
+	}
+	return nil
+}
+
+// groutError is the JSON payload grcli prints when a command fails. It wraps the
+// command error so the message is unchanged, and exposes the errno grout
+// reported.
+type groutError struct {
+	Message string `json:"error"`
+	Errno   int    `json:"errno"`
+
+	cmdErr error
+}
+
+func (e *groutError) Error() string {
+	return e.cmdErr.Error()
+}
+
+func (e *groutError) Unwrap() error {
+	return e.cmdErr
+}
+
+// isGroutErrno reports whether err was grout failing with the given errno.
+func isGroutErrno(err error, errno syscall.Errno) bool {
+	var groutErr *groutError
+	if !errors.As(err, &groutErr) {
+		return false
+	}
+	return groutErr.Errno == int(errno)
+}

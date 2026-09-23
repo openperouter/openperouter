@@ -1,0 +1,105 @@
+ARG CNI_PLUGINS_VERSION=012159164d7f552ee7a8ee840447c61611958e87
+
+# Build CNI plugin binaries
+FROM golang:1.26.4 AS cni-plugins-builder
+
+ARG CNI_PLUGINS_VERSION
+ARG TARGETOS
+ARG TARGETARCH
+
+WORKDIR /cni-plugins
+RUN git init && \
+    git remote add origin https://github.com/containernetworking/plugins.git && \
+    git fetch --depth 1 origin ${CNI_PLUGINS_VERSION} && \
+    git checkout FETCH_HEAD
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} ./build_linux.sh \
+  -ldflags "-extldflags -static"
+
+# Build the manager binary
+FROM golang:1.26.4 AS builder
+
+ARG GIT_COMMIT=dev
+ARG GIT_BRANCH=dev
+ARG TARGETOS
+ARG TARGETARCH
+
+WORKDIR $GOPATH/openperouter
+RUN --mount=type=cache,target=/go/pkg/mod/ \
+  --mount=type=bind,source=go.sum,target=go.sum \
+  --mount=type=bind,source=go.mod,target=go.mod \
+  go mod download -x
+
+COPY cmd/ cmd/
+COPY api/ api/
+COPY internal/ internal/
+COPY operator/ operator/
+COPY config/ config/
+
+
+RUN --mount=type=cache,target=/root/.cache/go-build \
+  --mount=type=cache,target=/go/pkg/mod \
+  --mount=type=bind,source=go.sum,target=go.sum \
+  --mount=type=bind,source=go.mod,target=go.mod \
+  --mount=type=bind,source=internal,target=internal \
+  --mount=type=bind,source=api,target=api \
+  --mount=type=bind,source=cmd,target=cmd \
+  --mount=type=bind,source=operator,target=operator \
+  --mount=type=bind,source=config,target=config \
+  CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -o reloader ./cmd/reloader \
+  && \
+  CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -o controller ./cmd/hostcontroller \
+  && \
+  CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -o nodemarker ./cmd/nodemarker \
+  && \
+  CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -o hostbridge ./cmd/hostbridge \
+  && \
+  CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -o operatorbinary ./operator
+
+FROM quay.io/centos/centos:stream10
+
+ARG TARGETARCH
+
+WORKDIR /
+
+RUN dnf install -y iproute iproute-tc catatonit curl && dnf clean all
+RUN ln -s /usr/libexec/podman/catatonit /sbin/tini
+
+# Pin FRR GIDs before RPM install so they match the supplementalGroups
+# in the Kubernetes pod spec. The grout FRR RPM uses sysusers.d which
+# assigns dynamic GIDs; pre-creating the groups forces stable values.
+# GID 92: frr group (VTY sockets are owned frr:frr in this image)
+# GID 102: frrvty group (VTY sockets are owned frr:frrvty in the Alpine image)
+RUN groupadd -r -g 92 frr && \
+    useradd -r -u 92 -g frr -d /var/run/frr -s /sbin/nologin -c "FRRouting suite" frr && \
+    groupadd -r -g 102 frrvty && \
+    usermod -a -G frrvty frr
+
+RUN RPMARCH=$(case ${TARGETARCH} in amd64) echo x86_64;; arm64) echo aarch64;; *) echo ${TARGETARCH};; esac) && \
+    curl -fsSL -o /tmp/frr.rpm https://github.com/DPDK/grout/releases/download/v0.17.1/frr.${RPMARCH}.rpm && \
+    curl -fsSL -o /tmp/grout-frr.rpm https://github.com/DPDK/grout/releases/download/v0.17.1/grout-frr.${RPMARCH}.rpm && \
+    curl -fsSL -o /tmp/grout.rpm https://github.com/DPDK/grout/releases/download/v0.17.1/grout.${RPMARCH}.rpm && \
+    dnf install -y /tmp/*.rpm && dnf clean all && rm -rf /tmp/*.rpm
+
+COPY --from=builder /go/openperouter/reloader .
+COPY --from=builder /go/openperouter/controller .
+COPY --from=builder /go/openperouter/hostbridge .
+COPY --from=builder /go/openperouter/nodemarker .
+COPY --from=builder /go/openperouter/operatorbinary ./operator
+
+COPY operator/bindata bindata
+
+COPY --from=cni-plugins-builder /cni-plugins/bin/macvlan /opt/openperouter/cni/bin/
+COPY --from=cni-plugins-builder /cni-plugins/bin/ipvlan /opt/openperouter/cni/bin/
+COPY --from=cni-plugins-builder /cni-plugins/bin/static /opt/openperouter/cni/bin/
+COPY --from=cni-plugins-builder /cni-plugins/bin/dhcp /opt/openperouter/cni/bin/
+
+# Copy FRR startup configuration to the default location
+COPY systemdmode/frrconfig/daemons /etc/frr/daemons
+COPY systemdmode/frrconfig/vtysh.conf /etc/frr/vtysh.conf
+COPY systemdmode/frrconfig/frr.conf /etc/frr/frr.conf
+
+RUN ln -s /usr/libexec/frr /usr/lib/frr
+ADD https://raw.githubusercontent.com/FRRouting/frr/refs/tags/frr-10.6.0/docker/ubi8-minimal/docker-start /usr/lib/frr/docker-start
+RUN chmod +x /usr/lib/frr/docker-start
+
+ENTRYPOINT ["/controller"]

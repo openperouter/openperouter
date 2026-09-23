@@ -30,7 +30,6 @@ router bgp 64512
     neighbor 192.168.1.2 activate
     neighbor 192.168.1.2 allowas-in
     advertise-all-vni
-    advertise-svi-ip
   exit-address-family
 exit
 !

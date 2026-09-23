@@ -59,7 +59,7 @@ When external traffic reaches the service:
 Configure one L3VNI for each overlay:
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3VNI
 metadata:
   name: red
@@ -67,13 +67,13 @@ metadata:
 spec:
   vrf: red
   vni: 100
-  hostsession:
+  hostSession:
     asn: 64514
-    hostasn: 64515
-    localcidr:
-      ipv4: 192.169.10.0/24
+    hostASN: 64515
+    localCIDRs:
+      - 192.169.10.0/24
 ---
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3VNI
 metadata:
   name: blue
@@ -81,11 +81,11 @@ metadata:
 spec:
   vrf: blue
   vni: 200
-  hostsession:
+  hostSession:
     asn: 64514
-    hostasn: 64515
-    localcidr:
-      ipv4: 192.169.11.0/24
+    hostASN: 64515
+    localCIDRs:
+      - 192.169.11.0/24
 ```
 
 ### MetalLB BGP Peer Configuration

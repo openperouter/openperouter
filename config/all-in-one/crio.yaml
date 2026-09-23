@@ -13,9 +13,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: l2vnis.openpe.openperouter.github.io
+  name: l2vnis.network.openperouter.io
 spec:
-  group: openpe.openperouter.github.io
+  group: network.openperouter.io
   names:
     kind: L2VNI
     listKind: L2VNIList
@@ -23,7 +23,20 @@ spec:
     singular: l2vni
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .spec.vni
+      name: VNI
+      type: integer
+    - jsonPath: .spec.routingDomain.*.name
+      name: Routing Domain
+      type: string
+    - jsonPath: .spec.gatewayIPs
+      name: Gateway IPs
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: |-
@@ -50,73 +63,24 @@ spec:
           spec:
             description: spec defines the desired state of L2VNI.
             properties:
-              hostmaster:
+              exportRTs:
+                description: exportRTs are the Route Targets to be used for exporting
+                  L2 EVPN routes.
+                items:
+                  description: RouteTarget defines a BGP Extended Community for route
+                    filtering.
+                  maxLength: 21
+                  type: string
+                maxItems: 100
+                type: array
+                x-kubernetes-list-type: atomic
+              gatewayIPs:
                 description: |-
-                  hostmaster is the interface on the host the veth should be enslaved to.
-                  If not set, the host veth will not be enslaved to any interface and it must be
-                  enslaved manually (or by some other means). This is useful if another controller
-                  is leveraging the host interface for the VNI.
-                properties:
-                  linuxBridge:
-                    description: linuxBridge configuration. Must be set when Type
-                      is "linux-bridge".
-                    properties:
-                      autoCreate:
-                        default: false
-                        description: |-
-                          autoCreate determines if the bridge should be created automatically.
-                          When true, the bridge is created with name br-hs-<VNI>.
-                        type: boolean
-                      name:
-                        description: name of the Linux bridge interface.
-                        maxLength: 15
-                        pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
-                        type: string
-                    type: object
-                    x-kubernetes-validations:
-                    - message: either name must be set or autoCreate must be true,
-                        but not both.
-                      rule: (self.?name.orValue("") != "") != self.?autoCreate.orValue(false)
-                  ovsBridge:
-                    description: ovsBridge configuration. Must be set when Type is
-                      "ovs-bridge".
-                    properties:
-                      autoCreate:
-                        default: false
-                        description: |-
-                          autoCreate determines if the OVS bridge should be created automatically.
-                          When true, the bridge is created with name br-hs-<VNI>.
-                        type: boolean
-                      name:
-                        description: name of the OVS bridge interface.
-                        maxLength: 15
-                        pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
-                        type: string
-                    type: object
-                    x-kubernetes-validations:
-                    - message: either name must be set or autoCreate must be true,
-                        but not both.
-                      rule: (self.?name.orValue("") != "") != self.?autoCreate.orValue(false)
-                  type:
-                    description: 'type of the host interface. Supported values: "linux-bridge",
-                      "ovs-bridge".'
-                    enum:
-                    - linux-bridge
-                    - ovs-bridge
-                    type: string
-                required:
-                - type
-                type: object
-                x-kubernetes-validations:
-                - message: 'type/config mismatch: ''linux-bridge'' requires linuxBridge
-                    field, ''ovs-bridge'' requires ovsBridge field'
-                  rule: (self.type == 'linux-bridge' && has(self.linuxBridge) && !has(self.ovsBridge))
-                    || (self.type == 'ovs-bridge' && has(self.ovsBridge) && !has(self.linuxBridge))
-              l2gatewayips:
-                description: |-
-                  l2gatewayips is a list of IP addresses in CIDR notation to be used for the L2 gateway. When this is set, the
-                  bridge the veths are enslaved to will be configured with these IP addresses, effectively
-                  acting as a distributed gateway for the VNI. This allows for dual-stack (IPv4 and IPv6) support.
+                  gatewayIPs is a list of IP addresses in CIDR notation for the
+                  distributed anycast gateway on this L2 segment's bridge
+                  (Integrated Routing and Bridging interface). It is a property of
+                  the L2 segment itself, so it lives on the L2VNI rather than
+                  inside the routing-domain reference.
                   Maximum of 2 addresses are allowed. If 2 addresses are provided, one must be IPv4 and one must be IPv6.
                 items:
                   type: string
@@ -124,8 +88,97 @@ spec:
                 type: array
                 x-kubernetes-list-type: atomic
                 x-kubernetes-validations:
-                - message: L2GatewayIPs cannot be changed
+                - message: GatewayIPs cannot be changed
                   rule: self == oldSelf
+              hostMaster:
+                description: |-
+                  hostMaster is the interface on the host the veth should be attached to.
+                  If not set, the host veth will not be attached to any interface and it must be
+                  attached manually (or by some other means). This is useful if another controller
+                  is leveraging the host interface for the VNI.
+                properties:
+                  linuxBridge:
+                    description: linuxBridge configuration. Must be set when Type
+                      is "LinuxBridge".
+                    properties:
+                      lifecycle:
+                        description: |-
+                          lifecycle determines if the bridge is managed by the controller or
+                          provided by the user.
+                        enum:
+                        - Managed
+                        - External
+                        type: string
+                      name:
+                        description: |-
+                          name of the Linux bridge interface. Required when lifecycle is
+                          External, and must be omitted when it is Managed, in which case the
+                          bridge is named br-hs-<VNI>.
+                        maxLength: 15
+                        pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
+                        type: string
+                    required:
+                    - lifecycle
+                    type: object
+                    x-kubernetes-validations:
+                    - message: name must be set when lifecycle is External, and must
+                        not be set when it is Managed.
+                      rule: (self.?name.orValue("") != "") != (self.?lifecycle.orValue("")
+                        == 'Managed')
+                  ovsBridge:
+                    description: ovsBridge configuration. Must be set when Type is
+                      "OVSBridge".
+                    properties:
+                      lifecycle:
+                        description: |-
+                          lifecycle determines if the OVS bridge is managed by the controller or
+                          provided by the user.
+                        enum:
+                        - Managed
+                        - External
+                        type: string
+                      name:
+                        description: |-
+                          name of the OVS bridge interface. Required when lifecycle is
+                          External, and must be omitted when it is Managed, in which case the
+                          bridge is named br-hs-<VNI>.
+                        maxLength: 15
+                        pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
+                        type: string
+                    required:
+                    - lifecycle
+                    type: object
+                    x-kubernetes-validations:
+                    - message: name must be set when lifecycle is External, and must
+                        not be set when it is Managed.
+                      rule: (self.?name.orValue("") != "") != (self.?lifecycle.orValue("")
+                        == 'Managed')
+                  type:
+                    description: 'type of the host interface. Supported values: "LinuxBridge",
+                      "OVSBridge".'
+                    enum:
+                    - LinuxBridge
+                    - OVSBridge
+                    type: string
+                required:
+                - type
+                type: object
+                x-kubernetes-validations:
+                - message: 'type/config mismatch: ''LinuxBridge'' requires linuxBridge
+                    field, ''OVSBridge'' requires ovsBridge field'
+                  rule: (self.type == 'LinuxBridge' && has(self.linuxBridge) && !has(self.ovsBridge))
+                    || (self.type == 'OVSBridge' && has(self.ovsBridge) && !has(self.linuxBridge))
+              importRTs:
+                description: importRTs are the Route Targets to be used for importing
+                  L2 EVPN routes.
+                items:
+                  description: RouteTarget defines a BGP Extended Community for route
+                    filtering.
+                  maxLength: 21
+                  type: string
+                maxItems: 100
+                type: array
+                x-kubernetes-list-type: atomic
               nodeSelector:
                 description: |-
                   nodeSelector specifies which nodes this L2VNI applies to.
@@ -175,27 +228,82 @@ spec:
                     type: object
                 type: object
                 x-kubernetes-map-type: atomic
+              routingDomain:
+                description: |-
+                  routingDomain optionally attaches this L2VNI to a routing domain
+                  provided by a backing resource (L3VNI or L3VPN). When omitted, the
+                  L2VNI is a disconnected overlay (east-west L2 only, no VRF, no
+                  gateway).
+                properties:
+                  l3vni:
+                    description: |-
+                      l3vni references the L3VNI (metadata.name) in the same namespace that
+                      provides the routing domain for this L2VNI.
+                    properties:
+                      name:
+                        description: name is the metadata.name of the L3VNI in the
+                          same namespace.
+                        minLength: 1
+                        type: string
+                    required:
+                    - name
+                    type: object
+                  l3vpn:
+                    description: |-
+                      l3vpn references the L3VPN (metadata.name) in the same namespace that
+                      provides the routing domain for this L2VNI.
+                    properties:
+                      name:
+                        description: name is the metadata.name of the L3VPN in the
+                          same namespace.
+                        minLength: 1
+                        type: string
+                    required:
+                    - name
+                    type: object
+                  type:
+                    description: type selects the kind of resource that provides this
+                      routing domain.
+                    enum:
+                    - L3VNI
+                    - L3VPN
+                    type: string
+                required:
+                - type
+                type: object
+                x-kubernetes-validations:
+                - message: type L3VNI requires l3vni to be set and l3vpn to be unset
+                  rule: self.type != 'L3VNI' || (has(self.l3vni) && !has(self.l3vpn))
+                - message: type L3VPN requires l3vpn to be set and l3vni to be unset
+                  rule: self.type != 'L3VPN' || (has(self.l3vpn) && !has(self.l3vni))
+              underlayAddressFamily:
+                description: |-
+                  underlayAddressFamily selects which VTEP address family to use for this VNI's
+                  VXLAN interface. When omitted, defaults to the available family in the underlay
+                  (IPv4 preferred in dual-stack).
+                enum:
+                - IPv4
+                - IPv6
+                type: string
               vni:
                 description: vni is the VXLan VNI to be used
                 format: int32
                 maximum: 16777215
                 minimum: 1
                 type: integer
-              vrf:
-                description: |-
-                  vrf is the name of the linux VRF to be used inside the PERouter namespace.
-                  The field is optional, if not set it the name of the VNI instance will be used.
-                maxLength: 15
-                pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
-                type: string
-              vxlanport:
+              vxlanPort:
                 default: 4789
-                description: vxlanport is the port to be used for VXLan encapsulation.
+                description: vxlanPort is the port to be used for VXLan encapsulation.
                 format: int32
+                maximum: 65535
+                minimum: 1
                 type: integer
             required:
             - vni
             type: object
+            x-kubernetes-validations:
+            - message: gatewayIPs cannot be set without routingDomain
+              rule: '!has(self.gatewayIPs) || size(self.gatewayIPs) == 0 || has(self.routingDomain)'
           status:
             description: status defines the observed state of L2VNI.
             type: object
@@ -212,9 +320,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: l3passthroughs.openpe.openperouter.github.io
+  name: l3passthroughs.network.openperouter.io
 spec:
-  group: openpe.openperouter.github.io
+  group: network.openperouter.io
   names:
     kind: L3Passthrough
     listKind: L3PassthroughList
@@ -222,7 +330,17 @@ spec:
     singular: l3passthrough
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .spec.hostSession.asn
+      name: ASN
+      type: integer
+    - jsonPath: .spec.hostSession.hostASN
+      name: HostASN
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: |-
@@ -249,8 +367,8 @@ spec:
           spec:
             description: spec defines the desired state of L3Passthrough.
             properties:
-              hostsession:
-                description: hostsession is the configuration for the host session.
+              hostSession:
+                description: hostSession is the configuration for the host session.
                 properties:
                   asn:
                     description: |-
@@ -260,56 +378,53 @@ spec:
                     maximum: 4294967295
                     minimum: 1
                     type: integer
-                  hostasn:
+                  hostASN:
                     description: |-
-                      hostasn is the expected AS number for a BGP speaking component running in
+                      hostASN is the expected AS number for a BGP speaking component running in
                       the default network namespace. Either HostASN or HostType must be set.
                     format: int64
                     maximum: 4294967295
                     minimum: 1
                     type: integer
-                  hosttype:
+                  hostType:
                     description: |-
-                      hosttype is the AS type of the BGP speaking component running in the
+                      hostType is the AS type of the BGP speaking component running in the
                       default network namespace. Either HostASN or HostType must be set.
                     enum:
-                    - external
-                    - internal
+                    - External
+                    - Internal
                     type: string
-                  localcidr:
+                  localCIDRs:
                     description: |-
-                      localcidr is the CIDR configuration for the veth pair
-                      to connect with the default namespace. The interface under
-                      the PERouter side is going to use the first IP of the cidr on all the nodes.
-                      At least one of IPv4 or IPv6 must be provided.
-                    properties:
-                      ipv4:
-                        description: |-
-                          ipv4 is the IPv4 CIDR to be used for the veth pair
-                          to connect with the default namespace. The interface under
-                          the PERouter side is going to use the first IP of the cidr on all the nodes.
-                        type: string
-                      ipv6:
-                        description: |-
-                          ipv6 is the IPv6 CIDR to be used for the veth pair
-                          to connect with the default namespace. The interface under
-                          the PERouter side is going to use the first IP of the cidr on all the nodes.
-                        type: string
-                    type: object
+                      localCIDRs is the list of CIDRs for the veth pair connecting to the
+                      default namespace. The router side uses the first usable IP of each CIDR.
+                      At most one IPv4 and one IPv6 CIDR may be set; list order is not significant.
+                    items:
+                      type: string
+                    maxItems: 2
+                    minItems: 1
+                    type: array
+                    x-kubernetes-list-type: atomic
                     x-kubernetes-validations:
-                    - message: LocalCIDR can't be changed
+                    - message: all entries must be valid CIDRs
+                      rule: self.all(c, isCIDR(c))
+                    - message: at most one IPv4 CIDR is allowed
+                      rule: self.filter(c, isCIDR(c) && cidr(c).ip().family() == 4).size()
+                        <= 1
+                    - message: at most one IPv6 CIDR is allowed
+                      rule: self.filter(c, isCIDR(c) && cidr(c).ip().family() == 6).size()
+                        <= 1
+                    - message: localCIDRs can't be changed
                       rule: self == oldSelf
-                    - message: at least one of ipv4 or ipv6 must be specified
-                      rule: has(self.ipv4) || has(self.ipv6)
                 required:
                 - asn
-                - localcidr
+                - localCIDRs
                 type: object
                 x-kubernetes-validations:
                 - message: either HostASN or HostType must be set
-                  rule: has(self.hostasn) || has(self.hosttype)
+                  rule: has(self.hostASN) || has(self.hostType)
                 - message: HostASN and HostType cannot be set together
-                  rule: '!has(self.hostasn) || !has(self.hosttype)'
+                  rule: '!has(self.hostASN) || !has(self.hostType)'
               nodeSelector:
                 description: |-
                   nodeSelector specifies which nodes this L3Passthrough applies to.
@@ -360,7 +475,7 @@ spec:
                 type: object
                 x-kubernetes-map-type: atomic
             required:
-            - hostsession
+            - hostSession
             type: object
           status:
             description: status defines the observed state of L3Passthrough.
@@ -378,9 +493,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: l3vnis.openpe.openperouter.github.io
+  name: l3vnis.network.openperouter.io
 spec:
-  group: openpe.openperouter.github.io
+  group: network.openperouter.io
   names:
     kind: L3VNI
     listKind: L3VNIList
@@ -388,7 +503,17 @@ spec:
     singular: l3vni
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .spec.vni
+      name: VNI
+      type: integer
+    - jsonPath: .spec.vrf
+      name: VRF
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: |-
@@ -427,8 +552,8 @@ spec:
                 maxItems: 100
                 type: array
                 x-kubernetes-list-type: atomic
-              hostsession:
-                description: hostsession is the configuration for the host session.
+              hostSession:
+                description: hostSession is the configuration for the host session.
                 properties:
                   asn:
                     description: |-
@@ -438,56 +563,53 @@ spec:
                     maximum: 4294967295
                     minimum: 1
                     type: integer
-                  hostasn:
+                  hostASN:
                     description: |-
-                      hostasn is the expected AS number for a BGP speaking component running in
+                      hostASN is the expected AS number for a BGP speaking component running in
                       the default network namespace. Either HostASN or HostType must be set.
                     format: int64
                     maximum: 4294967295
                     minimum: 1
                     type: integer
-                  hosttype:
+                  hostType:
                     description: |-
-                      hosttype is the AS type of the BGP speaking component running in the
+                      hostType is the AS type of the BGP speaking component running in the
                       default network namespace. Either HostASN or HostType must be set.
                     enum:
-                    - external
-                    - internal
+                    - External
+                    - Internal
                     type: string
-                  localcidr:
+                  localCIDRs:
                     description: |-
-                      localcidr is the CIDR configuration for the veth pair
-                      to connect with the default namespace. The interface under
-                      the PERouter side is going to use the first IP of the cidr on all the nodes.
-                      At least one of IPv4 or IPv6 must be provided.
-                    properties:
-                      ipv4:
-                        description: |-
-                          ipv4 is the IPv4 CIDR to be used for the veth pair
-                          to connect with the default namespace. The interface under
-                          the PERouter side is going to use the first IP of the cidr on all the nodes.
-                        type: string
-                      ipv6:
-                        description: |-
-                          ipv6 is the IPv6 CIDR to be used for the veth pair
-                          to connect with the default namespace. The interface under
-                          the PERouter side is going to use the first IP of the cidr on all the nodes.
-                        type: string
-                    type: object
+                      localCIDRs is the list of CIDRs for the veth pair connecting to the
+                      default namespace. The router side uses the first usable IP of each CIDR.
+                      At most one IPv4 and one IPv6 CIDR may be set; list order is not significant.
+                    items:
+                      type: string
+                    maxItems: 2
+                    minItems: 1
+                    type: array
+                    x-kubernetes-list-type: atomic
                     x-kubernetes-validations:
-                    - message: LocalCIDR can't be changed
+                    - message: all entries must be valid CIDRs
+                      rule: self.all(c, isCIDR(c))
+                    - message: at most one IPv4 CIDR is allowed
+                      rule: self.filter(c, isCIDR(c) && cidr(c).ip().family() == 4).size()
+                        <= 1
+                    - message: at most one IPv6 CIDR is allowed
+                      rule: self.filter(c, isCIDR(c) && cidr(c).ip().family() == 6).size()
+                        <= 1
+                    - message: localCIDRs can't be changed
                       rule: self == oldSelf
-                    - message: at least one of ipv4 or ipv6 must be specified
-                      rule: has(self.ipv4) || has(self.ipv6)
                 required:
                 - asn
-                - localcidr
+                - localCIDRs
                 type: object
                 x-kubernetes-validations:
                 - message: either HostASN or HostType must be set
-                  rule: has(self.hostasn) || has(self.hosttype)
+                  rule: has(self.hostASN) || has(self.hostType)
                 - message: HostASN and HostType cannot be set together
-                  rule: '!has(self.hostasn) || !has(self.hosttype)'
+                  rule: '!has(self.hostASN) || !has(self.hostType)'
               importRTs:
                 description: |-
                   importRTs are the Route Targets to be used for importing routes.
@@ -549,6 +671,15 @@ spec:
                     type: object
                 type: object
                 x-kubernetes-map-type: atomic
+              underlayAddressFamily:
+                description: |-
+                  underlayAddressFamily selects which VTEP address family to use for this VNI's
+                  VXLAN interface. When omitted, defaults to the available family in the underlay
+                  (IPv4 preferred in dual-stack).
+                enum:
+                - IPv4
+                - IPv6
+                type: string
               vni:
                 description: vni is the VXLan VNI to be used
                 format: int32
@@ -562,10 +693,12 @@ spec:
                 minLength: 1
                 pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
                 type: string
-              vxlanport:
+              vxlanPort:
                 default: 4789
-                description: vxlanport is the port to be used for VXLan encapsulation.
+                description: vxlanPort is the port to be used for VXLan encapsulation.
                 format: int32
+                maximum: 65535
+                minimum: 1
                 type: integer
             required:
             - vni
@@ -573,8 +706,8 @@ spec:
             type: object
             x-kubernetes-validations:
             - message: hostASN must be different from asn
-              rule: '!has(self.hostsession) || !has(self.hostsession.hostasn) || self.hostsession.hostasn
-                != self.hostsession.asn'
+              rule: '!has(self.hostSession) || !has(self.hostSession.hostASN) || self.hostSession.hostASN
+                != self.hostSession.asn'
           status:
             description: status defines the observed state of L3VNI.
             type: object
@@ -591,9 +724,224 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: rawfrrconfigs.openpe.openperouter.github.io
+  name: l3vpns.network.openperouter.io
 spec:
-  group: openpe.openperouter.github.io
+  group: network.openperouter.io
+  names:
+    kind: L3VPN
+    listKind: L3VPNList
+    plural: l3vpns
+    singular: l3vpn
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.vrf
+      name: VRF
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: L3VPN represents an SRv6 IP VPN.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of L3VPN.
+            properties:
+              exportRTs:
+                description: |-
+                  exportRTs are the Route Targets to be used for exporting routes.
+                  If no exportRTs are provided, defaults to single export Route Target
+                  <asn>:<rdAssignedNumber>.
+                items:
+                  description: RouteTarget defines a BGP Extended Community for route
+                    filtering.
+                  maxLength: 21
+                  type: string
+                maxItems: 100
+                type: array
+                x-kubernetes-list-type: atomic
+              hostSession:
+                description: hostSession is the configuration for the host session.
+                properties:
+                  asn:
+                    description: |-
+                      asn is the local AS number to use to establish a BGP session with
+                      the default namespace.
+                    format: int64
+                    maximum: 4294967295
+                    minimum: 1
+                    type: integer
+                  hostASN:
+                    description: |-
+                      hostASN is the expected AS number for a BGP speaking component running in
+                      the default network namespace. Either HostASN or HostType must be set.
+                    format: int64
+                    maximum: 4294967295
+                    minimum: 1
+                    type: integer
+                  hostType:
+                    description: |-
+                      hostType is the AS type of the BGP speaking component running in the
+                      default network namespace. Either HostASN or HostType must be set.
+                    enum:
+                    - External
+                    - Internal
+                    type: string
+                  localCIDRs:
+                    description: |-
+                      localCIDRs is the list of CIDRs for the veth pair connecting to the
+                      default namespace. The router side uses the first usable IP of each CIDR.
+                      At most one IPv4 and one IPv6 CIDR may be set; list order is not significant.
+                    items:
+                      type: string
+                    maxItems: 2
+                    minItems: 1
+                    type: array
+                    x-kubernetes-list-type: atomic
+                    x-kubernetes-validations:
+                    - message: all entries must be valid CIDRs
+                      rule: self.all(c, isCIDR(c))
+                    - message: at most one IPv4 CIDR is allowed
+                      rule: self.filter(c, isCIDR(c) && cidr(c).ip().family() == 4).size()
+                        <= 1
+                    - message: at most one IPv6 CIDR is allowed
+                      rule: self.filter(c, isCIDR(c) && cidr(c).ip().family() == 6).size()
+                        <= 1
+                    - message: localCIDRs can't be changed
+                      rule: self == oldSelf
+                required:
+                - asn
+                - localCIDRs
+                type: object
+                x-kubernetes-validations:
+                - message: either HostASN or HostType must be set
+                  rule: has(self.hostASN) || has(self.hostType)
+                - message: HostASN and HostType cannot be set together
+                  rule: '!has(self.hostASN) || !has(self.hostType)'
+              importRTs:
+                description: |-
+                  importRTs are the Route Targets to be used for importing routes.
+                  importRTs must always be provided explicitly.
+                items:
+                  description: RouteTarget defines a BGP Extended Community for route
+                    filtering.
+                  maxLength: 21
+                  type: string
+                maxItems: 100
+                type: array
+                x-kubernetes-list-type: atomic
+              nodeSelector:
+                description: |-
+                  nodeSelector specifies which nodes this L3VPN applies to.
+                  If empty or not specified, applies to all nodes.
+                  Multiple L3VPNs can match the same node.
+                properties:
+                  matchExpressions:
+                    description: matchExpressions is a list of label selector requirements.
+                      The requirements are ANDed.
+                    items:
+                      description: |-
+                        A label selector requirement is a selector that contains values, a key, and an operator that
+                        relates the key and values.
+                      properties:
+                        key:
+                          description: key is the label key that the selector applies
+                            to.
+                          type: string
+                        operator:
+                          description: |-
+                            operator represents a key's relationship to a set of values.
+                            Valid operators are In, NotIn, Exists and DoesNotExist.
+                          type: string
+                        values:
+                          description: |-
+                            values is an array of string values. If the operator is In or NotIn,
+                            the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                            the values array must be empty. This array is replaced during a strategic
+                            merge patch.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  matchLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                      map is equivalent to an element of matchExpressions, whose key field is "key", the
+                      operator is "In", and the values array contains only "value". The requirements are ANDed.
+                    type: object
+                type: object
+                x-kubernetes-map-type: atomic
+              rdAssignedNumber:
+                description: |-
+                  rdAssignedNumber sets the Route Distinguisher's Assigned Number subfield.
+                  The Administrator subfield is automatically set to the value of the router
+                  ID. OpenPERouter uses Type 1 Route Distinguishers as defined in RFC4364,
+                  meaning <Administrator subfield>:<Assigned Number subfield>.
+                format: int32
+                maximum: 65535
+                minimum: 1
+                type: integer
+              vrf:
+                description: vrf is the name of the linux VRF to be used inside the
+                  PERouter namespace.
+                maxLength: 15
+                minLength: 1
+                pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
+                type: string
+            required:
+            - importRTs
+            - rdAssignedNumber
+            - vrf
+            type: object
+            x-kubernetes-validations:
+            - message: hostASN must be different from asn
+              rule: '!has(self.hostSession) || self.hostSession.hostASN != self.hostSession.asn'
+          status:
+            description: status defines the observed state of L3VPN.
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  name: rawfrrconfigs.network.openperouter.io
+spec:
+  group: network.openperouter.io
   names:
     kind: RawFRRConfig
     listKind: RawFRRConfigList
@@ -708,9 +1056,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: routernodeconfigurationstatuses.openpe.openperouter.github.io
+  name: routernodeconfigurationstatuses.network.openperouter.io
 spec:
-  group: openpe.openperouter.github.io
+  group: network.openperouter.io
   names:
     kind: RouterNodeConfigurationStatus
     listKind: RouterNodeConfigurationStatusList
@@ -827,6 +1175,7 @@ spec:
                       - Underlay
                       - L2VNI
                       - L3VNI
+                      - L3VPN
                       - FrrConfiguration
                       - L3Passthrough
                       type: string
@@ -870,9 +1219,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: underlays.openpe.openperouter.github.io
+  name: underlays.network.openperouter.io
 spec:
-  group: openpe.openperouter.github.io
+  group: network.openperouter.io
   names:
     kind: Underlay
     listKind: UnderlayList
@@ -880,7 +1229,20 @@ spec:
     singular: underlay
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .spec.asn
+      name: ASN
+      type: integer
+    - jsonPath: .spec.routerIDCIDR
+      name: Router ID Pool
+      type: string
+    - jsonPath: .spec.tunnelEndpoint.cidrs
+      name: VTEP CIDR
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: Underlay is the Schema for the underlays API.
@@ -939,12 +1301,205 @@ spec:
                     minimum: 1
                     type: integer
                 type: object
+              interfaces:
+                description: |-
+                  interfaces is the list of interfaces the router uses for underlay
+                  connectivity. Each entry is a discriminated union describing how the
+                  interface is obtained. At least one interface is required. All the
+                  entries must be of the same type: mixing NetworkDevice and CNIDevice
+                  interfaces is not supported.
+                items:
+                  description: |-
+                    UnderlayInterface defines how the router obtains a single underlay link.
+                    Exactly one of the sub-structs must match the type field.
+                    The union is designed to be extended with future modes
+                    for controller-provisioned interfaces.
+                  properties:
+                    cniDevice:
+                      description: |-
+                        cniDevice invokes a CNI plugin to provision an interface in the router
+                        netns. IPAM is delegated to the CNI plugin. Must be set when type is
+                        "CNIDevice".
+                      properties:
+                        interfaceName:
+                          default: net1
+                          description: |-
+                            interfaceName is the name of the interface the CNI plugin creates
+                            inside the router netns (passed as CNI_IFNAME). Defaults to "net1".
+                          maxLength: 15
+                          minLength: 1
+                          pattern: ^[a-zA-Z][a-zA-Z0-9._-]*$
+                          type: string
+                        rawConfig:
+                          description: |-
+                            rawConfig embeds a CNI conflist JSON blob directly in this spec.
+                            Only CNI spec >= 1.0.0 configurations are accepted. Immutable once
+                            set: to change it, delete and recreate the
+                            Underlay. Immutability is enforced by the validation webhook because
+                            CEL transition rules cannot be evaluated inside atomic lists.
+                          type: object
+                          x-kubernetes-preserve-unknown-fields: true
+                        runtimeConfig:
+                          description: |-
+                            runtimeConfig is an opaque JSON object mapping CNI capability names
+                            to the payloads passed as capability arguments to the CNI
+                            invocation. Only keys that the plugin declares in its
+                            "capabilities" config block are forwarded; undeclared keys are
+                            silently stripped. Well-known capabilities include ips, mac,
+                            bandwidth, portMappings, ipRanges and deviceID. Immutable once
+                            set: to change it, delete and recreate the Underlay. Immutability
+                            is enforced by the validation webhook because CEL transition rules
+                            cannot be evaluated inside atomic lists.
+                          type: object
+                          x-kubernetes-preserve-unknown-fields: true
+                        type:
+                          description: type selects the source of the CNI configuration.
+                          enum:
+                          - RawConfig
+                          type: string
+                      required:
+                      - type
+                      type: object
+                      x-kubernetes-validations:
+                      - message: 'type/config mismatch: rawConfig must be set if and
+                          only if type is ''RawConfig'''
+                        rule: has(self.rawConfig) == (self.type == 'RawConfig')
+                    networkDevice:
+                      description: |-
+                        networkDevice moves an existing host network device into the router netns.
+                        The device can be of any kind (physical NIC, bridge, macvlan, etc.).
+                        Must be set when type is "NetworkDevice".
+                      properties:
+                        interfaceName:
+                          description: |-
+                            interfaceName is the name of the host network device to move into
+                            the router netns.
+                          maxLength: 15
+                          minLength: 1
+                          pattern: ^[a-zA-Z][a-zA-Z0-9._-]*$
+                          type: string
+                      required:
+                      - interfaceName
+                      type: object
+                    type:
+                      description: type selects how the router obtains this underlay
+                        link.
+                      enum:
+                      - NetworkDevice
+                      - CNIDevice
+                      type: string
+                  required:
+                  - type
+                  type: object
+                  x-kubernetes-validations:
+                  - message: 'type/config mismatch: networkDevice must be set if and
+                      only if type is ''NetworkDevice'''
+                    rule: has(self.networkDevice) == (self.type == 'NetworkDevice')
+                  - message: 'type/config mismatch: cniDevice must be set if and only
+                      if type is ''CNIDevice'''
+                    rule: has(self.cniDevice) == (self.type == 'CNIDevice')
+                minItems: 1
+                type: array
+                x-kubernetes-list-type: atomic
+                x-kubernetes-validations:
+                - message: all interfaces must be of the same type, mixing NetworkDevice
+                    and CNIDevice is not supported
+                  rule: self.all(i, i.type == self[0].type)
+              isis:
+                description: isis holds the ISIS configuration for the underlay.
+                properties:
+                  baseNet:
+                    description: |-
+                      baseNet holds the ISIS NET address.
+                      The configured Net address is a base address which is offset by the node index of each node.
+                      Only accepts the simplified NSAP format with a fixed AreaID length of 3 bytes and a 6 byte SystemID in compliance
+                      with the U.S. GOSIP version 2.0 for a total of 10 bytes.
+                    maxLength: 25
+                    minLength: 25
+                    type: string
+                    x-kubernetes-validations:
+                    - message: Provided net address must match canonical format
+                      rule: self.matches('^[0-9a-f]{2}\\.([0-9a-f]{4}\\.){4}[0-9a-f]{2}$')
+                  features:
+                    description: |-
+                      features enables ISIS boolean features.
+                      Supported features are:
+                      advertisePassiveOnly: configures ISIS to advertise only prefixes that belong to passive interfaces.
+                    items:
+                      description: ISISFeature represents a single ISIS feature.
+                      enum:
+                      - advertisePassiveOnly
+                      maxLength: 128
+                      minLength: 1
+                      type: string
+                    maxItems: 32
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  interfaces:
+                    description: |-
+                      interfaces holds additional ISIS interface level configuration and / or per
+                      interface overrides. By default, OpenPERouter enables IPv6 on all required
+                      interfaces with default settings.
+                    items:
+                      description: ISISInterface holds ISIS interface level configuration.
+                      properties:
+                        features:
+                          description: |-
+                            features enables ISIS interface boolean features.
+                            Supported features are:
+                            passive: configures ISIS passive mode on this interface.
+                          items:
+                            description: ISISInterfaceFeature represents a single
+                              ISIS feature of an ISIS interface.
+                            enum:
+                            - passive
+                            maxLength: 128
+                            minLength: 1
+                            type: string
+                          maxItems: 32
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        ipFamily:
+                          description: ipFamily configures which address families
+                            ISIS is enabled for on this interface.
+                          enum:
+                          - IPv4
+                          - IPv6
+                          - DualStack
+                          type: string
+                        name:
+                          description: name of the interface that these settings shall
+                            apply to.
+                          maxLength: 15
+                          minLength: 1
+                          type: string
+                          x-kubernetes-validations:
+                          - message: Interface must not contain /, :, or whitespace
+                            rule: self.matches('^[^\\/:\\s]+$')
+                          - message: Interface cannot be . or ..
+                            rule: self != '.' && self != '..'
+                      required:
+                      - name
+                      type: object
+                    maxItems: 128
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - name
+                    x-kubernetes-list-type: map
+                  level:
+                    description: level configures the ISIS type, system wide. It defaults
+                      to level-1-2 unless specified otherwise.
+                    enum:
+                    - 1
+                    - 2
+                    format: int32
+                    type: integer
+                required:
+                - baseNet
+                type: object
               neighbors:
                 description: |-
                   neighbors is the list of external BGP neighbors to peer with.
-                  Note: MaxItems=128 is arbitrarily chosen to keep total CEL cost low
-                  Note: kubeapilinter complained about 'the struct has no required fields', but CEL enforces either/or choices
-                  for Address and Interface.
                   Multiple neighbors are supported for connecting to multiple TOR switches
                   or establishing redundant BGP sessions. Each neighbor address must be unique.
                   At least one neighbor is required.
@@ -965,7 +1520,9 @@ spec:
                     addressFamilies:
                       description: |-
                         addressFamilies specifies the BGP address families that shall be enabled
-                        for this BGP neighbor.
+                        for this BGP neighbor. evpn and ipv4vpn/ipv6vpn are mutually exclusive.
+                        If ipv4vpn or ipv6vpn are set, the update source of this neighbor will
+                        be set to the loopback's IPv6 address.
                         If addressFamilies is not provided or empty, the following defaults are
                         chosen:
                         For unnumbered neighbors:
@@ -980,28 +1537,61 @@ spec:
                         - ipv4unicast if L2VNIs or L3VNIs are present, or if passthrough is configured with IPv4 local CIDR
                         - ipv6unicast
                         - evpn if L2VNIs or L3VNIs are present
+                        - ipv4vpn if L3VPNs and SRv6 configuration are present.
+                        - ipv6vpn if L3VPNs and SRv6 configuration are present.
                       items:
                         description: |-
                           NeighborAddressFamily represents a single BGP address family configuration
                           for a neighbor.
                         properties:
+                          properties:
+                            description: |-
+                              properties is the set of optional per-address-family features for this
+                              neighbor (for example, marking the neighbor as a route reflector client
+                              in this address family).
+                            items:
+                              description: |-
+                                AddressFamilyProperty is an optional feature applied to a neighbor
+                                address family. The type field selects the property; typed sub-fields hold
+                                parameters for properties that require them.
+                              properties:
+                                type:
+                                  description: type selects the property.
+                                  enum:
+                                  - routeReflectorClient
+                                  type: string
+                              required:
+                              - type
+                              type: object
+                            maxItems: 8
+                            type: array
+                            x-kubernetes-list-map-keys:
+                            - type
+                            x-kubernetes-list-type: map
                           type:
                             description: type is the address family type.
                             enum:
                             - ipv4unicast
                             - ipv6unicast
                             - evpn
+                            - ipv4vpn
+                            - ipv6vpn
                             maxLength: 11
                             minLength: 1
                             type: string
                         required:
                         - type
                         type: object
-                      maxItems: 3
+                      maxItems: 4
                       type: array
                       x-kubernetes-list-map-keys:
                       - type
                       x-kubernetes-list-type: map
+                      x-kubernetes-validations:
+                      - message: EVPN and IPv4VPN/IPv6VPN address families are mutually
+                          exclusive
+                        rule: '!(self.exists(f, f.type == ''evpn'') && self.exists(f,
+                          f.type == ''ipv4vpn'' || f.type == ''ipv6vpn''))'
                     asn:
                       description: asn is the AS number of the neighbor. Either ASN
                         or Type must be set.
@@ -1021,21 +1611,6 @@ spec:
                           maximum: 255
                           minimum: 2
                           type: integer
-                        echoInterval:
-                          description: |-
-                            echoInterval configures the minimal echo receive transmission
-                            interval that this system is capable of handling in milliseconds.
-                            Defaults to 50ms
-                          format: int32
-                          maximum: 60000
-                          minimum: 10
-                          type: integer
-                        echoMode:
-                          description: |-
-                            echoMode enables or disables the echo transmission mode.
-                            This mode is disabled by default, and not supported on multi
-                            hops setups.
-                          type: boolean
                         minimumTTL:
                           description: |-
                             minimumTTL configures, for multi hop sessions only, the minimum
@@ -1044,12 +1619,6 @@ spec:
                           maximum: 254
                           minimum: 1
                           type: integer
-                        passiveMode:
-                          description: |-
-                            passiveMode marks session as passive: a passive session will not
-                            attempt to start the connection and will wait for control packets
-                            from peer before it begins replying.
-                          type: boolean
                         receiveInterval:
                           description: |-
                             receiveInterval is the minimum interval that this system is capable of
@@ -1059,6 +1628,15 @@ spec:
                           maximum: 60000
                           minimum: 10
                           type: integer
+                        sessionMode:
+                          description: |-
+                            sessionMode marks the session active or passive. Active (the default
+                            when omitted) initiates the session. Passive waits for the peer to
+                            initiate before replying (RFC 5880 Section 6.1).
+                          enum:
+                          - Active
+                          - Passive
+                          type: string
                         transmitInterval:
                           description: |-
                             transmitInterval is the minimum transmission interval (less jitter)
@@ -1076,10 +1654,6 @@ spec:
                       maximum: 65535
                       minimum: 1
                       type: integer
-                    ebgpMultiHop:
-                      description: ebgpMultiHop indicates if the BGPPeer is multi-hops
-                        away.
-                      type: boolean
                     holdTimeSeconds:
                       description: |-
                         holdTimeSeconds is the requested BGP hold time in seconds, per RFC4271.
@@ -1103,33 +1677,96 @@ spec:
                         Defaults to 60.
                       format: int64
                       type: integer
-                    password:
+                    listenRange:
                       description: |-
-                        password to be used for establishing the BGP session.
-                        Password and PasswordSecret are mutually exclusive.
+                        listenRange accepts connections from any peers in the specified CIDR.
+                        When set, the hostcontroller generates a
+                        "bgp listen range <listenRange> peer-group <name>" stanza instead of
+                        an explicit neighbor statement. Mutually exclusive with address and
+                        interface.
+                      maxLength: 43
+                      minLength: 1
                       type: string
+                      x-kubernetes-validations:
+                      - message: listenRange must be a valid CIDR
+                        rule: isCIDR(self)
+                      - message: listenRange must not be an IPv6 link-local range
+                        rule: '!isCIDR(self) || cidr(self).ip().family() != 6 || !cidr(self).ip().isLinkLocalUnicast()'
                     passwordSecret:
                       description: |-
-                        passwordSecret is name of the authentication secret for the neighbor.
-                        the secret must be of type "kubernetes.io/basic-auth", and created in the
-                        same namespace as the perouter daemon. The password is stored in the
-                        secret as the key "password".
-                        Password and PasswordSecret are mutually exclusive.
-                      type: string
+                        passwordSecret references a key in a Kubernetes Secret containing the
+                        BGP session password. The Secret must be created in the same namespace
+                        as the Underlay.
+                      properties:
+                        key:
+                          description: |-
+                            key is the key within the Secret's data to select.
+                            The controller defaults this to "password" when unset.
+                          minLength: 1
+                          type: string
+                        name:
+                          description: name is the name of the Secret in the same
+                            namespace.
+                          minLength: 1
+                          type: string
+                      required:
+                      - name
+                      type: object
                     port:
                       description: |-
                         port is the port to dial when establishing the session.
                         Defaults to 179.
                       format: int32
-                      maximum: 16384
-                      minimum: 0
+                      maximum: 65535
+                      minimum: 1
                       type: integer
+                    properties:
+                      description: |-
+                        properties is the set of optional session-level features for this
+                        neighbor (e.g. ebgpMultiHop).
+                      items:
+                        description: |-
+                          NeighborProperty is an optional feature applied to a neighbor session. The
+                          type field selects the property; typed sub-fields hold parameters for
+                          properties that require them.
+                        properties:
+                          ebgpMultiHop:
+                            description: |-
+                              ebgpMultiHop holds parameters for the ebgpMultiHop property.
+                              May only be set when type is ebgpMultiHop.
+                            properties:
+                              ttl:
+                                description: |-
+                                  ttl is the maximum number of hops for the eBGP multihop session.
+                                  When omitted, FRR defaults to 255.
+                                format: int32
+                                maximum: 255
+                                minimum: 1
+                                type: integer
+                            type: object
+                          type:
+                            description: type selects the property.
+                            enum:
+                            - ebgpMultiHop
+                            type: string
+                        required:
+                        - type
+                        type: object
+                        x-kubernetes-validations:
+                        - message: ebgpMultiHop parameters can only be set when type
+                            is ebgpMultiHop
+                          rule: '!has(self.ebgpMultiHop) || self.type == ''ebgpMultiHop'''
+                      maxItems: 1
+                      type: array
+                      x-kubernetes-list-map-keys:
+                      - type
+                      x-kubernetes-list-type: map
                     type:
                       description: type is the AS type of the neighbor. Either ASN
                         or Type must be set.
                       enum:
-                      - external
-                      - internal
+                      - External
+                      - Internal
                       type: string
                   type: object
                   x-kubernetes-validations:
@@ -1146,23 +1783,29 @@ spec:
                   - message: keepaliveTimeSeconds must be lower than or equal to holdTimeSeconds
                     rule: '!has(self.holdTimeSeconds) || !has(self.keepaliveTimeSeconds)
                       || self.keepaliveTimeSeconds <= self.holdTimeSeconds'
-                  - message: Either a valid Address or Interface name must be provided
-                      for Neighbor
-                    rule: has(self.address) || has(self.interface)
+                  - message: Either a valid Address, Interface name or ListenRange
+                      must be provided for Neighbor
+                    rule: has(self.address) || has(self.interface) || has(self.listenRange)
                   - message: Address and Interface cannot be set together for Neighbor
                     rule: '!has(self.address) || !has(self.interface)'
+                  - message: ipv4vpn and ipv6vpn address families are not supported
+                      for unnumbered (interface) neighbors
+                    rule: '!has(self.interface) || !has(self.addressFamilies) || !self.addressFamilies.exists(f,
+                      f.type == ''ipv4vpn'' || f.type == ''ipv6vpn'')'
+                  - message: ipv4vpn and ipv6vpn address families require an IPv6
+                      neighbor address
+                    rule: '!has(self.address) || !has(self.addressFamilies) || ip(self.address).family()
+                      != 4 || !self.addressFamilies.exists(f, f.type == ''ipv4vpn''
+                      || f.type == ''ipv6vpn'')'
+                  - message: listenRange and address are mutually exclusive
+                    rule: '!has(self.listenRange) || !has(self.address)'
+                  - message: listenRange and interface are mutually exclusive
+                    rule: '!has(self.listenRange) || !has(self.interface)'
+                  - message: routeReflectorClient requires type Internal
+                    rule: '!(has(self.addressFamilies) && self.addressFamilies.exists(af,
+                      has(af.properties) && af.properties.exists(o, o.type == ''routeReflectorClient'')))
+                      || (has(self.type) && self.type == ''Internal'')'
                 maxItems: 128
-                minItems: 1
-                type: array
-                x-kubernetes-list-type: atomic
-              nics:
-                description: |-
-                  nics is the list of physical nics to move under the PERouter namespace to connect
-                  to external routers. At least one NIC is required.
-                items:
-                  maxLength: 15
-                  pattern: ^[a-zA-Z][a-zA-Z0-9._-]*$
-                  type: string
                 minItems: 1
                 type: array
                 x-kubernetes-list-type: atomic
@@ -1215,11 +1858,80 @@ spec:
                     type: object
                 type: object
                 x-kubernetes-map-type: atomic
-              routeridcidr:
+              routeReflector:
+                description: |-
+                  routeReflector configures the local FRR process as a BGP route reflector.
+                  When set, the hostcontroller generates bgp cluster-id from clusterID
+                  and derives bgp listen range and route-reflector-client stanzas from
+                  neighbors with listenRange and the routeReflectorClient property.
+                  Omit to run as a standard router without route reflection.
+                properties:
+                  clusterID:
+                    default: 192.0.2.1
+                    description: |-
+                      clusterID is the BGP cluster-id shared by all RR nodes in the same
+                      cluster (RFC 4456 §7). All RRs serving the same set of clients must
+                      use the same value so that CLUSTER_LIST loop detection prevents
+                      duplicate route reflection. The cluster-id is an opaque 32-bit
+                      identifier, not a routable address, and must be outside the
+                      routerIDCIDR range to avoid colliding with allocated router-ids.
+                      The default (192.0.2.1) is an RFC 5737 documentation address,
+                      outside the default routerIDCIDR pool; with a custom routerIDCIDR
+                      that contains it, the resource is rejected at admission.
+                    maxLength: 15
+                    minLength: 7
+                    type: string
+                    x-kubernetes-validations:
+                    - message: clusterID must be a valid IPv4 address
+                      rule: isIP(self) && ip(self).family() == 4
+                type: object
+              routerIDCIDR:
                 default: 10.0.0.0/24
-                description: routeridcidr is the ipv4 cidr to be used to assign a
+                description: routerIDCIDR is the ipv4 cidr to be used to assign a
                   different routerID on each node.
                 type: string
+              srv6:
+                description: srv6 holds the SRv6 configuration. Requires ISIS or Neighbors
+                  configuration.
+                properties:
+                  encapBehavior:
+                    description: |-
+                      encapBehavior defines the behavior for SRv6 encapsulation as specified
+                      in RFC 8986 sections 5.1 and 5.2.
+                      If unset, defaults to H.Encaps.
+                    enum:
+                    - H.Encaps
+                    - H.Encaps.Red
+                    maxLength: 12
+                    minLength: 1
+                    type: string
+                  locator:
+                    description: locator defines the locator for this SRv6 VPN.
+                    properties:
+                      basePrefix:
+                        description: basePrefix is the CIDR to be used for the locator,
+                          offset by the router index.
+                        maxLength: 43
+                        minLength: 1
+                        type: string
+                        x-kubernetes-validations:
+                        - message: prefix must be an IPv6 CIDR
+                          rule: isCIDR(self) && cidr(self).ip().family() == 6
+                      format:
+                        description: format specifies the format of the locator. Defaults
+                          to usid-f3216
+                        enum:
+                        - usid-f3216
+                        maxLength: 40
+                        minLength: 1
+                        type: string
+                    required:
+                    - basePrefix
+                    - format
+                    type: object
+                required:
+                - locator
+                type: object
               tunnelEndpoint:
                 description: tunnelEndpoint contains tunnel endpoint configuration
                   for the underlay.
@@ -1227,9 +1939,8 @@ spec:
                   cidrs:
                     description: |-
                       cidrs is a list of CIDRs to be used to assign IPs to the local tunnel endpoint on
-                      each node. A loopback interface will be created with IPs derived from
-                      these CIDRs. Exactly one IPv4 CIDR is required, and an optional IPv6
-                      CIDR may also be specified for dual-stack operation.
+                      each node. IPs derived from these CIDRs will be assigned to the local loopback.
+                      At least one IPv4 or IPv6 CIDR is required. At most one of each family may be specified.
                     items:
                       type: string
                     maxItems: 2
@@ -1239,9 +1950,9 @@ spec:
                     x-kubernetes-validations:
                     - message: all entries must be valid CIDRs
                       rule: self.all(c, isCIDR(c))
-                    - message: exactly one IPv4 CIDR is required
+                    - message: at most one IPv4 CIDR is allowed
                       rule: self.filter(c, isCIDR(c) && cidr(c).ip().family() == 4).size()
-                        == 1
+                        <= 1
                     - message: at most one IPv6 CIDR is allowed
                       rule: self.filter(c, isCIDR(c) && cidr(c).ip().family() == 6).size()
                         <= 1
@@ -1250,9 +1961,19 @@ spec:
                 type: object
             required:
             - asn
+            - interfaces
             - neighbors
-            - nics
             type: object
+            x-kubernetes-validations:
+            - message: SRv6 can only be configured if isis is set
+              rule: '!has(self.srv6) || has(self.isis)'
+            - message: SRv6 requires at least one IPv6 CIDR in tunnelEndpoint.cidrs
+              rule: '!has(self.srv6) || (has(self.tunnelEndpoint) && has(self.tunnelEndpoint.cidrs)
+                && self.tunnelEndpoint.cidrs.exists(c, cidr(c).ip().family() == 6))'
+            - message: routeReflector.clusterID must be outside the routerIDCIDR range
+              rule: '!has(self.routeReflector) || !has(self.routeReflector.clusterID)
+                || !isIP(self.routeReflector.clusterID) || !has(self.routerIDCIDR)
+                || !isCIDR(self.routerIDCIDR) || !cidr(self.routerIDCIDR).containsIP(self.routeReflector.clusterID)'
           status:
             description: status defines the observed state of Underlay.
             type: object
@@ -1271,6 +1992,15 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: openperouter
   name: controller
+  namespace: openperouter-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: openperouter
+  name: nodemarker
   namespace: openperouter-system
 ---
 apiVersion: v1
@@ -1299,15 +2029,41 @@ rules:
   - get
   - list
   - watch
-  - update
 - apiGroups:
   - ""
   resources:
   - pods
   verbs:
+  - delete
   - get
   - list
   - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: openperouter
+  name: nodemarker-role
+  namespace: openperouter-system
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resourceNames:
+  - openpe-webhook-server-cert
+  resources:
+  - secrets
+  verbs:
+  - update
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -1338,16 +2094,65 @@ rules:
   - get
   - list
   - patch
-  - update
   - watch
 - apiGroups:
-  - ""
+  - network.openperouter.io
   resources:
-  - pods
+  - l2vnis
+  - l3passthroughs
+  - l3vnis
+  - l3vpns
+  - rawfrrconfigs
+  - routernodeconfigurationstatuses
+  - underlays
   verbs:
+  - create
   - delete
   - get
   - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - network.openperouter.io
+  resources:
+  - l2vnis/finalizers
+  - l3passthroughs/finalizers
+  - l3vnis/finalizers
+  - l3vpns/finalizers
+  - rawfrrconfigs/finalizers
+  - underlays/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - network.openperouter.io
+  resources:
+  - l2vnis/status
+  - l3passthroughs/status
+  - l3vnis/status
+  - l3vpns/status
+  - rawfrrconfigs/status
+  - routernodeconfigurationstatuses/status
+  - underlays/status
+  verbs:
+  - get
+  - patch
+  - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: nodemarker-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  verbs:
+  - get
+  - list
+  - patch
+  - update
   - watch
 - apiGroups:
   - admissionregistration.k8s.io
@@ -1366,56 +2171,18 @@ rules:
   verbs:
   - update
 - apiGroups:
-  - openpe.openperouter.github.io
+  - network.openperouter.io
   resources:
   - l2vnis
   - l3passthroughs
   - l3vnis
-  - routernodeconfigurationstatuses
+  - l3vpns
+  - rawfrrconfigs
   - underlays
   verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - openpe.openperouter.github.io
-  resources:
-  - l2vnis/finalizers
-  - l3passthroughs/finalizers
-  - l3vnis/finalizers
-  - underlays/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - openpe.openperouter.github.io
-  resources:
-  - l2vnis/status
-  - l3passthroughs/status
-  - l3vnis/status
-  - routernodeconfigurationstatuses/status
-  - underlays/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - openpe.openperouter.github.io
-  resources:
-  - rawfrrconfigs
-  verbs:
   - get
   - list
   - watch
-- apiGroups:
-  - openpe.openperouter.github.io
-  resources:
-  - rawfrrconfigs/status
-  verbs:
-  - get
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -1432,6 +2199,23 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: controller
+  namespace: openperouter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: openperouter
+  name: nodemarker-rolebinding
+  namespace: openperouter-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: nodemarker-role
+subjects:
+- kind: ServiceAccount
+  name: nodemarker
   namespace: openperouter-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -1467,6 +2251,22 @@ subjects:
   name: controller
   namespace: openperouter-system
 ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: openperouter
+  name: nodemarker-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: nodemarker-role
+subjects:
+- kind: ServiceAccount
+  name: nodemarker
+  namespace: openperouter-system
+---
 apiVersion: v1
 data:
   daemons: |
@@ -1491,7 +2291,7 @@ data:
     ospf6d=no
     ripd=no
     ripngd=no
-    isisd=no
+    isisd=yes
     pimd=no
     ldpd=no
     nhrpd=no
@@ -1649,7 +2449,7 @@ spec:
         - mountPath: /tmp/k8s-webhook-server/serving-certs
           name: cert
           readOnly: true
-      serviceAccountName: controller
+      serviceAccountName: nodemarker
       tolerations:
       - effect: NoSchedule
         key: node-role.kubernetes.io/master
@@ -1695,6 +2495,7 @@ spec:
         - --namespace=$(NAMESPACE)
         - --frrconfig=/etc/frr/frr.conf
         - --crisocket=/crio.sock
+        - --reloader-socket=/etc/frr/reload.sock
         command:
         - /controller
         env:
@@ -1762,6 +2563,8 @@ spec:
           name: ovs-var-run
         - mountPath: /var/run/frr
           name: frr-sockets
+        - mountPath: /var/lib/openperouter/cni/cache
+          name: cni-cache
       hostNetwork: true
       hostPID: true
       serviceAccountName: controller
@@ -1790,6 +2593,10 @@ spec:
           path: /var/run/openperouter/frr
           type: DirectoryOrCreate
         name: frr-sockets
+      - hostPath:
+          path: /var/lib/openperouter/cni/cache
+          type: DirectoryOrCreate
+        name: cni-cache
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -1848,12 +2655,21 @@ spec:
           timeoutSeconds: 10
         name: frr
         securityContext:
+          allowPrivilegeEscalation: false
           capabilities:
             add:
             - NET_ADMIN
             - NET_RAW
             - SYS_ADMIN
             - NET_BIND_SERVICE
+            - SETUID
+            - SETGID
+            - CHOWN
+            - DAC_OVERRIDE
+            drop:
+            - ALL
+          seccompProfile:
+            type: Unconfined
         volumeMounts:
         - mountPath: /var/run/frr
           name: frr-sockets
@@ -1862,6 +2678,7 @@ spec:
         - mountPath: /var/run/netns
           mountPropagation: HostToContainer
           name: netns
+          readOnly: true
       - args:
         - --frrconfig=/etc/perouter/frr.conf
         - --loglevel=debug
@@ -1892,8 +2709,14 @@ spec:
           periodSeconds: 10
           timeoutSeconds: 10
         securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
           seLinuxOptions:
             type: spc_t
+          seccompProfile:
+            type: RuntimeDefault
         volumeMounts:
         - mountPath: /etc/frr
           name: frrconfig
@@ -1910,11 +2733,22 @@ spec:
         image: quay.io/openperouter/router:main
         imagePullPolicy: IfNotPresent
         name: cp-frr-files
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          seccompProfile:
+            type: RuntimeDefault
         volumeMounts:
         - mountPath: /tmp/frr
           name: frr-startup
         - mountPath: /etc/frr
           name: frrconfig
+      securityContext:
+        supplementalGroups:
+        - 92
+        - 102
       serviceAccountName: perouter
       shareProcessNamespace: true
       terminationGracePeriodSeconds: 10
@@ -1957,7 +2791,7 @@ webhooks:
   name: l2vnivalidationwebhook.openperouter.io
   rules:
   - apiGroups:
-    - openpe.openperouter.github.io
+    - network.openperouter.io
     apiVersions:
     - v1alpha1
     operations:
@@ -1977,7 +2811,7 @@ webhooks:
   name: l3passthroughvalidationwebhook.openperouter.io
   rules:
   - apiGroups:
-    - openpe.openperouter.github.io
+    - network.openperouter.io
     apiVersions:
     - v1alpha1
     operations:
@@ -1997,7 +2831,7 @@ webhooks:
   name: l3vnivalidationwebhook.openperouter.io
   rules:
   - apiGroups:
-    - openpe.openperouter.github.io
+    - network.openperouter.io
     apiVersions:
     - v1alpha1
     operations:
@@ -2012,12 +2846,32 @@ webhooks:
     service:
       name: openpe-webhook-service
       namespace: openperouter-system
+      path: /validate-openperouter-io-v1alpha1-l3vpn
+  failurePolicy: Fail
+  name: l3vpnsvalidationwebhook.openperouter.io
+  rules:
+  - apiGroups:
+    - network.openperouter.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - l3vpns
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: openpe-webhook-service
+      namespace: openperouter-system
       path: /validate-openperouter-io-v1alpha1-rawfrrconfig
   failurePolicy: Fail
   name: rawfrrconfigvalidationwebhook.openperouter.io
   rules:
   - apiGroups:
-    - openpe.openperouter.github.io
+    - network.openperouter.io
     apiVersions:
     - v1alpha1
     operations:
@@ -2037,7 +2891,7 @@ webhooks:
   name: underlayvalidationwebhook.openperouter.io
   rules:
   - apiGroups:
-    - openpe.openperouter.github.io
+    - network.openperouter.io
     apiVersions:
     - v1alpha1
     operations:

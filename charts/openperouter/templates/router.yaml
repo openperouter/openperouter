@@ -27,7 +27,7 @@ data:
     ospf6d=no
     ripd=no
     ripngd=no
-    isisd=no
+    isisd=yes
     pimd=no
     ldpd=no
     nhrpd=no
@@ -45,7 +45,11 @@ data:
     # Check /etc/pam.d/frr if you intend to use "vtysh"!
     #
     vtysh_enable=yes
+    {{- if eq .Values.openperouter.datapath "grout" }}
+    zebra_options="  -A 127.0.0.1 -s 90000000 --limit-fds 100000 -K 60 -M dplane_grout"
+    {{- else }}
     zebra_options="  -A 127.0.0.1 -s 90000000 --limit-fds 100000 -K 60"
+    {{- end }}
     bgpd_options="   -A 127.0.0.1 --limit-fds 100000"
     ospfd_options="  -A 127.0.0.1"
     ospf6d_options=" -A ::1"
@@ -120,9 +124,6 @@ spec:
     metadata:
       annotations:
         kubectl.kubernetes.io/default-container: frr
-        {{- if .Values.openperouter.multusNetworkAnnotation }}
-        k8s.v1.cni.cncf.io/networks: {{ .Values.openperouter.multusNetworkAnnotation | quote }}
-        {{- end }}
       labels:
         {{- include "openperouter.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: router
@@ -142,15 +143,25 @@ spec:
       hostNetwork: true
       terminationGracePeriodSeconds: 10
       shareProcessNamespace: true
+      securityContext:
+        supplementalGroups: [92, 102]
       containers:
       - name: frr
         securityContext:
+          allowPrivilegeEscalation: false
           capabilities:
+            drop: ["ALL"]
             add:
             - NET_ADMIN
             - NET_RAW
             - SYS_ADMIN
             - NET_BIND_SERVICE
+            - SETUID
+            - SETGID
+            - CHOWN
+            - DAC_OVERRIDE
+          seccompProfile:
+            type: Unconfined
         image: {{ .Values.openperouter.image.repository }}:{{ .Values.openperouter.image.tag | default .Chart.AppVersion }}
         {{- if .Values.openperouter.image.pullPolicy }}
         imagePullPolicy: {{ .Values.openperouter.image.pullPolicy }}
@@ -158,6 +169,10 @@ spec:
         env:
           - name: TINI_SUBREAPER
             value: "true"
+          {{- if eq .Values.openperouter.datapath "grout" }}
+          - name: GROUT_SOCK_PATH
+            value: "/var/run/grout/grout.sock"
+          {{- end }}
         volumeMounts:
           - name: frr-sockets
             mountPath: /var/run/frr
@@ -166,6 +181,14 @@ spec:
           - name: netns
             mountPath: /var/run/netns
             mountPropagation: HostToContainer
+            readOnly: true
+          {{- if eq .Values.openperouter.datapath "grout" }}
+          - name: grout-socket
+            mountPath: /var/run/grout
+          {{- end }}
+        # The command is FRR's default entrypoint & waiting for the log file to appear and tailing it.
+        # If the log file isn't created in 60 seconds the tail fails and the container is restarted.
+        # This workaround is needed to have the frr logs as part of kubectl logs -c frr < k8s-frr-podname >.
         command:
           - /bin/sh
           - -c
@@ -214,6 +237,11 @@ spec:
         securityContext:
           seLinuxOptions:
             type: spc_t
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+          seccompProfile:
+            type: RuntimeDefault
         volumeMounts:
           - name: frrconfig
             mountPath: /etc/frr
@@ -245,17 +273,120 @@ spec:
         resources:
           {{- toYaml . | nindent 12 }}
         {{- end }}
-      tolerations:
-      {{- if .Values.openperouter.runOnMaster }}
-      - effect: NoSchedule
-        key: node-role.kubernetes.io/master
-        operator: Exists
-      - effect: NoSchedule
-        key: node-role.kubernetes.io/control-plane
-        operator: Exists
+      {{- if eq .Values.openperouter.datapath "grout" }}
+      - name: grout
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+            add:
+            - SYS_ADMIN
+            - NET_ADMIN
+            - NET_RAW
+            - IPC_LOCK
+          seccompProfile:
+            type: Unconfined
+        image: "{{ .Values.openperouter.grout.image.repository }}:{{ .Values.openperouter.grout.image.tag }}"
+        {{- if .Values.openperouter.grout.image.pullPolicy }}
+        imagePullPolicy: {{ .Values.openperouter.grout.image.pullPolicy }}
+        {{- end }}
+        env:
+          - name: GROUT_SOCK_PATH
+            value: "/var/run/grout/grout.sock"
+          # Grout defaults target a full-table router and would exhaust typical
+          # pod memory when allocating per-VRF FIBs.
+          - name: GROUT_MAX_IFACES
+            value: "128"
+          - name: GROUT_MEMPOOL_CHUNK_SIZE
+            value: "2047"
+          - name: GROUT_MAX_NEXTHOPS
+            value: "4096"
+          - name: GROUT_MAX_ROUTES
+            value: "4096"
+          - name: GROUT_MAX_FDB_ENTRIES
+            value: "512"
+          - name: GROUT_MAX_CONNTRACKS
+            value: "128"
+          - name: GROUT_PORT_QUEUE_SIZE
+            value: "128"
+          {{- if .Values.openperouter.grout.testMode }}
+          # DUMMY skips the LPM tables that dominate the per-VRF FIB cost.
+          - name: GROUT_FIB4_ALGORITHM
+            value: DUMMY
+          - name: GROUT_FIB6_ALGORITHM
+            value: DUMMY
+          {{- end }}
+        command:
+          - /bin/sh
+          - -c
+          - |
+            TIMEOUT=60
+            WAITED=0
+            until [ -e /var/run/netns/perouter ]; do
+              echo "Waiting for named netns /var/run/netns/perouter..."
+              sleep 1
+              WAITED=$((WAITED + 1))
+              if [ "$WAITED" -ge "$TIMEOUT" ]; then
+                echo "Timed out waiting for named netns after ${TIMEOUT}s"
+                exit 1
+              fi
+            done
+            GROUT_ARGS="--socket-mode 0666"
+            {{- if .Values.openperouter.grout.testMode }}
+            GROUT_ARGS="${GROUT_ARGS} --test-mode"
+            {{- end }}
+            {{- if eq .Values.openperouter.logLevel "debug" }}
+            GROUT_ARGS="${GROUT_ARGS} --verbose"
+            {{- end }}
+            exec nsenter --net=/var/run/netns/perouter grout ${GROUT_ARGS}
+
+        volumeMounts:
+          - name: grout-socket
+            mountPath: /var/run/grout
+          - name: netns
+            mountPath: /var/run/netns
+            mountPropagation: HostToContainer
+          - name: host-nsenter
+            mountPath: /usr/bin/nsenter
+            readOnly: true
+          - name: dev-net-tun
+            mountPath: /dev/net/tun
+          - name: dpdk-runtime
+            mountPath: /var/run/dpdk
+        {{- with .Values.openperouter.grout.resources }}
+        resources:
+          {{- toYaml . | nindent 12 }}
+        {{- end }}
+        startupProbe:
+          exec:
+            command: ["/bin/sh", "-c", "grcli -e"]
+          initialDelaySeconds: 2
+          periodSeconds: 5
+          timeoutSeconds: 5
+          failureThreshold: 12
+        readinessProbe:
+          exec:
+            command: ["/bin/sh", "-c", "grcli -e"]
+          periodSeconds: 10
+          timeoutSeconds: 5
+        livenessProbe:
+          exec:
+            command: ["/bin/sh", "-c", "grcli -e"]
+          periodSeconds: 30
+          timeoutSeconds: 5
+      {{- end }}
+      {{- with .Values.openperouter.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.openperouter.tolerations }}
-        {{- toYaml . | nindent 6 }}
+      tolerations:
+      {{- toYaml . | nindent 6 }}
+      {{- end }}
+      {{- with .Values.openperouter.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.openperouter.priorityClassName }}
       priorityClassName: {{ . | quote }}
@@ -275,9 +406,31 @@ spec:
         - name: netns
           hostPath:
             path: /var/run/netns
+        {{- if eq .Values.openperouter.datapath "grout" }}
+        - name: grout-socket
+          hostPath:
+            path: /var/run/openperouter/grout
+            type: DirectoryOrCreate
+        - name: host-nsenter
+          hostPath:
+            path: /usr/bin/nsenter
+            type: File
+        - name: dev-net-tun
+          hostPath:
+            path: /dev/net/tun
+            type: CharDevice
+        - name: dpdk-runtime
+          emptyDir: {}
+        {{- end }}
       initContainers:
         # Copies the initial config files with the right permissions to the shared volume.
         - name: cp-frr-files
+          securityContext:
+            capabilities:
+              drop: ["ALL"]
+            allowPrivilegeEscalation: false
+            seccompProfile:
+              type: RuntimeDefault
           image: {{ .Values.openperouter.image.repository }}:{{ .Values.openperouter.image.tag | default .Chart.AppVersion }}
           {{- if .Values.openperouter.image.pullPolicy }}
           imagePullPolicy: {{ .Values.openperouter.image.pullPolicy }}

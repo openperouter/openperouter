@@ -54,17 +54,17 @@ When external traffic reaches the service:
 Configure a single L3Passthrough resource for direct BGP advertisement:
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3Passthrough
 metadata:
   name: passthrough
   namespace: openperouter-system
 spec:
-  hostsession:
+  hostSession:
     asn: 64514
-    hostasn: 64515
-    localcidr:
-      ipv4: 192.169.10.0/24
+    hostASN: 64515
+    localCIDRs:
+      - 192.169.10.0/24
 ```
 
 **Configuration Details:**

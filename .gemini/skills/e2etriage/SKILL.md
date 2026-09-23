@@ -1,0 +1,1 @@
+../../../.agents/skills/e2etriage/SKILL.md

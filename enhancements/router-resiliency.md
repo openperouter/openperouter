@@ -135,7 +135,7 @@ so that existing traffic flows are not interrupted during the upgrade.
 | Named netns is not cleaned up on node shutdown | `/var/run` is a tmpfs, so the bind mount is automatically removed on reboot. The controller can also explicitly delete the netns during graceful shutdown. |
 | FRR restarts too quickly before interfaces are ready | Interfaces persist in the named netns; FRR always finds them ready |
 | BGP Graceful Restart not supported by all peers | GR is widely supported (FRR, BIRD, Cisco, Arista); document peer requirements |
-| Router netns drifts out of sync with desired config (controller bug, partial failure, manual interference) | The system is designed for full netns teardown and rebuild: `ip netns delete perouter` followed by a restart of the router process deterministically recreates a correct state. The controller detects the missing netns, recreates it, and re-provisions all interfaces from CRD state. See [Recovery from a Deleted or Emptied Namespace](#recovery-from-a-deleted-or-emptied-namespace). |
+| Router netns drifts out of sync with desired config (controller bug, partial failure, manual interference) | The system is designed for full netns teardown and rebuild: `ip netns delete perouter` followed by a router pod restart deterministically recreates a correct state. Both steps are needed — the netns delete removes the bind mount, and the pod restart releases the open handles so the kernel actually destroys the namespace. The controller then detects the missing netns, recreates it, and re-provisions all interfaces from CRD state. See [Recovery from a Deleted or Emptied Namespace](#recovery-from-a-deleted-or-emptied-namespace). |
 
 ## Design Details
 
@@ -512,42 +512,63 @@ trash the router namespace and let the system rebuild it. This can happen when:
 - An underlay change triggers `HandleNonRecoverableError`, which needs to
   rebuild the namespace from scratch.
 
-The design must ensure this is a **safe, deterministic, single-command
+The design must ensure this is a **safe, deterministic, two-step
 operation** that always converges to the correct state.
 
 #### Recovery Procedure
 
-The admin (or operator) deletes the netns to force a clean slate:
+The admin (or operator) deletes the netns and restarts the router pod to
+force a clean slate:
 
 ```bash
-# Delete the netns (destroys all interfaces, routes, FDB inside it)
+# 1. Delete the netns (marks it for destruction)
 ip netns delete perouter
+
+# 2. Restart the router pod (releases the open handles so the kernel
+#    actually destroys the namespace and all objects inside it)
+#    For K8s: delete the router pod on the affected node (DaemonSet recreates it)
+kubectl delete pod -n openperouter-system <router-pod-name>
+#    For Podman quadlet: restart the systemd unit
+#    systemctl restart routerpod-pod.service
 ```
 
-No further manual steps are required. On the next reconciliation loop, the
-controller detects the missing netns, recreates it via `EnsureNamespace()`,
-re-provisions all interfaces from CRD state, and restarts the FRR process.
-The recovery is fully automatic once the netns is removed.
+Both steps are required. The kernel keeps a network namespace alive as long
+as any process holds an open file descriptor or mount reference to it.
+Because FRR (and the reloader) are running inside the namespace, `ip netns
+delete` alone only removes the bind mount at `/var/run/netns/perouter` — the
+namespace and all its kernel objects continue to exist until the router
+processes exit. Restarting the router pod closes those handles, which lets
+the kernel destroy the namespace and all interfaces, routes, and FDB entries
+inside it.
 
-Equivalently, `HandleNonRecoverableError` can perform this programmatically
-when it detects an unrecoverable divergence.
+After the router pod restarts, namespace recreation depends on the
+deployment model. In the Podman Quadlet deployment, the pod unit's
+`ExecStartPre` recreates the `perouter` netns before the containers start,
+so the namespace may already exist by the time the controller reconciles.
+In the Kubernetes deployment, the controller detects the missing netns and
+recreates it via `EnsureNamespace()`. In both cases, the controller
+subsequently reconciles and re-provisions all interfaces from CRD state,
+and the restarted FRR process enters the recovered namespace. The recovery
+converges automatically from that point.
 
 Improving the recovery procedure (e.g. have an API for it) would be nice to
 have. It would be investigated in a separate enhancement though.
 
 #### Why This Works
 
-Deleting the named netns destroys all kernel objects inside it — VRFs, bridges,
-VXLANs, veth endpoints (which also destroys the host-side peer), the underlay
-NIC (returned to the host netns), and the `lound` dummy interface. This is a
-clean slate. The system then follows the exact same sequence as a fresh start:
+Deleting the bind mount (`ip netns delete`) and restarting the router pod
+together cause the kernel to destroy the namespace and all kernel objects
+inside it — VRFs, bridges, VXLANs, veth endpoints (which also destroys the
+host-side peer), the underlay NIC (returned to the host netns), and the
+`lound` dummy interface. This is a clean slate. The system then follows the
+exact same sequence as a fresh start:
 
 1. The controller detects the missing netns and calls `EnsureNamespace()` to
    create a new empty netns
 2. The controller runs a full reconciliation — re-creating all interfaces from
    CRD state
-3. The controller restarts the FRR process, which enters the new netns, finds
-   interfaces configured by the controller, and re-establishes BGP sessions
+3. The restarted FRR process enters the new netns, finds interfaces configured
+   by the controller, and re-establishes BGP sessions
 
 The controller is already idempotent — it creates interfaces only if they don't
 exist, and `RemoveNonConfigured()` cleans up anything not in the desired state.
@@ -587,8 +608,11 @@ sequenceDiagram
 
     rect rgb(70, 25, 25)
         Note right of op: Phase 1: Tear Down
-        op->>netns: ip netns delete perouter
-        Note over netns: All kernel objects destroyed:<br/>VRFs, bridges, VXLANs, veths, lound<br/>Underlay NIC returned to host netns
+        op->>netns: ip netns delete perouter<br/>(removes bind mount)
+        op->>frr: Restart router pod<br/>(kubectl delete pod / systemctl restart)
+        deactivate frr
+        deactivate reloader
+        Note over netns: Router processes exit →<br/>last handle released →<br/>kernel destroys netns and all objects:<br/>VRFs, bridges, VXLANs, veths, lound<br/>Underlay NIC returned to host netns
         Note over tor: BGP sessions drop<br/>(underlay NIC gone)
         Note over hostBGP: BGP sessions drop<br/>(veth peers destroyed)
         tor->>tor: Graceful Restart activated<br/>Preserve stale routes
@@ -617,12 +641,12 @@ sequenceDiagram
     end
 
     rect rgb(70, 45, 15)
-        Note right of ctrl: Phase 4: Restart FRR
-        ctrl->>ctrl: restartRouter():<br/>Restart FRR process<br/>(systemd or pod recreation)
-        ctrl->>frr: FRR enters new netns
+        Note right of frr: Phase 4: Router Pod Restarts
+        Note over frr: Router pod restarted by operator<br/>in Phase 1 — Kubelet/systemd<br/>recreates it
+        frr->>netns: FRR enters new netns
         activate frr
-        ctrl->>reloader: Reloader starts
         activate reloader
+        reloader-->>reloader: Listen on Unix socket<br/>Health endpoint :9080/healthz
         Note over frr: FRR finds all interfaces<br/>already configured by controller
     end
 
@@ -846,7 +870,8 @@ disruption.
 - `HandleNonRecoverableError` extended to delete and trigger a full rebuild of
   the named netns.
 - Recovery procedure tested end-to-end: `ip netns delete perouter` followed by
-  automatic controller reconciliation returns the system to a correct state.
+  router pod restart and automatic controller reconciliation returns the system
+  to a correct state.
 - Full test suite covering resilience, namespace rebuild, and non-disruptive
   FRR upgrade scenarios.
 

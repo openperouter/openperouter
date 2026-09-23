@@ -21,10 +21,14 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"time"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/selection"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -43,41 +47,49 @@ import (
 
 type PERouterReconciler struct {
 	client.Client
-	Scheme          *runtime.Scheme
-	MyNode          string
-	MyNamespace     string
-	LogLevel        string
-	Logger          *slog.Logger
-	FRRConfigPath   string
-	FRRReloadSocket string
-	StaticConfigDir string
-	NodeConfigPath  string
-	RouterProvider  RouterProvider
+	Scheme               *runtime.Scheme
+	MyNode               string
+	MyNamespace          string
+	LogLevel             string
+	Logger               *slog.Logger
+	FRRConfigPath        string
+	FRRReloadSocket      string
+	StaticConfigDir      string
+	NodeConfigPath       string
+	RouterProvider       RouterProvider
+	DatapathConfigurator DatapathConfigurator
 
 	// TriggerChan receives events from FileWatcher (in host mode)
 	TriggerChan chan event.GenericEvent
+
+	// notStaticConfigsListOpts filters out mirrored resources (source=static) when listing CRDs.
+	// Built once in SetupWithManager since the label is const.
+	notStaticConfigsListOpts *client.ListOptions
 }
 
 type requestKey string
 
-// +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
-// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;delete
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l3vnis,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l3vnis/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l3vnis/finalizers,verbs=update
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l2vnis,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l2vnis/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l2vnis/finalizers,verbs=update
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=underlays,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=underlays/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=underlays/finalizers,verbs=update
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l3passthroughs,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l3passthroughs/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=l3passthroughs/finalizers,verbs=update
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=rawfrrconfigs,verbs=get;list;watch
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=rawfrrconfigs/status,verbs=get
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=routernodeconfigurationstatuses,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=openpe.openperouter.github.io,resources=routernodeconfigurationstatuses/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch;patch
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=l3vnis,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=l3vnis/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=l3vnis/finalizers,verbs=update
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=l2vnis,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=l2vnis/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=l2vnis/finalizers,verbs=update
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=l3vpns,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=l3vpns/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=l3vpns/finalizers,verbs=update
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=underlays,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=underlays/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=underlays/finalizers,verbs=update
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=l3passthroughs,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=l3passthroughs/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=l3passthroughs/finalizers,verbs=update
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=rawfrrconfigs,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=rawfrrconfigs/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=rawfrrconfigs/finalizers,verbs=update
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=routernodeconfigurationstatuses,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=routernodeconfigurationstatuses/status,verbs=get;update;patch
 
 func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := r.Logger.With("controller", "RouterConfiguration", "request", req.String())
@@ -87,13 +99,6 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	ctx = context.WithValue(ctx, requestKey("request"), req.String())
 
 	result, err := r.reconcile(ctx, logger)
-
-	// Best-effort status write: non-recoverable errors must never requeue,
-	// so we ignore any status update failure here.
-	if nonRecoverableHostError(err) {
-		_ = r.reconcileNodeStatus(ctx, err)
-		return ctrl.Result{}, nil
-	}
 
 	if statusErr := r.reconcileNodeStatus(ctx, err); statusErr != nil {
 		return ctrl.Result{}, errors.Join(err, statusErr)
@@ -117,10 +122,15 @@ func (r *PERouterReconciler) reconcile(ctx context.Context, logger *slog.Logger)
 	}
 
 	if r.StaticConfigDir != "" {
-		config, err = mergeStaticConfig(r.StaticConfigDir, config, logger)
+		config, err = mergeStaticConfig(r.StaticConfigDir, r.MyNode, r.MyNamespace, config, logger)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to merge static config: %w", err)
 		}
+	}
+
+	secretErr := r.resolvePasswordSecrets(ctx, &config)
+	if openpeerrors.IsNonResourceError(secretErr) {
+		return ctrl.Result{}, fmt.Errorf("failed to resolve password secrets: %w", secretErr)
 	}
 
 	router, err := r.RouterProvider.New(ctx)
@@ -132,7 +142,7 @@ func (r *PERouterReconciler) reconcile(ctx context.Context, logger *slog.Logger)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to retrieve target namespace: %w", err)
 	}
-	canReconcile, err := router.CanReconcile(ctx)
+	canReconcile, err := router.CanReconcile()
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to check if router can be reconciled: %w", err)
 	}
@@ -149,27 +159,21 @@ func (r *PERouterReconciler) reconcile(ctx context.Context, logger *slog.Logger)
 		return ctrl.Result{}, err
 	}
 
-	err = Reconcile(ctx, config, nodeIndex, r.LogLevel, r.FRRConfigPath, targetNS, updater, configureInterfaces)
-	if nonRecoverableHostError(err) {
-		logger.Error("non recoverable error", "error", err)
-		if err := router.HandleNonRecoverableError(ctx); err != nil {
-			slog.Error("failed to handle non recoverable error", "error", err)
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{}, err
+	reconcileErr := Reconcile(ctx, config, nodeIndex, r.LogLevel, r.FRRConfigPath, targetNS, updater,
+		r.DatapathConfigurator, configureFRR)
+	if reconcileErr != nil {
+		logger.Error("failed to reconcile host configuration", "error", reconcileErr)
 	}
 
-	if err != nil {
-		logger.Error("failed to reconcile host configuration", "error", err)
+	if err := errors.Join(secretErr, reconcileErr); err != nil {
 		return ctrl.Result{}, err
 	}
-
 	return ctrl.Result{}, nil
 }
 
-func mergeStaticConfig(staticConfigDir string, config conversion.APIConfigData, logger *slog.Logger) (conversion.APIConfigData, error) {
+func mergeStaticConfig(staticConfigDir, nodeName, namespace string, config conversion.APIConfigData, logger *slog.Logger) (conversion.APIConfigData, error) {
 	var noConfigErr *staticconfiguration.NoConfigAvailable
-	staticConfig, err := readStaticConfigs(staticConfigDir)
+	staticConfig, err := readStaticConfigs(staticConfigDir, nodeName, namespace)
 	// if we don't have a static configuration is fair to continue and use only the dynamic one
 	if errors.As(err, &noConfigErr) {
 		logger.Info("no static configuration available", "dir", staticConfigDir, "reason", noConfigErr.Error())
@@ -191,32 +195,46 @@ func mergeStaticConfig(staticConfigDir string, config conversion.APIConfigData, 
 }
 
 func (r *PERouterReconciler) getConfigFromAPI(ctx context.Context, logger *slog.Logger) (conversion.APIConfigData, error) {
+	// Exclude mirrored resources (source=static) at query time.
+	// These are handled from static files via mergeStaticConfig(); including them
+	// here would cause double-processing.
+
 	var underlays v1alpha1.UnderlayList
-	if err := r.List(ctx, &underlays); err != nil {
+	if err := r.List(ctx, &underlays, r.notStaticConfigsListOpts); err != nil {
 		slog.Error("failed to list underlays", "error", err)
 		return conversion.APIConfigData{}, err
 	}
 
 	var l3vnis v1alpha1.L3VNIList
-	if err := r.List(ctx, &l3vnis); err != nil {
+	if err := r.List(ctx, &l3vnis, r.notStaticConfigsListOpts); err != nil {
 		slog.Error("failed to list l3vnis", "error", err)
 		return conversion.APIConfigData{}, err
 	}
 
 	var l2vnis v1alpha1.L2VNIList
-	if err := r.List(ctx, &l2vnis); err != nil {
+	if err := r.List(ctx, &l2vnis, r.notStaticConfigsListOpts); err != nil {
 		slog.Error("failed to list l2vnis", "error", err)
 		return conversion.APIConfigData{}, err
 	}
 
+	var l3vpns v1alpha1.L3VPNList
+	if err := r.List(ctx, &l3vpns); err != nil {
+		slog.Error("failed to list l3vpns", "error", err)
+		return conversion.APIConfigData{}, err
+	}
+
 	var l3passthrough v1alpha1.L3PassthroughList
-	if err := r.List(ctx, &l3passthrough); err != nil {
+	if err := r.List(ctx, &l3passthrough, r.notStaticConfigsListOpts); err != nil {
 		slog.Error("failed to list l3passthrough", "error", err)
 		return conversion.APIConfigData{}, err
 	}
 
+	if r.MyNamespace == "" {
+		slog.Error("failed to list rawfrrconfigs: operator namespace is not configured")
+		return conversion.APIConfigData{}, fmt.Errorf("operator namespace is not configured")
+	}
 	var rawFRRConfigs v1alpha1.RawFRRConfigList
-	if err := r.List(ctx, &rawFRRConfigs); err != nil {
+	if err := r.List(ctx, &rawFRRConfigs, r.notStaticConfigsListOpts, client.InNamespace(r.MyNamespace)); err != nil {
 		slog.Error("failed to list rawfrrconfigs", "error", err)
 		return conversion.APIConfigData{}, err
 	}
@@ -246,6 +264,12 @@ func (r *PERouterReconciler) getConfigFromAPI(ctx context.Context, logger *slog.
 		return conversion.APIConfigData{}, err
 	}
 
+	filteredL3VPNs, err := filter.L3VPNsForNode(node, l3vpns.Items)
+	if err != nil {
+		slog.Error("failed to filter l3vpns for node", "node", r.MyNode, "error", err)
+		return conversion.APIConfigData{}, err
+	}
+
 	filteredL3Passthrough, err := filter.L3PassthroughsForNode(node, l3passthrough.Items)
 	if err != nil {
 		slog.Error("failed to filter l3passthrough for node", "node", r.MyNode, "error", err)
@@ -262,17 +286,112 @@ func (r *PERouterReconciler) getConfigFromAPI(ctx context.Context, logger *slog.
 		logger.Info("RawFRRConfig is applied, but please note that this feature is for experimentation only and not supported")
 	}
 
-	logger.Debug("using config", "l3vnis", l3vnis.Items, "l2vnis", l2vnis.Items, "underlays", underlays.Items, "l3passthrough", l3passthrough.Items, "rawfrrconfigs", rawFRRConfigs.Items)
+	logger.Debug("using config",
+		"underlays", len(filteredUnderlays),
+		"l3vnis", l3vnis.Items,
+		"l2vnis", l2vnis.Items,
+		"l3passthrough", l3passthrough.Items,
+		"rawfrrconfigs", rawFRRConfigs.Items)
 
 	apiConfig := conversion.APIConfigData{
 		Underlays:     filteredUnderlays,
 		L3VNIs:        filteredL3VNIs,
 		L2VNIs:        filteredL2VNIs,
+		L3VPNs:        filteredL3VPNs,
 		L3Passthrough: filteredL3Passthrough,
 		RawFRRConfigs: filteredRawFRRConfigs,
 	}
 
 	return apiConfig, nil
+}
+
+func (r *PERouterReconciler) resolvePasswordSecrets(ctx context.Context, config *conversion.APIConfigData) error {
+	if config.Passwords == nil {
+		config.Passwords = make(map[string]string)
+	}
+	var allErrors []error
+	for i := range config.Underlays {
+		underlay := &config.Underlays[i]
+		var validNeighbors []v1alpha1.Neighbor
+		for _, n := range underlay.Spec.Neighbors {
+			if n.PasswordSecret == nil || n.PasswordSecret.Name == "" {
+				validNeighbors = append(validNeighbors, n)
+				continue
+			}
+
+			if _, alreadyResolved := config.Passwords[conversion.NeighborID(n)]; alreadyResolved {
+				validNeighbors = append(validNeighbors, n)
+				continue
+			}
+
+			password, err := r.fetchPasswordFromSecret(ctx, n.PasswordSecret, underlay.Namespace)
+			if err != nil {
+				var statusErr *apierrors.StatusError
+				if errors.As(err, &statusErr) && !apierrors.IsNotFound(err) {
+					return fmt.Errorf("failed to get password secret %q in namespace %q for neighbor %s: %w",
+						n.PasswordSecret.Name, underlay.Namespace, conversion.NeighborID(n), err)
+				}
+				allErrors = append(allErrors, &openpeerrors.ResourceError{
+					Obj: v1alpha1.FailedResource{
+						Kind:    openpeerrors.KindUnderlay,
+						Name:    underlay.Name,
+						Reason:  v1alpha1.FailedResourceReasonValidationFailed,
+						Message: fmt.Sprintf("neighbor %s: %s", conversion.NeighborID(n), err),
+					},
+				})
+				continue
+			}
+			config.Passwords[conversion.NeighborID(n)] = password
+			validNeighbors = append(validNeighbors, n)
+		}
+		underlay.Spec.Neighbors = validNeighbors
+	}
+	return errors.Join(allErrors...)
+}
+
+// defaultPasswordSecretKey is the Secret data key used when
+// SecretKeyRef.Key is unset.
+const defaultPasswordSecretKey = v1.BasicAuthPasswordKey
+
+// resolvedSecretKey returns the Secret data key to read the password from,
+// defaulting to defaultPasswordSecretKey when Key is unset.
+func resolvedSecretKey(ref *v1alpha1.SecretKeyRef) string {
+	if ref.Key != nil && *ref.Key != "" {
+		return *ref.Key
+	}
+	return defaultPasswordSecretKey
+}
+
+func (r *PERouterReconciler) fetchPasswordFromSecret(ctx context.Context, ref *v1alpha1.SecretKeyRef, namespace string) (string, error) {
+	secret := &v1.Secret{}
+	key := types.NamespacedName{Name: ref.Name, Namespace: namespace}
+	if err := r.Get(ctx, key, secret); err != nil {
+		return "", err
+	}
+	dataKey := resolvedSecretKey(ref)
+	pw, ok := secret.Data[dataKey]
+	if !ok {
+		return "", fmt.Errorf("secret %q missing key %q", ref.Name, dataKey)
+	}
+	resolved := string(pw)
+	if err := validatePassword(resolved); err != nil {
+		return "", fmt.Errorf("password from secret %q: %w", ref.Name, err)
+	}
+	return resolved, nil
+}
+
+const maxPasswordLength = 80
+
+var validPasswordPattern = regexp.MustCompile(`^\S+$`)
+
+func validatePassword(password string) error {
+	if len(password) > maxPasswordLength {
+		return fmt.Errorf("exceeds maximum length %d", maxPasswordLength)
+	}
+	if !validPasswordPattern.MatchString(password) {
+		return errors.New("contains whitespace or is empty")
+	}
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -283,6 +402,12 @@ func (r *PERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		}
 		return true
 	})
+	// Build the not-mirrored list options once (the label is const).
+	notMirrored, err := labels.NewRequirement(StaticSourceLabel, selection.DoesNotExist, nil)
+	if err != nil {
+		return fmt.Errorf("failed to build label requirement: %w", err)
+	}
+	r.notStaticConfigsListOpts = &client.ListOptions{LabelSelector: labels.NewSelector().Add(*notMirrored)}
 
 	filterNonRouterPods := predicate.NewPredicateFuncs(func(object client.Object) bool {
 		switch o := object.(type) {
@@ -336,9 +461,11 @@ func (r *PERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(&v1.Pod{}, &handler.EnqueueRequestForObject{}).
 		Watches(&v1alpha1.L3VNI{}, &handler.EnqueueRequestForObject{}).
 		Watches(&v1alpha1.L2VNI{}, &handler.EnqueueRequestForObject{}).
+		Watches(&v1alpha1.L3VPN{}, &handler.EnqueueRequestForObject{}).
 		Watches(&v1alpha1.L3Passthrough{}, &handler.EnqueueRequestForObject{}).
 		Watches(&v1alpha1.RawFRRConfig{}, &handler.EnqueueRequestForObject{}).
 		Watches(&v1alpha1.RouterNodeConfigurationStatus{}, &handler.EnqueueRequestForObject{}).
+		Watches(&v1.Secret{}, &handler.EnqueueRequestForObject{}).
 		WithEventFilter(filterNonRouterPods).
 		WithEventFilter(filterLocalNodeStatus).
 		WithEventFilter(filterUpdates).

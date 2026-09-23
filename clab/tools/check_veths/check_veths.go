@@ -8,6 +8,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"io"
 	"log"
@@ -31,11 +32,10 @@ func main() {
 	flag.Parse()
 
 	if *pidFileName != "" {
-		pf := pidFile(*pidFileName)
-		if err := pf.Lock(); err != nil {
-			log.Fatalf("could not lock PID file, err: %q", err)
+		pf, ok := lockPIDFile(*pidFileName)
+		if !ok {
+			return
 		}
-
 		defer func() {
 			if err := pf.Unlock(); err != nil {
 				log.Fatalf("could not unlock PID file, err: %q", err)
@@ -98,4 +98,16 @@ func main() {
 		}
 	}
 	<-ctx.Done()
+}
+
+func lockPIDFile(name string) (pidFile, bool) {
+	pf := pidFile(name)
+	if err := pf.Lock(); err != nil {
+		if errors.Is(err, errAlreadyRunning) {
+			log.Printf("process already running, exiting: %v", err)
+			return "", false
+		}
+		log.Fatalf("could not lock PID file, err: %q", err)
+	}
+	return pf, true
 }

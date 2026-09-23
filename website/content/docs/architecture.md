@@ -103,6 +103,7 @@ The controller pod handles all the complex network configuration logic and is re
 - **EVPNVNI Setup**: Creates and configures network interfaces for each VNI
 - **Configuration Generation**: Generates and applies FRR configuration
 - **State Management**: Maintains the desired state of network configurations
+- **DHCP Daemon Supervision**: Automatically starts the CNI DHCP daemon when the CNI config uses DHCP IPAM, running it as a supervised child process that restarts on exit
 
 #### Reconciliation Process
 
@@ -112,9 +113,9 @@ The controller follows a specific sequence when reconciling VNI configurations:
 
 1. **Namespace Creation**: Ensures the named network namespace exists at `/var/run/netns/perouter`. If missing, creates it and sets up the bind mount.
 2. **Network Interface Creation**: For each VNI, creates the required network interfaces (bridge, VRF, VXLAN) for FRR operation inside the named namespace
-3. **L3 Veth Pair Setup**: Creates veth pairs to connect VRFs to the host, assigns IPs from the `localCIDR`, and moves one end to the named namespace
-4. **L2 Veth Pair Setup**: Creates veth pairs to connect VRFs to the host, enslaves the PERouter side to the bridge
-corresponding to the L2 domain, eventually creates a bridge on the host, and enslaves the host side to the bridge it
+3. **L3 Veth Pair Setup**: Creates veth pairs to connect VRFs to the host, assigns IPs from the `localCIDRs`, and moves one end to the named namespace
+4. **L2 Veth Pair Setup**: Creates veth pairs to connect VRFs to the host, attaches the PERouter side to the bridge
+corresponding to the L2 domain, eventually creates a bridge on the host, and attaches the host side to the bridge it
 just created or to an existing bridge (configurable)
 5. **Configuration Deployment**: Generates the FRR configuration and sends it to the router pod for application
 
@@ -171,7 +172,7 @@ The kernel continues forwarding packets throughout because all networking state 
 
 ### Full Namespace Rebuild
 
-When the named namespace is deleted — either manually (`ip netns delete perouter`) or by the controller via non-recoverable error handling — a full rebuild occurs:
+When the named namespace is torn down — manually via `ip netns delete perouter` + router pod restart — a full rebuild occurs. Both steps are needed for manual recovery: the netns delete removes the bind mount, and the pod restart releases the open handles so the kernel actually destroys the namespace.
 
 | Phase | Duration |
 |-------|----------|
@@ -234,4 +235,4 @@ In systemd mode, the components that normally run as pods inside the cluster run
 - **Router (FRR)**: Runs as a Podman container on the host, entering the persistent named network namespace (`Network=ns:/var/run/netns/perouter`). The same resiliency properties apply: the namespace persists across container restarts, and BGP Graceful Restart bridges the control-plane gap
 - **Hostbridge**: The only component that still runs as a Kubernetes pod. It is the component that provides access to the Kubernetes API by exporting API server credentials and the node configuration to the host via a shared volume. Without the hostbridge, stage 2 cannot start and the controller operates exclusively from static configuration
 
-The node index, which in pod mode is assigned by the node labeler, is instead provided via the static `node-config.yaml` file on each host.
+The node index, which in pod mode is assigned by the node labeler, is instead provided via the static `node-config.yaml` file on each host — either as a static integer (`nodeIndex.index`) or derived automatically from a network interface's IP address (`nodeIndex.interfaceName`), preferring IPv4 with fallback to IPv6. An optional `nodeIndex.cidr` can narrow which address is used when the interface has multiple IPs. See [Systemd Mode Configuration]({{< ref "/docs/configuration/systemd-mode" >}}) for details.

@@ -1,11 +1,15 @@
 {{- define "neighborsession"}}
-  {{- if .neighbor.Addr }}
+  {{- if .neighbor.ListenRange }}
+  neighbor {{.neighbor.ID}} peer-group
+  neighbor {{.neighbor.ID}} remote-as {{.neighbor.ASN}}
+  bgp listen range {{.neighbor.ListenRange}} peer-group {{.neighbor.ID}}
+  {{- else if .neighbor.Addr }}
   neighbor {{.neighbor.Addr}} remote-as {{.neighbor.ASN}}
   {{- else }}
   neighbor {{.neighbor.Interface}} interface remote-as {{.neighbor.ASN}}
   {{- end }}
   {{- if .neighbor.EBGPMultiHop }}
-  neighbor {{.neighbor.ID}} ebgp-multihop
+  neighbor {{.neighbor.ID}} ebgp-multihop{{ if .neighbor.EBGPMultiHopTTL }} {{ .neighbor.EBGPMultiHopTTL }}{{ end }}
   {{- end }}
   {{ if .neighbor.Port -}}
   neighbor {{.neighbor.ID}} port {{.neighbor.Port}}
@@ -24,10 +28,13 @@
 {{- else if .neighbor.BFDEnabled}}
   neighbor {{.neighbor.ID}} bfd
 {{- end }}
-{{- if  mustDisableConnectedCheck .neighbor.NetworkLayerProtocols .routerASN .neighbor.ASN .neighbor.EBGPMultiHop }}
+{{- if  mustDisableConnectedCheck .neighbor.Addr .neighbor.NetworkLayerProtocols .routerASN .neighbor.ASN .neighbor.EBGPMultiHop }}
   neighbor {{.neighbor.ID}} disable-connected-check
 {{- end }}
 {{- if .neighbor.ExtendedNexthop }}
-  neighbor {{.neighbor.ID}} capability extended-nexthop
+  neighbor {{ .neighbor.ID }} capability extended-nexthop
+{{- end }}
+{{- if .neighbor.UpdateSource }}
+  neighbor {{ .neighbor.ID }} update-source {{ .neighbor.UpdateSource }}
 {{- end }}
 {{- end -}}

@@ -63,12 +63,9 @@ var _ = Describe("Hybrid mode: static files and API configuration", Label("syste
 		Spec: v1alpha1.L3VNISpec{
 			VRF: "blue",
 			HostSession: &v1alpha1.HostSession{
-				ASN:     64514,
-				HostASN: new(int64(64515)),
-				LocalCIDR: v1alpha1.LocalCIDRConfig{
-					IPv4: new("192.169.11.0/24"),
-					IPv6: new("2001:db8:2::/64"),
-				},
+				ASN:        64514,
+				HostASN:    new(int64(64515)),
+				LocalCIDRs: []string{"192.169.11.0/24", "2001:db8:2::/64"},
 			},
 			VNI: 200,
 		},
@@ -83,12 +80,9 @@ var _ = Describe("Hybrid mode: static files and API configuration", Label("syste
 		Spec: v1alpha1.L3VNISpec{
 			VRF: "red",
 			HostSession: &v1alpha1.HostSession{
-				ASN:     64514,
-				HostASN: new(int64(64515)),
-				LocalCIDR: v1alpha1.LocalCIDRConfig{
-					IPv4: new("192.169.10.0/24"),
-					IPv6: new("2001:db8:1::/64"),
-				},
+				ASN:        64514,
+				HostASN:    new(int64(64515)),
+				LocalCIDRs: []string{"192.169.10.0/24", "2001:db8:1::/64"},
 			},
 			VNI: 100,
 		},
@@ -96,12 +90,12 @@ var _ = Describe("Hybrid mode: static files and API configuration", Label("syste
 
 	staticRedVNIYAML := `l3vnis:
   - vrf: red
-    hostsession:
+    hostSession:
       asn: 64514
-      hostasn: 64515
-      localcidr:
-        ipv4: "192.169.10.0/24"
-        ipv6: "2001:db8:1::/64"
+      hostASN: 64515
+      localCIDRs:
+        - "192.169.10.0/24"
+        - "2001:db8:1::/64"
     vni: 100
 `
 
@@ -322,42 +316,14 @@ func createConfigHelperDaemonSet(cs clientset.Interface) ([]*corev1.Pod, error) 
 		return nil, err
 	}
 
-	// Wait for pods to be ready
-	var readyPods []*corev1.Pod
+	// Wait for the rollout to complete: returning early with a partial set of
+	// pods means static files would be written only on a subset of the nodes,
+	// making the tests flaky.
 	Eventually(func() error {
-		pods, err := getConfigHelperPods(cs)
-		if err != nil {
-			return err
-		}
-		if len(pods) == 0 {
-			return fmt.Errorf("no config helper pods found")
-		}
-		readyPods = pods
-		return nil
+		return k8s.DaemonSetRolledOut(cs, openperouter.Namespace, "config-helper")
 	}, "2m", "5s").Should(Succeed())
 
-	return readyPods, nil
-}
-
-// getConfigHelperPods returns all pods created by the config-helper DaemonSet that are ready.
-func getConfigHelperPods(cs clientset.Interface) ([]*corev1.Pod, error) {
-	podList, err := cs.CoreV1().Pods(openperouter.Namespace).List(
-		context.Background(), metav1.ListOptions{
-			LabelSelector: "app=config-helper",
-		})
-	if err != nil {
-		return nil, err
-	}
-
-	var readyPods []*corev1.Pod
-	for i := range podList.Items {
-		pod := &podList.Items[i]
-		if k8s.PodIsReady(pod) {
-			readyPods = append(readyPods, pod)
-		}
-	}
-
-	return readyPods, nil
+	return k8s.DaemonSetPods(cs, openperouter.Namespace, "config-helper")
 }
 
 // execInConfigPod executes a shell command in the config helper pod

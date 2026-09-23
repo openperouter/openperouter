@@ -1,4 +1,20 @@
 ARG FRR_IMAGE=quay.io/frrouting/frr:10.6.0
+ARG CNI_PLUGINS_VERSION=012159164d7f552ee7a8ee840447c61611958e87
+
+# Build CNI plugin binaries
+FROM golang:1.26.4 AS cni-plugins-builder
+
+ARG CNI_PLUGINS_VERSION
+ARG TARGETOS
+ARG TARGETARCH
+
+WORKDIR /cni-plugins
+RUN git init && \
+    git remote add origin https://github.com/containernetworking/plugins.git && \
+    git fetch --depth 1 origin ${CNI_PLUGINS_VERSION} && \
+    git checkout FETCH_HEAD
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} ./build_linux.sh \
+  -ldflags "-extldflags -static"
 
 # Build the manager binary
 FROM golang:1.26.4 AS builder
@@ -47,9 +63,19 @@ COPY --from=builder /go/openperouter/hostbridge .
 COPY --from=builder /go/openperouter/nodemarker .
 COPY --from=builder /go/openperouter/operatorbinary ./operator
 COPY operator/bindata bindata
+COPY --from=cni-plugins-builder /cni-plugins/bin/macvlan /opt/openperouter/cni/bin/
+COPY --from=cni-plugins-builder /cni-plugins/bin/ipvlan /opt/openperouter/cni/bin/
+COPY --from=cni-plugins-builder /cni-plugins/bin/static /opt/openperouter/cni/bin/
+COPY --from=cni-plugins-builder /cni-plugins/bin/dhcp /opt/openperouter/cni/bin/
 # Copy FRR startup configuration to the default location
 COPY systemdmode/frrconfig/daemons /etc/frr/daemons
 COPY systemdmode/frrconfig/vtysh.conf /etc/frr/vtysh.conf
 COPY systemdmode/frrconfig/frr.conf /etc/frr/frr.conf
+
+# Hack for https://github.com/FRRouting/frr/issues/20355
+#          https://github.com/FRRouting/frr/pull/20378 
+COPY 0001-Revert-tools-Allow-deleting-of-interfaces.patch .
+RUN apk update && apk add patch
+RUN patch /usr/lib/frr/frr-reload.py 0001-Revert-tools-Allow-deleting-of-interfaces.patch
 
 ENTRYPOINT ["/controller"]

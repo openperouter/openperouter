@@ -21,7 +21,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
-	"k8s.io/utils/ptr"
 )
 
 // Test IPv6 and Unnumbered peering in a separate context, and run a handful of tests only for l2vpn, l3vpn and
@@ -33,13 +32,15 @@ var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 	DescribeTableSubtree("underlay address family", runUnderlayTests,
 		Entry("IPv6", ipfamily.IPv6, infra.UnderlayIPv6),
 		Entry("Unnumbered", ipfamily.Unnumbered, infra.UnderlayUnnumbered),
+		Entry("ListenRange", ipfamily.IPv4, infra.UnderlayListenRange),
+		Entry("ListenRangeIPv6", ipfamily.IPv6, infra.UnderlayListenRangeIPv6),
 	)
 })
 
 var runUnderlayTests = func(af ipfamily.Family, underlay v1alpha1.Underlay) {
 	const (
 		testNamespace             = "test-namespace"
-		linuxBridgeHostAttachment = "linux-bridge"
+		linuxBridgeHostAttachment = "LinuxBridge"
 		l2GatewayIP               = "192.171.24.1/24"
 		nadMaster                 = "br-hs-110"
 		firstPodIP                = "192.171.24.2/24"
@@ -59,12 +60,9 @@ var runUnderlayTests = func(af ipfamily.Family, underlay v1alpha1.Underlay) {
 		},
 		Spec: v1alpha1.L3PassthroughSpec{
 			HostSession: v1alpha1.HostSession{
-				ASN:     64514,
-				HostASN: ptr.To(int64(64515)),
-				LocalCIDR: v1alpha1.LocalCIDRConfig{
-					IPv4: ptr.To("192.169.10.0/24"),
-					IPv6: ptr.To("2001:db8:1::/64"),
-				},
+				ASN:        64514,
+				HostASN:    new(int64(64515)),
+				LocalCIDRs: []string{"192.169.10.0/24", "2001:db8:1::/64"},
 			},
 		},
 	}
@@ -75,13 +73,13 @@ var runUnderlayTests = func(af ipfamily.Family, underlay v1alpha1.Underlay) {
 			Namespace: openperouter.Namespace,
 		},
 		Spec: v1alpha1.L2VNISpec{
-			VRF:          ptr.To("red"),
-			VNI:          110,
-			L2GatewayIPs: []string{l2GatewayIP},
+			RoutingDomain: l3vniRoutingDomain("red"),
+			VNI:           110,
+			GatewayIPs:    []string{l2GatewayIP},
 			HostMaster: &v1alpha1.HostMaster{
 				Type: linuxBridgeHostAttachment,
 				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
-					AutoCreate: ptr.To(true),
+					Lifecycle: v1alpha1.BridgeLifecycleManaged,
 				},
 			},
 		},
@@ -148,6 +146,34 @@ var runUnderlayTests = func(af ipfamily.Family, underlay v1alpha1.Underlay) {
 
 		Expect(infra.LeafAConfig.Reset()).To(Succeed())
 		Expect(infra.LeafBConfig.Reset()).To(Succeed())
+	})
+
+	// The explicit control-plane check matters especially for the listen
+	// range entries: the routers never dial the leaves, they only accept
+	// the dynamic sessions the leaves initiate via bgp listen range.
+	It("establishes a session between every router and the leaves", func() {
+		leaves := []string{infra.KindLeaf, infra.KindLeaf2}
+		if af == ipfamily.Unnumbered {
+			// The unnumbered underlay only peers with leafkind1.
+			leaves = []string{infra.KindLeaf}
+		}
+		for _, node := range nodes {
+			exec, err := routers.ExecutorForNode(node.Name)
+			Expect(err).NotTo(HaveOccurred())
+			for _, leaf := range leaves {
+				neighbor, err := infra.NeighborForFamily(node.Name, leaf, af)
+				Expect(err).NotTo(HaveOccurred())
+				validateSessionWithNeighbor(
+					exec,
+					validationParameters{
+						fromName:    node.Name,
+						toName:      leaf,
+						neighborIP:  neighbor.ID,
+						established: Established,
+					},
+				)
+			}
+		}
 	})
 
 	Context("passthrough and frr-k8s", func() {

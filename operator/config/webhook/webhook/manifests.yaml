@@ -15,7 +15,7 @@ webhooks:
   name: l2vnivalidationwebhook.openperouter.io
   rules:
   - apiGroups:
-    - openpe.openperouter.github.io
+    - network.openperouter.io
     apiVersions:
     - v1alpha1
     operations:
@@ -35,7 +35,7 @@ webhooks:
   name: l3passthroughvalidationwebhook.openperouter.io
   rules:
   - apiGroups:
-    - openpe.openperouter.github.io
+    - network.openperouter.io
     apiVersions:
     - v1alpha1
     operations:
@@ -55,7 +55,7 @@ webhooks:
   name: l3vnivalidationwebhook.openperouter.io
   rules:
   - apiGroups:
-    - openpe.openperouter.github.io
+    - network.openperouter.io
     apiVersions:
     - v1alpha1
     operations:
@@ -70,12 +70,32 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
+      path: /validate-openperouter-io-v1alpha1-l3vpn
+  failurePolicy: Fail
+  name: l3vpnsvalidationwebhook.openperouter.io
+  rules:
+  - apiGroups:
+    - network.openperouter.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - l3vpns
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
       path: /validate-openperouter-io-v1alpha1-rawfrrconfig
   failurePolicy: Fail
   name: rawfrrconfigvalidationwebhook.openperouter.io
   rules:
   - apiGroups:
-    - openpe.openperouter.github.io
+    - network.openperouter.io
     apiVersions:
     - v1alpha1
     operations:
@@ -95,7 +115,7 @@ webhooks:
   name: underlayvalidationwebhook.openperouter.io
   rules:
   - apiGroups:
-    - openpe.openperouter.github.io
+    - network.openperouter.io
     apiVersions:
     - v1alpha1
     operations:

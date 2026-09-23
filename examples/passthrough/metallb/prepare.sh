@@ -5,8 +5,7 @@ CURRENT_PATH=$(dirname "$0")
 
 source "${CURRENT_PATH}/../../common.sh"
 
-DEMO_MODE=true make deploy
-export KUBECONFIG=$(pwd)/bin/kubeconfig
+DEMO_MODE=true make -C "${REPO_ROOT}" deploy
 
 helm repo add metallb https://metallb.github.io/metallb
 
@@ -22,7 +21,14 @@ metadata:
 EOF
 
 # deploy metallb with frr-k8s as external backend
-helm install metallb metallb/metallb --namespace metallb-system --set frrk8s.external=true --set frrk8s.namespace=frr-k8s-system --set speaker.ignoreExcludeLB=true --set speaker.frr.enabled=false --set frr-k8s.prometheus.serviceMonitor.enabled=false
+helm install metallb metallb/metallb \
+  --namespace metallb-system \
+  --set frrk8s.enabled=false \
+  --set frrk8s.external=true \
+  --set frrk8s.namespace=frr-k8s-system \
+  --set speaker.ignoreExcludeLB=true \
+  --set speaker.frr.enabled=false \
+  --set frr-k8s.prometheus.serviceMonitor.enabled=false
 
 wait_for_pods metallb-system app.kubernetes.io/name=metallb
 

@@ -39,7 +39,7 @@ func (r *PERouterReconciler) reconcileNodeStatus(ctx context.Context, reconcileE
 		return fmt.Errorf("failed to create or update node status: %w", err)
 	}
 
-	newStatus := buildStatus(reconcileErr)
+	newStatus := buildStatus(reconcileErr, nodeStatus.Status)
 
 	if equality.Semantic.DeepEqual(nodeStatus.Status, &newStatus) {
 		return nil

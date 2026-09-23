@@ -6,6 +6,7 @@ debug zebra nht
 debug zebra kernel
 debug zebra rib
 debug zebra nexthop
+debug zebra dplane dpdk
 debug bgp neighbor-events
 debug bgp updates
 debug bgp keepalives
@@ -21,7 +22,7 @@ hostname {{.Hostname}}
 ip nht resolve-via-default
 ipv6 nht resolve-via-default
 
-{{- range .VNIs }}
+{{- range .L3VNIs }}
 vrf {{ .VRF }}
   vni {{ .VNI }}
 exit-vrf
@@ -46,66 +47,70 @@ router bgp {{ .Underlay.MyASN }}
 {{- if .Underlay.GracefulRestart }}
   bgp graceful-restart
   bgp graceful-restart preserve-fw-state
+{{- /* 120 and 360 are FRR's defaults for restart-time and stalepath-time.
+       Rendering them explicitly causes frr-reload.py to re-apply them on
+       every reload (show running-config suppresses defaults), which resets
+       all BGP sessions. https://github.com/FRRouting/frr/issues/22953 */ -}}
+{{- if ne .Underlay.GracefulRestart.RestartTime 120 }}
   bgp graceful-restart restart-time {{ .Underlay.GracefulRestart.RestartTime }}
+{{- end }}
+{{- if ne .Underlay.GracefulRestart.StalePathTime 360 }}
   bgp graceful-restart stalepath-time {{ .Underlay.GracefulRestart.StalePathTime }}
 {{- end }}
+{{- end }}
 
-{{- range $n := .Underlay.Neighbors }}
-{{- template "neighborsession" dict "neighbor" $n "routerASN" $.Underlay.MyASN -}}
+{{- if .Underlay.RouteReflector }}
+  bgp cluster-id {{ .Underlay.RouteReflector.ClusterID }}
+{{- end }}
+{{- if .Underlay.HasListenRange }}
+{{- /* raises the FRR default dynamic neighbors cap (100), needed to
+       properly support listen ranges since we don't know the amount of
+       neighbors from the get go */}}
+  bgp listen limit {{ .Underlay.BGPListenLimit }}
 {{- end }}
 {{- range $n := .Underlay.Neighbors }}
-{{- template "neighborenableipfamily" dict "neighbor" $n "routerASN" $.Underlay.MyASN -}}
+{{- template "neighborsession" dict
+    "neighbor" $n
+    "routerASN" $.Underlay.MyASN -}}
+{{- end }}
+{{- range $n := .Underlay.Neighbors }}
+{{- template "neighborenableipfamily" dict
+    "neighbor" $n
+    "routerASN" $.Underlay.MyASN -}}
 {{end }}
 
 {{- if .Passthrough }}
 {{- template "localpassthrough" . -}}
 {{- end }}
 
-{{- if .Underlay.TunnelEndpoint }}
+{{- if renderUnderlayEVPN .Underlay }}
 {{- template "underlayevpn" . -}}
+{{- end }}
+{{- if .Underlay.SegmentRouting }}
+{{- template "underlayl3vpn" . -}}
 {{- end }}
 exit
 !
 {{- end }}
 
-{{- range .VNIs }}
-router bgp {{ .ASN }} vrf {{ .VRF }}
-  no bgp ebgp-requires-policy
-  no bgp network import-check
-  no bgp default ipv4-unicast
-  bgp router-id {{ .RouterID }}
-
-  {{- if .LocalNeighbor }}
-  {{ template "localneighbor" dict "vni" . "routerASN" $.Underlay.MyASN -}}
-  {{- else if or .ToAdvertiseIPv4 .ToAdvertiseIPv6 }}
-  address-family ipv4 unicast
-  {{- range .ToAdvertiseIPv4 }}
-    network {{ . }}
-  {{- end }}
-  exit-address-family
-  address-family ipv6 unicast
-  {{- range .ToAdvertiseIPv6 }}
-    network {{ . }}
-  {{- end }}
-  exit-address-family
-  {{- end }}
-
-  address-family l2vpn evpn
-    advertise ipv4 unicast
-    advertise ipv6 unicast
-    {{- if .ExportRTs }}
-    {{- range .ExportRTs }}
-    route-target export {{ . }}
-    {{- end }}
-    {{- end }}
-    {{- if .ImportRTs }}
-    {{- range .ImportRTs }}
-    route-target import {{ . }}
-    {{- end }}
-    {{- end }}
-  exit-address-family
-exit
+{{- range $n := .L3VNIs }}
+{{- template "vni" dict
+    "vni" $n
+    "routerASN" $.Underlay.MyASN -}}
+{{- end }}
+{{- range $n := .VPNs }}
+{{- template "vpn" dict
+    "vpn" $n 
+    "routerASN" $.Underlay.MyASN -}}
 {{- end }}
 {{- range .RawConfig }}
 {{ .Config }}
+{{- end }}
+
+{{- if .Underlay.ISIS }}
+{{- template "isis" dict "isisconf" $.Underlay.ISIS "segmentrouting" $.Underlay.SegmentRouting -}}
+{{- end }}
+
+{{- if .Underlay.SegmentRouting }}
+{{- template "segmentrouting" .Underlay.SegmentRouting -}}
 {{- end }}

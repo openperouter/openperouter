@@ -20,14 +20,24 @@ import (
 )
 
 var (
-	underlayGVK      = schema.GroupVersionKind{Group: "openpe.openperouter.github.io", Version: "v1alpha1", Kind: "Underlay"}
-	l3vniGVK         = schema.GroupVersionKind{Group: "openpe.openperouter.github.io", Version: "v1alpha1", Kind: "L3VNI"}
-	l2vniGVK         = schema.GroupVersionKind{Group: "openpe.openperouter.github.io", Version: "v1alpha1", Kind: "L2VNI"}
-	l3passthroughGVK = schema.GroupVersionKind{Group: "openpe.openperouter.github.io", Version: "v1alpha1", Kind: "L3Passthrough"}
-	rawFRRConfigGVK  = schema.GroupVersionKind{Group: "openpe.openperouter.github.io", Version: "v1alpha1", Kind: "RawFRRConfig"}
+	underlayGVK      = schema.GroupVersionKind{Group: "network.openperouter.io", Version: "v1alpha1", Kind: "Underlay"}
+	l3vniGVK         = schema.GroupVersionKind{Group: "network.openperouter.io", Version: "v1alpha1", Kind: "L3VNI"}
+	l2vniGVK         = schema.GroupVersionKind{Group: "network.openperouter.io", Version: "v1alpha1", Kind: "L2VNI"}
+	l3vpnGVK         = schema.GroupVersionKind{Group: "network.openperouter.io", Version: "v1alpha1", Kind: "L3VPN"}
+	l3passthroughGVK = schema.GroupVersionKind{Group: "network.openperouter.io", Version: "v1alpha1", Kind: "L3Passthrough"}
+	rawFRRConfigGVK  = schema.GroupVersionKind{Group: "network.openperouter.io", Version: "v1alpha1", Kind: "RawFRRConfig"}
 )
 
-func readStaticConfigs(configDir string) (conversion.APIConfigData, error) {
+const (
+	// StaticSourceLabel is the label key used to identify resources mirrored from static config.
+	StaticSourceLabel = "openperouter.github.io/source"
+	// StaticSourceValue is the label value for resources mirrored from static config.
+	StaticSourceValue = "static"
+	// StaticNodeLabel is the label key for the node name that owns static resources.
+	StaticNodeLabel = "openperouter.github.io/static-node"
+)
+
+func readStaticConfigs(configDir, nodeName, namespace string) (conversion.APIConfigData, error) {
 	routerConfigs, err := staticconfiguration.ReadRouterConfigs(configDir)
 	if err != nil {
 		return conversion.APIConfigData{}, fmt.Errorf("failed to read router configs: %w", err)
@@ -35,7 +45,7 @@ func readStaticConfigs(configDir string) (conversion.APIConfigData, error) {
 
 	apiConfigs := make([]conversion.APIConfigData, len(routerConfigs))
 	for i, rc := range routerConfigs {
-		cfg, err := staticConfigToAPIConfig(rc)
+		cfg, err := staticConfigToAPIConfig(rc, nodeName, namespace)
 		if err != nil {
 			return conversion.APIConfigData{}, fmt.Errorf("failed to convert static config to API config: %w", err)
 		}
@@ -50,38 +60,38 @@ func readStaticConfigs(configDir string) (conversion.APIConfigData, error) {
 	return merged, nil
 }
 
-func staticConfigToAPIConfig(staticConfig *static.PERouterConfig) (conversion.APIConfigData, error) {
+func staticConfigToAPIConfig(staticConfig *static.PERouterConfig, nodeName, namespace string) (conversion.APIConfigData, error) {
 	var allErrors field.ErrorList
 
-	underlays := make([]v1alpha1.Underlay, len(staticConfig.Underlays))
-	for i, spec := range staticConfig.Underlays {
-		underlays[i] = v1alpha1.Underlay{
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "Underlay",
-				APIVersion: "openpe.openperouter.github.io/v1alpha1",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: fmt.Sprintf("static-underlay-%d", i),
-			},
-			Spec: spec,
-		}
-		result, errs := applyDefaultsAndValidate(&underlays[i], underlayGVK)
-		if len(errs) > 0 {
-			allErrors = append(allErrors, errs...)
-			continue
-		}
-		underlays[i] = *result
+	nodeSelector := &metav1.LabelSelector{
+		MatchLabels: map[string]string{
+			"kubernetes.io/hostname": nodeName,
+		},
+	}
+
+	underlays, passwords, underlayErrs := staticUnderlaysToAPI(staticConfig.Underlays, nodeName, namespace, nodeSelector)
+	allErrors = append(allErrors, underlayErrs...)
+
+	staticName := func(name string) string {
+		return fmt.Sprintf("static-%s-%s", nodeName, name)
 	}
 
 	l3vnis := make([]v1alpha1.L3VNI, len(staticConfig.L3VNIs))
-	for i, spec := range staticConfig.L3VNIs {
+	for i, staticL3 := range staticConfig.L3VNIs {
+		spec := staticL3.L3VNISpec
+		spec.NodeSelector = nodeSelector
 		l3vnis[i] = v1alpha1.L3VNI{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "L3VNI",
-				APIVersion: "openpe.openperouter.github.io/v1alpha1",
+				APIVersion: "network.openperouter.io/v1alpha1",
 			},
 			ObjectMeta: metav1.ObjectMeta{
-				Name: fmt.Sprintf("static-l3vni-%d", i),
+				Name:      staticName(staticL3.Name),
+				Namespace: namespace,
+				Labels: map[string]string{
+					StaticSourceLabel: StaticSourceValue,
+					StaticNodeLabel:   nodeName,
+				},
 			},
 			Spec: spec,
 		}
@@ -94,14 +104,29 @@ func staticConfigToAPIConfig(staticConfig *static.PERouterConfig) (conversion.AP
 	}
 
 	l2vnis := make([]v1alpha1.L2VNI, len(staticConfig.L2VNIs))
-	for i, spec := range staticConfig.L2VNIs {
+	for i, staticL2 := range staticConfig.L2VNIs {
+		spec := staticL2.L2VNISpec
+		spec.NodeSelector = nodeSelector
+		if spec.RoutingDomain != nil {
+			if spec.RoutingDomain.L3VNI != nil {
+				spec.RoutingDomain.L3VNI.Name = staticName(spec.RoutingDomain.L3VNI.Name)
+			}
+			if spec.RoutingDomain.L3VPN != nil {
+				spec.RoutingDomain.L3VPN.Name = staticName(spec.RoutingDomain.L3VPN.Name)
+			}
+		}
 		l2vnis[i] = v1alpha1.L2VNI{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "L2VNI",
-				APIVersion: "openpe.openperouter.github.io/v1alpha1",
+				APIVersion: "network.openperouter.io/v1alpha1",
 			},
 			ObjectMeta: metav1.ObjectMeta{
-				Name: fmt.Sprintf("static-l2vni-%d", i),
+				Name:      staticName(staticL2.Name),
+				Namespace: namespace,
+				Labels: map[string]string{
+					StaticSourceLabel: StaticSourceValue,
+					StaticNodeLabel:   nodeName,
+				},
 			},
 			Spec: spec,
 		}
@@ -113,17 +138,49 @@ func staticConfigToAPIConfig(staticConfig *static.PERouterConfig) (conversion.AP
 		l2vnis[i] = *result
 	}
 
+	l3vpns := make([]v1alpha1.L3VPN, len(staticConfig.L3VPNs))
+	for i, staticVPN := range staticConfig.L3VPNs {
+		l3vpns[i] = v1alpha1.L3VPN{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "L3VPN",
+				APIVersion: "network.openperouter.io/v1alpha1",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      staticName(staticVPN.Name),
+				Namespace: namespace,
+				Labels: map[string]string{
+					StaticSourceLabel: StaticSourceValue,
+					StaticNodeLabel:   nodeName,
+				},
+			},
+			Spec: staticVPN.L3VPNSpec,
+		}
+		result, errs := applyDefaultsAndValidate(&l3vpns[i], l3vpnGVK)
+		if len(errs) > 0 {
+			allErrors = append(allErrors, errs...)
+			continue
+		}
+		l3vpns[i] = *result
+	}
+
 	var l3passthrough []v1alpha1.L3Passthrough
 	if staticConfig.BGPPassthrough.HostSession.ASN > 0 {
+		passthroughSpec := staticConfig.BGPPassthrough
+		passthroughSpec.NodeSelector = nodeSelector
 		pt := v1alpha1.L3Passthrough{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "L3Passthrough",
-				APIVersion: "openpe.openperouter.github.io/v1alpha1",
+				APIVersion: "network.openperouter.io/v1alpha1",
 			},
 			ObjectMeta: metav1.ObjectMeta{
-				Name: "static-l3passthrough",
+				Name:      fmt.Sprintf("static-%s-l3passthrough", nodeName),
+				Namespace: namespace,
+				Labels: map[string]string{
+					StaticSourceLabel: StaticSourceValue,
+					StaticNodeLabel:   nodeName,
+				},
 			},
-			Spec: staticConfig.BGPPassthrough,
+			Spec: passthroughSpec,
 		}
 		result, errs := applyDefaultsAndValidate(&pt, l3passthroughGVK)
 		if len(errs) > 0 {
@@ -136,13 +193,19 @@ func staticConfigToAPIConfig(staticConfig *static.PERouterConfig) (conversion.AP
 
 	rawFRRConfigs := make([]v1alpha1.RawFRRConfig, len(staticConfig.RawFRRConfigs))
 	for i, spec := range staticConfig.RawFRRConfigs {
+		spec.NodeSelector = nodeSelector
 		rawFRRConfigs[i] = v1alpha1.RawFRRConfig{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "RawFRRConfig",
-				APIVersion: "openpe.openperouter.github.io/v1alpha1",
+				APIVersion: "network.openperouter.io/v1alpha1",
 			},
 			ObjectMeta: metav1.ObjectMeta{
-				Name: fmt.Sprintf("static-rawfrrconfig-%d", i),
+				Name:      fmt.Sprintf("static-%s-rawfrrconfig-%d", nodeName, i),
+				Namespace: namespace,
+				Labels: map[string]string{
+					StaticSourceLabel: StaticSourceValue,
+					StaticNodeLabel:   nodeName,
+				},
 			},
 			Spec: spec,
 		}
@@ -162,8 +225,10 @@ func staticConfigToAPIConfig(staticConfig *static.PERouterConfig) (conversion.AP
 		Underlays:     underlays,
 		L3VNIs:        l3vnis,
 		L2VNIs:        l2vnis,
+		L3VPNs:        l3vpns,
 		L3Passthrough: l3passthrough,
 		RawFRRConfigs: rawFRRConfigs,
+		Passwords:     passwords,
 	}, nil
 }
 
@@ -172,27 +237,50 @@ func staticConfigToAPIConfig(staticConfig *static.PERouterConfig) (conversion.AP
 func applyDefaultsAndValidate[T any](obj *T, gvk schema.GroupVersionKind) (*T, field.ErrorList) {
 	rawMap, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj)
 	if err != nil {
-		return nil, field.ErrorList{field.InternalError(field.NewPath(""), fmt.Errorf("converting to unstructured: %w", err))}
+		return nil, field.ErrorList{
+			field.InternalError(
+				field.NewPath(""),
+				fmt.Errorf("converting to unstructured: %T: %w", *obj, err),
+			),
+		}
 	}
 
 	normalizedMap, err := normalizeGoTypes(rawMap)
 	if err != nil {
-		return nil, field.ErrorList{field.InternalError(field.NewPath(""), fmt.Errorf("normalizing Go types: %w", err))}
+		return nil, field.ErrorList{
+			field.InternalError(
+				field.NewPath(""),
+				fmt.Errorf("normalizing Go types: %T: %w", *obj, err),
+			),
+		}
 	}
 
 	unstrObj := &unstructured.Unstructured{Object: normalizedMap}
 
 	if err := crdschema.ApplyDefaults(unstrObj, gvk); err != nil {
-		return nil, field.ErrorList{field.InternalError(field.NewPath(""), fmt.Errorf("applying defaults: %w", err))}
+		return nil, field.ErrorList{
+			field.InternalError(
+				field.NewPath(""),
+				fmt.Errorf("applying defaults: %T: %w", *obj, err),
+			),
+		}
 	}
 
 	if valErrs := crdschema.Validate(context.Background(), unstrObj, gvk); len(valErrs) > 0 {
+		for i := range valErrs {
+			valErrs[i].Field = fmt.Sprintf("%T: %s", *obj, valErrs[i].Field)
+		}
 		return nil, valErrs
 	}
 
 	var result T
 	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstrObj.Object, &result); err != nil {
-		return nil, field.ErrorList{field.InternalError(field.NewPath(""), fmt.Errorf("converting from unstructured: %w", err))}
+		return nil, field.ErrorList{
+			field.InternalError(
+				field.NewPath(""),
+				fmt.Errorf("converting from unstructured: %T: %w", *obj, err),
+			),
+		}
 	}
 
 	return &result, nil
@@ -212,4 +300,86 @@ func normalizeGoTypes(m map[string]any) (map[string]any, error) {
 		return nil, fmt.Errorf("unmarshalling from JSON: %w", err)
 	}
 	return normalized, nil
+}
+
+func staticUnderlaysToAPI(
+	staticUnderlays []static.StaticUnderlaySpec,
+	nodeName, namespace string,
+	nodeSelector *metav1.LabelSelector,
+) ([]v1alpha1.Underlay, map[string]string, field.ErrorList) {
+	var allErrors field.ErrorList
+	var underlays []v1alpha1.Underlay
+	passwords := make(map[string]string)
+	for i, staticUnderlay := range staticUnderlays {
+		neighborsPath := field.NewPath("underlays").Index(i).Child("neighbors")
+		if errs := validateStaticNeighbors(staticUnderlay.Neighbors, neighborsPath); len(errs) > 0 {
+			allErrors = append(allErrors, errs...)
+			continue
+		}
+		for _, sn := range staticUnderlay.Neighbors {
+			if sn.Password != nil {
+				passwords[conversion.NeighborID(sn.Neighbor)] = *sn.Password
+			}
+		}
+		spec := staticUnderlay.UnderlaySpec
+		spec.NodeSelector = nodeSelector
+		spec.Neighbors = make([]v1alpha1.Neighbor, len(staticUnderlay.Neighbors))
+		for j, sn := range staticUnderlay.Neighbors {
+			spec.Neighbors[j] = sn.Neighbor
+		}
+		underlay := v1alpha1.Underlay{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "Underlay",
+				APIVersion: "network.openperouter.io/v1alpha1",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      fmt.Sprintf("static-%s-underlay-%d", nodeName, i),
+				Namespace: namespace,
+				Labels: map[string]string{
+					StaticSourceLabel: StaticSourceValue,
+					StaticNodeLabel:   nodeName,
+				},
+			},
+			Spec: spec,
+		}
+		result, errs := applyDefaultsAndValidate(&underlay, underlayGVK)
+		if len(errs) > 0 {
+			allErrors = append(allErrors, errs...)
+			continue
+		}
+		underlays = append(underlays, *result)
+	}
+	return underlays, passwords, allErrors
+}
+
+// validateStaticNeighbors validates neighbors from static (systemd) config.
+// In static mode there are no Kubernetes Secrets, so passwords are set as
+// plaintext in StaticNeighbor.Password. When a plaintext password is present
+// it takes precedence and PasswordSecret is cleared so that the later
+// resolvePasswordSecrets call (which handles the CRD/Secret path) skips it.
+func validateStaticNeighbors(staticNeighbors []static.StaticNeighbor, basePath *field.Path) field.ErrorList {
+	seen := make(map[string]struct{}, len(staticNeighbors))
+	for i := range staticNeighbors {
+		sn := &staticNeighbors[i]
+		p := basePath.Index(i)
+		key := conversion.NeighborID(sn.Neighbor)
+		if key == "" {
+			return field.ErrorList{field.Invalid(p, nil, "neighbor has neither address nor interface")}
+		}
+		if _, dup := seen[key]; dup {
+			return field.ErrorList{field.Invalid(p, key, "duplicate neighbor")}
+		}
+		seen[key] = struct{}{}
+		if sn.Password == nil {
+			continue
+		}
+		if err := validatePassword(*sn.Password); err != nil {
+			return field.ErrorList{field.Invalid(
+				p.Child("password"), nil,
+				fmt.Sprintf("static config password for neighbor %s: %s", conversion.NeighborID(sn.Neighbor), err),
+			)}
+		}
+		sn.PasswordSecret = nil
+	}
+	return nil
 }

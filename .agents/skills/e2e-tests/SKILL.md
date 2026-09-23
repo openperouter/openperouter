@@ -1,0 +1,72 @@
+---
+name: e2e-tests
+description: Run e2e tests, auto-detecting the deployment mode and supporting test filtering
+trigger: run e2e tests, run tests, e2e, run the e2e suite, test e2e
+---
+
+# Run e2e tests
+
+## Step 1: Detect the cluster deployment mode
+
+Use the kubeconfig at `bin/kubeconfig` to check for hostbridge pods:
+
+```shell
+KUBECONFIG=bin/kubeconfig kubectl get daemonset hostbridge -n kube-system --no-headers
+```
+
+Interpret the result carefully — do not swallow errors:
+
+- Exit code 0 with a result: the cluster is running in **systemd/hostmode**.
+- A "NotFound" error means the cluster is not in hostmode. Check the controller:
+
+  ```shell
+  KUBECONFIG=bin/kubeconfig kubectl get deployment controller \
+    -n openperouter-system -o jsonpath='{.spec.template.spec.containers[*].args}'
+  ```
+
+  Output containing `--datapath=grout` means **Grout mode**; otherwise the
+  cluster is in **Kernel mode**.
+- Any other error (connection refused, unauthorized, no such context, etc.):
+  the cluster is unreachable or misconfigured. Report the actual `kubectl` error
+  to the user and stop — do not assume a mode. Apply the same rule if the
+  controller deployment lookup fails.
+
+Tell the user which mode was detected before proceeding.
+
+## Step 2: Build the test arguments
+
+### TEST_ARGS (passed after `--` to the test binary)
+
+- **Kubernetes mode**: leave `TEST_ARGS` empty.
+- **Systemd/hostmode**: set `TEST_ARGS="--systemdmode"`.
+- **Grout mode**: set `TEST_ARGS="--groutmode"`.
+
+### GINKGO_ARGS (Ginkgo runner flags, passed before `--`)
+
+- **Kubernetes mode**: set
+  `GINKGO_ARGS="--label-filter='!systemdmode && !grout-only'"`.
+- **Systemd/hostmode**: set `GINKGO_ARGS="--skip='Router Host configuration' --skip='North/south traffic' --skip='Alpha: Named netns' --skip='Beta: Named netns'"` to skip tests that don't work in hostmode.
+- **Grout mode**: set
+  `GINKGO_ARGS="--label-filter='grout-support || grout-only'"`.
+
+### User-requested test filtering
+
+If the user wants to run only specific tests or skip some, adjust `GINKGO_ARGS`:
+
+- To **focus** on tests matching a pattern: add `--focus="<pattern>"` to GINKGO_ARGS.
+- To **skip** tests matching a pattern: add another `--skip="<pattern>"` to GINKGO_ARGS
+  (Ginkgo accepts multiple `--skip` flags).
+- To filter by **label**: Ginkgo honors only one `--label-filter` flag, so do not
+  add a second one. Combine the user's expression with the mode-specific default
+  into a single flag, e.g. in Kubernetes mode use
+  `--label-filter='!systemdmode && !grout-only && (<user expression>)'`.
+
+Merge user-requested filters with the mode-specific defaults above (don't drop the defaults unless the user explicitly asks to override them).
+
+## Step 3: Run the tests
+
+```shell
+make e2etests TEST_ARGS="<test_args>" GINKGO_ARGS="<ginkgo_args>"
+```
+
+Run this with a long timeout (the Makefile sets `--timeout=3h` internally). Report progress and any failures to the user.

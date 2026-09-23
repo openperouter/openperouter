@@ -3,130 +3,223 @@
 package conversion
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 
+	"k8s.io/apimachinery/pkg/util/sets"
+
 	"github.com/openperouter/openperouter/api/v1alpha1"
+	"github.com/openperouter/openperouter/internal/cniinvoker"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/openperouter/openperouter/internal/ipam"
 	"github.com/openperouter/openperouter/internal/ipfamily"
+	"k8s.io/utils/ptr"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+type tunnelOverheads struct {
+	forL3VNIs map[string]int
+	forL3VPNs map[string]int
+	forL2VNIs map[string]int
+}
+
+type tunnelVtepIPs struct {
+	forL3VNIs map[string]string
+	forL2VNIs map[string]string
+}
+
 func APItoHostConfig(nodeIndex int, targetNS string, apiConfig APIConfigData) (HostConfigData, error) {
-	res := HostConfigData{
-		L3VNIs: []hostnetwork.L3VNIParams{},
-		L2VNIs: []hostnetwork.L2VNIParams{},
+	err := validateAPIConfigData(apiConfig)
+	e := NoUnderlaysError("")
+	if err != nil && errors.As(err, &e) {
+		return HostConfigData{
+			L3VNIs: []hostnetwork.L3VNIParams{},
+			L2VNIs: []hostnetwork.L2VNIParams{},
+		}, nil
 	}
-	if len(apiConfig.Underlays) > 1 {
-		return res, fmt.Errorf("can't have more than one underlay")
-	}
-	if len(apiConfig.L3Passthrough) > 1 {
-		return res, fmt.Errorf("can't have more than one passthrough")
-	}
-	if len(apiConfig.Underlays) == 0 {
-		return res, nil
+	if err != nil {
+		return HostConfigData{}, err
 	}
 
 	underlay := apiConfig.Underlays[0]
 
-	if len(underlay.Spec.Nics) == 0 {
-		return res, fmt.Errorf("underlay interface must be specified")
+	if err := validateTunnelEndpointForHostConfig(underlay.Spec.TunnelEndpoint, apiConfig); err != nil {
+		return HostConfigData{}, err
 	}
 
-	res.Underlay = hostnetwork.UnderlayParams{
-		TargetNS:           targetNS,
-		UnderlayInterfaces: make([]string, len(underlay.Spec.Nics)),
-	}
-	copy(res.Underlay.UnderlayInterfaces, underlay.Spec.Nics)
-
-	if len(apiConfig.L3Passthrough) == 1 {
-		vethIPs, err := ipam.VethIPsFromPool(apiConfig.L3Passthrough[0].Spec.HostSession.LocalCIDR.IPv4, apiConfig.L3Passthrough[0].Spec.HostSession.LocalCIDR.IPv6, nodeIndex)
-		if err != nil {
-			return res, fmt.Errorf("failed to get veth ips, cidr %v, nodeIndex %d", apiConfig.L3Passthrough[0].Spec.HostSession.LocalCIDR, nodeIndex)
-		}
-
-		res.L3Passthrough = &hostnetwork.PassthroughParams{
-			TargetNS: targetNS,
-			HostVeth: hostnetwork.Veth{
-				HostIPv4: ipNetToString(vethIPs.Ipv4.HostSide),
-				NSIPv4:   ipNetToString(vethIPs.Ipv4.PeSide),
-				HostIPv6: ipNetToString(vethIPs.Ipv6.HostSide),
-				NSIPv6:   ipNetToString(vethIPs.Ipv6.PeSide),
-			},
-		}
+	if len(underlay.Spec.Interfaces) == 0 {
+		return HostConfigData{}, errors.New("underlay interface must be specified")
 	}
 
-	// EVPN is required when VNIs are defined, but EVPN without VNIs is allowed
-	// (e.g., for preparation or advanced BGP EVPN use cases)
-	if underlay.Spec.TunnelEndpoint == nil && (len(apiConfig.L3VNIs) > 0 || len(apiConfig.L2VNIs) > 0) {
-		return res, fmt.Errorf("underlay tunnel endpoint configuration is required when L3 or L2 VNIs are defined")
-	}
-
-	if underlay.Spec.TunnelEndpoint == nil {
-		return res, nil
-	}
-
-	underlayConfigTunnelEndpoint, err := tunnelEndpointToHost(underlay, nodeIndex)
+	underlayInterfaces, err := underlayInterfacesToHost(underlay.Spec.Interfaces)
 	if err != nil {
 		return HostConfigData{}, err
 	}
-	res.Underlay.TunnelEndpoint = &underlayConfigTunnelEndpoint
 
-	for _, vni := range apiConfig.L3VNIs {
-		v := hostnetwork.L3VNIParams{
-			VNIParams: hostnetwork.VNIParams{
-				VRF:       vni.Spec.VRF,
-				TargetNS:  targetNS,
-				VTEPIP:    res.Underlay.TunnelEndpoint.IPv4CIDR,
-				VNI:       vni.Spec.VNI,
-				VXLanPort: vni.Spec.VXLanPort,
+	l3Passthrough, err := passthroughConfigToHost(apiConfig.L3Passthrough, targetNS, nodeIndex)
+	if err != nil {
+		return HostConfigData{}, fmt.Errorf("failed to translate passthrough configuration to host, err: %w", err)
+	}
+
+	// Thanks to validateTunnelEndpointForHostConfig, we know that if the tunnel endpoint is nil, L3VNIs, L2VNIs and
+	// L3VPNs are empty, too, and we must return early here.
+	if underlay.Spec.TunnelEndpoint == nil {
+		return HostConfigData{
+			Underlay: hostnetwork.UnderlayParams{
+				TargetNS:           targetNS,
+				UnderlayInterfaces: underlayInterfaces,
 			},
-			Name: vni.Name,
-		}
-		if vni.Spec.HostSession == nil {
-			res.L3VNIs = append(res.L3VNIs, v)
-			continue
-		}
+			L3VNIs:        []hostnetwork.L3VNIParams{},
+			L2VNIs:        []hostnetwork.L2VNIParams{},
+			L3Passthrough: l3Passthrough,
+		}, nil
+	}
 
-		vethIPs, err := ipam.VethIPsFromPool(vni.Spec.HostSession.LocalCIDR.IPv4, vni.Spec.HostSession.LocalCIDR.IPv6, nodeIndex)
-		if err != nil {
-			return res, fmt.Errorf("failed to get veth ips, cidr %v, nodeIndex %d", vni.Spec.HostSession.LocalCIDR, nodeIndex)
-		}
+	underlayConfigTunnelEndpoint, err := tunnelEndpointToHost(underlay.Spec.TunnelEndpoint, nodeIndex)
+	if err != nil {
+		return HostConfigData{}, fmt.Errorf("failed to translate tunnel endpoint configuration to host, err: %w", err)
+	}
 
-		v.HostVeth = &hostnetwork.Veth{
+	if err := validateOverlayPrerequisitesForHost(apiConfig, underlayConfigTunnelEndpoint); err != nil {
+		return HostConfigData{}, err
+	}
+
+	vtepIPs, err := resolveVTEPIPs(apiConfig, underlayConfigTunnelEndpoint)
+	if err != nil {
+		return HostConfigData{}, fmt.Errorf("failed to determine VNI tunnel endpoint addresses, err: %w", err)
+	}
+
+	tunnelOverheads, err := overheadForTunnels(apiConfig, vtepIPs)
+	if err != nil {
+		return HostConfigData{}, fmt.Errorf("failed to determine tunnel overheads, err: %w", err)
+	}
+
+	l3VNIs, err := l3vnisToHost(
+		apiConfig.L3VNIs,
+		vtepIPs,
+		targetNS,
+		nodeIndex,
+		tunnelOverheads.forL3VNIs)
+	if err != nil {
+		return HostConfigData{}, fmt.Errorf("failed to translate L3VNIs to host, err: %w", err)
+	}
+
+	vrfMap := createVRFMap(apiConfig.L3VNIs, apiConfig.L3VPNs)
+	l2VNIs, err := l2vnisToHost(
+		apiConfig.L2VNIs,
+		vtepIPs,
+		targetNS,
+		vrfMap,
+		tunnelOverheads.forL2VNIs)
+	if err != nil {
+		return HostConfigData{}, fmt.Errorf("failed to translate L2VNIs to host, err: %w", err)
+	}
+
+	l3VPNs, err := l3vpnsToHost(
+		apiConfig.L3VPNs,
+		underlay.Spec.SRV6,
+		targetNS,
+		nodeIndex,
+		tunnelOverheads.forL3VPNs)
+	if err != nil {
+		return HostConfigData{}, fmt.Errorf("failed to translate L3VPNs to host, err: %w", err)
+	}
+
+	return HostConfigData{
+		Underlay: hostnetwork.UnderlayParams{
+			TargetNS:           targetNS,
+			UnderlayInterfaces: underlayInterfaces,
+			TunnelEndpoint:     &underlayConfigTunnelEndpoint,
+		},
+		L3VNIs:        l3VNIs,
+		L2VNIs:        l2VNIs,
+		L3VPNs:        l3VPNs,
+		L3Passthrough: l3Passthrough,
+	}, nil
+}
+
+// validateTunnelEndpointForHostConfig makes sure that whenever L3VNIs, L2VNIs or L3VPNs are set, the tunnelEndpoint
+// must be configured, too.
+func validateTunnelEndpointForHostConfig(tunnelEndpoint *v1alpha1.TunnelEndpointConfig, apiConfig APIConfigData) error {
+	if tunnelEndpoint != nil {
+		return nil
+	}
+
+	var errs []error
+	if len(apiConfig.L3VNIs) > 0 {
+		errs = append(errs, fmt.Errorf("underlay tunnel endpoint configuration is required when L3VNIs are defined"))
+	}
+	if len(apiConfig.L2VNIs) > 0 {
+		errs = append(errs, fmt.Errorf("underlay tunnel endpoint configuration is required when L2VNIs are defined"))
+	}
+	if len(apiConfig.L3VPNs) > 0 {
+		errs = append(errs, fmt.Errorf("underlay tunnel endpoint configuration is required when L3VPNs are defined"))
+	}
+	return errors.Join(errs...)
+}
+
+func passthroughConfigToHost(l3Passthrough []v1alpha1.L3Passthrough, targetNS string,
+	nodeIndex int,
+) (*hostnetwork.PassthroughParams, error) {
+	if len(l3Passthrough) != 1 {
+		return nil, nil
+	}
+	vethIPs, err := ipam.VethIPsFromPool(
+		l3Passthrough[0].Spec.HostSession.LocalCIDRs,
+		nodeIndex,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get veth ips, cidr %v, nodeIndex %d, err: %w",
+			l3Passthrough[0].Spec.HostSession.LocalCIDRs, nodeIndex, err)
+	}
+
+	return &hostnetwork.PassthroughParams{
+		TargetNS: targetNS,
+		LinkIPs: hostnetwork.LinkIPs{
 			HostIPv4: ipNetToString(vethIPs.Ipv4.HostSide),
 			NSIPv4:   ipNetToString(vethIPs.Ipv4.PeSide),
 			HostIPv6: ipNetToString(vethIPs.Ipv6.HostSide),
 			NSIPv6:   ipNetToString(vethIPs.Ipv6.PeSide),
-		}
-
-		res.L3VNIs = append(res.L3VNIs, v)
-	}
-
-	res.L2VNIs = []hostnetwork.L2VNIParams{}
-	for _, l2vni := range apiConfig.L2VNIs {
-		vni, err := convertL2VNI(l2vni, targetNS, res.Underlay.TunnelEndpoint.IPv4CIDR)
-		if err != nil {
-			return HostConfigData{}, err
-		}
-		res.L2VNIs = append(res.L2VNIs, vni)
-	}
-
-	return res, nil
+		},
+	}, nil
 }
 
-func tunnelEndpointToHost(underlay v1alpha1.Underlay, nodeIndex int) (hostnetwork.UnderlayTunnelEndpointParams, error) {
+func validateOverlayPrerequisitesForHost(config APIConfigData, tunnelEndpoint hostnetwork.UnderlayTunnelEndpointParams) error {
+	underlay := config.Underlays[0]
+
+	var errs []error
+	if len(config.L3VNIs) > 0 && tunnelEndpoint.IPv4CIDR == "" && tunnelEndpoint.IPv6CIDR == "" {
+		errs = append(errs, errors.New("tunnel endpoint IPv4 or IPv6 configuration is required when L3VNIs are defined"))
+	}
+	if len(config.L2VNIs) > 0 && tunnelEndpoint.IPv4CIDR == "" && tunnelEndpoint.IPv6CIDR == "" {
+		errs = append(errs, errors.New("tunnel endpoint IPv4 or IPv6 configuration is required when L2VNIs are defined"))
+	}
+	if len(config.L3VPNs) > 0 && tunnelEndpoint.IPv6CIDR == "" {
+		errs = append(errs, errors.New("tunnel endpoint IPv6 configuration is required when L3VPNs are defined"))
+	}
+	if len(config.L3VPNs) > 0 && underlay.Spec.SRV6 == nil {
+		errs = append(errs, errors.New("SRV6 configuration is required when L3VPNs are defined"))
+	}
+	if underlay.Spec.SRV6 != nil && underlay.Spec.ISIS == nil {
+		errs = append(errs, errors.New("ISIS configuration is required when SRv6 is defined"))
+	}
+
+	return errors.Join(errs...)
+}
+
+func tunnelEndpointToHost(tunnelEndpointConfig *v1alpha1.TunnelEndpointConfig, nodeIndex int) (hostnetwork.UnderlayTunnelEndpointParams, error) {
 	tunnelEndpoint := hostnetwork.UnderlayTunnelEndpointParams{}
-	for _, cidr := range underlay.Spec.TunnelEndpoint.CIDRs {
+	for _, cidr := range tunnelEndpointConfig.CIDRs {
 		af := ipfamily.ForCIDRString(cidr)
 		if af == ipfamily.Unknown {
 			return hostnetwork.UnderlayTunnelEndpointParams{},
 				fmt.Errorf("failed to determine address family for CIDR %q", cidr)
 		}
 
-		ip, err := ipam.VTEPIp(cidr, nodeIndex)
+		ip, err := ipam.TunnelEndpointIP(cidr, nodeIndex)
 		if err != nil {
 			return hostnetwork.UnderlayTunnelEndpointParams{},
 				fmt.Errorf("failed to get vtep ip, cidr %s, nodeIndex %d: %w", cidr, nodeIndex, err)
@@ -138,39 +231,373 @@ func tunnelEndpointToHost(underlay v1alpha1.Underlay, nodeIndex int) (hostnetwor
 		}
 		tunnelEndpoint.IPv6CIDR = ip.String()
 	}
-	if tunnelEndpoint.IPv4CIDR == "" {
+	if tunnelEndpoint.IPv4CIDR == "" && tunnelEndpoint.IPv6CIDR == "" {
 		return hostnetwork.UnderlayTunnelEndpointParams{},
-			fmt.Errorf("no IPv4 CIDR found after conversion from tunnel endpoint CIDRS: %v",
-				underlay.Spec.TunnelEndpoint.CIDRs)
+			fmt.Errorf("no VTEP IP available after conversion from tunnel endpoint CIDRs: %v",
+				tunnelEndpointConfig.CIDRs)
 	}
 	return tunnelEndpoint, nil
 }
 
-func convertL2VNI(l2vni v1alpha1.L2VNI, targetNS string, vtepIP string) (hostnetwork.L2VNIParams, error) {
-	vni := hostnetwork.L2VNIParams{
-		Name: l2vni.Name,
+func l3vnisToHost(
+	l3vnis []v1alpha1.L3VNI,
+	vtepIPs tunnelVtepIPs,
+	targetNS string,
+	nodeIndex int,
+	tunnelOverheads map[string]int,
+) ([]hostnetwork.L3VNIParams, error) {
+	hostL3VNIs := []hostnetwork.L3VNIParams{}
+	for _, l3vni := range l3vnis {
+		hostL3VNI, err := l3vniToHost(l3vni, vtepIPs, targetNS, nodeIndex, tunnelOverheads)
+		if err != nil {
+			return nil, fmt.Errorf("failed to translate L3VNI %s, err: %w", l3vni.Name, err)
+		}
+		hostL3VNIs = append(hostL3VNIs, hostL3VNI)
+	}
+	return hostL3VNIs, nil
+}
+
+func l3vniToHost(
+	l3vni v1alpha1.L3VNI,
+	vtepIPs tunnelVtepIPs,
+	targetNS string,
+	nodeIndex int,
+	tunnelOverheads map[string]int,
+) (hostnetwork.L3VNIParams, error) {
+	vtepIP, found := vtepIPs.forL3VNIs[l3vni.Name]
+	if !found {
+		return hostnetwork.L3VNIParams{}, fmt.Errorf("L3VNI %s: not found in map of tunnel VTEP IPs: %+v",
+			l3vni.Name, vtepIPs)
+	}
+	tunnelOverhead, found := tunnelOverheads[l3vni.Name]
+	if !found {
+		return hostnetwork.L3VNIParams{}, fmt.Errorf("L3VNI %s not found in map of tunnel overheads: %+v",
+			l3vni.Name, tunnelOverheads)
+	}
+
+	hostL3VNI := hostnetwork.L3VNIParams{
+		Name: l3vni.Name,
 		VNIParams: hostnetwork.VNIParams{
-			TargetNS:  targetNS,
-			VTEPIP:    vtepIP,
-			VNI:       l2vni.Spec.VNI,
-			VXLanPort: l2vni.Spec.VXLanPort,
+			VRF:            l3vni.Spec.VRF,
+			TargetNS:       targetNS,
+			VTEPIP:         vtepIP,
+			VNI:            l3vni.Spec.VNI,
+			VXLanPort:      vxlanPort(l3vni.Spec.VXLanPort),
+			TunnelOverhead: tunnelOverhead,
 		},
 	}
-	if hasVRF(l2vni) {
-		vni.VRF = *l2vni.Spec.VRF
+	if l3vni.Spec.HostSession == nil {
+		return hostL3VNI, nil
 	}
-	if len(l2vni.Spec.L2GatewayIPs) > 0 {
-		vni.L2GatewayIPs = make([]string, len(l2vni.Spec.L2GatewayIPs))
-		copy(vni.L2GatewayIPs, l2vni.Spec.L2GatewayIPs)
+
+	vethIPs, err := ipam.VethIPsFromPool(
+		l3vni.Spec.HostSession.LocalCIDRs,
+		nodeIndex)
+	if err != nil {
+		return hostnetwork.L3VNIParams{}, fmt.Errorf("failed to get veth ips, cidr %v, nodeIndex %d, err: %w",
+			l3vni.Spec.HostSession.LocalCIDRs, nodeIndex, err)
+	}
+
+	hostL3VNI.LinkIPs = &hostnetwork.LinkIPs{
+		HostIPv4: ipNetToString(vethIPs.Ipv4.HostSide),
+		NSIPv4:   ipNetToString(vethIPs.Ipv4.PeSide),
+		HostIPv6: ipNetToString(vethIPs.Ipv6.HostSide),
+		NSIPv6:   ipNetToString(vethIPs.Ipv6.PeSide),
+	}
+
+	return hostL3VNI, nil
+}
+
+func l2vnisToHost(
+	l2vnis []v1alpha1.L2VNI,
+	vtepIPs tunnelVtepIPs,
+	targetNS string,
+	vrfMap map[string]string,
+	tunnelOverheads map[string]int,
+) ([]hostnetwork.L2VNIParams, error) {
+	hostL2VNIs := []hostnetwork.L2VNIParams{}
+	for _, l2vni := range l2vnis {
+		vni, err := l2vniToHost(l2vni, vtepIPs, targetNS, vrfMap, tunnelOverheads)
+		if err != nil {
+			return nil, fmt.Errorf("failed to translate L2VNI %s, err: %w", l2vni.Name, err)
+		}
+		hostL2VNIs = append(hostL2VNIs, vni)
+	}
+	return hostL2VNIs, nil
+}
+
+func l2vniToHost(
+	l2vni v1alpha1.L2VNI,
+	vtepIPs tunnelVtepIPs,
+	targetNS string,
+	vrfMap map[string]string,
+	tunnelOverheads map[string]int,
+) (hostnetwork.L2VNIParams, error) {
+	vtepIP, found := vtepIPs.forL2VNIs[l2vni.Name]
+	if !found {
+		return hostnetwork.L2VNIParams{}, fmt.Errorf("L2VNI %s: not found in map of tunnel VTEP IPs: %+v",
+			l2vni.Name, vtepIPs)
+	}
+	tunnelOverhead, found := tunnelOverheads[l2vni.Name]
+	if !found {
+		return hostnetwork.L2VNIParams{}, fmt.Errorf("L2VNI %s not found in map of tunnel overheads: %+v",
+			l2vni.Name, tunnelOverheads)
+	}
+
+	hostL2VNI := hostnetwork.L2VNIParams{
+		Name: l2vni.Name,
+		VNIParams: hostnetwork.VNIParams{
+			TargetNS:       targetNS,
+			VTEPIP:         vtepIP,
+			VNI:            l2vni.Spec.VNI,
+			VXLanPort:      vxlanPort(l2vni.Spec.VXLanPort),
+			TunnelOverhead: tunnelOverhead,
+		},
+	}
+	if hasRoutingDomain(l2vni) {
+		hostL2VNI.VRF = resolveVRFForL2VNI(l2vni, vrfMap)
+	}
+	if len(l2vni.Spec.GatewayIPs) > 0 {
+		hostL2VNI.L2GatewayIPs = make([]string, len(l2vni.Spec.GatewayIPs))
+		copy(hostL2VNI.L2GatewayIPs, l2vni.Spec.GatewayIPs)
 	}
 	if l2vni.Spec.HostMaster != nil {
 		hm, err := convertHostMaster(&l2vni)
 		if err != nil {
 			return hostnetwork.L2VNIParams{}, err
 		}
-		vni.HostMaster = hm
+		hostL2VNI.HostMaster = hm
 	}
-	return vni, nil
+	return hostL2VNI, nil
+}
+
+func l3vpnsToHost(
+	l3vpns []v1alpha1.L3VPN,
+	srv6Config *v1alpha1.SRV6Config,
+	targetNS string,
+	nodeIndex int,
+	tunnelOverheads map[string]int,
+) ([]hostnetwork.L3VPNParams, error) {
+	if srv6Config == nil {
+		return []hostnetwork.L3VPNParams{}, nil
+	}
+	hostL3VPNs := []hostnetwork.L3VPNParams{}
+	for _, l3vpn := range l3vpns {
+		hostL3VPN, err := l3vpnToHost(l3vpn, targetNS, nodeIndex, tunnelOverheads)
+		if err != nil {
+			return nil, fmt.Errorf("failed to translate L3VPN %s, err: %w", l3vpn.Name, err)
+		}
+		hostL3VPNs = append(hostL3VPNs, hostL3VPN)
+	}
+	return hostL3VPNs, nil
+}
+
+// l3vpnToHost converts a single API L3VPN custom resource into a hostnetwork.L3VPNParams.
+// On the host side, we need to create unique interfaces. As RDAssignedNumber is a unique integer, we use that
+// as the numeric interface identifier, analogous to VNI for L2VNI / L3VNI.
+func l3vpnToHost(
+	l3vpn v1alpha1.L3VPN,
+	targetNS string,
+	nodeIndex int,
+	tunnelOverheads map[string]int,
+) (hostnetwork.L3VPNParams, error) {
+	tunnelOverhead, found := tunnelOverheads[l3vpn.Name]
+	if !found {
+		return hostnetwork.L3VPNParams{}, fmt.Errorf("L3VPN %s not found in map of tunnel overheads: %+v",
+			l3vpn.Name, tunnelOverheads)
+	}
+
+	hostL3VPN := hostnetwork.L3VPNParams{
+		Name:             l3vpn.Name,
+		VRF:              l3vpn.Spec.VRF,
+		TargetNS:         targetNS,
+		RDAssignedNumber: l3vpn.Spec.RDAssignedNumber,
+		TunnelOverhead:   tunnelOverhead,
+	}
+	if l3vpn.Spec.HostSession == nil {
+		return hostL3VPN, nil
+	}
+
+	vethIPs, err := ipam.VethIPsFromPool(
+		l3vpn.Spec.HostSession.LocalCIDRs,
+		nodeIndex)
+	if err != nil {
+		return hostnetwork.L3VPNParams{}, fmt.Errorf("failed to get veth ips, cidr %v, nodeIndex %d, err: %w",
+			l3vpn.Spec.HostSession.LocalCIDRs, nodeIndex, err)
+	}
+
+	hostL3VPN.LinkIPs = &hostnetwork.LinkIPs{
+		HostIPv4: ipNetToString(vethIPs.Ipv4.HostSide),
+		NSIPv4:   ipNetToString(vethIPs.Ipv4.PeSide),
+		HostIPv6: ipNetToString(vethIPs.Ipv6.HostSide),
+		NSIPv6:   ipNetToString(vethIPs.Ipv6.PeSide),
+	}
+
+	return hostL3VPN, nil
+}
+
+// resolveVTEPIPs returns a map[resource name] -> calculated VTEP IP (can be IPv4 or IPv6) for each VNI type.
+func resolveVTEPIPs(
+	apiConfig APIConfigData,
+	tunnelEndpoint hostnetwork.UnderlayTunnelEndpointParams,
+) (tunnelVtepIPs, error) {
+	forL3VNIs := make(map[string]string, len(apiConfig.L3VNIs))
+	forL2VNIs := make(map[string]string, len(apiConfig.L2VNIs))
+	errs := []error{}
+	for _, l3vni := range apiConfig.L3VNIs {
+		vtepIP, err := resolveVTEPIP(l3vni.Spec.UnderlayAddressFamily, tunnelEndpoint)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("L3VNI %q, err: %w", l3vni.Name, err))
+			continue
+		}
+		forL3VNIs[l3vni.Name] = vtepIP
+	}
+	for _, l2vni := range apiConfig.L2VNIs {
+		vtepIP, err := resolveVTEPIP(l2vni.Spec.UnderlayAddressFamily, tunnelEndpoint)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("L2VNI %q, err: %w", l2vni.Name, err))
+			continue
+		}
+		forL2VNIs[l2vni.Name] = vtepIP
+	}
+	return tunnelVtepIPs{
+		forL3VNIs: forL3VNIs,
+		forL2VNIs: forL2VNIs,
+	}, errors.Join(errs...)
+}
+
+// overheadForTunnels returns a map[resource name] -> calculated tunnel overhead for each L3/L2 type.
+func overheadForTunnels(apiConfig APIConfigData, vtepIPs tunnelVtepIPs) (tunnelOverheads, error) {
+	forL3VNIs := make(map[string]int, len(apiConfig.L3VNIs))
+	forL3VPNs := make(map[string]int, len(apiConfig.L3VPNs))
+	forL2VNIs := make(map[string]int, len(apiConfig.L2VNIs))
+
+	// Seed L3VNIs with their own overhead.
+	for _, l3vni := range apiConfig.L3VNIs {
+		vxlanOverhead, err := overheadForVXLANTunnel(l3vni.Name, vtepIPs.forL3VNIs)
+		if err != nil {
+			return tunnelOverheads{}, fmt.Errorf("L3VNI %s: %w", l3vni.Name, err)
+		}
+		forL3VNIs[l3vni.Name] = vxlanOverhead
+	}
+
+	// Seed L3VPNs with their own overhead.
+	srv6Overhead := hostnetwork.SRv6Overhead
+	if hasEncapsRed(apiConfig) {
+		srv6Overhead = hostnetwork.SRv6OverheadEncapReduced
+	}
+	for _, l3vpn := range apiConfig.L3VPNs {
+		forL3VPNs[l3vpn.Name] = srv6Overhead
+	}
+
+	// For all routing domains with l2vnis, we must calculate the routing domain's overhead from the max of the L3 +
+	// all L2VNIs in the routing domain.
+	for _, l2vni := range apiConfig.L2VNIs {
+		if l2vni.Spec.RoutingDomain == nil {
+			continue
+		}
+
+		l2VXLANOverhead, err := overheadForVXLANTunnel(l2vni.Name, vtepIPs.forL2VNIs)
+		if err != nil {
+			return tunnelOverheads{}, fmt.Errorf("L2VNI %s: %w", l2vni.Name, err)
+		}
+
+		if l2vni.Spec.RoutingDomain.Type == v1alpha1.RoutingDomainTypeL3VNI {
+			l3vniName := l2vni.Spec.RoutingDomain.L3VNI.Name
+			l3vniOverhead, found := forL3VNIs[l3vniName]
+			if !found {
+				return tunnelOverheads{}, fmt.Errorf("L2VNI %s: could not find corresponding L3VNI %q in tunnel overheads %+v",
+					l2vni.Name, l3vniName, forL3VNIs)
+			}
+			forL3VNIs[l3vniName] = max(l2VXLANOverhead, l3vniOverhead)
+			continue
+		}
+
+		l3vpnName := l2vni.Spec.RoutingDomain.L3VPN.Name
+		l3vpnOverhead, found := forL3VPNs[l3vpnName]
+		if !found {
+			return tunnelOverheads{}, fmt.Errorf("L2VNI %s: could not find corresponding L3VPN %q in tunnel overheads %+v",
+				l2vni.Name, l3vpnName, forL3VPNs)
+		}
+		forL3VPNs[l3vpnName] = max(l2VXLANOverhead, l3vpnOverhead)
+	}
+
+	// We now know the correct overheads for the L3VNI and L3VPN routing domains. Iterate over all l2vnis. For the l2vnis
+	// with routing domains, set the overhead to that of the entire domain. Otherwise, the L2's overhead is the overhead
+	// of its VXLAN tunnel.
+	for _, l2vni := range apiConfig.L2VNIs {
+		if l2vni.Spec.RoutingDomain == nil {
+			vxlanOverhead, err := overheadForVXLANTunnel(l2vni.Name, vtepIPs.forL2VNIs)
+			if err != nil {
+				return tunnelOverheads{}, fmt.Errorf("L2VNI %s: %w", l2vni.Name, err)
+			}
+			forL2VNIs[l2vni.Name] = vxlanOverhead
+			continue
+		}
+
+		if l2vni.Spec.RoutingDomain.Type == v1alpha1.RoutingDomainTypeL3VNI {
+			l3vniName := l2vni.Spec.RoutingDomain.L3VNI.Name
+			l3vniOverhead, found := forL3VNIs[l3vniName]
+			if !found {
+				return tunnelOverheads{}, fmt.Errorf("L2VNI %s: could not find corresponding L3VNI %s in tunnel overheads %+v",
+					l2vni.Name, l3vniName, forL3VNIs)
+			}
+			forL2VNIs[l2vni.Name] = l3vniOverhead
+			continue
+		}
+
+		l3vpnName := l2vni.Spec.RoutingDomain.L3VPN.Name
+		l3vpnOverhead, found := forL3VPNs[l3vpnName]
+		if !found {
+			return tunnelOverheads{}, fmt.Errorf("L2VNI %s: could not find corresponding L3VPN %s in tunnel overheads %+v",
+				l2vni.Name, l3vpnName, forL3VPNs)
+		}
+		forL2VNIs[l2vni.Name] = l3vpnOverhead
+	}
+
+	return tunnelOverheads{
+		forL3VNIs: forL3VNIs,
+		forL3VPNs: forL3VPNs,
+		forL2VNIs: forL2VNIs,
+	}, nil
+}
+
+// overheadForVXLANTunnel takes a mapping of VNI -> VTEP IP (which is either the IPv4 or IPv6 tunnel endpoint).
+// It returns the corresponding VXLAN overhead (50 bytes for IPv4, 70 bytes for IPv6 underlay).
+func overheadForVXLANTunnel(vniName string, forVNIs map[string]string) (int, error) {
+	vtepIP, found := forVNIs[vniName]
+	if !found {
+		return 0, fmt.Errorf("not found in map of tunnel VTEP IPs: %+v", forVNIs)
+	}
+	switch ipfamily.ForCIDRString(vtepIP) {
+	case ipfamily.IPv4:
+		return hostnetwork.VXLanOverhead, nil
+	case ipfamily.IPv6:
+		return hostnetwork.IPv6VXLanOverhead, nil
+	default:
+		return 0, fmt.Errorf("could not determine AF of tunnel VTEP IP: %q", vtepIP)
+	}
+}
+
+func hasEncapsRed(apiConfig APIConfigData) bool {
+	if len(apiConfig.Underlays) < 1 {
+		return false
+	}
+	srv6 := apiConfig.Underlays[0].Spec.SRV6
+	if srv6 == nil {
+		return false
+	}
+	if srv6.EncapBehavior == nil {
+		return false
+	}
+	return *srv6.EncapBehavior == v1alpha1.HEncapsRed
+}
+
+func vxlanPort(p *int32) *int32 {
+	if p == nil {
+		return new(int32(4789))
+	}
+	return p
 }
 
 func convertHostMaster(l2vni *v1alpha1.L2VNI) (*hostnetwork.HostMaster, error) {
@@ -180,7 +607,7 @@ func convertHostMaster(l2vni *v1alpha1.L2VNI) (*hostnetwork.HostMaster, error) {
 			return &hostnetwork.HostMaster{
 				Name:       l2vni.Spec.HostMaster.LinuxBridge.Name,
 				Type:       l2vni.Spec.HostMaster.Type,
-				AutoCreate: l2vni.Spec.HostMaster.LinuxBridge.AutoCreate,
+				AutoCreate: new(l2vni.Spec.HostMaster.LinuxBridge.Lifecycle == v1alpha1.BridgeLifecycleManaged),
 			}, nil
 		}
 	case v1alpha1.OVSBridge:
@@ -188,7 +615,7 @@ func convertHostMaster(l2vni *v1alpha1.L2VNI) (*hostnetwork.HostMaster, error) {
 			return &hostnetwork.HostMaster{
 				Name:       l2vni.Spec.HostMaster.OVSBridge.Name,
 				Type:       l2vni.Spec.HostMaster.Type,
-				AutoCreate: l2vni.Spec.HostMaster.OVSBridge.AutoCreate,
+				AutoCreate: new(l2vni.Spec.HostMaster.OVSBridge.Lifecycle == v1alpha1.BridgeLifecycleManaged),
 			}, nil
 		}
 	default:
@@ -206,10 +633,158 @@ func convertHostMaster(l2vni *v1alpha1.L2VNI) (*hostnetwork.HostMaster, error) {
 	)
 }
 
-// ipNetToString returns the string representation of the IPNet, or empty string if IP is nil
+func resolveVTEPIP(
+	underlayAddressFamily *string,
+	tunnelEndpoint hostnetwork.UnderlayTunnelEndpointParams,
+) (string, error) {
+	af := ""
+	if underlayAddressFamily != nil {
+		af = *underlayAddressFamily
+	}
+
+	switch af {
+	case "":
+		if tunnelEndpoint.IPv4CIDR != "" {
+			return tunnelEndpoint.IPv4CIDR, nil
+		}
+		if tunnelEndpoint.IPv6CIDR != "" {
+			return tunnelEndpoint.IPv6CIDR, nil
+		}
+		return "", fmt.Errorf("no VTEP IP available")
+	case "IPv4":
+		if tunnelEndpoint.IPv4CIDR != "" {
+			return tunnelEndpoint.IPv4CIDR, nil
+		}
+		return "", fmt.Errorf("IPv4 address family requested but no IPv4 VTEP IP available")
+	case "IPv6":
+		if tunnelEndpoint.IPv6CIDR != "" {
+			return tunnelEndpoint.IPv6CIDR, nil
+		}
+		return "", fmt.Errorf("IPv6 address family requested but no IPv6 VTEP IP available")
+	default:
+		return "", fmt.Errorf("unsupported address family %q", af)
+	}
+}
+
 func ipNetToString(ipNet net.IPNet) string {
 	if ipNet.IP == nil {
 		return ""
 	}
 	return ipNet.String()
+}
+
+// underlayNetworkDeviceInterfaceNames extracts the host interface names from the underlay
+// interfaces list. Entries of other modes (e.g. CNI) are skipped.
+func underlayNetworkDeviceInterfaceNames(interfaces []v1alpha1.UnderlayInterface) ([]string, error) {
+	names := make([]string, 0, len(interfaces))
+	for _, iface := range interfaces {
+		if iface.Type != v1alpha1.UnderlayInterfaceTypeNetworkDevice {
+			continue
+		}
+		if iface.NetworkDevice == nil {
+			return nil, fmt.Errorf("networkDevice configuration is missing for interface type NetworkDevice")
+		}
+
+		if iface.NetworkDevice.InterfaceName == "" {
+			return nil, fmt.Errorf("interfaceName is empty for networkDevice")
+		}
+
+		names = append(names, iface.NetworkDevice.InterfaceName)
+	}
+	return names, nil
+}
+
+// underlayInterfacesToHost translates the underlay interfaces union into the
+// unified host representation, unmarshalling the
+// opaque runtimeConfig of the CNI-provisioned interfaces into the capability
+// arguments handed to the plugin. It rejects duplicate or invalid interface
+// names, invalid CNI configurations and mixes of NetworkDevice and CNIDevice
+// interfaces.
+func underlayInterfacesToHost(interfaces []v1alpha1.UnderlayInterface) ([]hostnetwork.UnderlayInterface, error) {
+	res := make([]hostnetwork.UnderlayInterface, 0, len(interfaces))
+	seenNames := sets.Set[string]{}
+	kinds := sets.Set[hostnetwork.UnderlayInterfaceKind]{}
+	for _, iface := range interfaces {
+		hostIface, err := underlayInterfaceToHost(iface)
+		if err != nil {
+			return nil, err
+		}
+		if seenNames.Has(hostIface.InterfaceName) {
+			return nil, fmt.Errorf("duplicate underlay interface name %s", hostIface.InterfaceName)
+		}
+		seenNames.Insert(hostIface.InterfaceName)
+		if err := isValidInterfaceName(hostIface.InterfaceName); err != nil {
+			return nil, fmt.Errorf("invalid interface name %s: %w", hostIface.InterfaceName, err)
+		}
+		if hostIface.Kind == hostnetwork.UnderlayInterfaceCNIDev {
+			if err := cniinvoker.ValidateConfig(hostIface.CNI.Config); err != nil {
+				return nil, fmt.Errorf("invalid cni config for interface %s: %w", hostIface.InterfaceName, err)
+			}
+		}
+		if kinds.Insert(hostIface.Kind).Len() > 1 {
+			return nil, errors.New("all interfaces must be of the same type")
+		}
+		res = append(res, hostIface)
+	}
+	return res, nil
+}
+
+// underlayInterfaceToHost translates a single underlay interface union entry
+// into its name and host representation.
+func underlayInterfaceToHost(iface v1alpha1.UnderlayInterface) (hostnetwork.UnderlayInterface, error) {
+	switch iface.Type {
+	case v1alpha1.UnderlayInterfaceTypeNetworkDevice:
+		return networkDeviceInterfaceToHost(iface)
+	case v1alpha1.UnderlayInterfaceTypeCNIDevice:
+		return cniDeviceInterfaceToHost(iface)
+	default:
+		return hostnetwork.UnderlayInterface{}, fmt.Errorf("unsupported underlay interface type %q", iface.Type)
+	}
+}
+
+func networkDeviceInterfaceToHost(iface v1alpha1.UnderlayInterface) (hostnetwork.UnderlayInterface, error) {
+	if iface.NetworkDevice == nil {
+		return hostnetwork.UnderlayInterface{},
+			fmt.Errorf("networkDevice configuration is missing for interface type NetworkDevice")
+	}
+	if iface.NetworkDevice.InterfaceName == "" {
+		return hostnetwork.UnderlayInterface{}, fmt.Errorf("interfaceName is empty for networkDevice")
+	}
+	return hostnetwork.UnderlayInterface{
+		InterfaceName: iface.NetworkDevice.InterfaceName,
+		Kind:          hostnetwork.UnderlayInterfaceNetDev,
+	}, nil
+}
+
+func cniDeviceInterfaceToHost(iface v1alpha1.UnderlayInterface) (hostnetwork.UnderlayInterface, error) {
+	if iface.CNIDevice == nil {
+		return hostnetwork.UnderlayInterface{},
+			fmt.Errorf("cniDevice configuration is missing for interface type CNI")
+	}
+	if iface.CNIDevice.RawConfig == nil {
+		return hostnetwork.UnderlayInterface{},
+			fmt.Errorf("rawConfig is missing for cniDevice %q", ptr.Deref(iface.CNIDevice.InterfaceName, ""))
+	}
+
+	ifName := ptr.Deref(iface.CNIDevice.InterfaceName, cniinvoker.DefaultInterfaceName)
+	if ifName == "" {
+		ifName = cniinvoker.DefaultInterfaceName
+	}
+
+	var capabilityArgs map[string]any
+	if iface.CNIDevice.RuntimeConfig != nil {
+		if err := json.Unmarshal(iface.CNIDevice.RuntimeConfig.Raw, &capabilityArgs); err != nil {
+			return hostnetwork.UnderlayInterface{},
+				fmt.Errorf("invalid runtimeConfig for cni interface %q: %w", ifName, err)
+		}
+	}
+
+	return hostnetwork.UnderlayInterface{
+		InterfaceName: ifName,
+		Kind:          hostnetwork.UnderlayInterfaceCNIDev,
+		CNI: &hostnetwork.CNIDeviceParams{
+			Config:         iface.CNIDevice.RawConfig.Raw,
+			CapabilityArgs: capabilityArgs,
+		},
+	}, nil
 }

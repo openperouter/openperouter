@@ -1,5 +1,5 @@
 ---
-weight: 50
+weight: 55
 title: "Passthrough Examples"
 description: "Integration examples with BGP-speaking components"
 icon: "article"
@@ -37,15 +37,17 @@ Before running any integration examples, you need to configure OpenPERouter with
 Configure the underlay to peer with the `kind-leaf` node:
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: Underlay
 metadata:
   name: underlay
   namespace: openperouter-system
 spec:
   asn: 64514
-  nics:
-    - toswitch
+  interfaces:
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: toswitch
   neighbors:
     - asn: 64512
       address: 192.168.11.2
@@ -62,17 +64,17 @@ spec:
 Create one passthrough configuration:
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3Passthrough
 metadata:
   name: passthrough
   namespace: openperouter-system
 spec:
-  hostsession:
+  hostSession:
     asn: 64514
-    hostasn: 64515
-    localcidr:
-      ipv4: 192.169.10.0/24
+    hostASN: 64515
+    localCIDRs:
+      - 192.169.10.0/24
 ```
 
 

@@ -33,8 +33,11 @@ router bgp 64520
  no bgp ebgp-requires-policy
  no bgp network import-check
  no bgp default ipv4-unicast
+ timers bgp 3 9
 
  neighbor {{ .NeighborIP }} remote-as 64612
+ neighbor {{ .NeighborIP }} advertisement-interval 0
+ neighbor {{ .NeighborIP }} timers connect 5
  !
  address-family ipv4 unicast
   neighbor {{ .NeighborIP }} activate
@@ -52,6 +55,7 @@ router bgp 64520
 exit
 !
 router bgp 64520 vrf red
+ timers bgp 3 9
 {{- if .RedistributeConnectedFromVRFs }}
  !
  address-family ipv4 unicast
@@ -70,6 +74,7 @@ router bgp 64520 vrf red
 exit
 !
 router bgp 64520 vrf blue
+ timers bgp 3 9
 {{- if .RedistributeConnectedFromVRFs }}
  !
  address-family ipv4 unicast

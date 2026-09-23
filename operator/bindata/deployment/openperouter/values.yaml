@@ -12,14 +12,12 @@ rbac:
 openperouter:
   # -- Controller log level. Must be one of: `debug`, `info`, `warn` or `error`.
   logLevel: info
-  tolerateMaster: true
-  # -- If true, all pods (router, controller, and nodemarker) are allowed to run on master/control-plane nodes
-  runOnMaster: true
+  # -- Maximum number of dynamic BGP sessions accepted via underlay listen
+  # ranges (FRR `bgp listen limit`, 1-65535).
+  bgpListenLimit: 65535
   # -- If true, enables host mode deployment: deploys hostbridge DaemonSet instead of router and controller,
   # and configures nodemarker to run in webhook-only mode
   hostmode: false
-  # -- Multus network annotation to be added to router pods
-  multusNetworkAnnotation: ""
   image:
     repository: quay.io/openperouter/router
     tag: ""
@@ -38,11 +36,27 @@ openperouter:
     # true, a name is generated using the fullname template
     controller:
       name: ""
+    nodemarker:
+      name: ""
     perouter:
       name: ""
     annotations: {}
-  tolerations: []
+  # -- Node selector to constrain all openperouter pods (router, controller,
+  # nodemarker, hostbridge) to nodes with matching labels.
+  nodeSelector: {}
+  # -- Tolerations for all openperouter pods (router, controller, nodemarker,
+  # hostbridge). Defaults to tolerating control-plane/master node taints so
+  # the pods can run there.
+  tolerations:
+    - key: node-role.kubernetes.io/master
+      operator: Exists
+      effect: NoSchedule
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
   priorityClassName: ""
+  # -- Affinity rules for all openperouter pods (router, controller,
+  # nodemarker, hostbridge).
   affinity: {}
   ## Selects which runtime class will be used by the pod.
   runtimeClassName: ""
@@ -52,6 +66,13 @@ openperouter:
     resources: {}
     # -- Health probe port for liveness and readiness checks
     healthProbePort: 9081
+    # -- CNI plugin binary directories. The default matches the path baked into
+    # the controller image. Override only to use externally-provided binaries
+    # (e.g. host-mounted).
+    cniPluginDirs:
+      - "/opt/openperouter/cni/bin/"
+    # -- CNI cache directory for persistent CNI state across pod restarts
+    cniCacheDir: "/var/lib/openperouter/cni/cache"
   nodemarker:
     resources: {}
   # frr contains configuration specific to the perouter FRR container,
@@ -65,6 +86,29 @@ openperouter:
       resources: {}
       # -- Timeout for vtysh commands used in health checks. Increase under heavy VNI load. Defaults to 10s.
       vtyshTimeout: ""
+  # -- Datapath to use for L3 forwarding. "kernel" uses the standard Linux
+  # kernel datapath; "grout" adds a DPDK-accelerated sidecar that runs
+  # alongside FRR (FRR's dplane_grout module syncs routes automatically).
+  datapath: "kernel"
+  # grout contains configuration for the grout DPDK dataplane sidecar.
+  # Only used when datapath is set to "grout".
+  grout:
+    # -- Run grout in test mode. Test mode requires no hugepages and uses dummy
+    # FIB algorithms, which keeps memory usage low at the cost of real longest
+    # prefix match lookups. Leave it disabled for a hugepage-backed dataplane,
+    # requesting hugepages under grout.resources.
+    testMode: false
+    image:
+      repository: quay.io/openperouter/router
+      tag: "main-grout"
+      pullPolicy: ""
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "250m"
+      limits:
+        memory: "2Gi"
+        cpu: "500m"
   cri: "containerd" # cri to bind its socket, can be containerd or crio.
   # -- OVS database socket path. Defaults to standard OVS location if not specified.
   ovsSocketPath: ""

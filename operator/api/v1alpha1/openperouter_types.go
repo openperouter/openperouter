@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -39,13 +40,19 @@ type OpenPERouterSpec struct {
 	// +optional
 	// +kubebuilder:validation:Enum=all;debug;info;warn;error;none
 	LogLevel *LogLevel `json:"logLevel,omitempty"`
-	// multusNetworkAnnotation specifies the Multus network annotation to be added to the router pod.
+	// nodeSelector constrains all openperouter pods (router, controller,
+	// nodemarker, hostbridge) to nodes with matching labels.
 	// +optional
-	MultusNetworkAnnotation *string `json:"multusNetworkAnnotation,omitempty"`
-	// runOnMaster determines if all pods (router, controller, and nodemarker) will run on master/control-plane nodes. (default: true)
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+	// tolerations for all openperouter pods (router, controller, nodemarker,
+	// hostbridge).
 	// +optional
-	// +default=true
-	RunOnMaster *bool `json:"runOnMaster,omitempty"`
+	// +listType=atomic
+	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
+	// affinity scheduling rules for all openperouter pods (router, controller,
+	// nodemarker, hostbridge).
+	// +optional
+	Affinity *corev1.Affinity `json:"affinity,omitempty"`
 	// ovsSocketPath specifies the OVS database socket path. Defaults to standard OVS location if not specified.
 	// +optional
 	OVSSocketPath *string `json:"ovsSocketPath,omitempty"`
@@ -58,6 +65,18 @@ type OpenPERouterSpec struct {
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=65535
 	HealthProbePort *int32 `json:"healthProbePort,omitempty"`
+	// bgpListenLimit specifies the maximum number of dynamic BGP sessions the
+	// underlay accepts via listen ranges (FRR `bgp listen limit`). (default: 65535)
+	// +optional
+	// +default=65535
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
+	BGPListenLimit *int32 `json:"bgpListenLimit,omitempty"`
+	// datapath specifies the datapath to use. Allowed values are: kernel, grout. (default: kernel)
+	// +optional
+	// +default="kernel"
+	// +kubebuilder:validation:Enum=kernel;grout
+	Datapath *string `json:"datapath,omitempty"`
 }
 
 // OpenPERouterStatus defines the observed state of OpenPERouter

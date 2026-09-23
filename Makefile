@@ -3,6 +3,7 @@ IMG_TAG ?= main
 IMG_REPO ?= quay.io/openperouter
 IMG_NAME ?= router
 IMG ?= $(IMG_REPO)/$(IMG_NAME):$(IMG_TAG)
+DOCKERFILE ?= Dockerfile
 NAMESPACE ?= "openperouter-system"
 LOGLEVEL ?= "info"
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
@@ -62,8 +63,13 @@ help: ## Display this help.
 manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
 	$(CONTROLLER_GEN) crd webhook paths="./api/..." paths="./config/..." output:crd:artifacts:config=config/crd/bases
 	$(CONTROLLER_GEN) crd webhook paths="./operator/api/..." paths="./operator/config/..." output:crd:artifacts:config=operator/config/crd/bases
-	$(CONTROLLER_GEN) rbac:roleName=controller-role paths="./internal/controller/..." output:rbac:artifacts:config=config/rbac/
 	$(CONTROLLER_GEN) rbac:roleName=operator-role paths="./operator/..." output:rbac:artifacts:config=operator/config/rbac/
+	$(CONTROLLER_GEN) rbac:roleName=controller-role paths="./internal/controller/routerconfiguration/..." output:rbac:artifacts:config=config/rbac/.gen-tmp
+	mv config/rbac/.gen-tmp/role.yaml config/rbac/role.yaml
+	rm -rf config/rbac/.gen-tmp
+	$(CONTROLLER_GEN) rbac:roleName=nodemarker-role paths="./internal/controller/nodeindex/..." output:rbac:artifacts:config=config/rbac/.gen-tmp
+	mv config/rbac/.gen-tmp/role.yaml config/rbac/nodemarker_cluster_role.yaml
+	rm -rf config/rbac/.gen-tmp
 	# The following line generates operator/config/webhook/webhook/manifests.yaml
 	$(CONTROLLER_GEN) crd webhook paths="./api/..." paths="./config/..." output:crd:none output:webhook:artifacts:config=operator/config/webhook/webhook
 	cp config/crd/bases/*.yaml charts/openperouter/charts/crds/templates
@@ -79,6 +85,7 @@ generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and
 .PHONY: fix
 fix: ## Run go fix against code.
 	@go fix $(shell go list ./... | grep -vE 'internal/ovsmodel')
+	@cd e2etests && go fix ./...
 
 .PHONY: fmt
 fmt: ## Run go fmt against code.
@@ -122,9 +129,9 @@ BRANCH = $(shell git rev-parse --abbrev-ref HEAD)
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
 	@if [ "$(CONTAINER_ENGINE)" = "podman" ]; then \
-		sudo $(CONTAINER_ENGINE) build  -t ${IMG} .; \
+		sudo $(CONTAINER_ENGINE) build  -t ${IMG} -f ${DOCKERFILE} .; \
 	else \
-		$(CONTAINER_ENGINE) build -t ${IMG} .; \
+		$(CONTAINER_ENGINE) build -t ${IMG} -f ${DOCKERFILE} .; \
 	fi
 
 
@@ -158,7 +165,6 @@ GINKGO ?= $(LOCALBIN)/ginkgo
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 HELM ?= $(LOCALBIN)/helm
 KUBECONFIG_PATH ?= $(LOCALBIN)/kubeconfig
-VALIDATOR_PATH ?= $(LOCALBIN)/validatehost
 APIDOCSGEN ?= $(LOCALBIN)/crd-ref-docs
 HUGO ?= $(LOCALBIN)/hugo
 export KUBECONFIG=$(KUBECONFIG_PATH)
@@ -338,17 +344,17 @@ $(APIDOCSGEN): $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install github.com/elastic/crd-ref-docs@$(APIDOCSGEN_VERSION)
 
 .PHONY: e2etests
-e2etests: ginkgo kubectl build-validator create-export-logs
-	$(GINKGO) -v $(GINKGO_ARGS) --timeout=3h ./e2etests/suite -- --kubectl=$(KUBECTL) $(TEST_ARGS) --hostvalidator $(VALIDATOR_PATH) --reporterpath=${KIND_EXPORT_LOGS}
+e2etests: ginkgo kubectl create-export-logs
+	$(GINKGO) -v $(GINKGO_ARGS) --json-report=e2e-report.json --output-dir=${KIND_EXPORT_LOGS} --timeout=3h ./e2etests/suite -- --kubectl=$(KUBECTL) $(TEST_ARGS) --reporterpath=${KIND_EXPORT_LOGS}
 
 .PHONY: e2etests-hostmode-boot
-e2etests-hostmode-boot: ginkgo kubectl build-validator create-export-logs ## Run e2e tests for hostmode boot scenario (static config first, then K8s API).
+e2etests-hostmode-boot: ginkgo kubectl create-export-logs ## Run e2e tests for hostmode boot scenario (static config first, then K8s API).
 	@echo "=== Running systemd_static_suite tests (static config only) ==="
-	$(GINKGO) -v $(GINKGO_ARGS) --timeout=3h ./e2etests/systemd_static_suite -- --kubectl=$(KUBECTL) $(TEST_ARGS)
+	$(GINKGO) -v $(GINKGO_ARGS) --json-report=e2e-report-systemd.json --output-dir=${KIND_EXPORT_LOGS} --timeout=3h ./e2etests/systemd_static_suite -- --kubectl=$(KUBECTL) $(TEST_ARGS)
 	@echo "=== Deploying controller to enable K8s API ==="
 	$(MAKE) deploy-controller KUSTOMIZE_LAYER=hostmode
 	@echo "=== Running passthrough tests (with K8s API available) ==="
-	$(GINKGO) -v $(GINKGO_ARGS) --label-filter="passthrough" --timeout=3h ./e2etests/suite -- --kubectl=$(KUBECTL) $(TEST_ARGS) --skip-underlay-passthrough --systemdmode --hostvalidator $(VALIDATOR_PATH) --reporterpath=${KIND_EXPORT_LOGS}
+	$(GINKGO) -v $(GINKGO_ARGS) --json-report=e2e-report-passthrough.json --output-dir=${KIND_EXPORT_LOGS} --label-filter="passthrough" --timeout=3h ./e2etests/suite -- --kubectl=$(KUBECTL) $(TEST_ARGS) --skip-underlay-passthrough --systemdmode --reporterpath=${KIND_EXPORT_LOGS}
 
 .PHONY: scale-tests
 scale-tests: ginkgo kubectl create-export-logs ## Run VNI scale tests
@@ -365,8 +371,13 @@ parse-scale-report: ## Parse scale test JSON report and print summary tables.
 
 .PHONY: clab-cluster
 clab-cluster: kind-node-image-build kubectl
-	KUBECONFIG_PATH=$(KUBECONFIG_PATH) KIND=$(KIND) KUBECTL=$(KUBECTL) CLAB_TOPOLOGY=$(CLAB_TOPOLOGY_FILE) \
-	  KIND_EXPORT_LOGS=$(KIND_EXPORT_LOGS) COREDUMP=$(COREDUMP) clab/setup.sh
+	KUBECONFIG_PATH=$(KUBECONFIG_PATH) \
+	  KIND=$(KIND) \
+	  KUBECTL=$(KUBECTL) \
+	  CLAB_TOPOLOGY=$(CLAB_TOPOLOGY_FILE) \
+	  KIND_EXPORT_LOGS=$(KIND_EXPORT_LOGS) \
+	  COREDUMP=$(COREDUMP) \
+	  clab/setup.sh
 	@echo 'kind cluster created, to use it please'
 	@echo 'export KUBECONFIG=${KUBECONFIG_PATH}'
 
@@ -460,7 +471,7 @@ generate-all-in-one: manifests kustomize ## Create manifests
 
 .PHONY: helm-docs
 helm-docs:
-	$(CONTAINER_ENGINE) run --rm -v $$(pwd):/app -w /app jnorwood/helm-docs:$(HELM_DOCS_VERSION) helm-docs
+	$(CONTAINER_ENGINE) run --rm -v $$(pwd):/app:Z -w /app jnorwood/helm-docs:$(HELM_DOCS_VERSION) helm-docs
 
 .PHONY: api-docs
 api-docs: crd-ref-docs
@@ -476,11 +487,6 @@ bumpversion:
 .PHONY: cutrelease
 cutrelease: bumpversion generate-all-in-one helm-docs api-docs bundle
 	hack/release/release.sh
-
-.PHONY: build-validator
-build-validator: ginkgo ## Build Ginkgo test binary.
-	CGO_ENABLED=0 $(GINKGO) build -tags=externaltests ./internal/hostnetwork
-	mv internal/hostnetwork/hostnetwork.test $(VALIDATOR_PATH)
 
 .PHONY: create-export-logs
 create-export-logs:
@@ -514,6 +520,22 @@ demo-metallb:
 .PHONY: demo-l2-evpn
 demo-l2:
 	examples/evpn/layer2/prepare.sh
+
+.PHONY: demo-l2vnis-with-same-l3vni
+demo-l2vnis-with-same-l3vni:
+	examples/evpn/l2vnis-with-same-l3vni/prepare.sh
+
+.PHONY: demo-route-reflector
+demo-route-reflector:
+	examples/evpn/route-reflector/prepare.sh
+
+.PHONY: demo-metallb-l3vpn
+demo-metallb-l3vpn:
+	examples/l3vpn/metallb/prepare.sh
+
+.PHONY: demo-metallb-l3vpn-l2vni
+demo-metallb-l3vpn-l2vni:
+	examples/l3vpn/layer2/prepare.sh
 
 .PHONY: demo-calico-evpn
 demo-calico:
@@ -664,3 +686,50 @@ deploy-olm: operator-sdk ## deploys OLM on the cluster
 
 build-and-push-bundle-images: bundle-build bundle-push catalog-build catalog-push
 
+.PHONY: grout-deploy
+grout-deploy: IMG_TAG=main-grout
+grout-deploy: export KUSTOMIZE_LAYER=grout
+grout-deploy: kind deploy-cluster deploy-controller ## Deploy cluster and controller with grout dataplane.
+
+.PHONY: grout-deploy-operator-with-olm
+grout-deploy-operator-with-olm: IMG_TAG=main-grout
+grout-deploy-operator-with-olm: bundle kustomize kind clab-cluster load-on-kind deploy-olm grout-set-csv-values build-and-push-bundle-images deploy-operator-with-olm
+
+grout-set-csv-values:
+	sed -i 's|quay.io/openperouter/router:main$$|quay.io/openperouter/router:main-grout|g' $(CSV_FILE)
+	sed -i '/name: GROUT_TEST_MODE/{n;s|value: "false"|value: "true"|}' $(CSV_FILE)
+
+.PHONY: grout-deploy-helm
+grout-deploy-helm: IMG_TAG=main-grout
+grout-deploy-helm: HELM_ARGS=--set openperouter.datapath=grout --set openperouter.grout.testMode=true
+grout-deploy-helm: helm kind deploy-cluster load-on-kind deploy-helm
+
+.PHONY: grout-docker-build
+grout-docker-build: IMG_TAG=main-grout
+grout-docker-build: DOCKERFILE=Dockerfile.grout
+grout-docker-build: docker-build
+
+INSPECT_DIR ?= /tmp/openperouter-inspect
+.PHONY: inspect
+inspect:
+	tools/inspect/inspect --k8s-client=$(KUBECTL) --namespace=$(NAMESPACE) --dest-dir=$(INSPECT_DIR) --since=$(SINCE)
+
+# INSPECT_SYSTEMD_MODE_DIR is the root artifacts directory on the local machine, containing
+# one subdirectory per inspected node.
+INSPECT_SYSTEMD_MODE_DIR ?= /tmp/openperouter-systemd-mode-inspect
+# INSPECT_NODE_DIR is the path inside each node where inspect_host stores its artifacts
+INSPECT_NODE_DIR = /openperouter-inspect-host
+.PHONY: inspect-systemd-mode
+inspect-systemd-mode: kubectl
+	@ nodes="$(NODES)"; \
+	test -z "$$nodes" && nodes=$$($(KUBECTL) get nodes -o jsonpath='{.items[*].metadata.name}'); \
+	test -z "$$nodes" && echo "no node found" && exit 1 ;\
+	mkdir -p $(INSPECT_SYSTEMD_MODE_DIR); \
+	for node in $$nodes ; do \
+		echo "=== Inspecting node $$node ==="; \
+		node_dir="$(INSPECT_SYSTEMD_MODE_DIR)/$$node"; \
+		$(CONTAINER_ENGINE) exec -i $$node bash <<< $$(cat tools/inspect/inspect_host); \
+		$(CONTAINER_ENGINE) cp $$node:$(INSPECT_NODE_DIR) $$node_dir; \
+		echo "Inspect node $$node completed. Artifacts are stored at [$$node_dir]"; \
+	done; \
+	echo "Inspect completed for all nodes. Artifacts are stored at [$(INSPECT_SYSTEMD_MODE_DIR)]"

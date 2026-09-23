@@ -24,7 +24,6 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/url"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 )
@@ -52,12 +51,12 @@ var _ = Describe("Alpha: Named netns and kernel objects survive FRR crash", Orde
 			Namespace: openperouter.Namespace,
 		},
 		Spec: v1alpha1.L2VNISpec{
-			VRF: new("red"),
-			VNI: 110,
+			RoutingDomain: l3vniRoutingDomain("red"),
+			VNI:           110,
 			HostMaster: &v1alpha1.HostMaster{
-				Type: "linux-bridge",
+				Type: "LinuxBridge",
 				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
-					AutoCreate: new(true),
+					Lifecycle: v1alpha1.BridgeLifecycleManaged,
 				},
 			},
 		},
@@ -240,12 +239,12 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 			Namespace: openperouter.Namespace,
 		},
 		Spec: v1alpha1.L2VNISpec{
-			VRF: new("red"),
-			VNI: 110,
+			RoutingDomain: l3vniRoutingDomain("red"),
+			VNI:           110,
 			HostMaster: &v1alpha1.HostMaster{
-				Type: "linux-bridge",
+				Type: "LinuxBridge",
 				LinuxBridge: &v1alpha1.LinuxBridgeConfig{
-					AutoCreate: new(true),
+					Lifecycle: v1alpha1.BridgeLifecycleManaged,
 				},
 			},
 		},
@@ -364,7 +363,7 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 
 	It("should auto-recover when the named netns is deleted via ip netns delete", func() {
 		l2VniRedWithGateway := l2VniRed.DeepCopy()
-		l2VniRedWithGateway.Spec.L2GatewayIPs = []string{"192.171.24.1/24"}
+		l2VniRedWithGateway.Spec.GatewayIPs = []string{"192.171.24.1/24"}
 
 		err := Updater.Update(config.Resources{
 			L3VNIs: []v1alpha1.L3VNI{vniRed},
@@ -518,7 +517,7 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 
 	It("should maintain stretched L2 traffic across nodes with minimal disruption when a router pod is deleted", func() {
 		l2VniRedWithGateway := l2VniRed.DeepCopy()
-		l2VniRedWithGateway.Spec.L2GatewayIPs = []string{"192.171.24.1/24"}
+		l2VniRedWithGateway.Spec.GatewayIPs = []string{"192.171.24.1/24"}
 
 		err := Updater.Update(config.Resources{
 			L3VNIs: []v1alpha1.L3VNI{vniRed},
@@ -715,7 +714,7 @@ func dumpUnderlayVeths(cs clientset.Interface, label string) {
 	}
 
 	for _, node := range nodes {
-		nodeExec := executor.ForContainer(node.Name)
+		nodeExec := executor.ForNode(node.Name)
 
 		for _, iface := range []string{"toswitch1", "toswitch2"} {
 			for _, loc := range []struct {
@@ -735,7 +734,7 @@ func dumpUnderlayVeths(cs clientset.Interface, label string) {
 		}
 	}
 
-	for _, port := range []string{"kindctrlpl1", "kindworker1", "kindctrlpl2", "kindworker2"} {
+	for _, port := range []string{"kindctrlpl1", "kindwrk1sw1", "kindwrk2sw1", "kindctrlpl2", "kindwrk1sw2", "kindwrk2sw2"} {
 		out, err := executor.Host.Exec("ip", "-d", "link", "show", port)
 		if err != nil {
 			w.Printf("DIAG [%s]: bridge port %s: not found\n", label, port)
@@ -861,16 +860,8 @@ var _ = Describe("Configuration Resiliency", Ordered, func() {
 		Expect(Updater.CleanButUnderlay()).To(Succeed())
 
 		Eventually(func(g Gomega) {
-			status, err := openperouter.GetNodeStatus(Updater.Client(), infra.KindControlPlane)
-			g.Expect(err).NotTo(HaveOccurred())
-
-			readyCond := apimeta.FindStatusCondition(status.Status.Conditions, "Ready")
-			g.Expect(readyCond).NotTo(BeNil())
-			g.Expect(readyCond.Status).To(Equal(metav1.ConditionTrue))
-
-			degradedCond := apimeta.FindStatusCondition(status.Status.Conditions, "Degraded")
-			g.Expect(degradedCond).NotTo(BeNil())
-			g.Expect(degradedCond.Status).To(Equal(metav1.ConditionFalse))
+			expectNodeCondition(g, infra.KindControlPlane, "Ready", metav1.ConditionTrue)
+			expectNodeCondition(g, infra.KindControlPlane, "Degraded", metav1.ConditionFalse)
 		}, time.Minute, time.Second).Should(Succeed())
 	})
 
@@ -891,13 +882,8 @@ var _ = Describe("Configuration Resiliency", Ordered, func() {
 				g.Expect(failed.Reason).To(Equal(v1alpha1.FailedResourceReasonValidationFailed))
 				g.Expect(failed.Message).To(ContainSubstring("duplicate vni"))
 
-				readyCond := apimeta.FindStatusCondition(status.Status.Conditions, "Ready")
-				g.Expect(readyCond).NotTo(BeNil())
-				g.Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
-
-				degradedCond := apimeta.FindStatusCondition(status.Status.Conditions, "Degraded")
-				g.Expect(degradedCond).NotTo(BeNil())
-				g.Expect(degradedCond.Status).To(Equal(metav1.ConditionTrue))
+				expectNodeCondition(g, infra.KindControlPlane, "Ready", metav1.ConditionFalse)
+				expectNodeCondition(g, infra.KindControlPlane, "Degraded", metav1.ConditionTrue)
 			}, time.Minute, time.Second).Should(Succeed())
 		})
 	})
@@ -922,8 +908,8 @@ var _ = Describe("Configuration Resiliency", Ordered, func() {
 					Namespace: openperouter.Namespace,
 				},
 				Spec: v1alpha1.L2VNISpec{
-					VRF: new("cascade"),
-					VNI: 401,
+					RoutingDomain: l3vniRoutingDomain("bad-rt-l3"),
+					VNI:           401,
 				},
 			}
 
@@ -949,11 +935,9 @@ var _ = Describe("Configuration Resiliency", Ordered, func() {
 				g.Expect(failedByName).To(HaveKey("cascade-l2"))
 				g.Expect(failedByName["cascade-l2"].Kind).To(Equal(v1alpha1.FailedResourceKind("L2VNI")))
 				g.Expect(failedByName["cascade-l2"].Reason).To(Equal(v1alpha1.FailedResourceReasonDependencyFailed))
-				g.Expect(failedByName["cascade-l2"].Message).To(ContainSubstring("no valid L3VNI for L3 domain"))
+				g.Expect(failedByName["cascade-l2"].Message).To(ContainSubstring(`referenced L3VNI "bad-rt-l3" not found`))
 
-				readyCond := apimeta.FindStatusCondition(status.Status.Conditions, "Ready")
-				g.Expect(readyCond).NotTo(BeNil())
-				g.Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
+				expectNodeCondition(g, infra.KindControlPlane, "Ready", metav1.ConditionFalse)
 			}, time.Minute, time.Second).Should(Succeed())
 		})
 	})
@@ -966,8 +950,8 @@ var _ = Describe("Configuration Resiliency", Ordered, func() {
 					Namespace: openperouter.Namespace,
 				},
 				Spec: v1alpha1.L2VNISpec{
-					VRF: new("nonexistent"),
-					VNI: 500,
+					RoutingDomain: l3vniRoutingDomain("nonexistent"),
+					VNI:           500,
 				},
 			}
 
@@ -984,11 +968,9 @@ var _ = Describe("Configuration Resiliency", Ordered, func() {
 				g.Expect(failed.Kind).To(Equal(v1alpha1.FailedResourceKind("L2VNI")))
 				g.Expect(failed.Name).To(Equal("orphan-l2"))
 				g.Expect(failed.Reason).To(Equal(v1alpha1.FailedResourceReasonDependencyFailed))
-				g.Expect(failed.Message).To(ContainSubstring("no valid L3VNI for L3 domain"))
+				g.Expect(failed.Message).To(ContainSubstring(`referenced L3VNI "nonexistent" not found`))
 
-				readyCond := apimeta.FindStatusCondition(status.Status.Conditions, "Ready")
-				g.Expect(readyCond).NotTo(BeNil())
-				g.Expect(readyCond.Status).To(Equal(metav1.ConditionFalse))
+				expectNodeCondition(g, infra.KindControlPlane, "Ready", metav1.ConditionFalse)
 			}, time.Minute, time.Second).Should(Succeed())
 		})
 	})
@@ -1022,13 +1004,8 @@ var _ = Describe("Configuration Resiliency", Ordered, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(status.Status.FailedResources).To(BeEmpty())
 
-				readyCond := apimeta.FindStatusCondition(status.Status.Conditions, "Ready")
-				g.Expect(readyCond).NotTo(BeNil())
-				g.Expect(readyCond.Status).To(Equal(metav1.ConditionTrue))
-
-				degradedCond := apimeta.FindStatusCondition(status.Status.Conditions, "Degraded")
-				g.Expect(degradedCond).NotTo(BeNil())
-				g.Expect(degradedCond.Status).To(Equal(metav1.ConditionFalse))
+				expectNodeCondition(g, infra.KindControlPlane, "Ready", metav1.ConditionTrue)
+				expectNodeCondition(g, infra.KindControlPlane, "Degraded", metav1.ConditionFalse)
 			}, time.Minute, time.Second).Should(Succeed())
 		})
 	})

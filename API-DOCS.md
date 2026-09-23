@@ -1,10 +1,10 @@
 # API Reference
 
 ## Packages
-- [openpe.openperouter.github.io/v1alpha1](#openpeopenperoutergithubiov1alpha1)
+- [network.openperouter.io/v1alpha1](#networkopenperouteriov1alpha1)
 
 
-## openpe.openperouter.github.io/v1alpha1
+## network.openperouter.io/v1alpha1
 
 Package v1alpha1 contains API Schema definitions for the openpe v1alpha1 API group.
 
@@ -12,10 +12,65 @@ Package v1alpha1 contains API Schema definitions for the openpe v1alpha1 API gro
 - [L2VNI](#l2vni)
 - [L3Passthrough](#l3passthrough)
 - [L3VNI](#l3vni)
+- [L3VPN](#l3vpn)
 - [RawFRRConfig](#rawfrrconfig)
 - [RouterNodeConfigurationStatus](#routernodeconfigurationstatus)
 - [Underlay](#underlay)
 
+
+
+#### AddressFamilyProperty
+
+
+
+AddressFamilyProperty is an optional feature applied to a neighbor
+address family. The type field selects the property; typed sub-fields hold
+parameters for properties that require them.
+
+
+
+_Appears in:_
+- [NeighborAddressFamily](#neighboraddressfamily)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `type` _[AddressFamilyPropertyType](#addressfamilypropertytype)_ | type selects the property. |  | Enum: [routeReflectorClient] <br />Required: \{\} <br /> |
+
+
+#### AddressFamilyPropertyType
+
+_Underlying type:_ _string_
+
+AddressFamilyPropertyType defines an optional feature on a neighbor
+address family.
+
+_Validation:_
+- Enum: [routeReflectorClient]
+
+_Appears in:_
+- [AddressFamilyProperty](#addressfamilyproperty)
+
+| Field | Description |
+| --- | --- |
+| `routeReflectorClient` | AddressFamilyPropertyRouteReflectorClient marks the neighbor as a<br />route reflector client of the local router in this address family (RFC 4456).<br /> |
+
+
+#### BFDSessionMode
+
+_Underlying type:_ _string_
+
+BFDSessionMode selects whether the local system initiates the BFD session.
+
+_Validation:_
+- Enum: [Active Passive]
+
+_Appears in:_
+- [BFDSettings](#bfdsettings)
+
+| Field | Description |
+| --- | --- |
+| `Active` | BFDSessionModeActive initiates the BFD session. This is the default<br />when sessionMode is omitted.<br /> |
+| `Passive` | BFDSessionModePassive waits for the peer to initiate the BFD session<br />before replying.<br /> |
 
 
 #### BFDSettings
@@ -34,10 +89,84 @@ _Appears in:_
 | `receiveInterval` _integer_ | receiveInterval is the minimum interval that this system is capable of<br />receiving control packets in milliseconds.<br />Defaults to 300ms. |  | Maximum: 60000 <br />Minimum: 10 <br />Optional: \{\} <br /> |
 | `transmitInterval` _integer_ | transmitInterval is the minimum transmission interval (less jitter)<br />that this system wants to use to send BFD control packets in<br />milliseconds. Defaults to 300ms |  | Maximum: 60000 <br />Minimum: 10 <br />Optional: \{\} <br /> |
 | `detectMultiplier` _integer_ | detectMultiplier configures the detection multiplier to determine<br />packet loss. The remote transmission interval will be multiplied<br />by this value to determine the connection loss detection timer. |  | Maximum: 255 <br />Minimum: 2 <br />Optional: \{\} <br /> |
-| `echoInterval` _integer_ | echoInterval configures the minimal echo receive transmission<br />interval that this system is capable of handling in milliseconds.<br />Defaults to 50ms |  | Maximum: 60000 <br />Minimum: 10 <br />Optional: \{\} <br /> |
-| `echoMode` _boolean_ | echoMode enables or disables the echo transmission mode.<br />This mode is disabled by default, and not supported on multi<br />hops setups. |  | Optional: \{\} <br /> |
-| `passiveMode` _boolean_ | passiveMode marks session as passive: a passive session will not<br />attempt to start the connection and will wait for control packets<br />from peer before it begins replying. |  | Optional: \{\} <br /> |
+| `sessionMode` _[BFDSessionMode](#bfdsessionmode)_ | sessionMode marks the session active or passive. Active (the default<br />when omitted) initiates the session. Passive waits for the peer to<br />initiate before replying (RFC 5880 Section 6.1). |  | Enum: [Active Passive] <br />Optional: \{\} <br /> |
 | `minimumTTL` _integer_ | minimumTTL configures, for multi hop sessions only, the minimum<br />expected TTL for an incoming BFD control packet. |  | Maximum: 254 <br />Minimum: 1 <br />Optional: \{\} <br /> |
+
+
+#### BridgeLifecycle
+
+_Underlying type:_ _string_
+
+BridgeLifecycle determines how the bridge is provisioned.
+
+_Validation:_
+- Enum: [Managed External]
+
+_Appears in:_
+- [LinuxBridgeConfig](#linuxbridgeconfig)
+- [OVSBridgeConfig](#ovsbridgeconfig)
+
+| Field | Description |
+| --- | --- |
+| `Managed` | BridgeLifecycleManaged means the controller creates and owns the<br />bridge, named br-hs-<VNI>, and deletes it when the L2VNI is removed.<br /> |
+| `External` | BridgeLifecycleExternal means the user provides a pre-existing bridge<br />via the Name field. The controller does not create or delete it; only<br />veth ports are attached/detached.<br /> |
+
+
+#### CNIConfigType
+
+_Underlying type:_ _string_
+
+CNIConfigType selects the source of the CNI configuration.
+It is the discriminator of the CNIDevice union and is designed to be
+extended with future config sources (e.g. a NetworkAttachmentDefinition
+reference or a filesystem path).
+
+_Validation:_
+- Enum: [RawConfig]
+
+_Appears in:_
+- [CNIDevice](#cnidevice)
+
+| Field | Description |
+| --- | --- |
+| `RawConfig` | CNIConfigTypeRawConfig embeds the CNI config JSON directly in the spec.<br /> |
+
+
+#### CNIDevice
+
+
+
+CNIDevice invokes a CNI plugin to provision an interface in the router
+netns. The config source is a discriminated union — additional source
+variants can be added later if a concrete user need emerges.
+
+
+
+_Appears in:_
+- [UnderlayInterface](#underlayinterface)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `type` _[CNIConfigType](#cniconfigtype)_ | type selects the source of the CNI configuration. |  | Enum: [RawConfig] <br />Required: \{\} <br /> |
+| `rawConfig` _[JSON](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#json-v1-apiextensions-k8s-io)_ | rawConfig embeds a CNI conflist JSON blob directly in this spec.<br />Only CNI spec >= 1.0.0 configurations are accepted. Immutable once<br />set: to change it, delete and recreate the<br />Underlay. Immutability is enforced by the validation webhook because<br />CEL transition rules cannot be evaluated inside atomic lists. |  | Type: object <br />Optional: \{\} <br /> |
+| `interfaceName` _string_ | interfaceName is the name of the interface the CNI plugin creates<br />inside the router netns (passed as CNI_IFNAME). Defaults to "net1". | net1 | MaxLength: 15 <br />MinLength: 1 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9._-]*$` <br />Optional: \{\} <br /> |
+| `runtimeConfig` _[JSON](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#json-v1-apiextensions-k8s-io)_ | runtimeConfig is an opaque JSON object mapping CNI capability names<br />to the payloads passed as capability arguments to the CNI<br />invocation. Only keys that the plugin declares in its<br />"capabilities" config block are forwarded; undeclared keys are<br />silently stripped. Well-known capabilities include ips, mac,<br />bandwidth, portMappings, ipRanges and deviceID. Immutable once<br />set: to change it, delete and recreate the Underlay. Immutability<br />is enforced by the validation webhook because CEL transition rules<br />cannot be evaluated inside atomic lists. |  | Type: object <br />Optional: \{\} <br /> |
+
+
+#### EBGPMultiHopProperties
+
+
+
+EBGPMultiHopProperties holds parameters for the ebgpMultiHop property.
+
+
+
+_Appears in:_
+- [NeighborProperty](#neighborproperty)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `ttl` _integer_ | ttl is the maximum number of hops for the eBGP multihop session.<br />When omitted, FRR defaults to 255. |  | Maximum: 255 <br />Minimum: 1 <br />Optional: \{\} <br /> |
 
 
 #### FailedResource
@@ -53,7 +182,7 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `kind` _[FailedResourceKind](#failedresourcekind)_ | kind resource type name (e.g.: L3VNI, L2VNI). |  | Enum: [Underlay L2VNI L3VNI FrrConfiguration L3Passthrough] <br />Required: \{\} <br /> |
+| `kind` _[FailedResourceKind](#failedresourcekind)_ | kind resource type name (e.g.: L3VNI, L2VNI). |  | Enum: [Underlay L2VNI L3VNI L3VPN FrrConfiguration L3Passthrough] <br />Required: \{\} <br /> |
 | `name` _string_ | name failed API resource metadata.name. |  | MaxLength: 253 <br />MinLength: 1 <br />Required: \{\} <br /> |
 | `reason` _[FailedResourceReason](#failedresourcereason)_ | reason failure reason. |  | Enum: [ValidationFailed DependencyFailed OverlayAttachmentFailed FrrConfigurationFailed] <br />MaxLength: 100 <br />MinLength: 1 <br />Required: \{\} <br /> |
 | `message` _string_ | message human-readable failure description. |  | MaxLength: 500 <br />MinLength: 1 <br />Required: \{\} <br /> |
@@ -66,7 +195,7 @@ _Underlying type:_ _string_
 
 
 _Validation:_
-- Enum: [Underlay L2VNI L3VNI FrrConfiguration L3Passthrough]
+- Enum: [Underlay L2VNI L3VNI L3VPN FrrConfiguration L3Passthrough]
 
 _Appears in:_
 - [FailedResource](#failedresource)
@@ -126,9 +255,9 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `type` _string_ | type of the host interface. Supported values: "linux-bridge", "ovs-bridge". |  | Enum: [linux-bridge ovs-bridge] <br />Required: \{\} <br /> |
-| `linuxBridge` _[LinuxBridgeConfig](#linuxbridgeconfig)_ | linuxBridge configuration. Must be set when Type is "linux-bridge". |  | Optional: \{\} <br /> |
-| `ovsBridge` _[OVSBridgeConfig](#ovsbridgeconfig)_ | ovsBridge configuration. Must be set when Type is "ovs-bridge". |  | Optional: \{\} <br /> |
+| `type` _string_ | type of the host interface. Supported values: "LinuxBridge", "OVSBridge". |  | Enum: [LinuxBridge OVSBridge] <br />Required: \{\} <br /> |
+| `linuxBridge` _[LinuxBridgeConfig](#linuxbridgeconfig)_ | linuxBridge configuration. Must be set when Type is "LinuxBridge". |  | Optional: \{\} <br /> |
+| `ovsBridge` _[OVSBridgeConfig](#ovsbridgeconfig)_ | ovsBridge configuration. Must be set when Type is "OVSBridge". |  | Optional: \{\} <br /> |
 
 
 #### HostSession
@@ -143,13 +272,119 @@ A BGP session is established over this leg.
 _Appears in:_
 - [L3PassthroughSpec](#l3passthroughspec)
 - [L3VNISpec](#l3vnispec)
+- [L3VPNSpec](#l3vpnspec)
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `asn` _integer_ | asn is the local AS number to use to establish a BGP session with<br />the default namespace. |  | Maximum: 4.294967295e+09 <br />Minimum: 1 <br />Required: \{\} <br /> |
-| `hostasn` _integer_ | hostasn is the expected AS number for a BGP speaking component running in<br />the default network namespace. Either HostASN or HostType must be set. |  | Maximum: 4.294967295e+09 <br />Minimum: 1 <br />Optional: \{\} <br /> |
-| `hosttype` _string_ | hosttype is the AS type of the BGP speaking component running in the<br />default network namespace. Either HostASN or HostType must be set. |  | Enum: [external internal] <br />Optional: \{\} <br /> |
-| `localcidr` _[LocalCIDRConfig](#localcidrconfig)_ | localcidr is the CIDR configuration for the veth pair<br />to connect with the default namespace. The interface under<br />the PERouter side is going to use the first IP of the cidr on all the nodes.<br />At least one of IPv4 or IPv6 must be provided. |  | Required: \{\} <br /> |
+| `hostASN` _integer_ | hostASN is the expected AS number for a BGP speaking component running in<br />the default network namespace. Either HostASN or HostType must be set. |  | Maximum: 4.294967295e+09 <br />Minimum: 1 <br />Optional: \{\} <br /> |
+| `hostType` _string_ | hostType is the AS type of the BGP speaking component running in the<br />default network namespace. Either HostASN or HostType must be set. |  | Enum: [External Internal] <br />Optional: \{\} <br /> |
+| `localCIDRs` _string array_ | localCIDRs is the list of CIDRs for the veth pair connecting to the<br />default namespace. The router side uses the first usable IP of each CIDR.<br />At most one IPv4 and one IPv6 CIDR may be set; list order is not significant. |  | MaxItems: 2 <br />MinItems: 1 <br />Required: \{\} <br /> |
+
+
+#### IPFamily
+
+_Underlying type:_ _string_
+
+IPFamily specifies which address families are enabled.
+
+_Validation:_
+- Enum: [IPv4 IPv6 DualStack]
+
+_Appears in:_
+- [ISISInterface](#isisinterface)
+
+| Field | Description |
+| --- | --- |
+| `IPv4` |  |
+| `IPv6` |  |
+| `DualStack` |  |
+
+
+#### ISISConfig
+
+
+
+ISISConfig contains ISIS configuration for the underlay.
+
+
+
+_Appears in:_
+- [UnderlaySpec](#underlayspec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `baseNet` _[ISISNet](#isisnet)_ | baseNet holds the ISIS NET address.<br />The configured Net address is a base address which is offset by the node index of each node.<br />Only accepts the simplified NSAP format with a fixed AreaID length of 3 bytes and a 6 byte SystemID in compliance<br />with the U.S. GOSIP version 2.0 for a total of 10 bytes. |  | MaxLength: 25 <br />MinLength: 25 <br />Required: \{\} <br /> |
+| `features` _[ISISFeature](#isisfeature) array_ | features enables ISIS boolean features.<br />Supported features are:<br />advertisePassiveOnly: configures ISIS to advertise only prefixes that belong to passive interfaces. |  | Enum: [advertisePassiveOnly] <br />MaxItems: 32 <br />MaxLength: 128 <br />MinLength: 1 <br />Optional: \{\} <br /> |
+| `interfaces` _[ISISInterface](#isisinterface) array_ | interfaces holds additional ISIS interface level configuration and / or per<br />interface overrides. By default, OpenPERouter enables IPv6 on all required<br />interfaces with default settings. |  | MaxItems: 128 <br />Optional: \{\} <br /> |
+| `level` _integer_ | level configures the ISIS type, system wide. It defaults to level-1-2 unless specified otherwise. |  | Enum: [1 2] <br />Optional: \{\} <br /> |
+
+
+#### ISISFeature
+
+_Underlying type:_ _string_
+
+ISISFeature represents a single ISIS feature.
+
+_Validation:_
+- Enum: [advertisePassiveOnly]
+- MaxLength: 128
+- MinLength: 1
+
+_Appears in:_
+- [ISISConfig](#isisconfig)
+
+
+
+#### ISISInterface
+
+
+
+ISISInterface holds ISIS interface level configuration.
+
+
+
+_Appears in:_
+- [ISISConfig](#isisconfig)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `name` _string_ | name of the interface that these settings shall apply to. |  | MaxLength: 15 <br />MinLength: 1 <br />Required: \{\} <br /> |
+| `ipFamily` _[IPFamily](#ipfamily)_ | ipFamily configures which address families ISIS is enabled for on this interface. |  | Enum: [IPv4 IPv6 DualStack] <br />Optional: \{\} <br /> |
+| `features` _[ISISInterfaceFeature](#isisinterfacefeature) array_ | features enables ISIS interface boolean features.<br />Supported features are:<br />passive: configures ISIS passive mode on this interface. |  | Enum: [passive] <br />MaxItems: 32 <br />MaxLength: 128 <br />MinLength: 1 <br />Optional: \{\} <br /> |
+
+
+#### ISISInterfaceFeature
+
+_Underlying type:_ _string_
+
+ISISInterfaceFeature represents a single ISIS feature of an ISIS interface.
+
+_Validation:_
+- Enum: [passive]
+- MaxLength: 128
+- MinLength: 1
+
+_Appears in:_
+- [ISISInterface](#isisinterface)
+
+
+
+#### ISISNet
+
+_Underlying type:_ _string_
+
+ISISNet represents a single ISIS NET address.
+Only accepts the simplified NSAP format with a fixed AreaID length of 3 bytes and a 6 byte SystemID in compliance
+with the U.S. GOSIP version 2.0 for a total of 10 bytes.
+
+_Validation:_
+- MaxLength: 25
+- MinLength: 25
+
+_Appears in:_
+- [ISISConfig](#isisconfig)
+
 
 
 #### L2VNI
@@ -165,7 +400,7 @@ from.
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `apiVersion` _string_ | `openpe.openperouter.github.io/v1alpha1` | | |
+| `apiVersion` _string_ | `network.openperouter.io/v1alpha1` | | |
 | `kind` _string_ | `L2VNI` | | |
 | `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  | Optional: \{\} <br /> |
 | `spec` _[L2VNISpec](#l2vnispec)_ | spec defines the desired state of L2VNI. |  | Required: \{\} <br /> |
@@ -186,11 +421,14 @@ _Appears in:_
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `nodeSelector` _[LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#labelselector-v1-meta)_ | nodeSelector specifies which nodes this L2VNI applies to.<br />If empty or not specified, applies to all nodes.<br />Multiple L2VNIs can match the same node. |  | Optional: \{\} <br /> |
-| `vrf` _string_ | vrf is the name of the linux VRF to be used inside the PERouter namespace.<br />The field is optional, if not set it the name of the VNI instance will be used. |  | MaxLength: 15 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9_-]*$` <br />Optional: \{\} <br /> |
+| `routingDomain` _[RoutingDomain](#routingdomain)_ | routingDomain optionally attaches this L2VNI to a routing domain<br />provided by a backing resource (L3VNI or L3VPN). When omitted, the<br />L2VNI is a disconnected overlay (east-west L2 only, no VRF, no<br />gateway). |  | Optional: \{\} <br /> |
 | `vni` _integer_ | vni is the VXLan VNI to be used |  | Maximum: 1.6777215e+07 <br />Minimum: 1 <br />Required: \{\} <br /> |
-| `vxlanport` _integer_ | vxlanport is the port to be used for VXLan encapsulation. | 4789 | Optional: \{\} <br /> |
-| `hostmaster` _[HostMaster](#hostmaster)_ | hostmaster is the interface on the host the veth should be enslaved to.<br />If not set, the host veth will not be enslaved to any interface and it must be<br />enslaved manually (or by some other means). This is useful if another controller<br />is leveraging the host interface for the VNI. |  | Optional: \{\} <br /> |
-| `l2gatewayips` _string array_ | l2gatewayips is a list of IP addresses in CIDR notation to be used for the L2 gateway. When this is set, the<br />bridge the veths are enslaved to will be configured with these IP addresses, effectively<br />acting as a distributed gateway for the VNI. This allows for dual-stack (IPv4 and IPv6) support.<br />Maximum of 2 addresses are allowed. If 2 addresses are provided, one must be IPv4 and one must be IPv6. |  | MaxItems: 2 <br />Optional: \{\} <br /> |
+| `vxlanPort` _integer_ | vxlanPort is the port to be used for VXLan encapsulation. | 4789 | Maximum: 65535 <br />Minimum: 1 <br />Optional: \{\} <br /> |
+| `underlayAddressFamily` _string_ | underlayAddressFamily selects which VTEP address family to use for this VNI's<br />VXLAN interface. When omitted, defaults to the available family in the underlay<br />(IPv4 preferred in dual-stack). |  | Enum: [IPv4 IPv6] <br />Optional: \{\} <br /> |
+| `hostMaster` _[HostMaster](#hostmaster)_ | hostMaster is the interface on the host the veth should be attached to.<br />If not set, the host veth will not be attached to any interface and it must be<br />attached manually (or by some other means). This is useful if another controller<br />is leveraging the host interface for the VNI. |  | Optional: \{\} <br /> |
+| `gatewayIPs` _string array_ | gatewayIPs is a list of IP addresses in CIDR notation for the<br />distributed anycast gateway on this L2 segment's bridge<br />(Integrated Routing and Bridging interface). It is a property of<br />the L2 segment itself, so it lives on the L2VNI rather than<br />inside the routing-domain reference.<br />Maximum of 2 addresses are allowed. If 2 addresses are provided, one must be IPv4 and one must be IPv6. |  | MaxItems: 2 <br />Optional: \{\} <br /> |
+| `exportRTs` _[RouteTarget](#routetarget) array_ | exportRTs are the Route Targets to be used for exporting L2 EVPN routes. |  | MaxItems: 100 <br />MaxLength: 21 <br />Optional: \{\} <br /> |
+| `importRTs` _[RouteTarget](#routetarget) array_ | importRTs are the Route Targets to be used for importing L2 EVPN routes. |  | MaxItems: 100 <br />MaxLength: 21 <br />Optional: \{\} <br /> |
 
 
 #### L2VNIStatus
@@ -219,7 +457,7 @@ takes part to the bgp fabric.
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `apiVersion` _string_ | `openpe.openperouter.github.io/v1alpha1` | | |
+| `apiVersion` _string_ | `network.openperouter.io/v1alpha1` | | |
 | `kind` _string_ | `L3Passthrough` | | |
 | `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  | Optional: \{\} <br /> |
 | `spec` _[L3PassthroughSpec](#l3passthroughspec)_ | spec defines the desired state of L3Passthrough. |  | Required: \{\} <br /> |
@@ -240,7 +478,7 @@ _Appears in:_
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `nodeSelector` _[LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#labelselector-v1-meta)_ | nodeSelector specifies which nodes this L3Passthrough applies to.<br />If empty or not specified, applies to all nodes.<br />Multiple L3Passthrough with overlapping node selectors will be rejected. |  | Optional: \{\} <br /> |
-| `hostsession` _[HostSession](#hostsession)_ | hostsession is the configuration for the host session. |  | Required: \{\} <br /> |
+| `hostSession` _[HostSession](#hostsession)_ | hostSession is the configuration for the host session. |  | Required: \{\} <br /> |
 
 
 #### L3PassthroughStatus
@@ -269,11 +507,27 @@ from.
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `apiVersion` _string_ | `openpe.openperouter.github.io/v1alpha1` | | |
+| `apiVersion` _string_ | `network.openperouter.io/v1alpha1` | | |
 | `kind` _string_ | `L3VNI` | | |
 | `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  | Optional: \{\} <br /> |
 | `spec` _[L3VNISpec](#l3vnispec)_ | spec defines the desired state of L3VNI. |  | Required: \{\} <br /> |
 | `status` _[L3VNIStatus](#l3vnistatus)_ | status defines the observed state of L3VNI. |  | Optional: \{\} <br /> |
+
+
+#### L3VNIReference
+
+
+
+L3VNIReference references an L3VNI by name.
+
+
+
+_Appears in:_
+- [RoutingDomain](#routingdomain)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `name` _string_ | name is the metadata.name of the L3VNI in the same namespace. |  | MinLength: 1 <br />Required: \{\} <br /> |
 
 
 #### L3VNISpec
@@ -292,8 +546,9 @@ _Appears in:_
 | `nodeSelector` _[LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#labelselector-v1-meta)_ | nodeSelector specifies which nodes this L3VNI applies to.<br />If empty or not specified, applies to all nodes.<br />Multiple L3VNIs can match the same node. |  | Optional: \{\} <br /> |
 | `vrf` _string_ | vrf is the name of the linux VRF to be used inside the PERouter namespace. |  | MaxLength: 15 <br />MinLength: 1 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9_-]*$` <br />Required: \{\} <br /> |
 | `vni` _integer_ | vni is the VXLan VNI to be used |  | Maximum: 1.6777215e+07 <br />Minimum: 1 <br />Required: \{\} <br /> |
-| `vxlanport` _integer_ | vxlanport is the port to be used for VXLan encapsulation. | 4789 | Optional: \{\} <br /> |
-| `hostsession` _[HostSession](#hostsession)_ | hostsession is the configuration for the host session. |  | Optional: \{\} <br /> |
+| `vxlanPort` _integer_ | vxlanPort is the port to be used for VXLan encapsulation. | 4789 | Maximum: 65535 <br />Minimum: 1 <br />Optional: \{\} <br /> |
+| `underlayAddressFamily` _string_ | underlayAddressFamily selects which VTEP address family to use for this VNI's<br />VXLAN interface. When omitted, defaults to the available family in the underlay<br />(IPv4 preferred in dual-stack). |  | Enum: [IPv4 IPv6] <br />Optional: \{\} <br /> |
+| `hostSession` _[HostSession](#hostsession)_ | hostSession is the configuration for the host session. |  | Optional: \{\} <br /> |
 | `exportRTs` _[RouteTarget](#routetarget) array_ | exportRTs are the Route Targets to be used for exporting routes.<br />RouteTarget defines a BGP Extended Community for route filtering. |  | MaxItems: 100 <br />MaxLength: 21 <br />Optional: \{\} <br /> |
 | `importRTs` _[RouteTarget](#routetarget) array_ | importRTs are the Route Targets to be used for importing routes.<br />RouteTarget defines a BGP Extended Community for route filtering. |  | MaxItems: 100 <br />MaxLength: 21 <br />Optional: \{\} <br /> |
 
@@ -311,6 +566,75 @@ _Appears in:_
 
 
 
+#### L3VPN
+
+
+
+L3VPN represents an SRv6 IP VPN.
+
+
+
+
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `apiVersion` _string_ | `network.openperouter.io/v1alpha1` | | |
+| `kind` _string_ | `L3VPN` | | |
+| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  | Optional: \{\} <br /> |
+| `spec` _[L3VPNSpec](#l3vpnspec)_ | spec defines the desired state of L3VPN. |  | Required: \{\} <br /> |
+| `status` _[L3VPNStatus](#l3vpnstatus)_ | status defines the observed state of L3VPN. |  | Optional: \{\} <br /> |
+
+
+#### L3VPNReference
+
+
+
+L3VPNReference references an L3VPN by name.
+
+
+
+_Appears in:_
+- [RoutingDomain](#routingdomain)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `name` _string_ | name is the metadata.name of the L3VPN in the same namespace. |  | MinLength: 1 <br />Required: \{\} <br /> |
+
+
+#### L3VPNSpec
+
+
+
+L3VPNSpec defines the desired state of L3VPN.
+
+
+
+_Appears in:_
+- [L3VPN](#l3vpn)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `nodeSelector` _[LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#labelselector-v1-meta)_ | nodeSelector specifies which nodes this L3VPN applies to.<br />If empty or not specified, applies to all nodes.<br />Multiple L3VPNs can match the same node. |  | Optional: \{\} <br /> |
+| `vrf` _string_ | vrf is the name of the linux VRF to be used inside the PERouter namespace. |  | MaxLength: 15 <br />MinLength: 1 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9_-]*$` <br />Required: \{\} <br /> |
+| `exportRTs` _[RouteTarget](#routetarget) array_ | exportRTs are the Route Targets to be used for exporting routes.<br />If no exportRTs are provided, defaults to single export Route Target<br /><asn>:<rdAssignedNumber>. |  | MaxItems: 100 <br />MaxLength: 21 <br />Optional: \{\} <br /> |
+| `importRTs` _[RouteTarget](#routetarget) array_ | importRTs are the Route Targets to be used for importing routes.<br />importRTs must always be provided explicitly. |  | MaxItems: 100 <br />MaxLength: 21 <br />Required: \{\} <br /> |
+| `rdAssignedNumber` _integer_ | rdAssignedNumber sets the Route Distinguisher's Assigned Number subfield.<br />The Administrator subfield is automatically set to the value of the router<br />ID. OpenPERouter uses Type 1 Route Distinguishers as defined in RFC4364,<br />meaning <Administrator subfield>:<Assigned Number subfield>. |  | Maximum: 65535 <br />Minimum: 1 <br />Required: \{\} <br /> |
+| `hostSession` _[HostSession](#hostsession)_ | hostSession is the configuration for the host session. |  | Optional: \{\} <br /> |
+
+
+#### L3VPNStatus
+
+
+
+L3VPNStatus defines the observed state of L3VPN.
+
+
+
+_Appears in:_
+- [L3VPN](#l3vpn)
+
+
+
 #### LinuxBridgeConfig
 
 
@@ -324,25 +648,8 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `name` _string_ | name of the Linux bridge interface. |  | MaxLength: 15 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9_-]*$` <br />Optional: \{\} <br /> |
-| `autoCreate` _boolean_ | autoCreate determines if the bridge should be created automatically.<br />When true, the bridge is created with name br-hs-<VNI>. | false | Optional: \{\} <br /> |
-
-
-#### LocalCIDRConfig
-
-
-
-
-
-
-
-_Appears in:_
-- [HostSession](#hostsession)
-
-| Field | Description | Default | Validation |
-| --- | --- | --- | --- |
-| `ipv4` _string_ | ipv4 is the IPv4 CIDR to be used for the veth pair<br />to connect with the default namespace. The interface under<br />the PERouter side is going to use the first IP of the cidr on all the nodes. |  | Optional: \{\} <br /> |
-| `ipv6` _string_ | ipv6 is the IPv6 CIDR to be used for the veth pair<br />to connect with the default namespace. The interface under<br />the PERouter side is going to use the first IP of the cidr on all the nodes. |  | Optional: \{\} <br /> |
+| `lifecycle` _[BridgeLifecycle](#bridgelifecycle)_ | lifecycle determines if the bridge is managed by the controller or<br />provided by the user. |  | Enum: [Managed External] <br />Required: \{\} <br /> |
+| `name` _string_ | name of the Linux bridge interface. Required when lifecycle is<br />External, and must be omitted when it is Managed, in which case the<br />bridge is named br-hs-<VNI>. |  | MaxLength: 15 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9_-]*$` <br />Optional: \{\} <br /> |
 
 
 #### Neighbor
@@ -359,18 +666,18 @@ _Appears in:_
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `asn` _integer_ | asn is the AS number of the neighbor. Either ASN or Type must be set. |  | Maximum: 4.294967295e+09 <br />Minimum: 1 <br />Optional: \{\} <br /> |
-| `type` _string_ | type is the AS type of the neighbor. Either ASN or Type must be set. |  | Enum: [external internal] <br />Optional: \{\} <br /> |
+| `type` _string_ | type is the AS type of the neighbor. Either ASN or Type must be set. |  | Enum: [External Internal] <br />Optional: \{\} <br /> |
 | `address` _string_ | address is the IP address to establish the session with. The IP address<br />can be either IPv4 or IPv6. |  | MaxLength: 39 <br />MinLength: 1 <br />Optional: \{\} <br /> |
 | `interface` _string_ | interface is the interface name for BGP unnumbered sessions. The session will be established via IPv6 link locals. |  | MaxLength: 15 <br />MinLength: 1 <br />Optional: \{\} <br /> |
-| `port` _integer_ | port is the port to dial when establishing the session.<br />Defaults to 179. |  | Maximum: 16384 <br />Minimum: 0 <br />Optional: \{\} <br /> |
-| `password` _string_ | password to be used for establishing the BGP session.<br />Password and PasswordSecret are mutually exclusive. |  | Optional: \{\} <br /> |
-| `passwordSecret` _string_ | passwordSecret is name of the authentication secret for the neighbor.<br />the secret must be of type "kubernetes.io/basic-auth", and created in the<br />same namespace as the perouter daemon. The password is stored in the<br />secret as the key "password".<br />Password and PasswordSecret are mutually exclusive. |  | Optional: \{\} <br /> |
+| `listenRange` _string_ | listenRange accepts connections from any peers in the specified CIDR.<br />When set, the hostcontroller generates a<br />"bgp listen range <listenRange> peer-group <name>" stanza instead of<br />an explicit neighbor statement. Mutually exclusive with address and<br />interface. |  | MaxLength: 43 <br />MinLength: 1 <br />Optional: \{\} <br /> |
+| `port` _integer_ | port is the port to dial when establishing the session.<br />Defaults to 179. |  | Maximum: 65535 <br />Minimum: 1 <br />Optional: \{\} <br /> |
+| `passwordSecret` _[SecretKeyRef](#secretkeyref)_ | passwordSecret references a key in a Kubernetes Secret containing the<br />BGP session password. The Secret must be created in the same namespace<br />as the Underlay. |  | Optional: \{\} <br /> |
 | `holdTimeSeconds` _integer_ | holdTimeSeconds is the requested BGP hold time in seconds, per RFC4271.<br />Defaults to 180. |  | Optional: \{\} <br /> |
 | `keepaliveTimeSeconds` _integer_ | keepaliveTimeSeconds is the requested BGP keepalive time in seconds, per RFC4271.<br />Defaults to 60. |  | Optional: \{\} <br /> |
 | `connectTimeSeconds` _integer_ | connectTimeSeconds controls how long BGP waits between connection attempts to a neighbor, in seconds. |  | Maximum: 65535 <br />Minimum: 1 <br />Optional: \{\} <br /> |
-| `ebgpMultiHop` _boolean_ | ebgpMultiHop indicates if the BGPPeer is multi-hops away. |  | Optional: \{\} <br /> |
+| `properties` _[NeighborProperty](#neighborproperty) array_ | properties is the set of optional session-level features for this<br />neighbor (e.g. ebgpMultiHop). |  | MaxItems: 1 <br />Optional: \{\} <br /> |
 | `bfd` _[BFDSettings](#bfdsettings)_ | bfd defines the BFD configuration for the BGP session. |  | Optional: \{\} <br /> |
-| `addressFamilies` _[NeighborAddressFamily](#neighboraddressfamily) array_ | addressFamilies specifies the BGP address families that shall be enabled<br />for this BGP neighbor.<br />If addressFamilies is not provided or empty, the following defaults are<br />chosen:<br />For unnumbered neighbors:<br />- ipv4unicast<br />- ipv6unicast if passthrough is configured with IPv6 local CIDR<br />- evpn if L2VNIs or L3VNIs are present.<br />For IPv4 neighbors:<br />- ipv4unicast<br />- ipv6unicast if passthrough is configured with IPv6 local CIDR<br />- evpn if L2VNIs or L3VNIs are present.<br />For IPv6 neighbors:<br />- ipv4unicast if L2VNIs or L3VNIs are present, or if passthrough is configured with IPv4 local CIDR<br />- ipv6unicast<br />- evpn if L2VNIs or L3VNIs are present |  | MaxItems: 3 <br />Optional: \{\} <br /> |
+| `addressFamilies` _[NeighborAddressFamily](#neighboraddressfamily) array_ | addressFamilies specifies the BGP address families that shall be enabled<br />for this BGP neighbor. evpn and ipv4vpn/ipv6vpn are mutually exclusive.<br />If ipv4vpn or ipv6vpn are set, the update source of this neighbor will<br />be set to the loopback's IPv6 address.<br />If addressFamilies is not provided or empty, the following defaults are<br />chosen:<br />For unnumbered neighbors:<br />- ipv4unicast<br />- ipv6unicast if passthrough is configured with IPv6 local CIDR<br />- evpn if L2VNIs or L3VNIs are present.<br />For IPv4 neighbors:<br />- ipv4unicast<br />- ipv6unicast if passthrough is configured with IPv6 local CIDR<br />- evpn if L2VNIs or L3VNIs are present.<br />For IPv6 neighbors:<br />- ipv4unicast if L2VNIs or L3VNIs are present, or if passthrough is configured with IPv4 local CIDR<br />- ipv6unicast<br />- evpn if L2VNIs or L3VNIs are present<br />- ipv4vpn if L3VPNs and SRv6 configuration are present.<br />- ipv6vpn if L3VPNs and SRv6 configuration are present. |  | MaxItems: 4 <br />Optional: \{\} <br /> |
 
 
 #### NeighborAddressFamily
@@ -387,7 +694,62 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `type` _string_ | type is the address family type. |  | Enum: [ipv4unicast ipv6unicast evpn] <br />MaxLength: 11 <br />MinLength: 1 <br />Required: \{\} <br /> |
+| `type` _string_ | type is the address family type. |  | Enum: [ipv4unicast ipv6unicast evpn ipv4vpn ipv6vpn] <br />MaxLength: 11 <br />MinLength: 1 <br />Required: \{\} <br /> |
+| `properties` _[AddressFamilyProperty](#addressfamilyproperty) array_ | properties is the set of optional per-address-family features for this<br />neighbor (for example, marking the neighbor as a route reflector client<br />in this address family). |  | MaxItems: 8 <br />Optional: \{\} <br /> |
+
+
+#### NeighborProperty
+
+
+
+NeighborProperty is an optional feature applied to a neighbor session. The
+type field selects the property; typed sub-fields hold parameters for
+properties that require them.
+
+
+
+_Appears in:_
+- [Neighbor](#neighbor)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `type` _[NeighborPropertyType](#neighborpropertytype)_ | type selects the property. |  | Enum: [ebgpMultiHop] <br />Required: \{\} <br /> |
+| `ebgpMultiHop` _[EBGPMultiHopProperties](#ebgpmultihopproperties)_ | ebgpMultiHop holds parameters for the ebgpMultiHop property.<br />May only be set when type is ebgpMultiHop. |  | Optional: \{\} <br /> |
+
+
+#### NeighborPropertyType
+
+_Underlying type:_ _string_
+
+NeighborPropertyType defines an optional feature on a Neighbor.
+The values are protocol / FRR configuration tokens and are kept verbatim so
+they map directly to the rendered stanzas.
+
+_Validation:_
+- Enum: [ebgpMultiHop]
+
+_Appears in:_
+- [NeighborProperty](#neighborproperty)
+
+| Field | Description |
+| --- | --- |
+| `ebgpMultiHop` | NeighborPropertyEBGPMultiHop enables eBGP multihop on the neighbor<br />session, rendered as "neighbor X ebgp-multihop [ttl]".<br /> |
+
+
+#### NetworkDevice
+
+
+
+NetworkDevice moves an existing host network device into the router netns.
+
+
+
+_Appears in:_
+- [UnderlayInterface](#underlayinterface)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `interfaceName` _string_ | interfaceName is the name of the host network device to move into<br />the router netns. |  | MaxLength: 15 <br />MinLength: 1 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9._-]*$` <br />Required: \{\} <br /> |
 
 
 #### OVSBridgeConfig
@@ -403,8 +765,8 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `name` _string_ | name of the OVS bridge interface. |  | MaxLength: 15 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9_-]*$` <br />Optional: \{\} <br /> |
-| `autoCreate` _boolean_ | autoCreate determines if the OVS bridge should be created automatically.<br />When true, the bridge is created with name br-hs-<VNI>. | false | Optional: \{\} <br /> |
+| `lifecycle` _[BridgeLifecycle](#bridgelifecycle)_ | lifecycle determines if the OVS bridge is managed by the controller or<br />provided by the user. |  | Enum: [Managed External] <br />Required: \{\} <br /> |
+| `name` _string_ | name of the OVS bridge interface. Required when lifecycle is<br />External, and must be omitted when it is Managed, in which case the<br />bridge is named br-hs-<VNI>. |  | MaxLength: 15 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9_-]*$` <br />Optional: \{\} <br /> |
 
 
 #### RawFRRConfig
@@ -419,7 +781,7 @@ RawFRRConfig is the Schema for the rawfrrconfigs API.
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `apiVersion` _string_ | `openpe.openperouter.github.io/v1alpha1` | | |
+| `apiVersion` _string_ | `network.openperouter.io/v1alpha1` | | |
 | `kind` _string_ | `RawFRRConfig` | | |
 | `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  | Optional: \{\} <br /> |
 | `spec` _[RawFRRConfigSpec](#rawfrrconfigspec)_ | spec defines the desired state of RawFRRConfig. |  | Required: \{\} <br /> |
@@ -457,6 +819,23 @@ _Appears in:_
 
 
 
+#### RouteReflectorConfig
+
+
+
+RouteReflectorConfig holds BGP Route Reflector parameters (RFC 4456).
+Its presence on the Underlay enables route reflection on matching nodes.
+
+
+
+_Appears in:_
+- [UnderlaySpec](#underlayspec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `clusterID` _string_ | clusterID is the BGP cluster-id shared by all RR nodes in the same<br />cluster (RFC 4456 §7). All RRs serving the same set of clients must<br />use the same value so that CLUSTER_LIST loop detection prevents<br />duplicate route reflection. The cluster-id is an opaque 32-bit<br />identifier, not a routable address, and must be outside the<br />routerIDCIDR range to avoid colliding with allocated router-ids.<br />The default (192.0.2.1) is an RFC 5737 documentation address,<br />outside the default routerIDCIDR pool; with a custom routerIDCIDR<br />that contains it, the resource is rejected at admission. | 192.0.2.1 | MaxLength: 15 <br />MinLength: 7 <br />Optional: \{\} <br /> |
+
+
 #### RouteTarget
 
 _Underlying type:_ _string_
@@ -467,7 +846,9 @@ _Validation:_
 - MaxLength: 21
 
 _Appears in:_
+- [L2VNISpec](#l2vnispec)
 - [L3VNISpec](#l3vnispec)
+- [L3VPNSpec](#l3vpnspec)
 
 
 
@@ -483,7 +864,7 @@ RouterNodeConfigurationStatus describes a node router state.
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `apiVersion` _string_ | `openpe.openperouter.github.io/v1alpha1` | | |
+| `apiVersion` _string_ | `network.openperouter.io/v1alpha1` | | |
 | `kind` _string_ | `RouterNodeConfigurationStatus` | | |
 | `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
 | `status` _[RouterNodeConfigurationStatusStatus](#routernodeconfigurationstatusstatus)_ | status node router configuration status. |  | Optional: \{\} <br /> |
@@ -506,6 +887,99 @@ _Appears in:_
 | `conditions` _[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#condition-v1-meta) array_ | conditions list of conditions. |  | Optional: \{\} <br /> |
 
 
+#### RoutingDomain
+
+
+
+RoutingDomain is a discriminated union over the resource kinds that can
+provide a routing domain. Exactly one sub-struct must match the type
+discriminator.
+
+
+
+_Appears in:_
+- [L2VNISpec](#l2vnispec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `type` _string_ | type selects the kind of resource that provides this routing domain. |  | Enum: [L3VNI L3VPN] <br />Required: \{\} <br /> |
+| `l3vni` _[L3VNIReference](#l3vnireference)_ | l3vni references the L3VNI (metadata.name) in the same namespace that<br />provides the routing domain for this L2VNI. |  | Optional: \{\} <br /> |
+| `l3vpn` _[L3VPNReference](#l3vpnreference)_ | l3vpn references the L3VPN (metadata.name) in the same namespace that<br />provides the routing domain for this L2VNI. |  | Optional: \{\} <br /> |
+
+
+#### SRV6Config
+
+
+
+SRV6Config contains SRV6 configuration for the underlay.
+
+
+
+_Appears in:_
+- [UnderlaySpec](#underlayspec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `encapBehavior` _[SRV6EncapBehavior](#srv6encapbehavior)_ | encapBehavior defines the behavior for SRv6 encapsulation as specified<br />in RFC 8986 sections 5.1 and 5.2.<br />If unset, defaults to H.Encaps. |  | Enum: [H.Encaps H.Encaps.Red] <br />MaxLength: 12 <br />MinLength: 1 <br />Optional: \{\} <br /> |
+| `locator` _[SRV6Locator](#srv6locator)_ | locator defines the locator for this SRv6 VPN. |  | Required: \{\} <br /> |
+
+
+#### SRV6EncapBehavior
+
+_Underlying type:_ _string_
+
+SRV6EncapBehavior defines the behavior for SRv6 encapsulation as specified
+in RFC 8986 sections 5.1 and 5.2.
+
+_Validation:_
+- Enum: [H.Encaps H.Encaps.Red]
+- MaxLength: 12
+- MinLength: 1
+
+_Appears in:_
+- [SRV6Config](#srv6config)
+
+| Field | Description |
+| --- | --- |
+| `H.Encaps` | HEncaps always adds an SRH to SRv6 encapsulated packets. For more details,<br />see RFC 8986 section 5.1.<br /> |
+| `H.Encaps.Red` | HEncapsRed is an optimization of the H.Encaps behavior and reduces the<br />length of the SRH by excluding the first SID in the SRH of the pushed<br />IPv6 header. The SRH is omitted when the SRv6 Policy only contains one<br />segment and there is no need to use any flag, tag or TLV. For more<br />details, see RFC 8986 section 5.2.<br /> |
+
+
+#### SRV6Locator
+
+
+
+SRV6Locator holds the configuration of a locator for SRv6.
+
+
+
+_Appears in:_
+- [SRV6Config](#srv6config)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `basePrefix` _string_ | basePrefix is the CIDR to be used for the locator, offset by the router index. |  | MaxLength: 43 <br />MinLength: 1 <br />Required: \{\} <br /> |
+| `format` _string_ | format specifies the format of the locator. Defaults to usid-f3216 |  | Enum: [usid-f3216] <br />MaxLength: 40 <br />MinLength: 1 <br />Required: \{\} <br /> |
+
+
+#### SecretKeyRef
+
+
+
+SecretKeyRef references a key within a Kubernetes Secret in the same
+namespace as the Underlay.
+
+
+
+_Appears in:_
+- [Neighbor](#neighbor)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `name` _string_ | name is the name of the Secret in the same namespace. |  | MinLength: 1 <br />Required: \{\} <br /> |
+| `key` _string_ | key is the key within the Secret's data to select.<br />The controller defaults this to "password" when unset. |  | MinLength: 1 <br />Optional: \{\} <br /> |
+
+
 #### TunnelEndpointConfig
 
 
@@ -519,7 +993,7 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `cidrs` _string array_ | cidrs is a list of CIDRs to be used to assign IPs to the local tunnel endpoint on<br />each node. A loopback interface will be created with IPs derived from<br />these CIDRs. Exactly one IPv4 CIDR is required, and an optional IPv6<br />CIDR may also be specified for dual-stack operation. |  | MaxItems: 2 <br />MinItems: 1 <br />Required: \{\} <br /> |
+| `cidrs` _string array_ | cidrs is a list of CIDRs to be used to assign IPs to the local tunnel endpoint on<br />each node. IPs derived from these CIDRs will be assigned to the local loopback.<br />At least one IPv4 or IPv6 CIDR is required. At most one of each family may be specified. |  | MaxItems: 2 <br />MinItems: 1 <br />Required: \{\} <br /> |
 
 
 #### Underlay
@@ -534,11 +1008,52 @@ Underlay is the Schema for the underlays API.
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `apiVersion` _string_ | `openpe.openperouter.github.io/v1alpha1` | | |
+| `apiVersion` _string_ | `network.openperouter.io/v1alpha1` | | |
 | `kind` _string_ | `Underlay` | | |
 | `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  | Optional: \{\} <br /> |
 | `spec` _[UnderlaySpec](#underlayspec)_ | spec defines the desired state of Underlay. |  | Required: \{\} <br /> |
 | `status` _[UnderlayStatus](#underlaystatus)_ | status defines the observed state of Underlay. |  | Optional: \{\} <br /> |
+
+
+#### UnderlayInterface
+
+
+
+UnderlayInterface defines how the router obtains a single underlay link.
+Exactly one of the sub-structs must match the type field.
+The union is designed to be extended with future modes
+for controller-provisioned interfaces.
+
+
+
+_Appears in:_
+- [UnderlaySpec](#underlayspec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `type` _[UnderlayInterfaceType](#underlayinterfacetype)_ | type selects how the router obtains this underlay link. |  | Enum: [NetworkDevice CNIDevice] <br />Required: \{\} <br /> |
+| `networkDevice` _[NetworkDevice](#networkdevice)_ | networkDevice moves an existing host network device into the router netns.<br />The device can be of any kind (physical NIC, bridge, macvlan, etc.).<br />Must be set when type is "NetworkDevice". |  | Optional: \{\} <br /> |
+| `cniDevice` _[CNIDevice](#cnidevice)_ | cniDevice invokes a CNI plugin to provision an interface in the router<br />netns. IPAM is delegated to the CNI plugin. Must be set when type is<br />"CNIDevice". |  | Optional: \{\} <br /> |
+
+
+#### UnderlayInterfaceType
+
+_Underlying type:_ _string_
+
+UnderlayInterfaceType selects how the router obtains an underlay link.
+It is the discriminator of the UnderlayInterface union and is designed to be
+extended with future modes.
+
+_Validation:_
+- Enum: [NetworkDevice CNIDevice]
+
+_Appears in:_
+- [UnderlayInterface](#underlayinterface)
+
+| Field | Description |
+| --- | --- |
+| `NetworkDevice` | UnderlayInterfaceTypeNetworkDevice moves an existing host network device<br />into the router netns.<br /> |
+| `CNIDevice` | UnderlayInterfaceTypeCNIDevice invokes a CNI plugin to provision an interface<br />in the router netns.<br /> |
 
 
 #### UnderlaySpec
@@ -556,11 +1071,14 @@ _Appears in:_
 | --- | --- | --- | --- |
 | `nodeSelector` _[LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#labelselector-v1-meta)_ | nodeSelector specifies which nodes this Underlay applies to.<br />If empty or not specified, applies to all nodes (backward compatible).<br />Multiple Underlays with overlapping node selectors will be rejected. |  | Optional: \{\} <br /> |
 | `asn` _integer_ | asn is the local AS number to use for the session with the TOR switch. |  | Maximum: 4.294967295e+09 <br />Minimum: 1 <br />Required: \{\} <br /> |
-| `routeridcidr` _string_ | routeridcidr is the ipv4 cidr to be used to assign a different routerID on each node. | 10.0.0.0/24 | Optional: \{\} <br /> |
-| `neighbors` _[Neighbor](#neighbor) array_ | neighbors is the list of external BGP neighbors to peer with.<br />Note: MaxItems=128 is arbitrarily chosen to keep total CEL cost low<br />Note: kubeapilinter complained about 'the struct has no required fields', but CEL enforces either/or choices<br />for Address and Interface.<br />Multiple neighbors are supported for connecting to multiple TOR switches<br />or establishing redundant BGP sessions. Each neighbor address must be unique.<br />At least one neighbor is required. |  | MaxItems: 128 <br />MinItems: 1 <br />Required: \{\} <br /> |
-| `nics` _string array_ | nics is the list of physical nics to move under the PERouter namespace to connect<br />to external routers. At least one NIC is required. |  | MinItems: 1 <br />items:MaxLength: 15 <br />items:Pattern: `^[a-zA-Z][a-zA-Z0-9._-]*$` <br />Required: \{\} <br /> |
+| `routerIDCIDR` _string_ | routerIDCIDR is the ipv4 cidr to be used to assign a different routerID on each node. | 10.0.0.0/24 | Optional: \{\} <br /> |
+| `neighbors` _[Neighbor](#neighbor) array_ | neighbors is the list of external BGP neighbors to peer with.<br />Multiple neighbors are supported for connecting to multiple TOR switches<br />or establishing redundant BGP sessions. Each neighbor address must be unique.<br />At least one neighbor is required. |  | MaxItems: 128 <br />MinItems: 1 <br />Required: \{\} <br /> |
+| `interfaces` _[UnderlayInterface](#underlayinterface) array_ | interfaces is the list of interfaces the router uses for underlay<br />connectivity. Each entry is a discriminated union describing how the<br />interface is obtained. At least one interface is required. All the<br />entries must be of the same type: mixing NetworkDevice and CNIDevice<br />interfaces is not supported. |  | MinItems: 1 <br />Required: \{\} <br /> |
 | `tunnelEndpoint` _[TunnelEndpointConfig](#tunnelendpointconfig)_ | tunnelEndpoint contains tunnel endpoint configuration for the underlay. |  | Optional: \{\} <br /> |
 | `gracefulRestart` _[GracefulRestartConfig](#gracefulrestartconfig)_ | gracefulRestart configures BGP Graceful Restart behaviour.<br />When set, FRR advertises GR capability and preserves forwarding<br />state across restarts so that peers keep stale routes active.<br />Omit to disable graceful restart. |  | Optional: \{\} <br /> |
+| `isis` _[ISISConfig](#isisconfig)_ | isis holds the ISIS configuration for the underlay. |  | Optional: \{\} <br /> |
+| `srv6` _[SRV6Config](#srv6config)_ | srv6 holds the SRv6 configuration. Requires ISIS or Neighbors configuration. |  | Optional: \{\} <br /> |
+| `routeReflector` _[RouteReflectorConfig](#routereflectorconfig)_ | routeReflector configures the local FRR process as a BGP route reflector.<br />When set, the hostcontroller generates bgp cluster-id from clusterID<br />and derives bgp listen range and route-reflector-client stanzas from<br />neighbors with listenRange and the routeReflectorClient property.<br />Omit to run as a standard router without route reflection. |  | Optional: \{\} <br /> |
 
 
 #### UnderlayStatus

@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/vishvananda/netlink"
-	"k8s.io/utils/ptr"
 )
 
 // setupVXLan sets up a vxlan interface corresponding to the provided
@@ -24,8 +23,15 @@ func setupVXLan(params VNIParams, bridge *netlink.Bridge) error {
 	if err := setAddrGenModeNone(vxlan); err != nil {
 		return fmt.Errorf("failed to set addr_gen_mode to 1 for %s: %w", vxlan.Name, err)
 	}
-	if err := setNeighSuppression(vxlan); err != nil {
+	if err := netlink.LinkSetBrNeighSuppress(vxlan, true); err != nil {
 		return fmt.Errorf("failed to set neigh suppression for %s: %w", vxlan.Name, err)
+	}
+	// LinkSetLearning disables MAC learning for the bridge_slave. ip link syntax is:
+	// ip link set <...> type bridge_slave learning off
+	// Note that this is different from the VXLAN's 'nolearning' parameter (which we set inside createVXLan via
+	// Learning: false) and which disables VTEP learning.
+	if err := netlink.LinkSetLearning(vxlan, false); err != nil {
+		return fmt.Errorf("failed to disable MAC learning (learning off) for %s: %w", vxlan.Name, err)
 	}
 
 	if err = linkSetUp(vxlan); err != nil {
@@ -46,12 +52,16 @@ func checkVXLanConfigured(vxLan *netlink.Vxlan, bridgeIndex, loopbackIndex int, 
 		return fmt.Errorf("vxlanid is not vni: %d, %d", vxLan.VxlanId, params.VNI)
 	}
 
-	paramsVXLanPort := int(ptr.Deref(params.VXLanPort, 4789))
+	if params.VXLanPort == nil {
+		return errors.New("failed to parse VXLAN information, VXLAN port is nil")
+	}
+
+	paramsVXLanPort := int(*params.VXLanPort)
 	if vxLan.Port != paramsVXLanPort {
 		return fmt.Errorf("port is not one coming from params: %d, %d", vxLan.Port, paramsVXLanPort)
 	}
 	if vxLan.Learning {
-		return fmt.Errorf("learning is enabled")
+		return errors.New("VTEP learning is enabled")
 	}
 	if err := validateVxlan(vxLan, params); err != nil {
 		return err
@@ -73,6 +83,10 @@ func createVXLan(params VNIParams, bridge *netlink.Bridge) (*netlink.Vxlan, erro
 		return nil, fmt.Errorf("failed to parse vtep ip %v: %w", params.VTEPIP, err)
 	}
 
+	if params.VXLanPort == nil {
+		return nil, errors.New("failed to parse VXLAN information, VXLAN port is nil")
+	}
+
 	vxlanName := vxLanNameFromVNI(params.VNI)
 	toCreate := &netlink.Vxlan{
 		LinkAttrs: netlink.LinkAttrs{
@@ -80,8 +94,8 @@ func createVXLan(params VNIParams, bridge *netlink.Bridge) (*netlink.Vxlan, erro
 			MasterIndex: bridge.Index,
 		},
 		VxlanId:      int(params.VNI),
-		Port:         int(ptr.Deref(params.VXLanPort, 4789)),
-		Learning:     false,
+		Port:         int(*params.VXLanPort),
+		Learning:     false, // Disable VTEP learning (ip link add <...> type vxlan <...> nolearning).
 		VtepDevIndex: loopback.Index,
 		SrcAddr:      vtepIP,
 	}

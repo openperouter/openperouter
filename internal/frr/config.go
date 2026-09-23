@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"regexp"
+	"strings"
 	"text/template"
 
 	"github.com/openperouter/openperouter/internal/networklayerprotocol"
@@ -28,7 +30,9 @@ type Config struct {
 	Loglevel    string
 	Hostname    string
 	Underlay    UnderlayConfig
-	VNIs        []L3VNIConfig
+	L2VNIs      []L2VNIConfig
+	L3VNIs      []L3VNIConfig
+	VPNs        []L3VPNConfig
 	Passthrough *PassthroughConfig
 	BFDProfiles []BFDProfile
 	RawConfig   []RawFRRSnippet
@@ -45,11 +49,71 @@ type UnderlayConfig struct {
 	Neighbors       []NeighborConfig
 	TunnelEndpoint  *TunnelEndpoint
 	GracefulRestart *GracefulRestart
+	ISIS            *UnderlayISIS
+	SegmentRouting  *UnderlaySegmentRouting
+	RouteReflector  *RouteReflector
+	// ListenLimit caps the number of dynamic sessions accepted via bgp
+	// listen range. When zero, DefaultListenLimit is rendered.
+	ListenLimit uint16
+}
+
+// DefaultListenLimit raises the FRR default dynamic neighbors cap (100) to
+// the maximum, needed to properly support listen ranges since we don't know
+// the amount of neighbors from the get go.
+const DefaultListenLimit = 65535
+
+// RouteReflector holds the BGP route reflector parameters of the local
+// router (RFC 4456).
+type RouteReflector struct {
+	ClusterID string
+}
+
+// HasListenRange reports whether at least one underlay neighbor accepts
+// dynamic sessions via bgp listen range.
+func (u UnderlayConfig) HasListenRange() bool {
+	for _, n := range u.Neighbors {
+		if n.ListenRange != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// BGPListenLimit returns the dynamic neighbors cap to render, falling back
+// to DefaultListenLimit when the limit is not set.
+func (u UnderlayConfig) BGPListenLimit() uint16 {
+	if u.ListenLimit == 0 {
+		return DefaultListenLimit
+	}
+	return u.ListenLimit
 }
 
 type TunnelEndpoint struct {
 	IPv4CIDR string
 	IPv6CIDR string
+}
+
+type UnderlayISIS struct {
+	Name                 string
+	Net                  ISISNet
+	Level                int32
+	AdvertisePassiveOnly bool
+	Interfaces           []ISISInterface
+}
+
+type UnderlaySegmentRouting struct {
+	SourceAddress string
+	Locator       SRV6Locator
+	EncapBehavior string
+}
+
+type SRV6Locator struct {
+	Name     string
+	Prefix   string
+	BlockLen int
+	NodeLen  int
+	Behavior string
+	Format   string
 }
 
 type PassthroughConfig struct {
@@ -71,13 +135,29 @@ type L3VNIConfig struct {
 	ImportRTs       []string
 }
 
+type L2VNIConfig struct {
+	VNI       int32
+	ExportRTs []string
+	ImportRTs []string
+}
+
+type L3VPNConfig struct {
+	ASN                int64
+	ToAdvertiseIPv4    []string
+	ToAdvertiseIPv6    []string
+	LocalNeighbor      *NeighborConfig
+	VRF                string
+	RouterID           string
+	ExportRTs          []string
+	ImportRTs          []string
+	RouteDistinguisher string
+}
+
 type BFDProfile struct {
 	Name             string
 	ReceiveInterval  *int32
 	TransmitInterval *int32
 	DetectMultiplier *int32
-	EchoInterval     *int32
-	EchoMode         bool
 	PassiveMode      bool
 	MinimumTTL       *int32
 }
@@ -96,12 +176,70 @@ type NeighborConfig struct {
 	BFDEnabled            bool
 	BFDProfile            string
 	EBGPMultiHop          bool
+	EBGPMultiHopTTL       *int32
 	NetworkLayerProtocols []networklayerprotocol.NLP
+	// ListenRange turns the neighbor into a peer-group accepting dynamic
+	// sessions from the given CIDR via bgp listen range. ID holds the
+	// peer-group name.
+	ListenRange string
 	// Allow bgp to negotiate the extended-nexthop capability with its peer. If you are peering over a v6 LL address
 	// then this capability is turned on automatically.
 	// If you are peering over a v6 Global Address then turning on this command will allow BGP to install v4 routes
 	// with v6 nexthops if you do not have v4 configured on interfaces.
 	ExtendedNexthop bool
+	UpdateSource    string
+}
+
+// ActivateFor tells whether the neighbor activates the given address family.
+func (n NeighborConfig) ActivateFor(afi networklayerprotocol.AFI, safi networklayerprotocol.SAFI) bool {
+	return networklayerprotocol.HasNLP(n.NetworkLayerProtocols, networklayerprotocol.NLP{AFI: afi, SAFI: safi})
+}
+
+// IsRouteReflectorClientFor tells whether the neighbor is a route reflector
+// client in the given address family.
+func (n NeighborConfig) IsRouteReflectorClientFor(afi networklayerprotocol.AFI, safi networklayerprotocol.SAFI) bool {
+	nlp := networklayerprotocol.FindNLP(
+		n.NetworkLayerProtocols,
+		networklayerprotocol.NLP{
+			AFI:  afi,
+			SAFI: safi,
+		},
+	)
+
+	if nlp == nil {
+		return false
+	}
+
+	return nlp.Properties.RouteReflectorClient
+}
+
+var frrPasswordRe = regexp.MustCompile(`(neighbor .*) password (.*)`)
+
+func (nc NeighborConfig) LogValue() slog.Value {
+	type noLogValuer NeighborConfig
+	val := noLogValuer(nc)
+	val.Password = "<REDACTED>"
+	return slog.AnyValue(val)
+}
+
+func RedactPasswords(config string) string {
+	return frrPasswordRe.ReplaceAllString(config, "${1} password <REDACTED>")
+}
+
+// shouldRenderUnderlayEVPN tells whether the underlay needs the l2vpn evpn
+// address family block. Data-plane underlays render it whenever a tunnel
+// endpoint exists; route-reflector-only nodes render it when a neighbor
+// activates the l2vpn evpn family without a tunnel endpoint.
+func shouldRenderUnderlayEVPN(underlay UnderlayConfig) bool {
+	if underlay.TunnelEndpoint != nil {
+		return true
+	}
+	for _, n := range underlay.Neighbors {
+		if n.ActivateFor(networklayerprotocol.L2VPN, networklayerprotocol.EVPN) {
+			return true
+		}
+	}
+	return false
 }
 
 // templateConfig uses the template library to template
@@ -130,8 +268,14 @@ func templateConfig(data any) (string, error) {
 				}
 				return dict, nil
 			},
-			"mustDisableConnectedCheck": func(nlps []networklayerprotocol.NLP, myASN int64, peerASN PeerASN,
-				eBGPMultiHop bool) bool {
+			"mustDisableConnectedCheck": func(addr string, nlps []networklayerprotocol.NLP, myASN int64,
+				peerASN PeerASN, eBGPMultiHop bool) bool {
+				// Neighbors configured over an interface are directly connected by
+				// definition, and FRR rejects disable-connected-check for them, which
+				// makes the whole reload fail.
+				if addr == "" {
+					return false
+				}
 				// Return true only if neighbor establishes an IPv6 eBGP session.
 				return networklayerprotocol.HasUnicastFamily(nlps, networklayerprotocol.IPv6) &&
 					!eBGPMultiHop && peerASN.IsExternalTo(myASN)
@@ -139,10 +283,10 @@ func templateConfig(data any) (string, error) {
 			"isEBGP": func(myASN int64, peerASN PeerASN) bool {
 				return peerASN.IsExternalTo(myASN)
 			},
-			"activateNeighborFor": func(nlps []networklayerprotocol.NLP, afi networklayerprotocol.AFI,
-				safi networklayerprotocol.SAFI) bool {
-				return networklayerprotocol.HasNLP(nlps, networklayerprotocol.NLP{AFI: afi, SAFI: safi})
+			"join": func(s []string) string {
+				return strings.Join(s, " ")
 			},
+			"renderUnderlayEVPN": shouldRenderUnderlayEVPN,
 		}).ParseFS(templates, "templates/*")
 	if err != nil {
 		return "", err
@@ -160,17 +304,15 @@ func generateAndReloadConfigFile(ctx context.Context, config *Config, updater Co
 	slog.InfoContext(ctx, "frr generate config", "event", "start")
 	defer slog.InfoContext(ctx, "frr generate config", "event", "stop")
 
-	slog.DebugContext(ctx, "frr generate config", "config", *config)
-
 	configString, err := templateConfig(config)
 	if err != nil {
-		slog.Error("failed to generate config from template", "error", err, "cause", "template", "config", config)
+		slog.Error("failed to generate config from template", "error", err, "cause", "template")
 		return err
 	}
-	slog.DebugContext(ctx, "frr generaetd configuration", "config", configString)
+	slog.DebugContext(ctx, "frr generated configuration", "config", RedactPasswords(configString))
 	err = updater(ctx, configString)
 	if err != nil {
-		slog.Error("failed to write frr config", "error", err, "cause", "updater", "config", config)
+		slog.Error("failed to write frr config", "error", err, "cause", "updater")
 		return err
 	}
 	return nil

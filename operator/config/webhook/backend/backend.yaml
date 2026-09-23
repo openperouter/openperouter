@@ -54,7 +54,7 @@ spec:
         - name: cert
           mountPath: /tmp/k8s-webhook-server/serving-certs
           readOnly: true
-      serviceAccountName: controller
+      serviceAccountName: nodemarker
       volumes:
         - name: cert
           secret:

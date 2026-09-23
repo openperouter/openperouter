@@ -15,15 +15,17 @@ For passthrough mode, the underlay configuration is simpler than EVPN mode as it
 ### Basic Underlay Configuration
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: Underlay
 metadata:
   name: underlay
   namespace: openperouter-system
 spec:
   asn: 64514
-  nics:
-    - toswitch
+  interfaces:
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: toswitch
   neighbors:
     - asn: 64512
       address: 192.168.11.2
@@ -34,7 +36,7 @@ spec:
 | Field | Type | Description | Required |
 |-------|------|-------------|----------|
 | `asn` | integer | Local ASN for BGP sessions | Yes |
-| `nics` | array | List of network interface names to move to router namespace | Yes |
+| `interfaces` | array | List of underlay interfaces to use for connectivity. Each entry is a discriminated union; the `NetworkDevice` type moves an existing host network device into the router namespace, while the `CNIDevice` type provisions an interface inside the router namespace via a CNI plugin. All entries must use the same type: mixing `NetworkDevice` and `CNIDevice` interfaces is rejected | Yes |
 | `neighbors` | array | List of BGP neighbors to peer with | Yes |
 | `nodeSelector` | object | Label selector to target specific nodes (applies to all nodes if omitted) | No |
 
@@ -47,27 +49,26 @@ L3 Passthrough configurations define direct BGP connectivity between the host an
 ### Basic L3Passthrough Configuration
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3Passthrough
 metadata:
   name: passthrough
   namespace: openperouter-system
 spec:
-  hostsession:
+  hostSession:
     asn: 64514
-    hostasn: 64515
-    localcidr:
-      ipv4: 192.169.10.0/24
+    hostASN: 64515
+    localCIDRs:
+      - 192.169.10.0/24
 ```
 
 ### Configuration Fields
 
 | Field | Type | Description | Required |
 |-------|------|-------------|----------|
-| `hostsession.asn` | integer | Router ASN for BGP session with host | Yes |
-| `hostsession.hostasn` | integer | Host ASN for BGP session | Yes |
-| `hostsession.localcidr.ipv4` | string | IPv4 CIDR for veth pair IP allocation | No |
-| `hostsession.localcidr.ipv6` | string | IPv6 CIDR for veth pair IP allocation | No |
+| `hostSession.asn` | integer | Router ASN for BGP session with host | Yes |
+| `hostSession.hostASN` | integer | Host ASN for BGP session | Yes |
+| `hostSession.localCIDRs` | []string | CIDRs for veth pair IP allocation (at most one per family) | Yes |
 | `nodeSelector` | object | Label selector to target specific nodes (applies to all nodes if omitted) | No |
 
 ### Dual Stack Configuration
@@ -75,23 +76,23 @@ spec:
 You can configure both IPv4 and IPv6 for dual stack support:
 
 ```yaml
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3Passthrough
 metadata:
   name: passthrough-dual
   namespace: openperouter-system
 spec:
-  hostsession:
+  hostSession:
     asn: 64514
-    hostasn: 64515
-    localcidr:
-      ipv4: 192.169.10.0/24
-      ipv6: 2001:db8:10::/64
+    hostASN: 64515
+    localCIDRs:
+      - 192.169.10.0/24
+      - 2001:db8:10::/64
 ```
 
 ### IP Allocation Strategy
 
-The IP addresses for the veth pair are allocated from the configured `localcidr`:
+The IP addresses for the veth pair are allocated from the configured `localCIDRs`:
 
 - **Router side**: Always gets the first IP in the CIDR (e.g., `192.169.10.1`)
 - **Host side**: Each node gets a different IP from the CIDR, starting from the second value (e.g., `192.169.10.2`)
@@ -103,7 +104,7 @@ This consistent allocation strategy ensures that BGP-speaking components on the 
 When you create or update L3Passthrough configurations, OpenPERouter automatically:
 
 1. **Creates Veth Pair**: Sets up a veth pair named `pt-host` (host side) and `pt-ns` (router side)
-2. **Assigns IP Addresses**: Allocates IPs from the `localcidr` range:
+2. **Assigns IP Addresses**: Allocates IPs from the `localCIDRs` range:
    - Router side: First IP in the CIDR (e.g., `192.169.10.1`)
    - Host side: Second IP in the CIDR (e.g., `192.169.10.2`)
 3. **Establishes BGP Session**: Opens BGP session between router and host using the specified ASNs

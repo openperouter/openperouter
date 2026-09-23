@@ -23,7 +23,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
-	"k8s.io/utils/ptr"
 )
 
 var (
@@ -33,7 +32,7 @@ var (
 	leafBDefaultPrefixes = []string{"192.170.21.0/24"}
 )
 
-var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Label("passthrough"), Ordered, func() {
+var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Label("passthrough"), GroutSupport, Ordered, func() {
 	var cs clientset.Interface
 	var routers openperouter.Routers
 
@@ -44,12 +43,9 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Labe
 		},
 		Spec: v1alpha1.L3PassthroughSpec{
 			HostSession: v1alpha1.HostSession{
-				ASN:     64514,
-				HostASN: new(int64(64515)),
-				LocalCIDR: v1alpha1.LocalCIDRConfig{
-					IPv4: new("192.169.10.0/24"),
-					IPv6: new("2001:db8:1::/64"),
-				},
+				ASN:        64514,
+				HostASN:    new(int64(64515)),
+				LocalCIDRs: []string{"192.169.10.0/24", "2001:db8:1::/64"},
 			},
 		},
 	}
@@ -84,6 +80,19 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Labe
 
 		err := Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
+
+		nodesItems, err := cs.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		By("waiting for the underlay to be removed from all nodes")
+		for _, node := range nodesItems.Items {
+			Eventually(func(g Gomega) {
+				isConfigured, err := openperouter.UnderlayConfigured(node.Name)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(isConfigured).To(BeFalse())
+			}, 2*time.Minute, time.Second).Should(Succeed())
+		}
+
 		By("waiting for all router pods to be ready after removing the underlay")
 		Eventually(func() error {
 			routers, err := openperouter.Get(cs, HostMode)
@@ -225,7 +234,7 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Labe
 		})
 
 		It("host and the pod from each other with the expected ips", func() {
-			hostSide, err := openperouter.HostIPFromCIDRForNode(ptr.Deref(passthrough.Spec.HostSession.LocalCIDR.IPv4, ""), podNode)
+			hostSide, err := openperouter.HostIPFromCIDRForNode(ipfamily.CIDRForFamily(passthrough.Spec.HostSession.LocalCIDRs, ipfamily.IPv4), podNode)
 			Expect(err).NotTo(HaveOccurred())
 
 			podIP, err := getPodIPByFamily(testPod, ipfamily.IPv4)
@@ -261,16 +270,13 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Labe
 
 				By(fmt.Sprintf("trying to hit pod %s on the passthrough network from host %s", podIP, hostName))
 
-				urlStr = url.Format("http://%s:8090/clientip", podIP)
+				urlStr = url.Format("http://%s:8090/hostname", podIP)
 				res, err = externalHostExecutor.Exec("curl", "-sS", urlStr)
 				if err != nil {
 					return fmt.Errorf("curl from %s to %s:8090 failed: %s", hostName, podIP, res)
 				}
-				hostClientIP, err := extractClientIP(res)
-				Expect(err).NotTo(HaveOccurred())
-
-				if hostClientIP != externalHostIP {
-					return fmt.Errorf("curl from %s to %s:8090 returned %s, expected %s", hostName, podIP, clientIP, externalHostIP)
+				if res != testPod.Name {
+					return fmt.Errorf("curl from %s to %s:8090 returned hostname %s, expected %s", hostName, podIP, res, testPod.Name)
 				}
 				return nil
 			}, 5*time.Minute, 5*time.Second).ShouldNot(HaveOccurred())

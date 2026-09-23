@@ -4,6 +4,7 @@ package frr
 
 import (
 	"bytes"
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -14,12 +15,14 @@ import (
 
 	"errors"
 
-	"github.com/ory/dockertest/v3"
+	"github.com/moby/moby/api/types/container"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 var (
-	containerHandle *dockertest.Resource
-	frrDir          string
+	frrContainer testcontainers.Container
+	frrDir       string
 )
 
 const (
@@ -44,26 +47,28 @@ func TestMain(m *testing.M) {
 }
 
 func testWithDocker(m *testing.M) {
-	pool, err := dockertest.NewPool("")
-	if err != nil {
-		log.Fatalf("failed to create dockertest pool %s", err)
-	}
+	ctx := context.Background()
 
+	var err error
 	frrDir, err = os.MkdirTemp("/tmp", "frr_integration")
 	if err != nil {
 		log.Fatalf("failed to create temp dir %s", err)
 	}
 
-	containerHandle, err = pool.RunWithOptions(
-		&dockertest.RunOptions{
-			Name:       "frrtest",
-			Repository: "quay.io/frrouting/frr",
-			Tag:        frrImageTag,
-			Mounts:     []string{fmt.Sprintf("%s:/etc/tempfrr", frrDir)},
+	req := testcontainers.ContainerRequest{
+		Image: fmt.Sprintf("quay.io/frrouting/frr:%s", frrImageTag),
+		HostConfigModifier: func(hc *container.HostConfig) {
+			hc.Binds = append(hc.Binds, fmt.Sprintf("%s:/etc/tempfrr", frrDir))
 		},
-	)
+		WaitingFor: wait.ForExec([]string{"vtysh", "-c", "show version"}),
+	}
+
+	frrContainer, err = testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
 	if err != nil {
-		log.Fatalf("failed to run container %s", err)
+		log.Fatalf("failed to start container %s", err)
 	}
 
 	cmd := exec.Command("cp", "testdata/vtysh.conf", filepath.Join(frrDir, "vtysh.conf"))
@@ -71,19 +76,16 @@ func testWithDocker(m *testing.M) {
 	if err != nil {
 		log.Fatalf("failed to move vtysh.conf to %s - %s - %s", frrDir, err, res)
 	}
-	buf := new(bytes.Buffer)
-	resCode, err := containerHandle.Exec([]string{"cp", "/etc/tempfrr/vtysh.conf", "/etc/frr/vtysh.conf"},
-		dockertest.ExecOptions{
-			StdErr: buf,
-		})
-	if err != nil || resCode != 0 {
-		log.Fatalf("failed to move vtysh.conf inside the container - res %d %s %s", resCode, err, buf.String())
+
+	code, _, err := frrContainer.Exec(ctx, []string{"cp", "/etc/tempfrr/vtysh.conf", "/etc/frr/vtysh.conf"})
+	if err != nil || code != 0 {
+		log.Fatalf("failed to move vtysh.conf inside the container - res %d %s", code, err)
 	}
 
 	retCode := m.Run()
-	// You can't defer this because os.Exit doesn't care for defer
-	if err := pool.Purge(containerHandle); err != nil {
-		log.Fatalf("failed to purge %s - %s", containerHandle.Container.Name, err)
+
+	if err := frrContainer.Terminate(ctx); err != nil {
+		log.Fatalf("failed to terminate container %s", err)
 	}
 	if err := os.RemoveAll(frrDir); err != nil {
 		log.Fatalf("failed to remove all from %s - %s", frrDir, err)
@@ -109,20 +111,25 @@ func testFileIsValid(fileName string) error {
 	if err != nil {
 		return errors.Join(err, fmt.Errorf("failed to copy %s to %s: %s", fileName, frrDir, string(res)))
 	}
-	_, err = containerHandle.Exec([]string{"cp", "/etc/tempfrr/frr.conf", "/etc/frr/frr.conf"},
-		dockertest.ExecOptions{})
+
+	ctx := context.Background()
+	code, _, err := frrContainer.Exec(ctx, []string{"cp", "/etc/tempfrr/frr.conf", "/etc/frr/frr.conf"})
 	if err != nil {
 		return errors.Join(err, errors.New("failed to copy frr.conf inside the container"))
 	}
+	if code != 0 {
+		return fmt.Errorf("failed to copy frr.conf inside the container, exit code: %d", code)
+	}
+
 	bufErr := new(bytes.Buffer)
 	bufOut := new(bytes.Buffer)
-	code, err := containerHandle.Exec([]string{"python3", "/usr/lib/frr/frr-reload.py", "--test", "--stdout", "/etc/frr/frr.conf"},
-		dockertest.ExecOptions{
-			StdOut: bufOut,
-			StdErr: bufErr,
-		})
+	code, reader, err := frrContainer.Exec(ctx, []string{"python3", "/usr/lib/frr/frr-reload.py", "--test", "--stdout", "/etc/frr/frr.conf"})
 	if err != nil {
 		return errors.Join(err, errors.New("failed to exec reloader into the container"))
+	}
+
+	if reader != nil {
+		_, _ = bufOut.ReadFrom(reader)
 	}
 
 	if code != 0 {

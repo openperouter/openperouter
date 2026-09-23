@@ -41,10 +41,12 @@
             ],
             "default": "info"
           },
-          "tolerateMaster": {
-            "type": "boolean",
-            "description": "Specifies if the controller should tolerate running on the master node.",
-            "default": true
+          "bgpListenLimit": {
+            "type": "integer",
+            "description": "Maximum number of dynamic BGP sessions accepted via underlay listen ranges (FRR `bgp listen limit`).",
+            "minimum": 1,
+            "maximum": 65535,
+            "default": 65535
           },
           "image": {
             "type": "object",
@@ -133,13 +135,29 @@
               "annotations": {}
             }
           },
+          "nodeSelector": {
+            "type": "object",
+            "description": "Node selector to constrain all openperouter pods (router, controller, nodemarker, hostbridge) to nodes with matching labels.",
+            "default": {}
+          },
           "tolerations": {
             "type": "array",
-            "description": "Tolerations to add to the controller pods.",
+            "description": "Tolerations for all openperouter pods (router, controller, nodemarker, hostbridge). Defaults to tolerating control-plane/master node taints.",
             "items": {
               "type": "object"
             },
-            "default": []
+            "default": [
+              {
+                "key": "node-role.kubernetes.io/master",
+                "operator": "Exists",
+                "effect": "NoSchedule"
+              },
+              {
+                "key": "node-role.kubernetes.io/control-plane",
+                "operator": "Exists",
+                "effect": "NoSchedule"
+              }
+            ]
           },
           "priorityClassName": {
             "type": "string",
@@ -148,7 +166,7 @@
           },
           "affinity": {
             "type": "object",
-            "description": "Affinity settings for the controller pods.",
+            "description": "Affinity rules for all openperouter pods (router, controller, nodemarker, hostbridge).",
             "default": {}
           },
           "runtimeClassName": {
@@ -336,6 +354,79 @@
               "reloader": {}
             }
           },
+          "datapath": {
+            "type": "string",
+            "description": "Datapath to use for L3 forwarding. \"kernel\" uses the standard Linux kernel datapath; \"grout\" adds a DPDK-accelerated sidecar that runs alongside FRR.",
+            "enum": [
+              "kernel",
+              "grout"
+            ],
+            "default": "kernel"
+          },
+          "grout": {
+            "type": "object",
+            "description": "Configuration for the grout DPDK dataplane sidecar. Only used when datapath is set to \"grout\".",
+            "properties": {
+              "testMode": {
+                "type": "boolean",
+                "description": "Run grout in test mode. Test mode requires no hugepages and uses dummy FIB algorithms. Leave it disabled for a hugepage-backed dataplane, requesting hugepages under grout.resources.",
+                "default": false
+              },
+              "image": {
+                "type": "object",
+                "description": "Configuration for the grout container image.",
+                "properties": {
+                  "repository": {
+                    "type": "string",
+                    "description": "The repository for the grout container image.",
+                    "default": "quay.io/openperouter/router"
+                  },
+                  "tag": {
+                    "type": "string",
+                    "description": "The tag for the grout container image."
+                  },
+                  "pullPolicy": {
+                    "type": "string",
+                    "description": "The pull policy for the grout container image."
+                  }
+                },
+                "default": {
+                  "repository": "quay.io/openperouter/router"
+                }
+              },
+              "resources": {
+                "type": "object",
+                "description": "Resource requests and limits for the grout container.",
+                "properties": {
+                  "limits": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": [
+                        "string",
+                        "integer"
+                      ]
+                    }
+                  },
+                  "requests": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": [
+                        "string",
+                        "integer"
+                      ]
+                    }
+                  }
+                },
+                "default": {}
+              }
+            },
+            "default": {
+              "testMode": false,
+              "image": {
+                "repository": "quay.io/openperouter/router"
+              }
+            }
+          },
           "cri": {
             "type": "string",
             "description": "cri to bind its socket, can be containerd or crio.",
@@ -348,7 +439,6 @@
         },
         "default": {
           "logLevel": "info",
-          "tolerateMaster": true,
           "image": {
             "repository": "quay.io/openperouter/router"
           },
@@ -361,7 +451,19 @@
             "perouter": {},
             "annotations": {}
           },
-          "tolerations": [],
+          "nodeSelector": {},
+          "tolerations": [
+            {
+              "key": "node-role.kubernetes.io/master",
+              "operator": "Exists",
+              "effect": "NoSchedule"
+            },
+            {
+              "key": "node-role.kubernetes.io/control-plane",
+              "operator": "Exists",
+              "effect": "NoSchedule"
+            }
+          ],
           "priorityClassName": "",
           "affinity": {},
           "runtimeClassName": "",
@@ -378,6 +480,14 @@
           "frr": {
             "resources": {},
             "reloader": {}
+          },
+          "grout": {
+            "enabled": false,
+            "image": {
+              "repository": "quay.io/openperouter/router"
+            },
+            "logLevel": "info",
+            "initScript": ""
           },
           "cri": "containerd"
         }

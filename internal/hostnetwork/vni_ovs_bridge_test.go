@@ -42,6 +42,7 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 			HostMaster: &HostMaster{Type: OVSBridgeLinkType, AutoCreate: new(true)},
 		}
 
+		createVRFInNamespace(testNS, params.VRF)
 		err := SetupL2VNI(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -56,6 +57,8 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 		By("removing the VNI")
 		err = RemoveNonConfiguredVNIs(testNSPath(), []VNIParams{})
 		Expect(err).NotTo(HaveOccurred())
+		err = RemoveNonConfiguredVRFs(testNSPath(), map[string]bool{})
+		Expect(err).NotTo(HaveOccurred())
 
 		By("checking the VNI and OVS bridge are removed")
 		vethNames := vethNamesFromVNI(params.VNI)
@@ -64,6 +67,9 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 			checkOVSHostBridgeDeleted(g, params)
 			_ = netnamespace.In(testNS, func() error {
 				validateVNIIsNotConfigured(g, params.VNIParams)
+				if params.VRF != "" {
+					checkLinkdeleted(g, params.VRF)
+				}
 				return nil
 			})
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
@@ -73,6 +79,7 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 		const bridgeName = "test-ovs-br"
 		Expect(createExternalOVSBridge(bridgeName)).To(Succeed(), "must pre-provision an OVS bridge")
 
+		createVRFInNamespace(testNS, "testred")
 		params := L2VNIParams{
 			VNIParams: VNIParams{
 				VRF: "testred", TargetNS: testNSPath(),
@@ -93,6 +100,8 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 		By("removing the VNI")
 		err = RemoveNonConfiguredVNIs(testNSPath(), []VNIParams{})
 		Expect(err).NotTo(HaveOccurred())
+		err = RemoveNonConfiguredVRFs(testNSPath(), map[string]bool{})
+		Expect(err).NotTo(HaveOccurred())
 
 		By("checking the bridge persists but veth is cleaned up")
 		vethNames := vethNamesFromVNI(params.VNI)
@@ -102,6 +111,9 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 			checkVethNotAttachedToOVSBridge(g, bridgeName, vethNames.HostSide)
 			_ = netnamespace.In(testNS, func() error {
 				validateVNIIsNotConfigured(g, params.VNIParams)
+				if params.VRF != "" {
+					checkLinkdeleted(g, params.VRF)
+				}
 				return nil
 			})
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
@@ -124,6 +136,8 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 			HostMaster: &HostMaster{Type: OVSBridgeLinkType, AutoCreate: new(true)},
 		}
 
+		createVRFInNamespace(testNS, params1.VRF)
+		createVRFInNamespace(testNS, params2.VRF)
 		err := SetupL2VNI(context.Background(), params1)
 		Expect(err).NotTo(HaveOccurred())
 		err = SetupL2VNI(context.Background(), params2)
@@ -136,6 +150,8 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 
 		By("removing VNI 100, keeping VNI 101")
 		err = RemoveNonConfiguredVNIs(testNSPath(), []VNIParams{params2.VNIParams})
+		Expect(err).NotTo(HaveOccurred())
+		err = RemoveNonConfiguredVRFs(testNSPath(), map[string]bool{params2.VRF: true})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("checking VNI 100 removed, VNI 101 persists")
@@ -154,6 +170,7 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 			HostMaster: &HostMaster{Type: OVSBridgeLinkType, AutoCreate: new(true)},
 		}
 
+		createVRFInNamespace(testNS, params.VRF)
 		err := SetupL2VNI(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -177,6 +194,7 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 			HostMaster:   &HostMaster{Type: OVSBridgeLinkType, AutoCreate: new(true)},
 		}
 
+		createVRFInNamespace(testNS, params.VRF)
 		err := SetupL2VNI(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 

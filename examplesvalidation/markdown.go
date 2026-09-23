@@ -12,7 +12,8 @@ import (
 // ExtractYAMLFromMarkdown extracts YAML code blocks from a markdown file.
 // It scans the file for fenced code blocks marked with ```yaml or ```yml,
 // extracts their content, and filters to include only blocks containing
-// OpenPERouter custom resources.
+// OpenPERouter custom resources. The files must contain apiVersionSearchString
+// to be considered.
 // Returns a slice of YAML content strings and any error encountered.
 func extractYAMLFromMarkdown(filePath string) ([]string, error) {
 	file, err := os.Open(filePath)
@@ -45,7 +46,7 @@ func extractYAMLFromMarkdown(filePath string) ([]string, error) {
 		if inYAMLBlock && yamlBlockEnd.MatchString(line) {
 			inYAMLBlock = false
 			yamlContent := currentBlock.String()
-			if containsOpenPERouterCR(yamlContent) {
+			if containsAPIVersionSearchString(yamlContent) {
 				yamlBlocks = append(yamlBlocks, yamlContent)
 			}
 			continue
@@ -55,6 +56,9 @@ func extractYAMLFromMarkdown(filePath string) ([]string, error) {
 			currentBlock.WriteString(line)
 			currentBlock.WriteString("\n")
 		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
 	}
 
 	return yamlBlocks, nil

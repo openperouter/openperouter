@@ -18,6 +18,11 @@ func CreateNamespace(cs clientset.Interface, name string) (*corev1.Namespace, er
 	_, err := cs.CoreV1().Namespaces().Create(context.Background(), &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
+			Labels: map[string]string{
+				"pod-security.kubernetes.io/enforce": "privileged",
+				"pod-security.kubernetes.io/audit":   "privileged",
+				"pod-security.kubernetes.io/warn":    "privileged",
+			},
 		},
 	}, metav1.CreateOptions{})
 	if err != nil {

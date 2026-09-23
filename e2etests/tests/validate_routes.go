@@ -11,10 +11,10 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/executor"
 	"github.com/openperouter/openperouter/e2etests/pkg/frr"
 	"github.com/openperouter/openperouter/e2etests/pkg/infra"
+	"github.com/openperouter/openperouter/e2etests/pkg/ipfamily"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/utils/ptr"
 )
 
 func checkBGPPrefixesForHostSession(frrk8s *corev1.Pod, hostSession v1alpha1.HostSession, prefixes []string, shouldExist bool) {
@@ -25,11 +25,11 @@ func checkBGPPrefixesForHostSession(frrk8s *corev1.Pod, hostSession v1alpha1.Hos
 
 		ipv4Prefixes, ipv6Prefixes := infra.SeparateIPFamilies(prefixes)
 
-		if err := checkPrefixesForIPFamily(frrk8s, ipv4Prefixes, ptr.Deref(hostSession.LocalCIDR.IPv4, ""), "IPv4", shouldExist, ipv4Routes); err != nil {
+		if err := checkPrefixesForIPFamily(frrk8s, ipv4Prefixes, ipfamily.CIDRForFamily(hostSession.LocalCIDRs, ipfamily.IPv4), "IPv4", shouldExist, ipv4Routes); err != nil {
 			return err
 		}
 
-		if err := checkPrefixesForIPFamily(frrk8s, ipv6Prefixes, ptr.Deref(hostSession.LocalCIDR.IPv6, ""), "IPv6", shouldExist, ipv6Routes); err != nil {
+		if err := checkPrefixesForIPFamily(frrk8s, ipv6Prefixes, ipfamily.CIDRForFamily(hostSession.LocalCIDRs, ipfamily.IPv6), "IPv6", shouldExist, ipv6Routes); err != nil {
 			return err
 		}
 

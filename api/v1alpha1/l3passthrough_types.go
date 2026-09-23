@@ -27,9 +27,9 @@ type L3PassthroughSpec struct {
 	// +optional
 	NodeSelector *metav1.LabelSelector `json:"nodeSelector,omitempty"`
 
-	// hostsession is the configuration for the host session.
+	// hostSession is the configuration for the host session.
 	// +required
-	HostSession HostSession `json:"hostsession,omitzero,omitempty"`
+	HostSession HostSession `json:"hostSession,omitzero,omitempty"`
 }
 
 // L3PassthroughStatus defines the observed state of L3Passthrough.
@@ -40,7 +40,10 @@ type L3PassthroughStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:webhook:verbs=create;update,path=/validate-openperouter-io-v1alpha1-l3passthrough,mutating=false,failurePolicy=fail,groups=openpe.openperouter.github.io,resources=l3passthroughs,versions=v1alpha1,name=l3passthroughvalidationwebhook.openperouter.io,sideEffects=None,admissionReviewVersions=v1
+// +kubebuilder:webhook:verbs=create;update,path=/validate-openperouter-io-v1alpha1-l3passthrough,mutating=false,failurePolicy=fail,groups=network.openperouter.io,resources=l3passthroughs,versions=v1alpha1,name=l3passthroughvalidationwebhook.openperouter.io,sideEffects=None,admissionReviewVersions=v1
+// +kubebuilder:printcolumn:name="ASN",type=integer,JSONPath=`.spec.hostSession.asn`
+// +kubebuilder:printcolumn:name="HostASN",type=integer,JSONPath=`.spec.hostSession.hostASN`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // L3Passthrough represents a session with the host which is not encapsulated and
 // takes part to the bgp fabric.

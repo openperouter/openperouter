@@ -10,8 +10,12 @@ import (
 	"github.com/openperouter/openperouter/api/v1alpha1"
 )
 
-func buildStatus(err error) v1alpha1.RouterNodeConfigurationStatusStatus {
+func buildStatus(err error, existingStatus *v1alpha1.RouterNodeConfigurationStatusStatus) v1alpha1.RouterNodeConfigurationStatusStatus {
 	var s v1alpha1.RouterNodeConfigurationStatusStatus
+	if existingStatus != nil && len(existingStatus.Conditions) > 0 {
+		s.Conditions = make([]metav1.Condition, len(existingStatus.Conditions))
+		copy(s.Conditions, existingStatus.Conditions)
+	}
 
 	if err == nil {
 		setReady(&s, v1alpha1.ConditionReasonConfigSuccessful, "All configuration applied successfully")

@@ -12,8 +12,6 @@ router bgp 64512
   bgp router-id 10.0.0.1
   bgp graceful-restart
   bgp graceful-restart preserve-fw-state
-  bgp graceful-restart restart-time 120
-  bgp graceful-restart stalepath-time 360
   neighbor 192.168.1.2 remote-as 64512
   
   
@@ -29,7 +27,6 @@ router bgp 64512
 
   address-family l2vpn evpn
     advertise-all-vni
-    advertise-svi-ip
   exit-address-family
 exit
 !

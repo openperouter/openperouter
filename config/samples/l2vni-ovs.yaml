@@ -1,12 +1,15 @@
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L2VNI
 metadata:
   name: l2red-ovs
   namespace: openperouter-system
 spec:
   vni: 210
-  vrf: red
-  hostmaster:
-    type: ovs-bridge
+  routingDomain:
+    type: L3VNI
+    l3vni:
+      name: red
+  hostMaster:
+    type: OVSBridge
     ovsBridge:
-      autoCreate: true
+      lifecycle: Managed

@@ -79,13 +79,19 @@ When the router pod is replaced with a new image (e.g., during a rolling update)
 
 ### Manual Namespace Rebuild
 
-When the node's networking state is out of sync — stale interfaces, wrong IPs, partial failures — the operator can delete the namespace to trigger a full rebuild:
+When the node's networking state is out of sync — stale interfaces, wrong IPs, partial failures — the operator deletes the namespace and restarts the router pod to trigger a full rebuild:
 
 ```bash
+# 1. Remove the bind mount (marks the namespace for destruction)
 ip netns delete perouter
+
+# 2. Restart the router pod to release open handles — without this,
+#    the kernel keeps the namespace alive because FRR holds file
+#    descriptors to it
+kubectl delete pod -n openperouter-system <router-pod-name>
 ```
 
-The controller detects the missing namespace on its next reconciliation, recreates it, re-provisions all interfaces from CRD state, and the DaemonSet starts a new router pod.
+Both steps are required. After the router pod exits, the kernel destroys the namespace and all objects inside it. The controller detects the missing namespace on its next reconciliation, recreates it, and re-provisions all interfaces from CRD state. The new router pod enters the fresh namespace.
 
 - **Total outage (data + control plane)**: ~10-25 seconds
 

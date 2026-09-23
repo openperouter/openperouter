@@ -1,0 +1,26 @@
+l3vpns:
+  - name: red
+    hostSession:
+      asn: 64514
+      hostASN: 64515
+      localCIDRs:
+        - 192.169.10.0/24
+    vrf: red
+    rdAssignedNumber: 100
+    exportRTs:
+    - "64514:100"
+    importRTs:
+    - "64520:100"
+l2vnis:
+  - name: l2-over-vpn
+    vni: 210
+    routingDomain:
+      type: L3VPN
+      l3vpn:
+        name: red
+    hostMaster:
+      type: LinuxBridge
+      linuxBridge:
+        lifecycle: Managed
+    gatewayIPs:
+    - "192.170.1.1/24"

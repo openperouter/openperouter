@@ -1,0 +1,122 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: router
+  namespace: system
+spec:
+  template:
+    spec:
+      containers:
+      - name: frr
+        env:
+        - name: TINI_SUBREAPER
+          value: "true"
+        - name: GROUT_SOCK_PATH
+          value: "/var/run/grout/grout.sock"
+        volumeMounts:
+        - name: frr-sockets
+          mountPath: /var/run/frr
+        - name: frrconfig
+          mountPath: /etc/frr
+        - name: netns
+          mountPath: /var/run/netns
+          mountPropagation: HostToContainer
+          readOnly: true
+        - name: grout-socket
+          mountPath: /var/run/grout
+      - name: grout
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+            add: ["SYS_ADMIN", "NET_ADMIN", "NET_RAW", "IPC_LOCK"]
+          seccompProfile:
+            type: Unconfined
+        image: quay.io/openperouter/router
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: GROUT_SOCK_PATH
+          value: "/var/run/grout/grout.sock"
+        # TAP/test-mode sizing. Grout defaults target a full-table router and
+        # would exhaust typical pod memory when allocating per-VRF FIBs.
+        # DUMMY skips the LPM tables that dominate that cost.
+        - name: GROUT_MAX_IFACES
+          value: "128"
+        - name: GROUT_MEMPOOL_CHUNK_SIZE
+          value: "2047"
+        - name: GROUT_MAX_NEXTHOPS
+          value: "4096"
+        - name: GROUT_MAX_ROUTES
+          value: "4096"
+        - name: GROUT_MAX_FDB_ENTRIES
+          value: "512"
+        - name: GROUT_MAX_CONNTRACKS
+          value: "128"
+        - name: GROUT_PORT_QUEUE_SIZE
+          value: "128"
+        - name: GROUT_FIB4_ALGORITHM
+          value: DUMMY
+        - name: GROUT_FIB6_ALGORITHM
+          value: DUMMY
+        command:
+        - /bin/sh
+        - -c
+        - |
+          TIMEOUT=60
+          WAITED=0
+          until [ -e /var/run/netns/perouter ]; do
+            echo "Waiting for named netns /var/run/netns/perouter..."
+            sleep 1
+            WAITED=$((WAITED + 1))
+            if [ "$WAITED" -ge "$TIMEOUT" ]; then
+              echo "Timed out waiting for named netns after ${TIMEOUT}s"
+              exit 1
+            fi
+          done
+          exec nsenter --net=/var/run/netns/perouter grout --test-mode --socket-mode 0666
+        volumeMounts:
+        - name: grout-socket
+          mountPath: /var/run/grout
+        - name: netns
+          mountPath: /var/run/netns
+          mountPropagation: HostToContainer
+        - name: host-nsenter
+          mountPath: /usr/bin/nsenter
+          readOnly: true
+        - name: dev-net-tun
+          mountPath: /dev/net/tun
+        - name: dpdk-runtime
+          mountPath: /var/run/dpdk
+        startupProbe:
+          exec:
+            command: ["/bin/sh", "-c", "grcli -e"]
+          initialDelaySeconds: 2
+          periodSeconds: 5
+          timeoutSeconds: 5
+          failureThreshold: 12
+        readinessProbe:
+          exec:
+            command: ["/bin/sh", "-c", "grcli -e"]
+          periodSeconds: 10
+          timeoutSeconds: 5
+        livenessProbe:
+          exec:
+            command: ["/bin/sh", "-c", "grcli -e"]
+          periodSeconds: 30
+          timeoutSeconds: 5
+      volumes:
+      - name: grout-socket
+        hostPath:
+          path: /var/run/openperouter/grout
+          type: DirectoryOrCreate
+      - name: host-nsenter
+        hostPath:
+          path: /usr/bin/nsenter
+          type: File
+      - name: dev-net-tun
+        hostPath:
+          path: /dev/net/tun
+          type: CharDevice
+      - name: dpdk-runtime
+        emptyDir: {}

@@ -22,9 +22,8 @@ type VethNames struct {
 
 const VethLinkType = "veth"
 
-// setupVeth sets up a veth pair with the provided names and one leg in the
+// setupNamespacedVeth sets up a veth pair with the provided names and one leg in the
 // given namespace.
-
 func setupNamespacedVeth(ctx context.Context, vethNames VethNames, namespace string) error {
 	slog.DebugContext(ctx, "setupNamespacedVeth", "hostSide", vethNames.HostSide, "nsSide", vethNames.NamespaceSide)
 	defer slog.DebugContext(ctx, "end setupNamespacedVeth", "hostSide", vethNames.HostSide, "nsSide", vethNames.NamespaceSide)
@@ -138,18 +137,29 @@ func createVeth(ctx context.Context, logger *slog.Logger, vethNames VethNames) (
 
 const HostVethPrefix = "host-"
 const PEVethPrefix = "pe-"
+const EvpnInfix = "e-"
+const SRv6Infix = "s-"
 
 // vethNamesFromVNI returns the names of the veth legs
 // corresponding to the default namespace and the target namespace, based on VNI.
 func vethNamesFromVNI(vni int32) VethNames {
-	hostSide := fmt.Sprintf("%s%d", HostVethPrefix, vni)
-	peSide := fmt.Sprintf("%s%d", PEVethPrefix, vni)
+	hostSide := fmt.Sprintf("%s%s%d", HostVethPrefix, EvpnInfix, vni)
+	peSide := fmt.Sprintf("%s%s%d", PEVethPrefix, EvpnInfix, vni)
 	return VethNames{HostSide: hostSide, NamespaceSide: peSide}
 }
 
-// vniFromHostVeth extracts the VNI (as int32) from a host veth name.
-func vniFromHostVeth(hostVethName string) (int32, error) {
-	trimmed := strings.TrimPrefix(hostVethName, HostVethPrefix)
+// vethNamesFromL3VPN returns the names of the veth legs
+// corresponding to the default namespace and the target namespace, based on L3VPN.
+func vethNamesFromL3VPN(rdAssignedNumber int32) VethNames {
+	hostSide := fmt.Sprintf("%s%s%d", HostVethPrefix, SRv6Infix, rdAssignedNumber)
+	peSide := fmt.Sprintf("%s%s%d", PEVethPrefix, SRv6Infix, rdAssignedNumber)
+	return VethNames{HostSide: hostSide, NamespaceSide: peSide}
+}
+
+// interfaceIDFromPrefix extracts the interface ID (as int32) from an interface
+// starting with prefix.
+func interfaceIDFromPrefix(hostVethName string, prefix string) (int32, error) {
+	trimmed := strings.TrimPrefix(hostVethName, prefix)
 	res, err := strconv.ParseInt(trimmed, 10, 32)
 	if err != nil {
 		return 0, err

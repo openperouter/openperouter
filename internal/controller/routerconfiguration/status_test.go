@@ -98,11 +98,12 @@ func TestBuildStatus(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := buildStatus(tt.reconcileErr)
+			s := buildStatus(tt.reconcileErr, nil)
 
 			ready := apimeta.FindStatusCondition(s.Conditions, v1alpha1.ConditionTypeReady)
 			if ready == nil {
 				t.Fatal("Ready condition not set")
+				return
 			}
 			if ready.Status != tt.expectedReady {
 				t.Errorf("Ready status = %s, want %s", ready.Status, tt.expectedReady)
@@ -117,6 +118,7 @@ func TestBuildStatus(t *testing.T) {
 			degraded := apimeta.FindStatusCondition(s.Conditions, v1alpha1.ConditionTypeDegraded)
 			if degraded == nil {
 				t.Fatal("Degraded condition not set")
+				return
 			}
 			if degraded.Status != tt.expectedDegraded {
 				t.Errorf("Degraded status = %s, want %s", degraded.Status, tt.expectedDegraded)

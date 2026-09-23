@@ -1,0 +1,777 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  creationTimestamp: null
+  name: underlays.network.openperouter.io
+spec:
+  group: network.openperouter.io
+  names:
+    kind: Underlay
+    listKind: UnderlayList
+    plural: underlays
+    singular: underlay
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.asn
+      name: ASN
+      type: integer
+    - jsonPath: .spec.routerIDCIDR
+      name: Router ID Pool
+      type: string
+    - jsonPath: .spec.tunnelEndpoint.cidrs
+      name: VTEP CIDR
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Underlay is the Schema for the underlays API.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of Underlay.
+            properties:
+              asn:
+                description: asn is the local AS number to use for the session with
+                  the TOR switch.
+                format: int64
+                maximum: 4294967295
+                minimum: 1
+                type: integer
+              gracefulRestart:
+                description: |-
+                  gracefulRestart configures BGP Graceful Restart behaviour.
+                  When set, FRR advertises GR capability and preserves forwarding
+                  state across restarts so that peers keep stale routes active.
+                  Omit to disable graceful restart.
+                properties:
+                  restartTimeSeconds:
+                    default: 120
+                    description: |-
+                      restartTimeSeconds is the time in seconds that the restarting router
+                      requests its peers to preserve routes. Peers will wait this long
+                      before removing stale routes.
+                    format: int64
+                    maximum: 4095
+                    minimum: 1
+                    type: integer
+                  stalePathTimeSeconds:
+                    default: 360
+                    description: |-
+                      stalePathTimeSeconds is the time in seconds that stale paths from a
+                      restarting peer are retained locally.
+                    format: int64
+                    maximum: 4095
+                    minimum: 1
+                    type: integer
+                type: object
+              interfaces:
+                description: |-
+                  interfaces is the list of interfaces the router uses for underlay
+                  connectivity. Each entry is a discriminated union describing how the
+                  interface is obtained. At least one interface is required. All the
+                  entries must be of the same type: mixing NetworkDevice and CNIDevice
+                  interfaces is not supported.
+                items:
+                  description: |-
+                    UnderlayInterface defines how the router obtains a single underlay link.
+                    Exactly one of the sub-structs must match the type field.
+                    The union is designed to be extended with future modes
+                    for controller-provisioned interfaces.
+                  properties:
+                    cniDevice:
+                      description: |-
+                        cniDevice invokes a CNI plugin to provision an interface in the router
+                        netns. IPAM is delegated to the CNI plugin. Must be set when type is
+                        "CNIDevice".
+                      properties:
+                        interfaceName:
+                          default: net1
+                          description: |-
+                            interfaceName is the name of the interface the CNI plugin creates
+                            inside the router netns (passed as CNI_IFNAME). Defaults to "net1".
+                          maxLength: 15
+                          minLength: 1
+                          pattern: ^[a-zA-Z][a-zA-Z0-9._-]*$
+                          type: string
+                        rawConfig:
+                          description: |-
+                            rawConfig embeds a CNI conflist JSON blob directly in this spec.
+                            Only CNI spec >= 1.0.0 configurations are accepted. Immutable once
+                            set: to change it, delete and recreate the
+                            Underlay. Immutability is enforced by the validation webhook because
+                            CEL transition rules cannot be evaluated inside atomic lists.
+                          type: object
+                          x-kubernetes-preserve-unknown-fields: true
+                        runtimeConfig:
+                          description: |-
+                            runtimeConfig is an opaque JSON object mapping CNI capability names
+                            to the payloads passed as capability arguments to the CNI
+                            invocation. Only keys that the plugin declares in its
+                            "capabilities" config block are forwarded; undeclared keys are
+                            silently stripped. Well-known capabilities include ips, mac,
+                            bandwidth, portMappings, ipRanges and deviceID. Immutable once
+                            set: to change it, delete and recreate the Underlay. Immutability
+                            is enforced by the validation webhook because CEL transition rules
+                            cannot be evaluated inside atomic lists.
+                          type: object
+                          x-kubernetes-preserve-unknown-fields: true
+                        type:
+                          description: type selects the source of the CNI configuration.
+                          enum:
+                          - RawConfig
+                          type: string
+                      required:
+                      - type
+                      type: object
+                      x-kubernetes-validations:
+                      - message: 'type/config mismatch: rawConfig must be set if and
+                          only if type is ''RawConfig'''
+                        rule: has(self.rawConfig) == (self.type == 'RawConfig')
+                    networkDevice:
+                      description: |-
+                        networkDevice moves an existing host network device into the router netns.
+                        The device can be of any kind (physical NIC, bridge, macvlan, etc.).
+                        Must be set when type is "NetworkDevice".
+                      properties:
+                        interfaceName:
+                          description: |-
+                            interfaceName is the name of the host network device to move into
+                            the router netns.
+                          maxLength: 15
+                          minLength: 1
+                          pattern: ^[a-zA-Z][a-zA-Z0-9._-]*$
+                          type: string
+                      required:
+                      - interfaceName
+                      type: object
+                    type:
+                      description: type selects how the router obtains this underlay
+                        link.
+                      enum:
+                      - NetworkDevice
+                      - CNIDevice
+                      type: string
+                  required:
+                  - type
+                  type: object
+                  x-kubernetes-validations:
+                  - message: 'type/config mismatch: networkDevice must be set if and
+                      only if type is ''NetworkDevice'''
+                    rule: has(self.networkDevice) == (self.type == 'NetworkDevice')
+                  - message: 'type/config mismatch: cniDevice must be set if and only
+                      if type is ''CNIDevice'''
+                    rule: has(self.cniDevice) == (self.type == 'CNIDevice')
+                minItems: 1
+                type: array
+                x-kubernetes-list-type: atomic
+                x-kubernetes-validations:
+                - message: all interfaces must be of the same type, mixing NetworkDevice
+                    and CNIDevice is not supported
+                  rule: self.all(i, i.type == self[0].type)
+              isis:
+                description: isis holds the ISIS configuration for the underlay.
+                properties:
+                  baseNet:
+                    description: |-
+                      baseNet holds the ISIS NET address.
+                      The configured Net address is a base address which is offset by the node index of each node.
+                      Only accepts the simplified NSAP format with a fixed AreaID length of 3 bytes and a 6 byte SystemID in compliance
+                      with the U.S. GOSIP version 2.0 for a total of 10 bytes.
+                    maxLength: 25
+                    minLength: 25
+                    type: string
+                    x-kubernetes-validations:
+                    - message: Provided net address must match canonical format
+                      rule: self.matches('^[0-9a-f]{2}\\.([0-9a-f]{4}\\.){4}[0-9a-f]{2}$')
+                  features:
+                    description: |-
+                      features enables ISIS boolean features.
+                      Supported features are:
+                      advertisePassiveOnly: configures ISIS to advertise only prefixes that belong to passive interfaces.
+                    items:
+                      description: ISISFeature represents a single ISIS feature.
+                      enum:
+                      - advertisePassiveOnly
+                      maxLength: 128
+                      minLength: 1
+                      type: string
+                    maxItems: 32
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  interfaces:
+                    description: |-
+                      interfaces holds additional ISIS interface level configuration and / or per
+                      interface overrides. By default, OpenPERouter enables IPv6 on all required
+                      interfaces with default settings.
+                    items:
+                      description: ISISInterface holds ISIS interface level configuration.
+                      properties:
+                        features:
+                          description: |-
+                            features enables ISIS interface boolean features.
+                            Supported features are:
+                            passive: configures ISIS passive mode on this interface.
+                          items:
+                            description: ISISInterfaceFeature represents a single
+                              ISIS feature of an ISIS interface.
+                            enum:
+                            - passive
+                            maxLength: 128
+                            minLength: 1
+                            type: string
+                          maxItems: 32
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        ipFamily:
+                          description: ipFamily configures which address families
+                            ISIS is enabled for on this interface.
+                          enum:
+                          - IPv4
+                          - IPv6
+                          - DualStack
+                          type: string
+                        name:
+                          description: name of the interface that these settings shall
+                            apply to.
+                          maxLength: 15
+                          minLength: 1
+                          type: string
+                          x-kubernetes-validations:
+                          - message: Interface must not contain /, :, or whitespace
+                            rule: self.matches('^[^\\/:\\s]+$')
+                          - message: Interface cannot be . or ..
+                            rule: self != '.' && self != '..'
+                      required:
+                      - name
+                      type: object
+                    maxItems: 128
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - name
+                    x-kubernetes-list-type: map
+                  level:
+                    description: level configures the ISIS type, system wide. It defaults
+                      to level-1-2 unless specified otherwise.
+                    enum:
+                    - 1
+                    - 2
+                    format: int32
+                    type: integer
+                required:
+                - baseNet
+                type: object
+              neighbors:
+                description: |-
+                  neighbors is the list of external BGP neighbors to peer with.
+                  Multiple neighbors are supported for connecting to multiple TOR switches
+                  or establishing redundant BGP sessions. Each neighbor address must be unique.
+                  At least one neighbor is required.
+                items:
+                  description: Neighbor represents a BGP Neighbor we want FRR to connect
+                    to.
+                  properties:
+                    address:
+                      description: |-
+                        address is the IP address to establish the session with. The IP address
+                        can be either IPv4 or IPv6.
+                      maxLength: 39
+                      minLength: 1
+                      type: string
+                      x-kubernetes-validations:
+                      - message: Address must be a valid IPv4 or IPv6 address
+                        rule: isIP(self)
+                    addressFamilies:
+                      description: |-
+                        addressFamilies specifies the BGP address families that shall be enabled
+                        for this BGP neighbor. evpn and ipv4vpn/ipv6vpn are mutually exclusive.
+                        If ipv4vpn or ipv6vpn are set, the update source of this neighbor will
+                        be set to the loopback's IPv6 address.
+                        If addressFamilies is not provided or empty, the following defaults are
+                        chosen:
+                        For unnumbered neighbors:
+                        - ipv4unicast
+                        - ipv6unicast if passthrough is configured with IPv6 local CIDR
+                        - evpn if L2VNIs or L3VNIs are present.
+                        For IPv4 neighbors:
+                        - ipv4unicast
+                        - ipv6unicast if passthrough is configured with IPv6 local CIDR
+                        - evpn if L2VNIs or L3VNIs are present.
+                        For IPv6 neighbors:
+                        - ipv4unicast if L2VNIs or L3VNIs are present, or if passthrough is configured with IPv4 local CIDR
+                        - ipv6unicast
+                        - evpn if L2VNIs or L3VNIs are present
+                        - ipv4vpn if L3VPNs and SRv6 configuration are present.
+                        - ipv6vpn if L3VPNs and SRv6 configuration are present.
+                      items:
+                        description: |-
+                          NeighborAddressFamily represents a single BGP address family configuration
+                          for a neighbor.
+                        properties:
+                          properties:
+                            description: |-
+                              properties is the set of optional per-address-family features for this
+                              neighbor (for example, marking the neighbor as a route reflector client
+                              in this address family).
+                            items:
+                              description: |-
+                                AddressFamilyProperty is an optional feature applied to a neighbor
+                                address family. The type field selects the property; typed sub-fields hold
+                                parameters for properties that require them.
+                              properties:
+                                type:
+                                  description: type selects the property.
+                                  enum:
+                                  - routeReflectorClient
+                                  type: string
+                              required:
+                              - type
+                              type: object
+                            maxItems: 8
+                            type: array
+                            x-kubernetes-list-map-keys:
+                            - type
+                            x-kubernetes-list-type: map
+                          type:
+                            description: type is the address family type.
+                            enum:
+                            - ipv4unicast
+                            - ipv6unicast
+                            - evpn
+                            - ipv4vpn
+                            - ipv6vpn
+                            maxLength: 11
+                            minLength: 1
+                            type: string
+                        required:
+                        - type
+                        type: object
+                      maxItems: 4
+                      type: array
+                      x-kubernetes-list-map-keys:
+                      - type
+                      x-kubernetes-list-type: map
+                      x-kubernetes-validations:
+                      - message: EVPN and IPv4VPN/IPv6VPN address families are mutually
+                          exclusive
+                        rule: '!(self.exists(f, f.type == ''evpn'') && self.exists(f,
+                          f.type == ''ipv4vpn'' || f.type == ''ipv6vpn''))'
+                    asn:
+                      description: asn is the AS number of the neighbor. Either ASN
+                        or Type must be set.
+                      format: int64
+                      maximum: 4294967295
+                      minimum: 1
+                      type: integer
+                    bfd:
+                      description: bfd defines the BFD configuration for the BGP session.
+                      properties:
+                        detectMultiplier:
+                          description: |-
+                            detectMultiplier configures the detection multiplier to determine
+                            packet loss. The remote transmission interval will be multiplied
+                            by this value to determine the connection loss detection timer.
+                          format: int32
+                          maximum: 255
+                          minimum: 2
+                          type: integer
+                        minimumTTL:
+                          description: |-
+                            minimumTTL configures, for multi hop sessions only, the minimum
+                            expected TTL for an incoming BFD control packet.
+                          format: int32
+                          maximum: 254
+                          minimum: 1
+                          type: integer
+                        receiveInterval:
+                          description: |-
+                            receiveInterval is the minimum interval that this system is capable of
+                            receiving control packets in milliseconds.
+                            Defaults to 300ms.
+                          format: int32
+                          maximum: 60000
+                          minimum: 10
+                          type: integer
+                        sessionMode:
+                          description: |-
+                            sessionMode marks the session active or passive. Active (the default
+                            when omitted) initiates the session. Passive waits for the peer to
+                            initiate before replying (RFC 5880 Section 6.1).
+                          enum:
+                          - Active
+                          - Passive
+                          type: string
+                        transmitInterval:
+                          description: |-
+                            transmitInterval is the minimum transmission interval (less jitter)
+                            that this system wants to use to send BFD control packets in
+                            milliseconds. Defaults to 300ms
+                          format: int32
+                          maximum: 60000
+                          minimum: 10
+                          type: integer
+                      type: object
+                    connectTimeSeconds:
+                      description: connectTimeSeconds controls how long BGP waits
+                        between connection attempts to a neighbor, in seconds.
+                      format: int64
+                      maximum: 65535
+                      minimum: 1
+                      type: integer
+                    holdTimeSeconds:
+                      description: |-
+                        holdTimeSeconds is the requested BGP hold time in seconds, per RFC4271.
+                        Defaults to 180.
+                      format: int64
+                      type: integer
+                    interface:
+                      description: interface is the interface name for BGP unnumbered
+                        sessions. The session will be established via IPv6 link locals.
+                      maxLength: 15
+                      minLength: 1
+                      type: string
+                      x-kubernetes-validations:
+                      - message: Interface must not contain /, :, or whitespace
+                        rule: self.matches('^[^\\/:\\s]+$')
+                      - message: Interface cannot be . or ..
+                        rule: self != '.' && self != '..'
+                    keepaliveTimeSeconds:
+                      description: |-
+                        keepaliveTimeSeconds is the requested BGP keepalive time in seconds, per RFC4271.
+                        Defaults to 60.
+                      format: int64
+                      type: integer
+                    listenRange:
+                      description: |-
+                        listenRange accepts connections from any peers in the specified CIDR.
+                        When set, the hostcontroller generates a
+                        "bgp listen range <listenRange> peer-group <name>" stanza instead of
+                        an explicit neighbor statement. Mutually exclusive with address and
+                        interface.
+                      maxLength: 43
+                      minLength: 1
+                      type: string
+                      x-kubernetes-validations:
+                      - message: listenRange must be a valid CIDR
+                        rule: isCIDR(self)
+                      - message: listenRange must not be an IPv6 link-local range
+                        rule: '!isCIDR(self) || cidr(self).ip().family() != 6 || !cidr(self).ip().isLinkLocalUnicast()'
+                    passwordSecret:
+                      description: |-
+                        passwordSecret references a key in a Kubernetes Secret containing the
+                        BGP session password. The Secret must be created in the same namespace
+                        as the Underlay.
+                      properties:
+                        key:
+                          description: |-
+                            key is the key within the Secret's data to select.
+                            The controller defaults this to "password" when unset.
+                          minLength: 1
+                          type: string
+                        name:
+                          description: name is the name of the Secret in the same
+                            namespace.
+                          minLength: 1
+                          type: string
+                      required:
+                      - name
+                      type: object
+                    port:
+                      description: |-
+                        port is the port to dial when establishing the session.
+                        Defaults to 179.
+                      format: int32
+                      maximum: 65535
+                      minimum: 1
+                      type: integer
+                    properties:
+                      description: |-
+                        properties is the set of optional session-level features for this
+                        neighbor (e.g. ebgpMultiHop).
+                      items:
+                        description: |-
+                          NeighborProperty is an optional feature applied to a neighbor session. The
+                          type field selects the property; typed sub-fields hold parameters for
+                          properties that require them.
+                        properties:
+                          ebgpMultiHop:
+                            description: |-
+                              ebgpMultiHop holds parameters for the ebgpMultiHop property.
+                              May only be set when type is ebgpMultiHop.
+                            properties:
+                              ttl:
+                                description: |-
+                                  ttl is the maximum number of hops for the eBGP multihop session.
+                                  When omitted, FRR defaults to 255.
+                                format: int32
+                                maximum: 255
+                                minimum: 1
+                                type: integer
+                            type: object
+                          type:
+                            description: type selects the property.
+                            enum:
+                            - ebgpMultiHop
+                            type: string
+                        required:
+                        - type
+                        type: object
+                        x-kubernetes-validations:
+                        - message: ebgpMultiHop parameters can only be set when type
+                            is ebgpMultiHop
+                          rule: '!has(self.ebgpMultiHop) || self.type == ''ebgpMultiHop'''
+                      maxItems: 1
+                      type: array
+                      x-kubernetes-list-map-keys:
+                      - type
+                      x-kubernetes-list-type: map
+                    type:
+                      description: type is the AS type of the neighbor. Either ASN
+                        or Type must be set.
+                      enum:
+                      - External
+                      - Internal
+                      type: string
+                  type: object
+                  x-kubernetes-validations:
+                  - message: either ASN or Type must be set
+                    rule: has(self.asn) || has(self.type)
+                  - message: ASN and Type cannot be set together
+                    rule: '!has(self.asn) || !has(self.type)'
+                  - message: holdTimeSeconds and keepaliveTimeSeconds must be both
+                      set or both unset
+                    rule: has(self.holdTimeSeconds) == has(self.keepaliveTimeSeconds)
+                  - message: holdTimeSeconds must be 0 or >=3
+                    rule: '!has(self.holdTimeSeconds) || self.holdTimeSeconds == 0
+                      || self.holdTimeSeconds >= 3'
+                  - message: keepaliveTimeSeconds must be lower than or equal to holdTimeSeconds
+                    rule: '!has(self.holdTimeSeconds) || !has(self.keepaliveTimeSeconds)
+                      || self.keepaliveTimeSeconds <= self.holdTimeSeconds'
+                  - message: Either a valid Address, Interface name or ListenRange
+                      must be provided for Neighbor
+                    rule: has(self.address) || has(self.interface) || has(self.listenRange)
+                  - message: Address and Interface cannot be set together for Neighbor
+                    rule: '!has(self.address) || !has(self.interface)'
+                  - message: ipv4vpn and ipv6vpn address families are not supported
+                      for unnumbered (interface) neighbors
+                    rule: '!has(self.interface) || !has(self.addressFamilies) || !self.addressFamilies.exists(f,
+                      f.type == ''ipv4vpn'' || f.type == ''ipv6vpn'')'
+                  - message: ipv4vpn and ipv6vpn address families require an IPv6
+                      neighbor address
+                    rule: '!has(self.address) || !has(self.addressFamilies) || ip(self.address).family()
+                      != 4 || !self.addressFamilies.exists(f, f.type == ''ipv4vpn''
+                      || f.type == ''ipv6vpn'')'
+                  - message: listenRange and address are mutually exclusive
+                    rule: '!has(self.listenRange) || !has(self.address)'
+                  - message: listenRange and interface are mutually exclusive
+                    rule: '!has(self.listenRange) || !has(self.interface)'
+                  - message: routeReflectorClient requires type Internal
+                    rule: '!(has(self.addressFamilies) && self.addressFamilies.exists(af,
+                      has(af.properties) && af.properties.exists(o, o.type == ''routeReflectorClient'')))
+                      || (has(self.type) && self.type == ''Internal'')'
+                maxItems: 128
+                minItems: 1
+                type: array
+                x-kubernetes-list-type: atomic
+              nodeSelector:
+                description: |-
+                  nodeSelector specifies which nodes this Underlay applies to.
+                  If empty or not specified, applies to all nodes (backward compatible).
+                  Multiple Underlays with overlapping node selectors will be rejected.
+                properties:
+                  matchExpressions:
+                    description: matchExpressions is a list of label selector requirements.
+                      The requirements are ANDed.
+                    items:
+                      description: |-
+                        A label selector requirement is a selector that contains values, a key, and an operator that
+                        relates the key and values.
+                      properties:
+                        key:
+                          description: key is the label key that the selector applies
+                            to.
+                          type: string
+                        operator:
+                          description: |-
+                            operator represents a key's relationship to a set of values.
+                            Valid operators are In, NotIn, Exists and DoesNotExist.
+                          type: string
+                        values:
+                          description: |-
+                            values is an array of string values. If the operator is In or NotIn,
+                            the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                            the values array must be empty. This array is replaced during a strategic
+                            merge patch.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  matchLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                      map is equivalent to an element of matchExpressions, whose key field is "key", the
+                      operator is "In", and the values array contains only "value". The requirements are ANDed.
+                    type: object
+                type: object
+                x-kubernetes-map-type: atomic
+              routeReflector:
+                description: |-
+                  routeReflector configures the local FRR process as a BGP route reflector.
+                  When set, the hostcontroller generates bgp cluster-id from clusterID
+                  and derives bgp listen range and route-reflector-client stanzas from
+                  neighbors with listenRange and the routeReflectorClient property.
+                  Omit to run as a standard router without route reflection.
+                properties:
+                  clusterID:
+                    default: 192.0.2.1
+                    description: |-
+                      clusterID is the BGP cluster-id shared by all RR nodes in the same
+                      cluster (RFC 4456 §7). All RRs serving the same set of clients must
+                      use the same value so that CLUSTER_LIST loop detection prevents
+                      duplicate route reflection. The cluster-id is an opaque 32-bit
+                      identifier, not a routable address, and must be outside the
+                      routerIDCIDR range to avoid colliding with allocated router-ids.
+                      The default (192.0.2.1) is an RFC 5737 documentation address,
+                      outside the default routerIDCIDR pool; with a custom routerIDCIDR
+                      that contains it, the resource is rejected at admission.
+                    maxLength: 15
+                    minLength: 7
+                    type: string
+                    x-kubernetes-validations:
+                    - message: clusterID must be a valid IPv4 address
+                      rule: isIP(self) && ip(self).family() == 4
+                type: object
+              routerIDCIDR:
+                default: 10.0.0.0/24
+                description: routerIDCIDR is the ipv4 cidr to be used to assign a
+                  different routerID on each node.
+                type: string
+              srv6:
+                description: srv6 holds the SRv6 configuration. Requires ISIS or Neighbors
+                  configuration.
+                properties:
+                  encapBehavior:
+                    description: |-
+                      encapBehavior defines the behavior for SRv6 encapsulation as specified
+                      in RFC 8986 sections 5.1 and 5.2.
+                      If unset, defaults to H.Encaps.
+                    enum:
+                    - H.Encaps
+                    - H.Encaps.Red
+                    maxLength: 12
+                    minLength: 1
+                    type: string
+                  locator:
+                    description: locator defines the locator for this SRv6 VPN.
+                    properties:
+                      basePrefix:
+                        description: basePrefix is the CIDR to be used for the locator,
+                          offset by the router index.
+                        maxLength: 43
+                        minLength: 1
+                        type: string
+                        x-kubernetes-validations:
+                        - message: prefix must be an IPv6 CIDR
+                          rule: isCIDR(self) && cidr(self).ip().family() == 6
+                      format:
+                        description: format specifies the format of the locator. Defaults
+                          to usid-f3216
+                        enum:
+                        - usid-f3216
+                        maxLength: 40
+                        minLength: 1
+                        type: string
+                    required:
+                    - basePrefix
+                    - format
+                    type: object
+                required:
+                - locator
+                type: object
+              tunnelEndpoint:
+                description: tunnelEndpoint contains tunnel endpoint configuration
+                  for the underlay.
+                properties:
+                  cidrs:
+                    description: |-
+                      cidrs is a list of CIDRs to be used to assign IPs to the local tunnel endpoint on
+                      each node. IPs derived from these CIDRs will be assigned to the local loopback.
+                      At least one IPv4 or IPv6 CIDR is required. At most one of each family may be specified.
+                    items:
+                      type: string
+                    maxItems: 2
+                    minItems: 1
+                    type: array
+                    x-kubernetes-list-type: atomic
+                    x-kubernetes-validations:
+                    - message: all entries must be valid CIDRs
+                      rule: self.all(c, isCIDR(c))
+                    - message: at most one IPv4 CIDR is allowed
+                      rule: self.filter(c, isCIDR(c) && cidr(c).ip().family() == 4).size()
+                        <= 1
+                    - message: at most one IPv6 CIDR is allowed
+                      rule: self.filter(c, isCIDR(c) && cidr(c).ip().family() == 6).size()
+                        <= 1
+                required:
+                - cidrs
+                type: object
+            required:
+            - asn
+            - interfaces
+            - neighbors
+            type: object
+            x-kubernetes-validations:
+            - message: SRv6 can only be configured if isis is set
+              rule: '!has(self.srv6) || has(self.isis)'
+            - message: SRv6 requires at least one IPv6 CIDR in tunnelEndpoint.cidrs
+              rule: '!has(self.srv6) || (has(self.tunnelEndpoint) && has(self.tunnelEndpoint.cidrs)
+                && self.tunnelEndpoint.cidrs.exists(c, cidr(c).ip().family() == 6))'
+            - message: routeReflector.clusterID must be outside the routerIDCIDR range
+              rule: '!has(self.routeReflector) || !has(self.routeReflector.clusterID)
+                || !isIP(self.routeReflector.clusterID) || !has(self.routerIDCIDR)
+                || !isCIDR(self.routerIDCIDR) || !cidr(self.routerIDCIDR).containsIP(self.routeReflector.clusterID)'
+          status:
+            description: status defines the observed state of Underlay.
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: null
+  storedVersions: null

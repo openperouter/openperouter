@@ -1,0 +1,32 @@
+{{ define "underlayl3vpn"}}
+  address-family ipv4 vpn
+{{- range $neighbor := .Underlay.Neighbors }}
+{{- if $neighbor.ActivateFor "ipv4" "vpn" }}
+    neighbor {{ $neighbor.ID }} activate
+{{- if $neighbor.IsRouteReflectorClientFor "ipv4" "vpn" }}
+    neighbor {{ $neighbor.ID }} route-reflector-client
+{{- else }}
+    neighbor {{ $neighbor.ID }} next-hop-self
+{{- end }}
+{{- end }}
+{{- end }}
+  exit-address-family
+  !
+  address-family ipv6 vpn
+{{- range $neighbor := .Underlay.Neighbors }}
+{{- if $neighbor.ActivateFor "ipv6" "vpn" }}
+    neighbor {{ $neighbor.ID }} activate
+{{- if $neighbor.IsRouteReflectorClientFor "ipv6" "vpn" }}
+    neighbor {{ $neighbor.ID }} route-reflector-client
+{{- else }}
+    neighbor {{ $neighbor.ID }} next-hop-self
+{{- end }}
+{{- end }}
+{{- end }}
+  exit-address-family
+  !
+  segment-routing srv6
+    encap-behavior {{ .Underlay.SegmentRouting.EncapBehavior }}
+    locator {{ .Underlay.SegmentRouting.Locator.Name }}
+  exit
+{{- end }}

@@ -13,11 +13,19 @@ interfaces:
     requiresTemp: true
 - left:
     bridge: "leafkind1-sw"
-    name: "kindworker1"
+    name: "kindwrk1sw1"
   right:
     container: "pe-kind-worker"
     name: "toswitch1"
     ips: ["192.168.11.4/24", "2001:db8:11::4/64"]
+    requiresTemp: true
+- left:
+    bridge: "leafkind1-sw"
+    name: "kindwrk2sw1"
+  right:
+    container: "pe-kind-worker2"
+    name: "toswitch1"
+    ips: ["192.168.11.5/24", "2001:db8:11::5/64"]
     requiresTemp: true
 
 # leafkind2-sw bridge connections
@@ -31,11 +39,19 @@ interfaces:
     requiresTemp: true
 - left:
     bridge: "leafkind2-sw"
-    name: "kindworker2"
+    name: "kindwrk1sw2"
   right:
     container: "pe-kind-worker"
     name: "toswitch2"
     ips: ["192.168.12.4/24", "2001:db8:12::4/64"]
+    requiresTemp: true
+- left:
+    bridge: "leafkind2-sw"
+    name: "kindwrk2sw2"
+  right:
+    container: "pe-kind-worker2"
+    name: "toswitch2"
+    ips: ["192.168.12.5/24", "2001:db8:12::5/64"]
     requiresTemp: true
 
 # Point to point links for IPv6 unnumbered BGP sessions - leafkind1
@@ -44,6 +60,13 @@ interfaces:
     name: "tokindworker"
   right:
     container: "pe-kind-worker"
+    name: "toleafkind1"
+    requiresTemp: true
+- left:
+    container: "clab-kind-leafkind1"
+    name: "tokindworker2"
+  right:
+    container: "pe-kind-worker2"
     name: "toleafkind1"
     requiresTemp: true
 - left:
@@ -60,6 +83,13 @@ interfaces:
     name: "tokindworker"
   right:
     container: "pe-kind-worker"
+    name: "toleafkind2"
+    requiresTemp: true
+- left:
+    container: "clab-kind-leafkind2"
+    name: "tokindworker2"
+  right:
+    container: "pe-kind-worker2"
     name: "toleafkind2"
     requiresTemp: true
 - left:

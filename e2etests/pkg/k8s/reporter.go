@@ -5,6 +5,7 @@ package k8s
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"time"
 
 	frrk8sv1beta1 "github.com/metallb/frr-k8s/api/v1beta1"
@@ -30,19 +31,18 @@ func InitReporter(kubeconfig, path string, namespaces ...string) (*k8sreporter.K
 
 	// The namespaces we want to dump resources for (including pods and pod logs)
 	dumpNamespace := func(ns string) bool {
-		for _, n := range namespaces {
-			if n == ns {
-				return true
-			}
-		}
-		return false
+		return slices.Contains(namespaces, ns)
 	}
 
 	// The list of CRDs we want to dump
 	crds := []k8sreporter.CRData{
 		{Cr: &v1alpha1.UnderlayList{}},
+		{Cr: &v1alpha1.L3PassthroughList{}},
 		{Cr: &v1alpha1.L3VNIList{}},
 		{Cr: &v1alpha1.L2VNIList{}},
+		{Cr: &v1alpha1.L3VPNList{}},
+		{Cr: &v1alpha1.RawFRRConfigList{}},
+		{Cr: &v1alpha1.RouterNodeConfigurationStatusList{}},
 		{Cr: &frrk8sv1beta1.FRRConfigurationList{}},
 	}
 

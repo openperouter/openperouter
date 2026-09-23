@@ -2,6 +2,9 @@
 
 KIND_BIN="${KIND_BIN:-kind}"
 
+REPO_ROOT=$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)
+export KUBECONFIG="${REPO_ROOT}/bin/kubeconfig"
+
 apply_manifests_with_retries() {
   local manifests=("$@")
   for manifest in "${manifests[@]}"; do

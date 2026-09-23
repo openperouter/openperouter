@@ -62,6 +62,14 @@ Create the name of the openperouter service accounts to use
 {{- end }}
 {{- end }}
 
+{{- define "openperouter.nodemarker.serviceAccountName" -}}
+{{- if .Values.openperouter.serviceAccounts.create }}
+{{- default (printf "%s-nodemarker" (include "openperouter.fullname" .)) .Values.openperouter.serviceAccounts.nodemarker.name }}
+{{- else }}
+{{- default "default-nodemarker" .Values.openperouter.serviceAccounts.nodemarker.name }}
+{{- end }}
+{{- end }}
+
 {{- define "openperouter.router.serviceAccountName" -}}
 {{- if .Values.openperouter.serviceAccounts.create }}
 {{- default (printf "%s-perouter" (include "openperouter.fullname" .)) .Values.openperouter.serviceAccounts.perouter.name }}

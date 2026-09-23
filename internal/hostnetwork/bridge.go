@@ -13,16 +13,20 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
-// setupBridge creates the bridge, optionally enslaves it to the provided
-// vrf, applies any bridge options, and brings the link up.
-func setupBridge(params VNIParams, vrf *netlink.Vrf, opts ...NetlinkOption) (*netlink.Bridge, error) {
+// setupBridge creates the bridge, looks up and binds the VRF when
+// params.VRF is non-empty, applies any bridge options, and brings the link up.
+func setupBridge(params VNIParams, opts ...NetlinkOption) (*netlink.Bridge, error) {
 	name := BridgeName(params.VNI)
 	bridge, err := createBridge(name)
 	if err != nil {
 		return nil, err
 	}
 
-	if vrf != nil {
+	if params.VRF != "" {
+		vrf, err := lookupVRF(params.VRF)
+		if err != nil {
+			return nil, fmt.Errorf("could not find vrf %s for bridge %s: %w", params.VRF, name, err)
+		}
 		if err := ensureBridgeMaster(bridge, vrf.Index); err != nil {
 			return nil, err
 		}
@@ -79,7 +83,7 @@ func ensureBridgeMaster(bridge *netlink.Bridge, masterIndex int) error {
 		return nil
 	}
 	if err := netlink.LinkSetMasterByIndex(bridge, masterIndex); err != nil {
-		return fmt.Errorf("could not enslave bridge %s to VRF (index %d): %w", bridge.Name, masterIndex, err)
+		return fmt.Errorf("could not bind bridge %s to VRF (index %d): %w", bridge.Name, masterIndex, err)
 	}
 	bridge.MasterIndex = masterIndex
 	return nil

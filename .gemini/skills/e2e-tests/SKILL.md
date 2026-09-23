@@ -1,0 +1,1 @@
+../../../.agents/skills/e2e-tests/SKILL.md

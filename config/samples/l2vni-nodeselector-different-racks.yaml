@@ -1,6 +1,6 @@
 ---
 # L2VNI for rack-1
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L2VNI
 metadata:
   name: storage-rack-1
@@ -10,16 +10,20 @@ spec:
     matchLabels:
       topology.kubernetes.io/rack: rack-1
   vni: 10200
-  vrf: storage
-  hostmaster:
-    type: linux-bridge
+  routingDomain:
+    type: L3VNI
+    l3vni:
+      name: storage
+  hostMaster:
+    type: LinuxBridge
     linuxBridge:
+      lifecycle: External
       name: br-storage
-  l2gatewayips:
+  gatewayIPs:
     - 10.200.1.1/24
 ---
 # L2VNI for rack-2
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L2VNI
 metadata:
   name: storage-rack-2
@@ -29,11 +33,15 @@ spec:
     matchLabels:
       topology.kubernetes.io/rack: rack-2
   vni: 10201
-  vrf: storage
-  hostmaster:
-    type: linux-bridge
+  routingDomain:
+    type: L3VNI
+    l3vni:
+      name: storage
+  hostMaster:
+    type: LinuxBridge
     linuxBridge:
+      lifecycle: External
       name: br-storage
-  l2gatewayips:
+  gatewayIPs:
     - 10.200.2.1/24
 

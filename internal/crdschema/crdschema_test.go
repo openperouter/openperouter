@@ -23,7 +23,7 @@ var (
 func TestSchemaInitialization(t *testing.T) {
 	gvks := KnownGVKs()
 
-	expectedKinds := []string{"Underlay", "L2VNI", "L3VNI", "L3Passthrough", "RawFRRConfig", "RouterNodeConfigurationStatus"}
+	expectedKinds := []string{"Underlay", "L2VNI", "L3VNI", "L3VPN", "L3Passthrough", "RawFRRConfig", "RouterNodeConfigurationStatus"}
 	sort.Strings(expectedKinds)
 
 	foundKinds := make([]string, 0, len(gvks))
@@ -56,38 +56,24 @@ func TestApplyDefaults(t *testing.T) {
 		expected any
 	}{
 		{
-			name:     "Underlay routeridcidr default",
+			name:     "Underlay routerIDCIDR default",
 			gvk:      underlayGVK,
 			obj:      newUnstructured("Underlay", map[string]any{"asn": int64(65000)}),
-			field:    "spec.routeridcidr",
+			field:    "spec.routerIDCIDR",
 			expected: "10.0.0.0/24",
 		},
 		{
 			name:     "L2VNI vxlanport default",
 			gvk:      l2vniGVK,
 			obj:      newUnstructured("L2VNI", map[string]any{}),
-			field:    "spec.vxlanport",
+			field:    "spec.vxlanPort",
 			expected: int64(4789),
-		},
-		{
-			name:     "L2VNI linuxBridge autoCreate default",
-			gvk:      l2vniGVK,
-			obj:      newUnstructured("L2VNI", map[string]any{"hostmaster": map[string]any{"type": "linux-bridge", "linuxBridge": map[string]any{"name": "br0"}}}),
-			field:    "spec.hostmaster.linuxBridge.autoCreate",
-			expected: false,
-		},
-		{
-			name:     "L2VNI ovsBridge autoCreate default",
-			gvk:      l2vniGVK,
-			obj:      newUnstructured("L2VNI", map[string]any{"hostmaster": map[string]any{"type": "ovs-bridge", "ovsBridge": map[string]any{"name": "br0"}}}),
-			field:    "spec.hostmaster.ovsBridge.autoCreate",
-			expected: false,
 		},
 		{
 			name:     "L3VNI vxlanport default",
 			gvk:      l3vniGVK,
 			obj:      newUnstructured("L3VNI", map[string]any{"vrf": "testvrf"}),
-			field:    "spec.vxlanport",
+			field:    "spec.vxlanPort",
 			expected: int64(4789),
 		},
 		{
@@ -117,6 +103,41 @@ func TestApplyDefaults(t *testing.T) {
 	}
 }
 
+func TestApplyDefaultsCNIInterfaceName(t *testing.T) {
+	obj := newUnstructured("Underlay", map[string]any{
+		"asn": int64(65000),
+		"interfaces": []any{
+			map[string]any{
+				"type": "CNIDevice",
+				"cniDevice": map[string]any{
+					"type":      "RawConfig",
+					"rawConfig": map[string]any{"cniVersion": "1.0.0"},
+				},
+			},
+		},
+	})
+
+	if err := ApplyDefaults(obj, underlayGVK); err != nil {
+		t.Fatalf("ApplyDefaults() returned error: %v", err)
+	}
+
+	interfaces, _, err := unstructured.NestedSlice(obj.Object, "spec", "interfaces")
+	if err != nil || len(interfaces) != 1 {
+		t.Fatalf("failed to get interfaces after applying defaults: %v", err)
+	}
+	iface, ok := interfaces[0].(map[string]any)
+	if !ok {
+		t.Fatalf("interface entry is not a map: %T", interfaces[0])
+	}
+	ifName, _, err := unstructured.NestedString(iface, "cniDevice", "interfaceName")
+	if err != nil {
+		t.Fatalf("failed to get cniDevice.interfaceName: %v", err)
+	}
+	if ifName != "net1" {
+		t.Errorf("cniDevice.interfaceName = %q, want %q", ifName, "net1")
+	}
+}
+
 func TestApplyDefaultsPreservation(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -126,24 +147,24 @@ func TestApplyDefaultsPreservation(t *testing.T) {
 		expected any
 	}{
 		{
-			name:     "Underlay explicit routeridcidr preserved",
+			name:     "Underlay explicit routerIDCIDR preserved",
 			gvk:      underlayGVK,
-			obj:      newUnstructured("Underlay", map[string]any{"asn": int64(65000), "routeridcidr": "192.168.0.0/16"}),
-			field:    "spec.routeridcidr",
+			obj:      newUnstructured("Underlay", map[string]any{"asn": int64(65000), "routerIDCIDR": "192.168.0.0/16"}),
+			field:    "spec.routerIDCIDR",
 			expected: "192.168.0.0/16",
 		},
 		{
 			name:     "L2VNI explicit vxlanport preserved",
 			gvk:      l2vniGVK,
-			obj:      newUnstructured("L2VNI", map[string]any{"vxlanport": int64(5000)}),
-			field:    "spec.vxlanport",
+			obj:      newUnstructured("L2VNI", map[string]any{"vxlanPort": int64(5000)}),
+			field:    "spec.vxlanPort",
 			expected: int64(5000),
 		},
 		{
 			name:     "L3VNI explicit vxlanport preserved",
 			gvk:      l3vniGVK,
-			obj:      newUnstructured("L3VNI", map[string]any{"vrf": "testvrf", "vxlanport": int64(9999)}),
-			field:    "spec.vxlanport",
+			obj:      newUnstructured("L3VNI", map[string]any{"vrf": "testvrf", "vxlanPort": int64(9999)}),
+			field:    "spec.vxlanPort",
 			expected: int64(9999),
 		},
 		{
@@ -154,16 +175,16 @@ func TestApplyDefaultsPreservation(t *testing.T) {
 			expected: int64(50),
 		},
 		{
-			name: "L2VNI linuxBridge autoCreate not overridden when true",
+			name: "L2VNI linuxBridge lifecycle preserved",
 			gvk:  l2vniGVK,
 			obj: newUnstructured("L2VNI", map[string]any{
-				"hostmaster": map[string]any{
-					"type":        "linux-bridge",
-					"linuxBridge": map[string]any{"autoCreate": true},
+				"hostMaster": map[string]any{
+					"type":        "LinuxBridge",
+					"linuxBridge": map[string]any{"lifecycle": "Managed"},
 				},
 			}),
-			field:    "spec.hostmaster.linuxBridge.autoCreate",
-			expected: true,
+			field:    "spec.hostMaster.linuxBridge.lifecycle",
+			expected: "Managed",
 		},
 	}
 
@@ -188,29 +209,29 @@ func TestApplyDefaultsPreservation(t *testing.T) {
 func TestApplyDefaultsCombinedAndEdgeCases(t *testing.T) {
 	t.Run("multiple defaults applied at once for L2VNI", func(t *testing.T) {
 		obj := newUnstructured("L2VNI", map[string]any{
-			"hostmaster": map[string]any{
-				"type":        "linux-bridge",
-				"linuxBridge": map[string]any{"name": "br0"},
+			"hostMaster": map[string]any{
+				"type":        "LinuxBridge",
+				"linuxBridge": map[string]any{"lifecycle": "External", "name": "br0"},
 			},
 		})
 		if err := ApplyDefaults(obj, l2vniGVK); err != nil {
 			t.Fatalf("ApplyDefaults() returned error: %v", err)
 		}
 
-		val, ok := getNestedField(obj, "spec.vxlanport")
+		val, ok := getNestedField(obj, "spec.vxlanPort")
 		if !ok {
-			t.Fatal("spec.vxlanport not found")
+			t.Fatal("spec.vxlanPort not found")
 		}
 		if val != int64(4789) {
-			t.Errorf("spec.vxlanport = %v, want %v", val, int64(4789))
+			t.Errorf("spec.vxlanPort = %v, want %v", val, int64(4789))
 		}
 
-		val, ok = getNestedField(obj, "spec.hostmaster.linuxBridge.autoCreate")
+		val, ok = getNestedField(obj, "spec.hostMaster.linuxBridge.lifecycle")
 		if !ok {
-			t.Fatal("spec.hostmaster.linuxBridge.autoCreate not found")
+			t.Fatal("spec.hostMaster.linuxBridge.lifecycle not found")
 		}
-		if val != false {
-			t.Errorf("spec.hostmaster.linuxBridge.autoCreate = %v, want false", val)
+		if val != "External" {
+			t.Errorf("spec.hostMaster.linuxBridge.lifecycle = %v, want External", val)
 		}
 	})
 
@@ -220,12 +241,12 @@ func TestApplyDefaultsCombinedAndEdgeCases(t *testing.T) {
 			t.Fatalf("ApplyDefaults() returned error: %v", err)
 		}
 
-		val, ok := getNestedField(obj, "spec.routeridcidr")
+		val, ok := getNestedField(obj, "spec.routerIDCIDR")
 		if !ok {
-			t.Fatal("spec.routeridcidr not found")
+			t.Fatal("spec.routerIDCIDR not found")
 		}
 		if val != "10.0.0.0/24" {
-			t.Errorf("spec.routeridcidr = %v, want 10.0.0.0/24", val)
+			t.Errorf("spec.routerIDCIDR = %v, want 10.0.0.0/24", val)
 		}
 	})
 
@@ -236,13 +257,13 @@ func TestApplyDefaultsCombinedAndEdgeCases(t *testing.T) {
 			t.Fatalf("first ApplyDefaults() returned error: %v", err)
 		}
 
-		firstVal, _ := getNestedField(obj, "spec.vxlanport")
+		firstVal, _ := getNestedField(obj, "spec.vxlanPort")
 
 		if err := ApplyDefaults(obj, l2vniGVK); err != nil {
 			t.Fatalf("second ApplyDefaults() returned error: %v", err)
 		}
 
-		secondVal, _ := getNestedField(obj, "spec.vxlanport")
+		secondVal, _ := getNestedField(obj, "spec.vxlanPort")
 		if firstVal != secondVal {
 			t.Errorf("idempotency broken: first=%v, second=%v", firstVal, secondVal)
 		}
@@ -268,12 +289,17 @@ func TestValidateSuccessful(t *testing.T) {
 		obj  *unstructured.Unstructured
 	}{
 		{
-			name: "Underlay EVPN with only vtepCIDR",
+			name: "Underlay with tunnel endpoint",
 			gvk:  underlayGVK,
 			obj: newUnstructured("Underlay", map[string]any{
-				"asn":  int64(65000),
-				"nics": []any{"eth0"},
-				"evpn": map[string]any{"vtepCIDR": "10.10.0.0/24"},
+				"asn": int64(65000),
+				"interfaces": []any{
+					map[string]any{
+						"type":          "NetworkDevice",
+						"networkDevice": map[string]any{"interfaceName": "eth0"},
+					},
+				},
+				"tunnelEndpoint": map[string]any{"cidrs": []any{"10.10.0.0/24"}},
 				"neighbors": []any{
 					map[string]any{
 						"address": "192.168.1.1",
@@ -286,8 +312,13 @@ func TestValidateSuccessful(t *testing.T) {
 			name: "Underlay Neighbor without hostasn",
 			gvk:  underlayGVK,
 			obj: newUnstructured("Underlay", map[string]any{
-				"asn":  int64(65000),
-				"nics": []any{"eth0"},
+				"asn": int64(65000),
+				"interfaces": []any{
+					map[string]any{
+						"type":          "NetworkDevice",
+						"networkDevice": map[string]any{"interfaceName": "eth0"},
+					},
+				},
 				"neighbors": []any{
 					map[string]any{
 						"address": "192.168.1.1",
@@ -300,40 +331,80 @@ func TestValidateSuccessful(t *testing.T) {
 			name: "Underlay Neighbor with different hostasn and asn",
 			gvk:  underlayGVK,
 			obj: newUnstructured("Underlay", map[string]any{
-				"asn":  int64(65000),
-				"nics": []any{"eth0"},
+				"asn": int64(65000),
+				"interfaces": []any{
+					map[string]any{
+						"type":          "NetworkDevice",
+						"networkDevice": map[string]any{"interfaceName": "eth0"},
+					},
+				},
 				"neighbors": []any{
 					map[string]any{
 						"address": "192.168.1.1",
 						"asn":     int64(65001),
-						"hostasn": int64(65002),
+						"hostASN": int64(65002),
 					},
 				},
 			}),
 		},
 		{
-			name: "L2VNI with LinuxBridge name set and autoCreate false",
-			gvk:  l2vniGVK,
-			obj: newUnstructured("L2VNI", map[string]any{
-				"vni": int64(100),
-				"hostmaster": map[string]any{
-					"type": "linux-bridge",
-					"linuxBridge": map[string]any{
-						"name":       "br0",
-						"autoCreate": false,
+			name: "Underlay with CNI interface",
+			gvk:  underlayGVK,
+			obj: newUnstructured("Underlay", map[string]any{
+				"asn": int64(65000),
+				"interfaces": []any{
+					map[string]any{
+						"type": "CNIDevice",
+						"cniDevice": map[string]any{
+							"type": "RawConfig",
+							"rawConfig": map[string]any{
+								"cniVersion": "1.0.0",
+								"name":       "macvlan-underlay",
+								"plugins": []any{
+									map[string]any{
+										"type":   "macvlan",
+										"master": "eth1",
+										"mode":   "bridge",
+									},
+								},
+							},
+							"runtimeConfig": map[string]any{
+								"mac": "02:42:c0:a8:01:0a",
+							},
+						},
+					},
+				},
+				"neighbors": []any{
+					map[string]any{
+						"address": "192.168.1.1",
+						"asn":     int64(65001),
 					},
 				},
 			}),
 		},
 		{
-			name: "L2VNI with LinuxBridge autoCreate true and no name",
+			name: "L2VNI with LinuxBridge External lifecycle and name set",
 			gvk:  l2vniGVK,
 			obj: newUnstructured("L2VNI", map[string]any{
 				"vni": int64(100),
-				"hostmaster": map[string]any{
-					"type": "linux-bridge",
+				"hostMaster": map[string]any{
+					"type": "LinuxBridge",
 					"linuxBridge": map[string]any{
-						"autoCreate": true,
+						"name":      "br0",
+						"lifecycle": "External",
+					},
+				},
+			}),
+		},
+		{
+			name: "L2VNI with LinuxBridge Managed lifecycle and no name",
+			gvk:  l2vniGVK,
+			obj: newUnstructured("L2VNI", map[string]any{
+				"vni": int64(100),
+				"hostMaster": map[string]any{
+					"type": "LinuxBridge",
+					"linuxBridge": map[string]any{
+						"lifecycle": "Managed",
 					},
 				},
 			}),
@@ -343,10 +414,10 @@ func TestValidateSuccessful(t *testing.T) {
 			gvk:  l2vniGVK,
 			obj: newUnstructured("L2VNI", map[string]any{
 				"vni": int64(100),
-				"hostmaster": map[string]any{
-					"type": "linux-bridge",
+				"hostMaster": map[string]any{
+					"type": "LinuxBridge",
 					"linuxBridge": map[string]any{
-						"autoCreate": true,
+						"lifecycle": "Managed",
 					},
 				},
 			}),
@@ -365,12 +436,10 @@ func TestValidateSuccessful(t *testing.T) {
 			obj: newUnstructured("L3VNI", map[string]any{
 				"vrf": "testvrf",
 				"vni": int64(200),
-				"hostsession": map[string]any{
-					"asn":     int64(65000),
-					"hostasn": int64(65001),
-					"localcidr": map[string]any{
-						"ipv4": "10.0.0.0/30",
-					},
+				"hostSession": map[string]any{
+					"asn":        int64(65000),
+					"hostASN":    int64(65001),
+					"localCIDRs": []any{"10.0.0.0/30"},
 				},
 			}),
 		},
@@ -378,12 +447,10 @@ func TestValidateSuccessful(t *testing.T) {
 			name: "valid L3Passthrough",
 			gvk:  l3passthroughGVK,
 			obj: newUnstructured("L3Passthrough", map[string]any{
-				"hostsession": map[string]any{
-					"asn":     int64(65000),
-					"hostasn": int64(65001),
-					"localcidr": map[string]any{
-						"ipv4": "10.0.0.0/30",
-					},
+				"hostSession": map[string]any{
+					"asn":        int64(65000),
+					"hostASN":    int64(65001),
+					"localCIDRs": []any{"10.0.0.0/30"},
 				},
 			}),
 		},
@@ -414,6 +481,71 @@ func TestValidateSuccessful(t *testing.T) {
 	}
 }
 
+func TestValidatePortRanges(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		port      int64
+		errSubstr string
+	}{
+		{name: "negative", port: -1, errSubstr: "should be greater than or equal to 1"},
+		{name: "zero", port: 0, errSubstr: "should be greater than or equal to 1"},
+		{name: "minimum", port: 1},
+		{name: "maximum", port: 65535},
+		{name: "above maximum", port: 65536, errSubstr: "should be less than or equal to 65535"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, resource := range []struct {
+				gvk  schema.GroupVersionKind
+				spec map[string]any
+			}{
+				{
+					gvk:  l2vniGVK,
+					spec: map[string]any{"vni": int64(100), "vxlanPort": tc.port},
+				},
+				{
+					gvk:  l3vniGVK,
+					spec: map[string]any{"vrf": "testvrf", "vni": int64(200), "vxlanPort": tc.port},
+				},
+				{
+					gvk: underlayGVK,
+					spec: map[string]any{
+						"asn": int64(65000),
+						"interfaces": []any{
+							map[string]any{
+								"type":          "NetworkDevice",
+								"networkDevice": map[string]any{"interfaceName": "eth0"},
+							},
+						},
+						"neighbors": []any{
+							map[string]any{"address": "192.168.1.1", "asn": int64(65001), "port": tc.port},
+						},
+					},
+				},
+			} {
+				t.Run(resource.gvk.Kind, func(t *testing.T) {
+					obj := newUnstructured(resource.gvk.Kind, resource.spec)
+					if err := ApplyDefaults(obj, resource.gvk); err != nil {
+						t.Fatalf("ApplyDefaults() returned error: %v", err)
+					}
+					errs := Validate(t.Context(), obj, resource.gvk)
+					if tc.errSubstr == "" {
+						if len(errs) > 0 {
+							t.Errorf("expected no validation errors, got: %v", errs)
+						}
+						return
+					}
+					if len(errs) == 0 {
+						t.Fatal("expected port validation error, got none")
+					}
+					if !strings.Contains(errs.ToAggregate().Error(), tc.errSubstr) {
+						t.Errorf("expected error containing %q, got: %v", tc.errSubstr, errs)
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestValidateFailure(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -422,52 +554,54 @@ func TestValidateFailure(t *testing.T) {
 		errSubstr string
 	}{
 		{
-			name: "LinuxBridge with both name and autoCreate true",
+			name: "LinuxBridge with both name and Managed lifecycle",
 			gvk:  l2vniGVK,
 			obj: newUnstructured("L2VNI", map[string]any{
-				"hostmaster": map[string]any{
-					"type": "linux-bridge",
+				"hostMaster": map[string]any{
+					"type": "LinuxBridge",
 					"linuxBridge": map[string]any{
-						"name":       "br0",
-						"autoCreate": true,
+						"name":      "br0",
+						"lifecycle": "Managed",
 					},
 				},
 			}),
-			errSubstr: "either name must be set or autoCreate must be true, but not both",
+			errSubstr: "name must be set when lifecycle is External, and must not be set when it is Managed.",
 		},
 		{
-			name: "LinuxBridge with neither name nor autoCreate",
+			name: "LinuxBridge with External lifecycle and no name",
 			gvk:  l2vniGVK,
 			obj: newUnstructured("L2VNI", map[string]any{
-				"hostmaster": map[string]any{
-					"type":        "linux-bridge",
-					"linuxBridge": map[string]any{},
+				"hostMaster": map[string]any{
+					"type": "LinuxBridge",
+					"linuxBridge": map[string]any{
+						"lifecycle": "External",
+					},
 				},
 			}),
-			errSubstr: "either name must be set or autoCreate must be true, but not both",
+			errSubstr: "name must be set when lifecycle is External, and must not be set when it is Managed.",
 		},
 		{
-			name: "OVSBridge with both name and autoCreate true",
+			name: "OVSBridge with both name and Managed lifecycle",
 			gvk:  l2vniGVK,
 			obj: newUnstructured("L2VNI", map[string]any{
-				"hostmaster": map[string]any{
-					"type": "ovs-bridge",
+				"hostMaster": map[string]any{
+					"type": "OVSBridge",
 					"ovsBridge": map[string]any{
-						"name":       "br0",
-						"autoCreate": true,
+						"name":      "br0",
+						"lifecycle": "Managed",
 					},
 				},
 			}),
-			errSubstr: "either name must be set or autoCreate must be true, but not both",
+			errSubstr: "name must be set when lifecycle is External, and must not be set when it is Managed.",
 		},
 		{
 			name: "HostMaster type linux-bridge with ovsBridge field",
 			gvk:  l2vniGVK,
 			obj: newUnstructured("L2VNI", map[string]any{
-				"hostmaster": map[string]any{
-					"type": "linux-bridge",
+				"hostMaster": map[string]any{
+					"type": "LinuxBridge",
 					"ovsBridge": map[string]any{
-						"autoCreate": true,
+						"lifecycle": "Managed",
 					},
 				},
 			}),
@@ -477,14 +611,124 @@ func TestValidateFailure(t *testing.T) {
 			name: "HostMaster type ovs-bridge with linuxBridge field",
 			gvk:  l2vniGVK,
 			obj: newUnstructured("L2VNI", map[string]any{
-				"hostmaster": map[string]any{
-					"type": "ovs-bridge",
+				"hostMaster": map[string]any{
+					"type": "OVSBridge",
 					"linuxBridge": map[string]any{
-						"autoCreate": true,
+						"lifecycle": "Managed",
 					},
 				},
 			}),
 			errSubstr: "type/config mismatch",
+		},
+		{
+			name: "Underlay interface type CNI without cniDevice",
+			gvk:  underlayGVK,
+			obj: newUnstructured("Underlay", map[string]any{
+				"asn": int64(65000),
+				"interfaces": []any{
+					map[string]any{
+						"type": "CNIDevice",
+					},
+				},
+				"neighbors": []any{
+					map[string]any{
+						"address": "192.168.1.1",
+						"asn":     int64(65001),
+					},
+				},
+			}),
+			errSubstr: "cniDevice must be set if and only if type is 'CNIDevice'",
+		},
+		{
+			name: "Underlay interface type NetworkDevice with cniDevice",
+			gvk:  underlayGVK,
+			obj: newUnstructured("Underlay", map[string]any{
+				"asn": int64(65000),
+				"interfaces": []any{
+					map[string]any{
+						"type":          "NetworkDevice",
+						"networkDevice": map[string]any{"interfaceName": "eth0"},
+						"cniDevice": map[string]any{
+							"type":      "RawConfig",
+							"rawConfig": map[string]any{"cniVersion": "1.0.0"},
+						},
+					},
+				},
+				"neighbors": []any{
+					map[string]any{
+						"address": "192.168.1.1",
+						"asn":     int64(65001),
+					},
+				},
+			}),
+			errSubstr: "cniDevice must be set if and only if type is 'CNIDevice'",
+		},
+		{
+			name: "Underlay mixing NetworkDevice and CNIDevice interfaces",
+			gvk:  underlayGVK,
+			obj: newUnstructured("Underlay", map[string]any{
+				"asn": int64(65000),
+				"interfaces": []any{
+					map[string]any{
+						"type":          "NetworkDevice",
+						"networkDevice": map[string]any{"interfaceName": "eth0"},
+					},
+					map[string]any{
+						"type": "CNIDevice",
+						"cniDevice": map[string]any{
+							"type":      "RawConfig",
+							"rawConfig": map[string]any{"cniVersion": "1.0.0"},
+						},
+					},
+				},
+				"neighbors": []any{
+					map[string]any{
+						"address": "192.168.1.1",
+						"asn":     int64(65001),
+					},
+				},
+			}),
+			errSubstr: "all interfaces must be of the same type",
+		},
+		{
+			name: "Underlay CNI device type RawConfig without rawConfig",
+			gvk:  underlayGVK,
+			obj: newUnstructured("Underlay", map[string]any{
+				"asn": int64(65000),
+				"interfaces": []any{
+					map[string]any{
+						"type": "CNIDevice",
+						"cniDevice": map[string]any{
+							"type": "RawConfig",
+						},
+					},
+				},
+				"neighbors": []any{
+					map[string]any{
+						"address": "192.168.1.1",
+						"asn":     int64(65001),
+					},
+				},
+			}),
+			errSubstr: "rawConfig must be set if and only if type is 'RawConfig'",
+		},
+		{
+			// The interfaces "same type" CEL rule indexes self[0]: ensure an
+			// empty list fails with the MinItems error instead of a CEL
+			// runtime error (all() is vacuously true on empty lists).
+			name: "Underlay with empty interfaces list",
+			gvk:  underlayGVK,
+			obj: newUnstructured("Underlay", map[string]any{
+				"asn":        int64(65000),
+				"interfaces": []any{},
+				"neighbors": []any{
+					map[string]any{
+						"address": "192.168.1.1",
+						"asn":     int64(65001),
+					},
+				},
+			}),
+			errSubstr: "should have at least 1 items",
 		},
 		{
 			name: "ConnectTimeSeconds below minimum (0)",
@@ -515,6 +759,76 @@ func TestValidateFailure(t *testing.T) {
 				},
 			}),
 			errSubstr: "should be less than or equal to 65535",
+		},
+		{
+			name: "L3VNI hostSession localCIDRs invalid CIDR",
+			gvk:  l3vniGVK,
+			obj: newUnstructured("L3VNI", map[string]any{
+				"vrf": "testvrf",
+				"vni": int64(200),
+				"hostSession": map[string]any{
+					"asn":        int64(65000),
+					"hostASN":    int64(65001),
+					"localCIDRs": []any{"not-a-cidr"},
+				},
+			}),
+			errSubstr: "all entries must be valid CIDRs",
+		},
+		{
+			name: "L3VNI hostSession localCIDRs two IPv4 CIDRs",
+			gvk:  l3vniGVK,
+			obj: newUnstructured("L3VNI", map[string]any{
+				"vrf": "testvrf",
+				"vni": int64(200),
+				"hostSession": map[string]any{
+					"asn":        int64(65000),
+					"hostASN":    int64(65001),
+					"localCIDRs": []any{"10.0.0.0/24", "10.1.0.0/24"},
+				},
+			}),
+			errSubstr: "at most one IPv4 CIDR is allowed",
+		},
+		{
+			name: "L3VNI hostSession localCIDRs two IPv6 CIDRs",
+			gvk:  l3vniGVK,
+			obj: newUnstructured("L3VNI", map[string]any{
+				"vrf": "testvrf",
+				"vni": int64(200),
+				"hostSession": map[string]any{
+					"asn":        int64(65000),
+					"hostASN":    int64(65001),
+					"localCIDRs": []any{"fd00::/64", "fd01::/64"},
+				},
+			}),
+			errSubstr: "at most one IPv6 CIDR is allowed",
+		},
+		{
+			name: "L3VNI hostSession localCIDRs empty list",
+			gvk:  l3vniGVK,
+			obj: newUnstructured("L3VNI", map[string]any{
+				"vrf": "testvrf",
+				"vni": int64(200),
+				"hostSession": map[string]any{
+					"asn":        int64(65000),
+					"hostASN":    int64(65001),
+					"localCIDRs": []any{},
+				},
+			}),
+			errSubstr: "should have at least 1 items",
+		},
+		{
+			name: "L3VNI hostSession localCIDRs more than two entries",
+			gvk:  l3vniGVK,
+			obj: newUnstructured("L3VNI", map[string]any{
+				"vrf": "testvrf",
+				"vni": int64(200),
+				"hostSession": map[string]any{
+					"asn":        int64(65000),
+					"hostASN":    int64(65001),
+					"localCIDRs": []any{"10.0.0.0/24", "fd00::/64", "10.1.0.0/24"},
+				},
+			}),
+			errSubstr: "must have at most 2 items",
 		},
 	}
 
@@ -554,41 +868,43 @@ func TestValidateOldSelfFiltering(t *testing.T) {
 		errField string
 	}{
 		{
-			name: "L2VNI with l2gatewayips does not trigger oldSelf error",
+			name: "L2VNI with gatewayIPs does not trigger oldSelf error",
 			gvk:  l2vniGVK,
 			obj: newUnstructured("L2VNI", map[string]any{
-				"l2gatewayips": []any{"10.0.0.1/24"},
+				"gatewayIPs": []any{"10.0.0.1/24"},
+				"routingDomain": map[string]any{
+					"type": "L3VNI",
+					"l3vni": map[string]any{
+						"name": "test-l3vni",
+					},
+				},
 			}),
-			errField: "L2GatewayIPs cannot be changed",
+			errField: "GatewayIPs cannot be changed",
 		},
 		{
 			name: "L3VNI with hostsession localcidr does not trigger oldSelf error",
 			gvk:  l3vniGVK,
 			obj: newUnstructured("L3VNI", map[string]any{
 				"vrf": "testvrf",
-				"hostsession": map[string]any{
-					"asn":     int64(65000),
-					"hostasn": int64(65001),
-					"localcidr": map[string]any{
-						"ipv4": "10.0.0.0/30",
-					},
+				"hostSession": map[string]any{
+					"asn":        int64(65000),
+					"hostASN":    int64(65001),
+					"localCIDRs": []any{"10.0.0.0/30"},
 				},
 			}),
-			errField: "LocalCIDR can't be changed",
+			errField: "localCIDRs can't be changed",
 		},
 		{
 			name: "L3Passthrough with hostsession localcidr does not trigger oldSelf error",
 			gvk:  l3passthroughGVK,
 			obj: newUnstructured("L3Passthrough", map[string]any{
-				"hostsession": map[string]any{
-					"asn":     int64(65000),
-					"hostasn": int64(65001),
-					"localcidr": map[string]any{
-						"ipv4": "10.0.0.0/30",
-					},
+				"hostSession": map[string]any{
+					"asn":        int64(65000),
+					"hostASN":    int64(65001),
+					"localCIDRs": []any{"10.0.0.0/30"},
 				},
 			}),
-			errField: "LocalCIDR can't be changed",
+			errField: "localCIDRs can't be changed",
 		},
 	}
 
@@ -609,13 +925,13 @@ func TestValidateOldSelfFiltering(t *testing.T) {
 }
 
 func TestValidateMultipleErrors(t *testing.T) {
-	t.Run("LinuxBridge both name and autoCreate plus type mismatch", func(t *testing.T) {
+	t.Run("LinuxBridge both name and Managed lifecycle plus type mismatch", func(t *testing.T) {
 		obj := newUnstructured("L2VNI", map[string]any{
-			"hostmaster": map[string]any{
-				"type": "ovs-bridge",
+			"hostMaster": map[string]any{
+				"type": "OVSBridge",
 				"linuxBridge": map[string]any{
-					"name":       "br0",
-					"autoCreate": true,
+					"name":      "br0",
+					"lifecycle": "Managed",
 				},
 			},
 		})
@@ -632,19 +948,19 @@ func TestValidateMultipleErrors(t *testing.T) {
 			}
 		}
 
-		foundNameAuto := false
+		foundNameLifecycle := false
 		foundMismatch := false
 		for _, e := range errs {
 			msg := e.Error()
-			if strings.Contains(msg, "either name must be set or autoCreate must be true, but not both") {
-				foundNameAuto = true
+			if strings.Contains(msg, "name must be set when lifecycle is External, and must not be set when it is Managed.") {
+				foundNameLifecycle = true
 			}
 			if strings.Contains(msg, "type/config mismatch") {
 				foundMismatch = true
 			}
 		}
-		if !foundNameAuto {
-			t.Error("missing name/autoCreate validation error")
+		if !foundNameLifecycle {
+			t.Error("missing name/lifecycle validation error")
 		}
 		if !foundMismatch {
 			t.Error("missing type/config mismatch validation error")

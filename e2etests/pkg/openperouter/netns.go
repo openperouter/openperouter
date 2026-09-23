@@ -11,17 +11,18 @@ import (
 )
 
 const NamedNetns = "perouter"
+const underlayPortNamePrefix = "u_"
 
 // NamedNetnsExists checks whether /var/run/netns/perouter is present on nodeName.
 func NamedNetnsExists(nodeName string) (bool, error) {
-	exec := executor.ForContainer(nodeName)
+	exec := executor.ForNode(nodeName)
 	out, err := exec.Exec("ip", "netns", "list")
 	if err != nil {
 		return false, err
 	}
 	// Each line of "ip netns list" is "<name>" or "<name> (id: N)".
 	// Use exact name comparison to avoid "perouter" matching inside "openperouter".
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		fields := strings.Fields(line)
 		if len(fields) > 0 && fields[0] == NamedNetns {
 			return true, nil
@@ -33,7 +34,7 @@ func NamedNetnsExists(nodeName string) (bool, error) {
 // NamedNetnsHasInterfaceType checks whether the named netns contains at least one
 // interface of the given link type (e.g. "vrf", "bridge", "vxlan").
 func NamedNetnsHasInterfaceType(nodeName, linkType string) (bool, error) {
-	exec := executor.ForContainer(nodeName)
+	exec := executor.ForNode(nodeName)
 	out, err := exec.Exec("ip", "netns", "exec", NamedNetns, "ip", "link", "show", "type", linkType)
 	if err != nil {
 		return false, err
@@ -45,7 +46,7 @@ func NamedNetnsHasInterfaceType(nodeName, linkType string) (bool, error) {
 // netns, then runs "ip netns delete perouter" on nodeName. Pre-deleting
 // devices accelerates the kernel's async cleanup_net() from ~28s to <2s.
 func DeleteNamedNetns(nodeName string) error {
-	e := executor.ForContainer(nodeName)
+	e := executor.ForNode(nodeName)
 
 	if err := deleteNetnsDevices(e); err != nil {
 		log.Printf("pre-deletion of devices failed for %q, proceeding with netns delete: %v", nodeName, err)
@@ -60,7 +61,7 @@ func DeleteNamedNetns(nodeName string) error {
 // the default loopback interfaces on the VTEP loopback (lo), and by checking
 // that `lo` is up.
 func UnderlayConfigured(nodeName string) (bool, error) {
-	exec := executor.ForContainer(nodeName)
+	exec := executor.ForNode(nodeName)
 
 	out, err := exec.Exec("ip", "netns", "list")
 	if err != nil {
@@ -86,13 +87,24 @@ func UnderlayConfigured(nodeName string) (bool, error) {
 		return true, nil
 	}
 
+	// Check if some Grout underlay has been configured
+	out, err = exec.Exec("ip", "netns", "exec", NamedNetns, "ip", "-brief", "link", "show")
+	if err != nil {
+		return false, err
+	}
+	for line := range strings.SplitSeq(out, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) > 0 && strings.HasPrefix(fields[0], underlayPortNamePrefix) {
+			return true, nil
+		}
+	}
 	return false, nil
 }
 
 // UnderlayVethExists checks whether the toswitch interfaces exist on nodeName,
 // either in the default netns or inside the perouter netns.
 func UnderlayVethsExists(nodeName string) bool {
-	exec := executor.ForContainer(nodeName)
+	exec := executor.ForNode(nodeName)
 	for _, iface := range []string{"toswitch1", "toswitch2"} {
 		if _, err := exec.Exec("ip", "link", "show", iface); err == nil {
 			return true
@@ -112,7 +124,7 @@ func deleteNetnsDevices(e executor.Executor) error {
 		return err
 	}
 
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		name, err := ifaceName(line)
 		if err != nil {
 			log.Printf("could not get interface name from line %v", err)

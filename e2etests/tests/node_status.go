@@ -9,6 +9,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -23,7 +24,7 @@ import (
 )
 
 var _ = Describe("Node Router Status", func() {
-	const routerNamespace = openperouter.Namespace
+	routerNamespace := openperouter.Namespace
 
 	var nodes []corev1.Node
 	var cs kubernetes.Interface
@@ -39,11 +40,13 @@ var _ = Describe("Node Router Status", func() {
 
 	It("should ensure RouterNodeConfigurationStatus per each node", func() {
 		assertSingleNodeStatusPerNode(nodes, routerNamespace)
+		openperouter.AssertNodesStatusReady(Updater.Client())
 
 		By("delete all CRs and verify they are recreated")
 		Expect(Updater.Client().DeleteAllOf(context.Background(), &v1alpha1.RouterNodeConfigurationStatus{}, client.InNamespace(routerNamespace))).To(Succeed())
 
 		assertSingleNodeStatusPerNode(nodes, routerNamespace)
+		openperouter.AssertNodesStatusReady(Updater.Client())
 	})
 })
 
@@ -73,4 +76,12 @@ func assertSingleNodeStatusPerNode(nodes []corev1.Node, namespace string) {
 			}}), "node-status %q should have owner reference to the node %q", nodeStatus.Name, node.Name)
 		}
 	}).WithTimeout(10 * time.Second).WithPolling(1 * time.Second).Should(Succeed())
+}
+
+func expectNodeCondition(g Gomega, nodeName string, condType string, status metav1.ConditionStatus) {
+	nodeStatus, err := openperouter.GetNodeStatus(Updater.Client(), nodeName)
+	g.Expect(err).NotTo(HaveOccurred())
+	cond := apimeta.FindStatusCondition(nodeStatus.Status.Conditions, condType)
+	g.Expect(cond).NotTo(BeNil())
+	g.Expect(cond.Status).To(Equal(status))
 }

@@ -1,15 +1,25 @@
 l2vnis:
-  - vrf: storage
+  - name: l2vni-storage
     vni: 300
-    vxlanport: 4789
-    hostmaster:
-      type: linux-bridge
+    vxlanPort: 4789
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: l3vni-red
+    hostMaster:
+      type: LinuxBridge
       linuxBridge:
+        lifecycle: External
         name: br-storage
-  - vrf: management
+  - name: l2vni-management
     vni: 400
-    vxlanport: 4789
-    hostmaster:
-      type: ovs-bridge
+    vxlanPort: 4789
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: l3vni-blue
+    hostMaster:
+      type: OVSBridge
       ovsBridge:
+        lifecycle: External
         name: ovsbr0

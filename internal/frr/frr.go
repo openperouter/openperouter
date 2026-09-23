@@ -10,6 +10,11 @@ import (
 	"github.com/go-kit/log"
 )
 
+const (
+	HEncaps    = "H_Encaps"
+	HEncapsRed = "H_Encaps_Red"
+)
+
 type ConfigUpdater func(context.Context, string) error
 
 type FRR struct {

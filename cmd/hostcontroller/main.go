@@ -23,9 +23,11 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/client-go/rest"
@@ -48,8 +50,13 @@ import (
 	"github.com/openperouter/openperouter/api/static"
 	periov1alpha1 "github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/buildversion"
+	"github.com/openperouter/openperouter/internal/cniinvoker"
+	"github.com/openperouter/openperouter/internal/controller/nodeindex"
 	"github.com/openperouter/openperouter/internal/controller/routerconfiguration"
+	"github.com/openperouter/openperouter/internal/conversion"
+	"github.com/openperouter/openperouter/internal/dhcp"
 	"github.com/openperouter/openperouter/internal/filewatcher"
+	"github.com/openperouter/openperouter/internal/frr"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/openperouter/openperouter/internal/logging"
 	"github.com/openperouter/openperouter/internal/staticconfiguration"
@@ -59,8 +66,11 @@ import (
 )
 
 const (
-	modeK8s  = "k8s"
-	modeHost = "host"
+	datapathKernel   = "kernel"
+	datapathGrout    = "grout"
+	modeK8s          = "k8s"
+	modeHost         = "host"
+	restartDHCPEvent = "dhcp-restart-trigger"
 )
 
 var (
@@ -88,15 +98,46 @@ type k8sModeParameters struct {
 	criSocket string
 }
 
+// stringSliceFlag is a flag.Value collecting comma-separated (or repeated)
+// values into a string slice, trimming whitespace and dropping empty entries.
+// Setting the flag replaces the default value, it can be passed just once
+type stringSliceFlag struct {
+	values []string
+	set    bool
+}
+
+func (s *stringSliceFlag) String() string {
+	return strings.Join(s.values, ",")
+}
+
+func (s *stringSliceFlag) Set(value string) error {
+	if s.set {
+		return fmt.Errorf("cannot be specified more than once")
+	}
+	s.set = true
+
+	for entry := range strings.SplitSeq(value, ",") {
+		if trimmed := strings.TrimSpace(entry); trimmed != "" {
+			s.values = append(s.values, trimmed)
+		}
+	}
+	return nil
+}
+
 type parameters struct {
-	probeAddr      string
-	frrConfigPath  string
-	reloaderSocket string
-	mode           string
-	ovsSocketPath  string
-	nodeName       string
-	namespace      string
-	logLevel       string
+	probeAddr       string
+	frrConfigPath   string
+	reloaderSocket  string
+	mode            string
+	ovsSocketPath   string
+	nodeName        string
+	namespace       string
+	logLevel        string
+	bgpListenLimit  uint
+	cniPluginDirs   stringSliceFlag
+	cniCacheDir     string
+	datapath        string
+	groutSocketPath string
 }
 
 func main() {
@@ -107,12 +148,17 @@ func main() {
 
 	flag.StringVar(&args.probeAddr, "health-probe-bind-address", ":9081", "The address the probe endpoint binds to.")
 	flag.StringVar(&args.logLevel, "loglevel", "info", "the verbosity of the process")
+	flag.UintVar(&args.bgpListenLimit, "bgplistenlimit", frr.DefaultListenLimit,
+		"the maximum number of dynamic BGP sessions accepted via listen ranges (1-65535)")
 	flag.StringVar(&args.frrConfigPath, "frrconfig", "/etc/perouter/frr/frr.conf",
 		"the location of the frr configuration file")
 	flag.StringVar(&args.ovsSocketPath, "ovssocket", "unix:/var/run/openvswitch/db.sock",
 		"the OVS database socket path")
 
 	flag.StringVar(&args.mode, "mode", modeK8s, "the mode to run in (k8s or host)")
+
+	flag.StringVar(&args.datapath, "datapath", "kernel", "The datapath to use (kernel or grout)")
+	flag.StringVar(&args.groutSocketPath, "grout-socket", "/var/run/grout/grout.sock", "Path to the grout control socket")
 
 	flag.StringVar(&args.nodeName, "nodename", "", "The name of the node the controller runs on")
 	flag.StringVar(&args.namespace, "namespace", "", "The namespace the controller runs in")
@@ -132,11 +178,39 @@ func main() {
 		systemdctl.HostDBusSocket, "the path of systemd control socket")
 	flag.IntVar(&hostModeParams.routerHealthCheckPort, "router-health-check-port",
 		9080, "the port for router health check endpoint")
+	flag.StringVar(&args.cniCacheDir, "cni-cache-dir", "/var/lib/openperouter/cni/cache",
+		"directory to store CNI result cache")
+	args.cniPluginDirs.values = []string{"/opt/openperouter/cni/bin/"}
+	flag.Var(&args.cniPluginDirs, "cni-plugin-dirs",
+		fmt.Sprintf(
+			"comma-separated list of directories to search for CNI plugin binaries, can be specified just once, defaults to %v",
+			args.cniPluginDirs.values))
 
 	flag.Parse()
 
+	if args.bgpListenLimit < 1 || args.bgpListenLimit > frr.DefaultListenLimit {
+		fmt.Println("bgplistenlimit must be between 1 and 65535, got", args.bgpListenLimit)
+		os.Exit(1)
+	}
+	conversion.BGPListenLimit = uint16(args.bgpListenLimit)
+
 	// Initialize OVS socket path for the hostnetwork package
 	hostnetwork.OVSSocketPath = args.ovsSocketPath
+
+	// In case of modeHost, parse nodeConfig early so that the correct logLevel is set for the logger.
+	var nodeConfig *static.NodeConfig
+	if args.mode == modeHost {
+		var err error
+		nodeConfig, err = staticconfiguration.ReadNodeConfig(hostModeParams.nodeConfigPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to load the node configuration file: %q", err)
+			os.Exit(1)
+		}
+		if err := overrideHostMode(&args, *nodeConfig); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to override host mode arguments: %q", err)
+			os.Exit(1)
+		}
+	}
 
 	logger, err := logging.New(args.logLevel)
 	if err != nil {
@@ -146,6 +220,16 @@ func main() {
 	ctrl.SetLogger(logr.FromSlogHandler(logger.Handler()))
 	setupLog.Info("version", "version", buildversion.Version())
 	setupLog.Info("arguments", "args", fmt.Sprintf("%+v", args))
+
+	if len(args.cniPluginDirs.values) == 0 {
+		setupLog.Info("cni-plugin-dirs cannot be empty")
+		os.Exit(1)
+	}
+
+	if args.cniCacheDir == "" {
+		setupLog.Info("cni-cache-dir cannot be empty")
+		os.Exit(1)
+	}
 
 	// Setup signal handler once for the entire process
 	ctx := ctrl.SetupSignalHandler()
@@ -160,7 +244,7 @@ func main() {
 		return
 	}
 
-	runHostMode(ctx, args, hostModeParams, logger)
+	runHostMode(ctx, args, hostModeParams, logger, nodeConfig)
 }
 
 func runK8sMode(
@@ -174,8 +258,15 @@ func runK8sMode(
 		logger.Error("unable to get kubernetes config", "error", err)
 		os.Exit(1)
 	}
+
+	dhcpSupervisor := dhcp.NewLazySupervisor(logger)
+	cniinvoker.Init(args.cniPluginDirs.values, args.cniCacheDir, args.nodeName, dhcpSupervisor)
+	setupLog.Info("CNI plugin invoker initialized for k8s mode",
+		"pluginDirs", args.cniPluginDirs.values,
+		"cacheDir", args.cniCacheDir)
+
 	// runK8sConfigReconciler is blocking so when running in k8s mode we should stop here
-	if err := runK8sConfigReconciler(ctx, args, k8sConfig, logger, args.probeAddr); err != nil {
+	if err := runK8sConfigReconciler(ctx, args, k8sConfig, logger, args.probeAddr, dhcpSupervisor); err != nil {
 		logger.Error("failed to enable k8s reconciler", "error", err)
 		os.Exit(1)
 	}
@@ -186,17 +277,14 @@ func runHostMode(
 	args parameters,
 	hostModeParams hostModeParameters,
 	logger *slog.Logger,
+	nodeConfig *static.NodeConfig,
 ) {
 	// host mode: run the host reconciler and keep polling until the k8s api is available.
-	nodeConfig, err := staticconfiguration.ReadNodeConfig(hostModeParams.nodeConfigPath)
-	if err != nil {
-		logger.Error("failed to load the node configuration file", "error", err)
-		os.Exit(1)
-	}
-	if err := overrideHostMode(&args, *nodeConfig); err != nil {
-		logger.Error("failed to override host mode arguments", "error", err)
-		os.Exit(1)
-	}
+	dhcpSupervisor := dhcp.NewLazySupervisor(logger)
+	cniinvoker.Init(args.cniPluginDirs.values, args.cniCacheDir, args.nodeName, dhcpSupervisor)
+	setupLog.Info("CNI plugin invoker initialized for host mode",
+		"pluginDirs", args.cniPluginDirs.values,
+		"cacheDir", args.cniCacheDir)
 
 	staticControllerCtx, stopStaticReconciler := context.WithCancel(ctx)
 	defer stopStaticReconciler()
@@ -206,7 +294,7 @@ func runHostMode(
 		defer close(staticDone)
 		logger.Info("creating static configuration controller for host mode")
 		err := runStaticConfigReconciler(
-			staticControllerCtx, args, hostModeParams, nodeConfig, logger, args.probeAddr,
+			staticControllerCtx, args, hostModeParams, nodeConfig, logger, args.probeAddr, dhcpSupervisor,
 		)
 		if errors.Is(err, context.Canceled) {
 			logger.Info("static config reconciler stopped (API became available)")
@@ -228,6 +316,18 @@ func runHostMode(
 
 	logger.Info("kubernetes API is now available, stopping static reconciler and starting k8s reconciler")
 
+	k8sClientset, err := kubernetes.NewForConfig(k8sConfig)
+	if err != nil {
+		logger.Error("failed to create kubernetes clientset for node annotation", "error", err)
+		os.Exit(1)
+	}
+	if err := nodeindex.AnnotateNodeIndex(ctx, k8sClientset, args.nodeName, nodeConfig.NodeIndex.Index); err != nil {
+		logger.Error("failed to annotate node with node index", "error", err)
+		os.Exit(1)
+	}
+	logger.Info("successfully annotated node with node index",
+		"node", args.nodeName, "nodeIndex", nodeConfig.NodeIndex.Index)
+
 	stopStaticReconciler()
 	// Wait for the static reconciler to fully stop and release the health probe port
 	// before starting the K8s reconciler, which binds the same port.
@@ -236,7 +336,7 @@ func runHostMode(
 
 	// Start API reconciler in main thread (blocking) - keeps process alive
 	if err := runK8sConfigReconcilerHostMode(
-		ctx, args, hostModeParams, nodeConfig, k8sConfig, logger,
+		ctx, args, hostModeParams, nodeConfig, k8sConfig, logger, dhcpSupervisor,
 	); err != nil {
 		logger.Error("failed to enable k8s reconciler", "error", err)
 		os.Exit(1)
@@ -248,7 +348,8 @@ func runK8sConfigReconcilerHostMode(ctx context.Context,
 	hostModeParams hostModeParameters,
 	nodeConfig *static.NodeConfig,
 	k8sConfig *rest.Config,
-	logger *slog.Logger) error {
+	logger *slog.Logger,
+	dhcpSupervisor *dhcp.Supervisor) error {
 
 	mgr, err := createK8sManager(k8sConfig, args.nodeName, args.namespace, func(opts *ctrl.Options) {
 		opts.HealthProbeBindAddress = args.probeAddr
@@ -260,27 +361,43 @@ func runK8sConfigReconcilerHostMode(ctx context.Context,
 	routerProvider := &routerconfiguration.RouterHostProvider{
 		FRRConfigPath:         args.frrConfigPath,
 		RouterPidFilePath:     hostModeParams.hostContainerPidPath,
-		CurrentNodeIndex:      nodeConfig.NodeIndex,
+		CurrentNodeIndex:      nodeConfig.NodeIndex.Index,
 		SystemdSocketPath:     hostModeParams.systemdSocketPath,
 		RouterHealthCheckPort: hostModeParams.routerHealthCheckPort,
 	}
 
-	// Create trigger channel for file watcher
+	// Create trigger channels for both controllers
 	triggerChan := make(chan event.GenericEvent, 1)
+	mirrorTriggerChan := make(chan event.GenericEvent, 1)
+
+	var datapathConfigurator routerconfiguration.DatapathConfigurator = &routerconfiguration.KernelDatapathConfigurator{}
+	if args.datapath == datapathGrout {
+		datapathConfigurator = routerconfiguration.NewGroutConfigurator(args.groutSocketPath)
+	}
+
+	dhcpSupervisor.OnRestart = triggerKubernetesReconcile(triggerChan, types.NamespacedName{
+		Namespace: restartDHCPEvent,
+		Name:      args.namespace,
+	})
+
+	if err := mgr.Add(dhcpSupervisor); err != nil {
+		return fmt.Errorf("unable to add DHCP supervisor: %w", err)
+	}
 
 	apiReconciler := &routerconfiguration.PERouterReconciler{
-		Client:          mgr.GetClient(),
-		Scheme:          mgr.GetScheme(),
-		LogLevel:        args.logLevel,
-		Logger:          logger,
-		MyNode:          args.nodeName,
-		MyNamespace:     args.namespace,
-		FRRReloadSocket: args.reloaderSocket,
-		FRRConfigPath:   args.frrConfigPath,
-		RouterProvider:  routerProvider,
-		StaticConfigDir: hostModeParams.configurationDir,
-		NodeConfigPath:  hostModeParams.nodeConfigPath,
-		TriggerChan:     triggerChan,
+		Client:               mgr.GetClient(),
+		Scheme:               mgr.GetScheme(),
+		LogLevel:             args.logLevel,
+		Logger:               logger,
+		MyNode:               args.nodeName,
+		MyNamespace:          args.namespace,
+		FRRReloadSocket:      args.reloaderSocket,
+		FRRConfigPath:        args.frrConfigPath,
+		RouterProvider:       routerProvider,
+		StaticConfigDir:      hostModeParams.configurationDir,
+		NodeConfigPath:       hostModeParams.nodeConfigPath,
+		TriggerChan:          triggerChan,
+		DatapathConfigurator: datapathConfigurator,
 	}
 
 	if err := apiReconciler.SetupWithManager(mgr); err != nil {
@@ -305,15 +422,32 @@ func runK8sConfigReconcilerHostMode(ctx context.Context,
 		return fmt.Errorf("unable to start FRR restart watcher: %w", err)
 	}
 
-	// Setup file watcher to trigger API reconciler on static file changes
-	fw, err := filewatcher.New(hostModeParams.configurationDir, triggerChan, logger)
-	if err != nil {
-		return fmt.Errorf("unable to create file watcher for API reconciler: %w", err)
+	mirrorController := &routerconfiguration.MirrorController{
+		Client:      mgr.GetClient(),
+		Scheme:      mgr.GetScheme(),
+		Logger:      logger,
+		MyNode:      args.nodeName,
+		MyNamespace: args.namespace,
+		ConfigDir:   hostModeParams.configurationDir,
+		TriggerChan: mirrorTriggerChan,
 	}
 
-	if err := fw.Start(ctx); err != nil {
-		return fmt.Errorf("unable to start file watcher for API reconciler: %w", err)
+	if err := mirrorController.SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to create mirror controller: %w", err)
 	}
+
+	// Setup file watcher to trigger controllers on static file changes
+	filesChangedChan := make(chan event.GenericEvent, 1)
+	watcher, err := filewatcher.New(hostModeParams.configurationDir, filesChangedChan, logger)
+	if err != nil {
+		return fmt.Errorf("unable to create file watcher: %w", err)
+	}
+
+	if err := watcher.Start(ctx); err != nil {
+		return fmt.Errorf("unable to start file watcher: %w", err)
+	}
+
+	go fanOut(ctx, filesChangedChan, triggerChan, mirrorTriggerChan)
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctx); err != nil {
@@ -326,7 +460,8 @@ func runK8sConfigReconciler(ctx context.Context,
 	args parameters,
 	k8sConfig *rest.Config,
 	logger *slog.Logger,
-	probeAddr string) error {
+	probeAddr string,
+	dhcpSupervisor *dhcp.Supervisor) error {
 
 	mgr, err := createK8sManager(k8sConfig, args.nodeName, args.namespace, func(opts *ctrl.Options) {
 		opts.HealthProbeBindAddress = probeAddr
@@ -342,16 +477,33 @@ func runK8sConfigReconciler(ctx context.Context,
 		Node:            args.nodeName,
 	}
 
+	var datapathConfigurator routerconfiguration.DatapathConfigurator = &routerconfiguration.KernelDatapathConfigurator{}
+	if args.datapath == datapathGrout {
+		datapathConfigurator = routerconfiguration.NewGroutConfigurator(args.groutSocketPath)
+	}
+
+	triggerChan := make(chan event.GenericEvent, 1)
+	dhcpSupervisor.OnRestart = triggerKubernetesReconcile(triggerChan, types.NamespacedName{
+		Namespace: args.namespace,
+		Name:      restartDHCPEvent,
+	})
+
+	if err := mgr.Add(dhcpSupervisor); err != nil {
+		return fmt.Errorf("unable to add DHCP supervisor: %w", err)
+	}
+
 	apiReconciler := &routerconfiguration.PERouterReconciler{
-		Client:          mgr.GetClient(),
-		Scheme:          mgr.GetScheme(),
-		LogLevel:        args.logLevel,
-		Logger:          logger,
-		MyNode:          args.nodeName,
-		FRRReloadSocket: args.reloaderSocket,
-		FRRConfigPath:   args.frrConfigPath,
-		RouterProvider:  routerProvider,
-		MyNamespace:     args.namespace,
+		Client:               mgr.GetClient(),
+		Scheme:               mgr.GetScheme(),
+		LogLevel:             args.logLevel,
+		Logger:               logger,
+		MyNode:               args.nodeName,
+		FRRReloadSocket:      args.reloaderSocket,
+		FRRConfigPath:        args.frrConfigPath,
+		RouterProvider:       routerProvider,
+		MyNamespace:          args.namespace,
+		DatapathConfigurator: datapathConfigurator,
+		TriggerChan:          triggerChan,
 	}
 
 	if err := apiReconciler.SetupWithManager(mgr); err != nil {
@@ -370,7 +522,8 @@ func runStaticConfigReconciler(ctx context.Context,
 	hostModeParams hostModeParameters,
 	nodeConfig *static.NodeConfig,
 	logger *slog.Logger,
-	probeAddr string) error {
+	probeAddr string,
+	dhcpSupervisor *dhcp.Supervisor) error {
 	mgr, err := ctrl.NewManager(&rest.Config{}, ctrl.Options{
 		Scheme:                 scheme,
 		HealthProbeBindAddress: probeAddr,
@@ -386,23 +539,40 @@ func runStaticConfigReconciler(ctx context.Context,
 	staticRouterProvider := &routerconfiguration.RouterHostProvider{
 		FRRConfigPath:         args.frrConfigPath,
 		RouterPidFilePath:     hostModeParams.hostContainerPidPath,
-		CurrentNodeIndex:      nodeConfig.NodeIndex,
+		CurrentNodeIndex:      nodeConfig.NodeIndex.Index,
 		SystemdSocketPath:     hostModeParams.systemdSocketPath,
 		RouterHealthCheckPort: hostModeParams.routerHealthCheckPort,
 	}
 
+	var datapathConfigurator routerconfiguration.DatapathConfigurator = &routerconfiguration.KernelDatapathConfigurator{}
+	if args.datapath == datapathGrout {
+		datapathConfigurator = routerconfiguration.NewGroutConfigurator(args.groutSocketPath)
+	}
+
 	staticReconciler := &routerconfiguration.StaticConfigReconciler{
-		Scheme:          mgr.GetScheme(),
-		Logger:          logger,
-		NodeIndex:       nodeConfig.NodeIndex,
-		LogLevel:        args.logLevel,
-		FRRConfigPath:   args.frrConfigPath,
-		FRRReloadSocket: args.reloaderSocket,
-		RouterProvider:  staticRouterProvider,
-		ConfigDir:       hostModeParams.configurationDir,
+		Scheme:               mgr.GetScheme(),
+		Logger:               logger,
+		NodeIndex:            nodeConfig.NodeIndex.Index,
+		LogLevel:             args.logLevel,
+		FRRConfigPath:        args.frrConfigPath,
+		FRRReloadSocket:      args.reloaderSocket,
+		RouterProvider:       staticRouterProvider,
+		ConfigDir:            hostModeParams.configurationDir,
+		MyNode:               args.nodeName,
+		MyNamespace:          args.namespace,
+		DatapathConfigurator: datapathConfigurator,
 	}
 	if err = staticReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create controller: %w", err)
+	}
+
+	dhcpSupervisor.OnRestart = func() {
+		slog.Info("triggered reconciliation after DHCP daemon restart")
+		staticReconciler.TriggerReconcile()
+	}
+
+	if err := mgr.Add(dhcpSupervisor); err != nil {
+		return fmt.Errorf("unable to add DHCP supervisor: %w", err)
 	}
 
 	if err := staticRouterProvider.StartFRRRestartWatcher(ctx, func() {
@@ -466,6 +636,9 @@ func createK8sManager(
 						"metadata.name":      nodeName,
 						"metadata.namespace": namespace,
 					}.AsSelector(),
+				},
+				&corev1.Secret{}: {
+					Field: fields.Set{"metadata.namespace": namespace}.AsSelector(),
 				},
 			},
 		},
@@ -571,4 +744,41 @@ func overrideHostMode(args *parameters, nodeConfig static.NodeConfig) error {
 	}
 	setupLog.Info("nodename not provided, using hostname", "nodename", args.nodeName)
 	return nil
+}
+
+func fanOut(ctx context.Context, in <-chan event.GenericEvent, outs ...chan<- event.GenericEvent) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case evt, ok := <-in:
+			if !ok {
+				return
+			}
+			for _, out := range outs {
+				out <- evt
+			}
+		}
+	}
+}
+
+func triggerKubernetesReconcile(
+	triggerChan chan event.GenericEvent,
+	name types.NamespacedName,
+) func() {
+	return func() {
+		select {
+		case triggerChan <- event.GenericEvent{
+			Object: &metav1.PartialObjectMetadata{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name.Name,
+					Namespace: name.Namespace,
+				},
+			},
+		}:
+			slog.Info("triggered reconciliation after DHCP daemon restart")
+		default:
+			slog.Debug("reconciliation already queued, skipping DHCP restart trigger")
+		}
+	}
 }

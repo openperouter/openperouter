@@ -1,0 +1,173 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  name: l3passthroughs.network.openperouter.io
+spec:
+  group: network.openperouter.io
+  names:
+    kind: L3Passthrough
+    listKind: L3PassthroughList
+    plural: l3passthroughs
+    singular: l3passthrough
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.hostSession.asn
+      name: ASN
+      type: integer
+    - jsonPath: .spec.hostSession.hostASN
+      name: HostASN
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          L3Passthrough represents a session with the host which is not encapsulated and
+          takes part to the bgp fabric.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of L3Passthrough.
+            properties:
+              hostSession:
+                description: hostSession is the configuration for the host session.
+                properties:
+                  asn:
+                    description: |-
+                      asn is the local AS number to use to establish a BGP session with
+                      the default namespace.
+                    format: int64
+                    maximum: 4294967295
+                    minimum: 1
+                    type: integer
+                  hostASN:
+                    description: |-
+                      hostASN is the expected AS number for a BGP speaking component running in
+                      the default network namespace. Either HostASN or HostType must be set.
+                    format: int64
+                    maximum: 4294967295
+                    minimum: 1
+                    type: integer
+                  hostType:
+                    description: |-
+                      hostType is the AS type of the BGP speaking component running in the
+                      default network namespace. Either HostASN or HostType must be set.
+                    enum:
+                    - External
+                    - Internal
+                    type: string
+                  localCIDRs:
+                    description: |-
+                      localCIDRs is the list of CIDRs for the veth pair connecting to the
+                      default namespace. The router side uses the first usable IP of each CIDR.
+                      At most one IPv4 and one IPv6 CIDR may be set; list order is not significant.
+                    items:
+                      type: string
+                    maxItems: 2
+                    minItems: 1
+                    type: array
+                    x-kubernetes-list-type: atomic
+                    x-kubernetes-validations:
+                    - message: all entries must be valid CIDRs
+                      rule: self.all(c, isCIDR(c))
+                    - message: at most one IPv4 CIDR is allowed
+                      rule: self.filter(c, isCIDR(c) && cidr(c).ip().family() == 4).size()
+                        <= 1
+                    - message: at most one IPv6 CIDR is allowed
+                      rule: self.filter(c, isCIDR(c) && cidr(c).ip().family() == 6).size()
+                        <= 1
+                    - message: localCIDRs can't be changed
+                      rule: self == oldSelf
+                required:
+                - asn
+                - localCIDRs
+                type: object
+                x-kubernetes-validations:
+                - message: either HostASN or HostType must be set
+                  rule: has(self.hostASN) || has(self.hostType)
+                - message: HostASN and HostType cannot be set together
+                  rule: '!has(self.hostASN) || !has(self.hostType)'
+              nodeSelector:
+                description: |-
+                  nodeSelector specifies which nodes this L3Passthrough applies to.
+                  If empty or not specified, applies to all nodes.
+                  Multiple L3Passthrough with overlapping node selectors will be rejected.
+                properties:
+                  matchExpressions:
+                    description: matchExpressions is a list of label selector requirements.
+                      The requirements are ANDed.
+                    items:
+                      description: |-
+                        A label selector requirement is a selector that contains values, a key, and an operator that
+                        relates the key and values.
+                      properties:
+                        key:
+                          description: key is the label key that the selector applies
+                            to.
+                          type: string
+                        operator:
+                          description: |-
+                            operator represents a key's relationship to a set of values.
+                            Valid operators are In, NotIn, Exists and DoesNotExist.
+                          type: string
+                        values:
+                          description: |-
+                            values is an array of string values. If the operator is In or NotIn,
+                            the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                            the values array must be empty. This array is replaced during a strategic
+                            merge patch.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  matchLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                      map is equivalent to an element of matchExpressions, whose key field is "key", the
+                      operator is "In", and the values array contains only "value". The requirements are ANDed.
+                    type: object
+                type: object
+                x-kubernetes-map-type: atomic
+            required:
+            - hostSession
+            type: object
+          status:
+            description: status defines the observed state of L3Passthrough.
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

@@ -6,15 +6,19 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"sort"
 	"strings"
 	"time"
 
-	"k8s.io/utils/ptr"
-
-	frrk8sapi "github.com/metallb/frr-k8s/api/v1beta1"
-	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	clientset "k8s.io/client-go/kubernetes"
+
+	frrk8sapi "github.com/metallb/frr-k8s/api/v1beta1"
+
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/e2etests/pkg/config"
 	"github.com/openperouter/openperouter/e2etests/pkg/executor"
@@ -26,24 +30,101 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 	"github.com/openperouter/openperouter/e2etests/pkg/url"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clientset "k8s.io/client-go/kubernetes"
+)
+
+// evpnUnderlayParams describes how an e2e suite obtains its underlay: the set of
+// Underlay resources to apply and the session side configuration of the kind
+// leaves. It abstracts the different underlay provisioning modes (moving a
+// host device vs CNI provisioned interfaces) so the same tests can run over
+// any of them.
+type evpnUnderlayParams struct {
+	// Underlays returns the Underlay resources to apply for the given nodes.
+	Underlays func(nodes []corev1.Node) []v1alpha1.Underlay
+	// ConfigureLeafKind points the kind leaves at the router addresses of
+	// this underlay mode.
+	ConfigureLeafKind func(nodes []corev1.Node) error
+	// NeighborIP returns the router side session address of the i-th node,
+	// as seen by leafkind1.
+	NeighborIP func(nodeIndex int, node corev1.Node) (string, error)
+}
+
+const (
+	evpnUnderlayStaticInterface = "ev-static"
+	evpnUnderlayDHCPInterface   = "ev-dhcp"
 )
 
 var (
 	// NOTE: we can't advertise any ip via EVPN from the leaves, they
 	// must be reacheable otherwise FRR will skip them.
-	leafAVRFRedPrefixes  = []string{"192.168.20.0/24", "2001:db8:20::/64"}
-	leafAVRFBluePrefixes = []string{"192.168.21.0/24", "2001:db8:21::/64"}
-	leafBVRFRedPrefixes  = []string{"192.169.20.0/24", "2001:db8:169:20::/64"}
-	leafBVRFBluePrefixes = []string{"192.169.21.0/24", "2001:db8:169:21::/64"}
-	emptyPrefixes        = []string{}
+	leafAVRFRedPrefixes     = []string{"192.168.20.0/24", "2001:db8:20::/64"}
+	leafAVRFBluePrefixes    = []string{"192.168.21.0/24", "2001:db8:21::/64"}
+	leafBVRFRedPrefixes     = []string{"192.169.20.0/24", "2001:db8:169:20::/64"}
+	leafBVRFBluePrefixes    = []string{"192.169.21.0/24", "2001:db8:169:21::/64"}
+	leafSRV6VRFRedPrefixes  = []string{"192.170.20.0/24", "2001:db8:170:20::/64"}
+	leafSRV6VRFBluePrefixes = []string{"192.170.21.0/24", "2001:db8:170:21::/64"}
+	emptyPrefixes           = []string{}
+
+	// macvlanStaticUnderlay provisions per-node macvlan interfaces on top
+	// of toswitch1 through the CNI mode, with static per-node addresses.
+	macvlanStaticUnderlay = evpnUnderlayParams{
+		Underlays: func(nodes []corev1.Node) []v1alpha1.Underlay {
+			return infra.CNIUnderlaysForNodes(nodes, evpnUnderlayStaticInterface)
+		},
+		ConfigureLeafKind: infra.ConfigureLeafKind1ForCNIUnderlay,
+		NeighborIP: func(nodeIndex int, _ corev1.Node) (string, error) {
+			return infra.CNIUnderlayNeighborIP(nodeIndex), nil
+		},
+	}
+
+	// networkDeviceUnderlay moves the toswitch host devices into the
+	// router netns (the standard fixture).
+	networkDeviceUnderlay = evpnUnderlayParams{
+		Underlays: func([]corev1.Node) []v1alpha1.Underlay {
+			return []v1alpha1.Underlay{infra.Underlay}
+		},
+		ConfigureLeafKind: func(nodes []corev1.Node) error {
+			if err := infra.LeafKind1Config.UpdateConfig(nodes, infra.LeafKindConfiguration{}); err != nil {
+				return err
+			}
+			return infra.LeafKind2Config.UpdateConfig(nodes, infra.LeafKindConfiguration{})
+		},
+		NeighborIP: func(_ int, node corev1.Node) (string, error) {
+			return infra.NeighborIP(infra.KindLeaf, node.Name)
+		},
+	}
+
+	// macvlanDHCPUnderlay is the underlay flavor that provisions per-node
+	// macvlan interfaces on top of toswitch1 through the CNI mode, with DHCP
+	// address acquisition from the dhcp1 dnsmasq server.
+	macvlanDHCPUnderlay = evpnUnderlayParams{
+		Underlays: func(nodes []corev1.Node) []v1alpha1.Underlay {
+			return infra.DHCPCNIUnderlaysForNodes(nodes, evpnUnderlayDHCPInterface)
+		},
+		ConfigureLeafKind: func(nodes []corev1.Node) error {
+			return infra.ConfigureLeafKind1ForDHCPUnderlay(nodes, evpnUnderlayDHCPInterface)
+		},
+		NeighborIP: func(_ int, node corev1.Node) (string, error) {
+			return infra.DHCPNeighborIP(node.Name, evpnUnderlayDHCPInterface)
+		},
+	}
 )
 
-var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Ordered, func() {
+// The EVPN routes ipv4 coverage runs once per underlay mode: the specs
+// only exercise the overlay, so they are agnostic to how the underlay link
+// is obtained. Each entry generates an ordered container with its own
+// underlay lifecycle, and the entries are the extension point for the
+// CNI plugins supported in the future (ipvlan, vlan, host-device, dhcp IPAM).
+var _ = DescribeTableSubtree("Routes between bgp and the fabric with Underlay in ipv4",
+	evpnRoutesOverUnderlay,
+	Entry("NetworkDevice", Ordered, GroutSupport, networkDeviceUnderlay),
+	Entry("MacvlanStatic", Ordered, macvlanStaticUnderlay),
+	Entry("MacvlanDHCP", Ordered, macvlanDHCPUnderlay),
+)
+
+func evpnRoutesOverUnderlay(params evpnUnderlayParams) {
 	var cs clientset.Interface
 	var routers openperouter.Routers
+	var nodes []corev1.Node
 
 	vniRed := v1alpha1.L3VNI{
 		ObjectMeta: metav1.ObjectMeta{
@@ -53,12 +134,9 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Orde
 		Spec: v1alpha1.L3VNISpec{
 			VRF: "red",
 			HostSession: &v1alpha1.HostSession{
-				ASN:     64514,
-				HostASN: new(int64(64515)),
-				LocalCIDR: v1alpha1.LocalCIDRConfig{
-					IPv4: new("192.169.10.0/24"),
-					IPv6: new("2001:db8:1::/64"),
-				},
+				ASN:        64514,
+				HostASN:    new(int64(64515)),
+				LocalCIDRs: []string{"192.169.10.0/24", "2001:db8:1::/64"},
 			},
 			VNI: 100,
 		},
@@ -72,12 +150,9 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Orde
 		Spec: v1alpha1.L3VNISpec{
 			VRF: "blue",
 			HostSession: &v1alpha1.HostSession{
-				ASN:     64514,
-				HostASN: new(int64(64515)),
-				LocalCIDR: v1alpha1.LocalCIDRConfig{
-					IPv4: new("192.169.11.0/24"),
-					IPv6: new("2001:db8:2::/64"),
-				},
+				ASN:        64514,
+				HostASN:    new(int64(64515)),
+				LocalCIDRs: []string{"192.169.11.0/24", "2001:db8:2::/64"},
 			},
 			VNI: 200,
 		},
@@ -96,19 +171,37 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Orde
 			return openperouter.AreReady(routers)
 		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 
-		routers.Dump(ginkgo.GinkgoWriter)
+		routers.Dump(GinkgoWriter)
+
+		nodesItems, err := cs.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		nodes = nodesItems.Items
+		sort.Slice(nodes, func(i, j int) bool { return nodes[i].Name < nodes[j].Name })
 
 		err = Updater.Update(config.Resources{
-			Underlays: []v1alpha1.Underlay{
-				infra.Underlay,
-			},
+			Underlays: params.Underlays(nodes),
 		})
 		Expect(err).NotTo(HaveOccurred())
+
+		By("configuring the kind leaves for the underlay flavor")
+		Eventually(func() error {
+			return params.ConfigureLeafKind(nodes)
+		}, 3*time.Minute, time.Second).Should(Succeed())
 	})
 
 	AfterAll(func() {
 		err := Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
+		By("waiting for the underlay to be removed from all nodes")
+		for _, node := range nodes {
+			Eventually(func(g Gomega) {
+				isConfigured, err := openperouter.UnderlayConfigured(node.Name)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(isConfigured).To(BeFalse())
+			}, 2*time.Minute, time.Second).Should(Succeed())
+		}
+		By("restoring the standard leaf configuration")
+		Expect(infra.LeafKind1Config.UpdateConfig(nodes, infra.LeafKindConfiguration{})).To(Succeed())
 		By("waiting for all router pods to be ready after removing the underlay")
 		Eventually(func() error {
 			routers, err := openperouter.Get(cs, HostMode)
@@ -307,8 +400,8 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Orde
 			nodeSelector := k8s.NodeSelectorForPod(testPod)
 
 			By("Creating the frr-k8s configuration for the node where the test pod runs and advertising all pod ips")
-			frrK8sConfigRedForPod := advertisePodToVNI(testPod, vniRed, nodeSelector)
-			frrK8sConfigBlueForPod := advertisePodToVNI(testPod, vniBlue, nodeSelector)
+			frrK8sConfigRedForPod := advertisePodToVNI(testPod, vniRed.Name, vniRed.Spec.HostSession, nodeSelector)
+			frrK8sConfigBlueForPod := advertisePodToVNI(testPod, vniBlue.Name, vniBlue.Spec.HostSession, nodeSelector)
 
 			err = Updater.Update(config.Resources{
 				L3VNIs: []v1alpha1.L3VNI{
@@ -348,10 +441,10 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Orde
 		) {
 
 			var localCIDR string
-			localCIDR = ptr.Deref(vni.Spec.HostSession.LocalCIDR.IPv4, "")
+			localCIDR = ipfamily.CIDRForFamily(vni.Spec.HostSession.LocalCIDRs, ipfamily.IPv4)
 
 			if ipFamily == ipfamily.IPv6 {
-				localCIDR = ptr.Deref(vni.Spec.HostSession.LocalCIDR.IPv6, "")
+				localCIDR = ipfamily.CIDRForFamily(vni.Spec.HostSession.LocalCIDRs, ipfamily.IPv6)
 			}
 			hostSide, err := openperouter.HostIPFromCIDRForNode(localCIDR, podNode)
 			Expect(err).NotTo(HaveOccurred())
@@ -387,16 +480,13 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Orde
 
 				By(fmt.Sprintf("trying to hit pod %s on the %s network from host %s", podIP, vni.Name, hostName))
 
-				urlStr = url.Format("http://%s:8090/clientip", podIP)
+				urlStr = url.Format("http://%s:8090/hostname", podIP)
 				res, err = externalHostExecutor.Exec("curl", "-sS", urlStr)
 				if err != nil {
 					return fmt.Errorf("curl from %s to %s:8090 failed: %s", hostName, podIP, res)
 				}
-				hostClientIP, err := extractClientIP(res)
-				Expect(err).NotTo(HaveOccurred())
-
-				if hostClientIP != externalHostIP {
-					return fmt.Errorf("curl from %s to %s:8090 returned %s, expected %s", hostName, podIP, clientIP, externalHostIP)
+				if res != testPod.Name {
+					return fmt.Errorf("curl from %s to %s:8090 returned hostname %s, expected %s", hostName, podIP, res, testPod.Name)
 				}
 				return nil
 			}, 5*time.Minute, 5*time.Second).ShouldNot(HaveOccurred())
@@ -411,9 +501,9 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Orde
 			Entry("vni blue host B ipv6", vniBlue, "hostB_blue", infra.HostBBlueIPv6, ipfamily.IPv6),
 		)
 	})
-})
+}
 
-var _ = Describe("Routes between bgp and the fabric with iBGP testing e2e integration between a pod and the red hosts", func() {
+var _ = Describe("Routes between bgp and the fabric with iBGP testing e2e integration between a pod and the red hosts", GroutSupport, func() {
 	var cs clientset.Interface
 	var routers openperouter.Routers
 	var nodes []corev1.Node
@@ -424,15 +514,15 @@ var _ = Describe("Routes between bgp and the fabric with iBGP testing e2e integr
 			Namespace: openperouter.Namespace,
 		},
 		Spec: v1alpha1.UnderlaySpec{
-			ASN:  64512,
-			Nics: []string{"toswitch1", "toswitch2"},
+			ASN:        64512,
+			Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch1"}}, {Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch2"}}},
 			Neighbors: []v1alpha1.Neighbor{
 				{
-					Type:    new("internal"),
+					Type:    new("Internal"),
 					Address: new("192.168.11.2"),
 				},
 				{
-					Type:    new("internal"),
+					Type:    new("Internal"),
 					Address: new("192.168.12.2"),
 				},
 			},
@@ -450,12 +540,9 @@ var _ = Describe("Routes between bgp and the fabric with iBGP testing e2e integr
 		Spec: v1alpha1.L3VNISpec{
 			VRF: "red",
 			HostSession: &v1alpha1.HostSession{
-				ASN:     64514,
-				HostASN: new(int64(64515)),
-				LocalCIDR: v1alpha1.LocalCIDRConfig{
-					IPv4: new("192.169.10.0/24"),
-					IPv6: new("2001:db8:1::/64"),
-				},
+				ASN:        64514,
+				HostASN:    new(int64(64515)),
+				LocalCIDRs: []string{"192.169.10.0/24", "2001:db8:1::/64"},
 			},
 			VNI: 100,
 		},
@@ -473,7 +560,7 @@ var _ = Describe("Routes between bgp and the fabric with iBGP testing e2e integr
 		routers, err = openperouter.Get(cs, HostMode)
 		Expect(err).NotTo(HaveOccurred())
 
-		routers.Dump(ginkgo.GinkgoWriter)
+		routers.Dump(GinkgoWriter)
 
 		By("setting iBGP next-hop-self force on leaf kind")
 		nodes, err = k8s.GetNodes(cs)
@@ -514,7 +601,7 @@ var _ = Describe("Routes between bgp and the fabric with iBGP testing e2e integr
 		nodeSelector := k8s.NodeSelectorForPod(testPod)
 
 		By("Creating the frr-k8s configuration for the node where the test pod runs and advertising all pod ips")
-		frrK8sConfigRedForPod := advertisePodToVNI(testPod, vniRed, nodeSelector)
+		frrK8sConfigRedForPod := advertisePodToVNI(testPod, vniRed.Name, vniRed.Spec.HostSession, nodeSelector)
 
 		err = Updater.Update(config.Resources{
 			L3VNIs: []v1alpha1.L3VNI{
@@ -545,6 +632,14 @@ var _ = Describe("Routes between bgp and the fabric with iBGP testing e2e integr
 
 		err = Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
+		By("waiting for the underlay to be removed from all nodes")
+		for _, node := range nodes {
+			Eventually(func(g Gomega) {
+				isConfigured, err := openperouter.UnderlayConfigured(node.Name)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(isConfigured).To(BeFalse())
+			}, 2*time.Minute, time.Second).Should(Succeed())
+		}
 		By("waiting for all router pods to be ready after removing the underlay")
 		Eventually(func() error {
 			routers, err := openperouter.Get(cs, HostMode)
@@ -561,7 +656,7 @@ var _ = Describe("Routes between bgp and the fabric with iBGP testing e2e integr
 		externalHostIP := infra.HostARedIPv4
 		ipFamily := ipfamily.IPv4
 
-		localCIDR := ptr.Deref(vni.Spec.HostSession.LocalCIDR.IPv4, "")
+		localCIDR := ipfamily.CIDRForFamily(vni.Spec.HostSession.LocalCIDRs, ipfamily.IPv4)
 
 		hostSide, err := openperouter.HostIPFromCIDRForNode(localCIDR, podNode)
 		Expect(err).NotTo(HaveOccurred())
@@ -597,23 +692,20 @@ var _ = Describe("Routes between bgp and the fabric with iBGP testing e2e integr
 
 			By(fmt.Sprintf("trying to hit pod %s on the %s network from host %s", podIP, vni.Name, hostName))
 
-			urlStr = url.Format("http://%s:8090/clientip", podIP)
+			urlStr = url.Format("http://%s:8090/hostname", podIP)
 			res, err = externalHostExecutor.Exec("curl", "-sS", urlStr)
 			if err != nil {
 				return fmt.Errorf("curl from %s to %s:8090 failed: %s", hostName, podIP, res)
 			}
-			hostClientIP, err := extractClientIP(res)
-			Expect(err).NotTo(HaveOccurred())
-
-			if hostClientIP != externalHostIP {
-				return fmt.Errorf("curl from %s to %s:8090 returned %s, expected %s", hostName, podIP, clientIP, externalHostIP)
+			if res != testPod.Name {
+				return fmt.Errorf("curl from %s to %s:8090 returned hostname %s, expected %s", hostName, podIP, res, testPod.Name)
 			}
 			return nil
 		}, 5*time.Minute, 5*time.Second).ShouldNot(HaveOccurred())
 	})
 })
 
-func advertisePodToVNI(pod *corev1.Pod, vni v1alpha1.L3VNI, nodeSelector map[string]string) []frrk8sapi.FRRConfiguration {
+func advertisePodToVNI(pod *corev1.Pod, vniName string, hostSession *v1alpha1.HostSession, nodeSelector map[string]string) []frrk8sapi.FRRConfiguration {
 	res := []frrk8sapi.FRRConfiguration{}
 	for _, podIP := range pod.Status.PodIPs {
 		var cidrSuffix = "/32"
@@ -623,7 +715,7 @@ func advertisePodToVNI(pod *corev1.Pod, vni v1alpha1.L3VNI, nodeSelector map[str
 			cidrSuffix = "/128"
 		}
 
-		config, err := frrk8s.ConfigFromHostSessionForIPFamily(*vni.Spec.HostSession, vni.Name, ipFamily, frrk8s.WithNodeSelector(nodeSelector), frrk8s.AdvertisePrefixes(podIP.IP+cidrSuffix))
+		config, err := frrk8s.ConfigFromHostSessionForIPFamily(*hostSession, vniName, ipFamily, frrk8s.WithNodeSelector(nodeSelector), frrk8s.AdvertisePrefixes(podIP.IP+cidrSuffix))
 		Expect(err).NotTo(HaveOccurred())
 		res = append(res, *config)
 	}

@@ -67,11 +67,10 @@ This will use the provided version number instead of auto-incrementing.
 Run `OPENPE_VERSION="X.Y.Z" make cutrelease` from the main branch. This will create the appropriate branches, commits and tags in your local repository.
 
 ## Push the new artifacts
-Run git push origin main `vX.Y` --tags. This will push all pending changes both in main and the release branch, as well as the new tag for the release.
+Run `git push origin main vX.Y --tags`. This will push all pending changes both in main and the release branch, as well as the new tag for the release.
 
 ## Wait for the image repositories to update
 When you pushed, GitHub actions kicked off a set of image builds for the new tag. You need to wait for these images to be pushed live before creating a new release. Check on quay.io that the tagget version exists.
 
 ## Create a new release on github
 By default, new tags show up de-emphasized in the list of releases. Create a new release attached to the tag you just pushed. Make the description point to the release notes on the website.
-

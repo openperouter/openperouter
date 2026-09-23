@@ -20,6 +20,8 @@ type EnvConfig struct {
 	ControllerImage       ImageInfo
 	FRRImage              ImageInfo
 	KubeRBacImage         ImageInfo
+	GroutImage            *ImageInfo
+	GroutTestMode         bool
 	FRRMetricsPort        int
 	SecureFRRMetricsPort  int
 	MetricsPort           int
@@ -53,6 +55,9 @@ func FromEnvironment(isOpenshift bool) (EnvConfig, error) {
 		return EnvConfig{}, err
 	}
 
+	res.GroutImage = optionalImageFromEnv("GROUT_IMAGE")
+	res.GroutTestMode = boolFromEnv("GROUT_TEST_MODE")
+
 	res.FRRMetricsPort, err = intValueWithDefault("FRR_METRICS_PORT", 7473)
 	if err != nil {
 		return EnvConfig{}, err
@@ -70,12 +75,8 @@ func FromEnvironment(isOpenshift bool) (EnvConfig, error) {
 		return EnvConfig{}, err
 	}
 
-	if os.Getenv("DEPLOY_PODMONITORS") == "true" {
-		res.DeployPodMonitors = true
-	}
-	if os.Getenv("DEPLOY_SERVICEMONITORS") == "true" {
-		res.DeployServiceMonitors = true
-	}
+	res.DeployPodMonitors = boolFromEnv("DEPLOY_PODMONITORS")
+	res.DeployServiceMonitors = boolFromEnv("DEPLOY_SERVICEMONITORS")
 
 	err = validate(res)
 	if err != nil {
@@ -96,6 +97,15 @@ func validate(config EnvConfig) error {
 		return fmt.Errorf("secureFRRMetricsPort is available only if service monitors are enabled")
 	}
 	return nil
+}
+
+func optionalImageFromEnv(imageEnv string) *ImageInfo {
+	value, found := os.LookupEnv(imageEnv)
+	if !found || value == "" {
+		return nil
+	}
+	repo, tag := getImageNameTag(value)
+	return &ImageInfo{Repo: repo, Tag: tag}
 }
 
 func imageFromEnv(imageEnv string) (ImageInfo, error) {
@@ -120,6 +130,10 @@ func getImageNameTag(envValue string) (string, string) {
 		return repoPath + img[0], ""
 	}
 	return repoPath + img[0], img[1]
+}
+
+func boolFromEnv(name string) bool {
+	return os.Getenv(name) == "true"
 }
 
 func intValueWithDefault(name string, def int) (int, error) {

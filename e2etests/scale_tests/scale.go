@@ -226,15 +226,13 @@ func generateL2VNIs(count int, namespace, bridgeType string) []v1alpha1.L2VNI {
 	const baseVNI = 1000
 
 	vnis := make([]v1alpha1.L2VNI, count)
-	for i := 0; i < count; i++ {
-		vrfName := fmt.Sprintf("vrf%03d", i+1)
+	for i := range count {
 		vnis[i] = v1alpha1.L2VNI{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      fmt.Sprintf("l2vni-%03d", i+1),
 				Namespace: namespace,
 			},
 			Spec: v1alpha1.L2VNISpec{
-				VRF:        new(vrfName),
 				VNI:        int32(baseVNI + i + 1),
 				HostMaster: newHostMaster(bridgeType),
 			},
@@ -250,7 +248,7 @@ func generateL3VNIsWithL2VNIs(count int, namespace, bridgeType string) ([]v1alph
 	l3vnis := make([]v1alpha1.L3VNI, count)
 	l2vnis := make([]v1alpha1.L2VNI, count)
 
-	for i := 0; i < count; i++ {
+	for i := range count {
 		vrfName := fmt.Sprintf("vrf%03d", i+1)
 
 		l3vnis[i] = v1alpha1.L3VNI{
@@ -264,13 +262,17 @@ func generateL3VNIsWithL2VNIs(count int, namespace, bridgeType string) ([]v1alph
 			},
 		}
 
+		l3vniName := fmt.Sprintf("l3vni-%03d", i+1)
 		l2vnis[i] = v1alpha1.L2VNI{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      fmt.Sprintf("l2vni-%03d", i+1),
 				Namespace: namespace,
 			},
 			Spec: v1alpha1.L2VNISpec{
-				VRF:        new(vrfName),
+				RoutingDomain: &v1alpha1.RoutingDomain{
+					Type:  v1alpha1.RoutingDomainTypeL3VNI,
+					L3VNI: &v1alpha1.L3VNIReference{Name: l3vniName},
+				},
 				VNI:        int32(baseL2VNI + i + 1),
 				HostMaster: newHostMaster(bridgeType),
 			},
@@ -284,12 +286,12 @@ func newHostMaster(bridgeType string) *v1alpha1.HostMaster {
 	case v1alpha1.LinuxBridge:
 		return &v1alpha1.HostMaster{
 			Type:        v1alpha1.LinuxBridge,
-			LinuxBridge: &v1alpha1.LinuxBridgeConfig{AutoCreate: new(true)},
+			LinuxBridge: &v1alpha1.LinuxBridgeConfig{Lifecycle: v1alpha1.BridgeLifecycleManaged},
 		}
 	case v1alpha1.OVSBridge:
 		return &v1alpha1.HostMaster{
 			Type:      v1alpha1.OVSBridge,
-			OVSBridge: &v1alpha1.OVSBridgeConfig{AutoCreate: new(true)},
+			OVSBridge: &v1alpha1.OVSBridgeConfig{Lifecycle: v1alpha1.BridgeLifecycleManaged},
 		}
 	default:
 		return nil

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 
 	"github.com/openperouter/openperouter/internal/conversion"
 	"github.com/openperouter/openperouter/internal/frr"
@@ -20,21 +21,34 @@ type frrConfigData struct {
 	logLevel  string
 }
 
+type frrConfiguratorType func(ctx context.Context, data frrConfigData) error
+
 func configureFRR(ctx context.Context, data frrConfigData) error {
-	slog.DebugContext(ctx, "reloading FRR config", "config", data)
 	frrConfig, err := conversion.APItoFRR(data.APIConfigData, data.nodeIndex, data.logLevel)
-	emptyConfig := conversion.FRREmptyConfigError("")
+	emptyConfig := conversion.NoUnderlaysError("")
 	if errors.As(err, &emptyConfig) {
-		slog.InfoContext(ctx, "reloading FRR config", "empty config", data, "event", "cleaning the frr configuration")
+		slog.InfoContext(ctx, "reloading FRR config", "event", "cleaning the frr configuration")
 		frrConfig = frr.Config{}
 	}
 	if err != nil && !errors.As(err, &emptyConfig) {
 		return fmt.Errorf("failed to generate the frr configuration: %w", err)
 	}
 
+	previousConfig, prevErr := os.ReadFile(data.configFile)
 	err = frr.ApplyConfig(ctx, &frrConfig, data.updater)
 	if err != nil {
 		return fmt.Errorf("failed to update the frr configuration: %w", err)
+	}
+	newConfig, newErr := os.ReadFile(data.configFile)
+	if newErr != nil {
+		slog.WarnContext(ctx, "failed to read FRR config after update", "error", newErr)
+		return nil
+	}
+	if prevErr != nil {
+		slog.InfoContext(ctx, "no previous FRR config to compare", "error", prevErr)
+	}
+	if prevErr != nil || string(previousConfig) != string(newConfig) {
+		slog.InfoContext(ctx, "FRR configuration updated", "config", frr.RedactPasswords(string(newConfig)))
 	}
 	return nil
 }

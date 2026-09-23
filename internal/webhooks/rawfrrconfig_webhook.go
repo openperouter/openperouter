@@ -20,12 +20,14 @@ const (
 )
 
 type RawFRRConfigValidator struct {
-	decoder admission.Decoder
+	decoder           admission.Decoder
+	operatorNamespace string
 }
 
-func SetupRawFRRConfig(mgr ctrl.Manager) error {
+func SetupRawFRRConfig(mgr ctrl.Manager, operatorNamespace string) error {
 	validator := &RawFRRConfigValidator{
-		decoder: admission.NewDecoder(mgr.GetScheme()),
+		decoder:           admission.NewDecoder(mgr.GetScheme()),
+		operatorNamespace: operatorNamespace,
 	}
 
 	mgr.GetWebhookServer().Register(
@@ -50,15 +52,23 @@ func (v *RawFRRConfigValidator) Handle(_ context.Context, req admission.Request)
 
 	switch req.Operation {
 	case v1.Create, v1.Update:
-		if err := validateRawFRRConfig(&rawFRRConfig); err != nil {
+		if err := validateRawFRRConfig(&rawFRRConfig, v.operatorNamespace); err != nil {
 			return admission.Denied(err.Error())
 		}
 	}
 	return admission.Allowed("").WithWarnings("please note RawFRRConfig is for experimentation only and not supported")
 }
 
-func validateRawFRRConfig(rawFRRConfig *v1alpha1.RawFRRConfig) error {
+func validateRawFRRConfig(rawFRRConfig *v1alpha1.RawFRRConfig, operatorNamespace string) error {
 	Logger.Debug("webhook rawfrrconfig", "action", "validate", "name", rawFRRConfig.Name, "namespace", rawFRRConfig.Namespace)
+
+	if operatorNamespace == "" {
+		return fmt.Errorf("operator namespace is not configured; cannot validate RawFRRConfig")
+	}
+	if rawFRRConfig.Namespace != operatorNamespace {
+		return fmt.Errorf("RawFRRConfig must be created in the operator namespace %q, got %q",
+			operatorNamespace, rawFRRConfig.Namespace)
+	}
 
 	if rawFRRConfig.Spec.RawConfig == "" {
 		return fmt.Errorf("rawConfig must not be empty")

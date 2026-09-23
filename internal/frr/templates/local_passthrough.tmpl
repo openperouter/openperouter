@@ -3,6 +3,9 @@
 {{- if .Passthrough.LocalNeighborV4 }}
 
   neighbor {{ .Passthrough.LocalNeighborV4.ID }} remote-as {{ .Passthrough.LocalNeighborV4.ASN }}
+  {{- if .Passthrough.LocalNeighborV4.ConnectTime }}
+  neighbor {{ .Passthrough.LocalNeighborV4.ID }} timers connect {{ .Passthrough.LocalNeighborV4.ConnectTime }}
+  {{- end }}
 
   address-family ipv4 unicast
   {{/* the ToAdvertiseIPv4 addresses are intended to be advertised to the fabric */}}
@@ -21,6 +24,9 @@
 {{- if .Passthrough.LocalNeighborV6 }}
 
   neighbor {{ .Passthrough.LocalNeighborV6.ID }} remote-as {{ .Passthrough.LocalNeighborV6.ASN }}
+  {{- if .Passthrough.LocalNeighborV6.ConnectTime }}
+  neighbor {{ .Passthrough.LocalNeighborV6.ID }} timers connect {{ .Passthrough.LocalNeighborV6.ConnectTime }}
+  {{- end }}
 
   address-family ipv6 unicast
   {{/* the ToAdvertiseIPv6 addresses are intended to be advertised to the fabric */}}

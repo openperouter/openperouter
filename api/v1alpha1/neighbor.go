@@ -8,8 +8,13 @@ package v1alpha1
 // +kubebuilder:validation:XValidation:rule="has(self.holdTimeSeconds) == has(self.keepaliveTimeSeconds)",message="holdTimeSeconds and keepaliveTimeSeconds must be both set or both unset"
 // +kubebuilder:validation:XValidation:rule="!has(self.holdTimeSeconds) || self.holdTimeSeconds == 0 || self.holdTimeSeconds >= 3",message="holdTimeSeconds must be 0 or >=3"
 // +kubebuilder:validation:XValidation:rule="!has(self.holdTimeSeconds) || !has(self.keepaliveTimeSeconds) || self.keepaliveTimeSeconds <= self.holdTimeSeconds",message="keepaliveTimeSeconds must be lower than or equal to holdTimeSeconds"
-// +kubebuilder:validation:XValidation:rule="has(self.address) || has(self.interface)",message="Either a valid Address or Interface name must be provided for Neighbor"
+// +kubebuilder:validation:XValidation:rule="has(self.address) || has(self.interface) || has(self.listenRange)",message="Either a valid Address, Interface name or ListenRange must be provided for Neighbor"
 // +kubebuilder:validation:XValidation:rule="!has(self.address) || !has(self.interface)",message="Address and Interface cannot be set together for Neighbor"
+// +kubebuilder:validation:XValidation:rule="!has(self.interface) || !has(self.addressFamilies) || !self.addressFamilies.exists(f, f.type == 'ipv4vpn' || f.type == 'ipv6vpn')",message="ipv4vpn and ipv6vpn address families are not supported for unnumbered (interface) neighbors"
+// +kubebuilder:validation:XValidation:rule="!has(self.address) || !has(self.addressFamilies) || ip(self.address).family() != 4 || !self.addressFamilies.exists(f, f.type == 'ipv4vpn' || f.type == 'ipv6vpn')",message="ipv4vpn and ipv6vpn address families require an IPv6 neighbor address"
+// +kubebuilder:validation:XValidation:rule="!has(self.listenRange) || !has(self.address)",message="listenRange and address are mutually exclusive"
+// +kubebuilder:validation:XValidation:rule="!has(self.listenRange) || !has(self.interface)",message="listenRange and interface are mutually exclusive"
+// +kubebuilder:validation:XValidation:rule="!(has(self.addressFamilies) && self.addressFamilies.exists(af, has(af.properties) && af.properties.exists(o, o.type == 'routeReflectorClient'))) || (has(self.type) && self.type == 'Internal')",message="routeReflectorClient requires type Internal"
 type Neighbor struct {
 	// asn is the AS number of the neighbor. Either ASN or Type must be set.
 	// +kubebuilder:validation:Minimum=1
@@ -18,7 +23,7 @@ type Neighbor struct {
 	ASN *int64 `json:"asn,omitempty"`
 
 	// type is the AS type of the neighbor. Either ASN or Type must be set.
-	// +kubebuilder:validation:Enum=external;internal
+	// +kubebuilder:validation:Enum=External;Internal
 	// +optional
 	Type *string `json:"type,omitempty"`
 
@@ -38,25 +43,30 @@ type Neighbor struct {
 	// +optional
 	Interface *string `json:"interface,omitempty"` // https://regex101.com/r/RlniVP/2 see kernel bool dev_valid_name(...)
 
+	// listenRange accepts connections from any peers in the specified CIDR.
+	// When set, the hostcontroller generates a
+	// "bgp listen range <listenRange> peer-group <name>" stanza instead of
+	// an explicit neighbor statement. Mutually exclusive with address and
+	// interface.
+	// +kubebuilder:validation:XValidation:rule="isCIDR(self)",message="listenRange must be a valid CIDR"
+	// +kubebuilder:validation:XValidation:rule="!isCIDR(self) || cidr(self).ip().family() != 6 || !cidr(self).ip().isLinkLocalUnicast()",message="listenRange must not be an IPv6 link-local range"
+	// +kubebuilder:validation:MaxLength:=43
+	// +kubebuilder:validation:MinLength:=1
+	// +optional
+	ListenRange *string `json:"listenRange,omitempty"`
+
 	// port is the port to dial when establishing the session.
 	// Defaults to 179.
 	// +optional
-	// +kubebuilder:validation:Minimum=0
-	// +kubebuilder:validation:Maximum=16384
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
 	Port *int32 `json:"port,omitempty"`
 
-	// password to be used for establishing the BGP session.
-	// Password and PasswordSecret are mutually exclusive.
+	// passwordSecret references a key in a Kubernetes Secret containing the
+	// BGP session password. The Secret must be created in the same namespace
+	// as the Underlay.
 	// +optional
-	Password *string `json:"password,omitempty"`
-
-	// passwordSecret is name of the authentication secret for the neighbor.
-	// the secret must be of type "kubernetes.io/basic-auth", and created in the
-	// same namespace as the perouter daemon. The password is stored in the
-	// secret as the key "password".
-	// Password and PasswordSecret are mutually exclusive.
-	// +optional
-	PasswordSecret *string `json:"passwordSecret,omitempty"`
+	PasswordSecret *SecretKeyRef `json:"passwordSecret,omitempty"`
 
 	// holdTimeSeconds is the requested BGP hold time in seconds, per RFC4271.
 	// Defaults to 180.
@@ -74,16 +84,22 @@ type Neighbor struct {
 	// +optional
 	ConnectTimeSeconds *int64 `json:"connectTimeSeconds,omitempty"`
 
-	// ebgpMultiHop indicates if the BGPPeer is multi-hops away.
+	// properties is the set of optional session-level features for this
+	// neighbor (e.g. ebgpMultiHop).
 	// +optional
-	EBGPMultiHop *bool `json:"ebgpMultiHop,omitempty"`
+	// +listType=map
+	// +listMapKey=type
+	// +kubebuilder:validation:MaxItems:=1
+	Properties []NeighborProperty `json:"properties,omitempty"`
 
 	// bfd defines the BFD configuration for the BGP session.
 	// +optional
 	BFD *BFDSettings `json:"bfd,omitempty"`
 
 	// addressFamilies specifies the BGP address families that shall be enabled
-	// for this BGP neighbor.
+	// for this BGP neighbor. evpn and ipv4vpn/ipv6vpn are mutually exclusive.
+	// If ipv4vpn or ipv6vpn are set, the update source of this neighbor will
+	// be set to the loopback's IPv6 address.
 	// If addressFamilies is not provided or empty, the following defaults are
 	// chosen:
 	// For unnumbered neighbors:
@@ -98,11 +114,63 @@ type Neighbor struct {
 	// - ipv4unicast if L2VNIs or L3VNIs are present, or if passthrough is configured with IPv4 local CIDR
 	// - ipv6unicast
 	// - evpn if L2VNIs or L3VNIs are present
-	// +kubebuilder:validation:MaxItems:=3
+	// - ipv4vpn if L3VPNs and SRv6 configuration are present.
+	// - ipv6vpn if L3VPNs and SRv6 configuration are present.
+	// +kubebuilder:validation:XValidation:rule="!(self.exists(f, f.type == 'evpn') && self.exists(f, f.type == 'ipv4vpn' || f.type == 'ipv6vpn'))",message="EVPN and IPv4VPN/IPv6VPN address families are mutually exclusive"
+	// +kubebuilder:validation:MaxItems:=4
 	// +optional
 	// +listType=map
 	// +listMapKey=type
 	AddressFamilies []NeighborAddressFamily `json:"addressFamilies,omitempty"`
+}
+
+// BFDSessionMode selects whether the local system initiates the BFD session.
+// +kubebuilder:validation:Enum=Active;Passive
+type BFDSessionMode string
+
+// NeighborPropertyType defines an optional feature on a Neighbor.
+// The values are protocol / FRR configuration tokens and are kept verbatim so
+// they map directly to the rendered stanzas.
+// +kubebuilder:validation:Enum=ebgpMultiHop
+type NeighborPropertyType string
+
+const (
+	// BFDSessionModeActive initiates the BFD session. This is the default
+	// when sessionMode is omitted.
+	BFDSessionModeActive BFDSessionMode = "Active"
+
+	// BFDSessionModePassive waits for the peer to initiate the BFD session
+	// before replying.
+	BFDSessionModePassive BFDSessionMode = "Passive"
+
+	// NeighborPropertyEBGPMultiHop enables eBGP multihop on the neighbor
+	// session, rendered as "neighbor X ebgp-multihop [ttl]".
+	NeighborPropertyEBGPMultiHop NeighborPropertyType = "ebgpMultiHop"
+)
+
+// EBGPMultiHopProperties holds parameters for the ebgpMultiHop property.
+type EBGPMultiHopProperties struct {
+	// ttl is the maximum number of hops for the eBGP multihop session.
+	// When omitted, FRR defaults to 255.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=255
+	// +optional
+	TTL *int32 `json:"ttl,omitempty"`
+}
+
+// NeighborProperty is an optional feature applied to a neighbor session. The
+// type field selects the property; typed sub-fields hold parameters for
+// properties that require them.
+// +kubebuilder:validation:XValidation:rule="!has(self.ebgpMultiHop) || self.type == 'ebgpMultiHop'",message="ebgpMultiHop parameters can only be set when type is ebgpMultiHop"
+type NeighborProperty struct {
+	// type selects the property.
+	// +required
+	Type NeighborPropertyType `json:"type,omitempty"`
+
+	// ebgpMultiHop holds parameters for the ebgpMultiHop property.
+	// May only be set when type is ebgpMultiHop.
+	// +optional
+	EBGPMultiHop *EBGPMultiHopProperties `json:"ebgpMultiHop,omitempty"`
 }
 
 // BFDSettings defines the BFD configuration for a BGP session.
@@ -131,25 +199,11 @@ type BFDSettings struct {
 	// +optional
 	DetectMultiplier *int32 `json:"detectMultiplier,omitempty"`
 
-	// echoInterval configures the minimal echo receive transmission
-	// interval that this system is capable of handling in milliseconds.
-	// Defaults to 50ms
-	// +kubebuilder:validation:Maximum:=60000
-	// +kubebuilder:validation:Minimum:=10
+	// sessionMode marks the session active or passive. Active (the default
+	// when omitted) initiates the session. Passive waits for the peer to
+	// initiate before replying (RFC 5880 Section 6.1).
 	// +optional
-	EchoInterval *int32 `json:"echoInterval,omitempty"`
-
-	// echoMode enables or disables the echo transmission mode.
-	// This mode is disabled by default, and not supported on multi
-	// hops setups.
-	// +optional
-	EchoMode *bool `json:"echoMode,omitempty"`
-
-	// passiveMode marks session as passive: a passive session will not
-	// attempt to start the connection and will wait for control packets
-	// from peer before it begins replying.
-	// +optional
-	PassiveMode *bool `json:"passiveMode,omitempty"`
+	SessionMode *BFDSessionMode `json:"sessionMode,omitempty"`
 
 	// minimumTTL configures, for multi hop sessions only, the minimum
 	// expected TTL for an incoming BFD control packet.
@@ -159,13 +213,59 @@ type BFDSettings struct {
 	MinimumTTL *int32 `json:"minimumTTL,omitempty"`
 }
 
+// SecretKeyRef references a key within a Kubernetes Secret in the same
+// namespace as the Underlay.
+type SecretKeyRef struct {
+	// name is the name of the Secret in the same namespace.
+	// +required
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name,omitempty"`
+
+	// key is the key within the Secret's data to select.
+	// The controller defaults this to "password" when unset.
+	// +kubebuilder:validation:MinLength=1
+	// +optional
+	Key *string `json:"key,omitempty"`
+}
+
 // NeighborAddressFamily represents a single BGP address family configuration
 // for a neighbor.
 type NeighborAddressFamily struct {
 	// type is the address family type.
 	// +kubebuilder:validation:MinLength:=1
 	// +kubebuilder:validation:MaxLength:=11
-	// +kubebuilder:validation:Enum:=ipv4unicast;ipv6unicast;evpn
+	// +kubebuilder:validation:Enum:=ipv4unicast;ipv6unicast;evpn;ipv4vpn;ipv6vpn
 	// +required
 	Type string `json:"type,omitempty"`
+
+	// Note: MaxItems=8 is arbitrarily chosen to keep total CEL cost low.
+
+	// properties is the set of optional per-address-family features for this
+	// neighbor (for example, marking the neighbor as a route reflector client
+	// in this address family).
+	// +optional
+	// +kubebuilder:validation:MaxItems=8
+	// +listType=map
+	// +listMapKey=type
+	Properties []AddressFamilyProperty `json:"properties,omitempty"`
+}
+
+// AddressFamilyPropertyType defines an optional feature on a neighbor
+// address family.
+// +kubebuilder:validation:Enum=routeReflectorClient
+type AddressFamilyPropertyType string
+
+const (
+	// AddressFamilyPropertyRouteReflectorClient marks the neighbor as a
+	// route reflector client of the local router in this address family (RFC 4456).
+	AddressFamilyPropertyRouteReflectorClient AddressFamilyPropertyType = "routeReflectorClient"
+)
+
+// AddressFamilyProperty is an optional feature applied to a neighbor
+// address family. The type field selects the property; typed sub-fields hold
+// parameters for properties that require them.
+type AddressFamilyProperty struct {
+	// type selects the property.
+	// +required
+	Type AddressFamilyPropertyType `json:"type,omitempty"`
 }

@@ -53,7 +53,7 @@ Different NIC naming across vendor hardware:
 
 ```yaml
 # For Dell servers with specific NIC naming
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: Underlay
 metadata:
   name: underlay-dell-hardware
@@ -66,15 +66,19 @@ spec:
   tunnelEndpoint:
     cidrs:
     - 100.65.0.0/24
-  nics:
-    - eno1
-    - eno2
+  interfaces:
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: eno1
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: eno2
   neighbors:
     - asn: 64500
       address: 192.168.10.1
 ---
 # For HP servers with different NIC naming
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: Underlay
 metadata:
   name: underlay-hp-hardware
@@ -87,9 +91,13 @@ spec:
   tunnelEndpoint:
     cidrs:
     - 100.65.0.0/24
-  nics:
-    - em1
-    - em2
+  interfaces:
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: em1
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: em2
   neighbors:
     - asn: 64500
       address: 192.168.10.1
@@ -103,7 +111,7 @@ Different racks use different L3VNIs for network segmentation:
 
 ```yaml
 # L3VNI for rack-1 nodes
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3VNI
 metadata:
   name: tenant-a-rack-1
@@ -114,15 +122,15 @@ spec:
       topology.kubernetes.io/rack: rack-1
   vrf: tenant-a
   vni: 5001
-  vxlanport: 4789
-  hostsession:
+  vxlanPort: 4789
+  hostSession:
     asn: 64512
-    hostasn: 64600
-    localcidr:
-      ipv4: 192.169.1.0/24
+    hostASN: 64600
+    localCIDRs:
+      - 192.169.1.0/24
 ---
 # L3VNI for rack-2 nodes
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3VNI
 metadata:
   name: tenant-a-rack-2
@@ -133,12 +141,12 @@ spec:
       topology.kubernetes.io/rack: rack-2
   vrf: tenant-a
   vni: 5002
-  vxlanport: 4789
-  hostsession:
+  vxlanPort: 4789
+  hostSession:
     asn: 64512
-    hostasn: 64600
-    localcidr:
-      ipv4: 192.169.2.0/24
+    hostASN: 64600
+    localCIDRs:
+      - 192.169.2.0/24
 ```
 
 ### Multiple VNIs on Same Nodes
@@ -147,7 +155,7 @@ Multiple L3VNIs can be configured on the same set of nodes for multi-tenancy:
 
 ```yaml
 # Tenant A VNI on worker nodes
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3VNI
 metadata:
   name: tenant-a-vni
@@ -158,14 +166,14 @@ spec:
       node-role.kubernetes.io/worker: ""
   vrf: tenant-a
   vni: 5001
-  hostsession:
+  hostSession:
     asn: 64512
-    hostasn: 64600
-    localcidr:
-      ipv4: 192.169.5.0/24
+    hostASN: 64600
+    localCIDRs:
+      - 192.169.5.0/24
 ---
 # Tenant B VNI on the same worker nodes
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3VNI
 metadata:
   name: tenant-b-vni
@@ -176,14 +184,14 @@ spec:
       node-role.kubernetes.io/worker: ""
   vrf: tenant-b
   vni: 5002
-  hostsession:
+  hostSession:
     asn: 64512
-    hostasn: 64601
-    localcidr:
-      ipv4: 192.169.6.0/24
+    hostASN: 64601
+    localCIDRs:
+      - 192.169.6.0/24
 ---
 # Tenant C VNI on the same worker nodes
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3VNI
 metadata:
   name: tenant-c-vni
@@ -194,11 +202,11 @@ spec:
       node-role.kubernetes.io/worker: ""
   vrf: tenant-c
   vni: 5003
-  hostsession:
+  hostSession:
     asn: 64512
-    hostasn: 64602
-    localcidr:
-      ipv4: 192.169.7.0/24
+    hostASN: 64602
+    localCIDRs:
+      - 192.169.7.0/24
 ```
 
 ## L2VNI Examples
@@ -207,7 +215,7 @@ L2VNI configured only on worker nodes, not control plane:
 
 ```yaml
 # L2VNI for worker nodes only
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L2VNI
 metadata:
   name: app-network
@@ -217,12 +225,16 @@ spec:
     matchLabels:
       node-role.kubernetes.io/worker: ""
   vni: 10100
-  vxlanport: 4789
-  hostmaster:
-    type: linux-bridge
+  vxlanPort: 4789
+  routingDomain:
+    type: L3VNI
+    l3vni:
+      name: tenant-a-vni
+  hostMaster:
+    type: LinuxBridge
     linuxBridge:
-      autoCreate: true
-  l2gatewayips:
+      lifecycle: Managed
+  gatewayIPs:
     - 10.100.0.1/24
 ```
 
@@ -232,7 +244,7 @@ L3Passthrough configured only on edge nodes that participate in direct BGP fabri
 
 ```yaml
 # L3Passthrough for edge nodes
-apiVersion: openpe.openperouter.github.io/v1alpha1
+apiVersion: network.openperouter.io/v1alpha1
 kind: L3Passthrough
 metadata:
   name: edge-passthrough
@@ -241,9 +253,9 @@ spec:
   nodeSelector:
     matchLabels:
       node-role.kubernetes.io/edge: ""
-  hostsession:
+  hostSession:
     asn: 64512
-    hostasn: 64700
-    localcidr:
-      ipv4: 192.169.20.0/24
+    hostASN: 64700
+    localCIDRs:
+      - 192.169.20.0/24
 ```
