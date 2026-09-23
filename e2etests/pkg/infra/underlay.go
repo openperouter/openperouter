@@ -335,3 +335,41 @@ var UnderlayEVPNandSRv6 = v1alpha1.Underlay{
 		},
 	},
 }
+
+var UnderlayISISOnly = v1alpha1.Underlay{
+	ObjectMeta: metav1.ObjectMeta{
+		Name:      "underlay",
+		Namespace: openperouter.Namespace,
+	},
+	Spec: v1alpha1.UnderlaySpec{
+		ASN:        64514,
+		Interfaces: defaultInterfaces,
+		// Although neighbors are not needed for IS-IS only tests, we need a dummy neighbor to make validation happy.
+		Neighbors: []v1alpha1.Neighbor{
+			{
+				ASN:     new(int64(64512)),
+				Address: new("192.0.2.1"),
+			},
+		},
+		ISIS: &v1alpha1.ISISConfig{
+			BaseNet: "49.0001.0002.0003.0004.00",
+			Level:   new(int32(1)),
+			Interfaces: []v1alpha1.ISISInterface{
+				{
+					Name:     "toswitch1",
+					IPFamily: new(v1alpha1.IPFamilyDualStack),
+				},
+				{
+					Name:     "lo",
+					IPFamily: new(v1alpha1.IPFamilyDualStack),
+				},
+			},
+		},
+		TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+			CIDRs: []string{
+				"100.65.0.0/24",
+				"2001:db8:1234:5678::/64",
+			},
+		},
+	},
+}
