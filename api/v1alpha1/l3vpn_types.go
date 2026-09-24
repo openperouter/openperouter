@@ -64,7 +64,26 @@ type L3VPNSpec struct {
 	// hostSession is the configuration for the host session.
 	// +optional
 	HostSession *HostSession `json:"hostSession,omitempty"`
+
+	// features enables L3VPN boolean features.
+	// Supported features are:
+	// uDT4uDT6: configures the OpenPERouter to create separate functions for uDT4 and uDT6 (default: unified uDT46).
+	// +kubebuilder:validation:MaxItems:=32
+	// +listType=atomic
+	// +optional
+	Features []L3VPNFeature `json:"features,omitempty"`
 }
+
+// L3VPNFeature represents a single L3VPN feature.
+// +kubebuilder:validation:MinLength:=1
+// +kubebuilder:validation:MaxLength:=128
+// +kubebuilder:validation:Enum:=uDT4uDT6
+type L3VPNFeature string
+
+const (
+	// UDT4UDT6 instructs the OpenPERouter to announce uDT4 and uDT6 functions individually.
+	UDT4UDT6 L3VPNFeature = "uDT4uDT6"
+)
 
 // L3VPNStatus defines the observed state of L3VPN.
 type L3VPNStatus struct {

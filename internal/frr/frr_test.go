@@ -1180,6 +1180,7 @@ func TestSegmentRouting(t *testing.T) {
 				ImportRTs:          []string{"65003:102 65003:103"},
 				RouteDistinguisher: "10.0.0.1:101",
 				RouterID:           "10.0.0.1",
+				UDT4UDT6:           true,
 			},
 		},
 	}
