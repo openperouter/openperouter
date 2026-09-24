@@ -62,7 +62,7 @@ func (c *Client) ensurePort(ctx context.Context, name, devargs string) error {
 	}
 
 	slog.InfoContext(ctx, "creating grout port", "name", name, "devargs", devargs)
-	if err := c.run(ctx, "interface", "add", "port", name, "devargs", devargs); err != nil {
+	if err := c.run(ctx, "interface", "add", "port", name, "devargs", devargs, "down"); err != nil {
 		return fmt.Errorf("creating grout port %s: %w", name, err)
 	}
 	return nil
@@ -79,8 +79,16 @@ func (c *Client) ensurePortInVRF(ctx context.Context, name, devargs, vrf string)
 	}
 
 	slog.InfoContext(ctx, "creating grout port in VRF", "name", name, "devargs", devargs, "vrf", vrf)
-	if err := c.run(ctx, "interface", "add", "port", name, "devargs", devargs, "vrf", vrf, "up"); err != nil {
+	if err := c.run(ctx, "interface", "add", "port", name, "devargs", devargs, "vrf", vrf, "down"); err != nil {
 		return fmt.Errorf("creating grout port %s in VRF %s: %w", name, vrf, err)
+	}
+	return nil
+}
+
+func (c *Client) setPortUp(ctx context.Context, name string) error {
+	slog.InfoContext(ctx, "setting grout port up", "name", name)
+	if err := c.run(ctx, "interface", "set", "port", name, "up"); err != nil {
+		return fmt.Errorf("setting grout port %s up: %w", name, err)
 	}
 	return nil
 }
@@ -209,6 +217,50 @@ func (c *Client) runOutput(ctx context.Context, args ...string) (string, error) 
 
 	groutErr.cmdErr = fmt.Errorf("grcli %s failed: %w, output: %s", strings.Join(args, " "), err, output)
 	return output, groutErr
+}
+
+func (c *Client) ensureBridge(ctx context.Context, name, vrf string) error {
+	exists, err := c.portExists(ctx, name)
+	if err != nil {
+		return fmt.Errorf("checking if bridge %s exists: %w", name, err)
+	}
+	if exists {
+		slog.InfoContext(ctx, "grout bridge already exists", "name", name)
+		return nil
+	}
+
+	args := []string{"interface", "add", "bridge", name}
+	if vrf != "" {
+		args = append(args, "vrf", vrf)
+	}
+	// neigh_suppress answers ARP/NDP locally from the EVPN neighbor table, and
+	// neigh_snoop populates that table from the traffic of the locally attached
+	// hosts. Without snooping grout never learns the local IP/MAC bindings, so
+	// FRR advertises MAC-only type-2 routes and the remote VTEPs have nothing to
+	// suppress with. A disconnected L2VNI has no address on the bridge, so
+	// snooping is the only way its neighbors get learned.
+	args = append(args, "neigh_suppress", "on", "neigh_snoop", "on")
+	slog.InfoContext(ctx, "creating grout bridge", "name", name, "vrf", vrf)
+	if err := c.run(ctx, args...); err != nil {
+		return fmt.Errorf("creating grout bridge %s: %w", name, err)
+	}
+	return nil
+}
+
+func (c *Client) setBridgeMAC(ctx context.Context, bridgeName, mac string) error {
+	slog.InfoContext(ctx, "setting bridge MAC", "bridge", bridgeName, "mac", mac)
+	if err := c.run(ctx, "interface", "set", "bridge", bridgeName, "mac", mac); err != nil {
+		return fmt.Errorf("setting MAC %s on bridge %s: %w", mac, bridgeName, err)
+	}
+	return nil
+}
+
+func (c *Client) ensureBridgeMember(ctx context.Context, portType, bridgeName, memberName string) error {
+	slog.InfoContext(ctx, "adding bridge member", "bridge", bridgeName, "member", memberName)
+	if err := c.run(ctx, "interface", "set", portType, memberName, "domain", bridgeName); err != nil {
+		return fmt.Errorf("adding %s to bridge %s: %w", memberName, bridgeName, err)
+	}
+	return nil
 }
 
 func (c *Client) ensureVRF(ctx context.Context, name string) error {
