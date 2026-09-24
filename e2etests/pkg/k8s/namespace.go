@@ -52,6 +52,9 @@ func CreateNamespace(cs clientset.Interface, name string) (*corev1.Namespace, er
 
 func DeleteNamespace(cs clientset.Interface, name string) error {
 	err := cs.CoreV1().Namespaces().Delete(context.Background(), name, metav1.DeleteOptions{})
+	if err != nil && errors.IsNotFound(err) {
+		return nil
+	}
 	if err != nil {
 		return fmt.Errorf("failed to delete namespace %s: %w", name, err)
 	}
