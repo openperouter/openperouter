@@ -61,8 +61,18 @@ func runVtysh(commands ...string) (string, error) {
 	cmd := execCommand(vtyshPath, args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("vtysh command failed: %w, output: %s", err, frr.RedactPasswords(string(output)))
+		return "", fmt.Errorf(
+			"vtysh command failed: cmd: %q, output: %q, err: %w",
+			frr.RedactPasswords(strings.Join(commands, "\n")),
+			frr.RedactPasswords(string(output)),
+			err,
+		)
 	}
+	slog.Debug(
+		"frr update ran vtysh command",
+		"command", frr.RedactPasswords(strings.Join(commands, "\n")),
+		"output", frr.RedactPasswords(string(output)),
+	)
 	return string(output), nil
 }
 
