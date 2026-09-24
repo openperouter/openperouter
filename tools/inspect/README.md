@@ -11,7 +11,7 @@ The `inspect` tool makes debugging OpenPERouter deployments easier by collecting
 ### Options
 | Option         | Description                                                       | Default                |
 |----------------|-------------------------------------------------------------------|------------------------|
-| `--namespace`  | OpenPERouter namespace                                            | `openperouter-system`  |
+| `--namespace`  | Namespace to collect; repeat for each additional namespace        | `openperouter-system`  |
 | `--dest-dir`   | Output directory path                                             | `openperouter-inspect` |
 | `--k8s-client` | Kubernetes client                                                 | `kubectl`              |
 | `--since`      | Collect pod logs newer then relative duration (e.g.: 5s, 10m, 2h) |                        |
@@ -26,6 +26,9 @@ $ ./inspect
 
 # override parameters
 $ ./inspect --dest-dir=mydir --namespace=myns --k8s-client=oc --since=3m
+
+# collect OpenPERouter and FRR-K8s workload diagnostics
+$ ./inspect --namespace=openperouter-system --namespace=frr-k8s-system
 
 # via repository make target, artifacts stored at /tmp/openperouter-inspect
 $ make inspect
@@ -43,9 +46,13 @@ $ KUBECONFIG_PATH=$KUBECONFIG \
 The output root directory contains the following:
 - `timestamp` - Execution timestamp
 - `inspect.log` - Execution log
+- `nodes.yaml` - Kubernetes Node manifests
 - `node_info/` - Per node network and routing infrastructure information
-- `<openperouter namesapce>/` - OpenPERouter namespace objects and workloads logs (defaults is `openperouter-system`)
-- `<namespace name>/` - Per namespaces containing config resources directory (Underlay, L3VNI, L2VNI, etc.)
+- `<namespace>/` - Namespace objects and workload logs for every requested namespace (defaults to `openperouter-system`)
+- `<namespace name>/` - Per namespaces containing config resources directory (Underlay, L2VNI, L3VNI, L3VPN, FRRConfiguration, etc.)
+
+The first `--namespace` is used to collect OpenPERouter router/node diagnostics in
+`node_info/`; additional namespaces contribute workload manifests, events, and logs.
 
 The OpenPERouter namespace directory structure:
 - `overview/all.log` - Existing resources in summary
@@ -58,6 +65,7 @@ The OpenPERouter namespace directory structure:
 ```bash
 $ tree /tmp/openperouter-inspect/
 ├── inspect.log
+├── nodes.yaml
 ├── timestamp
 ├── node_info
 │   ├── pe-kind-control-plane

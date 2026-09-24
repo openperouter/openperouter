@@ -28,7 +28,6 @@ readonly CORE_RESOURCES=(\
 	"roles" \
 	"rolebindings" \
 	"serviceaccounts" \
-	"routernodeconfigurationstatuses" \
 )
 # openperouter config resources to collect
 readonly CONFIG_RESOURCES=(\
@@ -36,7 +35,10 @@ readonly CONFIG_RESOURCES=(\
 	"l2vnis" \
 	"l3vnis" \
 	"l3passthroughs" \
+	"l3vpns" \
 	"rawfrrconfigs" \
+	"frrconfigurations" \
+	"routernodeconfigurationstatuses" \
 )
 
 function dump_overview() {
@@ -93,6 +95,15 @@ function dump_config_resources_from_all_ns() {
 			dump_resource "${ctl}" "${namespace}" "${r}" "${base_dir}/${namespace}"
 		done
 	done
+}
+
+function dump_nodes() {
+	local -r ctl="$1"
+	local -r base_dir="$2"
+	local -r logfile="${base_dir}/nodes.yaml"
+
+	$ctl get nodes -o yaml > "$logfile"
+	echo "Dumped node manifests to [$logfile]"
 }
 
 function dump_resource() {
@@ -178,10 +189,11 @@ Inspect OpenPERouter deployment and export related resources and logs.
 Usage: inspect [options]=<value>
 
 Example
-  inspect --dest-dir=/tmp/openperouter-logs --k8s-client=./bin/kubectl --namespace=openperouter-system
+  inspect --dest-dir=/tmp/openperouter-logs --k8s-client=./bin/kubectl \
+    --namespace=openperouter-system --namespace=frr-k8s-system
 
 Options:
-  --namespace   OpenPERouter system namespace name (default: "openperouter-system")
+  --namespace   Namespace to collect (repeatable; defaults to "openperouter-system")
   --dest-dir    The directory to store artifacts (default: "openperouter-inspect")
   --k8s-client  Kubernetes client binary path (default: "kubectl")
   --since       Collect pod logs newer then relative duration, e.g.: 5s, 10m, 2h.
@@ -189,14 +201,14 @@ Options:
 EOF
 }
 
-NAMESPACE="openperouter-system"
+NAMESPACES=()
 ARTIFACTS_DIR="./openperouter-inspect"
 CTL_BIN="kubectl"
 SINCE_DURATION=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --namespace=*)   NAMESPACE="${1#*=}" ;;
+        --namespace=*)   NAMESPACES+=("${1#*=}") ;;
         --dest-dir=*)    ARTIFACTS_DIR="${1#*=}" ;;
         --k8s-client=*)  CTL_BIN="${1#*=}" ;;
         --since=*)       SINCE_DURATION="${1#*=}" ;;
@@ -204,15 +216,21 @@ while [[ $# -gt 0 ]]; do
         *) echo "Unknown option: $1"; help; exit 1 ;;
     esac
 	shift
-done
+	done
+
+if [[ ${#NAMESPACES[@]} -eq 0 ]]; then
+	NAMESPACES=("openperouter-system")
+fi
 
 if ! command -v "${CTL_BIN}" &> /dev/null; then
 	echo "FATAL: '${CTL_BIN}' command not found" && exit 1
 fi
 
-if ! "${CTL_BIN}" get ns "${NAMESPACE}" &> /dev/null; then
-	echo "FATAL: '${NAMESPACE}' namespace not found. Make sure KUBECONFIG is set correctly." && exit 1
-fi
+for namespace in "${NAMESPACES[@]}"; do
+	if ! "${CTL_BIN}" get ns "${namespace}" &> /dev/null; then
+		echo "FATAL: '${namespace}' namespace not found. Make sure KUBECONFIG is set correctly." && exit 1
+	fi
+done
 
 log_opts=""
 if [[ -n $SINCE_DURATION ]]; then
@@ -223,14 +241,17 @@ mkdir -p "${ARTIFACTS_DIR}"
 date --rfc-3339=ns > "${ARTIFACTS_DIR}/timestamp"
 
 (
-	readonly CTL="${CTL_BIN} -n ${NAMESPACE}"
-	readonly NS_DIR="${ARTIFACTS_DIR}/${NAMESPACE}"
 	set +e
-	dump_overview  "${CTL}" "${NS_DIR}/overview"
-	dump_core_resources_from_ns       "${CTL_BIN}" "${NAMESPACE}" "${ARTIFACTS_DIR}"
+	dump_nodes                         "${CTL_BIN}" "${ARTIFACTS_DIR}"
 	dump_config_resources_from_all_ns "${CTL_BIN}" "${ARTIFACTS_DIR}"
-	dump_pod_logs  "${CTL}" "${NS_DIR}/pod_logs" "${log_opts}"
-	dump_node_info "${CTL}" "${ARTIFACTS_DIR}/node_info"
+	for namespace in "${NAMESPACES[@]}"; do
+		ctl="${CTL_BIN} -n ${namespace}"
+		ns_dir="${ARTIFACTS_DIR}/${namespace}"
+		dump_overview                "${ctl}" "${ns_dir}/overview"
+		dump_core_resources_from_ns "${CTL_BIN}" "${namespace}" "${ARTIFACTS_DIR}"
+		dump_pod_logs                "${ctl}" "${ns_dir}/pod_logs" "${log_opts}"
+	done
+	dump_node_info "${CTL_BIN} -n ${NAMESPACES[0]}" "${ARTIFACTS_DIR}/node_info"
 ) 2>&1 | tee -a "${ARTIFACTS_DIR}/inspect.log"
 
 echo "Inspect completed. Artifacts are stored in ${ARTIFACTS_DIR}"
