@@ -1,6 +1,6 @@
 // SPDX-License-Identifier:Apache-2.0
 
-package tests
+package triage
 
 import (
 	"context"
@@ -20,40 +20,61 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/infra"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
+	"github.com/openshift-kni/k8sreporter"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/yaml"
 )
 
-func dumpIfFails(cs clientset.Interface, additionalNamespaces ...string) {
-	slices.Sort(additionalNamespaces)
-	additionalNamespaces = slices.Compact(additionalNamespaces)
+// Config controls which environment-specific diagnostics are collected.
+type Config struct {
+	ReportPath           string
+	HostMode             bool
+	GroutMode            bool
+	K8sReporter          *k8sreporter.KubernetesReporter
+	AdditionalNamespaces []string
+	CollectFRRK8sPods    bool
+	CollectFRRContainers bool
+	CollectNodePCIInfo   bool
+}
+
+// DumpIfFails collects diagnostics for a failed Ginkgo spec.
+func DumpIfFails(cs clientset.Interface, config Config) {
+	slices.Sort(config.AdditionalNamespaces)
+	config.AdditionalNamespaces = slices.Compact(config.AdditionalNamespaces)
 
 	if ginkgo.CurrentSpecReport().Failed() {
 		opts := []func(dumpOptions *dumpOptions){
-			onRouterPods(cs),
-			onFRRK8sPods(cs),
-			onFRRContainers(),
+			onRouterPods(cs, config.HostMode),
 			withFRR(),
 		}
+		if config.CollectFRRK8sPods {
+			opts = append(opts, onFRRK8sPods(cs))
+		}
+		if config.CollectFRRContainers {
+			opts = append(opts, onFRRContainers())
+		}
 
-		if GroutMode {
+		if config.GroutMode {
 			opts = append(opts, withGrout())
 		}
 
 		dumpFRRInfo(
-			ReportPath,
+			config.ReportPath,
 			ginkgo.CurrentSpecReport().FullText(),
 			opts...,
 		)
 
-		for _, namespace := range additionalNamespaces {
-			dumpWorkloadInfo(ReportPath, ginkgo.CurrentSpecReport().FullText(), cs, namespace)
+		for _, namespace := range config.AdditionalNamespaces {
+			dumpWorkloadInfo(config.ReportPath, ginkgo.CurrentSpecReport().FullText(), cs, namespace)
 		}
-		k8s.DumpInfo(K8sReporter, ginkgo.CurrentSpecReport().FullText())
-		if HostMode {
-			dumpPodmanInfo(cs, ReportPath, ginkgo.CurrentSpecReport().FullText())
+		if config.CollectNodePCIInfo {
+			dumpNodePCIInfo(cs, config.ReportPath, ginkgo.CurrentSpecReport().FullText())
+		}
+		k8s.DumpInfo(config.K8sReporter, ginkgo.CurrentSpecReport().FullText())
+		if config.HostMode {
+			dumpPodmanInfo(cs, config.ReportPath, ginkgo.CurrentSpecReport().FullText())
 		}
 	}
 }
@@ -75,9 +96,9 @@ func withFRR() func(dumpOptions *dumpOptions) {
 	}
 }
 
-func onRouterPods(cs clientset.Interface) func(dumpOptions *dumpOptions) {
+func onRouterPods(cs clientset.Interface, hostMode bool) func(dumpOptions *dumpOptions) {
 	return func(dumpOptions *dumpOptions) {
-		routers, err := openperouter.Get(cs, HostMode)
+		routers, err := openperouter.Get(cs, hostMode)
 		Expect(err).NotTo(HaveOccurred())
 
 		for router := range routers.GetExecutors() {
@@ -228,6 +249,48 @@ func logFileFor(base string, kind string) (*os.File, error) {
 		return nil, err
 	}
 	return f, nil
+}
+
+// dumpNodePCIInfo collects PCI device details and their bound kernel drivers
+// from every Kubernetes node. The node executor enters the node's namespaces,
+// so this captures the node rather than the node-exec helper container.
+func dumpNodePCIInfo(cs clientset.Interface, basePath, testName string) {
+	testPath, err := createTestOutput(basePath, testName)
+	if err != nil {
+		ginkgo.GinkgoWriter.Printf("dumpNodePCIInfo: failed to create test dir: %s", err)
+		return
+	}
+
+	nodes, err := k8s.GetNodes(cs)
+	if err != nil {
+		ginkgo.GinkgoWriter.Printf("dumpNodePCIInfo: failed to get nodes: %v", err)
+		return
+	}
+
+	for _, node := range nodes {
+		func() {
+			f, err := logFileFor(testPath, fmt.Sprintf("pci-dump-%s", node.Name))
+			if err != nil {
+				ginkgo.GinkgoWriter.Printf("dumpNodePCIInfo: failed to open file for node %s: %v", node.Name, err)
+				return
+			}
+			defer func() {
+				if err := f.Close(); err != nil {
+					ginkgo.GinkgoWriter.Printf("dumpNodePCIInfo: failed to close file %s: %v", f.Name(), err)
+				}
+			}()
+
+			exec := executor.ForNode(node.Name)
+			for _, command := range [][]string{{"lspci", "-vvv"}, {"lspci", "-k"}} {
+				fmt.Fprintf(f, "\n######## %s\n\n", strings.Join(command, " "))
+				out, err := exec.Exec(command[0], command[1:]...)
+				if err != nil {
+					fmt.Fprintf(f, "Failed exec %q: %v\n", strings.Join(command, " "), err)
+				}
+				fmt.Fprint(f, out)
+			}
+		}()
+	}
 }
 
 func dumpPodmanInfo(cs clientset.Interface, basePath, testName string) {

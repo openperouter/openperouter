@@ -21,6 +21,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/networklayerprotocol"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
+	"github.com/openperouter/openperouter/e2etests/pkg/validate"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -88,13 +89,13 @@ var _ = Describe("Router BGP sessions", Ordered, GroutSupport, func() {
 				for _, node := range nodes {
 					neighborIP, err := infra.NeighborIP(leaf, node.Name)
 					Expect(err).NotTo(HaveOccurred())
-					validateSessionWithNeighbor(
+					validate.SessionWithNeighbor(
 						exec,
-						validationParameters{
-							fromName:    leaf,
-							toName:      node.Name,
-							neighborIP:  neighborIP,
-							established: Established,
+						validate.SessionParameters{
+							FromName:    leaf,
+							ToName:      node.Name,
+							NeighborIP:  neighborIP,
+							Established: Established,
 						},
 					)
 				}
@@ -596,13 +597,13 @@ var _ = Describe("Underlay external and internal configuration", Ordered, GroutS
 		for _, node := range nodes {
 			neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
 			Expect(err).NotTo(HaveOccurred())
-			validateSessionWithNeighbor(
+			validate.SessionWithNeighbor(
 				exec,
-				validationParameters{
-					fromName:    infra.KindLeaf,
-					toName:      node.Name,
-					neighborIP:  neighborIP,
-					established: Established,
+				validate.SessionParameters{
+					FromName:    infra.KindLeaf,
+					ToName:      node.Name,
+					NeighborIP:  neighborIP,
+					Established: Established,
 				},
 			)
 		}
@@ -768,13 +769,13 @@ var _ = Describe("Underlay BFD Configuration", Ordered, GroutSupport, func() {
 			for _, node := range nodes {
 				neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
 				Expect(err).NotTo(HaveOccurred())
-				validateSessionWithNeighbor(
+				validate.SessionWithNeighbor(
 					exec,
-					validationParameters{
-						fromName:    infra.KindLeaf,
-						toName:      node.Name,
-						neighborIP:  neighborIP,
-						established: Established,
+					validate.SessionParameters{
+						FromName:    infra.KindLeaf,
+						ToName:      node.Name,
+						NeighborIP:  neighborIP,
+						Established: Established,
 					},
 				)
 			}
@@ -928,13 +929,13 @@ var _ = Describe("Add extra neighbor", Ordered, GroutSupport, func() {
 				if err != nil {
 					continue
 				}
-				validateSessionWithNeighbor(
+				validate.SessionWithNeighbor(
 					exec,
-					validationParameters{
-						fromName:    infra.KindLeaf,
-						toName:      node.Name,
-						neighborIP:  neighborIP,
-						established: Established,
+					validate.SessionParameters{
+						FromName:    infra.KindLeaf,
+						ToName:      node.Name,
+						NeighborIP:  neighborIP,
+						Established: Established,
 					},
 				)
 			}
@@ -968,13 +969,13 @@ var _ = Describe("Add extra neighbor", Ordered, GroutSupport, func() {
 				if err != nil {
 					continue
 				}
-				validateSessionWithNeighbor(
+				validate.SessionWithNeighbor(
 					exec2,
-					validationParameters{
-						fromName:    infra.KindLeaf2,
-						toName:      node.Name,
-						neighborIP:  neighborIP,
-						established: Established,
+					validate.SessionParameters{
+						FromName:    infra.KindLeaf2,
+						ToName:      node.Name,
+						NeighborIP:  neighborIP,
+						Established: Established,
 					},
 				)
 			}
@@ -1050,14 +1051,14 @@ var _ = Describe("Underlay explicit address family configuration", Ordered, Grou
 				Expect(err).NotTo(HaveOccurred())
 				By(fmt.Sprintf("validating TOR session from %s to %s (ID: %s) and network layer protocols %s",
 					tor, node.Name, neighborIP, nlps))
-				validateSessionWithNeighbor(
+				validate.SessionWithNeighbor(
 					exec,
-					validationParameters{
-						fromName:                tor,
-						toName:                  node.Name,
-						neighborIP:              neighborIP,
-						receivedAddressFamilies: nlps,
-						established:             Established,
+					validate.SessionParameters{
+						FromName:                tor,
+						ToName:                  node.Name,
+						NeighborIP:              neighborIP,
+						ReceivedAddressFamilies: nlps,
+						Established:             Established,
 					},
 				)
 			}
