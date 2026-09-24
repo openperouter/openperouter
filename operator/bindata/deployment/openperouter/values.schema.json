@@ -426,15 +426,6 @@
                 "repository": "quay.io/openperouter/router"
               }
             }
-          },
-          "cri": {
-            "type": "string",
-            "description": "cri to bind its socket, can be containerd or crio.",
-            "enum": [
-              "containerd",
-              "crio"
-            ],
-            "default": "containerd"
           }
         },
         "default": {
@@ -488,8 +479,7 @@
             },
             "logLevel": "info",
             "initScript": ""
-          },
-          "cri": "containerd"
+          }
         }
       },
       "crds": {

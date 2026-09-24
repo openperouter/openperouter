@@ -31,13 +31,6 @@ import (
 	"k8s.io/utils/ptr"
 )
 
-const (
-	// ContainerRuntimeContainerd is the containerd container runtime identifier
-	ContainerRuntimeContainerd = "containerd"
-	// ContainerRuntimeCrio is the CRI-O container runtime identifier
-	ContainerRuntimeCrio = "crio"
-)
-
 // Chart contains references which helps to
 // to retrieve manifests from chart after patching given custom values.
 type Chart struct {
@@ -95,10 +88,6 @@ func (h *Chart) Objects(envConfig envconfig.EnvConfig, crdConfig *operatorapi.Op
 }
 
 func patchChartValues(envConfig envconfig.EnvConfig, crdConfig *operatorapi.OpenPERouter, valuesMap map[string]any) error {
-	cri := ContainerRuntimeContainerd
-	if envConfig.IsOpenshift {
-		cri = ContainerRuntimeCrio
-	}
 	openperouterValues := map[string]any{
 		"logLevel": logLevelValue(crdConfig),
 		"image": map[string]any{
@@ -126,7 +115,6 @@ func patchChartValues(envConfig envconfig.EnvConfig, crdConfig *operatorapi.Open
 		"crds": map[string]any{
 			"enabled": false,
 		},
-		"cri": cri,
 	}
 
 	// Only set nodeSelector/tolerations/affinity when explicitly provided on the

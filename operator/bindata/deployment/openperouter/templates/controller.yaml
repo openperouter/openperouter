@@ -53,12 +53,6 @@ spec:
         {{- with .Values.openperouter.controller.healthProbePort }}
         - --health-probe-bind-address=:{{ . }}
         {{- end }}
-        {{- if eq .Values.openperouter.cri "containerd" }}
-        - --crisocket=/containerd.sock
-        {{- end }}
-        {{- if eq .Values.openperouter.cri "crio" }}
-        - --crisocket=/crio.sock
-        {{- end }}
         {{- with .Values.openperouter.ovsSocketPath }}
         - --ovssocket={{ . }}
         {{- end }}
@@ -117,16 +111,6 @@ spec:
             - NET_BIND_SERVICE
           privileged: true
         volumeMounts:
-        {{- if eq .Values.openperouter.cri "containerd" }}
-        - mountPath: /containerd.sock
-          name: varrun
-          subPath: containerd.sock
-        {{- end }}
-        {{- if eq .Values.openperouter.cri "crio" }}
-        - mountPath: /crio.sock
-          name: varrun
-          subPath: crio.sock
-        {{- end }}
         - mountPath: /run/netns
           mountPropagation: Bidirectional
           name: runns
@@ -165,16 +149,6 @@ spec:
       - hostPath:
           path: /run/netns
         name: runns
-      {{- if eq .Values.openperouter.cri "containerd" }}
-      - hostPath:
-          path: /run/containerd
-        name: varrun
-      {{- end }}
-      {{- if eq .Values.openperouter.cri "crio" }}
-      - hostPath:
-          path: /var/run/crio
-        name: varrun
-      {{- end }}
       - hostPath:
           path: /etc/perouter/frr
           type: DirectoryOrCreate
