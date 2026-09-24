@@ -105,7 +105,12 @@ test: fmt vet envtest $(LOCALBIN) kind-node-image-build ## Run tests.
 		go test -tags=runasroot -c -race -o $(LOCALBIN)/$$name.test $$pkg; \
 		RUNASROOT_TESTS="$$RUNASROOT_TESTS /src/bin/$$name.test"; \
 	done; \
-	$(CONTAINER_ENGINE) run --rm --privileged -v $$(pwd):/src -w /src --entrypoint /src/hack/integration_tests.sh $(KIND_NODE_IMG) $$RUNASROOT_TESTS
+	$(CONTAINER_ENGINE) run --rm --privileged \
+	  --workdir /src \
+	  -v $$(pwd):/src  \
+	  -v /var/run/docker.sock:/var/run/docker.sock \
+	  -v /var/run/netns:/var/run/netns --pid="host" \
+	  --entrypoint /src/hack/integration_tests.sh $(KIND_NODE_IMG) $$RUNASROOT_TESTS
 
 ##@ Build
 
