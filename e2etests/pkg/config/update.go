@@ -5,12 +5,15 @@ package config
 import (
 	"context"
 	"fmt"
+	"time"
 
 	frrk8sv1beta1 "github.com/metallb/frr-k8s/api/v1beta1"
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
@@ -191,6 +194,30 @@ func (o Updater) CleanButUnderlay() error {
 		return err
 	}
 	return nil
+}
+
+func (o Updater) WaitForUnderlaysDeleted() error {
+	listFn := func() error {
+		underlayList := v1alpha1.UnderlayList{}
+		if err := o.cli.List(context.Background(), &underlayList,
+			client.InNamespace(o.openpeNamespace)); err != nil {
+			return err
+		}
+		if len(underlayList.Items) > 0 {
+			return fmt.Errorf("underlay list is not empty, existing: %+v", underlayList.Items)
+		}
+		return nil
+	}
+
+	return retry.OnError(
+		wait.Backoff{
+			Steps:    12,
+			Duration: 10 * time.Second,
+			Factor:   1,
+		},
+		func(err error) bool { return true },
+		listFn,
+	)
 }
 
 func (o Updater) Client() client.Client {
