@@ -97,7 +97,7 @@ vet: ## Run go vet against code.
 	go vet ./...
 
 .PHONY: test
-test: fmt vet envtest $(LOCALBIN) kind-node-image-build ## Run tests.
+test: fmt vet envtest $(LOCALBIN) kind-node-image-build docker-build ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v e2etest) -coverprofile cover.out
 	@RUNASROOT_TESTS=""; \
 	for pkg in $$(grep -rl "//go:build runasroot" --include="*_test.go" $$(go list -f '{{.Dir}}' ./...) | xargs -I{} dirname {} | sort -u); do \
