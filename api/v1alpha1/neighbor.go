@@ -122,6 +122,17 @@ type Neighbor struct {
 	// +listType=map
 	// +listMapKey=type
 	AddressFamilies []NeighborAddressFamily `json:"addressFamilies,omitempty"`
+
+	// updateSource explicitly specifies the BGP update-source for this neighbor. It currently only
+	// supports the special keyword `loopback` which instructs the OpenPERouter to derive a
+	// valid update source chosen among the tunnel endpoint IP addresses and the `lo` interface.
+	// This setting has no effect in those cases where the OpenPERouter already chose to set the
+	// update-source to the loopback IPv6 address by default, i.e. for SRv6 neighbors.
+	// +kubebuilder:validation:MaxLength:=8
+	// +kubebuilder:validation:MinLength:=8
+	// +kubebuilder:validation:Enum=loopback
+	// +optional
+	UpdateSource *string `json:"updateSource,omitempty"`
 }
 
 // BFDSessionMode selects whether the local system initiates the BFD session.
