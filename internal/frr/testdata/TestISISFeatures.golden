@@ -25,6 +25,7 @@ router isis ISIS
   net 49.0001.0002.0003.0004.00
   is-type level-1
   advertise-passive-only
+  topology ipv6-unicast
 exit
 !
 interface lo
