@@ -54,7 +54,10 @@ func InitReporter(kubeconfig, path string, namespaces ...string) (*k8sreporter.K
 }
 
 func DumpInfo(reporter *k8sreporter.KubernetesReporter, testName string) {
+	reporter.Dump(10*time.Minute, sanitizeTestName(testName))
+}
+
+func sanitizeTestName(testName string) string {
 	nonAlphanumeric := regexp.MustCompile(`[^a-zA-Z0-9]+`)
-	testNameNoSpaces := nonAlphanumeric.ReplaceAllString(testName, "_")
-	reporter.Dump(10*time.Minute, testNameNoSpaces)
+	return nonAlphanumeric.ReplaceAllString(testName, "_")
 }
