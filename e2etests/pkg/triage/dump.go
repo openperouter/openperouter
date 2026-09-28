@@ -33,6 +33,7 @@ type Config struct {
 	HostMode             bool
 	GroutMode            bool
 	K8sReporter          *k8sreporter.KubernetesReporter
+	InspectReporter      *k8s.InspectReporter
 	AdditionalNamespaces []string
 	CollectFRRK8sPods    bool
 	CollectFRRContainers bool
@@ -72,7 +73,12 @@ func DumpIfFails(cs clientset.Interface, config Config) {
 		if config.CollectNodePCIInfo {
 			dumpNodePCIInfo(cs, config.ReportPath, ginkgo.CurrentSpecReport().FullText())
 		}
-		k8s.DumpInfo(config.K8sReporter, ginkgo.CurrentSpecReport().FullText())
+		if config.K8sReporter != nil {
+			k8s.DumpInfo(config.K8sReporter, ginkgo.CurrentSpecReport().FullText())
+		}
+		if config.InspectReporter != nil {
+			config.InspectReporter.Dump(ginkgo.CurrentSpecReport().FullText())
+		}
 		if config.HostMode {
 			dumpPodmanInfo(cs, config.ReportPath, ginkgo.CurrentSpecReport().FullText())
 		}

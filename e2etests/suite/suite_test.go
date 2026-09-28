@@ -24,6 +24,7 @@ import (
 
 var (
 	updater            *config.Updater
+	inspectPath        string
 	nodeLinkConfigPath string
 	nodeExecImage      string
 )
@@ -37,6 +38,7 @@ func handleFlags() {
 	flag.BoolVar(&tests.SkipUnderlayPassthrough, "skip-underlay-passthrough", false, "skip creating underlay in passthrough tests")
 	flag.StringVar(&frrk8s.Namespace, "frrk8s-namespace", frrk8s.Namespace, "namespace where FRR-K8s pods run")
 	flag.StringVar(&openperouter.Namespace, "openperouter-namespace", openperouter.Namespace, "namespace where OpenPERouter pods run")
+	flag.StringVar(&inspectPath, "inspect-path", "../../tools/inspect/inspect", "path to the inspect tool")
 	flag.StringVar(&nodeLinkConfigPath, "nodelink-config", "../nodelink-default.json", "path to node links config JSON")
 	flag.StringVar(&nodeExecImage, "node-exec-image", "busybox:1.36", "container image for node-exec-helper pods")
 	flag.Parse()
@@ -75,6 +77,7 @@ var _ = ginkgo.BeforeSuite(func() {
 	reporter, err := k8s.InitReporter(kubeconfig, tests.ReportPath, openperouter.Namespace, frrk8s.Namespace)
 	Expect(err).NotTo(HaveOccurred(), "failed to initialize k8s reporter (kubeconfig=%s)", kubeconfig)
 	tests.K8sReporter = reporter
+	tests.InspectReporter = k8s.NewInspectReporter(inspectPath, tests.ReportPath, executor.Kubectl, openperouter.Namespace)
 
 	cs := k8sclient.New()
 	Expect(executor.SetupNodeExec(cs, frrk8s.Namespace, nodeExecImage)).To(Succeed(), "failed to setup node-exec-helper")

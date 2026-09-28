@@ -5,6 +5,7 @@ package tests
 import (
 	"github.com/onsi/ginkgo/v2"
 	"github.com/openperouter/openperouter/e2etests/pkg/config"
+	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
 	"github.com/openperouter/openperouter/e2etests/pkg/triage"
 	"github.com/openshift-kni/k8sreporter"
 	corev1 "k8s.io/api/core/v1"
@@ -14,6 +15,7 @@ import (
 var (
 	Updater                 *config.Updater
 	K8sReporter             *k8sreporter.KubernetesReporter
+	InspectReporter         *k8s.InspectReporter
 	ReportPath              string
 	HostMode                bool
 	GroutMode               bool
@@ -32,6 +34,7 @@ func dumpIfFails(cs clientset.Interface, additionalNamespaces ...string) {
 		HostMode:             HostMode,
 		GroutMode:            GroutMode,
 		K8sReporter:          K8sReporter,
+		InspectReporter:      InspectReporter,
 		AdditionalNamespaces: additionalNamespaces,
 		CollectFRRK8sPods:    true,
 		CollectFRRContainers: true,
