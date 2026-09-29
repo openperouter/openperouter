@@ -350,7 +350,7 @@ e2etests: ginkgo kubectl create-export-logs
 .PHONY: e2etests-hostmode-boot
 e2etests-hostmode-boot: ginkgo kubectl create-export-logs ## Run e2e tests for hostmode boot scenario (static config first, then K8s API).
 	@echo "=== Running systemd_static_suite tests (static config only) ==="
-	$(GINKGO) -v $(GINKGO_ARGS) --json-report=e2e-report-systemd.json --output-dir=${KIND_EXPORT_LOGS} --timeout=3h ./e2etests/systemd_static_suite -- --kubectl=$(KUBECTL) $(TEST_ARGS)
+	$(GINKGO) -v $(GINKGO_ARGS) --json-report=e2e-report-systemd.json --output-dir=${KIND_EXPORT_LOGS} --timeout=3h ./e2etests/systemd_static_suite -- --kubectl=$(KUBECTL) $(TEST_ARGS) --reporterpath=${KIND_EXPORT_LOGS} 
 	@echo "=== Deploying controller to enable K8s API ==="
 	$(MAKE) deploy-controller KUSTOMIZE_LAYER=hostmode
 	@echo "=== Running passthrough tests (with K8s API available) ==="
