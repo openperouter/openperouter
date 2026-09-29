@@ -9,7 +9,6 @@ import (
 
 	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/openperouter/openperouter/e2etests/pkg/config"
 	"github.com/openperouter/openperouter/e2etests/pkg/executor"
 	"github.com/openperouter/openperouter/e2etests/pkg/frrk8s"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
@@ -23,7 +22,6 @@ import (
 )
 
 var (
-	updater       *config.Updater
 	nodeExecImage string
 	k8sReporter   *k8sreporter.KubernetesReporter
 	reportPath    string
