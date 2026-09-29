@@ -53,6 +53,7 @@ var _ = Describe("Static configuration", Ordered, func() {
 
 	Context("with vnis", func() {
 		AfterEach(func() {
+			dumpIfFails(cs)
 			Expect(infra.LeafAConfig.Reset()).To(Succeed())
 			Expect(infra.LeafBConfig.Reset()).To(Succeed())
 		})

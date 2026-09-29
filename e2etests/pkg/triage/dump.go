@@ -37,6 +37,7 @@ type Config struct {
 	CollectFRRK8sPods    bool
 	CollectFRRContainers bool
 	CollectNodePCIInfo   bool
+	IgnoreRouterPods     bool
 }
 
 // DumpIfFails collects diagnostics for a failed Ginkgo spec.
@@ -46,8 +47,10 @@ func DumpIfFails(cs clientset.Interface, config Config) {
 
 	if ginkgo.CurrentSpecReport().Failed() {
 		opts := []func(dumpOptions *dumpOptions){
-			onRouterPods(cs, config.HostMode),
 			withFRR(),
+		}
+		if !config.IgnoreRouterPods {
+			opts = append(opts, onRouterPods(cs, config.HostMode))
 		}
 		if config.CollectFRRK8sPods {
 			opts = append(opts, onFRRK8sPods(cs))
