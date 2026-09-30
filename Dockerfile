@@ -1,4 +1,4 @@
-ARG FRR_IMAGE=quay.io/frrouting/frr:10.6.0
+ARG FRR_IMAGE=quay.io/frrouting/frr:master
 ARG CNI_PLUGINS_VERSION=012159164d7f552ee7a8ee840447c61611958e87
 
 # Build CNI plugin binaries
@@ -72,10 +72,8 @@ COPY systemdmode/frrconfig/daemons /etc/frr/daemons
 COPY systemdmode/frrconfig/vtysh.conf /etc/frr/vtysh.conf
 COPY systemdmode/frrconfig/frr.conf /etc/frr/frr.conf
 
-# Hack for https://github.com/FRRouting/frr/issues/20355
-#          https://github.com/FRRouting/frr/pull/20378 
-COPY 0001-Revert-tools-Allow-deleting-of-interfaces.patch .
+COPY 0001-frr-reload-fix-double-deletion-of-segment-routing-sr.patch .
 RUN apk update && apk add patch
-RUN patch /usr/lib/frr/frr-reload.py 0001-Revert-tools-Allow-deleting-of-interfaces.patch
+RUN patch /usr/lib/frr/frr-reload.py 0001-frr-reload-fix-double-deletion-of-segment-routing-sr.patch
 
 ENTRYPOINT ["/controller"]
