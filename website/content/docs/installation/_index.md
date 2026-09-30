@@ -87,7 +87,7 @@ openperouter:
   frr:
     image:
       repository: "quay.io/frrouting/frr"
-      tag: "10.7.1"
+      tag: "10.7.0"
 ```
 
 Then install with custom values:
