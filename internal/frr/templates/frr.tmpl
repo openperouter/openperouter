@@ -8,7 +8,9 @@ debug zebra rib
 debug zebra nexthop
 debug zebra dplane dpdk
 debug bgp neighbor-events
-debug bgp updates
+{{/* Workaround needed until https://github.com/frrouting/frr/pull/23087 lands in our FRR image */}}
+{{/* Once this is fixed in our FRR image, set this back to: debug bgp updates */}}
+debug bgp updates in
 debug bgp keepalives
 debug bgp nht
 debug bgp zebra
