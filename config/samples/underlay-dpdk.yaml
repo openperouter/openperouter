@@ -1,0 +1,18 @@
+apiVersion: network.openperouter.io/v1alpha1
+kind: Underlay
+metadata:
+  name: underlay-dpdk
+  namespace: openperouter-system
+spec:
+  asn: 64514
+  tunnelEndpoint:
+    cidrs:
+    - 100.65.0.0/24
+  interfaces:
+    - type: NetworkDevice
+      networkDevice:
+        interfaceName: enp3s0f0v0
+        acceleratedConfig: {}
+  neighbors:
+    - asn: 64512
+      address: 192.168.1.1

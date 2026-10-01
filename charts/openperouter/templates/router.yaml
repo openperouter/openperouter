@@ -276,17 +276,7 @@ spec:
       {{- if eq .Values.openperouter.datapath "grout" }}
       - name: grout
         securityContext:
-          allowPrivilegeEscalation: false
-          readOnlyRootFilesystem: true
-          capabilities:
-            drop: ["ALL"]
-            add:
-            - SYS_ADMIN
-            - NET_ADMIN
-            - NET_RAW
-            - IPC_LOCK
-          seccompProfile:
-            type: Unconfined
+          privileged: true
         image: "{{ .Values.openperouter.grout.image.repository }}:{{ .Values.openperouter.grout.image.tag }}"
         {{- if .Values.openperouter.grout.image.pullPolicy }}
         imagePullPolicy: {{ .Values.openperouter.grout.image.pullPolicy }}
@@ -294,6 +284,8 @@ spec:
         env:
           - name: GROUT_SOCK_PATH
             value: "/var/run/grout/grout.sock"
+          - name: GROUT_OVERRIDE_RP_FILTER
+            value: "true"
           # Grout defaults target a full-table router and would exhaust typical
           # pod memory when allocating per-VRF FIBs.
           - name: GROUT_MAX_IFACES
@@ -354,6 +346,8 @@ spec:
             mountPath: /dev/net/tun
           - name: dpdk-runtime
             mountPath: /var/run/dpdk
+          - name: vfio
+            mountPath: /dev/vfio
         {{- with .Values.openperouter.grout.resources }}
         resources:
           {{- toYaml . | nindent 12 }}
@@ -421,6 +415,10 @@ spec:
             type: CharDevice
         - name: dpdk-runtime
           emptyDir: {}
+        - name: vfio
+          hostPath:
+            path: /dev/vfio
+            type: DirectoryOrCreate
         {{- end }}
       initContainers:
         # Copies the initial config files with the right permissions to the shared volume.
