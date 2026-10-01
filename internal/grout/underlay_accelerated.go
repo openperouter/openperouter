@@ -12,7 +12,6 @@ import (
 	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/openperouter/openperouter/internal/netnamespace"
 	"github.com/openperouter/openperouter/internal/pci"
-	"github.com/openperouter/openperouter/internal/sysctl"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 )
@@ -110,10 +109,6 @@ func configureAcceleratedPort(ctx context.Context, client *Client, iface hostnet
 		}
 
 		slog.InfoContext(ctx, "configured grout DPDK port address", "cidr", addr, "port", portName)
-	}
-
-	if err := sysctl.Ensure(sysctl.DisableRPFilter(portName)); err != nil {
-		return fmt.Errorf("failed to disable rp_filter on %s: %w", portName, err)
 	}
 
 	return nil

@@ -32,6 +32,8 @@ spec:
         env:
         - name: GROUT_SOCK_PATH
           value: "/var/run/grout/grout.sock"
+        - name: GROUT_OVERRIDE_RP_FILTER
+          value: "true"
         # TAP/test-mode sizing (smaller mempool and RX/TX rings than config/grout).
         - name: GROUT_MAX_IFACES
           value: "128"

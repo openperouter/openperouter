@@ -428,17 +428,6 @@ func migrateAddressesToGrout(ctx context.Context, client *Client, kernelDevice, 
 		slog.InfoContext(ctx, "migrated underlay address to grout", "cidr", cidr, "iface", portName)
 	}
 
-	// for each port, grout creates a NOARP kernel interface to make FRR zebra daemon work.
-	// 5: u_enp3s0: <BROADCAST,MULTICAST,NOARP,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP mode DEFAULT group default qlen 1000
-	//    link/ether 00:09:a8:38:8e:3b brd ff:ff:ff:ff:ff:ff promiscuity 0 allmulti 0 minmtu 68 maxmtu 65521
-	//    tun type tap ...
-	//    alias Grout control plane interface
-	// bgpd packets will leave through the `main` interface and will come back on the `u_xxx` interface, hence the
-	// need to disable rp_filter on the `u_xxx` interface.
-	if err := sysctl.Ensure(sysctl.DisableRPFilter(portName)); err != nil {
-		return fmt.Errorf("failed to disable rp_filter on underlay interface %s: %w", portName, err)
-	}
-
 	return nil
 }
 
