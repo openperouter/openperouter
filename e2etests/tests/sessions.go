@@ -812,6 +812,44 @@ var _ = Describe("Underlay BFD Configuration", Ordered, GroutSupport, func() {
 					}
 				}, time.Minute, time.Second).Should(Succeed())
 			}
+
+			By("checking that a configuration change does not reset the BGP sessions")
+			droppedBefore := map[string]int{}
+			for _, node := range nodes {
+				neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
+				Expect(err).NotTo(HaveOccurred())
+				neighbor, err := frr.NeighborInfo(neighborIP, exec)
+				Expect(err).NotTo(HaveOccurred())
+				droppedBefore[neighborIP] = neighbor.ConnectionsDropped
+			}
+
+			Expect(Updater.Update(config.Resources{
+				RawFRRConfigs: []v1alpha1.RawFRRConfig{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "bfd-reload",
+							Namespace: openperouter.Namespace,
+						},
+						Spec: v1alpha1.RawFRRConfigSpec{
+							RawConfig: "ip prefix-list bfd-reload seq 10 permit 10.112.0.0/16",
+						},
+					},
+				},
+			})).To(Succeed())
+
+			Consistently(func() error {
+				for neighborIP, before := range droppedBefore {
+					neighbor, err := frr.NeighborInfo(neighborIP, exec)
+					if err != nil {
+						return err
+					}
+					if neighbor.ConnectionsDropped > before {
+						return fmt.Errorf("session with %s dropped after a configuration change, connections dropped %d -> %d",
+							neighborIP, before, neighbor.ConnectionsDropped)
+					}
+				}
+				return nil
+			}, 10*time.Second, time.Second).Should(Succeed())
 		},
 		Entry("simple bfd",
 			v1alpha1.Underlay{
