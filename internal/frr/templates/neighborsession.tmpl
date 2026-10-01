@@ -23,10 +23,11 @@
   {{ if .neighbor.Password -}}
   neighbor {{.neighbor.ID}} password {{.neighbor.Password}}
   {{- end }}
+{{- if .neighbor.BFDEnabled }}
+  neighbor {{.neighbor.ID}} bfd
+{{- end }}
 {{- if ne .neighbor.BFDProfile ""}}
   neighbor {{.neighbor.ID}} bfd profile {{.neighbor.BFDProfile}}
-{{- else if .neighbor.BFDEnabled}}
-  neighbor {{.neighbor.ID}} bfd
 {{- end }}
 {{- if  mustDisableConnectedCheck .neighbor.Addr .neighbor.NetworkLayerProtocols .routerASN .neighbor.ASN .neighbor.EBGPMultiHop }}
   neighbor {{.neighbor.ID}} disable-connected-check
