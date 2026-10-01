@@ -284,6 +284,8 @@ spec:
         env:
           - name: GROUT_SOCK_PATH
             value: "/var/run/grout/grout.sock"
+          - name: GROUT_OVERRIDE_RP_FILTER
+            value: "true"
           # Grout defaults target a full-table router and would exhaust typical
           # pod memory when allocating per-VRF FIBs.
           - name: GROUT_MAX_IFACES
