@@ -11,8 +11,6 @@ import (
 	"net"
 
 	"github.com/openperouter/openperouter/internal/hostnetwork"
-	"github.com/openperouter/openperouter/internal/netnamespace"
-	"github.com/openperouter/openperouter/internal/sysctl"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 )
@@ -56,18 +54,6 @@ func SetupPassthrough(ctx context.Context, client *Client, params hostnetwork.Pa
 	}
 	if err := client.setPortUp(ctx, portName); err != nil {
 		return fmt.Errorf("failed to set grout port up: %w", err)
-	}
-
-	if err := netnamespace.In(peRouterNs, func() error {
-		// Grout creates a NOARP kernel interface for each port. BGP packets leave
-		// through the `main` interface but return on the port's kernel interface (grout control plane tap),
-		// so rp_filter must be disabled to allow the asymmetric path.
-		if err := sysctl.Ensure(sysctl.DisableRPFilter(portName)); err != nil {
-			return fmt.Errorf("failed to disable rp_filter on passthrough port %s: %w", portName, err)
-		}
-		return nil
-	}); err != nil {
-		return err
 	}
 
 	return nil
