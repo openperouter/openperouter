@@ -779,10 +779,9 @@ func neighborToFRR(n v1alpha1.Neighbor,
 		return nil, fmt.Errorf("neighbor %s: could not get network layer protocols, err: %w", neighName, err)
 	}
 
-	var updateSource string
-	if neighborNeedsUpdateSource(segmentRouting, nlps) {
-		updateSource = segmentRouting.SourceAddress
-	}
+	// Default the update source for all BGP sessions to be unset (= directly connected). A follow-up
+	// commit will change this behavior.
+	updateSource := ""
 
 	ebgpMultiHop, ebgpMultiHopTTL := ebgpMultiHopForNeighbor(n)
 
@@ -825,22 +824,6 @@ func neighborToFRR(n v1alpha1.Neighbor,
 	res.BFDProfile = bfdProfileNameForNeighbor(n)
 
 	return res, nil
-}
-
-// neighborNeedsUpdateSource determines if update source shall be set, or not. We set the update source only for
-// SRv6 setups, meaning that SRv6 must be configured for the underlay and this neighbor must have an IPv4 or IPv6
-// AFI with VPN SAFI in the networklayerprotocols.
-func neighborNeedsUpdateSource(sr *frr.UnderlaySegmentRouting, nlps []networklayerprotocol.NLP) bool {
-	if sr == nil {
-		return false
-	}
-	if networklayerprotocol.HasNLP(nlps, networklayerprotocol.NLP{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.VPN}) {
-		return true
-	}
-	if networklayerprotocol.HasNLP(nlps, networklayerprotocol.NLP{AFI: networklayerprotocol.IPv6, SAFI: networklayerprotocol.VPN}) {
-		return true
-	}
-	return false
 }
 
 func validateNeighborConfig(res *frr.NeighborConfig) error {

@@ -40,7 +40,7 @@ router bgp 64520
  neighbor PE update-source {{ .Leaf.UpdateSource }}
  neighbor PE capability extended-nexthop
  neighbor PE ebgp-multihop
- bgp listen range 2001:db8:1234:5678::/64 peer-group PE
+ bgp listen range 2001:db8::/32 peer-group PE
  !
  segment-routing srv6
   encap-behavior {{ .Leaf.SRv6.EncapBehavior }}
