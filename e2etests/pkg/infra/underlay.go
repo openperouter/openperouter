@@ -239,6 +239,50 @@ var UnderlaySRv6 = v1alpha1.Underlay{
 	},
 }
 
+var UnderlaySRv6UpdateSourceLoopback = v1alpha1.Underlay{
+	ObjectMeta: metav1.ObjectMeta{
+		Name:      "underlay",
+		Namespace: openperouter.Namespace,
+	},
+	Spec: v1alpha1.UnderlaySpec{
+		ASN:        64514,
+		Interfaces: defaultInterfaces,
+		Neighbors: []v1alpha1.Neighbor{
+			{
+				ASN:                  new(int64(64520)),
+				Address:              new("2001:db8:1234::1"),
+				Properties:           []v1alpha1.NeighborProperty{{Type: v1alpha1.NeighborPropertyEBGPMultiHop}},
+				ConnectTimeSeconds:   new(int64(5)),
+				KeepaliveTimeSeconds: new(int64(3)),
+				HoldTimeSeconds:      new(int64(9)),
+				UpdateSource:         new(v1alpha1.Loopback),
+			},
+		},
+		RouterIDCIDR: new("10.0.0.0/24"),
+		TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+			CIDRs: []string{
+				"2001:db8:1234:5678::/64",
+			},
+		},
+		ISIS: &v1alpha1.ISISConfig{
+			BaseNet: "49.0001.0002.0003.0004.00",
+			Level:   new(int32(1)),
+			Interfaces: []v1alpha1.ISISInterface{
+				{
+					Name:     "toswitch1",
+					IPFamily: new(v1alpha1.IPFamilyIPv6),
+				},
+			},
+		},
+		SRV6: &v1alpha1.SRV6Config{
+			Locator: v1alpha1.SRV6Locator{
+				BasePrefix: "fd00:0:32::/48",
+				Format:     "usid-f3216",
+			},
+		},
+	},
+}
+
 var UnderlaySRv6EncapRed = v1alpha1.Underlay{
 	ObjectMeta: metav1.ObjectMeta{
 		Name:      "underlay",

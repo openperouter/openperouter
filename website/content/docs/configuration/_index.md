@@ -117,6 +117,21 @@ individual knobs are rendered as a BFD peer profile for that neighbor.
 waits for the peer to initiate before replying, per
 [RFC 5880 section 6.1](https://datatracker.ietf.org/doc/html/rfc5880#section-6.1).
 
+### Neighbor Update Source
+
+The optional `updateSource` field on a neighbor controls the source
+address used for the BGP session.
+
+When it is omitted, no explicit update
+source is configured and the session uses the directly connected
+address.
+
+When it is set to `loopback`, OpenPERouter uses the IP of the
+node's tunnel endpoint (from `tunnelEndpoint.cidrs`), selecting the
+IPv4 or IPv6 address based on the neighbor's address family.
+
+The `updateSource` field is incompatible with `interface` neighbors.
+
 ### BGP Session Authentication
 
 BGP neighbor sessions can be authenticated with a password (RFC 2385

@@ -87,13 +87,6 @@ var _ = Describe("SRV6 routes between bgp and the fabric", Ordered, func() {
 
 		cs = k8sclient.New()
 
-		// Create the SRv6 underlay.
-		Expect(Updater.Update(config.Resources{
-			Underlays: []v1alpha1.Underlay{
-				infra.UnderlaySRv6,
-			},
-		})).To(Succeed())
-
 		var err error
 		routers, err = openperouter.Get(cs, HostMode)
 		Expect(err).NotTo(HaveOccurred())
@@ -134,7 +127,14 @@ var _ = Describe("SRV6 routes between bgp and the fabric", Ordered, func() {
 			Expect(infra.LeafSRV6Config.Reset()).To(Succeed())
 		})
 
-		BeforeEach(func() {
+		DescribeTable("receives L3VPN routes from the fabric", func(underlay v1alpha1.Underlay) {
+			By("Creating the SRv6 underlay")
+			Expect(Updater.Update(config.Resources{
+				Underlays: []v1alpha1.Underlay{
+					underlay,
+				},
+			})).To(Succeed())
+
 			By("Creating the red and blue L3VPN Custom Resources")
 			Expect(Updater.Update(config.Resources{
 				L3VPNs: []v1alpha1.L3VPN{
@@ -142,9 +142,7 @@ var _ = Describe("SRV6 routes between bgp and the fabric", Ordered, func() {
 					l3vpnBlue,
 				},
 			})).To(Succeed())
-		})
 
-		It("receives L3VPN routes from the fabric", func() {
 			checkRouteFromLeaf := func(leaf infra.Leaf, l3vpn v1alpha1.L3VPN, mustContain bool, prefixes []string) {
 				By(fmt.Sprintf("checking routes from leaf %s on vni %s, mustContain %v %v", leaf.Name, l3vpn.Name, mustContain, prefixes))
 				Eventually(func() error {
@@ -229,9 +227,27 @@ var _ = Describe("SRV6 routes between bgp and the fabric", Ordered, func() {
 			Expect(infra.LeafSRV6Config.ChangePrefixes(emptyPrefixes, emptyPrefixes, emptyPrefixes)).To(Succeed())
 			checkRouteFromLeaf(infra.LeafSRV6Config, l3vpnRed, !Contains, leafSRV6VRFRedPrefixes)
 			checkRouteFromLeaf(infra.LeafSRV6Config, l3vpnBlue, !Contains, leafSRV6VRFBluePrefixes)
-		})
+		},
+			Entry("direct peering", infra.UnderlaySRv6),
+			Entry("peering from loopback", infra.UnderlaySRv6UpdateSourceLoopback),
+		)
 
 		It("announces correct L3VPN SIDs to the fabric", func() {
+			By("Creating the SRv6 underlay")
+			Expect(Updater.Update(config.Resources{
+				Underlays: []v1alpha1.Underlay{
+					infra.UnderlaySRv6,
+				},
+			})).To(Succeed())
+
+			By("Creating the red and blue L3VPN Custom Resources")
+			Expect(Updater.Update(config.Resources{
+				L3VPNs: []v1alpha1.L3VPN{
+					l3vpnRed,
+					l3vpnBlue,
+				},
+			})).To(Succeed())
+
 			checkSid := func(l3vpns ...v1alpha1.L3VPN) {
 				expectedBehaviorsForVRF := map[string]map[string]struct{}{}
 				for _, l3vpn := range l3vpns {

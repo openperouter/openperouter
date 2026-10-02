@@ -21,69 +21,166 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 )
 
-// underlayRR runs the control-plane router as a pure BGP route reflector: no
-// tunnel endpoint, one listen-range dynamic neighbor that reflects both ipv4
-// unicast (VTEP /32 reachability) and l2vpn evpn (type-2/3) to the clients.
-var underlayRR = v1alpha1.Underlay{
-	ObjectMeta: metav1.ObjectMeta{
-		Name:      "rr",
-		Namespace: openperouter.Namespace,
-	},
-	Spec: v1alpha1.UnderlaySpec{
-		ASN:          64514,
-		Interfaces:   infra.DefaultInterfaces,
-		NodeSelector: &k8s.ControlPlaneNodesLabelSelector,
-		RouteReflector: &v1alpha1.RouteReflectorConfig{
-			ClusterID: new("192.0.2.1"),
+const (
+	// underlayRRAddress is the control-plane router pod address on the
+	// leafkind1 switch subnet, where underlayRR accepts dynamic neighbors.
+	underlayRRAddress  = "192.168.11.3"
+	tunnelEndpointCIDR = "100.65.0.0/24"
+)
+
+var (
+	// underlayRR runs the control-plane router as a pure BGP route reflector: no
+	// tunnel endpoint, one listen-range dynamic neighbor that reflects both ipv4
+	// unicast (VTEP /32 reachability) and l2vpn evpn (type-2/3) to the clients.
+	underlayRR = v1alpha1.Underlay{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "rr",
+			Namespace: openperouter.Namespace,
 		},
-		Neighbors: []v1alpha1.Neighbor{
-			{
-				ListenRange: new("192.168.11.0/24"),
-				Type:        new("Internal"),
-				AddressFamilies: []v1alpha1.NeighborAddressFamily{
-					{
-						Type: "ipv4unicast",
-						Properties: []v1alpha1.AddressFamilyProperty{
-							{Type: v1alpha1.AddressFamilyPropertyRouteReflectorClient},
+		Spec: v1alpha1.UnderlaySpec{
+			ASN:          64514,
+			Interfaces:   infra.DefaultInterfaces,
+			NodeSelector: &k8s.ControlPlaneNodesLabelSelector,
+			RouteReflector: &v1alpha1.RouteReflectorConfig{
+				ClusterID: new("192.0.2.1"),
+			},
+			Neighbors: []v1alpha1.Neighbor{
+				{
+					ListenRange: new("192.168.11.0/24"),
+					Type:        new("Internal"),
+					AddressFamilies: []v1alpha1.NeighborAddressFamily{
+						{
+							Type: "ipv4unicast",
+							Properties: []v1alpha1.AddressFamilyProperty{
+								{Type: v1alpha1.AddressFamilyPropertyRouteReflectorClient},
+							},
 						},
-					},
-					{
-						Type: "evpn",
-						Properties: []v1alpha1.AddressFamilyProperty{
-							{Type: v1alpha1.AddressFamilyPropertyRouteReflectorClient},
+						{
+							Type: "evpn",
+							Properties: []v1alpha1.AddressFamilyProperty{
+								{Type: v1alpha1.AddressFamilyPropertyRouteReflectorClient},
+							},
 						},
 					},
 				},
 			},
 		},
-	},
-}
+	}
 
-// underlayRRAddress is the control-plane router pod address on the
-// leafkind1 switch subnet, where underlayRR accepts dynamic neighbors.
-const underlayRRAddress = "192.168.11.3"
-
-// underlayRRClient runs on the worker nodes as iBGP clients of underlayRR.
-var underlayRRClient = v1alpha1.Underlay{
-	ObjectMeta: metav1.ObjectMeta{
-		Name:      "client",
-		Namespace: openperouter.Namespace,
-	},
-	Spec: v1alpha1.UnderlaySpec{
-		ASN:          64514,
-		Interfaces:   infra.DefaultInterfaces,
-		NodeSelector: &k8s.NonControlPlaneNodesLabelSelector,
-		TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
-			CIDRs: []string{"100.65.0.0/24"},
+	// underlayRRLoopbackTest runs the control-plane router as a pure BGP route reflector: no
+	// tunnel endpoint, one listen-range dynamic neighbor expecting connections from the loopback
+	// interface and that reflects both ipv4 unicast (VTEP /32 reachability) and l2vpn evpn
+	// (type-2/3) to the clients. IS-IS exchanges the IPv4 tunnel IPs.
+	underlayRRLoopbackTest = v1alpha1.Underlay{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "rr",
+			Namespace: openperouter.Namespace,
 		},
-		Neighbors: []v1alpha1.Neighbor{
-			{
-				Address: new(underlayRRAddress),
-				Type:    new("Internal"),
+		Spec: v1alpha1.UnderlaySpec{
+			ASN:          64514,
+			Interfaces:   infra.DefaultInterfaces,
+			NodeSelector: &k8s.ControlPlaneNodesLabelSelector,
+			RouteReflector: &v1alpha1.RouteReflectorConfig{
+				ClusterID: new("192.0.2.1"),
+			},
+			Neighbors: []v1alpha1.Neighbor{
+				{
+					ListenRange: new(tunnelEndpointCIDR),
+					Type:        new("Internal"),
+					AddressFamilies: []v1alpha1.NeighborAddressFamily{
+						{
+							Type: "ipv4unicast",
+							Properties: []v1alpha1.AddressFamilyProperty{
+								{Type: v1alpha1.AddressFamilyPropertyRouteReflectorClient},
+							},
+						},
+						{
+							Type: "evpn",
+							Properties: []v1alpha1.AddressFamilyProperty{
+								{Type: v1alpha1.AddressFamilyPropertyRouteReflectorClient},
+							},
+						},
+					},
+				},
+			},
+			ISIS: &v1alpha1.ISISConfig{
+				BaseNet: "49.0001.0002.0003.0004.00",
+				Level:   new(int32(1)),
+				Interfaces: []v1alpha1.ISISInterface{
+					{
+						Name:     "toswitch1",
+						IPFamily: new(v1alpha1.IPFamilyIPv4),
+					},
+					{
+						Name:     "lo",
+						IPFamily: new(v1alpha1.IPFamilyIPv4),
+					},
+				},
 			},
 		},
-	},
-}
+	}
+
+	// underlayRRClient runs on the worker nodes as iBGP clients of underlayRR.
+	underlayRRClient = v1alpha1.Underlay{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "client",
+			Namespace: openperouter.Namespace,
+		},
+		Spec: v1alpha1.UnderlaySpec{
+			ASN:          64514,
+			Interfaces:   infra.DefaultInterfaces,
+			NodeSelector: &k8s.NonControlPlaneNodesLabelSelector,
+			TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+				CIDRs: []string{tunnelEndpointCIDR},
+			},
+			Neighbors: []v1alpha1.Neighbor{
+				{
+					Address: new(underlayRRAddress),
+					Type:    new("Internal"),
+				},
+			},
+		},
+	}
+
+	// underlayRRClientLoopbackTest runs on the worker nodes as iBGP clients of underlayRR. It
+	// initiates sessions from the loopback interface and exchanges IPv4 information of those IPs
+	// via IS-IS.
+	underlayRRClientLoopbackTest = v1alpha1.Underlay{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "client",
+			Namespace: openperouter.Namespace,
+		},
+		Spec: v1alpha1.UnderlaySpec{
+			ASN:          64514,
+			Interfaces:   infra.DefaultInterfaces,
+			NodeSelector: &k8s.NonControlPlaneNodesLabelSelector,
+			TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+				CIDRs: []string{tunnelEndpointCIDR},
+			},
+			Neighbors: []v1alpha1.Neighbor{
+				{
+					Address:      new(underlayRRAddress),
+					Type:         new("Internal"),
+					UpdateSource: new(v1alpha1.Loopback),
+				},
+			},
+			ISIS: &v1alpha1.ISISConfig{
+				BaseNet: "49.0001.0002.0003.0004.00",
+				Level:   new(int32(1)),
+				Interfaces: []v1alpha1.ISISInterface{
+					{
+						Name:     "toswitch1",
+						IPFamily: new(v1alpha1.IPFamilyIPv4),
+					},
+					{
+						Name:     "lo",
+						IPFamily: new(v1alpha1.IPFamilyIPv4),
+					},
+				},
+			},
+		},
+	}
+)
 
 var _ = Describe("Route Reflector EVPN east/west traffic", Ordered, func() {
 	const (
@@ -126,95 +223,100 @@ var _ = Describe("Route Reflector EVPN east/west traffic", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(len(workers)).To(BeNumerically(">=", 2), "expected at least 2 worker nodes")
 
+		By("Cleaning the namespace")
+		Expect(k8s.DeleteNamespace(cs, testNamespace)).To(Succeed())
+		By("Cleaning all resources")
 		Expect(Updater.CleanAll()).To(Succeed())
-
-		Expect(Updater.Update(config.Resources{
-			Underlays: []v1alpha1.Underlay{
-				underlayRR,
-				underlayRRClient,
-			},
-		})).To(Succeed())
-	})
-
-	AfterAll(func() {
-		Expect(Updater.CleanAll()).To(Succeed())
-		By("waiting for all router pods to be ready after removing the underlay")
-		Eventually(func() error {
-			routers, err := openperouter.Get(cs, HostMode)
-			if err != nil {
-				return err
-			}
-			return openperouter.AreReady(routers)
-		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
+		By("Waiting for all underlays to be deleted")
+		Eventually(Updater.IsUnderlayClean).Should(Succeed())
 	})
 
 	AfterEach(func() {
 		dumpIfFails(cs)
-		Expect(Updater.CleanButUnderlay()).To(Succeed())
+		By("Cleaning the namespace")
 		Expect(k8s.DeleteNamespace(cs, testNamespace)).To(Succeed())
+		By("Cleaning all resources")
+		Expect(Updater.CleanAll()).To(Succeed())
+		By("Waiting for all underlays to be deleted")
+		Eventually(Updater.IsUnderlayClean).Should(Succeed())
 	})
 
-	It("reflects type-2 routes between client nodes via the route reflector", func() {
-		Expect(Updater.Update(config.Resources{
-			L2VNIs: []v1alpha1.L2VNI{
-				l2vniReflected,
-			},
-		})).To(Succeed())
+	DescribeTable(
+		"reflects type-2 routes between client nodes via the route reflector",
+		func(underlayRR, underlayRRClient v1alpha1.Underlay) {
+			Expect(Updater.Update(config.Resources{
+				Underlays: []v1alpha1.Underlay{
+					underlayRR,
+					underlayRRClient,
+				},
+			})).To(Succeed())
 
-		_, err := k8s.CreateNamespace(cs, testNamespace)
-		Expect(err).NotTo(HaveOccurred())
+			Expect(Updater.Update(config.Resources{
+				L2VNIs: []v1alpha1.L2VNI{
+					l2vniReflected,
+				},
+			})).To(Succeed())
 
-		nadObj, err := k8s.CreateMacvlanNad("300", testNamespace, "br-hs-300", []string{})
-		Expect(err).NotTo(HaveOccurred())
+			_, err := k8s.CreateNamespace(cs, testNamespace)
+			Expect(err).NotTo(HaveOccurred())
 
-		By("creating two pods on the two worker (client) nodes")
-		firstPod, err := k8s.CreateAgnhostPod(cs, "pod1", testNamespace,
-			k8s.WithNad(nadObj.Name, testNamespace, []string{firstPodIP + "/24"}),
-			k8s.OnNode(workers[0].Name))
-		Expect(err).NotTo(HaveOccurred())
-		secondPod, err := k8s.CreateAgnhostPod(cs, "pod2", testNamespace,
-			k8s.WithNad(nadObj.Name, testNamespace, []string{secondPodIP + "/24"}),
-			k8s.OnNode(workers[1].Name))
-		Expect(err).NotTo(HaveOccurred())
+			nadObj, err := k8s.CreateMacvlanNad("300", testNamespace, "br-hs-300", []string{})
+			Expect(err).NotTo(HaveOccurred())
 
-		By("removing the default gateway via the primary interface")
-		Expect(removeGatewayFromPod(firstPod)).To(Succeed())
-		Expect(removeGatewayFromPod(secondPod)).To(Succeed())
+			By("creating two pods on the two worker (client) nodes")
+			firstPod, err := k8s.CreateAgnhostPod(cs, "pod1", testNamespace,
+				k8s.WithNad(nadObj.Name, testNamespace, []string{firstPodIP + "/24"}),
+				k8s.OnNode(workers[0].Name))
+			Expect(err).NotTo(HaveOccurred())
+			secondPod, err := k8s.CreateAgnhostPod(cs, "pod2", testNamespace,
+				k8s.WithNad(nadObj.Name, testNamespace, []string{secondPodIP + "/24"}),
+				k8s.OnNode(workers[1].Name))
+			Expect(err).NotTo(HaveOccurred())
 
-		By("checking bidirectional L2 reachability through the route reflector")
-		canPingFromPod(executor.ForPod(firstPod.Namespace, firstPod.Name, "agnhost"), secondPodIP)
-		canPingFromPod(executor.ForPod(secondPod.Namespace, secondPod.Name, "agnhost"), firstPodIP)
+			By("removing the default gateway via the primary interface")
+			Expect(removeGatewayFromPod(firstPod)).To(Succeed())
+			Expect(removeGatewayFromPod(secondPod)).To(Succeed())
 
-		By("verifying the worker learned pod1's type-2 route via the route reflector")
-		routers, err := openperouter.Get(cs, HostMode)
-		Expect(err).NotTo(HaveOccurred())
+			By("checking bidirectional L2 reachability through the route reflector")
+			// When testing with IS-IS, it takes ca. 30 seconds for IS-IS routes to be exchanged,
+			// so be more lenient here with the timeout for the first test.
+			canPingFromPodWithTimeout(executor.ForPod(firstPod.Namespace, firstPod.Name, "agnhost"), secondPodIP,
+				120*time.Second)
+			canPingFromPod(executor.ForPod(secondPod.Namespace, secondPod.Name, "agnhost"), firstPodIP)
 
-		firstWorkerFRR, err := routers.ExecutorForNode(workers[0].Name)
-		Expect(err).NotTo(HaveOccurred())
-		firstWorkerVTEPCIDR, err := openperouter.GetVtepIPv4ForNode(underlayRRClient.Spec.TunnelEndpoint, &workers[0])
-		Expect(err).NotTo(HaveOccurred())
-		firstWorkerVTEP := ipfamily.StripCIDRMask(firstWorkerVTEPCIDR)
+			By("verifying the worker learned pod1's type-2 route via the route reflector")
+			routers, err := openperouter.Get(cs, HostMode)
+			Expect(err).NotTo(HaveOccurred())
 
-		secondWorkerFRR, err := routers.ExecutorForNode(workers[1].Name)
-		Expect(err).NotTo(HaveOccurred())
-		secondWorkerVTEPCIDR, err := openperouter.GetVtepIPv4ForNode(underlayRRClient.Spec.TunnelEndpoint, &workers[1])
-		Expect(err).NotTo(HaveOccurred())
-		secondWorkerVTEP := ipfamily.StripCIDRMask(secondWorkerVTEPCIDR)
+			firstWorkerFRR, err := routers.ExecutorForNode(workers[0].Name)
+			Expect(err).NotTo(HaveOccurred())
+			firstWorkerVTEPCIDR, err := openperouter.GetVtepIPv4ForNode(underlayRRClient.Spec.TunnelEndpoint, &workers[0])
+			Expect(err).NotTo(HaveOccurred())
+			firstWorkerVTEP := ipfamily.StripCIDRMask(firstWorkerVTEPCIDR)
 
-		By("Checking that traffic is not forwarded over RR nodes")
-		Eventually(func(g Gomega) {
-			firstWorkerEVPN, err := frr.EVPNInfo(firstWorkerFRR)
-			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(firstWorkerEVPN.ContainsType2MACIPRouteForVNI(secondPodIP, secondWorkerVTEP, vni)).To(BeTrue(),
-				"first worker should have a type-2 route for %s with next hop %s reflected via %s",
-				secondPodIP, secondWorkerVTEP, underlayRRAddress)
+			secondWorkerFRR, err := routers.ExecutorForNode(workers[1].Name)
+			Expect(err).NotTo(HaveOccurred())
+			secondWorkerVTEPCIDR, err := openperouter.GetVtepIPv4ForNode(underlayRRClient.Spec.TunnelEndpoint, &workers[1])
+			Expect(err).NotTo(HaveOccurred())
+			secondWorkerVTEP := ipfamily.StripCIDRMask(secondWorkerVTEPCIDR)
 
-			secondWorkerEVPN, err := frr.EVPNInfo(secondWorkerFRR)
-			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(secondWorkerEVPN.ContainsType2MACIPRouteForVNI(firstPodIP, firstWorkerVTEP, vni)).To(BeTrue(),
-				"second worker should have a type-2 route for %s with next hop %s reflected via %s",
-				firstPodIP, firstWorkerVTEP, underlayRRAddress)
+			By("Checking that traffic is not forwarded over RR nodes")
+			Eventually(func(g Gomega) {
+				firstWorkerEVPN, err := frr.EVPNInfo(firstWorkerFRR)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(firstWorkerEVPN.ContainsType2MACIPRouteForVNI(secondPodIP, secondWorkerVTEP, vni)).To(BeTrue(),
+					"first worker should have a type-2 route for %s with next hop %s reflected via %s",
+					secondPodIP, secondWorkerVTEP, underlayRRAddress)
 
-		}, time.Minute, time.Second).Should(Succeed())
-	})
+				secondWorkerEVPN, err := frr.EVPNInfo(secondWorkerFRR)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(secondWorkerEVPN.ContainsType2MACIPRouteForVNI(firstPodIP, firstWorkerVTEP, vni)).To(BeTrue(),
+					"second worker should have a type-2 route for %s with next hop %s reflected via %s",
+					firstPodIP, firstWorkerVTEP, underlayRRAddress)
+
+			}, time.Minute, time.Second).Should(Succeed())
+		},
+		Entry("peer directly", underlayRR, underlayRRClient),
+		Entry("peer from loopback", underlayRRLoopbackTest, underlayRRClientLoopbackTest),
+	)
 })

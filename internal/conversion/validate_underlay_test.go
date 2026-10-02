@@ -924,6 +924,135 @@ func TestValidateUnderlay(t *testing.T) {
 			},
 			wantErrStr: "invalid listenRange 192.168.10.5",
 		},
+		{
+			name: "neighbor updateSource: loopback with correct tunnel endpoint",
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{
+								"192.168.1.0/24",
+								"2001:db8:1234:4567::/64",
+							},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN:          new(int64(65002)),
+								Address:      new("192.168.1.1"),
+								UpdateSource: new(v1alpha1.Loopback),
+							},
+							{
+								ASN:          new(int64(65002)),
+								Address:      new("2001:db8::1"),
+								UpdateSource: new(v1alpha1.Loopback),
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "neighbor updateSource: loopback with tunnel endpoint missing IPv6",
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{
+								"192.168.1.0/24",
+							},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN:          new(int64(65002)),
+								Address:      new("192.168.1.1"),
+								UpdateSource: new(v1alpha1.Loopback),
+							},
+							{
+								ASN:          new(int64(65002)),
+								Address:      new("2001:db8::1"),
+								UpdateSource: new(v1alpha1.Loopback),
+							},
+						},
+					},
+				},
+			},
+			wantErrStr: "neighbor 2001:db8::1: could not resolve update source, err: could not determine tunnel endpoint " +
+				"CIDR for address \"2001:db8::1\", err: no CIDR present for address family ipv6",
+		},
+		{
+			name: "neighbor updateSource: loopback without tunnel endpoint",
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN:          new(int64(65002)),
+								Address:      new("192.168.1.1"),
+								UpdateSource: new(v1alpha1.Loopback),
+							},
+							{
+								ASN:          new(int64(65002)),
+								Address:      new("2001:db8::1"),
+								UpdateSource: new(v1alpha1.Loopback),
+							},
+						},
+					},
+				},
+			},
+			wantErrStr: "neighbor 192.168.1.1: could not resolve update source, err: no valid tunnel endpoint present",
+		},
+		{
+			name: "neighbor updateSource: loopback with interface neighbor fails",
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{
+								"192.168.1.0/24",
+								"2001:db8:1234:4567::/64",
+							},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN:          new(int64(65002)),
+								Interface:    new("toswitch1"),
+								UpdateSource: new(v1alpha1.Loopback),
+							},
+						},
+					},
+				},
+			},
+			wantErrStr: "neighbor toswitch1: could not resolve update source, err: update source incompatible with " +
+				"interface neighbors",
+		},
 	}
 
 	for _, tt := range tests {
