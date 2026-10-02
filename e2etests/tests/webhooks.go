@@ -631,6 +631,27 @@ var _ = Describe("Webhooks", func() {
 					},
 				},
 			}, "all entries must be valid CIDRs"),
+			Entry("when trying to create an underlay with missing tunnel endpoint CIDR and updateSource: loopback", v1alpha1.Underlay{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "underlay",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.UnderlaySpec{
+					ASN:        65000,
+					Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "nic1"}}},
+					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+						CIDRs: []string{"2001:db8:1234:5678::/64"},
+					},
+					Neighbors: []v1alpha1.Neighbor{
+						{
+							ASN:          new(int64(65001)),
+							Address:      new("192.168.1.1"),
+							UpdateSource: new(v1alpha1.Loopback),
+						},
+					},
+				},
+			}, "neighbor 192.168.1.1: could not resolve update source, err: could not determine tunnel endpoint CIDR "+
+				"for address \"192.168.1.1\", err: no CIDR present for address family ipv4"),
 		)
 
 		It("should allow creating an underlay with multiple NICs and neighbors", func() {
