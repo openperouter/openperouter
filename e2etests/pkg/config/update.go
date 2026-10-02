@@ -193,6 +193,18 @@ func (o Updater) CleanButUnderlay() error {
 	return nil
 }
 
+func (o Updater) IsUnderlayClean() error {
+	underlayList := v1alpha1.UnderlayList{}
+	if err := o.cli.List(context.Background(), &underlayList,
+		client.InNamespace(o.openpeNamespace)); err != nil {
+		return err
+	}
+	if len(underlayList.Items) > 0 {
+		return fmt.Errorf("underlay list is not empty, existing: %+v", underlayList.Items)
+	}
+	return nil
+}
+
 func (o Updater) Client() client.Client {
 	return o.cli
 }

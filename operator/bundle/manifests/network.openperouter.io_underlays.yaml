@@ -210,10 +210,12 @@ spec:
                       features enables ISIS boolean features.
                       Supported features are:
                       advertisePassiveOnly: configures ISIS to advertise only prefixes that belong to passive interfaces.
+                      multiTopology: configures multi-topology mode for IPv4 and IPv6.
                     items:
                       description: ISISFeature represents a single ISIS feature.
                       enum:
                       - advertisePassiveOnly
+                      - multiTopology
                       maxLength: 128
                       minLength: 1
                       type: string

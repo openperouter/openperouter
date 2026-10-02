@@ -21,11 +21,10 @@ import (
 )
 
 const (
-	isisProcessName      = "ISIS"
-	locatorName          = "MAIN"
-	loopbackName         = "lo"
-	advertisePassiveOnly = "advertisePassiveOnly"
-	passiveInterface     = "passive"
+	isisProcessName  = "ISIS"
+	locatorName      = "MAIN"
+	loopbackName     = "lo"
+	passiveInterface = "passive"
 )
 
 var (
@@ -439,7 +438,8 @@ func underlayISISToFRR(isisConfig *v1alpha1.ISISConfig, interfaces []string, nod
 		Name:                 isisProcessName,
 		Net:                  isisNet,
 		Level:                isisLevel,
-		AdvertisePassiveOnly: slices.Contains(isisConfig.Features, advertisePassiveOnly),
+		AdvertisePassiveOnly: slices.Contains(isisConfig.Features, v1alpha1.AdvertisePassiveOnly),
+		MultiTopology:        slices.Contains(isisConfig.Features, v1alpha1.MultiTopology),
 		Interfaces:           mapOfInterfacesToSortedList(isisInterfaces),
 	}, nil
 }

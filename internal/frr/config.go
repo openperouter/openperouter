@@ -98,6 +98,7 @@ type UnderlayISIS struct {
 	Net                  ISISNet
 	Level                int32
 	AdvertisePassiveOnly bool
+	MultiTopology        bool
 	Interfaces           []ISISInterface
 }
 
