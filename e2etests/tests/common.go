@@ -7,14 +7,12 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/config"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
 	"github.com/openperouter/openperouter/e2etests/pkg/triage"
-	"github.com/openshift-kni/k8sreporter"
 	corev1 "k8s.io/api/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 )
 
 var (
 	Updater                 *config.Updater
-	K8sReporter             *k8sreporter.KubernetesReporter
 	InspectReporter         *k8s.InspectReporter
 	ReportPath              string
 	HostMode                bool
@@ -33,7 +31,6 @@ func dumpIfFails(cs clientset.Interface, additionalNamespaces ...string) {
 		ReportPath:           ReportPath,
 		HostMode:             HostMode,
 		GroutMode:            GroutMode,
-		K8sReporter:          K8sReporter,
 		InspectReporter:      InspectReporter,
 		AdditionalNamespaces: additionalNamespaces,
 		CollectFRRK8sPods:    true,
