@@ -23,10 +23,11 @@ const inspectTimeout = 5 * time.Minute
 
 // InspectReporter invokes the inspect tool for failed e2e specs.
 type InspectReporter struct {
-	inspectPath string
-	reportPath  string
-	k8sClient   string
-	namespace   string
+	inspectPath          string
+	reportPath           string
+	k8sClient            string
+	namespace            string
+	additionalNamespaces []string
 }
 
 func InitReporter(kubeconfig, path string, namespaces ...string) (*k8sreporter.KubernetesReporter, error) {
@@ -73,12 +74,16 @@ func DumpInfo(reporter *k8sreporter.KubernetesReporter, testName string) {
 }
 
 // NewInspectReporter creates an inspect collector for failed e2e specs.
-func NewInspectReporter(inspectPath, reportPath, k8sClient, namespace string) *InspectReporter {
+func NewInspectReporter(
+	inspectPath, reportPath, k8sClient, namespace string,
+	additionalNamespaces ...string,
+) *InspectReporter {
 	return &InspectReporter{
-		inspectPath: inspectPath,
-		reportPath:  reportPath,
-		k8sClient:   k8sClient,
-		namespace:   namespace,
+		inspectPath:          inspectPath,
+		reportPath:           reportPath,
+		k8sClient:            k8sClient,
+		namespace:            namespace,
+		additionalNamespaces: additionalNamespaces,
 	}
 }
 
@@ -90,6 +95,9 @@ func (r *InspectReporter) Dump(testName string) {
 		"--dest-dir=" + outputPath,
 		"--namespace=" + r.namespace,
 		"--since=10m",
+	}
+	for _, namespace := range r.additionalNamespaces {
+		args = append(args, "--additional-namespace="+namespace)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), inspectTimeout)

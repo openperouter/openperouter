@@ -5,7 +5,6 @@ package e2e
 import (
 	"flag"
 	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/onsi/ginkgo/v2"
@@ -70,14 +69,13 @@ var _ = ginkgo.BeforeSuite(func() {
 	updater, err = config.UpdaterForCRs(clientconfig, openperouter.Namespace, frrk8s.Namespace)
 	Expect(err).NotTo(HaveOccurred())
 	tests.Updater = updater
-	kubeconfig := os.Getenv("KUBECONFIG")
-	if kubeconfig == "" {
-		kubeconfig = filepath.Join(os.Getenv("HOME"), ".kube", "config")
-	}
-	reporter, err := k8s.InitReporter(kubeconfig, tests.ReportPath, openperouter.Namespace, frrk8s.Namespace)
-	Expect(err).NotTo(HaveOccurred(), "failed to initialize k8s reporter (kubeconfig=%s)", kubeconfig)
-	tests.K8sReporter = reporter
-	tests.InspectReporter = k8s.NewInspectReporter(inspectPath, tests.ReportPath, executor.Kubectl, openperouter.Namespace)
+	tests.InspectReporter = k8s.NewInspectReporter(
+		inspectPath,
+		tests.ReportPath,
+		executor.Kubectl,
+		openperouter.Namespace,
+		frrk8s.Namespace,
+	)
 
 	cs := k8sclient.New()
 	Expect(executor.SetupNodeExec(cs, frrk8s.Namespace, nodeExecImage)).To(Succeed(), "failed to setup node-exec-helper")
