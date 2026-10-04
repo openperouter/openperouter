@@ -9,13 +9,14 @@ The `inspect` tool makes debugging OpenPERouter deployments easier by collecting
 ## How to use:
 
 ### Options
-| Option         | Description                                                       | Default                |
-|----------------|-------------------------------------------------------------------|------------------------|
-| `--namespace`  | OpenPERouter namespace                                            | `openperouter-system`  |
-| `--dest-dir`   | Output directory path                                             | `openperouter-inspect` |
-| `--k8s-client` | Kubernetes client                                                 | `kubectl`              |
-| `--since`      | Collect pod logs newer then relative duration (e.g.: 5s, 10m, 2h) |                        |
-| `-h`, `--help` | Print usage instructions                                          |                        |
+| Option                   | Description                                                       | Default                |
+|--------------------------|-------------------------------------------------------------------|------------------------|
+| `--namespace`            | OpenPERouter namespace                                            | `openperouter-system`  |
+| `--additional-namespace` | Namespace to collect core resources and pod logs from; repeat for each namespace | |
+| `--dest-dir`             | Output directory path                                             | `openperouter-inspect` |
+| `--k8s-client`           | Kubernetes client                                                 | `kubectl`              |
+| `--since`                | Collect pod logs newer then relative duration (e.g.: 5s, 10m, 2h) |                        |
+| `-h`, `--help`           | Print usage instructions                                          |                        |
 
 **Note:** Options must be specified with `=`.
 
@@ -25,7 +26,7 @@ $ cd tools/inspect
 $ ./inspect
 
 # override parameters
-$ ./inspect --dest-dir=mydir --namespace=myns --k8s-client=oc --since=3m
+$ ./inspect --dest-dir=mydir --namespace=myns --additional-namespace=frr-k8s-system --k8s-client=oc --since=3m
 
 # via repository make target, artifacts stored at /tmp/openperouter-inspect
 $ make inspect
@@ -44,7 +45,8 @@ The output root directory contains the following:
 - `timestamp` - Execution timestamp
 - `inspect.log` - Execution log
 - `node_info/` - Per node network and routing infrastructure information
-- `<openperouter namesapce>/` - OpenPERouter namespace objects and workloads logs (defaults is `openperouter-system`)
+- `<openperouter namespace>/` - OpenPERouter namespace objects and workload logs (defaults to `openperouter-system`)
+- `<additional namespace>/` - Objects and workload logs for each requested additional namespace
 - `nodes.yaml` - Kubernetes node manifests
 - `<namespace name>/` - Per namespaces containing config resources directory (Underlay, L2VNI, L3VNI, L3VPN, FRRConfiguration, etc.)
 
