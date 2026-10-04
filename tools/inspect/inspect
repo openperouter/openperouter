@@ -37,8 +37,18 @@ readonly CONFIG_RESOURCES=(\
 	"l3vnis" \
 	"l3passthroughs" \
 	"l3vpns" \
+	"frrconfigurations" \
 	"rawfrrconfigs" \
 )
+
+function dump_node_manifests() {
+	local -r ctl="$1"
+	local -r base_dir="$2"
+	local -r logfile="${base_dir}/nodes.yaml"
+
+	$ctl get nodes -o yaml > "$logfile"
+	echo "Dumped node manifests to [$logfile]"
+}
 
 function dump_overview() {
 	local -r ctl="$1"
@@ -230,6 +240,7 @@ date --rfc-3339=ns > "${ARTIFACTS_DIR}/timestamp"
 	dump_overview  "${CTL}" "${NS_DIR}/overview"
 	dump_core_resources_from_ns       "${CTL_BIN}" "${NAMESPACE}" "${ARTIFACTS_DIR}"
 	dump_config_resources_from_all_ns "${CTL_BIN}" "${ARTIFACTS_DIR}"
+	dump_node_manifests "${CTL_BIN}" "${ARTIFACTS_DIR}"
 	dump_pod_logs  "${CTL}" "${NS_DIR}/pod_logs" "${log_opts}"
 	dump_node_info "${CTL}" "${ARTIFACTS_DIR}/node_info"
 ) 2>&1 | tee -a "${ARTIFACTS_DIR}/inspect.log"
