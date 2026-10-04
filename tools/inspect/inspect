@@ -182,6 +182,19 @@ function dump_node_info() {
 	done
 }
 
+function dump_namespace() {
+	local -r ctl_bin="$1"
+	local -r namespace="$2"
+	local -r base_dir="$3"
+	local -r log_opts="$4"
+	local -r ctl="${ctl_bin} -n ${namespace}"
+	local -r namespace_dir="${base_dir}/${namespace}"
+
+	dump_overview "$ctl" "${namespace_dir}/overview"
+	dump_core_resources_from_ns "$ctl_bin" "$namespace" "$base_dir"
+	dump_pod_logs "$ctl" "${namespace_dir}/pod_logs" "$log_opts"
+}
+
 function help() {
     cat <<EOF
 Inspect OpenPERouter deployment and export related resources and logs.
@@ -193,6 +206,8 @@ Example
 
 Options:
   --namespace   OpenPERouter system namespace name (default: "openperouter-system")
+  --additional-namespace
+                Namespace to collect core resources and pod logs from; may be specified multiple times
   --dest-dir    The directory to store artifacts (default: "openperouter-inspect")
   --k8s-client  Kubernetes client binary path (default: "kubectl")
   --since       Collect pod logs newer then relative duration, e.g.: 5s, 10m, 2h.
@@ -201,19 +216,21 @@ EOF
 }
 
 NAMESPACE="openperouter-system"
+ADDITIONAL_NAMESPACES=()
 ARTIFACTS_DIR="./openperouter-inspect"
 CTL_BIN="kubectl"
 SINCE_DURATION=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --namespace=*)   NAMESPACE="${1#*=}" ;;
-        --dest-dir=*)    ARTIFACTS_DIR="${1#*=}" ;;
-        --k8s-client=*)  CTL_BIN="${1#*=}" ;;
-        --since=*)       SINCE_DURATION="${1#*=}" ;;
-        -h | --help)     help; exit 0 ;;
-        *) echo "Unknown option: $1"; help; exit 1 ;;
-    esac
+		--namespace=*)             NAMESPACE="${1#*=}" ;;
+		--additional-namespace=*)  ADDITIONAL_NAMESPACES+=("${1#*=}") ;;
+		--dest-dir=*)              ARTIFACTS_DIR="${1#*=}" ;;
+		--k8s-client=*)            CTL_BIN="${1#*=}" ;;
+		--since=*)                 SINCE_DURATION="${1#*=}" ;;
+		-h | --help)               help; exit 0 ;;
+		*) echo "Unknown option: $1"; help; exit 1 ;;
+	esac
 	shift
 done
 
@@ -221,9 +238,11 @@ if ! command -v "${CTL_BIN}" &> /dev/null; then
 	echo "FATAL: '${CTL_BIN}' command not found" && exit 1
 fi
 
-if ! "${CTL_BIN}" get ns "${NAMESPACE}" &> /dev/null; then
-	echo "FATAL: '${NAMESPACE}' namespace not found. Make sure KUBECONFIG is set correctly." && exit 1
-fi
+for namespace in "${NAMESPACE}" "${ADDITIONAL_NAMESPACES[@]}"; do
+	if ! "${CTL_BIN}" get ns "$namespace" &> /dev/null; then
+		echo "FATAL: '$namespace' namespace not found. Make sure KUBECONFIG is set correctly." && exit 1
+	fi
+done
 
 log_opts=""
 if [[ -n $SINCE_DURATION ]]; then
@@ -234,15 +253,18 @@ mkdir -p "${ARTIFACTS_DIR}"
 date --rfc-3339=ns > "${ARTIFACTS_DIR}/timestamp"
 
 (
-	readonly CTL="${CTL_BIN} -n ${NAMESPACE}"
-	readonly NS_DIR="${ARTIFACTS_DIR}/${NAMESPACE}"
 	set +e
-	dump_overview  "${CTL}" "${NS_DIR}/overview"
-	dump_core_resources_from_ns       "${CTL_BIN}" "${NAMESPACE}" "${ARTIFACTS_DIR}"
+	declare -A seen_namespaces=()
+	for namespace in "${NAMESPACE}" "${ADDITIONAL_NAMESPACES[@]}"; do
+		if [[ -n ${seen_namespaces[$namespace]+x} ]]; then
+			continue
+		fi
+		seen_namespaces[$namespace]=1
+		dump_namespace "${CTL_BIN}" "$namespace" "${ARTIFACTS_DIR}" "${log_opts}"
+	done
 	dump_config_resources_from_all_ns "${CTL_BIN}" "${ARTIFACTS_DIR}"
 	dump_node_manifests "${CTL_BIN}" "${ARTIFACTS_DIR}"
-	dump_pod_logs  "${CTL}" "${NS_DIR}/pod_logs" "${log_opts}"
-	dump_node_info "${CTL}" "${ARTIFACTS_DIR}/node_info"
+	dump_node_info "${CTL_BIN} -n ${NAMESPACE}" "${ARTIFACTS_DIR}/node_info"
 ) 2>&1 | tee -a "${ARTIFACTS_DIR}/inspect.log"
 
 echo "Inspect completed. Artifacts are stored in ${ARTIFACTS_DIR}"
