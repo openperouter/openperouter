@@ -15,6 +15,7 @@ package v1alpha1
 // +kubebuilder:validation:XValidation:rule="!has(self.listenRange) || !has(self.address)",message="listenRange and address are mutually exclusive"
 // +kubebuilder:validation:XValidation:rule="!has(self.listenRange) || !has(self.interface)",message="listenRange and interface are mutually exclusive"
 // +kubebuilder:validation:XValidation:rule="!(has(self.addressFamilies) && self.addressFamilies.exists(af, has(af.properties) && af.properties.exists(o, o.type == 'routeReflectorClient'))) || (has(self.type) && self.type == 'Internal')",message="routeReflectorClient requires type Internal"
+// +kubebuilder:validation:XValidation:rule="!has(self.updateSource) || !has(self.interface)",message="updateSource cannot be set together with Interface for Neighbor"
 type Neighbor struct {
 	// asn is the AS number of the neighbor. Either ASN or Type must be set.
 	// +kubebuilder:validation:Minimum=1
@@ -122,6 +123,14 @@ type Neighbor struct {
 	// +listType=map
 	// +listMapKey=type
 	AddressFamilies []NeighborAddressFamily `json:"addressFamilies,omitempty"`
+
+	// updateSource explicitly specifies the BGP update-source for this neighbor. It currently only
+	// supports the special keyword `loopback`, which instructs the OpenPERouter to derive the update
+	// source from the IPv4 or IPv6 tunnel endpoint IP address matching the neighbor's address family.
+	// It is only valid for neighbors identified by `address` or `listenRange` and must not be set
+	// together with `interface`.
+	// +optional
+	UpdateSource *UpdateSource `json:"updateSource,omitempty"`
 }
 
 // BFDSessionMode selects whether the local system initiates the BFD session.
@@ -269,3 +278,17 @@ type AddressFamilyProperty struct {
 	// +required
 	Type AddressFamilyPropertyType `json:"type,omitempty"`
 }
+
+// updateSource explicitly specifies the BGP update-source for this neighbor. It currently only
+// supports the special keyword `loopback`, which instructs the OpenPERouter to derive the update
+// source from the IPv4 or IPv6 tunnel endpoint IP address matching the neighbor's address family.
+// +kubebuilder:validation:MaxLength:=8
+// +kubebuilder:validation:MinLength:=8
+// +kubebuilder:validation:Enum=loopback
+type UpdateSource string
+
+const (
+	// Loopback instructs the OpenPERouter to derive the update source from the IPv4 or IPv6 tunnel
+	// endpoint IP address matching the neighbor's address family.
+	Loopback UpdateSource = "loopback"
+)

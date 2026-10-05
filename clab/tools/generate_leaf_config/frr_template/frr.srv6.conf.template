@@ -43,7 +43,7 @@ router bgp 64520
  neighbor PE ebgp-multihop
  neighbor PE advertisement-interval 0
  neighbor PE timers connect 5
- bgp listen range 2001:db8:1234:5678::/64 peer-group PE
+ bgp listen range 2001:db8::/32 peer-group PE
  !
  segment-routing srv6
   locator MAIN

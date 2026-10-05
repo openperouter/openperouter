@@ -13,6 +13,7 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/openperouter/openperouter/internal/ipfamily"
 	"github.com/openperouter/openperouter/internal/networklayerprotocol"
 )
 
@@ -91,6 +92,26 @@ func (u UnderlayConfig) BGPListenLimit() uint16 {
 type TunnelEndpoint struct {
 	IPv4CIDR string
 	IPv6CIDR string
+}
+
+// GetCIDRForAddressFamily returns the IPv4CIDR or IPv6CIDR from this TunnelEndpoint as requested
+// by af, or an error it the corresponding CIDR cannot be found.
+func (te TunnelEndpoint) GetCIDRForAddressFamily(af ipfamily.Family) (string, error) {
+	if af != ipfamily.IPv4 && af != ipfamily.IPv6 {
+		return "", fmt.Errorf("IP family %s is not supported", af)
+	}
+
+	if af == ipfamily.IPv4 {
+		if te.IPv4CIDR == "" {
+			return "", fmt.Errorf("no CIDR present for address family %s", af)
+		}
+		return te.IPv4CIDR, nil
+	}
+
+	if te.IPv6CIDR == "" {
+		return "", fmt.Errorf("no CIDR present for address family %s", af)
+	}
+	return te.IPv6CIDR, nil
 }
 
 type UnderlayISIS struct {

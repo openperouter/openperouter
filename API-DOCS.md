@@ -698,6 +698,7 @@ _Appears in:_
 | `properties` _[NeighborProperty](#neighborproperty) array_ | properties is the set of optional session-level features for this<br />neighbor (e.g. ebgpMultiHop). |  | MaxItems: 1 <br />Optional: \{\} <br /> |
 | `bfd` _[BFDSettings](#bfdsettings)_ | bfd defines the BFD configuration for the BGP session. |  | Optional: \{\} <br /> |
 | `addressFamilies` _[NeighborAddressFamily](#neighboraddressfamily) array_ | addressFamilies specifies the BGP address families that shall be enabled<br />for this BGP neighbor. evpn and ipv4vpn/ipv6vpn are mutually exclusive.<br />If ipv4vpn or ipv6vpn are set, the update source of this neighbor will<br />be set to the loopback's IPv6 address.<br />If addressFamilies is not provided or empty, the following defaults are<br />chosen:<br />For unnumbered neighbors:<br />- ipv4unicast<br />- ipv6unicast if passthrough is configured with IPv6 local CIDR<br />- evpn if L2VNIs or L3VNIs are present.<br />For IPv4 neighbors:<br />- ipv4unicast<br />- ipv6unicast if passthrough is configured with IPv6 local CIDR<br />- evpn if L2VNIs or L3VNIs are present.<br />For IPv6 neighbors:<br />- ipv4unicast if L2VNIs or L3VNIs are present, or if passthrough is configured with IPv4 local CIDR<br />- ipv6unicast<br />- evpn if L2VNIs or L3VNIs are present<br />- ipv4vpn if L3VPNs and SRv6 configuration are present.<br />- ipv6vpn if L3VPNs and SRv6 configuration are present. |  | MaxItems: 4 <br />Optional: \{\} <br /> |
+| `updateSource` _[UpdateSource](#updatesource)_ | updateSource explicitly specifies the BGP update-source for this neighbor. It currently only<br />supports the special keyword `loopback`, which instructs the OpenPERouter to derive the update<br />source from the IPv4 or IPv6 tunnel endpoint IP address matching the neighbor's address family.<br />It is only valid for neighbors identified by `address` or `listenRange` and must not be set<br />together with `interface`. |  | Enum: [loopback] <br />MaxLength: 8 <br />MinLength: 8 <br />Optional: \{\} <br /> |
 
 
 #### NeighborAddressFamily
@@ -1112,5 +1113,26 @@ UnderlayStatus defines the observed state of Underlay.
 _Appears in:_
 - [Underlay](#underlay)
 
+
+
+#### UpdateSource
+
+_Underlying type:_ _string_
+
+updateSource explicitly specifies the BGP update-source for this neighbor. It currently only
+supports the special keyword `loopback`, which instructs the OpenPERouter to derive the update
+source from the IPv4 or IPv6 tunnel endpoint IP address matching the neighbor's address family.
+
+_Validation:_
+- Enum: [loopback]
+- MaxLength: 8
+- MinLength: 8
+
+_Appears in:_
+- [Neighbor](#neighbor)
+
+| Field | Description |
+| --- | --- |
+| `loopback` | Loopback instructs the OpenPERouter to derive the update source from the IPv4 or IPv6 tunnel<br />endpoint IP address matching the neighbor's address family.<br /> |
 
 
