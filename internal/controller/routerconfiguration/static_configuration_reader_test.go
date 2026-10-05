@@ -826,6 +826,16 @@ l2vnis:
 	}
 }
 
+func TestReadStaticConfigsRDAssignedNumber(t *testing.T) {
+	for _, kind := range []string{"l2vnis", "l3vnis"} {
+		for _, number := range []string{"", "1", "65535", "0", "-1", "65536", "malformed"} {
+			t.Run(kind+"/"+number, func(t *testing.T) {
+				checkStaticConfigRDAssignedNumber(t, kind, number)
+			})
+		}
+	}
+}
+
 func writeYAMLFile(t *testing.T, dir, filename, content string) {
 	t.Helper()
 	path := filepath.Join(dir, filename)
@@ -1359,5 +1369,45 @@ func TestApplyDefaultsAndValidateApplyDefaultsError(t *testing.T) {
 	wantErrMsg := `Internal error: applying defaults: v1alpha1.Underlay: no CRD schema found for fake.io/v1, Kind=Fake`
 	if !strings.Contains(errMsg, wantErrMsg) {
 		t.Errorf("expected error containing %q, got: %s", wantErrMsg, errMsg)
+	}
+}
+
+func checkStaticConfigRDAssignedNumber(t *testing.T, kind, number string) {
+	t.Helper()
+	content := kind + ":\n  - vni: 300\n"
+	if kind == "l3vnis" {
+		content += "    vrf: tenant\n"
+	}
+	if number != "" {
+		content += "    rdAssignedNumber: " + number + "\n"
+	}
+	dir := t.TempDir()
+	writeYAMLFile(t, dir, "openpe_rd.yaml", content)
+	config, err := readStaticConfigs(dir, "node", "default")
+	invalid := number == "0" || number == "-1" || number == "65536" || number == "malformed"
+	if invalid {
+		if err == nil || !strings.Contains(err.Error(), "rdAssignedNumber") {
+			t.Fatalf("expected RD schema validation error, got %v", err)
+		}
+		return
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got *int32
+	if kind == "l2vnis" {
+		got = config.L2VNIs[0].Spec.RDAssignedNumber
+	}
+	if kind == "l3vnis" {
+		got = config.L3VNIs[0].Spec.RDAssignedNumber
+	}
+	if number == "" {
+		if got != nil {
+			t.Fatalf("omitted number became %d", *got)
+		}
+		return
+	}
+	if got == nil || fmt.Sprint(*got) != number {
+		t.Fatalf("number %s was not preserved: %v", number, got)
 	}
 }

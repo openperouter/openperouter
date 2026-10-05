@@ -21,6 +21,9 @@ router bgp {{ .vni.ASN }} vrf {{ .vni.VRF }}
   {{- end }}
 
   address-family l2vpn evpn
+    {{- if .vni.RouteDistinguisher }}
+    rd {{ .vni.RouteDistinguisher }}
+    {{- end }}
     advertise ipv4 unicast
     advertise ipv6 unicast
     {{- if .vni.ExportRTs }}

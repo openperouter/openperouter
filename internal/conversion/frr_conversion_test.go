@@ -3,6 +3,7 @@
 package conversion
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -3485,7 +3486,7 @@ func TestL2VNIConfigsToFRR(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if diff := cmp.Diff(tt.want, l2vniConfigsToFRR(tt.l2vnis)); diff != "" {
+			if diff := cmp.Diff(tt.want, l2vniConfigsToFRR(tt.l2vnis, "10.0.0.1")); diff != "" {
 				t.Fatalf("l2vniConfigsToFRR() mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -4239,5 +4240,120 @@ func TestNeighborID(t *testing.T) {
 				t.Errorf("NeighborID() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestVNIRDAssignedNumber(t *testing.T) {
+	for _, routerID := range []string{"10.0.0.1", "10.0.0.2"} {
+		for _, number := range []struct {
+			name  string
+			value *int32
+		}{
+			{name: "automatic"}, {name: "1", value: new(int32(1))}, {name: "65535", value: new(int32(65535))},
+		} {
+			for _, explicitRTs := range []bool{false, true} {
+				for _, hostSession := range []*v1alpha1.HostSession{nil, {
+					ASN: 65000, HostASN: new(int64(65001)), LocalCIDRs: []string{"192.168.2.0/24", "2001:db8::/64"},
+				}} {
+					t.Run(fmt.Sprintf("%s/%s/RTs=%t/host=%t", routerID, number.name, explicitRTs, hostSession != nil), func(t *testing.T) {
+						testVNIRDAssignedNumber(t, routerID, number.value, explicitRTs, hostSession)
+					})
+				}
+			}
+		}
+	}
+}
+
+func TestL3VPNRDAssignedNumberRegression(t *testing.T) {
+	for _, routerID := range []string{"10.0.0.1", "10.0.0.2"} {
+		for _, explicit := range []bool{false, true} {
+			vpn := v1alpha1.L3VPN{Spec: v1alpha1.L3VPNSpec{
+				VRF: "red", RDAssignedNumber: 500, ImportRTs: []v1alpha1.RouteTarget{"65001:500"},
+			}}
+			wantRTs := []string{"65000:500"}
+			if explicit {
+				vpn.Spec.ExportRTs = []v1alpha1.RouteTarget{"65002:200"}
+				wantRTs = []string{"65002:200"}
+			}
+			configs, err := l3vpnToFRR(vpn, routerID, 65000, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(configs) != 1 {
+				t.Fatalf("expected one VPN config: %v", configs)
+			}
+			if configs[0].RouteDistinguisher != routerID+":500" {
+				t.Fatalf("unexpected RD: %v", configs[0])
+			}
+			if diff := cmp.Diff(wantRTs, configs[0].ExportRTs); diff != "" {
+				t.Fatal(diff)
+			}
+		}
+	}
+}
+
+func testVNIRDAssignedNumber(t *testing.T, routerID string, number *int32, explicitRTs bool, host *v1alpha1.HostSession) {
+	t.Helper()
+	l2 := v1alpha1.L2VNI{Spec: v1alpha1.L2VNISpec{VNI: 100, RDAssignedNumber: number}}
+	l3 := v1alpha1.L3VNI{Spec: v1alpha1.L3VNISpec{VNI: 200, VRF: "red", RDAssignedNumber: number, HostSession: host}}
+	if explicitRTs {
+		l2.Spec.ExportRTs = []v1alpha1.RouteTarget{"65000:100"}
+		l2.Spec.ImportRTs = []v1alpha1.RouteTarget{"65001:100"}
+		l3.Spec.ExportRTs = l2.Spec.ExportRTs
+		l3.Spec.ImportRTs = l2.Spec.ImportRTs
+	}
+	wantRD := ""
+	if number != nil {
+		wantRD = fmt.Sprintf("%s:%d", routerID, *number)
+	}
+	testL2VNIRDConversion(t, l2, routerID, wantRD)
+	testL3VNIRDConversion(t, l3, routerID, wantRD)
+}
+
+func testL2VNIRDConversion(t *testing.T, vni v1alpha1.L2VNI, routerID, wantRD string) {
+	t.Helper()
+	configs := l2vniConfigsToFRR([]v1alpha1.L2VNI{vni}, routerID)
+	if vni.Spec.RDAssignedNumber == nil && len(vni.Spec.ExportRTs) == 0 {
+		if len(configs) != 0 {
+			t.Fatalf("automatic L2VNI unexpectedly rendered: %v", configs)
+		}
+		return
+	}
+	want := []frr.L2VNIConfig{{
+		VNI: vni.Spec.VNI, RouteDistinguisher: wantRD,
+		ExportRTs: convertRTsToSliceOfStrings(vni.Spec.ExportRTs),
+		ImportRTs: convertRTsToSliceOfStrings(vni.Spec.ImportRTs),
+	}}
+	if diff := cmp.Diff(want, configs); diff != "" {
+		t.Fatal(diff)
+	}
+}
+
+func testL3VNIRDConversion(t *testing.T, vni v1alpha1.L3VNI, routerID, wantRD string) {
+	t.Helper()
+	configs, err := l3vniToFRR(vni, routerID, 65000, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantCount := 1
+	if vni.Spec.HostSession != nil {
+		wantCount = 2
+	}
+	if len(configs) != wantCount {
+		t.Fatalf("L3 config count = %d, want %d", len(configs), wantCount)
+	}
+	for _, cfg := range configs {
+		if cfg.RouteDistinguisher != wantRD {
+			t.Fatalf("L3 RD = %q, want %q", cfg.RouteDistinguisher, wantRD)
+		}
+		if cfg.VNI != 200 || cfg.VRF != "red" {
+			t.Fatalf("VNI or VRF changed: %v", cfg)
+		}
+		if diff := cmp.Diff(convertRTsToSliceOfStrings(vni.Spec.ExportRTs), cfg.ExportRTs); diff != "" {
+			t.Fatal(diff)
+		}
+		if diff := cmp.Diff(convertRTsToSliceOfStrings(vni.Spec.ImportRTs), cfg.ImportRTs); diff != "" {
+			t.Fatal(diff)
+		}
 	}
 }

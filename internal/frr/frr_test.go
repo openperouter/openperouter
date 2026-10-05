@@ -160,6 +160,44 @@ func TestL2VNIWithRouteTargets(t *testing.T) {
 	testCheckConfigFile(t)
 }
 
+func TestL2VNIWithRDAssignedNumber(t *testing.T) {
+	configFile := testSetup(t)
+	config := Config{
+		Underlay: UnderlayConfig{
+			MyASN: 64512, RouterID: "10.0.0.1",
+			TunnelEndpoint: &TunnelEndpoint{IPv4CIDR: "100.64.0.1/32"},
+		},
+		L2VNIs: []L2VNIConfig{
+			{VNI: 100, RouteDistinguisher: "10.0.0.1:500"},
+			{VNI: 101, RouteDistinguisher: "10.0.0.1:501", ExportRTs: []string{"65000:101"}, ImportRTs: []string{"65001:101"}},
+			{VNI: 102, ExportRTs: []string{"65000:102"}, ImportRTs: []string{"65001:102"}},
+		},
+	}
+	if err := ApplyConfig(context.Background(), &config, testUpdater(configFile)); err != nil {
+		t.Fatal(err)
+	}
+	testCheckConfigFile(t)
+}
+
+func TestL3VNIWithRDAssignedNumber(t *testing.T) {
+	configFile := testSetup(t)
+	config := Config{
+		Underlay: UnderlayConfig{
+			MyASN: 64512, RouterID: "10.0.0.1",
+			TunnelEndpoint: &TunnelEndpoint{IPv4CIDR: "100.64.0.1/32"},
+		},
+		L3VNIs: []L3VNIConfig{
+			{ASN: 64512, RouterID: "10.0.0.1", VRF: "red", VNI: 200, RouteDistinguisher: "10.0.0.1:500"},
+			{ASN: 64512, RouterID: "10.0.0.1", VRF: "blue", VNI: 201, RouteDistinguisher: "10.0.0.1:501", ExportRTs: []string{"65000:201"}, ImportRTs: []string{"65001:201"}},
+			{ASN: 64512, RouterID: "10.0.0.1", VRF: "green", VNI: 202, ExportRTs: []string{"65000:202"}, ImportRTs: []string{"65001:202"}},
+		},
+	}
+	if err := ApplyConfig(context.Background(), &config, testUpdater(configFile)); err != nil {
+		t.Fatal(err)
+	}
+	testCheckConfigFile(t)
+}
+
 func TestBasicWithIPRT(t *testing.T) {
 	configFile := testSetup(t)
 	updater := testUpdater(configFile)
