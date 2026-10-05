@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -35,6 +36,35 @@ type EVPNData struct {
 	Entries          []RdEntry `json:"-"` // handled manually
 	NumPrefix        int       `json:"numPrefix"`
 	TotalPrefix      int       `json:"totalPrefix"`
+}
+
+// ContainsRouteWithRD matches a Type-2 MAC/IP address or Type-5 prefix inside one RD.
+// The complete route-target set must belong to the same path as the next hop.
+func (e *EVPNData) ContainsRouteWithRD(rd string, routeType int, identity, nextHop string,
+	routeTargets []v1alpha1.RouteTarget) bool {
+	if routeType != 2 && routeType != 5 {
+		return false
+	}
+	for _, entry := range e.Entries {
+		if entry.RD != rd {
+			continue
+		}
+		for _, prefix := range entry.Prefixes {
+			for _, path := range prefix.Paths {
+				if path.RouteType != routeType || path.IPLen == 0 {
+					continue
+				}
+				routeIdentity := path.IP
+				if routeType == 5 {
+					routeIdentity = fmt.Sprintf("%s/%d", path.IP, path.IPLen)
+				}
+				if routeIdentity == identity && pathHasVTEP(path, nextHop) && pathHasExactRouteTargets(path, routeTargets) {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // ContainsType5RouteForVNI tells if the given prefix is received as type 5 route
@@ -309,4 +339,18 @@ func vnisFromExtendedCommunity(extendedCommunity string) ([]int, error) {
 
 func containsVNI(vnis []int, vni int) bool {
 	return slices.Contains(vnis, vni)
+}
+
+func pathHasExactRouteTargets(path Path, routeTargets []v1alpha1.RouteTarget) bool {
+	actual := make(map[string]struct{})
+	for _, token := range strings.Fields(path.ExtendedCommunity.String) {
+		if strings.HasPrefix(token, "RT:") {
+			actual[token] = struct{}{}
+		}
+	}
+	expected := make(map[string]struct{}, len(routeTargets))
+	for _, rt := range routeTargets {
+		expected["RT:"+string(rt)] = struct{}{}
+	}
+	return maps.Equal(actual, expected)
 }

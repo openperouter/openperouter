@@ -475,6 +475,47 @@ var _ = Describe("Disconnected L2VNI east/west traffic", Ordered, func() {
 		})
 	})
 
+	Context("with RD assigned number", func() {
+		BeforeEach(func() {
+			configured := l2vniDisconnected.DeepCopy()
+			configured.Spec.RDAssignedNumber = new(int32(42000))
+			l2VNIs = []v1alpha1.L2VNI{*configured}
+		})
+
+		It("advertises both Type-2 routes under the configured RD on the leaf", func() {
+			routers, err := openperouter.Get(cs, HostMode)
+			Expect(err).To(Succeed())
+			leaf := executor.ForContainer(infra.KindLeaf)
+			ips := []string{firstPodIP, secondPodIP}
+			routerIDs := make([]string, 2)
+			vteps := make([]string, 2)
+			rts := []v1alpha1.RouteTarget{"64514:300"}
+			for i := range 2 {
+				origin, err := routers.ExecutorForNode(nodes[i].Name)
+				Expect(err).To(Succeed())
+				Eventually(func(g Gomega) {
+					info, err := frr.EVPNInfo(origin)
+					g.Expect(err).To(Succeed())
+					g.Expect(info.BgpLocalRouterId).NotTo(BeEmpty())
+					routerIDs[i] = info.BgpLocalRouterId
+				}, time.Minute, time.Second).Should(Succeed())
+				cidr, err := openperouter.GetVtepIPv4ForNode(infra.Underlay.Spec.TunnelEndpoint, &nodes[i])
+				Expect(err).To(Succeed())
+				vteps[i] = ipfamily.StripCIDRMask(cidr)
+			}
+			Expect(routerIDs[0]).NotTo(Equal(routerIDs[1]))
+			Eventually(func(g Gomega) {
+				info, err := frr.EVPNInfo(leaf)
+				g.Expect(err).To(Succeed())
+				for i := range 2 {
+					rd := fmt.Sprintf("%s:42000", routerIDs[i])
+					g.Expect(info.ContainsRouteWithRD(rd, 2, ips[i], vteps[i], rts)).To(BeTrue(),
+						"pod %s should be under RD %s on receiving leaf", ips[i], rd)
+				}
+			}, time.Minute, time.Second).Should(Succeed())
+		})
+	})
+
 	Context("with route targets", func() {
 		BeforeEach(func() {
 			firstL2VNI = l2VNIForNode(
