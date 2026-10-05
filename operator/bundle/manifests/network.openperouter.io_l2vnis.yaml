@@ -219,6 +219,15 @@ spec:
                     type: object
                 type: object
                 x-kubernetes-map-type: atomic
+              rdAssignedNumber:
+                description: |-
+                  rdAssignedNumber sets the Route Distinguisher's Assigned Number subfield.
+                  The Administrator subfield is the originating node's router ID, forming
+                  a Type 1 Route Distinguisher as defined in RFC4364.
+                format: int32
+                maximum: 65535
+                minimum: 1
+                type: integer
               routingDomain:
                 description: |-
                   routingDomain optionally attaches this L2VNI to a routing domain
