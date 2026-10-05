@@ -16,6 +16,8 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/frr"
 	"github.com/openperouter/openperouter/e2etests/pkg/frrk8s"
 	"github.com/openperouter/openperouter/e2etests/pkg/infra"
+	"github.com/openperouter/openperouter/e2etests/pkg/ipfamily"
+	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 	corev1 "k8s.io/api/core/v1"
@@ -156,6 +158,37 @@ var _ = Describe("Routes with RT between bgp and the fabric", GroutSupport, Orde
 			Expect(err).NotTo(HaveOccurred())
 			Expect(infra.LeafAConfig.Configure(infra.EmptyLeafConfig)).To(Succeed())
 			Expect(infra.LeafBConfig.Configure(infra.EmptyLeafConfig)).To(Succeed())
+		})
+
+		It("advertises Type-5 routes under the RD assigned number on fabric leaves", func() {
+			red := vniRed.DeepCopy()
+			red.Spec.RDAssignedNumber = new(int32(43000))
+			Expect(Updater.Update(config.Resources{
+				L3VNIs:            []v1alpha1.L3VNI{*red, vniBlue},
+				FRRConfigurations: append(frrK8sConfigRed, frrK8sConfigBlue...),
+			})).To(Succeed())
+
+			nodes, err := k8s.GetNodes(cs)
+			Expect(err).To(Succeed())
+			for _, node := range nodes {
+				origin, err := routers.ExecutorForNode(node.Name)
+				Expect(err).To(Succeed())
+				cidr, err := openperouter.GetVtepIPv4ForNode(infra.Underlay.Spec.TunnelEndpoint, &node)
+				Expect(err).To(Succeed())
+				vtep := ipfamily.StripCIDRMask(cidr)
+				Eventually(func(g Gomega) {
+					local, err := frr.EVPNInfo(origin)
+					g.Expect(err).To(Succeed())
+					g.Expect(local.BgpLocalRouterId).NotTo(BeEmpty())
+					rd := fmt.Sprintf("%s:%d", local.BgpLocalRouterId, *red.Spec.RDAssignedNumber)
+					for _, leaf := range []string{infra.LeafA, infra.LeafB} {
+						received, err := frr.EVPNInfo(executor.ForContainer(leaf))
+						g.Expect(err).To(Succeed())
+						g.Expect(received.ContainsRouteWithRD(rd, 5, frrk8sRedPrefixes[0], vtep, red.Spec.ExportRTs)).To(BeTrue(),
+							"%s should receive %s from %s under RD %s", leaf, frrk8sRedPrefixes[0], vtep, rd)
+					}
+				}, 3*time.Minute, time.Second).Should(Succeed())
+			}
 		})
 
 		It("translates EVPN incoming routes as BGP routes", func() {
