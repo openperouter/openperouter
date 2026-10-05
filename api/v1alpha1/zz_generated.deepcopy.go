@@ -359,6 +359,11 @@ func (in *L2VNISpec) DeepCopyInto(out *L2VNISpec) {
 		*out = new(RoutingDomain)
 		(*in).DeepCopyInto(*out)
 	}
+	if in.RDAssignedNumber != nil {
+		in, out := &in.RDAssignedNumber, &out.RDAssignedNumber
+		*out = new(int32)
+		**out = **in
+	}
 	if in.VXLanPort != nil {
 		in, out := &in.VXLanPort, &out.VXLanPort
 		*out = new(int32)
@@ -600,6 +605,11 @@ func (in *L3VNISpec) DeepCopyInto(out *L3VNISpec) {
 		in, out := &in.NodeSelector, &out.NodeSelector
 		*out = new(v1.LabelSelector)
 		(*in).DeepCopyInto(*out)
+	}
+	if in.RDAssignedNumber != nil {
+		in, out := &in.RDAssignedNumber, &out.RDAssignedNumber
+		*out = new(int32)
+		**out = **in
 	}
 	if in.VXLanPort != nil {
 		in, out := &in.VXLanPort, &out.VXLanPort
