@@ -85,6 +85,7 @@ spec:
     localCIDRs:
       - 192.169.11.0/24
   vni: 200
+  rdAssignedNumber: 121
 
 ```
 
@@ -94,6 +95,7 @@ spec:
 |-------|------|-------------|----------|
 | `vrf` | string | Name of the VRF (Virtual Routing and Forwarding) instance | Yes |
 | `vni` | integer | Virtual Network Identifier (1-16777215) | Yes |
+| `rdAssignedNumber` | integer | Assigned-number part of the EVPN route distinguisher (1-65535). Combined with each selected node's router ID. Omit to keep FRR's automatic RD. | No |
 | `underlayAddressFamily` | string | VTEP address family for this VNI (`IPv4` or `IPv6`). Defaults to available family (IPv4 preferred in dual-stack). | No |
 | `hostSession.asn` | integer | Router ASN for BGP session with host | Yes |
 | `hostSession.hostASN` | integer | Host ASN for BGP session | Yes |
@@ -158,6 +160,7 @@ L2VNIs provide Layer 2 connectivity across nodes using EVPN tunnels. Unlike L3VN
 | Field | Type | Description | Required |
 |-------|------|-------------|----------|
 | `vni` | integer | Virtual Network Identifier for the EVPN tunnel | Yes |
+| `rdAssignedNumber` | integer | Assigned-number part of the EVPN route distinguisher (1-65535). Combined with each selected node's router ID. Omit to keep FRR's automatic RD. | No |
 | `routingDomain` | object | Attaches this L2VNI to a routing domain provided by an L3VNI or L3VPN. When omitted, the L2VNI is a disconnected overlay (east-west L2 only, no VRF, no gateway). | No |
 | `routingDomain.type` | string | Type of routing domain provider (`L3VNI` or `L3VPN`) | Yes (when routingDomain is set) |
 | `routingDomain.l3vni.name` | string | metadata.name of the L3VNI that provides the routing domain | Yes (when type is `L3VNI`) |
@@ -183,6 +186,7 @@ metadata:
   namespace: openperouter-system
 spec:
   vni: 210
+  rdAssignedNumber: 120
   routingDomain:
     type: L3VNI
     l3vni:
