@@ -5,6 +5,7 @@ package conversion
 import (
 	"fmt"
 	"net"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -1111,28 +1112,6 @@ func TestValidateOverlayResourcesForNodes(t *testing.T) {
 				"duplicate vni 100:L3VNI/l3vni1",
 		},
 		{
-			name:  "duplicate RDAssignedNumber between L3VPN and L2VNI",
-			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
-			l2vnis: []v1alpha1.L2VNI{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "l2vni1"},
-					Spec:       v1alpha1.L2VNISpec{VNI: 100},
-				},
-			},
-			l3vpns: []v1alpha1.L3VPN{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vpn1"},
-					Spec: v1alpha1.L3VPNSpec{
-						RDAssignedNumber: 100,
-						VRF:              "red",
-						ImportRTs:        []v1alpha1.RouteTarget{"65000:100"},
-					},
-				},
-			},
-			wantErrStr: "duplicate VNIs found in L2VNIs for node \"node1\": L2VNI/l2vni1: " +
-				"duplicate vni 100:L3VPN/vpn1",
-		},
-		{
 			name:  "duplicate VRF across L3VNIs",
 			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
 			l3vnis: []v1alpha1.L3VNI{
@@ -1537,7 +1516,7 @@ func TestValidateOverlayResourcesForNodes(t *testing.T) {
 					},
 				},
 			},
-			wantErrStr: "duplicate L3VPNs found for node \"node1\": L3VPN/vpn2: duplicate rdAssignedNumber 100:L3VPN/vpn1",
+			wantErrStr: "duplicate L3VPNs found for node \"node1\": L3VPN/vpn2: duplicate configured rdAssignedNumber 100: L3VPN/vpn2 conflicts with L3VPN/vpn1",
 		},
 	}
 
@@ -1752,6 +1731,226 @@ func TestValidateRouteTarget(t *testing.T) {
 			}
 			if err != nil {
 				t.Fatalf("validateRouteTarget() expected no error but got: %v", err)
+			}
+		})
+	}
+}
+
+func TestFilterUniqueL3VNIRDNumbers(t *testing.T) {
+	tests := []struct {
+		name    string
+		vnis    []v1alpha1.L3VNI
+		want    []v1alpha1.L3VNI
+		wantErr string
+	}{
+		{
+			name: "nil input",
+			want: []v1alpha1.L3VNI{},
+		},
+		{
+			name: "empty input",
+			vnis: []v1alpha1.L3VNI{},
+			want: []v1alpha1.L3VNI{},
+		},
+		{
+			name: "automatic RDs",
+			vnis: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "first"},
+					Spec:       v1alpha1.L3VNISpec{VNI: 100},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "second"},
+					Spec:       v1alpha1.L3VNISpec{VNI: 200},
+				},
+			},
+			want: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "first"},
+					Spec:       v1alpha1.L3VNISpec{VNI: 100},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "second"},
+					Spec:       v1alpha1.L3VNISpec{VNI: 200},
+				},
+			},
+		},
+		{
+			name: "distinct RD numbers",
+			vnis: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "first"},
+					Spec:       v1alpha1.L3VNISpec{VNI: 100, RDAssignedNumber: new(int32(12))},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "second"},
+					Spec:       v1alpha1.L3VNISpec{VNI: 200, RDAssignedNumber: new(int32(13))},
+				},
+			},
+			want: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "first"},
+					Spec:       v1alpha1.L3VNISpec{VNI: 100, RDAssignedNumber: new(int32(12))},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "second"},
+					Spec:       v1alpha1.L3VNISpec{VNI: 200, RDAssignedNumber: new(int32(13))},
+				},
+			},
+		},
+		{
+			name: "duplicate RD number preserves first and automatic resources",
+			vnis: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "first"},
+					Spec:       v1alpha1.L3VNISpec{VNI: 100, RDAssignedNumber: new(int32(12))},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "second"},
+					Spec:       v1alpha1.L3VNISpec{VNI: 200, RDAssignedNumber: new(int32(12))},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "automatic"},
+					Spec:       v1alpha1.L3VNISpec{VNI: 300},
+				},
+			},
+			want: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "first"},
+					Spec:       v1alpha1.L3VNISpec{VNI: 100, RDAssignedNumber: new(int32(12))},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "automatic"},
+					Spec:       v1alpha1.L3VNISpec{VNI: 300},
+				},
+			},
+			wantErr: "L3VNI/second: duplicate configured rdAssignedNumber 12: L3VNI/second conflicts with L3VNI/first",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := FilterUniqueL3VNIRDNumbers(tt.vnis)
+			if !reflect.DeepEqual(tt.want, got) {
+				t.Fatalf("filtered VNIs = %+v, want %+v", got, tt.want)
+			}
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			if err == nil || err.Error() != tt.wantErr {
+				t.Fatalf("error = %v, want %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestFilterUniqueL2VNIRDNumbers(t *testing.T) {
+	tests := []struct {
+		name    string
+		vnis    []v1alpha1.L2VNI
+		want    []v1alpha1.L2VNI
+		wantErr string
+	}{
+		{
+			name: "nil input",
+			want: []v1alpha1.L2VNI{},
+		},
+		{
+			name: "empty input",
+			vnis: []v1alpha1.L2VNI{},
+			want: []v1alpha1.L2VNI{},
+		},
+		{
+			name: "automatic RDs",
+			vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "first"},
+					Spec:       v1alpha1.L2VNISpec{VNI: 100},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "second"},
+					Spec:       v1alpha1.L2VNISpec{VNI: 200},
+				},
+			},
+			want: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "first"},
+					Spec:       v1alpha1.L2VNISpec{VNI: 100},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "second"},
+					Spec:       v1alpha1.L2VNISpec{VNI: 200},
+				},
+			},
+		},
+		{
+			name: "distinct RD numbers",
+			vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "first"},
+					Spec:       v1alpha1.L2VNISpec{VNI: 100, RDAssignedNumber: new(int32(12))},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "second"},
+					Spec:       v1alpha1.L2VNISpec{VNI: 200, RDAssignedNumber: new(int32(13))},
+				},
+			},
+			want: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "first"},
+					Spec:       v1alpha1.L2VNISpec{VNI: 100, RDAssignedNumber: new(int32(12))},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "second"},
+					Spec:       v1alpha1.L2VNISpec{VNI: 200, RDAssignedNumber: new(int32(13))},
+				},
+			},
+		},
+		{
+			name: "duplicate RD number preserves first and automatic resources",
+			vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "first"},
+					Spec:       v1alpha1.L2VNISpec{VNI: 100, RDAssignedNumber: new(int32(12))},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "second"},
+					Spec:       v1alpha1.L2VNISpec{VNI: 200, RDAssignedNumber: new(int32(12))},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "automatic"},
+					Spec:       v1alpha1.L2VNISpec{VNI: 300},
+				},
+			},
+			want: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "first"},
+					Spec:       v1alpha1.L2VNISpec{VNI: 100, RDAssignedNumber: new(int32(12))},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "automatic"},
+					Spec:       v1alpha1.L2VNISpec{VNI: 300},
+				},
+			},
+			wantErr: "L2VNI/second: duplicate configured rdAssignedNumber 12: L2VNI/second conflicts with L2VNI/first",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := FilterUniqueL2VNIRDNumbers(tt.vnis)
+			if !reflect.DeepEqual(tt.want, got) {
+				t.Fatalf("filtered VNIs = %+v, want %+v", got, tt.want)
+			}
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			if err == nil || err.Error() != tt.wantErr {
+				t.Fatalf("error = %v, want %q", err, tt.wantErr)
 			}
 		})
 	}

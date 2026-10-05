@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"maps"
 	"net"
 	"regexp"
 	"slices"
@@ -89,8 +88,7 @@ func FilterValidL2VNIs(l2Vnis []v1alpha1.L2VNI) ([]v1alpha1.L2VNI, error) {
 
 // FilterUniqueL3VNIs removes L3VNIs with duplicate VNI numbers. It returns
 // the filtered L3VNIs as well as a map containing the unique VNI numbers
-// (which is also the allocated Route Distinguisher Assigned Number) and the
-// name of the corresponding L3VNI.
+// and the name of the corresponding L3VNI for L2VNI conflict checks.
 func FilterUniqueL3VNIs(l3Vnis []v1alpha1.L3VNI) ([]v1alpha1.L3VNI, map[int32]string, error) {
 	existingVNIs := map[int32]string{}
 	reason := v1alpha1.FailedResourceReasonValidationFailed
@@ -115,18 +113,17 @@ func FilterUniqueL3VNIs(l3Vnis []v1alpha1.L3VNI) ([]v1alpha1.L3VNI, map[int32]st
 }
 
 // FilterUniqueL2VNIs removes L2VNIs with duplicate VNI numbers.
-// L2VNIs that collide with an existing L3VNI or L3VPN Route Distinguisher
-// AssignedNumber are discarded.
+// L2VNIs that collide with an existing L3VNI VNI number are discarded.
 func FilterUniqueL2VNIs(
 	l2Vnis []v1alpha1.L2VNI,
-	allocatedRDAssignedNumberToOwner map[int32]string,
+	allocatedVNIs map[int32]string,
 ) ([]v1alpha1.L2VNI, error) {
 	reason := v1alpha1.FailedResourceReasonValidationFailed
 	var allErrors []error
 
 	var validL2 []v1alpha1.L2VNI
 	for _, l2 := range l2Vnis {
-		if existing, duplicateFound := allocatedRDAssignedNumberToOwner[l2.Spec.VNI]; duplicateFound {
+		if existing, duplicateFound := allocatedVNIs[l2.Spec.VNI]; duplicateFound {
 			allErrors = append(allErrors, &openpeerrors.ResourceError{
 				Obj: v1alpha1.FailedResource{
 					Kind: "L2VNI", Name: l2.Name, Reason: reason,
@@ -135,11 +132,61 @@ func FilterUniqueL2VNIs(
 			})
 			continue
 		}
-		allocatedRDAssignedNumberToOwner[l2.Spec.VNI] = "L2VNI/" + l2.Name
+		allocatedVNIs[l2.Spec.VNI] = "L2VNI/" + l2.Name
 		validL2 = append(validL2, l2)
 	}
 
 	return validL2, errors.Join(allErrors...)
+}
+
+// FilterUniqueL3VNIRDNumbers removes L3VNIs with duplicate configured RD assigned numbers.
+func FilterUniqueL3VNIRDNumbers(vnis []v1alpha1.L3VNI) ([]v1alpha1.L3VNI, error) {
+	owners := map[int32]string{}
+	valid := []v1alpha1.L3VNI{}
+	var errs []error
+	for _, resource := range vnis {
+		if resource.Spec.RDAssignedNumber == nil {
+			valid = append(valid, resource)
+			continue
+		}
+		number := *resource.Spec.RDAssignedNumber
+		identity := "L3VNI/" + resource.Name
+		if existing, found := owners[number]; found {
+			errs = append(errs, &openpeerrors.ResourceError{Obj: v1alpha1.FailedResource{
+				Kind: "L3VNI", Name: resource.Name, Reason: v1alpha1.FailedResourceReasonValidationFailed,
+				Message: fmt.Sprintf("duplicate configured rdAssignedNumber %d: %s conflicts with %s", number, identity, existing),
+			}})
+			continue
+		}
+		owners[number] = identity
+		valid = append(valid, resource)
+	}
+	return valid, errors.Join(errs...)
+}
+
+// FilterUniqueL2VNIRDNumbers removes L2VNIs with duplicate configured RD assigned numbers.
+func FilterUniqueL2VNIRDNumbers(vnis []v1alpha1.L2VNI) ([]v1alpha1.L2VNI, error) {
+	owners := map[int32]string{}
+	valid := []v1alpha1.L2VNI{}
+	var errs []error
+	for _, resource := range vnis {
+		if resource.Spec.RDAssignedNumber == nil {
+			valid = append(valid, resource)
+			continue
+		}
+		number := *resource.Spec.RDAssignedNumber
+		identity := "L2VNI/" + resource.Name
+		if existing, found := owners[number]; found {
+			errs = append(errs, &openpeerrors.ResourceError{Obj: v1alpha1.FailedResource{
+				Kind: "L2VNI", Name: resource.Name, Reason: v1alpha1.FailedResourceReasonValidationFailed,
+				Message: fmt.Sprintf("duplicate configured rdAssignedNumber %d: %s conflicts with %s", number, identity, existing),
+			}})
+			continue
+		}
+		owners[number] = identity
+		valid = append(valid, resource)
+	}
+	return valid, errors.Join(errs...)
 }
 
 // validateL2VNI validates a single L2VNI's fields (HostMaster, GatewayIPs, route targets).
@@ -207,20 +254,28 @@ func validateOverlayResourcesForNode(node corev1.Node, l2vnis []v1alpha1.L2VNI, 
 		return fmt.Errorf("failed to validate l2vnis for node %q: %w", node.Name, err)
 	}
 
-	var allocatedRDAssignedNumberToOwner map[int32]string
-	validL3VNIs, allocatedRDAssignedNumberToOwner, err = FilterUniqueL3VNIs(validL3VNIs)
+	validL3VPNs, err = FilterUniqueL3VPNRDNumbers(validL3VPNs)
+	if err != nil {
+		return fmt.Errorf("duplicate L3VPNs found for node %q: %w", node.Name, err)
+	}
+
+	validL3VNIs, err = FilterUniqueL3VNIRDNumbers(validL3VNIs)
+	if err != nil {
+		return fmt.Errorf("duplicate L3VNI RD numbers found for node %q: %w", node.Name, err)
+	}
+
+	validL2VNIs, err = FilterUniqueL2VNIRDNumbers(validL2VNIs)
+	if err != nil {
+		return fmt.Errorf("duplicate L2VNI RD numbers found for node %q: %w", node.Name, err)
+	}
+
+	var allocatedVNIs map[int32]string
+	validL3VNIs, allocatedVNIs, err = FilterUniqueL3VNIs(validL3VNIs)
 	if err != nil {
 		return fmt.Errorf("duplicate L3VNIs found for node %q: %w", node.Name, err)
 	}
 
-	var allocatedRDAssignedNumberToVPN map[int32]string
-	validL3VPNs, allocatedRDAssignedNumberToVPN, err = FilterUniqueL3VPNs(validL3VPNs, allocatedRDAssignedNumberToOwner)
-	if err != nil {
-		return fmt.Errorf("duplicate L3VPNs found for node %q: %w", node.Name, err)
-	}
-	maps.Copy(allocatedRDAssignedNumberToOwner, allocatedRDAssignedNumberToVPN)
-
-	validL2VNIs, err = FilterUniqueL2VNIs(validL2VNIs, allocatedRDAssignedNumberToOwner)
+	validL2VNIs, err = FilterUniqueL2VNIs(validL2VNIs, allocatedVNIs)
 	if err != nil {
 		return fmt.Errorf("duplicate VNIs found in L2VNIs for node %q: %w", node.Name, err)
 	}

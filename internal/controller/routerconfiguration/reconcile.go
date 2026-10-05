@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maps"
 	"slices"
 
 	"k8s.io/apimachinery/pkg/types"
@@ -62,16 +61,22 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 	validL2VNIs, err = conversion.FilterValidL2VNIs(apiConfig.L2VNIs)
 	resourceErrors = append(resourceErrors, err)
 
-	var allocatedRDAssignedNumberToOwner map[int32]string
-	validL3VNIs, allocatedRDAssignedNumberToOwner, err = conversion.FilterUniqueL3VNIs(validL3VNIs)
+	validL3VPNs, err = conversion.FilterUniqueL3VPNRDNumbers(validL3VPNs)
 	resourceErrors = append(resourceErrors, err)
 
-	var allocatedRDAssignedNumberToVPN map[int32]string
-	validL3VPNs, allocatedRDAssignedNumberToVPN, err = conversion.FilterUniqueL3VPNs(validL3VPNs, allocatedRDAssignedNumberToOwner)
+	validL3VNIs, err = conversion.FilterUniqueL3VNIRDNumbers(validL3VNIs)
 	resourceErrors = append(resourceErrors, err)
-	maps.Copy(allocatedRDAssignedNumberToOwner, allocatedRDAssignedNumberToVPN)
 
-	validL2VNIs, err = conversion.FilterUniqueL2VNIs(validL2VNIs, allocatedRDAssignedNumberToOwner)
+	validL2VNIs, err = conversion.FilterUniqueL2VNIRDNumbers(validL2VNIs)
+	resourceErrors = append(resourceErrors, err)
+
+	// Cross resource validation should go below here
+
+	var allocatedVNIs map[int32]string
+	validL3VNIs, allocatedVNIs, err = conversion.FilterUniqueL3VNIs(validL3VNIs)
+	resourceErrors = append(resourceErrors, err)
+
+	validL2VNIs, err = conversion.FilterUniqueL2VNIs(validL2VNIs, allocatedVNIs)
 	resourceErrors = append(resourceErrors, err)
 
 	var vrfToVNI map[string]types.NamespacedName
@@ -81,10 +86,10 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 	validL3VPNs, err = conversion.FilterUniqueVRFsForL3VPNs(validL3VPNs, vrfToVNI)
 	resourceErrors = append(resourceErrors, err)
 
-	validL2VNIs, err = filterL2VNIsWithInvalidRoutingDomain(validL2VNIs, validL3VNIs, validL3VPNs)
+	validL3VNIs, validL3VPNs, validL2VNIs, err = conversion.FilterValidVRFSubnets(validL3VNIs, validL3VPNs, validL2VNIs)
 	resourceErrors = append(resourceErrors, err)
 
-	validL3VNIs, validL3VPNs, validL2VNIs, err = conversion.FilterValidVRFSubnets(validL3VNIs, validL3VPNs, validL2VNIs)
+	validL2VNIs, err = filterL2VNIsWithInvalidRoutingDomain(validL2VNIs, validL3VNIs, validL3VPNs)
 	resourceErrors = append(resourceErrors, err)
 
 	var validPassthrough []v1alpha1.L3Passthrough
