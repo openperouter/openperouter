@@ -9,6 +9,7 @@ package groutdra
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -73,7 +74,7 @@ func (d *Driver) prepare(ctx context.Context, claim *resourceapi.ResourceClaim) 
 		if result.Driver != DriverName {
 			continue
 		}
-		dev, err := d.prepareOne(ctx, claim.UID, result)
+		dev, err := d.prepareOne(ctx, claim, result)
 		if err != nil {
 			return kubeletplugin.PrepareResult{Err: err}
 		}
@@ -85,7 +86,8 @@ func (d *Driver) prepare(ctx context.Context, claim *resourceapi.ResourceClaim) 
 	return kubeletplugin.PrepareResult{Devices: devices}
 }
 
-func (d *Driver) prepareOne(ctx context.Context, uid types.UID, result resourceapi.DeviceRequestAllocationResult) (kubeletplugin.Device, error) {
+func (d *Driver) prepareOne(ctx context.Context, claim *resourceapi.ResourceClaim, result resourceapi.DeviceRequestAllocationResult) (kubeletplugin.Device, error) {
+	uid := claim.UID
 	request := result.Request
 	dir := ClaimDir(uid, request)
 	sock := SocketPath(uid, request)
@@ -98,10 +100,16 @@ func (d *Driver) prepareOne(ctx context.Context, uid types.UID, result resourcea
 	}
 	_ = os.Chmod(dir, 0o777)
 	_ = os.Chown(dir, QEMUUID, QEMUGID)
+	podClaimName := claim.Annotations["resource.kubernetes.io/pod-claim-name"]
+	if podClaimName != "" {
+		if err := writeKubeVirtMetadata(claim, result, podClaimName, PodSocketPath(request)); err != nil {
+			return kubeletplugin.Device{}, err
+		}
+	}
 
 	// QEMU binds the socket (server). Creating grout client=1 before that
 	// is a one-shot ENOENT on grout 0.17. Do not CreateVhostPort until the socket exists.
-	d.startClientWhenSocketReady(uid, name, sock)
+	d.startClaimWorkers(uid, name, sock, claim.Namespace, claim.Name, podClaimName, request)
 
 	cdiID, err := writeCDISpec(uid, dir, podMount)
 	if err != nil {
@@ -123,7 +131,36 @@ func (d *Driver) prepareOne(ctx context.Context, uid types.UID, result resourcea
 	}, nil
 }
 
-func (d *Driver) startClientWhenSocketReady(uid types.UID, portName, sock string) {
+// writeKubeVirtMetadata publishes the same KEP-5304 payload synchronously for
+// virt-handler. This avoids a race with kubeletplugin's asynchronous metadata
+// persistence while retaining that standard path for ordinary Kubernetes Pods.
+func writeKubeVirtMetadata(claim *resourceapi.ResourceClaim, result resourceapi.DeviceRequestAllocationResult, podClaimName, socketPath string) error {
+	target := KubeVirtMetadataProjectionPath(podClaimName, result.Request)
+	payload := map[string]any{
+		"kind":         "DeviceMetadata",
+		"apiVersion":   "metadata.resource.k8s.io/v1alpha1",
+		"metadata":     map[string]any{"name": claim.Name, "namespace": claim.Namespace, "uid": claim.UID, "generation": 1},
+		"podClaimName": podClaimName,
+		"requests": []any{map[string]any{"name": result.Request, "devices": []any{map[string]any{
+			"driver": result.Driver, "pool": result.Pool, "name": result.Device,
+			"attributes": map[string]any{VhostPathAttr: map[string]string{"string": socketPath}},
+		}}}},
+	}
+	data, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return err
+	}
+	tmp := target + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, target)
+}
+
+func (d *Driver) startClaimWorkers(uid types.UID, portName, sock, namespace, claimName, podClaimName, request string) {
 	d.cancelPending(uid)
 	ctx, cancel := context.WithCancel(context.Background())
 	d.mu.Lock()
@@ -135,6 +172,43 @@ func (d *Driver) startClientWhenSocketReady(uid types.UID, portName, sock string
 			slog.Info("stop attaching grout vhost client", "uid", uid, "err", err)
 		}
 	}()
+	if podClaimName != "" {
+		go func() {
+			if err := projectKubeVirtMetadata(ctx, namespace, claimName, podClaimName, request); err != nil {
+				slog.Info("stop projecting KubeVirt DRA metadata", "claim", claimName, "err", err)
+			}
+		}()
+	}
+}
+
+// projectKubeVirtMetadata bridges the kubeletplugin metadata stream to the
+// host path consumed by virt-handler. It is intentionally additive: vanilla
+// Kubernetes continues to use the standard CDI metadata projection, while
+// OpenShift Virtualization can read the same stream before it launches QEMU.
+func projectKubeVirtMetadata(ctx context.Context, namespace, claimName, podClaimName, request string) error {
+	source := MetadataSourcePath(namespace, claimName, request)
+	target := KubeVirtMetadataProjectionPath(podClaimName, request)
+	for {
+		data, err := os.ReadFile(source)
+		if err == nil {
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				return err
+			}
+			tmp := target + ".tmp"
+			if err := os.WriteFile(tmp, data, 0o644); err != nil {
+				return err
+			}
+			return os.Rename(tmp, target)
+		}
+		if !os.IsNotExist(err) {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(socketPollInterval):
+		}
+	}
 }
 
 func (d *Driver) attachClientUntilRunning(ctx context.Context, uid types.UID, portName, sock string) error {
