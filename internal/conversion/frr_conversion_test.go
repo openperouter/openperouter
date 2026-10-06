@@ -2362,7 +2362,7 @@ func TestAPItoFRR(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:      "ISIS enable passive only",
+			name:      "ISIS features are enabled",
 			nodeIndex: 0,
 			underlays: []v1alpha1.Underlay{
 				{
@@ -2374,7 +2374,8 @@ func TestAPItoFRR(t *testing.T) {
 							BaseNet: "49.0001.0002.0003.0004.00",
 							Level:   new(int32(1)),
 							Features: []v1alpha1.ISISFeature{
-								advertisePassiveOnly,
+								v1alpha1.AdvertisePassiveOnly,
+								v1alpha1.MultiTopology,
 							},
 							Interfaces: []v1alpha1.ISISInterface{
 								{Name: "eth0", IPFamily: new(v1alpha1.IPFamilyDualStack)},
@@ -2394,6 +2395,7 @@ func TestAPItoFRR(t *testing.T) {
 						Net:                  frr.MustParseISISNet("49.0001.0002.0003.0004.00"),
 						Level:                1,
 						AdvertisePassiveOnly: true,
+						MultiTopology:        true,
 						Interfaces: []frr.ISISInterface{
 							{Name: "eth0", IPv4: true, IPv6: true},
 							{Name: "eth1", IPv4: false, IPv6: true},
