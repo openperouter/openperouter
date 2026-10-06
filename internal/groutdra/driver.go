@@ -10,12 +10,15 @@ package groutdra
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
+
+	"golang.org/x/sys/unix"
 
 	resourceapi "k8s.io/api/resource/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -100,6 +103,9 @@ func (d *Driver) prepareOne(ctx context.Context, claim *resourceapi.ResourceClai
 	}
 	_ = os.Chmod(dir, 0o777)
 	_ = os.Chown(dir, QEMUUID, QEMUGID)
+	if err := labelVhostDir(dir); err != nil {
+		return kubeletplugin.Device{}, err
+	}
 	podClaimName := claim.Annotations["resource.kubernetes.io/pod-claim-name"]
 	if podClaimName != "" {
 		if err := writeKubeVirtMetadata(claim, result, podClaimName, PodSocketPath(request)); err != nil {
@@ -129,6 +135,23 @@ func (d *Driver) prepareOne(ctx context.Context, claim *resourceapi.ResourceClai
 			},
 		},
 	}, nil
+}
+
+// labelVhostDir makes the CDI-mounted socket directory writable by QEMU on
+// SELinux enforcing nodes. Without this, host tmpfs directories inherit
+// container_var_run_t and QEMU's container_t domain is denied bind(2).
+// Do not probe /sys/fs/selinux/enforce: a privileged driver Pod can modify the
+// label on its hostPath even when selinuxfs is not mounted in that Pod. Instead
+// attempt the xattr directly and treat an unsupported SELinux xattr as the
+// normal non-SELinux (vanilla Kubernetes) case.
+func labelVhostDir(dir string) error {
+	if err := unix.Setxattr(dir, "security.selinux", []byte("system_u:object_r:container_file_t:s0"), 0); err != nil {
+		if errors.Is(err, unix.ENOTSUP) || errors.Is(err, unix.EOPNOTSUPP) {
+			return nil
+		}
+		return fmt.Errorf("label vhost directory %s: %w", dir, err)
+	}
+	return nil
 }
 
 // writeKubeVirtMetadata publishes the same KEP-5304 payload synchronously for
