@@ -88,6 +88,8 @@ spec:
           mountPath: /var/run/grout-vhost
         - name: cdi
           mountPath: /var/run/cdi
+        - name: dra-device-attributes
+          mountPath: /var/run/kubernetes.io/dra-device-attributes
       volumes:
       - name: kubelet-plugin
         hostPath:
@@ -109,4 +111,8 @@ spec:
       - name: cdi
         hostPath:
           path: /var/run/cdi
+          type: DirectoryOrCreate
+      - name: dra-device-attributes
+        hostPath:
+          path: /var/run/kubernetes.io/dra-device-attributes
           type: DirectoryOrCreate

@@ -43,11 +43,12 @@ func writeCDISpec(claimUID types.UID, hostDir, containerDir string) (string, err
 		Devices: []cdiDevice{{
 			Name: string(claimUID),
 			ContainerEdits: cdiEdits{
-				Mounts: []cdiMount{{
-					HostPath:      hostDir,
-					ContainerPath: containerDir,
-					Options:       []string{"rbind"},
-				}},
+				Mounts: []cdiMount{
+					{HostPath: hostDir, ContainerPath: containerDir, Options: []string{"rbind"}},
+					// KubeVirt's vhostuser binding is evaluated in virt-launcher.
+					// Mount the KEP-5304 metadata root alongside the socket directory.
+					{HostPath: KubeVirtMetadataRoot, ContainerPath: KubeVirtMetadataRoot, Options: []string{"rbind", "ro"}},
+				},
 			},
 		}},
 	}

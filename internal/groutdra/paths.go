@@ -17,6 +17,13 @@ const (
 
 	SocketFileName = "vhost.sock"
 	HostVhostRoot  = "/var/run/grout-vhost"
+	// PluginDataRoot is where kubeletplugin persists the authoritative KEP-5304
+	// metadata stream for this driver.
+	PluginDataRoot = "/var/lib/kubelet/plugins/" + DriverName
+	// KubeVirtMetadataRoot is the host path which virt-handler uses for DRA
+	// metadata. Kubelet normally projects this into workload containers, but
+	// virt-handler consumes it before the launcher exists.
+	KubeVirtMetadataRoot = "/var/run/kubernetes.io/dra-device-attributes"
 	// PodVhostRoot is the container mount root. Per-request sockets land at
 	// PodVhostRoot/<requestName>/vhost.sock (same shape as ovsdpdk DRA).
 	PodVhostRoot  = "/var/run/grout-vhost"
@@ -73,4 +80,16 @@ func CDIDeviceID(claimUID types.UID) string {
 
 func CDISpecPath(claimUID types.UID) string {
 	return filepath.Join(CDIDir, fmt.Sprintf("%s-%s-%s.json", CDIVendor, CDIClass, claimUID))
+}
+
+// MetadataSourcePath is the kubeletplugin-owned metadata stream for a claim.
+func MetadataSourcePath(namespace, claimName, requestName string) string {
+	return filepath.Join(PluginDataRoot, "dra-device-metadata", namespace+"_"+claimName, requestName, "metadata.json")
+}
+
+// KubeVirtMetadataProjectionPath is the KEP-5304 path that KubeVirt uses for
+// a claim created from a ResourceClaimTemplate. podClaimName is the name in
+// pod.spec.resourceClaims, not the generated ResourceClaim name.
+func KubeVirtMetadataProjectionPath(podClaimName, requestName string) string {
+	return filepath.Join(KubeVirtMetadataRoot, "resourceclaimtemplates", podClaimName, requestName, DriverName+"-metadata.json")
 }
