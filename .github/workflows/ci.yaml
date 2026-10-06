@@ -86,6 +86,7 @@ jobs:
 
   commitlint:
     runs-on: ubuntu-22.04
+    if: github.event_name != 'pull_request' || github.event.pull_request.user.login != 'dependabot[bot]'
     steps:
       - uses: actions/checkout@v7
         with:
