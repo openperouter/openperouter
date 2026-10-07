@@ -129,6 +129,16 @@ Finally, running `make bundle` updates the operator manifests.
 
 ## Updating Dependencies
 
+Renovate opens dependency update pull requests weekly for all Go modules and
+GitHub Actions. Its configuration is in `.github/renovate.json`.
+The `gomodTidyAll` option runs `go mod tidy` before creating the pull request and
+includes the resulting `go.mod` and `go.sum` changes in the commit. When the root
+module changes, Renovate also tidies `e2etests`, which depends on it through a
+local `replace` directive. Renovate automatically merges dependency update pull
+requests after all reported CI checks pass. Updates with failing checks remain
+open for review. Renovate performs the merge itself, so GitHub's native
+auto-merge setting is not required.
+
 ### Kubernetes Dependencies
 
 To update all k8s.io and sigs.k8s.io dependencies to a specific version:

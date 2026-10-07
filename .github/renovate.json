@@ -1,0 +1,18 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "schedule:weekly",
+    ":gitSignOff"
+  ],
+  "enabledManagers": ["gomod", "github-actions"],
+  "postUpdateOptions": ["gomodTidyAll"],
+  "automerge": true,
+  "automergeType": "pr",
+  "platformAutomerge": false,
+  "assignees": ["maiqueb"],
+  "labels": ["kind/cleanup"],
+  "semanticCommits": "enabled",
+  "prConcurrentLimit": 5,
+  "prBodyNotes": ["```release-note\nNONE\n```"]
+}
