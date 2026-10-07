@@ -71,18 +71,23 @@ func AddressesForInterface(ifaceName string, filters ...AddressFilter) ([]netlin
 	return addrs, nil
 }
 
+// addrList is a variable so that unit tests can replace it.
+var addrList = netlink.AddrList
+
 // interfaceHasIP tells if the given link has the provided ip.
 func interfaceHasIP(link netlink.Link, address string) (bool, error) {
-	_, err := netlink.ParseAddr(address)
-	if err != nil {
-		return false, fmt.Errorf("interfaceHasIP: failed to parse address %s for interface %s: %w", address, link.Attrs().Name, err)
-	}
-	addresses, err := netlink.AddrList(link, netlink.FAMILY_ALL)
+	addresses, err := addrList(link, netlink.FAMILY_ALL)
 	if err != nil {
 		return false, fmt.Errorf("interfaceHasIP: failed to list addresses for interface %s: %w", link.Attrs().Name, err)
 	}
+	desiredIP, err := netlink.ParseAddr(address)
+	if err != nil {
+		return false, fmt.Errorf("interfaceHasIP: failed to parse address %s for interface %s: %w", address, link.Attrs().Name, err)
+	}
+	desiredIPMask, _ := desiredIP.Mask.Size()
 	for _, a := range addresses {
-		if a.IPNet.String() == address {
+		mask, _ := a.Mask.Size()
+		if a.IP.Equal(desiredIP.IP) && mask == desiredIPMask {
 			return true, nil
 		}
 	}
