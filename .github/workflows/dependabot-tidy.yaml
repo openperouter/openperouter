@@ -1,0 +1,62 @@
+name: Tidy Dependabot Go updates
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    paths:
+      - go.mod
+      - go.sum
+      - e2etests/go.mod
+      - e2etests/go.sum
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dependabot-tidy-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  tidy:
+    if: >-
+      github.actor == 'dependabot[bot]' &&
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Dependabot update
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set up Go for the main module
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Tidy the main module
+        run: go mod tidy
+
+      - name: Set up Go for e2etests
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: e2etests/go.mod
+          cache: false
+
+      - name: Tidy e2etests
+        working-directory: e2etests
+        run: go mod tidy
+
+      - name: Commit module changes
+        env:
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          git add go.mod go.sum e2etests/go.mod e2etests/go.sum
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit --signoff -m 'chore(deps): tidy Go modules'
+          git push origin "HEAD:refs/heads/$PR_BRANCH"

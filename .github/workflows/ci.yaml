@@ -21,6 +21,58 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  tidy:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    env:
+      DEPENDABOT_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]' }}
+    outputs:
+      tidied: ${{ steps.modules.outputs.artifact-id }}
+    steps:
+      - name: Checkout
+        if: env.DEPENDABOT_PR == 'true'
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Go for the main module
+        if: env.DEPENDABOT_PR == 'true'
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Tidy the main module
+        if: env.DEPENDABOT_PR == 'true'
+        run: go mod tidy
+
+      - name: Set up Go for e2etests
+        if: env.DEPENDABOT_PR == 'true'
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: e2etests/go.mod
+          cache: false
+
+      - name: Tidy e2etests
+        if: env.DEPENDABOT_PR == 'true'
+        working-directory: e2etests
+        run: go mod tidy
+
+      - name: Upload tidied modules
+        if: env.DEPENDABOT_PR == 'true'
+        id: modules
+        uses: actions/upload-artifact@v7
+        with:
+          name: tidied-go-modules
+          retention-days: 1
+          if-no-files-found: error
+          path: |
+            go.mod
+            go.sum
+            e2etests/go.mod
+            e2etests/go.sum
+
   feature-needs-docs:
     runs-on: ubuntu-22.04
     if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'kind/feature')
@@ -121,10 +173,16 @@ jobs:
 
   unit-tests:
     runs-on: ubuntu-22.04
-    needs: build-kind-node-image
+    needs: [build-kind-node-image, tidy]
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+
+      - name: Download tidied modules
+        if: needs.tidy.outputs.tidied != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: tidied-go-modules
 
       - uses: actions/setup-go@v7
         with:
@@ -168,11 +226,18 @@ jobs:
 
   build-test-images:
     runs-on: ubuntu-22.04
+    needs: tidy
     strategy:
       fail-fast: true
     steps:
       - name: Code checkout
         uses: actions/checkout@v7
+
+      - name: Download tidied modules
+        if: needs.tidy.outputs.tidied != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: tidied-go-modules
       - name: Setup docker buildx
         uses: docker/setup-buildx-action@v4
 
@@ -194,11 +259,18 @@ jobs:
 
   build-grout-images:
     runs-on: ubuntu-22.04
+    needs: tidy
     strategy:
       fail-fast: true
     steps:
       - name: Code checkout
         uses: actions/checkout@v7
+
+      - name: Download tidied modules
+        if: needs.tidy.outputs.tidied != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: tidied-go-modules
       - name: Setup docker buildx
         uses: docker/setup-buildx-action@v4
 
@@ -223,6 +295,7 @@ jobs:
     env:
       NODE_IMAGE: quay.io/openperouter/kind-node-openperouter:${{ needs.build-kind-node-image.outputs.kind-node-version }}
     needs:
+      - tidy
       - build-kind-node-image
       - unit-tests
       - build-test-images
@@ -247,6 +320,12 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v7
+
+      - name: Download tidied modules
+        if: needs.tidy.outputs.tidied != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: tidied-go-modules
 
       - uses: actions/setup-go@v7
         with:
@@ -376,6 +455,7 @@ jobs:
   e2etests-qemu-grout:
     runs-on: ubuntu-24.04
     needs:
+      - tidy
       - build-grout-images
     permissions:
       contents: read
@@ -397,6 +477,12 @@ jobs:
         uses: actions/checkout@v7
         with:
           persist-credentials: false
+
+      - name: Download tidied modules
+        if: needs.tidy.outputs.tidied != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: tidied-go-modules
 
       - uses: actions/setup-go@v7
         with:
@@ -460,6 +546,7 @@ jobs:
     env:
       NODE_IMAGE: quay.io/openperouter/kind-node-openperouter:v1.32.2
     needs:
+      - tidy
       - unit-tests
       - build-test-images
 
@@ -479,6 +566,12 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v7
+
+      - name: Download tidied modules
+        if: needs.tidy.outputs.tidied != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: tidied-go-modules
 
       - uses: actions/setup-go@v7
         with:
