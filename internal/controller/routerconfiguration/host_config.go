@@ -116,36 +116,8 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 		configuredL3VPNs = append(configuredL3VPNs, l3vpn)
 	}
 
-	var configuredL2VNIs []hostnetwork.L2VNIParams
-	for _, vni := range hostConfig.L2VNIs {
-		if failedL3Domains.Has(vni.VRF) {
-			resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
-				Obj: v1alpha1.FailedResource{
-					Kind: openpeerrors.KindL2VNI, Name: vni.Name, Reason: reason,
-					Message: fmt.Sprintf("L3 domain %q failed netlink provisioning", vni.VRF),
-				},
-			})
-			continue
-		}
-		slog.InfoContext(ctx, "setting up L2VNI", "vni", vni.VNI)
-		if err := hostnetwork.SetupL2VNI(ctx, vni); err != nil {
-			resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
-				Obj: v1alpha1.FailedResource{
-					Kind: openpeerrors.KindL2VNI, Name: vni.Name, Reason: reason, Message: err.Error(),
-				},
-			})
-			continue
-		}
-		if err := bridgerefresh.StartForVNI(ctx, vni); err != nil {
-			resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
-				Obj: v1alpha1.FailedResource{
-					Kind: openpeerrors.KindL2VNI, Name: vni.Name, Reason: reason, Message: err.Error(),
-				},
-			})
-			continue
-		}
-		configuredL2VNIs = append(configuredL2VNIs, vni)
-	}
+	desiredL2VNIs, l2VNIErrors := setupL2VNIs(ctx, hostConfig.L2VNIs, failedL3Domains)
+	resourceErrors = append(resourceErrors, l2VNIErrors...)
 
 	slog.InfoContext(ctx, "setting up passthrough")
 	if hostConfig.L3Passthrough != nil {
@@ -158,13 +130,13 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 		}
 	}
 
-	configuredVNIs := make([]hostnetwork.VNIParams, 0, len(configuredL3VNIs)+len(configuredL2VNIs))
+	configuredVNIs := make([]hostnetwork.VNIParams, 0, len(configuredL3VNIs)+len(desiredL2VNIs))
 	configuredVRFs := map[string]bool{}
 	for _, vni := range configuredL3VNIs {
 		configuredVNIs = append(configuredVNIs, vni.VNIParams)
 		configuredVRFs[vni.VRF] = true
 	}
-	for _, l2vni := range configuredL2VNIs {
+	for _, l2vni := range desiredL2VNIs {
 		configuredVNIs = append(configuredVNIs, l2vni.VNIParams)
 		configuredVRFs[l2vni.VRF] = true
 	}
@@ -176,7 +148,7 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 	if err := hostnetwork.RemoveNonConfiguredVNIs(config.targetNamespace, configuredVNIs); err != nil {
 		return fmt.Errorf("failed to remove deleted vnis: %w", err)
 	}
-	bridgerefresh.StopForRemovedVNIs(configuredL2VNIs)
+	bridgerefresh.StopForRemovedVNIs(desiredL2VNIs)
 
 	slog.InfoContext(ctx, "removing deleted l3vpns")
 	if err := hostnetwork.RemoveNonConfiguredL3VPNs(config.targetNamespace,
@@ -275,4 +247,47 @@ func areAllUnderlayInterfacesToBeRemoved(
 		)
 	}
 	return allRemoved, nil
+}
+
+// setupL2VNIs returns the L2VNIs to keep together with the setup errors. An
+// L2VNI whose setup fails is kept, so a transient error does not tear down a
+// working VNI. The L2VNIs of a failed L3 domain are not kept.
+func setupL2VNIs(
+	ctx context.Context,
+	l2VNIs []hostnetwork.L2VNIParams,
+	failedL3Domains sets.Set[string],
+) ([]hostnetwork.L2VNIParams, []error) {
+	reason := v1alpha1.FailedResourceReasonOverlayAttachmentFailed
+	var desiredL2VNIs []hostnetwork.L2VNIParams
+	var resourceErrors []error
+	for _, vni := range l2VNIs {
+		if failedL3Domains.Has(vni.VRF) {
+			resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
+				Obj: v1alpha1.FailedResource{
+					Kind: openpeerrors.KindL2VNI, Name: vni.Name, Reason: reason,
+					Message: fmt.Sprintf("L3 domain %q failed netlink provisioning", vni.VRF),
+				},
+			})
+			continue
+		}
+		desiredL2VNIs = append(desiredL2VNIs, vni)
+		slog.InfoContext(ctx, "setting up L2VNI", "vni", vni.VNI)
+		if err := hostnetwork.SetupL2VNI(ctx, vni); err != nil {
+			resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
+				Obj: v1alpha1.FailedResource{
+					Kind: openpeerrors.KindL2VNI, Name: vni.Name, Reason: reason, Message: err.Error(),
+				},
+			})
+			continue
+		}
+		if err := bridgerefresh.StartForVNI(ctx, vni); err != nil {
+			resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
+				Obj: v1alpha1.FailedResource{
+					Kind: openpeerrors.KindL2VNI, Name: vni.Name, Reason: reason, Message: err.Error(),
+				},
+			})
+			continue
+		}
+	}
+	return desiredL2VNIs, resourceErrors
 }
