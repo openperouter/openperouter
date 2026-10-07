@@ -105,6 +105,13 @@ spec:
             command: ["/bin/sh", "-c", "grcli -e"]
           periodSeconds: 30
           timeoutSeconds: 5
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "2Gi"
+            cpu: "500m"
       volumes:
       - name: grout-socket
         hostPath:
