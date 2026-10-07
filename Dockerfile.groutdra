@@ -1,5 +1,5 @@
 # groutdra: kubelet DRA plugin. Includes grcli from the same grout RPM as Dockerfile.grout.
-ARG GROUT_VERSION=v0.17.1
+ARG GROUT_VERSION=v0.18.0
 
 FROM golang:1.26.4 AS builder
 

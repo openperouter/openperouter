@@ -15,6 +15,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -97,6 +99,10 @@ func (d *Driver) prepareOne(ctx context.Context, claim *resourceapi.ResourceClai
 	name := PortName(uid)
 	podSock := PodSocketPath(request)
 	podMount := PodMountPath(request)
+	gatewayCIDR, err := gatewayCIDRForDevice(result.Device)
+	if err != nil {
+		return kubeletplugin.Device{}, err
+	}
 
 	if err := os.MkdirAll(dir, 0o777); err != nil {
 		return kubeletplugin.Device{}, err
@@ -115,7 +121,7 @@ func (d *Driver) prepareOne(ctx context.Context, claim *resourceapi.ResourceClai
 
 	// QEMU binds the socket (server). Creating grout client=1 before that
 	// is a one-shot ENOENT on grout 0.17. Do not CreateVhostPort until the socket exists.
-	d.startClaimWorkers(uid, name, sock, claim.Namespace, claim.Name, podClaimName, request)
+	d.startClaimWorkers(uid, name, sock, gatewayCIDR, claim.Namespace, claim.Name, podClaimName, request)
 
 	cdiID, err := writeCDISpec(uid, dir, podMount)
 	if err != nil {
@@ -183,7 +189,7 @@ func writeKubeVirtMetadata(claim *resourceapi.ResourceClaim, result resourceapi.
 	return os.Rename(tmp, target)
 }
 
-func (d *Driver) startClaimWorkers(uid types.UID, portName, sock, namespace, claimName, podClaimName, request string) {
+func (d *Driver) startClaimWorkers(uid types.UID, portName, sock, gatewayCIDR, namespace, claimName, podClaimName, request string) {
 	d.cancelPending(uid)
 	ctx, cancel := context.WithCancel(context.Background())
 	d.mu.Lock()
@@ -191,7 +197,7 @@ func (d *Driver) startClaimWorkers(uid types.UID, portName, sock, namespace, cla
 	d.mu.Unlock()
 
 	go func() {
-		if err := d.attachClientUntilRunning(ctx, uid, portName, sock); err != nil {
+		if err := d.attachClientUntilRunning(ctx, uid, portName, sock, gatewayCIDR); err != nil {
 			slog.Info("stop attaching grout vhost client", "uid", uid, "err", err)
 		}
 	}()
@@ -234,7 +240,7 @@ func projectKubeVirtMetadata(ctx context.Context, namespace, claimName, podClaim
 	}
 }
 
-func (d *Driver) attachClientUntilRunning(ctx context.Context, uid types.UID, portName, sock string) error {
+func (d *Driver) attachClientUntilRunning(ctx context.Context, uid types.UID, portName, sock, gatewayCIDR string) error {
 	slog.Info("waiting for qemu vhost socket", "uid", uid, "sock", sock)
 	if err := waitForUnixSocket(ctx, sock); err != nil {
 		return err
@@ -243,7 +249,7 @@ func (d *Driver) attachClientUntilRunning(ctx context.Context, uid types.UID, po
 		Name:        portName,
 		SocketPath:  sock,
 		Queues:      1,
-		GatewayCIDR: grout.VhostGuestGatewayCIDR,
+		GatewayCIDR: gatewayCIDR,
 		Client:      true,
 	}
 	_ = os.Chmod(sock, 0o777)
@@ -269,6 +275,17 @@ func (d *Driver) attachClientUntilRunning(ctx context.Context, uid types.UID, po
 		case <-ticker.C:
 		}
 	}
+}
+
+// gatewayCIDRForDevice gives each advertised vhu-N device its own L3 POC
+// subnet. The paired VM cloud-init uses 192.169.(20+N).10/24 and .1 as its
+// gateway; assigning every port .20.1 causes the second claim to have no route.
+func gatewayCIDRForDevice(device string) (string, error) {
+	index, err := strconv.Atoi(strings.TrimPrefix(device, "vhu-"))
+	if err != nil || index < 0 || index >= MaxDevices || device != fmt.Sprintf("vhu-%d", index) {
+		return "", fmt.Errorf("invalid grout vhost device %q", device)
+	}
+	return fmt.Sprintf("192.169.%d.1/24", 20+index), nil
 }
 
 func (d *Driver) cancelPending(uid types.UID) {
