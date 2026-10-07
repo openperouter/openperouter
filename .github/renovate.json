@@ -10,7 +10,7 @@
   "automerge": true,
   "automergeType": "pr",
   "platformAutomerge": false,
-  "assignees": ["maiqueb"],
+  "assignees": ["maiqueb", "fedepaol"],
   "labels": ["kind/cleanup"],
   "semanticCommits": "enabled",
   "prConcurrentLimit": 5,
