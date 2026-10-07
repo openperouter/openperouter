@@ -231,6 +231,60 @@ var _ = Describe("SRV6 routes between bgp and the fabric", Ordered, func() {
 			checkRouteFromLeaf(infra.LeafSRV6Config, l3vpnBlue, !Contains, leafSRV6VRFBluePrefixes)
 		})
 
+		It("announces correct L3VPN SIDs to the fabric", func() {
+			checkSid := func(l3vpns ...v1alpha1.L3VPN) {
+				expectedBehaviorsForVRF := map[string]map[string]struct{}{}
+				for _, l3vpn := range l3vpns {
+					if slices.Contains(l3vpn.Spec.Features, v1alpha1.UDT4UDT6) {
+						expectedBehaviorsForVRF[l3vpn.Spec.VRF] = map[string]struct{}{
+							"uDT4": {},
+							"uDT6": {},
+						}
+						continue
+					}
+					expectedBehaviorsForVRF[l3vpn.Spec.VRF] = map[string]struct{}{
+						"uDT46": {},
+					}
+				}
+				for exec := range routers.GetExecutors() {
+					By(fmt.Sprintf("checking SIDs announced by router %s, mustContain %+v", exec.Name(), expectedBehaviorsForVRF))
+					Eventually(func() (map[string]map[string]struct{}, error) {
+						l3vpnSids, err := frr.L3VPNSidInfo(exec)
+						if err != nil {
+							return nil, fmt.Errorf("failed to get L3VPN SIDs from %s: %w", exec.Name(), err)
+						}
+						gotBehaviorsForVRF := map[string]map[string]struct{}{}
+						for _, l3vpnSid := range l3vpnSids {
+							if l3vpnSid.Context.VrfName == "" {
+								continue
+							}
+							if gotBehaviorsForVRF[l3vpnSid.Context.VrfName] == nil {
+								gotBehaviorsForVRF[l3vpnSid.Context.VrfName] = map[string]struct{}{}
+							}
+							gotBehaviorsForVRF[l3vpnSid.Context.VrfName][l3vpnSid.Behavior] = struct{}{}
+						}
+						return gotBehaviorsForVRF, nil
+					}, 1*time.Minute, time.Second).WithOffset(1).Should(Equal(expectedBehaviorsForVRF))
+				}
+			}
+
+			By("checking that correct SIDs are present")
+			checkSid(l3vpnRed, l3vpnBlue)
+
+			l3vpnRedWithUDT4UDT6 := l3vpnRed.DeepCopy()
+			l3vpnRedWithUDT4UDT6.Spec.Features = []v1alpha1.L3VPNFeature{v1alpha1.UDT4UDT6}
+
+			By("Updating the red L3VPN Custom Resource")
+			Expect(Updater.Update(config.Resources{
+				L3VPNs: []v1alpha1.L3VPN{
+					*l3vpnRedWithUDT4UDT6,
+				},
+			})).To(Succeed())
+
+			By("checking that correct SIDs are present")
+			checkSid(*l3vpnRedWithUDT4UDT6, l3vpnBlue)
+		})
+
 	})
 
 	Context("with L3VPNs and frr-k8s", func() {

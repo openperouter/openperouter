@@ -101,7 +101,8 @@ OpenPERouter over an L3VPN session:
 1. The host advertises the route with the veth interface IP as the next hop
 2. OpenPERouter learns the route via the BGP session
 3. OpenPERouter translates the route to a VPNv4/VPNv6 route with the local
-   SRv6 SID
+   SRv6 SID. By default, the route is created as a uDT46 function. If feature
+   `uDT4uDT6` is set, an individual function per address family will be created
 4. The VPN route is advertised to the fabric peers via the BGP session
 
 ### Route Reception (Fabric → Host)

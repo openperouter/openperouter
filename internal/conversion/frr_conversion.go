@@ -654,6 +654,7 @@ func l3vpnToFRR(
 			ExportRTs:          exportRTs,
 			ImportRTs:          importRTs,
 			RouteDistinguisher: routeDistinguisher(routerID, vpn.Spec.RDAssignedNumber),
+			UDT4UDT6:           slices.Contains(vpn.Spec.Features, v1alpha1.UDT4UDT6),
 		}
 		for _, opt := range opts {
 			if err := opt(&cfg); err != nil {
@@ -700,6 +701,7 @@ func l3vpnToFRR(
 			},
 			ToAdvertiseIPv4: toAdvertiseIPv4,
 			ToAdvertiseIPv6: toAdvertiseIPv6,
+			UDT4UDT6:        slices.Contains(vpn.Spec.Features, v1alpha1.UDT4UDT6),
 		})
 	}
 	for i := range configs {

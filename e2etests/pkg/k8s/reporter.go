@@ -3,16 +3,31 @@
 package k8s
 
 import (
+	"context"
 	"fmt"
+	"os/exec"
+	"path/filepath"
 	"regexp"
 	"slices"
+	"syscall"
 	"time"
 
 	frrk8sv1beta1 "github.com/metallb/frr-k8s/api/v1beta1"
+	"github.com/onsi/ginkgo/v2"
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openshift-kni/k8sreporter"
 	"k8s.io/apimachinery/pkg/runtime"
 )
+
+const inspectTimeout = 5 * time.Minute
+
+// InspectReporter invokes the inspect tool for failed e2e specs.
+type InspectReporter struct {
+	inspectPath string
+	reportPath  string
+	k8sClient   string
+	namespace   string
+}
 
 func InitReporter(kubeconfig, path string, namespaces ...string) (*k8sreporter.KubernetesReporter, error) {
 	// When using custom crds, we need to add them to the scheme
@@ -54,7 +69,48 @@ func InitReporter(kubeconfig, path string, namespaces ...string) (*k8sreporter.K
 }
 
 func DumpInfo(reporter *k8sreporter.KubernetesReporter, testName string) {
+	reporter.Dump(10*time.Minute, sanitizeTestName(testName))
+}
+
+// NewInspectReporter creates an inspect collector for failed e2e specs.
+func NewInspectReporter(inspectPath, reportPath, k8sClient, namespace string) *InspectReporter {
+	return &InspectReporter{
+		inspectPath: inspectPath,
+		reportPath:  reportPath,
+		k8sClient:   k8sClient,
+		namespace:   namespace,
+	}
+}
+
+// Dump invokes the repository inspect tool and stores its output with the artifacts for the failed spec.
+func (r *InspectReporter) Dump(testName string) {
+	outputPath := filepath.Join(r.reportPath, sanitizeTestName(testName))
+	args := []string{
+		"--k8s-client=" + r.k8sClient,
+		"--dest-dir=" + outputPath,
+		"--namespace=" + r.namespace,
+		"--since=10m",
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), inspectTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, r.inspectPath, args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	}
+	cmd.WaitDelay = time.Second
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		ginkgo.GinkgoWriter.Printf("inspect failed: %v\n%s", err, output)
+		return
+	}
+
+	ginkgo.GinkgoWriter.Printf("Inspect completed. Artifacts are stored under %s/\n", filepath.Base(outputPath))
+}
+
+func sanitizeTestName(testName string) string {
 	nonAlphanumeric := regexp.MustCompile(`[^a-zA-Z0-9]+`)
-	testNameNoSpaces := nonAlphanumeric.ReplaceAllString(testName, "_")
-	reporter.Dump(10*time.Minute, testNameNoSpaces)
+	return nonAlphanumeric.ReplaceAllString(testName, "_")
 }

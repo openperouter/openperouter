@@ -87,6 +87,21 @@ type ipEncap struct {
 
 type EncapMode string
 
+type L3VPNSidData map[string]L3VPNSid
+
+type L3VPNSid struct {
+	SID      string          `json:"sid"`
+	Behavior string          `json:"behavior"`
+	Context  L3VPNSidContext `json:"context"`
+	Locator  string          `json:"locator"`
+}
+
+type L3VPNSidContext struct {
+	VrfID   int    `json:"vrfId"`
+	VrfName string `json:"vrfName"`
+	Table   int    `json:"table"`
+}
+
 func L3VPNInfo(exec executor.Executor, family ipfamily.Family) (L3VPNData, error) {
 	res, err := exec.Exec("vtysh", "-c", fmt.Sprintf("show bgp %s vpn detail json", family))
 	if err != nil {
@@ -100,6 +115,20 @@ func L3VPNInfo(exec executor.Executor, family ipfamily.Family) (L3VPNData, error
 			family, err, res)
 	}
 	return l3vpnInfo, nil
+}
+
+func L3VPNSidInfo(exec executor.Executor) (L3VPNSidData, error) {
+	cmd := "show segment-routing srv6 sid json"
+	res, err := exec.Exec("vtysh", "-c", cmd)
+	if err != nil {
+		return L3VPNSidData{}, fmt.Errorf("failed to query `%s`: %w. Output: %s", cmd, err, res)
+	}
+
+	sidInfo, err := parseSIDtoL3VPN([]byte(res))
+	if err != nil {
+		return L3VPNSidData{}, fmt.Errorf("failed to parse output of `%s`: %w. Output: %s", cmd, err, res)
+	}
+	return sidInfo, nil
 }
 
 func (l3 L3VPNData) ContainsBGPRouteForL3VPN(prefix string, routerID string, importRTs []v1alpha1.RouteTarget) bool {
@@ -175,6 +204,15 @@ func parseBGPVPNtoL3VPN(data []byte) (L3VPNData, error) {
 	res := L3VPNData{}
 	if err := json.Unmarshal(data, &res); err != nil {
 		return L3VPNData{}, fmt.Errorf("error unmarshalling JSON: %v", err)
+	}
+
+	return res, nil
+}
+
+func parseSIDtoL3VPN(data []byte) (L3VPNSidData, error) {
+	res := L3VPNSidData{}
+	if err := json.Unmarshal(data, &res); err != nil {
+		return L3VPNSidData{}, fmt.Errorf("error unmarshalling JSON: %w", err)
 	}
 
 	return res, nil

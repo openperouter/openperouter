@@ -151,6 +151,7 @@ type L3VPNConfig struct {
 	ExportRTs          []string
 	ImportRTs          []string
 	RouteDistinguisher string
+	UDT4UDT6           bool
 }
 
 type BFDProfile struct {

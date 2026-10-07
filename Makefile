@@ -337,7 +337,7 @@ $(KIND): $(LOCALBIN)
 	test -s $(LOCALBIN)/kind && $(LOCALBIN)/kind --version | grep -q $(KIND_VERSION) || \
 	GOBIN=$(LOCALBIN) go install sigs.k8s.io/kind@$(KIND_VERSION)
 
-.PHONY:
+.PHONY: crd-ref-docs
 crd-ref-docs: $(APIDOCSGEN) ## Download the api-doc-gen tool locally if necessary.
 $(APIDOCSGEN): $(LOCALBIN)
 	test -s $(LOCALBIN)/crd-ref-docs || \
@@ -350,7 +350,7 @@ e2etests: ginkgo kubectl create-export-logs
 .PHONY: e2etests-hostmode-boot
 e2etests-hostmode-boot: ginkgo kubectl create-export-logs ## Run e2e tests for hostmode boot scenario (static config first, then K8s API).
 	@echo "=== Running systemd_static_suite tests (static config only) ==="
-	$(GINKGO) -v $(GINKGO_ARGS) --json-report=e2e-report-systemd.json --output-dir=${KIND_EXPORT_LOGS} --timeout=3h ./e2etests/systemd_static_suite -- --kubectl=$(KUBECTL) $(TEST_ARGS)
+	$(GINKGO) -v $(GINKGO_ARGS) --json-report=e2e-report-systemd.json --output-dir=${KIND_EXPORT_LOGS} --timeout=3h ./e2etests/systemd_static_suite -- --kubectl=$(KUBECTL) $(TEST_ARGS) --reporterpath=${KIND_EXPORT_LOGS} 
 	@echo "=== Deploying controller to enable K8s API ==="
 	$(MAKE) deploy-controller KUSTOMIZE_LAYER=hostmode
 	@echo "=== Running passthrough tests (with K8s API available) ==="
@@ -514,11 +514,11 @@ build-website: hugo-download api-docs ## Build the website with API documentatio
 publish-website: ## Build and publish the website to gh-pages branch
 	hack/publish-website.sh
 
-.PHONY: demo-metallb-evpn
+.PHONY: demo-metallb
 demo-metallb:
 	examples/evpn/metallb/prepare.sh
 	
-.PHONY: demo-l2-evpn
+.PHONY: demo-l2
 demo-l2:
 	examples/evpn/layer2/prepare.sh
 
@@ -538,11 +538,11 @@ demo-metallb-l3vpn:
 demo-metallb-l3vpn-l2vni:
 	examples/l3vpn/layer2/prepare.sh
 
-.PHONY: demo-calico-evpn
+.PHONY: demo-calico
 demo-calico:
 	examples/evpn/calico/prepare.sh
 
-.PHONY: demo-kubevirt-evpn
+.PHONY: demo-kubevirt
 demo-kubevirt:
 	examples/evpn/kubevirt/prepare.sh
 
