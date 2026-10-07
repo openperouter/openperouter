@@ -52,7 +52,10 @@ func VhostDevargs(name, socketPath string, queues uint, client bool) (string, er
 	if queues == 0 {
 		queues = 1
 	}
-	devargs := fmt.Sprintf("net_vhost%d,iface=%s,queues=%d", vhostInstanceIndex(name), socketPath, queues)
+	// Enable DPDK vhost IOMMU support so the backend advertises
+	// VHOST_USER_PROTOCOL_F_IOMMU_PLATFORM. This is required when the QEMU
+	// virtio frontend uses iommu_platform/access-platform for a guest vIOMMU.
+	devargs := fmt.Sprintf("net_vhost%d,iface=%s,queues=%d,iommu-support=1", vhostInstanceIndex(name), socketPath, queues)
 	if client {
 		devargs += ",client=1"
 	}

@@ -23,6 +23,7 @@ func TestVhostDevargs(t *testing.T) {
 		assert.True(t, strings.HasPrefix(a, "net_vhost"))
 		assert.Contains(t, a, "iface="+path)
 		assert.Contains(t, a, "queues=1")
+		assert.Contains(t, a, "iommu-support=1")
 		assert.NotContains(t, a, "client=1")
 		b, err := VhostDevargs("vhu-poc", path, 1, false)
 		require.NoError(t, err)
