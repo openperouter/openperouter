@@ -3,6 +3,7 @@
   "extends": [
     "config:recommended",
     "schedule:weekly",
+    ":enableVulnerabilityAlerts",
     ":gitSignOff"
   ],
   "enabledManagers": ["gomod", "github-actions"],
@@ -12,6 +13,10 @@
   "platformAutomerge": false,
   "assignees": ["maiqueb", "fedepaol"],
   "labels": ["kind/cleanup"],
+  "vulnerabilityAlerts": {
+    "addLabels": ["security"],
+    "schedule": []
+  },
   "semanticCommits": "enabled",
   "prConcurrentLimit": 5,
   "prBodyNotes": ["```release-note\nNONE\n```"]
