@@ -270,6 +270,12 @@ jobs:
           sudo sysctl -w net.ipv4.conf.default.rp_filter=1
           sudo sysctl -w net.ipv4.conf.default.log_martians=1
 
+      # Kind nodes share the host's per-user inotify limits, including systemd and OVS.
+      - name: Increase inotify limits
+        run: |
+          sudo sysctl -w fs.inotify.max_user_watches=524288
+          sudo sysctl -w fs.inotify.max_user_instances=512
+
       - name: Disable containerd image store
         run: |
           sudo bash -c 'cat > /etc/docker/daemon.json << EOF
@@ -298,6 +304,9 @@ jobs:
 
       - name: Deploy the cluster
         run: |
+          bash hack/capture-kind-boot-logs.sh /tmp/kind_logs &
+          BOOT_LOG_PID=$!
+          trap 'kill "$BOOT_LOG_PID" 2>/dev/null || true; wait "$BOOT_LOG_PID" || true' EXIT
           MAKE_RULE="deploy"
           IMG_REPO="quay.io/openperouter"
           if [ ${{ matrix.deployment }} = "helm" ]; then MAKE_RULE="deploy-helm"; fi
