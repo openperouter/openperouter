@@ -16,6 +16,7 @@ import (
 
 	"github.com/moby/moby/api/types/container"
 	"github.com/testcontainers/testcontainers-go"
+	tcexec "github.com/testcontainers/testcontainers-go/exec"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
@@ -141,6 +142,7 @@ func FRRReload(fileName, mode string) error {
 		[]string{
 			"python3", "/usr/lib/frr/frr-reload.py", fmt.Sprintf("--%s", mode), "--stdout", "/etc/frr/frr.conf",
 		},
+		tcexec.Multiplexed(),
 	)
 	if err != nil {
 		return errors.Join(err, errors.New("failed to exec reloader into the container"))
@@ -164,7 +166,7 @@ func RunVtysh(commands ...string) (string, error) {
 	}
 
 	ctx := context.Background()
-	code, reader, err := frrContainer.Exec(ctx, args)
+	code, reader, err := frrContainer.Exec(ctx, args, tcexec.Multiplexed())
 	if err != nil {
 		return "", errors.Join(err, errors.New("failed to run vtysh command inside container"))
 	}
