@@ -43,9 +43,13 @@ The following are **not yet supported** with grout:
 
 - Hardware acceleration of L2VNI via VF pairs
 
-By default grout uses **TAP devices** (`net_tap` with `remote=`) rather than
-binding physical NICs to a DPDK poll-mode driver. Add `acceleratedConfig` to a
-`NetworkDevice` to bind that device as a DPDK port instead.
+By default grout binds underlay NICs as **PCI ports**. Set
+`--grout-tap-underlay` on the controller to use **TAP devices** (`net_tap` with
+`remote=`). The `acceleratedConfig` fields configure either port type.
+
+> **Warning**: Delete all `Underlay` resources before switching between TAP
+> devices and accelerated (PCI) devices, in either direction. Recreate them
+> once the controller is running with the new `--grout-tap-underlay` value.
 
 ## Prerequisites
 
@@ -63,6 +67,7 @@ Select grout with `openperouter.datapath`; its sidecar settings are under
 openperouter:
   datapath: grout
   grout:
+    tapUnderlay: false
     testMode: false
     image:
       repository: quay.io/openperouter/router
@@ -82,11 +87,15 @@ openperouter:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `datapath` | string | `kernel` | Datapath to use for L3 forwarding. "kernel" uses the standard Linux kernel datapath; "grout" adds a DPDK-accelerated sidecar that runs alongside FRR |
+| `grout.tapUnderlay` | bool | `false` | Use TAP ports for grout underlay interfaces instead of PCI ports |
 | `grout.testMode` | bool | `false` | Run grout in test mode. See [Test mode](#test-mode) |
 | `grout.image.repository` | string | `quay.io/openperouter/router` | Grout container image repository |
 | `grout.image.tag` | string | `main-grout` | Grout container image tag |
 | `grout.image.pullPolicy` | string | `""` | Image pull policy (defaults to Kubernetes default) |
 | `grout.resources` | object | see above | Resource requests and limits for the grout container |
+
+With the operator, set `GROUT_TAP_UNDERLAY=true` on the operator deployment to
+select TAP underlay ports for its Grout installation.
 
 ### Test mode
 
@@ -199,8 +208,10 @@ Linux or OVS bridge attachment on the host.
 
 ## DPDK-Accelerated Underlay Ports
 
-`NetworkDevice` entries without `acceleratedConfig` use the TAP+`remote=` path.
-When `acceleratedConfig` is set, the controller binds the device as a DPDK port:
+The controller binds `NetworkDevice` entries as PCI ports by default, even if
+`acceleratedConfig` is absent. With `--grout-tap-underlay`, it uses TAP+`remote=`
+ports for every underlay interface, including those with `acceleratedConfig`.
+For PCI ports, the controller:
 
 1. Resolves the PCI address from `/sys/class/net/<interfaceName>/device`
 2. Saves the original driver and non-link-local addresses
@@ -238,7 +249,6 @@ spec:
 All `acceleratedConfig` fields are optional. The field can be omitted to use
 grout defaults for either port type.
 All underlay ports are named `u_<interfaceName>`, so interface names must be at most 13 characters.
-`rxQueues` and `qSize` also apply to TAP ports.
 
 ## Verification
 

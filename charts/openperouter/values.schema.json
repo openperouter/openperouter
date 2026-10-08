@@ -367,6 +367,11 @@
             "type": "object",
             "description": "Configuration for the grout DPDK dataplane sidecar. Only used when datapath is set to \"grout\".",
             "properties": {
+              "tapUnderlay": {
+                "type": "boolean",
+                "description": "Use TAP ports for grout underlay interfaces instead of PCI ports.",
+                "default": false
+              },
               "testMode": {
                 "type": "boolean",
                 "description": "Run grout in test mode. Test mode requires no hugepages and uses dummy FIB algorithms. Leave it disabled for a hugepage-backed dataplane, requesting hugepages under grout.resources.",
