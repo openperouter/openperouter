@@ -172,8 +172,9 @@ func patchChartValues(envConfig envconfig.EnvConfig, crdConfig *operatorapi.Open
 		}
 
 		openperouterValues["grout"] = map[string]any{
-			"enabled":  true,
-			"testMode": envConfig.GroutTestMode,
+			"enabled":     true,
+			"testMode":    envConfig.GroutTestMode,
+			"tapUnderlay": envConfig.GroutTapUnderlay,
 			"image": map[string]any{
 				"repository": groutImage.Repo,
 				"tag":        groutImage.Tag,

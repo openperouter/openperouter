@@ -310,9 +310,10 @@ func TestParseChartWithGroutEnabled(t *testing.T) {
 			g.Expect(err).ToNot(HaveOccurred())
 
 			for _, c := range controller.Spec.Template.Spec.Containers {
-				if c.Name == "controller" {
+				if c.Name == controllerDaemonSetName {
 					g.Expect(c.Args).To(ContainElement("--datapath=grout"))
 					g.Expect(c.Args).To(ContainElement("--grout-socket=/var/run/grout/grout.sock"))
+					g.Expect(c.Args).ToNot(ContainElement("--grout-tap-underlay"))
 				}
 			}
 			controllerFound = true
@@ -322,7 +323,7 @@ func TestParseChartWithGroutEnabled(t *testing.T) {
 	g.Expect(controllerFound).To(BeTrue())
 }
 
-func TestParseChartWithGroutTestMode(t *testing.T) {
+func TestParseChartWithGroutTestModeAndTapUnderlay(t *testing.T) {
 	g := NewGomegaWithT(t)
 	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace)
 	g.Expect(err).ToNot(HaveOccurred())
@@ -340,12 +341,23 @@ func TestParseChartWithGroutTestMode(t *testing.T) {
 
 	envConfig := defaultEnvConfig
 	envConfig.GroutTestMode = true
+	envConfig.GroutTapUnderlay = true
 
 	objs, err := chart.Objects(envConfig, openperouter)
 	g.Expect(err).ToNot(HaveOccurred())
 
-	var groutFound bool
+	var groutFound, controllerFound bool
 	for _, obj := range objs {
+		if obj.GetKind() == daemonSetKind && obj.GetName() == controllerDaemonSetName {
+			controller := appsv1.DaemonSet{}
+			g.Expect(runtime.DefaultUnstructuredConverter.FromUnstructured(obj.UnstructuredContent(), &controller)).To(Succeed())
+			for _, c := range controller.Spec.Template.Spec.Containers {
+				if c.Name == controllerDaemonSetName {
+					g.Expect(c.Args).To(ContainElement("--grout-tap-underlay"))
+				}
+			}
+			controllerFound = true
+		}
 		if obj.GetKind() != daemonSetKind || obj.GetName() != routerDaemonSetName {
 			continue
 		}
@@ -368,6 +380,7 @@ func TestParseChartWithGroutTestMode(t *testing.T) {
 		}
 	}
 	g.Expect(groutFound).To(BeTrue())
+	g.Expect(controllerFound).To(BeTrue())
 }
 
 func TestParseChartWithGroutDisabled(t *testing.T) {
@@ -407,7 +420,7 @@ func TestParseChartWithGroutDisabled(t *testing.T) {
 			g.Expect(err).ToNot(HaveOccurred())
 
 			for _, c := range controller.Spec.Template.Spec.Containers {
-				if c.Name == "controller" {
+				if c.Name == controllerDaemonSetName {
 					g.Expect(c.Args).ToNot(ContainElement("--datapath=grout"))
 				}
 			}

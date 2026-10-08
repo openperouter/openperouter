@@ -26,13 +26,15 @@ type GroutDatapathConfigurator struct {
 	groutSocketPath  string
 	deviceStateStore devicestate.Store
 	sysfs            pci.Sysfs
+	underlayPortMode grout.UnderlayPortMode
 }
 
-func NewGroutConfigurator(groutSocketPath string) *GroutDatapathConfigurator {
+func NewGroutConfigurator(groutSocketPath string, mode grout.UnderlayPortMode) *GroutDatapathConfigurator {
 	return &GroutDatapathConfigurator{
 		groutSocketPath:  groutSocketPath,
 		deviceStateStore: devicestate.Store{Dir: "/var/run/grout/device-state"},
 		sysfs:            pci.Sysfs{Root: "/sys"},
+		underlayPortMode: mode,
 	}
 }
 
@@ -65,8 +67,7 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 	}
 
 	slog.InfoContext(ctx, "setting up underlay")
-	if err := grout.SetupUnderlay(ctx, groutClient, hostConfig.Underlay,
-		g.deviceStateStore, g.sysfs); err != nil {
+	if err = grout.SetupUnderlay(ctx, groutClient, hostConfig.Underlay, g.underlayPortMode, g.deviceStateStore, g.sysfs); err != nil {
 		return fmt.Errorf("failed to setup underlay: %w", err)
 	}
 
