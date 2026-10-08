@@ -3,8 +3,15 @@
 package webhooks
 
 import (
+	"context"
+	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/openperouter/openperouter/internal/crdschema"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/logging"
@@ -452,6 +459,68 @@ func TestValidateL3VPNUpdate(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tc.errorString) {
 				t.Fatalf("expected error message %q to contain substring %q", err.Error(), tc.errorString)
+			}
+		})
+	}
+}
+
+func TestL3VPNConfiguredRDCollisionCreateUpdate(t *testing.T) {
+	number := int32(700)
+	resource := &v1alpha1.L3VPN{ObjectMeta: metav1.ObjectMeta{Name: "candidate"}, Spec: v1alpha1.L3VPNSpec{VRF: "vpn", RDAssignedNumber: number, ImportRTs: []v1alpha1.RouteTarget{"65000:100"}}}
+	other := &v1alpha1.L2VNI{ObjectMeta: metav1.ObjectMeta{Name: "existing"}, Spec: v1alpha1.L2VNISpec{VNI: 200, RDAssignedNumber: new(int32(700))}}
+	objects := []client.Object{
+		&v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node"}},
+		other,
+		&v1alpha1.Underlay{ObjectMeta: metav1.ObjectMeta{Name: "underlay"}, Spec: v1alpha1.UnderlaySpec{SRV6: &v1alpha1.SRV6Config{}}},
+	}
+
+	reader, err := setupFakeWebhookClient(objects)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldClient, oldLogger := WebhookClient, Logger
+	t.Cleanup(func() { WebhookClient, Logger = oldClient, oldLogger })
+	WebhookClient = reader
+	Logger, _ = logging.New("debug")
+	oldResource := resource.DeepCopy()
+	oldResource.Spec.RDAssignedNumber = 701
+
+	for _, err := range []error{validateL3VPNCreate(resource), validateL3VPNUpdate(resource, oldResource)} {
+		if err == nil {
+			t.Fatal("expected configured RD collision")
+		}
+		for _, identity := range []string{"L3VPN/candidate", "L2VNI/existing", "700"} {
+			if !strings.Contains(err.Error(), identity) {
+				t.Errorf("error %v missing %s", err, identity)
+			}
+		}
+	}
+}
+
+func TestL3VPNAdmissionSchemaRDAssignedNumber(t *testing.T) {
+	gvk := schema.GroupVersionKind{Group: "network.openperouter.io", Version: "v1alpha1", Kind: "L3VPN"}
+	for _, number := range []*int64{nil, new(int64(-1)), new(int64(0)), new(int64(1)), new(int64(65535)), new(int64(65536))} {
+		name := "omitted"
+		if number != nil {
+			name = fmt.Sprint(*number)
+		}
+		t.Run(name, func(t *testing.T) {
+			spec := map[string]interface{}{"vrf": "tenant", "importRTs": []interface{}{"65000:100"}}
+			if number != nil {
+				spec["rdAssignedNumber"] = *number
+			}
+			obj := &unstructured.Unstructured{Object: map[string]interface{}{
+				"apiVersion": "network.openperouter.io/v1alpha1", "kind": "L3VPN", "spec": spec}}
+			errs := crdschema.Validate(context.Background(), obj, gvk)
+			invalid := number == nil || *number < 1 || *number > 65535
+			if invalid {
+				if len(errs) == 0 || !strings.Contains(errs.ToAggregate().Error(), "rdAssignedNumber") {
+					t.Fatalf("expected required/range schema error: %v", errs)
+				}
+				return
+			}
+			if len(errs) != 0 {
+				t.Fatalf("valid assigned number rejected: %v", errs)
 			}
 		})
 	}

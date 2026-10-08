@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
+	openpeerrors "github.com/openperouter/openperouter/internal/errors"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -1755,4 +1756,92 @@ func TestValidateRouteTarget(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestConfiguredRDNumbersForNodes(t *testing.T) {
+	for _, pair := range [][2]string{{string(openpeerrors.KindL2VNI), string(openpeerrors.KindL2VNI)}, {string(openpeerrors.KindL3VNI), string(openpeerrors.KindL3VNI)}, {string(openpeerrors.KindL3VPN), string(openpeerrors.KindL3VPN)},
+		{string(openpeerrors.KindL2VNI), string(openpeerrors.KindL3VNI)}, {string(openpeerrors.KindL2VNI), string(openpeerrors.KindL3VPN)}, {string(openpeerrors.KindL3VNI), string(openpeerrors.KindL3VPN)}} {
+		t.Run(pair[0]+"/"+pair[1], func(t *testing.T) {
+			for _, disjoint := range []bool{false, true} {
+				l2s, l3s, vpns := configuredRDPair(pair, disjoint)
+				nodes := []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node-a", Labels: map[string]string{"rack": "a"}}},
+					{ObjectMeta: metav1.ObjectMeta{Name: "node-b", Labels: map[string]string{"rack": "b"}}}}
+				err := ValidateOverlayResourcesForNodes(nodes, l2s, l3s, vpns)
+				if disjoint {
+					if err != nil {
+						t.Fatalf("disjoint selection: %v", err)
+					}
+					continue
+				}
+				if err == nil {
+					t.Fatal("expected configured RD collision")
+				}
+				for _, identity := range []string{pair[0] + "/resource-0", pair[1] + "/resource-1", "700"} {
+					if !strings.Contains(err.Error(), identity) {
+						t.Errorf("error %v missing %s", err, identity)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestConfiguredRDNumbersPreserveNumericReservations(t *testing.T) {
+	node := []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node"}}}
+	for _, kind := range []string{string(openpeerrors.KindL2VNI), string(openpeerrors.KindL3VNI)} {
+		t.Run(kind, func(t *testing.T) {
+			var l2s []v1alpha1.L2VNI
+			var l3s []v1alpha1.L3VNI
+			if kind == string(openpeerrors.KindL2VNI) {
+				l2s = []v1alpha1.L2VNI{{ObjectMeta: metav1.ObjectMeta{Name: "vni"},
+					Spec: v1alpha1.L2VNISpec{VNI: 300, RDAssignedNumber: new(int32(800))}}}
+			}
+			if kind == string(openpeerrors.KindL3VNI) {
+				l3s = []v1alpha1.L3VNI{{ObjectMeta: metav1.ObjectMeta{Name: "vni"},
+					Spec: v1alpha1.L3VNISpec{VNI: 300, VRF: "vni", RDAssignedNumber: new(int32(800))}}}
+			}
+			vpns := []v1alpha1.L3VPN{{ObjectMeta: metav1.ObjectMeta{Name: "vpn"},
+				Spec: v1alpha1.L3VPNSpec{VRF: "vpn", RDAssignedNumber: 300, ImportRTs: []v1alpha1.RouteTarget{"65000:300"}}}}
+			if err := ValidateOverlayResourcesForNodes(node, l2s, l3s, vpns); err == nil {
+				t.Fatal("expected retained VNI versus VPN number reservation")
+			}
+			vpns[0].Spec.RDAssignedNumber = 800
+			if kind == string(openpeerrors.KindL2VNI) {
+				l2s[0].Spec.RDAssignedNumber = nil
+			}
+			if kind == string(openpeerrors.KindL3VNI) {
+				l3s[0].Spec.RDAssignedNumber = nil
+			}
+			if err := ValidateOverlayResourcesForNodes(node, l2s, l3s, vpns); err != nil {
+				t.Fatalf("omitted VNI RD should not reserve a configured number: %v", err)
+			}
+		})
+	}
+}
+
+func configuredRDPair(pair [2]string, disjoint bool) ([]v1alpha1.L2VNI, []v1alpha1.L3VNI, []v1alpha1.L3VPN) {
+	var l2s []v1alpha1.L2VNI
+	var l3s []v1alpha1.L3VNI
+	var vpns []v1alpha1.L3VPN
+	for i, kind := range pair {
+		name := fmt.Sprintf("resource-%d", i)
+		selector := &metav1.LabelSelector{MatchLabels: map[string]string{"rack": "a"}}
+		if disjoint && i == 1 {
+			selector.MatchLabels["rack"] = "b"
+		}
+		meta := metav1.ObjectMeta{Name: name}
+		switch kind {
+		case string(openpeerrors.KindL2VNI):
+			l2s = append(l2s, v1alpha1.L2VNI{ObjectMeta: meta,
+				Spec: v1alpha1.L2VNISpec{VNI: int32(100 + i), RDAssignedNumber: new(int32(700)), NodeSelector: selector}})
+		case string(openpeerrors.KindL3VNI):
+			l3s = append(l3s, v1alpha1.L3VNI{ObjectMeta: meta,
+				Spec: v1alpha1.L3VNISpec{VNI: int32(200 + i), VRF: name, RDAssignedNumber: new(int32(700)), NodeSelector: selector}})
+		case string(openpeerrors.KindL3VPN):
+			vpns = append(vpns, v1alpha1.L3VPN{ObjectMeta: meta,
+				Spec: v1alpha1.L3VPNSpec{RDAssignedNumber: 700, VRF: name,
+					ImportRTs: []v1alpha1.RouteTarget{"65000:700"}, NodeSelector: selector}})
+		}
+	}
+	return l2s, l3s, vpns
 }

@@ -3,8 +3,11 @@
 package webhooks
 
 import (
+	"fmt"
 	"strings"
 	"testing"
+
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/logging"
@@ -542,5 +545,66 @@ func TestValidateL2VNICreateRejectsInvalidRouteTarget(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), `invalid route targets for vni "invalid-route-target"`) {
 		t.Fatalf("validateL2VNICreate() error = %v, want invalid route target error", err)
+	}
+}
+
+func TestL2VNIRDAssignedNumberBounds(t *testing.T) {
+	reader, err := setupFakeWebhookClient(objectsFromResources([]*v1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node"}}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldClient, oldLogger := WebhookClient, Logger
+	t.Cleanup(func() { WebhookClient, Logger = oldClient, oldLogger })
+	WebhookClient = reader
+	Logger, _ = logging.New("debug")
+	for _, number := range []int32{-1, 0, 1, 65535, 65536} {
+		t.Run(fmt.Sprint(number), func(t *testing.T) {
+			resource := &v1alpha1.L2VNI{ObjectMeta: metav1.ObjectMeta{Name: "bounded"},
+				Spec: v1alpha1.L2VNISpec{VNI: 100, RDAssignedNumber: new(number)}}
+			err := validateL2VNICreate(resource)
+			invalid := number < 1 || number > 65535
+			if invalid {
+				if err == nil || !strings.Contains(err.Error(), "bounded") || !strings.Contains(err.Error(), "rdAssignedNumber") {
+					t.Fatalf("expected resource-identifying bounds error, got %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			resource.Spec.RDAssignedNumber = nil
+			if err := validateL2VNICreate(resource); err != nil {
+				t.Fatalf("omitted RD: %v", err)
+			}
+		})
+	}
+}
+
+func TestL2VNIConfiguredRDCollisionCreateUpdate(t *testing.T) {
+	number := int32(700)
+	resource := &v1alpha1.L2VNI{ObjectMeta: metav1.ObjectMeta{Name: "candidate"}, Spec: v1alpha1.L2VNISpec{VNI: 100, RDAssignedNumber: new(number)}}
+	other := &v1alpha1.L3VNI{ObjectMeta: metav1.ObjectMeta{Name: "existing"}, Spec: v1alpha1.L3VNISpec{VNI: 200, VRF: "other", RDAssignedNumber: new(int32(700))}}
+	objects := []client.Object{&v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node"}}, other}
+
+	reader, err := setupFakeWebhookClient(objects)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldClient, oldLogger := WebhookClient, Logger
+	t.Cleanup(func() { WebhookClient, Logger = oldClient, oldLogger })
+	WebhookClient = reader
+	Logger, _ = logging.New("debug")
+	oldResource := resource.DeepCopy()
+	oldResource.Spec.RDAssignedNumber = nil
+
+	for _, err := range []error{validateL2VNICreate(resource), validateL2VNIUpdate(oldResource, resource)} {
+		if err == nil {
+			t.Fatal("expected configured RD collision")
+		}
+		for _, identity := range []string{"L2VNI/candidate", "L3VNI/existing", "700"} {
+			if !strings.Contains(err.Error(), identity) {
+				t.Errorf("error %v missing %s", err, identity)
+			}
+		}
 	}
 }

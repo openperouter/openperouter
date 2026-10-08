@@ -53,6 +53,14 @@ type L2VNISpec struct {
 	// +required
 	VNI int32 `json:"vni,omitempty"`
 
+	// rdAssignedNumber sets the Route Distinguisher's Assigned Number subfield.
+	// The Administrator subfield is the originating node's router ID, forming
+	// a Type 1 Route Distinguisher as defined in RFC4364.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
+	// +optional
+	RDAssignedNumber *int32 `json:"rdAssignedNumber,omitempty"`
+
 	// vxlanPort is the port to be used for VXLan encapsulation.
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=65535

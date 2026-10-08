@@ -667,6 +667,91 @@ func TestReconcileSkipsDatapathOnFrrReloadFailure(t *testing.T) {
 	}
 }
 
+func TestReconcileConfiguredRDCollision(t *testing.T) {
+	winner := l3VNI("winner", "winner", 100)
+	winner.Spec.RDAssignedNumber = new(int32(700))
+	loser := l2VNI("loser", nil, 200)
+	loser.Spec.RDAssignedNumber = new(int32(700))
+	valid := l2VNI("valid", nil, 300)
+	config := conversion.APIConfigData{L3VNIs: []v1alpha1.L3VNI{winner}, L2VNIs: []v1alpha1.L2VNI{loser, valid}}
+	var applied conversion.APIConfigData
+	err := Reconcile(context.Background(), config, 0, "", "", "", noopUpdater,
+		&noopDatapathConfigurator{}, func(_ context.Context, data frrConfigData) error {
+			applied = data.APIConfigData
+			return nil
+		})
+	failures := openpeerrors.CollectFailures(err)
+	if len(failures) != 1 || failures[0].Kind != "L2VNI" || failures[0].Name != "loser" {
+		t.Fatalf("expected only colliding L2VNI to fail, got %+v (%v)", failures, err)
+	}
+	for _, identity := range []string{"L2VNI/loser", "L3VNI/winner", "700"} {
+		if !strings.Contains(failures[0].Message, identity) {
+			t.Errorf("failure %+v missing %s", failures[0], identity)
+		}
+	}
+	if diff := cmp.Diff([]v1alpha1.L3VNI{winner}, applied.L3VNIs); diff != "" {
+		t.Fatal(diff)
+	}
+	if diff := cmp.Diff([]v1alpha1.L2VNI{valid}, applied.L2VNIs); diff != "" {
+		t.Fatal(diff)
+	}
+}
+
+func TestReconcileInvalidVRFDoesNotReserveConfiguredRD(t *testing.T) {
+	first := l3VNI("a", "red", 100)
+	first.Spec.RDAssignedNumber = new(int32(10))
+	invalid := l3VNI("b", "red", 200)
+	invalid.Spec.RDAssignedNumber = new(int32(20))
+	valid := l2VNI("c", nil, 300)
+	valid.Spec.RDAssignedNumber = new(int32(20))
+	var applied conversion.APIConfigData
+	err := Reconcile(context.Background(), conversion.APIConfigData{
+		L3VNIs: []v1alpha1.L3VNI{first, invalid}, L2VNIs: []v1alpha1.L2VNI{valid}},
+		0, "", "", "", noopUpdater, &noopDatapathConfigurator{},
+		func(_ context.Context, data frrConfigData) error { applied = data.APIConfigData; return nil })
+	failures := openpeerrors.CollectFailures(err)
+	if len(failures) != 1 || failures[0].Name != "b" {
+		t.Fatalf("expected invalid VRF alone: %+v", failures)
+	}
+	if diff := cmp.Diff([]v1alpha1.L2VNI{valid}, applied.L2VNIs); diff != "" {
+		t.Fatal(diff)
+	}
+}
+
+func TestReconcileConfiguredRDCollisionReportsBeforeDependencyRemoval(t *testing.T) {
+	first := l3VNI("a", "red", 100)
+	first.Spec.RDAssignedNumber = new(int32(700))
+	second := l3VNI("b", "blue", 200)
+	second.Spec.RDAssignedNumber = new(int32(700))
+	dependent := l2VNI("dependent", &v1alpha1.RoutingDomain{
+		Type: v1alpha1.RoutingDomainTypeL3VNI, L3VNI: &v1alpha1.L3VNIReference{Name: "b"}}, 300)
+	dependent.Spec.RDAssignedNumber = new(int32(800))
+	standalone := l2VNI("standalone", nil, 400)
+	standalone.Spec.RDAssignedNumber = new(int32(800))
+	var applied conversion.APIConfigData
+	err := Reconcile(context.Background(), conversion.APIConfigData{
+		L3VNIs: []v1alpha1.L3VNI{first, second}, L2VNIs: []v1alpha1.L2VNI{dependent, standalone}},
+		0, "", "", "", noopUpdater, &noopDatapathConfigurator{},
+		func(_ context.Context, data frrConfigData) error { applied = data.APIConfigData; return nil })
+	failures := openpeerrors.CollectFailures(err)
+	if len(failures) != 3 {
+		t.Fatalf("expected both RD collisions and the dependency failure: %+v", failures)
+	}
+	if failures[1].Name != "standalone" || failures[1].Reason != v1alpha1.FailedResourceReasonValidationFailed ||
+		!strings.Contains(failures[1].Message, "L2VNI/dependent") {
+		t.Fatalf("expected L2 RD collision to be reported before dependency removal: %+v", failures)
+	}
+	if failures[2].Name != "dependent" || failures[2].Reason != v1alpha1.FailedResourceReasonDependencyFailed {
+		t.Fatalf("expected failed dependent resource: %+v", failures)
+	}
+	if diff := cmp.Diff([]v1alpha1.L2VNI{}, applied.L2VNIs); diff != "" {
+		t.Fatal(diff)
+	}
+	if diff := cmp.Diff([]v1alpha1.L3VNI{first}, applied.L3VNIs); diff != "" {
+		t.Fatal(diff)
+	}
+}
+
 func l3VNI(name, vrf string, vni int32) v1alpha1.L3VNI {
 	return v1alpha1.L3VNI{
 		ObjectMeta: metav1.ObjectMeta{Name: name},

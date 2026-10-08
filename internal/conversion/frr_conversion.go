@@ -195,7 +195,7 @@ func APItoFRR(config APIConfigData, nodeIndex int, logLevel string) (frr.Config,
 
 	return frr.Config{
 		Underlay:    underlayConfig,
-		L2VNIs:      l2vniConfigsToFRR(config.L2VNIs),
+		L2VNIs:      l2vniConfigsToFRR(config.L2VNIs, routerID),
 		L3VNIs:      l3VNIConfigs,
 		Passthrough: passthroughConfig,
 		BFDProfiles: bfdProfilesFromNeighbors(underlay.Spec.Neighbors),
@@ -205,18 +205,23 @@ func APItoFRR(config APIConfigData, nodeIndex int, logLevel string) (frr.Config,
 	}, nil
 }
 
-func l2vniConfigsToFRR(l2vnis []v1alpha1.L2VNI) []frr.L2VNIConfig {
+func l2vniConfigsToFRR(l2vnis []v1alpha1.L2VNI, routerID string) []frr.L2VNIConfig {
 	var configs []frr.L2VNIConfig
 	for _, l2vni := range l2vnis {
 		exportRTs := convertRTsToSliceOfStrings(l2vni.Spec.ExportRTs)
 		importRTs := convertRTsToSliceOfStrings(l2vni.Spec.ImportRTs)
-		if len(exportRTs) == 0 && len(importRTs) == 0 {
+		if len(exportRTs) == 0 && len(importRTs) == 0 && l2vni.Spec.RDAssignedNumber == nil {
 			continue
 		}
+		rd := ""
+		if l2vni.Spec.RDAssignedNumber != nil {
+			rd = routeDistinguisher(routerID, *l2vni.Spec.RDAssignedNumber)
+		}
 		configs = append(configs, frr.L2VNIConfig{
-			VNI:       l2vni.Spec.VNI,
-			ExportRTs: exportRTs,
-			ImportRTs: importRTs,
+			RouteDistinguisher: rd,
+			VNI:                l2vni.Spec.VNI,
+			ExportRTs:          exportRTs,
+			ImportRTs:          importRTs,
 		})
 	}
 	return configs
@@ -533,15 +538,20 @@ func passthroughToFRR(l3Passthroughs []v1alpha1.L3Passthrough, nodeIndex int) (*
 func l3vniToFRR(vni v1alpha1.L3VNI, routerID string, underlayASN int64, nodeIndex int, opts ...L3VNIOption) ([]frr.L3VNIConfig, error) {
 	exportRTs := convertRTsToSliceOfStrings(vni.Spec.ExportRTs)
 	importRTs := convertRTsToSliceOfStrings(vni.Spec.ImportRTs)
+	rd := ""
+	if vni.Spec.RDAssignedNumber != nil {
+		rd = routeDistinguisher(routerID, *vni.Spec.RDAssignedNumber)
+	}
 
 	if vni.Spec.HostSession == nil { // no neighbor, just the vni / vrf
 		cfg := frr.L3VNIConfig{
-			VNI:       vni.Spec.VNI,
-			VRF:       vni.Spec.VRF,
-			ASN:       underlayASN, // Since there is no session, the ASN is arbitrary
-			RouterID:  routerID,
-			ExportRTs: exportRTs,
-			ImportRTs: importRTs,
+			RouteDistinguisher: rd,
+			VNI:                vni.Spec.VNI,
+			VRF:                vni.Spec.VRF,
+			ASN:                underlayASN, // Since there is no session, the ASN is arbitrary
+			RouterID:           routerID,
+			ExportRTs:          exportRTs,
+			ImportRTs:          importRTs,
 		}
 		for _, opt := range opts {
 			if err := opt(&cfg); err != nil {
@@ -575,10 +585,11 @@ func l3vniToFRR(vni v1alpha1.L3VNI, routerID string, underlayASN int64, nodeInde
 		}
 
 		configs = append(configs, frr.L3VNIConfig{
-			ASN:      vni.Spec.HostSession.ASN,
-			VNI:      vni.Spec.VNI,
-			VRF:      vni.Spec.VRF,
-			RouterID: routerID,
+			RouteDistinguisher: rd,
+			ASN:                vni.Spec.HostSession.ASN,
+			VNI:                vni.Spec.VNI,
+			VRF:                vni.Spec.VRF,
+			RouterID:           routerID,
 			LocalNeighbor: &frr.NeighborConfig{
 				Addr: ipnet.IP.String(),
 				ID:   ipnet.IP.String(),

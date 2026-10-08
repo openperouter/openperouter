@@ -81,10 +81,14 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 	validL3VPNs, err = conversion.FilterUniqueVRFsForL3VPNs(validL3VPNs, vrfToVNI)
 	resourceErrors = append(resourceErrors, err)
 
-	validL2VNIs, err = filterL2VNIsWithInvalidRoutingDomain(validL2VNIs, validL3VNIs, validL3VPNs)
+	validL3VNIs, validL3VPNs, validL2VNIs, err = conversion.FilterValidVRFSubnets(validL3VNIs, validL3VPNs, validL2VNIs)
 	resourceErrors = append(resourceErrors, err)
 
-	validL3VNIs, validL3VPNs, validL2VNIs, err = conversion.FilterValidVRFSubnets(validL3VNIs, validL3VPNs, validL2VNIs)
+	validL3VNIs, validL3VPNs, validL2VNIs, err = conversion.FilterUniqueConfiguredRDNumbers(
+		validL3VNIs, validL3VPNs, validL2VNIs)
+	resourceErrors = append(resourceErrors, err)
+
+	validL2VNIs, err = filterL2VNIsWithInvalidRoutingDomain(validL2VNIs, validL3VNIs, validL3VPNs)
 	resourceErrors = append(resourceErrors, err)
 
 	var validPassthrough []v1alpha1.L3Passthrough
