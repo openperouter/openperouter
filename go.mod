@@ -10,7 +10,7 @@ require (
 	github.com/go-kit/log v0.2.1
 	github.com/go-logr/logr v1.4.4
 	github.com/google/go-cmp v0.7.0
-	github.com/moby/moby/api v1.55.0
+	github.com/moby/moby/api v1.56.1
 	github.com/onsi/ginkgo/v2 v2.33.0
 	github.com/onsi/gomega v1.42.1
 	github.com/open-policy-agent/cert-controller v0.16.0
