@@ -79,7 +79,7 @@ jobs:
           make checkuncommitted
 
       - name: Helm doc generate
-        uses: docker://jnorwood/helm-docs:v1.10.0
+        uses: docker://jnorwood/helm-docs:v1.14.2
 
       - name: Check if docs are different
         run: make checkuncommitted
@@ -110,7 +110,7 @@ jobs:
           go-version-file: "go.mod"
           cache: true
       - name: Helm doc generate
-        uses: docker://jnorwood/helm-docs:v1.10.0
+        uses: docker://jnorwood/helm-docs:v1.14.2
       - name: Verify release process
         run: hack/release/verify_release.sh
 
