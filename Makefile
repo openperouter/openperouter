@@ -107,6 +107,12 @@ test: fmt vet envtest $(LOCALBIN) kind-node-image-build docker-build ## Run test
 	done; \
 	$(CONTAINER_ENGINE) run --rm --privileged -v $$(pwd):/src -w /src --entrypoint /src/hack/integration_tests.sh $(KIND_NODE_IMG) $$RUNASROOT_TESTS
 
+BENCHMARK_BASE ?= HEAD
+
+.PHONY: check-benchmark
+check-benchmark: benchmarkcheck ## Compare reconciliation benchmarks against BENCHMARK_BASE (requires Linux and root/sudo).
+	bash hack/check-benchmark.sh "$(BENCHMARK_BASE)"
+
 ##@ Build
 
 .PHONY: build
@@ -168,6 +174,13 @@ KUBECONFIG_PATH ?= $(LOCALBIN)/kubeconfig
 APIDOCSGEN ?= $(LOCALBIN)/crd-ref-docs
 HUGO ?= $(LOCALBIN)/hugo
 export KUBECONFIG=$(KUBECONFIG_PATH)
+
+.PHONY: benchmarkcheck
+benchmarkcheck: bin/benchmarkcheck ## Build the benchmark regression comparison tool.
+
+bin/benchmarkcheck: $(wildcard hack/benchmarkcheck/*.go) hack/benchmarkcheck/go.mod hack/benchmarkcheck/go.sum
+	mkdir -p bin
+	go -C hack/benchmarkcheck build -o "$(abspath $@)" .
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.0.0
