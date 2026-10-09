@@ -22,7 +22,7 @@ require (
 	github.com/vishvananda/netns v0.0.5
 	go.yaml.in/yaml/v2 v2.4.4
 	golang.org/x/net v0.58.0
-	golang.org/x/sys v0.47.0
+	golang.org/x/sys v0.48.0
 	helm.sh/helm/v4 v4.2.3
 	k8s.io/api v0.37.1
 	k8s.io/apiextensions-apiserver v0.37.1
