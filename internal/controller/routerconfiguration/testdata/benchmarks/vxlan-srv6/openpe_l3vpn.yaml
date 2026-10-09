@@ -1,0 +1,37 @@
+l3vpns:
+  - name: blue
+    vrf: blue
+    rdAssignedNumber: 300
+    exportRTs:
+      - "64514:300"
+    importRTs:
+      - "64514:300"
+    hostSession:
+      asn: 64514
+      hostASN: 64516
+      localCIDRs:
+        - 192.168.30.0/24
+  - name: purple
+    vrf: purple
+    rdAssignedNumber: 301
+    exportRTs:
+      - "64514:301"
+    importRTs:
+      - "64514:301"
+    hostSession:
+      asn: 64514
+      hostASN: 64516
+      localCIDRs:
+        - 192.168.31.0/24
+  - name: orange
+    vrf: orange
+    rdAssignedNumber: 302
+    exportRTs:
+      - "64514:302"
+    importRTs:
+      - "64514:302"
+    hostSession:
+      asn: 64514
+      hostASN: 64516
+      localCIDRs:
+        - 192.168.32.0/24

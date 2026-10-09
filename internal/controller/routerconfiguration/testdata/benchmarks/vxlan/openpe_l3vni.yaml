@@ -1,0 +1,25 @@
+l3vnis:
+  - name: red
+    vrf: red
+    vni: 100
+    hostSession:
+      asn: 64514
+      hostASN: 64515
+      localCIDRs:
+        - 192.168.10.0/24
+  - name: green
+    vrf: green
+    vni: 101
+    hostSession:
+      asn: 64514
+      hostASN: 64515
+      localCIDRs:
+        - 192.168.11.0/24
+  - name: yellow
+    vrf: yellow
+    vni: 102
+    hostSession:
+      asn: 64514
+      hostASN: 64515
+      localCIDRs:
+        - 192.168.12.0/24

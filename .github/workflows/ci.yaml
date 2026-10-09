@@ -166,6 +166,43 @@ jobs:
           make bundle
           git diff --exit-code operator/bundle
 
+  check-benchmark:
+    if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      BENCHMARK_BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            hack/benchmarkcheck/go.sum
+      - name: Install kernel modules
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y linux-modules-extra-$(uname -r)
+          for module in dummy vrf bridge veth vxlan; do sudo modprobe "$module"; done
+      - name: Test benchmark comparison
+        run: go -C hack/benchmarkcheck test ./...
+      - name: Check benchmark regressions
+        run: make check-benchmark
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: benchmark-results
+          path: bin/benchmark-results/
+          retention-days: 7
+
   build-test-images:
     runs-on: ubuntu-22.04
     strategy:

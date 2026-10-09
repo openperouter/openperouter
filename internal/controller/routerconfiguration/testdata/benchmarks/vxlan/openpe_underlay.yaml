@@ -1,0 +1,13 @@
+underlays:
+  - asn: 64514
+    interfaces:
+      - type: NetworkDevice
+        networkDevice:
+          interfaceName: bench-underlay
+    neighbors:
+      - asn: 64512
+        address: 192.0.2.2
+    tunnelEndpoint:
+      cidrs:
+        - 100.65.0.0/24
+        - 2001:db8:100::/64
