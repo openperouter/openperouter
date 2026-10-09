@@ -9,27 +9,6 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 )
 
-func TestValidateGroutL2VNI(t *testing.T) {
-	err := ValidateGroutL2VNI(v1alpha1.L2VNI{})
-	if err == nil {
-		t.Error("ValidateGroutL2VNI() expected error, got nil")
-	}
-}
-
-func TestValidateGroutL3VNI(t *testing.T) {
-	err := ValidateGroutL3VNI(v1alpha1.L3VNI{})
-	if err != nil {
-		t.Errorf("ValidateGroutL3VNI() unexpected error: %v", err)
-	}
-}
-
-func TestValidateGroutL3Passthrough(t *testing.T) {
-	err := ValidateGroutL3Passthrough(v1alpha1.L3Passthrough{})
-	if err != nil {
-		t.Errorf("ValidateGroutL3Passthrough() unexpected error: %v", err)
-	}
-}
-
 func TestValidateGroutUnderlayCNI(t *testing.T) {
 	tests := []struct {
 		name    string

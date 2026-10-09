@@ -71,6 +71,9 @@ func SetupL3VNI(ctx context.Context, client *Client, params hostnetwork.L3VNIPar
 	if err := ensurePortAddresses(ctx, client, linkPair.NamespaceSide, params.LinkIPs.NSIPv4, params.LinkIPs.NSIPv6); err != nil {
 		return fmt.Errorf("failed to assign IPs to grout port: %w", err)
 	}
+	if err := client.setPortUp(ctx, linkPair.NamespaceSide); err != nil {
+		return fmt.Errorf("failed to set grout port up: %w", err)
+	}
 
 	return nil
 }
@@ -169,7 +172,7 @@ func removeVNI(ctx context.Context, client *Client, vni int32) error {
 		return fmt.Errorf("failed to delete bridge %s: %w", bridgeName, err)
 	}
 
-	vxlanName := fmt.Sprintf("vni%d", vni)
+	vxlanName := vxlanNameFromVNI(vni)
 	if err := client.deleteInterface(ctx, vxlanName); err != nil {
 		return fmt.Errorf("failed to delete VXLAN %s: %w", vxlanName, err)
 	}
@@ -218,4 +221,8 @@ func linkPairFromVNI(vni int32) hostnetwork.VethNames {
 	hostSide := fmt.Sprintf("%s%d", hostTapPrefix, vni)
 	peSide := fmt.Sprintf("%s%d", pePortPrefix, vni)
 	return hostnetwork.VethNames{HostSide: hostSide, NamespaceSide: peSide}
+}
+
+func vxlanNameFromVNI(vni int32) string {
+	return fmt.Sprintf(vxlanNameFmt, vni)
 }

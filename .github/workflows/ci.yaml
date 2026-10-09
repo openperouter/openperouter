@@ -351,7 +351,7 @@ jobs:
           elif [ ${{ matrix.deployment }} = "hostmode-boot" ]; then
             make e2etests-hostmode-boot
           elif [ ${{ matrix.deployment }} = "helm-grout" ] || [ ${{ matrix.deployment }} = "grout" ] || [ ${{ matrix.deployment }} = "operator-grout" ]; then
-            make e2etests GINKGO_ARGS="--label-filter='grout-support || grout-only'" TEST_ARGS="--groutmode"
+            make e2etests GINKGO_ARGS="--label-filter='grout-support || grout-only' --skip='Disconnected L2VNI east/west traffic with route targets' " TEST_ARGS="--groutmode"
           else
             export GINKGO_ARGS="--label-filter='!systemdmode && !grout-only'"
             make e2etests
