@@ -138,9 +138,7 @@ jobs:
           cache: true
 
       - name: Install kernel modules
-        run: |
-          sudo apt-get update
-          sudo apt-get install linux-modules-extra-$(uname -r)
+        run: hack/install-kernel-modules.sh
 
       - name: Free Disk Space
         working-directory: ${{ github.workspace }}
@@ -260,9 +258,7 @@ jobs:
           cache: true
 
       - name: Install kernel modules
-        run: |
-          sudo apt-get update
-          sudo apt-get install linux-modules-extra-$(uname -r)
+        run: hack/install-kernel-modules.sh
 
       # rp_filter is off on CI runners; enable it so kind nodes inherit a production-like default
       - name: Enable rp_filter
@@ -419,9 +415,7 @@ jobs:
           cache: true
 
       - name: Install kernel modules
-        run: |
-          sudo apt-get update
-          sudo apt-get install linux-modules-extra-$(uname -r)
+        run: hack/install-kernel-modules.sh
 
       - name: Install QEMU and dependencies
         run: |
@@ -501,9 +495,7 @@ jobs:
           cache: true
 
       - name: Install kernel modules
-        run: |
-          sudo apt-get update
-          sudo apt-get install linux-modules-extra-$(uname -r)
+        run: hack/install-kernel-modules.sh
 
       - name: Disable containerd image store
         run: |

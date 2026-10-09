@@ -36,9 +36,7 @@ jobs:
           cache: true
 
       - name: Install kernel modules
-        run: |
-          sudo apt-get update
-          sudo apt-get install linux-modules-extra-$(uname -r)
+        run: hack/install-kernel-modules.sh
 
       - name: Load kind-node-openperouter image
         uses: ./.github/workflows/composite/load-kind-node-image
