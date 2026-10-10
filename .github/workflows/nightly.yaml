@@ -10,7 +10,7 @@ jobs:
     uses: ./.github/workflows/ci.yaml
 
   report-flakes:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-26.04
     needs: ci
     if: ${{ always() && needs.ci.result == 'failure' }}
     permissions:

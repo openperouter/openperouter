@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   build-kind-node-image:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-26.04
     outputs:
       kind-node-version: ${{ steps.build.outputs.kind-node-version }}
     steps:
@@ -24,7 +24,7 @@ jobs:
         uses: ./.github/workflows/composite/build-kind-node-image
 
   unit-tests:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-26.04
     needs: build-kind-node-image
     steps:
       - name: Checkout
@@ -61,7 +61,7 @@ jobs:
           ENV=host make lint
 
   publish-images:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-26.04
     needs: [unit-tests]
     permissions:
       contents: read
@@ -152,7 +152,7 @@ jobs:
           COSIGN_EXPERIMENTAL: 1
 
   publish-operator-images:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-26.04
     needs: [publish-images]
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
@@ -194,7 +194,7 @@ jobs:
 
   release-charts:
     needs: [publish-images]
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-26.04
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -241,7 +241,7 @@ jobs:
 
   publish-website:
     needs: [release-charts]
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-26.04
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - name: Generate token

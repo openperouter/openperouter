@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   feature-needs-docs:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-26.04
     if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'kind/feature')
     steps:
       - name: Checkout Source
@@ -42,7 +42,7 @@ jobs:
           fi
 
   static-security-analysis:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-26.04
     env:
       GO111MODULE: on
     steps:
@@ -60,7 +60,7 @@ jobs:
           repo-checkout: false
 
   check-generated:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-26.04
     if: github.actor != 'dependabot[bot]' && github.actor != 'renovate[bot]'
     steps:
       - name: Checkout Source
@@ -85,7 +85,7 @@ jobs:
         run: make checkuncommitted
 
   commitlint:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-26.04
     if: >-
       github.event_name != 'pull_request' ||
       (github.event.pull_request.user.login != 'dependabot[bot]' &&
@@ -99,7 +99,7 @@ jobs:
           configFile: ./commitlint.config.cjs
 
   verify-release:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-26.04
     steps:
       - name: Checkout Source
         uses: actions/checkout@v7
@@ -115,7 +115,7 @@ jobs:
         run: hack/release/verify_release.sh
 
   build-kind-node-image:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-26.04
     outputs:
       kind-node-version: ${{ steps.build.outputs.kind-node-version }}
     steps:
@@ -126,7 +126,7 @@ jobs:
         uses: ./.github/workflows/composite/build-kind-node-image
 
   unit-tests:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-26.04
     needs: build-kind-node-image
     steps:
       - name: Checkout
@@ -171,7 +171,7 @@ jobs:
           git diff --exit-code operator/bundle
 
   build-test-images:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-26.04
     strategy:
       fail-fast: true
     steps:
@@ -197,7 +197,7 @@ jobs:
           path: /tmp/openperouter.tar
 
   build-grout-images:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-26.04
     strategy:
       fail-fast: true
     steps:
@@ -223,7 +223,7 @@ jobs:
           path: /tmp/openperouter-grout.tar
 
   e2etests:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-26.04
     env:
       NODE_IMAGE: quay.io/openperouter/kind-node-openperouter:${{ needs.build-kind-node-image.outputs.kind-node-version }}
     needs:
@@ -385,7 +385,7 @@ jobs:
           artifact-name: kind-logs-${{ matrix.deployment }}
 
   e2etests-qemu-grout:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs:
       - build-grout-images
     permissions:
@@ -465,7 +465,7 @@ jobs:
 
   scale-tests:
     if: contains(github.event.pull_request.labels.*.name, 'run-scale-tests')
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-26.04
     env:
       NODE_IMAGE: quay.io/openperouter/kind-node-openperouter:v1.32.2
     needs:
