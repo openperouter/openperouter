@@ -5,7 +5,6 @@ package qemu_e2e
 import (
 	"flag"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -23,6 +22,7 @@ import (
 )
 
 var (
+	inspectPath        string
 	nodeLinkConfigPath string
 )
 
@@ -30,6 +30,7 @@ func handleFlags() {
 	flag.StringVar(&executor.Kubectl, "kubectl", "kubectl", "the path for the kubectl binary")
 	flag.StringVar(&ReportPath, "reporterpath", "/tmp", "the path for the reporter")
 	flag.StringVar(&openperouter.Namespace, "openperouter-namespace", openperouter.Namespace, "namespace where OpenPERouter pods run")
+	flag.StringVar(&inspectPath, "inspect-path", "", "path to the inspect tool")
 	flag.StringVar(&nodeLinkConfigPath, "nodelink-config", "../nodelink-default.json", "path to node links config JSON")
 	flag.Parse()
 }
@@ -51,19 +52,21 @@ func TestQEMUE2E(t *testing.T) {
 }
 
 var _ = ginkgo.BeforeSuite(func() {
+	Expect(inspectPath).NotTo(BeEmpty(), "--inspect-path must be provided")
+
 	log.SetLogger(zap.New(zap.WriteTo(ginkgo.GinkgoWriter), zap.UseDevMode(true)))
 	clientconfig, err := k8sclient.RestConfig()
 	Expect(err).NotTo(HaveOccurred(), "failed to load kubeconfig (KUBECONFIG=%s)", os.Getenv("KUBECONFIG"))
 	Updater, err = config.UpdaterForCRs(clientconfig, openperouter.Namespace, frrk8s.Namespace)
 	Expect(err).NotTo(HaveOccurred())
 
-	kubeconfig := os.Getenv("KUBECONFIG")
-	if kubeconfig == "" {
-		kubeconfig = filepath.Join(os.Getenv("HOME"), ".kube", "config")
-	}
-	reporter, err := k8s.InitReporter(kubeconfig, ReportPath, openperouter.Namespace, "")
-	Expect(err).NotTo(HaveOccurred(), "failed to initialize k8s reporter (kubeconfig=%s)", kubeconfig)
-	k8sReporter = reporter
+	inspectReporter = k8s.NewInspectReporter(
+		inspectPath,
+		ReportPath,
+		executor.Kubectl,
+		openperouter.Namespace,
+		frrk8s.Namespace,
+	)
 
 	ginkgo.By("Registering fabric and node links from " + nodeLinkConfigPath)
 	Expect(infra.RegisterLinks(nodeLinkConfigPath)).To(Succeed())

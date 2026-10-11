@@ -5,15 +5,15 @@ package qemu_e2e
 import (
 	"github.com/onsi/ginkgo/v2"
 	"github.com/openperouter/openperouter/e2etests/pkg/config"
+	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
 	"github.com/openperouter/openperouter/e2etests/pkg/triage"
-	"github.com/openshift-kni/k8sreporter"
 	clientset "k8s.io/client-go/kubernetes"
 )
 
 var (
-	Updater     *config.Updater
-	ReportPath  string
-	k8sReporter *k8sreporter.KubernetesReporter
+	Updater         *config.Updater
+	ReportPath      string
+	inspectReporter *k8s.InspectReporter
 )
 
 var GroutSupport = ginkgo.Label("grout-support")
@@ -25,7 +25,7 @@ func dumpIfFails(cs clientset.Interface, additionalNamespaces ...string) {
 	triage.DumpIfFails(cs, triage.Config{
 		ReportPath:           ReportPath,
 		GroutMode:            true,
-		K8sReporter:          k8sReporter,
+		InspectReporter:      inspectReporter,
 		AdditionalNamespaces: additionalNamespaces,
 		CollectFRRK8sPods:    true,
 		CollectFRRContainers: true,

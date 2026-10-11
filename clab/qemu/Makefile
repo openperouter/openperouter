@@ -34,6 +34,7 @@ qemu-e2etests: ginkgo kubectl create-export-logs ## Run QEMU e2e tests (VM must 
 	$(GINKGO) -v $(GINKGO_ARGS) --timeout=1h \
 	  ./e2etests/hw_emulation_suite -- \
 	  --kubectl=$(KUBECTL) \
+	  --inspect-path=$(CURDIR)/tools/inspect/inspect \
 	  --reporterpath=$(KIND_EXPORT_LOGS) \
 	  $(TEST_ARGS)
 
