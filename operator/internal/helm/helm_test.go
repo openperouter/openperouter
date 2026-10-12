@@ -295,7 +295,7 @@ func TestParseChartWithGroutEnabled(t *testing.T) {
 						env[e.Name] = e.Value
 					}
 					g.Expect(env["GROUT_SOCK_PATH"]).To(Equal("/var/run/grout/grout.sock"))
-					g.Expect(env["GROUT_MEMPOOL_CHUNK_SIZE"]).To(Equal("2047"))
+					g.Expect(env["GROUT_MEMPOOL_CHUNK_SIZE"]).To(Equal("4095"))
 					g.Expect(env["GROUT_PORT_QUEUE_SIZE"]).To(Equal("128"))
 					g.Expect(env).ToNot(HaveKey("GROUT_FIB4_ALGORITHM"))
 					g.Expect(env).ToNot(HaveKey("GROUT_FIB6_ALGORITHM"))

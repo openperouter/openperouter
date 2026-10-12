@@ -298,8 +298,12 @@ spec:
           # pod memory when allocating per-VRF FIBs.
           - name: GROUT_MAX_IFACES
             value: "128"
+          # Must stay above 4x the per-port mbuf reservation
+          # (rxq + txq + 256 = 512 with GROUT_PORT_QUEUE_SIZE=128), otherwise
+          # grout shrinks the port mempool to 2x the reservation and the tap
+          # ports starve for RX buffers.
           - name: GROUT_MEMPOOL_CHUNK_SIZE
-            value: "2047"
+            value: "4095"
           - name: GROUT_MAX_NEXTHOPS
             value: "4096"
           - name: GROUT_MAX_ROUTES
