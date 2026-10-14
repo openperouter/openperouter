@@ -58,6 +58,35 @@ func TestSetupTunnelEndpointKeepsExistingPort(t *testing.T) {
 	assert.True(t, hasSubnetRoute(t, ns, "192.168.50.0/24"))
 }
 
+func TestDeviceStateExcludesAutoconfiguredAddresses(t *testing.T) {
+	link := addHostDummy(t, accelCIDR)
+	static, err := netlink.ParseAddr("2001:db8::1/64")
+	require.NoError(t, err)
+	require.NoError(t, netlink.AddrAdd(link, static))
+	dynamic, err := netlink.ParseAddr("2001:db8::2/64")
+	require.NoError(t, err)
+	dynamic.ValidLft = 300
+	dynamic.PreferedLft = 300
+	require.NoError(t, netlink.AddrAdd(link, dynamic))
+	require.NoError(t, sysctl.Ensure(sysctl.AcceptRA(accelIface, "2")))
+
+	store := devicestate.Store{Dir: t.TempDir()}
+	state, err := ensureDeviceState(accelIface, PortModeTAP, store, pci.Sysfs{})
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{accelCIDR, static.IPNet.String()}, state.Addresses)
+	assert.Equal(t, "2", state.AcceptRA)
+	assert.Equal(t, "2", hostSysctl(t, sysctl.AcceptRA(accelIface, "")))
+
+	require.NoError(t, hostnetwork.SuppressAutoconf(accelIface))
+	assert.NotContains(t, linkAddresses(t, link), dynamic.IPNet.String())
+	assert.Equal(t, "0", hostSysctl(t, sysctl.AcceptRA(accelIface, "")))
+
+	require.NoError(t, applyStateToLink(context.Background(), link, state))
+	assert.Contains(t, linkAddresses(t, link), static.IPNet.String())
+	assert.NotContains(t, linkAddresses(t, link), dynamic.IPNet.String())
+	assert.Equal(t, "2", hostSysctl(t, sysctl.AcceptRA(accelIface, "")))
+}
+
 func TestSetupAcceleratedUnderlayRebindsKernelDriver(t *testing.T) {
 	ns := newAccelTestNS(t)
 	addGroutMainInterface(t, ns)
