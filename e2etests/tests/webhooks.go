@@ -252,7 +252,7 @@ var _ = Describe("Webhooks", func() {
 					VXLanPort:     new(int32(4789)),
 					GatewayIPs:    []string{"not-an-ip-address"},
 				},
-			}}, `invalid gatewayIPs for vni "l2-invalid-ip4" = [not-an-ip-address]: invalid cidr: invalid CIDR address: not-an-ip-address`),
+			}}, `spec.gatewayIPs: Invalid value: "array": all entries must be valid CIDRs`),
 			Entry("when trying to create an L2VNI with an invalid format in GatewayIP", []v1alpha1.L2VNI{{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "l2-bad-format",
@@ -264,7 +264,7 @@ var _ = Describe("Webhooks", func() {
 					VXLanPort:     new(int32(4789)),
 					GatewayIPs:    []string{"256.256.256.256/24"},
 				},
-			}}, `invalid gatewayIPs for vni "l2-bad-format" = [256.256.256.256/24]: invalid cidr: invalid CIDR address: 256.256.256.256/24`),
+			}}, `spec.gatewayIPs: Invalid value: "array": all entries must be valid CIDRs`),
 			Entry("when trying to create an L2VNI with mixed valid and invalid IPs", []v1alpha1.L2VNI{{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "l2-mixed-ips",
@@ -276,7 +276,7 @@ var _ = Describe("Webhooks", func() {
 					VXLanPort:     new(int32(4789)),
 					GatewayIPs:    []string{"192.168.1.1/24", "invalid-ip"},
 				},
-			}}, `invalid gatewayIPs for vni "l2-mixed-ips" = [192.168.1.1/24 invalid-ip]: invalid cidr: invalid CIDR address: invalid-ip`),
+			}}, `spec.gatewayIPs: Invalid value: "array": all entries must be valid CIDRs`),
 			Entry("when trying to create an L2VNI with more than 2 IPs", []v1alpha1.L2VNI{{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "l2-too-many",
@@ -300,7 +300,7 @@ var _ = Describe("Webhooks", func() {
 					VXLanPort:     new(int32(4789)),
 					GatewayIPs:    []string{"192.168.1.1/24", "10.0.0.1/24"},
 				},
-			}}, `invalid gatewayIPs for vni "l2-two-ipv4" = [192.168.1.1/24 10.0.0.1/24]: IPFamilyForAddresses: same address family ["192.168.1.1" "10.0.0.1"]`),
+			}}, `spec.gatewayIPs: Invalid value: "array": at most one IPv4 CIDR is allowed`),
 			Entry("when trying to create an L2VNI with 2 IPv6 addresses", []v1alpha1.L2VNI{{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "l2-two-ipv6",
@@ -312,7 +312,7 @@ var _ = Describe("Webhooks", func() {
 					VXLanPort:     new(int32(4789)),
 					GatewayIPs:    []string{"2001:db8::1/64", "2001:db9::1/64"},
 				},
-			}}, `invalid gatewayIPs for vni "l2-two-ipv6" = [2001:db8::1/64 2001:db9::1/64]: IPFamilyForAddresses: same address family ["2001:db8::1" "2001:db9::1"]`),
+			}}, `spec.gatewayIPs: Invalid value: "array": at most one IPv6 CIDR is allowed`),
 			Entry("when trying to create an L2VNI with overlapping IPv4 address", []v1alpha1.L2VNI{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -631,6 +631,40 @@ var _ = Describe("Webhooks", func() {
 					},
 				},
 			}, "all entries must be valid CIDRs"),
+			Entry("when trying to create an underlay with an invalid routerIDCIDR", v1alpha1.Underlay{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "underlay-bad-routerid",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.UnderlaySpec{
+					ASN:          65000,
+					RouterIDCIDR: new("notacidr"),
+					Interfaces:   []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "nic1"}}},
+					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+						CIDRs: []string{"192.168.1.0/24"},
+					},
+					Neighbors: []v1alpha1.Neighbor{
+						{ASN: new(int64(65001)), Address: new("192.168.1.1")},
+					},
+				},
+			}, `spec.routerIDCIDR: Invalid value: "string": must be a valid IPv4 CIDR`),
+			Entry("when trying to create an underlay with an IPv6 routerIDCIDR", v1alpha1.Underlay{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "underlay-ipv6-routerid",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.UnderlaySpec{
+					ASN:          65000,
+					RouterIDCIDR: new("fd00::/64"),
+					Interfaces:   []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "nic1"}}},
+					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+						CIDRs: []string{"192.168.1.0/24"},
+					},
+					Neighbors: []v1alpha1.Neighbor{
+						{ASN: new(int64(65001)), Address: new("192.168.1.1")},
+					},
+				},
+			}, `spec.routerIDCIDR: Invalid value: "string": must be a valid IPv4 CIDR`),
 		)
 
 		It("should allow creating an underlay with multiple NICs and neighbors", func() {

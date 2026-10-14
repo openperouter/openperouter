@@ -81,10 +81,8 @@ type L2VNISpec struct {
 	// inside the routing-domain reference.
 	// Maximum of 2 addresses are allowed. If 2 addresses are provided, one must be IPv4 and one must be IPv6.
 	// +optional
-	// +kubebuilder:validation:MaxItems=2
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="GatewayIPs cannot be changed"
-	// +listType=atomic
-	GatewayIPs []string `json:"gatewayIPs,omitempty"`
+	GatewayIPs DualStackCIDRs `json:"gatewayIPs,omitempty"`
 
 	// exportRTs are the Route Targets to be used for exporting L2 EVPN routes.
 	// +kubebuilder:validation:MaxItems:=100
