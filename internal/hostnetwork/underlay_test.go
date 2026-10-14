@@ -433,8 +433,8 @@ func cleanTest(namespace string) {
 	}
 	for _, l := range links {
 		if strings.HasPrefix(l.Attrs().Name, "test") ||
-			strings.HasPrefix(l.Attrs().Name, PEVethPrefix) ||
-			strings.HasPrefix(l.Attrs().Name, HostVethPrefix) {
+			strings.HasPrefix(l.Attrs().Name, peVethPrefix) ||
+			strings.HasPrefix(l.Attrs().Name, hostVethPrefix) {
 			err := netlink.LinkDel(l)
 			Expect(err).NotTo(HaveOccurred())
 		}
