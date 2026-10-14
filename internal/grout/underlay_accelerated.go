@@ -12,7 +12,6 @@ import (
 	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/openperouter/openperouter/internal/netnamespace"
 	"github.com/openperouter/openperouter/internal/pci"
-	"github.com/openperouter/openperouter/internal/sysctl"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -126,8 +125,8 @@ func quiesceBifurcatedNetdev(netdev string) error {
 	if err := hostnetwork.SuppressLinkLocal(netdev); err != nil {
 		return fmt.Errorf("failed to suppress link-local on bifurcated netdev %s: %w", netdev, err)
 	}
-	if err := sysctl.Ensure(sysctl.DisableAcceptRA(netdev)); err != nil {
-		return fmt.Errorf("failed to disable accept_ra on bifurcated netdev %s: %w", netdev, err)
+	if err := hostnetwork.SuppressAutoconf(netdev); err != nil {
+		return fmt.Errorf("failed to suppress autoconf on bifurcated netdev %s: %w", netdev, err)
 	}
 	return nil
 }
