@@ -12,18 +12,67 @@ host attachment, bridge, and VXLAN device:
 ![Proposed shared VLAN trunk model](drawings/vlan_novlanbridges.png)
 
 In order to make the two implementations coexist, the current L2VNI
-is reimplemented using the VLan aware model.
+is reimplemented using the VLan aware model. This is because in order to make a VLan aware
+bridge and a non VLan aware bridge, we would have to use different VXLan ports (a limitation
+of linux).
 
 All L2VNIs and L3VNIs use the
 [FRR VLAN filtering bridge and single VXLAN device model](https://docs.frrouting.org/en/latest/evpn.html#vlan-filtering-bridge-and-single-vxlan-device).
-Existing resources keep their APIs and host-facing behavior; their VLANs
-remain internal. Untagged trunk traffic, automatic migration to trunks, and
-user configuration of internal VLANs are out of scope.
+
+## Reimplementing the Current API
+
+Because of the limitation described above, the current L2VNI which doesn't expect a 
+VLan tag must be reimplemented using a VLan aware bridge. This proposal describes how
+to do that tagging the traffic internally to the OpenPERouter network namespace while
+keeping the traffic to / from the host's namespace untagged.
+
 
 ## Proposed API
 
-`L2Trunk` owns the shared attachment, initially through an external Linux
-bridge configured with `hostMaster`.
+The existing standalone L2VNI API remains supported alongside the new trunk
+API. A standalone L2VNI can set `spec.hostMaster` to attach its dedicated
+host-facing veth to a Linux or OVS bridge, with untagged traffic on that
+veth. For example, the current API allows:
+
+```yaml
+apiVersion: network.openperouter.io/v1alpha1
+kind: L2VNI
+metadata:
+  name: standalone
+spec:
+  vni: 10300
+  hostMaster:
+    type: LinuxBridge
+    linuxBridge:
+      lifecycle: External
+      name: br-standalone
+```
+
+With the new API, an L2VNI instead sets `spec.trunk` to select a shared
+attachment and its VLAN tag:
+
+```yaml
+apiVersion: network.openperouter.io/v1alpha1
+kind: L2VNI
+metadata:
+  name: tenant-a
+spec:
+  vni: 10100
+  trunk:
+    name: workloads
+    vlan:
+      tag: 100
+```
+
+The `hostMaster` configuration belongs to the
+referenced `L2Trunk`. An L2VNI cannot set both `spec.hostMaster` and
+`spec.trunk`; existing standalone manifests need no changes. A standalone
+L2VNI can still omit `hostMaster` for external attachment of its veth.
+
+`L2Trunk` owns the shared host attachment. The host-facing veth carries a
+VLAN trunk that can extend the L2 domains through VLAN interfaces created
+on it, Linux or OVS bridges, or other L2 connectivity mechanisms.
+`hostMaster` behaves the same as for a regular L2VNI.
 
 ```yaml
 apiVersion: network.openperouter.io/v1alpha1
@@ -73,6 +122,7 @@ spec:
 - L2VNIs sharing a trunk must agree on effective `vxlanPort` and
   `underlayAddressFamily` settings.
 - Tags must be unique per trunk per node; different trunks may reuse tags.
+- Tags must be unique also for those trunks that share the same hostmaster.
 
 VNIs must be unique per node across trunks, standalone L2VNIs, and L3VNIs.
 The controller reports conflicts without programming ambiguous mappings.
@@ -83,18 +133,40 @@ The controller reports conflicts without programming ambiguous mappings.
 
 Creating an `L2Trunk` creates its veth pair, VLAN-aware bridge, and
 `external vnifilter` VXLAN device, even without referencing L2VNIs.
-The host veth attaches to `hostMaster`.
+The host veth attaches to `hostMaster` when specified; otherwise it remains
+available for external attachment.
 The controller configures tagged membership on the router-side veth and
 VXLAN port, VLAN-to-VNI mappings, and VNI filters. No default PVID is set:
 untagged frames and unconfigured tags are dropped.
 
-The external host bridge's operator must restrict each workload port to its
-assigned VLAN. Trunk filtering alone cannot stop workloads from sending
-another configured tenant's tag.
+The operator of the host-side L2 connectivity must restrict each workload
+to its assigned VLAN, for example through VLAN membership on bridge ports.
+Trunk filtering alone cannot stop workloads from sending another configured
+tenant's tag.
 
 Deleting an L2VNI removes its VLAN membership, mapping, VNI filter entry,
 and gateway configuration. Shared devices are deleted only when the
-`L2Trunk` is deleted, invalidating any L2VNIs that still reference it.
+`L2Trunk` is deleted. As with deletion of a referenced L3VNI, deleting a
+trunk removes the referencing L2VNIs' dataplane configuration and marks
+them as orphaned of the trunk, retaining their Kubernetes resources.
+
+An L2VNI referencing a missing or deleted trunk is reported through the
+affected node's `RouterNodeConfigurationStatus`: `Ready=False` and
+`Degraded=True`, with the existing condition reason `ConfigurationFailed`.
+Its `status.failedResources` entry identifies the dependency as follows
+(for `tenant-a` referencing trunk `workloads`):
+
+```yaml
+failedResources:
+- kind: L2VNI
+  name: tenant-a
+  reason: DependencyFailed
+  message: 'referenced L2Trunk "workloads" not found'
+```
+
+The message distinguishes a missing trunk from a missing L3VNI while
+reusing the existing failure reasons. Other valid resources continue to
+be configured.
 
 FRR retains per-L2VNI route targets; Zebra discovers mappings and routing
 domains from Linux. Each VNI with `gatewayIPs` gets a macvlan gateway in its
@@ -108,20 +180,30 @@ extend capacity while preserving per-node VNI uniqueness.
 
 ### Standalone L2VNIs and L3VNIs
 
-An L2VNI without `trunk` keeps its dedicated bridge, VXLAN device, and veth
-pair. The host veth carries untagged traffic and attaches to `hostMaster`
-when specified; otherwise it remains available for external attachment.
-Internally, the router-side veth is an access port for one VLAN mapped to
-its VNI on an `external vnifilter` VXLAN device.
+This is what the current API provides.
+
+In order to provide the same behavior
+with a VLan aware bridge, an L2VNI without `trunk` keeps its dedicated bridge,
+VXLAN device, and veth pair. The host veth carries untagged traffic and 
+attaches to `hostMaster` when specified; otherwise it remains available for
+external attachment. Internally, the router-side veth is an access port for
+one VLAN mapped to its VNI on an `external vnifilter` VXLAN device.
+
+![reimplementation of the current api with vlan aware bridge](drawings/vlan_novlan_vrf.png)
 
 Each L3VNI likewise keeps a dedicated bridge and VXLAN device, with one
 internal VLAN. L3VNI, VRF, gateway, and routing APIs remain unchanged.
 Internal VLAN IDs can be reused across dedicated bridges, requiring no
 node-wide allocation or status field.
 
-VXLAN devices with disjoint VNI filters can share the configured UDP port.
-Coexistence and FRR's L2VNI-to-VRF discovery require validation on supported
-kernels and FRR versions.
+This can be achieved with the following properties on the bridge:
+
+```bash
+bridge vlan add dev pe-100 vid 1 pvid untagged
+```
+
+where pe-100 is the veth leg on the OpenPERouter's namespace
+side and 1 is a fixed VLan.
 
 ## Possible alternatives
 
@@ -279,6 +361,20 @@ would require a second dataplane configuration path.
    host-facing behavior.
 2. Add `L2Trunk` and `L2VNI.trunk` to support shared VLAN-tagged attachments
    using the same dataplane implementation.
+
+## Potential followups
+
+### L2VNI / L3VNI with single bridge
+
+This is a potential improvement, if we find out that using a bridge per 
+VRF / L2VNI results in worse performances.
+
+The complexity of the implementation increases as: 
+
+- it would require pooling the vlan tags and tracking which vlan tag is associated
+to which VRF / L2VNI
+- it would require dynamic bridge creation in case more than 4096 VRFs / L2VNIs
+are required
    
 ## Validation and Testing
 
@@ -295,6 +391,9 @@ would require a second dataplane configuration path.
 - Performance comparison against per-VNI host attachments.
 
 ## Compatibility
+
+The `external vnifilter` VXLAN model requires Linux kernel 5.18 or later,
+including for existing L2VNIs and L3VNIs migrated to this model.
 
 Existing manifests and host-facing behavior remain valid. Internal VLANs
 require no user configuration. Static configuration supports the same
