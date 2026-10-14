@@ -15,13 +15,13 @@ func TestFindStaleVNIs(t *testing.T) {
 	tests := []struct {
 		name       string
 		ifaces     []groutInterface
-		configured map[int32]bool
+		configured map[int32]struct{}
 		expected   []int32
 	}{
 		{
 			name:       "no interfaces",
 			ifaces:     nil,
-			configured: map[int32]bool{},
+			configured: map[int32]struct{}{},
 			expected:   nil,
 		},
 		{
@@ -30,7 +30,7 @@ func TestFindStaleVNIs(t *testing.T) {
 				{Name: "vni100", Type: "vxlan"},
 				{Name: "vni200", Type: "vxlan"},
 			},
-			configured: map[int32]bool{100: true, 200: true},
+			configured: map[int32]struct{}{100: {}, 200: {}},
 			expected:   nil,
 		},
 		{
@@ -39,7 +39,7 @@ func TestFindStaleVNIs(t *testing.T) {
 				{Name: "vni100", Type: "vxlan"},
 				{Name: "vni200", Type: "vxlan"},
 			},
-			configured: map[int32]bool{100: true},
+			configured: map[int32]struct{}{100: {}},
 			expected:   []int32{200},
 		},
 		{
@@ -49,7 +49,7 @@ func TestFindStaleVNIs(t *testing.T) {
 				{Name: "bridge100", Type: "bridge"},
 				{Name: "vni100", Type: "vxlan"},
 			},
-			configured: map[int32]bool{},
+			configured: map[int32]struct{}{},
 			expected:   []int32{100},
 		},
 		{
@@ -59,7 +59,7 @@ func TestFindStaleVNIs(t *testing.T) {
 				{Name: "vni200", Type: "vxlan"},
 				{Name: "vni300", Type: "vxlan"},
 			},
-			configured: map[int32]bool{},
+			configured: map[int32]struct{}{},
 			expected:   []int32{100, 200, 300},
 		},
 		{
@@ -68,7 +68,7 @@ func TestFindStaleVNIs(t *testing.T) {
 				{Name: "vni100", Type: "bridge"},
 				{Name: "vni200", Type: "vxlan"},
 			},
-			configured: map[int32]bool{},
+			configured: map[int32]struct{}{},
 			expected:   []int32{200},
 		},
 		{
@@ -77,7 +77,7 @@ func TestFindStaleVNIs(t *testing.T) {
 				{Name: "vni100extra", Type: "vxlan"},
 				{Name: "vni200", Type: "vxlan"},
 			},
-			configured: map[int32]bool{},
+			configured: map[int32]struct{}{},
 			expected:   []int32{200},
 		},
 	}
