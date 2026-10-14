@@ -22,8 +22,10 @@ user configuration of internal VLANs are out of scope.
 
 ## Proposed API
 
-`L2Trunk` owns the shared attachment, initially through an external Linux
-bridge configured with `hostMaster`.
+`L2Trunk` owns the shared host attachment. The host-facing veth carries a
+VLAN trunk that can extend the L2 domains through VLAN interfaces created
+on it, Linux or OVS bridges, or other L2 connectivity mechanisms.
+`hostMaster` behaves the same as for a regular L2VNI.
 
 ```yaml
 apiVersion: network.openperouter.io/v1alpha1
@@ -83,18 +85,22 @@ The controller reports conflicts without programming ambiguous mappings.
 
 Creating an `L2Trunk` creates its veth pair, VLAN-aware bridge, and
 `external vnifilter` VXLAN device, even without referencing L2VNIs.
-The host veth attaches to `hostMaster`.
+The host veth attaches to `hostMaster` when specified; otherwise it remains
+available for external attachment.
 The controller configures tagged membership on the router-side veth and
 VXLAN port, VLAN-to-VNI mappings, and VNI filters. No default PVID is set:
 untagged frames and unconfigured tags are dropped.
 
-The external host bridge's operator must restrict each workload port to its
-assigned VLAN. Trunk filtering alone cannot stop workloads from sending
-another configured tenant's tag.
+The operator of the host-side L2 connectivity must restrict each workload
+to its assigned VLAN, for example through VLAN membership on bridge ports.
+Trunk filtering alone cannot stop workloads from sending another configured
+tenant's tag.
 
 Deleting an L2VNI removes its VLAN membership, mapping, VNI filter entry,
 and gateway configuration. Shared devices are deleted only when the
-`L2Trunk` is deleted, invalidating any L2VNIs that still reference it.
+`L2Trunk` is deleted. As with deletion of a referenced L3VNI, deleting a
+trunk removes the referencing L2VNIs' dataplane configuration and marks
+them as orphaned of the trunk, retaining their Kubernetes resources.
 
 FRR retains per-L2VNI route targets; Zebra discovers mappings and routing
 domains from Linux. Each VNI with `gatewayIPs` gets a macvlan gateway in its
@@ -118,10 +124,6 @@ Each L3VNI likewise keeps a dedicated bridge and VXLAN device, with one
 internal VLAN. L3VNI, VRF, gateway, and routing APIs remain unchanged.
 Internal VLAN IDs can be reused across dedicated bridges, requiring no
 node-wide allocation or status field.
-
-VXLAN devices with disjoint VNI filters can share the configured UDP port.
-Coexistence and FRR's L2VNI-to-VRF discovery require validation on supported
-kernels and FRR versions.
 
 ## Possible alternatives
 
@@ -295,6 +297,9 @@ would require a second dataplane configuration path.
 - Performance comparison against per-VNI host attachments.
 
 ## Compatibility
+
+The `external vnifilter` VXLAN model requires Linux kernel 5.18 or later,
+including for existing L2VNIs and L3VNIs migrated to this model.
 
 Existing manifests and host-facing behavior remain valid. Internal VLANs
 require no user configuration. Static configuration supports the same
