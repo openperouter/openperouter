@@ -223,6 +223,9 @@ func (g *GroutDatapathConfigurator) cleanupGroutInterfaces(
 	if err := grout.RemoveAllVRFs(ctx, groutClient, targetNamespace); err != nil {
 		slog.Warn("failed to remove vrfs after underlay removal", "err", err)
 	}
+	if err := grout.RemoveTunnelEndpoint(ctx, groutClient); err != nil {
+		slog.Warn("failed to remove tunnel endpoint after underlay removal", "err", err)
+	}
 	if err := grout.RestoreUnderlay(ctx, groutClient, targetNamespace,
 		currentUnderlayIfaces, g.deviceStateStore, g.sysfs); err != nil {
 		return fmt.Errorf("failed to remove underlay after underlay removal: %w", err)

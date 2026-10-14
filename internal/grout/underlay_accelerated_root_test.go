@@ -39,6 +39,25 @@ var accelUnderlay = hostnetwork.UnderlayInterface{
 	Kind:          hostnetwork.UnderlayInterfaceNetDev,
 }
 
+func TestSetupTunnelEndpointKeepsExistingPort(t *testing.T) {
+	ns := newAccelTestNS(t)
+	addGroutMainInterface(t, ns)
+	calls := recordCmdExec(t,
+		okCmd("grcli --err-exit --json --socket sock interface show name tunnel-ep",
+			`{"name":"tunnel-ep","type":"port","devargs":"net_null_tunnel_ep,no-rx=1","mtu":1500}`),
+		okCmdEmptyOutput("grcli --err-exit --json --socket sock address add "+accelCIDR+" iface tunnel-ep"),
+		okCmdEmptyOutput("grcli --err-exit --json --socket sock interface set port tunnel-ep up"),
+	)
+	for range 2 {
+		require.NoError(t, netnamespace.In(ns, func() error {
+			return setupTunnelEndpoint(context.Background(), NewClient("sock"),
+				hostnetwork.UnderlayTunnelEndpointParams{IPv4CIDR: accelCIDR})
+		}))
+	}
+	assert.Len(t, *calls, 6)
+	assert.True(t, hasSubnetRoute(t, ns, "192.168.50.0/24"))
+}
+
 func TestSetupAcceleratedUnderlayRebindsKernelDriver(t *testing.T) {
 	ns := newAccelTestNS(t)
 	addGroutMainInterface(t, ns)

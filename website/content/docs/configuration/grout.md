@@ -248,6 +248,9 @@ When grout is enabled, the controller adapts the generated FRR configuration:
   network device names in the `Underlay` resource, for example in
   `isis.interfaces` and in the `interface` of the neighbors: the controller
   translates them to the grout port names.
+- The tunnel endpoint addresses are assigned to a dedicated grout port named
+  `tunnel-ep`, which IS-IS advertises as passive, like the `tunnel-ep`
+  interface of the kernel data path.
 - The tunnel endpoint IPv6 address is set as the SRv6 encapsulation source
   address (`segment-routing srv6 encapsulation source-address`).
 
