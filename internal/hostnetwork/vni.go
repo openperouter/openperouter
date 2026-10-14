@@ -371,7 +371,7 @@ func removeHostSideVNIs(vnis map[int32]bool, ovsClient *OVSClient) []error {
 		failedDeletes = append(failedDeletes, fmt.Errorf("remove OVS bridges: %w", err))
 	}
 
-	return append(failedDeletes, removeHostSideVeths(hostLinks, HostVethPrefix+EvpnInfix, vnis)...)
+	return append(failedDeletes, removeHostSideVeths(hostLinks, HostEVPNPrefix, vnis)...)
 }
 
 func removeNamespaceSideVNIs(vnis map[int32]bool) []error {
@@ -574,10 +574,10 @@ func removePortsFromBridge(ctx context.Context, ovs libovsclient.Client, bridge 
 // non-managed OVS bridge for VNIs that are no longer configured.
 func detachOurPortsFromBridge(ctx context.Context, ovs libovsclient.Client, bridge ovsmodel.Bridge, configuredVNIs map[int32]bool) error {
 	filter := func(port *ovsmodel.Port) bool {
-		if !strings.HasPrefix(port.Name, HostVethPrefix+EvpnInfix) {
+		if !strings.HasPrefix(port.Name, HostEVPNPrefix) {
 			return false
 		}
-		vni, err := interfaceIDFromPrefix(port.Name, HostVethPrefix+EvpnInfix)
+		vni, err := interfaceIDFromPrefix(port.Name, HostEVPNPrefix)
 		if err != nil {
 			return false
 		}
