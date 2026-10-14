@@ -432,6 +432,40 @@ func TestValidateSuccessful(t *testing.T) {
 			}),
 		},
 		{
+			name: "Underlay with valid IPv4 routerIDCIDR",
+			gvk:  underlayGVK,
+			obj: newUnstructured("Underlay", map[string]any{
+				"asn":          int64(65000),
+				"routerIDCIDR": "172.16.0.0/16",
+				"interfaces": []any{
+					map[string]any{
+						"type":          "NetworkDevice",
+						"networkDevice": map[string]any{"interfaceName": "eth0"},
+					},
+				},
+				"neighbors": []any{
+					map[string]any{
+						"address": "192.168.1.1",
+						"asn":     int64(65001),
+					},
+				},
+			}),
+		},
+		{
+			name: "L2VNI with valid dual-stack gatewayIPs",
+			gvk:  l2vniGVK,
+			obj: newUnstructured("L2VNI", map[string]any{
+				"vni":        int64(100),
+				"gatewayIPs": []any{"10.0.0.1/24", "fd00::1/64"},
+				"routingDomain": map[string]any{
+					"type": "L3VNI",
+					"l3vni": map[string]any{
+						"name": "test-l3vni",
+					},
+				},
+			}),
+		},
+		{
 			name: "L2VNI with LinuxBridge External lifecycle and name set",
 			gvk:  l2vniGVK,
 			obj: newUnstructured("L2VNI", map[string]any{
@@ -668,6 +702,21 @@ func TestValidateFailure(t *testing.T) {
 				},
 			}),
 			errSubstr: "type/config mismatch",
+		},
+		{
+			name: "L2VNI, gatewayIPs, when set it must contain at least one item",
+			gvk:  l2vniGVK,
+			obj: newUnstructured("L2VNI", map[string]any{
+				"gatewayIPs": []string{},
+				"vni":        100,
+				"routingDomain": map[string]any{
+					"type": "L3VNI",
+					"l3vni": map[string]any{
+						"name": "test-l3vni",
+					},
+				},
+			}),
+			errSubstr: "spec.gatewayIPs in body should have at least 1 items",
 		},
 		{
 			name: "Underlay interface type CNI without cniDevice",
