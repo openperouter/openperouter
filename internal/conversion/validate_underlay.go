@@ -84,6 +84,10 @@ func validateUnderlay(underlay v1alpha1.Underlay) error {
 			underlay.Name, err)
 	}
 
+	if err := validateRouterIDCIDR(underlay.Spec.RouterIDCIDR); err != nil {
+		return fmt.Errorf("underlay %s has invalid routerIDCIDR: %w", underlay.Name, err)
+	}
+
 	// do a no-op conversion to catch validation errors
 	interfaces, err := underlayInterfacesToHost(underlay.Spec.Interfaces)
 	if err != nil {
@@ -221,6 +225,20 @@ func validateNoDuplicates(items []string) error {
 			return fmt.Errorf("duplicate entry %s", item)
 		}
 		seen[item] = struct{}{}
+	}
+	return nil
+}
+
+func validateRouterIDCIDR(routerIDCIDR *string) error {
+	if routerIDCIDR == nil {
+		return nil
+	}
+	prefix, err := netip.ParsePrefix(*routerIDCIDR)
+	if err != nil {
+		return err
+	}
+	if !prefix.Addr().Is4() {
+		return fmt.Errorf("must be an IPv4 CIDR")
 	}
 	return nil
 }
