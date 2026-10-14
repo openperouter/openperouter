@@ -13,7 +13,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 )
 
-var _ = Describe("Webhooks", func() {
+var _ = Describe("Webhooks", GroutSupport, func() {
 	var cs clientset.Interface
 
 	BeforeEach(func() {
