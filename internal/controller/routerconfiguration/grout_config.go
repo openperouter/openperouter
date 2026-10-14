@@ -38,6 +38,12 @@ func NewGroutConfigurator(groutSocketPath string, mode grout.UnderlayPortMode) *
 	}
 }
 
+// TranslateInterface returns the grout port an underlay network device is
+// attached to, as FRR sees the port and not the device.
+func (g *GroutDatapathConfigurator) TranslateInterface(name string) string {
+	return grout.UnderlayPortNamePrefix + name
+}
+
 func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interfacesConfiguration) error {
 	groutClient := grout.NewClient(g.groutSocketPath)
 
