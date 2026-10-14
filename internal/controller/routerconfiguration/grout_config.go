@@ -69,6 +69,7 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 		Underlays:     config.Underlays,
 		L3VNIs:        config.L3VNIs,
 		L2VNIs:        config.L2VNIs,
+		L3VPNs:        config.L3VPNs,
 		L3Passthrough: config.L3Passthrough,
 	}
 	hostConfig, err := conversion.APItoHostConfig(config.nodeIndex, config.targetNamespace, apiConfig)
@@ -100,6 +101,10 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 		configuredL3VNIs = append(configuredL3VNIs, vni)
 	}
 
+	configuredL3VPNs, l3vpnErrors, failedL3VPNs := setupGroutL3VPNs(ctx, groutClient, hostConfig.L3VPNs)
+	resourceErrors = append(resourceErrors, l3vpnErrors...)
+	failedL3Domains = failedL3Domains.Union(failedL3VPNs)
+
 	var configuredL2VNIs []hostnetwork.L2VNIParams
 	for _, vni := range hostConfig.L2VNIs {
 		if failedL3Domains.Has(vni.VRF) {
@@ -111,7 +116,6 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 			})
 			continue
 		}
-
 		slog.InfoContext(ctx, "setting up L2VNI", "vni", vni.VNI)
 		if err := grout.SetupL2VNI(ctx, groutClient, vni); err != nil {
 			resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
@@ -143,10 +147,6 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 		}
 	}
 
-	if len(resourceErrors) > 0 {
-		slog.Error("configuration failed", "errors", resourceErrors)
-	}
-
 	configuredVNIs := make([]hostnetwork.VNIParams, 0, len(configuredL3VNIs)+len(configuredL2VNIs))
 	configuredVRFs := []string{}
 	for _, vni := range configuredL3VNIs {
@@ -157,12 +157,20 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 		configuredVNIs = append(configuredVNIs, vni.VNIParams)
 		configuredVRFs = append(configuredVRFs, vni.VRF)
 	}
+	for _, l3vpn := range configuredL3VPNs {
+		configuredVRFs = append(configuredVRFs, l3vpn.VRF)
+	}
 
 	slog.InfoContext(ctx, "removing deleted vnis")
 	if err := grout.RemoveNonConfiguredVNIs(ctx, groutClient, config.targetNamespace, configuredVNIs); err != nil {
 		return fmt.Errorf("failed to remove deleted vnis: %w", err)
 	}
 	bridgerefresh.StopForRemovedVNIs(configuredL2VNIs)
+
+	slog.InfoContext(ctx, "removing deleted l3vpns")
+	if err := grout.RemoveNonConfiguredL3VPNs(ctx, groutClient, configuredL3VPNs); err != nil {
+		return fmt.Errorf("failed to remove deleted l3vpns: %w", err)
+	}
 
 	slog.InfoContext(ctx, "removing deleted vrfs")
 	if err := grout.RemoveNonConfiguredVRFs(ctx, groutClient, config.targetNamespace, configuredVRFs); err != nil {
@@ -178,6 +186,30 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 	return errors.Join(resourceErrors...)
 }
 
+func setupGroutL3VPNs(ctx context.Context, groutClient *grout.Client,
+	l3vpns []hostnetwork.L3VPNParams) ([]hostnetwork.L3VPNParams, []error, sets.Set[string]) {
+	var configured []hostnetwork.L3VPNParams
+	var resourceErrors []error
+	failedVRFs := sets.New[string]()
+	for _, l3vpn := range l3vpns {
+		slog.InfoContext(ctx, "setting up L3 VPN", "VRF", l3vpn.VRF)
+		if err := grout.SetupL3VPN(ctx, groutClient, l3vpn); err != nil {
+			resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
+				Obj: v1alpha1.FailedResource{
+					Kind:    openpeerrors.KindL3VPN,
+					Name:    l3vpn.Name,
+					Reason:  v1alpha1.FailedResourceReasonOverlayAttachmentFailed,
+					Message: err.Error(),
+				},
+			})
+			failedVRFs.Insert(l3vpn.VRF)
+			continue
+		}
+		configured = append(configured, l3vpn)
+	}
+	return configured, resourceErrors, failedVRFs
+}
+
 func (g *GroutDatapathConfigurator) cleanupGroutInterfaces(
 	ctx context.Context,
 	groutClient *grout.Client,
@@ -189,6 +221,9 @@ func (g *GroutDatapathConfigurator) cleanupGroutInterfaces(
 		slog.Warn("failed to remove vnis after underlay removal", "err", err)
 	}
 	bridgerefresh.StopAllVNIs()
+	if err := grout.RemoveAllL3VPNs(ctx, groutClient); err != nil {
+		slog.Warn("failed to remove l3vpns after underlay removal", "err", err)
+	}
 	if err := grout.RemoveAllVRFs(ctx, groutClient, targetNamespace); err != nil {
 		slog.Warn("failed to remove vrfs after underlay removal", "err", err)
 	}
