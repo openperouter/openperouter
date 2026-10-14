@@ -4148,7 +4148,7 @@ func TestAPItoFRRDatapath(t *testing.T) {
 		},
 		{
 			name:     "renamed interfaces in ISIS and neighbors",
-			datapath: testDatapath{underlayPrefix: "u_"},
+			datapath: testDatapath{underlayPrefix: "u_", loopback: "lo"},
 			wantISISInterfaces: []frr.ISISInterface{
 				{Name: "lo", IPv6: true, IsPassive: true},
 				{Name: "u_eth9", IPv6: true},
@@ -4156,6 +4156,17 @@ func TestAPItoFRRDatapath(t *testing.T) {
 				{Name: "u_toswitch2", IPv6: true},
 			},
 			wantNeighborIfaces: []string{"u_toswitch1", "u_eth9", ""},
+		},
+		{
+			name:     "loopback interface replaces the kernel loopback",
+			datapath: testDatapath{loopback: "tunnel-ep"},
+			wantISISInterfaces: []frr.ISISInterface{
+				{Name: "eth9", IPv6: true},
+				{Name: "toswitch1", IPv4: true, IPv6: true},
+				{Name: "toswitch2", IPv6: true},
+				{Name: "tunnel-ep", IPv6: true, IsPassive: true},
+			},
+			wantNeighborIfaces: []string{"toswitch1", "eth9", ""},
 		},
 	}
 
@@ -4327,16 +4338,17 @@ func TestNeighborID(t *testing.T) {
 }
 
 // testDatapath exposes the interfaces to FRR prefixed by underlayPrefix,
-// except the loopback.
+// and the kernel loopback as loopback.
 type testDatapath struct {
 	underlayPrefix string
+	loopback       string
 }
 
-var kernelDatapath = testDatapath{}
+var kernelDatapath = testDatapath{loopback: "lo"}
 
 func (d testDatapath) InterfaceNameForFRR(name string) string {
 	if name == loopbackName {
-		return name
+		return d.loopback
 	}
 	return d.underlayPrefix + name
 }

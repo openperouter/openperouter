@@ -39,11 +39,11 @@ func NewGroutConfigurator(groutSocketPath string, mode grout.UnderlayPortMode) *
 }
 
 // InterfaceNameForFRR returns the grout port an underlay network device is
-// attached to, as FRR sees the port and not the device. The loopback keeps
-// its name.
+// attached to, as FRR sees the port and not the device. The loopback is the
+// dedicated port carrying the tunnel endpoint, which plays its role.
 func (g *GroutDatapathConfigurator) InterfaceNameForFRR(name string) string {
 	if name == "lo" {
-		return name
+		return grout.TunnelEndpointPortName
 	}
 	return grout.UnderlayPortNamePrefix + name
 }
@@ -226,6 +226,9 @@ func (g *GroutDatapathConfigurator) cleanupGroutInterfaces(
 	}
 	if err := grout.RemoveAllVRFs(ctx, groutClient, targetNamespace); err != nil {
 		slog.Warn("failed to remove vrfs after underlay removal", "err", err)
+	}
+	if err := grout.RemoveTunnelEndpoint(ctx, groutClient); err != nil {
+		slog.Warn("failed to remove tunnel endpoint after underlay removal", "err", err)
 	}
 	if err := grout.RestoreUnderlay(ctx, groutClient, targetNamespace,
 		currentUnderlayIfaces, g.deviceStateStore, g.sysfs); err != nil {
