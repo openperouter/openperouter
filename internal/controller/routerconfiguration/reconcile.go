@@ -24,6 +24,7 @@ import (
 // reconciler can work with different datapaths (kernel netlink, grout/DPDK).
 type DatapathConfigurator interface {
 	conversion.DatapathConfigValidator
+	conversion.FRRDatapath
 
 	Configure(ctx context.Context, config interfacesConfiguration) error
 }
@@ -118,6 +119,7 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 		APIConfigData: config,
 		nodeIndex:     nodeIndex,
 		logLevel:      logLevel,
+		datapath:      datapathConfigurator,
 	}); err != nil {
 		return err
 	}

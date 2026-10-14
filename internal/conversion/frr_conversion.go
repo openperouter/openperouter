@@ -91,7 +91,14 @@ func L3VPNWithGatewayIPs(cidrs []string) L3VPNOption {
 	}
 }
 
-func APItoFRR(config APIConfigData, nodeIndex int, logLevel string) (frr.Config, error) {
+// FRRDatapath adapts the FRR configuration to the datapath forwarding the
+// traffic.
+type FRRDatapath interface {
+	// InterfaceNameForFRR returns the name FRR knows an interface by.
+	InterfaceNameForFRR(name string) string
+}
+
+func APItoFRR(config APIConfigData, nodeIndex int, logLevel string, datapath FRRDatapath) (frr.Config, error) {
 	rawSnippets := rawConfigSnippets(config.RawFRRConfigs)
 	if len(rawSnippets) > 0 && len(config.Underlays) == 0 {
 		slog.Info("no underlay provided, applying raw configuration only")
@@ -123,7 +130,7 @@ func APItoFRR(config APIConfigData, nodeIndex int, logLevel string) (frr.Config,
 		return frr.Config{}, err
 	}
 
-	underlayConfigISIS, err := underlayISISToFRR(underlay.Spec.ISIS, underlayInterfaces, nodeIndex)
+	underlayConfigISIS, err := underlayISISToFRR(underlay.Spec.ISIS, underlayInterfaces, nodeIndex, datapath)
 	if err != nil {
 		return frr.Config{}, fmt.Errorf("failed to translate ISIS settings, err: %w", err)
 	}
@@ -146,6 +153,7 @@ func APItoFRR(config APIConfigData, nodeIndex int, logLevel string) (frr.Config,
 	if err != nil {
 		return frr.Config{}, err
 	}
+	renameNeighborInterfaces(neighbors, datapath)
 
 	underlayConfig := frr.UnderlayConfig{
 		MyASN:          underlay.Spec.ASN,
@@ -380,7 +388,8 @@ func underlaySegmentRoutingToFRR(srv6Config *v1alpha1.SRV6Config, nodeIndex int,
 	}, nil
 }
 
-func underlayISISToFRR(isisConfig *v1alpha1.ISISConfig, interfaces []string, nodeIndex int) (*frr.UnderlayISIS, error) {
+func underlayISISToFRR(isisConfig *v1alpha1.ISISConfig, interfaces []string, nodeIndex int,
+	datapath FRRDatapath) (*frr.UnderlayISIS, error) {
 	if isisConfig == nil {
 		return nil, nil
 	}
@@ -403,9 +412,10 @@ func underlayISISToFRR(isisConfig *v1alpha1.ISISConfig, interfaces []string, nod
 	isisNet.SystemID = systemID
 
 	// Always add the loopback as an IPv6 only and passive interface (for advertisePassiveOnly).
+	loopback := datapath.InterfaceNameForFRR(loopbackName)
 	isisInterfaces := map[string]frr.ISISInterface{
-		loopbackName: {
-			Name:      loopbackName,
+		loopback: {
+			Name:      loopback,
 			IPv6:      true,
 			IsPassive: true,
 		},
@@ -413,8 +423,9 @@ func underlayISISToFRR(isisConfig *v1alpha1.ISISConfig, interfaces []string, nod
 
 	// Add underlay.Spec.Interfaces as IPv6 only, non-passive interfaces.
 	for _, iface := range interfaces {
-		isisInterfaces[iface] = frr.ISISInterface{
-			Name: iface,
+		name := datapath.InterfaceNameForFRR(iface)
+		isisInterfaces[name] = frr.ISISInterface{
+			Name: name,
 			IPv6: true,
 		}
 	}
@@ -427,8 +438,9 @@ func underlayISISToFRR(isisConfig *v1alpha1.ISISConfig, interfaces []string, nod
 		hasIPv6 := intf.IPFamily != nil &&
 			(*intf.IPFamily == v1alpha1.IPFamilyIPv6 || *intf.IPFamily == v1alpha1.IPFamilyDualStack)
 
-		isisInterfaces[intf.Name] = frr.ISISInterface{
-			Name:      intf.Name,
+		name := datapath.InterfaceNameForFRR(intf.Name)
+		isisInterfaces[name] = frr.ISISInterface{
+			Name:      name,
 			IPv4:      hasIPv4,
 			IPv6:      hasIPv6,
 			IsPassive: slices.Contains(intf.Features, passiveInterface),
@@ -442,6 +454,21 @@ func underlayISISToFRR(isisConfig *v1alpha1.ISISConfig, interfaces []string, nod
 		AdvertisePassiveOnly: slices.Contains(isisConfig.Features, advertisePassiveOnly),
 		Interfaces:           mapOfInterfacesToSortedList(isisInterfaces),
 	}, nil
+}
+
+// renameNeighborInterfaces makes the neighbors peering over an interface
+// reference the name FRR knows the interface by.
+func renameNeighborInterfaces(neighbors []frr.NeighborConfig, datapath FRRDatapath) {
+	for i := range neighbors {
+		if neighbors[i].Interface == "" {
+			continue
+		}
+		name := datapath.InterfaceNameForFRR(neighbors[i].Interface)
+		if neighbors[i].ID == neighbors[i].Interface {
+			neighbors[i].ID = name
+		}
+		neighbors[i].Interface = name
+	}
 }
 
 func mapOfInterfacesToSortedList(m map[string]frr.ISISInterface) []frr.ISISInterface {

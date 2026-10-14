@@ -38,6 +38,16 @@ func NewGroutConfigurator(groutSocketPath string, mode grout.UnderlayPortMode) *
 	}
 }
 
+// InterfaceNameForFRR returns the grout port an underlay network device is
+// attached to, as FRR sees the port and not the device. The loopback keeps
+// its name.
+func (g *GroutDatapathConfigurator) InterfaceNameForFRR(name string) string {
+	if name == "lo" {
+		return name
+	}
+	return grout.UnderlayPortNamePrefix + name
+}
+
 func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interfacesConfiguration) error {
 	groutClient := grout.NewClient(g.groutSocketPath)
 
