@@ -36,7 +36,7 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 		return fmt.Errorf("failed to check if target namespace %s has underlay: %w", config.targetNamespace, err)
 	}
 	if len(currentUnderlayIfaces) > 0 && len(config.Underlays) == 0 {
-		restoreUnderlay(ctx, config.targetNamespace, currentUnderlayIfaces)
+		restoreUnderlay(ctx, config.targetNamespace, currentUnderlayIfaces, externalBridgeNames(config.L2VNIs))
 		return nil
 	}
 
@@ -70,7 +70,7 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 		// VXLAN tunnels are bound to the current underlay interfaces. If all underlay interfaces are being
 		// replaced, tear down the VNIs first so they don't reference stale interfaces; they'll be recreated
 		// on top of the new underlay.
-		if err := hostnetwork.RemoveAllVNIs(config.targetNamespace); err != nil {
+		if err := hostnetwork.RemoveAllVNIs(config.targetNamespace, externalBridgeNames(config.L2VNIs)); err != nil {
 			slog.Warn("failed to remove vnis during underlay change", "err", err)
 		}
 		bridgerefresh.StopAllVNIs()
@@ -173,7 +173,7 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 	}
 
 	slog.InfoContext(ctx, "removing deleted vnis")
-	if err := hostnetwork.RemoveNonConfiguredVNIs(config.targetNamespace, configuredVNIs); err != nil {
+	if err := hostnetwork.RemoveNonConfiguredVNIs(config.targetNamespace, configuredVNIs, externalBridgeNames(config.L2VNIs)); err != nil {
 		return fmt.Errorf("failed to remove deleted vnis: %w", err)
 	}
 	bridgerefresh.StopForRemovedVNIs(configuredL2VNIs)
@@ -202,10 +202,11 @@ func restoreUnderlay(
 	ctx context.Context,
 	targetNamespace string,
 	currentUnderlayIfaces []hostnetwork.UnderlayInterface,
+	externalBridges map[string]struct{},
 ) {
 	slog.InfoContext(ctx, "underlay removed, cleaning up VNIs and underlay interfaces")
 
-	if err := hostnetwork.RemoveAllVNIs(targetNamespace); err != nil {
+	if err := hostnetwork.RemoveAllVNIs(targetNamespace, externalBridges); err != nil {
 		slog.Warn("failed to remove vnis after underlay removal", "err", err)
 	}
 
@@ -275,4 +276,24 @@ func areAllUnderlayInterfacesToBeRemoved(
 		)
 	}
 	return allRemoved, nil
+}
+
+func externalBridgeNames(l2vnis []v1alpha1.L2VNI) map[string]struct{} {
+	res := map[string]struct{}{}
+	for _, l2vni := range l2vnis {
+		if l2vni.Spec.HostMaster == nil {
+			continue
+		}
+		switch {
+		case l2vni.Spec.HostMaster.LinuxBridge != nil &&
+			l2vni.Spec.HostMaster.LinuxBridge.Lifecycle == v1alpha1.BridgeLifecycleExternal &&
+			l2vni.Spec.HostMaster.LinuxBridge.Name != nil:
+			res[*l2vni.Spec.HostMaster.LinuxBridge.Name] = struct{}{}
+		case l2vni.Spec.HostMaster.OVSBridge != nil &&
+			l2vni.Spec.HostMaster.OVSBridge.Lifecycle == v1alpha1.BridgeLifecycleExternal &&
+			l2vni.Spec.HostMaster.OVSBridge.Name != nil:
+			res[*l2vni.Spec.HostMaster.OVSBridge.Name] = struct{}{}
+		}
+	}
+	return res
 }

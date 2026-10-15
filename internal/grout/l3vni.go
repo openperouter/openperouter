@@ -101,11 +101,11 @@ func setupVNI(ctx context.Context, client *Client, params hostnetwork.VNIParams)
 	return nil
 }
 
-func RemoveAllVNIs(ctx context.Context, client *Client, targetNS string) error {
-	return RemoveNonConfiguredVNIs(ctx, client, targetNS, []hostnetwork.VNIParams{})
+func RemoveAllVNIs(ctx context.Context, client *Client, targetNS string, externalBridges map[string]struct{}) error {
+	return RemoveNonConfiguredVNIs(ctx, client, targetNS, []hostnetwork.VNIParams{}, externalBridges)
 }
 
-func RemoveNonConfiguredVNIs(ctx context.Context, client *Client, targetNamespace string, configured []hostnetwork.VNIParams) error {
+func RemoveNonConfiguredVNIs(ctx context.Context, client *Client, targetNamespace string, configured []hostnetwork.VNIParams, externalBridges map[string]struct{}) error {
 	slog.DebugContext(ctx, "removing stale VNIs")
 	defer slog.DebugContext(ctx, "removing stale VNIs done")
 
@@ -128,7 +128,7 @@ func RemoveNonConfiguredVNIs(ctx context.Context, client *Client, targetNamespac
 		}
 	}
 
-	return hostnetwork.RemoveNonConfiguredVNIs(targetNamespace, configured)
+	return hostnetwork.RemoveNonConfiguredVNIs(targetNamespace, configured, externalBridges)
 }
 
 // RemoveAllVRFs removes all non-default VRFs from the target namespace.

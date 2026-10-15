@@ -38,7 +38,7 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 		return fmt.Errorf("failed to check if target namespace %s has underlay: %w", config.targetNamespace, err)
 	}
 	if len(currentUnderlayIfaces) > 0 && len(config.Underlays) == 0 {
-		cleanupGroutInterfaces(ctx, groutClient, config.targetNamespace, currentUnderlayIfaces)
+		cleanupGroutInterfaces(ctx, groutClient, config.targetNamespace, currentUnderlayIfaces, externalBridgeNames(config.L2VNIs))
 		return nil
 	}
 
@@ -142,7 +142,7 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 	}
 
 	slog.InfoContext(ctx, "removing deleted vnis")
-	if err := grout.RemoveNonConfiguredVNIs(ctx, groutClient, config.targetNamespace, configuredVNIs); err != nil {
+	if err := grout.RemoveNonConfiguredVNIs(ctx, groutClient, config.targetNamespace, configuredVNIs, externalBridgeNames(config.L2VNIs)); err != nil {
 		return fmt.Errorf("failed to remove deleted vnis: %w", err)
 	}
 	bridgerefresh.StopForRemovedVNIs(configuredL2VNIs)
@@ -161,9 +161,9 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 	return errors.Join(resourceErrors...)
 }
 
-func cleanupGroutInterfaces(ctx context.Context, groutClient *grout.Client, targetNamespace string, currentUnderlayIfaces []hostnetwork.UnderlayInterface) {
+func cleanupGroutInterfaces(ctx context.Context, groutClient *grout.Client, targetNamespace string, currentUnderlayIfaces []hostnetwork.UnderlayInterface, externalBridges map[string]struct{}) {
 	slog.InfoContext(ctx, "underlay removed, cleaning up VNIs and underlay interfaces")
-	if err := grout.RemoveAllVNIs(ctx, groutClient, targetNamespace); err != nil {
+	if err := grout.RemoveAllVNIs(ctx, groutClient, targetNamespace, externalBridges); err != nil {
 		slog.Warn("failed to remove vnis after underlay removal", "err", err)
 	}
 	bridgerefresh.StopAllVNIs()
