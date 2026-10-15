@@ -3,6 +3,7 @@
 package tests
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -27,7 +28,6 @@ const (
 	icmpOverhead  = 28
 	vxlanOverhead = 50
 	srv6Overhead  = 64
-	baseMTU       = 9500
 )
 
 var _ = Describe("Mixed L3VPN and L3VNI coexistence in different VRFs", Ordered, func() {
@@ -328,23 +328,25 @@ var _ = Describe("Mixed L3VPN and L3VNI coexistence in different VRFs", Ordered,
 		Expect(err).NotTo(HaveOccurred())
 
 		By("creating the pods connected to L3VPN")
+		clientPodsNode := nodes[0].Name
+		serverPodsNode := nodes[1].Name
 		l3vpnClientPod, err := k8s.CreateAgnhostPod(cs, l3vpnClientPodName, testNamespace,
 			k8s.WithNad(netAttachDefL3VPN.Name, testNamespace, []string{l3vpnClientPodIP}),
-			k8s.OnNode(nodes[0].Name))
+			k8s.OnNode(clientPodsNode))
 		Expect(err).NotTo(HaveOccurred())
 		l3vpnServerPod, err := k8s.CreateAgnhostPod(cs, l3vpnServerPodName, testNamespace,
 			k8s.WithNad(netAttachDefL3VPN.Name, testNamespace, []string{l3vpnServerPodIP}),
-			k8s.OnNode(nodes[1].Name))
+			k8s.OnNode(serverPodsNode))
 		Expect(err).NotTo(HaveOccurred())
 
 		By("creating the pods connected to L3VNI")
 		l3vniClientPod, err := k8s.CreateAgnhostPod(cs, l3vniClientPodName, testNamespace,
 			k8s.WithNad(netAttachDefL3VNI.Name, testNamespace, []string{l3vniClientPodIP}),
-			k8s.OnNode(nodes[0].Name))
+			k8s.OnNode(clientPodsNode))
 		Expect(err).NotTo(HaveOccurred())
 		l3vniServerPod, err := k8s.CreateAgnhostPod(cs, l3vniServerPodName, testNamespace,
 			k8s.WithNad(netAttachDefL3VNI.Name, testNamespace, []string{l3vniServerPodIP}),
-			k8s.OnNode(nodes[1].Name))
+			k8s.OnNode(serverPodsNode))
 		Expect(err).NotTo(HaveOccurred())
 
 		By("removing the default gateway via the primary interface for pods connected to L3VPN")
@@ -361,7 +363,11 @@ var _ = Describe("Mixed L3VPN and L3VNI coexistence in different VRFs", Ordered,
 		By("getting the pod executor for client pod connected to L3VNI")
 		l3vniClientPodExecutor := executor.ForPod(l3vniClientPod.Namespace, l3vniClientPod.Name, "agnhost")
 
-		By(fmt.Sprintf("checking MTU correctly configured on L3VPN client pod - expecting overhead %d", expectedL3VPNOverhead))
+		By("determining the underlay base MTU on the node hosting the client pods")
+		baseMTU := underlayBaseMTU(cs, clientPodsNode)
+
+		By(fmt.Sprintf("checking MTU correctly configured on L3VPN client pod - base MTU %d, expecting overhead %d",
+			baseMTU, expectedL3VPNOverhead))
 		checkMaximumMTU(l3vpnClientPodExecutor, "net1", baseMTU-expectedL3VPNOverhead)
 
 		By("checking ping with maximum MTU works from L3VPN client pod to L3VPN server pod")
@@ -370,7 +376,8 @@ var _ = Describe("Mixed L3VPN and L3VNI coexistence in different VRFs", Ordered,
 		By("checking ping with maximum MTU works from L3VPN client pod via L3VPN to hostSRV6Red")
 		pingWithMaximumMTU(l3vpnClientPodExecutor, infra.HostSRV6RedIPv4, baseMTU-expectedL3VPNOverhead)
 
-		By(fmt.Sprintf("checking MTU correctly configured on L3VNI client pod - expecting overhead %d", expectedL3VNIOverhead))
+		By(fmt.Sprintf("checking MTU correctly configured on L3VNI client pod - base MTU %d, expecting overhead %d",
+			baseMTU, expectedL3VNIOverhead))
 		checkMaximumMTU(l3vniClientPodExecutor, "net1", baseMTU-expectedL3VNIOverhead)
 
 		By("checking ping with maximum MTU works from L3VNI client pod to L3VNI server pod")
@@ -384,15 +391,58 @@ var _ = Describe("Mixed L3VPN and L3VNI coexistence in different VRFs", Ordered,
 	)
 })
 
+// underlayBaseMTU returns the smallest MTU among the underlay NetworkDevice
+// interfaces on nodeName, read from inside that node's router netns where those
+// interfaces live.
+func underlayBaseMTU(cs clientset.Interface, nodeName string) int {
+	By("reading the underlay interface names")
+	underlays := &v1alpha1.UnderlayList{}
+	Expect(Updater.Client().List(context.Background(), underlays)).To(Succeed())
+
+	// underlayNetworkDeviceNames collects the names of all NetworkDevice type interfaces of all
+	// underlays. Relying on This is sufficient for simple use cases with only a single underlay
+	// (as is the case here) but would not work with different underlays for different nodes.
+	Expect(len(underlays.Items)).To(Equal(1))
+	intfNames := underlayNetworkDeviceNames(underlays.Items)
+	Expect(intfNames).NotTo(BeEmpty(), "expected at least one underlay NetworkDevice interface")
+
+	routers, err := openperouter.Get(cs, HostMode)
+	Expect(err).NotTo(HaveOccurred())
+	router, err := routers.ExecutorForNode(nodeName)
+	Expect(err).NotTo(HaveOccurred())
+
+	By(fmt.Sprintf("reading the MTU of the underlay interfaces from the router netns on %s", nodeName))
+	minMTU := 0
+	for _, intfName := range intfNames {
+		mtu, err := readInterfaceMTU(router, openperouter.NamedNetns, intfName)
+		Expect(err).NotTo(HaveOccurred())
+		if minMTU == 0 || mtu < minMTU {
+			minMTU = mtu
+		}
+	}
+	Expect(minMTU).To(BeNumerically(">", 0), "could not determine the underlay base MTU")
+	return minMTU
+}
+
+func underlayNetworkDeviceNames(underlays []v1alpha1.Underlay) []string {
+	var names []string
+	for _, underlay := range underlays {
+		for _, intf := range underlay.Spec.Interfaces {
+			if intf.Type != v1alpha1.UnderlayInterfaceTypeNetworkDevice {
+				continue
+			}
+			if intf.NetworkDevice == nil {
+				continue
+			}
+			names = append(names, intf.NetworkDevice.InterfaceName)
+		}
+	}
+	return names
+}
+
 func checkMaximumMTU(podExecutor executor.Executor, intfName string, expectedMTU int) {
 	Eventually(func() error {
-		fileName := fmt.Sprintf("/sys/class/net/%s/mtu", intfName)
-		By(fmt.Sprintf("reading the MTU from %s", fileName))
-		mtuStr, err := podExecutor.Exec("cat", fileName)
-		if err != nil {
-			return err
-		}
-		mtu, err := strconv.Atoi(strings.TrimSpace(mtuStr))
+		mtu, err := readInterfaceMTU(podExecutor, "", intfName)
 		if err != nil {
 			return err
 		}
@@ -405,6 +455,23 @@ func checkMaximumMTU(podExecutor executor.Executor, intfName string, expectedMTU
 		WithTimeout(60 * time.Second).
 		WithPolling(time.Second).
 		Should(Succeed())
+}
+
+func readInterfaceMTU(exec executor.Executor, namespace, intfName string) (int, error) {
+	cmd := fmt.Sprintf("cat /sys/class/net/%s/mtu", intfName)
+	if namespace != "" {
+		cmd = fmt.Sprintf("ip netns exec %s %s", namespace, cmd)
+	}
+	By(fmt.Sprintf("reading the MTU with %s", cmd))
+	mtuStr, err := exec.Exec("/bin/bash", "-c", cmd)
+	if err != nil {
+		return 0, err
+	}
+	mtu, err := strconv.Atoi(strings.TrimSpace(mtuStr))
+	if err != nil {
+		return 0, fmt.Errorf("parsing MTU %q from command %s: %w", mtuStr, cmd, err)
+	}
+	return mtu, nil
 }
 
 func pingWithMaximumMTU(podExecutor executor.Executor, destination string, mtu int) {
