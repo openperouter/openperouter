@@ -886,13 +886,81 @@ func TestFilterValidVRFSubnets(t *testing.T) {
 
 func TestValidateOverlayResourcesForNodes(t *testing.T) {
 	tests := []struct {
-		name       string
-		nodes      []corev1.Node
-		l2vnis     []v1alpha1.L2VNI
-		l3vnis     []v1alpha1.L3VNI
-		l3vpns     []v1alpha1.L3VPN
-		wantErrStr string
+		name         string
+		nodes        []corev1.Node
+		l2vnis       []v1alpha1.L2VNI
+		l3vnis       []v1alpha1.L3VNI
+		l3vpns       []v1alpha1.L3VPN
+		passthroughs []v1alpha1.L3Passthrough
+		wantErrStr   string
 	}{
+		{
+			name:  "duplicate passthroughs",
+			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+			passthroughs: []v1alpha1.L3Passthrough{
+				{ObjectMeta: metav1.ObjectMeta{Name: "first"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "second"}},
+			},
+			wantErrStr: "invalid overlay resources for node \"node1\": " +
+				"L3Passthrough/first: can't have more than one l3passthrough per node\n" +
+				"L3Passthrough/second: can't have more than one l3passthrough per node",
+		},
+		{
+			name:  "overlapping VNI and passthrough host sessions",
+			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+			l3vnis: []v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "vni"},
+					Spec: v1alpha1.L3VNISpec{
+						VNI:         100,
+						VRF:         "red",
+						HostSession: &v1alpha1.HostSession{LocalCIDRs: []string{"192.0.2.0/24"}},
+					},
+				},
+			},
+			passthroughs: []v1alpha1.L3Passthrough{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "passthrough"},
+					Spec: v1alpha1.L3PassthroughSpec{
+						HostSession: v1alpha1.HostSession{LocalCIDRs: []string{"192.0.2.0/24"}},
+					},
+				},
+			},
+			wantErrStr: "invalid overlay resources for node \"node1\": failed to validate host sessions: " +
+				"overlapping cidrs 192.0.2.0/24 - 192.0.2.0/24",
+		},
+		{
+			name:  "allows missing L3VNI routing domain",
+			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "dependent"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI: 100,
+						RoutingDomain: &v1alpha1.RoutingDomain{
+							Type:  v1alpha1.RoutingDomainTypeL3VNI,
+							L3VNI: &v1alpha1.L3VNIReference{Name: "missing"},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:  "allows missing L3VPN routing domain",
+			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+			l2vnis: []v1alpha1.L2VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "dependent"},
+					Spec: v1alpha1.L2VNISpec{
+						VNI: 100,
+						RoutingDomain: &v1alpha1.RoutingDomain{
+							Type:  v1alpha1.RoutingDomainTypeL3VPN,
+							L3VPN: &v1alpha1.L3VPNReference{Name: "missing"},
+						},
+					},
+				},
+			},
+		},
 		{
 			name:  "no resources",
 			nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
@@ -1053,7 +1121,7 @@ func TestValidateOverlayResourcesForNodes(t *testing.T) {
 					},
 				},
 			},
-			wantErrStr: "failed to validate l3vnis for node \"node1\": " +
+			wantErrStr: "invalid overlay resources for node \"node1\": " +
 				"L3VNI/l3vni1: " +
 				"invalid vrf name for vni \"l3vni1\", vrf \"vrfnametoolong99\": " +
 				"interface name vrfnametoolong99 can't be longer than 15 characters",
@@ -1071,7 +1139,7 @@ func TestValidateOverlayResourcesForNodes(t *testing.T) {
 					},
 				},
 			},
-			wantErrStr: "failed to validate l3vpns for node \"node1\": " +
+			wantErrStr: "invalid overlay resources for node \"node1\": " +
 				"L3VPN/vpn1: " +
 				"invalid vrf name for vpn \"vpn1\", vrf \"vrfnametoolong99\": " +
 				"interface name vrfnametoolong99 can't be longer than 15 characters",
@@ -1089,7 +1157,7 @@ func TestValidateOverlayResourcesForNodes(t *testing.T) {
 					Spec:       v1alpha1.L3VNISpec{VNI: 100, VRF: "blue"},
 				},
 			},
-			wantErrStr: "duplicate L3VNIs found for node \"node1\": " +
+			wantErrStr: "invalid overlay resources for node \"node1\": " +
 				"L3VNI/l3vni2: " +
 				"duplicate vni 100:L3VNI/l3vni1",
 		},
@@ -1108,7 +1176,7 @@ func TestValidateOverlayResourcesForNodes(t *testing.T) {
 					Spec:       v1alpha1.L2VNISpec{VNI: 100},
 				},
 			},
-			wantErrStr: "duplicate VNIs found in L2VNIs for node \"node1\": L2VNI/l2vni1: " +
+			wantErrStr: "invalid overlay resources for node \"node1\": L2VNI/l2vni1: " +
 				"duplicate vni 100:L3VNI/l3vni1",
 		},
 		{
@@ -1124,7 +1192,7 @@ func TestValidateOverlayResourcesForNodes(t *testing.T) {
 					Spec:       v1alpha1.L3VNISpec{VNI: 200, VRF: "red"},
 				},
 			},
-			wantErrStr: "duplicate L3VNIs found in VRFs for node \"node1\": " +
+			wantErrStr: "invalid overlay resources for node \"node1\": " +
 				"L3VNI/l3vni2: " +
 				"more than one L3VNI detected in VRF \"red\": " +
 				"\"test/l3vni1\" already exists",
@@ -1150,7 +1218,7 @@ func TestValidateOverlayResourcesForNodes(t *testing.T) {
 					},
 				},
 			},
-			wantErrStr: "duplicate L3VPNs found in VRFs for node \"node1\": " +
+			wantErrStr: "invalid overlay resources for node \"node1\": " +
 				"L3VPN/vpn2: " +
 				"more than one L3VPN detected in VRF \"red\": " +
 				"\"test/vpn1\" already exists",
@@ -1182,7 +1250,7 @@ func TestValidateOverlayResourcesForNodes(t *testing.T) {
 					},
 				},
 			},
-			wantErrStr: "duplicate L3VPNs found in VRFs for node \"node1\": " +
+			wantErrStr: "invalid overlay resources for node \"node1\": " +
 				"L3VPN/vpn1: conflict with L3VNI \"test/l3vni1\" detected in VRF \"red\"\n" +
 				"L3VPN/vpn2: conflict with L3VNI \"test/l3vni1\" detected in VRF \"red\"",
 		},
@@ -1217,7 +1285,7 @@ func TestValidateOverlayResourcesForNodes(t *testing.T) {
 					},
 				},
 			},
-			wantErrStr: "duplicate L3VNIs found in VRFs for node \"node1\": " +
+			wantErrStr: "invalid overlay resources for node \"node1\": " +
 				"L3VNI/l3vni2: more than one L3VNI detected in VRF \"red\": \"test/l3vni1\" already exists",
 		},
 		{
@@ -1249,7 +1317,7 @@ func TestValidateOverlayResourcesForNodes(t *testing.T) {
 					},
 				},
 			},
-			wantErrStr: "subnet overlaps found in VRFs for node \"node1\": " +
+			wantErrStr: "invalid overlay resources for node \"node1\": " +
 				"L3VNI/l3vni1: subnet overlap in VRF \"red\": " +
 				"IPNet 10.0.1.0/24 (L2VNI test/l2vni1) overlaps with IPNet 10.0.0.0/16 (L3VNI test/l3vni1)",
 		},
@@ -1283,7 +1351,7 @@ func TestValidateOverlayResourcesForNodes(t *testing.T) {
 					},
 				},
 			},
-			wantErrStr: "subnet overlaps found in VRFs for node \"node1\": " +
+			wantErrStr: "invalid overlay resources for node \"node1\": " +
 				"L3VPN/vpn1: subnet overlap in VRF \"red\": " +
 				"IPNet 10.0.1.0/24 (L2VNI test/l2vni1) overlaps with IPNet 10.0.0.0/16 (L3VPN test/vpn1)",
 		},
@@ -1381,7 +1449,7 @@ func TestValidateOverlayResourcesForNodes(t *testing.T) {
 					},
 				},
 			},
-			wantErrStr: "duplicate L3VNIs found for node \"node2\": " +
+			wantErrStr: "invalid overlay resources for node \"node2\": " +
 				"L3VNI/l3vni2: " +
 				"duplicate vni 100:L3VNI/l3vni1",
 		},
@@ -1398,7 +1466,7 @@ func TestValidateOverlayResourcesForNodes(t *testing.T) {
 					},
 				},
 			},
-			wantErrStr: "failed to validate l3vpns for node \"node1\": " +
+			wantErrStr: "invalid overlay resources for node \"node1\": " +
 				"L3VPN/vpn1: invalid route targets for vpn \"vpn1\": " +
 				"RT \"invalid\" must have one of the following formats: 'ASN:MN' or 'IPv4Address:MN'",
 		},
@@ -1415,7 +1483,7 @@ func TestValidateOverlayResourcesForNodes(t *testing.T) {
 					},
 				},
 			},
-			wantErrStr: "failed to validate l3vnis for node \"node1\": " +
+			wantErrStr: "invalid overlay resources for node \"node1\": " +
 				"L3VNI/l3vni1: " +
 				"invalid route targets for vni \"l3vni1\": " +
 				"RT \"bad:rt:format\" must have one of the following formats: " +
@@ -1480,7 +1548,7 @@ func TestValidateOverlayResourcesForNodes(t *testing.T) {
 					},
 				},
 			},
-			wantErrStr: "subnet overlaps found in VRFs for node \"node1\": " +
+			wantErrStr: "invalid overlay resources for node \"node1\": " +
 				"L3VNI/l3vni1: " +
 				"subnet overlap in VRF \"red\": " +
 				"IPNet 2001:db8:1::/64 (L2VNI test/l2vni1) overlaps with IPNet 2001:db8::/32 (L3VNI test/l3vni1)",
@@ -1516,13 +1584,13 @@ func TestValidateOverlayResourcesForNodes(t *testing.T) {
 					},
 				},
 			},
-			wantErrStr: "duplicate L3VPNs found for node \"node1\": L3VPN/vpn2: duplicate configured rdAssignedNumber 100: L3VPN/vpn2 conflicts with L3VPN/vpn1",
+			wantErrStr: "invalid overlay resources for node \"node1\": L3VPN/vpn2: duplicate configured rdAssignedNumber 100: L3VPN/vpn2 conflicts with L3VPN/vpn1",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateOverlayResourcesForNodes(tt.nodes, tt.l2vnis, tt.l3vnis, tt.l3vpns)
+			err := ValidateOverlayResourcesForNodes(tt.nodes, tt.l2vnis, tt.l3vnis, tt.l3vpns, tt.passthroughs)
 			if tt.wantErrStr != "" {
 				if err == nil {
 					t.Fatalf("expected error containing %q, got nil", tt.wantErrStr)

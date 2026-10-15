@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"slices"
 
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -41,71 +40,34 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 	err = datapathConfigurator.Validate(apiConfig)
 	resourceErrors = append(resourceErrors, err)
 
-	var validL3VNIs []v1alpha1.L3VNI
-	validL3VNIs, err = conversion.FilterValidL3VNIs(apiConfig.L3VNIs)
-	resourceErrors = append(resourceErrors, err)
-
-	var validL3VPNs []v1alpha1.L3VPN
-	validL3VPNs, err = conversion.FilterValidL3VPNs(apiConfig.L3VPNs)
-	resourceErrors = append(resourceErrors, err)
-
-	if conversion.HasMissingSRv6ForL3VPNs(apiConfig.Underlays, validL3VPNs) {
-		resourceErrors = append(
-			resourceErrors,
-			conversion.MissingSRv6ForL3VPNErrors(validL3VPNs, nil),
-		)
-		validL3VPNs = []v1alpha1.L3VPN{}
+	if conversion.HasMissingSRv6ForL3VPNs(apiConfig.Underlays, apiConfig.L3VPNs) {
+		validL3VPNs, validationErr := conversion.FilterValidL3VPNs(apiConfig.L3VPNs)
+		resourceErrors = append(resourceErrors, validationErr,
+			conversion.MissingSRv6ForL3VPNErrors(validL3VPNs, nil))
+		apiConfig.L3VPNs = nil
 	}
 
-	var validL2VNIs []v1alpha1.L2VNI
-	validL2VNIs, err = conversion.FilterValidL2VNIs(apiConfig.L2VNIs)
-	resourceErrors = append(resourceErrors, err)
-
-	validL3VPNs, err = conversion.FilterUniqueL3VPNRDNumbers(validL3VPNs)
-	resourceErrors = append(resourceErrors, err)
-
-	validL3VNIs, err = conversion.FilterUniqueL3VNIRDNumbers(validL3VNIs)
-	resourceErrors = append(resourceErrors, err)
-
-	validL2VNIs, err = conversion.FilterUniqueL2VNIRDNumbers(validL2VNIs)
-	resourceErrors = append(resourceErrors, err)
-
-	// Cross resource validation should go below here
-
-	var allocatedVNIs map[int32]string
-	validL3VNIs, allocatedVNIs, err = conversion.FilterUniqueL3VNIs(validL3VNIs)
-	resourceErrors = append(resourceErrors, err)
-
-	validL2VNIs, err = conversion.FilterUniqueL2VNIs(validL2VNIs, allocatedVNIs)
-	resourceErrors = append(resourceErrors, err)
-
-	var vrfToVNI map[string]types.NamespacedName
-	validL3VNIs, vrfToVNI, err = conversion.FilterUniqueVRFsForL3VNIs(validL3VNIs)
-	resourceErrors = append(resourceErrors, err)
-
-	validL3VPNs, err = conversion.FilterUniqueVRFsForL3VPNs(validL3VPNs, vrfToVNI)
-	resourceErrors = append(resourceErrors, err)
-
-	validL3VNIs, validL3VPNs, validL2VNIs, err = conversion.FilterValidVRFSubnets(validL3VNIs, validL3VPNs, validL2VNIs)
-	resourceErrors = append(resourceErrors, err)
-
-	validL2VNIs, err = filterL2VNIsWithInvalidRoutingDomain(validL2VNIs, validL3VNIs, validL3VPNs)
-	resourceErrors = append(resourceErrors, err)
-
-	var validPassthrough []v1alpha1.L3Passthrough
-	validPassthrough, err = conversion.FilterValidPassthroughs(apiConfig.L3Passthrough)
-	resourceErrors = append(resourceErrors, err)
-
-	if err := conversion.ValidateHostSessions(validL3VNIs, validPassthrough); err != nil {
-		return fmt.Errorf("failed to validate host sessions: %w", err)
+	validOverlays, err := conversion.FilterOverlayResources(conversion.OverlayResources{
+		L3VNIs:        apiConfig.L3VNIs,
+		L3VPNs:        apiConfig.L3VPNs,
+		L2VNIs:        apiConfig.L2VNIs,
+		L3Passthrough: apiConfig.L3Passthrough,
+	})
+	if openpeerrors.IsNonResourceError(err) {
+		return err
 	}
+	resourceErrors = append(resourceErrors, err)
+
+	validOverlays.L2VNIs, err = filterL2VNIsWithInvalidRoutingDomain(
+		validOverlays.L2VNIs, validOverlays.L3VNIs, validOverlays.L3VPNs)
+	resourceErrors = append(resourceErrors, err)
 
 	config := conversion.APIConfigData{
 		Underlays:     apiConfig.Underlays,
-		L3VNIs:        validL3VNIs,
-		L3VPNs:        validL3VPNs,
-		L2VNIs:        validL2VNIs,
-		L3Passthrough: validPassthrough,
+		L3VNIs:        validOverlays.L3VNIs,
+		L3VPNs:        validOverlays.L3VPNs,
+		L2VNIs:        validOverlays.L2VNIs,
+		L3Passthrough: validOverlays.L3Passthrough,
 		RawFRRConfigs: apiConfig.RawFRRConfigs,
 		Passwords:     apiConfig.Passwords,
 	}
@@ -138,6 +100,29 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 	resourceErrors = append(resourceErrors, err)
 
 	return errors.Join(resourceErrors...)
+}
+
+// normalizeConfig sorts resources by namespace/name so validation order is deterministic.
+func normalizeConfig(config *conversion.APIConfigData) {
+	slices.SortFunc(config.L3VNIs, func(a, b v1alpha1.L3VNI) int {
+		return cmp.Compare(objectKey(&a), objectKey(&b))
+	})
+
+	slices.SortFunc(config.L3VPNs, func(a, b v1alpha1.L3VPN) int {
+		return cmp.Compare(objectKey(&a), objectKey(&b))
+	})
+
+	slices.SortFunc(config.L2VNIs, func(a, b v1alpha1.L2VNI) int {
+		return cmp.Compare(objectKey(&a), objectKey(&b))
+	})
+
+	slices.SortFunc(config.L3Passthrough, func(a, b v1alpha1.L3Passthrough) int {
+		return cmp.Compare(objectKey(&a), objectKey(&b))
+	})
+}
+
+func objectKey(o client.Object) string {
+	return client.ObjectKeyFromObject(o).String()
 }
 
 // filterL2VNIsWithInvalidRoutingDomain must be called after all L3VNI/L3VPN filtering is complete.
@@ -194,27 +179,4 @@ func filterL2VNIsWithInvalidRoutingDomain(
 		valid = append(valid, l2)
 	}
 	return valid, errors.Join(resourceErrors...)
-}
-
-// normalizeConfig sorts resources by namespace/name so validation order is deterministic.
-func normalizeConfig(config *conversion.APIConfigData) {
-	slices.SortFunc(config.L3VNIs, func(a, b v1alpha1.L3VNI) int {
-		return cmp.Compare(objectKey(&a), objectKey(&b))
-	})
-
-	slices.SortFunc(config.L3VPNs, func(a, b v1alpha1.L3VPN) int {
-		return cmp.Compare(objectKey(&a), objectKey(&b))
-	})
-
-	slices.SortFunc(config.L2VNIs, func(a, b v1alpha1.L2VNI) int {
-		return cmp.Compare(objectKey(&a), objectKey(&b))
-	})
-
-	slices.SortFunc(config.L3Passthrough, func(a, b v1alpha1.L3Passthrough) int {
-		return cmp.Compare(objectKey(&a), objectKey(&b))
-	})
-}
-
-func objectKey(o client.Object) string {
-	return client.ObjectKeyFromObject(o).String()
 }

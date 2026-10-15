@@ -212,10 +212,10 @@ func validateL2VNI(l2Vni v1alpha1.L2VNI) error {
 
 // ValidateOverlayResourcesForNodes validates that the VNI / VPN information as a whole is correct, per Node.
 func ValidateOverlayResourcesForNodes(nodes []corev1.Node, l2vnis []v1alpha1.L2VNI, l3vnis []v1alpha1.L3VNI,
-	l3vpns []v1alpha1.L3VPN) error {
+	l3vpns []v1alpha1.L3VPN, passthroughs []v1alpha1.L3Passthrough) error {
 	var errs []error
 	for _, node := range nodes {
-		if err := validateOverlayResourcesForNode(node, l2vnis, l3vnis, l3vpns); err != nil {
+		if err := validateOverlayResourcesForNode(node, l2vnis, l3vnis, l3vpns, passthroughs); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -223,7 +223,7 @@ func ValidateOverlayResourcesForNodes(nodes []corev1.Node, l2vnis []v1alpha1.L2V
 }
 
 func validateOverlayResourcesForNode(node corev1.Node, l2vnis []v1alpha1.L2VNI, l3vnis []v1alpha1.L3VNI,
-	l3vpns []v1alpha1.L3VPN) error {
+	l3vpns []v1alpha1.L3VPN, passthroughs []v1alpha1.L3Passthrough) error {
 	filteredL3VNIs, err := filter.L3VNIsForNode(&node, l3vnis)
 	if err != nil {
 		return fmt.Errorf("failed to filter l3vnis for node %q: %w", node.Name, err)
@@ -239,63 +239,20 @@ func validateOverlayResourcesForNode(node corev1.Node, l2vnis []v1alpha1.L2VNI, 
 		return fmt.Errorf("failed to filter l2vnis for node %q: %w", node.Name, err)
 	}
 
-	validL3VNIs, err := FilterValidL3VNIs(filteredL3VNIs)
+	filteredPassthroughs, err := filter.L3PassthroughsForNode(&node, passthroughs)
 	if err != nil {
-		return fmt.Errorf("failed to validate l3vnis for node %q: %w", node.Name, err)
+		return fmt.Errorf("failed to filter passthroughs for node %q: %w", node.Name, err)
 	}
 
-	validL3VPNs, err := FilterValidL3VPNs(filteredL3VPNs)
+	_, err = FilterOverlayResources(OverlayResources{
+		L3VNIs:        filteredL3VNIs,
+		L3VPNs:        filteredL3VPNs,
+		L2VNIs:        filteredL2VNIs,
+		L3Passthrough: filteredPassthroughs,
+	})
 	if err != nil {
-		return fmt.Errorf("failed to validate l3vpns for node %q: %w", node.Name, err)
+		return fmt.Errorf("invalid overlay resources for node %q: %w", node.Name, err)
 	}
-
-	validL2VNIs, err := FilterValidL2VNIs(filteredL2VNIs)
-	if err != nil {
-		return fmt.Errorf("failed to validate l2vnis for node %q: %w", node.Name, err)
-	}
-
-	validL3VPNs, err = FilterUniqueL3VPNRDNumbers(validL3VPNs)
-	if err != nil {
-		return fmt.Errorf("duplicate L3VPNs found for node %q: %w", node.Name, err)
-	}
-
-	validL3VNIs, err = FilterUniqueL3VNIRDNumbers(validL3VNIs)
-	if err != nil {
-		return fmt.Errorf("duplicate L3VNI RD numbers found for node %q: %w", node.Name, err)
-	}
-
-	validL2VNIs, err = FilterUniqueL2VNIRDNumbers(validL2VNIs)
-	if err != nil {
-		return fmt.Errorf("duplicate L2VNI RD numbers found for node %q: %w", node.Name, err)
-	}
-
-	var allocatedVNIs map[int32]string
-	validL3VNIs, allocatedVNIs, err = FilterUniqueL3VNIs(validL3VNIs)
-	if err != nil {
-		return fmt.Errorf("duplicate L3VNIs found for node %q: %w", node.Name, err)
-	}
-
-	validL2VNIs, err = FilterUniqueL2VNIs(validL2VNIs, allocatedVNIs)
-	if err != nil {
-		return fmt.Errorf("duplicate VNIs found in L2VNIs for node %q: %w", node.Name, err)
-	}
-
-	var vrfToVNI map[string]types.NamespacedName
-	validL3VNIs, vrfToVNI, err = FilterUniqueVRFsForL3VNIs(validL3VNIs)
-	if err != nil {
-		return fmt.Errorf("duplicate L3VNIs found in VRFs for node %q: %w", node.Name, err)
-	}
-
-	validL3VPNs, err = FilterUniqueVRFsForL3VPNs(validL3VPNs, vrfToVNI)
-	if err != nil {
-		return fmt.Errorf("duplicate L3VPNs found in VRFs for node %q: %w", node.Name, err)
-	}
-
-	_, _, _, err = FilterValidVRFSubnets(validL3VNIs, validL3VPNs, validL2VNIs)
-	if err != nil {
-		return fmt.Errorf("subnet overlaps found in VRFs for node %q: %w", node.Name, err)
-	}
-
 	return nil
 }
 
