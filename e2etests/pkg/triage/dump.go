@@ -128,7 +128,15 @@ func onFRRK8sPods(cs clientset.Interface) func(dumpOptions *dumpOptions) {
 
 func onFRRContainers() func(dumpOptions *dumpOptions) {
 	return func(dumpOptions *dumpOptions) {
-		for _, c := range []string{infra.LeafA, infra.LeafB, infra.LeafSRV6, infra.KindLeaf, infra.KindLeaf2} {
+		containers := []string{
+			infra.LeafA,
+			infra.LeafB,
+			infra.LeafSRV6,
+			infra.KindLeaf,
+			infra.KindLeaf2,
+			infra.Spine,
+		}
+		for _, c := range containers {
 			exec := executor.ForContainer(c)
 			dumpOptions.executors[c] = exec
 		}
