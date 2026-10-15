@@ -16,6 +16,7 @@ const (
 	LeafA      = ClabPrefix + "leafA"
 	LeafB      = ClabPrefix + "leafB"
 	LeafSRV6   = ClabPrefix + "leafSRV6"
+	Spine      = ClabPrefix + "spine"
 )
 
 var (
@@ -50,12 +51,10 @@ func init() {
 }
 
 func registerFabricLinks() {
-	spine := ClabPrefix + "spine"
-
-	addLinkIPs(KindLeaf, spine, "192.168.1.5", "192.168.1.4")
-	addLinkIPs(KindLeaf2, spine, "192.168.1.7", "192.168.1.6")
-	addLinkIPs(LeafA, spine, "192.168.1.1", "192.168.1.0")
-	addLinkIPs(LeafB, spine, "192.168.1.3", "192.168.1.2")
+	addLinkIPs(KindLeaf, Spine, "192.168.1.5", "192.168.1.4")
+	addLinkIPs(KindLeaf2, Spine, "192.168.1.7", "192.168.1.6")
+	addLinkIPs(LeafA, Spine, "192.168.1.1", "192.168.1.0")
+	addLinkIPs(LeafB, Spine, "192.168.1.3", "192.168.1.2")
 	addLinkIPs(LeafA, ClabPrefix+"hostA_red", "192.168.20.1", HostARedIPv4)
 	addLinkIPs(LeafA, ClabPrefix+"hostA_blue", "192.168.21.1", HostABlueIPv4)
 	addLinkIPs(LeafB, ClabPrefix+"hostB_red", "192.169.20.1", HostBRedIPv4)
