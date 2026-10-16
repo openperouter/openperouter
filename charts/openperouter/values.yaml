@@ -76,6 +76,40 @@ openperouter:
     # -- CNI cache directory for persistent CNI state across pod restarts
     cniCacheDir: "/var/lib/openperouter/cni/cache"
   nodemarker:
+    # -- Replicas of the nodemarker. Every replica serves the webhooks; the replicas
+    # elect a leader through a Lease, and only the leader runs the node-index
+    # reconciler and the certificate rotator.
+    replicas: 2
+    # -- How the replicas are spread over nodes when there is more than one:
+    # "required", "preferred", or "" for none. Added to openperouter.affinity.
+    antiAffinity: required
+    # -- Deployment strategy when there is more than one replica. maxSurge 0 replaces
+    # one replica at a time, which also works when only as many nodes as replicas
+    # are eligible under "required" anti-affinity.
+    strategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxSurge: 0
+        maxUnavailable: 1
+    # -- PodDisruptionBudget of the nodemarker. Rendered only with more than one
+    # replica: with one, minAvailable 1 would block every node drain.
+    podDisruptionBudget:
+      enabled: true
+      minAvailable: 1
+    # -- Timings of the Lease the replicas elect a leader with.
+    leaderElection:
+      leaseDuration: 15s
+      renewDeadline: 10s
+      retryPeriod: 2s
+    # -- Seconds a terminating replica keeps serving. Its endpoint is removed when
+    # termination starts, but the API server can still send it requests for a
+    # moment. 0 disables the delay; keep it below terminationGracePeriodSeconds.
+    preStopSleepSeconds: 5
+    # -- Liveness probe of the nodemarker. A replica busy with a burst of admission
+    # calls can answer late, and a restart drops every call in flight.
+    livenessProbe:
+      timeoutSeconds: 5
+      failureThreshold: 6
     resources: {}
   # frr contains configuration specific to the perouter FRR container,
   frr:
@@ -125,6 +159,10 @@ openperouter:
 
 webhook:
   enabled: true
+  # -- timeoutSeconds of every validating webhook (1-30). Unset keeps the API
+  # server's default of 10 s. With failurePolicy Fail, a call that reaches a
+  # replica that no longer answers is refused only after this long.
+  timeoutSeconds:
 
 crds:
   enabled: true

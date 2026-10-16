@@ -10,6 +10,13 @@ metadata:
   name: {{ template "openperouter.fullname" . }}-nodemarker
   namespace: {{ .Release.Namespace | quote }}
 spec:
+  {{- $nm := .Values.openperouter.nodemarker }}
+  {{- $replicas := int (default 1 $nm.replicas) }}
+  replicas: {{ $replicas }}
+  {{- if and (gt $replicas 1) $nm.strategy }}
+  strategy:
+    {{- toYaml $nm.strategy | nindent 4 }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "openperouter.selectorLabels" . | nindent 6 }}
@@ -42,9 +49,9 @@ spec:
       tolerations:
       {{- toYaml . | nindent 6 }}
       {{- end }}
-      {{- with .Values.openperouter.affinity }}
+      {{- with include "openperouter.nodemarker.affinity" . }}
       affinity:
-        {{- toYaml . | nindent 8 }}
+        {{- . | nindent 8 }}
       {{- end }}
       containers:
       - args:
@@ -52,6 +59,10 @@ spec:
         - --loglevel={{ . }}
         {{- end }}
         - "--namespace=$(NAMESPACE)"
+        - --leader-elect=true
+        - --leader-election-lease-duration={{ $nm.leaderElection.leaseDuration }}
+        - --leader-election-renew-deadline={{ $nm.leaderElection.renewDeadline }}
+        - --leader-election-retry-period={{ $nm.leaderElection.retryPeriod }}
         {{- if eq .Values.openperouter.datapath "grout" }}
         - --datapath=grout
         {{- end }}
@@ -93,8 +104,8 @@ spec:
             scheme: HTTP
           initialDelaySeconds: 15
           periodSeconds: 20
-          timeoutSeconds: 1
-          failureThreshold: 3
+          timeoutSeconds: {{ int $nm.livenessProbe.timeoutSeconds }}
+          failureThreshold: {{ int $nm.livenessProbe.failureThreshold }}
         {{- if .Values.webhook.enabled }}
         volumeMounts:
         - name: cert
@@ -106,6 +117,12 @@ spec:
         imagePullPolicy: {{ .Values.openperouter.image.pullPolicy }}
         {{- end }}
         name: nodemarker
+        {{- with $nm.preStopSleepSeconds }}
+        lifecycle:
+          preStop:
+            exec:
+              command: ["sleep", "{{ int . }}"]
+        {{- end }}
         {{- with .Values.openperouter.nodemarker.resources }}
         resources:
           {{- toYaml . | nindent 10 }}
@@ -117,4 +134,23 @@ spec:
             defaultMode: 420
             secretName: openpe-webhook-server-cert
       {{- end }}
-
+{{- if and (gt $replicas 1) $nm.podDisruptionBudget.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  labels:
+    {{- include "openperouter.labels" . | nindent 4 }}
+    app.kubernetes.io/component: nodemarker
+    {{- range $key, $value := .Values.openperouter.labels }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
+  name: {{ template "openperouter.fullname" . }}-nodemarker
+  namespace: {{ .Release.Namespace | quote }}
+spec:
+  minAvailable: {{ $nm.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "openperouter.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: nodemarker
+{{- end }}

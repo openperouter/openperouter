@@ -519,6 +519,7 @@ func TestParseChartWithSchedulingPrimitives(t *testing.T) {
 			g.Expect(err).ToNot(HaveOccurred())
 
 			var podSpecs []v1.PodSpec
+			var nodemarkerSpec *v1.PodSpec
 			for _, obj := range objs {
 				objKind := obj.GetKind()
 				if objKind == daemonSetKind && slices.Index(daemonSets, obj.GetName()) != -1 {
@@ -531,7 +532,7 @@ func TestParseChartWithSchedulingPrimitives(t *testing.T) {
 					deployment := appsv1.Deployment{}
 					err = runtime.DefaultUnstructuredConverter.FromUnstructured(obj.UnstructuredContent(), &deployment)
 					g.Expect(err).ToNot(HaveOccurred())
-					podSpecs = append(podSpecs, deployment.Spec.Template.Spec)
+					nodemarkerSpec = &deployment.Spec.Template.Spec
 				}
 			}
 			for _, podSpec := range podSpecs {
@@ -544,6 +545,19 @@ func TestParseChartWithSchedulingPrimitives(t *testing.T) {
 				if tt.expectAffinity != nil {
 					g.Expect(equality.Semantic.DeepEqual(podSpec.Affinity, tt.expectAffinity)).To(BeTrue())
 				}
+			}
+			// The nodemarker's replicas also keep apart from each other.
+			g.Expect(nodemarkerSpec).ToNot(BeNil())
+			if tt.expectTolerations != nil {
+				g.Expect(nodemarkerSpec.Tolerations).To(ConsistOf(tt.expectTolerations))
+			}
+			if tt.expectNodeSelector != nil {
+				g.Expect(nodemarkerSpec.NodeSelector).To(Equal(tt.expectNodeSelector))
+			}
+			g.Expect(nodemarkerSpec.Affinity).ToNot(BeNil())
+			g.Expect(nodemarkerSpec.Affinity.PodAntiAffinity).ToNot(BeNil())
+			if tt.expectAffinity != nil {
+				g.Expect(equality.Semantic.DeepEqual(nodemarkerSpec.Affinity.NodeAffinity, tt.expectAffinity.NodeAffinity)).To(BeTrue())
 			}
 		})
 	}

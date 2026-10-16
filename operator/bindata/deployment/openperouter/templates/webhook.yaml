@@ -48,6 +48,9 @@ webhooks:
       namespace: {{ .Release.Namespace | quote }}
       path: /validate-openperouter-io-v1alpha1-l2vni
   failurePolicy: Fail
+  {{- with .Values.webhook.timeoutSeconds }}
+  timeoutSeconds: {{ include "openperouter.webhook.timeoutSeconds" $ }}
+  {{- end }}
   name: l2vnivalidationwebhook.openperouter.io
   rules:
   - apiGroups:
@@ -68,6 +71,9 @@ webhooks:
       namespace: {{ .Release.Namespace | quote }}
       path: /validate-openperouter-io-v1alpha1-l3passthrough
   failurePolicy: Fail
+  {{- with .Values.webhook.timeoutSeconds }}
+  timeoutSeconds: {{ include "openperouter.webhook.timeoutSeconds" $ }}
+  {{- end }}
   name: l3passthroughvalidationwebhook.openperouter.io
   rules:
   - apiGroups:
@@ -88,6 +94,9 @@ webhooks:
       namespace: {{ .Release.Namespace | quote }}
       path: /validate-openperouter-io-v1alpha1-l3vni
   failurePolicy: Fail
+  {{- with .Values.webhook.timeoutSeconds }}
+  timeoutSeconds: {{ include "openperouter.webhook.timeoutSeconds" $ }}
+  {{- end }}
   name: l3vnivalidationwebhook.openperouter.io
   rules:
   - apiGroups:
@@ -108,6 +117,9 @@ webhooks:
       namespace: {{ .Release.Namespace | quote }}
       path: /validate-openperouter-io-v1alpha1-l3vpn
   failurePolicy: Fail
+  {{- with .Values.webhook.timeoutSeconds }}
+  timeoutSeconds: {{ include "openperouter.webhook.timeoutSeconds" $ }}
+  {{- end }}
   name: l3vpnsvalidationwebhook.openperouter.io
   rules:
   - apiGroups:
@@ -128,6 +140,9 @@ webhooks:
       namespace: {{ .Release.Namespace | quote }}
       path: /validate-openperouter-io-v1alpha1-rawfrrconfig
   failurePolicy: Fail
+  {{- with .Values.webhook.timeoutSeconds }}
+  timeoutSeconds: {{ include "openperouter.webhook.timeoutSeconds" $ }}
+  {{- end }}
   name: rawfrrconfigvalidationwebhook.openperouter.io
   rules:
   - apiGroups:
@@ -148,6 +163,9 @@ webhooks:
       namespace: {{ .Release.Namespace | quote }}
       path: /validate-openperouter-io-v1alpha1-underlay
   failurePolicy: Fail
+  {{- with .Values.webhook.timeoutSeconds }}
+  timeoutSeconds: {{ include "openperouter.webhook.timeoutSeconds" $ }}
+  {{- end }}
   name: underlayvalidationwebhook.openperouter.io
   rules:
   - apiGroups:

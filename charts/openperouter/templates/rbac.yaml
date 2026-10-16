@@ -252,6 +252,25 @@ rules:
       - openpe-webhook-server-cert
     verbs:
       - update
+  # Leader election: the replicas share one Lease; the elector records its transitions as Events.
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

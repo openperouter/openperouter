@@ -237,6 +237,25 @@
             "type": "object",
             "description": "Resource requests and limits for the nodemarker container.",
             "properties": {
+              "livenessProbe": {
+                "type": "object",
+                "description": "The nodemarker's liveness probe (GET /healthz, period 20 s).",
+                "properties": {
+                  "timeoutSeconds": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Seconds before a probe counts as failed.",
+                    "default": 5
+                  },
+                  "failureThreshold": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Consecutive failures before the kubelet restarts the container.",
+                    "default": 6
+                  }
+                },
+                "default": {}
+              },
               "resources": {
                 "type": "object",
                 "description": "Resource requirements.",

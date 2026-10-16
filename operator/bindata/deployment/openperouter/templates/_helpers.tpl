@@ -1,5 +1,40 @@
 {{/* vim: set filetype=mustache: */}}
 {{/*
+The nodemarker's affinity: openperouter.affinity, plus a pod anti-affinity on the hostname that
+keeps the replicas apart when there is more than one (openperouter.nodemarker.antiAffinity).
+*/}}
+{{- define "openperouter.nodemarker.affinity" -}}
+{{- $nm := .Values.openperouter.nodemarker -}}
+{{- $affinity := deepCopy (default (dict) .Values.openperouter.affinity) -}}
+{{- if and (gt (int (default 1 $nm.replicas)) 1) $nm.antiAffinity -}}
+{{- $labels := include "openperouter.selectorLabels" . | fromYaml -}}
+{{- $_ := set $labels "component" "nodemarker" -}}
+{{- $term := dict "topologyKey" "kubernetes.io/hostname" "labelSelector" (dict "matchLabels" $labels) -}}
+{{- if eq $nm.antiAffinity "required" -}}
+{{- $_ := set $affinity "podAntiAffinity" (dict "requiredDuringSchedulingIgnoredDuringExecution" (list $term)) -}}
+{{- else if eq $nm.antiAffinity "preferred" -}}
+{{- $_ := set $affinity "podAntiAffinity" (dict "preferredDuringSchedulingIgnoredDuringExecution" (list (dict "weight" 100 "podAffinityTerm" $term))) -}}
+{{- else -}}
+{{- fail (printf "openperouter.nodemarker.antiAffinity must be required, preferred or empty, not %q" $nm.antiAffinity) -}}
+{{- end -}}
+{{- end -}}
+{{- if $affinity -}}
+{{- toYaml $affinity -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+webhook.timeoutSeconds, checked against the API's range (1-30).
+*/}}
+{{- define "openperouter.webhook.timeoutSeconds" -}}
+{{- $t := int .Values.webhook.timeoutSeconds -}}
+{{- if or (lt $t 1) (gt $t 30) -}}
+{{- fail (printf "webhook.timeoutSeconds must be between 1 and 30, not %v" .Values.webhook.timeoutSeconds) -}}
+{{- end -}}
+{{- $t -}}
+{{- end }}
+
+{{/*
 Expand the name of the chart.
 */}}
 {{- define "openperouter.name" -}}
