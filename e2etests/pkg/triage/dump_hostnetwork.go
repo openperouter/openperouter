@@ -1,11 +1,16 @@
 // SPDX-License-Identifier:Apache-2.0
 
-package tests
+package triage
 
 import (
 	"context"
 	"fmt"
+	"io"
+	"maps"
 	"net"
+	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -178,6 +183,42 @@ type overlayCapture struct {
 	err     error
 }
 
+// overlayProbe is everything the reachability probe produced for one namespace.
+type overlayProbe struct {
+	namespace       string
+	sourceNode      string
+	destinationNode string
+	destinationIP   string
+	filter          string
+	pingOutput      string
+	pingErr         error
+	captures        []overlayCapture
+	states          []overlayStateDelta
+}
+
+// overlayStateDelta pairs the router namespace state of one node taken before
+// the probe traffic with the one taken after it.
+type overlayStateDelta struct {
+	role   string
+	before overlayNodeState
+	after  overlayNodeState
+}
+
+type overlayNodeState struct {
+	nodeName string
+	fdb      string
+	fdbErr   error
+	stats    map[string]linkStats
+	statsErr error
+}
+
+type linkStats struct {
+	rxPackets, rxDropped int64
+	txPackets, txDropped int64
+}
+
+var linkHeaderPattern = regexp.MustCompile(`^\d+:\s+([^:@\s]+)[@:]`)
+
 func dumpOverlayReachabilityInfo(testPath string, cs clientset.Interface, namespaces []string) {
 	for _, namespace := range namespaces {
 		pods, err := cs.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{})
@@ -212,11 +253,27 @@ func dumpOverlayReachabilityInfo(testPath string, cs clientset.Interface, namesp
 		if strings.Contains(destinationIP, ":") {
 			filter = "icmp6"
 		}
-		captures := overlayCaptures(firstPod.Spec.NodeName, secondPod.Spec.NodeName, filter)
+		probe := overlayProbe{
+			namespace:       namespace,
+			sourceNode:      firstPod.Spec.NodeName,
+			destinationNode: secondPod.Spec.NodeName,
+			destinationIP:   destinationIP,
+			filter:          filter,
+		}
+
+		// Snapshot before any probe traffic: this is the state the reachability
+		// check was failing against. A dump taken only afterwards cannot tell a
+		// data path that was never programmed from one that converged late.
+		probe.states = []overlayStateDelta{
+			{role: "source", before: captureOverlayNodeState(probe.sourceNode)},
+			{role: "destination", before: captureOverlayNodeState(probe.destinationNode)},
+		}
+
+		probe.captures = overlayCaptures(probe.sourceNode, probe.destinationNode, filter)
 
 		var waitGroup sync.WaitGroup
-		for i := range captures {
-			capture := &captures[i]
+		for i := range probe.captures {
+			capture := &probe.captures[i]
 			waitGroup.Add(1)
 			go func() {
 				defer waitGroup.Done()
@@ -225,21 +282,15 @@ func dumpOverlayReachabilityInfo(testPath string, cs clientset.Interface, namesp
 		}
 
 		time.Sleep(2 * time.Second)
-		pingOutput, pingErr := firstPodExec.Exec(
+		probe.pingOutput, probe.pingErr = firstPodExec.Exec(
 			"ping", "-c", "3", "-W", "1", "-I", "net1", destinationIP)
 		waitGroup.Wait()
 
-		writeOverlayProbeResult(
-			testPath,
-			namespace,
-			firstPod.Spec.NodeName,
-			secondPod.Spec.NodeName,
-			destinationIP,
-			filter,
-			pingOutput,
-			pingErr,
-			captures,
-		)
+		for i := range probe.states {
+			probe.states[i].after = captureOverlayNodeState(probe.states[i].before.nodeName)
+		}
+
+		writeOverlayProbeResult(testPath, probe)
 	}
 }
 
@@ -255,22 +306,22 @@ func overlayCaptures(sourceNode, destinationNode, filter string) []overlayCaptur
 	return []overlayCapture{
 		{
 			name:    "source-node-host",
-			exec:    executor.ForNode(sourceNode),
+			exec:    executor.ForNodeCapture(sourceNode),
 			command: captureCommand,
 		},
 		{
 			name:    "destination-node-host",
-			exec:    executor.ForNode(destinationNode),
+			exec:    executor.ForNodeCapture(destinationNode),
 			command: captureCommand,
 		},
 		{
 			name:    "source-node-router-namespace",
-			exec:    executor.ForNode(sourceNode),
+			exec:    executor.ForNodeCapture(sourceNode),
 			command: routerCaptureCommand,
 		},
 		{
 			name:    "destination-node-router-namespace",
-			exec:    executor.ForNode(destinationNode),
+			exec:    executor.ForNodeCapture(destinationNode),
 			command: routerCaptureCommand,
 		},
 	}
@@ -307,11 +358,8 @@ func firstAddress(output string) (string, bool) {
 	return "", false
 }
 
-func writeOverlayProbeResult(
-	testPath, namespace, sourceNode, destinationNode, destinationIP, filter string,
-	pingOutput string, pingErr error, captures []overlayCapture,
-) {
-	fileName := fmt.Sprintf("overlay-probe-namespace-%s", namespace)
+func writeOverlayProbeResult(testPath string, probe overlayProbe) {
+	fileName := fmt.Sprintf("overlay-probe-namespace-%s", probe.namespace)
 	f, err := logFileFor(testPath, fileName)
 	if err != nil {
 		ginkgo.GinkgoWriter.Printf("writeOverlayProbeResult: failed to open %s: %v", fileName, err)
@@ -324,19 +372,23 @@ func writeOverlayProbeResult(
 	}()
 
 	fmt.Fprintf(f, "Overlay reachability probe\n")
-	fmt.Fprintf(f, "namespace: %s\n", namespace)
-	fmt.Fprintf(f, "source node: %s\n", sourceNode)
-	fmt.Fprintf(f, "destination node: %s\n", destinationNode)
-	fmt.Fprintf(f, "destination address: %s\n", destinationIP)
-	fmt.Fprintf(f, "capture filter: %s\n\n", filter)
+	fmt.Fprintf(f, "namespace: %s\n", probe.namespace)
+	fmt.Fprintf(f, "source node: %s\n", probe.sourceNode)
+	fmt.Fprintf(f, "destination node: %s\n", probe.destinationNode)
+	fmt.Fprintf(f, "destination address: %s\n", probe.destinationIP)
+	fmt.Fprintf(f, "capture filter: %s\n\n", probe.filter)
 
 	fmt.Fprintf(f, "######## probe result\n\n")
-	if pingErr != nil {
-		fmt.Fprintf(f, "probe command failed: %v\n", pingErr)
+	if probe.pingErr != nil {
+		fmt.Fprintf(f, "probe command failed: %v\n", probe.pingErr)
 	}
-	fmt.Fprintf(f, "%s\n", pingOutput)
+	fmt.Fprintf(f, "%s\n", probe.pingOutput)
 
-	for _, capture := range captures {
+	for _, state := range probe.states {
+		writeOverlayNodeState(f, state)
+	}
+
+	for _, capture := range probe.captures {
 		fmt.Fprintf(f, "\n######## %s capture\n\n", capture.name)
 		fmt.Fprintf(f, "command: %q\n", strings.Join(capture.command, " "))
 		if capture.err != nil {
@@ -344,4 +396,143 @@ func writeOverlayProbeResult(
 		}
 		fmt.Fprintf(f, "%s\n", capture.output)
 	}
+}
+
+// captureOverlayNodeState reads the two things that say whether a router
+// namespace can forward overlay traffic: the forwarding entries that carry a
+// remote VXLAN destination, and the per-interface counters.
+func captureOverlayNodeState(nodeName string) overlayNodeState {
+	nodeExec := executor.ForNode(nodeName)
+	state := overlayNodeState{nodeName: nodeName}
+
+	fdb, err := nodeExec.Exec("ip", "netns", "exec", openperouter.NamedNetns, "bridge", "fdb", "show")
+	state.fdb, state.fdbErr = remoteFDBEntries(fdb), err
+
+	stats, err := nodeExec.Exec("ip", "netns", "exec", openperouter.NamedNetns, "ip", "-s", "link", "show")
+	state.stats, state.statsErr = parseLinkStats(stats), err
+
+	return state
+}
+
+// writeOverlayNodeState reports the forwarding state the node had while the
+// reachability check was failing, and how its counters moved while the probe
+// ran. An empty FDB means the control plane never programmed the peer; a
+// populated FDB with no counter movement on the receiving side means the frames
+// were sent but never arrived.
+func writeOverlayNodeState(f io.Writer, state overlayStateDelta) {
+	fmt.Fprintf(f, "\n######## %s node %s router namespace: remote forwarding entries before probe\n\n",
+		state.role, state.before.nodeName)
+	switch {
+	case state.before.fdbErr != nil:
+		fmt.Fprintf(f, "failed to read the forwarding database: %v\n", state.before.fdbErr)
+	case state.before.fdb == "":
+		fmt.Fprintf(f, "no forwarding entry has a remote VXLAN destination\n")
+	default:
+		fmt.Fprint(f, state.before.fdb)
+	}
+	if state.after.fdb != state.before.fdb {
+		fmt.Fprintf(f, "\nthe entries changed while the probe ran, after:\n\n%s", state.after.fdb)
+	}
+
+	fmt.Fprintf(f, "\n######## %s node %s router namespace: counter delta across probe\n\n",
+		state.role, state.before.nodeName)
+	writeLinkStatsDelta(f, state.before, state.after)
+}
+
+func writeLinkStatsDelta(f io.Writer, before, after overlayNodeState) {
+	if before.statsErr != nil {
+		fmt.Fprintf(f, "failed to read the counters before the probe: %v\n", before.statsErr)
+	}
+	if after.statsErr != nil {
+		fmt.Fprintf(f, "failed to read the counters after the probe: %v\n", after.statsErr)
+	}
+
+	wroteHeader := false
+	for _, name := range slices.Sorted(maps.Keys(after.stats)) {
+		previous, found := before.stats[name]
+		current := after.stats[name]
+		if !found || current == previous {
+			continue
+		}
+		if !wroteHeader {
+			fmt.Fprintf(f, "%-18s %9s %9s %9s %9s\n", "interface", "rx_pkts", "rx_drop", "tx_pkts", "tx_drop")
+			wroteHeader = true
+		}
+		fmt.Fprintf(f, "%-18s %+9d %+9d %+9d %+9d\n", name,
+			current.rxPackets-previous.rxPackets, current.rxDropped-previous.rxDropped,
+			current.txPackets-previous.txPackets, current.txDropped-previous.txDropped)
+	}
+	if !wroteHeader {
+		fmt.Fprintf(f, "no interface counter moved while the probe ran\n")
+	}
+}
+
+// remoteFDBEntries keeps the forwarding entries that point at a remote VXLAN
+// endpoint. Those are the ones unicast forwarding and head-end replication ride
+// on, and they are a small fraction of a full dump.
+func remoteFDBEntries(fdb string) string {
+	var entries strings.Builder
+	for line := range strings.SplitSeq(fdb, "\n") {
+		if !strings.Contains(line, " dst ") {
+			continue
+		}
+		entries.WriteString(line)
+		entries.WriteString("\n")
+	}
+	return entries.String()
+}
+
+// parseLinkStats pulls the per-interface counters out of "ip -s link show".
+// Each RX:/TX: header is followed by the counter row and then, on recent
+// iproute2, a second row holding the extended counters: only the first is read.
+func parseLinkStats(output string) map[string]linkStats {
+	parsed := map[string]linkStats{}
+	var name, section string
+	for line := range strings.SplitSeq(output, "\n") {
+		if match := linkHeaderPattern.FindStringSubmatch(line); match != nil {
+			name, section = match[1], ""
+			continue
+		}
+		switch {
+		case strings.Contains(line, "RX:"):
+			section = "RX"
+			continue
+		case strings.Contains(line, "TX:"):
+			section = "TX"
+			continue
+		}
+		if name == "" || section == "" {
+			continue
+		}
+		packets, dropped, ok := packetsAndDropped(line)
+		if !ok {
+			continue
+		}
+		stats := parsed[name]
+		if section == "RX" {
+			stats.rxPackets, stats.rxDropped = packets, dropped
+		} else {
+			stats.txPackets, stats.txDropped = packets, dropped
+		}
+		parsed[name] = stats
+		section = ""
+	}
+	return parsed
+}
+
+// packetsAndDropped reads the "bytes packets errors dropped ..." counter row.
+func packetsAndDropped(line string) (int64, int64, bool) {
+	fields := strings.Fields(line)
+	if len(fields) < 4 {
+		return 0, 0, false
+	}
+	counters := make([]int64, 0, 4)
+	for _, field := range fields[:4] {
+		counter, err := strconv.ParseInt(field, 10, 64)
+		if err != nil {
+			return 0, 0, false
+		}
+		counters = append(counters, counter)
+	}
+	return counters[1], counters[3], true
 }
