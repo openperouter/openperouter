@@ -122,20 +122,21 @@ func (s *stringSliceFlag) Set(value string) error {
 }
 
 type parameters struct {
-	probeAddr        string
-	frrConfigPath    string
-	reloaderSocket   string
-	mode             string
-	ovsSocketPath    string
-	nodeName         string
-	namespace        string
-	logLevel         string
-	bgpListenLimit   uint
-	cniPluginDirs    stringSliceFlag
-	cniCacheDir      string
-	datapath         string
-	groutSocketPath  string
-	groutTapUnderlay bool
+	probeAddr           string
+	frrConfigPath       string
+	reloaderSocket      string
+	mode                string
+	ovsSocketPath       string
+	nodeName            string
+	namespace           string
+	logLevel            string
+	bgpListenLimit      uint
+	cniPluginDirs       stringSliceFlag
+	cniCacheDir         string
+	datapath            string
+	groutSocketPath     string
+	groutTapUnderlay    bool
+	maxReconcileBackoff time.Duration
 }
 
 func (p parameters) groutUnderlayPortMode() grout.UnderlayPortMode {
@@ -190,7 +191,15 @@ func main() {
 			"comma-separated list of directories to search for CNI plugin binaries, can be specified just once, defaults to %v",
 			args.cniPluginDirs.values))
 
+	flag.DurationVar(&args.maxReconcileBackoff, "max-reconcile-backoff",
+		0, "maximum retry delay after failed API reconciliation (0 keeps the controller default)")
+
 	flag.Parse()
+
+	if args.maxReconcileBackoff < 0 {
+		fmt.Fprintln(os.Stderr, "max-reconcile-backoff must not be negative")
+		os.Exit(1)
+	}
 
 	if args.bgpListenLimit < 1 || args.bgpListenLimit > frr.DefaultListenLimit {
 		fmt.Println("bgplistenlimit must be between 1 and 65535, got", args.bgpListenLimit)
@@ -394,6 +403,7 @@ func runK8sConfigReconcilerHostMode(ctx context.Context,
 		LogLevel:             args.logLevel,
 		Logger:               logger,
 		MyNode:               args.nodeName,
+		MaxReconcileBackoff:  args.maxReconcileBackoff,
 		MyNamespace:          args.namespace,
 		FRRReloadSocket:      args.reloaderSocket,
 		FRRConfigPath:        args.frrConfigPath,
@@ -502,6 +512,7 @@ func runK8sConfigReconciler(ctx context.Context,
 		LogLevel:             args.logLevel,
 		Logger:               logger,
 		MyNode:               args.nodeName,
+		MaxReconcileBackoff:  args.maxReconcileBackoff,
 		FRRReloadSocket:      args.reloaderSocket,
 		FRRConfigPath:        args.frrConfigPath,
 		RouterProvider:       routerProvider,

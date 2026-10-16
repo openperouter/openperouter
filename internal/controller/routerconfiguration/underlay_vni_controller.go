@@ -30,8 +30,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -50,6 +52,7 @@ type PERouterReconciler struct {
 	client.Client
 	Scheme               *runtime.Scheme
 	MyNode               string
+	MaxReconcileBackoff  time.Duration
 	MyNamespace          string
 	LogLevel             string
 	Logger               *slog.Logger
@@ -403,6 +406,9 @@ func validatePassword(password string) error {
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *PERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if r.MaxReconcileBackoff < 0 {
+		return fmt.Errorf("maximum reconciliation backoff must not be negative")
+	}
 	filterLocalNodeStatus := predicate.NewPredicateFuncs(func(object client.Object) bool {
 		if o, ok := object.(*v1alpha1.RouterNodeConfigurationStatus); ok {
 			return o.Name == r.MyNode
@@ -472,6 +478,7 @@ func (r *PERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	builder := ctrl.NewControllerManagedBy(mgr).
 		Named("routercontroller").
+		WithOptions(controller.Options{RateLimiter: rateLimiter(r.MaxReconcileBackoff)}).
 		Watches(&v1alpha1.Underlay{}, enqueueLocalNodeRequestForObject).
 		Watches(&v1.Node{}, enqueueLocalNodeRequestForObject).
 		Watches(&v1.Pod{}, enqueueLocalNodeRequestForObject).
@@ -548,6 +555,13 @@ func nodeSelectorOf(obj client.Object) *metav1.LabelSelector {
 		return o.Spec.NodeSelector
 	}
 	return nil
+}
+
+func rateLimiter(maxBackoff time.Duration) workqueue.TypedRateLimiter[ctrl.Request] {
+	if maxBackoff == 0 {
+		return nil
+	}
+	return workqueue.NewTypedItemExponentialFailureRateLimiter[ctrl.Request](5*time.Millisecond, maxBackoff)
 }
 
 func setPodNodeNameIndex(mgr ctrl.Manager) error {

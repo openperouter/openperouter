@@ -306,3 +306,12 @@ version.
 
 For the full list of sysctls and kernel requirements, see the
 [Sysctl Configuration]({{< ref "sysctl.md" >}}) documentation.
+
+## Reconciliation Retry Delay
+
+The controller retries failed API reconciliation with exponential backoff,
+starting at 5 ms and capped at 30 seconds by default. Set the controller flag
+`--max-reconcile-backoff=10s` to change the maximum delay in Kubernetes or host
+mode. The duration must be positive. This flag controls retries after errors;
+explicit reconciliation delays, such as waiting for the router to become ready,
+remain unchanged.
