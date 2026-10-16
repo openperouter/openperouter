@@ -124,21 +124,23 @@ type PassthroughConfig struct {
 }
 
 type L3VNIConfig struct {
-	ASN             int64
-	ToAdvertiseIPv4 []string
-	ToAdvertiseIPv6 []string
-	LocalNeighbor   *NeighborConfig
-	VRF             string
-	VNI             int32
-	RouterID        string
-	ExportRTs       []string
-	ImportRTs       []string
+	ASN                int64
+	ToAdvertiseIPv4    []string
+	ToAdvertiseIPv6    []string
+	LocalNeighbor      *NeighborConfig
+	VRF                string
+	VNI                int32
+	RouterID           string
+	ExportRTs          []string
+	ImportRTs          []string
+	RouteDistinguisher string
 }
 
 type L2VNIConfig struct {
-	VNI       int32
-	ExportRTs []string
-	ImportRTs []string
+	VNI                int32
+	ExportRTs          []string
+	ImportRTs          []string
+	RouteDistinguisher string
 }
 
 type L3VPNConfig struct {

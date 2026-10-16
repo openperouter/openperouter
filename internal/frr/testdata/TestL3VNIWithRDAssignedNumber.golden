@@ -1,0 +1,69 @@
+log stdout 
+log timestamp precision 3
+hostname hostname
+ip nht resolve-via-default
+ipv6 nht resolve-via-default
+vrf red
+  vni 200
+exit-vrf
+vrf blue
+  vni 201
+exit-vrf
+vrf green
+  vni 202
+exit-vrf
+
+route-map allowall permit 1
+router bgp 64512
+  no bgp ebgp-requires-policy
+  no bgp network import-check
+  no bgp default ipv4-unicast
+  bgp router-id 10.0.0.1
+  address-family ipv4 unicast
+    network 100.64.0.1/32
+  exit-address-family
+
+  address-family l2vpn evpn
+    advertise-all-vni
+  exit-address-family
+exit
+!
+router bgp 64512 vrf red
+  no bgp ebgp-requires-policy
+  no bgp network import-check
+  no bgp default ipv4-unicast
+  bgp router-id 10.0.0.1
+
+  address-family l2vpn evpn
+    rd 10.0.0.1:500
+    advertise ipv4 unicast
+    advertise ipv6 unicast
+  exit-address-family
+exit
+router bgp 64512 vrf blue
+  no bgp ebgp-requires-policy
+  no bgp network import-check
+  no bgp default ipv4-unicast
+  bgp router-id 10.0.0.1
+
+  address-family l2vpn evpn
+    rd 10.0.0.1:501
+    advertise ipv4 unicast
+    advertise ipv6 unicast
+    route-target export 65000:201
+    route-target import 65001:201
+  exit-address-family
+exit
+router bgp 64512 vrf green
+  no bgp ebgp-requires-policy
+  no bgp network import-check
+  no bgp default ipv4-unicast
+  bgp router-id 10.0.0.1
+
+  address-family l2vpn evpn
+    advertise ipv4 unicast
+    advertise ipv6 unicast
+    route-target export 65000:202
+    route-target import 65001:202
+  exit-address-family
+exit

@@ -147,11 +147,17 @@ func validateL3VPN(l3vpn *v1alpha1.L3VPN) error {
 		return err
 	}
 
+	l3passthroughs, err := getL3Passthroughs()
+	if err != nil {
+		return err
+	}
+
 	if err := conversion.ValidateOverlayResourcesForNodes(
 		nodeList.Items,
 		l2vniList.Items,
 		l3vniList.Items,
 		toValidate,
+		l3passthroughs.Items,
 	); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
 	}

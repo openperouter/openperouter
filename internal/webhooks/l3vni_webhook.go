@@ -150,21 +150,18 @@ func validateL3VNI(l3vni *v1alpha1.L3VNI) error {
 		return err
 	}
 
-	if err := conversion.ValidateOverlayResourcesForNodes(
-		nodeList.Items,
-		toValidateL2.Items,
-		toValidate,
-		l3vpnList.Items,
-	); err != nil {
-		return fmt.Errorf("validation failed: %w", err)
-	}
-
 	l3passthroughs, err := getL3Passthroughs()
 	if err != nil {
 		return err
 	}
 
-	if err := conversion.ValidateHostSessionsForNodes(nodeList.Items, toValidate, l3passthroughs.Items); err != nil {
+	if err := conversion.ValidateOverlayResourcesForNodes(
+		nodeList.Items,
+		toValidateL2.Items,
+		toValidate,
+		l3vpnList.Items,
+		l3passthroughs.Items,
+	); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
 	}
 

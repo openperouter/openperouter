@@ -25,6 +25,22 @@ func TestValidateL3VNICreate(t *testing.T) {
 		errorString string
 	}{
 		{
+			name:  "duplicate RD assignment",
+			nodes: []*v1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+
+			l3vnis: []*v1alpha1.L3VNI{
+				{
+					ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "existing"},
+					Spec:       v1alpha1.L3VNISpec{VNI: 100, RDAssignedNumber: new(int32(42)), VRF: "red"},
+				},
+			},
+			newL3VNI: &v1alpha1.L3VNI{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "new"},
+				Spec:       v1alpha1.L3VNISpec{VNI: 200, RDAssignedNumber: new(int32(42)), VRF: "blue"},
+			},
+			errorString: "duplicate configured rdAssignedNumber 42: L3VNI/new conflicts with L3VNI/existing",
+		},
+		{
 			name: "webhook passes",
 			nodes: []*v1.Node{
 				{

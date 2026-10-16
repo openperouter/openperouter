@@ -35,13 +35,8 @@ func FilterValidL3VPNs(l3vpns []v1alpha1.L3VPN) ([]v1alpha1.L3VPN, error) {
 	return valid, errors.Join(allErrors...)
 }
 
-// FilterUniqueL3VPNs removes L3VPNs with duplicate RD assigned numbers. It returns
-// the filtered L3VPNs as well as a map containing the unique RD assigned numbers
-// and the name of the corresponding L3VPN.
-// L3VPNs that collide with an existing VNI from FilterUniqueL3VNIs are
-// discarded, too.
-func FilterUniqueL3VPNs(l3Vpns []v1alpha1.L3VPN, allocatedRDAssignedNumberToOwner map[int32]string,
-) ([]v1alpha1.L3VPN, map[int32]string, error) {
+// FilterUniqueL3VPNRDNumbers removes L3VPNs with duplicate RD assigned numbers.
+func FilterUniqueL3VPNRDNumbers(l3Vpns []v1alpha1.L3VPN) ([]v1alpha1.L3VPN, error) {
 	allocatedRDAssignedNumberToVPN := map[int32]string{}
 	reason := v1alpha1.FailedResourceReasonValidationFailed
 	var allErrors []error
@@ -52,17 +47,8 @@ func FilterUniqueL3VPNs(l3Vpns []v1alpha1.L3VPN, allocatedRDAssignedNumberToOwne
 			allErrors = append(allErrors, &openpeerrors.ResourceError{
 				Obj: v1alpha1.FailedResource{
 					Kind: "L3VPN", Name: l3.Name, Reason: reason,
-					Message: fmt.Sprintf("duplicate rdAssignedNumber %d:%s", l3.Spec.RDAssignedNumber, existing),
-				},
-			})
-			continue
-		}
-		if vniName, duplicateFound := allocatedRDAssignedNumberToOwner[l3.Spec.RDAssignedNumber]; duplicateFound {
-			allErrors = append(allErrors, &openpeerrors.ResourceError{
-				Obj: v1alpha1.FailedResource{
-					Kind: "L3VPN", Name: l3.Name, Reason: reason,
-					Message: fmt.Sprintf("duplicate rdAssignedNumber %d cannot be the same as VNI in: %s",
-						l3.Spec.RDAssignedNumber, vniName),
+					Message: fmt.Sprintf("duplicate configured rdAssignedNumber %d: %s conflicts with %s",
+						l3.Spec.RDAssignedNumber, "L3VPN/"+l3.Name, existing),
 				},
 			})
 			continue
@@ -71,7 +57,7 @@ func FilterUniqueL3VPNs(l3Vpns []v1alpha1.L3VPN, allocatedRDAssignedNumberToOwne
 		validL3VPN = append(validL3VPN, l3)
 	}
 
-	return validL3VPN, allocatedRDAssignedNumberToVPN, errors.Join(allErrors...)
+	return validL3VPN, errors.Join(allErrors...)
 }
 
 // FilterUniqueVRFsForL3VPNs checks VRF uniqueness among L3VPNs and returns the valid

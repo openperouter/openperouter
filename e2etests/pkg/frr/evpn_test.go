@@ -4,6 +4,7 @@ package frr
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -199,5 +200,75 @@ func TestPathHasRouteTarget(t *testing.T) {
 	}
 	if !pathHasRouteTarget(path, []v1alpha1.RouteTarget{"65000:2"}) {
 		t.Fatal("pathHasRouteTarget() did not match an exact route target")
+	}
+}
+
+func TestContainsRouteWithRD(t *testing.T) {
+	for _, route := range []struct {
+		name      string
+		routeType int
+		ip        string
+		ipLen     int
+	}{
+		{"type2", 2, "192.0.2.1", 32},
+		{"type5", 5, "192.0.2.1", 32},
+		{"type5 IPv4 default", 5, "0.0.0.0", 0},
+		{"type5 IPv6 default", 5, "::", 0},
+	} {
+		routeType := route.routeType
+		identity := route.ip
+		if routeType == 5 {
+			identity += fmt.Sprintf("/%d", route.ipLen)
+		}
+		path := Path{RouteType: routeType, IP: route.ip, IPLen: route.ipLen,
+			Nexthops:          []Nexthop{{IP: "198.51.100.1"}},
+			ExtendedCommunity: ExtendedCommunity{String: "RT:64514:300 RT:64514:301 ET:8"}}
+		info := EVPNData{Entries: []RdEntry{{RD: "198.51.100.1:42",
+			Prefixes: map[string]Prefix{"route": {Paths: []Path{path}}}}}}
+		tests := []struct {
+			name, rd, identity, nextHop string
+			routeType                   int
+			rts                         []v1alpha1.RouteTarget
+			want                        bool
+		}{
+			{"matching", "198.51.100.1:42", identity, "198.51.100.1", routeType, []v1alpha1.RouteTarget{"64514:300", "64514:301"}, true},
+			{"wrong RD", "198.51.100.1:43", identity, "198.51.100.1", routeType, []v1alpha1.RouteTarget{"64514:300", "64514:301"}, false},
+			{"wrong identity", "198.51.100.1:42", "192.0.2.2", "198.51.100.1", routeType, []v1alpha1.RouteTarget{"64514:300", "64514:301"}, false},
+			{"wrong next hop", "198.51.100.1:42", identity, "198.51.100.2", routeType, []v1alpha1.RouteTarget{"64514:300", "64514:301"}, false},
+			{"wrong type", "198.51.100.1:42", identity, "198.51.100.1", 3, []v1alpha1.RouteTarget{"64514:300", "64514:301"}, false},
+			{"missing RT", "198.51.100.1:42", identity, "198.51.100.1", routeType, []v1alpha1.RouteTarget{"64514:300", "64514:302"}, false},
+			{"unexpected extra RT", "198.51.100.1:42", identity, "198.51.100.1", routeType, []v1alpha1.RouteTarget{"64514:300"}, false},
+		}
+		for _, tc := range tests {
+			t.Run(route.name+"/"+tc.name, func(t *testing.T) {
+				if got := info.ContainsRouteWithRD(tc.rd, tc.routeType, tc.identity, tc.nextHop, tc.rts); got != tc.want {
+					t.Fatalf("ContainsRouteWithRD() = %v, want %v", got, tc.want)
+				}
+			})
+		}
+	}
+}
+
+func TestContainsRouteWithRDDoesNotCombinePaths(t *testing.T) {
+	path := Path{RouteType: 2, IP: "192.0.2.1", IPLen: 32,
+		Nexthops:          []Nexthop{{IP: "198.51.100.1"}},
+		ExtendedCommunity: ExtendedCommunity{String: "RT:64514:300"}}
+	otherPath := path
+	otherPath.Nexthops = []Nexthop{{IP: "198.51.100.2"}}
+	otherPath.ExtendedCommunity.String = "RT:64514:301"
+	otherRDPath := path
+	otherRDPath.ExtendedCommunity.String = "RT:64514:300 RT:64514:301"
+	info := EVPNData{Entries: []RdEntry{
+		{RD: "198.51.100.1:42", Prefixes: map[string]Prefix{"route": {Paths: []Path{path, otherPath}}}},
+		{RD: "198.51.100.1:43", Prefixes: map[string]Prefix{"route": {Paths: []Path{otherRDPath}}}},
+	}}
+	if info.ContainsRouteWithRD("198.51.100.1:42", 2, "192.0.2.1", "198.51.100.1",
+		[]v1alpha1.RouteTarget{"64514:300", "64514:301"}) {
+		t.Fatal("matched route targets from different paths or another RD")
+	}
+	path.IPLen = 0
+	info.Entries[0].Prefixes["route"] = Prefix{Paths: []Path{path}}
+	if info.ContainsRouteWithRD("198.51.100.1:42", 2, "192.0.2.1", "198.51.100.1", []v1alpha1.RouteTarget{"64514:300"}) {
+		t.Fatal("matched a MAC-only route as a MAC/IP route")
 	}
 }

@@ -825,6 +825,153 @@ l2vnis:
 	}
 }
 
+func TestReadStaticConfigsL2VNIRDAssignedNumber(t *testing.T) {
+	dir := t.TempDir()
+	tests := []struct {
+		name       string
+		number     string
+		wantErrStr string
+	}{
+		{name: "omitted"},
+		{name: "configured RD", number: "42"},
+		{
+			name:   "zero",
+			number: "0",
+			wantErrStr: "failed to convert static config to API config: validation errors in static config: " +
+				"v1alpha1.L2VNI: [].spec.rdAssignedNumber: Invalid value: 0: spec.rdAssignedNumber in " +
+				"body should be greater than or equal to 1",
+		},
+		{
+			name:   "negative",
+			number: "-1",
+			wantErrStr: "failed to convert static config to API config: validation errors in static config: " +
+				"v1alpha1.L2VNI: [].spec.rdAssignedNumber: Invalid value: -1: spec.rdAssignedNumber in" +
+				" body should be greater than or equal to 1",
+		},
+		{
+			name:   "above maximum",
+			number: "65536",
+			wantErrStr: "failed to convert static config to API config: validation errors in static config: " +
+				"v1alpha1.L2VNI: [].spec.rdAssignedNumber: Invalid value: 65536: spec.rdAssignedNumber" +
+				" in body should be less than or equal to 65535",
+		},
+		{
+			name:   "malformed",
+			number: "malformed",
+			wantErrStr: fmt.Sprintf("failed to read router configs: failed to parse YAML router config %s: error"+
+				" unmarshaling JSON: while decoding JSON: json: cannot unmarshal string into Go struct"+
+				" field StaticL2VNI.L2VNIs.L2VNISpec.rdAssignedNumber of type int32", filepath.Join(dir, "openpe_rd.yaml")),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rdAssignedNumber := ""
+			if tt.number != "" {
+				rdAssignedNumber = "    rdAssignedNumber: " + tt.number
+			}
+			content := fmt.Sprintf(`l2vnis:
+  - vni: 300
+%s
+`, rdAssignedNumber)
+			writeYAMLFile(t, dir, "openpe_rd.yaml", content)
+			config, err := readStaticConfigs(dir, "node", "default")
+			if tt.wantErrStr != "" {
+				if err == nil || err.Error() != tt.wantErrStr {
+					t.Fatalf("expected error %q, got %v", tt.wantErrStr, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("expected static configuration to load successfully, got error: %v", err)
+			}
+			got := config.L2VNIs[0].Spec.RDAssignedNumber
+			if tt.number == "" {
+				if got != nil {
+					t.Fatalf("omitted number became %d", *got)
+				}
+				return
+			}
+			if got == nil || fmt.Sprint(*got) != tt.number {
+				t.Fatalf("number %s was not preserved: %v", tt.number, got)
+			}
+		})
+	}
+}
+
+func TestReadStaticConfigsL3VNIRDAssignedNumber(t *testing.T) {
+	dir := t.TempDir()
+	tests := []struct {
+		name       string
+		number     string
+		wantErrStr string
+	}{
+		{name: "omitted"},
+		{name: "configured RD", number: "42"},
+		{
+			name:   "zero",
+			number: "0",
+			wantErrStr: "failed to convert static config to API config: validation errors in static config: " +
+				"v1alpha1.L3VNI: [].spec.rdAssignedNumber: Invalid value: 0: spec.rdAssignedNumber in " +
+				"body should be greater than or equal to 1",
+		},
+		{
+			name:   "negative",
+			number: "-1",
+			wantErrStr: "failed to convert static config to API config: validation errors in static config: " +
+				"v1alpha1.L3VNI: [].spec.rdAssignedNumber: Invalid value: -1: spec.rdAssignedNumber in" +
+				" body should be greater than or equal to 1",
+		},
+		{
+			name:   "above maximum",
+			number: "65536",
+			wantErrStr: "failed to convert static config to API config: validation errors in static config: " +
+				"v1alpha1.L3VNI: [].spec.rdAssignedNumber: Invalid value: 65536: spec.rdAssignedNumber" +
+				" in body should be less than or equal to 65535",
+		},
+		{
+			name:   "malformed",
+			number: "malformed",
+			wantErrStr: fmt.Sprintf("failed to read router configs: failed to parse YAML router config %s: error"+
+				" unmarshaling JSON: while decoding JSON: json: cannot unmarshal string into Go struct"+
+				" field StaticL3VNI.L3VNIs.L3VNISpec.rdAssignedNumber of type int32", filepath.Join(dir, "openpe_rd.yaml")),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rdAssignedNumber := ""
+			if tt.number != "" {
+				rdAssignedNumber = "    rdAssignedNumber: " + tt.number
+			}
+			content := fmt.Sprintf(`l3vnis:
+  - vni: 300
+    vrf: tenant
+%s
+`, rdAssignedNumber)
+			writeYAMLFile(t, dir, "openpe_rd.yaml", content)
+			config, err := readStaticConfigs(dir, "node", "default")
+			if tt.wantErrStr != "" {
+				if err == nil || err.Error() != tt.wantErrStr {
+					t.Fatalf("expected error %q, got %v", tt.wantErrStr, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("expected static configuration to load successfully, got error: %v", err)
+			}
+			got := config.L3VNIs[0].Spec.RDAssignedNumber
+			if tt.number == "" {
+				if got != nil {
+					t.Fatalf("omitted number became %d", *got)
+				}
+				return
+			}
+			if got == nil || fmt.Sprint(*got) != tt.number {
+				t.Fatalf("number %s was not preserved: %v", tt.number, got)
+			}
+		})
+	}
+}
+
 func writeYAMLFile(t *testing.T, dir, filename, content string) {
 	t.Helper()
 	path := filepath.Join(dir, filename)

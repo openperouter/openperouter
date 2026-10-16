@@ -181,13 +181,11 @@ func TestFilterValidL3VPNs(t *testing.T) {
 	}
 }
 
-func TestFilterUniqueL3VPNs(t *testing.T) {
+func TestFilterUniqueL3VPNRDNumbers(t *testing.T) {
 	tcs := []struct {
 		name      string
 		l3vpns    []v1alpha1.L3VPN
-		vnis      map[int32]string
 		wantValid []v1alpha1.L3VPN
-		wantMap   map[int32]string
 		wantErr   string
 	}{
 		{
@@ -212,7 +210,6 @@ func TestFilterUniqueL3VPNs(t *testing.T) {
 					Spec:       v1alpha1.L3VPNSpec{RDAssignedNumber: 1002, VRF: "vrf2"},
 				},
 			},
-			wantMap: map[int32]string{1001: "L3VPN/vpn1", 1002: "L3VPN/vpn2"},
 		},
 		{
 			name: "duplicate RD assigned number",
@@ -240,43 +237,15 @@ func TestFilterUniqueL3VPNs(t *testing.T) {
 					Spec:       v1alpha1.L3VPNSpec{RDAssignedNumber: 1002, VRF: "vrf2"},
 				},
 			},
-			wantMap: map[int32]string{1001: "L3VPN/vpn1", 1002: "L3VPN/vpn2"},
-			wantErr: "L3VPN/vpn3: duplicate rdAssignedNumber 1001:L3VPN/vpn1",
-		},
-		{
-			name: "conflict with L3VNI",
-			l3vpns: []v1alpha1.L3VPN{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vpn1"},
-					Spec:       v1alpha1.L3VPNSpec{RDAssignedNumber: 1001, VRF: "vrf1"},
-				},
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vpn2"},
-					Spec:       v1alpha1.L3VPNSpec{RDAssignedNumber: 1002, VRF: "vrf2"},
-				},
-			},
-			vnis: map[int32]string{
-				1001: "L3VNI/vni1",
-			},
-			wantValid: []v1alpha1.L3VPN{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "vpn2"},
-					Spec:       v1alpha1.L3VPNSpec{RDAssignedNumber: 1002, VRF: "vrf2"},
-				},
-			},
-			wantMap: map[int32]string{1002: "L3VPN/vpn2"},
-			wantErr: "L3VPN/vpn1: duplicate rdAssignedNumber 1001 cannot be the same as VNI in: L3VNI/vni1",
+			wantErr: "L3VPN/vpn3: duplicate configured rdAssignedNumber 1001: L3VPN/vpn3 conflicts with L3VPN/vpn1",
 		},
 	}
 
 	for _, tc := range tcs {
 		t.Run(tc.name, func(t *testing.T) {
-			valid, gotMap, err := FilterUniqueL3VPNs(tc.l3vpns, tc.vnis)
+			valid, err := FilterUniqueL3VPNRDNumbers(tc.l3vpns)
 			if diff := cmp.Diff(tc.wantValid, valid); diff != "" {
 				t.Fatalf("valid items mismatch (-want +got):\n%s", diff)
-			}
-			if !cmp.Equal(gotMap, tc.wantMap) {
-				t.Fatalf("expected map %v; but got %v", tc.wantMap, gotMap)
 			}
 
 			if tc.wantErr != "" {
