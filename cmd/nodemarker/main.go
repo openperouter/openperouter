@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"time"
 
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
@@ -83,6 +84,11 @@ func main() {
 		certDir                       string
 		certServiceName               string
 		datapath                      string
+		leaderElect                   bool
+		leaderElectionID              string
+		leaseDuration                 time.Duration
+		renewDeadline                 time.Duration
+		retryPeriod                   time.Duration
 	}{}
 
 	flag.StringVar(&args.metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
@@ -105,6 +111,17 @@ func main() {
 	flag.IntVar(&args.webhookPort, "webhook-port", 9443, "the port of the webhook service")
 	flag.StringVar(&args.webhookMode, "webhookmode", WebhookModeEnabled, "webhook mode: disabled, enabled, or webhookonly")
 	flag.StringVar(&args.datapath, "datapath", "kernel", "The datapath to use (kernel or grout)")
+	flag.BoolVar(&args.leaderElect, "leader-elect", false,
+		"Elect a leader through a Lease, so that more than one replica can run. Only the leader runs the "+
+			"node-index reconciler and the certificate rotator; every replica serves the webhooks.")
+	flag.StringVar(&args.leaderElectionID, "leader-election-id", "openpe-nodemarker.openperouter.io",
+		"The name of the Lease used for leader election.")
+	flag.DurationVar(&args.leaseDuration, "leader-election-lease-duration", 15*time.Second,
+		"How long a non-leader waits before it may take over a Lease that was not renewed.")
+	flag.DurationVar(&args.renewDeadline, "leader-election-renew-deadline", 10*time.Second,
+		"How long the leader keeps retrying to renew the Lease before it gives up leadership.")
+	flag.DurationVar(&args.retryPeriod, "leader-election-retry-period", 2*time.Second,
+		"How often candidates retry to acquire or renew the Lease.")
 
 	flag.Parse()
 
@@ -141,6 +158,17 @@ func main() {
 		Cache:                  cache.Options{},
 		Metrics:                metricsServerOptions,
 		HealthProbeBindAddress: args.probeAddr,
+		// Controllers (the node index) and the certificate rotator need the Lease; the webhook
+		// server does not, so every replica serves admission requests.
+		LeaderElection:          args.leaderElect,
+		LeaderElectionID:        args.leaderElectionID,
+		LeaderElectionNamespace: args.namespace,
+		// The process exits as soon as the manager stops, so a leader that is shut down hands the
+		// Lease over at once instead of making the others wait for it to expire.
+		LeaderElectionReleaseOnCancel: true,
+		LeaseDuration:                 &args.leaseDuration,
+		RenewDeadline:                 &args.renewDeadline,
+		RetryPeriod:                   &args.retryPeriod,
 		WebhookServer: webhook.NewServer(
 			webhook.Options{
 				Port:    args.webhookPort,
@@ -148,12 +176,33 @@ func main() {
 			},
 		),
 	})
+	if err != nil {
+		setupLog.Error(err, "unable to create the manager")
+		os.Exit(1)
+	}
+
+	signalHandlerContext := ctrl.SetupSignalHandler()
 
 	startListeners := make(chan struct{})
 	if !args.disableCertRotation && args.webhookMode != WebhookModeDisabled {
 		setupLog.Info("Starting certs generator")
-		if err := setupCertRotation(startListeners, mgr, logger, args.namespace,
-			args.certDir, args.certServiceName, args.restartOnRotatorSecretRefresh); err != nil {
+		rotatorReady := startListeners
+		if args.leaderElect {
+			// The rotator runs on the leader only, so its readiness would never come on the
+			// other replicas. Every replica mounts the secret the leader writes; serve once the
+			// kubelet has put a usable key pair there.
+			rotatorReady = make(chan struct{})
+			go func() {
+				if err := waitForServingCert(signalHandlerContext, args.certDir, servingCertPollInterval); err != nil {
+					setupLog.Error(err, "no serving certificate")
+					return
+				}
+				setupLog.Info("serving certificate present", "dir", args.certDir)
+				close(startListeners)
+			}()
+		}
+		if err := setupCertRotation(rotatorReady, mgr, logger, args.namespace,
+			args.certDir, args.certServiceName, args.restartOnRotatorSecretRefresh, args.leaderElect); err != nil {
 			setupLog.Error(err, "unable to set up cert rotator")
 			os.Exit(1)
 		}
@@ -161,7 +210,7 @@ func main() {
 		close(startListeners)
 	}
 
-	signalHandlerContext := ctrl.SetupSignalHandler()
+	webhookReady := &startedCheck{}
 	go func() {
 		<-startListeners
 
@@ -201,6 +250,7 @@ func main() {
 				os.Exit(1)
 			}
 			webhooks.SetupHealth(mgr)
+			webhookReady.set(mgr.GetWebhookServer().StartedChecker())
 		}
 	}()
 
@@ -211,6 +261,14 @@ func main() {
 	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up ready check")
 		os.Exit(1)
+	}
+	if args.webhookMode != WebhookModeDisabled {
+		// Not ready until the webhook server answers, so that the Service sends no admission
+		// request to a replica that is still waiting for its certificate.
+		if err := mgr.AddReadyzCheck("webhook", webhookReady.check); err != nil {
+			setupLog.Error(err, "unable to set up the webhook ready check")
+			os.Exit(1)
+		}
 	}
 
 	setupLog.Info("starting manager")
@@ -232,7 +290,7 @@ var (
 )
 
 func setupCertRotation(notifyFinished chan struct{}, mgr manager.Manager, logger *slog.Logger,
-	namespace, certDir, certServiceName string, restartOnSecretRefresh bool,
+	namespace, certDir, certServiceName string, restartOnSecretRefresh, requireLeaderElection bool,
 ) error {
 	webhooks := []rotator.WebhookInfo{
 		{
@@ -255,6 +313,7 @@ func setupCertRotation(notifyFinished chan struct{}, mgr manager.Manager, logger
 		Webhooks:               webhooks,
 		FieldOwner:             "openpe",
 		RestartOnSecretRefresh: restartOnSecretRefresh,
+		RequireLeaderElection:  requireLeaderElection,
 	})
 	if err != nil {
 		logger.Error("unable to set up cert rotation", "error", err)

@@ -31,6 +31,7 @@ spec:
         - "--loglevel=debug"
         - "--namespace=$(NAMESPACE)"
         - "--webhookmode=enabled"
+        - "--leader-elect=true"
         env:
         - name: NAMESPACE
           valueFrom:

@@ -50,6 +50,8 @@ func TestNodemarkerNamespacedRole(t *testing.T) {
 	assertRules(t, role.Name, role.Rules, []expectedRule{
 		{APIGroups: []string{""}, Resources: []string{"secrets"}, Verbs: []string{"get", "list", "watch"}},
 		{APIGroups: []string{""}, Resources: []string{"secrets"}, ResourceNames: []string{"openpe-webhook-server-cert"}, Verbs: []string{"update"}},
+		{APIGroups: []string{"coordination.k8s.io"}, Resources: []string{"leases"}, Verbs: []string{"create", "get", "list", "patch", "update", "watch"}},
+		{APIGroups: []string{""}, Resources: []string{"events"}, Verbs: []string{"create", "patch"}},
 	})
 }
 

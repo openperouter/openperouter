@@ -2119,6 +2119,24 @@ rules:
   - secrets
   verbs:
   - update
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -2469,6 +2487,7 @@ spec:
         - --loglevel=debug
         - --namespace=$(NAMESPACE)
         - --webhookmode=enabled
+        - --leader-elect=true
         command:
         - /nodemarker
         env:
