@@ -26,6 +26,12 @@ var GroutSupport = ginkgo.Label("grout-support")
 // lanes select them via the label filter and the non-grout lanes exclude them.
 var GroutOnly = ginkgo.Label("grout-only")
 
+// PodModeOnly is the opposite of the "systemdmode" label: that one marks specs
+// that run only under systemd and is excluded by the pod lanes, this one marks
+// specs that run only when openperouter runs in a pod, such as those reaching
+// into the router pod's containers, and is excluded by the systemd lane.
+var PodModeOnly = ginkgo.Label("podmode-only")
+
 func dumpIfFails(cs clientset.Interface, additionalNamespaces ...string) {
 	triage.DumpIfFails(cs, triage.Config{
 		ReportPath:           ReportPath,
