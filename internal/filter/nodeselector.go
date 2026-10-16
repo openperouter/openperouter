@@ -3,6 +3,8 @@
 package filter
 
 import (
+	"errors"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -50,6 +52,18 @@ func RawFRRConfigsForNode(node *corev1.Node, rawFRRConfigs []v1alpha1.RawFRRConf
 	return filterForNode(node, rawFRRConfigs, func(r v1alpha1.RawFRRConfig) *metav1.LabelSelector {
 		return r.Spec.NodeSelector
 	})
+}
+
+// NodeSelectorMatches reports whether the selector matches the node. A nil selector returns an error.
+func NodeSelectorMatches(node *corev1.Node, nodeSelector *metav1.LabelSelector) (bool, error) {
+	if nodeSelector == nil {
+		return false, errors.New("node selector is nil")
+	}
+	labelSelector, err := metav1.LabelSelectorAsSelector(nodeSelector)
+	if err != nil {
+		return false, err
+	}
+	return labelSelector.Matches(labels.Set(node.Labels)), nil
 }
 
 // filterForNode is a generic function that filters items based on node label selectors.
