@@ -94,6 +94,22 @@ func TestFromEnvironment(t *testing.T) {
 			},
 		},
 		{
+			desc: "with grout TAP underlay",
+			setup: func() {
+				setBasics()
+				_ = os.Setenv("GROUT_TAP_UNDERLAY", "true")
+			},
+			expected: EnvConfig{
+				Namespace:        "test-namespace",
+				ControllerImage:  ImageInfo{Repo: "test-controller-image", Tag: "1"},
+				FRRImage:         ImageInfo{Repo: "test-frr-image", Tag: "2"},
+				KubeRBacImage:    ImageInfo{Repo: "test-kube-rbac-proxy-image", Tag: "3"},
+				GroutTapUnderlay: true,
+				MetricsPort:      7472,
+				FRRMetricsPort:   7473,
+			},
+		},
+		{
 			desc: "override ports",
 			setup: func() {
 				setBasics()
@@ -162,6 +178,7 @@ func unset() {
 	_ = os.Unsetenv("KUBE_RBAC_PROXY_IMAGE")
 	_ = os.Unsetenv("GROUT_IMAGE")
 	_ = os.Unsetenv("GROUT_TEST_MODE")
+	_ = os.Unsetenv("GROUT_TAP_UNDERLAY")
 }
 
 func setBasics() {

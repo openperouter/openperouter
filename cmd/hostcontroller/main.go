@@ -57,6 +57,7 @@ import (
 	"github.com/openperouter/openperouter/internal/dhcp"
 	"github.com/openperouter/openperouter/internal/filewatcher"
 	"github.com/openperouter/openperouter/internal/frr"
+	"github.com/openperouter/openperouter/internal/grout"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/openperouter/openperouter/internal/logging"
 	"github.com/openperouter/openperouter/internal/staticconfiguration"
@@ -121,19 +122,27 @@ func (s *stringSliceFlag) Set(value string) error {
 }
 
 type parameters struct {
-	probeAddr       string
-	frrConfigPath   string
-	reloaderSocket  string
-	mode            string
-	ovsSocketPath   string
-	nodeName        string
-	namespace       string
-	logLevel        string
-	bgpListenLimit  uint
-	cniPluginDirs   stringSliceFlag
-	cniCacheDir     string
-	datapath        string
-	groutSocketPath string
+	probeAddr        string
+	frrConfigPath    string
+	reloaderSocket   string
+	mode             string
+	ovsSocketPath    string
+	nodeName         string
+	namespace        string
+	logLevel         string
+	bgpListenLimit   uint
+	cniPluginDirs    stringSliceFlag
+	cniCacheDir      string
+	datapath         string
+	groutSocketPath  string
+	groutTapUnderlay bool
+}
+
+func (p parameters) groutUnderlayPortMode() grout.UnderlayPortMode {
+	if p.groutTapUnderlay {
+		return grout.PortModeTAP
+	}
+	return grout.PortModeAccelerated
 }
 
 func main() {
@@ -154,6 +163,7 @@ func main() {
 
 	flag.StringVar(&args.datapath, "datapath", "kernel", "The datapath to use (kernel or grout)")
 	flag.StringVar(&args.groutSocketPath, "grout-socket", "/var/run/grout/grout.sock", "Path to the grout control socket")
+	flag.BoolVar(&args.groutTapUnderlay, "grout-tap-underlay", false, "Use TAP ports for grout underlay interfaces")
 
 	flag.StringVar(&args.nodeName, "nodename", "", "The name of the node the controller runs on")
 	flag.StringVar(&args.namespace, "namespace", "", "The namespace the controller runs in")
@@ -366,7 +376,7 @@ func runK8sConfigReconcilerHostMode(ctx context.Context,
 
 	var datapathConfigurator routerconfiguration.DatapathConfigurator = &routerconfiguration.KernelDatapathConfigurator{}
 	if args.datapath == datapathGrout {
-		datapathConfigurator = routerconfiguration.NewGroutConfigurator(args.groutSocketPath)
+		datapathConfigurator = routerconfiguration.NewGroutConfigurator(args.groutSocketPath, args.groutUnderlayPortMode())
 	}
 
 	dhcpSupervisor.OnRestart = triggerKubernetesReconcile(triggerChan, types.NamespacedName{
@@ -473,7 +483,7 @@ func runK8sConfigReconciler(ctx context.Context,
 
 	var datapathConfigurator routerconfiguration.DatapathConfigurator = &routerconfiguration.KernelDatapathConfigurator{}
 	if args.datapath == datapathGrout {
-		datapathConfigurator = routerconfiguration.NewGroutConfigurator(args.groutSocketPath)
+		datapathConfigurator = routerconfiguration.NewGroutConfigurator(args.groutSocketPath, args.groutUnderlayPortMode())
 	}
 
 	triggerChan := make(chan event.GenericEvent, 1)
@@ -540,7 +550,7 @@ func runStaticConfigReconciler(ctx context.Context,
 
 	var datapathConfigurator routerconfiguration.DatapathConfigurator = &routerconfiguration.KernelDatapathConfigurator{}
 	if args.datapath == datapathGrout {
-		datapathConfigurator = routerconfiguration.NewGroutConfigurator(args.groutSocketPath)
+		datapathConfigurator = routerconfiguration.NewGroutConfigurator(args.groutSocketPath, args.groutUnderlayPortMode())
 	}
 
 	staticReconciler := &routerconfiguration.StaticConfigReconciler{
