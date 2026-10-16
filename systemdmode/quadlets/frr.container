@@ -21,10 +21,11 @@ ContainerName=frr
 
 # Network capabilities required for routing functionality
 # CAP_NET_BIND_SERVICE - Bind to privileged ports (BGP 179)
-# CAP_NET_ADMIN       - Configure network interfaces and routes
-# CAP_NET_RAW         - Use RAW and PACKET sockets
-# CAP_SYS_ADMIN       - Various system administration operations
-AddCapability=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_ADMIN
+# CAP_NET_ADMIN        - Configure network interfaces and routes
+# CAP_NET_RAW          - Use RAW and PACKET sockets
+# CAP_SYS_ADMIN        - Various system administration operations
+# CAP_KILL             - Bypass permission checks for sending signals
+AddCapability=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_ADMIN CAP_KILL
 
 # Environment variables passed to container
 Environment=TINI_SUBREAPER=true

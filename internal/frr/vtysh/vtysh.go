@@ -13,14 +13,25 @@ const DefaultTimeout = 10 * time.Second
 type Cli func(args string) (string, error)
 
 func NewCLIWithTimeout(timeout time.Duration) Cli {
+	return newCLIWithTimeout(timeout, "")
+}
+
+// NewDaemonCLIWithTimeout returns a Cli that sends commands to a single FRR daemon.
+func NewDaemonCLIWithTimeout(timeout time.Duration, daemon string) Cli {
+	return newCLIWithTimeout(timeout, daemon)
+}
+
+func newCLIWithTimeout(timeout time.Duration, daemon string) Cli {
 	return func(args string) (string, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
-		out, err := exec.CommandContext(ctx, "/usr/bin/vtysh", "-c", args).CombinedOutput()
+		vtysh := exec.CommandContext(ctx, "/usr/bin/vtysh")
+		if daemon != "" {
+			vtysh.Args = append(vtysh.Args, "-d", daemon)
+		}
+		vtysh.Args = append(vtysh.Args, "-c", args)
+
+		out, err := vtysh.CombinedOutput()
 		return string(out), err
 	}
-}
-
-func NewCLI() Cli {
-	return NewCLIWithTimeout(DefaultTimeout)
 }

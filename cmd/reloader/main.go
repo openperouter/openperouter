@@ -21,8 +21,10 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 
 	"context"
+	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"log"
 	"log/slog"
 	"net"
@@ -40,12 +42,15 @@ import (
 )
 
 type Args struct {
-	bindAddress   string
-	frrConfigPath string
-	logLevel      string
-	unixSocket    string
-	vtyshTimeout  time.Duration
+	bindAddress     string
+	frrConfigPath   string
+	logLevel        string
+	unixSocket      string
+	watchfrrPidFile string
+	vtyshTimeout    time.Duration
 }
+
+const defaultWatchFRRPidFile = "/var/run/frr/watchfrr.pid"
 
 func main() {
 	args := Args{}
@@ -55,6 +60,8 @@ func main() {
 	flag.StringVar(&args.frrConfigPath, "frrconfig", "/etc/frr/frr.conf", "The path the frr configuration is at")
 	flag.DurationVar(&args.vtyshTimeout, "vtysh-timeout", vtysh.DefaultTimeout,
 		"Timeout for vtysh commands used in health checks")
+	flag.StringVar(&args.watchfrrPidFile, "watchfrr-pid-file",
+		defaultWatchFRRPidFile, "The path of the watchfrr pid file")
 	flag.Parse()
 
 	_, err := logging.New(args.logLevel)
@@ -77,8 +84,8 @@ func main() {
 }
 
 func serveReload(args Args) error {
-	if err := os.Remove(args.unixSocket); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("failed to remove unix socket: %w", err)
+	if err := removeFile(args.unixSocket); err != nil {
+		return fmt.Errorf("failed to remove unix socket %s: %w", args.unixSocket, err)
 	}
 
 	listener, err := net.Listen("unix", args.unixSocket)
@@ -90,11 +97,19 @@ func serveReload(args Args) error {
 		[]handlerConfig{{pattern: "/", handler: reloadHandler(args.frrConfigPath)}},
 	)
 
-	healthHandler := health(vtysh.NewCLIWithTimeout(args.vtyshTimeout))
+	watchfrrHealth := func() error {
+		return liveness.WatchFRR(args.watchfrrPidFile,
+			vtysh.NewDaemonCLIWithTimeout(args.vtyshTimeout, "watchfrr"),
+			liveness.ProcessAlive,
+		)
+	}
+	frrReady := func() error {
+		return liveness.PingFrr(vtysh.NewCLIWithTimeout(args.vtyshTimeout))
+	}
 	healthServer := newServer(
 		[]handlerConfig{
-			{pattern: "/healthz", handler: healthHandler},
-			{pattern: "/readyz", handler: healthHandler},
+			{pattern: "/healthz", handler: health(watchfrrHealth)},
+			{pattern: "/readyz", handler: health(frrReady)},
 		},
 		withEndpoint(args.bindAddress),
 	)
@@ -131,15 +146,28 @@ func serveReload(args Args) error {
 			slog.Error("error during health server shutdown", "error", err)
 		}
 
-		if err := os.Remove(args.unixSocket); err != nil {
+		if err := removeFile(args.unixSocket); err != nil {
 			slog.Error("failed to remove unix socket", "socket", args.unixSocket, "error", err)
 			return err
 		}
-		slog.Info("removed unix socket", "socket", args.unixSocket)
 		return nil
 	case err := <-serverErr:
 		return err
 	}
+}
+
+func removeFile(path string) error {
+	err := os.Remove(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		slog.Info("file already removed", "file", path)
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("failed to remove file %s: %w", path, err)
+	}
+
+	slog.Info("removed file", "file", path)
+	return nil
 }
 
 var updateConfig = frrconfig.Update
@@ -161,15 +189,15 @@ func reloadHandler(frrConfigPath string) func(w http.ResponseWriter, req *http.R
 	}
 }
 
-func health(frrCli vtysh.Cli) func(w http.ResponseWriter, req *http.Request) {
+func health(handler liveness.CheckFn) func(w http.ResponseWriter, req *http.Request) {
 	return func(w http.ResponseWriter, req *http.Request) {
 		if req.Method != http.MethodGet {
 			http.Error(w, "invalid method", http.StatusMethodNotAllowed)
 			return
 		}
 
-		if err := liveness.PingFrr(frrCli); err != nil {
-			slog.Error("health check ping frr", "error", err)
+		if err := handler(); err != nil {
+			slog.Error("health check failed", "error", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}

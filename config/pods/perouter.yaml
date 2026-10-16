@@ -34,7 +34,7 @@ spec:
           allowPrivilegeEscalation: false
           capabilities:
             drop: ["ALL"]
-            add: ["NET_ADMIN", "NET_RAW", "SYS_ADMIN", "NET_BIND_SERVICE", "SETUID", "SETGID", "CHOWN", "DAC_OVERRIDE"]
+            add: ["NET_ADMIN", "NET_RAW", "SYS_ADMIN", "NET_BIND_SERVICE", "SETUID", "SETGID", "CHOWN", "DAC_OVERRIDE", "KILL"]
           seccompProfile:
             type: Unconfined
         image: router:latest
@@ -67,13 +67,13 @@ spec:
               fi
             done
             exec nsenter --net=/var/run/netns/perouter /sbin/tini -- /usr/lib/frr/docker-start
-        # Use the same probe as the reloader. If FRR's health is not o.k., both
-        # the frr and the reloader container must be restarted.
+        # The reloader serves the check independently of reload requests, so a reload in back-off
+        # does not restart a healthy FRR.
         livenessProbe:
           httpGet:
             path: /healthz
             port: 9080
-          initialDelaySeconds: 15
+          initialDelaySeconds: 30
           periodSeconds: 20
           timeoutSeconds: 10
           failureThreshold: 3

@@ -4,10 +4,15 @@
 package liveness
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
+	"os"
 	"slices"
+	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/openperouter/openperouter/internal/frr/vtysh"
 )
@@ -39,3 +44,37 @@ func PingFrr(frrCli vtysh.Cli) error {
 	}
 	return nil
 }
+
+// ProcessAlive reports whether the process identified by pid exists.
+func ProcessAlive(pid int) error {
+	return syscall.Kill(pid, 0)
+}
+
+// ErrWatchFRRNotStarted reports that frr-start has not created the watchfrr pid file.
+var ErrWatchFRRNotStarted = errors.New("watchfrr has not started")
+
+// WatchFRR reports whether watchfrr is running and responding on its VTY. It
+// returns ErrWatchFRRNotStarted when the watchfrr pid file does not exist.
+func WatchFRR(pidFilePath string, watchFRRCli vtysh.Cli, processAlive func(int) error) error {
+	content, err := os.ReadFile(pidFilePath)
+	if errors.Is(err, fs.ErrNotExist) {
+		return ErrWatchFRRNotStarted
+	}
+	if err != nil {
+		return fmt.Errorf("failed to read the watchfrr pid file %s: %w", pidFilePath, err)
+	}
+
+	pid, err := strconv.Atoi(strings.TrimSpace(string(content)))
+	if err != nil {
+		return fmt.Errorf("invalid pid in the watchfrr pid file %s: %w", pidFilePath, err)
+	}
+	if err := processAlive(pid); err != nil {
+		return fmt.Errorf("watchfrr %d is not running: %w", pid, err)
+	}
+	if _, err := watchFRRCli("show watchfrr"); err != nil {
+		return fmt.Errorf("watchfrr %d does not answer on its vty: %w", pid, err)
+	}
+	return nil
+}
+
+type CheckFn func() error

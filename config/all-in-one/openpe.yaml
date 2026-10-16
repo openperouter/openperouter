@@ -2679,7 +2679,7 @@ spec:
           httpGet:
             path: /healthz
             port: 9080
-          initialDelaySeconds: 15
+          initialDelaySeconds: 30
           periodSeconds: 20
           timeoutSeconds: 10
         name: frr
@@ -2695,6 +2695,7 @@ spec:
             - SETGID
             - CHOWN
             - DAC_OVERRIDE
+            - KILL
             drop:
             - ALL
           seccompProfile:
