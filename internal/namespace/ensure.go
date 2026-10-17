@@ -1,6 +1,6 @@
 // SPDX-License-Identifier:Apache-2.0
 
-package netnamespace
+package namespace
 
 import (
 	"errors"
@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"syscall"
 
+	"github.com/openperouter/openperouter/internal/netnamespace"
+	"github.com/openperouter/openperouter/internal/sysctl"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 )
@@ -46,6 +48,14 @@ func EnsureNamespace() error {
 			slog.Error("failed to close namespace handle", "error", closeErr)
 		}
 	}()
+
+	slog.Info("disabling default rp_filter", "path", NamedNSPath)
+	if err := netnamespace.In(
+		ns,
+		func() error { return sysctl.Ensure(sysctl.DisableRPFilter("default")) },
+	); err != nil {
+		return fmt.Errorf("failed to disable rp_filter: %w", err)
+	}
 
 	slog.Info("setting named netns loopback to up", "path", NamedNSPath, "loopback", loopbackName)
 	handle, err := netlink.NewHandleAt(ns)
@@ -97,7 +107,7 @@ func deleteAllDevices(nsPath string) error {
 		}
 	}()
 
-	return In(ns, func() error {
+	return netnamespace.In(ns, func() error {
 		links, err := netlink.LinkList()
 		if err != nil {
 			return fmt.Errorf("failed to list devices: %w", err)

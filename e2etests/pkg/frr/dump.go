@@ -45,6 +45,8 @@ func RawDump(exec executor.Executor) string {
 		{desc: "ip vrf", cmd: []string{"bash", "-c", "ip vrf"}},
 		{desc: "ip route table all", cmd: []string{"bash", "-c", "ip route show table all"}},
 		{desc: "bridge fdb show", cmd: []string{"bash", "-c", "bridge fdb show"}},
+		{desc: "rp_filter sysctls", cmd: []string{"bash", "-c",
+			`for f in /proc/sys/net/ipv4/conf/*/rp_filter; do echo "$f = $(cat $f)"; done`}},
 	}
 
 	perNeighborCommands := []string{
