@@ -37,6 +37,13 @@ deploy_containerlab() {
             "QEMU_K8S_PORT=${QEMU_K8S_PORT:-}" \
             clab deploy --reconfigure --topo $CLAB_TOPOLOGY $RUNTIME_OPTION
     fi
+    # The containerlab setup will set the `default` and `all` rp_filter to 0:
+    # https://github.com/srl-labs/containerlab/blob/d682499c5ce9854da85cde7bad02db375ff46308/runtime/docker/docker.go#L714
+    # Even though each docker container also has a `default` rp_filter setting, new namespaces
+    # created from within the container such as the `perouter` namespace inherit directly from
+    # this setting on the host and not from the setting as seen inside the docker container.
+    sudo sysctl -w net.ipv4.conf.default.rp_filter=1
+    sudo sysctl -w net.ipv4.conf.all.rp_filter=1
 
     popd
 }
