@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/openperouter/openperouter/internal/netnamespace"
+	"github.com/openperouter/openperouter/internal/sysctl"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 )
@@ -47,6 +48,14 @@ func EnsureNamespace() error {
 			slog.Error("failed to close namespace handle", "error", closeErr)
 		}
 	}()
+
+	slog.Info("disabling default rp_filter", "path", NamedNSPath)
+	if err := netnamespace.In(
+		ns,
+		func() error { return sysctl.Ensure(sysctl.DisableRPFilter("default")) },
+	); err != nil {
+		return fmt.Errorf("failed to disable rp_filter: %w", err)
+	}
 
 	slog.Info("setting named netns loopback to up", "path", NamedNSPath, "loopback", loopbackName)
 	handle, err := netlink.NewHandleAt(ns)
