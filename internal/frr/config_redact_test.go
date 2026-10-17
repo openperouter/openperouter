@@ -50,25 +50,27 @@ func TestRenderedConfigPasswordRedacted(t *testing.T) {
 		t.Fatalf("failed to render config: %v", err)
 	}
 
-	want := "log stdout informational\n" +
-		"log timestamp precision 3\n" +
-		"hostname testhost\n" +
-		"ip nht resolve-via-default\n" +
-		"ipv6 nht resolve-via-default\n" +
-		"\n" +
-		"route-map allowall permit 1\n" +
-		"router bgp 64512\n" +
-		"  no bgp ebgp-requires-policy\n" +
-		"  no bgp network import-check\n" +
-		"  no bgp default ipv4-unicast\n" +
-		"  bgp router-id 10.0.0.1\n" +
-		"  neighbor 192.168.1.2 remote-as 64513\n" +
-		"  \n" +
-		"  \n" +
-		"  neighbor 192.168.1.2 password <REDACTED>\n" +
-		"\n" +
-		"exit\n" +
-		"!\n"
+	want := `log stdout informational
+log timestamp precision 3
+hostname testhost
+ip nht resolve-via-default
+ipv6 nht resolve-via-default
+
+route-map allowall permit 1
+router bgp 64512
+  no bgp ebgp-requires-policy
+  no bgp network import-check
+  no bgp default ipv4-unicast
+  bgp bestpath as-path multipath-relax
+  bgp router-id 10.0.0.1
+  neighbor 192.168.1.2 remote-as 64513
+  
+  
+  neighbor 192.168.1.2 password <REDACTED>
+
+exit
+!
+`
 
 	got := RedactPasswords(configString)
 	if got != want {
