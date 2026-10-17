@@ -2,11 +2,12 @@
 
 //go:build runasroot
 
-package netnamespace
+package namespace
 
 import (
 	"testing"
 
+	"github.com/openperouter/openperouter/internal/netnamespace"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 )
@@ -49,7 +50,7 @@ func TestDeleteNamespacePreDeletesDevices(t *testing.T) {
 	defer ns.Close()
 
 	// Add a dummy device and a veth pair inside the netns
-	if err := In(ns, func() error {
+	if err := netnamespace.In(ns, func() error {
 		if err := netlink.LinkAdd(&netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: "test-dummy"}}); err != nil {
 			return err
 		}

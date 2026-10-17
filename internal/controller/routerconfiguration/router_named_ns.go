@@ -10,7 +10,7 @@ import (
 	"strconv"
 
 	"github.com/openperouter/openperouter/internal/controller/nodeindex"
-	"github.com/openperouter/openperouter/internal/netnamespace"
+	"github.com/openperouter/openperouter/internal/namespace"
 	"github.com/vishvananda/netns"
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -32,7 +32,7 @@ type RouterNamedNS struct {
 var _ Router = (*RouterNamedNS)(nil)
 
 func (r *RouterNamedNSProvider) New(ctx context.Context) (Router, error) {
-	if err := netnamespace.EnsureNamespace(); err != nil {
+	if err := namespace.EnsureNamespace(); err != nil {
 		return nil, fmt.Errorf("failed to ensure named netns: %w", err)
 	}
 
@@ -61,13 +61,13 @@ func (r *RouterNamedNSProvider) NodeIndex(ctx context.Context) (int, error) {
 }
 
 func (r *RouterNamedNS) TargetNS(_ context.Context) (string, error) {
-	return netnamespace.NamedNSPath, nil
+	return namespace.NamedNSPath, nil
 }
 
 func (r *RouterNamedNS) CanReconcile() (bool, error) {
-	ns, err := netns.GetFromPath(netnamespace.NamedNSPath)
+	ns, err := netns.GetFromPath(namespace.NamedNSPath)
 	if err != nil {
-		slog.Info("named netns not available", "path", netnamespace.NamedNSPath, "error", err)
+		slog.Info("named netns not available", "path", namespace.NamedNSPath, "error", err)
 		return false, nil
 	}
 	if err := ns.Close(); err != nil {

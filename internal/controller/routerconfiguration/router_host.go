@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/openperouter/openperouter/internal/namespace"
 	"github.com/openperouter/openperouter/internal/netnamespace"
 	"github.com/openperouter/openperouter/internal/systemdctl"
 	"github.com/vishvananda/netns"
@@ -49,7 +50,7 @@ func (r *RouterHostProvider) New(ctx context.Context) (Router, error) {
 		}, nil
 	}
 	slog.Info("named netns missing while service is active, restarting service to recover",
-		"path", netnamespace.NamedNSPath)
+		"path", namespace.NamedNSPath)
 	sdClient, err := systemdctl.NewClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create systemd client for restart: %w", err)
@@ -67,7 +68,7 @@ func (r *RouterHostProvider) NodeIndex(ctx context.Context) (int, error) {
 }
 
 func (r *RouterHostContainer) TargetNS(_ context.Context) (string, error) {
-	return netnamespace.NamedNSPath, nil
+	return namespace.NamedNSPath, nil
 }
 
 func (r *RouterHostContainer) CanReconcile() (bool, error) {
@@ -84,14 +85,14 @@ func (r *RouterHostContainer) CanReconcile() (bool, error) {
 		return false, nil
 	}
 
-	ns, err := netns.GetFromPath(netnamespace.NamedNSPath)
+	ns, err := netns.GetFromPath(namespace.NamedNSPath)
 	if errors.Is(err, os.ErrNotExist) {
 		slog.Info("named netns not found, will retry on next reconcile",
-			"path", netnamespace.NamedNSPath, "error", err)
+			"path", namespace.NamedNSPath, "error", err)
 		return false, nil
 	}
 	if err != nil {
-		return false, fmt.Errorf("failed to open named netns %s: %w", netnamespace.NamedNSPath, err)
+		return false, fmt.Errorf("failed to open named netns %s: %w", namespace.NamedNSPath, err)
 	}
 	defer func() {
 		if err := ns.Close(); err != nil {
@@ -217,7 +218,7 @@ func isRouterPodActiveWithNoNamespace() (bool, error) {
 	if state != systemdctl.StateActive {
 		return false, nil
 	}
-	ns, err := netns.GetFromPath(netnamespace.NamedNSPath)
+	ns, err := netns.GetFromPath(namespace.NamedNSPath)
 	if err == nil {
 		if closeErr := ns.Close(); closeErr != nil {
 			slog.Error("failed to close namespace handle", "error", closeErr)
