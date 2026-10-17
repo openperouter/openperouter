@@ -260,10 +260,8 @@ jobs:
       - name: Install kernel modules
         run: hack/install-kernel-modules.sh
 
-      # rp_filter is off on CI runners; enable it so kind nodes inherit a production-like default
-      - name: Enable rp_filter
+      - name: Log martians
         run: |
-          sudo sysctl -w net.ipv4.conf.default.rp_filter=1
           sudo sysctl -w net.ipv4.conf.default.log_martians=1
 
       # Kind nodes share the host's per-user inotify limits, including systemd and OVS.

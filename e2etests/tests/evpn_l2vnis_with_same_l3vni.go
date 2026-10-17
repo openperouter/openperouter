@@ -120,6 +120,7 @@ var _ = Describe("Multiple L2VNIs sharing one L3VNI (symmetric IRB)", Ordered, f
 	})
 
 	type testCase struct {
+		name                            string
 		blueGatewayIPs, greenGatewayIPs []string
 		bluePodIPs, greenPodIPs         []string
 		hostARedIPs                     []string
@@ -222,8 +223,13 @@ var _ = Describe("Multiple L2VNIs sharing one L3VNI (symmetric IRB)", Ordered, f
 			checkPodIsReachable(blueExecutor, discardAddressLength(tc.bluePodIPs[i]), hostARedIP)
 			checkPodIsReachable(greenExecutor, discardAddressLength(tc.greenPodIPs[i]), hostARedIP)
 		}
+
+		if tc.name == "ipv4" {
+			ginkgo.Fail("Debug")
+		}
 	},
 		Entry("for single stack ipv4", testCase{
+			name:            "ipv4",
 			blueGatewayIPs:  []string{"192.171.26.1/24"},
 			greenGatewayIPs: []string{"192.171.27.1/24"},
 			bluePodIPs:      []string{"192.171.26.2/24"},
