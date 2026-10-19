@@ -74,7 +74,7 @@ var _ = ginkgo.BeforeSuite(func() {
 		tests.ReportPath,
 		executor.Kubectl,
 		openperouter.Namespace,
-		frrk8s.Namespace,
+		k8s.WithAdditionalNamespaces(frrk8s.Namespace),
 	)
 
 	cs := k8sclient.New()
