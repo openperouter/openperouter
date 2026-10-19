@@ -245,7 +245,7 @@ func ensureSysctl(s Sysctl) error {
 	if err := os.WriteFile(path, []byte(s.Value), 0644); err != nil {
 		return fmt.Errorf("failed to write to %s: %w", path, err)
 	}
-	slog.Info("sysctl enabled", "path", s.Path, "description", s.Description)
+	slog.Info("sysctl set", "path", s.Path, "value", s.Value, "description", s.Description)
 
 	return nil
 }

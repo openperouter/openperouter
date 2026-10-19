@@ -127,7 +127,7 @@ func ensureSysctl(s Sysctl) error {
 		return fmt.Errorf("failed to set %s to target value %s, current: %s", path, s.Value, currentValue)
 	}
 
-	slog.Info("sysctl enabled", "path", s.Path, "value", s.Value)
+	slog.Info("sysctl set", "path", s.Path, "value", s.Value, "description", s.Description)
 	return nil
 }
 
