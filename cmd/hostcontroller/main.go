@@ -652,6 +652,9 @@ func createK8sManager(
 						"metadata.namespace": namespace,
 					}.AsSelector(),
 				},
+				&periov1alpha1.RawFRRConfig{}: {
+					Field: fields.Set{"metadata.namespace": namespace}.AsSelector(),
+				},
 				&corev1.Secret{}: {
 					Field: fields.Set{"metadata.namespace": namespace}.AsSelector(),
 				},

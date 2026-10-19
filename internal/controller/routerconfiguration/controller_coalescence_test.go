@@ -17,8 +17,10 @@ import (
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/config"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
@@ -73,7 +75,24 @@ func TestSetupWithManager(t *testing.T) {
 		env.create(t, l2VNIForWiring("here", 201, map[string]string{"kubernetes.io/hostname": coalescenceNodeName}))
 		env.waitForPassesSince(t, start, 1)
 	})
-
+	t.Run("raw configs outside the operator namespace do not start a pass", func(t *testing.T) {
+		g := NewWithT(t)
+		env.create(t, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "other"}})
+		env.waitForQuiet(t)
+		start := env.router.passCount()
+		raw := &v1alpha1.RawFRRConfig{
+			ObjectMeta: metav1.ObjectMeta{Name: "raw", Namespace: "other"},
+			Spec:       v1alpha1.RawFRRConfigSpec{RawConfig: "! namespace filtering test"},
+		}
+		env.create(t, raw)
+		g.Consistently(func() []pass { return env.router.passesSince(start) },
+			time.Second, 20*time.Millisecond).Should(BeEmpty())
+		raw.Namespace = testNamespace
+		raw.ResourceVersion = ""
+		raw.UID = ""
+		env.create(t, raw)
+		env.waitForPassesSince(t, start, 1)
+	})
 }
 
 type wiringEnv struct {
@@ -118,7 +137,11 @@ func startWiringEnv(t *testing.T) *wiringEnv {
 
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: scheme,
-
+		Cache: cache.Options{ByObject: map[client.Object]cache.ByObject{
+			&v1alpha1.RawFRRConfig{}: {
+				Field: fields.Set{"metadata.namespace": testNamespace}.AsSelector(),
+			},
+		}},
 		Metrics: metricsserver.Options{BindAddress: "0"},
 		// Allow repeated controller registration with go test -count=N.
 		Controller: config.Controller{SkipNameValidation: new(true)},
