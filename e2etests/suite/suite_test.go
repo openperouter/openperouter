@@ -75,6 +75,13 @@ var _ = ginkgo.BeforeSuite(func() {
 		executor.Kubectl,
 		openperouter.Namespace,
 		k8s.WithAdditionalNamespaces(frrk8s.Namespace),
+		k8s.WithExternalFRRContainers(
+			infra.LeafA,
+			infra.LeafB,
+			infra.LeafSRV6,
+			infra.KindLeaf,
+			infra.KindLeaf2,
+		),
 	)
 
 	cs := k8sclient.New()
