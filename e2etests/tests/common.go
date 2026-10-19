@@ -27,15 +27,25 @@ var GroutSupport = ginkgo.Label("grout-support")
 var GroutOnly = ginkgo.Label("grout-only")
 
 func dumpIfFails(cs clientset.Interface, additionalNamespaces ...string) {
-	triage.DumpIfFails(cs, triage.Config{
-		ReportPath:           ReportPath,
-		HostMode:             HostMode,
-		GroutMode:            GroutMode,
-		InspectReporter:      InspectReporter,
-		AdditionalNamespaces: additionalNamespaces,
-		CollectFRRK8sPods:    true,
-		CollectFRRContainers: true,
-	})
+	if HostMode || GroutMode {
+		triage.DumpIfFails(cs, triage.Config{
+			ReportPath:           ReportPath,
+			HostMode:             HostMode,
+			GroutMode:            GroutMode,
+			InspectReporter:      InspectReporter,
+			AdditionalNamespaces: additionalNamespaces,
+			CollectFRRK8sPods:    true,
+			CollectFRRContainers: true,
+		})
+		return
+	}
+
+	report := ginkgo.CurrentSpecReport()
+	if !report.Failed() {
+		return
+	}
+
+	InspectReporter.Dump(report.FullText(), additionalNamespaces...)
 }
 
 func DumpPods(name string, pods []*corev1.Pod) {
