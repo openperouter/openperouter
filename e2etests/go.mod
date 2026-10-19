@@ -86,4 +86,4 @@ require (
 
 replace github.com/openperouter/openperouter => ../
 
-replace go.universe.tf/e2etest => github.com/metallb/metallb/e2etest v0.0.0-20261012094440-ed7e986f84ab
+replace go.universe.tf/e2etest => github.com/metallb/metallb/e2etest v0.0.0-20261018140220-93bc2b2567fd
