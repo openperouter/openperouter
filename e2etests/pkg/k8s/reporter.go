@@ -106,9 +106,9 @@ func WithExternalFRRContainers(containers ...string) func(*InspectReporter) {
 }
 
 // Dump invokes the repository inspect tool and stores its output with the artifacts for the failed spec.
-func (r *InspectReporter) Dump(testName string) {
+func (r *InspectReporter) Dump(testName string, testNamespaces ...string) {
 	outputPath := filepath.Join(r.reportPath, sanitizeTestName(testName))
-	args := r.inspectArgs(outputPath)
+	args := r.inspectArgs(outputPath, testNamespaces)
 
 	ctx, cancel := context.WithTimeout(context.Background(), inspectTimeout)
 	defer cancel()
@@ -128,7 +128,7 @@ func (r *InspectReporter) Dump(testName string) {
 	ginkgo.GinkgoWriter.Printf("Inspect completed. Artifacts are stored under %s/\n", filepath.Base(outputPath))
 }
 
-func (r *InspectReporter) inspectArgs(outputPath string) []string {
+func (r *InspectReporter) inspectArgs(outputPath string, testNamespaces []string) []string {
 	args := []string{
 		"--k8s-client=" + r.k8sClient,
 		"--dest-dir=" + outputPath,
@@ -136,6 +136,9 @@ func (r *InspectReporter) inspectArgs(outputPath string) []string {
 		"--since=10m",
 	}
 	for _, namespace := range r.additionalNamespaces {
+		args = append(args, "--additional-namespace="+namespace)
+	}
+	for _, namespace := range testNamespaces {
 		args = append(args, "--additional-namespace="+namespace)
 	}
 	for _, container := range r.externalFRRContainers {
