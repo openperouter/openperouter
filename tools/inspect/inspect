@@ -179,7 +179,8 @@ function dump_node_info() {
 		echo "Dumped router netns info of node [$node_name] pod [$p/$ROUTER_INFRA_CONTAINER] to [$logfile]"
 
 		logfile="${node_dir}/router_info.log"
-		$ctl exec -i "$p" -c "$ROUTER_INFRA_CONTAINER" -- bash <<< "$(cat "$ROUTER_INFO_SCRIPT")" &> "$logfile"
+		$ctl exec -i "$p" -c "$ROUTER_INFRA_CONTAINER" -- \
+			env NETNS="$NETNS" bash <<< "$(cat "$ROUTER_INFO_SCRIPT")" &> "$logfile"
 		echo "Dumped router info of node [$node_name] pod [$p/$ROUTER_INFRA_CONTAINER] to [$logfile]"
 
 		dump_device_state "$ctl" "$p" "$node_name" "${node_dir}/device_state"
