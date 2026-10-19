@@ -58,6 +58,7 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 		return fmt.Errorf("failed to convert config to host configuration: %w", err)
 	}
 
+	// This must run before underlay interfaces are added to the namespace.
 	if err := ensureSysctlsForConfig(ctx, config); err != nil {
 		return err
 	}
@@ -233,6 +234,8 @@ func ensureSysctlsForConfig(ctx context.Context, config interfacesConfiguration)
 		sysctl.ArpAcceptDefault(),
 		sysctl.AcceptUntrackedNADefault(),
 		sysctl.AcceptUntrackedNAAll(),
+		sysctl.DisableRPFilter("default"),
+		sysctl.DisableRPFilter("all"),
 	}
 	if isSRV6(config.Underlays[0]) {
 		sysctls = append(sysctls,

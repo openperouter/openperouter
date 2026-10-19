@@ -58,36 +58,35 @@ func cleanTest(namespace string) {
 }
 
 var _ = Describe("Ensure", func() {
-	DescribeTable("should enable sysctls",
-		func(testNS string, sysctls []Sysctl, preEnable bool) {
+	DescribeTable("should set sysctls",
+		func(testNS string, sysctls []Sysctl, preEnable, expected string) {
 			ns := createTestNS(testNS)
 			defer cleanTest(testNS)
 
-			if preEnable {
-				for _, s := range sysctls {
-					sysctlName := strings.ReplaceAll(s.Path, "/", ".")
-					Expect(setSysctl(ns, sysctlName, "1")).To(Succeed())
-				}
+			for _, s := range sysctls {
+				sysctlName := strings.ReplaceAll(s.Path, "/", ".")
+				Expect(setSysctl(ns, sysctlName, preEnable)).To(Succeed())
 			}
 
-			err := EnsureInNamespace(fmt.Sprintf("/var/run/netns/%s", testNS), sysctls...)
-			Expect(err).NotTo(HaveOccurred())
+			Expect(EnsureInNamespace(fmt.Sprintf("/var/run/netns/%s", testNS), sysctls...)).To(Succeed())
 
 			for _, s := range sysctls {
 				sysctlName := strings.ReplaceAll(s.Path, "/", ".")
 				val, err := readSysctl(ns, sysctlName)
 				Expect(err).NotTo(HaveOccurred())
-				Expect(val).To(Equal("1"), "sysctl %s should be enabled", sysctlName)
+				Expect(val).To(Equal(expected), "sysctl %q should be %q but got %q", sysctlName, expected, val)
 			}
 		},
-		Entry("IPv4 forwarding when disabled", "test-ipv4-fwd", []Sysctl{IPv4Forwarding()}, false),
-		Entry("IPv4 forwarding when already enabled", "test-ipv4-fwd-pre", []Sysctl{IPv4Forwarding()}, true),
-		Entry("IPv6 forwarding when disabled", "test-ipv6-fwd", []Sysctl{IPv6Forwarding()}, false),
-		Entry("IPv6 forwarding when already enabled", "test-ipv6-fwd-pre", []Sysctl{IPv6Forwarding()}, true),
-		Entry("arp_accept all when disabled", "test-arp-all", []Sysctl{ArpAcceptAll()}, false),
-		Entry("arp_accept all when already enabled", "test-arp-all-pre", []Sysctl{ArpAcceptAll()}, true),
-		Entry("arp_accept default when disabled", "test-arp-def", []Sysctl{ArpAcceptDefault()}, false),
-		Entry("arp_accept default when already enabled", "test-arp-def-pre", []Sysctl{ArpAcceptDefault()}, true),
+		Entry("IPv4 forwarding when disabled", "test-ipv4-fwd", []Sysctl{IPv4Forwarding()}, "0", "1"),
+		Entry("IPv4 forwarding when already enabled", "test-ipv4-fwd-pre", []Sysctl{IPv4Forwarding()}, "1", "1"),
+		Entry("IPv6 forwarding when disabled", "test-ipv6-fwd", []Sysctl{IPv6Forwarding()}, "0", "1"),
+		Entry("IPv6 forwarding when already enabled", "test-ipv6-fwd-pre", []Sysctl{IPv6Forwarding()}, "1", "1"),
+		Entry("arp_accept all when disabled", "test-arp-all", []Sysctl{ArpAcceptAll()}, "0", "1"),
+		Entry("arp_accept all when already enabled", "test-arp-all-pre", []Sysctl{ArpAcceptAll()}, "1", "1"),
+		Entry("arp_accept default when disabled", "test-arp-def", []Sysctl{ArpAcceptDefault()}, "0", "1"),
+		Entry("arp_accept default when already enabled", "test-arp-def-pre", []Sysctl{ArpAcceptDefault()}, "1", "1"),
+		Entry("rp default filter when disabled", "test-rpfilter-def", []Sysctl{DisableRPFilter("default")}, "0", "0"),
+		Entry("rp default filter when enabled", "test-rpfilter-def-pre", []Sysctl{DisableRPFilter("default")}, "1", "0"),
 	)
 
 	It("should skip optional sysctl when proc file does not exist", func() {
