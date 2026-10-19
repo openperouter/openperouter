@@ -322,6 +322,9 @@ func restoreNetdev(ctx context.Context, targetNS string, state devicestate.State
 
 func applyStateToLink(ctx context.Context, link netlink.Link, state devicestate.State) error {
 	name := link.Attrs().Name
+	if err := restoreIPv6Settings(name, state); err != nil {
+		return err
+	}
 	for _, addr := range state.Addresses {
 		if err := hostnetwork.AssignIPToInterface(link, addr); err != nil {
 			return fmt.Errorf("failed to restore IP address %s to kernel netdev [%s]: %w", addr, name, err)
@@ -407,7 +410,32 @@ func retrieveDeviceState(
 	for _, a := range netlinkAddrs {
 		state.Addresses = append(state.Addresses, a.IPNet.String())
 	}
+
+	state.AddrGenMode, err = sysctl.Read(sysctl.AddrGenMode(interfaceName, ""))
+	if err != nil {
+		return devicestate.State{}, fmt.Errorf("failed to read addr_gen_mode of %s: %w", interfaceName, err)
+	}
+	state.AcceptRA, err = sysctl.Read(sysctl.AcceptRA(interfaceName, ""))
+	if err != nil {
+		return devicestate.State{}, fmt.Errorf("failed to read accept_ra of %s: %w", interfaceName, err)
+	}
 	return state, nil
+}
+
+// restoreIPv6Settings re-applies the IPv6 sysctls the setup overrides to keep
+// the kernel from managing addresses on the netdev.
+func restoreIPv6Settings(netdev string, state devicestate.State) error {
+	var sysctls []sysctl.Sysctl
+	if state.AddrGenMode != "" {
+		sysctls = append(sysctls, sysctl.AddrGenMode(netdev, state.AddrGenMode))
+	}
+	if state.AcceptRA != "" {
+		sysctls = append(sysctls, sysctl.AcceptRA(netdev, state.AcceptRA))
+	}
+	if err := sysctl.Ensure(sysctls...); err != nil {
+		return fmt.Errorf("failed to restore IPv6 settings on kernel netdev %s: %w", netdev, err)
+	}
+	return nil
 }
 
 // retrievePCIState returns the PCI address of netdev and the driver it is

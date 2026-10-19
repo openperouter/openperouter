@@ -19,6 +19,7 @@ import (
 	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/openperouter/openperouter/internal/netnamespace"
 	"github.com/openperouter/openperouter/internal/pci"
+	"github.com/openperouter/openperouter/internal/sysctl"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/vishvananda/netlink"
@@ -59,6 +60,8 @@ func TestSetupAcceleratedUnderlayRebindsKernelDriver(t *testing.T) {
 			PCIAddress:     testPCIAddr,
 			OriginalDriver: "igb",
 			Addresses:      []string{accelCIDR},
+			AddrGenMode:    hostSysctl(t, sysctl.AddrGenMode("default", "")),
+			AcceptRA:       hostSysctl(t, sysctl.AcceptRA("default", "")),
 		}, state)
 	})
 
@@ -201,12 +204,31 @@ func TestRestoreAcceleratedDeviceMovesBifurcatedNetdevBack(t *testing.T) {
 		PCIAddress:     testPCIAddr,
 		OriginalDriver: pci.DriverMlx5Core,
 		Addresses:      []string{accelCIDR},
+		AddrGenMode:    "1",
+		AcceptRA:       "2",
 	}
 	require.NoError(t, restoreAcceleratedDevice(context.Background(), accelTestNSPath, state, sysfs.Sysfs))
 
 	link, err := netlink.LinkByName(accelIface)
 	require.NoError(t, err)
 	assert.Contains(t, linkAddresses(t, link), accelCIDR)
+	assert.Equal(t, "1", hostSysctl(t, sysctl.AddrGenMode(accelIface, "")))
+	assert.Equal(t, "2", hostSysctl(t, sysctl.AcceptRA(accelIface, "")))
+}
+
+func TestRetrieveDeviceStateRecordsIPv6Settings(t *testing.T) {
+	addHostDummy(t, accelCIDR)
+	require.NoError(t, sysctl.Ensure(sysctl.AddrGenMode(accelIface, "1"), sysctl.AcceptRA(accelIface, "2")))
+
+	state, err := retrieveDeviceState(accelIface, PortModeTAP, pci.Sysfs{})
+	require.NoError(t, err)
+
+	assert.Equal(t, devicestate.State{
+		InterfaceName: accelIface,
+		Addresses:     []string{accelCIDR},
+		AddrGenMode:   "1",
+		AcceptRA:      "2",
+	}, state)
 }
 
 // setupAcceleratedUnderlayFromSavedState sets up the test underlay as
@@ -393,6 +415,13 @@ func nsLinkAddresses(t *testing.T, ns netns.NsHandle, link netlink.Link) []strin
 		ret = append(ret, a.IPNet.String())
 	}
 	return ret
+}
+
+func hostSysctl(t *testing.T, s sysctl.Sysctl) string {
+	t.Helper()
+	value, err := sysctl.Read(s)
+	require.NoError(t, err)
+	return value
 }
 
 func nsSysctl(t *testing.T, ns netns.NsHandle, path string) string {

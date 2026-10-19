@@ -27,11 +27,17 @@ type Store struct {
 // InterfaceName is the primary deviceID and the state file is named
 // "<interfaceName>.json". PCIAddress is stored in the file so a DPDK
 // port can be mapped back to its original kernel interface.
+//
+// AddrGenMode and AcceptRA hold the IPv6 sysctl values the setup overrides
+// on the kernel interface. They are empty when IPv6 is disabled on it, and
+// are then left untouched on restore.
 type State struct {
 	InterfaceName  string   `json:"interfaceName"`
 	PCIAddress     string   `json:"pciAddress,omitempty"`
 	OriginalDriver string   `json:"originalDriver,omitempty"`
 	Addresses      []string `json:"addresses"`
+	AddrGenMode    string   `json:"addrGenMode,omitempty"`
+	AcceptRA       string   `json:"acceptRA,omitempty"`
 }
 
 func (s Store) Save(state State) error {

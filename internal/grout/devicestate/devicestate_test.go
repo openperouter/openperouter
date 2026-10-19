@@ -20,6 +20,8 @@ func TestSaveLoadDelete(t *testing.T) {
 		PCIAddress:     "0000:03:02.0",
 		OriginalDriver: "ice",
 		Addresses:      []string{"192.168.1.10/24", "fd00::10/64"},
+		AddrGenMode:    "0",
+		AcceptRA:       "1",
 	}
 
 	require.NoError(t, store.Save(state))
