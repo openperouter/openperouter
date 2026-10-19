@@ -13,8 +13,10 @@ The `inspect` tool makes debugging OpenPERouter deployments easier by collecting
 |--------------------------|-------------------------------------------------------------------|------------------------|
 | `--namespace`            | OpenPERouter namespace                                            | `openperouter-system`  |
 | `--additional-namespace` | Namespace to collect core resources and pod logs from; repeat for each namespace | |
+| `--ext-frr-container`     | FRR container to inspect through the configured container runtime; repeat for each container |                        |
 | `--dest-dir`             | Output directory path                                             | `openperouter-inspect` |
 | `--k8s-client`           | Kubernetes client                                                 | `kubectl`              |
+| `--container-runtime`    | Runtime used to inspect external FRR containers                   | `docker`               |
 | `--since`                | Collect pod logs newer then relative duration (e.g.: 5s, 10m, 2h) |                        |
 | `-h`, `--help`           | Print usage instructions                                          |                        |
 
@@ -46,8 +48,9 @@ The output root directory contains the following:
 - `inspect.log` - Execution log
 - `node_info/` - Per node network and routing infrastructure information, and grout device state files
   (`device_state/<interface>.json`, only with the grout datapath)
+- `routing_info/` - FRR diagnostics from FRR-K8s pods and requested external FRR containers
 - `<openperouter namespace>/` - OpenPERouter namespace objects and workload logs (defaults to `openperouter-system`)
-- `<additional namespace>/` - Objects and workload logs for each requested additional namespace
+- `<additional namespace>/` - Objects, workload logs, and per-pod network information for each requested additional namespace
 - `nodes.yaml` - Kubernetes node manifests
 - `<namespace name>/` - Per namespaces containing config resources directory (Underlay, L2VNI, L3VNI, L3VPN, FRRConfiguration, etc.)
 

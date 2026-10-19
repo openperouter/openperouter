@@ -23,11 +23,12 @@ const inspectTimeout = 5 * time.Minute
 
 // InspectReporter invokes the inspect tool for failed e2e specs.
 type InspectReporter struct {
-	inspectPath          string
-	reportPath           string
-	k8sClient            string
-	namespace            string
-	additionalNamespaces []string
+	inspectPath           string
+	reportPath            string
+	k8sClient             string
+	namespace             string
+	additionalNamespaces  []string
+	externalFRRContainers []string
 }
 
 func InitReporter(kubeconfig, path string, namespaces ...string) (*k8sreporter.KubernetesReporter, error) {
@@ -97,6 +98,13 @@ func WithAdditionalNamespaces(namespaces ...string) func(*InspectReporter) {
 	}
 }
 
+// WithExternalFRRContainers adds external FRR containers inspected through the configured runtime.
+func WithExternalFRRContainers(containers ...string) func(*InspectReporter) {
+	return func(reporter *InspectReporter) {
+		reporter.externalFRRContainers = append(reporter.externalFRRContainers, containers...)
+	}
+}
+
 // Dump invokes the repository inspect tool and stores its output with the artifacts for the failed spec.
 func (r *InspectReporter) Dump(testName string) {
 	outputPath := filepath.Join(r.reportPath, sanitizeTestName(testName))
@@ -129,6 +137,9 @@ func (r *InspectReporter) inspectArgs(outputPath string) []string {
 	}
 	for _, namespace := range r.additionalNamespaces {
 		args = append(args, "--additional-namespace="+namespace)
+	}
+	for _, container := range r.externalFRRContainers {
+		args = append(args, "--ext-frr-container="+container)
 	}
 	return args
 }
