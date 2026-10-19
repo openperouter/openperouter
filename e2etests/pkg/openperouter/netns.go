@@ -116,6 +116,29 @@ func UnderlayVethsExists(nodeName string) bool {
 	return false
 }
 
+// UnderlaySysctls checks whether the provided sysctl settings are set on nodeName, inside the
+// perouter netns.
+func UnderlaySysctls(nodeName string, expectedSysctls map[string]string) error {
+	exec := executor.ForNode(nodeName)
+
+	for sysctlKey, expected := range expectedSysctls {
+		cmd := fmt.Sprintf("ip netns exec %s sysctl %s", NamedNetns, sysctlKey)
+		out, err := exec.Exec("/bin/bash", "-c", cmd)
+		if err != nil {
+			return fmt.Errorf("cmd %q: failed with err: %w", cmd, err)
+		}
+		s := strings.Split(out, "=")
+		if len(s) != 2 {
+			return fmt.Errorf("cmd %q: expected valid sysctl but got %q instead", cmd, out)
+		}
+		if got := strings.TrimSpace(s[1]); got != expected {
+			return fmt.Errorf("cmd %q: expected to get value %q but got %q instead", cmd, expected, got)
+		}
+	}
+
+	return nil
+}
+
 // deleteNetnsDevices lists all devices inside the perouter netns and deletes
 // them one by one, skipping loopback.
 func deleteNetnsDevices(e executor.Executor) error {
