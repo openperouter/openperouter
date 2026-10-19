@@ -76,29 +76,31 @@ func DumpInfo(reporter *k8sreporter.KubernetesReporter, testName string) {
 // NewInspectReporter creates an inspect collector for failed e2e specs.
 func NewInspectReporter(
 	inspectPath, reportPath, k8sClient, namespace string,
-	additionalNamespaces ...string,
+	options ...func(*InspectReporter),
 ) *InspectReporter {
-	return &InspectReporter{
-		inspectPath:          inspectPath,
-		reportPath:           reportPath,
-		k8sClient:            k8sClient,
-		namespace:            namespace,
-		additionalNamespaces: additionalNamespaces,
+	reporter := &InspectReporter{
+		inspectPath: inspectPath,
+		reportPath:  reportPath,
+		k8sClient:   k8sClient,
+		namespace:   namespace,
+	}
+	for _, option := range options {
+		option(reporter)
+	}
+	return reporter
+}
+
+// WithAdditionalNamespaces adds namespaces whose resources and logs inspect collects.
+func WithAdditionalNamespaces(namespaces ...string) func(*InspectReporter) {
+	return func(reporter *InspectReporter) {
+		reporter.additionalNamespaces = append(reporter.additionalNamespaces, namespaces...)
 	}
 }
 
 // Dump invokes the repository inspect tool and stores its output with the artifacts for the failed spec.
 func (r *InspectReporter) Dump(testName string) {
 	outputPath := filepath.Join(r.reportPath, sanitizeTestName(testName))
-	args := []string{
-		"--k8s-client=" + r.k8sClient,
-		"--dest-dir=" + outputPath,
-		"--namespace=" + r.namespace,
-		"--since=10m",
-	}
-	for _, namespace := range r.additionalNamespaces {
-		args = append(args, "--additional-namespace="+namespace)
-	}
+	args := r.inspectArgs(outputPath)
 
 	ctx, cancel := context.WithTimeout(context.Background(), inspectTimeout)
 	defer cancel()
@@ -116,6 +118,19 @@ func (r *InspectReporter) Dump(testName string) {
 	}
 
 	ginkgo.GinkgoWriter.Printf("Inspect completed. Artifacts are stored under %s/\n", filepath.Base(outputPath))
+}
+
+func (r *InspectReporter) inspectArgs(outputPath string) []string {
+	args := []string{
+		"--k8s-client=" + r.k8sClient,
+		"--dest-dir=" + outputPath,
+		"--namespace=" + r.namespace,
+		"--since=10m",
+	}
+	for _, namespace := range r.additionalNamespaces {
+		args = append(args, "--additional-namespace="+namespace)
+	}
+	return args
 }
 
 func sanitizeTestName(testName string) string {
