@@ -92,12 +92,49 @@ Limit line length to 120 characters whenever possible:
 1. **Type-Safe Checking:** Use `errors.Is` and `errors.As` instead of string comparison
 2. **Add Context:** Wrap errors with `fmt.Errorf` and `%w` to preserve the error chain
 3. **Propagate Context:** Each layer should add meaningful context about what operation failed
+4. **Inline Error Checks:** When only the error is needed, combine the call and check with
+   `if err := operation(); err != nil`. Keep a separate assignment when a returned value or the error is needed later.
+5. **Handle Errors Immediately:** Check the error directly after the call, before using its results.
+6. **Flatten Error Cases:** Check `errors.Is(err, sentinel)` directly before the general `err != nil` case
+   instead of nesting it inside that case. It returns false for a nil error and a non-nil sentinel.
+7. **Distinguish Failure Types:** Use sentinel errors or specific error types when callers need different recovery
+   behavior. Do not treat every error as temporary or infer failure types from error strings.
 
 **Example:**
 ```go
 if err := fetchData(id); err != nil {
     return fmt.Errorf("failed to fetch data for id %s: %w", id, err)
 }
+```
+
+**Avoid:** separating an error-only call from its check.
+
+```go
+err := store.Save(state)
+if err != nil {
+    return err
+}
+```
+
+**Prefer:** scope the error to its check.
+
+```go
+if err := store.Save(state); err != nil {
+    return fmt.Errorf("saving state for %s: %w", state.InterfaceName, err)
+}
+```
+
+When a call also returns a value needed afterwards, keep the assignment separate and handle specific errors first:
+
+```go
+state, err := store.Load(interfaceName)
+if errors.Is(err, devicestate.ErrNotFound) {
+    return captureDeviceState(interfaceName)
+}
+if err != nil {
+    return devicestate.State{}, fmt.Errorf("loading state for %s: %w", interfaceName, err)
+}
+return state, nil
 ```
 
 ### Dependency Management
@@ -116,6 +153,16 @@ if err := fetchData(id); err != nil {
 **Switch vs If-Else:**
 - Prefer `switch` statements for multiple conditions
 - Go's switch supports embedded conditions - use this feature
+- For independent exit conditions, prefer sequential `if` statements with early returns. Keep the remaining work
+  together instead of spreading a single execution path across multiple switches and nested conditions.
+- Initialize defaults first, then override them conditionally when this removes an unnecessary `else`.
+
+```go
+vrf := defaultVRFName
+if params.VRF != "" {
+    vrf = params.VRF
+}
+```
 
 **Named Returns:**
 - Avoid named return values - they can obscure control flow
@@ -134,6 +181,17 @@ Remove obvious comments that restate what the code already says. Comments should
 
 If removing the comment wouldn't confuse a future reader, remove it.
 
+Explain current behavior and non-obvious assumptions, including ordering constraints and surprising backend behavior.
+Do not describe the previous bug or announce that the code fixes it. Place the explanation where the behavior is owned
+and avoid repeating it at both the caller and the helper.
+
+```go
+// Avoid: Fix the duplicate IPv6 address bug from issue #123.
+
+// Prefer: The shadow interface owns the link-local address, so the backing
+// interface must not generate another one.
+```
+
 ### Code Organization — Newspaper Structure
 Follow [newspaper code structure](https://kentcdodds.com/blog/newspaper-code-structure): public/exported functions at the top, private/utility functions at the bottom. Callers before callees. This makes files scannable — readers find the "what" first, the "how" below.
 
@@ -141,6 +199,20 @@ Follow [newspaper code structure](https://kentcdodds.com/blog/newspaper-code-str
 - Exception: `init()` functions go at the top, near package-level vars they initialize
 - Unexported helpers go at the bottom
 - When a function calls another function in the same file, the caller should appear above the callee
+
+```go
+func SaveState(path string, state State) error {
+    data, err := encodeState(state)
+    if err != nil {
+        return err
+    }
+    return os.WriteFile(path, data, 0600)
+}
+
+func encodeState(state State) ([]byte, error) {
+    return json.Marshal(state)
+}
+```
 
 ### Flat Control Flow — Early Returns Over Nested Ifs
 Avoid complex nested `if` conditions. Especially if they include ors and mix ands and ors or negations.
@@ -213,10 +285,156 @@ Watch for:
 
 The test: if removing the abstraction makes the code shorter and equally clear, remove it.
 
+- Remove no-op functions and their invocations, unused helpers, and redundant branches.
+- Reuse existing validation and setup logic instead of implementing parallel versions that can drift.
+- Extract helpers when they name a meaningful operation or clarify an obscure expression.
+- Keep single-scope functions: each function should perform one operation, such as fetching state or saving it.
+- Keep templates focused on rendering. Compute configuration decisions in Go before passing data to the template.
+
+**Keep single-scope functions.** Split `fetchAndSaveState` into fetch and save operations so callers can use each
+independently.
+
+**Avoid:** fetching and saving in the same function.
+
+```go
+func fetchAndSaveState(interfaceName string, store StateStore) error {
+    state, err := fetchState(interfaceName)
+    if err != nil {
+        return err
+    }
+    return store.Save(state)
+}
+```
+
+**Prefer:** let the caller compose the fetch and save operations.
+
+```go
+state, err := fetchState(interfaceName)
+if err != nil {
+    return err
+}
+if err := store.Save(state); err != nil {
+    return fmt.Errorf("saving state for %s: %w", interfaceName, err)
+}
+```
+
+Give obscure checks a name instead of making every caller interpret them:
+
+```go
+func isExecutable(mode os.FileMode) bool {
+    return mode&0111 != 0
+}
+```
+
+### Naming and Data Structures
+
+- Name values for their meaning: distinguish desired configuration from observed state, such as `desiredIP`.
+- Name functions for what they do. `Ensure` implies making a state true; use `Check`, `Validate`, or `Is...` for checks.
+- Make conversion direction clear in names, such as `PCIAddressForNetlinkName`.
+- Use named constants for meaningful thresholds and repeated configuration values instead of unexplained literals.
+- Use named fields in struct literals when positional values, especially booleans, obscure their meaning.
+- Represent sets with `map[T]struct{}` rather than `map[T]bool` when only membership matters.
+- Embed structs only when their promoted fields or methods are part of the containing type's intended API.
+  Otherwise use an explicit field or pass the required properties directly.
+- Keep related calculations together, such as an address and its mask.
+
+**Avoid:** unexplained values and positional fields.
+
+```go
+opts := portOptions{true, 4}
+```
+
+**Prefer:** named fields and constants that explain their purpose.
+
+```go
+const defaultRXQueues = 4
+
+opts := portOptions{
+    IsTap:    true,
+    RXQueues: defaultRXQueues,
+}
+```
+
+Use membership directly for a set, with the conventional `ok` name for the lookup result:
+
+```go
+configuredPorts := map[string]struct{}{
+    "underlay0": {},
+}
+if _, ok := configuredPorts[portName]; ok {
+    return nil
+}
+```
+
+Use a named field when the contained type should not expose its fields through the containing type:
+
+```go
+type interfaceDetails struct {
+    Properties interfaceProperties
+    Driver     string
+}
+```
+
 ### Writing tests
 On unit tests use only the go standard library / testify (at most).
 
 For e2e tests, use the ginkgo / gomega framework.
+
+- Extend existing table-driven tests where applicable. Use new tables for related cases instead of adding one-off
+  test functions that diverge from the surrounding style.
+- Put varying inputs, expected results, and expected errors in the test table. Pass explicit case parameters instead
+  of deriving several behaviors from a boolean flag.
+- Assert the specific result: compare the expected nodes or values, not merely that a result is non-empty.
+- Match expected error types or messages instead of only checking that an error occurred. Prefer a complete message
+  when it is stable and relevant to the behavior being tested.
+- Compare complete expected structs instead of checking each field separately when the whole result is relevant.
+- Give assertion failures enough context to identify the expected and actual results.
+- Keep test literals readable: put expected values before assertions and break nested composite literals across lines.
+- Reuse tests that already cover the behavior; avoid redundant cases or cases based on unsupported inputs.
+- Keep active waits in e2e tests using Gomega's `Eventually` / `Consistently`. Shared helpers should perform a single
+  check so tests control polling and timeouts.
+
+**Prefer:** explicit inputs, complete expected structs, and expected errors in a table.
+This example assumes `parsePortOptions` rejects an empty name with `errMissingPortName`.
+
+```go
+func TestParsePortOptions(t *testing.T) {
+    tests := []struct {
+        name    string
+        input   string
+        want    portOptions
+        wantErr error
+    }{
+        {
+            name:  "PCI device",
+            input: "0000:03:00.0",
+            want: portOptions{
+                PCIAddress: "0000:03:00.0",
+            },
+        },
+        {
+            name:    "missing name",
+            wantErr: errMissingPortName,
+        },
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            got, err := parsePortOptions(tt.input)
+            require.ErrorIs(t, err, tt.wantErr)
+            require.Equal(t, tt.want, got)
+        })
+    }
+}
+```
+
+Keep polling in the e2e test and assert the desired result:
+
+```go
+Eventually(func() ([]string, error) {
+    return selectedNodeNames(ctx, selector)
+}).Should(ConsistOf("worker-0", "worker-1"))
+```
 
 ### Writing gomega based tests
 Favor using "positive" logic (i.e. expect success) over expecting an error
@@ -343,9 +561,14 @@ When reviewing or writing code, verify:
 - [ ] Happy path is left-aligned with early returns
 - [ ] No generic package names (util, common, etc.)
 - [ ] Errors wrapped with context using `%w`
+- [ ] Error-only calls use inline `if err := ...; err != nil` checks
 - [ ] No environment variable reads outside main()
 - [ ] Package-named entry point file exists
 - [ ] Helper functions placed at bottom of file (after where they are used)
-- [ ] Switch used instead of long if-else chains
+- [ ] Switch used for related alternatives; sequential early returns used for independent exit conditions
+- [ ] Names describe intent; meaningful literals use named constants
+- [ ] Helpers have focused responsibilities and reuse existing logic
+- [ ] Comments explain current reasoning without bug history or repeated explanations
+- [ ] Related test cases use tables with explicit inputs, expected results, and expected errors
 - [ ] No named returns unless absolutely necessary
 - [ ] Goroutines in controllers are carefully managed
