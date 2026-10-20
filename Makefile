@@ -481,6 +481,9 @@ generate-all-in-one: manifests kustomize ## Create manifests
 	cd config/pods && $(KUSTOMIZE) edit set image controller=${IMG}
 	cd config/pods && $(KUSTOMIZE) edit set namespace $(NAMESPACE)
 
+	# openpe.yaml is the only generated manifest: delete anything else so that
+	# check-generated fails when a branch brings back a removed one.
+	find config/all-in-one -type f ! -name openpe.yaml -delete
 	$(KUSTOMIZE) build config/default > config/all-in-one/openpe.yaml
 
 .PHONY: helm-docs
