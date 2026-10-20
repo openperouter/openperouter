@@ -75,6 +75,22 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 	})
 
+	It("should report an unreachable OVSDB as a transient failure", func() {
+		DeferCleanup(func(path string) { OVSSocketPath = path }, OVSSocketPath)
+		OVSSocketPath = "unix:/nonexistent/db.sock"
+
+		createVRFInNamespace(testNS, "testred")
+		params := L2VNIParams{
+			VNIParams: VNIParams{
+				VRF: "testred", TargetNS: testNSPath(),
+				VTEPIP: "192.170.0.9/32", VNI: 100, VXLanPort: new(int32(4789)),
+			},
+			HostMaster: &HostMaster{Type: OVSBridgeLinkType, AutoCreate: new(true)},
+		}
+
+		Expect(SetupL2VNI(context.Background(), params)).To(MatchError(ErrTransient))
+	})
+
 	It("should work with a single L2VNI using pre-existing named OVS bridge", func() {
 		const bridgeName = "test-ovs-br"
 		Expect(createExternalOVSBridge(bridgeName)).To(Succeed(), "must pre-provision an OVS bridge")

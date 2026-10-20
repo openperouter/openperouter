@@ -73,6 +73,11 @@ const (
 	OVSBridgeLinkType = "OVSBridge"
 )
 
+// ErrTransient marks a setup failure caused by the state of the host at the
+// time of the call, such as OVSDB being unreachable, rather than by the
+// configuration. The same configuration can succeed on a later attempt.
+var ErrTransient = errors.New("transient host failure")
+
 type NotRouterInterfaceError struct {
 	Name string
 }
