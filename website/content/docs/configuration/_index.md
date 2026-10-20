@@ -309,9 +309,14 @@ For the full list of sysctls and kernel requirements, see the
 
 ## Reconciliation Retry Delay
 
-The controller retries failed API reconciliation with exponential backoff,
-starting at 5 ms and capped at 30 seconds by default. Set the controller flag
-`--max-reconcile-backoff=10s` to change the maximum delay in Kubernetes or host
-mode. The duration must be positive. This flag controls retries after errors;
+The controller uses the controller-runtime default rate limiter unless an override
+is configured. Set `--max-reconcile-backoff=10s` in Kubernetes or host mode to use
+exponential backoff starting at 5 ms and capped at the configured duration.
+A value of `0` leaves the default rate limiter in place. This flag controls retries after errors;
 explicit reconciliation delays, such as waiting for the router to become ready,
 remain unchanged.
+
+For Helm installations, set `openperouter.maxReconcileBackoffSeconds` (for example,
+`--set openperouter.maxReconcileBackoffSeconds=10`). For operator installations, set
+`spec.controllerMaxReconcileBackoffSeconds: 10` on the `OpenPERouter` resource. Both accept
+positive integer seconds. Leave them unset to keep the controller default rate limiter.

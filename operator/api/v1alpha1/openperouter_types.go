@@ -72,6 +72,11 @@ type OpenPERouterSpec struct {
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=65535
 	BGPListenLimit *int32 `json:"bgpListenLimit,omitempty"`
+	// controllerMaxReconcileBackoffSeconds specifies the maximum retry delay in seconds
+	// after failed API reconciliation. When omitted, the controller uses its default rate limiter.
+	// +optional
+	// +kubebuilder:validation:Minimum=1
+	ControllerMaxReconcileBackoffSeconds *int32 `json:"controllerMaxReconcileBackoffSeconds,omitempty"`
 	// datapath specifies the datapath to use. Allowed values are: kernel, grout. (default: kernel)
 	// +optional
 	// +default="kernel"

@@ -962,6 +962,13 @@ spec:
                 maximum: 65535
                 minimum: 1
                 type: integer
+              controllerMaxReconcileBackoffSeconds:
+                description: |-
+                  controllerMaxReconcileBackoffSeconds specifies the maximum retry delay in seconds
+                  after failed API reconciliation. When omitted, the controller uses its default rate limiter.
+                format: int32
+                minimum: 1
+                type: integer
               datapath:
                 default: kernel
                 description: 'datapath specifies the datapath to use. Allowed values

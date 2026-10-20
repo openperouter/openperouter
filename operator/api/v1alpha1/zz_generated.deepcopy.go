@@ -135,6 +135,11 @@ func (in *OpenPERouterSpec) DeepCopyInto(out *OpenPERouterSpec) {
 		*out = new(int32)
 		**out = **in
 	}
+	if in.ControllerMaxReconcileBackoffSeconds != nil {
+		in, out := &in.ControllerMaxReconcileBackoffSeconds, &out.ControllerMaxReconcileBackoffSeconds
+		*out = new(int32)
+		**out = **in
+	}
 	if in.Datapath != nil {
 		in, out := &in.Datapath, &out.Datapath
 		*out = new(string)

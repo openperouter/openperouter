@@ -42,6 +42,31 @@ var _ = Describe("OpenPERouter Controller", func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 		controllerImage := "quay.io/openperouter/router:test"
+		DescribeTable("validates the maximum reconciliation backoff", func(
+			backoff *int32, want *int32, wantError string,
+		) {
+			resource := &operatorapi.OpenPERouter{
+				ObjectMeta: metav1.ObjectMeta{Name: "backoff", Namespace: openperouterTestNamespace},
+				Spec: operatorapi.OpenPERouterSpec{
+					LogLevel:                             new(operatorapi.LogLevelInfo),
+					ControllerMaxReconcileBackoffSeconds: backoff,
+				},
+			}
+			err := k8sClient.Create(context.Background(), resource)
+			if wantError != "" {
+				Expect(err).To(MatchError(ContainSubstring(wantError)))
+				return
+			}
+			Expect(err).To(Succeed())
+			Expect(resource.Spec.ControllerMaxReconcileBackoffSeconds).To(Equal(want))
+		},
+			Entry("leaves the override unset", nil, nil, ""),
+			Entry("accepts a positive override", new(int32(10)), new(int32(10)), ""),
+			Entry("rejects zero", new(int32(0)), nil, "spec.controllerMaxReconcileBackoffSeconds: Invalid value: 0"),
+			Entry("rejects negative", new(int32(-1)),
+				nil, "spec.controllerMaxReconcileBackoffSeconds: Invalid value: -1"),
+		)
+
 		It("should successfully reconcile the resource", func() {
 			controllerContainers := map[string]string{
 				"controller": controllerImage,

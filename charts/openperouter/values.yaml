@@ -15,6 +15,8 @@ openperouter:
   # -- Maximum number of dynamic BGP sessions accepted via underlay listen
   # ranges (FRR `bgp listen limit`, 1-65535).
   bgpListenLimit: 65535
+  # -- (int) Maximum retry delay in seconds after failed API reconciliation. Unset uses the controller default rate limiter.
+  maxReconcileBackoffSeconds: null
   # -- If true, enables host mode deployment: deploys hostbridge DaemonSet instead of router and controller,
   # and configures nodemarker to run in webhook-only mode
   hostmode: false

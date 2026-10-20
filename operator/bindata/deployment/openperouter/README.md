@@ -54,6 +54,7 @@ Kubernetes: `>= 1.19.0-0`
 | openperouter.image.tag | string | `""` |  |
 | openperouter.labels | object | `{}` |  |
 | openperouter.logLevel | string | `"info"` | Controller log level. Must be one of: `debug`, `info`, `warn` or `error`. |
+| openperouter.maxReconcileBackoffSeconds | int | `nil` | Maximum retry delay in seconds after failed API reconciliation. Unset uses the controller default rate limiter. |
 | openperouter.nodeSelector | object | `{}` | Node selector to constrain all openperouter pods (router, controller, nodemarker, hostbridge) to nodes with matching labels. |
 | openperouter.nodemarker.resources | object | `{}` |  |
 | openperouter.ovsRunDir | string | `"/var/run/openvswitch"` | OVS run directory to mount. This is the directory containing the OVS socket. |

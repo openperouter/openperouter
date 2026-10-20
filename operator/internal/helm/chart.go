@@ -160,6 +160,10 @@ func patchChartValues(envConfig envconfig.EnvConfig, crdConfig *operatorapi.Open
 		openperouterValues["bgpListenLimit"] = *crdConfig.Spec.BGPListenLimit
 	}
 
+	if crdConfig.Spec.ControllerMaxReconcileBackoffSeconds != nil {
+		openperouterValues["maxReconcileBackoffSeconds"] = *crdConfig.Spec.ControllerMaxReconcileBackoffSeconds
+	}
+
 	datapath := ptr.Deref(crdConfig.Spec.Datapath, "kernel")
 	openperouterValues["datapath"] = datapath
 	if datapath == "grout" {
