@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os/exec"
+	"strconv"
 	"strings"
 	"syscall"
 )
@@ -34,6 +35,7 @@ type groutInterface struct {
 	MAC     string `json:"mac"`
 	NRxq    int32  `json:"n_rxq"`
 	RxqSize int32  `json:"rxq_size"`
+	MTU     int    `json:"mtu"`
 }
 
 type groutVXLANInfo struct {
@@ -62,6 +64,7 @@ type portOptions struct {
 	VRF      string
 	RXQueues *int32
 	QSize    *int32
+	MTU      int
 }
 
 // ensurePort creates the port, recreating it when an existing port with the
@@ -96,9 +99,13 @@ func (c *Client) createPort(ctx context.Context, name string, opts portOptions) 
 	if opts.QSize != nil {
 		args = append(args, "qsize", fmt.Sprintf("%d", *opts.QSize))
 	}
+	if opts.MTU > 0 {
+		args = append(args, "mtu", strconv.Itoa(opts.MTU))
+	}
 	args = append(args, "down")
 	slog.InfoContext(ctx, "creating grout port", "name", name, "opts", opts)
-	if err := c.run(ctx, args...); err != nil {
+	err := c.run(ctx, args...)
+	if err != nil {
 		return fmt.Errorf("creating grout port %s: %w", name, err)
 	}
 	return nil
@@ -186,6 +193,9 @@ func (d *groutInterface) matchesRequested(opts portOptions) bool {
 		return false
 	}
 	if opts.QSize != nil && d.RxqSize != *opts.QSize {
+		return false
+	}
+	if opts.MTU > 0 && d.MTU != opts.MTU {
 		return false
 	}
 	return true

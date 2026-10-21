@@ -68,19 +68,19 @@ func TestEnsurePort(t *testing.T) {
 				err:    fmt.Errorf("exit status 1"),
 			},
 			cmdCall{
-				cmd: "grcli --err-exit --json --socket sock interface add port p0 devargs net_tap0,remote=remote_i,iface=p0_tap down",
+				cmd: "grcli --err-exit --json --socket sock interface add port p0 devargs net_tap0,remote=remote_i,iface=p0_tap mtu 9500 down",
 			})()
 
 		assert.NoError(t,
 			NewClient("sock").ensurePort(
 				context.Background(),
 				"p0",
-				portOptions{Devargs: "net_tap0,remote=remote_i,iface=p0_tap"},
+				portOptions{Devargs: "net_tap0,remote=remote_i,iface=p0_tap", MTU: 9500},
 			),
 		)
 	})
 
-	t.Run("ensure port when port already exists", func(t *testing.T) {
+	t.Run("ensure port when port already exists with the same MTU", func(t *testing.T) {
 		defer mockCmdExec(
 			cmdCall{
 				cmd:    "grcli --err-exit --json --socket sock interface show name p0",
@@ -91,7 +91,29 @@ func TestEnsurePort(t *testing.T) {
 			NewClient("sock").ensurePort(
 				context.Background(),
 				"p0",
-				portOptions{Devargs: "net_tap0,remote=remote_i,iface=p0_tap"},
+				portOptions{Devargs: "net_tap0,remote=remote_i,iface=p0_tap", MTU: 1500},
+			),
+		)
+	})
+
+	t.Run("ensure port when port already exists with a different MTU", func(t *testing.T) {
+		defer mockCmdExec(
+			cmdCall{
+				cmd:    "grcli --err-exit --json --socket sock interface show name p0",
+				output: interfaceShowP0Output,
+			},
+			cmdCall{
+				cmd: "grcli --err-exit --json --socket sock interface del p0",
+			},
+			cmdCall{
+				cmd: "grcli --err-exit --json --socket sock interface add port p0 devargs net_tap0,remote=remote_i,iface=p0_tap mtu 9500 down",
+			})()
+
+		assert.NoError(t,
+			NewClient("sock").ensurePort(
+				context.Background(),
+				"p0",
+				portOptions{Devargs: "net_tap0,remote=remote_i,iface=p0_tap", MTU: 9500},
 			),
 		)
 	})
@@ -545,11 +567,13 @@ func TestMatchesRequested(t *testing.T) {
 		MAC:     "aa:bb:cc:dd:ee:ff",
 		NRxq:    4,
 		RxqSize: 1024,
+		MTU:     9500,
 	}
 	opts := portOptions{
 		Devargs:  "0000:03:02.0",
 		RXQueues: &rxqs,
 		QSize:    &qsize,
+		MTU:      9500,
 	}
 
 	t.Run("matching options", func(t *testing.T) {
@@ -565,6 +589,12 @@ func TestMatchesRequested(t *testing.T) {
 	t.Run("mismatching queue size", func(t *testing.T) {
 		details := matching
 		details.RxqSize = 256
+		assert.False(t, details.matchesRequested(opts))
+	})
+
+	t.Run("mismatching mtu", func(t *testing.T) {
+		details := matching
+		details.MTU = 1500
 		assert.False(t, details.matchesRequested(opts))
 	})
 
