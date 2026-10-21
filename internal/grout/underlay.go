@@ -17,6 +17,7 @@ import (
 	"github.com/openperouter/openperouter/internal/sysctl"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
+	"golang.org/x/sys/unix"
 )
 
 const UnderlayPortNamePrefix = "u_"
@@ -33,6 +34,14 @@ type UnderlayPortMode string
 const (
 	PortModeAccelerated UnderlayPortMode = "accelerated"
 	PortModeTAP         UnderlayPortMode = "tap"
+	// TunnelEndpointPortName is the grout port carrying the tunnel endpoint
+	// addresses, playing the role of the loopback in the kernel datapath.
+	// The name can't be "lo", as grout creates a kernel interface named
+	// after each port.
+	TunnelEndpointPortName = "tunnel-ep"
+	// The tunnel endpoint port is a null device that never carries traffic,
+	// so its MTU does not matter.
+	tunnelEndpointPortMTU = 1500
 )
 
 // SetupUnderlay configures the underlay interfaces via the grout dataplane.
@@ -99,12 +108,18 @@ func SetupUnderlay(
 		}
 	}
 
-	if params.TunnelEndpoint != nil {
-		if err := setupTunnelEndpoint(ctx, client, *params.TunnelEndpoint); err != nil {
-			return err
-		}
+	if params.TunnelEndpoint == nil {
+		return RemoveTunnelEndpoint(ctx, client)
 	}
+	return setupTunnelEndpoint(ctx, client, *params.TunnelEndpoint)
+}
 
+// RemoveTunnelEndpoint removes the grout port carrying the tunnel endpoint
+// addresses, together with the addresses.
+func RemoveTunnelEndpoint(ctx context.Context, client *Client) error {
+	if err := client.deletePort(ctx, TunnelEndpointPortName); err != nil {
+		return fmt.Errorf("failed to remove the tunnel endpoint port: %w", err)
+	}
 	return nil
 }
 
@@ -247,6 +262,10 @@ func setupTapUnderlay(
 	})
 }
 
+// setupTunnelEndpoint assigns the tunnel endpoint addresses to a dedicated
+// null port. Unlike the main VRF interface, which FRR sees as a VRF device,
+// the port is a regular interface IS-IS can advertise as passive, and
+// removing it takes the addresses away without touching the underlay ports.
 func setupTunnelEndpoint(ctx context.Context, client *Client, ep hostnetwork.UnderlayTunnelEndpointParams) error {
 	var addrs []string
 	for _, addr := range []string{ep.IPv4CIDR, ep.IPv6CIDR} {
@@ -258,9 +277,19 @@ func setupTunnelEndpoint(ctx context.Context, client *Client, ep hostnetwork.Und
 		return fmt.Errorf("at least one tunnel endpoint IP must be provided (IPv4 or IPv6)")
 	}
 
-	if err := assignAddressesToGroutPort(ctx, client, defaultVRFName, addrs); err != nil {
-		return fmt.Errorf("failed to assign tunnel endpoint IPs to grout underlay: %w", err)
+	opts := portOptions{Devargs: "net_null_tunnel_ep,no-rx=1", MTU: tunnelEndpointPortMTU}
+	if err := client.ensurePort(ctx, TunnelEndpointPortName, opts); err != nil {
+		return fmt.Errorf("failed to create the tunnel endpoint port: %w", err)
 	}
+
+	if err := assignAddressesToGroutPort(ctx, client, TunnelEndpointPortName, addrs); err != nil {
+		return fmt.Errorf("failed to assign tunnel endpoint IPs to grout: %w", err)
+	}
+
+	if err := client.setPortUp(ctx, TunnelEndpointPortName); err != nil {
+		return fmt.Errorf("failed to set the tunnel endpoint port up: %w", err)
+	}
+
 	return nil
 }
 
@@ -344,6 +373,10 @@ func configureUnderlayTapPort(
 	underlayInterface := state.InterfaceName
 	portName := UnderlayPortName(underlayInterface)
 
+	if err := hostnetwork.SuppressAutoconf(underlayInterface); err != nil {
+		return fmt.Errorf("failed to suppress autoconf on underlay interface %s: %w", underlayInterface, err)
+	}
+
 	// Suppress the netdev's kernel IPv6 link-local so it doesn't collide with
 	// the identical EUI-64 link-local on the grout port's kernel interface,
 	// which shares the netdev's MAC. The collision makes DAD strip the port's
@@ -358,15 +391,6 @@ func configureUnderlayTapPort(
 		makeTapRandomString(), underlayInterface, "tap_"+underlayInterface)
 	if err := client.ensurePort(ctx, portName, opts); err != nil {
 		return fmt.Errorf("failed to create grout underlay port: %w", err)
-	}
-
-	// Disable SLAAC on the underlying netlink interface: once the intended
-	// addresses are migrated to the grout port, the kernel must not
-	// autoconfigure new ones from Router Advertisements. A SLAAC address
-	// on the netlink device would be picked up on the next reconcile and
-	// clash with the existing connected route in grout's RIB (EBUSY).
-	if err := sysctl.Ensure(sysctl.DisableAcceptRA(underlayInterface)); err != nil {
-		return fmt.Errorf("failed to disable accept_ra on underlay interface %s: %w", underlayInterface, err)
 	}
 
 	if err := assignAddressesToGroutPort(ctx, client, portName, state.Addresses); err != nil {
@@ -408,6 +432,10 @@ func retrieveDeviceState(
 		return devicestate.State{}, fmt.Errorf("failed to read addresses from %s: %w", interfaceName, err)
 	}
 	for _, a := range netlinkAddrs {
+		// SLAAC addresses must not be migrated or restored as static addresses.
+		if a.IP.To4() == nil && a.Flags&unix.IFA_F_PERMANENT == 0 {
+			continue
+		}
 		state.Addresses = append(state.Addresses, a.IPNet.String())
 	}
 

@@ -19,13 +19,14 @@ type frrConfigData struct {
 	conversion.APIConfigData
 	nodeIndex int
 	logLevel  string
+	datapath  conversion.FRRDatapath
 }
 
 type frrConfiguratorType func(ctx context.Context, data frrConfigData) error
 
 func configureFRR(ctx context.Context, data frrConfigData) error {
 	slog.DebugContext(ctx, "reloading FRR config", "config", redactFrrConfigData(data))
-	frrConfig, err := conversion.APItoFRR(data.APIConfigData, data.nodeIndex, data.logLevel)
+	frrConfig, err := conversion.APItoFRR(data.APIConfigData, data.nodeIndex, data.logLevel, data.datapath)
 	emptyConfig := conversion.NoUnderlaysError("")
 	if errors.As(err, &emptyConfig) {
 		slog.InfoContext(ctx, "reloading FRR config", "event", "cleaning the frr configuration")
