@@ -138,7 +138,7 @@ func TestValidatePassthroughsForNodes(t *testing.T) {
 					},
 				},
 			},
-			expectedErr: fmt.Errorf("failed to filter underlays for node \"node-1\": \"InvalidOp\" is not a valid label selector operator"),
+			expectedErr: fmt.Errorf("failed to filter underlays for node \"node-1\": L3Passthrough/pt-bad: invalid node selector: \"InvalidOp\" is not a valid label selector operator"),
 		},
 	}
 
