@@ -22,6 +22,7 @@ func TestSaveLoadDelete(t *testing.T) {
 		Addresses:      []string{"192.168.1.10/24", "fd00::10/64"},
 		AddrGenMode:    "0",
 		AcceptRA:       "1",
+		MTU:            9000,
 	}
 
 	require.NoError(t, store.Save(state))

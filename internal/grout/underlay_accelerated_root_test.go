@@ -62,6 +62,7 @@ func TestSetupAcceleratedUnderlayRebindsKernelDriver(t *testing.T) {
 			Addresses:      []string{accelCIDR},
 			AddrGenMode:    hostSysctl(t, sysctl.AddrGenMode("default", "")),
 			AcceptRA:       hostSysctl(t, sysctl.AcceptRA("default", "")),
+			MTU:            1500,
 		}, state)
 	})
 
@@ -88,7 +89,7 @@ func TestSetupAcceleratedUnderlayRebindsKernelDriver(t *testing.T) {
 		calls := recordCmdExec(t,
 			okCmd(
 				"grcli --err-exit --json --socket sock interface show name "+accelPort,
-				fmt.Sprintf(`{"name":%q,"type":"port","devargs":%q}`, accelPort, testPCIAddr),
+				fmt.Sprintf(`{"name":%q,"type":"port","devargs":%q,"mtu":1500}`, accelPort, testPCIAddr),
 			),
 			accelAddressAddCmd(),
 			accelPortUpCmd(),
@@ -137,7 +138,7 @@ func TestSetupAcceleratedUnderlayMovesBifurcatedNetdev(t *testing.T) {
 		calls := recordCmdExec(t,
 			okCmd(
 				"grcli --err-exit --json --socket sock interface show name "+accelPort,
-				fmt.Sprintf(`{"name":%q,"type":"port","devargs":%q}`, accelPort, testPCIAddr),
+				fmt.Sprintf(`{"name":%q,"type":"port","devargs":%q,"mtu":1500}`, accelPort, testPCIAddr),
 			),
 			accelAddressAddCmd(),
 			accelPortUpCmd(),
@@ -206,6 +207,7 @@ func TestRestoreAcceleratedDeviceMovesBifurcatedNetdevBack(t *testing.T) {
 		Addresses:      []string{accelCIDR},
 		AddrGenMode:    "1",
 		AcceptRA:       "2",
+		MTU:            9000,
 	}
 	require.NoError(t, restoreAcceleratedDevice(context.Background(), accelTestNSPath, state, sysfs.Sysfs))
 
@@ -214,11 +216,13 @@ func TestRestoreAcceleratedDeviceMovesBifurcatedNetdevBack(t *testing.T) {
 	assert.Contains(t, linkAddresses(t, link), accelCIDR)
 	assert.Equal(t, "1", hostSysctl(t, sysctl.AddrGenMode(accelIface, "")))
 	assert.Equal(t, "2", hostSysctl(t, sysctl.AcceptRA(accelIface, "")))
+	assert.Equal(t, 9000, link.Attrs().MTU)
 }
 
-func TestRetrieveDeviceStateRecordsIPv6Settings(t *testing.T) {
-	addHostDummy(t, accelCIDR)
+func TestRetrieveDeviceStateRecordsIPv6SettingsAndMTU(t *testing.T) {
+	link := addHostDummy(t, accelCIDR)
 	require.NoError(t, sysctl.Ensure(sysctl.AddrGenMode(accelIface, "1"), sysctl.AcceptRA(accelIface, "2")))
+	require.NoError(t, netlink.LinkSetMTU(link, 9000))
 
 	state, err := retrieveDeviceState(accelIface, PortModeTAP, pci.Sysfs{})
 	require.NoError(t, err)
@@ -228,6 +232,7 @@ func TestRetrieveDeviceStateRecordsIPv6Settings(t *testing.T) {
 		Addresses:     []string{accelCIDR},
 		AddrGenMode:   "1",
 		AcceptRA:      "2",
+		MTU:           9000,
 	}, state)
 }
 
@@ -260,7 +265,8 @@ func accelPortCalls() []cmdCall {
 
 func accelPortAddCmd() cmdCall {
 	return okCmdEmptyOutput(
-		fmt.Sprintf("grcli --err-exit --json --socket sock interface add port %s devargs %s down", accelPort, testPCIAddr),
+		fmt.Sprintf("grcli --err-exit --json --socket sock interface add port %s devargs %s mtu 1500 down",
+			accelPort, testPCIAddr),
 	)
 }
 

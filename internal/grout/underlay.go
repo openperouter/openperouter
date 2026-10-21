@@ -322,6 +322,11 @@ func restoreNetdev(ctx context.Context, targetNS string, state devicestate.State
 
 func applyStateToLink(ctx context.Context, link netlink.Link, state devicestate.State) error {
 	name := link.Attrs().Name
+	if state.MTU > 0 {
+		if err := netlink.LinkSetMTU(link, state.MTU); err != nil {
+			return fmt.Errorf("failed to restore MTU %d on kernel netdev [%s]: %w", state.MTU, name, err)
+		}
+	}
 	if err := restoreIPv6Settings(name, state); err != nil {
 		return err
 	}
@@ -356,6 +361,7 @@ func configureUnderlayTapPort(
 
 	opts.Devargs = fmt.Sprintf("net_tap%s,remote=%s,iface=%s",
 		makeTapRandomString(), underlayInterface, "tap_"+underlayInterface)
+	opts.MTU = state.MTU
 	if err := client.ensurePort(ctx, portName, opts); err != nil {
 		return fmt.Errorf("failed to create grout underlay port: %w", err)
 	}
@@ -402,6 +408,12 @@ func retrieveDeviceState(
 		state.PCIAddress = pciAddr
 		state.OriginalDriver = driver
 	}
+
+	link, err := netlink.LinkByName(interfaceName)
+	if err != nil {
+		return devicestate.State{}, fmt.Errorf("failed to find interface %s: %w", interfaceName, err)
+	}
+	state.MTU = link.Attrs().MTU
 
 	netlinkAddrs, err := hostnetwork.AddressesForInterface(interfaceName, hostnetwork.ExcludeLinkLocal())
 	if err != nil {

@@ -31,6 +31,11 @@ type Store struct {
 // AddrGenMode and AcceptRA hold the IPv6 sysctl values the setup overrides
 // on the kernel interface. They are empty when IPv6 is disabled on it, and
 // are then left untouched on restore.
+//
+// MTU is the original MTU of the kernel interface. Grout ports are created
+// with it, as grout would otherwise default them to 1500. It is restored on
+// teardown, as a TAP port sets its own MTU on the remote interface, and a
+// driver rebind resets it.
 type State struct {
 	InterfaceName  string   `json:"interfaceName"`
 	PCIAddress     string   `json:"pciAddress,omitempty"`
@@ -38,6 +43,7 @@ type State struct {
 	Addresses      []string `json:"addresses"`
 	AddrGenMode    string   `json:"addrGenMode,omitempty"`
 	AcceptRA       string   `json:"acceptRA,omitempty"`
+	MTU            int      `json:"mtu,omitempty"`
 }
 
 func (s Store) Save(state State) error {

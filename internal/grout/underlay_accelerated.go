@@ -95,6 +95,7 @@ func configureUnderlayAcceleratedPort(
 	portName := UnderlayPortName(state.InterfaceName)
 
 	opts.Devargs = state.PCIAddress
+	opts.MTU = state.MTU
 	if err := client.ensurePort(ctx, portName, opts); err != nil {
 		return fmt.Errorf("failed to create grout DPDK port %s: %w", portName, err)
 	}
