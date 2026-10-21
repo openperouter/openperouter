@@ -89,6 +89,7 @@ openperouter:
 | `datapath` | string | `kernel` | Datapath to use for L3 forwarding. "kernel" uses the standard Linux kernel datapath; "grout" adds a DPDK-accelerated sidecar that runs alongside FRR |
 | `grout.tapUnderlay` | bool | `false` | Use TAP ports for grout underlay interfaces instead of PCI ports |
 | `grout.testMode` | bool | `false` | Run grout in test mode. See [Test mode](#test-mode) |
+| `grout.maxMTU` | int | `""` (grout default, 1800) | Maximum MTU grout accepts on its ports. See [MTU](#mtu) |
 | `grout.image.repository` | string | `quay.io/openperouter/router` | Grout container image repository |
 | `grout.image.tag` | string | `main-grout` | Grout container image tag |
 | `grout.image.pullPolicy` | string | `""` | Image pull policy (defaults to Kubernetes default) |
@@ -133,6 +134,27 @@ openperouter:
 
 With the operator, test mode is set through the `GROUT_TEST_MODE` environment
 variable on the operator deployment rather than through the Helm values.
+
+### MTU
+
+The grout underlay ports inherit the MTU of the underlay interfaces they are
+attached to, so that the underlay MTU is preserved. Grout refuses ports whose
+MTU exceeds its maximum MTU, which defaults to 1800: when the underlay
+interfaces use a larger MTU (for example jumbo frames), raise it through
+`openperouter.grout.maxMTU`, otherwise the underlay setup fails:
+
+```yaml
+openperouter:
+  datapath: grout
+  grout:
+    maxMTU: 9500
+```
+
+Every packet buffer is sized after the maximum MTU, so larger values increase
+grout memory usage.
+
+With the operator, the maximum MTU is set through the `GROUT_MAX_MTU`
+environment variable on the operator deployment.
 
 ## Enabling Grout for L3Passthrough
 

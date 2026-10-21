@@ -23,6 +23,7 @@ type EnvConfig struct {
 	GroutImage            *ImageInfo
 	GroutTestMode         bool
 	GroutTapUnderlay      bool
+	GroutMaxMTU           int
 	FRRMetricsPort        int
 	SecureFRRMetricsPort  int
 	MetricsPort           int
@@ -59,6 +60,10 @@ func FromEnvironment(isOpenshift bool) (EnvConfig, error) {
 	res.GroutImage = optionalImageFromEnv("GROUT_IMAGE")
 	res.GroutTestMode = boolFromEnv("GROUT_TEST_MODE")
 	res.GroutTapUnderlay = boolFromEnv("GROUT_TAP_UNDERLAY")
+	res.GroutMaxMTU, err = intValueWithDefault("GROUT_MAX_MTU", 0)
+	if err != nil {
+		return EnvConfig{}, err
+	}
 
 	res.FRRMetricsPort, err = intValueWithDefault("FRR_METRICS_PORT", 7473)
 	if err != nil {
@@ -97,6 +102,10 @@ func validate(config EnvConfig) error {
 	}
 	if config.SecureFRRMetricsPort != 0 && !config.DeployServiceMonitors {
 		return fmt.Errorf("secureFRRMetricsPort is available only if service monitors are enabled")
+	}
+	// 0 is the sentinel for "use the grout default", so only negative values are invalid.
+	if config.GroutMaxMTU < 0 {
+		return fmt.Errorf("groutMaxMTU must be 0 (default) or positive, was %d", config.GroutMaxMTU)
 	}
 	return nil
 }

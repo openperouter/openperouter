@@ -306,6 +306,10 @@ spec:
             value: "128"
           - name: GROUT_PORT_QUEUE_SIZE
             value: "128"
+          {{- with .Values.openperouter.grout.maxMTU }}
+          - name: GROUT_MAX_MTU
+            value: {{ . | quote }}
+          {{- end }}
           {{- if .Values.openperouter.grout.testMode }}
           # DUMMY skips the LPM tables that dominate the per-VRF FIB cost.
           - name: GROUT_FIB4_ALGORITHM

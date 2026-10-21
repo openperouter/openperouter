@@ -100,6 +100,11 @@ openperouter:
     # prefix match lookups. Leave it disabled for a hugepage-backed dataplane,
     # requesting hugepages under grout.resources.
     testMode: false
+    # -- Maximum MTU grout accepts on its ports (GROUT_MAX_MTU). The underlay
+    # ports take the MTU of the underlay interfaces, so it must be at least as
+    # large as the underlay MTU. Larger values grow every packet buffer.
+    # Leave it empty to use the grout default (1800).
+    maxMTU: ""
     image:
       repository: quay.io/openperouter/router
       tag: "main-grout"

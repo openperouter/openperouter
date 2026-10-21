@@ -299,6 +299,7 @@ func TestParseChartWithGroutEnabled(t *testing.T) {
 					g.Expect(env["GROUT_PORT_QUEUE_SIZE"]).To(Equal("128"))
 					g.Expect(env).ToNot(HaveKey("GROUT_FIB4_ALGORITHM"))
 					g.Expect(env).ToNot(HaveKey("GROUT_FIB6_ALGORITHM"))
+					g.Expect(env).ToNot(HaveKey("GROUT_MAX_MTU"))
 					g.Expect(c.Command).ToNot(ContainElement(ContainSubstring("--test-mode")))
 				}
 			}
@@ -342,6 +343,7 @@ func TestParseChartWithGroutTestModeAndTapUnderlay(t *testing.T) {
 	envConfig := defaultEnvConfig
 	envConfig.GroutTestMode = true
 	envConfig.GroutTapUnderlay = true
+	envConfig.GroutMaxMTU = 9500
 
 	objs, err := chart.Objects(envConfig, openperouter)
 	g.Expect(err).ToNot(HaveOccurred())
@@ -375,6 +377,7 @@ func TestParseChartWithGroutTestModeAndTapUnderlay(t *testing.T) {
 			}
 			g.Expect(env["GROUT_FIB4_ALGORITHM"]).To(Equal("DUMMY"))
 			g.Expect(env["GROUT_FIB6_ALGORITHM"]).To(Equal("DUMMY"))
+			g.Expect(env["GROUT_MAX_MTU"]).To(Equal("9500"))
 			g.Expect(c.Command).To(ContainElement(ContainSubstring("--test-mode")))
 			groutFound = true
 		}

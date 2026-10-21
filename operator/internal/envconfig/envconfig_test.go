@@ -110,6 +110,40 @@ func TestFromEnvironment(t *testing.T) {
 			},
 		},
 		{
+			desc: "with grout max MTU",
+			setup: func() {
+				setBasics()
+				_ = os.Setenv("GROUT_MAX_MTU", "9500")
+			},
+			expected: EnvConfig{
+				Namespace: "test-namespace",
+				ControllerImage: ImageInfo{
+					Repo: "test-controller-image",
+					Tag:  "1",
+				},
+				FRRImage: ImageInfo{
+					Repo: "test-frr-image",
+					Tag:  "2",
+				},
+				KubeRBacImage: ImageInfo{
+					Repo: "test-kube-rbac-proxy-image",
+					Tag:  "3",
+				},
+				GroutMaxMTU:    9500,
+				MetricsPort:    7472,
+				FRRMetricsPort: 7473,
+			},
+		},
+		{
+			desc: "with negative grout max MTU",
+			setup: func() {
+				setBasics()
+				_ = os.Setenv("GROUT_MAX_MTU", "-1")
+			},
+			expected:    EnvConfig{},
+			expectedErr: true,
+		},
+		{
 			desc: "override ports",
 			setup: func() {
 				setBasics()
@@ -179,6 +213,7 @@ func unset() {
 	_ = os.Unsetenv("GROUT_IMAGE")
 	_ = os.Unsetenv("GROUT_TEST_MODE")
 	_ = os.Unsetenv("GROUT_TAP_UNDERLAY")
+	_ = os.Unsetenv("GROUT_MAX_MTU")
 }
 
 func setBasics() {

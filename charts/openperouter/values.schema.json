@@ -377,6 +377,16 @@
                 "description": "Run grout in test mode. Test mode requires no hugepages and uses dummy FIB algorithms. Leave it disabled for a hugepage-backed dataplane, requesting hugepages under grout.resources.",
                 "default": false
               },
+              "maxMTU": {
+                "type": [
+                  "integer",
+                  "string"
+                ],
+                "minimum": 1,
+                "pattern": "^(|[1-9][0-9]*)$",
+                "description": "Maximum MTU grout accepts on its ports (GROUT_MAX_MTU). It must be at least as large as the underlay interfaces MTU. Leave it empty to use the grout default.",
+                "default": ""
+              },
               "image": {
                 "type": "object",
                 "description": "Configuration for the grout container image.",

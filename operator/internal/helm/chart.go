@@ -171,7 +171,7 @@ func patchChartValues(envConfig envconfig.EnvConfig, crdConfig *operatorapi.Open
 			}
 		}
 
-		openperouterValues["grout"] = map[string]any{
+		groutValues := map[string]any{
 			"enabled":     true,
 			"testMode":    envConfig.GroutTestMode,
 			"tapUnderlay": envConfig.GroutTapUnderlay,
@@ -180,6 +180,10 @@ func patchChartValues(envConfig envconfig.EnvConfig, crdConfig *operatorapi.Open
 				"tag":        groutImage.Tag,
 			},
 		}
+		if envConfig.GroutMaxMTU > 0 {
+			groutValues["maxMTU"] = envConfig.GroutMaxMTU
+		}
+		openperouterValues["grout"] = groutValues
 	}
 
 	valuesMap["openperouter"] = openperouterValues

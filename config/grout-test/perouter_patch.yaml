@@ -18,6 +18,8 @@ spec:
           value: DUMMY
         - name: GROUT_FIB6_ALGORITHM
           value: DUMMY
+        - name: GROUT_MAX_MTU
+          value: "9500"
         resources:
           requests:
             hugepages-1Gi: null

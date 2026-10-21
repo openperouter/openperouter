@@ -42,6 +42,7 @@ Kubernetes: `>= 1.19.0-0`
 | openperouter.grout.image.pullPolicy | string | `""` |  |
 | openperouter.grout.image.repository | string | `"quay.io/openperouter/router"` |  |
 | openperouter.grout.image.tag | string | `"main-grout"` |  |
+| openperouter.grout.maxMTU | string | `""` | Maximum MTU grout accepts on its ports (GROUT_MAX_MTU). The underlay ports take the MTU of the underlay interfaces, so it must be at least as large as the underlay MTU. Larger values grow every packet buffer. Leave it empty to use the grout default (1800). |
 | openperouter.grout.resources.limits.cpu | string | `"500m"` |  |
 | openperouter.grout.resources.limits.memory | string | `"2Gi"` |  |
 | openperouter.grout.resources.requests.cpu | string | `"250m"` |  |
