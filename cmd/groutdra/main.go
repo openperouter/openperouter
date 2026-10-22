@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -53,8 +54,8 @@ func run(ctx context.Context) error {
 		kubeletplugin.NodeName(nodeName),
 		kubeletplugin.PluginDataDirectoryPath(pluginDir),
 		kubeletplugin.CDIDirectory(groutdra.CDIDir),
-		kubeletplugin.EnableDeviceMetadata(true),
-		kubeletplugin.MetadataVersions(metadatav1alpha1.SchemeGroupVersion),
+		kubeletplugin.EnableDeviceMetadata(true, []schema.GroupVersion{metadatav1alpha1.SchemeGroupVersion}),
+		kubeletplugin.HealthService(false),
 	)
 	if err != nil {
 		return err

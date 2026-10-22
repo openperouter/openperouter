@@ -1,5 +1,6 @@
-# groutdra: kubelet DRA plugin. Includes grcli from the same grout RPM as Dockerfile.grout.
-ARG GROUT_VERSION=v0.18.0
+# groutdra: kubelet DRA plugin. Use the exact router image as its runtime base,
+# so grout/grcli and their runtime libraries match the router datapath build.
+ARG GROUT_TOOLS_IMAGE=openperouter/router:grout-v0.19.0-qsize4096-r1
 
 FROM golang:1.26.4 AS builder
 
@@ -23,17 +24,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
   --mount=type=bind,source=config,target=config \
   CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -o groutdra ./cmd/groutdra
 
-FROM quay.io/centos/centos:stream10
-
-ARG TARGETARCH
-ARG GROUT_VERSION
-
-RUN dnf install -y curl && \
-    RPMARCH=$(case ${TARGETARCH} in amd64) echo x86_64;; arm64) echo aarch64;; *) echo ${TARGETARCH};; esac) && \
-    curl -fsSL -o /tmp/grout.rpm "https://github.com/DPDK/grout/releases/download/${GROUT_VERSION}/grout.${RPMARCH}.rpm" && \
-    dnf install -y /tmp/grout.rpm && \
-    dnf clean all && \
-    rm -f /tmp/grout.rpm
+FROM ${GROUT_TOOLS_IMAGE}
 
 COPY --from=builder /go/openperouter/groutdra /usr/bin/groutdra
 
