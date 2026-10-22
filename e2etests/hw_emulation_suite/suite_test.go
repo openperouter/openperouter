@@ -40,6 +40,10 @@ func TestMain(m *testing.M) {
 	if testing.Short() {
 		return
 	}
+
+	// Underlay host ifaces are applied in BeforeSuite via RegisterLinks
+	// (underlayHostIfaces in --nodelink-config).
+
 	os.Exit(m.Run())
 }
 

@@ -16,7 +16,12 @@ const (
 )
 
 type nodeLinksConfig struct {
-	Nodes map[string]nodeConfig `json:"nodes"`
+	// UnderlayHostIfaces are the host NetworkDevice names used in Underlay CRs
+	// and netns checks. Shared across underlay nodes for a given lab/run.
+	// Omit or leave empty for Kind defaults (toswitch1, toswitch2). One name
+	// disables DualLeaf; two names enable it.
+	UnderlayHostIfaces []string              `json:"underlayHostIfaces,omitempty"`
+	Nodes              map[string]nodeConfig `json:"nodes"`
 }
 
 type nodeConfig struct {
@@ -42,6 +47,14 @@ func RegisterLinks(path string) error {
 		return fmt.Errorf("parsing node links config %s: %w", path, err)
 	}
 
-	registerNodeLinks(cfg)
+	ifaceCfg, err := ResolveUnderlayHostIfaces(cfg.UnderlayHostIfaces)
+	if err != nil {
+		return fmt.Errorf("underlayHostIfaces in %s: %w", path, err)
+	}
+	ConfigureUnderlayIfaces(ifaceCfg)
+
+	if err := registerNodeLinks(cfg, ifaceCfg.DualLeaf); err != nil {
+		return fmt.Errorf("node links in %s: %w", path, err)
+	}
 	return nil
 }
