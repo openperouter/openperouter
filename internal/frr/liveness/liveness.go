@@ -7,43 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"maps"
 	"os"
-	"slices"
 	"strconv"
 	"strings"
 	"syscall"
 
 	"github.com/openperouter/openperouter/internal/frr/vtysh"
 )
-
-func PingFrr(frrCli vtysh.Cli) error {
-	res, err := frrCli("show daemons")
-	if err != nil {
-		return fmt.Errorf("fail to list FRR daemons: %w", err)
-	}
-
-	expected := map[string]struct{}{
-		"bfdd":     {},
-		"bgpd":     {},
-		"staticd":  {},
-		"watchfrr": {},
-		"zebra":    {},
-	}
-
-	runningDaemons := strings.FieldsSeq(res)
-	for d := range runningDaemons {
-		delete(expected, d)
-	}
-	if len(expected) > 0 {
-		return fmt.Errorf(
-			"some FRR daemons are not running. got: %q missing: %q",
-			res,
-			strings.Join(slices.Collect(maps.Keys(expected)), ","),
-		)
-	}
-	return nil
-}
 
 // ProcessAlive reports whether the process identified by pid exists.
 func ProcessAlive(pid int) error {

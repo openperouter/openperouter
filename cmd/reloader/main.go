@@ -103,13 +103,12 @@ func serveReload(args Args) error {
 			liveness.ProcessAlive,
 		)
 	}
-	frrReady := func() error {
-		return liveness.PingFrr(vtysh.NewCLIWithTimeout(args.vtyshTimeout))
-	}
+
+	watchfrrHealthHandler := health(watchfrrHealth)
 	healthServer := newServer(
 		[]handlerConfig{
-			{pattern: "/healthz", handler: health(watchfrrHealth)},
-			{pattern: "/readyz", handler: health(frrReady)},
+			{pattern: "/healthz", handler: watchfrrHealthHandler},
+			{pattern: "/readyz", handler: watchfrrHealthHandler},
 		},
 		withEndpoint(args.bindAddress),
 	)
