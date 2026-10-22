@@ -20,7 +20,10 @@ const GRPortDevargsSize = 256
 const VhostGuestGatewayCIDR = "192.169.20.1/24"
 
 const (
-	vhostQSize         = 1024
+	// Use the larger virtio/vhost queue while diagnosing guest-facing TX
+	// pressure in the native DPDK benchmark. Verify the effective value with
+	// `grcli interface show` after the port is created.
+	vhostQSize         = 4096
 	vhostInstanceMin   = 100
 	vhostInstanceSpan  = 900 // 100..999, away from typical net_tap0
 	vhostSocketPerm    = 0o777
@@ -52,10 +55,9 @@ func VhostDevargs(name, socketPath string, queues uint, client bool) (string, er
 	if queues == 0 {
 		queues = 1
 	}
-	// Enable DPDK vhost IOMMU support so the backend advertises
-	// VHOST_USER_PROTOCOL_F_IOMMU_PLATFORM. This is required when the QEMU
-	// virtio frontend uses iommu_platform/access-platform for a guest vIOMMU.
-	devargs := fmt.Sprintf("net_vhost%d,iface=%s,queues=%d,iommu-support=1", vhostInstanceIndex(name), socketPath, queues)
+	// Keep vhost IOMMU support disabled for the no-IOMMU benchmark.
+	// The guest virtio frontend must also avoid access-platform negotiation.
+	devargs := fmt.Sprintf("net_vhost%d,iface=%s,queues=%d", vhostInstanceIndex(name), socketPath, queues)
 	if client {
 		devargs += ",client=1"
 	}

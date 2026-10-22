@@ -37,6 +37,10 @@ type Driver struct {
 	pending map[types.UID]context.CancelFunc
 }
 
+func (d *Driver) WatchHealthStatus(context.Context, chan<- kubeletplugin.DeviceHealthReport) error {
+	return kubeletplugin.ErrHealthNotSupported
+}
+
 func New(groutSock string) *Driver {
 	return &Driver{
 		grout:   grout.NewClient(groutSock),
@@ -130,6 +134,10 @@ func (d *Driver) prepareOne(ctx context.Context, claim *resourceapi.ResourceClai
 	}
 
 	path := podSock
+	// TRex initializes its DPDK ports with an MTU above 1500. Advertise a
+	// jumbo-capable vhost MTU so the virtio frontend accepts that setup; the
+	// benchmark traffic itself remains 1518 bytes or smaller.
+	mtu := int64(9000)
 	return kubeletplugin.Device{
 		Requests:     []string{request},
 		PoolName:     result.Pool,
@@ -138,6 +146,7 @@ func (d *Driver) prepareOne(ctx context.Context, claim *resourceapi.ResourceClai
 		Metadata: &kubeletplugin.DeviceMetadata{
 			Attributes: map[string]resourceapi.DeviceAttribute{
 				VhostPathAttr: {StringValue: &path},
+				"mtu":         {IntValue: &mtu},
 			},
 		},
 	}, nil
@@ -172,7 +181,10 @@ func writeKubeVirtMetadata(claim *resourceapi.ResourceClaim, result resourceapi.
 		"podClaimName": podClaimName,
 		"requests": []any{map[string]any{"name": result.Request, "devices": []any{map[string]any{
 			"driver": result.Driver, "pool": result.Pool, "name": result.Device,
-			"attributes": map[string]any{VhostPathAttr: map[string]string{"string": socketPath}},
+			"attributes": map[string]any{
+				VhostPathAttr: map[string]string{"string": socketPath},
+				"mtu":         map[string]int64{"int": 9000},
+			},
 		}}}},
 	}
 	data, err := json.MarshalIndent(payload, "", "  ")
