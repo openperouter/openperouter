@@ -38,6 +38,25 @@ setup_kubeconfigs() {
     fi
 
     export KUBECONFIG="$KUBECONFIG_PATH"
+
+    # Label nodes for underlay e2e assertions (e2e.openperouter.io/underlay=true).
+    label_underlay_e2e_nodes "${CLUSTER_NAMES[@]}"
+}
+
+label_underlay_e2e_nodes() {
+    local cluster_names=("$@")
+    local cluster_name cluster_kubeconfig
+
+    for cluster_name in "${cluster_names[@]}"; do
+        if [[ ${#cluster_names[@]} -eq 1 ]]; then
+            cluster_kubeconfig="${KUBECONFIG_PATH}"
+        else
+            cluster_kubeconfig="${KUBECONFIG_PATH}-${cluster_name}"
+        fi
+        echo "Labeling underlay e2e nodes on cluster ${cluster_name}"
+        KUBECONFIG="${cluster_kubeconfig}" ${KUBECTL} label nodes --all \
+            e2e.openperouter.io/underlay=true --overwrite
+    done
 }
 
 setup_kubeconfigs

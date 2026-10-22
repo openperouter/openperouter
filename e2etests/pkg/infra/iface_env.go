@@ -13,25 +13,15 @@ const (
 	defaultUnderlayIface2 = "toswitch2"
 )
 
-// UnderlayIfacesConfig holds resolved underlay host interface names and
-// whether dual-leaf (second TOR) peering is enabled.
-//
-// DualLeaf gates inclusion of Iface2 in underlay fixtures and host-iface
-// checks. When DualLeaf is false, Iface2 is unused even if it still holds
-// the kind default name (toswitch2).
+// UnderlayIfacesConfig is the resolved underlay host iface names and dual-leaf flag.
 type UnderlayIfacesConfig struct {
 	Iface1   string
 	Iface2   string
 	DualLeaf bool
 }
 
-// ResolveUnderlayHostIfaces builds an UnderlayIfacesConfig from the
-// underlayHostIfaces list in nodelink JSON (see RegisterLinks).
-//
-//   - nil or empty: Kind defaults (toswitch1/toswitch2, DualLeaf enabled)
-//   - one name: DualLeaf disabled (single-uplink baremetal)
-//   - two names: DualLeaf enabled
-//   - more than two: error
+// ResolveUnderlayHostIfaces builds config from nodelink underlayHostIfaces.
+// Empty → Kind defaults; one name → single-leaf; two names → dual-leaf.
 func ResolveUnderlayHostIfaces(ifaces []string) (UnderlayIfacesConfig, error) {
 	switch len(ifaces) {
 	case 0:
@@ -63,8 +53,7 @@ func ResolveUnderlayHostIfaces(ifaces []string) (UnderlayIfacesConfig, error) {
 	}
 }
 
-// Ifaces returns the underlay host interface names that are in use.
-// When DualLeaf is false, only the primary interface is returned.
+// Ifaces returns the active underlay host iface names.
 func (c UnderlayIfacesConfig) Ifaces() []string {
 	if c.DualLeaf {
 		return []string{c.Iface1, c.Iface2}
@@ -78,34 +67,29 @@ var underlayIfaces = UnderlayIfacesConfig{
 	DualLeaf: true,
 }
 
-// ConfigureUnderlayIfaces installs the resolved underlay interface config used
-// by fixtures and helpers for the rest of the process, including the host
-// iface names checked by openperouter.UnderlayVethsExists. RegisterLinks
-// calls this from the underlayHostIfaces field in nodelink JSON.
+// ConfigureUnderlayIfaces applies cfg to underlay fixtures and netns checks.
 func ConfigureUnderlayIfaces(cfg UnderlayIfacesConfig) {
 	underlayIfaces = cfg
 	applyUnderlayInterfaces(cfg)
 	openperouter.SetUnderlayHostIfaces(cfg.Ifaces())
 }
 
-// UnderlayIface1 returns the configured primary underlay host interface name.
+// UnderlayIface1 returns the primary underlay host iface name.
 func UnderlayIface1() string {
 	return underlayIfaces.Iface1
 }
 
-// UnderlayIface2 returns the configured secondary underlay host interface name.
-// Meaningful only when DualLeafEnabled is true; fixtures omit it otherwise.
+// UnderlayIface2 returns the secondary underlay host iface name.
 func UnderlayIface2() string {
 	return underlayIfaces.Iface2
 }
 
-// UnderlayIfaces returns the underlay host interface names currently in use.
+// UnderlayIfaces returns the active underlay host iface names.
 func UnderlayIfaces() []string {
 	return underlayIfaces.Ifaces()
 }
 
-// DualLeafEnabled reports whether the second TOR path is active. Kind defaults
-// to enabled; a single entry in underlayHostIfaces disables it.
+// DualLeafEnabled reports whether the second TOR path is active.
 func DualLeafEnabled() bool {
 	return underlayIfaces.DualLeaf
 }

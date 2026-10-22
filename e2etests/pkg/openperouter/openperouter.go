@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"strings"
 
 	"github.com/openperouter/openperouter/e2etests/pkg/executor"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
@@ -69,6 +70,38 @@ func AreReady(routers Routers) error {
 	}
 	if !allPodsReady(rp.pods) {
 		return fmt.Errorf("not all router pods are non-terminating and ready")
+	}
+	return nil
+}
+
+// AreReadyOnNodes is like AreReady for router pods on the given node names.
+func AreReadyOnNodes(cs clientset.Interface, nodeNames map[string]bool) error {
+	pods, err := RouterPodsForNodes(cs, nodeNames)
+	if err != nil {
+		return err
+	}
+	covered := map[string]bool{}
+	for _, p := range pods {
+		covered[p.Spec.NodeName] = true
+	}
+	missing := []string{}
+	for node, selected := range nodeNames {
+		if !selected || covered[node] {
+			continue
+		}
+		missing = append(missing, node)
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("no router pod on selected nodes: %s", strings.Join(missing, ", "))
+	}
+	notReady := []string{}
+	for _, p := range pods {
+		if p.DeletionTimestamp != nil || !k8s.PodIsReady(p) {
+			notReady = append(notReady, fmt.Sprintf("%s/%s", p.Spec.NodeName, p.Name))
+		}
+	}
+	if len(notReady) > 0 {
+		return fmt.Errorf("router pods not ready on selected nodes: %s", strings.Join(notReady, ", "))
 	}
 	return nil
 }

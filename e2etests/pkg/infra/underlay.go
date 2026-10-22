@@ -13,8 +13,7 @@ import (
 // and restore the old interfaces before setting up the new ones. While this is now graceful (no pod restart
 // required), changing interfaces mid-test can still disrupt E2E tests that cache router state in BeforeAll().
 //
-// Interface names default to toswitch1/toswitch2. RegisterLinks overrides them
-// from underlayHostIfaces in the nodelink JSON (--nodelink-config).
+// Interface names default to toswitch1/toswitch2; RegisterLinks may override them.
 
 var defaultInterfaces []v1alpha1.UnderlayInterface
 
@@ -39,9 +38,7 @@ func buildDefaultInterfaces(cfg UnderlayIfacesConfig) []v1alpha1.UnderlayInterfa
 	return ifaces
 }
 
-// Canonical dual-leaf neighbor lists for fixtures that peer both TORs.
-// Captured once in init before DualLeaf trimming so ConfigureUnderlayIfaces
-// can restore the full set when DualLeaf is enabled again.
+// Full dual-leaf neighbor lists; trimmed by ConfigureUnderlayIfaces when needed.
 var (
 	underlayNeighborsFull           []v1alpha1.Neighbor
 	underlayIPv6NeighborsFull       []v1alpha1.Neighbor
@@ -49,9 +46,7 @@ var (
 	underlayListenIPv6NeighborsFull []v1alpha1.Neighbor
 )
 
-// neighborsFor returns a copy of full when DualLeaf is true, otherwise only
-// the primary (first) neighbor so single-uplink fixtures do not keep a dead
-// second TOR session.
+// neighborsFor returns full when dualLeaf is set, otherwise only the first neighbor.
 func neighborsFor(dualLeaf bool, full []v1alpha1.Neighbor) []v1alpha1.Neighbor {
 	n := full
 	if !dualLeaf && len(full) > 1 {
@@ -62,10 +57,7 @@ func neighborsFor(dualLeaf bool, full []v1alpha1.Neighbor) []v1alpha1.Neighbor {
 	return out
 }
 
-// applyUnderlayInterfaces rebuilds DefaultInterfaces and dual-leaf neighbors,
-// then wires them into the shared underlay fixtures. Invoked from
-// ConfigureUnderlayIfaces. When DualLeaf is false, the second interface and
-// second TOR neighbor are omitted.
+// applyUnderlayInterfaces updates shared underlay fixtures from cfg.
 func applyUnderlayInterfaces(cfg UnderlayIfacesConfig) {
 	defaultInterfaces = buildDefaultInterfaces(cfg)
 	DefaultInterfaces = defaultInterfaces

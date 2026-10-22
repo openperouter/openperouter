@@ -16,10 +16,7 @@ const (
 )
 
 type nodeLinksConfig struct {
-	// UnderlayHostIfaces are the host NetworkDevice names used in Underlay CRs
-	// and netns checks. Shared across underlay nodes for a given lab/run.
-	// Omit or leave empty for Kind defaults (toswitch1, toswitch2). One name
-	// disables DualLeaf; two names enable it.
+	// UnderlayHostIfaces are host NIC names for Underlay CRs (empty = Kind defaults).
 	UnderlayHostIfaces []string              `json:"underlayHostIfaces,omitempty"`
 	Nodes              map[string]nodeConfig `json:"nodes"`
 }

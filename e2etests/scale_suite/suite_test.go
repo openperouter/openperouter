@@ -34,9 +34,6 @@ func TestMain(m *testing.M) {
 		return
 	}
 
-	// Scale suite uses Kind underlay iface defaults from package init.
-	// Suites that call RegisterLinks override via underlayHostIfaces in nodelink JSON.
-
 	os.Exit(m.Run())
 }
 

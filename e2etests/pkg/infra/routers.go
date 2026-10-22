@@ -64,9 +64,7 @@ func registerFabricLinks() {
 }
 
 // registerNodeLinks registers per-node underlay links from nodelink JSON.
-// dualLeaf comes from underlayHostIfaces: when true, leaf2 fields required for
-// any leaf1 counterpart that is set (and ipForKindLeaf2 is always required).
-// When false, leaf2 fields are ignored so single-uplink labs can omit them.
+// When dualLeaf is true, leaf2 fields are required; otherwise they are ignored.
 func registerNodeLinks(cfg nodeLinksConfig, dualLeaf bool) error {
 	if len(cfg.Nodes) == 0 {
 		return fmt.Errorf("nodelink config has no nodes")

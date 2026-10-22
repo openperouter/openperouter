@@ -101,14 +101,11 @@ func UnderlayConfigured(nodeName string) (bool, error) {
 	return false, nil
 }
 
-// underlayHostIfaces are the host NetworkDevice names checked by
-// UnderlayVethsExists. Defaults match kind (toswitch1/toswitch2); overridden
-// via ConfigureUnderlayIfaces / cfg.Ifaces().
+// underlayHostIfaces are the host ifaces checked by UnderlayVethsExists.
 var underlayHostIfaces = []string{"toswitch1", "toswitch2"}
 
-// SetUnderlayHostIfaces installs the host underlay interface names used by
-// netns helpers. Prefer infra.ConfigureUnderlayIfaces, which calls this with
-// cfg.Ifaces(). A nil/empty slice is a no-op and keeps the kind defaults.
+// SetUnderlayHostIfaces sets the host underlay ifaces for netns helpers.
+// Empty is a no-op (keeps Kind defaults).
 func SetUnderlayHostIfaces(ifaces []string) {
 	if len(ifaces) == 0 {
 		return

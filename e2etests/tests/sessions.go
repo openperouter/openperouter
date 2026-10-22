@@ -39,22 +39,39 @@ var _ = Describe("Router BGP sessions", Ordered, GroutSupport, func() {
 		cs = k8sclient.New()
 		_, err = openperouter.Get(cs, HostMode)
 		Expect(err).NotTo(HaveOccurred())
-		frrk8sPods, err = frrk8s.Pods(cs)
+		allFRRK8sPods, err := frrk8s.Pods(cs)
 		Expect(err).NotTo(HaveOccurred())
 		nodesItems, err := cs.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred())
-		nodes = nodesItems.Items
+		nodes = infra.NodesWithUnderlayLabel(nodesItems.Items)
+		underlayNodeNames := infra.NodeNames(nodes)
+		Expect(nodes).NotTo(BeEmpty(), "no nodes with label %s=%s", infra.UnderlayE2ELabelKey, infra.UnderlayE2ELabelValue)
+		// Host-session checks must not include frr-k8s on unlabeled nodes
+		frrk8sPods = nil
+		for _, p := range allFRRK8sPods {
+			if underlayNodeNames[p.Spec.NodeName] {
+				frrk8sPods = append(frrk8sPods, p)
+			}
+		}
+		Expect(frrk8sPods).NotTo(BeEmpty(), "no frr-k8s pods on underlay-labeled nodes")
 
+		underlay := infra.Underlay
+		if !infra.DualLeafEnabled() {
+			// Single uplink: peer leafkind1 only (same shape as Single Session Baseline)
+			underlay = singleSessionUnderlayCR()
+		}
 		err = Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{
-				infra.Underlay,
+				underlay,
 			},
 		})
 		Expect(err).NotTo(HaveOccurred())
 
 		// Configure leaf switches with node neighbors
 		Expect(infra.LeafKind1Config.UpdateConfig(nodes, infra.LeafKindConfiguration{})).To(Succeed())
-		Expect(infra.LeafKind2Config.UpdateConfig(nodes, infra.LeafKindConfiguration{})).To(Succeed())
+		if infra.DualLeafEnabled() {
+			Expect(infra.LeafKind2Config.UpdateConfig(nodes, infra.LeafKindConfiguration{})).To(Succeed())
+		}
 	})
 
 	AfterAll(func() {
@@ -82,7 +99,10 @@ var _ = Describe("Router BGP sessions", Ordered, GroutSupport, func() {
 	})
 
 	validateTORSessions := func() {
-		leaves := []string{infra.KindLeaf, infra.KindLeaf2}
+		leaves := []string{infra.KindLeaf}
+		if infra.DualLeafEnabled() {
+			leaves = append(leaves, infra.KindLeaf2)
+		}
 		for _, leaf := range leaves {
 			exec := executor.ForContainer(leaf)
 			Eventually(func() error {
@@ -527,11 +547,21 @@ var _ = Describe("Router BGP sessions", Ordered, GroutSupport, func() {
 		validateTORSessions()
 
 		By("deleting the underlay removes the session with the TOR switches")
-		err := Updater.Client().Delete(context.Background(), &infra.Underlay)
+		// Package-level underlays bake Namespace at init (default openperouter-system),
+		// but Updater.Update uses the runtime flag namespace (e.g. openshift-openperouter).
+		underlayToDelete := infra.Underlay.DeepCopy()
+		if !infra.DualLeafEnabled() {
+			underlayToDelete = singleSessionUnderlay.DeepCopy()
+		}
+		underlayToDelete.SetNamespace(openperouter.Namespace)
+		err := Updater.Client().Delete(context.Background(), underlayToDelete)
 		Expect(err).NotTo(HaveOccurred())
 
-		// Validate sessions are down on both leaf nodes
-		leaves := []string{infra.KindLeaf, infra.KindLeaf2}
+		// Validate sessions are down on the TOR leaves we peered with
+		leaves := []string{infra.KindLeaf}
+		if infra.DualLeafEnabled() {
+			leaves = append(leaves, infra.KindLeaf2)
+		}
 		for _, leaf := range leaves {
 			exec := executor.ForContainer(leaf)
 			for _, node := range nodes {

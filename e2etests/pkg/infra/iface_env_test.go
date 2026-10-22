@@ -100,7 +100,6 @@ func TestBuildDefaultInterfacesDualLeaf(t *testing.T) {
 }
 
 func TestApplyUnderlayNeighborsDualLeaf(t *testing.T) {
-	// Shared package fixtures; restore even if a Fatalf skips the end of the test.
 	t.Cleanup(func() {
 		cfg, err := ResolveUnderlayHostIfaces(nil)
 		if err != nil {
