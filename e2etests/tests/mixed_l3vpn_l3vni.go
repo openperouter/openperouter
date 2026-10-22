@@ -414,7 +414,14 @@ func underlayBaseMTU(cs clientset.Interface, nodeName string) int {
 	By(fmt.Sprintf("reading the MTU of the underlay interfaces from the router netns on %s", nodeName))
 	minMTU := 0
 	for _, intfName := range intfNames {
-		mtu, err := readInterfaceMTU(router, openperouter.NamedNetns, intfName)
+		// Quirk: when connecting to the PERouter pods, we need to run `ip netns exec perouter cat /sys/class/net/%s/mtu`
+		// to access the sysctls of the correct namespace. When in HostMode, however, the executor will run the command
+		// inside a nested container where the correct /sys is already mounted, so `cat` can be run directly.
+		ns := ""
+		if !HostMode {
+			ns = openperouter.NamedNetns
+		}
+		mtu, err := readInterfaceMTU(router, ns, intfName)
 		Expect(err).NotTo(HaveOccurred())
 		if minMTU == 0 || mtu < minMTU {
 			minMTU = mtu
@@ -465,7 +472,7 @@ func readInterfaceMTU(exec executor.Executor, namespace, intfName string) (int, 
 	By(fmt.Sprintf("reading the MTU with %s", cmd))
 	mtuStr, err := exec.Exec("/bin/bash", "-c", cmd)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("reading the MTU failed, cmd: %q, out: %q, err: %w", cmd, mtuStr, err)
 	}
 	mtu, err := strconv.Atoi(strings.TrimSpace(mtuStr))
 	if err != nil {
