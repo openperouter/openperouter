@@ -97,18 +97,27 @@ func serveReload(args Args) error {
 		[]handlerConfig{{pattern: "/", handler: reloadHandler(args.frrConfigPath)}},
 	)
 
-	watchfrrHealth := func() error {
-		return liveness.WatchFRR(args.watchfrrPidFile,
-			vtysh.NewDaemonCLIWithTimeout(args.vtyshTimeout, "watchfrr"),
-			liveness.ProcessAlive,
-		)
-	}
-
-	watchfrrHealthHandler := health(watchfrrHealth)
+	watchfrrCli := vtysh.NewDaemonCLIWithTimeout(args.vtyshTimeout, "watchfrr")
 	healthServer := newServer(
 		[]handlerConfig{
-			{pattern: "/healthz", handler: watchfrrHealthHandler},
-			{pattern: "/readyz", handler: watchfrrHealthHandler},
+			{
+				pattern: "/healthz",
+				handler: health(func() error {
+					return liveness.WatchFRR(args.watchfrrPidFile,
+						watchfrrCli,
+						liveness.ProcessAlive,
+					)
+				}),
+			},
+			{
+				pattern: "/readyz",
+				handler: health(func() error {
+					return liveness.WatchFRRReady(args.watchfrrPidFile,
+						watchfrrCli,
+						liveness.ProcessAlive,
+					)
+				}),
+			},
 		},
 		withEndpoint(args.bindAddress),
 	)
