@@ -69,11 +69,17 @@ spec:
             exec nsenter --net=/var/run/netns/perouter /sbin/tini -- /usr/lib/frr/docker-start
         # The reloader serves the check independently of reload requests, so a reload in back-off
         # does not restart a healthy FRR.
+        startupProbe:
+          httpGet:
+            path: /healthz
+            port: 9080
+          periodSeconds: 5
+          timeoutSeconds: 5
+          failureThreshold: 24
         livenessProbe:
           httpGet:
             path: /healthz
             port: 9080
-          initialDelaySeconds: 30
           periodSeconds: 20
           timeoutSeconds: 10
           failureThreshold: 3
@@ -104,11 +110,17 @@ spec:
         - containerPort: 9080
           name: health
           protocol: TCP
+        startupProbe:
+          httpGet:
+            path: /healthz
+            port: 9080
+          periodSeconds: 5
+          timeoutSeconds: 5
+          failureThreshold: 24
         readinessProbe:
           httpGet:
             path: /readyz
             port: 9080
-          initialDelaySeconds: 5
           periodSeconds: 10
           timeoutSeconds: 10
           failureThreshold: 3
@@ -116,7 +128,6 @@ spec:
           httpGet:
             path: /healthz
             port: 9080
-          initialDelaySeconds: 15
           periodSeconds: 20
           timeoutSeconds: 10
           failureThreshold: 3

@@ -2671,12 +2671,25 @@ spec:
           value: "true"
         image: quay.io/openperouter/router:main
         imagePullPolicy: IfNotPresent
+        startupProbe:
+          failureThreshold: 24
+          httpGet:
+            path: /healthz
+            port: 9080
+          periodSeconds: 5
+          timeoutSeconds: 5
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /readyz
+            port: 9080
+          periodSeconds: 10
+          timeoutSeconds: 10
         livenessProbe:
           failureThreshold: 3
           httpGet:
             path: /healthz
             port: 9080
-          initialDelaySeconds: 15
           periodSeconds: 20
           timeoutSeconds: 10
         name: frr
@@ -2726,12 +2739,18 @@ spec:
         - containerPort: 9080
           name: health
           protocol: TCP
+        startupProbe:
+          failureThreshold: 24
+          httpGet:
+            path: /healthz
+            port: 9080
+          periodSeconds: 5
+          timeoutSeconds: 5
         readinessProbe:
           failureThreshold: 3
           httpGet:
             path: /readyz
             port: 9080
-          initialDelaySeconds: 5
           periodSeconds: 10
           timeoutSeconds: 10
         securityContext:

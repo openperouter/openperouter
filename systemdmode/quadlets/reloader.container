@@ -39,6 +39,7 @@ Exec=--frrconfig=/etc/perouter/frr.conf --loglevel=debug --unixsocket /etc/perou
 # Health check - kill container if FRR daemons stop responding,
 # systemd Restart=on-failure handles restart
 HealthCmd=wget -qO- http://127.0.0.1:9080/healthz || exit 1
+HealthStartPeriod=120s
 HealthInterval=20s
 HealthTimeout=5s
 HealthRetries=3
