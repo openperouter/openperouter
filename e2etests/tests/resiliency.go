@@ -26,6 +26,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const resiliencyNetnsPath = "/var/run/netns/perouter"
@@ -798,6 +799,42 @@ var _ = Describe("Configuration Resiliency", Ordered, func() {
 	var cs clientset.Interface
 	var nodes []v1.Node
 
+	goodUnderlay := v1alpha1.Underlay{
+		ObjectMeta: metav1.ObjectMeta{Name: "underlay", Namespace: openperouter.Namespace},
+		Spec: v1alpha1.UnderlaySpec{
+			ASN: 64514,
+			Interfaces: []v1alpha1.UnderlayInterface{
+				{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch1"}},
+			},
+			Neighbors: []v1alpha1.Neighbor{
+				{ASN: new(int64(64512)), Address: new("192.168.11.2")},
+			},
+			TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: []string{"100.65.0.0/24", "2001:db8:1234:5678::/64"}},
+			ISIS: &v1alpha1.ISISConfig{
+				BaseNet: "49.0001.0002.0003.0004.00", Level: new(int32(1)),
+				Interfaces: []v1alpha1.ISISInterface{{Name: "toswitch1", IPFamily: new(v1alpha1.IPFamilyIPv6)}},
+			},
+			SRV6: &v1alpha1.SRV6Config{Locator: v1alpha1.SRV6Locator{BasePrefix: "fd00:0:32::/48", Format: "usid-f3216"}},
+		},
+	}
+
+	goodL3VPN := v1alpha1.L3VPN{
+		ObjectMeta: metav1.ObjectMeta{Name: "good-vpn", Namespace: openperouter.Namespace},
+		Spec:       v1alpha1.L3VPNSpec{VRF: "good-vpn", RDAssignedNumber: 300, ImportRTs: []v1alpha1.RouteTarget{"64514:300"}},
+	}
+
+	goodPassthrough := v1alpha1.L3Passthrough{
+		ObjectMeta: metav1.ObjectMeta{Name: "good-pt", Namespace: openperouter.Namespace},
+		Spec: v1alpha1.L3PassthroughSpec{HostSession: v1alpha1.HostSession{
+			ASN: 64514, HostASN: new(int64(64515)), LocalCIDRs: []string{"192.169.10.0/24"},
+		}},
+	}
+
+	goodRawFRRConfig := v1alpha1.RawFRRConfig{
+		ObjectMeta: metav1.ObjectMeta{Name: "good-raw", Namespace: openperouter.Namespace},
+		Spec:       v1alpha1.RawFRRConfigSpec{RawConfig: "ip prefix-list selector-test seq 10 permit 10.111.0.0/16"},
+	}
+
 	goodL3VNI := v1alpha1.L3VNI{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "good-l3",
@@ -878,6 +915,67 @@ var _ = Describe("Configuration Resiliency", Ordered, func() {
 			expectNodeCondition(g, nodes[0].Name, "Ready", metav1.ConditionTrue)
 			expectNodeCondition(g, nodes[0].Name, "Degraded", metav1.ConditionFalse)
 		}, time.Minute, time.Second).Should(Succeed())
+	})
+
+	Context("when resources have invalid node selectors", func() {
+		AfterEach(func() {
+			dumpIfFails(cs)
+			badUnderlay := &v1alpha1.Underlay{ObjectMeta: metav1.ObjectMeta{
+				Name: "bad-underlay", Namespace: openperouter.Namespace,
+			}}
+			Expect(client.IgnoreNotFound(Updater.Client().Delete(context.Background(), badUnderlay))).To(Succeed())
+			Expect(Updater.Update(config.Resources{Underlays: []v1alpha1.Underlay{infra.Underlay(infra.Default)}})).To(Succeed())
+		})
+		It("should track resources with invalid node selectors in status", func() {
+			goodSelector := &metav1.LabelSelector{MatchExpressions: []metav1.LabelSelectorRequirement{
+				{Key: "kubernetes.io/hostname", Operator: metav1.LabelSelectorOpExists},
+			}}
+			badSelector := &metav1.LabelSelector{MatchExpressions: []metav1.LabelSelectorRequirement{
+				{Key: "kubernetes.io/hostname", Operator: "InvalidOp"},
+			}}
+			Expect(Updater.Update(config.Resources{
+				Underlays: []v1alpha1.Underlay{
+					withSelector(goodUnderlay, goodUnderlay.Name, goodSelector),
+					withSelector(goodUnderlay, "bad-underlay", badSelector),
+				},
+				L3VNIs: []v1alpha1.L3VNI{
+					withSelector(goodL3VNI, goodL3VNI.Name, goodSelector),
+					withSelector(goodL3VNI, "bad-l3", badSelector),
+				},
+				L2VNIs: []v1alpha1.L2VNI{
+					withSelector(goodL2VNI, goodL2VNI.Name, goodSelector),
+					withSelector(goodL2VNI, "bad-l2", badSelector),
+				},
+				L3VPNs: []v1alpha1.L3VPN{
+					withSelector(goodL3VPN, goodL3VPN.Name, goodSelector),
+					withSelector(goodL3VPN, "bad-vpn", badSelector),
+				},
+				L3Passthrough: []v1alpha1.L3Passthrough{
+					withSelector(goodPassthrough, goodPassthrough.Name, goodSelector),
+					withSelector(goodPassthrough, "bad-pt", badSelector),
+				},
+				RawFRRConfigs: []v1alpha1.RawFRRConfig{
+					withSelector(goodRawFRRConfig, goodRawFRRConfig.Name, goodSelector),
+					withSelector(goodRawFRRConfig, "bad-raw", badSelector),
+				},
+			})).To(Succeed())
+
+			wantFailures := []v1alpha1.FailedResource{
+				invalidSelectorFailure("Underlay", "bad-underlay"),
+				invalidSelectorFailure("L3VNI", "bad-l3"),
+				invalidSelectorFailure("L2VNI", "bad-l2"),
+				invalidSelectorFailure("L3VPN", "bad-vpn"),
+				invalidSelectorFailure("L3Passthrough", "bad-pt"),
+				invalidSelectorFailure("RawFRRConfig", "bad-raw"),
+			}
+			Eventually(func(g Gomega) {
+				status, err := openperouter.GetNodeStatus(Updater.Client(), nodes[0].Name)
+				g.Expect(err).To(Succeed())
+				g.Expect(status.Status.FailedResources).To(ConsistOf(wantFailures))
+				expectNodeCondition(g, nodes[0].Name, "Ready", metav1.ConditionFalse)
+				expectNodeCondition(g, nodes[0].Name, "Degraded", metav1.ConditionTrue)
+			}, 2*time.Minute, time.Second).Should(Succeed())
+		})
 	})
 
 	Context("when L3VNI and L2VNI have the same VNI number", func() {
@@ -1025,3 +1123,39 @@ var _ = Describe("Configuration Resiliency", Ordered, func() {
 		})
 	})
 })
+
+func withSelector[T interface {
+	v1alpha1.Underlay | v1alpha1.L3VNI | v1alpha1.L2VNI |
+		v1alpha1.L3VPN | v1alpha1.L3Passthrough | v1alpha1.RawFRRConfig
+}](resource T, name string, selector *metav1.LabelSelector) T {
+	switch obj := any(&resource).(type) {
+	case *v1alpha1.Underlay:
+		obj.Name = name
+		obj.Spec.NodeSelector = selector
+	case *v1alpha1.L3VNI:
+		obj.Name = name
+		obj.Spec.NodeSelector = selector
+	case *v1alpha1.L2VNI:
+		obj.Name = name
+		obj.Spec.NodeSelector = selector
+	case *v1alpha1.L3VPN:
+		obj.Name = name
+		obj.Spec.NodeSelector = selector
+	case *v1alpha1.L3Passthrough:
+		obj.Name = name
+		obj.Spec.NodeSelector = selector
+	case *v1alpha1.RawFRRConfig:
+		obj.Name = name
+		obj.Spec.NodeSelector = selector
+	}
+	return resource
+}
+
+func invalidSelectorFailure(kind v1alpha1.FailedResourceKind, name string) v1alpha1.FailedResource {
+	return v1alpha1.FailedResource{
+		Kind:    kind,
+		Name:    name,
+		Reason:  v1alpha1.FailedResourceReasonValidationFailed,
+		Message: `invalid node selector: "InvalidOp" is not a valid label selector operator`,
+	}
+}
