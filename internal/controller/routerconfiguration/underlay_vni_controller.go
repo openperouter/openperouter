@@ -254,7 +254,7 @@ func (r *PERouterReconciler) getConfigFromAPI(ctx context.Context, logger *slog.
 	}
 
 	// Filter resources by node selector
-	var allErrors []error
+	allErrors := make([]error, 0, 6)
 	filteredUnderlays, err := filter.UnderlaysForNode(node, underlays.Items)
 	allErrors = append(allErrors, err)
 
