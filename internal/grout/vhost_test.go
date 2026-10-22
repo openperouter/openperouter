@@ -23,7 +23,7 @@ func TestVhostDevargs(t *testing.T) {
 		assert.True(t, strings.HasPrefix(a, "net_vhost"))
 		assert.Contains(t, a, "iface="+path)
 		assert.Contains(t, a, "queues=1")
-		assert.Contains(t, a, "iommu-support=1")
+		assert.NotContains(t, a, "iommu-support=1")
 		assert.NotContains(t, a, "client=1")
 		b, err := VhostDevargs("vhu-poc", path, 1, false)
 		require.NoError(t, err)
@@ -63,10 +63,11 @@ func TestCreateVhostPort(t *testing.T) {
 		defer mockCmdExec(
 			cmdCall{
 				cmd: "grcli --err-exit --json --socket sock interface show name vhu-poc",
-				err: fmt.Errorf("error: command failed: No such device (ENODEV)"),
+				output: `{"error":"command failed: No such device (ENODEV)","errno":19}`,
+				err: fmt.Errorf("exit status 1"),
 			},
 			cmdCall{
-				cmd: fmt.Sprintf("grcli --err-exit --json --socket sock interface add port vhu-poc devargs %s rxqs 1 qsize 1024 up", devargs),
+				cmd: fmt.Sprintf("grcli --err-exit --json --socket sock interface add port vhu-poc devargs %s rxqs 1 qsize 4096 up", devargs),
 			},
 			cmdCall{
 				cmd: "grcli --err-exit --json --socket sock interface set port vhu-poc mac 52:54:00:67:72:01",
@@ -100,7 +101,8 @@ func TestCreateVhostPort(t *testing.T) {
 			},
 			cmdCall{
 				cmd: "grcli --err-exit --json --socket sock address add 192.169.20.1/24 iface vhu-poc",
-				err: fmt.Errorf("address already exists"),
+				output: `{"error":"address already exists","errno":17}`,
+				err: fmt.Errorf("exit status 1"),
 			},
 		)()
 
@@ -147,7 +149,8 @@ func TestPortIsRunning(t *testing.T) {
 		defer mockCmdExec(
 			cmdCall{
 				cmd: "grcli --err-exit --json --socket sock interface show name p0",
-				err: fmt.Errorf("error: command failed: No such device (ENODEV)"),
+				output: `{"error":"command failed: No such device (ENODEV)","errno":19}`,
+				err: fmt.Errorf("exit status 1"),
 			})()
 		ok, err := NewClient("sock").PortIsRunning(context.Background(), "p0")
 		assert.NoError(t, err)
@@ -180,7 +183,8 @@ func TestDeleteVhostPort(t *testing.T) {
 		defer mockCmdExec(
 			cmdCall{
 				cmd: "grcli --err-exit --json --socket sock interface show name vhu-poc",
-				err: fmt.Errorf("error: command failed: No such device (ENODEV)"),
+				output: `{"error":"command failed: No such device (ENODEV)","errno":19}`,
+				err: fmt.Errorf("exit status 1"),
 			},
 		)()
 

@@ -35,6 +35,11 @@ require (
 )
 
 require (
+	go.etcd.io/etcd/client/pkg/v3 v3.7.0 // indirect
+	tags.cncf.io/container-device-interface/specs-go v1.1.0 // indirect
+)
+
+require (
 	cel.dev/expr v0.25.2 // indirect
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
@@ -198,13 +203,12 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	k8s.io/cli-runtime v0.37.0 // indirect
 	k8s.io/component-base v0.37.1 // indirect
-	k8s.io/cri-api v0.37.1
 	k8s.io/dynamic-resource-allocation v0.37.1
 	k8s.io/klog/v2 v2.140.0 // indirect
 	k8s.io/kube-aggregator v0.36.2 // indirect
 	k8s.io/kube-openapi v0.0.0-20260721132016-d427ff9ee9ad // indirect
 	k8s.io/kubectl v0.37.0 // indirect
-	k8s.io/kubelet v0.37.1
+	k8s.io/kubelet v0.37.1 // indirect
 	k8s.io/streaming v0.37.1 // indirect
 	oras.land/oras-go/v2 v2.6.2 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.36.0 // indirect
