@@ -116,36 +116,10 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 		configuredL3VPNs = append(configuredL3VPNs, l3vpn)
 	}
 
-	var configuredL2VNIs []hostnetwork.L2VNIParams
-	for _, vni := range hostConfig.L2VNIs {
-		if failedL3Domains.Has(vni.VRF) {
-			resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
-				Obj: v1alpha1.FailedResource{
-					Kind: openpeerrors.KindL2VNI, Name: vni.Name, Reason: reason,
-					Message: fmt.Sprintf("L3 domain %q failed netlink provisioning", vni.VRF),
-				},
-			})
-			continue
-		}
-		slog.InfoContext(ctx, "setting up L2VNI", "vni", vni.VNI)
-		if err := hostnetwork.SetupL2VNI(ctx, vni); err != nil {
-			resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
-				Obj: v1alpha1.FailedResource{
-					Kind: openpeerrors.KindL2VNI, Name: vni.Name, Reason: reason, Message: err.Error(),
-				},
-			})
-			continue
-		}
-		if err := bridgerefresh.StartForVNI(ctx, vni); err != nil {
-			resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
-				Obj: v1alpha1.FailedResource{
-					Kind: openpeerrors.KindL2VNI, Name: vni.Name, Reason: reason, Message: err.Error(),
-				},
-			})
-			continue
-		}
-		configuredL2VNIs = append(configuredL2VNIs, vni)
-	}
+	l2VNIs, l3DomainErrors := l2VNIsWithHealthyL3Domain(hostConfig.L2VNIs, failedL3Domains)
+	resourceErrors = append(resourceErrors, l3DomainErrors...)
+	keptL2VNIs, l2VNIErrors := setupL2VNIs(ctx, l2VNIs, setupL2VNI)
+	resourceErrors = append(resourceErrors, l2VNIErrors...)
 
 	slog.InfoContext(ctx, "setting up passthrough")
 	if hostConfig.L3Passthrough != nil {
@@ -158,13 +132,13 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 		}
 	}
 
-	configuredVNIs := make([]hostnetwork.VNIParams, 0, len(configuredL3VNIs)+len(configuredL2VNIs))
+	configuredVNIs := make([]hostnetwork.VNIParams, 0, len(configuredL3VNIs)+len(keptL2VNIs))
 	configuredVRFs := map[string]bool{}
 	for _, vni := range configuredL3VNIs {
 		configuredVNIs = append(configuredVNIs, vni.VNIParams)
 		configuredVRFs[vni.VRF] = true
 	}
-	for _, l2vni := range configuredL2VNIs {
+	for _, l2vni := range keptL2VNIs {
 		configuredVNIs = append(configuredVNIs, l2vni.VNIParams)
 		configuredVRFs[l2vni.VRF] = true
 	}
@@ -176,7 +150,7 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 	if err := hostnetwork.RemoveNonConfiguredVNIs(config.targetNamespace, configuredVNIs); err != nil {
 		return fmt.Errorf("failed to remove deleted vnis: %w", err)
 	}
-	bridgerefresh.StopForRemovedVNIs(configuredL2VNIs)
+	bridgerefresh.StopForRemovedVNIs(keptL2VNIs)
 
 	slog.InfoContext(ctx, "removing deleted l3vpns")
 	if err := hostnetwork.RemoveNonConfiguredL3VPNs(config.targetNamespace,
@@ -196,6 +170,76 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 		}
 	}
 	return errors.Join(resourceErrors...)
+}
+
+// l2VNIsWithHealthyL3Domain returns the L2VNIs whose L3 domain was set up, and
+// an error for each of the others. Those are removed with their L3 domain.
+func l2VNIsWithHealthyL3Domain(
+	l2VNIs []hostnetwork.L2VNIParams,
+	failedL3Domains sets.Set[string],
+) ([]hostnetwork.L2VNIParams, []error) {
+	var healthy []hostnetwork.L2VNIParams
+	var errs []error
+	for _, vni := range l2VNIs {
+		if failedL3Domains.Has(vni.VRF) {
+			errs = append(errs, l2VNIError(vni, fmt.Sprintf("L3 domain %q failed netlink provisioning", vni.VRF)))
+			continue
+		}
+		healthy = append(healthy, vni)
+	}
+	return healthy, errs
+}
+
+// setupL2VNIs sets up each L2VNI and returns the ones whose devices must stay
+// on the node, and an error for each L2VNI that failed.
+//
+// An L2VNI that fails with hostnetwork.ErrTransient is kept even though its
+// setup did not complete: what it already has on the node, possibly from an
+// earlier pass, is left in place and the next reconcile retries it. Any other
+// failure leaves the L2VNI out, so the cleanup that follows removes its
+// devices. A check that does not depend on the state of the host, and so would
+// fail the same way on every retry, belongs in validation before Configure and
+// must not return ErrTransient.
+func setupL2VNIs(
+	ctx context.Context,
+	l2VNIs []hostnetwork.L2VNIParams,
+	setup func(context.Context, hostnetwork.L2VNIParams) error,
+) ([]hostnetwork.L2VNIParams, []error) {
+	var kept []hostnetwork.L2VNIParams
+	var errs []error
+	for _, vni := range l2VNIs {
+		err := setup(ctx, vni)
+		if errors.Is(err, hostnetwork.ErrTransient) {
+			errs = append(errs, l2VNIError(vni, err.Error()))
+			kept = append(kept, vni)
+			continue
+		}
+		if err != nil {
+			errs = append(errs, l2VNIError(vni, err.Error()))
+			continue
+		}
+		kept = append(kept, vni)
+	}
+	return kept, errs
+}
+
+func setupL2VNI(ctx context.Context, vni hostnetwork.L2VNIParams) error {
+	slog.InfoContext(ctx, "setting up L2VNI", "vni", vni.VNI)
+	if err := hostnetwork.SetupL2VNI(ctx, vni); err != nil {
+		return err
+	}
+	return bridgerefresh.StartForVNI(ctx, vni)
+}
+
+func l2VNIError(vni hostnetwork.L2VNIParams, message string) error {
+	return &openpeerrors.ResourceError{
+		Obj: v1alpha1.FailedResource{
+			Kind:    openpeerrors.KindL2VNI,
+			Name:    vni.Name,
+			Reason:  v1alpha1.FailedResourceReasonOverlayAttachmentFailed,
+			Message: message,
+		},
+	}
 }
 
 func restoreUnderlay(

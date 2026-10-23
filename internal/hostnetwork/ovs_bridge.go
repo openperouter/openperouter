@@ -40,7 +40,7 @@ func NewOVSClient(ctx context.Context) (libovsclient.Client, error) {
 		return nil, fmt.Errorf("failed to create OVSDB client: %w", err)
 	}
 	if err := ovs.Connect(ctx); err != nil {
-		return nil, fmt.Errorf("failed to connect to OVSDB: %w", err)
+		return nil, fmt.Errorf("%w: failed to connect to OVSDB: %w", ErrTransient, err)
 	}
 	return ovs, nil
 }
@@ -112,7 +112,13 @@ func ensureOVSBridgeAndAttach(ctx context.Context, bridgeName, ifaceName string)
 	}
 	defer ovs.Close()
 
-	return ensureOVSBridgeAndAttachWithClient(ctx, ovs, bridgeName, ifaceName)
+	if err := ensureOVSBridgeAndAttachWithClient(ctx, ovs, bridgeName, ifaceName); err != nil {
+		if !ovs.Connected() {
+			return fmt.Errorf("%w: lost the OVSDB connection: %w", ErrTransient, err)
+		}
+		return err
+	}
+	return nil
 }
 
 // ensureOVSBridgeAndAttachWithClient ensures an OVS bridge exists and attaches ifaceName as a port.
