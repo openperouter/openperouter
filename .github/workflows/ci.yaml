@@ -297,10 +297,8 @@ jobs:
       - name: Install kernel modules
         run: hack/install-kernel-modules.sh
 
-      # rp_filter is off on CI runners; enable it so kind nodes inherit a production-like default
-      - name: Enable rp_filter
+      - name: Log martians
         run: |
-          sudo sysctl -w net.ipv4.conf.default.rp_filter=1
           sudo sysctl -w net.ipv4.conf.default.log_martians=1
 
       # Kind nodes share the host's per-user inotify limits, including systemd and OVS.
@@ -374,6 +372,16 @@ jobs:
             kubectl -n openperouter-system wait --for=condition=Ready pods -l "component in (controller,router,nodemarker)" --timeout 300s;
           fi
 
+      - name: Make sure that sysctl settings are set correctly
+        run: |
+          if [[ $(sysctl net.ipv4.conf.default.rp_filter | awk '{print $NF}') != "1" ]]; then
+            echo "default rp_filter not set to 1"
+            exit 1
+          fi
+          if [[ $(sysctl net.ipv4.conf.all.rp_filter | awk '{print $NF}') != "1" ]]; then
+            echo "all rp_filter not set to 1"
+            exit 1
+          fi
 
       - name: Run e2e tests
         run: |

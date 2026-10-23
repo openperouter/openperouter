@@ -9,6 +9,7 @@ router bgp 64512
   no bgp ebgp-requires-policy
   no bgp network import-check
   no bgp default ipv4-unicast
+  bgp bestpath as-path multipath-relax
   bgp router-id 10.0.0.1
   neighbor 192.168.1.2 remote-as 64513
   neighbor 192.168.1.2 ebgp-multihop 5

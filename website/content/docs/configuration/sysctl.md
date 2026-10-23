@@ -91,6 +91,19 @@ sysctl is available on all supported kernel versions.
 If you run EVPN workloads that rely on IPv6 and require fast failover
 during live migrations, ensure your nodes run **kernel 5.18 or later**.
 
+### Disable Reverse Path Filter
+
+| Sysctl | Value |
+|--------|-------|
+| `net.ipv4.conf.all.rp_filter` | `0` |
+| `net.ipv4.conf.default.rp_filter` | `0` |
+
+Reverse path filtering is disabled for the `all` and `default`
+interfaces inside the `perouter` namespace. This is necessary because
+multiple external interfaces might be connected inside the `perouter`
+namespace and packets might potentially arrive on each of them depending
+on the routing topology.
+
 ## SRv6 Sysctls
 
 The following sysctls are only configured when SRv6 is enabled on the
@@ -124,7 +137,7 @@ table. Without this setting, multiple VRFs could inadvertently share a
 routing table, causing BGP routes to be rejected (visible as `B>r` in FRR
 output). This sysctl is set each time a new VRF is created for an L3VPN.
 
-### Disable Reverse Path Filter
+### Disable Reverse Path Filter for VRFs
 
 | Sysctl | Value |
 |--------|-------|
@@ -145,6 +158,8 @@ table in the VRF, causing the kernel to silently drop legitimate packets.
 | `net.ipv4.conf.default.arp_accept` | Inherit `arp_accept` on new interfaces | Always | any | N/A |
 | `net.ipv6.conf.all.accept_untracked_na` | Learn MACs from unsolicited NA | Always | 5.18 | Skipped with warning; IPv6 MAC learning slower |
 | `net.ipv6.conf.default.accept_untracked_na` | Inherit `accept_untracked_na` on new interfaces | Always | 5.18 | Skipped with warning; IPv6 MAC learning slower |
+| `net.ipv4.conf.all.rp_filter` | Allow traffic from multiple external interfaces in `perouter` | Always | any | N/A |
+| `net.ipv4.conf.default.rp_filter` | Inherit `rp_filter=0` on new interfaces in `perouter` | Always | any | N/A |
 | `net.ipv6.conf.all.seg6_enabled` | Enable SRv6 on all interfaces | SRv6 | N/A | N/A |
 | `net.ipv6.seg6_flowlabel` | SRv6 flow label for ECMP | SRv6 | N/A | N/A |
 | `net.vrf.strict_mode` | Unique routing table per VRF | SRv6 | N/A | N/A |
