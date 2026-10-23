@@ -211,7 +211,7 @@ func allNodes(cs clientset.Interface) map[string]bool {
 func killFRREntrypoint(frrExec executor.Executor) {
 	GinkgoHelper()
 	// awk: in each line, search for the line starting with 'Name:'' and save the value to 'n'.
-	// If the valie of n is 'tini' and if one of the lines starts with 'Pid:', print that value.
+	// If the value of n is 'tini' and if one of the lines starts with 'Pid:', print that value.
 	searchExpr := `awk '$1=="Name:" {n=$2}; $1=="Pid:" && n=="tini" {print $2}' /proc/*/status`
 	psOut, err := frrExec.Exec("/bin/bash", "-c", searchExpr)
 	Expect(err).NotTo(HaveOccurred(), "failed to find FRR entrypoint PID")
