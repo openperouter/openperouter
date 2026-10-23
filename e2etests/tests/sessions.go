@@ -527,8 +527,9 @@ var _ = Describe("Router BGP sessions", Ordered, GroutSupport, func() {
 		validateTORSessions()
 
 		By("deleting the underlay removes the session with the TOR switches")
-		err := Updater.Client().Delete(context.Background(), &infra.Underlay)
-		Expect(err).NotTo(HaveOccurred())
+		underlay := infra.Underlay.DeepCopy()
+		underlay.Namespace = openperouter.Namespace
+		Expect(Updater.Client().Delete(context.Background(), underlay)).To(Succeed())
 
 		// Validate sessions are down on both leaf nodes
 		leaves := []string{infra.KindLeaf, infra.KindLeaf2}
