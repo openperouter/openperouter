@@ -5,8 +5,10 @@
 readonly NETNS_INFO=(\
 "ip link" \
 "ip address" \
-"ip route" \
-"ip neigh" \
+	"ip route" \
+	"ip route show table all" \
+	"ip neigh" \
+	"ip -s -s link ls" \
 "ip vrf" \
 "bridge fdb show" \
 )

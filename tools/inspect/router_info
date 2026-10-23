@@ -2,50 +2,95 @@
 
 # SPDX-License-Identifier:Apache-2.0
 
-readonly VTYSH_EXEC="timeout 10s vtysh -c"
-readonly FRR_INFO=(\
-"$VTYSH_EXEC 'show running-config'" \
-"$VTYSH_EXEC 'show bgp ipv4'" \
-"$VTYSH_EXEC 'show bgp ipv6'" \
-"$VTYSH_EXEC 'show bgp neighbor'" \
-"$VTYSH_EXEC 'show bfd peer'" \
-"$VTYSH_EXEC 'show bgp l2vpn evpn'" \
-)
+function run_vtysh() {
+	local -r description="$1"
+	local -r command="$2"
+
+	echo "######## ${description}"
+	echo "$ timeout 10s vtysh -c '${command}'"
+	run_router_command timeout 10s vtysh -c "$command"
+	echo
+}
+
+function run_command() {
+	local -r description="$1"
+	shift
+
+	echo "######## ${description}"
+	echo "$ $*"
+	"$@"
+	echo
+}
+
+function run_router_command() {
+	if [[ -n ${NETNS:-} ]]; then
+		ip netns exec "$NETNS" "$@"
+		return
+	fi
+	"$@"
+}
 
 function get_neighbors_addr() {
-	local -r cmd="$1"
-	$VTYSH_EXEC "$cmd" 2>/dev/null \
+	local -r address_family="$1"
+	run_router_command timeout 10s vtysh -c "show bgp ${address_family} neighbors" 2>/dev/null \
 		| sed -n 's/^BGP neighbor is \([^,]*\),.*/\1/p'
 }
 
-function print_neighbor_routes() {
-  local -r route_direction=("advertised-routes" "received-routes")
-  declare -A nei_by_afi
-  nei_by_afi["ipv4"]="$(get_neighbors_addr "show bgp ipv4 neighbors")"
-  nei_by_afi["ipv6"]="$(get_neighbors_addr "show bgp ipv6 neighbors")"
+function dump_neighbor_routes() {
+	local -r address_family="$1"
+	local -a neighbors=()
+	mapfile -t neighbors < <(get_neighbors_addr "$address_family")
+	if [[ ${#neighbors[@]} -eq 0 ]]; then
+		return
+	fi
 
-  for afi in "${!nei_by_afi[@]}"; do
-    afi_neis=(${nei_by_afi[$afi]})
-    [[ ${#afi_neis[@]} -eq 0 ]] && continue
-    for nei in "${afi_neis[@]}"; do
-      for direction in "${route_direction[@]}"; do
-        echo "### Neighbor [$nei] BGP ${direction}:"
-        $VTYSH_EXEC "show bgp ${afi} neighbors ${nei} ${direction}"
-      done
-      echo ""
-    done
-  done
+	for neighbor in "${neighbors[@]}"; do
+		for command in \
+			"show bgp ${address_family} neighbors ${neighbor} advertised-routes" \
+			"show bgp ${address_family} neighbors ${neighbor} advertised-routes detail" \
+			"show bgp ${address_family} neighbors ${neighbor} received-routes" \
+			"show bgp ${address_family} neighbors ${neighbor} graceful-restart"; do
+			run_vtysh "$command" "$command"
+		done
+	done
 }
 
 echo "### Routing infrastructure info:"
-for cmd in "${FRR_INFO[@]}"; do
-	echo "$ $cmd"
-	eval "$cmd"
-	echo ""
-done
+run_vtysh "Show version" "show version"
+run_vtysh "Show running config" "show running-config"
+run_vtysh "BGP Summary" "show bgp vrf all summary"
+run_vtysh "BGP Neighbors" "show bgp vrf all neighbor"
+run_vtysh "RIB ipv4" "show ip route"
+run_vtysh "RIB ipv6" "show ipv6 route"
+run_vtysh "BGP route table ipv4" "show bgp vrf all ipv4"
+run_vtysh "BGP route table ipv6" "show bgp vrf all ipv6"
+run_vtysh "EVPN Routes" "show bgp l2vpn evpn"
+run_vtysh "BGP route table ipv4 vpn (SRv6)" "show bgp ipv4 vpn"
+run_vtysh "BGP route table ipv6 vpn (SRv6)" "show bgp ipv6 vpn"
+run_vtysh "ISIS database" "show isis database"
+run_vtysh "ISIS interfaces" "show isis interface"
+run_vtysh "ISIS neighbors" "show isis neighbor"
+run_vtysh "Zebra interface information" "show interface"
 echo "###"
-echo ""
+echo
 
 echo "### Neighbors BGP routes:"
-print_neighbor_routes
+dump_neighbor_routes ipv4
+dump_neighbor_routes ipv6
 echo "###"
+echo
+
+echo "### Networking info:"
+run_command "ip link" run_router_command ip l
+run_command "ip address" run_router_command ip address
+run_command "ip neigh" run_router_command ip neigh
+run_command "Detailed interface statistics" run_router_command ip -s -s link ls
+run_command "ip vrf" run_router_command ip vrf
+run_command "ip route table all" run_router_command ip route show table all
+run_command "ip -6 route table all" run_router_command ip -6 route show table all
+run_command "bridge fdb show" run_router_command bridge fdb show
+echo "###"
+
+if [[ -r /etc/frr/frr.log ]]; then
+	run_command "cat /etc/frr/frr.log" cat /etc/frr/frr.log
+fi
