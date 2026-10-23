@@ -40,6 +40,7 @@ func TestMain(m *testing.M) {
 	if testing.Short() {
 		return
 	}
+
 	os.Exit(m.Run())
 }
 

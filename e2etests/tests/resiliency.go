@@ -209,13 +209,27 @@ func allNodes(cs clientset.Interface) map[string]bool {
 
 // killFRREntrypoint kills the tini/docker-start entrypoint process inside the given FRR container.
 // A DeferCleanup is NOT registered; callers are responsible for waiting on pod restart.
+// Downstream/OCP FRR images often lack pgrep; fall back to scanning /proc cmdline.
 func killFRREntrypoint(frrExec executor.Executor) {
 	GinkgoHelper()
-	psOut, err := frrExec.Exec("pgrep", "-f", "/sbin/tini -- /usr/lib/frr/docker-start")
-	Expect(err).NotTo(HaveOccurred(), "failed to find FRR entrypoint PID")
+	const entrypointPattern = "/sbin/tini -- /usr/lib/frr/docker-start"
+	psOut, err := frrExec.Exec("pgrep", "-f", entrypointPattern)
+	if err != nil {
+		// OCP/downstream FRR images may not ship pgrep; locate tini+docker-start via /proc.
+		psOut, err = frrExec.Exec("sh", "-c",
+			`for f in /proc/[0-9]*/cmdline; do
+  cmd=$(tr '\0' ' ' <"$f" 2>/dev/null) || continue
+  case "$cmd" in
+    *tini*docker-start*) basename "$(dirname "$f")"; exit 0 ;;
+  esac
+done
+exit 1`)
+		Expect(err).NotTo(HaveOccurred(), "failed to find FRR entrypoint PID via /proc (pgrep unavailable or failed): %v", err)
+	}
 	pids := strings.Split(strings.TrimSpace(psOut), "\n")
 	Expect(pids).NotTo(BeEmpty(), "FRR entrypoint PID should not be empty")
 	frrPID := strings.TrimSpace(pids[0])
+	Expect(frrPID).NotTo(BeEmpty(), "FRR entrypoint PID should not be empty")
 	output, err := frrExec.Exec("kill", frrPID)
 	Expect(err).NotTo(HaveOccurred(), "failed to kill FRR process %q: %v", frrPID, output)
 }

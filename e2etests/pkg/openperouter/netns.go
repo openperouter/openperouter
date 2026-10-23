@@ -101,11 +101,23 @@ func UnderlayConfigured(nodeName string) (bool, error) {
 	return false, nil
 }
 
-// UnderlayVethExists checks whether the toswitch interfaces exist on nodeName,
+// underlayHostIfaces are the host ifaces checked by UnderlayVethsExists.
+var underlayHostIfaces = []string{"toswitch1", "toswitch2"}
+
+// SetUnderlayHostIfaces sets the host underlay ifaces for netns helpers.
+// Empty is a no-op (keeps Kind defaults).
+func SetUnderlayHostIfaces(ifaces []string) {
+	if len(ifaces) == 0 {
+		return
+	}
+	underlayHostIfaces = append([]string(nil), ifaces...)
+}
+
+// UnderlayVethsExists checks whether the underlay interfaces exist on nodeName,
 // either in the default netns or inside the perouter netns.
 func UnderlayVethsExists(nodeName string) bool {
 	exec := executor.ForNode(nodeName)
-	for _, iface := range []string{"toswitch1", "toswitch2"} {
+	for _, iface := range underlayHostIfaces {
 		if _, err := exec.Exec("ip", "link", "show", iface); err == nil {
 			return true
 		}
