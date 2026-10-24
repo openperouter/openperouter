@@ -3459,35 +3459,56 @@ func TestL2VNIConfigsToFRR(t *testing.T) {
 		want   []frr.L2VNIConfig
 	}{
 		{
-			name: "no route targets",
-			l2vnis: []v1alpha1.L2VNI{
-				{Spec: v1alpha1.L2VNISpec{VNI: 100}},
-			},
+			name: "automatic RD",
+			l2vnis: []v1alpha1.L2VNI{{Spec: v1alpha1.L2VNISpec{
+				VNI: 100,
+			}}},
 		},
 		{
-			name: "import and export route targets",
-			l2vnis: []v1alpha1.L2VNI{
-				{
-					Spec: v1alpha1.L2VNISpec{
-						VNI:       100,
-						ExportRTs: []v1alpha1.RouteTarget{"65000:100", "192.0.2.1:100"},
-						ImportRTs: []v1alpha1.RouteTarget{"65001:100"},
-					},
-				},
-			},
-			want: []frr.L2VNIConfig{
-				{
-					VNI:       100,
-					ExportRTs: []string{"65000:100", "192.0.2.1:100"},
-					ImportRTs: []string{"65001:100"},
-				},
-			},
+			name: "automatic RD with explicit route targets",
+			l2vnis: []v1alpha1.L2VNI{{Spec: v1alpha1.L2VNISpec{
+				VNI:       100,
+				ExportRTs: []v1alpha1.RouteTarget{"65000:100", "192.0.2.1:100"},
+				ImportRTs: []v1alpha1.RouteTarget{"65001:100"},
+			}}},
+			want: []frr.L2VNIConfig{{
+				VNI:       100,
+				ExportRTs: []string{"65000:100", "192.0.2.1:100"},
+				ImportRTs: []string{"65001:100"},
+			}},
+		},
+		{
+			name: "configured RD",
+			l2vnis: []v1alpha1.L2VNI{{Spec: v1alpha1.L2VNISpec{
+				VNI:              100,
+				RDAssignedNumber: new(int32(42)),
+			}}},
+			want: []frr.L2VNIConfig{{
+				VNI:                100,
+				RouteDistinguisher: "10.0.0.1:42",
+				ExportRTs:          []string{},
+				ImportRTs:          []string{},
+			}},
+		},
+		{
+			name: "configured RD with explicit route targets",
+			l2vnis: []v1alpha1.L2VNI{{Spec: v1alpha1.L2VNISpec{
+				VNI:              100,
+				RDAssignedNumber: new(int32(42)),
+				ExportRTs:        []v1alpha1.RouteTarget{"65000:100", "192.0.2.1:100"},
+				ImportRTs:        []v1alpha1.RouteTarget{"65001:100"},
+			}}},
+			want: []frr.L2VNIConfig{{
+				VNI:                100,
+				RouteDistinguisher: "10.0.0.1:42",
+				ExportRTs:          []string{"65000:100", "192.0.2.1:100"},
+				ImportRTs:          []string{"65001:100"},
+			}},
 		},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if diff := cmp.Diff(tt.want, l2vniConfigsToFRR(tt.l2vnis)); diff != "" {
+			if diff := cmp.Diff(tt.want, l2vniConfigsToFRR(tt.l2vnis, "10.0.0.1")); diff != "" {
 				t.Fatalf("l2vniConfigsToFRR() mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -4239,6 +4260,204 @@ func TestNeighborID(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := NeighborID(tt.n); got != tt.want {
 				t.Errorf("NeighborID() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestL3VNIConfigsToFRR(t *testing.T) {
+	tests := []struct {
+		name string
+		vni  v1alpha1.L3VNI
+		want []frr.L3VNIConfig
+	}{
+		{
+			name: "automatic RD with automatic route targets without host session",
+			vni: v1alpha1.L3VNI{Spec: v1alpha1.L3VNISpec{
+				VNI: 200, VRF: "red",
+			}},
+			want: []frr.L3VNIConfig{
+				{
+					ASN: 65000, VNI: 200, VRF: "red", RouterID: "10.0.0.1",
+					ExportRTs: []string{},
+					ImportRTs: []string{},
+				},
+			},
+		},
+		{
+			name: "automatic RD with automatic route targets with dual-stack host session",
+			vni: v1alpha1.L3VNI{Spec: v1alpha1.L3VNISpec{
+				VNI: 200, VRF: "red",
+				HostSession: &v1alpha1.HostSession{
+					ASN: 65000, HostASN: new(int64(65001)), LocalCIDRs: []string{"192.168.2.0/24", "2001:db8::/64"},
+				},
+			}},
+			want: []frr.L3VNIConfig{
+				{
+					ASN: 65000, VNI: 200, VRF: "red", RouterID: "10.0.0.1",
+					ExportRTs:       []string{},
+					ImportRTs:       []string{},
+					LocalNeighbor:   &frr.NeighborConfig{Addr: "192.168.2.2", ID: "192.168.2.2", ASN: mustNewPeerASNFromNumber(65001)},
+					ToAdvertiseIPv4: []string{"192.168.2.2/32"},
+					ToAdvertiseIPv6: []string{},
+				},
+				{
+					ASN: 65000, VNI: 200, VRF: "red", RouterID: "10.0.0.1",
+					ExportRTs:       []string{},
+					ImportRTs:       []string{},
+					LocalNeighbor:   &frr.NeighborConfig{Addr: "2001:db8::2", ID: "2001:db8::2", ASN: mustNewPeerASNFromNumber(65001)},
+					ToAdvertiseIPv4: []string{},
+					ToAdvertiseIPv6: []string{"2001:db8::2/128"},
+				},
+			},
+		},
+		{
+			name: "automatic RD with explicit route targets without host session",
+			vni: v1alpha1.L3VNI{Spec: v1alpha1.L3VNISpec{
+				VNI: 200, VRF: "red",
+				ExportRTs: []v1alpha1.RouteTarget{"65000:100"},
+				ImportRTs: []v1alpha1.RouteTarget{"65001:100"},
+			}},
+			want: []frr.L3VNIConfig{
+				{
+					ASN: 65000, VNI: 200, VRF: "red", RouterID: "10.0.0.1",
+					ExportRTs: []string{"65000:100"},
+					ImportRTs: []string{"65001:100"},
+				},
+			},
+		},
+		{
+			name: "automatic RD with explicit route targets with dual-stack host session",
+			vni: v1alpha1.L3VNI{Spec: v1alpha1.L3VNISpec{
+				VNI: 200, VRF: "red",
+				ExportRTs: []v1alpha1.RouteTarget{"65000:100"},
+				ImportRTs: []v1alpha1.RouteTarget{"65001:100"},
+				HostSession: &v1alpha1.HostSession{
+					ASN: 65000, HostASN: new(int64(65001)), LocalCIDRs: []string{"192.168.2.0/24", "2001:db8::/64"},
+				},
+			}},
+			want: []frr.L3VNIConfig{
+				{
+					ASN: 65000, VNI: 200, VRF: "red", RouterID: "10.0.0.1",
+					ExportRTs:       []string{"65000:100"},
+					ImportRTs:       []string{"65001:100"},
+					LocalNeighbor:   &frr.NeighborConfig{Addr: "192.168.2.2", ID: "192.168.2.2", ASN: mustNewPeerASNFromNumber(65001)},
+					ToAdvertiseIPv4: []string{"192.168.2.2/32"},
+					ToAdvertiseIPv6: []string{},
+				},
+				{
+					ASN: 65000, VNI: 200, VRF: "red", RouterID: "10.0.0.1",
+					ExportRTs:       []string{"65000:100"},
+					ImportRTs:       []string{"65001:100"},
+					LocalNeighbor:   &frr.NeighborConfig{Addr: "2001:db8::2", ID: "2001:db8::2", ASN: mustNewPeerASNFromNumber(65001)},
+					ToAdvertiseIPv4: []string{},
+					ToAdvertiseIPv6: []string{"2001:db8::2/128"},
+				},
+			},
+		},
+		{
+			name: "configured RD with automatic route targets without host session",
+			vni: v1alpha1.L3VNI{Spec: v1alpha1.L3VNISpec{
+				VNI: 200, VRF: "red",
+				RDAssignedNumber: new(int32(42)),
+			}},
+			want: []frr.L3VNIConfig{
+				{
+					ASN: 65000, VNI: 200, VRF: "red", RouterID: "10.0.0.1",
+					RouteDistinguisher: "10.0.0.1:42",
+					ExportRTs:          []string{},
+					ImportRTs:          []string{},
+				},
+			},
+		},
+		{
+			name: "configured RD with automatic route targets with dual-stack host session",
+			vni: v1alpha1.L3VNI{Spec: v1alpha1.L3VNISpec{
+				VNI: 200, VRF: "red",
+				RDAssignedNumber: new(int32(42)),
+				HostSession: &v1alpha1.HostSession{
+					ASN: 65000, HostASN: new(int64(65001)), LocalCIDRs: []string{"192.168.2.0/24", "2001:db8::/64"},
+				},
+			}},
+			want: []frr.L3VNIConfig{
+				{
+					ASN: 65000, VNI: 200, VRF: "red", RouterID: "10.0.0.1",
+					RouteDistinguisher: "10.0.0.1:42",
+					ExportRTs:          []string{},
+					ImportRTs:          []string{},
+					LocalNeighbor:      &frr.NeighborConfig{Addr: "192.168.2.2", ID: "192.168.2.2", ASN: mustNewPeerASNFromNumber(65001)},
+					ToAdvertiseIPv4:    []string{"192.168.2.2/32"},
+					ToAdvertiseIPv6:    []string{},
+				},
+				{
+					ASN: 65000, VNI: 200, VRF: "red", RouterID: "10.0.0.1",
+					RouteDistinguisher: "10.0.0.1:42",
+					ExportRTs:          []string{},
+					ImportRTs:          []string{},
+					LocalNeighbor:      &frr.NeighborConfig{Addr: "2001:db8::2", ID: "2001:db8::2", ASN: mustNewPeerASNFromNumber(65001)},
+					ToAdvertiseIPv4:    []string{},
+					ToAdvertiseIPv6:    []string{"2001:db8::2/128"},
+				},
+			},
+		},
+		{
+			name: "configured RD with explicit route targets without host session",
+			vni: v1alpha1.L3VNI{Spec: v1alpha1.L3VNISpec{
+				VNI: 200, VRF: "red",
+				RDAssignedNumber: new(int32(42)),
+				ExportRTs:        []v1alpha1.RouteTarget{"65000:100"},
+				ImportRTs:        []v1alpha1.RouteTarget{"65001:100"},
+			}},
+			want: []frr.L3VNIConfig{
+				{
+					ASN: 65000, VNI: 200, VRF: "red", RouterID: "10.0.0.1",
+					RouteDistinguisher: "10.0.0.1:42",
+					ExportRTs:          []string{"65000:100"},
+					ImportRTs:          []string{"65001:100"},
+				},
+			},
+		},
+		{
+			name: "configured RD with explicit route targets with dual-stack host session",
+			vni: v1alpha1.L3VNI{Spec: v1alpha1.L3VNISpec{
+				VNI: 200, VRF: "red",
+				RDAssignedNumber: new(int32(42)),
+				ExportRTs:        []v1alpha1.RouteTarget{"65000:100"},
+				ImportRTs:        []v1alpha1.RouteTarget{"65001:100"},
+				HostSession: &v1alpha1.HostSession{
+					ASN: 65000, HostASN: new(int64(65001)), LocalCIDRs: []string{"192.168.2.0/24", "2001:db8::/64"},
+				},
+			}},
+			want: []frr.L3VNIConfig{
+				{
+					ASN: 65000, VNI: 200, VRF: "red", RouterID: "10.0.0.1",
+					RouteDistinguisher: "10.0.0.1:42",
+					ExportRTs:          []string{"65000:100"},
+					ImportRTs:          []string{"65001:100"},
+					LocalNeighbor:      &frr.NeighborConfig{Addr: "192.168.2.2", ID: "192.168.2.2", ASN: mustNewPeerASNFromNumber(65001)},
+					ToAdvertiseIPv4:    []string{"192.168.2.2/32"},
+					ToAdvertiseIPv6:    []string{},
+				},
+				{
+					ASN: 65000, VNI: 200, VRF: "red", RouterID: "10.0.0.1",
+					RouteDistinguisher: "10.0.0.1:42",
+					ExportRTs:          []string{"65000:100"},
+					ImportRTs:          []string{"65001:100"},
+					LocalNeighbor:      &frr.NeighborConfig{Addr: "2001:db8::2", ID: "2001:db8::2", ASN: mustNewPeerASNFromNumber(65001)},
+					ToAdvertiseIPv4:    []string{},
+					ToAdvertiseIPv6:    []string{"2001:db8::2/128"},
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := l3vniToFRR(tt.vni, "10.0.0.1", 65000, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Fatalf("l3vniToFRR() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

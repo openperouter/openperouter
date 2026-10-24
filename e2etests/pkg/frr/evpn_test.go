@@ -201,3 +201,212 @@ func TestPathHasRouteTarget(t *testing.T) {
 		t.Fatal("pathHasRouteTarget() did not match an exact route target")
 	}
 }
+
+func TestContainsRouteWithRD(t *testing.T) {
+	info := EVPNData{Entries: []RdEntry{{
+		RD: "198.51.100.1:42",
+		Prefixes: map[string]Prefix{
+			"type2": {Paths: []Path{{
+				RouteType: 2, IP: "192.0.2.1", IPLen: 32,
+				Nexthops:          []Nexthop{{IP: "198.51.100.1"}},
+				ExtendedCommunity: ExtendedCommunity{String: "RT:64514:300 RT:64514:301 ET:8"},
+			}}},
+			"type5": {Paths: []Path{{
+				RouteType: 5, IP: "192.0.2.1", IPLen: 32,
+				Nexthops:          []Nexthop{{IP: "198.51.100.1"}},
+				ExtendedCommunity: ExtendedCommunity{String: "RT:64514:300 RT:64514:301 ET:8"},
+			}}},
+			"type5 IPv4 default": {Paths: []Path{{
+				RouteType: 5, IP: "0.0.0.0", IPLen: 0,
+				Nexthops:          []Nexthop{{IP: "198.51.100.1"}},
+				ExtendedCommunity: ExtendedCommunity{String: "RT:64514:300 RT:64514:301 ET:8"},
+			}}},
+			"type5 IPv6 default": {Paths: []Path{{
+				RouteType: 5, IP: "::", IPLen: 0,
+				Nexthops:          []Nexthop{{IP: "198.51.100.1"}},
+				ExtendedCommunity: ExtendedCommunity{String: "RT:64514:300 RT:64514:301 ET:8"},
+			}}},
+		},
+	}}}
+	tests := []struct {
+		name, rd, identity, nextHop string
+		routeType                   int
+		rts                         []v1alpha1.RouteTarget
+		want                        bool
+	}{
+		{
+			"type2/matching",
+			"198.51.100.1:42", "192.0.2.1", "198.51.100.1", 2,
+			[]v1alpha1.RouteTarget{"64514:300", "64514:301"}, true,
+		},
+		{
+			"type2/wrong RD",
+			"198.51.100.1:43", "192.0.2.1", "198.51.100.1", 2,
+			[]v1alpha1.RouteTarget{"64514:300", "64514:301"}, false,
+		},
+		{
+			"type2/wrong identity",
+			"198.51.100.1:42", "192.0.2.2", "198.51.100.1", 2,
+			[]v1alpha1.RouteTarget{"64514:300", "64514:301"}, false,
+		},
+		{
+			"type2/wrong next hop",
+			"198.51.100.1:42", "192.0.2.1", "198.51.100.2", 2,
+			[]v1alpha1.RouteTarget{"64514:300", "64514:301"}, false,
+		},
+		{
+			"type2/wrong type",
+			"198.51.100.1:42", "192.0.2.1", "198.51.100.1", 3,
+			[]v1alpha1.RouteTarget{"64514:300", "64514:301"}, false,
+		},
+		{
+			"type2/missing RT",
+			"198.51.100.1:42", "192.0.2.1", "198.51.100.1", 2,
+			[]v1alpha1.RouteTarget{"64514:300", "64514:302"}, false,
+		},
+		{
+			"type2/unexpected extra RT",
+			"198.51.100.1:42", "192.0.2.1", "198.51.100.1", 2,
+			[]v1alpha1.RouteTarget{"64514:300"}, false,
+		},
+		{
+			"type5/matching",
+			"198.51.100.1:42", "192.0.2.1/32", "198.51.100.1", 5,
+			[]v1alpha1.RouteTarget{"64514:300", "64514:301"}, true,
+		},
+		{
+			"type5/wrong RD",
+			"198.51.100.1:43", "192.0.2.1/32", "198.51.100.1", 5,
+			[]v1alpha1.RouteTarget{"64514:300", "64514:301"}, false,
+		},
+		{
+			"type5/wrong identity",
+			"198.51.100.1:42", "192.0.2.2", "198.51.100.1", 5,
+			[]v1alpha1.RouteTarget{"64514:300", "64514:301"}, false,
+		},
+		{
+			"type5/wrong next hop",
+			"198.51.100.1:42", "192.0.2.1/32", "198.51.100.2", 5,
+			[]v1alpha1.RouteTarget{"64514:300", "64514:301"}, false,
+		},
+		{
+			"type5/wrong type",
+			"198.51.100.1:42", "192.0.2.1/32", "198.51.100.1", 3,
+			[]v1alpha1.RouteTarget{"64514:300", "64514:301"}, false,
+		},
+		{
+			"type5/missing RT",
+			"198.51.100.1:42", "192.0.2.1/32", "198.51.100.1", 5,
+			[]v1alpha1.RouteTarget{"64514:300", "64514:302"}, false,
+		},
+		{
+			"type5/unexpected extra RT",
+			"198.51.100.1:42", "192.0.2.1/32", "198.51.100.1", 5,
+			[]v1alpha1.RouteTarget{"64514:300"}, false,
+		},
+		{
+			"type5 IPv4 default/matching",
+			"198.51.100.1:42", "0.0.0.0/0", "198.51.100.1", 5,
+			[]v1alpha1.RouteTarget{"64514:300", "64514:301"}, true,
+		},
+		{
+			"type5 IPv4 default/wrong RD",
+			"198.51.100.1:43", "0.0.0.0/0", "198.51.100.1", 5,
+			[]v1alpha1.RouteTarget{"64514:300", "64514:301"}, false,
+		},
+		{
+			"type5 IPv4 default/wrong identity",
+			"198.51.100.1:42", "192.0.2.2", "198.51.100.1", 5,
+			[]v1alpha1.RouteTarget{"64514:300", "64514:301"}, false,
+		},
+		{
+			"type5 IPv4 default/wrong next hop",
+			"198.51.100.1:42", "0.0.0.0/0", "198.51.100.2", 5,
+			[]v1alpha1.RouteTarget{"64514:300", "64514:301"}, false,
+		},
+		{
+			"type5 IPv4 default/wrong type",
+			"198.51.100.1:42", "0.0.0.0/0", "198.51.100.1", 3,
+			[]v1alpha1.RouteTarget{"64514:300", "64514:301"}, false,
+		},
+		{
+			"type5 IPv4 default/missing RT",
+			"198.51.100.1:42", "0.0.0.0/0", "198.51.100.1", 5,
+			[]v1alpha1.RouteTarget{"64514:300", "64514:302"}, false,
+		},
+		{
+			"type5 IPv4 default/unexpected extra RT",
+			"198.51.100.1:42", "0.0.0.0/0", "198.51.100.1", 5,
+			[]v1alpha1.RouteTarget{"64514:300"}, false,
+		},
+		{
+			"type5 IPv6 default/matching",
+			"198.51.100.1:42", "::/0", "198.51.100.1", 5,
+			[]v1alpha1.RouteTarget{"64514:300", "64514:301"}, true,
+		},
+		{
+			"type5 IPv6 default/wrong RD",
+			"198.51.100.1:43", "::/0", "198.51.100.1", 5,
+			[]v1alpha1.RouteTarget{"64514:300", "64514:301"}, false,
+		},
+		{
+			"type5 IPv6 default/wrong identity",
+			"198.51.100.1:42", "192.0.2.2", "198.51.100.1", 5,
+			[]v1alpha1.RouteTarget{"64514:300", "64514:301"}, false,
+		},
+		{
+			"type5 IPv6 default/wrong next hop",
+			"198.51.100.1:42", "::/0", "198.51.100.2", 5,
+			[]v1alpha1.RouteTarget{"64514:300", "64514:301"}, false,
+		},
+		{
+			"type5 IPv6 default/wrong type",
+			"198.51.100.1:42", "::/0", "198.51.100.1", 3,
+			[]v1alpha1.RouteTarget{"64514:300", "64514:301"}, false,
+		},
+		{
+			"type5 IPv6 default/missing RT",
+			"198.51.100.1:42", "::/0", "198.51.100.1", 5,
+			[]v1alpha1.RouteTarget{"64514:300", "64514:302"}, false,
+		},
+		{
+			"type5 IPv6 default/unexpected extra RT",
+			"198.51.100.1:42", "::/0", "198.51.100.1", 5,
+			[]v1alpha1.RouteTarget{"64514:300"}, false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := info.ContainsRouteWithRD(tc.rd, tc.routeType, tc.identity, tc.nextHop, tc.rts); got != tc.want {
+				t.Fatalf("ContainsRouteWithRD() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestContainsRouteWithRDDoesNotCombinePaths(t *testing.T) {
+	path := Path{RouteType: 2, IP: "192.0.2.1", IPLen: 32,
+		Nexthops:          []Nexthop{{IP: "198.51.100.1"}},
+		ExtendedCommunity: ExtendedCommunity{String: "RT:64514:300"}}
+	otherPath := Path{RouteType: 2, IP: "192.0.2.1", IPLen: 32,
+		Nexthops:          []Nexthop{{IP: "198.51.100.2"}},
+		ExtendedCommunity: ExtendedCommunity{String: "RT:64514:301"}}
+	otherRDPath := Path{RouteType: 2, IP: "192.0.2.1", IPLen: 32,
+		Nexthops:          []Nexthop{{IP: "198.51.100.1"}},
+		ExtendedCommunity: ExtendedCommunity{String: "RT:64514:300 RT:64514:301"}}
+	info := EVPNData{Entries: []RdEntry{
+		{RD: "198.51.100.1:42", Prefixes: map[string]Prefix{"route": {Paths: []Path{path, otherPath}}}},
+		{RD: "198.51.100.1:43", Prefixes: map[string]Prefix{"route": {Paths: []Path{otherRDPath}}}},
+	}}
+	if info.ContainsRouteWithRD("198.51.100.1:42", 2, "192.0.2.1", "198.51.100.1",
+		[]v1alpha1.RouteTarget{"64514:300", "64514:301"}) {
+		t.Fatal("matched route targets from different paths or another RD")
+	}
+	macOnlyPath := Path{RouteType: 2, IP: "192.0.2.1", IPLen: 0,
+		Nexthops:          []Nexthop{{IP: "198.51.100.1"}},
+		ExtendedCommunity: ExtendedCommunity{String: "RT:64514:300"}}
+	info.Entries[0].Prefixes["route"] = Prefix{Paths: []Path{macOnlyPath}}
+	if info.ContainsRouteWithRD("198.51.100.1:42", 2, "192.0.2.1", "198.51.100.1", []v1alpha1.RouteTarget{"64514:300"}) {
+		t.Fatal("matched a MAC-only route as a MAC/IP route")
+	}
+}

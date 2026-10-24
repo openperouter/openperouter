@@ -475,6 +475,52 @@ var _ = Describe("Disconnected L2VNI east/west traffic", GroutSupport, Ordered, 
 		})
 	})
 
+	Context("with RD assigned number", func() {
+		const rdAssignedNumber int32 = 42000
+
+		BeforeEach(func() {
+			By("configuring the L2VNI RD assigned number")
+			configured := l2vniDisconnected.DeepCopy()
+			configured.Spec.RDAssignedNumber = new(rdAssignedNumber)
+			l2VNIs = []v1alpha1.L2VNI{*configured}
+		})
+
+		It("advertises both Type-2 routes under the configured RD on the leaf", func() {
+			routers, err := openperouter.Get(cs, HostMode)
+			Expect(err).To(Succeed())
+			leaf := executor.ForContainer(infra.KindLeaf)
+			ips := []string{firstPodIP, secondPodIP}
+			routerIDs := make([]string, 2)
+			vteps := make([]string, 2)
+			rts := []v1alpha1.RouteTarget{"64514:300"}
+			By("discovering each originating router ID and VTEP")
+			for i := range 2 {
+				origin, err := routers.ExecutorForNode(nodes[i].Name)
+				Expect(err).To(Succeed())
+				Eventually(func(g Gomega) {
+					info, err := frr.EVPNInfo(origin)
+					g.Expect(err).To(Succeed())
+					g.Expect(info.BgpLocalRouterId).NotTo(BeEmpty())
+					routerIDs[i] = info.BgpLocalRouterId
+				}, time.Minute, time.Second).Should(Succeed())
+				cidr, err := openperouter.GetVtepIPv4ForNode(infra.Underlay.Spec.TunnelEndpoint, &nodes[i])
+				Expect(err).To(Succeed())
+				vteps[i] = ipfamily.StripCIDRMask(cidr)
+			}
+			Expect(routerIDs[0]).NotTo(Equal(routerIDs[1]))
+			By("checking both Type-2 routes on the leaf under their originating router RDs")
+			Eventually(func(g Gomega) {
+				info, err := frr.EVPNInfo(leaf)
+				g.Expect(err).To(Succeed())
+				for i := range 2 {
+					rd := fmt.Sprintf("%s:%d", routerIDs[i], rdAssignedNumber)
+					g.Expect(info.ContainsRouteWithRD(rd, 2, ips[i], vteps[i], rts)).To(BeTrue(),
+						"pod %s should be under RD %s on receiving leaf", ips[i], rd)
+				}
+			}, time.Minute, time.Second).Should(Succeed())
+		})
+	})
+
 	Context("with route targets", func() {
 		BeforeEach(func() {
 			firstL2VNI = l2VNIForNode(

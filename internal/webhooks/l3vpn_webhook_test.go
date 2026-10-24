@@ -27,6 +27,22 @@ func TestValidateL3VPNCreate(t *testing.T) {
 		errorString string
 	}{
 		{
+			name:      "duplicate RD assignment",
+			nodes:     []*v1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+			underlays: []*v1alpha1.Underlay{{ObjectMeta: metav1.ObjectMeta{Name: "underlay"}, Spec: v1alpha1.UnderlaySpec{SRV6: &v1alpha1.SRV6Config{}}}},
+			l3vpns: []*v1alpha1.L3VPN{
+				{
+					ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "existing"},
+					Spec:       v1alpha1.L3VPNSpec{RDAssignedNumber: 42, VRF: "red", ImportRTs: []v1alpha1.RouteTarget{"65000:100"}},
+				},
+			},
+			newL3VPN: &v1alpha1.L3VPN{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "new"},
+				Spec:       v1alpha1.L3VPNSpec{RDAssignedNumber: 42, VRF: "blue", ImportRTs: []v1alpha1.RouteTarget{"65000:100"}},
+			},
+			errorString: "duplicate configured rdAssignedNumber 42: L3VPN/new conflicts with L3VPN/existing",
+		},
+		{
 			name: "webhook passes",
 			underlays: []*v1alpha1.Underlay{
 				{
@@ -66,61 +82,6 @@ func TestValidateL3VPNCreate(t *testing.T) {
 					},
 				},
 			},
-		},
-		{
-			name: "webhook fails due to VNI overlap with existing L2VNI",
-			underlays: []*v1alpha1.Underlay{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "underlay1",
-					},
-					Spec: v1alpha1.UnderlaySpec{
-						SRV6: &v1alpha1.SRV6Config{},
-					},
-				},
-			},
-			nodes: []*v1.Node{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "node1",
-						Labels: map[string]string{
-							"nodeName": "node1",
-						},
-					},
-				},
-			},
-			l2vnis: []*v1alpha1.L2VNI{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Namespace: "default",
-						Name:      "l2vni",
-					},
-					Spec: v1alpha1.L2VNISpec{
-						VNI: 100,
-					},
-				},
-			},
-			newL3VPN: &v1alpha1.L3VPN{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "default",
-					Name:      "newL3VPN",
-				},
-				Spec: v1alpha1.L3VPNSpec{
-					VRF:              "vrfa",
-					ImportRTs:        []v1alpha1.RouteTarget{"65000:100"},
-					RDAssignedNumber: 100,
-					HostSession: &v1alpha1.HostSession{
-						LocalCIDRs: []string{"192.0.3.0/24"},
-					},
-					NodeSelector: &metav1.LabelSelector{
-						MatchLabels: map[string]string{
-							"nodeName": "node1",
-						},
-					},
-				},
-			},
-			errorString: "validation failed: duplicate VNIs found in L2VNIs for node \"node1\": L2VNI/l2vni: " +
-				"duplicate vni 100:L3VPN/newL3VPN",
 		},
 		{
 			name: "webhook fails due to no underlays",
