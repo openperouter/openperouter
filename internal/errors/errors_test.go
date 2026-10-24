@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
@@ -79,6 +80,37 @@ func TestCollectFailures_noResourceErrors(t *testing.T) {
 	got := CollectFailures(fmt.Errorf("other"))
 	if got != nil {
 		t.Errorf("expected nil, got %+v", got)
+	}
+}
+
+func TestCollectFailures_messageLength(t *testing.T) {
+	tests := []struct {
+		name    string
+		message string
+		want    string
+	}{
+		{name: "short", message: "bad config", want: "bad config"},
+		{name: "at limit", message: strings.Repeat("a", 500), want: strings.Repeat("a", 500)},
+		{name: "over limit", message: strings.Repeat("a", 501), want: strings.Repeat("a", 500)},
+		{name: "multibyte at limit", message: strings.Repeat("界", 500), want: strings.Repeat("界", 500)},
+		{name: "multibyte over limit", message: strings.Repeat("界", 501), want: strings.Repeat("界", 500)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := newVE("L3VNI", "vni1", tt.message)
+			original := err.Obj
+			originalError := err.Error()
+			want := []v1alpha1.FailedResource{{
+				Kind: "L3VNI", Name: "vni1",
+				Reason: v1alpha1.FailedResourceReasonValidationFailed, Message: tt.want,
+			}}
+			if got := CollectFailures(err); !reflect.DeepEqual(got, want) {
+				t.Errorf("got %+v, want %+v", got, want)
+			}
+			if err.Obj != original || err.Error() != originalError {
+				t.Errorf("collection changed original error: got %+v, want %+v", err.Obj, original)
+			}
+		})
 	}
 }
 

@@ -120,12 +120,13 @@ func (r *PERouterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 }
 
 func (r *PERouterReconciler) reconcile(ctx context.Context, logger *slog.Logger) (ctrl.Result, error) {
-	config, err := r.getConfigFromAPI(ctx, logger)
-	if err != nil {
-		return ctrl.Result{}, err
+	config, configErr := r.getConfigFromAPI(ctx, logger)
+	if openpeerrors.IsNonResourceError(configErr) {
+		return ctrl.Result{}, configErr
 	}
 
 	if r.StaticConfigDir != "" {
+		var err error
 		config, err = mergeStaticConfig(r.StaticConfigDir, r.MyNode, r.MyNamespace, config, logger)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to merge static config: %w", err)
@@ -169,7 +170,7 @@ func (r *PERouterReconciler) reconcile(ctx context.Context, logger *slog.Logger)
 		logger.Error("failed to reconcile host configuration", "error", reconcileErr)
 	}
 
-	if err := errors.Join(secretErr, reconcileErr); err != nil {
+	if err := errors.Join(configErr, secretErr, reconcileErr); err != nil {
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{}, nil
@@ -253,41 +254,24 @@ func (r *PERouterReconciler) getConfigFromAPI(ctx context.Context, logger *slog.
 	}
 
 	// Filter resources by node selector
+	allErrors := make([]error, 0, 6)
 	filteredUnderlays, err := filter.UnderlaysForNode(node, underlays.Items)
-	if err != nil {
-		slog.Error("failed to filter underlays for node", "node", r.MyNode, "error", err)
-		return conversion.APIConfigData{}, err
-	}
+	allErrors = append(allErrors, err)
 
 	filteredL3VNIs, err := filter.L3VNIsForNode(node, l3vnis.Items)
-	if err != nil {
-		slog.Error("failed to filter l3vnis for node", "node", r.MyNode, "error", err)
-		return conversion.APIConfigData{}, err
-	}
+	allErrors = append(allErrors, err)
 
 	filteredL2VNIs, err := filter.L2VNIsForNode(node, l2vnis.Items)
-	if err != nil {
-		slog.Error("failed to filter l2vnis for node", "node", r.MyNode, "error", err)
-		return conversion.APIConfigData{}, err
-	}
+	allErrors = append(allErrors, err)
 
 	filteredL3VPNs, err := filter.L3VPNsForNode(node, l3vpns.Items)
-	if err != nil {
-		slog.Error("failed to filter l3vpns for node", "node", r.MyNode, "error", err)
-		return conversion.APIConfigData{}, err
-	}
+	allErrors = append(allErrors, err)
 
 	filteredL3Passthrough, err := filter.L3PassthroughsForNode(node, l3passthrough.Items)
-	if err != nil {
-		slog.Error("failed to filter l3passthrough for node", "node", r.MyNode, "error", err)
-		return conversion.APIConfigData{}, err
-	}
+	allErrors = append(allErrors, err)
 
 	filteredRawFRRConfigs, err := filter.RawFRRConfigsForNode(node, rawFRRConfigs.Items)
-	if err != nil {
-		slog.Error("failed to filter rawfrrconfigs for node", "node", r.MyNode, "error", err)
-		return conversion.APIConfigData{}, err
-	}
+	allErrors = append(allErrors, err)
 
 	if len(filteredRawFRRConfigs) > 0 {
 		logger.Info("RawFRRConfig is applied, but please note that this feature is for experimentation only and not supported")
@@ -309,7 +293,7 @@ func (r *PERouterReconciler) getConfigFromAPI(ctx context.Context, logger *slog.
 		RawFRRConfigs: filteredRawFRRConfigs,
 	}
 
-	return apiConfig, nil
+	return apiConfig, errors.Join(allErrors...)
 }
 
 func (r *PERouterReconciler) resolvePasswordSecrets(ctx context.Context, config *conversion.APIConfigData) error {
