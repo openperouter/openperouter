@@ -76,6 +76,11 @@ type L3VNISpec struct {
 }
 
 // RouteTarget defines a BGP Extended Community for route filtering.
+//
+// Supports two formats per RFC 4360:
+//   - ASN:NN   (e.g. "64514:100")        where ASN is a 2- or 4-byte ASN (<= 4294967295)
+//   - IP:NN    (e.g. "192.168.1.1:100")  where IP is a valid IPv4 address
+//
 // +kubebuilder:validation:MaxLength:=21
 type RouteTarget string
 
