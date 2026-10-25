@@ -97,6 +97,36 @@ func TestValidateUnderlay(t *testing.T) {
 				"invalid cidr: invalid CIDR address: invalidCIDR",
 		},
 		{
+			name: "invalid neighbor address",
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"192.168.1.0/24"},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth1"},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN:     new(int64(65002)),
+								Address: new("invalidIP"),
+							},
+						},
+					},
+				},
+			},
+			wantErrStr: `has invalid neighbor address: ParseAddr("invalidIP"): unable to parse IP`,
+		},
+		{
 			name: "empty VTEP CIDR",
 			underlay: []v1alpha1.Underlay{
 				{

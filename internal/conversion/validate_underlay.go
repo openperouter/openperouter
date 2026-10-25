@@ -65,6 +65,12 @@ func validateUnderlay(underlay v1alpha1.Underlay) error {
 		return fmt.Errorf("underlay %s must have at least one neighbor configured", underlay.Name)
 	}
 
+	for _, neiAddr := range neighborAddressesOf(underlay.Spec.Neighbors) {
+		if _, err := netip.ParseAddr(neiAddr); err != nil {
+			return fmt.Errorf("underlay %s has invalid neighbor address: %w", underlay.Name, err)
+		}
+	}
+
 	if err := validateNoDuplicates(neighborAddressesOf(underlay.Spec.Neighbors)); err != nil {
 		return fmt.Errorf("underlay %s has duplicate neighbor address: %w", underlay.Name, err)
 	}
