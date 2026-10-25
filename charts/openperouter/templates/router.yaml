@@ -354,6 +354,10 @@ spec:
         volumeMounts:
           - name: grout-socket
             mountPath: /var/run/grout
+          {{- if .Values.openperouter.grout.vhostUser }}
+          - name: grout-vhost
+            mountPath: /var/run/grout-vhost
+          {{- end }}
           - name: netns
             mountPath: /var/run/netns
             mountPropagation: HostToContainer
@@ -427,6 +431,12 @@ spec:
           hostPath:
             path: /var/run/openperouter/grout
             type: DirectoryOrCreate
+        {{- if .Values.openperouter.grout.vhostUser }}
+        - name: grout-vhost
+          hostPath:
+            path: /var/run/grout-vhost
+            type: DirectoryOrCreate
+        {{- end }}
         - name: host-nsenter
           hostPath:
             path: /usr/bin/nsenter

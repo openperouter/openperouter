@@ -95,6 +95,8 @@ openperouter:
   # grout contains configuration for the grout DPDK dataplane sidecar.
   # Only used when datapath is set to "grout".
   grout:
+    # -- Share the DRA vhost-user socket directory with Grout.
+    vhostUser: false
     # -- Use TAP ports for grout underlay interfaces instead of PCI ports.
     tapUnderlay: false
     # -- Run grout in test mode. Test mode requires no hugepages and uses dummy
