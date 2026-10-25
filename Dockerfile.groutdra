@@ -1,5 +1,5 @@
-# groutdra: kubelet DRA plugin. Use the exact router image as its runtime base,
-# so grout/grcli and their runtime libraries match the router datapath build.
+# groutdra: kubelet DRA plugin. The runtime base matches the router image used
+# by the POC deployment; the plugin talks to grout through its Unix socket.
 ARG GROUT_TOOLS_IMAGE=openperouter/router:grout-v0.19.0-qsize4096-r1
 
 FROM golang:1.26.4 AS builder
@@ -9,12 +9,14 @@ ARG TARGETARCH
 
 WORKDIR $GOPATH/openperouter
 RUN --mount=type=cache,target=/go/pkg/mod/ \
+  --mount=type=bind,from=grout-cni,source=.,target=/go/grout-cni \
   --mount=type=bind,source=go.sum,target=go.sum \
   --mount=type=bind,source=go.mod,target=go.mod \
   go mod download -x
 
 RUN --mount=type=cache,target=/root/.cache/go-build \
   --mount=type=cache,target=/go/pkg/mod \
+  --mount=type=bind,from=grout-cni,source=.,target=/go/grout-cni \
   --mount=type=bind,source=go.sum,target=go.sum \
   --mount=type=bind,source=go.mod,target=go.mod \
   --mount=type=bind,source=internal,target=internal \

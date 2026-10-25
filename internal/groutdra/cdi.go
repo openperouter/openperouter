@@ -33,15 +33,15 @@ type cdiMount struct {
 	Options       []string `json:"options,omitempty"`
 }
 
-func writeCDISpec(claimUID types.UID, hostDir, containerDir string) (string, error) {
-	if err := os.MkdirAll(CDIDir, 0o755); err != nil {
+func writeCDISpec(paths pathLayout, claimUID types.UID, requestName, hostDir, containerDir string) (string, error) {
+	if err := os.MkdirAll(paths.cdiDir, 0o755); err != nil {
 		return "", fmt.Errorf("creating CDI dir: %w", err)
 	}
 	spec := cdiSpec{
 		Version: "0.5.0",
 		Kind:    CDIVendor + "/" + CDIClass,
 		Devices: []cdiDevice{{
-			Name: string(claimUID),
+			Name: allocationID(claimUID, requestName),
 			ContainerEdits: cdiEdits{
 				Mounts: []cdiMount{
 					{HostPath: hostDir, ContainerPath: containerDir, Options: []string{"rbind"}},
@@ -56,13 +56,17 @@ func writeCDISpec(claimUID types.UID, hostDir, containerDir string) (string, err
 	if err != nil {
 		return "", err
 	}
-	path := CDISpecPath(claimUID)
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	path := paths.CDISpecPath(claimUID, requestName)
+	if err := writeAtomic(path, data, 0o644); err != nil {
 		return "", fmt.Errorf("writing CDI spec: %w", err)
 	}
-	return CDIDeviceID(claimUID), nil
+	return CDIDeviceID(claimUID, requestName), nil
 }
 
-func removeCDISpec(claimUID types.UID) {
-	_ = os.Remove(CDISpecPath(claimUID))
+func removeCDISpec(paths pathLayout, claimUID types.UID, requestName string) error {
+	err := os.Remove(paths.CDISpecPath(claimUID, requestName))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
 }

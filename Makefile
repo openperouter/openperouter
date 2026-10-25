@@ -727,16 +727,21 @@ grout-deploy-helm: helm kind deploy-cluster load-on-kind deploy-helm
 .PHONY: grout-docker-build
 grout-docker-build: IMG_TAG=main-grout
 grout-docker-build: DOCKERFILE=Dockerfile.grout
-grout-docker-build: docker-build
+grout-docker-build: ## Build the Grout router image with the sibling grout-cni checkout.
+	@if [ "$(CONTAINER_ENGINE)" = "podman" ]; then \
+		sudo $(CONTAINER_ENGINE) build --build-context grout-cni=../grout-cni -t ${IMG} -f ${DOCKERFILE} .; \
+	else \
+		$(CONTAINER_ENGINE) build --build-context grout-cni=../grout-cni -t ${IMG} -f ${DOCKERFILE} .; \
+	fi
 
 GROUTDRA_IMG ?= quay.io/oshoval/groutdra:dev
 
 .PHONY: groutdra-docker-build
-groutdra-docker-build: ## Build the grout kubelet DRA plugin image (includes grcli).
+groutdra-docker-build: ## Build the grout kubelet DRA plugin image with the sibling grout-cni checkout.
 	@if [ "$(CONTAINER_ENGINE)" = "podman" ]; then \
-		sudo $(CONTAINER_ENGINE) build -t $(GROUTDRA_IMG) -f Dockerfile.groutdra .; \
+		sudo $(CONTAINER_ENGINE) build --build-context grout-cni=../grout-cni -t $(GROUTDRA_IMG) -f Dockerfile.groutdra .; \
 	else \
-		$(CONTAINER_ENGINE) build -t $(GROUTDRA_IMG) -f Dockerfile.groutdra .; \
+		$(CONTAINER_ENGINE) build --build-context grout-cni=../grout-cni -t $(GROUTDRA_IMG) -f Dockerfile.groutdra .; \
 	fi
 
 INSPECT_DIR ?= /tmp/openperouter-inspect

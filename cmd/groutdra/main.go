@@ -16,6 +16,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	metadatav1alpha1 "k8s.io/dynamic-resource-allocation/api/metadata/v1alpha1"
+	metadatav1beta1 "k8s.io/dynamic-resource-allocation/api/metadata/v1beta1"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 
 	"github.com/openperouter/openperouter/internal/groutdra"
@@ -39,7 +40,7 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	pluginDir := "/var/lib/kubelet/plugins/" + groutdra.DriverName
+	pluginDir := groutdra.PluginDataRoot
 	if err := os.MkdirAll(pluginDir, 0o750); err != nil {
 		return err
 	}
@@ -54,7 +55,10 @@ func run(ctx context.Context) error {
 		kubeletplugin.NodeName(nodeName),
 		kubeletplugin.PluginDataDirectoryPath(pluginDir),
 		kubeletplugin.CDIDirectory(groutdra.CDIDir),
-		kubeletplugin.EnableDeviceMetadata(true, []schema.GroupVersion{metadatav1alpha1.SchemeGroupVersion}),
+		kubeletplugin.EnableDeviceMetadata(true, []schema.GroupVersion{
+			metadatav1alpha1.SchemeGroupVersion,
+			metadatav1beta1.SchemeGroupVersion,
+		}),
 		kubeletplugin.HealthService(false),
 	)
 	if err != nil {
@@ -62,7 +66,10 @@ func run(ctx context.Context) error {
 	}
 	defer helper.Stop()
 
-	if err := helper.PublishResources(ctx, groutdra.PoolResources()); err != nil {
+	if err := helper.PublishResources(ctx, d.PoolResources()); err != nil {
+		return err
+	}
+	if err := d.RecoverPreparedClaims(ctx); err != nil {
 		return err
 	}
 	slog.Info("groutdra started", "node", nodeName, "driver", groutdra.DriverName)
