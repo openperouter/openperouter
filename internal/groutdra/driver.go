@@ -8,6 +8,7 @@
 package groutdra
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -15,8 +16,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
+	"reflect"
+	"slices"
 	"sync"
 	"time"
 
@@ -27,14 +28,30 @@ import (
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 	"k8s.io/dynamic-resource-allocation/resourceslice"
 
-	"github.com/openperouter/openperouter/internal/grout"
+	"github.com/openperouter/openperouter/internal/groutdra/poc"
 )
 
 type Driver struct {
-	grout *grout.Client
+	grout      portManager
+	paths      pathLayout
+	prepareDir func(string) error
+	devices    DeviceCatalog
 
+	opMu    sync.Mutex
 	mu      sync.Mutex
-	pending map[types.UID]context.CancelFunc
+	pending map[types.UID]*claimWorker
+}
+
+type claimWorker struct {
+	cancel context.CancelFunc
+	done   chan struct{}
+}
+
+// DeviceCatalog keeps inventory and per-device network setup together.
+// A production catalog can discover devices and supply their network settings.
+type DeviceCatalog interface {
+	Resources() resourceslice.DriverResources
+	GatewayCIDR(string) (string, error)
 }
 
 func (d *Driver) WatchHealthStatus(context.Context, chan<- kubeletplugin.DeviceHealthReport) error {
@@ -42,26 +59,56 @@ func (d *Driver) WatchHealthStatus(context.Context, chan<- kubeletplugin.DeviceH
 }
 
 func New(groutSock string) *Driver {
+	return NewWithCatalog(groutSock, poc.New(DriverName, PoolName))
+}
+
+// NewWithCatalog uses the supplied device inventory and gateway mapping.
+// Production can supply a discovery-backed catalog; New uses the POC catalog.
+func NewWithCatalog(groutSock string, catalog DeviceCatalog) *Driver {
 	return &Driver{
-		grout:   grout.NewClient(groutSock),
-		pending: make(map[types.UID]context.CancelFunc),
+		grout:      apiPorts{socketPath: groutSock},
+		paths:      defaultPaths,
+		prepareDir: prepareVhostDir,
+		devices:    catalog,
+		pending:    make(map[types.UID]*claimWorker),
 	}
 }
 
-func PoolResources() resourceslice.DriverResources {
-	devices := make([]resourceapi.Device, 0, MaxDevices)
-	for i := 0; i < MaxDevices; i++ {
-		devices = append(devices, resourceapi.Device{
-			Name: fmt.Sprintf("vhu-%d", i),
-		})
+func (d *Driver) PoolResources() resourceslice.DriverResources {
+	return d.devices.Resources()
+}
+
+// RecoverPreparedClaims resumes port attachment for claims that were prepared
+// before this driver process started. Kubelet may not call Prepare again after
+// a plugin restart.
+func (d *Driver) RecoverPreparedClaims(ctx context.Context) error {
+	d.opMu.Lock()
+	defer d.opMu.Unlock()
+	entries, err := os.ReadDir(d.paths.hostRoot)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
 	}
-	return resourceslice.DriverResources{
-		Pools: map[string]resourceslice.Pool{
-			PoolName: {
-				Slices: []resourceslice.Slice{{Devices: devices}},
-			},
-		},
+	if err != nil {
+		return fmt.Errorf("reading prepared claim directory: %w", err)
 	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		uid := types.UID(entry.Name())
+		state, err := loadClaimState(d.paths, uid)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if err := d.startClaimWorkers(ctx, state); err != nil {
+			return err
+		}
+		slog.InfoContext(ctx, "resumed prepared grout claim", "uid", uid)
+	}
+	return nil
 }
 
 func (d *Driver) PrepareResourceClaims(ctx context.Context, claims []*resourceapi.ResourceClaim) (map[types.UID]kubeletplugin.PrepareResult, error) {
@@ -73,63 +120,115 @@ func (d *Driver) PrepareResourceClaims(ctx context.Context, claims []*resourceap
 }
 
 func (d *Driver) prepare(ctx context.Context, claim *resourceapi.ResourceClaim) kubeletplugin.PrepareResult {
+	d.opMu.Lock()
+	defer d.opMu.Unlock()
 	slog.InfoContext(ctx, "prepare grout vhost claim", "claim", claim.Name, "uid", claim.UID)
 	if claim.Status.Allocation == nil {
 		return kubeletplugin.PrepareResult{Err: fmt.Errorf("claim %s has no allocation", claim.Name)}
 	}
 
-	var devices []kubeletplugin.Device
+	state := claimState{
+		UID: claim.UID, Namespace: claim.Namespace, Name: claim.Name,
+		PodClaimName: claim.Annotations["resource.kubernetes.io/pod-claim-name"],
+	}
+	if state.PodClaimName != "" && (filepath.Base(state.PodClaimName) != state.PodClaimName || !filepath.IsLocal(state.PodClaimName)) {
+		return kubeletplugin.PrepareResult{Err: fmt.Errorf("invalid pod claim name %q", state.PodClaimName)}
+	}
+	seen := make(map[string]bool)
+	deviceNames := make(map[string]bool)
+	requestCounts := make(map[string]int)
 	for _, result := range claim.Status.Allocation.Devices.Results {
 		if result.Driver != DriverName {
 			continue
 		}
-		dev, err := d.prepareOne(ctx, claim, result)
+		if result.Request == "" || !filepath.IsLocal(result.Request) {
+			return kubeletplugin.PrepareResult{Err: fmt.Errorf("invalid request %q", result.Request)}
+		}
+		if deviceNames[result.Device] {
+			return kubeletplugin.PrepareResult{Err: fmt.Errorf("duplicate device %q", result.Device)}
+		}
+		deviceNames[result.Device] = true
+		requestCounts[result.Request]++
+		gatewayCIDR, err := d.devices.GatewayCIDR(result.Device)
 		if err != nil {
+			return kubeletplugin.PrepareResult{Err: err}
+		}
+		state.Allocations = append(state.Allocations, allocationState{
+			Request: result.Request, Device: result.Device, Pool: result.Pool, GatewayCIDR: gatewayCIDR,
+		})
+	}
+	if len(state.Allocations) == 0 {
+		return kubeletplugin.PrepareResult{Err: fmt.Errorf("claim %s allocated no %s devices", claim.Name, DriverName)}
+	}
+	for i := range state.Allocations {
+		allocation := &state.Allocations[i]
+		allocation.Key = allocation.Request
+		if requestCounts[allocation.Request] > 1 {
+			allocation.Key += "/" + allocation.Device
+		}
+	}
+	slices.SortFunc(state.Allocations, func(a, b allocationState) int {
+		if order := cmp.Compare(a.Request, b.Request); order != 0 {
+			return order
+		}
+		return cmp.Compare(a.Device, b.Device)
+	})
+	previous, err := loadClaimState(d.paths, claim.UID)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return kubeletplugin.PrepareResult{Err: err}
+	}
+	newState := errors.Is(err, os.ErrNotExist)
+	if !newState && !reflect.DeepEqual(previous, state) {
+		return kubeletplugin.PrepareResult{Err: fmt.Errorf("claim %s allocation changed while resources are prepared", claim.Name)}
+	}
+	if newState {
+		if err := saveClaimState(d.paths, state); err != nil {
+			return kubeletplugin.PrepareResult{Err: err}
+		}
+	}
+	devices := make([]kubeletplugin.Device, 0, len(state.Allocations))
+	for _, allocation := range state.Allocations {
+		dev, err := stageAllocation(d.paths, d.prepareDir, state, allocation)
+		if err != nil {
+			if newState {
+				err = errors.Join(err, cleanupLocal(d.paths, state))
+			}
 			return kubeletplugin.PrepareResult{Err: err}
 		}
 		devices = append(devices, dev)
 	}
-	if len(devices) == 0 {
-		return kubeletplugin.PrepareResult{Err: fmt.Errorf("claim %s allocated no %s devices", claim.Name, DriverName)}
+	if state.PodClaimName != "" {
+		for _, allocation := range state.Allocations {
+			if seen[allocation.Request] {
+				continue
+			}
+			seen[allocation.Request] = true
+			if err := writeKubeVirtMetadata(d.paths, state, allocation.Request); err != nil {
+				if newState {
+					err = errors.Join(err, cleanupLocal(d.paths, state))
+				}
+				return kubeletplugin.PrepareResult{Err: err}
+			}
+		}
+	}
+	if err := d.startClaimWorkers(ctx, state); err != nil {
+		return kubeletplugin.PrepareResult{Err: err}
 	}
 	return kubeletplugin.PrepareResult{Devices: devices}
 }
 
-func (d *Driver) prepareOne(ctx context.Context, claim *resourceapi.ResourceClaim, result resourceapi.DeviceRequestAllocationResult) (kubeletplugin.Device, error) {
-	uid := claim.UID
-	request := result.Request
-	dir := ClaimDir(uid, request)
-	sock := SocketPath(uid, request)
-	name := PortName(uid)
-	podSock := PodSocketPath(request)
-	podMount := PodMountPath(request)
-	gatewayCIDR, err := gatewayCIDRForDevice(result.Device)
+func stageAllocation(paths pathLayout, prepareDir func(string) error, state claimState, allocation allocationState) (kubeletplugin.Device, error) {
+	uid := state.UID
+	key := allocation.Key
+	dir := paths.ClaimDir(uid, key)
+	podSock := PodSocketPath(key)
+	podMount := PodMountPath(key)
+
+	if err := prepareDir(dir); err != nil {
+		return kubeletplugin.Device{}, err
+	}
+	cdiID, err := writeCDISpec(paths, uid, key, dir, podMount)
 	if err != nil {
-		return kubeletplugin.Device{}, err
-	}
-
-	if err := os.MkdirAll(dir, 0o777); err != nil {
-		return kubeletplugin.Device{}, err
-	}
-	_ = os.Chmod(dir, 0o777)
-	_ = os.Chown(dir, QEMUUID, QEMUGID)
-	if err := labelVhostDir(dir); err != nil {
-		return kubeletplugin.Device{}, err
-	}
-	podClaimName := claim.Annotations["resource.kubernetes.io/pod-claim-name"]
-	if podClaimName != "" {
-		if err := writeKubeVirtMetadata(claim, result, podClaimName, PodSocketPath(request)); err != nil {
-			return kubeletplugin.Device{}, err
-		}
-	}
-
-	// QEMU binds the socket (server). Creating grout client=1 before that
-	// is a one-shot ENOENT on grout 0.17. Do not CreateVhostPort until the socket exists.
-	d.startClaimWorkers(uid, name, sock, gatewayCIDR, claim.Namespace, claim.Name, podClaimName, request)
-
-	cdiID, err := writeCDISpec(uid, dir, podMount)
-	if err != nil {
-		d.cancelPending(uid)
 		return kubeletplugin.Device{}, err
 	}
 
@@ -137,11 +236,11 @@ func (d *Driver) prepareOne(ctx context.Context, claim *resourceapi.ResourceClai
 	// TRex initializes its DPDK ports with an MTU above 1500. Advertise a
 	// jumbo-capable vhost MTU so the virtio frontend accepts that setup; the
 	// benchmark traffic itself remains 1518 bytes or smaller.
-	mtu := int64(9000)
+	mtu := int64(VhostMTU)
 	return kubeletplugin.Device{
-		Requests:     []string{request},
-		PoolName:     result.Pool,
-		DeviceName:   result.Device,
+		Requests:     []string{allocation.Request},
+		PoolName:     allocation.Pool,
+		DeviceName:   allocation.Device,
 		CDIDeviceIDs: []string{cdiID},
 		Metadata: &kubeletplugin.DeviceMetadata{
 			Attributes: map[string]resourceapi.DeviceAttribute{
@@ -150,6 +249,22 @@ func (d *Driver) prepareOne(ctx context.Context, claim *resourceapi.ResourceClai
 			},
 		},
 	}, nil
+}
+
+func prepareVhostDir(dir string) error {
+	if err := os.MkdirAll(dir, 0o777); err != nil {
+		return err
+	}
+	if err := os.Chmod(dir, 0o777); err != nil {
+		return fmt.Errorf("chmod vhost directory: %w", err)
+	}
+	if err := os.Chown(dir, QEMUUID, QEMUGID); err != nil {
+		return fmt.Errorf("chown vhost directory: %w", err)
+	}
+	if err := labelVhostDir(dir); err != nil {
+		return err
+	}
+	return nil
 }
 
 // labelVhostDir makes the CDI-mounted socket directory writable by QEMU on
@@ -172,74 +287,88 @@ func labelVhostDir(dir string) error {
 // writeKubeVirtMetadata publishes the same KEP-5304 payload synchronously for
 // virt-handler. This avoids a race with kubeletplugin's asynchronous metadata
 // persistence while retaining that standard path for ordinary Kubernetes Pods.
-func writeKubeVirtMetadata(claim *resourceapi.ResourceClaim, result resourceapi.DeviceRequestAllocationResult, podClaimName, socketPath string) error {
-	target := KubeVirtMetadataProjectionPath(podClaimName, result.Request)
+func writeKubeVirtMetadata(paths pathLayout, state claimState, request string) error {
+	target := paths.KubeVirtMetadataProjectionPath(state.PodClaimName, request)
+	devices := make([]any, 0, len(state.Allocations))
+	for _, allocation := range state.Allocations {
+		if allocation.Request != request {
+			continue
+		}
+		devices = append(devices, map[string]any{
+			"driver": DriverName, "pool": allocation.Pool, "name": allocation.Device,
+			"attributes": map[string]any{
+				VhostPathAttr: map[string]string{"string": PodSocketPath(allocation.Key)},
+				"mtu":         map[string]int64{"int": VhostMTU},
+			},
+		})
+	}
 	payload := map[string]any{
 		"kind":         "DeviceMetadata",
 		"apiVersion":   "metadata.resource.k8s.io/v1alpha1",
-		"metadata":     map[string]any{"name": claim.Name, "namespace": claim.Namespace, "uid": claim.UID, "generation": 1},
-		"podClaimName": podClaimName,
-		"requests": []any{map[string]any{"name": result.Request, "devices": []any{map[string]any{
-			"driver": result.Driver, "pool": result.Pool, "name": result.Device,
-			"attributes": map[string]any{
-				VhostPathAttr: map[string]string{"string": socketPath},
-				"mtu":         map[string]int64{"int": 9000},
-			},
-		}}}},
+		"metadata":     map[string]any{"name": state.Name, "namespace": state.Namespace, "uid": state.UID, "generation": 1},
+		"podClaimName": state.PodClaimName,
+		"requests":     []any{map[string]any{"name": request, "devices": devices}},
 	}
 	data, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		return err
-	}
-	tmp := target + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, target)
+	return writeMetadataFile(target, data)
 }
 
-func (d *Driver) startClaimWorkers(uid types.UID, portName, sock, gatewayCIDR, namespace, claimName, podClaimName, request string) {
-	d.cancelPending(uid)
-	ctx, cancel := context.WithCancel(context.Background())
-	d.mu.Lock()
-	d.pending[uid] = cancel
-	d.mu.Unlock()
-
-	go func() {
-		if err := d.attachClientUntilRunning(ctx, uid, portName, sock, gatewayCIDR); err != nil {
-			slog.Info("stop attaching grout vhost client", "uid", uid, "err", err)
-		}
-	}()
-	if podClaimName != "" {
-		go func() {
-			if err := projectKubeVirtMetadata(ctx, namespace, claimName, podClaimName, request); err != nil {
-				slog.Info("stop projecting KubeVirt DRA metadata", "claim", claimName, "err", err)
-			}
-		}()
+func (d *Driver) startClaimWorkers(ctx context.Context, state claimState) error {
+	if err := d.stopClaimWorkers(ctx, state.UID); err != nil {
+		return err
 	}
+	workerCtx, cancel := context.WithCancel(context.Background())
+	w := &claimWorker{cancel: cancel, done: make(chan struct{})}
+	d.mu.Lock()
+	d.pending[state.UID] = w
+	d.mu.Unlock()
+	go func() {
+		defer close(w.done)
+		var wg sync.WaitGroup
+		projected := make(map[string]bool)
+		for _, allocation := range state.Allocations {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				d.attachClientUntilRunning(workerCtx, state.UID, PortName(state.UID, allocation.Key),
+					d.paths.SocketPath(state.UID, allocation.Key), allocation.GatewayCIDR)
+			}()
+			if state.PodClaimName != "" && !projected[allocation.Request] {
+				projected[allocation.Request] = true
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					if err := projectKubeVirtMetadata(workerCtx, d.paths, state.Namespace, state.Name,
+						state.PodClaimName, allocation.Request); err != nil && !errors.Is(err, context.Canceled) {
+						slog.Error("projecting KubeVirt metadata", "claim", state.Name, "err", err)
+					}
+				}()
+			}
+		}
+		wg.Wait()
+		d.mu.Lock()
+		if d.pending[state.UID] == w {
+			delete(d.pending, state.UID)
+		}
+		d.mu.Unlock()
+	}()
+	return nil
 }
 
 // projectKubeVirtMetadata bridges the kubeletplugin metadata stream to the
 // host path consumed by virt-handler. It is intentionally additive: vanilla
 // Kubernetes continues to use the standard CDI metadata projection, while
 // OpenShift Virtualization can read the same stream before it launches QEMU.
-func projectKubeVirtMetadata(ctx context.Context, namespace, claimName, podClaimName, request string) error {
-	source := MetadataSourcePath(namespace, claimName, request)
-	target := KubeVirtMetadataProjectionPath(podClaimName, request)
+func projectKubeVirtMetadata(ctx context.Context, paths pathLayout, namespace, claimName, podClaimName, request string) error {
+	source := paths.MetadataSourcePath(namespace, claimName, request)
+	target := paths.KubeVirtMetadataProjectionPath(podClaimName, request)
 	for {
 		data, err := os.ReadFile(source)
 		if err == nil {
-			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-				return err
-			}
-			tmp := target + ".tmp"
-			if err := os.WriteFile(tmp, data, 0o644); err != nil {
-				return err
-			}
-			return os.Rename(tmp, target)
+			return writeMetadataFile(target, data)
 		}
 		if !os.IsNotExist(err) {
 			return err
@@ -252,60 +381,49 @@ func projectKubeVirtMetadata(ctx context.Context, namespace, claimName, podClaim
 	}
 }
 
-func (d *Driver) attachClientUntilRunning(ctx context.Context, uid types.UID, portName, sock, gatewayCIDR string) error {
+func writeMetadataFile(target string, data []byte) error {
+	return writeAtomic(target, data, 0o644)
+}
+
+func (d *Driver) attachClientUntilRunning(ctx context.Context, uid types.UID, portName, sock, gatewayCIDR string) {
 	slog.Info("waiting for qemu vhost socket", "uid", uid, "sock", sock)
 	if err := waitForUnixSocket(ctx, sock); err != nil {
-		return err
+		return
 	}
-	params := grout.VhostPortParams{
-		Name:        portName,
-		SocketPath:  sock,
-		Queues:      1,
-		GatewayCIDR: gatewayCIDR,
-		Client:      true,
-	}
-	_ = os.Chmod(sock, 0o777)
-	slog.Info("creating grout client port", "uid", uid, "name", portName)
-	if err := d.grout.CreateVhostPort(ctx, params); err != nil {
-		return fmt.Errorf("CreateVhostPort after socket ready: %w", err)
-	}
-	ticker := time.NewTicker(socketPollInterval)
+	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for {
-		running, err := d.grout.PortIsRunning(ctx, portName)
-		if err != nil {
-			slog.Error("PortIsRunning", "name", portName, "err", err)
+		if err := os.Chmod(sock, 0o777); err != nil {
+			slog.Warn("chmod qemu socket", "path", sock, "err", err)
+		} else if err := d.grout.Create(ctx, portName, sock, gatewayCIDR); err != nil {
+			slog.Warn("creating grout vhost client", "name", portName, "err", err)
+		} else if running, err := d.grout.Running(ctx, portName); err != nil {
+			slog.Warn("checking grout port state", "name", portName, "err", err)
 		} else if running {
 			slog.Info("grout vhost client running", "uid", uid, "name", portName)
-			return nil
-		} else {
-			slog.Info("grout vhost port not running yet; waiting for grout", "uid", uid, "name", portName)
+			return
 		}
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return
 		case <-ticker.C:
 		}
 	}
 }
 
-// gatewayCIDRForDevice gives each advertised vhu-N device its own L3 POC
-// subnet. The paired VM cloud-init uses 192.169.(20+N).10/24 and .1 as its
-// gateway; assigning every port .20.1 causes the second claim to have no route.
-func gatewayCIDRForDevice(device string) (string, error) {
-	index, err := strconv.Atoi(strings.TrimPrefix(device, "vhu-"))
-	if err != nil || index < 0 || index >= MaxDevices || device != fmt.Sprintf("vhu-%d", index) {
-		return "", fmt.Errorf("invalid grout vhost device %q", device)
-	}
-	return fmt.Sprintf("192.169.%d.1/24", 20+index), nil
-}
-
-func (d *Driver) cancelPending(uid types.UID) {
+func (d *Driver) stopClaimWorkers(ctx context.Context, uid types.UID) error {
 	d.mu.Lock()
-	defer d.mu.Unlock()
-	if c, ok := d.pending[uid]; ok {
-		c()
-		delete(d.pending, uid)
+	w := d.pending[uid]
+	d.mu.Unlock()
+	if w == nil {
+		return nil
+	}
+	w.cancel()
+	select {
+	case <-w.done:
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("waiting for claim worker %s: %w", uid, ctx.Err())
 	}
 }
 
@@ -318,15 +436,46 @@ func (d *Driver) UnprepareResourceClaims(ctx context.Context, claims []kubeletpl
 }
 
 func (d *Driver) unprepare(ctx context.Context, uid types.UID) error {
+	d.opMu.Lock()
+	defer d.opMu.Unlock()
 	slog.InfoContext(ctx, "unprepare grout vhost claim", "uid", uid)
-	d.cancelPending(uid)
-	name := PortName(uid)
-	if err := d.grout.DeleteVhostPort(ctx, name, ""); err != nil {
-		slog.WarnContext(ctx, "DeleteVhostPort", "err", err)
+	if err := d.stopClaimWorkers(ctx, uid); err != nil {
+		return err
 	}
-	removeCDISpec(uid)
-	_ = os.RemoveAll(filepath.Join(HostVhostRoot, string(uid)))
-	return nil
+	state, err := loadClaimState(d.paths, uid)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, allocation := range state.Allocations {
+		if err := d.grout.Delete(ctx, PortName(uid, allocation.Key)); err != nil {
+			return fmt.Errorf("deleting grout port for %s: %w", allocation.Request, err)
+		}
+	}
+	return cleanupLocal(d.paths, state)
+}
+
+func cleanupLocal(paths pathLayout, state claimState) error {
+	var errs []error
+	removedMetadata := make(map[string]bool)
+	for _, allocation := range state.Allocations {
+		if err := removeCDISpec(paths, state.UID, allocation.Key); err != nil {
+			errs = append(errs, fmt.Errorf("removing CDI spec for %s: %w", allocation.Request, err))
+		}
+		if state.PodClaimName != "" && !removedMetadata[allocation.Request] {
+			removedMetadata[allocation.Request] = true
+			path := paths.KubeVirtMetadataProjectionPath(state.PodClaimName, allocation.Request)
+			if err := removeMetadataIfOwned(state.UID, path); err != nil {
+				errs = append(errs, fmt.Errorf("removing metadata for %s: %w", allocation.Request, err))
+			}
+		}
+	}
+	if len(errs) != 0 {
+		return errors.Join(errs...)
+	}
+	return os.RemoveAll(filepath.Join(paths.hostRoot, string(state.UID)))
 }
 
 func (d *Driver) HandleError(ctx context.Context, err error, msg string) {

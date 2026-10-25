@@ -20,6 +20,7 @@ require (
 	github.com/testcontainers/testcontainers-go v0.44.0
 	github.com/vishvananda/netlink v1.3.1
 	github.com/vishvananda/netns v0.0.5
+	github.com/zeeke/grout-cni v0.1.0
 	go.yaml.in/yaml/v2 v2.4.4
 	golang.org/x/net v0.60.0
 	golang.org/x/sys v0.48.0
@@ -218,3 +219,5 @@ require (
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.2 // indirect
 )
+
+replace github.com/zeeke/grout-cni => ../grout-cni

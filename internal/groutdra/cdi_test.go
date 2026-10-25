@@ -11,9 +11,10 @@ import (
 )
 
 func TestPortName(t *testing.T) {
-	got := PortName("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
-	if got != "vhuaaaaaaaa" {
-		t.Fatalf("PortName = %q", got)
+	a := PortName("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "first")
+	b := PortName("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "second")
+	if a == b || len(a) > 15 || len(b) > 15 {
+		t.Fatalf("invalid per-request port names: %q, %q", a, b)
 	}
 }
 
@@ -31,7 +32,7 @@ func TestCDISpecHasMountNoEnv(t *testing.T) {
 		Version: "0.5.0",
 		Kind:    CDIVendor + "/" + CDIClass,
 		Devices: []cdiDevice{{
-			Name: string(uid),
+			Name: allocationID(uid, "vhu"),
 			ContainerEdits: cdiEdits{
 				Mounts: []cdiMount{{
 					HostPath:      hostDir,
