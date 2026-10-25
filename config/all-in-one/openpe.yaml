@@ -272,8 +272,12 @@ spec:
                 description: exportRTs are the Route Targets to be used for exporting
                   L2 EVPN routes.
                 items:
-                  description: RouteTarget defines a BGP Extended Community for route
-                    filtering.
+                  description: |-
+                    RouteTarget defines a BGP Extended Community for route filtering.
+
+                    Supports two formats per RFC 4360:
+                      - ASN:NN   (e.g. "64514:100")        where ASN is a 2- or 4-byte ASN (<= 4294967295)
+                      - IP:NN    (e.g. "192.168.1.1:100")  where IP is a valid IPv4 address
                   maxLength: 21
                   type: string
                 maxItems: 100
@@ -290,11 +294,20 @@ spec:
                 items:
                   type: string
                 maxItems: 2
+                minItems: 1
                 type: array
                 x-kubernetes-list-type: atomic
                 x-kubernetes-validations:
                 - message: GatewayIPs cannot be changed
                   rule: self == oldSelf
+                - message: all entries must be valid CIDRs
+                  rule: self.all(c, isCIDR(c))
+                - message: at most one IPv4 CIDR is allowed
+                  rule: self.filter(c, isCIDR(c) && cidr(c).ip().family() == 4).size()
+                    <= 1
+                - message: at most one IPv6 CIDR is allowed
+                  rule: self.filter(c, isCIDR(c) && cidr(c).ip().family() == 6).size()
+                    <= 1
               hostMaster:
                 description: |-
                   hostMaster is the interface on the host the veth should be attached to.
@@ -377,8 +390,12 @@ spec:
                 description: importRTs are the Route Targets to be used for importing
                   L2 EVPN routes.
                 items:
-                  description: RouteTarget defines a BGP Extended Community for route
-                    filtering.
+                  description: |-
+                    RouteTarget defines a BGP Extended Community for route filtering.
+
+                    Supports two formats per RFC 4360:
+                      - ASN:NN   (e.g. "64514:100")        where ASN is a 2- or 4-byte ASN (<= 4294967295)
+                      - IP:NN    (e.g. "192.168.1.1:100")  where IP is a valid IPv4 address
                   maxLength: 21
                   type: string
                 maxItems: 100
@@ -654,6 +671,8 @@ spec:
                     type: array
                     x-kubernetes-list-type: atomic
                     x-kubernetes-validations:
+                    - message: localCIDRs can't be changed
+                      rule: self == oldSelf
                     - message: all entries must be valid CIDRs
                       rule: self.all(c, isCIDR(c))
                     - message: at most one IPv4 CIDR is allowed
@@ -662,8 +681,6 @@ spec:
                     - message: at most one IPv6 CIDR is allowed
                       rule: self.filter(c, isCIDR(c) && cidr(c).ip().family() == 6).size()
                         <= 1
-                    - message: localCIDRs can't be changed
-                      rule: self == oldSelf
                 required:
                 - asn
                 - localCIDRs
@@ -793,8 +810,12 @@ spec:
                   exportRTs are the Route Targets to be used for exporting routes.
                   RouteTarget defines a BGP Extended Community for route filtering.
                 items:
-                  description: RouteTarget defines a BGP Extended Community for route
-                    filtering.
+                  description: |-
+                    RouteTarget defines a BGP Extended Community for route filtering.
+
+                    Supports two formats per RFC 4360:
+                      - ASN:NN   (e.g. "64514:100")        where ASN is a 2- or 4-byte ASN (<= 4294967295)
+                      - IP:NN    (e.g. "192.168.1.1:100")  where IP is a valid IPv4 address
                   maxLength: 21
                   type: string
                 maxItems: 100
@@ -839,6 +860,8 @@ spec:
                     type: array
                     x-kubernetes-list-type: atomic
                     x-kubernetes-validations:
+                    - message: localCIDRs can't be changed
+                      rule: self == oldSelf
                     - message: all entries must be valid CIDRs
                       rule: self.all(c, isCIDR(c))
                     - message: at most one IPv4 CIDR is allowed
@@ -847,8 +870,6 @@ spec:
                     - message: at most one IPv6 CIDR is allowed
                       rule: self.filter(c, isCIDR(c) && cidr(c).ip().family() == 6).size()
                         <= 1
-                    - message: localCIDRs can't be changed
-                      rule: self == oldSelf
                 required:
                 - asn
                 - localCIDRs
@@ -863,8 +884,12 @@ spec:
                   importRTs are the Route Targets to be used for importing routes.
                   RouteTarget defines a BGP Extended Community for route filtering.
                 items:
-                  description: RouteTarget defines a BGP Extended Community for route
-                    filtering.
+                  description: |-
+                    RouteTarget defines a BGP Extended Community for route filtering.
+
+                    Supports two formats per RFC 4360:
+                      - ASN:NN   (e.g. "64514:100")        where ASN is a 2- or 4-byte ASN (<= 4294967295)
+                      - IP:NN    (e.g. "192.168.1.1:100")  where IP is a valid IPv4 address
                   maxLength: 21
                   type: string
                 maxItems: 100
@@ -1029,8 +1054,12 @@ spec:
                   If no exportRTs are provided, defaults to single export Route Target
                   <asn>:<rdAssignedNumber>.
                 items:
-                  description: RouteTarget defines a BGP Extended Community for route
-                    filtering.
+                  description: |-
+                    RouteTarget defines a BGP Extended Community for route filtering.
+
+                    Supports two formats per RFC 4360:
+                      - ASN:NN   (e.g. "64514:100")        where ASN is a 2- or 4-byte ASN (<= 4294967295)
+                      - IP:NN    (e.g. "192.168.1.1:100")  where IP is a valid IPv4 address
                   maxLength: 21
                   type: string
                 maxItems: 100
@@ -1090,6 +1119,8 @@ spec:
                     type: array
                     x-kubernetes-list-type: atomic
                     x-kubernetes-validations:
+                    - message: localCIDRs can't be changed
+                      rule: self == oldSelf
                     - message: all entries must be valid CIDRs
                       rule: self.all(c, isCIDR(c))
                     - message: at most one IPv4 CIDR is allowed
@@ -1098,8 +1129,6 @@ spec:
                     - message: at most one IPv6 CIDR is allowed
                       rule: self.filter(c, isCIDR(c) && cidr(c).ip().family() == 6).size()
                         <= 1
-                    - message: localCIDRs can't be changed
-                      rule: self == oldSelf
                 required:
                 - asn
                 - localCIDRs
@@ -1114,8 +1143,12 @@ spec:
                   importRTs are the Route Targets to be used for importing routes.
                   importRTs must always be provided explicitly.
                 items:
-                  description: RouteTarget defines a BGP Extended Community for route
-                    filtering.
+                  description: |-
+                    RouteTarget defines a BGP Extended Community for route filtering.
+
+                    Supports two formats per RFC 4360:
+                      - ASN:NN   (e.g. "64514:100")        where ASN is a 2- or 4-byte ASN (<= 4294967295)
+                      - IP:NN    (e.g. "192.168.1.1:100")  where IP is a valid IPv4 address
                   maxLength: 21
                   type: string
                 maxItems: 100
@@ -2186,6 +2219,9 @@ spec:
                 description: routerIDCIDR is the ipv4 cidr to be used to assign a
                   different routerID on each node.
                 type: string
+                x-kubernetes-validations:
+                - message: must be a valid IPv4 CIDR
+                  rule: isCIDR(self) && cidr(self).ip().family() == 4
               srv6:
                 description: srv6 holds the SRv6 configuration. Requires ISIS or Neighbors
                   configuration.
