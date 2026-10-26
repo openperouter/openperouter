@@ -35,6 +35,7 @@ const (
 // +kubebuilder:validation:XValidation:rule="!has(self.gatewayIPs) || size(self.gatewayIPs) == 0 || has(self.routingDomain)",message="gatewayIPs cannot be set without routingDomain"
 // +kubebuilder:validation:XValidation:rule="!has(self.hostMaster) || !has(self.trunk)",message="hostMaster and trunk are mutually exclusive"
 // +kubebuilder:validation:XValidation:rule="has(self.trunk) == has(oldSelf.trunk) && (!has(self.trunk) || self.trunk == oldSelf.trunk)",message="trunk is immutable"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.hostMaster) || has(self.hostMaster)",message="hostMaster cannot be unset once set; delete and recreate the object to remove it"
 type L2VNISpec struct {
 	// nodeSelector specifies which nodes this L2VNI applies to.
 	// If empty or not specified, applies to all nodes.
@@ -81,6 +82,7 @@ type L2VNISpec struct {
 	// If not set, the host veth will not be attached to any interface and it must be
 	// attached manually (or by some other means). This is useful if another controller
 	// is leveraging the host interface for the VNI.
+	// Once set, hostMaster cannot be removed; delete and recreate the object to unset it.
 	// +optional
 	HostMaster *HostMaster `json:"hostMaster,omitempty"`
 
