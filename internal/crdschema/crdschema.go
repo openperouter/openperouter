@@ -172,6 +172,49 @@ func Validate(ctx context.Context, obj *unstructured.Unstructured, gvk schema.Gr
 	return allErrs
 }
 
+// ValidateUpdate runs OpenAPI schema validation and CEL validation rules from
+// the CRD schema against the given objects.
+// It focuses on validating transition rules (oldSelf) and can be useful for testing
+// immutable attributes.
+func ValidateUpdate(ctx context.Context, newObj, oldObj *unstructured.Unstructured, gvk schema.GroupVersionKind) field.ErrorList {
+	structural, ok := schemas[gvk]
+	if !ok {
+		return field.ErrorList{field.InternalError(field.NewPath(""), fmt.Errorf("no CRD schema found for %s", gvk))}
+	}
+
+	objs := []*unstructured.Unstructured{newObj, oldObj}
+
+	for _, obj := range objs {
+		// validate object has a spec field
+		spec, hasSpec := obj.Object["spec"]
+		if !hasSpec || spec == nil {
+			return field.ErrorList{
+				field.Required(field.NewPath("spec"), "spec is required"),
+			}
+		}
+	}
+
+	var errs field.ErrorList
+
+	// run OpenAPI schema validation (min/max, patterns, required fields, etc.)
+	schemaValidator, ok := schemaValidators[gvk]
+	if ok {
+		for _, obj := range objs {
+			schemaErrs := schemavalidation.ValidateCustomResource(field.NewPath(""), obj.Object, schemaValidator)
+			errs = append(errs, schemaErrs...)
+		}
+	}
+
+	// run CEL validation rules
+	validator, ok := validators[gvk]
+	if ok {
+		celErrs, _ := validator.Validate(ctx, field.NewPath(""), structural, newObj.Object, oldObj.Object, celconfig.RuntimeCELCostBudget)
+		errs = append(errs, celErrs...)
+	}
+
+	return errs
+}
+
 // KnownGVKs returns all GroupVersionKinds that have loaded CRD schemas.
 // Useful for testing that all expected CRDs were embedded and parsed.
 func KnownGVKs() []schema.GroupVersionKind {
