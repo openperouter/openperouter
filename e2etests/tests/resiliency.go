@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"strings"
 	"sync"
 	"time"
 
@@ -207,31 +206,48 @@ func allNodes(cs clientset.Interface) map[string]bool {
 	return result
 }
 
-// killFRREntrypoint kills the tini/docker-start entrypoint process inside the given FRR container.
+// killFRREntrypoint kills the FRR container entrypoint so kubelet restarts it.
 // A DeferCleanup is NOT registered; callers are responsible for waiting on pod restart.
-// Downstream/OCP FRR images often lack pgrep; fall back to scanning /proc cmdline.
+//
+// OpenPE's frr container ends with:
+//   exec nsenter --net=... /sbin/tini -- /usr/lib/frr/docker-start
+// so PID 1 is that entrypoint once the pod is Ready. Prefer kill 1.
+// Fallback scans /proc for tini+docker-start, excluding this helper shell (its
+// cmdline contains the same pattern and used to make pgrep/kill race on ESRCH).
 func killFRREntrypoint(frrExec executor.Executor) {
 	GinkgoHelper()
-	const entrypointPattern = "/sbin/tini -- /usr/lib/frr/docker-start"
-	psOut, err := frrExec.Exec("pgrep", "-f", entrypointPattern)
-	if err != nil {
-		// OCP/downstream FRR images may not ship pgrep; locate tini+docker-start via /proc.
-		psOut, err = frrExec.Exec("sh", "-c",
-			`for f in /proc/[0-9]*/cmdline; do
+	_, err := frrExec.Exec("sh", "-c",
+		`# Ready pods: PID 1 is nsenter/tini/docker-start after the wait-loop exec.
+if kill 1 2>/dev/null; then
+  exit 0
+fi
+if ! kill -0 1 2>/dev/null; then
+  # Already gone — container is restarting.
+  exit 0
+fi
+pid=""
+for f in /proc/[0-9]*/cmdline; do
   cmd=$(tr '\0' ' ' <"$f" 2>/dev/null) || continue
   case "$cmd" in
-    *tini*docker-start*) basename "$(dirname "$f")"; exit 0 ;;
+    *tini*docker-start*)
+      cand=$(basename "$(dirname "$f")")
+      # Exclude this helper shell — its argv embeds the match pattern.
+      [ "$cand" = "$$" ] && continue
+      pid=$cand
+      break
+      ;;
   esac
 done
+[ -n "$pid" ] || { echo "FRR entrypoint PID not found (kill 1 failed)" >&2; exit 1; }
+if kill "$pid" 2>/dev/null; then
+  exit 0
+fi
+if ! kill -0 "$pid" 2>/dev/null; then
+  exit 0
+fi
+echo "failed to kill FRR entrypoint pid=$pid" >&2
 exit 1`)
-		Expect(err).NotTo(HaveOccurred(), "failed to find FRR entrypoint PID via /proc (pgrep unavailable or failed): %v", err)
-	}
-	pids := strings.Split(strings.TrimSpace(psOut), "\n")
-	Expect(pids).NotTo(BeEmpty(), "FRR entrypoint PID should not be empty")
-	frrPID := strings.TrimSpace(pids[0])
-	Expect(frrPID).NotTo(BeEmpty(), "FRR entrypoint PID should not be empty")
-	output, err := frrExec.Exec("kill", frrPID)
-	Expect(err).NotTo(HaveOccurred(), "failed to kill FRR process %q: %v", frrPID, output)
+	Expect(err).NotTo(HaveOccurred(), "failed to kill FRR entrypoint: %v", err)
 }
 
 var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func() {
