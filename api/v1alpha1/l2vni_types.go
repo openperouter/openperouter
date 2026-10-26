@@ -196,7 +196,9 @@ type OVSBridgeConfig struct {
 // +kubebuilder:validation:XValidation:rule="(self.type == 'LinuxBridge' && has(self.linuxBridge) && !has(self.ovsBridge)) || (self.type == 'OVSBridge' && has(self.ovsBridge) && !has(self.linuxBridge))",message="type/config mismatch: 'LinuxBridge' requires linuxBridge field, 'OVSBridge' requires ovsBridge field"
 type HostMaster struct {
 	// type of the host interface. Supported values: "LinuxBridge", "OVSBridge".
+	// Immutable once set, to change it recreate the object using different value.
 	// +kubebuilder:validation:Enum=LinuxBridge;OVSBridge
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="type is immutable; delete and recreate the object to change it"
 	// +required
 	// +unionDiscriminator
 	Type string `json:"type,omitempty"`
