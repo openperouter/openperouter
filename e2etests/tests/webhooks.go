@@ -673,6 +673,30 @@ var _ = Describe("Webhooks", func() {
 			})
 			Expect(err).To(MatchError(ContainSubstring("localCIDRs can't be changed")))
 		})
+
+		It("should block updates to VRF", func() {
+			l3vniUpdated := v1alpha1.L3VNI{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "l3vni-immutable",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.L3VNISpec{
+					VRF:       "vrf-renamed",
+					VNI:       400,
+					VXLanPort: new(int32(4789)),
+					HostSession: &v1alpha1.HostSession{
+						ASN:        65000,
+						HostASN:    new(int64(65001)),
+						LocalCIDRs: []string{"10.0.0.0/24"},
+					},
+				},
+			}
+
+			err := Updater.Update(config.Resources{
+				L3VNIs: []v1alpha1.L3VNI{l3vniUpdated},
+			})
+			Expect(err).To(MatchError(ContainSubstring("vrf is immutable")))
+		})
 	})
 
 	Context("when Underlay webhooks are enabled", func() {
