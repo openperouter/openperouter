@@ -135,7 +135,7 @@ BRANCH = $(shell git rev-parse --abbrev-ref HEAD)
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
 	@if [ "$(CONTAINER_ENGINE)" = "podman" ]; then \
-		sudo $(CONTAINER_ENGINE) build  -t ${IMG} -f ${DOCKERFILE} .; \
+		sudo $(CONTAINER_ENGINE) build  -t ${IMG} -f ${DOCKERFILE} --security-opt label=disable .; \
 	else \
 		$(CONTAINER_ENGINE) build -t ${IMG} -f ${DOCKERFILE} .; \
 	fi
