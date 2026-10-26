@@ -1160,6 +1160,25 @@ func TestValidateUpdates(t *testing.T) {
 			newSpec:     hostMasterSpec("OVSBridge", "br0"),
 			wantError:   "type is immutable",
 		},
+		{
+			description: "L2VNI hostMaster can be added on update",
+			gvk:         l2vniGVK,
+			oldSpec:     map[string]any{"vni": 100},
+			newSpec:     hostMasterSpec("OVSBridge", "br0"),
+		},
+		{
+			description: "L2VNI hostMaster removal rejected",
+			gvk:         l2vniGVK,
+			oldSpec:     hostMasterSpec("LinuxBridge", "br0"),
+			newSpec:     map[string]any{"vni": 100},
+			wantError:   "hostMaster cannot be unset once set",
+		},
+		{
+			description: "L2VNI without hostMaster remains valid on update",
+			gvk:         l2vniGVK,
+			oldSpec:     map[string]any{"vni": 100},
+			newSpec:     map[string]any{"vni": 100, "vxlanPort": int64(4790)},
+		},
 	}
 
 	for _, tc := range tests {
