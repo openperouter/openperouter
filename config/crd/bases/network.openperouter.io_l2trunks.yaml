@@ -70,6 +70,7 @@ spec:
                           name of the Linux bridge interface. Required when lifecycle is
                           External, and must be omitted when it is Managed, in which case the
                           bridge is named br-hs-<VNI>.
+                          Immutable once set, to change it recreate the object using different value.
                         maxLength: 15
                         pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
                         type: string
@@ -81,6 +82,10 @@ spec:
                         not be set when it is Managed.
                       rule: (self.?name.orValue("") != "") != (self.?lifecycle.orValue("")
                         == 'Managed')
+                    - message: name is immutable; delete and recreate the object to
+                        change it
+                      rule: has(self.name) == has(oldSelf.name) && (!has(self.name)
+                        || self.name == oldSelf.name)
                   ovsBridge:
                     description: ovsBridge configuration. Must be set when Type is
                       "OVSBridge".
@@ -98,6 +103,7 @@ spec:
                           name of the OVS bridge interface. Required when lifecycle is
                           External, and must be omitted when it is Managed, in which case the
                           bridge is named br-hs-<VNI>.
+                          Immutable once set, to change it recreate the object using different value.
                         maxLength: 15
                         pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
                         type: string
@@ -109,13 +115,22 @@ spec:
                         not be set when it is Managed.
                       rule: (self.?name.orValue("") != "") != (self.?lifecycle.orValue("")
                         == 'Managed')
+                    - message: name is immutable; delete and recreate the object to
+                        change it
+                      rule: has(self.name) == has(oldSelf.name) && (!has(self.name)
+                        || self.name == oldSelf.name)
                   type:
-                    description: 'type of the host interface. Supported values: "LinuxBridge",
-                      "OVSBridge".'
+                    description: |-
+                      type of the host interface. Supported values: "LinuxBridge", "OVSBridge".
+                      Immutable once set, to change it recreate the object using different value.
                     enum:
                     - LinuxBridge
                     - OVSBridge
                     type: string
+                    x-kubernetes-validations:
+                    - message: type is immutable; delete and recreate the object to
+                        change it
+                      rule: self == oldSelf
                 required:
                 - type
                 type: object
