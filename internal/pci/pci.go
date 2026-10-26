@@ -6,7 +6,6 @@ package pci
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"regexp"
 )
@@ -25,6 +24,7 @@ type Sysfs struct {
 }
 
 var pciAddressRegex = regexp.MustCompile(`^[0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-7]$`)
+var virtioDeviceRegex = regexp.MustCompile(`^virtio[0-9]+$`)
 
 // IsBifurcated reports whether the kernel driver shares the device with
 // DPDK (e.g. mlx5) instead of requiring a vfio-pci rebind.
@@ -34,14 +34,17 @@ func IsBifurcated(driver string) bool {
 
 // PCIAddressForNetDevice takes a kernel netlink device name and returns its PCI
 // address by reading the "device" symlink under the device's sysfs
-// class/net directory.
+// class/net directory. Virtio netdevs have a virtio device below the PCI device.
 func (s Sysfs) PCIAddressForNetDevice(name string) (string, error) {
 	deviceLink := filepath.Join(s.Root, "class", "net", name, "device")
-	target, err := os.Readlink(deviceLink)
+	target, err := filepath.EvalSymlinks(deviceLink)
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve netlink device %q to PCI address: %w", name, err)
 	}
 	pciAddr := filepath.Base(target)
+	if virtioDeviceRegex.MatchString(pciAddr) {
+		pciAddr = filepath.Base(filepath.Dir(target))
+	}
 	if !isPCIAddress(pciAddr) {
 		return "", fmt.Errorf("resolved device symlink target %q for %q does not look like a PCI address", pciAddr, name)
 	}
