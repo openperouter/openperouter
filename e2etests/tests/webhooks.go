@@ -564,7 +564,7 @@ var _ = Describe("Webhooks", GroutSupport, func() {
 		})
 
 		DescribeTable("should block updates to HostMaster",
-			func(hostMaster *v1alpha1.HostMaster, mutate func(*v1alpha1.HostMaster), expectedErr string) {
+			func(hostMaster *v1alpha1.HostMaster, mutate func(spec *v1alpha1.L2VNISpec), expectedErr string) {
 				l2vni := v1alpha1.L2VNI{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "l2vni-linux",
@@ -583,7 +583,7 @@ var _ = Describe("Webhooks", GroutSupport, func() {
 
 				updated := l2vni.DeepCopy()
 
-				mutate(updated.Spec.HostMaster)
+				mutate(&updated.Spec)
 
 				cfgUpdated := config.Resources{
 					L2VNIs: []v1alpha1.L2VNI{*updated},
@@ -598,8 +598,8 @@ var _ = Describe("Webhooks", GroutSupport, func() {
 						Name:      new("br0"),
 					},
 				},
-				func(hm *v1alpha1.HostMaster) {
-					hm.LinuxBridge.Name = new("test")
+				func(spec *v1alpha1.L2VNISpec) {
+					spec.HostMaster.LinuxBridge.Name = new("test")
 				},
 				"name is immutable",
 			),
@@ -611,8 +611,8 @@ var _ = Describe("Webhooks", GroutSupport, func() {
 						Name:      new("br0"),
 					},
 				},
-				func(hm *v1alpha1.HostMaster) {
-					hm.OVSBridge.Name = new("test")
+				func(spec *v1alpha1.L2VNISpec) {
+					spec.HostMaster.OVSBridge.Name = new("test")
 				},
 				"name is immutable",
 			),
@@ -624,10 +624,22 @@ var _ = Describe("Webhooks", GroutSupport, func() {
 						Name:      new("br0"),
 					},
 				},
-				func(hm *v1alpha1.HostMaster) {
-					hm.Type = v1alpha1.OVSBridge
+				func(spec *v1alpha1.L2VNISpec) {
+					spec.HostMaster.Type = v1alpha1.OVSBridge
 				},
 				"type is immutable",
+			),
+			Entry("remove hostMaster altogether",
+				&v1alpha1.HostMaster{
+					Type: v1alpha1.LinuxBridge,
+					LinuxBridge: &v1alpha1.LinuxBridgeConfig{
+						Lifecycle: v1alpha1.BridgeLifecycleManaged,
+					},
+				},
+				func(spec *v1alpha1.L2VNISpec) {
+					spec.HostMaster = nil
+				},
+				"hostMaster cannot be unset once set; delete and recreate the object to remove it",
 			),
 		)
 	})
