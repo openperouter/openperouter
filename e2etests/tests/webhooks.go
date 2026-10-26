@@ -555,6 +555,61 @@ var _ = Describe("Webhooks", func() {
 			})
 			Expect(err).To(MatchError(ContainSubstring("GatewayIPs cannot be changed")))
 		})
+
+		DescribeTable("should block updates to HostMaster",
+			func(hostMaster *v1alpha1.HostMaster, mutate func(*v1alpha1.HostMaster), expectedErr string) {
+				l2vni := v1alpha1.L2VNI{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "l2vni-linux",
+						Namespace: openperouter.Namespace,
+					},
+					Spec: v1alpha1.L2VNISpec{
+						VNI:        310,
+						VXLanPort:  new(int32(4789)),
+						HostMaster: hostMaster,
+					},
+				}
+				err := Updater.Update(config.Resources{
+					L2VNIs: []v1alpha1.L2VNI{l2vni},
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				updated := l2vni.DeepCopy()
+
+				mutate(updated.Spec.HostMaster)
+
+				err = Updater.Update(config.Resources{
+					L2VNIs: []v1alpha1.L2VNI{*updated},
+				})
+				Expect(err).To(MatchError(ContainSubstring(expectedErr)))
+			},
+			Entry("linuxBridgeConfig name",
+				&v1alpha1.HostMaster{
+					Type: v1alpha1.LinuxBridge,
+					LinuxBridge: &v1alpha1.LinuxBridgeConfig{
+						Lifecycle: v1alpha1.BridgeLifecycleExternal,
+						Name:      new("br0"),
+					},
+				},
+				func(hm *v1alpha1.HostMaster) {
+					hm.LinuxBridge.Name = new("test")
+				},
+				"name is immutable",
+			),
+			Entry("ovsBridgeConfig name",
+				&v1alpha1.HostMaster{
+					Type: v1alpha1.OVSBridge,
+					OVSBridge: &v1alpha1.OVSBridgeConfig{
+						Lifecycle: v1alpha1.BridgeLifecycleExternal,
+						Name:      new("br0"),
+					},
+				},
+				func(hm *v1alpha1.HostMaster) {
+					hm.OVSBridge.Name = new("test")
+				},
+				"name is immutable",
+			),
+		)
 	})
 
 	Context("when L3VNI immutability is tested", func() {

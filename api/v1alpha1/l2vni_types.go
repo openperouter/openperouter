@@ -156,6 +156,7 @@ const (
 
 // LinuxBridgeConfig contains configuration for Linux bridge type.
 // +kubebuilder:validation:XValidation:rule="(self.?name.orValue(\"\") != \"\") != (self.?lifecycle.orValue(\"\") == 'Managed')",message="name must be set when lifecycle is External, and must not be set when it is Managed."
+// +kubebuilder:validation:XValidation:rule="has(self.name) == has(oldSelf.name) && (!has(self.name) || self.name == oldSelf.name)",message="name is immutable; delete and recreate the object to change it"
 type LinuxBridgeConfig struct {
 	// lifecycle determines if the bridge is managed by the controller or
 	// provided by the user.
@@ -165,6 +166,7 @@ type LinuxBridgeConfig struct {
 	// name of the Linux bridge interface. Required when lifecycle is
 	// External, and must be omitted when it is Managed, in which case the
 	// bridge is named br-hs-<VNI>.
+	// Immutable once set, to change it recreate the object using different value.
 	// +kubebuilder:validation:Pattern=`^[a-zA-Z][a-zA-Z0-9_-]*$`
 	// +kubebuilder:validation:MaxLength=15
 	// +optional
@@ -173,6 +175,7 @@ type LinuxBridgeConfig struct {
 
 // OVSBridgeConfig contains configuration for OVS bridge type.
 // +kubebuilder:validation:XValidation:rule="(self.?name.orValue(\"\") != \"\") != (self.?lifecycle.orValue(\"\") == 'Managed')",message="name must be set when lifecycle is External, and must not be set when it is Managed."
+// +kubebuilder:validation:XValidation:rule="has(self.name) == has(oldSelf.name) && (!has(self.name) || self.name == oldSelf.name)",message="name is immutable; delete and recreate the object to change it"
 type OVSBridgeConfig struct {
 	// lifecycle determines if the OVS bridge is managed by the controller or
 	// provided by the user.
@@ -182,6 +185,7 @@ type OVSBridgeConfig struct {
 	// name of the OVS bridge interface. Required when lifecycle is
 	// External, and must be omitted when it is Managed, in which case the
 	// bridge is named br-hs-<VNI>.
+	// Immutable once set, to change it recreate the object using different value.
 	// +kubebuilder:validation:Pattern=`^[a-zA-Z][a-zA-Z0-9_-]*$`
 	// +kubebuilder:validation:MaxLength=15
 	// +optional
