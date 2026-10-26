@@ -247,11 +247,17 @@ func TestPCIAddressForVF_EmulatedVFs(t *testing.T) {
 			if err := os.Symlink("../0000:09:00.0", filepath.Join(pfDeviceDir, "virtfn1")); err != nil {
 				t.Fatal(err)
 			}
+			// The emulated VFs are virtio-net NICs, so the netdev hangs
+			// off a virtio child of the PCI device.
 			vfNetDir := filepath.Join(sysfs.Root, "class", "net", pfName+"v1")
 			if err := os.MkdirAll(vfNetDir, 0o755); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.Symlink("../../../"+testPCIAddress, filepath.Join(vfNetDir, "device")); err != nil {
+			if err := os.MkdirAll(filepath.Join(sysfs.Root, "devices", testPCIAddress, "virtio3"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink("../../../devices/"+testPCIAddress+"/virtio3",
+				filepath.Join(vfNetDir, "device")); err != nil {
 				t.Fatal(err)
 			}
 
