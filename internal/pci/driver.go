@@ -26,20 +26,30 @@ func (s Sysfs) DriverForPCIAddress(pciAddr string) (string, error) {
 }
 
 // NetDeviceForPCIAddress returns the name of the kernel network interface
-// backed by the given PCI device. It reads the entries under the
-// "net/" directory in the device's sysfs path.
+// backed by the given PCI device. Virtio netdevs live under a virtio child
+// of the PCI device rather than directly under its net/ directory.
 func (s Sysfs) NetDeviceForPCIAddress(pciAddr string) (string, error) {
-	netDir := filepath.Join(s.Root, "bus", "pci", "devices", pciAddr, "net")
-	entries, err := os.ReadDir(netDir)
+	deviceDir := filepath.Join(s.Root, "bus", "pci", "devices", pciAddr)
+	netDirs := []string{filepath.Join(deviceDir, "net")}
+	virtioNetDirs, err := filepath.Glob(filepath.Join(deviceDir, "virtio[0-9]*", "net"))
 	if err != nil {
-		return "", fmt.Errorf("no kernel net device for PCI device %s: %w", pciAddr, err)
+		return "", fmt.Errorf("failed to find virtio net directories for PCI device %s: %w", pciAddr, err)
 	}
-	for _, e := range entries {
-		if e.IsDir() {
-			return e.Name(), nil
+	for _, netDir := range append(netDirs, virtioNetDirs...) {
+		entries, err := os.ReadDir(netDir)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return "", fmt.Errorf("failed to read kernel net devices under %s: %w", netDir, err)
+		}
+		for _, e := range entries {
+			if e.IsDir() {
+				return e.Name(), nil
+			}
 		}
 	}
-	return "", fmt.Errorf("no kernel net device found under %s", netDir)
+	return "", fmt.Errorf("no kernel net device found for PCI device %s", pciAddr)
 }
 
 // RestoreDriver rebinds a PCI device from vfio-pci back to its original

@@ -101,18 +101,8 @@ var _ = Describe("HWEmulation", Ordered, GroutSupport, func() {
 			Underlays: []v1alpha1.Underlay{AcceleratedUnderlay},
 		})).To(Succeed())
 
-		By("Verifying BGP sessions with leafkind1")
-		leafExec := executor.ForContainer(infra.KindLeaf)
-		for _, node := range nodes {
-			neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
-			Expect(err).To(Succeed())
-			validate.SessionWithNeighbor(leafExec, validate.SessionParameters{
-				FromName:    infra.KindLeaf,
-				ToName:      node.Name,
-				NeighborIP:  neighborIP,
-				Established: Established,
-			})
-		}
+		By("Verifying BGP sessions with leafkind1 and leafkind2")
+		validateUnderlaySessions(nodes)
 	})
 
 	AfterAll(func() {
@@ -252,18 +242,8 @@ var _ = Describe("HWEmulation", Ordered, GroutSupport, func() {
 			}, time.Minute, time.Second).Should(Succeed(), "router %s, port %s", router.Name(), portName)
 		}
 
-		By("Verifying BGP sessions with leafkind1")
-		leafExec := executor.ForContainer(infra.KindLeaf)
-		for _, node := range nodes {
-			neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
-			Expect(err).To(Succeed())
-			validate.SessionWithNeighbor(leafExec, validate.SessionParameters{
-				FromName:    infra.KindLeaf,
-				ToName:      node.Name,
-				NeighborIP:  neighborIP,
-				Established: Established,
-			})
-		}
+		By("Verifying BGP sessions with leafkind1 and leafkind2")
+		validateUnderlaySessions(nodes)
 	})
 })
 
@@ -279,6 +259,26 @@ func showGroutPort(g Gomega, router openperouter.RouterExecutor, portName string
 	g.Expect(err).NotTo(HaveOccurred(), out)
 	g.Expect(json.Unmarshal([]byte(out), &port)).To(Succeed(), out)
 	return port
+}
+
+// validateUnderlaySessions checks the BGP sessions between every node and
+// both kind leaves. leafkind1 is reached through toswitch1, an igb NIC, and
+// leafkind2 through toswitch2, a virtio NIC, so both kinds of grout PCI port
+// are covered.
+func validateUnderlaySessions(nodes []corev1.Node) {
+	for _, leaf := range []string{infra.KindLeaf, infra.KindLeaf2} {
+		leafExec := executor.ForContainer(leaf)
+		for _, node := range nodes {
+			neighborIP, err := infra.NeighborIP(leaf, node.Name)
+			Expect(err).To(Succeed())
+			validate.SessionWithNeighbor(leafExec, validate.SessionParameters{
+				FromName:    leaf,
+				ToName:      node.Name,
+				NeighborIP:  neighborIP,
+				Established: Established,
+			})
+		}
+	}
 }
 
 // expectBoundToVFIO checks that the PCI device is bound to vfio-pci on the
