@@ -89,7 +89,7 @@ var _ = Describe("Routes with RT between bgp and the fabric", GroutSupport, Orde
 
 		err = Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{
-				infra.Underlay,
+				infra.Underlay(infra.Default),
 			},
 		})
 
@@ -175,7 +175,7 @@ var _ = Describe("Routes with RT between bgp and the fabric", GroutSupport, Orde
 				By(fmt.Sprintf("checking Type-5 routes from node %s under its RD on both leaves", node.Name))
 				origin, err := routers.ExecutorForNode(node.Name)
 				Expect(err).To(Succeed())
-				cidr, err := openperouter.GetVtepIPv4ForNode(infra.Underlay.Spec.TunnelEndpoint, &node)
+				cidr, err := openperouter.GetVtepIPv4ForNode(infra.Underlay(infra.Default).Spec.TunnelEndpoint, &node)
 				Expect(err).To(Succeed())
 				vtep := ipfamily.StripCIDRMask(cidr)
 				Eventually(func(g Gomega) {

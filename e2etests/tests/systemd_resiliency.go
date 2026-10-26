@@ -44,7 +44,7 @@ var _ = Describe("Systemd Router Restart Resiliency", Label("systemdmode"), Orde
 
 		err = Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{
-				infra.Underlay,
+				infra.Underlay(infra.Default),
 			},
 		})
 		Expect(err).NotTo(HaveOccurred())
@@ -145,7 +145,7 @@ var _ = Describe("Systemd: Named netns and kernel objects survive FRR container 
 		nodes = nodesItems.Items
 
 		err = Updater.Update(config.Resources{
-			Underlays: []v1alpha1.Underlay{infra.Underlay},
+			Underlays: []v1alpha1.Underlay{infra.Underlay(infra.Default)},
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -246,7 +246,7 @@ var _ = Describe("Systemd: Controller auto-recovers when operator deletes named 
 		nodes = nodesItems.Items
 
 		err = Updater.Update(config.Resources{
-			Underlays: []v1alpha1.Underlay{infra.Underlay},
+			Underlays: []v1alpha1.Underlay{infra.Underlay(infra.Default)},
 			L3VNIs: []v1alpha1.L3VNI{{
 				ObjectMeta: metav1.ObjectMeta{Name: "red", Namespace: openperouter.Namespace},
 				Spec:       v1alpha1.L3VNISpec{VRF: "red", VNI: 100},
@@ -347,7 +347,7 @@ var _ = Describe("Systemd: Data plane continuity during FRR restart", Label("sys
 		}
 
 		err = Updater.Update(config.Resources{
-			Underlays: []v1alpha1.Underlay{infra.Underlay},
+			Underlays: []v1alpha1.Underlay{infra.Underlay(infra.Default)},
 			L3VNIs: []v1alpha1.L3VNI{{
 				ObjectMeta: metav1.ObjectMeta{Name: "red", Namespace: openperouter.Namespace},
 				Spec:       v1alpha1.L3VNISpec{VRF: "red", VNI: 100},

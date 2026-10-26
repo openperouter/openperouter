@@ -35,39 +35,6 @@ var _ = Describe("IPv6 VTEP", Ordered, func() {
 		nodes   []corev1.Node
 	)
 
-	dualStackUnderlay := v1alpha1.Underlay{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "underlay",
-			Namespace: openperouter.Namespace,
-		},
-		Spec: v1alpha1.UnderlaySpec{
-			ASN: 64514,
-			Interfaces: []v1alpha1.UnderlayInterface{
-				{
-					Type:          "NetworkDevice",
-					NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch1"},
-				},
-				{
-					Type:          "NetworkDevice",
-					NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch2"},
-				},
-			},
-			Neighbors: []v1alpha1.Neighbor{
-				{
-					ASN:     new(int64(64512)),
-					Address: new("192.168.11.2"),
-				},
-				{
-					ASN:     new(int64(64513)),
-					Address: new("192.168.12.2"),
-				},
-			},
-			TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
-				CIDRs: []string{"100.65.0.0/24", "fd00:64::/120"},
-			},
-		},
-	}
-
 	l3VniV4 := v1alpha1.L3VNI{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "red-v4",
@@ -137,6 +104,8 @@ var _ = Describe("IPv6 VTEP", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred())
 		routers.Dump(ginkgo.GinkgoWriter)
 
+		dualStackUnderlay := infra.Underlay(infra.Default)
+		dualStackUnderlay.Spec.TunnelEndpoint.CIDRs = []string{"100.65.0.0/24", "fd00:64::/120"}
 		err = Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{dualStackUnderlay},
 		})

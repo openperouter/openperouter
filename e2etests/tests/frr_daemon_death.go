@@ -44,7 +44,7 @@ var _ = Describe("FRR daemon death", PodModeOnly, Ordered, func() {
 		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 
 		Expect(Updater.Update(config.Resources{
-			Underlays: []v1alpha1.Underlay{infra.Underlay},
+			Underlays: []v1alpha1.Underlay{infra.Underlay(infra.Default)},
 			L3VNIs:    []v1alpha1.L3VNI{vniRed},
 		})).To(Succeed())
 

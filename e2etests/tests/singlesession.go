@@ -27,26 +27,6 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 )
 
-var singleSessionUnderlay = v1alpha1.Underlay{
-	ObjectMeta: metav1.ObjectMeta{
-		Name:      "underlay-single",
-		Namespace: openperouter.Namespace,
-	},
-	Spec: v1alpha1.UnderlaySpec{
-		ASN:        64514,
-		Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch1"}}},
-		Neighbors: []v1alpha1.Neighbor{
-			{
-				ASN:     new(int64(64512)),
-				Address: new("192.168.11.2"),
-			},
-		},
-		TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
-			CIDRs: []string{"100.65.0.0/24"},
-		},
-	},
-}
-
 var vniRedSingleSession = v1alpha1.L3VNI{
 	ObjectMeta: metav1.ObjectMeta{
 		Name:      "red",
@@ -98,9 +78,12 @@ var _ = Describe("Single Session Baseline", Ordered, func() {
 		nodes = nodesItems.Items
 
 		By("Setting up underlay with single interface and single neighbor")
+		singleNeighborUnderlay := infra.Underlay(infra.Default)
+		singleNeighborUnderlay.Spec.Interfaces = singleNeighborUnderlay.Spec.Interfaces[:1]
+		singleNeighborUnderlay.Spec.Neighbors = singleNeighborUnderlay.Spec.Neighbors[:1]
 		err = Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{
-				singleSessionUnderlay,
+				singleNeighborUnderlay,
 			},
 		})
 		Expect(err).NotTo(HaveOccurred())

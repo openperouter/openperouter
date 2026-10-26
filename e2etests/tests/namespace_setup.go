@@ -37,7 +37,7 @@ var _ = Describe("Namespace setup", Ordered, func() {
 		By("Creating underlay")
 		Expect(Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{
-				infra.Underlay,
+				infra.Underlay(infra.Default),
 			},
 		})).To(Succeed())
 	})

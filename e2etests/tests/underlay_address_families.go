@@ -31,10 +31,10 @@ import (
 // - It reduces the number of underlay creations and teardowns.
 var _ = Describe("Routes between bgp and the fabric", Ordered, func() {
 	DescribeTableSubtree("underlay address family", runUnderlayTests,
-		Entry("IPv6", ipfamily.IPv6, infra.UnderlayIPv6),
-		Entry("Unnumbered", ipfamily.Unnumbered, infra.UnderlayUnnumbered),
-		Entry("ListenRange", ipfamily.IPv4, infra.UnderlayListenRange),
-		Entry("ListenRangeIPv6", ipfamily.IPv6, infra.UnderlayListenRangeIPv6),
+		Entry("IPv6", ipfamily.IPv6, infra.Underlay(infra.IPv6)),
+		Entry("Unnumbered", ipfamily.Unnumbered, infra.Underlay(infra.Unnumbered)),
+		Entry("ListenRange", ipfamily.IPv4, infra.Underlay(infra.ListenRange)),
+		Entry("ListenRangeIPv6", ipfamily.IPv6, infra.Underlay(infra.ListenRangeIPv6)),
 	)
 })
 

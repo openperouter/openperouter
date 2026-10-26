@@ -21,70 +21,6 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 )
 
-// underlayRR runs the control-plane router as a pure BGP route reflector: no
-// tunnel endpoint, one listen-range dynamic neighbor that reflects both ipv4
-// unicast (VTEP /32 reachability) and l2vpn evpn (type-2/3) to the clients.
-var underlayRR = v1alpha1.Underlay{
-	ObjectMeta: metav1.ObjectMeta{
-		Name:      "rr",
-		Namespace: openperouter.Namespace,
-	},
-	Spec: v1alpha1.UnderlaySpec{
-		ASN:          64514,
-		Interfaces:   infra.DefaultInterfaces,
-		NodeSelector: &k8s.ControlPlaneNodesLabelSelector,
-		RouteReflector: &v1alpha1.RouteReflectorConfig{
-			ClusterID: new("192.0.2.1"),
-		},
-		Neighbors: []v1alpha1.Neighbor{
-			{
-				ListenRange: new("192.168.11.0/24"),
-				Type:        new("Internal"),
-				AddressFamilies: []v1alpha1.NeighborAddressFamily{
-					{
-						Type: "ipv4unicast",
-						Properties: []v1alpha1.AddressFamilyProperty{
-							{Type: v1alpha1.AddressFamilyPropertyRouteReflectorClient},
-						},
-					},
-					{
-						Type: "evpn",
-						Properties: []v1alpha1.AddressFamilyProperty{
-							{Type: v1alpha1.AddressFamilyPropertyRouteReflectorClient},
-						},
-					},
-				},
-			},
-		},
-	},
-}
-
-// underlayRRAddress is the control-plane router pod address on the
-// leafkind1 switch subnet, where underlayRR accepts dynamic neighbors.
-const underlayRRAddress = "192.168.11.3"
-
-// underlayRRClient runs on the worker nodes as iBGP clients of underlayRR.
-var underlayRRClient = v1alpha1.Underlay{
-	ObjectMeta: metav1.ObjectMeta{
-		Name:      "client",
-		Namespace: openperouter.Namespace,
-	},
-	Spec: v1alpha1.UnderlaySpec{
-		ASN:          64514,
-		Interfaces:   infra.DefaultInterfaces,
-		NodeSelector: &k8s.NonControlPlaneNodesLabelSelector,
-		TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
-			CIDRs: []string{"100.65.0.0/24"},
-		},
-		Neighbors: []v1alpha1.Neighbor{
-			{
-				Address: new(underlayRRAddress),
-				Type:    new("Internal"),
-			},
-		},
-	},
-}
-
 var _ = Describe("Route Reflector EVPN east/west traffic", Ordered, func() {
 	const (
 		testNamespace             = "test-rr-l2"
@@ -130,8 +66,8 @@ var _ = Describe("Route Reflector EVPN east/west traffic", Ordered, func() {
 
 		Expect(Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{
-				underlayRR,
-				underlayRRClient,
+				infra.Underlay(infra.RouteReflector),
+				infra.Underlay(infra.RouteReflectorClient),
 			},
 		})).To(Succeed())
 	})
@@ -189,15 +125,16 @@ var _ = Describe("Route Reflector EVPN east/west traffic", Ordered, func() {
 		routers, err := openperouter.Get(cs, HostMode)
 		Expect(err).NotTo(HaveOccurred())
 
+		rrClient := infra.Underlay(infra.RouteReflectorClient)
 		firstWorkerFRR, err := routers.ExecutorForNode(workers[0].Name)
 		Expect(err).NotTo(HaveOccurred())
-		firstWorkerVTEPCIDR, err := openperouter.GetVtepIPv4ForNode(underlayRRClient.Spec.TunnelEndpoint, &workers[0])
+		firstWorkerVTEPCIDR, err := openperouter.GetVtepIPv4ForNode(rrClient.Spec.TunnelEndpoint, &workers[0])
 		Expect(err).NotTo(HaveOccurred())
 		firstWorkerVTEP := ipfamily.StripCIDRMask(firstWorkerVTEPCIDR)
 
 		secondWorkerFRR, err := routers.ExecutorForNode(workers[1].Name)
 		Expect(err).NotTo(HaveOccurred())
-		secondWorkerVTEPCIDR, err := openperouter.GetVtepIPv4ForNode(underlayRRClient.Spec.TunnelEndpoint, &workers[1])
+		secondWorkerVTEPCIDR, err := openperouter.GetVtepIPv4ForNode(rrClient.Spec.TunnelEndpoint, &workers[1])
 		Expect(err).NotTo(HaveOccurred())
 		secondWorkerVTEP := ipfamily.StripCIDRMask(secondWorkerVTEPCIDR)
 
@@ -207,13 +144,13 @@ var _ = Describe("Route Reflector EVPN east/west traffic", Ordered, func() {
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(firstWorkerEVPN.ContainsType2MACIPRouteForVNI(secondPodIP, secondWorkerVTEP, vni)).To(BeTrue(),
 				"first worker should have a type-2 route for %s with next hop %s reflected via %s",
-				secondPodIP, secondWorkerVTEP, underlayRRAddress)
+				secondPodIP, secondWorkerVTEP, infra.RouteReflectorAddress)
 
 			secondWorkerEVPN, err := frr.EVPNInfo(secondWorkerFRR)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(secondWorkerEVPN.ContainsType2MACIPRouteForVNI(firstPodIP, firstWorkerVTEP, vni)).To(BeTrue(),
 				"second worker should have a type-2 route for %s with next hop %s reflected via %s",
-				firstPodIP, firstWorkerVTEP, underlayRRAddress)
+				firstPodIP, firstWorkerVTEP, infra.RouteReflectorAddress)
 
 		}, time.Minute, time.Second).Should(Succeed())
 	})

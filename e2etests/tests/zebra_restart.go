@@ -59,14 +59,14 @@ var _ = Describe("Data plane continuity during zebra restart", PodModeOnly, Orde
 			return openperouter.AreReady(routers)
 		}, 2*time.Minute, time.Second).Should(Succeed())
 
-		underlayWithGR := infra.Underlay.DeepCopy()
+		underlayWithGR := infra.Underlay(infra.Default)
 		underlayWithGR.Spec.GracefulRestart = &v1alpha1.GracefulRestartConfig{
 			RestartTimeSeconds:   new(int64(120)),
 			StalePathTimeSeconds: new(int64(360)),
 		}
 
 		Expect(Updater.Update(config.Resources{
-			Underlays: []v1alpha1.Underlay{*underlayWithGR},
+			Underlays: []v1alpha1.Underlay{underlayWithGR},
 		})).To(Succeed())
 
 		Eventually(func() error {

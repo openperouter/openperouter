@@ -141,7 +141,7 @@ var _ = Describe("Mixed L3VPN and L3VNI coexistence in different VRFs", Ordered,
 		By("creating the underlay")
 		Expect(Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{
-				infra.UnderlayEVPNandSRv6,
+				infra.Underlay(infra.EVPNandSRv6),
 			},
 		})).To(Succeed())
 
@@ -289,11 +289,11 @@ var _ = Describe("Mixed L3VPN and L3VNI coexistence in different VRFs", Ordered,
 		expectedL3VNIOverhead int,
 	) {
 		By(fmt.Sprintf("updating underlay encapsulation to encap behavior %s", encapsBehavior))
-		underlay := infra.UnderlayEVPNandSRv6.DeepCopy()
+		underlay := infra.Underlay(infra.EVPNandSRv6)
 		underlay.Spec.SRV6.EncapBehavior = new(encapsBehavior)
 		Expect(Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{
-				*underlay,
+				underlay,
 			},
 		})).To(Succeed())
 

@@ -79,7 +79,7 @@ var _ = Describe("Alpha: Named netns and kernel objects survive FRR crash", Orde
 
 		err = Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{
-				infra.Underlay,
+				infra.Underlay(infra.Default),
 			},
 		})
 		Expect(err).NotTo(HaveOccurred())
@@ -271,11 +271,11 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 			return openperouter.AreReady(routers)
 		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 
-		underlayWithGR := infra.Underlay.DeepCopy()
+		underlayWithGR := infra.Underlay(infra.Default)
 		underlayWithGR.Spec.GracefulRestart = &v1alpha1.GracefulRestartConfig{}
 
 		err = Updater.Update(config.Resources{
-			Underlays: []v1alpha1.Underlay{*underlayWithGR},
+			Underlays: []v1alpha1.Underlay{underlayWithGR},
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -848,7 +848,7 @@ var _ = Describe("Configuration Resiliency", Ordered, func() {
 		Expect(openperouter.DisableWebhooksForNamespace(cs, openperouter.Namespace)).To(Succeed())
 
 		Expect(Updater.Update(config.Resources{
-			Underlays: []v1alpha1.Underlay{infra.Underlay},
+			Underlays: []v1alpha1.Underlay{infra.Underlay(infra.Default)},
 		})).To(Succeed())
 	})
 

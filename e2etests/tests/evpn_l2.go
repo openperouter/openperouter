@@ -78,7 +78,7 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Grou
 
 		err = Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{
-				infra.Underlay,
+				infra.Underlay(infra.Default),
 			},
 		})
 		Expect(err).NotTo(HaveOccurred())
@@ -391,7 +391,7 @@ var _ = Describe("Disconnected L2VNI east/west traffic", GroutSupport, Ordered, 
 
 		err = Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{
-				infra.Underlay,
+				infra.Underlay(infra.Default),
 			},
 		})
 		Expect(err).NotTo(HaveOccurred())
@@ -503,7 +503,7 @@ var _ = Describe("Disconnected L2VNI east/west traffic", GroutSupport, Ordered, 
 					g.Expect(info.BgpLocalRouterId).NotTo(BeEmpty())
 					routerIDs[i] = info.BgpLocalRouterId
 				}, time.Minute, time.Second).Should(Succeed())
-				cidr, err := openperouter.GetVtepIPv4ForNode(infra.Underlay.Spec.TunnelEndpoint, &nodes[i])
+				cidr, err := openperouter.GetVtepIPv4ForNode(infra.Underlay(infra.Default).Spec.TunnelEndpoint, &nodes[i])
 				Expect(err).To(Succeed())
 				vteps[i] = ipfamily.StripCIDRMask(cidr)
 			}
@@ -541,9 +541,9 @@ var _ = Describe("Disconnected L2VNI east/west traffic", GroutSupport, Ordered, 
 			secondRouter, err := routers.ExecutorForNode(nodes[1].Name)
 			Expect(err).NotTo(HaveOccurred())
 
-			firstVTEPCIDR, err := openperouter.GetVtepIPv4ForNode(infra.Underlay.Spec.TunnelEndpoint, &nodes[0])
+			firstVTEPCIDR, err := openperouter.GetVtepIPv4ForNode(infra.Underlay(infra.Default).Spec.TunnelEndpoint, &nodes[0])
 			Expect(err).NotTo(HaveOccurred())
-			secondVTEPCIDR, err := openperouter.GetVtepIPv4ForNode(infra.Underlay.Spec.TunnelEndpoint, &nodes[1])
+			secondVTEPCIDR, err := openperouter.GetVtepIPv4ForNode(infra.Underlay(infra.Default).Spec.TunnelEndpoint, &nodes[1])
 			Expect(err).NotTo(HaveOccurred())
 			firstVTEP := ipfamily.StripCIDRMask(firstVTEPCIDR)
 			secondVTEP := ipfamily.StripCIDRMask(secondVTEPCIDR)

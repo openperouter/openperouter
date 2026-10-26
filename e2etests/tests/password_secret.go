@@ -72,29 +72,10 @@ var _ = Describe("Neighbor passwordSecret", Ordered, func() {
 		})).To(Succeed())
 
 		By("creating the underlay with passwordSecret referencing the Secret")
-		underlay := v1alpha1.Underlay{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "underlay",
-				Namespace: openperouter.Namespace,
-			},
-			Spec: v1alpha1.UnderlaySpec{
-				ASN: 64514,
-				Interfaces: []v1alpha1.UnderlayInterface{
-					{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch1"}},
-				},
-				TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
-					CIDRs: []string{"100.65.0.0/24"},
-				},
-				Neighbors: []v1alpha1.Neighbor{
-					{
-						ASN:            new(int64(64512)),
-						Address:        new("192.168.11.2"),
-						PasswordSecret: &v1alpha1.SecretKeyRef{Name: secretName},
-					},
-				},
-			},
-		}
-
+		underlay := infra.Underlay(infra.Default)
+		underlay.Spec.Interfaces = underlay.Spec.Interfaces[:1]
+		underlay.Spec.Neighbors = underlay.Spec.Neighbors[:1]
+		underlay.Spec.Neighbors[0].PasswordSecret = &v1alpha1.SecretKeyRef{Name: secretName}
 		Expect(Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{underlay},
 		})).To(Succeed())
@@ -151,29 +132,10 @@ var _ = Describe("Neighbor passwordSecret", Ordered, func() {
 		})).To(Succeed())
 
 		By("creating the underlay with passwordSecret referencing the custom key")
-		underlay := v1alpha1.Underlay{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "underlay",
-				Namespace: openperouter.Namespace,
-			},
-			Spec: v1alpha1.UnderlaySpec{
-				ASN: 64514,
-				Interfaces: []v1alpha1.UnderlayInterface{
-					{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch1"}},
-				},
-				TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
-					CIDRs: []string{"100.65.0.0/24"},
-				},
-				Neighbors: []v1alpha1.Neighbor{
-					{
-						ASN:            new(int64(64512)),
-						Address:        new("192.168.11.2"),
-						PasswordSecret: &v1alpha1.SecretKeyRef{Name: customKeySecretName, Key: new(customKey)},
-					},
-				},
-			},
-		}
-
+		underlay := infra.Underlay(infra.Default)
+		underlay.Spec.Interfaces = underlay.Spec.Interfaces[:1]
+		underlay.Spec.Neighbors = underlay.Spec.Neighbors[:1]
+		underlay.Spec.Neighbors[0].PasswordSecret = &v1alpha1.SecretKeyRef{Name: customKeySecretName, Key: new(customKey)}
 		Expect(Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{underlay},
 		})).To(Succeed())

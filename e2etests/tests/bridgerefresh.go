@@ -80,7 +80,7 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 		By("Creating the underlay")
 		Expect(Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{
-				infra.Underlay,
+				infra.Underlay(infra.Default),
 			},
 		})).To(Succeed())
 
@@ -181,7 +181,7 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 			podNode, err := cs.CoreV1().Nodes().Get(context.Background(), silentPod.Spec.NodeName, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
 
-			vtepIP, err := openperouter.GetVtepIPv4ForNode(infra.Underlay.Spec.TunnelEndpoint, podNode)
+			vtepIP, err := openperouter.GetVtepIPv4ForNode(infra.Underlay(infra.Default).Spec.TunnelEndpoint, podNode)
 			Expect(err).NotTo(HaveOccurred())
 
 			vtepIPOnly := ipfamily.StripCIDRMask(vtepIP)
@@ -353,7 +353,7 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 				migratingPodNode, err := cs.CoreV1().Nodes().Get(context.Background(), migratingPod.Spec.NodeName,
 					metav1.GetOptions{})
 				Expect(err).NotTo(HaveOccurred())
-				vtepIP, err := openperouter.GetVtepIPv4ForNode(infra.Underlay.Spec.TunnelEndpoint, migratingPodNode)
+				vtepIP, err := openperouter.GetVtepIPv4ForNode(infra.Underlay(infra.Default).Spec.TunnelEndpoint, migratingPodNode)
 				Expect(err).NotTo(HaveOccurred())
 				vtepIPOnly := ipfamily.StripCIDRMask(vtepIP)
 

@@ -101,7 +101,7 @@ var _ = Describe("SRV6 routes between bgp and the fabric", Ordered, func() {
 		By("creating the underlay")
 		err = Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{
-				infra.UnderlayEVPNandSRv6,
+				infra.Underlay(infra.EVPNandSRv6),
 			},
 		})
 		Expect(err).NotTo(HaveOccurred())

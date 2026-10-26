@@ -65,7 +65,7 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Labe
 		}
 		err = Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{
-				infra.Underlay,
+				infra.Underlay(infra.Default),
 			},
 		})
 		Expect(err).NotTo(HaveOccurred())

@@ -67,7 +67,7 @@ var _ = Describe("IS-IS routes", Ordered, func() {
 		})
 
 		DescribeTable("advertises correct topology LSPs", func(multiTopology bool) {
-			underlay := infra.UnderlayISISOnly.DeepCopy()
+			underlay := infra.Underlay(infra.ISISOnly)
 			if multiTopology {
 				underlay.Spec.ISIS.Features = []v1alpha1.ISISFeature{
 					v1alpha1.MultiTopology,
@@ -75,7 +75,7 @@ var _ = Describe("IS-IS routes", Ordered, func() {
 			}
 			Expect(Updater.Update(config.Resources{
 				Underlays: []v1alpha1.Underlay{
-					*underlay,
+					underlay,
 				},
 			})).To(Succeed())
 

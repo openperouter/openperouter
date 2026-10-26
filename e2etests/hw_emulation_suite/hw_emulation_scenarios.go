@@ -32,49 +32,6 @@ var (
 	leafAVRFRedPrefixes  = []string{"192.168.20.0/24", "2001:db8:20::/64"}
 )
 
-var AcceleratedUnderlay = v1alpha1.Underlay{
-	ObjectMeta: metav1.ObjectMeta{
-		Name:      "underlay",
-		Namespace: openperouter.Namespace,
-	},
-	Spec: v1alpha1.UnderlaySpec{
-		ASN: 64514,
-		Interfaces: []v1alpha1.UnderlayInterface{
-			{
-				Type: "NetworkDevice",
-				NetworkDevice: &v1alpha1.NetworkDevice{
-					InterfaceName: "toswitch1",
-				},
-			},
-			{
-				Type: "NetworkDevice",
-				NetworkDevice: &v1alpha1.NetworkDevice{
-					InterfaceName: "toswitch2",
-				},
-			},
-		},
-		Neighbors: []v1alpha1.Neighbor{
-			{
-				ASN:                  new(int64(64512)),
-				Address:              new("192.168.11.2"),
-				ConnectTimeSeconds:   new(int64(5)),
-				KeepaliveTimeSeconds: new(int64(3)),
-				HoldTimeSeconds:      new(int64(9)),
-			},
-			{
-				ASN:                  new(int64(64513)),
-				Address:              new("192.168.12.2"),
-				ConnectTimeSeconds:   new(int64(5)),
-				KeepaliveTimeSeconds: new(int64(3)),
-				HoldTimeSeconds:      new(int64(9)),
-			},
-		},
-		TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
-			CIDRs: []string{"100.65.0.0/24"},
-		},
-	},
-}
-
 // --- EVPN accelerated scenarios ---
 
 const testNamespace = "test-clab-l2vni"
@@ -98,7 +55,7 @@ var _ = Describe("HWEmulation", Ordered, GroutSupport, func() {
 
 		By("Creating underlay")
 		Expect(Updater.Update(config.Resources{
-			Underlays: []v1alpha1.Underlay{AcceleratedUnderlay},
+			Underlays: []v1alpha1.Underlay{infra.Underlay(infra.Default)},
 		})).To(Succeed())
 
 		By("Verifying BGP sessions with leafkind1")
@@ -224,7 +181,7 @@ var _ = Describe("HWEmulation", Ordered, GroutSupport, func() {
 			rxQueues = int32(2)
 			qSize    = int32(512)
 		)
-		underlay := AcceleratedUnderlay.DeepCopy()
+		underlay := infra.Underlay(infra.Default)
 		customized := underlay.Spec.Interfaces[0].NetworkDevice
 		portName := "u_" + customized.InterfaceName
 		customized.AcceleratedConfig = &v1alpha1.AcceleratedConfig{
@@ -233,13 +190,13 @@ var _ = Describe("HWEmulation", Ordered, GroutSupport, func() {
 		}
 		DeferCleanup(func() {
 			Expect(Updater.Update(config.Resources{
-				Underlays: []v1alpha1.Underlay{AcceleratedUnderlay},
+				Underlays: []v1alpha1.Underlay{infra.Underlay(infra.Default)},
 			})).To(Succeed())
 		})
 
 		By("Updating an underlay interface with custom port parameters")
 		Expect(Updater.Update(config.Resources{
-			Underlays: []v1alpha1.Underlay{*underlay},
+			Underlays: []v1alpha1.Underlay{underlay},
 		})).To(Succeed())
 
 		By("Verifying the grout port is recreated with the custom parameters")

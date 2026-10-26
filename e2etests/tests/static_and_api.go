@@ -134,7 +134,7 @@ var _ = Describe("Hybrid mode: static files and API configuration", Label("syste
 		// Create Underlay + Blue VNI via API
 		By("Creating underlay and blue VNI via API")
 		err = Updater.Update(config.Resources{
-			Underlays:         []v1alpha1.Underlay{infra.Underlay},
+			Underlays:         []v1alpha1.Underlay{infra.Underlay(infra.Default)},
 			L3VNIs:            []v1alpha1.L3VNI{vniBlueFromAPI},
 			FRRConfigurations: frrK8sConfigBlue,
 		})
@@ -201,7 +201,7 @@ var _ = Describe("Hybrid mode: static files and API configuration", Label("syste
 
 		By("applying FRR configuration for red VNI")
 		err := Updater.Update(config.Resources{
-			Underlays:         []v1alpha1.Underlay{infra.Underlay},
+			Underlays:         []v1alpha1.Underlay{infra.Underlay(infra.Default)},
 			L3VNIs:            []v1alpha1.L3VNI{vniBlueFromAPI},
 			FRRConfigurations: append(frrK8sConfigBlue, frrK8sConfigRed...),
 		})

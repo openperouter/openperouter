@@ -47,7 +47,7 @@ var _ = Describe("Router BGP sessions", Ordered, GroutSupport, func() {
 
 		err = Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{
-				infra.Underlay,
+				infra.Underlay(infra.Default),
 			},
 		})
 		Expect(err).NotTo(HaveOccurred())
@@ -527,7 +527,8 @@ var _ = Describe("Router BGP sessions", Ordered, GroutSupport, func() {
 		validateTORSessions()
 
 		By("deleting the underlay removes the session with the TOR switches")
-		err := Updater.Client().Delete(context.Background(), &infra.Underlay)
+		underlay := infra.Underlay(infra.Default)
+		err := Updater.Client().Delete(context.Background(), &underlay)
 		Expect(err).NotTo(HaveOccurred())
 
 		// Validate sessions are down on both leaf nodes
@@ -614,7 +615,7 @@ var _ = Describe("Underlay external and internal configuration", Ordered, GroutS
 		Expect(infra.LeafKind1Config.UpdateConfig(nodes, infra.LeafKindConfiguration{})).To(Succeed())
 		Expect(infra.LeafKind2Config.UpdateConfig(nodes, infra.LeafKindConfiguration{})).To(Succeed())
 
-		underlay := *infra.Underlay.DeepCopy()
+		underlay := infra.Underlay(infra.Default)
 		underlay.Spec.Neighbors[0].ASN = nil
 		underlay.Spec.Neighbors[0].Type = new("External")
 		err := Updater.Update(config.Resources{
@@ -631,7 +632,7 @@ var _ = Describe("Underlay external and internal configuration", Ordered, GroutS
 		Expect(infra.LeafKind1Config.UpdateConfig(nodes, infra.LeafKindConfiguration{PERouterASN: 64512, NextHopSelf: true})).To(Succeed())
 		Expect(infra.LeafKind2Config.UpdateConfig(nodes, infra.LeafKindConfiguration{PERouterASN: 64512, NextHopSelf: true})).To(Succeed())
 
-		underlay := *infra.Underlay.DeepCopy()
+		underlay := infra.Underlay(infra.Default)
 		underlay.Spec.ASN = 64512
 		underlay.Spec.Neighbors[0].ASN = nil
 		underlay.Spec.Neighbors[0].Type = new("Internal")
@@ -649,7 +650,7 @@ var _ = Describe("Underlay external and internal configuration", Ordered, GroutS
 		Expect(infra.LeafKind1Config.UpdateConfig(nodes, infra.LeafKindConfiguration{PERouterASN: 64512, NextHopSelf: true})).To(Succeed())
 		Expect(infra.LeafKind2Config.UpdateConfig(nodes, infra.LeafKindConfiguration{PERouterASN: 64512, NextHopSelf: true})).To(Succeed())
 
-		underlay := *infra.Underlay.DeepCopy()
+		underlay := infra.Underlay(infra.Default)
 		underlay.Spec.ASN = int64(64512)
 		err := Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{
@@ -661,7 +662,7 @@ var _ = Describe("Underlay external and internal configuration", Ordered, GroutS
 	})
 
 	It("rejects resource when neither neighbor ASN nor Type are specified", func() {
-		underlay := *infra.Underlay.DeepCopy()
+		underlay := infra.Underlay(infra.Default)
 		underlay.Spec.Neighbors[0].ASN = nil
 		underlay.Spec.Neighbors[0].Type = nil
 		err := Updater.Update(config.Resources{
@@ -673,7 +674,7 @@ var _ = Describe("Underlay external and internal configuration", Ordered, GroutS
 	})
 
 	It("rejects resource when both neighbor ASN and Type are specified", func() {
-		underlay := *infra.Underlay.DeepCopy()
+		underlay := infra.Underlay(infra.Default)
 		underlay.Spec.Neighbors[0].ASN = new(int64(100))
 		underlay.Spec.Neighbors[0].Type = new("External")
 		err := Updater.Update(config.Resources{
@@ -852,51 +853,9 @@ var _ = Describe("Underlay BFD Configuration", Ordered, GroutSupport, func() {
 			}, 10*time.Second, time.Second).Should(Succeed())
 		},
 		Entry("simple bfd",
-			v1alpha1.Underlay{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "underlay-simple-bfd",
-					Namespace: openperouter.Namespace,
-				},
-				Spec: v1alpha1.UnderlaySpec{
-					ASN:        64514,
-					Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch1"}}},
-					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
-						CIDRs: []string{"100.65.0.0/24"},
-					},
-					Neighbors: []v1alpha1.Neighbor{
-						{
-							ASN:     new(int64(64512)),
-							Address: new("192.168.11.2"),
-							BFD:     &v1alpha1.BFDSettings{},
-						},
-					},
-				},
-			}),
+			infra.Underlay(infra.SimpleBFD)),
 		Entry("bfd with parameters",
-			v1alpha1.Underlay{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "underlay-bfd-params",
-					Namespace: openperouter.Namespace,
-				},
-				Spec: v1alpha1.UnderlaySpec{
-					ASN:        64514,
-					Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch1"}}},
-					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
-						CIDRs: []string{"100.65.0.0/24"},
-					},
-					Neighbors: []v1alpha1.Neighbor{
-						{
-							ASN:     new(int64(64512)),
-							Address: new("192.168.11.2"),
-							BFD: &v1alpha1.BFDSettings{
-								TransmitInterval: new(int32(90)),
-								ReceiveInterval:  new(int32(80)),
-								DetectMultiplier: new(int32(5)),
-							},
-						},
-					},
-				},
-			}),
+			infra.Underlay(infra.BFDWithParameters)),
 	)
 })
 
@@ -934,25 +893,9 @@ var _ = Describe("Add extra neighbor", Ordered, GroutSupport, func() {
 
 	It("adds a neighbor without restarting the router pods", func() {
 		By("Deploying underlay with a single neighbor")
-		singleNeighborUnderlay := v1alpha1.Underlay{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "underlay",
-				Namespace: openperouter.Namespace,
-			},
-			Spec: v1alpha1.UnderlaySpec{
-				ASN:        64514,
-				Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch1"}}},
-				Neighbors: []v1alpha1.Neighbor{
-					{
-						ASN:     new(int64(64512)),
-						Address: new("192.168.11.2"),
-					},
-				},
-				TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
-					CIDRs: []string{"100.65.0.0/24"},
-				},
-			},
-		}
+		singleNeighborUnderlay := infra.Underlay(infra.Default)
+		singleNeighborUnderlay.Spec.Interfaces = singleNeighborUnderlay.Spec.Interfaces[:1]
+		singleNeighborUnderlay.Spec.Neighbors = singleNeighborUnderlay.Spec.Neighbors[:1]
 		err := Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{singleNeighborUnderlay},
 		})
@@ -985,17 +928,8 @@ var _ = Describe("Add extra neighbor", Ordered, GroutSupport, func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		By("Adding a second neighbor to the underlay")
-		twoNeighborUnderlay := singleNeighborUnderlay.DeepCopy()
-		twoNeighborUnderlay.Spec.Neighbors = append(twoNeighborUnderlay.Spec.Neighbors, v1alpha1.Neighbor{
-			ASN:     new(int64(64513)),
-			Address: new("192.168.12.2"),
-		})
-		twoNeighborUnderlay.Spec.Interfaces = []v1alpha1.UnderlayInterface{
-			{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch1"}},
-			{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch2"}},
-		}
 		err = Updater.Update(config.Resources{
-			Underlays: []v1alpha1.Underlay{*twoNeighborUnderlay},
+			Underlays: []v1alpha1.Underlay{infra.Underlay(infra.Default)},
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -1118,7 +1052,7 @@ var _ = Describe("Underlay explicit address family configuration", Ordered, Grou
 			},
 		})).To(Succeed())
 
-		underlay := *infra.Underlay.DeepCopy()
+		underlay := infra.Underlay(infra.Default)
 		underlay.Spec.Neighbors[0].AddressFamilies = []v1alpha1.NeighborAddressFamily{
 			{Type: "ipv4unicast"},
 			{Type: "ipv6unicast"},
@@ -1151,7 +1085,7 @@ var _ = Describe("Underlay explicit address family configuration", Ordered, Grou
 	// This test is marked as failing until we fix this bug.
 	It("assigns each underlay port a unique IPv6 link-local", GroutOnly, func() {
 		By("deploying an underlay with both ToR neighbors carrying ipv4unicast and ipv6unicast")
-		underlay := *infra.Underlay.DeepCopy()
+		underlay := infra.Underlay(infra.Default)
 		for i := range underlay.Spec.Neighbors {
 			underlay.Spec.Neighbors[i].AddressFamilies = []v1alpha1.NeighborAddressFamily{
 				{Type: "ipv4unicast"},
@@ -1169,7 +1103,7 @@ var _ = Describe("Underlay explicit address family configuration", Ordered, Grou
 
 		By("checking each underlay port owns a link-local not shared with its veth")
 		for _, node := range nodes {
-			for _, iface := range infra.DefaultInterfaces {
+			for _, iface := range underlay.Spec.Interfaces {
 				veth := iface.NetworkDevice.InterfaceName
 				port := "u_" + veth
 				Eventually(func(g Gomega) {

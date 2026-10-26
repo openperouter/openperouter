@@ -42,7 +42,7 @@ var _ = Describe("RawFRRConfig", Ordered, func() {
 		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
 
 		err = Updater.Update(config.Resources{
-			Underlays: []v1alpha1.Underlay{infra.Underlay},
+			Underlays: []v1alpha1.Underlay{infra.Underlay(infra.Default)},
 		})
 		Expect(err).NotTo(HaveOccurred())
 

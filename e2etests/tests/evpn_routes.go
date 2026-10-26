@@ -80,7 +80,7 @@ var (
 	// router netns (the standard fixture).
 	networkDeviceUnderlay = evpnUnderlayParams{
 		Underlays: func([]corev1.Node) []v1alpha1.Underlay {
-			return []v1alpha1.Underlay{infra.Underlay}
+			return []v1alpha1.Underlay{infra.Underlay(infra.Default)}
 		},
 		ConfigureLeafKind: func(nodes []corev1.Node) error {
 			if err := infra.LeafKind1Config.UpdateConfig(nodes, infra.LeafKindConfiguration{}); err != nil {
@@ -508,30 +508,6 @@ var _ = Describe("Routes between bgp and the fabric with iBGP testing e2e integr
 	var routers openperouter.Routers
 	var nodes []corev1.Node
 
-	underlay := v1alpha1.Underlay{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "underlay",
-			Namespace: openperouter.Namespace,
-		},
-		Spec: v1alpha1.UnderlaySpec{
-			ASN:        64512,
-			Interfaces: []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch1"}}, {Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch2"}}},
-			Neighbors: []v1alpha1.Neighbor{
-				{
-					Type:    new("Internal"),
-					Address: new("192.168.11.2"),
-				},
-				{
-					Type:    new("Internal"),
-					Address: new("192.168.12.2"),
-				},
-			},
-			TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
-				CIDRs: []string{"100.65.0.0/24"},
-			},
-		},
-	}
-
 	vniRed := v1alpha1.L3VNI{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "red",
@@ -574,7 +550,7 @@ var _ = Describe("Routes between bgp and the fabric with iBGP testing e2e integr
 
 		err = Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{
-				underlay,
+				infra.Underlay(infra.IBGP),
 			},
 		})
 		Expect(err).NotTo(HaveOccurred())

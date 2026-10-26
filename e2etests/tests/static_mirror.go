@@ -41,7 +41,7 @@ var staticUnderlayYAML = fmt.Sprintf(`underlays:
     tunnelEndpoint:
       cidrs:
         - "100.65.0.0/24"
-`, infra.Underlay.Spec.ASN)
+`, infra.Underlay(infra.Default).Spec.ASN)
 
 var staticL3VNIYAML = `l3vnis:
   - name: mirror-red
@@ -202,8 +202,9 @@ var _ = Describe("Mirror static config to Kubernetes", Label("systemdmode"), Ord
 			if u.Spec.NodeSelector == nil {
 				return fmt.Errorf("mirrored underlay %s has nil node selector", u.Name)
 			}
-			if u.Spec.ASN != infra.Underlay.Spec.ASN {
-				return fmt.Errorf("mirrored underlay %s has ASN %d, expected %d", u.Name, u.Spec.ASN, infra.Underlay.Spec.ASN)
+			if u.Spec.ASN != infra.Underlay(infra.Default).Spec.ASN {
+				return fmt.Errorf("mirrored underlay %s has ASN %d, expected %d",
+					u.Name, u.Spec.ASN, infra.Underlay(infra.Default).Spec.ASN)
 			}
 			if len(u.Spec.Interfaces) != 1 ||
 				u.Spec.Interfaces[0].NetworkDevice == nil ||

@@ -74,7 +74,7 @@ var _ = Describe("North/south traffic after FRR container restart", Ordered, fun
 
 		err = Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{
-				infra.Underlay,
+				infra.Underlay(infra.Default),
 			},
 		})
 		Expect(err).NotTo(HaveOccurred())

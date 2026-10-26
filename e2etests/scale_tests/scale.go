@@ -62,7 +62,7 @@ var _ = Describe("VNI Scale Tests", Ordered, func() {
 
 		By("Ensuring underlay configuration exists")
 		err = Updater.Update(config.Resources{
-			Underlays: []v1alpha1.Underlay{infra.Underlay},
+			Underlays: []v1alpha1.Underlay{infra.Underlay(infra.Default)},
 		})
 		Expect(err).NotTo(HaveOccurred())
 	})

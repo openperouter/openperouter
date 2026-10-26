@@ -90,7 +90,7 @@ var _ = Describe("SRV6 routes between bgp and the fabric", Ordered, func() {
 		// Create the SRv6 underlay.
 		Expect(Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{
-				infra.UnderlaySRv6,
+				infra.Underlay(infra.SRv6),
 			},
 		})).To(Succeed())
 
@@ -199,9 +199,11 @@ var _ = Describe("SRV6 routes between bgp and the fabric", Ordered, func() {
 			checkHostRouteEncap(routers, l3vpnBlue, leafSRV6VRFBluePrefixes, frr.HEncaps)
 
 			By("updating underlay encapsulation to encap reduced")
+			underlayEncapReduced := infra.Underlay(infra.SRv6)
+			underlayEncapReduced.Spec.SRV6.EncapBehavior = new(v1alpha1.HEncapsRed)
 			Expect(Updater.Update(config.Resources{
 				Underlays: []v1alpha1.Underlay{
-					infra.UnderlaySRv6EncapRed,
+					underlayEncapReduced,
 				},
 			})).To(Succeed())
 
@@ -212,7 +214,7 @@ var _ = Describe("SRV6 routes between bgp and the fabric", Ordered, func() {
 			By("updating underlay encapsulation to encap")
 			Expect(Updater.Update(config.Resources{
 				Underlays: []v1alpha1.Underlay{
-					infra.UnderlaySRv6,
+					infra.Underlay(infra.SRv6),
 				},
 			})).To(Succeed())
 
@@ -486,7 +488,7 @@ var _ = Describe("SRV6 routes between bgp and the fabric with iBGP testing e2e i
 	var cs clientset.Interface
 	var routers openperouter.Routers
 
-	underlay := infra.UnderlaySRv6.DeepCopy()
+	underlay := infra.Underlay(infra.SRv6)
 	underlay.Spec.ASN = 64520
 
 	l3vpnRed := v1alpha1.L3VPN{
@@ -527,7 +529,7 @@ var _ = Describe("SRV6 routes between bgp and the fabric with iBGP testing e2e i
 
 		Expect(Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{
-				*underlay,
+				underlay,
 			},
 		})).To(Succeed())
 

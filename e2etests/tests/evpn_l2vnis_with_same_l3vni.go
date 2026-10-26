@@ -93,7 +93,7 @@ var _ = Describe("Multiple L2VNIs sharing one L3VNI (symmetric IRB)", Ordered, f
 
 		err = Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{
-				infra.Underlay,
+				infra.Underlay(infra.Default),
 			},
 		})
 		Expect(err).NotTo(HaveOccurred())
