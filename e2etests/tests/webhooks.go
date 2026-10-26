@@ -3,6 +3,7 @@
 package tests
 
 import (
+	"context"
 	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -13,6 +14,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var _ = Describe("Webhooks", GroutSupport, func() {
@@ -676,6 +678,16 @@ var _ = Describe("Webhooks", GroutSupport, func() {
 				L3VNIs: []v1alpha1.L3VNI{l3vniUpdated},
 			})
 			Expect(err).To(MatchError(ContainSubstring("localCIDRs can't be changed")))
+		})
+
+		It("should block updates to VRF", func() {
+			key := crclient.ObjectKey{Namespace: openperouter.Namespace, Name: "l3vni-immutable"}
+			l3vni := &v1alpha1.L3VNI{}
+			Expect(Updater.Client().Get(context.Background(), key, l3vni)).To(Succeed())
+
+			l3vni.Spec.VRF = "vrf-renamed"
+
+			Expect(Updater.Client().Update(context.Background(), l3vni)).To(MatchError(ContainSubstring("vrf is immutable")))
 		})
 	})
 

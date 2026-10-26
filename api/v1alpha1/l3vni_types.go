@@ -30,9 +30,11 @@ type L3VNISpec struct {
 	NodeSelector *metav1.LabelSelector `json:"nodeSelector,omitempty"`
 
 	// vrf is the name of the linux VRF to be used inside the PERouter namespace.
+	// Immutable once set, to change it recreate the object using different value.
 	// +kubebuilder:validation:Pattern=`^[a-zA-Z][a-zA-Z0-9_-]*$`
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=15
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="vrf is immutable; delete and recreate the object to change it"
 	// +required
 	VRF string `json:"vrf,omitempty"`
 
