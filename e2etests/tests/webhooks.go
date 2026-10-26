@@ -613,6 +613,19 @@ var _ = Describe("Webhooks", GroutSupport, func() {
 				},
 				"name is immutable",
 			),
+			Entry("type",
+				&v1alpha1.HostMaster{
+					Type: v1alpha1.LinuxBridge,
+					LinuxBridge: &v1alpha1.LinuxBridgeConfig{
+						Lifecycle: v1alpha1.BridgeLifecycleExternal,
+						Name:      new("br0"),
+					},
+				},
+				func(hm *v1alpha1.HostMaster) {
+					hm.Type = v1alpha1.OVSBridge
+				},
+				"type is immutable",
+			),
 		)
 	})
 
