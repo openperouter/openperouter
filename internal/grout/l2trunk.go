@@ -54,9 +54,11 @@ func SetupL2Trunk(
 	if params.SRIOV == nil {
 		return errUnsupportedTrunk
 	}
+
 	if params.SRIOV.VFIndex < 0 || params.SRIOV.VFIndex > MaxTrunkVFIndex {
 		return fmt.Errorf("vfIndex %d must be between 0 and %d", params.SRIOV.VFIndex, MaxTrunkVFIndex)
 	}
+
 	portName := GroutPortNameForTrunk(params)
 	state, err := ensureTrunkDeviceState(portName, params.SRIOV, store, sysfs)
 	if err != nil {

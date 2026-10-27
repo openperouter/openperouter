@@ -153,15 +153,16 @@ func SuppressLinkLocal(ifaceName string) error {
 // router advertisements on the named interface, and removes the ones it
 // already autoconfigured. Autoconfigured addresses are told apart by their
 // finite lifetime, as the ones configured explicitly are permanent.
+// ifaceName may be an alternative name: procfs only exposes the primary one.
 func SuppressAutoconf(ifaceName string) error {
-	if err := sysctl.Ensure(sysctl.DisableAcceptRA(ifaceName)); err != nil {
-		return fmt.Errorf("failed to disable router advertisements on %s: %w", ifaceName, err)
-	}
-
 	link, err := netlink.LinkByName(ifaceName)
 	if err != nil {
 		return fmt.Errorf("failed to find interface %s: %w", ifaceName, err)
 	}
+	if err := sysctl.Ensure(sysctl.DisableAcceptRA(link.Attrs().Name)); err != nil {
+		return fmt.Errorf("failed to disable router advertisements on %s: %w", ifaceName, err)
+	}
+
 	addrs, err := netlink.AddrList(link, netlink.FAMILY_V6)
 	if err != nil {
 		return fmt.Errorf("failed to list addresses on %s: %w", ifaceName, err)
