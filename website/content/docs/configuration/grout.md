@@ -269,16 +269,18 @@ The controller binds `NetworkDevice` entries as PCI ports by default, even if
 ports for every underlay interface, including those with `acceleratedConfig`.
 For PCI ports, the controller:
 
-1. Resolves the PCI address from `/sys/class/net/<interfaceName>/device`
-2. Saves the original driver and non-link-local addresses
-3. Binds non-bifurcated NICs (for example Intel and virtio-net PCI) to
+1. Resolves `interfaceName` through netlink, then reads the PCI address from
+   `/sys/class/net/<primaryName>/device`
+2. Saves the original driver, alternative names, MTU, IPv6 settings and
+   non-link-local addresses
+3. inds non-bifurcated NICs (for example Intel and virtio-net PCI) to
    `vfio-pci`, or moves `mlx5_core` devices (Mellanox) into the router namespace
 4. Creates the grout port with `grcli interface add port u_<interfaceName> devargs <pci>`
 
 The interface referenced by interfaceName must exist on the host. Any address
 assigned to the interface will be used for the setup in the accelerated data path.
 When the Underlay CR is disposed, the interface will be moved back to the kernel
-together with its addresses and the original driver.
+together with its addresses, alternative names and the original driver.
 
 `acceleratedConfig` is rejected when `--datapath=kernel`.
 
@@ -325,6 +327,36 @@ Other interface names, such as `vtep-lo`, remain unchanged.
 > multiqueue is enabled (`queues=<N>` on the tap netdev and `mq=on` on the `virtio-net-pci` device), and
 > `rxQueues` and `qSize` cannot exceed the queue pairs and the `rx_queue_size`
 > of the device.
+
+### Selecting a device by alternative name
+
+With the grout datapath, `networkDevice.interfaceName` accepts either the
+primary device name or a netlink alternative name (Linux 5.5 or later).
+A role-based alternative name lets one `Underlay` select the right NIC on
+every node even when their primary names differ.
+
+Assign the same alternative name to the appropriate NIC on each node. For
+example:
+
+```bash
+ip link property add dev enp3s0f0v0 altname pe-uplink0
+```
+
+Then reference it in the Underlay:
+
+```yaml
+interfaces:
+  - type: NetworkDevice
+    networkDevice:
+      interfaceName: pe-uplink0
+```
+
+The API's existing **15-character limit** is unchanged: longer alternative
+names cannot be selected. Grout's existing **13-character limit** also
+applies, because its port names include the `u_` prefix. In this example,
+Grout and FRR use `u_pe-uplink0`; the backing kernel device is not renamed.
+This works with both PCI and TAP underlay ports.
+
 
 ## SR-IOV Trunks
 
