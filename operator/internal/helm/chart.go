@@ -27,6 +27,7 @@ import (
 	"helm.sh/helm/v4/pkg/chart/loader"
 	"helm.sh/helm/v4/pkg/cli"
 	"helm.sh/helm/v4/pkg/release"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/utils/ptr"
 )
@@ -163,6 +164,12 @@ func patchChartValues(envConfig envconfig.EnvConfig, crdConfig *operatorapi.Open
 	if crdConfig.Spec.ControllerMaxReconcileBackoffSeconds != nil {
 		openperouterValues["maxReconcileBackoffSeconds"] = *crdConfig.Spec.ControllerMaxReconcileBackoffSeconds
 	}
+	if crdConfig.Spec.PriorityClassName != nil && *crdConfig.Spec.PriorityClassName != "" {
+		openperouterValues["priorityClassName"] = *crdConfig.Spec.PriorityClassName
+	}
+	if err := patchResourceValues(crdConfig.Spec.Resources, openperouterValues); err != nil {
+		return err
+	}
 
 	datapath := ptr.Deref(crdConfig.Spec.Datapath, "kernel")
 	openperouterValues["datapath"] = datapath
@@ -197,6 +204,49 @@ func patchChartValues(envConfig envconfig.EnvConfig, crdConfig *operatorapi.Open
 	}
 
 	return nil
+}
+
+// patchResourceValues sets each provided container's resources value inside the
+// per-component maps, preserving the other component settings.
+func patchResourceValues(resources *operatorapi.ContainerResources, openperouterValues map[string]any) error {
+	if resources == nil {
+		return nil
+	}
+	targets := []struct {
+		name string
+		reqs *corev1.ResourceRequirements
+		path []string
+	}{
+		{"controller", resources.Controller, []string{"controller"}},
+		{"nodemarker", resources.NodeMarker, []string{"nodemarker"}},
+		{"frr", resources.FRR, []string{"frr"}},
+		{"reloader", resources.Reloader, []string{"frr", "reloader"}},
+	}
+	for _, target := range targets {
+		if target.reqs == nil {
+			continue
+		}
+		value, err := toJSONValue(target.reqs)
+		if err != nil {
+			return fmt.Errorf("failed to convert %s resources to helm value: %w", target.name, err)
+		}
+		subMap(openperouterValues, target.path)["resources"] = value
+	}
+	return nil
+}
+
+// subMap returns the nested map at path, creating missing maps along the way.
+func subMap(values map[string]any, path []string) map[string]any {
+	current := values
+	for _, key := range path {
+		next, ok := current[key].(map[string]any)
+		if !ok {
+			next = map[string]any{}
+			current[key] = next
+		}
+		current = next
+	}
+	return current
 }
 
 // toJSONValue converts a typed Go value (e.g. a Kubernetes API struct) into

@@ -320,3 +320,35 @@ For Helm installations, set `openperouter.maxReconcileBackoffSeconds` (for examp
 `--set openperouter.maxReconcileBackoffSeconds=10`). For operator installations, set
 `spec.controllerMaxReconcileBackoffSeconds: 10` on the `OpenPERouter` resource. Both accept
 positive integer seconds. Leave them unset to keep the controller default rate limiter.
+
+## Scheduling Priority and Resources
+
+OpenPERouter sets CPU and memory requests for the controller, node marker,
+FRR, and FRR reloader containers. Requests make the scheduler reserve capacity
+for those components; unset limits preserve the existing behavior and avoid
+restarts caused by conservative defaults. Helm users can override the requests
+through `openperouter.controller.resources`, `openperouter.nodemarker.resources`,
+`openperouter.frr.resources`, and `openperouter.frr.reloader.resources`.
+
+Operator users can override individual containers with `spec.resources`:
+
+```yaml
+apiVersion: network.openperouter.io/v1alpha1
+kind: OpenPERouter
+metadata:
+  name: openperouter
+  namespace: openperouter-system
+spec:
+  resources:
+    controller:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+```
+
+Set `openperouter.priorityClassName` in Helm or `spec.priorityClassName` in the
+operator to assign a Kubernetes
+[PriorityClass](https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/).
+Use `system-node-critical`, or `system-cluster-critical` where cluster policy
+requires it. Kubernetes protects both critical classes from node-pressure
+eviction, and the descheduler excludes critical pods by default.

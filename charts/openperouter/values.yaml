@@ -56,6 +56,11 @@ openperouter:
     - key: node-role.kubernetes.io/control-plane
       operator: Exists
       effect: NoSchedule
+  # -- Priority class for all openperouter pods (router, controller,
+  # nodemarker, hostbridge). Use system-node-critical, or
+  # system-cluster-critical where cluster policy requires it: Kubernetes
+  # protects both critical classes from node-pressure eviction, and the
+  # descheduler excludes critical pods by default.
   priorityClassName: ""
   # -- Affinity rules for all openperouter pods (router, controller,
   # nodemarker, hostbridge).
@@ -65,7 +70,12 @@ openperouter:
   podAnnotations: {}
   labels: {}
   controller:
-    resources: {}
+    # -- Resources of the controller container. CPU and memory requests reserve
+    # scheduler capacity so reconciliation remains responsive on busy nodes.
+    resources:
+      requests:
+        cpu: 250m
+        memory: 256Mi
     # -- Health probe port for liveness and readiness checks
     healthProbePort: 9081
     # -- CNI plugin binary directories. The default matches the path baked into
@@ -76,16 +86,31 @@ openperouter:
     # -- CNI cache directory for persistent CNI state across pod restarts
     cniCacheDir: "/var/lib/openperouter/cni/cache"
   nodemarker:
-    resources: {}
+    # -- Resources of the nodemarker container. It serves validating webhooks,
+    # so CPU and memory requests keep admission calls responsive.
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
   # frr contains configuration specific to the perouter FRR container,
   frr:
     image:
       repository: quay.io/openperouter/openperouter
       tag: ""
       pullPolicy: ""
-    resources: {}
+    # -- Resources of the FRR container in router pods. CPU and memory requests
+    # keep BGP and BFD timely on busy nodes.
+    resources:
+      requests:
+        cpu: 250m
+        memory: 256Mi
     reloader:
-      resources: {}
+      # -- Resources of the reloader container in router pods. CPU and memory
+      # requests keep configuration reloads responsive.
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
       # -- Timeout for vtysh commands used in health checks. Increase under heavy VNI load. Defaults to 10s.
       vtyshTimeout: ""
   # -- Datapath to use for L3 forwarding. "kernel" uses the standard Linux

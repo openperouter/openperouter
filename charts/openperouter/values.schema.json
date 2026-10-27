@@ -167,7 +167,7 @@
           },
           "priorityClassName": {
             "type": "string",
-            "description": "Priority class name for the controller pods.",
+            "description": "Priority class for all openperouter pods (router, controller, nodemarker, hostbridge).",
             "default": ""
           },
           "affinity": {
