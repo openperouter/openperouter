@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"slices"
 	"syscall"
 
 	"github.com/openperouter/openperouter/internal/grout/devicestate"
@@ -340,6 +341,10 @@ func restoreNetdev(ctx context.Context, targetNS string, state devicestate.State
 }
 
 func applyStateToLink(ctx context.Context, link netlink.Link, state devicestate.State) error {
+	// The configured name may only resolve again once its alternative name is restored.
+	if err := restoreAltNames(ctx, link, state.AltNames); err != nil {
+		return err
+	}
 	name := link.Attrs().Name
 	if state.MTU > 0 {
 		if err := netlink.LinkSetMTU(link, state.MTU); err != nil {
@@ -426,6 +431,7 @@ func retrieveDeviceState(
 		}
 		state.PCIAddress = pciAddr
 		state.OriginalDriver = driver
+		state.AltNames = link.Attrs().AltNames
 	}
 
 	state.MTU = link.Attrs().MTU
@@ -451,6 +457,24 @@ func retrieveDeviceState(
 		return devicestate.State{}, fmt.Errorf("failed to read accept_ra of %s: %w", interfaceName, err)
 	}
 	return state, nil
+}
+
+func restoreAltNames(ctx context.Context, link netlink.Link, names []string) error {
+	for _, name := range names {
+		if name == link.Attrs().Name || slices.Contains(link.Attrs().AltNames, name) {
+			continue
+		}
+		err := netlink.LinkAddAltName(link, name)
+		if errors.Is(err, syscall.EEXIST) {
+			slog.WarnContext(ctx, "alternative name already taken, skipping restore",
+				"interfaceName", link.Attrs().Name, "altName", name)
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("failed to restore alternative name %s on %s: %w", name, link.Attrs().Name, err)
+		}
+	}
+	return nil
 }
 
 // restoreIPv6Settings re-applies the IPv6 sysctls the setup overrides to keep
