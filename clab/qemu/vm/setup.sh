@@ -78,6 +78,8 @@ configure_interface() {
 
 configure_interface toswitch1 192.168.11.3/24 2001:db8:11::3/64
 configure_interface toswitch2 192.168.12.3/24 2001:db8:12::3/64
+# Do not persist this in udev: teardown must restore the name after the VFIO rebind.
+ip link property add dev toswitch1 altname pe-uplink0
 EOF
 
 echo "Installing k3s ${K3S_VERSION}..."
