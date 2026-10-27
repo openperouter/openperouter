@@ -366,7 +366,9 @@ spec:
 
 When the trunk is created, the controller:
 
-1. Resolves the VF PCI address from `/sys/class/net/<pfName>/device/virtfn<vfIndex>`
+1. Resolves `pfName` through netlink, so it can be the primary name or an
+   alternative name of the PF, then reads the VF PCI address from
+   `/sys/class/net/<primaryName>/device/virtfn<vfIndex>`
 2. Saves the VF's original driver
 3. Binds the VF to `vfio-pci`, or moves `mlx5_core` VFs into the router
    namespace, and creates the grout port named after the last 10 characters of

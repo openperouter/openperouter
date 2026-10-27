@@ -108,6 +108,7 @@ func TestConfigureAcceleratedPort(t *testing.T) {
 
 		state := devicestate.State{
 			InterfaceName: "ens1f0",
+			PrimaryName:   "eth0",
 			PCIAddress:    testPCIAddr,
 			Addresses:     []string{"192.168.11.3/32", "2001:db8::3/128"},
 		}
@@ -160,15 +161,15 @@ func TestSetupAcceleratedUnderlayRejectsTapDeviceState(t *testing.T) {
 	require.ErrorContains(t, err, "expecting a PCI address")
 }
 
-func TestDeviceStateForAcceleratedDeviceRejectsNonPCIDevices(t *testing.T) {
+func TestRetrievePCIStateRejectsNonPCIDevices(t *testing.T) {
 	t.Parallel()
 	sysfs := newFakeSysfs(t, testPCIAddr, "igb")
 	sysfs.addNetClassDevice("veth0", "../../devices/virtual/net/veth0")
 
-	_, err := retrieveDeviceState("veth0", PortModeAccelerated, sysfs.Sysfs)
+	_, _, err := retrievePCIState("veth0", sysfs.Sysfs)
 	require.ErrorContains(t, err, "does not look like a PCI address")
 
-	_, err = retrieveDeviceState("missing0", PortModeAccelerated, sysfs.Sysfs)
+	_, _, err = retrievePCIState("missing0", sysfs.Sysfs)
 	require.ErrorContains(t, err, "failed to resolve PCI address for missing0")
 }
 
