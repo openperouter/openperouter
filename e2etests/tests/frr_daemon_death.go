@@ -3,6 +3,7 @@
 package tests
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -73,12 +74,16 @@ var _ = Describe("FRR daemon death", PodModeOnly, Ordered, func() {
 		}, 2*time.Minute, time.Second).Should(Succeed())
 
 		By("recording the pid of every daemon watchfrr supervises: " + strings.Join(daemons, " "))
-		pidsBefore, err := pidsForProcesses(frrExec, daemons)
-		Expect(err).NotTo(HaveOccurred())
-		for _, d := range daemons {
-			Expect(pidsBefore[d]).To(HaveLen(1),
-				"expected exactly one live %s on %s, got %v", d, nodeName, pidsBefore[d])
-		}
+		var pidsBefore map[string][]string
+		Eventually(func(g Gomega) {
+			var err error
+			pidsBefore, err = pidsForProcesses(frrExec, daemons)
+			g.Expect(err).NotTo(HaveOccurred())
+			for _, d := range daemons {
+				g.Expect(pidsBefore[d]).To(HaveLen(1),
+					"expected exactly one live %s on %s, got %v", d, nodeName, pidsBefore[d])
+			}
+		}, 10*time.Second, time.Second).Should(Succeed())
 
 		By("killing " + killed + " with SIGKILL in the router pod")
 		Expect(frrExec.Exec("kill", "-9", pidsBefore[killed][0])).Error().ToNot(HaveOccurred())
@@ -142,39 +147,49 @@ func frrDaemonNames(frrExec executor.Executor) ([]string, error) {
 }
 
 // pidsForProcesses maps each named process to the pids the router pod sees for
-// it. ps runs in the target container because the test process cannot read the
-// pod's /proc namespace directly.
-func pidsForProcesses(executor executor.Executor, processNames []string) (map[string][]string, error) {
-	out, err := executor.Exec("ps", "-o", "pid,comm,stat")
-	if err != nil {
-		return nil, fmt.Errorf("listing the pids of %v in the router pod failed: %w (output: %s)", processNames, err, out)
+// it. It reads /proc/*/status via awk because ps may not be available in the
+// container image.
+// A process can exit between glob expansion and reading its status file,
+// causing a transient error. Call this helper inside Eventually so the test
+// retries the scan and controls the timeout.
+func pidsForProcesses(frrExec executor.Executor, processNames []string) (map[string][]string, error) {
+	if len(processNames) == 0 {
+		return map[string][]string{}, errors.New("no process names provided for pidsForProcesses")
 	}
 
-	wanted := make(map[string]struct{}, len(processNames))
-	for _, name := range processNames {
-		wanted[name] = struct{}{}
+	// awk: in each line, track Name, State, and Pid from /proc/*/status.
+	// When Pid is reached and the name matches one we want and the
+	// process is not a zombie, print the name and pid.
+	// The resulting out of the searchExpr will contain a list of process names followed by PID, e.g.:
+	// zebra 10100
+	// bgpd 20102
+	nameChecks := make([]string, len(processNames))
+	for i, name := range processNames {
+		nameChecks[i] = fmt.Sprintf("n==%q", name)
+	}
+	nameMatch := strings.Join(nameChecks, " || ")
+
+	searchExpr := fmt.Sprintf(
+		`awk '$1=="Name:" {n=$2}; $1=="State:" {s=$2}; $1=="Pid:" && s!="Z" && (%s) {print n, $2}' /proc/*/status`,
+		nameMatch,
+	)
+	out, err := frrExec.Exec("/bin/bash", "-c", searchExpr)
+	if err != nil {
+		return nil, fmt.Errorf("listing the pids of %v in the router pod failed: %w (searchExpr: %q, output: %q)",
+			processNames, err, searchExpr, out)
 	}
 
 	pids := make(map[string][]string, len(processNames))
 	for line := range strings.Lines(out) {
 		fields := strings.Fields(line)
-		if len(fields) < 3 {
+		if len(fields) != 2 {
 			continue
 		}
-
-		pid, err := strconv.Atoi(fields[0])
-		if err != nil {
+		name := fields[0]
+		if _, err := strconv.Atoi(fields[1]); err != nil {
 			continue
 		}
-		state := fields[len(fields)-1]
-		if strings.HasPrefix(state, "Z") {
-			continue
-		}
-
-		name := strings.Join(fields[1:len(fields)-1], " ")
-		if _, ok := wanted[name]; ok {
-			pids[name] = append(pids[name], strconv.Itoa(pid))
-		}
+		pids[name] = append(pids[name], fields[1])
 	}
 	return pids, nil
 }

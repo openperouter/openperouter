@@ -181,10 +181,13 @@ var _ = Describe("Data plane continuity during zebra restart", PodModeOnly, Orde
 		nodeName := routerPod.Spec.NodeName
 		frrExec := executor.ForPod(openperouter.Namespace, routerPod.Name, "frr")
 
-		zebraPids, err := pidsForProcesses(frrExec, []string{"zebra"})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(zebraPids["zebra"]).To(HaveLen(1), "expected exactly one live zebra process")
-		zebraPid := zebraPids["zebra"][0]
+		var zebraPid string
+		Eventually(func(g Gomega) {
+			zebraPids, err := pidsForProcesses(frrExec, []string{"zebra"})
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(zebraPids["zebra"]).To(HaveLen(1), "expected exactly one live zebra process")
+			zebraPid = zebraPids["zebra"][0]
+		}, 10*time.Second, time.Second).Should(Succeed())
 
 		By("starting continuous traffic measurement")
 		stopAndCount := measureTrafficLoss(clientExec, urlStr)
