@@ -213,12 +213,16 @@ func killFRREntrypoint(frrExec executor.Executor) {
 	// awk: in each line, search for the line starting with 'Name:'' and save the value to 'n'.
 	// If the value of n is 'tini' and if one of the lines starts with 'Pid:', print that value.
 	searchExpr := `awk '$1=="Name:" {n=$2}; $1=="Pid:" && n=="tini" {print $2}' /proc/*/status`
-	psOut, err := frrExec.Exec("/bin/bash", "-c", searchExpr)
-	Expect(err).NotTo(HaveOccurred(), "failed to find FRR entrypoint PID")
 
-	pids := strings.Split(strings.TrimSpace(psOut), "\n") // Always guaranteed to hold at the very least one empty elem.
-	frrPID := strings.TrimSpace(pids[0])
-	Expect(frrPID).NotTo(BeEmpty(), "FRR entrypoint PID should not be empty")
+	var frrPID string
+	Eventually(func(g Gomega) {
+		psOut, err := frrExec.Exec("/bin/bash", "-c", searchExpr)
+		g.Expect(err).NotTo(HaveOccurred(), "failed to find FRR entrypoint PID")
+
+		pids := strings.Split(strings.TrimSpace(psOut), "\n") // Always guaranteed to hold at the very least one empty elem.
+		frrPID = strings.TrimSpace(pids[0])
+		g.Expect(frrPID).NotTo(BeEmpty(), "FRR entrypoint PID should not be empty")
+	}, 10*time.Second, time.Second).Should(Succeed())
 
 	GinkgoWriter.Printf("killing PID %s\n", frrPID)
 	output, err := frrExec.Exec("kill", frrPID)
