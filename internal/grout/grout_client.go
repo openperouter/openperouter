@@ -436,6 +436,40 @@ func (c *Client) deleteInterface(ctx context.Context, name string) error {
 	return nil
 }
 
+// neighborLifetimeSeconds is how long grout keeps a learned neighbor
+// reachable without a reply before probing it. It matches the kernel's
+// default base_reachable_time: grout defaults to 20 minutes, which would
+// let a neighbor that went away (e.g. a migrated pod) linger, along with
+// its EVPN Type-2 route, for far longer than on the kernel datapath.
+const neighborLifetimeSeconds = 30
+
+type groutNexthopConfig struct {
+	Lifetime int `json:"lifetime"`
+}
+
+// ensureNeighborAgeing configures how grout ages its learned neighbors.
+func (c *Client) ensureNeighborAgeing(ctx context.Context) error {
+	out, err := c.runOutput(ctx, "nexthop", "config", "show")
+	if err != nil {
+		return fmt.Errorf("showing nexthop config: %w", err)
+	}
+	var config groutNexthopConfig
+	if err := json.Unmarshal([]byte(out), &config); err != nil {
+		return fmt.Errorf("parsing nexthop config %q: %w", out, err)
+	}
+	if config.Lifetime == neighborLifetimeSeconds {
+		return nil
+	}
+
+	slog.InfoContext(ctx, "setting grout nexthop lifetime",
+		"current", config.Lifetime, "desired", neighborLifetimeSeconds)
+	if err := c.run(ctx, "nexthop", "config", "set", "lifetime",
+		strconv.Itoa(neighborLifetimeSeconds)); err != nil {
+		return fmt.Errorf("setting nexthop lifetime to %d: %w", neighborLifetimeSeconds, err)
+	}
+	return nil
+}
+
 // groutError is the JSON payload grcli prints when a command fails. It wraps the
 // command error so the message is unchanged, and exposes the errno grout
 // reported.
