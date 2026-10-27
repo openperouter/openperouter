@@ -24,6 +24,7 @@ func TestSaveLoadDelete(t *testing.T) {
 		AddrGenMode:    "0",
 		AcceptRA:       "1",
 		MTU:            9000,
+		AltNames:       []string{"pe-uplink0", "enp65s0f0npf0vf12-uplink"},
 	}
 
 	require.NoError(t, store.Save(state.InterfaceName, state))

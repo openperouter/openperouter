@@ -37,6 +37,9 @@ type Store struct {
 // with it, as grout would otherwise default them to 1500. It is restored on
 // teardown, as a TAP port sets its own MTU on the remote interface, and a
 // driver rebind resets it.
+//
+// AltNames holds the alternative names lost when a driver rebind destroys the
+// netdev. InterfaceName remains the configured name, which may be one of them.
 type State struct {
 	DeviceID       string   `json:"deviceID"`
 	InterfaceName  string   `json:"interfaceName"`
@@ -46,6 +49,7 @@ type State struct {
 	AddrGenMode    string   `json:"addrGenMode,omitempty"`
 	AcceptRA       string   `json:"acceptRA,omitempty"`
 	MTU            int      `json:"mtu,omitempty"`
+	AltNames       []string `json:"altNames,omitempty"`
 }
 
 func (s Store) Save(deviceID string, state State) error {
