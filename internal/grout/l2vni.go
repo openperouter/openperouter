@@ -46,6 +46,11 @@ func SetupL2VNI(ctx context.Context, client *Client, params hostnetwork.L2VNIPar
 	if err := client.ensureBridgeMember(ctx, "vxlan", bridgeName, vxlanName); err != nil {
 		return fmt.Errorf("SetupL2VNI: failed to attach VXLAN %s to bridge %s: %w", vxlanName, bridgeName, err)
 	}
+	// The bridge learns its neighbors by snooping, and grout ages them on its
+	// own: make sure it does so at the same pace as the kernel datapath.
+	if err := client.ensureNeighborAgeing(ctx); err != nil {
+		return fmt.Errorf("SetupL2VNI: failed to age neighbors like the kernel: %w", err)
+	}
 
 	linkPair := linkPairFromVNI(params.VNI)
 	ns, err := netns.GetFromPath(params.TargetNS)
