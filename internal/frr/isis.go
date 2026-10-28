@@ -12,10 +12,11 @@ import (
 
 // ISISInterface holds the internal representation of an interface's ISIS configuration.
 type ISISInterface struct {
-	Name      string
-	IPv4      bool
-	IPv6      bool
-	IsPassive bool
+	Name         string
+	IPv4         bool
+	IPv6         bool
+	IsPassive    bool
+	PointToPoint bool
 }
 
 // ISISAreaID is the area ID part of an ISIS net address.

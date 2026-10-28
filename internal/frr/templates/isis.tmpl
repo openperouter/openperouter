@@ -32,6 +32,9 @@ interface {{ $interfaceConfig.Name }}
 {{- if $interfaceConfig.IsPassive }}
   isis passive
 {{- end }}
+{{- if $interfaceConfig.PointToPoint }}
+  isis network point-to-point
+{{- end }}
 exit
 !
 {{- end }}

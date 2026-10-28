@@ -21,10 +21,11 @@ import (
 )
 
 const (
-	isisProcessName  = "ISIS"
-	locatorName      = "MAIN"
-	loopbackName     = "lo"
-	passiveInterface = "passive"
+	isisProcessName       = "ISIS"
+	locatorName           = "MAIN"
+	loopbackName          = "lo"
+	passiveInterface      = "passive"
+	pointToPointInterface = "point-to-point"
 )
 
 var (
@@ -431,10 +432,11 @@ func underlayISISToFRR(isisConfig *v1alpha1.ISISConfig, interfaces []string, nod
 			(*intf.IPFamily == v1alpha1.IPFamilyIPv6 || *intf.IPFamily == v1alpha1.IPFamilyDualStack)
 
 		isisInterfaces[intf.Name] = frr.ISISInterface{
-			Name:      intf.Name,
-			IPv4:      hasIPv4,
-			IPv6:      hasIPv6,
-			IsPassive: slices.Contains(intf.Features, passiveInterface),
+			Name:         intf.Name,
+			IPv4:         hasIPv4,
+			IPv6:         hasIPv6,
+			IsPassive:    slices.Contains(intf.Features, passiveInterface),
+			PointToPoint: slices.Contains(intf.Features, pointToPointInterface),
 		}
 	}
 
