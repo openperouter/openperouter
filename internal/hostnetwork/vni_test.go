@@ -655,8 +655,13 @@ var _ = Describe("L2 VNI configuration", func() {
 		}
 
 		createVRFInNamespace(testNS, params.VRF)
-		shared := &L2VNISharedState{loopback: vtepDevice}
-		Expect(SetupL2VNI(context.Background(), params, shared)).To(Succeed())
+		shared, err := NewL2VNISharedState(testNSPath())
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() {
+			Expect(shared.Close()).To(Succeed())
+		})
+		shared.loopback = vtepDevice
+		Expect(SetupL2VNI(context.Background(), ovsClient, params, shared)).To(Succeed())
 
 		vxlanName := vxLanNameFromVNI(params.VNI)
 		Eventually(func(g Gomega) {
@@ -666,6 +671,38 @@ var _ = Describe("L2 VNI configuration", func() {
 				vxlan, ok := link.(*netlink.Vxlan)
 				g.Expect(ok).To(BeTrue())
 				g.Expect(vxlan.VtepDevIndex).To(Equal(vtepDevice.Attrs().Index))
+				return nil
+			})
+		}, 30*time.Second, 1*time.Second).Should(Succeed())
+	})
+
+	It("should set up the L2VNI in the namespace resolved for the pass", func() {
+		shared, err := NewL2VNISharedState(testNSPath())
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() {
+			Expect(shared.Close()).To(Succeed())
+		})
+
+		params := L2VNIParams{
+			VNIParams: VNIParams{
+				VRF:       "testred",
+				TargetNS:  "/nonexistent",
+				VTEPIP:    "192.170.0.9/32",
+				VNI:       100,
+				VXLanPort: new(int32(4789)),
+			},
+			L2GatewayIPs: []string{"192.168.1.0/24"},
+		}
+
+		createVRFInNamespace(testNS, params.VRF)
+		Expect(SetupL2VNI(context.Background(), ovsClient, params, shared)).To(Succeed())
+
+		Eventually(func(g Gomega) {
+			_ = netnamespace.In(testNS, func() error {
+				_, err := netlink.LinkByName(BridgeName(params.VNI))
+				g.Expect(err).NotTo(HaveOccurred())
+				_, err = netlink.LinkByName(vxLanNameFromVNI(params.VNI))
+				g.Expect(err).NotTo(HaveOccurred())
 				return nil
 			})
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
