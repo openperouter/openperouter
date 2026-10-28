@@ -648,7 +648,8 @@ var _ = Describe("L2 VNI configuration", func() {
 		}
 
 		createVRFInNamespace(testNS, params.VRF)
-		shared := &L2VNISharedState{vtepDeviceIndex: vtepDevice.Attrs().Index}
+		shared := newSharedStateForTest()
+		shared.vtepDeviceIndex = vtepDevice.Attrs().Index
 		Expect(SetupL2VNI(context.Background(), ovsClient, params, shared)).To(Succeed())
 
 		vxlanName := vxLanNameFromVNI(params.VNI)
@@ -659,6 +660,31 @@ var _ = Describe("L2 VNI configuration", func() {
 				vxlan, ok := link.(*netlink.Vxlan)
 				g.Expect(ok).To(BeTrue())
 				g.Expect(vxlan.VtepDevIndex).To(Equal(vtepDevice.Attrs().Index))
+				return nil
+			})
+		}, 30*time.Second, 1*time.Second).Should(Succeed())
+	})
+
+	It("should set up the L2VNI in the namespace resolved for the pass", func() {
+		shared := newSharedStateForTest()
+
+		params := L2VNIParams{
+			VNIParams: VNIParams{
+				VRF:       "testred",
+				TargetNS:  "/nonexistent",
+				VTEPIP:    "192.170.0.9/32",
+				VNI:       100,
+				VXLanPort: new(int32(4789)),
+			},
+			L2GatewayIPs: []string{"192.168.1.0/24"},
+		}
+
+		createVRFInNamespace(testNS, params.VRF)
+		Expect(SetupL2VNI(context.Background(), ovsClient, params, shared)).To(Succeed())
+
+		Eventually(func(g Gomega) {
+			_ = netnamespace.In(testNS, func() error {
+				validateL2VNI(g, params)
 				return nil
 			})
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
@@ -1046,9 +1072,15 @@ func removeFakeUnderlay(ns netns.NsHandle, name string) {
 	})).NotTo(HaveOccurred(), "failed to remove fake underlay")
 }
 
-// newSharedStateForTest resolves the pass state for the test namespace.
-func newSharedStateForTest() *L2VNISharedState {
-	shared, err := NewL2VNISharedState(testNSPath())
+// newSharedStateForTest resolves the pass state for the test namespace and
+// closes its namespace handle when the test finishes.
+func newSharedStateForTest() L2VNISharedState {
+	ns, err := netns.GetFromPath(testNSPath())
+	Expect(err).NotTo(HaveOccurred())
+	DeferCleanup(func() {
+		Expect(ns.Close()).To(Succeed())
+	})
+	shared, err := NewL2VNISharedState(ns)
 	Expect(err).NotTo(HaveOccurred())
 	return shared
 }

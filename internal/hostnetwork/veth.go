@@ -25,9 +25,6 @@ const VethLinkType = "veth"
 // setupNamespacedVeth sets up a veth pair with the provided names and one leg in the
 // given namespace.
 func setupNamespacedVeth(ctx context.Context, vethNames VethNames, namespace string) error {
-	slog.DebugContext(ctx, "setupNamespacedVeth", "hostSide", vethNames.HostSide, "nsSide", vethNames.NamespaceSide)
-	defer slog.DebugContext(ctx, "end setupNamespacedVeth", "hostSide", vethNames.HostSide, "nsSide", vethNames.NamespaceSide)
-
 	targetNS, err := netns.GetFromPath(namespace)
 	if err != nil {
 		return fmt.Errorf("setupNamespacedVeth: Failed to get network namespace %s: %w", namespace, err)
@@ -37,6 +34,12 @@ func setupNamespacedVeth(ctx context.Context, vethNames VethNames, namespace str
 			slog.Error("failed to close namespace", "namespace", namespace, "error", err)
 		}
 	}()
+	return setupNamespacedVethInNamespace(ctx, vethNames, targetNS)
+}
+
+func setupNamespacedVethInNamespace(ctx context.Context, vethNames VethNames, targetNS netns.NsHandle) error {
+	slog.DebugContext(ctx, "setupNamespacedVeth", "hostSide", vethNames.HostSide, "nsSide", vethNames.NamespaceSide)
+	defer slog.DebugContext(ctx, "end setupNamespacedVeth", "hostSide", vethNames.HostSide, "nsSide", vethNames.NamespaceSide)
 
 	logger := slog.Default().With("host side", vethNames.HostSide, "pe side", vethNames.NamespaceSide)
 	logger.DebugContext(ctx, "setting up veth")
