@@ -331,8 +331,9 @@ var _ = Describe("L3 VPN configuration", func() {
 			Expect(SetupL3VPN(context.Background(), p)).To(Succeed())
 		}
 		By("setting up L2VNIs")
+		shared := newSharedStateForTest()
 		for _, p := range l2vniParams {
-			Expect(SetupL2VNI(context.Background(), ovsClient, p)).To(Succeed())
+			Expect(SetupL2VNI(context.Background(), ovsClient, p, shared)).To(Succeed())
 		}
 		validateAll()
 
@@ -440,7 +441,8 @@ var _ = Describe("L3 VPN configuration", func() {
 		}
 
 		Expect(SetupL3VPN(context.Background(), l3vpnParams)).To(Succeed())
-		Expect(SetupL2VNI(context.Background(), ovsClient, l2vniParams)).To(Succeed())
+		shared := newSharedStateForTest()
+		Expect(SetupL2VNI(context.Background(), ovsClient, l2vniParams, shared)).To(Succeed())
 
 		expectedMTU := underlayMTU - SRv6Overhead
 		Eventually(func(g Gomega) {
