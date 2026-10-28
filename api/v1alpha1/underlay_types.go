@@ -349,6 +349,9 @@ type ISISInterface struct {
 	// features enables ISIS interface boolean features.
 	// Supported features are:
 	// passive: configures ISIS passive mode on this interface.
+	// point-to-point: configures the interface as an ISIS point-to-point circuit, emitting
+	// `isis network point-to-point` on the selected interface. Both ends of the link must
+	// use point-to-point mode.
 	// +kubebuilder:validation:MaxItems:=32
 	// +listType=atomic
 	// +optional
@@ -358,7 +361,7 @@ type ISISInterface struct {
 // ISISInterfaceFeature represents a single ISIS feature of an ISIS interface.
 // +kubebuilder:validation:MinLength:=1
 // +kubebuilder:validation:MaxLength:=128
-// +kubebuilder:validation:Enum:=passive
+// +kubebuilder:validation:Enum:=passive;point-to-point
 type ISISInterfaceFeature string
 
 // IPFamily specifies which address families are enabled.

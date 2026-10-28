@@ -1504,11 +1504,15 @@ spec:
                             features enables ISIS interface boolean features.
                             Supported features are:
                             passive: configures ISIS passive mode on this interface.
+                            point-to-point: configures the interface as an ISIS point-to-point circuit, emitting
+                            `isis network point-to-point` on the selected interface. Both ends of the link must
+                            use point-to-point mode.
                           items:
                             description: ISISInterfaceFeature represents a single
                               ISIS feature of an ISIS interface.
                             enum:
                             - passive
+                            - point-to-point
                             maxLength: 128
                             minLength: 1
                             type: string

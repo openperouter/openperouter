@@ -372,7 +372,7 @@ _Appears in:_
 | --- | --- | --- | --- |
 | `name` _string_ | name of the interface that these settings shall apply to. |  | MaxLength: 15 <br />MinLength: 1 <br />Required: \{\} <br /> |
 | `ipFamily` _[IPFamily](#ipfamily)_ | ipFamily configures which address families ISIS is enabled for on this interface. |  | Enum: [IPv4 IPv6 DualStack] <br />Optional: \{\} <br /> |
-| `features` _[ISISInterfaceFeature](#isisinterfacefeature) array_ | features enables ISIS interface boolean features.<br />Supported features are:<br />passive: configures ISIS passive mode on this interface. |  | Enum: [passive] <br />MaxItems: 32 <br />MaxLength: 128 <br />MinLength: 1 <br />Optional: \{\} <br /> |
+| `features` _[ISISInterfaceFeature](#isisinterfacefeature) array_ | features enables ISIS interface boolean features.<br />Supported features are:<br />passive: configures ISIS passive mode on this interface.<br />point-to-point: configures the interface as an ISIS point-to-point circuit, emitting<br />`isis network point-to-point` on the selected interface. Both ends of the link must<br />use point-to-point mode. |  | Enum: [passive point-to-point] <br />MaxItems: 32 <br />MaxLength: 128 <br />MinLength: 1 <br />Optional: \{\} <br /> |
 
 
 #### ISISInterfaceFeature
@@ -382,7 +382,7 @@ _Underlying type:_ _string_
 ISISInterfaceFeature represents a single ISIS feature of an ISIS interface.
 
 _Validation:_
-- Enum: [passive]
+- Enum: [passive point-to-point]
 - MaxLength: 128
 - MinLength: 1
 
