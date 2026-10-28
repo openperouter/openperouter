@@ -5,8 +5,10 @@ package frrconfig
 import (
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 
 	"github.com/openperouter/openperouter/internal/frr"
@@ -76,22 +78,24 @@ func runVtysh(commands ...string) (string, error) {
 	return string(output), nil
 }
 
-// clearStaleISIS works around an frr-reload.py ordering bug hit when an `isis passive` is
-// removed: frr-reload emits "no isis passive" on an interface after it has
-// already detached that interface from the ISIS instance, and FRR rejects the
-// command with a YANG "area-tag" error, aborting the reload. Clearing the
-// interface-level passive setting while the ISIS instance still exists
-// fixes the issue, leading reloads to succeed. See openperouter issue #645
-// and upstream FRR issue https://github.com/FRRouting/frr/issues/10133.
+// clearStaleISIS works around an frr-reload.py ordering bug hit when
+// interface-level ISIS settings such as `isis passive` or
+// `isis network point-to-point` are removed: frr-reload emits the "no"
+// form of the setting on an interface after it has already detached that
+// interface from the ISIS instance, and FRR rejects the command with a YANG
+// "area-tag" error, aborting the reload. Clearing the interface-level
+// settings while the ISIS instance still exists fixes the issue, leading
+// reloads to succeed. See openperouter issue #645 and upstream FRR issue
+// https://github.com/FRRouting/frr/issues/10133.
 func clearStaleISIS(desiredConfigPath string, vtyshRunner func(...string) (string, error)) error {
 	running, err := vtyshRunner("show running-config")
 	if err != nil {
 		return fmt.Errorf("failed to read running config: %w", err)
 	}
 
-	runningPassiveInterfaces := isisPassiveInterfaces(running)
-	// Nothing to do if we have no running passive interfaces.
-	if len(runningPassiveInterfaces) == 0 {
+	runningSettings := isisInterfaceSettings(running)
+	// Nothing to do if we have no running interface-level ISIS settings.
+	if len(runningSettings) == 0 {
 		return nil
 	}
 
@@ -99,20 +103,23 @@ func clearStaleISIS(desiredConfigPath string, vtyshRunner func(...string) (strin
 	if err != nil {
 		return fmt.Errorf("failed to read desired config %s: %w", desiredConfigPath, err)
 	}
-	desiredPassiveInterfaces := isisPassiveInterfaces(string(desired))
+	desiredSettings := isisInterfaceSettings(string(desired))
 
-	passiveInterfacesToRemove := map[string]struct{}{}
-	for runningPassiveInterface := range runningPassiveInterfaces {
-		if _, found := desiredPassiveInterfaces[runningPassiveInterface]; !found {
-			passiveInterfacesToRemove[runningPassiveInterface] = struct{}{}
+	settingsToRemove := map[string][]string{}
+	for iface, runningCmds := range runningSettings {
+		desiredCmds := desiredSettings[iface]
+		for _, cmd := range runningCmds {
+			if !slices.Contains(desiredCmds, cmd) {
+				settingsToRemove[iface] = append(settingsToRemove[iface], cmd)
+			}
 		}
 	}
 
-	if len(passiveInterfacesToRemove) == 0 {
+	if len(settingsToRemove) == 0 {
 		return nil
 	}
 
-	commands := isisTeardownCommands(passiveInterfacesToRemove)
+	commands := isisTeardownCommands(settingsToRemove)
 	slog.Info("clearing stale ISIS state before reload", "commands", commands)
 	if _, err := vtyshRunner(commands...); err != nil {
 		return fmt.Errorf("failed to clear stale ISIS state: %w", err)
@@ -120,8 +127,14 @@ func clearStaleISIS(desiredConfigPath string, vtyshRunner func(...string) (strin
 	return nil
 }
 
-func isisPassiveInterfaces(config string) map[string]struct{} {
-	passiveInterfaces := map[string]struct{}{}
+// isisInterfaceSettings scans an FRR config and returns, per interface, the
+// interface-level ISIS settings that frr-reload cannot remove once the
+// interface has been detached from the ISIS instance.
+// e.g.
+// [lo] -> [isis passive]
+// [toleafkind1] -> [isis network point-to-point, isis passive]
+func isisInterfaceSettings(config string) map[string][]string {
+	settings := map[string][]string{}
 	currentInterface := ""
 
 	for line := range strings.SplitSeq(config, "\n") {
@@ -129,25 +142,29 @@ func isisPassiveInterfaces(config string) map[string]struct{} {
 		switch {
 		case strings.HasPrefix(trimmed, "interface "):
 			currentInterface = strings.TrimPrefix(trimmed, "interface ")
-		case trimmed == "isis passive" && currentInterface != "":
-			passiveInterfaces[currentInterface] = struct{}{}
+		case currentInterface != "" && isisInterfaceLevelSetting(trimmed):
+			settings[currentInterface] = append(settings[currentInterface], trimmed)
 		case trimmed == "exit" || trimmed == "end":
 			currentInterface = ""
 		}
 	}
-	return passiveInterfaces
+	return settings
 }
 
-func isisTeardownCommands(passiveInterfaces map[string]struct{}) []string {
-	commands := make([]string, 0, 2+3*len(passiveInterfaces))
-	commands = append(commands, "configure terminal")
-	for iface := range passiveInterfaces {
-		commands = append(commands,
-			fmt.Sprintf("interface %s", iface),
-			"no isis passive",
-			"exit",
-		)
+// isisInterfaceLevelSetting returns true for interface-level ISIS commands
+// affected by the frr-reload removal ordering bug.
+func isisInterfaceLevelSetting(line string) bool {
+	return line == "isis passive" || line == "isis network point-to-point"
+}
+
+func isisTeardownCommands(settings map[string][]string) []string {
+	commands := []string{"configure terminal"}
+	for _, iface := range slices.Sorted(maps.Keys(settings)) {
+		commands = append(commands, fmt.Sprintf("interface %s", iface))
+		for _, cmd := range settings[iface] {
+			commands = append(commands, "no "+cmd)
+		}
+		commands = append(commands, "exit")
 	}
-	commands = append(commands, "end")
-	return commands
+	return append(commands, "end")
 }

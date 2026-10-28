@@ -1034,7 +1034,57 @@ func TestUpdate(t *testing.T) {
 						Interfaces: []frr.ISISInterface{
 							{Name: "lo", IPv6: true, IsPassive: true},
 							{Name: "eth0", IPv4: true, IPv6: false},
-							{Name: "eth1", IPv4: false, IPv6: true},
+							{Name: "eth1", IPv4: false, IPv6: true, PointToPoint: true},
+							{Name: "eth2", IPv4: true, IPv6: true},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "ISIS point-to-point interface removal",
+			before: frr.Config{
+				Underlay: frr.UnderlayConfig{
+					MyASN:    64512,
+					RouterID: "10.0.0.1",
+					Neighbors: []frr.NeighborConfig{
+						{
+							ASN:                   mustNewPeerASNFromNumber(64512),
+							Addr:                  "192.168.1.2",
+							ID:                    "192.168.1.2",
+							NetworkLayerProtocols: []networklayerprotocol.NLP{{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast}},
+						},
+					},
+					ISIS: &frr.UnderlayISIS{
+						Net:   frr.MustParseISISNet("49.0001.0002.0003.0004.00"),
+						Name:  "ISIS",
+						Level: 1,
+						Interfaces: []frr.ISISInterface{
+							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "eth1", IPv4: false, IPv6: true, PointToPoint: true},
+							{Name: "eth2", IPv4: true, IPv6: true},
+						},
+					},
+				},
+			},
+			after: frr.Config{
+				Underlay: frr.UnderlayConfig{
+					MyASN:    64512,
+					RouterID: "10.0.0.1",
+					Neighbors: []frr.NeighborConfig{
+						{
+							ASN:                   mustNewPeerASNFromNumber(64512),
+							Addr:                  "192.168.1.2",
+							ID:                    "192.168.1.2",
+							NetworkLayerProtocols: []networklayerprotocol.NLP{{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast}},
+						},
+					},
+					ISIS: &frr.UnderlayISIS{
+						Net:   frr.MustParseISISNet("49.0001.0002.0003.0004.00"),
+						Name:  "ISIS",
+						Level: 1,
+						Interfaces: []frr.ISISInterface{
+							{Name: "lo", IPv6: true, IsPassive: true},
 							{Name: "eth2", IPv4: true, IPv6: true},
 						},
 					},
