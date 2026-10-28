@@ -14,8 +14,8 @@ import (
 
 // setupVXLan sets up a vxlan interface corresponding to the provided
 // vniParams.
-func setupVXLan(params VNIParams, bridge *netlink.Bridge, loopback netlink.Link) error {
-	vxlan, err := createVXLan(params, bridge, loopback)
+func setupVXLan(params VNIParams, bridge *netlink.Bridge, vtepDeviceIndex int) error {
+	vxlan, err := createVXLan(params, bridge, vtepDeviceIndex)
 	if err != nil {
 		return err
 	}
@@ -43,7 +43,7 @@ func setupVXLan(params VNIParams, bridge *netlink.Bridge, loopback netlink.Link)
 
 // checkVXLanConfigured checks if the given VXLan has the required properties
 // passed as parameters.
-func checkVXLanConfigured(vxLan *netlink.Vxlan, bridgeIndex, loopbackIndex int, params VNIParams) error {
+func checkVXLanConfigured(vxLan *netlink.Vxlan, bridgeIndex, vtepDeviceIndex int, params VNIParams) error {
 	if vxLan.MasterIndex != bridgeIndex {
 		return fmt.Errorf("master index is not bridge index: %d, %d", vxLan.MasterIndex, bridgeIndex)
 	}
@@ -66,19 +66,21 @@ func checkVXLanConfigured(vxLan *netlink.Vxlan, bridgeIndex, loopbackIndex int, 
 	if err := validateVxlan(vxLan, params); err != nil {
 		return err
 	}
-	if vxLan.VtepDevIndex != loopbackIndex {
-		return fmt.Errorf("vtep dev index is not loopback index: %d %d", vxLan.VtepDevIndex, loopbackIndex)
+	if vxLan.VtepDevIndex != vtepDeviceIndex {
+		return fmt.Errorf("vtep dev index is not the expected index: %d %d", vxLan.VtepDevIndex, vtepDeviceIndex)
 	}
 	return nil
 }
 
-func createVXLan(params VNIParams, bridge *netlink.Bridge, loopback netlink.Link) (*netlink.Vxlan, error) {
-	if loopback == nil {
-		var err error
-		loopback, err = netlink.LinkByName(loopbackName)
+func createVXLan(params VNIParams, bridge *netlink.Bridge, vtepDeviceIndex int) (*netlink.Vxlan, error) {
+	if vtepDeviceIndex == 0 {
+		// A zero index means the caller did not resolve the VTEP device
+		// (the L3VNI path): look up the loopback here.
+		loopback, err := netlink.LinkByName(loopbackName)
 		if err != nil {
 			return nil, fmt.Errorf("failed looking for vtep loopback interface %s: %w", loopbackName, err)
 		}
+		vtepDeviceIndex = loopback.Attrs().Index
 	}
 
 	vtepIP, _, err := net.ParseCIDR(params.VTEPIP)
@@ -99,7 +101,7 @@ func createVXLan(params VNIParams, bridge *netlink.Bridge, loopback netlink.Link
 		VxlanId:      int(params.VNI),
 		Port:         int(*params.VXLanPort),
 		Learning:     false, // Disable VTEP learning (ip link add <...> type vxlan <...> nolearning).
-		VtepDevIndex: loopback.Attrs().Index,
+		VtepDevIndex: vtepDeviceIndex,
 		SrcAddr:      vtepIP,
 	}
 
@@ -114,7 +116,7 @@ func createVXLan(params VNIParams, bridge *netlink.Bridge, loopback netlink.Link
 		return nil, fmt.Errorf("failed to get vxlan link by name %s: %w", vxlanName, err)
 	}
 	vxlan, ok := link.(*netlink.Vxlan)
-	if ok && checkVXLanConfigured(vxlan, bridge.Index, loopback.Attrs().Index, params) == nil {
+	if ok && checkVXLanConfigured(vxlan, bridge.Index, vtepDeviceIndex, params) == nil {
 		return vxlan, nil
 	}
 	if err := netlink.LinkDel(link); err != nil {

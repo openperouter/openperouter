@@ -660,7 +660,7 @@ var _ = Describe("L2 VNI configuration", func() {
 		DeferCleanup(func() {
 			Expect(shared.Close()).To(Succeed())
 		})
-		shared.loopback = vtepDevice
+		shared.vtepDeviceIndex = vtepDevice.Attrs().Index
 		Expect(SetupL2VNI(context.Background(), ovsClient, params, shared)).To(Succeed())
 
 		vxlanName := vxLanNameFromVNI(params.VNI)
