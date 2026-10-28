@@ -29,7 +29,7 @@ var _ = Describe("L3 VPN configuration", func() {
 		DeferCleanup(func() {
 			ovsClient.Close()
 		})
-		setupLoopback(testNS)
+		setupTunnelLoopback(testNS)
 	})
 	AfterEach(func() {
 		cleanTest(testNSName)

@@ -33,7 +33,7 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 		DeferCleanup(func() {
 			ovsClient.Close()
 		})
-		setupLoopback(testNS)
+		setupTunnelLoopback(testNS)
 	})
 
 	AfterEach(func() {

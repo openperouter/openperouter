@@ -1097,7 +1097,7 @@ func TestISIS(t *testing.T) {
 				Name:  isisProcessName,
 				Level: 1,
 				Interfaces: []ISISInterface{
-					{Name: "lo", IPv6: true, IsPassive: true},
+					{Name: "vtep-lo", IPv6: true, IsPassive: true},
 					{Name: "eth0", IPv4: true, IPv6: false},
 					{Name: "eth1", IPv4: false, IPv6: true},
 					{Name: "eth2", IPv4: true, IPv6: true},
@@ -1135,7 +1135,7 @@ func TestISISFeatures(t *testing.T) {
 				AdvertisePassiveOnly: true,
 				MultiTopology:        true,
 				Interfaces: []ISISInterface{
-					{Name: "lo", IPv6: true, IsPassive: true},
+					{Name: "vtep-lo", IPv6: true, IsPassive: true},
 					{Name: "eth0", IPv4: true, IPv6: false},
 					{Name: "eth1", IPv4: false, IPv6: true},
 					{Name: "eth2", IPv4: true, IPv6: true},
@@ -1176,7 +1176,7 @@ func TestSegmentRouting(t *testing.T) {
 				Name:  isisProcessName,
 				Level: 1,
 				Interfaces: []ISISInterface{
-					{Name: "lo", IPv6: true, IsPassive: true},
+					{Name: "vtep-lo", IPv6: true, IsPassive: true},
 					{Name: "eth0", IPv4: false, IPv6: true},
 				},
 			},
@@ -1246,7 +1246,7 @@ func TestSegmentRoutingWithL2VNI(t *testing.T) {
 				Net:   MustParseISISNet("49.0001.0002.0003.0004.00"),
 				Level: 1,
 				Interfaces: []ISISInterface{
-					{Name: "lo", IPv6: true, IsPassive: true},
+					{Name: "vtep-lo", IPv6: true, IsPassive: true},
 					{Name: "eth0", IPv4: true, IPv6: true},
 				},
 			},

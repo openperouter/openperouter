@@ -271,7 +271,7 @@ type GracefulRestartConfig struct {
 // TunnelEndpointConfig contains tunnel endpoint configuration for the underlay.
 type TunnelEndpointConfig struct {
 	// cidrs is a list of CIDRs to be used to assign IPs to the local tunnel endpoint on
-	// each node. IPs derived from these CIDRs will be assigned to the local loopback.
+	// each node. IPs derived from these CIDRs will be assigned to the tunnel endpoint interface.
 	// At least one IPv4 or IPv6 CIDR is required. At most one of each family may be specified.
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=2

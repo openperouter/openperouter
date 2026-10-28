@@ -44,6 +44,107 @@ func TestValidateUnderlay(t *testing.T) {
 			},
 		},
 		{
+			name: "reserved tunnel endpoint ISIS interface name",
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{ASN: new(int64(65002)), Address: new("192.168.1.1")},
+						},
+						ISIS: &v1alpha1.ISISConfig{
+							BaseNet: "49.0001.0002.0003.0004.00",
+							Interfaces: []v1alpha1.ISISInterface{
+								{Name: "eth0", IPFamily: new(v1alpha1.IPFamilyDualStack)},
+								{Name: "vtep-lo", IPFamily: new(v1alpha1.IPFamilyDualStack)},
+							},
+						},
+					},
+				},
+			},
+			wantErrStr: "underlay  has invalid ISIS interfaces: interface name vtep-lo is reserved for the tunnel endpoint",
+		},
+		{
+			name: "valid explicit ISIS interface names",
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{ASN: new(int64(65002)), Address: new("192.168.1.1")},
+						},
+						ISIS: &v1alpha1.ISISConfig{
+							BaseNet: "49.0001.0002.0003.0004.00",
+							Interfaces: []v1alpha1.ISISInterface{
+								{Name: "eth0", IPFamily: new(v1alpha1.IPFamilyDualStack)},
+								{Name: "lo0", IPFamily: new(v1alpha1.IPFamilyDualStack)},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "reserved tunnel endpoint network device name",
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"192.168.1.0/24"},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "vtep-lo"},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN:     new(int64(65002)),
+								Address: new("192.168.1.1"),
+							},
+						},
+					},
+				},
+			},
+			wantErrStr: "underlay  has invalid interfaces: interface name vtep-lo is reserved for the tunnel endpoint",
+		},
+		{
+			name: "reserved tunnel endpoint cni device name",
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"192.168.1.0/24"},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type: v1alpha1.UnderlayInterfaceTypeCNIDevice,
+								CNIDevice: &v1alpha1.CNIDevice{
+									Type: v1alpha1.CNIConfigTypeRawConfig,
+									RawConfig: &apiextensionsv1.JSON{
+										Raw: []byte(
+											`{"cniVersion":"1.0.0","name":"macvlan-underlay","type":"macvlan","master":"eth1"}`,
+										),
+									},
+									InterfaceName: new("vtep-lo"),
+								},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN:     new(int64(65002)),
+								Address: new("192.168.1.1"),
+							},
+						},
+					},
+				},
+			},
+			wantErrStr: "underlay  has invalid interfaces: interface name vtep-lo is reserved for the tunnel endpoint",
+		},
+		{
 			name: "missing tunnel endpoint configuration",
 			underlay: []v1alpha1.Underlay{
 				{

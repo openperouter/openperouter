@@ -147,7 +147,7 @@ router isis ISIS
   exit
 exit
 !
-interface lo
+interface vtep-lo
   ipv6 router isis ISIS
   isis passive
 exit

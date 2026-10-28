@@ -67,7 +67,7 @@ func checkVXLanConfigured(vxLan *netlink.Vxlan, bridgeIndex, vtepDeviceIndex int
 		return err
 	}
 	if vxLan.VtepDevIndex != vtepDeviceIndex {
-		return fmt.Errorf("vtep dev index is not the expected index: %d %d", vxLan.VtepDevIndex, vtepDeviceIndex)
+		return fmt.Errorf("vtep dev index is not tunnel endpoint index: %d %d", vxLan.VtepDevIndex, vtepDeviceIndex)
 	}
 	return nil
 }

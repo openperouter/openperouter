@@ -108,7 +108,7 @@ func NewL2VNIConfigurator(ns netns.NsHandle, ovsClient *OVSClient) (*L2VNIConfig
 		return nil, fmt.Errorf("could not find underlay MTU: %w", err)
 	}
 
-	vtepDeviceIndex, err := loopbackIndexIn(ns)
+	vtepDeviceIndex, err := tunnelEndpointIndexIn(ns)
 	if err != nil {
 		return nil, err
 	}
@@ -289,7 +289,7 @@ func setupVNI(ctx context.Context, params VNIParams, bridgeOptions ...NetlinkOpt
 	}
 	defer closeNamespace(ns, params.TargetNS)
 
-	vtepDeviceIndex, err := loopbackIndexIn(ns)
+	vtepDeviceIndex, err := tunnelEndpointIndexIn(ns)
 	if err != nil {
 		return err
 	}
@@ -620,15 +620,15 @@ func closeNamespace(ns netns.NsHandle, namespace string) {
 	}
 }
 
-// loopbackIndexIn returns the index of the VTEP loopback device in ns.
-func loopbackIndexIn(ns netns.NsHandle) (int, error) {
+// tunnelEndpointIndexIn returns the index of the VTEP source device in ns.
+func tunnelEndpointIndexIn(ns netns.NsHandle) (int, error) {
 	var index int
 	if err := netnamespace.In(ns, func() error {
-		loopback, err := netlink.LinkByName(loopbackName)
+		tunnelEndpoint, err := netlink.LinkByName(TunnelLoopback)
 		if err != nil {
-			return fmt.Errorf("failed looking for vtep loopback interface %s: %w", loopbackName, err)
+			return fmt.Errorf("failed looking for vtep interface %s: %w", TunnelLoopback, err)
 		}
-		index = loopback.Attrs().Index
+		index = tunnelEndpoint.Attrs().Index
 		return nil
 	}); err != nil {
 		return 0, err

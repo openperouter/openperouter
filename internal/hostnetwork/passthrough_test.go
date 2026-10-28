@@ -27,7 +27,7 @@ var _ = Describe("Passthrough configuration", func() {
 	BeforeEach(func() {
 		cleanTest(testPassthroughNSName)
 		testNS = createTestNS(testPassthroughNSName)
-		setupLoopback(testNS)
+		setupTunnelLoopback(testNS)
 	})
 	AfterEach(func() {
 		cleanTest(testPassthroughNSName)
