@@ -19,6 +19,7 @@ import (
 )
 
 var setupSingleL2VNI = hostnetwork.SetupL2VNI
+var newL2VNISharedState = hostnetwork.NewL2VNISharedState
 
 type interfacesConfiguration struct {
 	targetNamespace string
@@ -211,10 +212,22 @@ func setupL2VNIs(
 	ovsClient *hostnetwork.OVSClient,
 	l2VNIs []hostnetwork.L2VNIParams,
 ) ([]hostnetwork.L2VNIParams, []error) {
+	if len(l2VNIs) == 0 {
+		return nil, nil
+	}
+	shared, err := newL2VNISharedState(l2VNIs[0].TargetNS)
+	if err != nil {
+		errs := make([]error, 0, len(l2VNIs))
+		for _, vni := range l2VNIs {
+			errs = append(errs, l2VNIError(vni, err.Error()))
+		}
+		return nil, errs
+	}
+
 	var kept []hostnetwork.L2VNIParams
 	var errs []error
 	for _, vni := range l2VNIs {
-		err := setupL2VNI(ctx, ovsClient, vni)
+		err := setupL2VNI(ctx, ovsClient, vni, shared)
 		if errors.Is(err, openpeerrors.ErrTransient) {
 			errs = append(errs, l2VNIError(vni, err.Error()))
 			kept = append(kept, vni)
@@ -229,9 +242,9 @@ func setupL2VNIs(
 	return kept, errs
 }
 
-func setupL2VNI(ctx context.Context, ovsClient *hostnetwork.OVSClient, vni hostnetwork.L2VNIParams) error {
+func setupL2VNI(ctx context.Context, ovsClient *hostnetwork.OVSClient, vni hostnetwork.L2VNIParams, shared *hostnetwork.L2VNISharedState) error {
 	slog.InfoContext(ctx, "setting up L2VNI", "vni", vni.VNI)
-	if err := setupSingleL2VNI(ctx, ovsClient, vni); err != nil {
+	if err := setupSingleL2VNI(ctx, ovsClient, vni, shared); err != nil {
 		return err
 	}
 	return bridgerefresh.StartForVNI(ctx, vni)

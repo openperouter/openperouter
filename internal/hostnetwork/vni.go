@@ -60,6 +60,13 @@ type L2VNIParams struct {
 	HostMaster   *HostMaster
 }
 
+// L2VNISharedState is the state shared by every L2VNI of a datapath pass.
+// Resolving it lists the links of the router namespace, so the caller resolves
+// it once and passes the same state to every SetupL2VNI call of the pass.
+type L2VNISharedState struct {
+	underlayMTU int
+}
+
 type HostMaster struct {
 	Name       *string
 	Type       string
@@ -79,6 +86,25 @@ type NotRouterInterfaceError struct {
 
 func (e NotRouterInterfaceError) Error() string {
 	return fmt.Sprintf("interface %s is not a router interface", e.Name)
+}
+
+// NewL2VNISharedState resolves the state shared by the L2VNIs of targetNS.
+func NewL2VNISharedState(targetNS string) (*L2VNISharedState, error) {
+	ns, err := netns.GetFromPath(targetNS)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get network namespace %s: %w", targetNS, err)
+	}
+	defer func() {
+		if err := ns.Close(); err != nil {
+			slog.Error("failed to close namespace", "namespace", targetNS, "error", err)
+		}
+	}()
+
+	underlayMTU, err := FindUnderlayMTU(ns)
+	if err != nil {
+		return nil, fmt.Errorf("could not find underlay MTU: %w", err)
+	}
+	return &L2VNISharedState{underlayMTU: underlayMTU}, nil
 }
 
 func setupVRFInNS(ctx context.Context, params VNIParams) error {
@@ -134,7 +160,15 @@ func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
 // domain to the default host namespace.
 // The VRF must already exist (created by SetupL3VNI); setupBridge
 // looks it up and binds the bridge to it.
-func SetupL2VNI(ctx context.Context, ovsClient *OVSClient, params L2VNIParams) error {
+func SetupL2VNI(ctx context.Context, ovsClient *OVSClient, params L2VNIParams, shared *L2VNISharedState) error {
+	if shared == nil {
+		var err error
+		shared, err = NewL2VNISharedState(params.TargetNS)
+		if err != nil {
+			return err
+		}
+	}
+
 	if err := setupVNI(ctx, params.VNIParams); err != nil {
 		return fmt.Errorf("SetupL2VNI: failed to setup VNI: %w", err)
 	}
@@ -165,10 +199,7 @@ func SetupL2VNI(ctx context.Context, ovsClient *OVSClient, params L2VNIParams) e
 	}
 	slog.Info("SetupL2VNI: found host veth", "name", vethNames.HostSide, "index", hostVeth.Attrs().Index)
 
-	underlayMTU, err := FindUnderlayMTU(ns)
-	if err != nil {
-		return fmt.Errorf("could not find underlay MTU: %w", err)
-	}
+	underlayMTU := shared.underlayMTU
 
 	if err := SetVethMTUForTunnelOverhead(hostVeth, underlayMTU, params.TunnelOverhead); err != nil {
 		return fmt.Errorf("SetupL2VNI: failed to set MTU on host veth %s: %w", vethNames.HostSide, err)

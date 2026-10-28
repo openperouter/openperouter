@@ -366,7 +366,7 @@ var _ = Describe("L2 VNI configuration", func() {
 		}
 
 		createVRFInNamespace(testNS, params.VRF)
-		err := SetupL2VNI(context.Background(), ovsClient, params)
+		err := SetupL2VNI(context.Background(), ovsClient, params, nil)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -433,7 +433,7 @@ var _ = Describe("L2 VNI configuration", func() {
 		}
 		for _, p := range params {
 			createVRFInNamespace(testNS, p.VRF)
-			err := SetupL2VNI(context.Background(), ovsClient, p)
+			err := SetupL2VNI(context.Background(), ovsClient, p, nil)
 			Expect(err).NotTo(HaveOccurred())
 
 			Eventually(func(g Gomega) {
@@ -484,11 +484,11 @@ var _ = Describe("L2 VNI configuration", func() {
 			if params.VRF != "" {
 				createVRFInNamespace(testNS, params.VRF)
 			}
-			err := SetupL2VNI(context.Background(), ovsClient, params)
+			err := SetupL2VNI(context.Background(), ovsClient, params, nil)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Test idempotency - calling setup twice should work
-			err = SetupL2VNI(context.Background(), ovsClient, params)
+			err = SetupL2VNI(context.Background(), ovsClient, params, nil)
 			Expect(err).NotTo(HaveOccurred())
 
 			Eventually(func(g Gomega) {
@@ -578,8 +578,46 @@ var _ = Describe("L2 VNI configuration", func() {
 		}
 
 		createVRFInNamespace(testNS, params.VRF)
-		err := SetupL2VNI(context.Background(), ovsClient, params)
+		err := SetupL2VNI(context.Background(), ovsClient, params, nil)
 		Expect(err).NotTo(HaveOccurred())
+
+		expectedMTU := underlayMTU - VXLanOverhead
+		Eventually(func(g Gomega) {
+			vethNames := vethNamesFromVNI(params.VNI)
+			validateVethMTU(g, vethNames, expectedMTU)
+			_ = netnamespace.In(testNS, func() error {
+				validateNSVethMTU(g, vethNames, expectedMTU)
+				return nil
+			})
+		}, 30*time.Second, 1*time.Second).Should(Succeed())
+	})
+
+	It("should use the underlay MTU resolved for the pass instead of looking it up again", func() {
+		const underlayMTU = 9000
+		setupFakeUnderlay(testNS, "testunderlayl2", underlayMTU)
+
+		shared, err := NewL2VNISharedState(testNSPath())
+		Expect(err).NotTo(HaveOccurred())
+		Expect(shared.underlayMTU).To(Equal(underlayMTU))
+
+		// Remove the underlay after the pass state is resolved: a fresh lookup
+		// would find no underlay and leave the veth MTU at its default.
+		removeFakeUnderlay(testNS, "testunderlayl2")
+
+		params := L2VNIParams{
+			VNIParams: VNIParams{
+				VRF:            "testred",
+				TargetNS:       testNSPath(),
+				VTEPIP:         "192.170.0.9/32",
+				VNI:            100,
+				VXLanPort:      new(int32(4789)),
+				TunnelOverhead: VXLanOverhead,
+			},
+			L2GatewayIPs: []string{"192.168.1.0/24"},
+		}
+
+		createVRFInNamespace(testNS, params.VRF)
+		Expect(SetupL2VNI(context.Background(), ovsClient, params, shared)).To(Succeed())
 
 		expectedMTU := underlayMTU - VXLanOverhead
 		Eventually(func(g Gomega) {
@@ -611,7 +649,7 @@ var _ = Describe("L2 VNI configuration", func() {
 		}
 
 		createVRFInNamespace(testNS, params.VRF)
-		err := SetupL2VNI(context.Background(), ovsClient, params)
+		err := SetupL2VNI(context.Background(), ovsClient, params, nil)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -961,6 +999,17 @@ func setupFakeUnderlay(ns netns.NsHandle, name string, mtu int) {
 		return nil
 	})
 	Expect(err).NotTo(HaveOccurred(), "failed to set up fake underlay")
+}
+
+func removeFakeUnderlay(ns netns.NsHandle, name string) {
+	err := netnamespace.In(ns, func() error {
+		link, err := netlink.LinkByName(name)
+		if err != nil {
+			return fmt.Errorf("failed to find fake underlay dummy %s: %w", name, err)
+		}
+		return netlink.LinkDel(link)
+	})
+	Expect(err).NotTo(HaveOccurred(), "failed to remove fake underlay")
 }
 
 func createVRFInNamespace(ns netns.NsHandle, name string) {

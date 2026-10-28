@@ -27,6 +27,7 @@ func TestSetupL2VNIs(t *testing.T) {
 		name      string
 		l2VNIs    []hostnetwork.L2VNIParams
 		setupErrs map[string]error
+		sharedErr error
 		wantKept  []hostnetwork.L2VNIParams
 		wantErrs  []error
 	}{
@@ -59,13 +60,32 @@ func TestSetupL2VNIs(t *testing.T) {
 				wantL2VNIError("blue", errMissingMaster.Error()),
 			},
 		},
+		{
+			name:      "a shared state failure fails every L2VNI",
+			l2VNIs:    []hostnetwork.L2VNIParams{red, blue},
+			sharedErr: errors.New("could not find underlay MTU"),
+			wantErrs: []error{
+				wantL2VNIError("red", "could not find underlay MTU"),
+				wantL2VNIError("blue", "could not find underlay MTU"),
+			},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			originalSetup := setupSingleL2VNI
 			t.Cleanup(func() { setupSingleL2VNI = originalSetup })
-			setupSingleL2VNI = func(_ context.Context, _ *hostnetwork.OVSClient, vni hostnetwork.L2VNIParams) error {
+			setupSingleL2VNI = func(_ context.Context, _ *hostnetwork.OVSClient, vni hostnetwork.L2VNIParams, _ *hostnetwork.L2VNISharedState) error {
 				return tc.setupErrs[vni.Name]
+			}
+			originalSharedState := newL2VNISharedState
+			t.Cleanup(func() { newL2VNISharedState = originalSharedState })
+			sharedCalls := 0
+			newL2VNISharedState = func(string) (*hostnetwork.L2VNISharedState, error) {
+				sharedCalls++
+				if tc.sharedErr != nil {
+					return nil, tc.sharedErr
+				}
+				return &hostnetwork.L2VNISharedState{}, nil
 			}
 			ctx, cancel := context.WithCancel(context.Background())
 			t.Cleanup(func() {
@@ -79,6 +99,7 @@ func TestSetupL2VNIs(t *testing.T) {
 
 			require.Equal(t, tc.wantKept, kept)
 			require.Equal(t, tc.wantErrs, errs)
+			require.Equal(t, 1, sharedCalls, "shared L2VNI state must be resolved once per pass")
 		})
 	}
 }
