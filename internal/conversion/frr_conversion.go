@@ -22,9 +22,10 @@ import (
 )
 
 const (
-	isisProcessName  = "ISIS"
-	locatorName      = "MAIN"
-	passiveInterface = "passive"
+	isisProcessName       = "ISIS"
+	locatorName           = "MAIN"
+	passiveInterface      = "passive"
+	pointToPointInterface = "point-to-point"
 )
 
 var (
@@ -455,10 +456,11 @@ func (c APIToFRRConverter) underlayISISToFRR(isisConfig *v1alpha1.ISISConfig,
 
 		name := c.InterfaceNames.InterfaceNameForFRR(intf.Name)
 		isisInterfaces[name] = frr.ISISInterface{
-			Name:      name,
-			IPv4:      hasIPv4,
-			IPv6:      hasIPv6,
-			IsPassive: slices.Contains(intf.Features, passiveInterface),
+			Name:         name,
+			IPv4:         hasIPv4,
+			IPv6:         hasIPv6,
+			IsPassive:    slices.Contains(intf.Features, passiveInterface),
+			PointToPoint: slices.Contains(intf.Features, pointToPointInterface),
 		}
 	}
 
