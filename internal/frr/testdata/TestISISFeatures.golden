@@ -45,5 +45,6 @@ exit
 interface eth2
   ip router isis ISIS
   ipv6 router isis ISIS
+  isis network point-to-point
 exit
 !
