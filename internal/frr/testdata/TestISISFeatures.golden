@@ -29,7 +29,7 @@ router isis ISIS
   topology ipv6-unicast
 exit
 !
-interface lo
+interface vtep-lo
   ipv6 router isis ISIS
   isis passive
 exit

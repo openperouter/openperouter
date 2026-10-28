@@ -10,8 +10,10 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/executor"
 )
 
-const NamedNetns = "perouter"
-const underlayPortNamePrefix = "u_"
+const (
+	NamedNetns              = "perouter"
+	TunnelEndpointInterface = "vtep-lo"
+)
 
 // NamedNetnsExists checks whether /var/run/netns/perouter is present on nodeName.
 func NamedNetnsExists(nodeName string) (bool, error) {
@@ -57,48 +59,27 @@ func DeleteNamedNetns(nodeName string) error {
 }
 
 // UnderlayConfigured checks whether the underlay is configured inside
-// the perouter netns on nodeName by looking for any IP addresses other than
-// the default loopback interfaces on the VTEP loopback (lo), and by checking
-// that `lo` is up.
+// the perouter netns on nodeName by looking for a global IP address on the
+// tunnel endpoint interface (vtep-lo), regardless of the interface state.
 func UnderlayConfigured(nodeName string) (bool, error) {
+	exists, err := NamedNetnsExists(nodeName)
+	if err != nil {
+		return false, err
+	}
+	if !exists {
+		return false, nil
+	}
+
 	exec := executor.ForNode(nodeName)
-
-	out, err := exec.Exec("ip", "netns", "list")
-	if err != nil {
-		return false, err
-	}
-	if !strings.Contains(out, NamedNetns) {
+	out, err := exec.Exec("ip", "netns", "exec", NamedNetns,
+		"ip", "-o", "address", "show", "dev", TunnelEndpointInterface, "scope", "global")
+	if strings.Contains(out, "does not exist") {
 		return false, nil
 	}
-
-	out, err = exec.Exec("ip", "netns", "exec", NamedNetns, "ip", "-o", "link", "show", "dev", "lo")
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("failed to get %s addresses on %s: %w", TunnelEndpointInterface, nodeName, err)
 	}
-	if !strings.Contains(out, "LOOPBACK,UP,LOWER_UP") {
-		return false, nil
-	}
-
-	out, err = exec.Exec("ip", "netns", "exec", NamedNetns, "ip", "address", "show", "dev", "lo", "scope", "global")
-	if err != nil {
-		return false, err
-	}
-	if len(strings.TrimSpace(out)) > 0 {
-		return true, nil
-	}
-
-	// Check if some Grout underlay has been configured
-	out, err = exec.Exec("ip", "netns", "exec", NamedNetns, "ip", "-brief", "link", "show")
-	if err != nil {
-		return false, err
-	}
-	for line := range strings.SplitSeq(out, "\n") {
-		fields := strings.Fields(line)
-		if len(fields) > 0 && strings.HasPrefix(fields[0], underlayPortNamePrefix) {
-			return true, nil
-		}
-	}
-	return false, nil
+	return strings.TrimSpace(out) != "", nil
 }
 
 // UnderlayVethExists checks whether the toswitch interfaces exist on nodeName,

@@ -1032,7 +1032,7 @@ func TestUpdate(t *testing.T) {
 						Name:  "ISIS",
 						Level: 1,
 						Interfaces: []frr.ISISInterface{
-							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "vtep-lo", IPv6: true, IsPassive: true},
 							{Name: "eth0", IPv4: true, IPv6: false},
 							{Name: "eth1", IPv4: false, IPv6: true},
 							{Name: "eth2", IPv4: true, IPv6: true},
@@ -1052,7 +1052,7 @@ func TestUpdate(t *testing.T) {
 						Net:   frr.MustParseISISNet("49.0001.0002.0003.0004.00"),
 						Level: 1,
 						Interfaces: []frr.ISISInterface{
-							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "vtep-lo", IPv6: true, IsPassive: true},
 							{Name: "eth0", IPv4: true, IPv6: true},
 						},
 					},
@@ -1158,7 +1158,7 @@ func TestUpdate(t *testing.T) {
 						Level:                1,
 						AdvertisePassiveOnly: true,
 						Interfaces: []frr.ISISInterface{
-							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "vtep-lo", IPv6: true, IsPassive: true},
 							{Name: "eth0", IPv4: true, IPv6: false},
 							{Name: "eth1", IPv4: false, IPv6: true},
 							{Name: "eth2", IPv4: true, IPv6: true},
@@ -1192,7 +1192,7 @@ func TestUpdate(t *testing.T) {
 						Name:  "ISIS",
 						Level: 1,
 						Interfaces: []frr.ISISInterface{
-							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "vtep-lo", IPv6: true, IsPassive: true},
 							{Name: "eth0", IPv4: false, IPv6: true},
 						},
 					},

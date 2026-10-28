@@ -12,6 +12,7 @@ import (
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	openpeerrors "github.com/openperouter/openperouter/internal/errors"
 	"github.com/openperouter/openperouter/internal/filter"
+	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/openperouter/openperouter/internal/ipfamily"
 )
 
@@ -84,8 +85,23 @@ func validateUnderlay(underlay v1alpha1.Underlay) error {
 	}
 
 	// do a no-op conversion to catch validation errors
-	if _, err := underlayInterfacesToHost(underlay.Spec.Interfaces); err != nil {
+	interfaces, err := underlayInterfacesToHost(underlay.Spec.Interfaces)
+	if err != nil {
 		return fmt.Errorf("underlay %s has invalid interfaces: %w", underlay.Name, err)
+	}
+	for _, iface := range interfaces {
+		if iface.InterfaceName == hostnetwork.TunnelLoopback {
+			return fmt.Errorf("underlay %s has invalid interfaces: interface name %s is reserved for the tunnel endpoint",
+				underlay.Name, iface.InterfaceName)
+		}
+	}
+	if underlay.Spec.ISIS != nil {
+		for _, iface := range underlay.Spec.ISIS.Interfaces {
+			if iface.Name == hostnetwork.TunnelLoopback {
+				return fmt.Errorf("underlay %s has invalid ISIS interfaces: interface name %s is reserved for the tunnel endpoint",
+					underlay.Name, iface.Name)
+			}
+		}
 	}
 
 	if underlay.Spec.TunnelEndpoint != nil {

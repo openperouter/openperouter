@@ -1045,7 +1045,7 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `cidrs` _string array_ | cidrs is a list of CIDRs to be used to assign IPs to the local tunnel endpoint on<br />each node. IPs derived from these CIDRs will be assigned to the local loopback.<br />At least one IPv4 or IPv6 CIDR is required. At most one of each family may be specified. |  | MaxItems: 2 <br />MinItems: 1 <br />Required: \{\} <br /> |
+| `cidrs` _string array_ | cidrs is a list of CIDRs to be used to assign IPs to the local tunnel endpoint on<br />each node. IPs derived from these CIDRs will be assigned to the tunnel endpoint interface.<br />At least one IPv4 or IPv6 CIDR is required. At most one of each family may be specified. |  | MaxItems: 2 <br />MinItems: 1 <br />Required: \{\} <br /> |
 
 
 #### Underlay
