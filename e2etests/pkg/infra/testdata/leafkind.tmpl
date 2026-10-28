@@ -82,3 +82,14 @@ interface {{ .ToSwitchInterface }}
   ipv6 router isis ISIS
 exit
 !
+{{- range .ISISInterfaces }}
+interface {{ .Name }}
+{{- if .ISIS }}
+  ipv6 router isis ISIS
+{{- end }}
+{{- if and .ISIS .PointToPoint }}
+  isis network point-to-point
+{{- end }}
+exit
+!
+{{- end }}
