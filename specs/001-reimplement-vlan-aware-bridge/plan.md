@@ -8,7 +8,7 @@
 
 Replace the Linux L2VNI/L3VNI internals with dedicated VLAN-filtering bridges and metadata-mode VXLAN devices using a fixed private VLAN ID of 1. Preserve all public configuration, routing behavior, host attachments, and existing e2e expectations. There is no trunk API, shared bridge, VLAN allocator, or new feature.
 
-Preserve names that existing tests observe: `vni<VNI>` remains the VXLAN device; `br-pe-<VNI>` remains the neighbor-owning gateway interface. A new private `br-vl-<VNI>` bridge performs switching. VLAN interfaces bind domains to existing VRFs; routed L2 gateways use a macvlan over an addressless VLAN interface. See [data-model.md](data-model.md) for exact roles.
+Preserve names that existing tests observe: `vni<VNI>` remains the VXLAN device; `br-pe-<VNI>` remains the neighbor-owning gateway interface. A new private `br-vl-<VNI>` bridge performs switching. VLAN interfaces bind domains to existing VRFs; routed L2 gateways place the existing anycast MAC and gateway CIDRs directly on `br-pe-<VNI>` so FRR and the gateway share one neighbor table. See [data-model.md](data-model.md) for exact roles.
 
 ## Technical Context
 
@@ -20,7 +20,7 @@ Preserve names that existing tests observe: `vni<VNI>` remains the VXLAN device;
 
 **Testing**: Go tests, Ginkgo/Gomega privileged namespace tests via `make test`, `make lint`, and unchanged e2e suites through `make e2etests` and the existing hostmode-boot target.
 
-**Target Platform**: Linux kernel with external VXLAN and VNI receive filtering (upstream support present in 5.18), VLAN filtering, VRF, and macvlan. Pod and systemd/host kernel dataplanes are changed. Grout retains its separate implementation and regression coverage.
+**Target Platform**: Linux kernel with external VXLAN and VNI receive filtering (upstream support present in 5.18), VLAN filtering, and VRF. Pod and systemd/host kernel dataplanes are changed. Grout retains its separate implementation and regression coverage.
 
 **Project Type**: Kubernetes networking controller/operator with Linux dataplane and optional static configuration.
 
@@ -112,7 +112,7 @@ Pin a locally generated unicast router MAC on each private bridge at creation an
 
 ### Cleanup and recovery
 
-Stop affected refreshers before deleting their gateway devices. Remove owned macvlan endpoints, VLAN interfaces, VXLANs, and private bridges in dependency order; tolerate links already removed through parent deletion. Extend name/type recognition to both old and new owned topologies. Preserve managed/external host bridge ownership and existing VRF sharing. Underlay replacement and complete cleanup must remove every new owned device. No silent fallback to the old dataplane is allowed if required kernel operations fail.
+Stop affected refreshers before deleting their gateway devices. Remove owned VLAN interfaces, VXLANs, and private bridges in dependency order, including obsolete split SVI/macvlan children if present; tolerate links already removed through parent deletion. Extend name/type recognition to both old and new owned topologies. Preserve managed/external host bridge ownership and existing VRF sharing. Underlay replacement and complete cleanup must remove every new owned device. No silent fallback to the old dataplane is allowed if required kernel operations fail.
 
 ### Verification and acceptance mapping
 

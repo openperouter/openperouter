@@ -60,7 +60,7 @@ var _ = Describe("VLAN gateway neighbor refresher", func() {
 		Expect(netnamespace.In(ns, func() error {
 			endpoint, err := netlink.LinkByName(refresher.bridgeName)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(endpoint).To(BeAssignableToTypeOf(&netlink.Macvlan{}))
+			Expect(endpoint).To(BeAssignableToTypeOf(&netlink.Vlan{}))
 			neighbors, err := refresher.listStaleNeighbors()
 			Expect(err).NotTo(HaveOccurred())
 			Expect(neighbors).To(HaveLen(2))

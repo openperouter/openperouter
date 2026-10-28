@@ -117,7 +117,7 @@ var _ = Describe("VLAN-aware VNI lifecycle", func() {
 		l2.L2GatewayIPs = []string{"198.51.100.1/24"}
 		Expect(SetupL2VNI(context.Background(), ovsClient, l2)).To(Succeed())
 		Expect(netnamespace.In(ns, func() error {
-			svi, err := netlink.LinkByName(vlanSVIName(l2.VNI))
+			svi, err := netlink.LinkByName(BridgeName(l2.VNI))
 			Expect(err).NotTo(HaveOccurred())
 			return netlink.LinkDel(svi)
 		})).To(Succeed())
@@ -155,7 +155,7 @@ var _ = Describe("VLAN-aware VNI lifecycle", func() {
 					indices[name] = link.Attrs().Index
 				}
 			}
-			svi, err := netlink.LinkByName(vlanSVIName(l2.VNI))
+			svi, err := netlink.LinkByName(BridgeName(l2.VNI))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(netlink.LinkDel(svi)).To(Succeed())
 			_, err = netlink.LinkByName(BridgeName(l2.VNI))
@@ -208,7 +208,7 @@ var _ = Describe("VLAN-aware VNI lifecycle", func() {
 func validateLifecycleGateway(params L2VNIParams) {
 	gateway, err := netlink.LinkByName(BridgeName(params.VNI))
 	Expect(err).NotTo(HaveOccurred())
-	Expect(gateway.Type()).To(Equal("macvlan"))
+	Expect(gateway.Type()).To(Equal("vlan"))
 	mac, err := BridgeFixedMAC(params.VNI)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(gateway.Attrs().HardwareAddr).To(Equal(net.HardwareAddr(mac)))
@@ -222,13 +222,10 @@ func validateLifecycleGateway(params L2VNIParams) {
 	vrf, err := lookupVRF(params.VRF)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(gateway.Attrs().MasterIndex).To(Equal(vrf.Index))
-	svi, err := netlink.LinkByName(vlanSVIName(params.VNI))
-	Expect(err).NotTo(HaveOccurred())
-	Expect(gateway.Attrs().ParentIndex).To(Equal(svi.Attrs().Index))
-	Expect(svi.Attrs().MasterIndex).To(Equal(vrf.Index))
 	bridge, err := netlink.LinkByName(vlanBridgeName(params.VNI))
 	Expect(err).NotTo(HaveOccurred())
-	Expect(svi.Attrs().ParentIndex).To(Equal(bridge.Attrs().Index))
+	Expect(gateway.Attrs().ParentIndex).To(Equal(bridge.Attrs().Index))
+	Expect(gateway.(*netlink.Vlan).VlanId).To(Equal(1))
 	tunnel, err := netlink.LinkByName(vxLanNameFromVNI(params.VNI))
 	Expect(err).NotTo(HaveOccurred())
 	Expect(tunnel.Attrs().MasterIndex).To(Equal(bridge.Attrs().Index))

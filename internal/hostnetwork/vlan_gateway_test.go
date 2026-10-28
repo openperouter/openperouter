@@ -21,7 +21,7 @@ var _ = Describe("VLAN-aware anycast gateways", func() {
 		Expect(ns.Close()).To(Succeed())
 	})
 
-	It("keeps gateway identity on a private macvlan and repairs its VLAN-scoped local FDB", func() {
+	It("keeps gateway neighbors on the VLAN SVI and repairs its VLAN-scoped local FDB", func() {
 		Expect(netnamespace.In(ns, func() error {
 			Expect(setupVRF("testvrf")).To(Succeed())
 			params := L2VNIParams{
@@ -33,24 +33,19 @@ var _ = Describe("VLAN-aware anycast gateways", func() {
 			Expect(netlink.LinkSetMTU(bridge, 1450)).To(Succeed())
 			endpoint, err := setupL2Gateway(params, bridge)
 			Expect(err).NotTo(HaveOccurred())
-			gateway := endpoint.(*netlink.Macvlan)
-			Expect(gateway.Mode).To(Equal(netlink.MACVLAN_MODE_PRIVATE))
+			Expect(endpoint).To(BeAssignableToTypeOf(&netlink.Vlan{}))
+			gateway := endpoint.(*netlink.Vlan)
+			Expect(gateway.VlanId).To(Equal(1))
 			Expect(gateway.Name).To(Equal("br-pe-5000"))
 			Expect(gateway.MTU).To(Equal(1450))
-			svi, err := netlink.LinkByName("svi5000")
-			Expect(err).NotTo(HaveOccurred())
-			Expect(svi.(*netlink.Vlan).VlanId).To(Equal(1))
-			Expect(svi.Attrs().ParentIndex).To(Equal(bridge.Index))
-			Expect(gateway.ParentIndex).To(Equal(svi.Attrs().Index))
+			Expect(gateway.ParentIndex).To(Equal(bridge.Index))
 			vrf, err := lookupVRF("testvrf")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(gateway.MasterIndex).To(Equal(vrf.Index))
-			Expect(svi.Attrs().MasterIndex).To(Equal(vrf.Index))
-			Expect(netlink.AddrList(svi, netlink.FAMILY_ALL)).To(BeEmpty())
 			mac, err := BridgeFixedMAC(params.VNI)
 			Expect(err).NotTo(HaveOccurred())
 			Expect([]byte(gateway.HardwareAddr)).To(Equal(mac))
-			Expect([]byte(svi.Attrs().HardwareAddr)).NotTo(Equal(mac))
+			Expect([]byte(bridge.HardwareAddr)).NotTo(Equal(mac))
 			for _, address := range params.L2GatewayIPs {
 				Expect(interfaceHasIP(gateway, address)).To(BeTrue())
 			}
@@ -98,10 +93,8 @@ var _ = Describe("VLAN-aware anycast gateways", func() {
 			Expect(err).NotTo(HaveOccurred())
 			gateway, err := setupL2Gateway(params, bridge)
 			Expect(err).NotTo(HaveOccurred())
-			svi, err := netlink.LinkByName(vlanSVIName(params.VNI))
-			Expect(err).NotTo(HaveOccurred())
 			owned := map[int]struct{}{
-				bridge.Index: {}, gateway.Attrs().Index: {}, svi.Attrs().Index: {},
+				bridge.Index: {}, gateway.Attrs().Index: {},
 			}
 			links := make(chan netlink.LinkUpdate, 32)
 			neighbors := make(chan netlink.NeighUpdate, 32)
@@ -126,6 +119,38 @@ var _ = Describe("VLAN-aware anycast gateways", func() {
 					return true
 				}
 			}).WithTimeout(300 * time.Millisecond).WithPolling(10 * time.Millisecond).Should(BeTrue())
+			return nil
+		})).To(Succeed())
+	})
+
+	It("replaces a split SVI and macvlan gateway while preserving the switching bridge", func() {
+		Expect(netnamespace.In(ns, func() error {
+			params := L2VNIParams{
+				VNIParams: VNIParams{VNI: 6001}, L2GatewayIPs: []string{"192.0.2.1/24"},
+			}
+			bridge, err := setupBridge(params.VNIParams)
+			Expect(err).NotTo(HaveOccurred())
+			svi, err := setupVLANEndpoint(params.VNIParams, bridge, vlanSVIName(params.VNI))
+			Expect(err).NotTo(HaveOccurred())
+			mac, err := BridgeFixedMAC(params.VNI)
+			Expect(err).NotTo(HaveOccurred())
+			gateway := &netlink.Macvlan{
+				LinkAttrs: netlink.LinkAttrs{
+					Name: BridgeName(params.VNI), ParentIndex: svi.Attrs().Index, HardwareAddr: mac,
+				},
+				Mode: netlink.MACVLAN_MODE_PRIVATE,
+			}
+			Expect(netlink.LinkAdd(gateway)).To(Succeed())
+			Expect(AssignIPToInterface(gateway, params.L2GatewayIPs[0])).To(Succeed())
+			endpoint, err := setupL2Gateway(params, bridge)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(endpoint).To(BeAssignableToTypeOf(&netlink.Vlan{}))
+			Expect(endpoint.Attrs().ParentIndex).To(Equal(bridge.Index))
+			Expect([]byte(endpoint.Attrs().HardwareAddr)).To(Equal(mac))
+			Expect(interfaceHasIP(endpoint, params.L2GatewayIPs[0])).To(BeTrue())
+			Expect(netlink.LinkByName(bridge.Name)).To(HaveField("LinkAttrs.Index", bridge.Index))
+			_, err = netlink.LinkByName(vlanSVIName(params.VNI))
+			Expect(err).To(BeAssignableToTypeOf(netlink.LinkNotFoundError{}))
 			return nil
 		})).To(Succeed())
 	})

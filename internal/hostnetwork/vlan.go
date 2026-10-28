@@ -26,35 +26,17 @@ func setupVNIEndpoint(params VNIParams, bridge *netlink.Bridge) (netlink.Link, e
 }
 
 func setupL2Gateway(params L2VNIParams, bridge *netlink.Bridge) (netlink.Link, error) {
-	svi, err := setupVLANEndpoint(params.VNIParams, bridge, vlanSVIName(params.VNI))
-	if err != nil {
+	if err := removeGatewaySVI(params.VNI); err != nil {
 		return nil, err
 	}
 	mac, err := BridgeFixedMAC(params.VNI)
 	if err != nil {
 		return nil, err
 	}
-	desired := &netlink.Macvlan{
-		LinkAttrs: netlink.LinkAttrs{
-			Name: BridgeName(params.VNI), ParentIndex: svi.Attrs().Index,
-			MTU: svi.Attrs().MTU, HardwareAddr: mac,
-		},
-		Mode: netlink.MACVLAN_MODE_PRIVATE,
-	}
-	link, err := ownedEndpoint(desired)
+	// FRR learns EVPN neighbors on the VLAN SVI. Keeping gateway addresses on
+	// that same interface lets local ARP/ND replace remote neighbors after a move.
+	link, err := setupVLANInterface(params.VNIParams, bridge, BridgeName(params.VNI), mac)
 	if err != nil {
-		return nil, err
-	}
-	if err := ensureBridgeFixedMacAddress(link, params.VNI); err != nil {
-		return nil, err
-	}
-	if err := linkSetMTU(link, svi.Attrs().MTU); err != nil {
-		return nil, fmt.Errorf("set gateway %s MTU: %w", desired.Name, err)
-	}
-	if err := endpointVRF(link, params.VRF); err != nil {
-		return nil, err
-	}
-	if err := suppressEndpointLinkLocal(link); err != nil {
 		return nil, err
 	}
 	for _, ip := range params.L2GatewayIPs {
@@ -65,9 +47,6 @@ func setupL2Gateway(params L2VNIParams, bridge *netlink.Bridge) (netlink.Link, e
 	if err := ensureGatewayFDB(bridge, mac); err != nil {
 		return nil, err
 	}
-	if err := linkSetUp(link); err != nil {
-		return nil, fmt.Errorf("set gateway %s up: %w", desired.Name, err)
-	}
 	return netlink.LinkByIndex(link.Attrs().Index)
 }
 
@@ -76,16 +55,8 @@ func ensureAccessVLAN(link netlink.Link) error {
 }
 
 func removeGatewayEndpoint(vni int32, bridge *netlink.Bridge) error {
-	name := vlanSVIName(vni)
-	svi, err := netlink.LinkByName(name)
-	if err != nil && !errors.As(err, &netlink.LinkNotFoundError{}) {
-		return fmt.Errorf("look up gateway SVI %s: %w", name, err)
-	}
-	if svi != nil {
-		// Removing the SVI also removes its owned macvlan child before the direct endpoint is created.
-		if err := netlink.LinkDel(svi); err != nil {
-			return fmt.Errorf("remove gateway SVI %s: %w", name, err)
-		}
+	if err := removeGatewaySVI(vni); err != nil {
+		return err
 	}
 	mac, err := BridgeFixedMAC(vni)
 	if err != nil {
@@ -107,7 +78,33 @@ func removeGatewayEndpoint(vni int32, bridge *netlink.Bridge) error {
 	return nil
 }
 
+func removeGatewaySVI(vni int32) error {
+	name := vlanSVIName(vni)
+	svi, err := netlink.LinkByName(name)
+	if err != nil && !errors.As(err, &netlink.LinkNotFoundError{}) {
+		return fmt.Errorf("look up gateway SVI %s: %w", name, err)
+	}
+	if svi != nil {
+		// Removing the backing SVI also frees its macvlan child's gateway name.
+		if err := netlink.LinkDel(svi); err != nil {
+			return fmt.Errorf("remove gateway SVI %s: %w", name, err)
+		}
+	}
+	return nil
+}
+
 func setupVLANEndpoint(params VNIParams, bridge *netlink.Bridge, name string) (netlink.Link, error) {
+	link, err := setupVLANInterface(params, bridge, name, bridge.HardwareAddr)
+	if err != nil {
+		return nil, err
+	}
+	if err := ensureAddressless(link); err != nil {
+		return nil, err
+	}
+	return link, nil
+}
+
+func setupVLANInterface(params VNIParams, bridge *netlink.Bridge, name string, mac net.HardwareAddr) (netlink.Link, error) {
 	currentBridge, err := netlink.LinkByIndex(bridge.Index)
 	if err != nil {
 		return nil, fmt.Errorf("look up switching bridge %s: %w", bridge.Name, err)
@@ -115,7 +112,7 @@ func setupVLANEndpoint(params VNIParams, bridge *netlink.Bridge, name string) (n
 	attrs := currentBridge.Attrs()
 	desired := &netlink.Vlan{
 		LinkAttrs: netlink.LinkAttrs{
-			Name: name, ParentIndex: bridge.Index, MTU: attrs.MTU, HardwareAddr: attrs.HardwareAddr,
+			Name: name, ParentIndex: bridge.Index, MTU: attrs.MTU, HardwareAddr: mac,
 		},
 		VlanId: int(internalVLANID),
 	}
@@ -123,9 +120,9 @@ func setupVLANEndpoint(params VNIParams, bridge *netlink.Bridge, name string) (n
 	if err != nil {
 		return nil, err
 	}
-	if !bytes.Equal(link.Attrs().HardwareAddr, attrs.HardwareAddr) {
-		if err := netlink.LinkSetHardwareAddr(link, attrs.HardwareAddr); err != nil {
-			return nil, fmt.Errorf("set router MAC on %s: %w", name, err)
+	if !bytes.Equal(link.Attrs().HardwareAddr, mac) {
+		if err := netlink.LinkSetHardwareAddr(link, mac); err != nil {
+			return nil, fmt.Errorf("set endpoint MAC on %s: %w", name, err)
 		}
 	}
 	if err := linkSetMTU(link, attrs.MTU); err != nil {
@@ -134,7 +131,7 @@ func setupVLANEndpoint(params VNIParams, bridge *netlink.Bridge, name string) (n
 	if err := endpointVRF(link, params.VRF); err != nil {
 		return nil, err
 	}
-	if err := ensureAddressless(link); err != nil {
+	if err := suppressEndpointLinkLocal(link); err != nil {
 		return nil, err
 	}
 	if err := linkSetUp(link); err != nil {

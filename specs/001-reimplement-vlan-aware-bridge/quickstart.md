@@ -6,7 +6,7 @@ This guide is for implementation validation. No deployment or tests were execute
 
 - Go 1.26.4 and the repository's normal build/test tools.
 - Docker/container engine, Kind, ContainerLab, privileged namespace/OVS testing support, and the existing development environment requirements in `website/content/docs/contributing/`.
-- Target host kernel with VLAN filtering, VRF, macvlan, external VXLAN and VNI-filter support; upstream 5.18 contains the required VNI-filter functionality. Verify actual operations, not only `uname -r`.
+- Target host kernel with VLAN filtering, VRF, external VXLAN and VNI-filter support; upstream 5.18 contains the required VNI-filter functionality. Verify actual operations, not only `uname -r`.
 - The existing FRR 10.6.0 image and iproute2 diagnostic commands (`bridge vlan`, `bridge vni`). Containers use the host kernel.
 
 Deploy using the `deploy` skill and execute suites using `e2e-tests`. Detect deployment mode with that skill before testing; do not infer a mode from a connectivity or authorization error. The CI filters below are the acceptance baseline. The skill's current hostmode prose has broader exclusions; retain the CI filters explicitly rather than reducing coverage.

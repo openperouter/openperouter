@@ -15,12 +15,11 @@ Existing `L2VNI`, `L3VNI`, `L3VPN`, underlay, host-session, and router status de
 | Tunnel mapping | VLAN 1 → configured VNI | Exactly one mapping on each VXLAN bridge port |
 | Receive filter | Exactly the configured VNI | Distinct from tunnel mapping; required even though link VNI is 0 |
 | Router-side access veth | Existing `pe-<VNI>` name; VLAN 1 PVID/untagged | L2VNI switching bridge port; host peer remains untagged |
-| Gateway parent SVI | `svi<VNI>`, VLAN ID 1, no IP addresses | Only for L2VNIs with gateways; parent is switching bridge, master is existing VRF |
-| L2 anycast endpoint | `br-pe-<VNI>`, macvlan private; current gateway CIDRs and deterministic per-VNI MAC | Parent is gateway SVI; explicitly bound to same VRF; owns neighbors/refresher traffic |
+| L2 anycast endpoint | `br-pe-<VNI>`, VLAN ID 1; current gateway CIDRs and deterministic per-VNI MAC | Direct child of switching bridge; existing VRF; one neighbor table shared by FRR, gateway and refresher |
 | Addressless L2/L3 endpoint | `br-pe-<VNI>`, VLAN ID 1, no gateway addresses | Direct child of switching bridge; existing VRF when referenced, default domain otherwise |
 | Gateway local FDB entry | Existing anycast MAC, VLAN 1, local disposition | Owned by the VNI on the switching bridge; prevents gateway traffic using overlay |
 
-For L2 without gateways, use the direct addressless endpoint and omit the macvlan/extra SVI. For disconnected L2, no VRF or gateway is introduced. For L3, use the direct addressless endpoint with IPv6 address generation disabled; existing host-session veths remain separate VRF attachments.
+For L2 without gateways, use the direct addressless endpoint with the node-local router MAC. For disconnected L2, no VRF or gateway is introduced. For L3, use the direct addressless endpoint with IPv6 address generation disabled; existing host-session veths remain separate VRF attachments.
 
 All names fit Linux's 15-character maximum at VNI 16777215: `br-vl-16777215` and `br-pe-16777215` are 14 characters. Do not append `.1` to these names. Existing `BridgeName(VNI)` continues returning `br-pe-*`, preserving Grout and refresher callers; new private helpers distinguish switching bridges from routed endpoints.
 
@@ -40,6 +39,8 @@ All names fit Linux's 15-character maximum at VNI 16777215: `br-vl-16777215` and
 
 A missing mutable membership, mapping, filter or local FDB entry moves the device back through reconciliation without full replacement. An immutable VXLAN mismatch requires removing that owned device and recreating it. Namespace loss results in complete reconstruction.
 
-On deletion, stop the relevant refresher, remove owned gateway/macvlan and SVI children, remove VXLAN and private bridge, then apply existing host attachment and VRF ownership cleanup. Treat already-deleted child links as absent, while reporting other errors. Never delete an external host bridge or a shared still-referenced VRF.
+On deletion, stop the relevant refresher, remove owned VLAN endpoints (including obsolete split SVI/macvlan devices if present), remove VXLAN and private bridge, then apply existing host attachment and VRF ownership cleanup. Treat already-deleted child links as absent, while reporting other errors. Never delete an external host bridge or a shared still-referenced VRF.
 
 Before initial conversion, inspect owned legacy topology. Remove all old owned fixed-ID VXLANs before creating metadata-mode replacements, then free obsolete `br-pe-*` bridge names. Leave unrelated interfaces untouched. No hitless transition or persisted migration version is promised.
+
+Migration regression evidence requires gateway addresses and EVPN neighbor learning on the same VLAN SVI. A separate macvlan gateway leaves FRR monitoring a different neighbor table and can retain stale remote Type 2 host routes after movement. Reconciliation removes an obsolete `svi<VNI>` parent and its macvlan child before restoring the direct `br-pe-*` VLAN endpoint.

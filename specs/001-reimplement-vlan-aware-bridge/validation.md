@@ -373,3 +373,23 @@ KUBECONFIG=bin/kubeconfig make e2etests \
 Result: **1 passed, 0 failed, 185 excluded**, 57.131 seconds suite execution, process exit0. Bidirectional pod connectivity, both pods to the SRv6 host, and host to pod all passed with their expected original source addresses. Read-only observation confirmed the controller-created root `fq_codel` handle `1:` with ECN enabled and transmit queue length 1000 on all three VNI110 switching bridges. Kernel diagnostics contain **zero** `Dead loop on virtual device` and **zero** `tx_queue_len zero misconfig` warnings during the run.
 
 Log: `/tmp/openperouter-e2e-srv6-implementation.log`; JSON report: `/tmp/openperouter-e2e-srv6-implementation/e2e-report.json`; observed qdisc/link state: `/tmp/openperouter-e2e-srv6-implementation/qdisc-state.jsonl`; kernel diagnostics and start timestamp are in the same report directory. Normal test cleanup left only loopback in each router namespace, removing all test bridges and queues. Generated lab FRR configuration files were restored to their baseline afterward. T033 is complete; the outstanding full compatibility gates T018/T026–T032 remain open.
+
+
+## Full kernel pod suite and reproducible migration failure
+
+The full kernel pod-mode run completed with **168 passed, 1 failed, 17 skipped** in 3136.667 seconds. Filter: `!systemdmode && !grout-only`; report: `/tmp/openperouter-e2e-kernel-full-retry/e2e-report.json`. The only failure is IPv4 pod migration at `e2etests/tests/bridgerefresh.go:420`. The unchanged isolated rerun reproduced it: **0 passed, 1 failed, 185 skipped**, 197.362 seconds; report: `/tmp/openperouter-e2e-migration-rerun/e2e-report.json`. T026 is not accepted. Per user instruction, hostmode, static hostmode boot, and Grout execution are left to CI.
+
+Live triage showed destination `br-pe-110` learning the new local pod MAC while FRR-selected `svi110` retained the old remote `extern_learn NOARP` neighbor. A stale BGP /32 through `br-pe-100` overrode the connected /24; packet capture confirmed gateway replies going through VNI 100 toward the old node. Updating only the SVI neighbor to the verified new local MAC in a controlled diagnostic run restored the next gateway ping and subsequent pod-to-pod connectivity. This is diagnostic evidence, not a passing unchanged acceptance test. Permanent neighbor/mobility integration remains unresolved. Full observations, commands and capture: `/tmp/openperouter-migration-live/report.md`; diagnostic log: `/tmp/openperouter-e2e-migration-triage.log`.
+
+
+## Direct VLAN gateway fix: local checks passed, CI e2e pending
+
+The gateway now uses a direct VLAN 1 `br-pe-<VNI>` SVI with the existing anycast MAC, gateway CIDRs and VRF. FRR, the gateway and the refresher therefore share one neighbor table. The separate L3VNI SVI, private bridge and VXLAN retain node-local router MACs. Reconciliation replaces obsolete split SVI/macvlan topology and preserves matching gateway addresses and devices. No API, dependency, e2e assertion or filter changes were made.
+
+The gateway ownership regression failed against the previous macvlan layout and passed with the direct VLAN endpoint. Added obsolete-layout replacement coverage and updated gateway repair/no-op, lifecycle, and IPv4/IPv6 refresher topology expectations. Independent review found no code blockers.
+
+- `make test`: passed; privileged race-enabled hostnetwork **81/81**, bridgerefresh **22/22**, sysctl **12/12**, no skipped privileged tests; ordinary Go tests also passed. Log: `/tmp/openperouter-make-test-migration.log`.
+- `make lint`: passed, **0 issues**. Log: `/tmp/openperouter-lint-migration.log`.
+- The image was built and deployment was started, but no unchanged e2e test was run against this fix: the user chose to run validation in CI and handle deployment cleanup. Migration, silent-workload, IPv6, routing and SRv6 e2e verification for the final topology remain pending in CI. Earlier e2e results apply to the earlier split topology.
+
+The bridge queue fix remains independently implemented; the direct-SVI fix removes the macvlan layer from its originally observed SRv6 path. No claim is made that the original recursion problem occurs with the shorter final path.

@@ -24,7 +24,7 @@ The router's internal VLAN remains private. Gateway CIDRs and deterministic MACs
 | Multiple L2VNIs sharing an L3VNI | Existing Layer 2 separation and symmetric routing remain |
 | Resource deletion and restarts | Existing cleanup/recovery expectations and deadlines hold |
 
-The internal type of `br-pe-*` changes from a bridge to a routed VLAN/macvlan endpoint; its neighbor ownership is preserved. `br-vl-*` and `svi*` are internal implementation names and are not public configuration.
+The internal type of `br-pe-*` changes from a bridge to a routed VLAN endpoint; its neighbor ownership is preserved. `br-vl-*` and obsolete `svi*` are internal implementation names and are not public configuration.
 
 ## Test contract
 

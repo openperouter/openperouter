@@ -131,8 +131,8 @@ func ensureBridgeQueue(bridge *netlink.Bridge) error {
 			return nil
 		}
 	}
-	// The queued transmit path avoids excessive noqueue recursion accounting when
-	// SRv6 feeds the macvlan/VLAN/bridge/VXLAN chain; fq_codel can still transmit synchronously.
+	// Use the queued transmit path for routed VLAN/bridge/VXLAN traffic;
+	// fq_codel can still transmit synchronously.
 	queue := netlink.NewFqCodel(netlink.QdiscAttrs{
 		LinkIndex: bridge.Index, Parent: netlink.HANDLE_ROOT, Handle: handle,
 	})
