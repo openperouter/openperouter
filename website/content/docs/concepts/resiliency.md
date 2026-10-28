@@ -27,7 +27,7 @@ All kernel networking objects live inside this namespace:
 - **VXLAN interfaces** — handling tunnel encapsulation/decapsulation
 - **Veth pairs** — connecting VRFs to the host network namespace
 - **Underlay physical NIC** — the interface connected to the ToR switch
-- **VTEP loopback (lo)** — the namespace loopback interface carrying the VTEP IP
+- **Tunnel endpoint (tunnel-ep)** — the dummy interface carrying the VTEP IP
 - **Kernel routing tables, bridge FDB entries, ARP/neighbor entries, IP addresses**
 
 When FRR crashes, all of these survive. The kernel continues forwarding packets using existing routes and FDB entries. There is **zero data-plane disruption**.
@@ -39,7 +39,7 @@ When FRR crashes, all of these survive. The kernel continues forwarding packets 
 | VRFs, bridges, VXLAN interfaces | Yes | Kernel objects tied to the namespace, not to FRR |
 | Veth pairs (pe ↔ host) | Yes | Kernel objects |
 | Underlay physical NIC | Yes | Stays inside the namespace |
-| VTEP loopback (lo) | Yes | Kernel loopback interface |
+| Tunnel endpoint (tunnel-ep) | Yes | Kernel dummy interface |
 | Kernel routing tables | Yes | Installed by zebra, persist in the namespace |
 | Bridge FDB entries (MAC→VTEP) | Yes | Kernel bridge state |
 | ARP / neighbor entries | Yes | Kernel neighbor table |

@@ -64,6 +64,29 @@ var _ = Describe("Underlay configuration should work when", func() {
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 	})
 
+	It("should move the tunnel endpoint IPs away from the loopback", func() {
+		params := UnderlayParams{
+			UnderlayInterfaces: netdevInterfaces(underlayTestInterface),
+			TunnelEndpoint: &UnderlayTunnelEndpointParams{
+				IPv4CIDR: "192.168.1.1/32",
+			},
+			TargetNS: underlayTestNSPath(),
+		}
+		Expect(netnamespace.In(testNs, func() error {
+			lo, err := netlink.LinkByName(loopbackName)
+			if err != nil {
+				return err
+			}
+			return AssignIPToInterface(lo, params.TunnelEndpoint.IPv4CIDR)
+		})).To(Succeed())
+
+		Expect(SetupUnderlay(context.Background(), params)).To(Succeed())
+
+		Eventually(func(g Gomega) {
+			validateUnderlayInNS(g, testNs, params)
+		}, 30*time.Second, 1*time.Second).Should(Succeed())
+	})
+
 	It("creating the same underlay twice should be idempotent", func() {
 		params := UnderlayParams{
 			UnderlayInterfaces: netdevInterfaces(underlayTestInterface),
@@ -227,10 +250,10 @@ var _ = Describe("Underlay configuration should work when", func() {
 		}
 		Expect(RestoreUnderlay(context.Background(), underlayTestNSPath(), ifacesToRemove)).To(Succeed())
 
-		By("verifying the loopback IPs were deleted from the target namespace")
+		By("verifying the tunnel endpoint interface was deleted from the target namespace")
 		Eventually(func(g Gomega) {
 			_ = netnamespace.In(testNs, func() error {
-				checkInterfaceHasNoNonLoopbackIPs(g, loopbackName)
+				checkLinkdeleted(g, TunnelEndpointInterfaceName)
 				return nil
 			})
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
@@ -362,9 +385,6 @@ func validateUnderlay(g Gomega, params UnderlayParams, interfaceIPs map[string]s
 	g.Expect(err).NotTo(HaveOccurred())
 	foundInterfaces := map[string]bool{}
 	for _, l := range links {
-		if l.Attrs().Name == loopbackName {
-			validateLoopback(g, l, params)
-		}
 		for _, underlayIface := range params.UnderlayInterfaces {
 			if l.Attrs().Name == underlayIface.InterfaceName {
 				foundInterfaces[underlayIface.InterfaceName] = true
@@ -383,20 +403,20 @@ func validateUnderlay(g Gomega, params UnderlayParams, interfaceIPs map[string]s
 		g.Expect(foundInterfaces).To(HaveKey(underlayIface.InterfaceName),
 			fmt.Sprintf("underlay interface %s not found in ns, links %v", underlayIface.InterfaceName, links))
 	}
+	if params.TunnelEndpoint != nil {
+		validateTunnelEndpoint(g, params)
+	}
 }
 
-func validateLoopback(g Gomega, l netlink.Link, params UnderlayParams) {
-	hasIP := false
-	if params.TunnelEndpoint != nil && params.TunnelEndpoint.IPv4CIDR != "" {
-		hasIP = true
+func validateTunnelEndpoint(g Gomega, params UnderlayParams) {
+	l, err := netlink.LinkByName(TunnelEndpointInterfaceName)
+	g.Expect(err).NotTo(HaveOccurred(), "tunnel endpoint interface not found")
+	g.Expect(l.Attrs().Flags&net.FlagUp).To(Equal(net.FlagUp), "tunnel endpoint interface should be up")
+	if params.TunnelEndpoint.IPv4CIDR != "" {
 		validateIP(g, l, params.TunnelEndpoint.IPv4CIDR)
 	}
-	if params.TunnelEndpoint != nil && params.TunnelEndpoint.IPv6CIDR != "" {
-		hasIP = true
+	if params.TunnelEndpoint.IPv6CIDR != "" {
 		validateIP(g, l, params.TunnelEndpoint.IPv6CIDR)
-	}
-	if hasIP {
-		return
 	}
 	checkInterfaceHasNoNonLoopbackIPs(g, loopbackName)
 }

@@ -2257,7 +2257,7 @@ func TestAPItoFRR(t *testing.T) {
 						Interfaces: []frr.ISISInterface{
 							{Name: "eth0", IPv6: true},
 							{Name: "eth10", IPv6: true},
-							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "tunnel-ep", IPv6: true, IsPassive: true},
 						},
 					},
 					RouterID: "10.0.0.0",
@@ -2336,7 +2336,7 @@ func TestAPItoFRR(t *testing.T) {
 							{Name: "eth0", IPv4: true, IPv6: true},
 							{Name: "eth1", IPv4: true, IsPassive: true},
 							{Name: "eth10", IPv6: true},
-							{Name: "lo"},
+							{Name: "tunnel-ep"},
 						},
 					},
 					RouterID: "10.0.0.0",
@@ -2399,7 +2399,7 @@ func TestAPItoFRR(t *testing.T) {
 						Interfaces: []frr.ISISInterface{
 							{Name: "eth0", IPv4: true, IPv6: true},
 							{Name: "eth1", IPv4: false, IPv6: true},
-							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "tunnel-ep", IPv6: true, IsPassive: true},
 						},
 					},
 					RouterID: "10.0.0.0",
@@ -2450,7 +2450,7 @@ func TestAPItoFRR(t *testing.T) {
 						Net:   frr.MustParseISISNet("49.0001.0002.0003.0004.00"),
 						Level: 2,
 						Interfaces: []frr.ISISInterface{
-							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "tunnel-ep", IPv6: true, IsPassive: true},
 						},
 					},
 					RouterID: "10.0.0.0",
@@ -2625,7 +2625,7 @@ func TestAPItoFRR(t *testing.T) {
 						Level: 1,
 						Interfaces: []frr.ISISInterface{
 							{Name: "eth0", IPv4: true, IPv6: true},
-							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "tunnel-ep", IPv6: true, IsPassive: true},
 						},
 					},
 					RouterID: "10.0.0.0",
@@ -2797,7 +2797,7 @@ func TestAPItoFRR(t *testing.T) {
 						Level: 1,
 						Interfaces: []frr.ISISInterface{
 							{Name: "eth0", IPv4: true, IPv6: true},
-							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "tunnel-ep", IPv6: true, IsPassive: true},
 						},
 					},
 					RouterID: "10.0.0.0",
@@ -2918,7 +2918,7 @@ func TestAPItoFRR(t *testing.T) {
 						Level: 1,
 						Interfaces: []frr.ISISInterface{
 							{Name: "eth0", IPv4: true, IPv6: true},
-							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "tunnel-ep", IPv6: true, IsPassive: true},
 						},
 					},
 					RouterID: "10.0.0.0",
@@ -3050,7 +3050,7 @@ func TestAPItoFRR(t *testing.T) {
 						Level: 1,
 						Interfaces: []frr.ISISInterface{
 							{Name: "eth0", IPv4: true, IPv6: true},
-							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "tunnel-ep", IPv6: true, IsPassive: true},
 						},
 					},
 					RouterID: "10.0.0.0",
@@ -3247,7 +3247,7 @@ func TestAPItoFRR(t *testing.T) {
 						Level: 1,
 						Interfaces: []frr.ISISInterface{
 							{Name: "eth0", IPv4: true, IPv6: true},
-							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "tunnel-ep", IPv6: true, IsPassive: true},
 						},
 					},
 					RouterID: "10.0.0.0",

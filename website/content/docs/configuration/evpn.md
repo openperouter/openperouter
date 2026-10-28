@@ -39,7 +39,7 @@ The `tunnelEndpoint.cidrs` field defines the IP range used for VTEP addresses. O
 - Node 3: `100.65.0.3`
 - etc.
 
-A loopback interface is created inside the router namespace with the allocated IP, and OpenPERouter advertises the VTEP IP to the fabric over the BGP underlay session.
+A dummy interface named `tunnel-ep` is created inside the router namespace with the allocated IP, and OpenPERouter advertises the VTEP IP to the fabric over the BGP underlay session.
 
 #### IPv6 and Dual-Stack VTEP
 

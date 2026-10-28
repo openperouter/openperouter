@@ -14,6 +14,7 @@ import (
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/frr"
+	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/openperouter/openperouter/internal/ipam"
 	"github.com/openperouter/openperouter/internal/ipfamily"
 	"github.com/openperouter/openperouter/internal/networklayerprotocol"
@@ -405,10 +406,11 @@ func underlayISISToFRR(isisConfig *v1alpha1.ISISConfig, interfaces []string, nod
 	isisNet := baseISISNet
 	isisNet.SystemID = systemID
 
-	// Always add the loopback as an IPv6 only and passive interface (for advertisePassiveOnly).
+	// Always add the tunnel endpoint interface as an IPv6 only and passive
+	// interface (for advertisePassiveOnly).
 	isisInterfaces := map[string]frr.ISISInterface{
-		loopbackName: {
-			Name:      loopbackName,
+		hostnetwork.TunnelEndpointInterfaceName: {
+			Name:      hostnetwork.TunnelEndpointInterfaceName,
 			IPv6:      true,
 			IsPassive: true,
 		},
@@ -422,16 +424,17 @@ func underlayISISToFRR(isisConfig *v1alpha1.ISISConfig, interfaces []string, nod
 		}
 	}
 
-	// The ISISInterface slice may override default settings from loopback and
-	// from interfaces. CEL enforces uniqueness by name.
+	// The ISISInterface slice may override default settings from the tunnel
+	// endpoint and from interfaces. CEL enforces uniqueness by name.
 	for _, intf := range isisConfig.Interfaces {
 		hasIPv4 := intf.IPFamily != nil &&
 			(*intf.IPFamily == v1alpha1.IPFamilyIPv4 || *intf.IPFamily == v1alpha1.IPFamilyDualStack)
 		hasIPv6 := intf.IPFamily != nil &&
 			(*intf.IPFamily == v1alpha1.IPFamilyIPv6 || *intf.IPFamily == v1alpha1.IPFamilyDualStack)
 
-		isisInterfaces[intf.Name] = frr.ISISInterface{
-			Name:      intf.Name,
+		name := isisInterfaceName(intf.Name)
+		isisInterfaces[name] = frr.ISISInterface{
+			Name:      name,
 			IPv4:      hasIPv4,
 			IPv6:      hasIPv6,
 			IsPassive: slices.Contains(intf.Features, passiveInterface),
@@ -446,6 +449,16 @@ func underlayISISToFRR(isisConfig *v1alpha1.ISISConfig, interfaces []string, nod
 		MultiTopology:        slices.Contains(isisConfig.Features, v1alpha1.MultiTopology),
 		Interfaces:           mapOfInterfacesToSortedList(isisInterfaces),
 	}, nil
+}
+
+// isisInterfaceName returns the interface an ISIS interface setting applies
+// to. The tunnel endpoint addresses used to be on the loopback, so the
+// loopback keeps referring to the tunnel endpoint interface.
+func isisInterfaceName(name string) string {
+	if name == loopbackName {
+		return hostnetwork.TunnelEndpointInterfaceName
+	}
+	return name
 }
 
 func mapOfInterfacesToSortedList(m map[string]frr.ISISInterface) []frr.ISISInterface {

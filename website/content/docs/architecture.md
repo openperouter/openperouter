@@ -55,7 +55,7 @@ To enable EVPN functionality, FRR requires specific network interfaces and confi
 - **Linux VRF**: Creates isolated Layer 3 routing domains for each VNI
 - **Linux Bridge**: Connects VXLAN interfaces to the VRF for proper traffic flow
 - **VXLAN Interface**: Handles tunnel encapsulation/decapsulation with the configured VNI
-- **VTEP Loopback**: Provides the VTEP IP address for tunnel endpoint identification
+- **Tunnel Endpoint Interface** (`tunnel-ep`): Provides the VTEP IP address for tunnel endpoint identification
 
 #### FRR Configuration
 
@@ -77,7 +77,7 @@ The named network namespace (`/var/run/netns/perouter`) is held open by a bind m
 | VRFs, bridges, VXLAN interfaces | Yes | Kernel objects tied to the namespace |
 | Veth pairs (pe/host) | Yes | Kernel objects tied to the namespace |
 | Underlay physical NIC | Yes | Stays inside the namespace |
-| VTEP loopback (lo) | Yes | Kernel loopback interface |
+| Tunnel endpoint (tunnel-ep) | Yes | Kernel dummy interface |
 | Kernel routing tables | Yes | Installed by zebra, persist in the namespace |
 | Bridge FDB entries | Yes | Kernel bridge state |
 | ARP / neighbor entries | Yes | Kernel neighbor table |
