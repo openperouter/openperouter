@@ -21,12 +21,7 @@ func TestParseChartResourceDefaults(t *testing.T) {
 	g := NewGomegaWithT(t)
 	specs := renderPodSpecs(g, operatorapi.OpenPERouterSpec{})
 
-	want := map[string]v1.ResourceList{
-		"frr":        {v1.ResourceCPU: resource.MustParse("250m"), v1.ResourceMemory: resource.MustParse("256Mi")},
-		"reloader":   {v1.ResourceCPU: resource.MustParse("100m"), v1.ResourceMemory: resource.MustParse("128Mi")},
-		"controller": {v1.ResourceCPU: resource.MustParse("250m"), v1.ResourceMemory: resource.MustParse("256Mi")},
-		"nodemarker": {v1.ResourceCPU: resource.MustParse("100m"), v1.ResourceMemory: resource.MustParse("128Mi")},
-	}
+	want := defaultContainerResourceRequests()
 	containers := map[string]*v1.Container{
 		"frr":        findContainer(specs[routerDaemonSetName], "frr"),
 		"reloader":   findContainer(specs[routerDaemonSetName], "reloader"),
@@ -89,6 +84,89 @@ func TestParseChartResourceOverrides(t *testing.T) {
 	g.Expect(controller.Args).To(ContainElement(ContainSubstring("9999")))
 }
 
+func TestParseChartResourceRequestsDoNotInheritDefaults(t *testing.T) {
+	memoryLimit := v1.ResourceList{v1.ResourceMemory: resource.MustParse("2Gi")}
+	memoryRequest := v1.ResourceList{v1.ResourceMemory: resource.MustParse("64Mi")}
+	cpuRequest := v1.ResourceList{v1.ResourceCPU: resource.MustParse("200m")}
+	tests := []struct {
+		name         string
+		resources    *operatorapi.ContainerResources
+		workload     string
+		container    string
+		wantRequests v1.ResourceList
+		wantLimits   v1.ResourceList
+	}{
+		{
+			name: "missing requests map clears chart defaults",
+			resources: &operatorapi.ContainerResources{
+				Controller: &v1.ResourceRequirements{Limits: memoryLimit},
+			},
+			workload:   controllerDaemonSetName,
+			container:  "controller",
+			wantLimits: memoryLimit,
+		},
+		{
+			name: "partial requests map clears omitted cpu request",
+			resources: &operatorapi.ContainerResources{
+				NodeMarker: &v1.ResourceRequirements{Requests: memoryRequest},
+			},
+			workload:     nodemarkerDeploymentName,
+			container:    "nodemarker",
+			wantRequests: memoryRequest,
+		},
+		{
+			name: "partial requests map clears omitted memory request",
+			resources: &operatorapi.ContainerResources{
+				Reloader: &v1.ResourceRequirements{Requests: cpuRequest},
+			},
+			workload:     routerDaemonSetName,
+			container:    "reloader",
+			wantRequests: cpuRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := NewGomegaWithT(t)
+			specs := renderPodSpecs(g, operatorapi.OpenPERouterSpec{Resources: tt.resources})
+			container := findContainer(specs[tt.workload], tt.container)
+
+			g.Expect(container).ToNot(BeNil())
+			g.Expect(container.Resources.Requests).To(matchResourceQuantities(tt.wantRequests), "requests")
+			g.Expect(container.Resources.Limits).To(matchResourceQuantities(tt.wantLimits), "limits")
+		})
+	}
+}
+
+func TestParseChartResourceOverridesLeaveOtherContainersAtDefaults(t *testing.T) {
+	g := NewGomegaWithT(t)
+	controller := v1.ResourceRequirements{
+		Limits: v1.ResourceList{v1.ResourceMemory: resource.MustParse("2Gi")},
+	}
+	specs := renderPodSpecs(g, operatorapi.OpenPERouterSpec{
+		Resources: &operatorapi.ContainerResources{Controller: &controller},
+	})
+
+	defaults := defaultContainerResourceRequests()
+	want := map[string]v1.ResourceRequirements{
+		"controller": controller,
+		"nodemarker": {Requests: defaults["nodemarker"]},
+		"frr":        {Requests: defaults["frr"]},
+		"reloader":   {Requests: defaults["reloader"]},
+	}
+	containers := map[string]*v1.Container{
+		"controller": findContainer(specs[controllerDaemonSetName], "controller"),
+		"nodemarker": findContainer(specs[nodemarkerDeploymentName], "nodemarker"),
+		"frr":        findContainer(specs[routerDaemonSetName], "frr"),
+		"reloader":   findContainer(specs[routerDaemonSetName], "reloader"),
+	}
+	for name, container := range containers {
+		g.Expect(container).ToNot(BeNil(), name)
+		g.Expect(container.Resources.Requests).To(matchResourceQuantities(want[name].Requests), "%s requests", name)
+		g.Expect(container.Resources.Limits).To(matchResourceQuantities(want[name].Limits), "%s limits", name)
+	}
+}
+
 // renderPodSpecs renders the chart through the operator and returns pod specs
 // keyed by workload name.
 func renderPodSpecs(g Gomega, spec operatorapi.OpenPERouterSpec) map[string]v1.PodSpec {
@@ -133,6 +211,15 @@ func defaultFRRRequests() v1.ResourceList {
 	return v1.ResourceList{
 		v1.ResourceCPU:    resource.MustParse("250m"),
 		v1.ResourceMemory: resource.MustParse("256Mi"),
+	}
+}
+
+func defaultContainerResourceRequests() map[string]v1.ResourceList {
+	return map[string]v1.ResourceList{
+		"controller": {v1.ResourceCPU: resource.MustParse("250m"), v1.ResourceMemory: resource.MustParse("256Mi")},
+		"nodemarker": {v1.ResourceCPU: resource.MustParse("100m"), v1.ResourceMemory: resource.MustParse("128Mi")},
+		"frr":        defaultFRRRequests(),
+		"reloader":   {v1.ResourceCPU: resource.MustParse("100m"), v1.ResourceMemory: resource.MustParse("128Mi")},
 	}
 }
 

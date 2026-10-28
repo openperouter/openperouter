@@ -230,9 +230,35 @@ func patchResourceValues(resources *operatorapi.ContainerResources, openperouter
 		if err != nil {
 			return fmt.Errorf("failed to convert %s resources to helm value: %w", target.name, err)
 		}
+		resourceValues, ok := value.(map[string]any)
+		if !ok {
+			return fmt.Errorf("failed to convert %s resources to helm value: unexpected type %T", target.name, value)
+		}
+		clearOmittedResourceRequests(resourceValues, target.reqs.Requests)
 		subMap(openperouterValues, target.path)["resources"] = value
 	}
 	return nil
+}
+
+// clearOmittedResourceRequests marks omitted CPU and memory requests as null so
+// Helm's recursive merge does not restore them from the chart defaults. Helm
+// removes null values from the final rendered values.
+func clearOmittedResourceRequests(resources map[string]any, requests corev1.ResourceList) {
+	if requests == nil {
+		resources["requests"] = nil
+		return
+	}
+
+	requestValues, ok := resources["requests"].(map[string]any)
+	if !ok {
+		requestValues = map[string]any{}
+		resources["requests"] = requestValues
+	}
+	for _, resourceName := range []corev1.ResourceName{corev1.ResourceCPU, corev1.ResourceMemory} {
+		if _, specified := requests[resourceName]; !specified {
+			requestValues[string(resourceName)] = nil
+		}
+	}
 }
 
 // subMap returns the nested map at path, creating missing maps along the way.
