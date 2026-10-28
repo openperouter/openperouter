@@ -41,6 +41,9 @@ func setupBridge(params VNIParams) (*netlink.Bridge, error) {
 	if err := ensureAddressless(bridge); err != nil {
 		return nil, err
 	}
+	if err := ensureBridgeQueue(bridge); err != nil {
+		return nil, err
+	}
 	if err := linkSetUp(bridge); err != nil {
 		return nil, fmt.Errorf("could not set link up for bridge %s: %w", bridge.Name, err)
 	}
@@ -104,4 +107,37 @@ func vniFromBridgeName(name string) (int32, error) {
 		return 0, fmt.Errorf("failed to get vni for bridge %s", name)
 	}
 	return int32(res), nil
+}
+
+const bridgeQueueLength = 1000
+
+func ensureBridgeQueue(bridge *netlink.Bridge) error {
+	if bridge.TxQLen != bridgeQueueLength {
+		if err := netlink.LinkSetTxQLen(bridge, bridgeQueueLength); err != nil {
+			return fmt.Errorf("set switching bridge %s transmit queue length: %w", bridge.Name, err)
+		}
+		bridge.TxQLen = bridgeQueueLength
+	}
+	queues, err := netlink.QdiscList(bridge)
+	if err != nil {
+		return fmt.Errorf("list switching bridge %s queues: %w", bridge.Name, err)
+	}
+	handle := netlink.MakeHandle(1, 0)
+	for _, queue := range queues {
+		if queue.Attrs().Parent != netlink.HANDLE_ROOT || queue.Attrs().Handle != handle {
+			continue
+		}
+		if queue.Type() == "fq_codel" {
+			return nil
+		}
+	}
+	// The queued transmit path avoids excessive noqueue recursion accounting when
+	// SRv6 feeds the macvlan/VLAN/bridge/VXLAN chain; fq_codel can still transmit synchronously.
+	queue := netlink.NewFqCodel(netlink.QdiscAttrs{
+		LinkIndex: bridge.Index, Parent: netlink.HANDLE_ROOT, Handle: handle,
+	})
+	if err := netlink.QdiscReplace(queue); err != nil {
+		return fmt.Errorf("set switching bridge %s root fq_codel queue: %w", bridge.Name, err)
+	}
+	return nil
 }

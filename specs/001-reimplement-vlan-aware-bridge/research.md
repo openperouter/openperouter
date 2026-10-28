@@ -72,3 +72,12 @@ The reference identifies incompatible legacy/VLAN-aware same-port coexistence. S
 ## Research disposition
 
 All design questions are resolved. Runtime proof is assigned to implementation, with failure requiring a design correction within the unchanged API/e2e boundary. No unresolved clarification is carried into Phase 1.
+
+
+## Bridge transmit queue for layered routing
+
+**Decision**: Reconcile a root `fq_codel` queue on each private kernel switching bridge, with an explicit positive transmit queue length. Keep the implementation internal, use the pinned netlink dependency, and preserve an existing correct queue on repeated setup. Do not add a kernel-version condition, artificial delay, runtime shell provisioning or public queue option.
+
+**Evidence**: pwru captured SRv6 End.DT46 followed by macvlan, VLAN, bridge and VXLAN transmit in one stack. Linux6.19.10's noqueue recursion accounting rejects the resulting depth5 against limit4. A root `fq_codel` on the private bridge changes the transmit path and made both the isolated reproduction and the unchanged focused e2e case pass. This does not prove asynchronous deferral: fq_codel can send immediately. Detailed traces and experiments are recorded in validation.md. The kernel later raises the limit to5 in [77facb35227c](https://git.zx2c4.com/wireguard-linux/commit/include/net?h=devel&id=77facb35227c421467cdb49268de433168c2dcef).
+
+**Scope**: Preserve the existing gateway/SVI identity, neighbor ownership and packet MTU. Limit queue ownership to private `br-vl-*` bridges. Regression proof must cover creation, missing/wrong queue repair and no-op setup; final acceptance requires the deployed implementation to pass the original case without an external queue installer.

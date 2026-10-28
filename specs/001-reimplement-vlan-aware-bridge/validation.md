@@ -296,3 +296,80 @@ The focused routed run uses the normal pod-mode filter and `--focus-file='evpn_l
 The nonempty host-wide underlay capture `/tmp/openperouter-captures/routed-all.pcap` contains **1,000 UDP-4789 VXLAN packets**: VNI 300 (18), L2 VNI 110 (562), L3 VNI 100 (420). Inner Ethernet types are IPv6 (554), IPv4 (434), ARP (12), with **zero 802.1Q/802.1ad inner headers**. Successful unchanged IPv4/IPv6/dual-stack routed Linux/OVS scenarios complement the earlier privileged state checks: same-port L2/L3 dispatch and independent internal VLAN reuse now have actual traffic evidence (T008). This traffic proof was obtained after story integration; the initial privileged state-only run did not establish traffic dispatch by itself.
 
 One SRv6 gateway/no-SNAT IPv4 case failed at `e2etests/tests/l3vpn_l2.go:375`; the gateway-free/SNAT case passed. Leaf and router dumps show the pod subnet is advertised and installed. Captured SYN-ACKs return over VNI 110, while kernel diagnostics report `ip_tunnel_core: Dead loop on virtual device vni110`. Investigation is ongoing with the reviewer and both developers; no test assertion, deadline or filter is being relaxed.
+
+
+### Requested single-case rerun: failure reproduced
+
+The earlier 45-case routed run was interrupted at 11:05:13 UTC before its final summary; it must not be reported as completed. On request, only the previously failing IPv4 SRv6 gateway case was rerun, with no product or test changes:
+
+```sh
+KUBECONFIG=bin/kubeconfig make e2etests \
+  KIND_EXPORT_LOGS=/tmp/openperouter-e2e-srv6-rerun \
+  GINKGO_ARGS="--label-filter='!systemdmode && !grout-only' --focus='SRV6 routes between bgp and the fabric .*L3VPN for single stack ipv4' --skip='without gatewayIPs'"
+```
+
+Ginkgo confirmed **1 of 186 specs selected**. Result: **0 passed, 1 failed, 185 excluded**, 164.296 seconds of suite execution; the process finished and wrote its final report. Failure is the same SRv6 host reachability assertion at `e2etests/tests/l3vpn_l2.go:375`, after successful bidirectional pod-to-pod traffic. Log: `/tmp/openperouter-e2e-srv6-rerun.log`; JSON: `/tmp/openperouter-e2e-srv6-rerun/e2e-report.json`; contemporaneous kernel diagnostics: `/tmp/openperouter-e2e-srv6-rerun/kernel.log`, containing repeated VXLAN transmit recursion warnings.
+
+An independent isolated namespace reproduction by the VLAN developer confirms ordinary IPv4 forwarding through the complete gateway stack passes 3/3 pings; the same stack after SRv6 End.DT46 fails 0/3 with three VXLAN transmit errors and recursion warnings; shortening only the output stack by moving the gateway onto the parent SVI passes 3/3. Temporary script and results: `/tmp/openperouter-vlan-recursion.py`, `/tmp/openperouter-vlan-recursion.log`, `/tmp/openperouter-vlan-recursion-kernel.log`. All temporary namespaces were cleaned; this experiment did not modify the deployed cluster or product. The reviewer independently assessed the finding. It matches the affected kernel's depth-four guard; [upstream correction 77facb35227c](https://git.zx2c4.com/wireguard-linux/commit/include/net?h=devel&id=77facb35227c421467cdb49268de433168c2dcef) raises the limit to five for legitimate layered/LWT traffic. Validation on a kernel containing that correction remains required; no production workaround has been added.
+
+
+### pwru packet-path confirmation
+
+At the user's request, traced both the isolated reproduction and the actual failing e2e case using the official cilium/pwru v1.0.12 release (verified archive SHA256 `1ccaea22d97c283b09d2e2f0329789727c4f1b19aa99723e32b2e12d3a5e6dba`). No product, kernel, qdisc or deployed networking changes were made. e2e used the previous single-case filter with report root `/tmp/openperouter-e2e-srv6-pwru`: **0 passed, 1 failed, 185 excluded**, 161.333 seconds; final summary and normal cleanup completed.
+
+The actual return TCP SYN-ACK `192.170.20.2:8090 -> 192.171.24.2:53976`, skb `0xffff8be1cf133a00`, entered `iptunnel_xmit` on `pe-kind-worker` router netns `4026534652`, device `vni110` index175; the subsequent `kfree_skbmem` event has the same packet pointer, tuple and device. Captured stack: `lwtunnel_input -> seg6_local_input_core -> input_action_end_dt46 -> ip_output -> macvlan_start_xmit (br-pe-110) -> vlan_dev_hard_start_xmit (svi110) -> br_dev_xmit (br-vl-110) -> vxlan_xmit (vni110) -> vxlan_xmit_one -> iptunnel_xmit`. There are four nested `dev_hard_start_xmit` frames above the still-active LWT input. Exact Linux6.19.10 source increments around each noqueue transmit and LWT input, yielding depth5 against limit4. This depth is derived from the observed stack and kernel source; pwru did not directly sample the per-CPU recursion counter. The kernel's rejecting branch emits the observed warning and frees the packet before adding the outer IPv4 header. This is a single legitimate multilayer path rather than evidence of repeated traversal around a routing loop.
+
+Earlier return SYN-ACK transmissions also have an ARP-neighbor-release stack (`__neigh_update/arp_process`) without active LWT input, explaining partial wire visibility without contradicting later drops. A focused two-function pwru capture obtained complete matched transmit/free stacks; the broader forwarding capture includes some unavailable stacks, so the complete focused records are retained as primary packet proof.
+
+Detailed report: `/tmp/openperouter-pwru/report.md`; matched events `/tmp/openperouter-pwru/e2e-drop-events.json`; full stacks `/tmp/openperouter-pwru/e2e-drop-stack.txt`; raw traces `/tmp/openperouter-pwru-{isolated,e2e,drop}.jsonl`; router interface mapping `/tmp/openperouter-pwru-e2e-interfaces.json`; contemporaneous kernel warnings `/tmp/openperouter-pwru-kernel.log`. Exact-tag source snapshots are `/tmp/openperouter-pwru-{lwtunnel,dev,ip-tunnel-core,ip-tunnels}.c`. pwru was stopped with SIGINT, its probes detached, and the isolated namespace harness cleaned all temporary namespaces.
+
+
+### Isolated bridge-qdisc experiment
+
+To investigate a bridge-side workaround, ran `/tmp/openperouter-bridge-queue-repro.py`, reusing the isolated four-namespace SRv6 topology and the existing kind-node tc binary via chroot into that binary's filesystem. No deployed-cluster namespace or product changes were made. Log: `/tmp/openperouter-bridge-queue-repro.log`.
+
+Results with the complete macvlan/SVI/bridge/VXLAN gateway stack: ordinaryIPv4 baseline3/3; SRv6 noqueue baseline0/3 and TXerrors+3; `tc qdisc replace dev br-vl-110 root fq_codel`3/3 with no additional VXLAN TXerrors; `tc qdisc replace dev br-vl-110 root netem delay 1ms`3/3 with no additional TXerrors; removing the qdisc returns SRv6 to0/3 and TXerrors+3. All isolated namespaces cleaned afterward.
+
+A qdisc can therefore avoid the observed guard in isolation without removing a device or changing neighbor ownership. This result does not establish asynchronous deferral: fq_codel can transmit immediately, and the queued transmit path differs from noqueue's recursion accounting. The intended netem delay was not reflected as a full1ms in the observed ping RTT, so no timing/deferral claim is made from that configuration alone. The workaround has not been applied to the deployed cluster or validated by the e2e suite; kernel-fixed validation and any production scheduling policy remain open.
+
+
+### Cluster bridge-qdisc experiment: failing e2e now passes
+
+With explicit user authorization, temporarily installed `fq_codel` on each freshly created VNI110 switching bridge in the existing kernel pod-mode cluster, then ran only the previously failing IPv4 SRv6 gateway test. Used `/tmp/openperouter-cluster-qdisc-test.py` to start the unchanged e2e command and observe bridge creation, record original noqueue state, install the qdisc once per bridge, verify it remained present while the device existed, and clean up afterward. No product/test/source implementation changes or artificial delay were introduced.
+
+Runtime command on each of `pe-kind-control-plane`, `pe-kind-worker`, `pe-kind-worker2`:
+
+```sh
+docker exec <node> ip netns exec perouter \
+  tc qdisc replace dev br-vl-110 root handle 110: fq_codel
+```
+
+The test used the normal pod filter plus the exact same focused case as before (`--focus='SRV6 routes between bgp and the fabric .*L3VPN for single stack ipv4' --skip='without gatewayIPs'`). Report root `/tmp/openperouter-e2e-srv6-fq-codel`; log `/tmp/openperouter-e2e-srv6-fq-codel.log`.
+
+Result: **1 passed, 0 failed, 185 excluded**, 57.189 seconds execution (1m0.915s runner wall time), process exit0. Bidirectional pod traffic, both pods to the SRv6 host with original source IPs, and SRv6 host to pod1 all passed. The run's kernel log contains **zero tunnel recursion warnings**. The kernel reported `Caught tx_queue_len zero misconfig` once per bridge when attaching a real qdisc to the bridge's original zero-length transmit queue; this normalization was part of the runtime experiment, not a product change.
+
+Before/after qdisc state, installation timestamps, node identities, exit status and cleanup events: `/tmp/openperouter-e2e-srv6-fq-codel/qdisc-events.jsonl`. Kernel diagnostics: `/tmp/openperouter-e2e-srv6-fq-codel/kernel.log`; orchestrator log `/tmp/openperouter-cluster-qdisc-test.log`. Normal e2e cleanup removed all three experiment bridges and their qdiscs; no background experiment process remains. This proves the runtime workaround for this single case. The implementation still does not provision qdiscs, so no full-suite or unmodified-environment acceptance gate is marked complete from this experimental pass.
+
+### Implemented bridge queue: unchanged SRv6 e2e passes without helper
+
+On 2026-10-28, implemented the authorized follow-up in `internal/hostnetwork/bridge.go` and `vlan.go`: owned `br-vl-*` switching bridges are created with transmit queue length 1000, and reconciliation repairs that length plus a root `fq_codel` qdisc at handle `1:`. Matching queues are preserved without link or qdisc writes. Pinned netlink's constructor enables ECN and leaves other scheduling policy at kernel defaults. The queued path avoids the affected noqueue recursion accounting; this does not promise asynchronous transmission or introduce artificial delay. Public API, host bridges and Grout are unchanged.
+
+The new privileged `qdisc_test.go` exercises creation, missing/wrong qdisc and wrong handle repair, zero queue length repair, and unchanged-state link/TC notifications. The initial tests failed against the previous implementation and passed after the fix. Independent code review found no issues.
+
+Validation completed successfully:
+
+- `make test`: exit0; ordinary Go tests and privileged race-enabled hostnetwork **80/80**, bridgerefresh **22/22**, sysctl **12/12**, with zero skipped privileged cases. Log: `/tmp/openperouter-make-test-qdisc.log`.
+- `make lint`: exit0, **0 issues**. Log: `/tmp/openperouter-lint-qdisc.log`.
+- `make docker-build`, then `make deploy`: exit0. Image `quay.io/openperouter/router:main`, ID `sha256:deae38c3940befbfb1885fa6007e26e4cd9b7585d9e8ac26fcdb7b39ef72ebd7`; all restarted controller/router pods use this identity. Logs: `/tmp/openperouter-docker-build-qdisc.log`, `/tmp/openperouter-deploy-qdisc.log`; pod identities: `/tmp/openperouter-e2e-srv6-implementation/pods.json`.
+
+Ran the unchanged failing case in kernel pod mode, with no external qdisc helper or manual networking changes:
+
+```sh
+KUBECONFIG=bin/kubeconfig make e2etests \
+  KIND_EXPORT_LOGS=/tmp/openperouter-e2e-srv6-implementation \
+  GINKGO_ARGS="--label-filter='!systemdmode && !grout-only' --focus='SRV6 routes between bgp and the fabric .*L3VPN for single stack ipv4' --skip='without gatewayIPs'"
+```
+
+Result: **1 passed, 0 failed, 185 excluded**, 57.131 seconds suite execution, process exit0. Bidirectional pod connectivity, both pods to the SRv6 host, and host to pod all passed with their expected original source addresses. Read-only observation confirmed the controller-created root `fq_codel` handle `1:` with ECN enabled and transmit queue length 1000 on all three VNI110 switching bridges. Kernel diagnostics contain **zero** `Dead loop on virtual device` and **zero** `tx_queue_len zero misconfig` warnings during the run.
+
+Log: `/tmp/openperouter-e2e-srv6-implementation.log`; JSON report: `/tmp/openperouter-e2e-srv6-implementation/e2e-report.json`; observed qdisc/link state: `/tmp/openperouter-e2e-srv6-implementation/qdisc-state.jsonl`; kernel diagnostics and start timestamp are in the same report directory. Normal test cleanup left only loopback in each router namespace, removing all test bridges and queues. Generated lab FRR configuration files were restored to their baseline afterward. T033 is complete; the outstanding full compatibility gates T018/T026–T032 remain open.

@@ -166,3 +166,8 @@ These examples describe opportunities, not an instruction to spawn agents. Imple
 - No extension hooks are configured; before/after task-generation hooks are skipped.
 - `checklists/requirements.md` tracks specification quality, not implementation completion. Do not change its markers merely because task implementation advances.
 - Write validation artifacts only when the corresponding work is executed; do not mark a task complete based on planned commands or assumed CI success.
+
+
+## Authorized follow-up: SRv6 transmit queue
+
+- [x] T033 [US2] Reconcile root `fq_codel` and positive transmit queue length on owned private switching bridges only, using pinned netlink helpers; prove create/repair/no-op behavior in privileged tests and review the change. Rebuild/deploy and run the unchanged failing SRv6 IPv4 gateway case without an external queue helper; record build identity, qdisc state, kernel diagnostics and exact result in validation.md. This focused gate does not replace outstanding T018/T026–T032 compatibility work.

@@ -163,7 +163,7 @@ func createVLANBridge(name string) (*netlink.Bridge, error) {
 	mac[0] = (mac[0] | 2) & 0xfe
 	// An explicit MAC prevents bridge port additions from changing the router identity.
 	bridge := &netlink.Bridge{
-		LinkAttrs:     netlink.LinkAttrs{Name: name, HardwareAddr: mac},
+		LinkAttrs:     netlink.LinkAttrs{Name: name, HardwareAddr: mac, TxQLen: bridgeQueueLength},
 		VlanFiltering: new(true), VlanDefaultPVID: new(uint16(0)),
 	}
 	if err := netlink.LinkAdd(bridge); err != nil {

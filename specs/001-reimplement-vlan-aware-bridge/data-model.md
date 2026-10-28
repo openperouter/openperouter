@@ -10,7 +10,7 @@ Existing `L2VNI`, `L3VNI`, `L3VPN`, underlay, host-session, and router status de
 
 | Entity | Identity / attributes | Relationship |
 | --- | --- | --- |
-| Switching bridge | `br-vl-<VNI>`; VLAN filtering on, default PVID 0; no IPs or VRF master | One bridge per VNI; explicit VLAN 1 self membership |
+| Switching bridge | `br-vl-<VNI>`; VLAN filtering on, default PVID 0; no IPs or VRF master; root `fq_codel` and positive transmit queue length | One bridge per VNI; explicit VLAN 1 self membership; queue repaired without recreating matching devices |
 | VXLAN device | `vni<VNI>`; external, vnifilter, current effective port/VTEP/underlay; nolearning | Master is that VNI's switching bridge |
 | Tunnel mapping | VLAN 1 → configured VNI | Exactly one mapping on each VXLAN bridge port |
 | Receive filter | Exactly the configured VNI | Distinct from tunnel mapping; required even though link VNI is 0 |
