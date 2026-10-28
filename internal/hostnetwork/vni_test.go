@@ -630,6 +630,47 @@ var _ = Describe("L2 VNI configuration", func() {
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 	})
 
+	It("should bind the vxlan to the loopback resolved for the pass", func() {
+		const vtepDeviceName = "test-vtep"
+		var vtepDevice netlink.Link
+		Expect(netnamespace.In(testNS, func() error {
+			dummy := &netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: vtepDeviceName}}
+			if err := netlink.LinkAdd(dummy); err != nil {
+				return err
+			}
+			var err error
+			vtepDevice, err = netlink.LinkByName(vtepDeviceName)
+			return err
+		})).To(Succeed())
+
+		params := L2VNIParams{
+			VNIParams: VNIParams{
+				VRF:       "testred",
+				TargetNS:  testNSPath(),
+				VTEPIP:    "192.170.0.9/32",
+				VNI:       100,
+				VXLanPort: new(int32(4789)),
+			},
+			L2GatewayIPs: []string{"192.168.1.0/24"},
+		}
+
+		createVRFInNamespace(testNS, params.VRF)
+		shared := &L2VNISharedState{loopback: vtepDevice}
+		Expect(SetupL2VNI(context.Background(), params, shared)).To(Succeed())
+
+		vxlanName := vxLanNameFromVNI(params.VNI)
+		Eventually(func(g Gomega) {
+			_ = netnamespace.In(testNS, func() error {
+				link, err := netlink.LinkByName(vxlanName)
+				g.Expect(err).NotTo(HaveOccurred())
+				vxlan, ok := link.(*netlink.Vxlan)
+				g.Expect(ok).To(BeTrue())
+				g.Expect(vxlan.VtepDevIndex).To(Equal(vtepDevice.Attrs().Index))
+				return nil
+			})
+		}, 30*time.Second, 1*time.Second).Should(Succeed())
+	})
+
 	It("should leave veth MTU at default when no underlay interface is configured", func() {
 		// No fake underlay is set up here, so FindUnderlayMTU returns 0
 		// and SetVethMTUForTunnelOverhead must leave the veth MTU untouched.

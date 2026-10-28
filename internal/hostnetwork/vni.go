@@ -65,6 +65,7 @@ type L2VNIParams struct {
 // it once and passes the same state to every SetupL2VNI call of the pass.
 type L2VNISharedState struct {
 	underlayMTU int
+	loopback    netlink.Link
 }
 
 type HostMaster struct {
@@ -104,7 +105,19 @@ func NewL2VNISharedState(targetNS string) (*L2VNISharedState, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not find underlay MTU: %w", err)
 	}
-	return &L2VNISharedState{underlayMTU: underlayMTU}, nil
+
+	var loopback netlink.Link
+	if err := netnamespace.In(ns, func() error {
+		var err error
+		loopback, err = netlink.LinkByName(loopbackName)
+		if err != nil {
+			return fmt.Errorf("failed looking for vtep loopback interface %s: %w", loopbackName, err)
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return &L2VNISharedState{underlayMTU: underlayMTU, loopback: loopback}, nil
 }
 
 func setupVRFInNS(ctx context.Context, params VNIParams) error {
@@ -131,7 +144,7 @@ func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
 	if err := setupVRFInNS(ctx, params.VNIParams); err != nil {
 		return fmt.Errorf("SetupL3VNI: failed to setup VRF: %w", err)
 	}
-	if err := setupVNI(ctx, params.VNIParams, setAddrGenModeNone); err != nil {
+	if err := setupVNI(ctx, params.VNIParams, nil, setAddrGenModeNone); err != nil {
 		return fmt.Errorf("SetupL3VNI: failed to setup VNI: %w", err)
 	}
 	slog.DebugContext(ctx, "setting up l3 VNI", "params", params)
@@ -169,7 +182,7 @@ func SetupL2VNI(ctx context.Context, ovsClient *OVSClient, params L2VNIParams, s
 		}
 	}
 
-	if err := setupVNI(ctx, params.VNIParams); err != nil {
+	if err := setupVNI(ctx, params.VNIParams, shared.loopback); err != nil {
 		return fmt.Errorf("SetupL2VNI: failed to setup VNI: %w", err)
 	}
 	vethNames := vethNamesFromVNI(params.VNI)
@@ -285,7 +298,7 @@ func SetupHostMaster(ctx context.Context, ovsClient *OVSClient, params L2VNIPara
 //
 // The VRF must already exist when params.VRF is set; setupBridge
 // looks it up and returns an error if it is missing.
-func setupVNI(ctx context.Context, params VNIParams, bridgeOptions ...NetlinkOption) error {
+func setupVNI(ctx context.Context, params VNIParams, loopback netlink.Link, bridgeOptions ...NetlinkOption) error {
 	slog.DebugContext(ctx, "setting up VNI", "params", params)
 	defer slog.DebugContext(ctx, "end setting up VNI", "params", params)
 	ns, err := netns.GetFromPath(params.TargetNS)
@@ -306,7 +319,7 @@ func setupVNI(ctx context.Context, params VNIParams, bridgeOptions ...NetlinkOpt
 		}
 
 		slog.DebugContext(ctx, "setting up vxlan")
-		return setupVXLan(params, bridge)
+		return setupVXLan(params, bridge, loopback)
 	})
 }
 

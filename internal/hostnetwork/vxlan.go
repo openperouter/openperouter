@@ -14,8 +14,8 @@ import (
 
 // setupVXLan sets up a vxlan interface corresponding to the provided
 // vniParams.
-func setupVXLan(params VNIParams, bridge *netlink.Bridge) error {
-	vxlan, err := createVXLan(params, bridge)
+func setupVXLan(params VNIParams, bridge *netlink.Bridge, loopback netlink.Link) error {
+	vxlan, err := createVXLan(params, bridge, loopback)
 	if err != nil {
 		return err
 	}
@@ -72,10 +72,13 @@ func checkVXLanConfigured(vxLan *netlink.Vxlan, bridgeIndex, loopbackIndex int, 
 	return nil
 }
 
-func createVXLan(params VNIParams, bridge *netlink.Bridge) (*netlink.Vxlan, error) {
-	loopback, err := net.InterfaceByName(loopbackName)
-	if err != nil {
-		return nil, fmt.Errorf("failed looking for vtep loopback interface %s: %w", loopbackName, err)
+func createVXLan(params VNIParams, bridge *netlink.Bridge, loopback netlink.Link) (*netlink.Vxlan, error) {
+	if loopback == nil {
+		var err error
+		loopback, err = netlink.LinkByName(loopbackName)
+		if err != nil {
+			return nil, fmt.Errorf("failed looking for vtep loopback interface %s: %w", loopbackName, err)
+		}
 	}
 
 	vtepIP, _, err := net.ParseCIDR(params.VTEPIP)
@@ -96,7 +99,7 @@ func createVXLan(params VNIParams, bridge *netlink.Bridge) (*netlink.Vxlan, erro
 		VxlanId:      int(params.VNI),
 		Port:         int(*params.VXLanPort),
 		Learning:     false, // Disable VTEP learning (ip link add <...> type vxlan <...> nolearning).
-		VtepDevIndex: loopback.Index,
+		VtepDevIndex: loopback.Attrs().Index,
 		SrcAddr:      vtepIP,
 	}
 
@@ -111,7 +114,7 @@ func createVXLan(params VNIParams, bridge *netlink.Bridge) (*netlink.Vxlan, erro
 		return nil, fmt.Errorf("failed to get vxlan link by name %s: %w", vxlanName, err)
 	}
 	vxlan, ok := link.(*netlink.Vxlan)
-	if ok && checkVXLanConfigured(vxlan, bridge.Index, loopback.Index, params) == nil {
+	if ok && checkVXLanConfigured(vxlan, bridge.Index, loopback.Attrs().Index, params) == nil {
 		return vxlan, nil
 	}
 	if err := netlink.LinkDel(link); err != nil {
