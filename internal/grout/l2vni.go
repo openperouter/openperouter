@@ -16,7 +16,7 @@ import (
 
 // SetupL2VNI creates a Grout bridge domain backed by a VXLAN interface and
 // exposes it to the host through a TAP device.
-func SetupL2VNI(ctx context.Context, client *Client, params hostnetwork.L2VNIParams) error {
+func SetupL2VNI(ctx context.Context, client *Client, ovsClient *hostnetwork.OVSClient, params hostnetwork.L2VNIParams) error {
 	slog.DebugContext(ctx, "setup L2VNI", "vni", params.VNI, "vrf", params.VRF)
 	defer slog.DebugContext(ctx, "setup L2VNI done", "vni", params.VNI)
 
@@ -73,7 +73,7 @@ func SetupL2VNI(ctx context.Context, client *Client, params hostnetwork.L2VNIPar
 		return fmt.Errorf("SetupL2VNI: host TAP %s not found after move: %w", linkPair.HostSide, err)
 	}
 	if params.HostMaster != nil {
-		if err := hostnetwork.SetupHostMaster(ctx, params, hostTap); err != nil {
+		if err := hostnetwork.SetupHostMaster(ctx, ovsClient, params, hostTap); err != nil {
 			return fmt.Errorf("SetupL2VNI: failed to set up host master: %w", err)
 		}
 	}
