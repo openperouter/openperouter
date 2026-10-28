@@ -26,6 +26,7 @@ import (
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
+	apiresource "k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -65,6 +66,42 @@ var _ = Describe("OpenPERouter Controller", func() {
 			Entry("rejects zero", new(int32(0)), nil, "spec.controllerMaxReconcileBackoffSeconds: Invalid value: 0"),
 			Entry("rejects negative", new(int32(-1)),
 				nil, "spec.controllerMaxReconcileBackoffSeconds: Invalid value: -1"),
+		)
+
+		DescribeTable("validates container resource requirements", func(
+			resources *operatorapi.ContainerResources, wantError string,
+		) {
+			openperouter := &operatorapi.OpenPERouter{
+				ObjectMeta: metav1.ObjectMeta{Name: "openperouter", Namespace: openperouterTestNamespace},
+				Spec: operatorapi.OpenPERouterSpec{
+					LogLevel:  new(operatorapi.LogLevelInfo),
+					Resources: resources,
+				},
+			}
+			err := k8sClient.Create(context.Background(), openperouter)
+			if wantError != "" {
+				Expect(err).To(MatchError(ContainSubstring(wantError)))
+				return
+			}
+			Expect(err).To(Succeed())
+		},
+			Entry("accepts requests without claims", &operatorapi.ContainerResources{
+				Controller: &v1.ResourceRequirements{
+					Requests: v1.ResourceList{v1.ResourceCPU: apiresource.MustParse("100m")},
+				},
+			}, ""),
+			Entry("rejects claims on the controller", &operatorapi.ContainerResources{
+				Controller: &v1.ResourceRequirements{Claims: []v1.ResourceClaim{{Name: "controller"}}},
+			}, "claims are not supported"),
+			Entry("rejects claims on the nodemarker", &operatorapi.ContainerResources{
+				NodeMarker: &v1.ResourceRequirements{Claims: []v1.ResourceClaim{{Name: "nodemarker"}}},
+			}, "claims are not supported"),
+			Entry("rejects claims on frr", &operatorapi.ContainerResources{
+				FRR: &v1.ResourceRequirements{Claims: []v1.ResourceClaim{{Name: "frr"}}},
+			}, "claims are not supported"),
+			Entry("rejects claims on the reloader", &operatorapi.ContainerResources{
+				Reloader: &v1.ResourceRequirements{Claims: []v1.ResourceClaim{{Name: "reloader"}}},
+			}, "claims are not supported"),
 		)
 
 		It("should successfully reconcile the resource", func() {

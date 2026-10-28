@@ -1082,6 +1082,9 @@ spec:
                           More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                         type: object
                     type: object
+                    x-kubernetes-validations:
+                    - message: claims are not supported
+                      rule: '!has(self.claims) || self.claims.size() == 0'
                   frr:
                     description: frr is the FRR container in router pods.
                     properties:
@@ -1141,6 +1144,9 @@ spec:
                           More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                         type: object
                     type: object
+                    x-kubernetes-validations:
+                    - message: claims are not supported
+                      rule: '!has(self.claims) || self.claims.size() == 0'
                   nodemarker:
                     description: nodemarker is the nodemarker container, which serves
                       the webhooks.
@@ -1201,6 +1207,9 @@ spec:
                           More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                         type: object
                     type: object
+                    x-kubernetes-validations:
+                    - message: claims are not supported
+                      rule: '!has(self.claims) || self.claims.size() == 0'
                   reloader:
                     description: reloader is the reloader container in router pods.
                     properties:
@@ -1260,6 +1269,9 @@ spec:
                           More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                         type: object
                     type: object
+                    x-kubernetes-validations:
+                    - message: claims are not supported
+                      rule: '!has(self.claims) || self.claims.size() == 0'
                 type: object
               tolerations:
                 description: |-

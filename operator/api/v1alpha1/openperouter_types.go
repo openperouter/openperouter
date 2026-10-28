@@ -98,15 +98,19 @@ type OpenPERouterSpec struct {
 type ContainerResources struct {
 	// controller is the controller container.
 	// +optional
+	// +kubebuilder:validation:XValidation:rule="!has(self.claims) || self.claims.size() == 0",message="claims are not supported"
 	Controller *corev1.ResourceRequirements `json:"controller,omitempty"`
 	// nodemarker is the nodemarker container, which serves the webhooks.
 	// +optional
+	// +kubebuilder:validation:XValidation:rule="!has(self.claims) || self.claims.size() == 0",message="claims are not supported"
 	NodeMarker *corev1.ResourceRequirements `json:"nodemarker,omitempty"`
 	// frr is the FRR container in router pods.
 	// +optional
+	// +kubebuilder:validation:XValidation:rule="!has(self.claims) || self.claims.size() == 0",message="claims are not supported"
 	FRR *corev1.ResourceRequirements `json:"frr,omitempty"`
 	// reloader is the reloader container in router pods.
 	// +optional
+	// +kubebuilder:validation:XValidation:rule="!has(self.claims) || self.claims.size() == 0",message="claims are not supported"
 	Reloader *corev1.ResourceRequirements `json:"reloader,omitempty"`
 }
 
