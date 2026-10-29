@@ -36,7 +36,7 @@ func configureFRR(ctx context.Context, data frrConfigData) error {
 	}
 
 	previousConfig, prevErr := os.ReadFile(data.configFile)
-	err = frr.ApplyConfig(ctx, &frrConfig, data.updater)
+	err = frr.ApplyConfig(ctx, frrConfig, data.updater)
 	if err != nil {
 		return fmt.Errorf("failed to update the frr configuration: %w", err)
 	}

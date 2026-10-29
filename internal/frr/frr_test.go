@@ -66,8 +66,11 @@ func TestBasic(t *testing.T) {
 			},
 		},
 	}
-	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+	if err := ApplyConfig(context.Background(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
+	}
+	if config.Hostname != "" {
+		t.Fatalf("ApplyConfig modified the caller's hostname: %q", config.Hostname)
 	}
 
 	testCheckConfigFile(t)
@@ -116,7 +119,7 @@ func TestBasicWithASNRT(t *testing.T) {
 		},
 	}
 
-	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+	if err := ApplyConfig(context.Background(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
@@ -153,7 +156,7 @@ func TestL2VNIWithRouteTargets(t *testing.T) {
 			},
 		},
 	}
-	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+	if err := ApplyConfig(context.Background(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
@@ -173,7 +176,7 @@ func TestL2VNIWithRDAssignedNumber(t *testing.T) {
 			{VNI: 102, ExportRTs: []string{"65000:102"}, ImportRTs: []string{"65001:102"}},
 		},
 	}
-	if err := ApplyConfig(context.Background(), &config, testUpdater(configFile)); err != nil {
+	if err := ApplyConfig(context.Background(), config, testUpdater(configFile)); err != nil {
 		t.Fatal(err)
 	}
 	testCheckConfigFile(t)
@@ -192,7 +195,7 @@ func TestL3VNIWithRDAssignedNumber(t *testing.T) {
 			{ASN: 64512, RouterID: "10.0.0.1", VRF: "green", VNI: 202, ExportRTs: []string{"65000:202"}, ImportRTs: []string{"65001:202"}},
 		},
 	}
-	if err := ApplyConfig(context.Background(), &config, testUpdater(configFile)); err != nil {
+	if err := ApplyConfig(context.Background(), config, testUpdater(configFile)); err != nil {
 		t.Fatal(err)
 	}
 	testCheckConfigFile(t)
@@ -240,7 +243,7 @@ func TestBasicWithIPRT(t *testing.T) {
 			},
 		},
 	}
-	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+	if err := ApplyConfig(context.Background(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
@@ -287,7 +290,7 @@ func TestExternal(t *testing.T) {
 			},
 		},
 	}
-	if err := ApplyConfig(context.TODO(), &config, updater); err != nil {
+	if err := ApplyConfig(context.TODO(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
@@ -334,7 +337,7 @@ func TestInternal(t *testing.T) {
 			},
 		},
 	}
-	if err := ApplyConfig(context.TODO(), &config, updater); err != nil {
+	if err := ApplyConfig(context.TODO(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
@@ -384,7 +387,7 @@ func TestDualStack(t *testing.T) {
 			},
 		},
 	}
-	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+	if err := ApplyConfig(context.Background(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
@@ -436,7 +439,7 @@ func TestDualStackWithRT(t *testing.T) {
 			},
 		},
 	}
-	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+	if err := ApplyConfig(context.Background(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
@@ -485,7 +488,7 @@ func TestIPv6Only(t *testing.T) {
 			},
 		},
 	}
-	if err := ApplyConfig(context.TODO(), &config, updater); err != nil {
+	if err := ApplyConfig(context.TODO(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
@@ -533,7 +536,7 @@ func TestBGPUnnumbered(t *testing.T) {
 			},
 		},
 	}
-	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+	if err := ApplyConfig(context.Background(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
@@ -570,7 +573,7 @@ func TestBGPUnnumberedEBGPIPv6(t *testing.T) {
 			},
 		},
 	}
-	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+	if err := ApplyConfig(context.Background(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
@@ -620,7 +623,7 @@ func TestIPv6OnlyWithRT(t *testing.T) {
 			},
 		},
 	}
-	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+	if err := ApplyConfig(context.Background(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
@@ -632,7 +635,7 @@ func TestEmpty(t *testing.T) {
 	updater := testUpdater(configFile)
 
 	config := Config{}
-	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+	if err := ApplyConfig(context.Background(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
@@ -662,7 +665,7 @@ func TestNoVNIs(t *testing.T) {
 			},
 		},
 	}
-	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+	if err := ApplyConfig(context.Background(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
@@ -693,7 +696,7 @@ func TestBFDEnabled(t *testing.T) {
 			},
 		},
 	}
-	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+	if err := ApplyConfig(context.Background(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
@@ -731,7 +734,7 @@ func TestBFDProfile(t *testing.T) {
 			},
 		},
 	}
-	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+	if err := ApplyConfig(context.Background(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
@@ -770,7 +773,7 @@ func TestL3VNIWithoutLocalNeighborAndAdvertise(t *testing.T) {
 			},
 		},
 	}
-	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+	if err := ApplyConfig(context.Background(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
@@ -817,7 +820,7 @@ func TestL3VNIWithLocalNeighborAndRedistributeConnected(t *testing.T) {
 			},
 		},
 	}
-	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+	if err := ApplyConfig(context.Background(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
@@ -854,7 +857,7 @@ func TestPassthroughNoEVPN(t *testing.T) {
 			},
 		},
 	}
-	if err := ApplyConfig(context.TODO(), &config, updater); err != nil {
+	if err := ApplyConfig(context.TODO(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
@@ -891,7 +894,7 @@ func TestPassthroughExternal(t *testing.T) {
 			},
 		},
 	}
-	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+	if err := ApplyConfig(context.Background(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
@@ -928,7 +931,7 @@ func TestPassthroughV4(t *testing.T) {
 			},
 		},
 	}
-	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+	if err := ApplyConfig(context.Background(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
@@ -988,7 +991,7 @@ func TestPassthroughDual(t *testing.T) {
 		},
 		L3VNIs: []L3VNIConfig{},
 	}
-	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+	if err := ApplyConfig(context.Background(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
@@ -1017,7 +1020,7 @@ func TestRawConfig(t *testing.T) {
 			{Priority: new(int32(20)), Config: "ip prefix-list raw-high seq 10 permit 10.1.0.0/16"},
 		},
 	}
-	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+	if err := ApplyConfig(context.Background(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
@@ -1066,7 +1069,7 @@ func TestTunnelEndpointConfig(t *testing.T) {
 			},
 		},
 	}
-	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+	if err := ApplyConfig(context.Background(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
@@ -1102,7 +1105,7 @@ func TestISIS(t *testing.T) {
 			},
 		},
 	}
-	if err := ApplyConfig(context.TODO(), &config, updater); err != nil {
+	if err := ApplyConfig(context.TODO(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
@@ -1140,7 +1143,7 @@ func TestISISFeatures(t *testing.T) {
 			},
 		},
 	}
-	if err := ApplyConfig(context.TODO(), &config, updater); err != nil {
+	if err := ApplyConfig(context.TODO(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
@@ -1224,7 +1227,7 @@ func TestSegmentRouting(t *testing.T) {
 			},
 		},
 	}
-	if err := ApplyConfig(context.TODO(), &config, updater); err != nil {
+	if err := ApplyConfig(context.TODO(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
@@ -1327,7 +1330,7 @@ func TestSegmentRoutingWithL2VNI(t *testing.T) {
 			},
 		},
 	}
-	if err := ApplyConfig(context.TODO(), &config, updater); err != nil {
+	if err := ApplyConfig(context.TODO(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
@@ -1426,7 +1429,7 @@ func TestGracefulRestart(t *testing.T) {
 			},
 		},
 	}
-	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+	if err := ApplyConfig(context.Background(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
@@ -1458,7 +1461,7 @@ func TestGracefulRestartCustomTimers(t *testing.T) {
 			},
 		},
 	}
-	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+	if err := ApplyConfig(context.Background(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
@@ -1521,7 +1524,7 @@ func TestRouteReflector(t *testing.T) {
 			},
 		},
 	}
-	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+	if err := ApplyConfig(context.Background(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
@@ -1559,7 +1562,7 @@ func TestRouteReflectorOnly(t *testing.T) {
 			},
 		},
 	}
-	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+	if err := ApplyConfig(context.Background(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
@@ -1606,7 +1609,7 @@ func TestRouteReflectorL3VPN(t *testing.T) {
 			},
 		},
 	}
-	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+	if err := ApplyConfig(context.Background(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
@@ -1643,7 +1646,7 @@ func TestListenRangeEBGP(t *testing.T) {
 			},
 		},
 	}
-	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+	if err := ApplyConfig(context.Background(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
@@ -1674,7 +1677,7 @@ func TestListenRangeCustomLimit(t *testing.T) {
 			},
 		},
 	}
-	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+	if err := ApplyConfig(context.Background(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
@@ -1741,7 +1744,7 @@ func TestBFDProfilePassiveMode(t *testing.T) {
 			},
 		},
 	}
-	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+	if err := ApplyConfig(context.Background(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
@@ -1773,7 +1776,7 @@ func TestEBGPMultiHopWithTTL(t *testing.T) {
 			},
 		},
 	}
-	if err := ApplyConfig(context.Background(), &config, updater); err != nil {
+	if err := ApplyConfig(context.Background(), config, updater); err != nil {
 		t.Fatalf("Failed to apply config: %s", err)
 	}
 
