@@ -191,10 +191,7 @@ jobs:
             go.sum
             hack/benchmarkcheck/go.sum
       - name: Install kernel modules
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y linux-modules-extra-$(uname -r)
-          for module in dummy vrf bridge veth vxlan; do sudo modprobe "$module"; done
+        run: hack/install-kernel-modules.sh
       - name: Test benchmark comparison
         run: go -C hack/benchmarkcheck test ./...
       - name: Check benchmark regressions

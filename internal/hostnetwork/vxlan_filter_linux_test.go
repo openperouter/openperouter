@@ -126,7 +126,8 @@ func TestVNIFilterKernelError(t *testing.T) {
 	require.ErrorContains(t, err, "listing VXLAN 1073741824 VNI filters")
 	var errno syscall.Errno
 	require.True(t, errors.As(err, &errno), "kernel errno must remain discoverable: %v", err)
-	require.True(t, errors.Is(err, unix.ENODEV) || errors.Is(err, unix.EPERM), "%v", err)
+	// Before VXLAN is loaded, RTM_GETTUNNEL can fail before checking the interface index.
+	require.Contains(t, []syscall.Errno{unix.ENODEV, unix.EPERM, unix.EOPNOTSUPP}, errno, "%v", err)
 }
 
 func testAttributes(t *testing.T, raw []byte) map[uint16][]byte {
