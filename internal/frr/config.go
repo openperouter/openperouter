@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"regexp"
 	"strings"
+	"sync"
 	"text/template"
 
 	"github.com/openperouter/openperouter/internal/networklayerprotocol"
@@ -246,18 +247,13 @@ func shouldRenderUnderlayEVPN(underlay UnderlayConfig) bool {
 	return false
 }
 
-// templateConfig uses the template library to template
-// 'globalConfigTemplate' using 'data'.
-func templateConfig(data any) (string, error) {
-	counterMap := map[string]int{}
-	t, err := template.New("frr.tmpl").Funcs(
+// parsedTemplates parses the embedded templates on first use. Parsing twelve
+// files on every reconcile is pure overhead: the templates never change, and
+// every function they use is stateless, so a single parsed template can be
+// rendered concurrently.
+var parsedTemplates = sync.OnceValues(func() (*template.Template, error) {
+	return template.New("frr.tmpl").Funcs(
 		template.FuncMap{
-			"counter": func(counterName string) int {
-				counter := counterMap[counterName]
-				counter++
-				counterMap[counterName] = counter
-				return counter
-			},
 			"dict": func(values ...any) (map[string]any, error) {
 				if len(values)%2 != 0 {
 					return nil, errors.New("invalid dict call, expecting even number of args")
@@ -292,13 +288,21 @@ func templateConfig(data any) (string, error) {
 			},
 			"renderUnderlayEVPN": shouldRenderUnderlayEVPN,
 		}).ParseFS(templates, "templates/*")
+})
+
+// templateConfig uses the template library to template
+// 'globalConfigTemplate' using 'data'.
+func templateConfig(data any) (string, error) {
+	t, err := parsedTemplates()
 	if err != nil {
 		return "", err
 	}
 
 	var b bytes.Buffer
-	err = t.Execute(&b, data)
-	return b.String(), err
+	if err := t.Execute(&b, data); err != nil {
+		return "", err
+	}
+	return b.String(), nil
 }
 
 // generateAndReloadConfigFile takes a 'struct Config' and, using a template,
