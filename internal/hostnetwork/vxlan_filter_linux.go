@@ -13,6 +13,15 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// TODO: REMOVE THE RAW NETLINK HELPERS BELOW once a tagged netlink release includes
+// Vxlan.VniFilter, BridgeVniAdd/BridgeVniDel/BridgeVniList and BridgeVlanTunnelShowDev.
+// Bump the dependency and use those native APIs for VXLAN creation/inspection,
+// receive-filter reconciliation and per-device tunnel mapping dumps, replacing
+// the corresponding request encoding and reply parsing here.
+// Upstream implementations:
+// https://github.com/vishvananda/netlink/commit/ab2b1904dc372ebfc6bd66391989149cd36417ac
+// https://github.com/vishvananda/netlink/commit/c7039a4139da60a55f303e4cbff1ef9a771b5e9b
+//
 // The pinned netlink library does not expose VXLAN receive filters. Linux's
 // tunnel_msg is eight bytes, followed by nested VXLAN_VNIFILTER_ENTRY attributes.
 const (
