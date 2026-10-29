@@ -232,7 +232,7 @@ func ensureAddressless(link netlink.Link) error {
 	if err := suppressEndpointLinkLocal(link); err != nil {
 		return err
 	}
-	addresses, err := netlink.AddrList(link, netlink.FAMILY_ALL)
+	addresses, err := listAddresses(link, netlink.FAMILY_ALL)
 	if err != nil {
 		return fmt.Errorf("list addressless interface %s addresses: %w", link.Attrs().Name, err)
 	}
