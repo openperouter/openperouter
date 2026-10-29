@@ -9,7 +9,6 @@ import (
 	"log/slog"
 
 	"github.com/openperouter/openperouter/internal/netnamespace"
-	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 )
 
@@ -91,18 +90,22 @@ func RemoveAllL3VPNs(targetNS string) error {
 // RemoveNonConfiguredL3VPNs removes from the target namespace the
 // leftovers corresponding to L3VPNs that are not configured anymore.
 func RemoveNonConfiguredL3VPNs(targetNS string, params []L3VPNParams) error {
-	vrfs := map[string]bool{}
+	hostLinks, err := listHostLinks()
+	if err != nil {
+		return fmt.Errorf("RemoveNonConfiguredL3VPNs: %w", err)
+	}
+	return CleanupLinks{Host: hostLinks}.RemoveNonConfiguredL3VPNs(params)
+}
+
+// RemoveNonConfiguredL3VPNs removes the host namespace leftovers
+// corresponding to L3VPNs that are not configured anymore.
+func (l CleanupLinks) RemoveNonConfiguredL3VPNs(params []L3VPNParams) error {
 	rdAssignedNumbers := map[int32]bool{}
 	for _, p := range params {
-		vrfs[p.VRF] = true
 		rdAssignedNumbers[p.RDAssignedNumber] = true
 	}
 
-	hostLinks, err := netlink.LinkList()
-	if err != nil {
-		return fmt.Errorf("RemoveNonConfiguredL3VPNs: failed to list links: %w", err)
-	}
-	if err := errors.Join(removeHostSideVeths(hostLinks, HostVethPrefix+SRv6Infix, rdAssignedNumbers)...); err != nil {
+	if err := errors.Join(removeHostSideVeths(l.Host, HostVethPrefix+SRv6Infix, rdAssignedNumbers)...); err != nil {
 		return fmt.Errorf("RemoveNonConfiguredL3VPNs: failed to remove veths: %w", err)
 	}
 	return nil

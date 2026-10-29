@@ -354,29 +354,23 @@ func RemoveAllVNIs(ovsClient *OVSClient, targetNS string) error {
 // RemoveNonConfiguredVNIs removes from the target namespace the
 // leftovers corresponding to VNIs that are not configured anymore.
 func RemoveNonConfiguredVNIs(ovsClient *OVSClient, targetNS string, params []VNIParams) error {
+	links, err := ListCleanupLinks(targetNS)
+	if err != nil {
+		return fmt.Errorf("RemoveNonConfiguredVNIs: %w", err)
+	}
+	return links.RemoveNonConfiguredVNIs(ovsClient, params)
+}
+
+// RemoveNonConfiguredVNIs removes the host and router namespace leftovers
+// corresponding to VNIs that are not configured anymore.
+func (l CleanupLinks) RemoveNonConfiguredVNIs(ovsClient *OVSClient, params []VNIParams) error {
 	vnis := map[int32]bool{}
 	for _, p := range params {
 		vnis[p.VNI] = true
 	}
 
-	errs := removeHostSideVNIs(vnis, ovsClient)
-
-	ns, err := netns.GetFromPath(targetNS)
-	if err != nil {
-		return fmt.Errorf("RemoveNonConfiguredVNIs: Failed to get network namespace %s: %w", targetNS, err)
-	}
-	defer func() {
-		if err := ns.Close(); err != nil {
-			slog.Error("failed to close namespace", "namespace", targetNS, "error", err)
-		}
-	}()
-
-	if err := netnamespace.In(ns, func() error {
-		nsErrors := removeNamespaceSideVNIs(vnis)
-		return errors.Join(nsErrors...)
-	}); err != nil {
-		errs = append(errs, err)
-	}
+	errs := removeHostSideVNIs(vnis, ovsClient, l.Host)
+	errs = append(errs, removeNamespaceSideVNIs(vnis, l.Router)...)
 
 	if err := errors.Join(errs...); err != nil {
 		return fmt.Errorf("RemoveNonConfiguredVNIs: %w", err)
@@ -384,13 +378,9 @@ func RemoveNonConfiguredVNIs(ovsClient *OVSClient, targetNS string, params []VNI
 	return nil
 }
 
-func removeHostSideVNIs(vnis map[int32]bool, ovsClient *OVSClient) []error {
+func removeHostSideVNIs(vnis map[int32]bool, ovsClient *OVSClient, hostLinks []netlink.Link) []error {
 	var failedDeletes []error
 
-	hostLinks, err := netlink.LinkList()
-	if err != nil {
-		return []error{fmt.Errorf("remove non configured vnis: failed to list links: %w", err)}
-	}
 	if err := deleteLinksForType(BridgeLinkType, vnis, hostLinks, vniFromHostBridgeName); err != nil {
 		failedDeletes = append(failedDeletes, fmt.Errorf("remove bridge links: %w", err))
 	}
@@ -401,13 +391,9 @@ func removeHostSideVNIs(vnis map[int32]bool, ovsClient *OVSClient) []error {
 	return append(failedDeletes, removeHostSideVeths(hostLinks, HostVethPrefix+EvpnInfix, vnis)...)
 }
 
-func removeNamespaceSideVNIs(vnis map[int32]bool) []error {
+func removeNamespaceSideVNIs(vnis map[int32]bool, links []netlink.Link) []error {
 	var failedDeletes []error
 
-	links, err := netlink.LinkList()
-	if err != nil {
-		return []error{fmt.Errorf("remove non configured vnis: failed to list links: %w", err)}
-	}
 	if err := deleteLinksForType(VXLanLinkType, vnis, links, vniFromVXLanName); err != nil {
 		failedDeletes = append(failedDeletes, fmt.Errorf("remove vlan links: %w", err))
 	}

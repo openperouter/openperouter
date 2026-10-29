@@ -21,6 +21,27 @@ const (
 	MinVethMTU = 1280
 )
 
+// CleanupLinks is a snapshot of the host and router namespace links, listed
+// once so that the cleanup steps of a datapath pass share it instead of
+// listing the same namespaces once per resource type.
+type CleanupLinks struct {
+	Host   []netlink.Link
+	Router []netlink.Link
+}
+
+// ListCleanupLinks lists the links of the host namespace and of targetNS.
+func ListCleanupLinks(targetNS string) (CleanupLinks, error) {
+	hostLinks, err := listHostLinks()
+	if err != nil {
+		return CleanupLinks{}, err
+	}
+	routerLinks, err := listLinksInNamespace(targetNS)
+	if err != nil {
+		return CleanupLinks{}, err
+	}
+	return CleanupLinks{Host: hostLinks, Router: routerLinks}, nil
+}
+
 // RemoveAllVRFs removes all VRFs from the target namespace.
 func RemoveAllVRFs(targetNS string) error {
 	return RemoveNonConfiguredVRFs(targetNS, map[string]bool{})
@@ -29,19 +50,20 @@ func RemoveAllVRFs(targetNS string) error {
 // RemoveNonConfiguredVRFs removes from the target namespace the leftover VRFs
 // that are not configured anymore.
 func RemoveNonConfiguredVRFs(targetNS string, vrfs map[string]bool) error {
-	ns, err := netns.GetFromPath(targetNS)
+	links, err := listLinksInNamespace(targetNS)
 	if err != nil {
-		return fmt.Errorf("RemoveNonConfiguredVRFs: failed to get network namespace %s: %w", targetNS, err)
+		return fmt.Errorf("RemoveNonConfiguredVRFs: %w", err)
 	}
-	defer func() {
-		if err := ns.Close(); err != nil {
-			slog.Error("failed to close namespace", "namespace", targetNS, "error", err)
-		}
-	}()
+	return CleanupLinks{Router: links}.RemoveNonConfiguredVRFs(vrfs)
+}
 
-	return netnamespace.In(ns, func() error {
-		return errors.Join(removeNamespaceSideVRFs(vrfs)...)
-	})
+// RemoveNonConfiguredVRFs removes the VRFs of the router namespace that are
+// not configured anymore.
+func (l CleanupLinks) RemoveNonConfiguredVRFs(vrfs map[string]bool) error {
+	if err := errors.Join(removeNamespaceSideVRFs(l.Router, vrfs)...); err != nil {
+		return fmt.Errorf("RemoveNonConfiguredVRFs: %w", err)
+	}
+	return nil
 }
 
 // setupHostVeth configures the veth pair that connects the host to the perouter namespace, for
@@ -174,12 +196,7 @@ func removeHostSideVeths(hostLinks []netlink.Link, prefix string, interfaceIDs m
 	return failedDeletes
 }
 
-func removeNamespaceSideVRFs(vrfs map[string]bool) []error {
-	links, err := netlink.LinkList()
-	if err != nil {
-		return []error{fmt.Errorf("removeNamespaceSideVRFs: failed to list links: %w", err)}
-	}
-
+func removeNamespaceSideVRFs(links []netlink.Link, vrfs map[string]bool) []error {
 	var failedDeletes []error
 	for _, l := range links {
 		if l.Type() != VRFLinkType {
@@ -193,4 +210,37 @@ func removeNamespaceSideVRFs(vrfs map[string]bool) []error {
 		}
 	}
 	return failedDeletes
+}
+
+func listHostLinks() ([]netlink.Link, error) {
+	links, err := netlink.LinkList()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list host links: %w", err)
+	}
+	return links, nil
+}
+
+func listLinksInNamespace(targetNS string) ([]netlink.Link, error) {
+	ns, err := netns.GetFromPath(targetNS)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get network namespace %s: %w", targetNS, err)
+	}
+	defer func() {
+		if err := ns.Close(); err != nil {
+			slog.Error("failed to close namespace", "namespace", targetNS, "error", err)
+		}
+	}()
+
+	var links []netlink.Link
+	if err := netnamespace.In(ns, func() error {
+		var err error
+		links, err = netlink.LinkList()
+		if err != nil {
+			return fmt.Errorf("failed to list links: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return nil, fmt.Errorf("failed to list links in namespace %s: %w", targetNS, err)
+	}
+	return links, nil
 }

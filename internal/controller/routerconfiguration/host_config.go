@@ -180,21 +180,26 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 		configuredVRFs[l3vpn.VRF] = true
 	}
 
+	// Both cleanup steps below need the same host and router namespace links:
+	// list them once per namespace instead of once per resource type.
+	cleanupLinks, err := hostnetwork.ListCleanupLinks(config.targetNamespace)
+	if err != nil {
+		return fmt.Errorf("failed to list links to clean up: %w", err)
+	}
+
 	slog.InfoContext(ctx, "removing deleted vnis")
-	if err := hostnetwork.RemoveNonConfiguredVNIs(ovsClient, config.targetNamespace, configuredVNIs); err != nil {
+	if err := cleanupLinks.RemoveNonConfiguredVNIs(ovsClient, configuredVNIs); err != nil {
 		return fmt.Errorf("failed to remove deleted vnis: %w", err)
 	}
 	bridgerefresh.StopForRemovedVNIs(l2VNIs)
 
 	slog.InfoContext(ctx, "removing deleted l3vpns")
-	if err := hostnetwork.RemoveNonConfiguredL3VPNs(config.targetNamespace,
-		configuredL3VPNs); err != nil {
+	if err := cleanupLinks.RemoveNonConfiguredL3VPNs(configuredL3VPNs); err != nil {
 		return fmt.Errorf("failed to remove deleted l3vpns: %w", err)
 	}
 
 	slog.InfoContext(ctx, "removing deleted vrfs")
-	if err := hostnetwork.RemoveNonConfiguredVRFs(config.targetNamespace,
-		configuredVRFs); err != nil {
+	if err := cleanupLinks.RemoveNonConfiguredVRFs(configuredVRFs); err != nil {
 		return fmt.Errorf("failed to remove deleted vrfs: %w", err)
 	}
 
