@@ -33,6 +33,7 @@ const (
 
 // L2VNISpec defines the desired state of VNI.
 // +kubebuilder:validation:XValidation:rule="!has(self.gatewayIPs) || size(self.gatewayIPs) == 0 || has(self.routingDomain)",message="gatewayIPs cannot be set without routingDomain"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.hostMaster) || has(self.hostMaster)",message="hostMaster cannot be unset once set; delete and recreate the object to remove it"
 type L2VNISpec struct {
 	// nodeSelector specifies which nodes this L2VNI applies to.
 	// If empty or not specified, applies to all nodes.
@@ -79,6 +80,7 @@ type L2VNISpec struct {
 	// If not set, the host veth will not be attached to any interface and it must be
 	// attached manually (or by some other means). This is useful if another controller
 	// is leveraging the host interface for the VNI.
+	// Once set, hostMaster cannot be removed; delete and recreate the object to unset it.
 	// +optional
 	HostMaster *HostMaster `json:"hostMaster,omitempty"`
 
@@ -164,6 +166,7 @@ const (
 
 // LinuxBridgeConfig contains configuration for Linux bridge type.
 // +kubebuilder:validation:XValidation:rule="(self.?name.orValue(\"\") != \"\") != (self.?lifecycle.orValue(\"\") == 'Managed')",message="name must be set when lifecycle is External, and must not be set when it is Managed."
+// +kubebuilder:validation:XValidation:rule="has(self.name) == has(oldSelf.name) && (!has(self.name) || self.name == oldSelf.name)",message="name is immutable; delete and recreate the object to change it"
 type LinuxBridgeConfig struct {
 	// lifecycle determines if the bridge is managed by the controller or
 	// provided by the user.
@@ -173,6 +176,7 @@ type LinuxBridgeConfig struct {
 	// name of the Linux bridge interface. Required when lifecycle is
 	// External, and must be omitted when it is Managed, in which case the
 	// bridge is named br-hs-<VNI>.
+	// Immutable once set, to change it recreate the object using different value.
 	// +kubebuilder:validation:Pattern=`^[a-zA-Z][a-zA-Z0-9_-]*$`
 	// +kubebuilder:validation:MaxLength=15
 	// +optional
@@ -181,6 +185,7 @@ type LinuxBridgeConfig struct {
 
 // OVSBridgeConfig contains configuration for OVS bridge type.
 // +kubebuilder:validation:XValidation:rule="(self.?name.orValue(\"\") != \"\") != (self.?lifecycle.orValue(\"\") == 'Managed')",message="name must be set when lifecycle is External, and must not be set when it is Managed."
+// +kubebuilder:validation:XValidation:rule="has(self.name) == has(oldSelf.name) && (!has(self.name) || self.name == oldSelf.name)",message="name is immutable; delete and recreate the object to change it"
 type OVSBridgeConfig struct {
 	// lifecycle determines if the OVS bridge is managed by the controller or
 	// provided by the user.
@@ -190,6 +195,7 @@ type OVSBridgeConfig struct {
 	// name of the OVS bridge interface. Required when lifecycle is
 	// External, and must be omitted when it is Managed, in which case the
 	// bridge is named br-hs-<VNI>.
+	// Immutable once set, to change it recreate the object using different value.
 	// +kubebuilder:validation:Pattern=`^[a-zA-Z][a-zA-Z0-9_-]*$`
 	// +kubebuilder:validation:MaxLength=15
 	// +optional
@@ -200,7 +206,9 @@ type OVSBridgeConfig struct {
 // +kubebuilder:validation:XValidation:rule="(self.type == 'LinuxBridge' && has(self.linuxBridge) && !has(self.ovsBridge)) || (self.type == 'OVSBridge' && has(self.ovsBridge) && !has(self.linuxBridge))",message="type/config mismatch: 'LinuxBridge' requires linuxBridge field, 'OVSBridge' requires ovsBridge field"
 type HostMaster struct {
 	// type of the host interface. Supported values: "LinuxBridge", "OVSBridge".
+	// Immutable once set, to change it recreate the object using different value.
 	// +kubebuilder:validation:Enum=LinuxBridge;OVSBridge
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="type is immutable; delete and recreate the object to change it"
 	// +required
 	// +unionDiscriminator
 	Type string `json:"type,omitempty"`

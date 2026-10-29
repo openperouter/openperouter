@@ -1118,6 +1118,113 @@ func TestValidateErrorCases(t *testing.T) {
 	})
 }
 
+func TestValidateUpdates(t *testing.T) {
+	tests := []struct {
+		description string
+		gvk         schema.GroupVersionKind
+		oldSpec     map[string]any
+		newSpec     map[string]any
+		wantError   string
+	}{
+		{
+			description: "L3VNI change vrf rejected",
+			gvk:         l3vniGVK,
+			oldSpec: map[string]any{
+				"vrf": "red",
+				"vni": int64(100),
+			},
+			newSpec: map[string]any{
+				"vrf": "blue",
+				"vni": int64(100),
+			},
+			wantError: "vrf is immutable",
+		},
+		{
+			description: "L2VNI linux bridge name change rejected",
+			gvk:         l2vniGVK,
+			oldSpec:     hostMasterSpec("LinuxBridge", "br0"),
+			newSpec:     hostMasterSpec("LinuxBridge", "br1"),
+			wantError:   "name is immutable",
+		},
+		{
+			description: "L2VNI ovs bridge name change rejected",
+			gvk:         l2vniGVK,
+			oldSpec:     hostMasterSpec("OVSBridge", "br0"),
+			newSpec:     hostMasterSpec("OVSBridge", "br1"),
+			wantError:   "name is immutable",
+		},
+		{
+			description: "L2VNI bridge type change rejected",
+			gvk:         l2vniGVK,
+			oldSpec:     hostMasterSpec("LinuxBridge", "br0"),
+			newSpec:     hostMasterSpec("OVSBridge", "br0"),
+			wantError:   "type is immutable",
+		},
+		{
+			description: "L2VNI hostMaster can be added on update",
+			gvk:         l2vniGVK,
+			oldSpec:     map[string]any{"vni": 100},
+			newSpec:     hostMasterSpec("OVSBridge", "br0"),
+		},
+		{
+			description: "L2VNI hostMaster removal rejected",
+			gvk:         l2vniGVK,
+			oldSpec:     hostMasterSpec("LinuxBridge", "br0"),
+			newSpec:     map[string]any{"vni": 100},
+			wantError:   "hostMaster cannot be unset once set",
+		},
+		{
+			description: "L2VNI without hostMaster remains valid on update",
+			gvk:         l2vniGVK,
+			oldSpec:     map[string]any{"vni": 100},
+			newSpec:     map[string]any{"vni": 100, "vxlanPort": int64(4790)},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.description, func(t *testing.T) {
+			newObj := newUnstructured(l2vniGVK.Kind, tc.newSpec)
+			oldObj := newUnstructured(l2vniGVK.Kind, tc.oldSpec)
+			if err := ApplyDefaults(newObj, tc.gvk); err != nil {
+				t.Fatalf("ApplyDefaults on new obj failed: %v", err)
+			}
+			if err := ApplyDefaults(oldObj, tc.gvk); err != nil {
+				t.Fatalf("ApplyDefaults on old obj failed: %v", err)
+			}
+			errs := ValidateUpdate(context.Background(), newObj, oldObj, tc.gvk)
+			if tc.wantError == "" && len(errs) != 0 {
+				t.Fatalf("expected no error, but got: [%v]", errs)
+			}
+			if tc.wantError != "" && len(errs) == 0 {
+				t.Fatalf("expected error [%v], but got none", tc.wantError)
+			}
+			for _, e := range errs {
+				if !strings.Contains(e.Error(), tc.wantError) {
+					t.Fatalf("expected error containing %q, got: %v", tc.wantError, errs)
+				}
+			}
+		})
+	}
+}
+
+func hostMasterSpec(bridgeType, name string) map[string]any {
+	bridgeField := "linuxBridge"
+	if bridgeType == "OVSBridge" {
+		bridgeField = "ovsBridge"
+	}
+	cfg := map[string]any{"lifecycle": "External"}
+	if name != "" {
+		cfg["name"] = name
+	}
+	return map[string]any{
+		"vni": 100,
+		"hostMaster": map[string]any{
+			"type":      bridgeType,
+			bridgeField: cfg,
+		},
+	}
+}
+
 func newUnstructured(kind string, spec map[string]any) *unstructured.Unstructured {
 	obj := &unstructured.Unstructured{
 		Object: map[string]any{

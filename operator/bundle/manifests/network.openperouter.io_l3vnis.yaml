@@ -207,12 +207,17 @@ spec:
                 minimum: 1
                 type: integer
               vrf:
-                description: vrf is the name of the linux VRF to be used inside the
-                  PERouter namespace.
+                description: |-
+                  vrf is the name of the linux VRF to be used inside the PERouter namespace.
+                  Immutable once set, to change it recreate the object using different value.
                 maxLength: 15
                 minLength: 1
                 pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
                 type: string
+                x-kubernetes-validations:
+                - message: vrf is immutable; delete and recreate the object to change
+                    it
+                  rule: self == oldSelf
               vxlanPort:
                 default: 4789
                 description: vxlanPort is the port to be used for VXLan encapsulation.
