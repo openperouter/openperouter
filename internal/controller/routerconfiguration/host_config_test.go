@@ -118,6 +118,45 @@ func TestFilterL2VNIsWithNoRoutingDomain(t *testing.T) {
 	}
 }
 
+func TestConfigureL2VNIRefresherLifecycle(t *testing.T) {
+	setupFailure := errors.New("setup failed")
+	stopFailure := errors.New("stop failed")
+	for _, tc := range []struct {
+		name     string
+		setupErr error
+		stopErr  error
+		want     []string
+		wantErr  error
+	}{
+		{name: "successful replacement", want: []string{"stop", "setup", "start"}},
+		{name: "failed replacement", setupErr: setupFailure, want: []string{"stop", "setup"}, wantErr: setupFailure},
+		{name: "failed stop", stopErr: stopFailure, want: []string{"stop"}, wantErr: stopFailure},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var calls []string
+			params := hostnetwork.L2VNIParams{VNIParams: hostnetwork.VNIParams{VNI: 5000}}
+			err := configureL2VNI(context.Background(), params,
+				func(_ context.Context, got hostnetwork.L2VNIParams) error {
+					require.Equal(t, params, got)
+					calls = append(calls, "setup")
+					return tc.setupErr
+				},
+				func(vni int32) error {
+					require.Equal(t, params.VNI, vni)
+					calls = append(calls, "stop")
+					return tc.stopErr
+				},
+				func(_ context.Context, got hostnetwork.L2VNIParams) error {
+					require.Equal(t, params, got)
+					calls = append(calls, "start")
+					return nil
+				})
+			require.ErrorIs(t, err, tc.wantErr)
+			require.Equal(t, tc.want, calls)
+		})
+	}
+}
+
 func l2VNIForTest(name string, vni int32) hostnetwork.L2VNIParams {
 	return hostnetwork.L2VNIParams{
 		VNIParams: hostnetwork.VNIParams{VRF: name, VNI: vni},
