@@ -20,7 +20,7 @@ import (
 )
 
 var setupSingleL2VNI = hostnetwork.SetupL2VNI
-var newL2VNISharedState = hostnetwork.NewL2VNISharedState
+var newVNISharedState = hostnetwork.NewVNISharedState
 var findUnderlayMTU = hostnetwork.FindUnderlayMTUInNamespace
 
 type interfacesConfiguration struct {
@@ -88,10 +88,24 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 		return fmt.Errorf("failed to setup underlay: %w", err)
 	}
 
-	// The underlay MTU is node-wide: resolve it once and reuse it for every
-	// L3VNI/L3VPN host veth of the pass instead of listing the underlay links
-	// once per resource.
-	underlayMTU, underlayMTUErr := resolveL3UnderlayMTU(hostConfig.L3VNIs, hostConfig.L3VPNs, config.targetNamespace)
+	// The underlay MTU and the router namespace are node-wide: resolve them
+	// once and share them with every VNI of the pass instead of listing the
+	// underlay links and opening the namespace once per resource.
+	underlayMTU, underlayMTUErr := resolveUnderlayMTU(hostConfig, config.targetNamespace)
+	shared, sharedErr := resolveVNISharedState(hostConfig, config.targetNamespace, underlayMTU)
+	if sharedErr != nil {
+		// Let each VNI report the failure when it tries to resolve its own
+		// state, so the error stays attributed to the resource it affects.
+		slog.Warn("failed to resolve the state shared by the VNIs", "error", sharedErr)
+		shared = nil
+	}
+	if shared != nil {
+		defer func() {
+			if err := shared.Close(); err != nil {
+				slog.Error("failed to close the VNI shared namespace", "namespace", config.targetNamespace, "error", err)
+			}
+		}()
+	}
 
 	var resourceErrors []error
 	failedL3Domains := sets.New[string]()
@@ -105,7 +119,7 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 			failedL3Domains.Insert(vni.VRF)
 			continue
 		}
-		if err := hostnetwork.SetupL3VNI(ctx, vni, underlayMTU); err != nil {
+		if err := hostnetwork.SetupL3VNI(ctx, vni, shared); err != nil {
 			resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
 				Obj: v1alpha1.FailedResource{
 					Kind: openpeerrors.KindL3VNI, Name: vni.Name, Reason: reason, Message: err.Error(),
@@ -125,7 +139,7 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 			failedL3Domains.Insert(l3vpn.VRF)
 			continue
 		}
-		if err := hostnetwork.SetupL3VPN(ctx, l3vpn, underlayMTU); err != nil {
+		if err := hostnetwork.SetupL3VPN(ctx, l3vpn, shared); err != nil {
 			resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
 				Obj: v1alpha1.FailedResource{
 					Kind: openpeerrors.KindL3VPN, Name: l3vpn.Name, Reason: reason, Message: err.Error(),
@@ -140,18 +154,13 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 	l2VNIs, l3DomainErrors := filterL2VNIsWithNoRoutingDomain(hostConfig.L2VNIs, failedL3Domains)
 	resourceErrors = append(resourceErrors, l3DomainErrors...)
 
-	l2SharedState, l2StateErrors := resolveL2VNISharedState(l2VNIs, config.targetNamespace)
+	l2StateErrors := l2VNIStateErrors(l2VNIs, underlayMTUErr, sharedErr)
 	resourceErrors = append(resourceErrors, l2StateErrors...)
-	if l2SharedState == nil {
+	if len(l2StateErrors) > 0 || shared == nil {
 		l2VNIs = nil
 	} else {
-		defer func() {
-			if err := l2SharedState.Close(); err != nil {
-				slog.Error("failed to close L2VNI shared namespace", "namespace", config.targetNamespace, "error", err)
-			}
-		}()
 		var l2VNIErrors []error
-		l2VNIs, l2VNIErrors = setupL2VNIs(ctx, ovsClient, l2VNIs, l2SharedState)
+		l2VNIs, l2VNIErrors = setupL2VNIs(ctx, ovsClient, l2VNIs, shared)
 		resourceErrors = append(resourceErrors, l2VNIErrors...)
 	}
 
@@ -186,6 +195,11 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 	if err != nil {
 		return fmt.Errorf("failed to list links to clean up: %w", err)
 	}
+	defer func() {
+		if err := cleanupLinks.Close(); err != nil {
+			slog.Error("failed to close the cleanup namespace", "namespace", config.targetNamespace, "error", err)
+		}
+	}()
 
 	slog.InfoContext(ctx, "removing deleted vnis")
 	if err := cleanupLinks.RemoveNonConfiguredVNIs(ovsClient, configuredVNIs); err != nil {
@@ -243,7 +257,7 @@ func setupL2VNIs(
 	ctx context.Context,
 	ovsClient *hostnetwork.OVSClient,
 	l2VNIs []hostnetwork.L2VNIParams,
-	shared *hostnetwork.L2VNISharedState,
+	shared *hostnetwork.VNISharedState,
 ) ([]hostnetwork.L2VNIParams, []error) {
 	var kept []hostnetwork.L2VNIParams
 	var errs []error
@@ -263,7 +277,7 @@ func setupL2VNIs(
 	return kept, errs
 }
 
-func setupL2VNI(ctx context.Context, ovsClient *hostnetwork.OVSClient, vni hostnetwork.L2VNIParams, shared *hostnetwork.L2VNISharedState) error {
+func setupL2VNI(ctx context.Context, ovsClient *hostnetwork.OVSClient, vni hostnetwork.L2VNIParams, shared *hostnetwork.VNISharedState) error {
 	slog.InfoContext(ctx, "setting up L2VNI", "vni", vni.VNI)
 	if err := setupSingleL2VNI(ctx, ovsClient, vni, shared); err != nil {
 		return err
@@ -271,42 +285,36 @@ func setupL2VNI(ctx context.Context, ovsClient *hostnetwork.OVSClient, vni hostn
 	return bridgerefresh.StartForVNI(ctx, vni)
 }
 
-// resolveL2VNISharedState resolves the state shared by every L2VNI of a
-// datapath pass. Resolving it lists the links of the router namespace, so it
-// must run once per pass and its result must be reused by every L2VNI.
-func resolveL2VNISharedState(
-	l2VNIs []hostnetwork.L2VNIParams,
-	targetNamespace string,
-) (*hostnetwork.L2VNISharedState, []error) {
-	if len(l2VNIs) == 0 {
-		return nil, nil
-	}
-	shared, err := newL2VNISharedState(targetNamespace)
-	if err != nil {
-		errs := make([]error, 0, len(l2VNIs))
-		for _, vni := range l2VNIs {
-			errs = append(errs, l2VNIError(vni, err.Error()))
-		}
-		return nil, errs
-	}
-	return shared, nil
-}
-
-// resolveL3UnderlayMTU resolves the underlay MTU once for the L3 host veths of
-// the pass. The MTU is node-wide, so every L3VNI and L3VPN of the pass reuses
+// resolveUnderlayMTU resolves the underlay MTU once for the host veths of the
+// pass. The MTU is node-wide, so every L3VNI, L3VPN and L2VNI of the pass reuses
 // it instead of resolving it per resource. Resources without a host veth do not
 // need it, so no lookup happens when none of them has one.
-func resolveL3UnderlayMTU(
-	l3VNIs []hostnetwork.L3VNIParams,
-	l3VPNs []hostnetwork.L3VPNParams,
-	targetNamespace string,
-) (int, error) {
-	needsMTU := slices.ContainsFunc(l3VNIs, func(vni hostnetwork.L3VNIParams) bool { return vni.LinkIPs != nil }) ||
-		slices.ContainsFunc(l3VPNs, func(l3vpn hostnetwork.L3VPNParams) bool { return l3vpn.LinkIPs != nil })
+func resolveUnderlayMTU(hostConfig conversion.HostConfigData, targetNamespace string) (int, error) {
+	needsMTU := len(hostConfig.L2VNIs) > 0 ||
+		slices.ContainsFunc(hostConfig.L3VNIs, func(vni hostnetwork.L3VNIParams) bool { return vni.LinkIPs != nil }) ||
+		slices.ContainsFunc(hostConfig.L3VPNs, func(l3vpn hostnetwork.L3VPNParams) bool { return l3vpn.LinkIPs != nil })
 	if !needsMTU {
 		return 0, nil
 	}
 	return findUnderlayMTU(targetNamespace)
+}
+
+// resolveVNISharedState resolves the state shared by every VNI of a datapath
+// pass. Resolving it opens the router namespace, so it must run once per pass
+// and its result must be reused by every VNI.
+func resolveVNISharedState(
+	hostConfig conversion.HostConfigData,
+	targetNamespace string,
+	underlayMTU int,
+) (*hostnetwork.VNISharedState, error) {
+	if len(hostConfig.L2VNIs) == 0 && len(hostConfig.L3VNIs) == 0 && len(hostConfig.L3VPNs) == 0 {
+		return nil, nil
+	}
+	shared, err := newVNISharedState(targetNamespace, underlayMTU)
+	if err != nil {
+		return nil, fmt.Errorf("could not resolve the VNI shared state: %w", err)
+	}
+	return shared, nil
 }
 
 func underlayMTUResourceError(kind v1alpha1.FailedResourceKind, name string, err error) error {
@@ -329,6 +337,28 @@ func l2VNIError(vni hostnetwork.L2VNIParams, message string) error {
 			Message: message,
 		},
 	}
+}
+
+// l2VNIStateErrors returns one error per L2VNI when the state needed to set
+// them up could not be resolved.
+func l2VNIStateErrors(l2VNIs []hostnetwork.L2VNIParams, mtuErr, stateErr error) []error {
+	var err error
+	switch {
+	case len(l2VNIs) == 0:
+		return nil
+	case mtuErr != nil:
+		err = fmt.Errorf("could not find underlay MTU: %w", mtuErr)
+	case stateErr != nil:
+		err = stateErr
+	default:
+		return nil
+	}
+
+	errs := make([]error, 0, len(l2VNIs))
+	for _, vni := range l2VNIs {
+		errs = append(errs, l2VNIError(vni, err.Error()))
+	}
+	return errs
 }
 
 func restoreUnderlay(

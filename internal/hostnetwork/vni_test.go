@@ -59,7 +59,7 @@ var _ = Describe("L3 VNI configuration", func() {
 			},
 		}
 
-		err := SetupL3VNI(context.Background(), params, 0)
+		err := SetupL3VNI(context.Background(), params, nil)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -87,7 +87,7 @@ var _ = Describe("L3 VNI configuration", func() {
 			},
 		}
 
-		err := SetupL3VNI(context.Background(), params, 0)
+		err := SetupL3VNI(context.Background(), params, nil)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -117,7 +117,7 @@ var _ = Describe("L3 VNI configuration", func() {
 			},
 		}
 
-		err := SetupL3VNI(context.Background(), params, 0)
+		err := SetupL3VNI(context.Background(), params, nil)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -160,7 +160,7 @@ var _ = Describe("L3 VNI configuration", func() {
 			},
 		}
 		for _, p := range params {
-			err := SetupL3VNI(context.Background(), p, 0)
+			err := SetupL3VNI(context.Background(), p, nil)
 			Expect(err).NotTo(HaveOccurred())
 
 			Eventually(func(g Gomega) {
@@ -219,10 +219,10 @@ var _ = Describe("L3 VNI configuration", func() {
 			},
 		}
 
-		err := SetupL3VNI(context.Background(), params, 0)
+		err := SetupL3VNI(context.Background(), params, nil)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = SetupL3VNI(context.Background(), params, 0)
+		err = SetupL3VNI(context.Background(), params, nil)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -247,7 +247,7 @@ var _ = Describe("L3 VNI configuration", func() {
 			LinkIPs: nil,
 		}
 
-		err := SetupL3VNI(context.Background(), params, 0)
+		err := SetupL3VNI(context.Background(), params, nil)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -282,8 +282,11 @@ var _ = Describe("L3 VNI configuration", func() {
 			},
 		}
 
-		err := SetupL3VNI(context.Background(), params, underlayMTU)
+		shared, err := NewVNISharedState(testNSPath(), underlayMTU)
 		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() { Expect(shared.Close()).To(Succeed()) })
+
+		Expect(SetupL3VNI(context.Background(), params, shared)).To(Succeed())
 
 		expectedMTU := underlayMTU - VXLanOverhead
 		Eventually(func(g Gomega) {
@@ -316,7 +319,7 @@ var _ = Describe("L3 VNI configuration", func() {
 			},
 		}
 
-		err := SetupL3VNI(context.Background(), params, 0)
+		err := SetupL3VNI(context.Background(), params, nil)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -596,7 +599,7 @@ var _ = Describe("L2 VNI configuration", func() {
 		const underlayMTU = 9000
 		setupFakeUnderlay(testNS, "testunderlayl2", underlayMTU)
 
-		shared, err := NewL2VNISharedState(testNSPath())
+		shared, err := NewVNISharedState(testNSPath(), underlayMTU)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(shared.underlayMTU).To(Equal(underlayMTU))
 
@@ -655,7 +658,7 @@ var _ = Describe("L2 VNI configuration", func() {
 		}
 
 		createVRFInNamespace(testNS, params.VRF)
-		shared, err := NewL2VNISharedState(testNSPath())
+		shared, err := NewVNISharedState(testNSPath(), 0)
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(func() {
 			Expect(shared.Close()).To(Succeed())
@@ -677,7 +680,7 @@ var _ = Describe("L2 VNI configuration", func() {
 	})
 
 	It("should set up the L2VNI in the namespace resolved for the pass", func() {
-		shared, err := NewL2VNISharedState(testNSPath())
+		shared, err := NewVNISharedState(testNSPath(), 0)
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(func() {
 			Expect(shared.Close()).To(Succeed())
