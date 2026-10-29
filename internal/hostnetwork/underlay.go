@@ -30,6 +30,11 @@ type UnderlayParams struct {
 	UnderlayInterfaces []UnderlayInterface
 	TargetNS           string
 	TunnelEndpoint     *UnderlayTunnelEndpointParams
+	// ExistingInterfaces are the underlay interfaces already provisioned in
+	// TargetNS. When nil, SetupUnderlay lists them itself. Callers that
+	// already listed them to decide whether the underlay changed pass the
+	// result so the namespace is listed once per pass.
+	ExistingInterfaces []UnderlayInterface
 }
 
 // UnderlayInterface describes how a single underlay interface is
@@ -82,15 +87,19 @@ func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
 		}
 	}()
 
+	existing := params.ExistingInterfaces
+	if existing == nil {
+		var err error
+		existing, err = UnderlayInterfaces(params.TargetNS)
+		if err != nil {
+			return err
+		}
+	}
 	// If any existing underlay interfaces were removed from the new list,
 	// clean them up before setting up the new ones: network devices are
 	// restored to the default namespace, CNI-provisioned interfaces are
 	// deleted with a CNI DEL. The caller tears down VNIs beforehand since
 	// they are bound to the old underlay and would be non-functional.
-	existing, err := UnderlayInterfaces(params.TargetNS)
-	if err != nil {
-		return err
-	}
 	if toRemove := UnderlayInterfacesToRemove(existing, params.UnderlayInterfaces); len(toRemove) > 0 {
 		slog.InfoContext(ctx, "underlay interfaces changed, removing old interfaces before setup",
 			"removed", toRemove, "requested", params.UnderlayInterfaces)

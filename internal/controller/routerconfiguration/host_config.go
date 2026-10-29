@@ -71,11 +71,7 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 		return err
 	}
 
-	removeAllVNIs, err := areAllUnderlayInterfacesToBeRemoved(ctx, config, hostConfig)
-	if err != nil {
-		return err
-	}
-	if removeAllVNIs {
+	if areAllUnderlayInterfacesToBeRemoved(ctx, hostConfig, currentUnderlayIfaces) {
 		// VXLAN tunnels are bound to the current underlay interfaces. If all underlay interfaces are being
 		// replaced, tear down the VNIs first so they don't reference stale interfaces; they'll be recreated
 		// on top of the new underlay.
@@ -87,6 +83,7 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 
 	slog.InfoContext(ctx, "setting up underlay")
 
+	hostConfig.Underlay.ExistingInterfaces = currentUnderlayIfaces
 	if err := hostnetwork.SetupUnderlay(ctx, hostConfig.Underlay); err != nil {
 		return fmt.Errorf("failed to setup underlay: %w", err)
 	}
@@ -392,14 +389,9 @@ func isSRV6(underlay v1alpha1.Underlay) bool {
 // network devices and the CNI-provisioned interfaces.
 func areAllUnderlayInterfacesToBeRemoved(
 	ctx context.Context,
-	config interfacesConfiguration,
 	hostConfig conversion.HostConfigData,
-) (bool, error) {
-	existing, err := hostnetwork.UnderlayInterfaces(config.targetNamespace)
-	if err != nil {
-		return false, fmt.Errorf("failed to list existing underlay interfaces: %w", err)
-	}
-
+	existing []hostnetwork.UnderlayInterface,
+) bool {
 	toRemove := hostnetwork.UnderlayInterfacesToRemove(existing, hostConfig.Underlay.UnderlayInterfaces)
 	allRemoved := len(toRemove) > 0 && len(toRemove) == len(existing)
 	if allRemoved {
@@ -408,5 +400,5 @@ func areAllUnderlayInterfacesToBeRemoved(
 			"requested", hostConfig.Underlay.UnderlayInterfaces,
 		)
 	}
-	return allRemoved, nil
+	return allRemoved
 }
