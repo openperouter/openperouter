@@ -227,6 +227,8 @@ func (s *fakeSysfs) addNetClassDevice(name, deviceTarget string) {
 	s.t.Helper()
 	dir := filepath.Join(s.Root, "class", "net", name)
 	s.mkdir(dir)
+	// The pci package resolves the link with EvalSymlinks, so its target must exist.
+	s.mkdir(filepath.Join(dir, deviceTarget))
 	if err := os.Symlink(deviceTarget, filepath.Join(dir, "device")); err != nil {
 		s.t.Fatal(err)
 	}

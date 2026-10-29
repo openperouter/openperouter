@@ -6,7 +6,8 @@ QEMU runs inside the `pe-kind-control-plane` Containerlab node. The node
 uses `docker.io/qemux/qemu:7.50`, passes through `/dev/kvm` and
 `/dev/net/tun`, and mounts `clab/qemu/vm` at `/vm`. Its
 `vm/entrypoint.sh` bridges four Containerlab interfaces to TAP devices,
-then launches QEMU with four `igb` NICs and one virtio management NIC.
+then launches QEMU with four underlay NICs and one virtio management NIC:
+`toswitch2` and `toleafkind2` are `virtio-net-pci`, the other two are `igb`.
 
 The VM uses a Fedora Cloud Base image, a per-start `overlay.qcow2`, and a
 cloud-init ISO. `vm/setup.sh` reboots the guest once for cloud-init changes,
@@ -20,7 +21,7 @@ Each QEMU NIC is connected to a clab interface via a Linux bridge
 inside the container:
 
 ```
-Clab interface          Bridge          TAP              Guest (igb)
+Clab interface          Bridge          TAP              Guest (igb/virtio)
 ──────────────────────────────────────────────────────────────────────
  toswitch1       ◄──►  toswitch1_br  ◄──►  toswitch1_t  │  toswitch1
 ```
@@ -45,7 +46,7 @@ rules and passes them through QEMU fw_cfg; cloud-init writes them to
 ┌──────────────── pe-kind-control-plane (clab container) ─────────────┐
 │                                                                     │
 │   toswitch1 ──bridge── toswitch1_t ─┐                               │
-│   toswitch2 ──bridge── toswitch2_t ─┤  QEMU VM (igb NICs)           │
+│   toswitch2 ──bridge── toswitch2_t ─┤  QEMU VM (igb + virtio NICs)  │
 │   toleafkind1──bridge──toleafkind1_t┤  + virtio mgmt NIC            │
 │   toleafkind2──bridge──toleafkind2_t┘  (hostfwd :2222→:22,          │
 │                                          :6443→:6443)               │
