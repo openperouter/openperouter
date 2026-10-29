@@ -136,6 +136,7 @@ func (m *mockRouter) HandleNonRecoverableError(_ context.Context) error { return
 
 func newTestPERouterReconciler(t *testing.T, datapathConfigurator DatapathConfigurator, objects ...client.Object) *PERouterReconciler {
 	t.Helper()
+	resetFRRConfigCache(t)
 	s := testScheme(t)
 	cli := fake.NewClientBuilder().
 		WithScheme(s).
