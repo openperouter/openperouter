@@ -1135,7 +1135,7 @@ func TestISISFeatures(t *testing.T) {
 					{Name: "lo", IPv6: true, IsPassive: true},
 					{Name: "eth0", IPv4: true, IPv6: false},
 					{Name: "eth1", IPv4: false, IPv6: true},
-					{Name: "eth2", IPv4: true, IPv6: true},
+					{Name: "eth2", IPv4: true, IPv6: true, PointToPoint: true},
 				},
 			},
 		},

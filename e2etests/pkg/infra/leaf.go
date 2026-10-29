@@ -4,6 +4,7 @@ package infra
 
 import (
 	"bytes"
+	"fmt"
 	"html/template"
 	"net"
 	"os"
@@ -115,6 +116,18 @@ type LeafKindConfiguration struct {
 	PeerIPFamily          ipfamily.Family
 	BGPAddressFamilies    []networklayerprotocol.NLP
 	Password              string
+	ISISInterfaces        []LeafKindISISInterface
+}
+
+// LeafKindISISInterface holds the IS-IS configuration of a leafkind interface.
+type LeafKindISISInterface struct {
+	// Name is the leafkind interface to configure.
+	Name string
+	// ISIS enables IS-IS on the interface.
+	ISIS bool
+	// PointToPoint enables point-to-point circuit mode on the interface.
+	// Requires ISIS.
+	PointToPoint bool
 }
 
 // Neighbor represents a BGP neighbor with its ID (IP address or interface)
@@ -304,6 +317,41 @@ func (l LeafKind) Configure(config LeafKindConfiguration) error {
 	}
 
 	return l.ReloadConfig(configString)
+}
+
+// EnableISISPointToPoint runs IS-IS in point-to-point mode on the leaf side
+// of the unnumbered links to the given nodes.
+func (l LeafKind) EnableISISPointToPoint(nodes []corev1.Node) error {
+	return l.configureNodeLinksISIS(nodes, LeafKindISISInterface{ISIS: true, PointToPoint: true})
+}
+
+// DisableISISPointToPoint restores the leaf side of the unnumbered links to
+// the given nodes to their baseline configuration, without IS-IS. FRR rejects
+// removing `isis network point-to-point` once `ipv6 router isis` is gone from
+// the interface, so point-to-point mode is dropped first.
+func (l LeafKind) DisableISISPointToPoint(nodes []corev1.Node) error {
+	if err := l.configureNodeLinksISIS(nodes, LeafKindISISInterface{ISIS: true}); err != nil {
+		return fmt.Errorf("failed to disable point-to-point mode on %s: %w", l.Name, err)
+	}
+	if err := l.configureNodeLinksISIS(nodes, LeafKindISISInterface{}); err != nil {
+		return fmt.Errorf("failed to disable IS-IS on %s: %w", l.Name, err)
+	}
+	return nil
+}
+
+// configureNodeLinksISIS applies the IS-IS settings of iface to the leaf
+// side of the unnumbered link to each of the given nodes.
+func (l LeafKind) configureNodeLinksISIS(nodes []corev1.Node, iface LeafKindISISInterface) error {
+	ifaces := []LeafKindISISInterface{}
+	for _, node := range nodes {
+		neighbor, err := NeighborForFamily(l.Container.Name, node.Name, ipfamily.Unnumbered)
+		if err != nil {
+			return err
+		}
+		iface.Name = neighbor.ID
+		ifaces = append(ifaces, iface)
+	}
+	return l.UpdateConfig(nodes, LeafKindConfiguration{ISISInterfaces: ifaces})
 }
 
 func (l Leaf) Configure(leafConfig LeafConfiguration) error {

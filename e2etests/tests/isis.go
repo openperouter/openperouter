@@ -3,6 +3,7 @@
 package tests
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"slices"
@@ -17,6 +18,8 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/ipfamily"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 )
 
@@ -37,6 +40,78 @@ var _ = Describe("IS-IS routes", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(len(slices.Collect(routers.GetExecutors()))).To(BeNumerically(">=", 2))
 		routers.Dump(GinkgoWriter)
+	})
+
+	Context("point-to-point links", func() {
+		const tunnelEndpointCIDRv6 = "2001:db8:1234:5678::/64"
+		var nodes []corev1.Node
+
+		BeforeAll(func() {
+			nodesItems, err := cs.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+			Expect(err).NotTo(HaveOccurred())
+			nodes = nodesItems.Items
+		})
+
+		BeforeEach(func() {
+			By("cleaning all resources")
+			Expect(Updater.CleanAll()).To(Succeed())
+			Eventually(Updater.IsUnderlayClean).ProbeEvery(5 * time.Second).WithTimeout(120 * time.Second).Should(Succeed())
+
+			By("configuring leafkind1 with IS-IS point-to-point on the node links")
+			Expect(infra.LeafKind1Config.EnableISISPointToPoint(nodes)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			dumpIfFails(cs)
+			By("cleaning all resources")
+			Expect(Updater.CleanAll()).To(Succeed())
+			Eventually(Updater.IsUnderlayClean).ProbeEvery(5 * time.Second).WithTimeout(120 * time.Second).Should(Succeed())
+
+			By("restoring the leafkind1 configuration")
+			Expect(infra.LeafKind1Config.DisableISISPointToPoint(nodes)).To(Succeed())
+		})
+
+		It("exchanges routes only when both ends run point-to-point", func() {
+			_, routeCIDR, err := net.ParseCIDR(tunnelEndpointCIDRv6)
+			Expect(err).NotTo(HaveOccurred())
+			routersCount := len(slices.Collect(routers.GetExecutors()))
+
+			By("enabling point-to-point on the node links")
+			p2pUnderlay := infra.Underlay(infra.ISISOnly)
+			p2pUnderlay.Spec.Interfaces = []v1alpha1.UnderlayInterface{
+				{
+					Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+					NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toleafkind1"},
+				},
+			}
+			p2pUnderlay.Spec.ISIS.Interfaces = []v1alpha1.ISISInterface{
+				{
+					Name:     "toleafkind1",
+					IPFamily: new(v1alpha1.IPFamilyIPv6),
+					Features: []v1alpha1.ISISInterfaceFeature{"point-to-point"},
+				},
+			}
+
+			Expect(Updater.Update(config.Resources{
+				Underlays: []v1alpha1.Underlay{p2pUnderlay},
+			})).To(Succeed())
+
+			By("checking that each router learns the other tunnel endpoints through leafkind1")
+			Eventually(isisRoutesPerRouter).WithArguments(routers, routeCIDR).
+				WithTimeout(2 * time.Minute).WithPolling(5 * time.Second).
+				Should(HaveEach(HaveLen(routersCount - 1)))
+
+			By("disabling point-to-point on the node links")
+			p2pUnderlay.Spec.ISIS.Interfaces[0].Features = nil
+			Expect(Updater.Update(config.Resources{
+				Underlays: []v1alpha1.Underlay{p2pUnderlay},
+			})).To(Succeed())
+
+			By("checking that the circuit type mismatch with leafkind1 withdraws the routes")
+			Eventually(isisRoutesPerRouter).WithArguments(routers, routeCIDR).
+				WithTimeout(2 * time.Minute).WithPolling(5 * time.Second).
+				Should(HaveEach(BeEmpty()))
+		})
 	})
 
 	Context("topology tests", func() {
@@ -125,8 +200,22 @@ var _ = Describe("IS-IS routes", Ordered, func() {
 	})
 })
 
-// checkRoutesCountInCIDR counts selected, dest-selected host routes (/32 for IPv4, /128 for IPv6)
-// whose prefix falls within routeCIDR, and returns an error if the count doesn't match expectedCount.
+// isisRoutesPerRouter returns, for each router, the IS-IS IPv6 host routes
+// within routeCIDR.
+func isisRoutesPerRouter(routers openperouter.Routers, routeCIDR *net.IPNet) (map[string][]string, error) {
+	res := map[string][]string{}
+	for exec := range routers.GetExecutors() {
+		prefixes, err := routesInCIDR(exec, routeCIDR, frr.ISIS, ipfamily.IPv6)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get routes on router %s: %w", exec.Name(), err)
+		}
+		res[exec.Name()] = prefixes
+	}
+	return res, nil
+}
+
+// checkRoutesCountInCIDR returns an error if the number of routes returned by routesInCIDR
+// doesn't match expectedCount.
 func checkRoutesCountInCIDR(
 	exec openperouter.RouterExecutor,
 	routeCIDR *net.IPNet,
@@ -134,11 +223,30 @@ func checkRoutesCountInCIDR(
 	af ipfamily.Family,
 	expectedCount int,
 ) error {
-	routesInCIDR := []frr.RouteEntry{}
+	prefixes, err := routesInCIDR(exec, routeCIDR, protocol, af)
+	if err != nil {
+		return err
+	}
+	if len(prefixes) != expectedCount {
+		return fmt.Errorf("expected count is %d but got %d routes, routes: %v",
+			expectedCount, len(prefixes), prefixes)
+	}
+	return nil
+}
+
+// routesInCIDR returns the prefixes of selected, dest-selected host routes (/32 for IPv4, /128 for IPv6)
+// that fall within routeCIDR.
+func routesInCIDR(
+	exec openperouter.RouterExecutor,
+	routeCIDR *net.IPNet,
+	protocol frr.RouteProtocol,
+	af ipfamily.Family,
+) ([]string, error) {
+	prefixes := []string{}
 
 	routes, err := frr.GetRoutes(exec, protocol, af)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	for _, route := range routes {
 		for _, routeEntry := range route {
@@ -157,19 +265,15 @@ func checkRoutesCountInCIDR(
 			}
 			ip, _, err := net.ParseCIDR(routeEntry.Prefix)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			if !routeCIDR.Contains(ip) {
 				continue
 			}
-			routesInCIDR = append(routesInCIDR, routeEntry)
+			prefixes = append(prefixes, routeEntry.Prefix)
 		}
 	}
-	if len(routesInCIDR) != expectedCount {
-		return fmt.Errorf("expected count is %d but got %d routes, routes: %+v",
-			expectedCount, len(routesInCIDR), routesInCIDR)
-	}
-	return nil
+	return prefixes, nil
 }
 
 // checkISISDatabase counts IS-IS database reachability entries that are host routes (/32 for extIPReach,
