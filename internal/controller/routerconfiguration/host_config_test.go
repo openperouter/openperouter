@@ -62,9 +62,12 @@ func TestSetupL2VNIs(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			shared := &hostnetwork.L2VNISharedState{}
+			var gotShared []*hostnetwork.L2VNISharedState
 			originalSetup := setupSingleL2VNI
 			t.Cleanup(func() { setupSingleL2VNI = originalSetup })
-			setupSingleL2VNI = func(_ context.Context, _ *hostnetwork.OVSClient, vni hostnetwork.L2VNIParams) error {
+			setupSingleL2VNI = func(_ context.Context, _ *hostnetwork.OVSClient, vni hostnetwork.L2VNIParams, s *hostnetwork.L2VNISharedState) error {
+				gotShared = append(gotShared, s)
 				return tc.setupErrs[vni.Name]
 			}
 			ctx, cancel := context.WithCancel(context.Background())
@@ -75,10 +78,74 @@ func TestSetupL2VNIs(t *testing.T) {
 				}
 			})
 
-			kept, errs := setupL2VNIs(ctx, &hostnetwork.OVSClient{}, tc.l2VNIs)
+			kept, errs := setupL2VNIs(ctx, &hostnetwork.OVSClient{}, tc.l2VNIs, shared)
 
 			require.Equal(t, tc.wantKept, kept)
 			require.Equal(t, tc.wantErrs, errs)
+			require.Len(t, gotShared, len(tc.l2VNIs))
+			for _, s := range gotShared {
+				require.Same(t, shared, s, "every L2VNI must reuse the state resolved for the pass")
+			}
+		})
+	}
+}
+
+func TestResolveL2VNISharedState(t *testing.T) {
+	red := l2VNIForTest("red", 100)
+	blue := l2VNIForTest("blue", 200)
+	stateErr := errors.New("could not find underlay MTU")
+
+	tests := []struct {
+		name      string
+		l2VNIs    []hostnetwork.L2VNIParams
+		stateErr  error
+		wantState bool
+		wantErrs  []error
+	}{
+		{
+			name: "no L2VNIs",
+		},
+		{
+			name:      "state is resolved once for the whole pass",
+			l2VNIs:    []hostnetwork.L2VNIParams{red, blue},
+			wantState: true,
+		},
+		{
+			name:     "a state failure is reported for every L2VNI",
+			l2VNIs:   []hostnetwork.L2VNIParams{red, blue},
+			stateErr: stateErr,
+			wantErrs: []error{
+				wantL2VNIError("red", stateErr.Error()),
+				wantL2VNIError("blue", stateErr.Error()),
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			originalSharedState := newL2VNISharedState
+			t.Cleanup(func() { newL2VNISharedState = originalSharedState })
+			calls := 0
+			newL2VNISharedState = func(string) (*hostnetwork.L2VNISharedState, error) {
+				calls++
+				if tc.stateErr != nil {
+					return nil, tc.stateErr
+				}
+				return &hostnetwork.L2VNISharedState{}, nil
+			}
+
+			state, errs := resolveL2VNISharedState(tc.l2VNIs, "/router")
+
+			require.Equal(t, tc.wantErrs, errs)
+			if tc.wantState {
+				require.NotNil(t, state)
+			} else {
+				require.Nil(t, state)
+			}
+			if len(tc.l2VNIs) == 0 {
+				require.Zero(t, calls)
+			} else {
+				require.Equal(t, 1, calls)
+			}
 		})
 	}
 }

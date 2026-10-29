@@ -19,6 +19,7 @@ import (
 )
 
 var setupSingleL2VNI = hostnetwork.SetupL2VNI
+var newL2VNISharedState = hostnetwork.NewL2VNISharedState
 
 type interfacesConfiguration struct {
 	targetNamespace string
@@ -124,8 +125,21 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 
 	l2VNIs, l3DomainErrors := filterL2VNIsWithNoRoutingDomain(hostConfig.L2VNIs, failedL3Domains)
 	resourceErrors = append(resourceErrors, l3DomainErrors...)
-	l2VNIs, l2VNIErrors := setupL2VNIs(ctx, ovsClient, l2VNIs)
-	resourceErrors = append(resourceErrors, l2VNIErrors...)
+
+	l2SharedState, l2StateErrors := resolveL2VNISharedState(l2VNIs, config.targetNamespace)
+	resourceErrors = append(resourceErrors, l2StateErrors...)
+	if l2SharedState == nil {
+		l2VNIs = nil
+	} else {
+		defer func() {
+			if err := l2SharedState.Close(); err != nil {
+				slog.Error("failed to close L2VNI shared namespace", "namespace", config.targetNamespace, "error", err)
+			}
+		}()
+		var l2VNIErrors []error
+		l2VNIs, l2VNIErrors = setupL2VNIs(ctx, ovsClient, l2VNIs, l2SharedState)
+		resourceErrors = append(resourceErrors, l2VNIErrors...)
+	}
 
 	slog.InfoContext(ctx, "setting up passthrough")
 	if hostConfig.L3Passthrough != nil {
@@ -210,11 +224,12 @@ func setupL2VNIs(
 	ctx context.Context,
 	ovsClient *hostnetwork.OVSClient,
 	l2VNIs []hostnetwork.L2VNIParams,
+	shared *hostnetwork.L2VNISharedState,
 ) ([]hostnetwork.L2VNIParams, []error) {
 	var kept []hostnetwork.L2VNIParams
 	var errs []error
 	for _, vni := range l2VNIs {
-		err := setupL2VNI(ctx, ovsClient, vni)
+		err := setupL2VNI(ctx, ovsClient, vni, shared)
 		if errors.Is(err, openpeerrors.ErrTransient) {
 			errs = append(errs, l2VNIError(vni, err.Error()))
 			kept = append(kept, vni)
@@ -229,12 +244,33 @@ func setupL2VNIs(
 	return kept, errs
 }
 
-func setupL2VNI(ctx context.Context, ovsClient *hostnetwork.OVSClient, vni hostnetwork.L2VNIParams) error {
+func setupL2VNI(ctx context.Context, ovsClient *hostnetwork.OVSClient, vni hostnetwork.L2VNIParams, shared *hostnetwork.L2VNISharedState) error {
 	slog.InfoContext(ctx, "setting up L2VNI", "vni", vni.VNI)
-	if err := setupSingleL2VNI(ctx, ovsClient, vni); err != nil {
+	if err := setupSingleL2VNI(ctx, ovsClient, vni, shared); err != nil {
 		return err
 	}
 	return bridgerefresh.StartForVNI(ctx, vni)
+}
+
+// resolveL2VNISharedState resolves the state shared by every L2VNI of a
+// datapath pass. Resolving it lists the links of the router namespace, so it
+// must run once per pass and its result must be reused by every L2VNI.
+func resolveL2VNISharedState(
+	l2VNIs []hostnetwork.L2VNIParams,
+	targetNamespace string,
+) (*hostnetwork.L2VNISharedState, []error) {
+	if len(l2VNIs) == 0 {
+		return nil, nil
+	}
+	shared, err := newL2VNISharedState(targetNamespace)
+	if err != nil {
+		errs := make([]error, 0, len(l2VNIs))
+		for _, vni := range l2VNIs {
+			errs = append(errs, l2VNIError(vni, err.Error()))
+		}
+		return nil, errs
+	}
+	return shared, nil
 }
 
 func l2VNIError(vni hostnetwork.L2VNIParams, message string) error {

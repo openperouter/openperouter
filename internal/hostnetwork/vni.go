@@ -60,6 +60,17 @@ type L2VNIParams struct {
 	HostMaster   *HostMaster
 }
 
+// L2VNISharedState is the state shared by every L2VNI of a datapath pass.
+// Resolving it opens the router namespace and reads node-wide link state, so
+// the caller resolves it once and passes the same state to every SetupL2VNI
+// call of the pass. Close must be called when the pass is done.
+type L2VNISharedState struct {
+	targetNS        string
+	ns              netns.NsHandle
+	underlayMTU     int
+	vtepDeviceIndex int
+}
+
 type HostMaster struct {
 	Name       *string
 	Type       string
@@ -79,6 +90,48 @@ type NotRouterInterfaceError struct {
 
 func (e NotRouterInterfaceError) Error() string {
 	return fmt.Sprintf("interface %s is not a router interface", e.Name)
+}
+
+// NewL2VNISharedState resolves the state shared by the L2VNIs of targetNS.
+// The caller must call Close when done with the returned state.
+func NewL2VNISharedState(targetNS string) (*L2VNISharedState, error) {
+	ns, err := netns.GetFromPath(targetNS)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get network namespace %s: %w", targetNS, err)
+	}
+
+	underlayMTU, err := FindUnderlayMTU(ns)
+	if err != nil {
+		closeNamespace(ns, targetNS)
+		return nil, fmt.Errorf("could not find underlay MTU: %w", err)
+	}
+
+	var vtepDeviceIndex int
+	if err := netnamespace.In(ns, func() error {
+		loopback, err := netlink.LinkByName(loopbackName)
+		if err != nil {
+			return fmt.Errorf("failed looking for vtep loopback interface %s: %w", loopbackName, err)
+		}
+		vtepDeviceIndex = loopback.Attrs().Index
+		return nil
+	}); err != nil {
+		closeNamespace(ns, targetNS)
+		return nil, err
+	}
+	return &L2VNISharedState{
+		targetNS:        targetNS,
+		ns:              ns,
+		underlayMTU:     underlayMTU,
+		vtepDeviceIndex: vtepDeviceIndex,
+	}, nil
+}
+
+// Close releases the target namespace handle held by the shared state.
+func (s *L2VNISharedState) Close() error {
+	if err := s.ns.Close(); err != nil {
+		return fmt.Errorf("failed to close namespace %s: %w", s.targetNS, err)
+	}
+	return nil
 }
 
 func setupVRFInNS(ctx context.Context, params VNIParams) error {
@@ -105,7 +158,7 @@ func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
 	if err := setupVRFInNS(ctx, params.VNIParams); err != nil {
 		return fmt.Errorf("SetupL3VNI: failed to setup VRF: %w", err)
 	}
-	if err := setupVNI(ctx, params.VNIParams, setAddrGenModeNone); err != nil {
+	if err := setupVNI(ctx, params.VNIParams, 0, setAddrGenModeNone); err != nil {
 		return fmt.Errorf("SetupL3VNI: failed to setup VNI: %w", err)
 	}
 	slog.DebugContext(ctx, "setting up l3 VNI", "params", params)
@@ -134,27 +187,30 @@ func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
 // domain to the default host namespace.
 // The VRF must already exist (created by SetupL3VNI); setupBridge
 // looks it up and binds the bridge to it.
-func SetupL2VNI(ctx context.Context, ovsClient *OVSClient, params L2VNIParams) error {
-	if err := setupVNI(ctx, params.VNIParams); err != nil {
+func SetupL2VNI(ctx context.Context, ovsClient *OVSClient, params L2VNIParams, shared *L2VNISharedState) error {
+	if shared == nil {
+		var err error
+		shared, err = NewL2VNISharedState(params.TargetNS)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if err := shared.Close(); err != nil {
+				slog.Error("failed to close namespace", "namespace", params.TargetNS, "error", err)
+			}
+		}()
+	}
+
+	if err := setupVNIInNamespace(ctx, params.VNIParams, shared.ns, shared.vtepDeviceIndex); err != nil {
 		return fmt.Errorf("SetupL2VNI: failed to setup VNI: %w", err)
 	}
 	vethNames := vethNamesFromVNI(params.VNI)
-	if err := setupNamespacedVeth(ctx, vethNames, params.TargetNS); err != nil {
+	if err := setupNamespacedVethInNamespace(ctx, vethNames, shared.ns); err != nil {
 		return fmt.Errorf("SetupL2VNI: failed to setup VNI veth: %w", err)
 	}
 
 	slog.DebugContext(ctx, "setting up l2 VNI", "params", params)
 	defer slog.DebugContext(ctx, "end setting up l2 VNI", "params", params)
-
-	ns, err := netns.GetFromPath(params.TargetNS)
-	if err != nil {
-		return fmt.Errorf("SetupVNI: Failed to get network namespace %s: %w", params.TargetNS, err)
-	}
-	defer func() {
-		if err := ns.Close(); err != nil {
-			slog.Error("failed to close namespace", "namespace", params.TargetNS, "error", err)
-		}
-	}()
 
 	hostVeth, err := netlink.LinkByName(vethNames.HostSide)
 	if errors.As(err, &netlink.LinkNotFoundError{}) {
@@ -165,10 +221,7 @@ func SetupL2VNI(ctx context.Context, ovsClient *OVSClient, params L2VNIParams) e
 	}
 	slog.Info("SetupL2VNI: found host veth", "name", vethNames.HostSide, "index", hostVeth.Attrs().Index)
 
-	underlayMTU, err := FindUnderlayMTU(ns)
-	if err != nil {
-		return fmt.Errorf("could not find underlay MTU: %w", err)
-	}
+	underlayMTU := shared.underlayMTU
 
 	if err := SetVethMTUForTunnelOverhead(hostVeth, underlayMTU, params.TunnelOverhead); err != nil {
 		return fmt.Errorf("SetupL2VNI: failed to set MTU on host veth %s: %w", vethNames.HostSide, err)
@@ -180,7 +233,7 @@ func SetupL2VNI(ctx context.Context, ovsClient *OVSClient, params L2VNIParams) e
 		}
 	}
 
-	if err := netnamespace.In(ns, func() error {
+	if err := netnamespace.In(shared.ns, func() error {
 		return setupL2VNIRouterSide(params, vethNames.NamespaceSide, underlayMTU)
 	}); err != nil {
 		return err
@@ -254,9 +307,7 @@ func SetupHostMaster(ctx context.Context, ovsClient *OVSClient, params L2VNIPara
 //
 // The VRF must already exist when params.VRF is set; setupBridge
 // looks it up and returns an error if it is missing.
-func setupVNI(ctx context.Context, params VNIParams, bridgeOptions ...NetlinkOption) error {
-	slog.DebugContext(ctx, "setting up VNI", "params", params)
-	defer slog.DebugContext(ctx, "end setting up VNI", "params", params)
+func setupVNI(ctx context.Context, params VNIParams, vtepDeviceIndex int, bridgeOptions ...NetlinkOption) error {
 	ns, err := netns.GetFromPath(params.TargetNS)
 	if err != nil {
 		return fmt.Errorf("failed to get network namespace %s: %w", params.TargetNS, err)
@@ -266,6 +317,18 @@ func setupVNI(ctx context.Context, params VNIParams, bridgeOptions ...NetlinkOpt
 			slog.Error("failed to close namespace", "namespace", params.TargetNS, "error", err)
 		}
 	}()
+	return setupVNIInNamespace(ctx, params, ns, vtepDeviceIndex, bridgeOptions...)
+}
+
+func setupVNIInNamespace(
+	ctx context.Context,
+	params VNIParams,
+	ns netns.NsHandle,
+	vtepDeviceIndex int,
+	bridgeOptions ...NetlinkOption,
+) error {
+	slog.DebugContext(ctx, "setting up VNI", "params", params)
+	defer slog.DebugContext(ctx, "end setting up VNI", "params", params)
 
 	return netnamespace.In(ns, func() error {
 		slog.DebugContext(ctx, "setting up bridge")
@@ -275,7 +338,7 @@ func setupVNI(ctx context.Context, params VNIParams, bridgeOptions ...NetlinkOpt
 		}
 
 		slog.DebugContext(ctx, "setting up vxlan")
-		return setupVXLan(params, bridge)
+		return setupVXLan(params, bridge, vtepDeviceIndex)
 	})
 }
 
@@ -573,4 +636,10 @@ func hostMaster(vni int32, m HostMaster) (netlink.Link, error) {
 		return nil, fmt.Errorf("getHostMaster: failed to create host bridge %d: %w", vni, err)
 	}
 	return bridge, nil
+}
+
+func closeNamespace(ns netns.NsHandle, namespace string) {
+	if err := ns.Close(); err != nil {
+		slog.Error("failed to close namespace", "namespace", namespace, "error", err)
+	}
 }
