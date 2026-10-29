@@ -215,10 +215,16 @@ func validateLifecycleGateway(params L2VNIParams) {
 	addresses, err := netlink.AddrList(gateway, netlink.FAMILY_ALL)
 	Expect(err).NotTo(HaveOccurred())
 	cidrs := make([]string, 0, len(addresses))
+	var linkLocals []net.IP
 	for _, address := range addresses {
+		if address.IP.IsLinkLocalUnicast() {
+			linkLocals = append(linkLocals, address.IP)
+			continue
+		}
 		cidrs = append(cidrs, address.IPNet.String())
 	}
 	Expect(cidrs).To(ConsistOf(params.L2GatewayIPs))
+	Expect(linkLocals).To(HaveLen(1))
 	vrf, err := lookupVRF(params.VRF)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(gateway.Attrs().MasterIndex).To(Equal(vrf.Index))

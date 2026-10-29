@@ -39,6 +39,9 @@ func setupL2Gateway(params L2VNIParams, bridge *netlink.Bridge) (netlink.Link, e
 	if err != nil {
 		return nil, err
 	}
+	if err := ensureGatewayLinkLocal(link, bridge.HardwareAddr); err != nil {
+		return nil, err
+	}
 	for _, ip := range params.L2GatewayIPs {
 		if err := AssignIPToInterface(link, ip); err != nil {
 			return nil, err
@@ -245,8 +248,8 @@ func ensureAddressless(link netlink.Link) error {
 }
 
 func suppressEndpointLinkLocal(link netlink.Link) error {
-	// Gateway addresses are explicit; automatic link-local addresses would introduce
-	// extra router identities.
+	// Gateway SVIs use a shared anycast MAC, so their link-local address must be
+	// assigned explicitly from a node-specific identity.
 	path := fmt.Sprintf("/proc/sys/net/ipv6/conf/%s/addr_gen_mode", link.Attrs().Name)
 	mode, err := os.ReadFile(path)
 	if err != nil {
@@ -321,6 +324,39 @@ func ensureGatewayFDB(bridge *netlink.Bridge, mac net.HardwareAddr) error {
 	}
 	if err := netlink.NeighSet(entry); err != nil {
 		return fmt.Errorf("set local gateway FDB on %s: %w", bridge.Name, err)
+	}
+	return nil
+}
+
+func ensureGatewayLinkLocal(link netlink.Link, mac net.HardwareAddr) error {
+	if len(mac) != macSize {
+		return fmt.Errorf("derive gateway %s link-local address: invalid MAC %s", link.Attrs().Name, mac)
+	}
+	// Timer-driven IPv6 neighbor probes require a usable link-local source. Use
+	// the private bridge's node-specific MAC rather than the shared gateway MAC.
+	ip := net.IP{0xfe, 0x80, 0, 0, 0, 0, 0, 0, mac[0] ^ 2, mac[1], mac[2], 0xff, 0xfe, mac[3], mac[4], mac[5]}
+	desired := netlink.Addr{
+		IPNet: &net.IPNet{IP: ip, Mask: net.CIDRMask(64, 128)},
+		Scope: unix.RT_SCOPE_LINK, Flags: unix.IFA_F_NODAD,
+	}
+	addresses, err := listAddresses(link, netlink.FAMILY_V6)
+	if err != nil {
+		return fmt.Errorf("list gateway %s IPv6 addresses: %w", link.Attrs().Name, err)
+	}
+	for _, address := range addresses {
+		if !address.IP.Equal(ip) {
+			continue
+		}
+		if bytes.Equal(address.Mask, desired.Mask) && address.Scope == desired.Scope &&
+			address.Flags&(unix.IFA_F_TENTATIVE|unix.IFA_F_DADFAILED|unix.IFA_F_OPTIMISTIC) == 0 {
+			return nil
+		}
+		if err := netlink.AddrDel(link, &address); err != nil {
+			return fmt.Errorf("remove unusable gateway %s link-local address: %w", link.Attrs().Name, err)
+		}
+	}
+	if err := netlink.AddrAdd(link, &desired); err != nil {
+		return fmt.Errorf("assign gateway %s link-local address: %w", link.Attrs().Name, err)
 	}
 	return nil
 }

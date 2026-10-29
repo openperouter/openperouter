@@ -3,6 +3,7 @@
 package hostnetwork
 
 import (
+	"net"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -30,6 +31,10 @@ var _ = Describe("VLAN-aware anycast gateways", func() {
 			}
 			bridge, err := setupBridge(params.VNIParams)
 			Expect(err).NotTo(HaveOccurred())
+			routerMAC, err := net.ParseMAC("02:11:22:33:44:55")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(netlink.LinkSetHardwareAddr(bridge, routerMAC)).To(Succeed())
+			bridge.HardwareAddr = routerMAC
 			Expect(netlink.LinkSetMTU(bridge, 1450)).To(Succeed())
 			endpoint, err := setupL2Gateway(params, bridge)
 			Expect(err).NotTo(HaveOccurred())
@@ -49,6 +54,17 @@ var _ = Describe("VLAN-aware anycast gateways", func() {
 			for _, address := range params.L2GatewayIPs {
 				Expect(interfaceHasIP(gateway, address)).To(BeTrue())
 			}
+			linkLocal, err := netlink.ParseAddr("fe80::11:22ff:fe33:4455/64")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(interfaceHasIP(gateway, linkLocal.String())).To(BeTrue())
+			addresses, err := netlink.AddrList(gateway, netlink.FAMILY_V6)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(addresses).To(ContainElement(And(
+				HaveField("IPNet", linkLocal.IPNet), HaveField("Scope", unix.RT_SCOPE_LINK),
+				HaveField("Flags", Satisfy(func(flags int) bool {
+					return flags&(unix.IFA_F_TENTATIVE|unix.IFA_F_DADFAILED|unix.IFA_F_OPTIMISTIC) == 0
+				})),
+			)))
 			entries, err := netlink.NeighList(bridge.Index, unix.AF_BRIDGE)
 			Expect(err).NotTo(HaveOccurred())
 			var local *netlink.Neigh
@@ -61,9 +77,11 @@ var _ = Describe("VLAN-aware anycast gateways", func() {
 			Expect(local.State & netlink.NUD_PERMANENT).NotTo(BeZero())
 			local.Flags = netlink.NTF_SELF
 			Expect(netlink.NeighDel(local)).To(Succeed())
+			Expect(netlink.AddrDel(gateway, linkLocal)).To(Succeed())
 			repeated, err := setupL2Gateway(params, bridge)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(repeated.Attrs().Index).To(Equal(gateway.Index))
+			Expect(interfaceHasIP(repeated, linkLocal.String())).To(BeTrue())
 			entries, err = netlink.NeighList(bridge.Index, unix.AF_BRIDGE)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(entries).To(ContainElement(And(
@@ -98,10 +116,12 @@ var _ = Describe("VLAN-aware anycast gateways", func() {
 			}
 			links := make(chan netlink.LinkUpdate, 32)
 			neighbors := make(chan netlink.NeighUpdate, 32)
+			addresses := make(chan netlink.AddrUpdate, 32)
 			done := make(chan struct{})
 			defer close(done)
 			Expect(netlink.LinkSubscribe(links, done)).To(Succeed())
 			Expect(netlink.NeighSubscribe(neighbors, done)).To(Succeed())
+			Expect(netlink.AddrSubscribe(addresses, done)).To(Succeed())
 			bridge, err = setupBridge(params.VNIParams)
 			Expect(err).NotTo(HaveOccurred())
 			repeated, err := setupL2Gateway(params, bridge)
@@ -113,6 +133,9 @@ var _ = Describe("VLAN-aware anycast gateways", func() {
 					_, exists := owned[update.Attrs().Index]
 					return !exists
 				case update := <-neighbors:
+					_, exists := owned[update.LinkIndex]
+					return !exists
+				case update := <-addresses:
 					_, exists := owned[update.LinkIndex]
 					return !exists
 				default:
@@ -153,6 +176,63 @@ var _ = Describe("VLAN-aware anycast gateways", func() {
 			Expect(err).To(BeAssignableToTypeOf(netlink.LinkNotFoundError{}))
 			return nil
 		})).To(Succeed())
+	})
+
+	It("answers IPv6 neighbor reachability probes through the gateway SVI", func() {
+		peerNS := createTestNS("gatewaypeerns")
+		DeferCleanup(func() {
+			Expect(netns.DeleteNamed("gatewaypeerns")).To(Succeed())
+			Expect(peerNS.Close()).To(Succeed())
+		})
+		var gateway netlink.Link
+		var peerMAC net.HardwareAddr
+		target := net.ParseIP("2001:db8::10")
+		Expect(netnamespace.In(ns, func() error {
+			Expect(setupVRF("testvrf")).To(Succeed())
+			params := L2VNIParams{
+				VNIParams:    VNIParams{VNI: 6002, VRF: "testvrf"},
+				L2GatewayIPs: []string{"2001:db8::1/64"},
+			}
+			bridge, err := setupBridge(params.VNIParams)
+			Expect(err).NotTo(HaveOccurred())
+			gateway, err = setupL2Gateway(params, bridge)
+			Expect(err).NotTo(HaveOccurred())
+			access := &netlink.Veth{LinkAttrs: netlink.LinkAttrs{Name: "gw-access"}, PeerName: "gw-peer"}
+			Expect(netlink.LinkAdd(access)).To(Succeed())
+			Expect(netlink.LinkSetMaster(access, bridge)).To(Succeed())
+			Expect(ensureAccessVLAN(access)).To(Succeed())
+			peer, err := netlink.LinkByName("gw-peer")
+			Expect(err).NotTo(HaveOccurred())
+			peerMAC = peer.Attrs().HardwareAddr
+			Expect(netlink.LinkSetNsFd(peer, int(peerNS))).To(Succeed())
+			Expect(netlink.LinkSetUp(access)).To(Succeed())
+			return nil
+		})).To(Succeed())
+		Expect(netnamespace.In(peerNS, func() error {
+			peer, err := netlink.LinkByName("gw-peer")
+			Expect(err).NotTo(HaveOccurred())
+			address, err := netlink.ParseAddr("2001:db8::10/64")
+			Expect(err).NotTo(HaveOccurred())
+			address.Flags = unix.IFA_F_NODAD
+			Expect(netlink.AddrAdd(peer, address)).To(Succeed())
+			return netlink.LinkSetUp(peer)
+		})).To(Succeed())
+		Expect(netnamespace.In(ns, func() error {
+			return netlink.NeighSet(&netlink.Neigh{
+				LinkIndex: gateway.Attrs().Index, Family: unix.AF_INET6,
+				IP: target, HardwareAddr: peerMAC, State: netlink.NUD_PROBE,
+			})
+		})).To(Succeed())
+		Eventually(func(g Gomega) {
+			g.Expect(netnamespace.In(ns, func() error {
+				neighbors, err := netlink.NeighList(gateway.Attrs().Index, netlink.FAMILY_V6)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(neighbors).To(ContainElement(And(
+					HaveField("IP", target), HaveField("State", netlink.NUD_REACHABLE),
+				)))
+				return nil
+			})).To(Succeed())
+		}).WithTimeout(5 * time.Second).WithPolling(100 * time.Millisecond).Should(Succeed())
 	})
 
 })
