@@ -59,7 +59,7 @@ var _ = Describe("L3 VNI configuration", func() {
 			},
 		}
 
-		err := SetupL3VNI(context.Background(), params)
+		err := SetupL3VNI(context.Background(), params, 0)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -87,7 +87,7 @@ var _ = Describe("L3 VNI configuration", func() {
 			},
 		}
 
-		err := SetupL3VNI(context.Background(), params)
+		err := SetupL3VNI(context.Background(), params, 0)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -117,7 +117,7 @@ var _ = Describe("L3 VNI configuration", func() {
 			},
 		}
 
-		err := SetupL3VNI(context.Background(), params)
+		err := SetupL3VNI(context.Background(), params, 0)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -160,7 +160,7 @@ var _ = Describe("L3 VNI configuration", func() {
 			},
 		}
 		for _, p := range params {
-			err := SetupL3VNI(context.Background(), p)
+			err := SetupL3VNI(context.Background(), p, 0)
 			Expect(err).NotTo(HaveOccurred())
 
 			Eventually(func(g Gomega) {
@@ -219,10 +219,10 @@ var _ = Describe("L3 VNI configuration", func() {
 			},
 		}
 
-		err := SetupL3VNI(context.Background(), params)
+		err := SetupL3VNI(context.Background(), params, 0)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = SetupL3VNI(context.Background(), params)
+		err = SetupL3VNI(context.Background(), params, 0)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -247,7 +247,7 @@ var _ = Describe("L3 VNI configuration", func() {
 			LinkIPs: nil,
 		}
 
-		err := SetupL3VNI(context.Background(), params)
+		err := SetupL3VNI(context.Background(), params, 0)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -282,7 +282,7 @@ var _ = Describe("L3 VNI configuration", func() {
 			},
 		}
 
-		err := SetupL3VNI(context.Background(), params)
+		err := SetupL3VNI(context.Background(), params, underlayMTU)
 		Expect(err).NotTo(HaveOccurred())
 
 		expectedMTU := underlayMTU - VXLanOverhead
@@ -316,7 +316,7 @@ var _ = Describe("L3 VNI configuration", func() {
 			},
 		}
 
-		err := SetupL3VNI(context.Background(), params)
+		err := SetupL3VNI(context.Background(), params, 0)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {

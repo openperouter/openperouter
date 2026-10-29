@@ -33,8 +33,9 @@ type L3VPNParams struct {
 // SetupL3VPN sets up a Layer 3 VPN in the target namespace.
 // It uses setupL3VPN to create the necessary VRF, and moves the veth to the
 // VRF corresponding to the L3 routing domain, exposing it to the default host
-// namespace.
-func SetupL3VPN(ctx context.Context, params L3VPNParams) error {
+// namespace. underlayMTU is the MTU of the underlay, resolved once per datapath
+// pass by the caller; zero leaves the veth MTU at its default.
+func SetupL3VPN(ctx context.Context, params L3VPNParams, underlayMTU int) error {
 	slog.DebugContext(ctx, "setting up L3VPN", "params", params)
 	defer slog.DebugContext(ctx, "end setting up L3VPN", "params", params)
 
@@ -53,7 +54,8 @@ func SetupL3VPN(ctx context.Context, params L3VPNParams) error {
 		params.TargetNS,
 		params.LinkIPs,
 		params.VRF,
-		params.TunnelOverhead); err != nil {
+		params.TunnelOverhead,
+		underlayMTU); err != nil {
 		return fmt.Errorf("SetupL3VPN: failed to setup host veth pair: %w", err)
 	}
 	return nil

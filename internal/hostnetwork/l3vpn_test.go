@@ -45,7 +45,7 @@ var _ = Describe("L3 VPN configuration", func() {
 			},
 		}
 
-		err := SetupL3VPN(context.Background(), params)
+		err := SetupL3VPN(context.Background(), params, 0)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -69,7 +69,7 @@ var _ = Describe("L3 VPN configuration", func() {
 			},
 		}
 
-		err := SetupL3VPN(context.Background(), params)
+		err := SetupL3VPN(context.Background(), params, 0)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -95,7 +95,7 @@ var _ = Describe("L3 VPN configuration", func() {
 			},
 		}
 
-		err := SetupL3VPN(context.Background(), params)
+		err := SetupL3VPN(context.Background(), params, 0)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -130,7 +130,7 @@ var _ = Describe("L3 VPN configuration", func() {
 			},
 		}
 		for _, p := range params {
-			err := SetupL3VPN(context.Background(), p)
+			err := SetupL3VPN(context.Background(), p, 0)
 			Expect(err).NotTo(HaveOccurred())
 
 			Eventually(func(g Gomega) {
@@ -328,7 +328,7 @@ var _ = Describe("L3 VPN configuration", func() {
 
 		By("setting up L3VPNs")
 		for _, p := range l3vpnParams {
-			Expect(SetupL3VPN(context.Background(), p)).To(Succeed())
+			Expect(SetupL3VPN(context.Background(), p, 0)).To(Succeed())
 		}
 		By("setting up L2VNIs")
 		for _, p := range l2vniParams {
@@ -372,10 +372,10 @@ var _ = Describe("L3 VPN configuration", func() {
 			},
 		}
 
-		err := SetupL3VPN(context.Background(), params)
+		err := SetupL3VPN(context.Background(), params, 0)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = SetupL3VPN(context.Background(), params)
+		err = SetupL3VPN(context.Background(), params, 0)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -396,7 +396,7 @@ var _ = Describe("L3 VPN configuration", func() {
 			LinkIPs:          nil,
 		}
 
-		err := SetupL3VPN(context.Background(), params)
+		err := SetupL3VPN(context.Background(), params, 0)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -439,7 +439,7 @@ var _ = Describe("L3 VPN configuration", func() {
 			},
 		}
 
-		Expect(SetupL3VPN(context.Background(), l3vpnParams)).To(Succeed())
+		Expect(SetupL3VPN(context.Background(), l3vpnParams, underlayMTU)).To(Succeed())
 		Expect(SetupL2VNI(context.Background(), ovsClient, l2vniParams, nil)).To(Succeed())
 
 		expectedMTU := underlayMTU - SRv6Overhead
@@ -469,7 +469,7 @@ var _ = Describe("L3 VPN configuration", func() {
 			},
 		}
 
-		err := SetupL3VPN(context.Background(), params)
+		err := SetupL3VPN(context.Background(), params, 0)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {

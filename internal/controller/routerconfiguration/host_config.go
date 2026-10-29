@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 
 	"k8s.io/apimachinery/pkg/util/sets"
 
@@ -20,6 +21,7 @@ import (
 
 var setupSingleL2VNI = hostnetwork.SetupL2VNI
 var newL2VNISharedState = hostnetwork.NewL2VNISharedState
+var findUnderlayMTU = hostnetwork.FindUnderlayMTUInNamespace
 
 type interfacesConfiguration struct {
 	targetNamespace string
@@ -89,6 +91,11 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 		return fmt.Errorf("failed to setup underlay: %w", err)
 	}
 
+	// The underlay MTU is node-wide: resolve it once and reuse it for every
+	// L3VNI/L3VPN host veth of the pass instead of listing the underlay links
+	// once per resource.
+	underlayMTU, underlayMTUErr := resolveL3UnderlayMTU(hostConfig.L3VNIs, hostConfig.L3VPNs, config.targetNamespace)
+
 	var resourceErrors []error
 	failedL3Domains := sets.New[string]()
 	reason := v1alpha1.FailedResourceReasonOverlayAttachmentFailed
@@ -96,7 +103,12 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 	var configuredL3VNIs []hostnetwork.L3VNIParams
 	for _, vni := range hostConfig.L3VNIs {
 		slog.InfoContext(ctx, "setting up VNI", "vni", vni.VRF)
-		if err := hostnetwork.SetupL3VNI(ctx, vni); err != nil {
+		if vni.LinkIPs != nil && underlayMTUErr != nil {
+			resourceErrors = append(resourceErrors, underlayMTUResourceError(openpeerrors.KindL3VNI, vni.Name, underlayMTUErr))
+			failedL3Domains.Insert(vni.VRF)
+			continue
+		}
+		if err := hostnetwork.SetupL3VNI(ctx, vni, underlayMTU); err != nil {
 			resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
 				Obj: v1alpha1.FailedResource{
 					Kind: openpeerrors.KindL3VNI, Name: vni.Name, Reason: reason, Message: err.Error(),
@@ -111,7 +123,12 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 	var configuredL3VPNs []hostnetwork.L3VPNParams
 	for _, l3vpn := range hostConfig.L3VPNs {
 		slog.InfoContext(ctx, "setting up L3 VPN", "VRF", l3vpn.VRF)
-		if err := hostnetwork.SetupL3VPN(ctx, l3vpn); err != nil {
+		if l3vpn.LinkIPs != nil && underlayMTUErr != nil {
+			resourceErrors = append(resourceErrors, underlayMTUResourceError(openpeerrors.KindL3VPN, l3vpn.Name, underlayMTUErr))
+			failedL3Domains.Insert(l3vpn.VRF)
+			continue
+		}
+		if err := hostnetwork.SetupL3VPN(ctx, l3vpn, underlayMTU); err != nil {
 			resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
 				Obj: v1alpha1.FailedResource{
 					Kind: openpeerrors.KindL3VPN, Name: l3vpn.Name, Reason: reason, Message: err.Error(),
@@ -271,6 +288,34 @@ func resolveL2VNISharedState(
 		return nil, errs
 	}
 	return shared, nil
+}
+
+// resolveL3UnderlayMTU resolves the underlay MTU once for the L3 host veths of
+// the pass. The MTU is node-wide, so every L3VNI and L3VPN of the pass reuses
+// it instead of resolving it per resource. Resources without a host veth do not
+// need it, so no lookup happens when none of them has one.
+func resolveL3UnderlayMTU(
+	l3VNIs []hostnetwork.L3VNIParams,
+	l3VPNs []hostnetwork.L3VPNParams,
+	targetNamespace string,
+) (int, error) {
+	needsMTU := slices.ContainsFunc(l3VNIs, func(vni hostnetwork.L3VNIParams) bool { return vni.LinkIPs != nil }) ||
+		slices.ContainsFunc(l3VPNs, func(l3vpn hostnetwork.L3VPNParams) bool { return l3vpn.LinkIPs != nil })
+	if !needsMTU {
+		return 0, nil
+	}
+	return findUnderlayMTU(targetNamespace)
+}
+
+func underlayMTUResourceError(kind v1alpha1.FailedResourceKind, name string, err error) error {
+	return &openpeerrors.ResourceError{
+		Obj: v1alpha1.FailedResource{
+			Kind:    kind,
+			Name:    name,
+			Reason:  v1alpha1.FailedResourceReasonOverlayAttachmentFailed,
+			Message: fmt.Sprintf("could not find underlay MTU: %v", err),
+		},
+	}
 }
 
 func l2VNIError(vni hostnetwork.L2VNIParams, message string) error {

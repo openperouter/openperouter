@@ -154,7 +154,9 @@ func setupVRFInNS(ctx context.Context, params VNIParams) error {
 // It creates the VRF, then uses setupVNI to create the bridge
 // and VXLan interface, and moves the veth to the VRF corresponding
 // to the L3 routing domain, exposing it to the default host namespace.
-func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
+// underlayMTU is the MTU of the underlay, resolved once per datapath pass by
+// the caller; zero leaves the veth MTU at its default.
+func SetupL3VNI(ctx context.Context, params L3VNIParams, underlayMTU int) error {
 	if err := setupVRFInNS(ctx, params.VNIParams); err != nil {
 		return fmt.Errorf("SetupL3VNI: failed to setup VRF: %w", err)
 	}
@@ -175,7 +177,8 @@ func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
 		params.TargetNS,
 		params.LinkIPs,
 		params.VRF,
-		params.TunnelOverhead); err != nil {
+		params.TunnelOverhead,
+		underlayMTU); err != nil {
 		return fmt.Errorf("SetupL3VNI: failed to setup host veth pair: %w", err)
 	}
 	return nil

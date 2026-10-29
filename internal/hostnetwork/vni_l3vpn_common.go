@@ -45,9 +45,10 @@ func RemoveNonConfiguredVRFs(targetNS string, vrfs map[string]bool) error {
 }
 
 // setupHostVeth configures the veth pair that connects the host to the perouter namespace, for
-// L3VNI and L3VPN.
+// L3VNI and L3VPN. underlayMTU is the MTU of the underlay, resolved once per
+// datapath pass by the caller; zero leaves the veth MTU at its default.
 func setupHostVeth(ctx context.Context, vethNames VethNames, targetNS string, linkIPs *LinkIPs,
-	vrfName string, tunnelOverhead int) error {
+	vrfName string, tunnelOverhead, underlayMTU int) error {
 	if err := setupNamespacedVeth(ctx, vethNames, targetNS); err != nil {
 		return fmt.Errorf("failed to setup veth: %w", err)
 	}
@@ -73,11 +74,6 @@ func setupHostVeth(ctx context.Context, vethNames VethNames, targetNS string, li
 	err = AssignIPsToInterface(hostVethLink, linkIPs.HostIPv4, linkIPs.HostIPv6)
 	if err != nil {
 		return fmt.Errorf("failed to assign IPs to host veth: %w", err)
-	}
-
-	underlayMTU, err := FindUnderlayMTU(ns)
-	if err != nil {
-		return fmt.Errorf("could not find underlay MTU: %w", err)
 	}
 
 	if err := SetVethMTUForTunnelOverhead(hostVethLink, underlayMTU, tunnelOverhead); err != nil {

@@ -185,11 +185,92 @@ func TestFilterL2VNIsWithNoRoutingDomain(t *testing.T) {
 	}
 }
 
+func TestResolveL3UnderlayMTU(t *testing.T) {
+	mtuErr := errors.New("failed to list links")
+
+	tests := []struct {
+		name       string
+		l3VNIs     []hostnetwork.L3VNIParams
+		l3VPNs     []hostnetwork.L3VPNParams
+		resolveErr error
+		wantMTU    int
+		wantErr    error
+		wantCalls  int
+	}{
+		{
+			name: "no L3 resources",
+		},
+		{
+			name:   "L3 resources without a host veth need no MTU",
+			l3VNIs: []hostnetwork.L3VNIParams{l3VNIForTest("red", false)},
+			l3VPNs: []hostnetwork.L3VPNParams{l3VPNForTest("blue", false)},
+		},
+		{
+			name:      "resolved once for every L3VNI of the pass",
+			l3VNIs:    []hostnetwork.L3VNIParams{l3VNIForTest("red", true), l3VNIForTest("blue", true)},
+			wantMTU:   9000,
+			wantCalls: 1,
+		},
+		{
+			name:      "an L3VPN host veth triggers the lookup",
+			l3VPNs:    []hostnetwork.L3VPNParams{l3VPNForTest("red", true)},
+			wantMTU:   9000,
+			wantCalls: 1,
+		},
+		{
+			name:       "a resolution failure is returned",
+			l3VNIs:     []hostnetwork.L3VNIParams{l3VNIForTest("red", true)},
+			resolveErr: mtuErr,
+			wantErr:    mtuErr,
+			wantCalls:  1,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			originalFindUnderlayMTU := findUnderlayMTU
+			t.Cleanup(func() { findUnderlayMTU = originalFindUnderlayMTU })
+			calls := 0
+			findUnderlayMTU = func(string) (int, error) {
+				calls++
+				if tc.resolveErr != nil {
+					return 0, tc.resolveErr
+				}
+				return 9000, nil
+			}
+
+			mtu, err := resolveL3UnderlayMTU(tc.l3VNIs, tc.l3VPNs, "/router")
+
+			require.Equal(t, tc.wantMTU, mtu)
+			require.Equal(t, tc.wantErr, err)
+			require.Equal(t, tc.wantCalls, calls)
+		})
+	}
+}
+
 func l2VNIForTest(name string, vni int32) hostnetwork.L2VNIParams {
 	return hostnetwork.L2VNIParams{
 		VNIParams: hostnetwork.VNIParams{VRF: name, VNI: vni},
 		Name:      name,
 	}
+}
+
+func l3VNIForTest(name string, withHostVeth bool) hostnetwork.L3VNIParams {
+	params := hostnetwork.L3VNIParams{
+		VNIParams: hostnetwork.VNIParams{VRF: name},
+		Name:      name,
+	}
+	if withHostVeth {
+		params.LinkIPs = &hostnetwork.LinkIPs{HostIPv4: "192.168.9.1/32"}
+	}
+	return params
+}
+
+func l3VPNForTest(name string, withHostVeth bool) hostnetwork.L3VPNParams {
+	params := hostnetwork.L3VPNParams{VRF: name}
+	if withHostVeth {
+		params.LinkIPs = &hostnetwork.LinkIPs{HostIPv4: "192.168.9.1/32"}
+	}
+	return params
 }
 
 func wantL2VNIError(name, message string) error {

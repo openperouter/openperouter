@@ -211,6 +211,22 @@ func UnderlayInterfaces(namespace string) ([]UnderlayInterface, error) {
 	return underlayInterfaces(ns)
 }
 
+// FindUnderlayMTUInNamespace retrieves the lowest MTU among all underlay
+// interfaces of the given namespace path.
+func FindUnderlayMTUInNamespace(targetNS string) (int, error) {
+	ns, err := netns.GetFromPath(targetNS)
+	if err != nil {
+		return 0, fmt.Errorf("failed to find network namespace %s: %w", targetNS, err)
+	}
+	defer func() {
+		if err := ns.Close(); err != nil {
+			slog.Error("failed to close namespace", "namespace", targetNS, "error", err)
+		}
+	}()
+
+	return FindUnderlayMTU(ns)
+}
+
 func underlayInterfaces(ns netns.NsHandle) ([]UnderlayInterface, error) {
 	netdevs, err := FindInterfacesInGroup(ns, UnderlayGroupID)
 	if err != nil {
