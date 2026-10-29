@@ -228,6 +228,12 @@ the bridge in that VRF and configures any addresses in `gatewayIPs` as the
 distributed anycast gateway. The `hostMaster` settings continue to control the
 Linux or OVS bridge attachment on the host.
 
+Grout keeps the EVPN Type-2 routes of silent workloads alive by itself: when a
+learned neighbor has not answered for 30 seconds, grout probes it, and a
+neighbor that doesn't reply is removed. OpenPERouter sets this lifetime on
+grout to match the kernel's default neighbor reachable time, instead of grout's
+20 minute default.
+
 ## DPDK-Accelerated Underlay Ports
 
 The controller binds `NetworkDevice` entries as PCI ports by default, even if
