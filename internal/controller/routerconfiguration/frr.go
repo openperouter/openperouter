@@ -8,9 +8,18 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"reflect"
+	"sync"
 
 	"github.com/openperouter/openperouter/internal/conversion"
 	"github.com/openperouter/openperouter/internal/frr"
+)
+
+// The controller process manages a single FRR instance, so we can keep a local copy
+// of the last applied configuration.
+var (
+	lastAppliedFRRConfig *frr.Config
+	frrConfigMutex       sync.Mutex
 )
 
 type frrConfigData struct {
@@ -35,11 +44,22 @@ func configureFRR(ctx context.Context, data frrConfigData) error {
 		return fmt.Errorf("failed to generate the frr configuration: %w", err)
 	}
 
+	frrConfigMutex.Lock()
+	defer frrConfigMutex.Unlock()
+
+	if reflect.DeepEqual(lastAppliedFRRConfig, &frrConfig) {
+		slog.DebugContext(ctx, "FRR configuration unchanged, skipping reload")
+		return nil
+	}
+
+	// A failed reload may partially change FRR, invalidating the previous configuration.
+	lastAppliedFRRConfig = nil
 	previousConfig, prevErr := os.ReadFile(data.configFile)
-	err = frr.ApplyConfig(ctx, &frrConfig, data.updater)
+	err = frr.ApplyConfig(ctx, frrConfig, data.updater)
 	if err != nil {
 		return fmt.Errorf("failed to update the frr configuration: %w", err)
 	}
+	lastAppliedFRRConfig = &frrConfig
 	newConfig, newErr := os.ReadFile(data.configFile)
 	if newErr != nil {
 		slog.WarnContext(ctx, "failed to read FRR config after update", "error", newErr)
