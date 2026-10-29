@@ -690,6 +690,7 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 }
 
 func TestReconcileFrrReloadFailure(t *testing.T) {
+	resetFRRConfigCache(t)
 	reconcileErr := Reconcile(context.Background(), conversion.APIConfigData{}, 0, "",
 		"", "", failingUpdater, &noopDatapathConfigurator{}, configureFRR)
 	if reconcileErr == nil {
@@ -749,6 +750,7 @@ func TestReconcileAppliesFRRConfigBeforeDatapath(t *testing.T) {
 // TestReconcileSkipsDatapathOnFrrReloadFailure ensures no kernel object is created
 // when FRR could not be configured, so that the datapath never gets ahead of FRR.
 func TestReconcileSkipsDatapathOnFrrReloadFailure(t *testing.T) {
+	resetFRRConfigCache(t)
 	var steps []string
 
 	reconcileErr := Reconcile(context.Background(), conversion.APIConfigData{}, 0, "",

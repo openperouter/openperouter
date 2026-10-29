@@ -103,6 +103,7 @@ type wiringEnv struct {
 
 func startWiringEnv(t *testing.T) *wiringEnv {
 	t.Helper()
+	resetFRRConfigCache(t)
 	ctrl.SetLogger(logr.Discard())
 
 	testEnv := &envtest.Environment{
