@@ -30,13 +30,7 @@ type HostSession struct {
 	// localCIDRs is the list of CIDRs for the veth pair connecting to the
 	// default namespace. The router side uses the first usable IP of each CIDR.
 	// At most one IPv4 and one IPv6 CIDR may be set; list order is not significant.
-	// +kubebuilder:validation:MinItems=1
-	// +kubebuilder:validation:MaxItems=2
-	// +kubebuilder:validation:XValidation:rule="self.all(c, isCIDR(c))",message="all entries must be valid CIDRs"
-	// +kubebuilder:validation:XValidation:rule="self.filter(c, isCIDR(c) && cidr(c).ip().family() == 4).size() <= 1",message="at most one IPv4 CIDR is allowed"
-	// +kubebuilder:validation:XValidation:rule="self.filter(c, isCIDR(c) && cidr(c).ip().family() == 6).size() <= 1",message="at most one IPv6 CIDR is allowed"
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="localCIDRs can't be changed"
-	// +listType=atomic
 	// +required
-	LocalCIDRs []string `json:"localCIDRs,omitempty"`
+	LocalCIDRs DualStackCIDRs `json:"localCIDRs,omitempty"`
 }

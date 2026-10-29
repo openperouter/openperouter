@@ -170,6 +170,23 @@ _Appears in:_
 | `runtimeConfig` _[JSON](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#json-v1-apiextensions-k8s-io)_ | runtimeConfig is an opaque JSON object mapping CNI capability names<br />to the payloads passed as capability arguments to the CNI<br />invocation. Only keys that the plugin declares in its<br />"capabilities" config block are forwarded; undeclared keys are<br />silently stripped. Well-known capabilities include ips, mac,<br />bandwidth, portMappings, ipRanges and deviceID. Immutable once<br />set: to change it, delete and recreate the Underlay. Immutability<br />is enforced by the validation webhook because CEL transition rules<br />cannot be evaluated inside atomic lists. |  | Type: object <br />Optional: \{\} <br /> |
 
 
+#### DualStackCIDRs
+
+_Underlying type:_ _string array_
+
+DualStackCIDRs is a list of at most one IPv4 and one IPv6 CIDR.
+
+_Validation:_
+- MaxItems: 2
+- MinItems: 1
+
+_Appears in:_
+- [HostSession](#hostsession)
+- [L2VNISpec](#l2vnispec)
+- [TunnelEndpointConfig](#tunnelendpointconfig)
+
+
+
 #### EBGPMultiHopProperties
 
 
@@ -296,7 +313,7 @@ _Appears in:_
 | `asn` _integer_ | asn is the local AS number to use to establish a BGP session with<br />the default namespace. |  | Maximum: 4.294967295e+09 <br />Minimum: 1 <br />Required: \{\} <br /> |
 | `hostASN` _integer_ | hostASN is the expected AS number for a BGP speaking component running in<br />the default network namespace. Either HostASN or HostType must be set. |  | Maximum: 4.294967295e+09 <br />Minimum: 1 <br />Optional: \{\} <br /> |
 | `hostType` _string_ | hostType is the AS type of the BGP speaking component running in the<br />default network namespace. Either HostASN or HostType must be set. |  | Enum: [External Internal] <br />Optional: \{\} <br /> |
-| `localCIDRs` _string array_ | localCIDRs is the list of CIDRs for the veth pair connecting to the<br />default namespace. The router side uses the first usable IP of each CIDR.<br />At most one IPv4 and one IPv6 CIDR may be set; list order is not significant. |  | MaxItems: 2 <br />MinItems: 1 <br />Required: \{\} <br /> |
+| `localCIDRs` _[DualStackCIDRs](#dualstackcidrs)_ | localCIDRs is the list of CIDRs for the veth pair connecting to the<br />default namespace. The router side uses the first usable IP of each CIDR.<br />At most one IPv4 and one IPv6 CIDR may be set; list order is not significant. |  | MaxItems: 2 <br />MinItems: 1 <br />Required: \{\} <br /> |
 
 
 #### IPFamily
@@ -448,7 +465,7 @@ _Appears in:_
 | `vxlanPort` _integer_ | vxlanPort is the port to be used for VXLan encapsulation. | 4789 | Maximum: 65535 <br />Minimum: 1 <br />Optional: \{\} <br /> |
 | `underlayAddressFamily` _string_ | underlayAddressFamily selects which VTEP address family to use for this VNI's<br />VXLAN interface. When omitted, defaults to the available family in the underlay<br />(IPv4 preferred in dual-stack). |  | Enum: [IPv4 IPv6] <br />Optional: \{\} <br /> |
 | `hostMaster` _[HostMaster](#hostmaster)_ | hostMaster is the interface on the host the veth should be attached to.<br />If not set, the host veth will not be attached to any interface and it must be<br />attached manually (or by some other means). This is useful if another controller<br />is leveraging the host interface for the VNI. |  | Optional: \{\} <br /> |
-| `gatewayIPs` _string array_ | gatewayIPs is a list of IP addresses in CIDR notation for the<br />distributed anycast gateway on this L2 segment's bridge<br />(Integrated Routing and Bridging interface). It is a property of<br />the L2 segment itself, so it lives on the L2VNI rather than<br />inside the routing-domain reference.<br />Maximum of 2 addresses are allowed. If 2 addresses are provided, one must be IPv4 and one must be IPv6. |  | MaxItems: 2 <br />Optional: \{\} <br /> |
+| `gatewayIPs` _[DualStackCIDRs](#dualstackcidrs)_ | gatewayIPs is a list of IP addresses in CIDR notation for the<br />distributed anycast gateway on this L2 segment's bridge<br />(Integrated Routing and Bridging interface). It is a property of<br />the L2 segment itself, so it lives on the L2VNI rather than<br />inside the routing-domain reference.<br />Maximum of 2 addresses are allowed. If 2 addresses are provided, one must be IPv4 and one must be IPv6. |  | MaxItems: 2 <br />MinItems: 1 <br />Optional: \{\} <br /> |
 | `exportRTs` _[RouteTarget](#routetarget) array_ | exportRTs are the Route Targets to be used for exporting L2 EVPN routes. |  | MaxItems: 100 <br />MaxLength: 21 <br />Optional: \{\} <br /> |
 | `importRTs` _[RouteTarget](#routetarget) array_ | importRTs are the Route Targets to be used for importing L2 EVPN routes. |  | MaxItems: 100 <br />MaxLength: 21 <br />Optional: \{\} <br /> |
 
@@ -886,6 +903,10 @@ _Underlying type:_ _string_
 
 RouteTarget defines a BGP Extended Community for route filtering.
 
+Supports two formats per RFC 4360:
+  - ASN:NN   (e.g. "64514:100")        where ASN is a 2- or 4-byte ASN (<= 4294967295)
+  - IP:NN    (e.g. "192.168.1.1:100")  where IP is a valid IPv4 address
+
 _Validation:_
 - MaxLength: 21
 
@@ -1037,7 +1058,7 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `cidrs` _string array_ | cidrs is a list of CIDRs to be used to assign IPs to the local tunnel endpoint on<br />each node. IPs derived from these CIDRs will be assigned to the local loopback.<br />At least one IPv4 or IPv6 CIDR is required. At most one of each family may be specified. |  | MaxItems: 2 <br />MinItems: 1 <br />Required: \{\} <br /> |
+| `cidrs` _[DualStackCIDRs](#dualstackcidrs)_ | cidrs is a list of CIDRs to be used to assign IPs to the local tunnel endpoint on<br />each node. IPs derived from these CIDRs will be assigned to the local loopback.<br />At least one IPv4 or IPv6 CIDR is required. At most one of each family may be specified. |  | MaxItems: 2 <br />MinItems: 1 <br />Required: \{\} <br /> |
 
 
 #### Underlay
@@ -1115,7 +1136,7 @@ _Appears in:_
 | --- | --- | --- | --- |
 | `nodeSelector` _[LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#labelselector-v1-meta)_ | nodeSelector specifies which nodes this Underlay applies to.<br />If empty or not specified, applies to all nodes (backward compatible).<br />Multiple Underlays with overlapping node selectors will be rejected. |  | Optional: \{\} <br /> |
 | `asn` _integer_ | asn is the local AS number to use for the session with the TOR switch. |  | Maximum: 4.294967295e+09 <br />Minimum: 1 <br />Required: \{\} <br /> |
-| `routerIDCIDR` _string_ | routerIDCIDR is the ipv4 cidr to be used to assign a different routerID on each node. | 10.0.0.0/24 | Optional: \{\} <br /> |
+| `routerIDCIDR` _string_ | routerIDCIDR is the ipv4 cidr to be used to assign a different routerID on each node. | 10.0.0.0/24 | MaxLength: 43 <br />MinLength: 1 <br />Optional: \{\} <br /> |
 | `neighbors` _[Neighbor](#neighbor) array_ | neighbors is the list of external BGP neighbors to peer with.<br />Multiple neighbors are supported for connecting to multiple TOR switches<br />or establishing redundant BGP sessions. Each neighbor address must be unique.<br />At least one neighbor is required. |  | MaxItems: 128 <br />MinItems: 1 <br />Required: \{\} <br /> |
 | `interfaces` _[UnderlayInterface](#underlayinterface) array_ | interfaces is the list of interfaces the router uses for underlay<br />connectivity. Each entry is a discriminated union describing how the<br />interface is obtained. At least one interface is required. All the<br />entries must be of the same type: mixing NetworkDevice and CNIDevice<br />interfaces is not supported. |  | MinItems: 1 <br />Required: \{\} <br /> |
 | `tunnelEndpoint` _[TunnelEndpointConfig](#tunnelendpointconfig)_ | tunnelEndpoint contains tunnel endpoint configuration for the underlay. |  | Optional: \{\} <br /> |

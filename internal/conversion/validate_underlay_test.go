@@ -97,6 +97,36 @@ func TestValidateUnderlay(t *testing.T) {
 				"invalid cidr: invalid CIDR address: invalidCIDR",
 		},
 		{
+			name: "invalid neighbor address",
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"192.168.1.0/24"},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth1"},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN:     new(int64(65002)),
+								Address: new("invalidIP"),
+							},
+						},
+					},
+				},
+			},
+			wantErrStr: `has invalid neighbor address: ParseAddr("invalidIP"): unable to parse IP`,
+		},
+		{
 			name: "empty VTEP CIDR",
 			underlay: []v1alpha1.Underlay{
 				{
@@ -924,6 +954,86 @@ func TestValidateUnderlay(t *testing.T) {
 			},
 			wantErrStr: "invalid listenRange 192.168.10.5",
 		},
+		{
+			name: "invalid routerIDCIDR",
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						RouterIDCIDR: new("not-a-cidr"),
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"192.168.1.0/24"},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN:     new(int64(65002)),
+								Address: new("192.168.1.1"),
+							},
+						},
+					},
+				},
+			},
+			wantErrStr: "has invalid routerIDCIDR",
+		},
+		{
+			name: "routerIDCIDR is an IPv6 CIDR",
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						RouterIDCIDR: new("fd00::/64"),
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"192.168.1.0/24"},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN:     new(int64(65002)),
+								Address: new("192.168.1.1"),
+							},
+						},
+					},
+				},
+			},
+			wantErrStr: "must be an IPv4 CIDR",
+		},
+		{
+			name: "valid IPv4 routerIDCIDR",
+			underlay: []v1alpha1.Underlay{
+				{
+					Spec: v1alpha1.UnderlaySpec{
+						RouterIDCIDR: new("172.16.0.0/16"),
+						TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+							CIDRs: []string{"192.168.1.0/24"},
+						},
+						Interfaces: []v1alpha1.UnderlayInterface{
+							{
+								Type:          v1alpha1.UnderlayInterfaceTypeNetworkDevice,
+								NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"},
+							},
+						},
+						ASN: 65001,
+						Neighbors: []v1alpha1.Neighbor{
+							{
+								ASN:     new(int64(65002)),
+								Address: new("192.168.1.1"),
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -940,6 +1050,33 @@ func TestValidateUnderlay(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tt.wantErrStr) {
 				t.Errorf("expected error to contain %q but instead got error: %q", tt.wantErrStr, err)
+			}
+		})
+	}
+}
+
+func TestValidateRouterIDCIDR(t *testing.T) {
+	tests := []struct {
+		name    string
+		cidr    *string
+		wantErr bool
+	}{
+		{name: "omitted"},
+		{name: "IPv4 network", cidr: new("172.16.0.0/16")},
+		{name: "IPv4 with host bits", cidr: new("172.16.0.1/16")},
+		{name: "IPv4 host prefix", cidr: new("172.16.0.1/32")},
+		{name: "empty", cidr: new(""), wantErr: true},
+		{name: "malformed", cidr: new("not-a-cidr"), wantErr: true},
+		{name: "missing prefix", cidr: new("172.16.0.1"), wantErr: true},
+		{name: "invalid prefix length", cidr: new("172.16.0.0/33"), wantErr: true},
+		{name: "IPv6", cidr: new("fd00::/64"), wantErr: true},
+		{name: "IPv4-mapped IPv6", cidr: new("::ffff:192.0.2.0/120"), wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateRouterIDCIDR(tt.cidr)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("validateRouterIDCIDR() error = %v, wantErr %t", err, tt.wantErr)
 			}
 		})
 	}

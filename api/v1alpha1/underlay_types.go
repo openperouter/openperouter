@@ -39,6 +39,9 @@ type UnderlaySpec struct {
 	ASN int64 `json:"asn,omitempty"`
 
 	// routerIDCIDR is the ipv4 cidr to be used to assign a different routerID on each node.
+	// +kubebuilder:validation:XValidation:rule="isCIDR(self) && cidr(self).ip().family() == 4",message="must be a valid IPv4 CIDR"
+	// +kubebuilder:validation:MaxLength=43
+	// +kubebuilder:validation:MinLength=1
 	// +default="10.0.0.0/24"
 	// +optional
 	RouterIDCIDR *string `json:"routerIDCIDR,omitempty"`
@@ -273,14 +276,8 @@ type TunnelEndpointConfig struct {
 	// cidrs is a list of CIDRs to be used to assign IPs to the local tunnel endpoint on
 	// each node. IPs derived from these CIDRs will be assigned to the local loopback.
 	// At least one IPv4 or IPv6 CIDR is required. At most one of each family may be specified.
-	// +kubebuilder:validation:MinItems=1
-	// +kubebuilder:validation:MaxItems=2
-	// +kubebuilder:validation:XValidation:rule="self.all(c, isCIDR(c))",message="all entries must be valid CIDRs"
-	// +kubebuilder:validation:XValidation:rule="self.filter(c, isCIDR(c) && cidr(c).ip().family() == 4).size() <= 1",message="at most one IPv4 CIDR is allowed"
-	// +kubebuilder:validation:XValidation:rule="self.filter(c, isCIDR(c) && cidr(c).ip().family() == 6).size() <= 1",message="at most one IPv6 CIDR is allowed"
-	// +listType=atomic
 	// +required
-	CIDRs []string `json:"cidrs,omitempty"`
+	CIDRs DualStackCIDRs `json:"cidrs,omitempty"`
 }
 
 // ISISConfig contains ISIS configuration for the underlay.

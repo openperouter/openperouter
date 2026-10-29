@@ -90,6 +90,8 @@ spec:
                     type: array
                     x-kubernetes-list-type: atomic
                     x-kubernetes-validations:
+                    - message: localCIDRs can't be changed
+                      rule: self == oldSelf
                     - message: all entries must be valid CIDRs
                       rule: self.all(c, isCIDR(c))
                     - message: at most one IPv4 CIDR is allowed
@@ -98,8 +100,6 @@ spec:
                     - message: at most one IPv6 CIDR is allowed
                       rule: self.filter(c, isCIDR(c) && cidr(c).ip().family() == 6).size()
                         <= 1
-                    - message: localCIDRs can't be changed
-                      rule: self == oldSelf
                 required:
                 - asn
                 - localCIDRs

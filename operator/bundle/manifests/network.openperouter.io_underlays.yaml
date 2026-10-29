@@ -696,7 +696,12 @@ spec:
                 default: 10.0.0.0/24
                 description: routerIDCIDR is the ipv4 cidr to be used to assign a
                   different routerID on each node.
+                maxLength: 43
+                minLength: 1
                 type: string
+                x-kubernetes-validations:
+                - message: must be a valid IPv4 CIDR
+                  rule: isCIDR(self) && cidr(self).ip().family() == 4
               srv6:
                 description: srv6 holds the SRv6 configuration. Requires ISIS or Neighbors
                   configuration.
