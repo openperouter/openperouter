@@ -220,17 +220,27 @@ func underlayInterfaces(ns netns.NsHandle) ([]UnderlayInterface, error) {
 	for _, name := range netdevs {
 		res = append(res, UnderlayInterface{InterfaceName: name, Kind: UnderlayInterfaceNetDev})
 	}
-	if cniinvoker.Invoker == nil {
-		return res, nil
-	}
-	cniIfaces, err := cniinvoker.Invoker.CachedIfNames()
+	cniIfaces, err := cniUnderlayInterfaceNames()
 	if err != nil {
-		return nil, fmt.Errorf("failed to list cni underlay interfaces: %w", err)
+		return nil, err
 	}
 	for _, name := range cniIfaces {
 		res = append(res, UnderlayInterface{InterfaceName: name, Kind: UnderlayInterfaceCNIDev})
 	}
 	return res, nil
+}
+
+// cniUnderlayInterfaceNames returns the names of the CNI-provisioned underlay
+// interfaces, or nil when CNI is not in use.
+func cniUnderlayInterfaceNames() ([]string, error) {
+	if cniinvoker.Invoker == nil {
+		return nil, nil
+	}
+	names, err := cniinvoker.Invoker.CachedIfNames()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list cni underlay interfaces: %w", err)
+	}
+	return names, nil
 }
 
 // UnderlayInterfacesToRemove returns the existing underlay interfaces that
@@ -389,16 +399,16 @@ func FindInterfacesInGroup(ns netns.NsHandle, groupID uint32) ([]string, error) 
 }
 
 // FindUnderlayMTU retrieves the lowest MTU among all underlay interfaces.
-// This ensures that packets can traverse all underlay paths.
+// This ensures that packets can traverse all underlay paths. Both the group
+// membership and the MTUs are read from a single link dump.
 func FindUnderlayMTU(ns netns.NsHandle) (int, error) {
-	underlayInterfaces, err := underlayInterfaces(ns)
+	cniIfaces, err := cniUnderlayInterfaceNames()
 	if err != nil {
 		return 0, fmt.Errorf("failed finding underlay interfaces to calculate MTU: %w", err)
 	}
-
-	underlayNames := make(map[string]struct{}, len(underlayInterfaces))
-	for _, iface := range underlayInterfaces {
-		underlayNames[iface.InterfaceName] = struct{}{}
+	cniNames := make(map[string]struct{}, len(cniIfaces))
+	for _, name := range cniIfaces {
+		cniNames[name] = struct{}{}
 	}
 
 	minMTU := 0
@@ -408,11 +418,15 @@ func FindUnderlayMTU(ns netns.NsHandle) (int, error) {
 			return fmt.Errorf("failed to list links: %w", err)
 		}
 		for _, l := range links {
-			if _, ok := underlayNames[l.Attrs().Name]; ok {
-				mtu := l.Attrs().MTU
-				if minMTU == 0 || mtu < minMTU {
-					minMTU = mtu
+			attrs := l.Attrs()
+			if attrs.Group != UnderlayGroupID {
+				if _, ok := cniNames[attrs.Name]; !ok {
+					continue
 				}
+			}
+			mtu := attrs.MTU
+			if minMTU == 0 || mtu < minMTU {
+				minMTU = mtu
 			}
 		}
 		if minMTU == 0 {
