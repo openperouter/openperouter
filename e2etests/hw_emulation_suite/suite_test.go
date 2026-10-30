@@ -24,6 +24,7 @@ import (
 var (
 	inspectPath        string
 	nodeLinkConfigPath string
+	nodeExecImage      string
 )
 
 func handleFlags() {
@@ -32,6 +33,7 @@ func handleFlags() {
 	flag.StringVar(&openperouter.Namespace, "openperouter-namespace", openperouter.Namespace, "namespace where OpenPERouter pods run")
 	flag.StringVar(&inspectPath, "inspect-path", "", "path to the inspect tool")
 	flag.StringVar(&nodeLinkConfigPath, "nodelink-config", "../nodelink-default.json", "path to node links config JSON")
+	flag.StringVar(&nodeExecImage, "node-exec-image", "docker.io/nicolaka/netshoot:v0.15", "container image for node-exec-helper pods")
 	flag.Parse()
 }
 
@@ -73,7 +75,7 @@ var _ = ginkgo.BeforeSuite(func() {
 
 	ginkgo.By("Waiting for router pods to be ready")
 	cs := k8sclient.New()
-	Expect(executor.SetupNodeExec(cs, frrk8s.Namespace, "busybox:1.36")).To(Succeed(), "failed to setup node-exec-helper")
+	Expect(executor.SetupNodeExec(cs, frrk8s.Namespace, nodeExecImage)).To(Succeed(), "failed to setup node-exec-helper")
 
 	Eventually(func() error {
 		routers, err := openperouter.Get(cs, false)

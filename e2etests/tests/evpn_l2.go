@@ -21,7 +21,6 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
-	"github.com/openperouter/openperouter/e2etests/pkg/validate"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -178,21 +177,14 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Grou
 		Expect(removeGatewayFromPod(firstPod)).To(Succeed())
 		Expect(removeGatewayFromPod(secondPod)).To(Succeed())
 
-		By("waiting for BGP sessions to establish on both nodes before traffic check")
-		leafExec := executor.ForContainer(infra.KindLeaf)
-		for _, node := range nodes {
-			neighborIP, err := infra.NeighborIP(infra.KindLeaf, node.Name)
-			Expect(err).NotTo(HaveOccurred())
-			validate.SessionWithNeighbor(
-				leafExec,
-				validate.SessionParameters{
-					FromName:    infra.KindLeaf,
-					ToName:      node.Name,
-					NeighborIP:  neighborIP,
-					Established: Established,
-				},
-			)
-		}
+		By("waiting for BGP sessions to establish against both leaves before traffic check")
+		waitForUnderlaySessions(nodes)
+
+		By("waiting for the overlay data plane to be programmed before traffic check")
+		waitForL2OverlayDataPlane(cs, l2VniRedWithGateway.Spec.VNI,
+			overlayEndpoint{node: &nodes[0], pod: firstPod},
+			overlayEndpoint{node: &nodes[1], pod: secondPod},
+		)
 
 		podExecutor := executor.ForPod(firstPod.Namespace, firstPod.Name, "agnhost")
 		secondPodExecutor := executor.ForPod(secondPod.Namespace, secondPod.Name, "agnhost")
@@ -453,10 +445,19 @@ var _ = Describe("Disconnected L2VNI east/west traffic", GroutSupport, Ordered, 
 		By("removing the default gateway via the primary interface")
 		Expect(removeGatewayFromPod(firstPod)).To(Succeed())
 		Expect(removeGatewayFromPod(secondPod)).To(Succeed())
+
+		By("waiting for BGP sessions to establish against both leaves before traffic check")
+		waitForUnderlaySessions(nodes)
+
+		By("waiting for the overlay data plane to be programmed before traffic check")
+		waitForL2OverlayDataPlane(cs, l2vniDisconnected.Spec.VNI,
+			overlayEndpoint{node: &nodes[0], pod: firstPod},
+			overlayEndpoint{node: &nodes[1], pod: secondPod},
+		)
 	})
 
 	AfterEach(func() {
-		dumpIfFails(cs)
+		dumpIfFails(cs, testNamespace)
 		err := Updater.CleanButUnderlay()
 		Expect(err).NotTo(HaveOccurred())
 		err = k8s.DeleteNamespace(cs, testNamespace)
