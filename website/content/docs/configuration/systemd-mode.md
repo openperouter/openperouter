@@ -47,6 +47,37 @@ nodeIndex:
   interfaceName: eth0
   cidr: "192.168.11.0/24"
 logLevel: debug
+```
+
+#### Router MAC for L3VNIs
+
+Set `routerMAC` in `node-config.yaml` to use one router MAC for every L3VNI
+bridge on this node:
+
+```yaml
+nodeIndex:
+  index: 1
+routerMAC: "02:00:00:00:00:01"
+```
+
+Use a different MAC on each node. The address must be a nonzero, six-byte
+unicast MAC. This setting applies to the kernel datapath; Grout rejects it.
+It does not change L2VNI anycast gateway MAC addresses.
+
+The controller assigns the MAC before bringing a new L3VNI bridge up and
+restores it during reconciliation if it changes. Matching MAC addresses are
+left untouched. Omitting the setting preserves the existing behavior; it
+does not reset a previously assigned MAC on an existing bridge.
+
+Restart the hostcontroller after changing `node-config.yaml`. Changing the MAC
+of existing bridges can temporarily disrupt EVPN forwarding.
+
+The hostcontroller also accepts `--router-mac=02:00:00:00:00:01` in both host
+and Kubernetes modes. A nonempty `routerMAC` in the host node configuration
+takes precedence over the flag. Set the value separately for each node,
+rather than passing one shared MAC to every pod in a DaemonSet.
+
+## Router Configuration
 
 Each `openpe_*.yaml` file contains the `spec` part of the corresponding Kubernetes Custom Resources. A file can contain any combination of `underlay`, `l3vnis`, `l2vnis`, `bgppassthrough`, and `rawfrrconfigs` fields, where each entry follows the same schema as the `spec` section of the equivalent CR (Underlay, L3VNI, L2VNI, L3Passthrough, RawFRRConfig):
 

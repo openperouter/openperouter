@@ -24,6 +24,11 @@ func TestReadNodeConfig(t *testing.T) {
 		expectError bool
 	}{
 		{
+			name:     "node router MAC",
+			content:  "nodeIndex:\n  index: 42\nrouterMAC: '02:00:00:00:00:01'\n",
+			expected: &static.NodeConfig{NodeIndex: static.NodeIndex{Index: 42}, RouterMAC: "02:00:00:00:00:01"},
+		},
+		{
 			name:     "valid yaml config",
 			content:  "nodeIndex:\n  index: 42\nlogLevel: debug\n",
 			expected: &static.NodeConfig{NodeIndex: static.NodeIndex{Index: 42}, LogLevel: "debug"},
@@ -83,6 +88,9 @@ func TestReadNodeConfig(t *testing.T) {
 
 			if config.LogLevel != tt.expected.LogLevel {
 				t.Errorf("expected LogLevel %s, got %s", tt.expected.LogLevel, config.LogLevel)
+			}
+			if config.RouterMAC != tt.expected.RouterMAC {
+				t.Errorf("expected RouterMAC %s, got %s", tt.expected.RouterMAC, config.RouterMAC)
 			}
 		})
 	}

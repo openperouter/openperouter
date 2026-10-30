@@ -16,6 +16,8 @@ type NodeConfig struct {
 	NodeIndex NodeIndex `json:"nodeIndex"`
 	NodeName  string    `json:"nodeName"`
 	LogLevel  string    `json:"logLevel"`
+	// RouterMAC is the optional unicast MAC shared by all L3VNI bridges on this node.
+	RouterMAC string `json:"routerMAC,omitempty"`
 }
 
 // StaticL3VNI wraps an L3VNISpec with a required name field for static
