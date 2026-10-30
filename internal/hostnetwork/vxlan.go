@@ -43,7 +43,7 @@ func setupVXLan(params VNIParams, bridge *netlink.Bridge) error {
 
 // checkVXLanConfigured checks if the given VXLan has the required properties
 // passed as parameters.
-func checkVXLanConfigured(vxLan *netlink.Vxlan, bridgeIndex, loopbackIndex int, params VNIParams) error {
+func checkVXLanConfigured(vxLan *netlink.Vxlan, bridgeIndex, tunnelEndpointIndex int, params VNIParams) error {
 	if vxLan.MasterIndex != bridgeIndex {
 		return fmt.Errorf("master index is not bridge index: %d, %d", vxLan.MasterIndex, bridgeIndex)
 	}
@@ -66,16 +66,16 @@ func checkVXLanConfigured(vxLan *netlink.Vxlan, bridgeIndex, loopbackIndex int, 
 	if err := validateVxlan(vxLan, params); err != nil {
 		return err
 	}
-	if vxLan.VtepDevIndex != loopbackIndex {
-		return fmt.Errorf("vtep dev index is not loopback index: %d %d", vxLan.VtepDevIndex, loopbackIndex)
+	if vxLan.VtepDevIndex != tunnelEndpointIndex {
+		return fmt.Errorf("vtep dev index is not tunnel endpoint index: %d %d", vxLan.VtepDevIndex, tunnelEndpointIndex)
 	}
 	return nil
 }
 
 func createVXLan(params VNIParams, bridge *netlink.Bridge) (*netlink.Vxlan, error) {
-	loopback, err := net.InterfaceByName(loopbackName)
+	tunnelEndpoint, err := net.InterfaceByName(TunnelEndpointInterfaceName)
 	if err != nil {
-		return nil, fmt.Errorf("failed looking for vtep loopback interface %s: %w", loopbackName, err)
+		return nil, fmt.Errorf("failed looking for vtep interface %s: %w", TunnelEndpointInterfaceName, err)
 	}
 
 	vtepIP, _, err := net.ParseCIDR(params.VTEPIP)
@@ -96,7 +96,7 @@ func createVXLan(params VNIParams, bridge *netlink.Bridge) (*netlink.Vxlan, erro
 		VxlanId:      int(params.VNI),
 		Port:         int(*params.VXLanPort),
 		Learning:     false, // Disable VTEP learning (ip link add <...> type vxlan <...> nolearning).
-		VtepDevIndex: loopback.Index,
+		VtepDevIndex: tunnelEndpoint.Index,
 		SrcAddr:      vtepIP,
 	}
 
@@ -111,7 +111,7 @@ func createVXLan(params VNIParams, bridge *netlink.Bridge) (*netlink.Vxlan, erro
 		return nil, fmt.Errorf("failed to get vxlan link by name %s: %w", vxlanName, err)
 	}
 	vxlan, ok := link.(*netlink.Vxlan)
-	if ok && checkVXLanConfigured(vxlan, bridge.Index, loopback.Index, params) == nil {
+	if ok && checkVXLanConfigured(vxlan, bridge.Index, tunnelEndpoint.Index, params) == nil {
 		return vxlan, nil
 	}
 	if err := netlink.LinkDel(link); err != nil {

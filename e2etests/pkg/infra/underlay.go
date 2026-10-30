@@ -312,7 +312,7 @@ var underlays = map[UnderlayKind]v1alpha1.Underlay{
 						IPFamily: new(v1alpha1.IPFamilyDualStack),
 					},
 					{
-						Name:     "lo",
+						Name:     "tunnel-ep",
 						IPFamily: new(v1alpha1.IPFamilyDualStack),
 					},
 				},

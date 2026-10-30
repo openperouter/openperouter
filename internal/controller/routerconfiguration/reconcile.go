@@ -22,6 +22,7 @@ import (
 // reconciler can work with different datapaths (kernel netlink, grout/DPDK).
 type DatapathConfigurator interface {
 	conversion.DatapathConfigValidator
+	conversion.InterfaceNameTranslator
 
 	Configure(ctx context.Context, config interfacesConfiguration) error
 }
@@ -80,11 +81,12 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 	// Removals keep working in this order because ZEBRA_VNI_DEL does not touch the
 	// EVPN instance, and FRR stops referencing the objects before they are deleted.
 	if err = frrConfigurator(ctx, frrConfigData{
-		configFile:    frrConfigPath,
-		updater:       updater,
-		APIConfigData: config,
-		nodeIndex:     nodeIndex,
-		logLevel:      logLevel,
+		configFile:              frrConfigPath,
+		updater:                 updater,
+		APIConfigData:           config,
+		nodeIndex:               nodeIndex,
+		logLevel:                logLevel,
+		interfaceNameTranslator: datapathConfigurator,
 	}); err != nil {
 		return err
 	}

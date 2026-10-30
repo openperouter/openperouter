@@ -757,8 +757,8 @@ func validateL2VNI(g Gomega, params L2VNIParams) {
 }
 
 func validateVNI(g Gomega, params VNIParams) {
-	vtepDev, err := netlink.LinkByName(loopbackName)
-	g.Expect(err).NotTo(HaveOccurred(), "vtep device not found %q", loopbackName)
+	vtepDev, err := netlink.LinkByName(TunnelEndpointInterfaceName)
+	g.Expect(err).NotTo(HaveOccurred(), "vtep device not found %q", TunnelEndpointInterfaceName)
 
 	vxlanLink, err := netlink.LinkByName(vxLanNameFromVNI(params.VNI))
 	g.Expect(err).NotTo(HaveOccurred(), "vxlan link not found %q", vxLanNameFromVNI(params.VNI))
@@ -890,6 +890,10 @@ func setupLoopback(ns netns.NsHandle) {
 	lo, err := handle.LinkByName(loopbackName)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(handle.LinkSetUp(lo)).To(Succeed())
+
+	tunnelEndpoint := &netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: TunnelEndpointInterfaceName}}
+	Expect(handle.LinkAdd(tunnelEndpoint)).To(Succeed())
+	Expect(handle.LinkSetUp(tunnelEndpoint)).To(Succeed())
 }
 
 func createLinuxBridge(name string) {

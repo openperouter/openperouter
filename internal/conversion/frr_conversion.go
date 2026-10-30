@@ -14,6 +14,7 @@ import (
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/frr"
+	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/openperouter/openperouter/internal/ipam"
 	"github.com/openperouter/openperouter/internal/ipfamily"
 	"github.com/openperouter/openperouter/internal/networklayerprotocol"
@@ -90,7 +91,14 @@ func L3VPNWithGatewayIPs(cidrs []string) L3VPNOption {
 	}
 }
 
-func APItoFRR(config APIConfigData, nodeIndex int, logLevel string) (frr.Config, error) {
+// InterfaceNameTranslator adapts the FRR configuration to the datapath
+// forwarding the traffic.
+type InterfaceNameTranslator interface {
+	// TranslateInterface returns the name FRR knows an interface by.
+	TranslateInterface(name string) string
+}
+
+func APItoFRR(config APIConfigData, nodeIndex int, logLevel string, datapath InterfaceNameTranslator) (frr.Config, error) {
 	rawSnippets := rawConfigSnippets(config.RawFRRConfigs)
 	if len(rawSnippets) > 0 && len(config.Underlays) == 0 {
 		slog.Info("no underlay provided, applying raw configuration only")
@@ -122,7 +130,7 @@ func APItoFRR(config APIConfigData, nodeIndex int, logLevel string) (frr.Config,
 		return frr.Config{}, err
 	}
 
-	underlayConfigISIS, err := underlayISISToFRR(underlay.Spec.ISIS, underlayInterfaces, nodeIndex)
+	underlayConfigISIS, err := underlayISISToFRR(underlay.Spec.ISIS, underlayInterfaces, nodeIndex, datapath)
 	if err != nil {
 		return frr.Config{}, fmt.Errorf("failed to translate ISIS settings, err: %w", err)
 	}
@@ -141,6 +149,7 @@ func APItoFRR(config APIConfigData, nodeIndex int, logLevel string) (frr.Config,
 		config.L3Passthrough,
 		underlay.Spec.TunnelEndpoint,
 		config.Passwords,
+		datapath,
 	)
 	if err != nil {
 		return frr.Config{}, err
@@ -229,6 +238,7 @@ func neighborsToFRR(apiNeighbors []v1alpha1.Neighbor, segmentRouting *frr.Underl
 	l2vnis []v1alpha1.L2VNI, l3vnis []v1alpha1.L3VNI, l3vpns []v1alpha1.L3VPN, l3passthroughs []v1alpha1.L3Passthrough,
 	tunnelEndpoint *v1alpha1.TunnelEndpointConfig,
 	passwords map[string]string,
+	datapath InterfaceNameTranslator,
 ) ([]frr.NeighborConfig, error) {
 	neighbors := make([]frr.NeighborConfig, 0, len(apiNeighbors))
 	for _, n := range apiNeighbors {
@@ -241,6 +251,7 @@ func neighborsToFRR(apiNeighbors []v1alpha1.Neighbor, segmentRouting *frr.Underl
 			tunnelEndpoint,
 			segmentRouting,
 			passwords[NeighborID(n)],
+			datapath,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to translate underlay neighbor %s to frr, err: %w", NeighborID(n), err)
@@ -383,7 +394,8 @@ func underlaySegmentRoutingToFRR(srv6Config *v1alpha1.SRV6Config, nodeIndex int,
 	}, nil
 }
 
-func underlayISISToFRR(isisConfig *v1alpha1.ISISConfig, interfaces []string, nodeIndex int) (*frr.UnderlayISIS, error) {
+func underlayISISToFRR(isisConfig *v1alpha1.ISISConfig, interfaces []string, nodeIndex int,
+	datapath InterfaceNameTranslator) (*frr.UnderlayISIS, error) {
 	if isisConfig == nil {
 		return nil, nil
 	}
@@ -405,10 +417,11 @@ func underlayISISToFRR(isisConfig *v1alpha1.ISISConfig, interfaces []string, nod
 	isisNet := baseISISNet
 	isisNet.SystemID = systemID
 
-	// Always add the loopback as an IPv6 only and passive interface (for advertisePassiveOnly).
+	// Always add the tunnel endpoint interface as an IPv6 only and passive
+	// interface (for advertisePassiveOnly).
 	isisInterfaces := map[string]frr.ISISInterface{
-		loopbackName: {
-			Name:      loopbackName,
+		hostnetwork.TunnelEndpointInterfaceName: {
+			Name:      hostnetwork.TunnelEndpointInterfaceName,
 			IPv6:      true,
 			IsPassive: true,
 		},
@@ -416,22 +429,24 @@ func underlayISISToFRR(isisConfig *v1alpha1.ISISConfig, interfaces []string, nod
 
 	// Add underlay.Spec.Interfaces as IPv6 only, non-passive interfaces.
 	for _, iface := range interfaces {
-		isisInterfaces[iface] = frr.ISISInterface{
-			Name: iface,
+		name := datapath.TranslateInterface(iface)
+		isisInterfaces[name] = frr.ISISInterface{
+			Name: name,
 			IPv6: true,
 		}
 	}
 
-	// The ISISInterface slice may override default settings from loopback and
-	// from interfaces. CEL enforces uniqueness by name.
+	// The ISISInterface slice may override default settings from the tunnel
+	// endpoint and from interfaces. CEL enforces uniqueness by name.
 	for _, intf := range isisConfig.Interfaces {
 		hasIPv4 := intf.IPFamily != nil &&
 			(*intf.IPFamily == v1alpha1.IPFamilyIPv4 || *intf.IPFamily == v1alpha1.IPFamilyDualStack)
 		hasIPv6 := intf.IPFamily != nil &&
 			(*intf.IPFamily == v1alpha1.IPFamilyIPv6 || *intf.IPFamily == v1alpha1.IPFamilyDualStack)
 
-		isisInterfaces[intf.Name] = frr.ISISInterface{
-			Name:      intf.Name,
+		name := isisInterfaceName(intf.Name, datapath)
+		isisInterfaces[name] = frr.ISISInterface{
+			Name:      name,
 			IPv4:      hasIPv4,
 			IPv6:      hasIPv6,
 			IsPassive: slices.Contains(intf.Features, passiveInterface),
@@ -446,6 +461,16 @@ func underlayISISToFRR(isisConfig *v1alpha1.ISISConfig, interfaces []string, nod
 		MultiTopology:        slices.Contains(isisConfig.Features, v1alpha1.MultiTopology),
 		Interfaces:           mapOfInterfacesToSortedList(isisInterfaces),
 	}, nil
+}
+
+// isisInterfaceName returns the name FRR knows the interface an ISIS interface
+// setting applies to by. The tunnel endpoint interface has the same name in
+// all the datapaths, and the loopback refers to it as it plays its role.
+func isisInterfaceName(name string, datapath InterfaceNameTranslator) string {
+	if name == loopbackName || name == hostnetwork.TunnelEndpointInterfaceName {
+		return hostnetwork.TunnelEndpointInterfaceName
+	}
+	return datapath.TranslateInterface(name)
 }
 
 func mapOfInterfacesToSortedList(m map[string]frr.ISISInterface) []frr.ISISInterface {
@@ -771,6 +796,7 @@ func neighborToFRR(n v1alpha1.Neighbor,
 	tunnelEndpoint *v1alpha1.TunnelEndpointConfig,
 	segmentRouting *frr.UnderlaySegmentRouting,
 	password string,
+	datapath InterfaceNameTranslator,
 ) (*frr.NeighborConfig, error) {
 	asn, err := frr.NewPeerASN(n.ASN, n.Type)
 	if err != nil {
@@ -796,11 +822,18 @@ func neighborToFRR(n v1alpha1.Neighbor,
 
 	ebgpMultiHop, ebgpMultiHopTTL := ebgpMultiHopForNeighbor(n)
 
+	// Neighbors peering over an interface must reference the name FRR knows
+	// the interface by.
+	var neighInterface string
+	if iface := ptr.Deref(n.Interface, ""); iface != "" {
+		neighInterface = datapath.TranslateInterface(iface)
+	}
+
 	res := &frr.NeighborConfig{
 		Name:                  neighName,
 		ASN:                   asn,
 		Addr:                  ptr.Deref(n.Address, ""),
-		Interface:             ptr.Deref(n.Interface, ""),
+		Interface:             neighInterface,
 		ListenRange:           ptr.Deref(n.ListenRange, ""),
 		Port:                  n.Port,
 		EBGPMultiHop:          ebgpMultiHop,

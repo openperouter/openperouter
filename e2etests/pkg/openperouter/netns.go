@@ -11,7 +11,7 @@ import (
 )
 
 const NamedNetns = "perouter"
-const underlayPortNamePrefix = "u_"
+const tunnelEndpointInterface = "tunnel-ep"
 
 // NamedNetnsExists checks whether /var/run/netns/perouter is present on nodeName.
 func NamedNetnsExists(nodeName string) (bool, error) {
@@ -57,9 +57,9 @@ func DeleteNamedNetns(nodeName string) error {
 }
 
 // UnderlayConfigured checks whether the underlay is configured inside
-// the perouter netns on nodeName by looking for any IP addresses other than
-// the default loopback interfaces on the VTEP loopback (lo), and by checking
-// that `lo` is up.
+// the perouter netns on nodeName by checking that `lo` is up, and by looking
+// for a global IP address on `lo` or on the tunnel endpoint interface
+// (tunnel-ep).
 func UnderlayConfigured(nodeName string) (bool, error) {
 	exec := executor.ForNode(nodeName)
 
@@ -79,22 +79,16 @@ func UnderlayConfigured(nodeName string) (bool, error) {
 		return false, nil
 	}
 
-	out, err = exec.Exec("ip", "netns", "exec", NamedNetns, "ip", "address", "show", "dev", "lo", "scope", "global")
-	if err != nil {
-		return false, err
-	}
-	if len(strings.TrimSpace(out)) > 0 {
-		return true, nil
-	}
-
-	// Check if some Grout underlay has been configured
-	out, err = exec.Exec("ip", "netns", "exec", NamedNetns, "ip", "-brief", "link", "show")
+	out, err = exec.Exec("ip", "netns", "exec", NamedNetns, "ip", "-o", "address", "show", "scope", "global")
 	if err != nil {
 		return false, err
 	}
 	for line := range strings.SplitSeq(out, "\n") {
 		fields := strings.Fields(line)
-		if len(fields) > 0 && strings.HasPrefix(fields[0], underlayPortNamePrefix) {
+		if len(fields) < 2 {
+			continue
+		}
+		if fields[1] == "lo" || fields[1] == tunnelEndpointInterface {
 			return true, nil
 		}
 	}

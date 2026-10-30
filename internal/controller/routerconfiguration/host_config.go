@@ -32,6 +32,10 @@ type KernelDatapathConfigurator struct {
 	conversion.KernelDatapathConfigValidator
 }
 
+func (k *KernelDatapathConfigurator) TranslateInterface(name string) string {
+	return name
+}
+
 func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config interfacesConfiguration) error { // nolint:gocognit
 	ovsClient := &hostnetwork.OVSClient{}
 	defer ovsClient.Close()

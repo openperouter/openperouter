@@ -2257,7 +2257,7 @@ func TestAPItoFRR(t *testing.T) {
 						Interfaces: []frr.ISISInterface{
 							{Name: "eth0", IPv6: true},
 							{Name: "eth10", IPv6: true},
-							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "tunnel-ep", IPv6: true, IsPassive: true},
 						},
 					},
 					RouterID: "10.0.0.0",
@@ -2336,7 +2336,7 @@ func TestAPItoFRR(t *testing.T) {
 							{Name: "eth0", IPv4: true, IPv6: true},
 							{Name: "eth1", IPv4: true, IsPassive: true},
 							{Name: "eth10", IPv6: true},
-							{Name: "lo"},
+							{Name: "tunnel-ep"},
 						},
 					},
 					RouterID: "10.0.0.0",
@@ -2399,7 +2399,7 @@ func TestAPItoFRR(t *testing.T) {
 						Interfaces: []frr.ISISInterface{
 							{Name: "eth0", IPv4: true, IPv6: true},
 							{Name: "eth1", IPv4: false, IPv6: true},
-							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "tunnel-ep", IPv6: true, IsPassive: true},
 						},
 					},
 					RouterID: "10.0.0.0",
@@ -2450,7 +2450,7 @@ func TestAPItoFRR(t *testing.T) {
 						Net:   frr.MustParseISISNet("49.0001.0002.0003.0004.00"),
 						Level: 2,
 						Interfaces: []frr.ISISInterface{
-							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "tunnel-ep", IPv6: true, IsPassive: true},
 						},
 					},
 					RouterID: "10.0.0.0",
@@ -2625,7 +2625,7 @@ func TestAPItoFRR(t *testing.T) {
 						Level: 1,
 						Interfaces: []frr.ISISInterface{
 							{Name: "eth0", IPv4: true, IPv6: true},
-							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "tunnel-ep", IPv6: true, IsPassive: true},
 						},
 					},
 					RouterID: "10.0.0.0",
@@ -2797,7 +2797,7 @@ func TestAPItoFRR(t *testing.T) {
 						Level: 1,
 						Interfaces: []frr.ISISInterface{
 							{Name: "eth0", IPv4: true, IPv6: true},
-							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "tunnel-ep", IPv6: true, IsPassive: true},
 						},
 					},
 					RouterID: "10.0.0.0",
@@ -2918,7 +2918,7 @@ func TestAPItoFRR(t *testing.T) {
 						Level: 1,
 						Interfaces: []frr.ISISInterface{
 							{Name: "eth0", IPv4: true, IPv6: true},
-							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "tunnel-ep", IPv6: true, IsPassive: true},
 						},
 					},
 					RouterID: "10.0.0.0",
@@ -3050,7 +3050,7 @@ func TestAPItoFRR(t *testing.T) {
 						Level: 1,
 						Interfaces: []frr.ISISInterface{
 							{Name: "eth0", IPv4: true, IPv6: true},
-							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "tunnel-ep", IPv6: true, IsPassive: true},
 						},
 					},
 					RouterID: "10.0.0.0",
@@ -3247,7 +3247,7 @@ func TestAPItoFRR(t *testing.T) {
 						Level: 1,
 						Interfaces: []frr.ISISInterface{
 							{Name: "eth0", IPv4: true, IPv6: true},
-							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "tunnel-ep", IPv6: true, IsPassive: true},
 						},
 					},
 					RouterID: "10.0.0.0",
@@ -3437,7 +3437,7 @@ func TestAPItoFRR(t *testing.T) {
 				L3Passthrough: tt.l3Passthrough,
 				L3VPNs:        tt.vpns,
 			}
-			got, err := APItoFRR(apiConfig, tt.nodeIndex, tt.logLevel)
+			got, err := APItoFRR(apiConfig, tt.nodeIndex, tt.logLevel, kernelDatapath)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("APItoFRR() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -3585,7 +3585,7 @@ func TestAPItoFRRRawConfig(t *testing.T) {
 				Underlays:     baseUnderlay,
 				RawFRRConfigs: tt.rawFRRConfigs,
 			}
-			got, err := APItoFRR(apiConfig, 0, "debug")
+			got, err := APItoFRR(apiConfig, 0, "debug", kernelDatapath)
 			if err != nil {
 				t.Fatalf("APItoFRR() unexpected error: %v", err)
 			}
@@ -3697,7 +3697,7 @@ func TestAPItoFRRRawConfigWithoutUnderlay(t *testing.T) {
 				L3VNIs:        tt.l3VNIs,
 				L3Passthrough: tt.l3Passthrough,
 			}
-			got, err := APItoFRR(apiConfig, 0, "debug")
+			got, err := APItoFRR(apiConfig, 0, "debug", kernelDatapath)
 			if err != nil {
 				t.Fatalf("APItoFRR() unexpected error: %v", err)
 			}
@@ -3756,7 +3756,7 @@ func TestAPItoFRRGracefulRestart(t *testing.T) {
 			config := APIConfigData{
 				Underlays: []v1alpha1.Underlay{*u},
 			}
-			got, err := APItoFRR(config, 0, "")
+			got, err := APItoFRR(config, 0, "", kernelDatapath)
 			if err != nil {
 				t.Fatalf("APItoFRR() unexpected error: %v", err)
 			}
@@ -4085,7 +4085,7 @@ func TestAPItoFRRRouteReflector(t *testing.T) {
 			config := APIConfigData{
 				Underlays: []v1alpha1.Underlay{*u},
 			}
-			got, err := APItoFRR(config, 0, "")
+			got, err := APItoFRR(config, 0, "", kernelDatapath)
 			if err != nil {
 				t.Fatalf("APItoFRR() unexpected error: %v", err)
 			}
@@ -4113,13 +4113,98 @@ func TestAPItoFRRListenLimit(t *testing.T) {
 		Underlays: []v1alpha1.Underlay{underlay},
 	}
 	BGPListenLimit = 512
-	got, err := APItoFRR(config, 0, "")
+	got, err := APItoFRR(config, 0, "", kernelDatapath)
 	if err != nil {
 		t.Fatalf("APItoFRR() unexpected error: %v", err)
 	}
 
 	if got.Underlay.ListenLimit != 512 {
 		t.Errorf("ListenLimit = %d, want 512", got.Underlay.ListenLimit)
+	}
+}
+
+func TestAPItoFRRDatapath(t *testing.T) {
+	underlay := v1alpha1.Underlay{
+		ObjectMeta: metav1.ObjectMeta{Name: "underlay", Namespace: "openperouter-system"},
+		Spec: v1alpha1.UnderlaySpec{
+			ASN: 64514,
+			Interfaces: []v1alpha1.UnderlayInterface{
+				{Type: v1alpha1.UnderlayInterfaceTypeNetworkDevice, NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch1"}},
+				{Type: v1alpha1.UnderlayInterfaceTypeNetworkDevice, NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch2"}},
+			},
+			Neighbors: []v1alpha1.Neighbor{
+				{ASN: new(int64(64512)), Interface: new("toswitch1")},
+				{ASN: new(int64(64512)), Interface: new("eth9")},
+				{ASN: new(int64(64520)), Address: new("2001:db8:1234::1")},
+			},
+			TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: []string{"2001:db8:1234:5678::/64"}},
+			ISIS: &v1alpha1.ISISConfig{
+				BaseNet: "49.0001.0002.0003.0004.00",
+				Interfaces: []v1alpha1.ISISInterface{
+					{Name: "toswitch1", IPFamily: new(v1alpha1.IPFamilyDualStack)},
+					{Name: "eth9", IPFamily: new(v1alpha1.IPFamilyIPv6)},
+					{Name: "lo", IPFamily: new(v1alpha1.IPFamilyDualStack), Features: []v1alpha1.ISISInterfaceFeature{passiveInterface}},
+				},
+			},
+			SRV6: &v1alpha1.SRV6Config{
+				Locator: v1alpha1.SRV6Locator{BasePrefix: "fd00:0:32::/48", Format: "usid-f3216"},
+			},
+		},
+	}
+	config := APIConfigData{Underlays: []v1alpha1.Underlay{underlay}}
+
+	tests := []struct {
+		name               string
+		datapath           InterfaceNameTranslator
+		wantISISInterfaces []frr.ISISInterface
+		wantNeighborIfaces []string
+	}{
+		{
+			name:     "kernel datapath keeps the interface names",
+			datapath: kernelDatapath,
+			wantISISInterfaces: []frr.ISISInterface{
+				{Name: "eth9", IPv6: true},
+				{Name: "toswitch1", IPv4: true, IPv6: true},
+				{Name: "toswitch2", IPv6: true},
+				{Name: "tunnel-ep", IPv4: true, IPv6: true, IsPassive: true},
+			},
+			wantNeighborIfaces: []string{"toswitch1", "eth9", ""},
+		},
+		{
+			name:     "renamed interfaces in ISIS and neighbors",
+			datapath: testDatapath{underlayPrefix: "u_"},
+			wantISISInterfaces: []frr.ISISInterface{
+				{Name: "tunnel-ep", IPv4: true, IPv6: true, IsPassive: true},
+				{Name: "u_eth9", IPv6: true},
+				{Name: "u_toswitch1", IPv4: true, IPv6: true},
+				{Name: "u_toswitch2", IPv6: true},
+			},
+			wantNeighborIfaces: []string{"u_toswitch1", "u_eth9", ""},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := APItoFRR(config, 0, "", tt.datapath)
+			if err != nil {
+				t.Fatalf("APItoFRR() unexpected error: %v", err)
+			}
+
+			if diff := cmp.Diff(tt.wantISISInterfaces, got.Underlay.ISIS.Interfaces); diff != "" {
+				t.Errorf("ISIS interfaces diff: %s", diff)
+			}
+
+			gotNeighborIfaces := []string{}
+			for _, n := range got.Underlay.Neighbors {
+				gotNeighborIfaces = append(gotNeighborIfaces, n.Interface)
+				if n.Interface != "" && n.ID != n.Interface {
+					t.Errorf("neighbor %s ID = %q, want the interface name", n.Interface, n.ID)
+				}
+			}
+			if diff := cmp.Diff(tt.wantNeighborIfaces, gotNeighborIfaces); diff != "" {
+				t.Errorf("neighbor interfaces diff: %s", diff)
+			}
+		})
 	}
 }
 
@@ -4231,7 +4316,7 @@ func TestAPItoFRRListenRange(t *testing.T) {
 			config := APIConfigData{
 				Underlays: []v1alpha1.Underlay{*u},
 			}
-			got, err := APItoFRR(config, 0, "")
+			got, err := APItoFRR(config, 0, "", kernelDatapath)
 			if err != nil {
 				t.Fatalf("APItoFRR() unexpected error: %v", err)
 			}
@@ -4461,4 +4546,15 @@ func TestL3VNIConfigsToFRR(t *testing.T) {
 			}
 		})
 	}
+}
+
+// testDatapath exposes the interfaces to FRR prefixed by underlayPrefix.
+type testDatapath struct {
+	underlayPrefix string
+}
+
+var kernelDatapath = testDatapath{}
+
+func (d testDatapath) TranslateInterface(name string) string {
+	return d.underlayPrefix + name
 }
