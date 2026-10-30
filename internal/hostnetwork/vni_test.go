@@ -44,6 +44,56 @@ var _ = Describe("L3 VNI configuration", func() {
 		cleanTest(testNSName)
 	})
 
+	It("should share the router MAC across L3VNIs and restore it after drift or recreation", func() {
+		const routerMAC = "02:00:00:00:00:01"
+		options, err := l3VNIBridgeOptions(routerMAC)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(netnamespace.In(testNS, func() error {
+			for _, vni := range []int32{100, 200} {
+				bridge, err := setupBridge(VNIParams{VNI: vni}, options...)
+				if err != nil {
+					return err
+				}
+				Expect(bridge.Attrs().HardwareAddr.String()).To(Equal(routerMAC))
+
+				Expect(netlink.LinkSetHardwareAddr(bridge, net.HardwareAddr{2, 0, 0, 0, 0, 2})).To(Succeed())
+				bridge, err = setupBridge(VNIParams{VNI: vni}, options...)
+				if err != nil {
+					return err
+				}
+				Expect(bridge.Attrs().HardwareAddr.String()).To(Equal(routerMAC))
+
+				Expect(netlink.LinkDel(bridge)).To(Succeed())
+				bridge, err = setupBridge(VNIParams{VNI: vni}, options...)
+				if err != nil {
+					return err
+				}
+				Expect(bridge.Attrs().HardwareAddr.String()).To(Equal(routerMAC))
+			}
+			return nil
+		})).To(Succeed())
+	})
+
+	It("should apply the router MAC before bringing a new bridge up", func() {
+		Expect(netnamespace.In(testNS, func() error {
+			mac := net.HardwareAddr{2, 0, 0, 0, 0, 1}
+			bridge, err := setupBridge(VNIParams{VNI: 100}, func(link netlink.Link) error {
+				Expect(link.Attrs().Flags & net.FlagUp).To(BeZero())
+				return ensureBridgeMACAddress(link, mac)
+			})
+			if err != nil {
+				return err
+			}
+			actual, err := netlink.LinkByName(bridge.Name)
+			if err != nil {
+				return err
+			}
+			Expect(actual.Attrs().HardwareAddr).To(Equal(mac))
+			Expect(actual.Attrs().Flags & net.FlagUp).To(Equal(net.FlagUp))
+			return nil
+		})).To(Succeed())
+	})
+
 	It("should work with IPv4 only L3VNI", func() {
 		params := L3VNIParams{
 			VNIParams: VNIParams{

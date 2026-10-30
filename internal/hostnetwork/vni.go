@@ -37,8 +37,9 @@ type VNIParams struct {
 
 type L3VNIParams struct {
 	VNIParams
-	Name    string
-	LinkIPs *LinkIPs
+	Name      string
+	LinkIPs   *LinkIPs
+	RouterMAC string
 }
 
 type L3PassthroughParams struct {
@@ -102,10 +103,14 @@ func setupVRFInNS(ctx context.Context, params VNIParams) error {
 // and VXLan interface, and moves the veth to the VRF corresponding
 // to the L3 routing domain, exposing it to the default host namespace.
 func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
+	bridgeOptions, err := l3VNIBridgeOptions(params.RouterMAC)
+	if err != nil {
+		return fmt.Errorf("SetupL3VNI: %w", err)
+	}
 	if err := setupVRFInNS(ctx, params.VNIParams); err != nil {
 		return fmt.Errorf("SetupL3VNI: failed to setup VRF: %w", err)
 	}
-	if err := setupVNI(ctx, params.VNIParams, setAddrGenModeNone); err != nil {
+	if err := setupVNI(ctx, params.VNIParams, bridgeOptions...); err != nil {
 		return fmt.Errorf("SetupL3VNI: failed to setup VNI: %w", err)
 	}
 	slog.DebugContext(ctx, "setting up l3 VNI", "params", params)
@@ -126,6 +131,20 @@ func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
 		return fmt.Errorf("SetupL3VNI: failed to setup host veth pair: %w", err)
 	}
 	return nil
+}
+
+func l3VNIBridgeOptions(routerMAC string) ([]NetlinkOption, error) {
+	mac, err := ParseRouterMAC(routerMAC)
+	if err != nil {
+		return nil, err
+	}
+	options := []NetlinkOption{setAddrGenModeNone}
+	if len(mac) == 0 {
+		return options, nil
+	}
+	return append(options, func(bridge netlink.Link) error {
+		return ensureBridgeMACAddress(bridge, mac)
+	}), nil
 }
 
 // SetupL2VNI sets up a Layer 2 VNI in the target namespace.
