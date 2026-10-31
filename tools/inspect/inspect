@@ -12,6 +12,7 @@ readonly ROUTER_INFO_SCRIPT="${SCRIPT_DIR}/router_info"
 readonly NET_INFO_SCRIPT="${SCRIPT_DIR}/net_info"
 # router pod's label selector
 readonly ROUTER_LABEL="app=router"
+readonly FRRK8S_LABEL="app=frr-k8s"
 # router pod's container who has access to perouter netns (used for collecting routing infra info)
 readonly ROUTER_INFRA_CONTAINER="frr"
 # pod's container who has access to node root netns (used for collecting root netns info)
@@ -179,7 +180,8 @@ function dump_node_info() {
 		echo "Dumped router netns info of node [$node_name] pod [$p/$ROUTER_INFRA_CONTAINER] to [$logfile]"
 
 		logfile="${node_dir}/router_info.log"
-		$ctl exec -i "$p" -c "$ROUTER_INFRA_CONTAINER" -- bash <<< "$(cat "$ROUTER_INFO_SCRIPT")" &> "$logfile"
+		$ctl exec -i "$p" -c "$ROUTER_INFRA_CONTAINER" -- \
+			env NETNS="$NETNS" bash <<< "$(cat "$ROUTER_INFO_SCRIPT")" &> "$logfile"
 		echo "Dumped router info of node [$node_name] pod [$p/$ROUTER_INFRA_CONTAINER] to [$logfile]"
 
 		dump_device_state "$ctl" "$p" "$node_name" "${node_dir}/device_state"
@@ -210,6 +212,90 @@ function dump_device_state() {
 	done
 }
 
+function dump_frrk8s_pod_info() {
+	local -r ctl_bin="$1"
+	local -r namespace="$2"
+	local -r base_dir="$3"
+
+	local -r frr_pods="$("$ctl_bin" -n "$namespace" get pods -l "$FRRK8S_LABEL" -o jsonpath='{.items[*].metadata.name}')"
+	if [[ -z $frr_pods ]]; then
+		return
+	fi
+
+	local -r namespace_dir="${base_dir}/${namespace}"
+	mkdir -p "$namespace_dir"
+	local logfile
+	for pod in $frr_pods; do
+		logfile="${namespace_dir}/${pod}_frr_info.log"
+		if ! "$ctl_bin" -n "$namespace" exec -i "$pod" -c "$ROUTER_INFRA_CONTAINER" -- \
+			bash < "$ROUTER_INFO_SCRIPT" > "$logfile" 2>&1; then
+			echo "Failed to collect FRR information from pod [$namespace/$pod]" >> "$logfile"
+		fi
+		echo "Dumped FRR info from pod [$namespace/$pod] to [$logfile]"
+	done
+}
+
+function dump_external_frr_info() {
+	local -r base_dir="$1"
+	local container safe_name logfile
+	for container in "${EXTERNAL_FRR_CONTAINERS[@]}"; do
+		safe_name="${container//[^[:alnum:]._-]/_}"
+		logfile="${base_dir}/${safe_name}_frr_info.log"
+		if ! "$CONTAINER_RUNTIME" exec -i "$container" bash \
+			< "$ROUTER_INFO_SCRIPT" > "$logfile" 2>&1; then
+			echo "Failed to collect FRR information from external FRR container [$container]" >> "$logfile"
+		fi
+		echo "Dumped FRR info from external FRR container [$container] to [$logfile]"
+	done
+}
+
+function dump_routing_info() {
+	local -r base_dir="$1"
+	mkdir -p "$base_dir"
+
+	declare -A seen_namespaces=()
+	for namespace in "$NAMESPACE" "${ADDITIONAL_NAMESPACES[@]}"; do
+		if [[ -n ${seen_namespaces[$namespace]+x} ]]; then
+			continue
+		fi
+		seen_namespaces[$namespace]=1
+		dump_frrk8s_pod_info "$CTL_BIN" "$namespace" "$base_dir"
+	done
+	dump_external_frr_info "$base_dir"
+}
+
+function dump_workload_network_info() {
+	local -r ctl_bin="$1"
+	local -r namespace="$2"
+	local -r base_dir="$3"
+	local -r namespace_dir="${base_dir}/${namespace}/workload_network_info"
+
+	local -r pods="$("$ctl_bin" -n "$namespace" get pods -o jsonpath='{.items[*].metadata.name}')"
+	if [[ -z $pods ]]; then
+		return
+	fi
+
+	mkdir -p "$namespace_dir"
+	local pod container debugger logfile
+	for pod in $pods; do
+		container="$("$ctl_bin" -n "$namespace" get pod "$pod" -o jsonpath='{.spec.containers[0].name}')"
+		if [[ -z $container ]]; then
+			continue
+		fi
+
+		logfile="${namespace_dir}/${pod}.log"
+		debugger="inspect-${RANDOM}"
+		if ! timeout 60s "$ctl_bin" -n "$namespace" debug --attach=true \
+			-c "$debugger" \
+			--image="$WORKLOAD_DEBUG_IMAGE" \
+			"$pod" -- bash -c "$(cat "${NET_INFO_SCRIPT}")" \
+			> "$logfile" 2>&1; then
+			echo "Failed to collect network information from pod [$namespace/$pod]" >> "$logfile"
+		fi
+		echo "Dumped network info from pod [$namespace/$pod] to [$logfile]"
+	done
+}
+
 function dump_namespace() {
 	local -r ctl_bin="$1"
 	local -r namespace="$2"
@@ -236,8 +322,15 @@ Options:
   --namespace   OpenPERouter system namespace name (default: "openperouter-system")
   --additional-namespace
                 Namespace to collect core resources and pod logs from; may be specified multiple times
+  --ext-frr-container
+                FRR container to inspect through the configured container runtime; may be specified multiple times
   --dest-dir    The directory to store artifacts (default: "openperouter-inspect")
   --k8s-client  Kubernetes client binary path (default: "kubectl")
+  --container-runtime
+                Runtime used to inspect external FRR containers (default: "docker")
+  --workload-debug-image
+                Image used by ephemeral debug containers to collect workload network information
+                (default: "quay.io/frrouting/frr:10.6.0")
   --since       Collect pod logs newer then relative duration, e.g.: 5s, 10m, 2h.
   -h, --help    Show this help message and exit
 EOF
@@ -245,16 +338,22 @@ EOF
 
 NAMESPACE="openperouter-system"
 ADDITIONAL_NAMESPACES=()
+EXTERNAL_FRR_CONTAINERS=()
 ARTIFACTS_DIR="./openperouter-inspect"
 CTL_BIN="kubectl"
 SINCE_DURATION=""
+CONTAINER_RUNTIME="${CONTAINER_RUNTIME:-docker}"
+WORKLOAD_DEBUG_IMAGE="${WORKLOAD_DEBUG_IMAGE:-quay.io/frrouting/frr:10.6.0}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
 		--namespace=*)             NAMESPACE="${1#*=}" ;;
 		--additional-namespace=*)  ADDITIONAL_NAMESPACES+=("${1#*=}") ;;
+		--ext-frr-container=*)      EXTERNAL_FRR_CONTAINERS+=("${1#*=}") ;;
 		--dest-dir=*)              ARTIFACTS_DIR="${1#*=}" ;;
 		--k8s-client=*)            CTL_BIN="${1#*=}" ;;
+		--container-runtime=*)     CONTAINER_RUNTIME="${1#*=}" ;;
+		--workload-debug-image=*)  WORKLOAD_DEBUG_IMAGE="${1#*=}" ;;
 		--since=*)                 SINCE_DURATION="${1#*=}" ;;
 		-h | --help)               help; exit 0 ;;
 		*) echo "Unknown option: $1"; help; exit 1 ;;
@@ -282,6 +381,7 @@ date --rfc-3339=ns > "${ARTIFACTS_DIR}/timestamp"
 
 (
 	set +e
+	dump_routing_info "${ARTIFACTS_DIR}/routing_info"
 	declare -A seen_namespaces=()
 	for namespace in "${NAMESPACE}" "${ADDITIONAL_NAMESPACES[@]}"; do
 		if [[ -n ${seen_namespaces[$namespace]+x} ]]; then
@@ -289,6 +389,9 @@ date --rfc-3339=ns > "${ARTIFACTS_DIR}/timestamp"
 		fi
 		seen_namespaces[$namespace]=1
 		dump_namespace "${CTL_BIN}" "$namespace" "${ARTIFACTS_DIR}" "${log_opts}"
+		if [[ $namespace != "$NAMESPACE" ]]; then
+			dump_workload_network_info "$CTL_BIN" "$namespace" "$ARTIFACTS_DIR"
+		fi
 	done
 	dump_config_resources_from_all_ns "${CTL_BIN}" "${ARTIFACTS_DIR}"
 	dump_node_manifests "${CTL_BIN}" "${ARTIFACTS_DIR}"

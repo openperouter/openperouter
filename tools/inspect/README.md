@@ -5,6 +5,7 @@ The `inspect` tool makes debugging OpenPERouter deployments easier by collecting
 ## Prerequisites
 - Cluster API client set for the target cluster.
 - Read access to the OpenPERouter namespace; exec access to router pods for node logs.
+- Permission to update `pods/ephemeralcontainers` and attach to `pods` for workload network collection.
 
 ## How to use:
 
@@ -13,12 +14,17 @@ The `inspect` tool makes debugging OpenPERouter deployments easier by collecting
 |--------------------------|-------------------------------------------------------------------|------------------------|
 | `--namespace`            | OpenPERouter namespace                                            | `openperouter-system`  |
 | `--additional-namespace` | Namespace to collect core resources and pod logs from; repeat for each namespace | |
+| `--ext-frr-container`     | FRR container to inspect through the configured container runtime; repeat for each container |                        |
 | `--dest-dir`             | Output directory path                                             | `openperouter-inspect` |
 | `--k8s-client`           | Kubernetes client                                                 | `kubectl`              |
+| `--container-runtime`    | Runtime used to inspect external FRR containers                   | `docker`               |
+| `--workload-debug-image` | Image used by ephemeral debug containers to collect workload network information | `quay.io/frrouting/frr:10.6.0` |
 | `--since`                | Collect pod logs newer then relative duration (e.g.: 5s, 10m, 2h) |                        |
 | `-h`, `--help`           | Print usage instructions                                          |                        |
 
 **Note:** Options must be specified with `=`.
+
+Workload network information is collected through ephemeral debug containers, which require Kubernetes 1.25 or newer.
 
 ### Example:
 ```bash 
@@ -46,8 +52,9 @@ The output root directory contains the following:
 - `inspect.log` - Execution log
 - `node_info/` - Per node network and routing infrastructure information, and grout device state files
   (`device_state/<interface>.json`, only with the grout datapath)
+- `routing_info/` - FRR diagnostics from FRR-K8s pods and requested external FRR containers
 - `<openperouter namespace>/` - OpenPERouter namespace objects and workload logs (defaults to `openperouter-system`)
-- `<additional namespace>/` - Objects and workload logs for each requested additional namespace
+- `<additional namespace>/` - Objects, workload logs, and per-pod network information for each requested additional namespace
 - `nodes.yaml` - Kubernetes node manifests
 - `<namespace name>/` - Per namespaces containing config resources directory (Underlay, L2VNI, L3VNI, L3VPN, FRRConfiguration, etc.)
 

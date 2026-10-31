@@ -65,7 +65,7 @@ var _ = ginkgo.BeforeSuite(func() {
 		ReportPath,
 		executor.Kubectl,
 		openperouter.Namespace,
-		frrk8s.Namespace,
+		k8s.WithAdditionalNamespaces(frrk8s.Namespace),
 	)
 
 	ginkgo.By("Registering fabric and node links from " + nodeLinkConfigPath)
