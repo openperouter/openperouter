@@ -142,20 +142,6 @@ func SetupUnderlayNetDevInterface(ctx context.Context, ns netns.NsHandle,
 	return nil
 }
 
-// RestoreUnderlayNetDevInterface moves a single underlay netdev from the
-// router namespace back to the default namespace. It is a no-op if the
-// device is not in the router namespace, either because it is already back
-// in the default namespace or because it is gone.
-func RestoreUnderlayNetDevInterface(ctx context.Context, fromNetNSPath, name string) error {
-	return restoreUnderlayWithHandles(ctx, fromNetNSPath,
-		func(ctx context.Context, fromHandle, defaultHandle *netlink.Handle, defaultNS netns.NsHandle) error {
-			if _, err := fromHandle.LinkByName(name); errors.As(err, &netlink.LinkNotFoundError{}) {
-				return nil
-			}
-			return MoveInterfaceToNamespace(ctx, name, fromHandle, defaultHandle, defaultNS, 0)
-		})
-}
-
 // SetupUnderlayCNIDevInterface provisions a single underlay cni dev interface.
 // A CNI CHECK runs first and, if it fails, the interface is torn down so the
 // subsequent Add provisions it fresh.

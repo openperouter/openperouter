@@ -239,7 +239,7 @@ For PCI ports, the controller:
 2. Saves the original driver and non-link-local addresses
 3. Binds non-bifurcated NICs (for example Intel) to `vfio-pci`, or moves
    `mlx5_core` devices (Mellanox) into the router namespace
-4. Creates the grout port with `grcli interface add port u_<interfaceName> devargs <pci>`
+4. Creates the grout port with `grcli interface add port <interfaceName> devargs <pci>`
 
 The interface referenced by interfaceName must exist on the host. Any address
 assigned to the interface will be used for the setup in the accelerated data path.
@@ -270,7 +270,20 @@ spec:
 
 All `acceleratedConfig` fields are optional. The field can be omitted to use
 grout defaults for either port type.
-All underlay ports are named `u_<interfaceName>`, so interface names must be at most 13 characters.
+## Underlay Port Names
+
+Each underlay port is named after its underlay interface, and grout creates a
+kernel interface with the same name in the router namespace. FRR therefore
+sees the underlay interfaces under the names used in the `Underlay` resource,
+for instance for unnumbered BGP sessions or IS-IS.
+
+As the name belongs to grout's interface, the kernel netdevs that live on in
+the router namespace are renamed there:
+
+- With TAP ports, the netdev backing the port is named `gu<hash>`, where
+  `<hash>` derives from the interface name.
+- With bifurcated NICs, grout renames the netdev itself when creating the port,
+  and gives it its name back when the port is deleted.
 
 ## Verification
 

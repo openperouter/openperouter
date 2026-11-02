@@ -57,34 +57,19 @@ func TestValidateGroutUnderlayCNI(t *testing.T) {
 
 func TestValidateGroutUnderlay(t *testing.T) {
 	tests := []struct {
-		name    string
-		nics    []string
-		wantErr bool
+		name string
+		nics []string
 	}{
 		{
-			name:    "no nics",
-			nics:    nil,
-			wantErr: false,
+			name: "no nics",
 		},
 		{
-			name:    "valid nic name",
-			nics:    []string{"eth0"},
-			wantErr: false,
+			name: "valid nic name",
+			nics: []string{"eth0"},
 		},
 		{
-			name:    "nic name at 13 char limit",
-			nics:    []string{"a234567890123"},
-			wantErr: false,
-		},
-		{
-			name:    "nic name over 13 char limit",
-			nics:    []string{"a2345678901234"},
-			wantErr: true,
-		},
-		{
-			name:    "multiple nics, one too long",
-			nics:    []string{"eth0", "a2345678901234"},
-			wantErr: true,
+			name: "nic name at the kernel length limit",
+			nics: []string{"a23456789012345"},
 		},
 	}
 
@@ -105,9 +90,8 @@ func TestValidateGroutUnderlay(t *testing.T) {
 				})
 			}
 
-			err := ValidateGroutUnderlay(underlay)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ValidateGroutUnderlay() error = %v, wantErr %v", err, tt.wantErr)
+			if err := ValidateGroutUnderlay(underlay); err != nil {
+				t.Errorf("ValidateGroutUnderlay() unexpected error = %v", err)
 			}
 		})
 	}

@@ -4,6 +4,8 @@ package grout
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -19,13 +21,11 @@ import (
 	"github.com/vishvananda/netns"
 )
 
-const UnderlayPortNamePrefix = "u_"
-
-// UnderlayPortName returns the name of the grout port attached to the given
-// underlay interface.
-func UnderlayPortName(underlayInterface string) string {
-	return UnderlayPortNamePrefix + underlayInterface
-}
+// Grout ports are named after their underlay interface, and grout creates a
+// kernel interface named after each port in the router namespace. A netdev
+// backing a TAP port lives in the router namespace too, so it is renamed there
+// with this prefix.
+const tapBackingNetdevPrefix = "gu"
 
 // UnderlayPortMode selects how grout attaches to an underlay device.
 type UnderlayPortMode string
@@ -171,7 +171,7 @@ func RestoreUnderlay(
 			return fmt.Errorf("RestoreUnderlay: failed to load device state for %s: %w", iface.InterfaceName, err)
 		}
 
-		if err := teardownUnderlayInterface(ctx, client, ns, targetNS, state, sysfs); err != nil {
+		if err := teardownUnderlayInterface(ctx, client, ns, state, sysfs); err != nil {
 			return err
 		}
 
@@ -233,18 +233,32 @@ func setupTapUnderlay(
 	opts portOptions,
 	state devicestate.State,
 ) error {
-	if err := hostnetwork.SetupUnderlayNetDevInterface(
-		ctx,
-		perouterNetNS,
-		hostnetwork.UnderlayInterface{
-			InterfaceName: state.InterfaceName,
-			Kind:          hostnetwork.UnderlayInterfaceNetDev,
-		}); err != nil {
+	backingNetdev := tapBackingNetdevName(state.InterfaceName)
+	if err := moveNetdevToRouterNS(ctx, perouterNetNS, state.InterfaceName, backingNetdev); err != nil {
 		return err
 	}
 	return netnamespace.In(perouterNetNS, func() error {
 		return configureUnderlayTapPort(ctx, client, opts, state)
 	})
+}
+
+// moveNetdevToRouterNS moves the netdev name from the host namespace to the
+// router one, where it is named nsName. No grout interface takes an underlay
+// name in the host namespace, so a netdev missing from it has already been
+// moved.
+func moveNetdevToRouterNS(ctx context.Context, perouterNetNS netns.NsHandle, name, nsName string) error {
+	link, err := netlink.LinkByName(name)
+	if errors.As(err, &netlink.LinkNotFoundError{}) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("failed to find netdev %s: %w", name, err)
+	}
+	if err := hostnetwork.MoveAndRenameLink(link, nsName, perouterNetNS); err != nil {
+		return fmt.Errorf("failed to move netdev %s to the router namespace: %w", name, err)
+	}
+	slog.InfoContext(ctx, "moved netdev to the router namespace", "interfaceName", name, "nsName", nsName)
+	return nil
 }
 
 func setupTunnelEndpoint(ctx context.Context, client *Client, ep hostnetwork.UnderlayTunnelEndpointParams) error {
@@ -268,19 +282,18 @@ func teardownUnderlayInterface(
 	ctx context.Context,
 	client *Client,
 	ns netns.NsHandle,
-	targetNS string,
 	state devicestate.State,
 	sysfs pci.Sysfs,
 ) error {
 	// The port must be gone before the device is handed back to the kernel:
 	// DPDK may still own it.
-	if err := deleteUnderlayPort(ctx, client, ns, UnderlayPortName(state.InterfaceName)); err != nil {
+	if err := deleteUnderlayPort(ctx, client, ns, state.InterfaceName); err != nil {
 		return err
 	}
 	if state.PCIAddress != "" {
-		return restoreAcceleratedDevice(ctx, targetNS, state, sysfs)
+		return restoreAcceleratedDevice(ctx, ns, state, sysfs)
 	}
-	return restoreNetdev(ctx, targetNS, state)
+	return restoreNetdev(ctx, ns, tapBackingNetdevName(state.InterfaceName), state)
 }
 
 func deleteUnderlayPort(ctx context.Context, client *Client, ns netns.NsHandle, portName string) error {
@@ -301,11 +314,12 @@ func deleteUnderlayPort(ctx context.Context, client *Client, ns netns.NsHandle, 
 }
 
 // restoreNetdev moves a netdev that grout shares with the kernel (the one
-// backing a TAP port, or a bifurcated device) back to the host namespace and
-// re-applies its saved addresses.
-func restoreNetdev(ctx context.Context, targetNS string, state devicestate.State) error {
-	if err := hostnetwork.RestoreUnderlayNetDevInterface(ctx, targetNS, state.InterfaceName); err != nil {
-		return fmt.Errorf("failed to move netdev %s back to the host namespace: %w", state.InterfaceName, err)
+// backing a TAP port, or a bifurcated device), named nsName in the router
+// namespace, back to the host namespace under its original name, and
+// re-applies its saved state.
+func restoreNetdev(ctx context.Context, ns netns.NsHandle, nsName string, state devicestate.State) error {
+	if err := moveNetdevToHostNS(ctx, ns, nsName, state.InterfaceName); err != nil {
+		return err
 	}
 
 	link, err := netlink.LinkByName(state.InterfaceName)
@@ -316,8 +330,42 @@ func restoreNetdev(ctx context.Context, targetNS string, state devicestate.State
 	if err != nil {
 		return fmt.Errorf("failed to find kernel netdev %s: %w", state.InterfaceName, err)
 	}
+	if err := hostnetwork.EnsureLinkUp(state.InterfaceName); err != nil {
+		return err
+	}
 
 	return applyStateToLink(ctx, link, state)
+}
+
+// moveNetdevToHostNS moves the netdev nsName from the router namespace to the
+// host one, where it is named name. It must run once the grout port is
+// deleted, so that no grout interface can hold nsName. A netdev missing from
+// the router namespace has already been moved.
+func moveNetdevToHostNS(ctx context.Context, ns netns.NsHandle, nsName, name string) error {
+	hostNS, err := netns.Get()
+	if err != nil {
+		return fmt.Errorf("failed to get the host namespace: %w", err)
+	}
+	defer func() {
+		if err := hostNS.Close(); err != nil {
+			slog.Error("failed to close host namespace", "error", err)
+		}
+	}()
+
+	return netnamespace.In(ns, func() error {
+		link, err := netlink.LinkByName(nsName)
+		if errors.As(err, &netlink.LinkNotFoundError{}) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("failed to find netdev %s in the router namespace: %w", nsName, err)
+		}
+		if err := hostnetwork.MoveAndRenameLink(link, name, hostNS); err != nil {
+			return fmt.Errorf("failed to move netdev %s back to the host namespace: %w", nsName, err)
+		}
+		slog.InfoContext(ctx, "moved netdev back to the host namespace", "nsName", nsName, "interfaceName", name)
+		return nil
+	})
 }
 
 func applyStateToLink(ctx context.Context, link netlink.Link, state devicestate.State) error {
@@ -346,21 +394,24 @@ func configureUnderlayTapPort(
 	opts portOptions,
 	state devicestate.State,
 ) error {
-	underlayInterface := state.InterfaceName
-	portName := UnderlayPortName(underlayInterface)
+	portName := state.InterfaceName
+	backingNetdev := tapBackingNetdevName(state.InterfaceName)
+
+	if err := hostnetwork.EnsureLinkUp(backingNetdev); err != nil {
+		return err
+	}
 
 	// Suppress the netdev's kernel IPv6 link-local so it doesn't collide with
 	// the identical EUI-64 link-local on the grout port's kernel interface,
 	// which shares the netdev's MAC. The collision makes DAD strip the port's
 	// link-local, breaking any session with an IPv6 nexthop. The netdev's
 	// link-local is unused since grout owns all forwarding.
-	slog.InfoContext(ctx, "suppressing kernel link-local on underlay interface", "iface", underlayInterface)
-	if err := hostnetwork.SuppressLinkLocal(underlayInterface); err != nil {
-		return fmt.Errorf("failed to suppress link-local on underlay interface %s: %w", underlayInterface, err)
+	slog.InfoContext(ctx, "suppressing kernel link-local on underlay netdev", "iface", backingNetdev)
+	if err := hostnetwork.SuppressLinkLocal(backingNetdev); err != nil {
+		return fmt.Errorf("failed to suppress link-local on underlay netdev %s: %w", backingNetdev, err)
 	}
 
-	opts.Devargs = fmt.Sprintf("net_tap%s,remote=%s,iface=%s",
-		makeTapRandomString(), underlayInterface, "tap_"+underlayInterface)
+	opts.Devargs = fmt.Sprintf("net_tap%s,remote=%s", makeTapRandomString(), backingNetdev)
 	opts.MTU = state.MTU
 	if err := client.ensurePort(ctx, portName, opts); err != nil {
 		return fmt.Errorf("failed to create grout underlay port: %w", err)
@@ -371,8 +422,8 @@ func configureUnderlayTapPort(
 	// autoconfigure new ones from Router Advertisements. A SLAAC address
 	// on the netlink device would be picked up on the next reconcile and
 	// clash with the existing connected route in grout's RIB (EBUSY).
-	if err := sysctl.Ensure(sysctl.DisableAcceptRA(underlayInterface)); err != nil {
-		return fmt.Errorf("failed to disable accept_ra on underlay interface %s: %w", underlayInterface, err)
+	if err := sysctl.Ensure(sysctl.DisableAcceptRA(backingNetdev)); err != nil {
+		return fmt.Errorf("failed to disable accept_ra on underlay netdev %s: %w", backingNetdev, err)
 	}
 
 	if err := assignAddressesToGroutPort(ctx, client, portName, state.Addresses); err != nil {
@@ -384,6 +435,13 @@ func configureUnderlayTapPort(
 	}
 
 	return nil
+}
+
+// tapBackingNetdevName derives the name from a digest of the underlay
+// interface, so that it is stable and fits in IFNAMSIZ.
+func tapBackingNetdevName(underlayInterface string) string {
+	sum := sha256.Sum256([]byte(underlayInterface))
+	return tapBackingNetdevPrefix + hex.EncodeToString(sum[:4])
 }
 
 func underlayPortOptions(iface hostnetwork.UnderlayInterface) portOptions {

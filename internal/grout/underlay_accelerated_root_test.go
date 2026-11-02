@@ -30,8 +30,11 @@ const (
 	accelTestNS     = "acceltest"
 	accelTestNSPath = "/var/run/netns/" + accelTestNS
 	accelIface      = "accel0"
-	accelPort       = UnderlayPortNamePrefix + accelIface
+	accelPort       = accelIface
 	accelCIDR       = "192.168.50.2/24"
+	// groutHiddenNetdev is a name grout gives the netdev of a bifurcated
+	// device when creating its port.
+	groutHiddenNetdev = "_grp3s0"
 )
 
 var accelUnderlay = hostnetwork.UnderlayInterface{
@@ -118,7 +121,7 @@ func TestSetupAcceleratedUnderlayMovesBifurcatedNetdev(t *testing.T) {
 	_, err := netlink.LinkByName(accelIface)
 	assert.ErrorAs(t, err, &netlink.LinkNotFoundError{}, "netdev must leave the host namespace")
 	nsLink := nsLinkByName(t, ns, accelIface)
-	assert.Equal(t, uint32(hostnetwork.UnderlayGroupID), nsLink.Attrs().Group)
+	assert.NotZero(t, nsLink.Attrs().Flags&net.FlagUp, "netdev must be up in the router namespace")
 
 	state, err := store.Load(accelIface)
 	require.NoError(t, err)
@@ -149,9 +152,115 @@ func TestSetupAcceleratedUnderlayMovesBifurcatedNetdev(t *testing.T) {
 
 		_, err := netlink.LinkByName(accelIface)
 		assert.ErrorAs(t, err, &netlink.LinkNotFoundError{}, "netdev must stay out of the host namespace")
-		assert.Equal(t, uint32(hostnetwork.UnderlayGroupID), nsLinkByName(t, ns, accelIface).Attrs().Group)
 		assert.Empty(t, sysfs.read(sysfs.devicePath("driver_override")), "mlx5 must not be rebound to vfio-pci")
 	})
+
+	t.Run("leaves grout's interface alone once the port exists", func(t *testing.T) {
+		// Creating the port, grout hides the netdev under another name and
+		// creates its own interface named after the port.
+		renameNSLink(t, ns, accelIface, groutHiddenNetdev)
+		addNSDummy(t, ns, accelPort)
+		recordCmdExec(t,
+			okCmd(
+				"grcli --err-exit --json --socket sock interface show name "+accelPort,
+				fmt.Sprintf(`{"name":%q,"type":"port","devargs":%q,"mtu":1500}`, accelPort, testPCIAddr),
+			),
+			accelAddressAddCmd(),
+			accelPortUpCmd(),
+		)
+
+		require.NoError(t, setupAcceleratedUnderlayFromSavedState(ns, store, sysfs.Sysfs))
+
+		nsLinkByName(t, ns, groutHiddenNetdev)
+		assert.Equal(t, nsSysctl(t, ns, "net/ipv6/conf/default/accept_ra"),
+			nsSysctl(t, ns, "net/ipv6/conf/"+accelPort+"/accept_ra"),
+			"grout's interface must not be prepared as the netdev")
+	})
+}
+
+func TestSetupTapUnderlayRenamesNetdev(t *testing.T) {
+	ns := newAccelTestNS(t)
+	addGroutMainInterface(t, ns)
+	addHostDummy(t, accelCIDR)
+	store := devicestate.Store{Dir: t.TempDir()}
+	backingNetdev := tapBackingNetdevName(accelIface)
+
+	calls := recordCmdExec(t, tapPortCalls()...)
+	require.NoError(t, setupTapUnderlayFromSavedState(ns, store))
+
+	_, err := netlink.LinkByName(accelIface)
+	assert.ErrorAs(t, err, &netlink.LinkNotFoundError{}, "netdev must leave the host namespace")
+	nsLink := nsLinkByName(t, ns, backingNetdev)
+	assert.NotZero(t, nsLink.Attrs().Flags&net.FlagUp, "netdev must be up in the router namespace")
+
+	t.Run("migrates the addresses from the netdev to the grout port", func(t *testing.T) {
+		assert.Contains(t, *calls, accelAddressAddCmd().cmd)
+		assert.Empty(t, nsLinkAddresses(t, ns, nsLink))
+		assert.True(t, hasSubnetRoute(t, ns, "192.168.50.0/24"))
+	})
+
+	t.Run("disables accept_ra on the netdev", func(t *testing.T) {
+		assert.Equal(t, "0", nsSysctl(t, ns, "net/ipv6/conf/"+backingNetdev+"/accept_ra"))
+	})
+
+	t.Run("reconciles once grout's interface holds the underlay name", func(t *testing.T) {
+		addNSDummy(t, ns, accelPort)
+		recordCmdExec(t, tapPortCalls()...)
+
+		require.NoError(t, setupTapUnderlayFromSavedState(ns, store))
+
+		nsLinkByName(t, ns, backingNetdev)
+		nsLinkByName(t, ns, accelPort)
+		_, err := netlink.LinkByName(accelIface)
+		assert.ErrorAs(t, err, &netlink.LinkNotFoundError{}, "grout's interface must stay in the router namespace")
+	})
+}
+
+func TestRestoreTapUnderlayMovesNetdevBack(t *testing.T) {
+	tests := []struct {
+		name string
+		// moved tells whether the netdev is still in the router namespace,
+		// or was moved back by an interrupted teardown.
+		moved bool
+	}{
+		{
+			name:  "netdev in the router namespace",
+			moved: true,
+		},
+		{
+			name:  "netdev already back in the host namespace",
+			moved: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ns := newAccelTestNS(t)
+			store := devicestate.Store{Dir: t.TempDir()}
+			link := addHostDummy(t, "")
+			if tt.moved {
+				require.NoError(t, hostnetwork.MoveAndRenameLink(link, tapBackingNetdevName(accelIface), ns))
+			}
+			require.NoError(t, store.Save(devicestate.State{
+				InterfaceName: accelIface,
+				Addresses:     []string{accelCIDR},
+				MTU:           9000,
+			}))
+
+			recordCmdExec(t, interfaceShowNotFoundCmd())
+			require.NoError(t, RestoreUnderlay(context.Background(), NewClient("sock"), accelTestNSPath,
+				[]hostnetwork.UnderlayInterface{accelUnderlay}, store, pci.Sysfs{}))
+
+			link, err := netlink.LinkByName(accelIface)
+			require.NoError(t, err)
+			assert.Contains(t, linkAddresses(t, link), accelCIDR)
+			assert.Equal(t, 9000, link.Attrs().MTU)
+			assert.NotZero(t, link.Attrs().Flags&net.FlagUp, "netdev must be up in the host namespace")
+
+			_, err = store.Load(accelIface)
+			assert.ErrorIs(t, err, devicestate.ErrNotFound)
+		})
+	}
 }
 
 func TestRestoreAcceleratedUnderlayRestoresKernelDriver(t *testing.T) {
@@ -209,7 +318,7 @@ func TestRestoreAcceleratedDeviceMovesBifurcatedNetdevBack(t *testing.T) {
 		AcceptRA:       "2",
 		MTU:            9000,
 	}
-	require.NoError(t, restoreAcceleratedDevice(context.Background(), accelTestNSPath, state, sysfs.Sysfs))
+	require.NoError(t, restoreAcceleratedDevice(context.Background(), ns, state, sysfs.Sysfs))
 
 	link, err := netlink.LinkByName(accelIface)
 	require.NoError(t, err)
@@ -246,6 +355,16 @@ func setupAcceleratedUnderlayFromSavedState(ns netns.NsHandle, store devicestate
 	return setupAcceleratedUnderlay(context.Background(), NewClient("sock"), ns, underlayPortOptions(accelUnderlay), state, sysfs)
 }
 
+// setupTapUnderlayFromSavedState sets up the test underlay in TAP mode as
+// SetupUnderlay does: from its saved device state, retrieved on first use.
+func setupTapUnderlayFromSavedState(ns netns.NsHandle, store devicestate.Store) error {
+	state, err := ensureDeviceState(accelIface, PortModeTAP, store, pci.Sysfs{})
+	if err != nil {
+		return err
+	}
+	return setupTapUnderlay(context.Background(), NewClient("sock"), ns, underlayPortOptions(accelUnderlay), state)
+}
+
 // addNetDevice exposes a kernel netdev under the PCI device, as the kernel
 // does when a netdev driver is bound.
 func (s *fakeSysfs) addNetDevice(name string) {
@@ -258,6 +377,20 @@ func accelPortCalls() []cmdCall {
 	return []cmdCall{
 		interfaceShowNotFoundCmd(),
 		accelPortAddCmd(),
+		accelAddressAddCmd(),
+		accelPortUpCmd(),
+	}
+}
+
+// tapPortCalls stand for an existing TAP port: its devargs hold a random
+// device prefix, so a port creation cannot be matched.
+func tapPortCalls() []cmdCall {
+	devargs := "net_tap0,remote=" + tapBackingNetdevName(accelIface)
+	return []cmdCall{
+		okCmd(
+			"grcli --err-exit --json --socket sock interface show name "+accelPort,
+			fmt.Sprintf(`{"name":%q,"type":"port","devargs":%q,"mtu":1500}`, accelPort, devargs),
+		),
 		accelAddressAddCmd(),
 		accelPortUpCmd(),
 	}
@@ -361,6 +494,26 @@ func addHostDummy(t *testing.T, cidr string) netlink.Link {
 		require.NoError(t, netlink.AddrAdd(link, addr))
 	}
 	return link
+}
+
+func addNSDummy(t *testing.T, ns netns.NsHandle, name string) {
+	t.Helper()
+	handle, err := netlink.NewHandleAt(ns)
+	require.NoError(t, err)
+	defer handle.Close()
+	require.NoError(t, handle.LinkAdd(&netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: name}}))
+}
+
+func renameNSLink(t *testing.T, ns netns.NsHandle, name, newName string) {
+	t.Helper()
+	handle, err := netlink.NewHandleAt(ns)
+	require.NoError(t, err)
+	defer handle.Close()
+	link, err := handle.LinkByName(name)
+	require.NoError(t, err)
+	require.NoError(t, handle.LinkSetDown(link))
+	require.NoError(t, handle.LinkSetName(link, newName))
+	require.NoError(t, handle.LinkSetUp(link))
 }
 
 func deleteHostDummy(t *testing.T) {

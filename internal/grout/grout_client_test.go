@@ -424,7 +424,7 @@ func TestGetAddresses(t *testing.T) {
 }
 
 const interfaceShowUnderlayPortOutput = `{
-	"name": "u_enp3s0f0v0",
+	"name": "enp3s0f0v0",
 	"type": "port",
 	"id": 2,
 	"devargs": "0000:03:02.0",
@@ -446,18 +446,18 @@ func TestEnsurePortOptions(t *testing.T) {
 	t.Run("appends optional port arguments", func(t *testing.T) {
 		defer mockCmdExec(
 			cmdCall{
-				cmd:    "grcli --err-exit --json --socket sock interface show name u_enp3s0f0v0",
+				cmd:    "grcli --err-exit --json --socket sock interface show name enp3s0f0v0",
 				output: interfaceNotFoundOutput,
 				err:    fmt.Errorf("exit status 1"),
 			},
 			cmdCall{
-				cmd: "grcli --err-exit --json --socket sock interface add port u_enp3s0f0v0 devargs 0000:03:02.0 rxqs 4 qsize 1024 down",
+				cmd: "grcli --err-exit --json --socket sock interface add port enp3s0f0v0 devargs 0000:03:02.0 rxqs 4 qsize 1024 down",
 			})()
 
 		assert.NoError(t,
 			NewClient("sock").ensurePort(
 				context.Background(),
-				"u_enp3s0f0v0",
+				"enp3s0f0v0",
 				opts,
 			),
 		)
@@ -466,18 +466,18 @@ func TestEnsurePortOptions(t *testing.T) {
 	t.Run("omits unset options", func(t *testing.T) {
 		defer mockCmdExec(
 			cmdCall{
-				cmd:    "grcli --err-exit --json --socket sock interface show name u_enp3s0f0v0",
+				cmd:    "grcli --err-exit --json --socket sock interface show name enp3s0f0v0",
 				output: interfaceNotFoundOutput,
 				err:    fmt.Errorf("exit status 1"),
 			},
 			cmdCall{
-				cmd: "grcli --err-exit --json --socket sock interface add port u_enp3s0f0v0 devargs 0000:03:02.0 down",
+				cmd: "grcli --err-exit --json --socket sock interface add port enp3s0f0v0 devargs 0000:03:02.0 down",
 			})()
 
 		assert.NoError(t,
 			NewClient("sock").ensurePort(
 				context.Background(),
-				"u_enp3s0f0v0",
+				"enp3s0f0v0",
 				portOptions{Devargs: "0000:03:02.0"},
 			),
 		)
@@ -486,14 +486,14 @@ func TestEnsurePortOptions(t *testing.T) {
 	t.Run("no-op when existing port already matches", func(t *testing.T) {
 		defer mockCmdExec(
 			cmdCall{
-				cmd:    "grcli --err-exit --json --socket sock interface show name u_enp3s0f0v0",
+				cmd:    "grcli --err-exit --json --socket sock interface show name enp3s0f0v0",
 				output: interfaceShowUnderlayPortOutput,
 			})()
 
 		assert.NoError(t,
 			NewClient("sock").ensurePort(
 				context.Background(),
-				"u_enp3s0f0v0",
+				"enp3s0f0v0",
 				opts,
 			),
 		)
@@ -502,20 +502,20 @@ func TestEnsurePortOptions(t *testing.T) {
 	t.Run("deletes and recreates when existing port options differ", func(t *testing.T) {
 		defer mockCmdExec(
 			cmdCall{
-				cmd:    "grcli --err-exit --json --socket sock interface show name u_enp3s0f0v0",
-				output: `{"name":"u_enp3s0f0v0","type":"port","devargs":"0000:03:02.0","n_rxq":1,"rxq_size":256,"description":"underlay","flags":["up"]}`,
+				cmd:    "grcli --err-exit --json --socket sock interface show name enp3s0f0v0",
+				output: `{"name":"enp3s0f0v0","type":"port","devargs":"0000:03:02.0","n_rxq":1,"rxq_size":256,"description":"underlay","flags":["up"]}`,
 			},
 			cmdCall{
-				cmd: "grcli --err-exit --json --socket sock interface del u_enp3s0f0v0",
+				cmd: "grcli --err-exit --json --socket sock interface del enp3s0f0v0",
 			},
 			cmdCall{
-				cmd: "grcli --err-exit --json --socket sock interface add port u_enp3s0f0v0 devargs 0000:03:02.0 rxqs 4 qsize 1024 down",
+				cmd: "grcli --err-exit --json --socket sock interface add port enp3s0f0v0 devargs 0000:03:02.0 rxqs 4 qsize 1024 down",
 			})()
 
 		assert.NoError(t,
 			NewClient("sock").ensurePort(
 				context.Background(),
-				"u_enp3s0f0v0",
+				"enp3s0f0v0",
 				opts,
 			),
 		)
@@ -524,19 +524,19 @@ func TestEnsurePortOptions(t *testing.T) {
 	t.Run("recreates the port when devargs change without options", func(t *testing.T) {
 		defer mockCmdExec(
 			cmdCall{
-				cmd: "grcli --err-exit --json --socket sock interface show name u_enp3s0f0v0",
-				output: `{"name":"u_enp3s0f0v0","type":"port",` +
+				cmd: "grcli --err-exit --json --socket sock interface show name enp3s0f0v0",
+				output: `{"name":"enp3s0f0v0","type":"port",` +
 					`"devargs":"net_tap0,remote=enp3s0f0v0,iface=tap_enp3s0f0v0"}`,
 			},
 			cmdCall{
-				cmd: "grcli --err-exit --json --socket sock interface del u_enp3s0f0v0",
+				cmd: "grcli --err-exit --json --socket sock interface del enp3s0f0v0",
 			},
 			cmdCall{
-				cmd: "grcli --err-exit --json --socket sock interface add port u_enp3s0f0v0 devargs 0000:03:02.0 down",
+				cmd: "grcli --err-exit --json --socket sock interface add port enp3s0f0v0 devargs 0000:03:02.0 down",
 			})()
 
 		assert.NoError(t,
-			NewClient("sock").ensurePort(context.Background(), "u_enp3s0f0v0", portOptions{Devargs: "0000:03:02.0"}))
+			NewClient("sock").ensurePort(context.Background(), "enp3s0f0v0", portOptions{Devargs: "0000:03:02.0"}))
 	})
 }
 
@@ -544,13 +544,13 @@ func TestGetInterfaceInfoParsesPortDetails(t *testing.T) {
 	t.Run("parses port details", func(t *testing.T) {
 		defer mockCmdExec(
 			cmdCall{
-				cmd:    "grcli --err-exit --json --socket sock interface show name u_enp3s0f0v0",
+				cmd:    "grcli --err-exit --json --socket sock interface show name enp3s0f0v0",
 				output: interfaceShowUnderlayPortOutput,
 			})()
 
-		details, err := NewClient("sock").getInterfaceInfo(context.Background(), "u_enp3s0f0v0")
+		details, err := NewClient("sock").getInterfaceInfo(context.Background(), "enp3s0f0v0")
 		assert.NoError(t, err)
-		assert.Equal(t, "u_enp3s0f0v0", details.Name)
+		assert.Equal(t, "enp3s0f0v0", details.Name)
 		assert.Equal(t, "port", details.Type)
 		assert.Equal(t, "0000:03:02.0", details.Devargs)
 		assert.Equal(t, "aa:bb:cc:dd:ee:ff", details.MAC)

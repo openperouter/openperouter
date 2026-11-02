@@ -34,3 +34,28 @@ func TestUnderlayPortOptions(t *testing.T) {
 	assert.Equal(t, portOptions{},
 		underlayPortOptions(hostnetwork.UnderlayInterface{InterfaceName: "eth0"}))
 }
+
+func TestTapBackingNetdevName(t *testing.T) {
+	tests := []struct {
+		name              string
+		underlayInterface string
+		want              string
+	}{
+		{
+			name:              "short interface name",
+			underlayInterface: "eth0",
+			want:              "gu9c32a8c7",
+		},
+		{
+			name:              "interface name at the kernel length limit",
+			underlayInterface: "a23456789012345",
+			want:              "gue1058467",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, tapBackingNetdevName(tt.underlayInterface))
+		})
+	}
+}

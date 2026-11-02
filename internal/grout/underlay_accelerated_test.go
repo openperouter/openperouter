@@ -55,10 +55,10 @@ func TestSetupInterfaceForHWAcceleration(t *testing.T) {
 			expectErrSubstr: "vfio-pci driver is not loaded",
 		},
 		{
-			name:            "mlx5 without a kernel netdev",
-			driver:          pci.DriverMlx5Core,
-			vfioLoaded:      true,
-			expectErrSubstr: "failed to move bifurcated netlink device nonexistent0",
+			// The netdev was already moved to the router namespace.
+			name:       "mlx5 without a kernel netdev in the host namespace is a no-op",
+			driver:     pci.DriverMlx5Core,
+			vfioLoaded: true,
 		},
 	}
 
@@ -93,17 +93,17 @@ func TestConfigureAcceleratedPort(t *testing.T) {
 	t.Run("creates a PCI port with the saved addresses", func(t *testing.T) {
 		calls := recordCmdExec(t,
 			cmdCall{
-				cmd:    "grcli --err-exit --json --socket sock interface show name u_ens1f0",
+				cmd:    "grcli --err-exit --json --socket sock interface show name ens1f0",
 				output: interfaceNotFoundOutput,
 				err:    fmt.Errorf("exit status 1"),
 			},
 			cmdCall{
-				cmd: "grcli --err-exit --json --socket sock interface add port u_ens1f0 devargs " + testPCIAddr + " down",
+				cmd: "grcli --err-exit --json --socket sock interface add port ens1f0 devargs " + testPCIAddr + " down",
 			},
 			// Host routes need no kernel connected route, so no netlink access is required.
-			cmdCall{cmd: "grcli --err-exit --json --socket sock address add 192.168.11.3/32 iface u_ens1f0"},
-			cmdCall{cmd: "grcli --err-exit --json --socket sock address add 2001:db8::3/128 iface u_ens1f0"},
-			cmdCall{cmd: "grcli --err-exit --json --socket sock interface set port u_ens1f0 up"},
+			cmdCall{cmd: "grcli --err-exit --json --socket sock address add 192.168.11.3/32 iface ens1f0"},
+			cmdCall{cmd: "grcli --err-exit --json --socket sock address add 2001:db8::3/128 iface ens1f0"},
+			cmdCall{cmd: "grcli --err-exit --json --socket sock interface set port ens1f0 up"},
 		)
 
 		state := devicestate.State{
@@ -118,15 +118,15 @@ func TestConfigureAcceleratedPort(t *testing.T) {
 	t.Run("applies the accelerated config options", func(t *testing.T) {
 		calls := recordCmdExec(t,
 			cmdCall{
-				cmd:    "grcli --err-exit --json --socket sock interface show name u_ens1f0",
+				cmd:    "grcli --err-exit --json --socket sock interface show name ens1f0",
 				output: interfaceNotFoundOutput,
 				err:    fmt.Errorf("exit status 1"),
 			},
 			cmdCall{
-				cmd: "grcli --err-exit --json --socket sock interface add port u_ens1f0 devargs " + testPCIAddr +
+				cmd: "grcli --err-exit --json --socket sock interface add port ens1f0 devargs " + testPCIAddr +
 					" rxqs 4 qsize 1024 down",
 			},
-			cmdCall{cmd: "grcli --err-exit --json --socket sock interface set port u_ens1f0 up"},
+			cmdCall{cmd: "grcli --err-exit --json --socket sock interface set port ens1f0 up"},
 		)
 
 		opts := portOptions{RXQueues: new(int32(4)), QSize: new(int32(1024))}
@@ -138,11 +138,11 @@ func TestConfigureAcceleratedPort(t *testing.T) {
 	t.Run("existing matching port is kept", func(t *testing.T) {
 		calls := recordCmdExec(t,
 			cmdCall{
-				cmd: "grcli --err-exit --json --socket sock interface show name u_ens1f0",
-				output: `{"name":"u_ens1f0","type":"port","devargs":"` + testPCIAddr +
+				cmd: "grcli --err-exit --json --socket sock interface show name ens1f0",
+				output: `{"name":"ens1f0","type":"port","devargs":"` + testPCIAddr +
 					`","mtu":1500,"description":"underlay-for=ens1f0"}`,
 			},
-			cmdCall{cmd: "grcli --err-exit --json --socket sock interface set port u_ens1f0 up"},
+			cmdCall{cmd: "grcli --err-exit --json --socket sock interface set port ens1f0 up"},
 		)
 
 		state := devicestate.State{InterfaceName: "ens1f0", PCIAddress: testPCIAddr}
