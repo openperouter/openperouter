@@ -6,12 +6,12 @@
 POST_INSTALL_EXTRA_NETWORK_NAMES="toswitch1 toswitch2"
 POST_INSTALL_TOSWITCH1_GATEWAY_V4="192.168.11.254/24"
 POST_INSTALL_TOSWITCH1_GATEWAY_V6="2001:db8:11::1/64"
-POST_INSTALL_TOSWITCH1_NODE_IPS_V4="192.168.11.20/24 192.168.11.21/24 192.168.11.22/24 192.168.11.30/24 192.168.11.31/24"
-POST_INSTALL_TOSWITCH1_NODE_IPS_V6="2001:db8:11::14/64 2001:db8:11::15/64 2001:db8:11::16/64 2001:db8:11::1e/64 2001:db8:11::1f/64"
+POST_INSTALL_TOSWITCH1_NODE_IPS_V4="192.168.11.100/24 192.168.11.101/24 192.168.11.102/24 192.168.11.103/24 192.168.11.104/24"
+POST_INSTALL_TOSWITCH1_NODE_IPS_V6="2001:db8:11::100/64 2001:db8:11::101/64 2001:db8:11::102/64 2001:db8:11::103/64 2001:db8:11::104/64"
 POST_INSTALL_TOSWITCH2_GATEWAY_V4="192.168.12.1/24"
 POST_INSTALL_TOSWITCH2_GATEWAY_V6="2001:db8:12::1/64"
-POST_INSTALL_TOSWITCH2_NODE_IPS_V4="192.168.12.20/24 192.168.12.21/24 192.168.12.22/24 192.168.12.30/24 192.168.12.31/24"
-POST_INSTALL_TOSWITCH2_NODE_IPS_V6="2001:db8:12::14/64 2001:db8:12::15/64 2001:db8:12::16/64 2001:db8:12::1e/64 2001:db8:12::1f/64"
+POST_INSTALL_TOSWITCH2_NODE_IPS_V4="192.168.12.100/24 192.168.12.101/24 192.168.12.102/24 192.168.12.103/24 192.168.12.104/24"
+POST_INSTALL_TOSWITCH2_NODE_IPS_V6="2001:db8:12::100/64 2001:db8:12::101/64 2001:db8:12::102/64 2001:db8:12::103/64 2001:db8:12::104/64"
 
 # Node IP order: masters first, then workers. Repeat variables per network.
 set -euo pipefail
@@ -202,32 +202,33 @@ wait_for_domain() {
 }
 
 configure_node() {
-  local network="$1" net_index="$2" role="$3" node_index="$4" ip4="$5" ip6="$6"
+  # iface is the libvirt network name, which is also the target interface name inside the VM.
+  local iface="$1" role="$2" node_index="$3" ip4="$4" ip6="$5"
   local domain="${CLUSTER_NAME}_${role}_${node_index}"
-  local node_ip mac iface profile
+  local node_ip mac
   node_ip="$(node_ip_for_domain "$domain")"
   [[ -n "$node_ip" ]] || { echo "No IPv4 lease for $domain on $BAREMETAL_NETWORK_NAME"; return 1; }
 
-  mac="$(sudo virsh domiflist "$domain" | awk -v network="$network" '$3 == network && !found { print $5; found=1 }')"
-  [[ -n "$mac" ]] || { echo "No $network interface found on $domain after restart"; return 1; }
+  mac="$(sudo virsh domiflist "$domain" | awk -v iface="$iface" '$3 == iface && !found { print $5; found=1 }')"
+  [[ -n "$mac" ]] || { echo "No $iface interface found on $domain after restart"; return 1; }
 
-  for _ in {1..12}; do
-    iface="$(ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "core@$node_ip" \
-      "ip -o link | awk -v mac='$mac' 'tolower(\$0) ~ mac && !found { gsub(/:/, \"\", \$2); print \$2; found=1 }'" 2>/dev/null || true)"
-    [[ -n "$iface" ]] && break
-    sleep 2
-  done
-  [[ -n "$iface" ]] || { echo "Cannot find $mac on $node"; return 1; }
-
-  profile="postinstall-$network"
   ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "core@$node_ip" \
-    "sudo nmcli connection delete '$profile' >/dev/null 2>&1 || true; \
-     sudo nmcli connection add type ethernet ifname '$iface' con-name '$profile' \
+    "echo 'SUBSYSTEM==\"net\", ATTR{address}==\"${mac}\", NAME=\"${iface}\"' \
+       | sudo tee /etc/udev/rules.d/70-${iface}.rules
+     sudo udevadm control --reload-rules
+     current=\$(sudo ip -br link ls | awk '/${mac}/ {print \$1}')
+     sudo ip link set dev \${current} down
+     sudo udevadm trigger --subsystem-match=net --action=add"
+
+  ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "core@$node_ip" \
+    "sudo nmcli connection delete '${iface}' >/dev/null 2>&1 || true
+     sudo nmcli connection add type ethernet ifname '${iface}' con-name '${iface}' \
        ipv4.method '$([[ -n "$ip4" ]] && echo manual || echo disabled)' \
-       ipv4.addresses '$ip4' ipv4.never-default yes \
+       ipv4.addresses '${ip4}' ipv4.never-default yes \
        ipv6.method '$([[ -n "$ip6" ]] && echo manual || echo disabled)' \
-       ipv6.addresses '$ip6' ipv6.never-default yes; \
-     sudo nmcli connection up '$profile'; ip -brief address show dev '$iface'"
+       ipv6.addresses '${ip6}' ipv6.never-default yes
+     sudo nmcli connection up '${iface}'
+     ip -brief address show dev '${iface}'"
 }
 
 # Define every network and add every persistent interface before restarting any VM.
@@ -272,7 +273,6 @@ done
 wait_for_cluster
 
 # Configure addresses only after every VM and the Kubernetes API are available.
-network_index=0
 for network in "${extra_networks[@]}"; do
   variable_prefix="$(prefix_name "$network")"
   ips_v4_var="POST_INSTALL_${variable_prefix}_NODE_IPS_V4"
@@ -281,16 +281,15 @@ for network in "${extra_networks[@]}"; do
   read -r -a ips_v6 <<<"${!ips_v6_var:-}"
   node_position=0
   for node_index in $(seq 0 $((NUM_MASTERS - 1))); do
-    configure_node "$network" "$network_index" master "$node_index" "${ips_v4[$node_position]:-}" "${ips_v6[$node_position]:-}"
+    configure_node "$network" master "$node_index" "${ips_v4[$node_position]:-}" "${ips_v6[$node_position]:-}"
     node_position=$((node_position + 1))
   done
   if (( ${NUM_WORKERS:-0} > 0 )); then
     for node_index in $(seq 0 $((NUM_WORKERS - 1))); do
-      configure_node "$network" "$network_index" worker "$node_index" "${ips_v4[$node_position]:-}" "${ips_v6[$node_position]:-}"
+      configure_node "$network" worker "$node_index" "${ips_v4[$node_position]:-}" "${ips_v6[$node_position]:-}"
       node_position=$((node_position + 1))
     done
   fi
-  network_index=$((network_index + 1))
 done
 wait_for_cluster
 

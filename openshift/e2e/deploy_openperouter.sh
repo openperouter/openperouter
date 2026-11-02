@@ -8,7 +8,7 @@ metadata:
   name: openperouter
   namespace: openshift-openperouter
 spec:
-  logLevel: debug
+  logLevel: info
 EOF
 
 # Wait for controller and router daemonsets to be created and rolled out
