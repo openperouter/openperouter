@@ -3,6 +3,7 @@
 package grout
 
 import (
+	"context"
 	"testing"
 
 	"github.com/openperouter/openperouter/internal/grout/devicestate"
@@ -10,6 +11,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestSetupTunnelEndpointRequiresAddress(t *testing.T) {
+	err := setupTunnelEndpoint(context.Background(), NewClient("sock"), hostnetwork.UnderlayTunnelEndpointParams{})
+	require.ErrorContains(t, err, "at least one tunnel endpoint IP must be provided")
+}
 
 func TestUnderlayInterfaces(t *testing.T) {
 	store := devicestate.Store{Dir: t.TempDir()}

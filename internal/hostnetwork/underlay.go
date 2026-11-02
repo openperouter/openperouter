@@ -18,6 +18,11 @@ const (
 	// TunnelLoopback is the interface carrying the tunnel
 	// endpoint addresses, which IS-IS advertises to the fabric.
 	TunnelLoopback = "vtep-lo"
+	// tunnelLoopbackMTU matches the loopback MTU. The kernel caps the MTU of a
+	// VXLAN interface to the MTU of its source device minus the encapsulation
+	// overhead, so the tunnel endpoint must not be the bottleneck: the
+	// underlay interfaces bound the size of the encapsulated packets.
+	tunnelLoopbackMTU = 65536
 )
 
 // UnderlayGroupID is the link group ID assigned to all underlay interfaces
@@ -275,6 +280,12 @@ func ensureTunnelLoopback(ctx context.Context, ns netns.NsHandle, vtepIPs ...str
 		for _, vtepIP := range vtepIPs {
 			if err := AssignIPToInterface(tunnelLoopback, vtepIP); err != nil {
 				return err
+			}
+		}
+		if tunnelLoopback.Attrs().MTU != tunnelLoopbackMTU {
+			if err := netlink.LinkSetMTU(tunnelLoopback, tunnelLoopbackMTU); err != nil {
+				return fmt.Errorf("ensureTunnelLoopback: failed to set MTU on %s: %w",
+					TunnelLoopback, err)
 			}
 		}
 		if err := netlink.LinkSetUp(tunnelLoopback); err != nil {
