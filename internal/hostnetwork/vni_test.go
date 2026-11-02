@@ -26,11 +26,18 @@ func testNSPath() string {
 }
 
 var _ = Describe("L3 VNI configuration", func() {
-	var testNS netns.NsHandle
+	var (
+		testNS    netns.NsHandle
+		ovsClient *OVSClient
+	)
 
 	BeforeEach(func() {
 		cleanTest(testNSName)
 		testNS = createTestNS(testNSName)
+		ovsClient = &OVSClient{}
+		DeferCleanup(func() {
+			ovsClient.Close()
+		})
 		setupLoopback(testNS)
 	})
 	AfterEach(func() {
@@ -169,7 +176,7 @@ var _ = Describe("L3 VNI configuration", func() {
 		toDelete := params[1]
 
 		By("removing non configured L3VNIs")
-		err := RemoveNonConfiguredVNIs(testNSPath(), []VNIParams{remaining.VNIParams})
+		err := RemoveNonConfiguredVNIs(ovsClient, testNSPath(), []VNIParams{remaining.VNIParams})
 		Expect(err).NotTo(HaveOccurred())
 		err = RemoveNonConfiguredVRFs(testNSPath(), map[string]bool{remaining.VRF: true})
 		Expect(err).NotTo(HaveOccurred())
@@ -324,17 +331,22 @@ var _ = Describe("L3 VNI configuration", func() {
 })
 
 var _ = Describe("L2 VNI configuration", func() {
-	var testNS netns.NsHandle
+	var (
+		testNS    netns.NsHandle
+		ovsClient *OVSClient
+	)
 	const bridgeName = "testbridge"
 
 	BeforeEach(func() {
 		cleanTest(testNSName)
 		testNS = createTestNS(testNSName)
+		ovsClient = &OVSClient{}
 		setupLoopback(testNS)
 		createLinuxBridge(bridgeName)
 	})
 	AfterEach(func() {
 		cleanTest(testNSName)
+		ovsClient.Close()
 	})
 
 	It("should work with a single L2VNI", func() {
@@ -354,7 +366,7 @@ var _ = Describe("L2 VNI configuration", func() {
 		}
 
 		createVRFInNamespace(testNS, params.VRF)
-		err := SetupL2VNI(context.Background(), params)
+		err := SetupL2VNI(context.Background(), ovsClient, params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -367,7 +379,7 @@ var _ = Describe("L2 VNI configuration", func() {
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 
 		By("removing the VNI")
-		err = RemoveNonConfiguredVNIs(testNSPath(), []VNIParams{})
+		err = RemoveNonConfiguredVNIs(ovsClient, testNSPath(), []VNIParams{})
 		Expect(err).NotTo(HaveOccurred())
 		err = RemoveNonConfiguredVRFs(testNSPath(), map[string]bool{})
 		Expect(err).NotTo(HaveOccurred())
@@ -421,7 +433,7 @@ var _ = Describe("L2 VNI configuration", func() {
 		}
 		for _, p := range params {
 			createVRFInNamespace(testNS, p.VRF)
-			err := SetupL2VNI(context.Background(), p)
+			err := SetupL2VNI(context.Background(), ovsClient, p)
 			Expect(err).NotTo(HaveOccurred())
 
 			Eventually(func(g Gomega) {
@@ -437,7 +449,7 @@ var _ = Describe("L2 VNI configuration", func() {
 		toDelete := params[1]
 
 		By("removing non configured L2VNIs")
-		err := RemoveNonConfiguredVNIs(testNSPath(), []VNIParams{remaining.VNIParams})
+		err := RemoveNonConfiguredVNIs(ovsClient, testNSPath(), []VNIParams{remaining.VNIParams})
 		Expect(err).NotTo(HaveOccurred())
 		err = RemoveNonConfiguredVRFs(testNSPath(), map[string]bool{remaining.VRF: true})
 		Expect(err).NotTo(HaveOccurred())
@@ -472,11 +484,11 @@ var _ = Describe("L2 VNI configuration", func() {
 			if params.VRF != "" {
 				createVRFInNamespace(testNS, params.VRF)
 			}
-			err := SetupL2VNI(context.Background(), params)
+			err := SetupL2VNI(context.Background(), ovsClient, params)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Test idempotency - calling setup twice should work
-			err = SetupL2VNI(context.Background(), params)
+			err = SetupL2VNI(context.Background(), ovsClient, params)
 			Expect(err).NotTo(HaveOccurred())
 
 			Eventually(func(g Gomega) {
@@ -566,7 +578,7 @@ var _ = Describe("L2 VNI configuration", func() {
 		}
 
 		createVRFInNamespace(testNS, params.VRF)
-		err := SetupL2VNI(context.Background(), params)
+		err := SetupL2VNI(context.Background(), ovsClient, params)
 		Expect(err).NotTo(HaveOccurred())
 
 		expectedMTU := underlayMTU - VXLanOverhead
@@ -599,7 +611,7 @@ var _ = Describe("L2 VNI configuration", func() {
 		}
 
 		createVRFInNamespace(testNS, params.VRF)
-		err := SetupL2VNI(context.Background(), params)
+		err := SetupL2VNI(context.Background(), ovsClient, params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {

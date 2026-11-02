@@ -41,12 +41,15 @@ func NewGroutConfigurator(groutSocketPath string, mode grout.UnderlayPortMode) *
 func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interfacesConfiguration) error {
 	groutClient := grout.NewClient(g.groutSocketPath)
 
+	ovsClient := &hostnetwork.OVSClient{}
+	defer ovsClient.Close()
+
 	currentUnderlayIfaces, err := grout.UnderlayInterfaces(g.deviceStateStore)
 	if err != nil {
 		return fmt.Errorf("failed to list current grout underlay interfaces: %w", err)
 	}
 	if len(currentUnderlayIfaces) > 0 && len(config.Underlays) == 0 {
-		return g.cleanupGroutInterfaces(ctx, groutClient, config.targetNamespace, currentUnderlayIfaces)
+		return g.cleanupGroutInterfaces(ctx, groutClient, ovsClient, config.targetNamespace, currentUnderlayIfaces)
 	}
 
 	if len(config.Underlays) == 0 {
@@ -103,7 +106,7 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 		}
 
 		slog.InfoContext(ctx, "setting up L2VNI", "vni", vni.VNI)
-		if err := grout.SetupL2VNI(ctx, groutClient, vni); err != nil {
+		if err := grout.SetupL2VNI(ctx, groutClient, ovsClient, vni); err != nil {
 			resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
 				Obj: v1alpha1.FailedResource{
 					Kind: openpeerrors.KindL2VNI, Name: vni.Name, Reason: reason, Message: err.Error(),
@@ -149,7 +152,7 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 	}
 
 	slog.InfoContext(ctx, "removing deleted vnis")
-	if err := grout.RemoveNonConfiguredVNIs(ctx, groutClient, config.targetNamespace, configuredVNIs); err != nil {
+	if err := grout.RemoveNonConfiguredVNIs(ctx, groutClient, ovsClient, config.targetNamespace, configuredVNIs); err != nil {
 		return fmt.Errorf("failed to remove deleted vnis: %w", err)
 	}
 	bridgerefresh.StopForRemovedVNIs(configuredL2VNIs)
@@ -171,11 +174,12 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 func (g *GroutDatapathConfigurator) cleanupGroutInterfaces(
 	ctx context.Context,
 	groutClient *grout.Client,
+	ovsClient *hostnetwork.OVSClient,
 	targetNamespace string,
 	currentUnderlayIfaces []hostnetwork.UnderlayInterface,
 ) error {
 	slog.InfoContext(ctx, "underlay removed, cleaning up VNIs and underlay interfaces")
-	if err := grout.RemoveAllVNIs(ctx, groutClient, targetNamespace); err != nil {
+	if err := grout.RemoveAllVNIs(ctx, groutClient, ovsClient, targetNamespace); err != nil {
 		slog.Warn("failed to remove vnis after underlay removal", "err", err)
 	}
 	bridgerefresh.StopAllVNIs()

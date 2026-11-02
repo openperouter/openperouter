@@ -542,6 +542,12 @@ jobs:
       - name: Install kernel modules
         run: hack/install-kernel-modules.sh
 
+      # Kind nodes share the host's per-user inotify limits, including systemd and OVS.
+      - name: Increase inotify limits
+        run: |
+          sudo sysctl -w fs.inotify.max_user_watches=524288
+          sudo sysctl -w fs.inotify.max_user_instances=512
+
       - name: Disable containerd image store
         run: |
           sudo bash -c 'cat > /etc/docker/daemon.json << EOF
@@ -587,12 +593,18 @@ jobs:
         run: sleep 60
 
       - name: Run scale tests
+        id: scale-tests
         run: |
           make scale-tests
 
       - name: Parse scale test report
-        if: ${{ always() }}
+        if: ${{ always() && steps.scale-tests.outcome != 'skipped' }}
         run: |
+          set -o pipefail
+          if [[ ! -f /tmp/kind_logs/e2etests_scale_suite_scale-report.json ]]; then
+            echo "::warning::Scale report not found; skipping summary generation"
+            exit 0
+          fi
           make parse-scale-report | tee /tmp/kind_logs/scale-test-summary.txt
 
       - name: Upload scale test report

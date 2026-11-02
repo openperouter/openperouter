@@ -27,6 +27,7 @@ import (
 	"helm.sh/helm/v4/pkg/chart/loader"
 	"helm.sh/helm/v4/pkg/cli"
 	"helm.sh/helm/v4/pkg/release"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/utils/ptr"
 )
@@ -163,6 +164,12 @@ func patchChartValues(envConfig envconfig.EnvConfig, crdConfig *operatorapi.Open
 	if crdConfig.Spec.ControllerMaxReconcileBackoffSeconds != nil {
 		openperouterValues["maxReconcileBackoffSeconds"] = *crdConfig.Spec.ControllerMaxReconcileBackoffSeconds
 	}
+	if crdConfig.Spec.PriorityClassName != nil && *crdConfig.Spec.PriorityClassName != "" {
+		openperouterValues["priorityClassName"] = *crdConfig.Spec.PriorityClassName
+	}
+	if err := patchResourceValues(crdConfig.Spec.Resources, openperouterValues); err != nil {
+		return err
+	}
 
 	datapath := ptr.Deref(crdConfig.Spec.Datapath, "kernel")
 	openperouterValues["datapath"] = datapath
@@ -197,6 +204,75 @@ func patchChartValues(envConfig envconfig.EnvConfig, crdConfig *operatorapi.Open
 	}
 
 	return nil
+}
+
+// patchResourceValues sets each provided container's resources value inside the
+// per-component maps, preserving the other component settings.
+func patchResourceValues(resources *operatorapi.ContainerResources, openperouterValues map[string]any) error {
+	if resources == nil {
+		return nil
+	}
+	targets := []struct {
+		name string
+		reqs *corev1.ResourceRequirements
+		path []string
+	}{
+		{"controller", resources.Controller, []string{"controller"}},
+		{"nodemarker", resources.NodeMarker, []string{"nodemarker"}},
+		{"frr", resources.FRR, []string{"frr"}},
+		{"reloader", resources.Reloader, []string{"frr", "reloader"}},
+	}
+	for _, target := range targets {
+		if target.reqs == nil {
+			continue
+		}
+		value, err := toJSONValue(target.reqs)
+		if err != nil {
+			return fmt.Errorf("failed to convert %s resources to helm value: %w", target.name, err)
+		}
+		resourceValues, ok := value.(map[string]any)
+		if !ok {
+			return fmt.Errorf("failed to convert %s resources to helm value: unexpected type %T", target.name, value)
+		}
+		clearOmittedResourceRequests(resourceValues, target.reqs.Requests)
+		subMap(openperouterValues, target.path)["resources"] = value
+	}
+	return nil
+}
+
+// clearOmittedResourceRequests marks omitted CPU and memory requests as null so
+// Helm's recursive merge does not restore them from the chart defaults. Helm
+// removes null values from the final rendered values.
+func clearOmittedResourceRequests(resources map[string]any, requests corev1.ResourceList) {
+	if requests == nil {
+		resources["requests"] = nil
+		return
+	}
+
+	requestValues, ok := resources["requests"].(map[string]any)
+	if !ok {
+		requestValues = map[string]any{}
+		resources["requests"] = requestValues
+	}
+	for _, resourceName := range []corev1.ResourceName{corev1.ResourceCPU, corev1.ResourceMemory} {
+		if _, specified := requests[resourceName]; !specified {
+			requestValues[string(resourceName)] = nil
+		}
+	}
+}
+
+// subMap returns the nested map at path, creating missing maps along the way.
+func subMap(values map[string]any, path []string) map[string]any {
+	current := values
+	for _, key := range path {
+		next, ok := current[key].(map[string]any)
+		if !ok {
+			next = map[string]any{}
+			current[key] = next
+		}
+		current = next
+	}
+	return current
 }
 
 // toJSONValue converts a typed Go value (e.g. a Kubernetes API struct) into

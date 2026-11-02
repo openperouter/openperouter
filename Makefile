@@ -135,7 +135,7 @@ BRANCH = $(shell git rev-parse --abbrev-ref HEAD)
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
 	@if [ "$(CONTAINER_ENGINE)" = "podman" ]; then \
-		sudo $(CONTAINER_ENGINE) build  -t ${IMG} -f ${DOCKERFILE} .; \
+		sudo $(CONTAINER_ENGINE) build  -t ${IMG} -f ${DOCKERFILE} --security-opt label=disable .; \
 	else \
 		$(CONTAINER_ENGINE) build -t ${IMG} -f ${DOCKERFILE} .; \
 	fi
@@ -488,7 +488,7 @@ generate-all-in-one: manifests kustomize ## Create manifests
 
 .PHONY: helm-docs
 helm-docs:
-	$(CONTAINER_ENGINE) run --rm -v $$(pwd):/app:Z -w /app jnorwood/helm-docs:$(HELM_DOCS_VERSION) helm-docs
+	$(CONTAINER_ENGINE) run --rm -v $$(pwd):/app:Z -w /app docker.io/jnorwood/helm-docs:$(HELM_DOCS_VERSION) helm-docs
 
 .PHONY: api-docs
 api-docs: crd-ref-docs

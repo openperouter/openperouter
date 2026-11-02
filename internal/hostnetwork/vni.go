@@ -134,7 +134,7 @@ func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
 // domain to the default host namespace.
 // The VRF must already exist (created by SetupL3VNI); setupBridge
 // looks it up and binds the bridge to it.
-func SetupL2VNI(ctx context.Context, params L2VNIParams) error {
+func SetupL2VNI(ctx context.Context, ovsClient *OVSClient, params L2VNIParams) error {
 	if err := setupVNI(ctx, params.VNIParams); err != nil {
 		return fmt.Errorf("SetupL2VNI: failed to setup VNI: %w", err)
 	}
@@ -175,7 +175,7 @@ func SetupL2VNI(ctx context.Context, params L2VNIParams) error {
 	}
 
 	if params.HostMaster != nil {
-		if err := SetupHostMaster(ctx, params, hostVeth); err != nil {
+		if err := SetupHostMaster(ctx, ovsClient, params, hostVeth); err != nil {
 			return err
 		}
 	}
@@ -222,7 +222,7 @@ func setupL2VNIRouterSide(params L2VNIParams, vethName string, underlayMTU int) 
 	return nil
 }
 
-func SetupHostMaster(ctx context.Context, params L2VNIParams, hostVeth netlink.Link) error {
+func SetupHostMaster(ctx context.Context, ovsClient *OVSClient, params L2VNIParams, hostVeth netlink.Link) error {
 	bridgeConfig := *params.HostMaster
 	switch bridgeConfig.Type {
 	case OVSBridgeLinkType:
@@ -230,7 +230,7 @@ func SetupHostMaster(ctx context.Context, params L2VNIParams, hostVeth netlink.L
 		if ptr.Deref(bridgeConfig.AutoCreate, false) {
 			lowerDeviceName = hostBridgeName(params.VNI)
 		}
-		if err := ensureOVSBridgeAndAttach(ctx, lowerDeviceName, hostVeth.Attrs().Name); err != nil {
+		if err := ensureOVSBridgeAndAttach(ctx, ovsClient, lowerDeviceName, hostVeth.Attrs().Name); err != nil {
 			return fmt.Errorf("failed to ensure OVS bridge %s and attach %s: %w", lowerDeviceName, hostVeth.Attrs().Name, err)
 		}
 	case BridgeLinkType:
@@ -281,19 +281,19 @@ func setupVNI(ctx context.Context, params VNIParams, bridgeOptions ...NetlinkOpt
 
 // RemoveAllVNIs removes from the target namespace the bridges / veths
 // for all VNIs.
-func RemoveAllVNIs(targetNS string) error {
-	return RemoveNonConfiguredVNIs(targetNS, []VNIParams{})
+func RemoveAllVNIs(ovsClient *OVSClient, targetNS string) error {
+	return RemoveNonConfiguredVNIs(ovsClient, targetNS, []VNIParams{})
 }
 
 // RemoveNonConfiguredVNIs removes from the target namespace the
 // leftovers corresponding to VNIs that are not configured anymore.
-func RemoveNonConfiguredVNIs(targetNS string, params []VNIParams) error {
+func RemoveNonConfiguredVNIs(ovsClient *OVSClient, targetNS string, params []VNIParams) error {
 	vnis := map[int32]bool{}
 	for _, p := range params {
 		vnis[p.VNI] = true
 	}
 
-	errs := removeHostSideVNIs(vnis)
+	errs := removeHostSideVNIs(vnis, ovsClient)
 
 	ns, err := netns.GetFromPath(targetNS)
 	if err != nil {
@@ -318,7 +318,7 @@ func RemoveNonConfiguredVNIs(targetNS string, params []VNIParams) error {
 	return nil
 }
 
-func removeHostSideVNIs(vnis map[int32]bool) []error {
+func removeHostSideVNIs(vnis map[int32]bool, ovsClient *OVSClient) []error {
 	var failedDeletes []error
 
 	hostLinks, err := netlink.LinkList()
@@ -328,7 +328,7 @@ func removeHostSideVNIs(vnis map[int32]bool) []error {
 	if err := deleteLinksForType(BridgeLinkType, vnis, hostLinks, vniFromHostBridgeName); err != nil {
 		failedDeletes = append(failedDeletes, fmt.Errorf("remove bridge links: %w", err))
 	}
-	if err := removeOVSBridgesForVNIs(context.Background(), vnis); err != nil {
+	if err := removeOVSBridgesForVNIs(context.Background(), ovsClient, vnis); err != nil {
 		failedDeletes = append(failedDeletes, fmt.Errorf("remove OVS bridges: %w", err))
 	}
 
@@ -390,24 +390,13 @@ func netlinkTypeFor(linkType string) string {
 
 // removeOVSBridgesForVNIs removes auto-created OVS bridges that are not in the configured VNIs list.
 // Only deletes bridges with external_id "created-by: openperouter" (auto-created bridges).
-func removeOVSBridgesForVNIs(ctx context.Context, vnis map[int32]bool) error {
-	ovs, err := NewOVSClient(ctx)
+func removeOVSBridgesForVNIs(ctx context.Context, ovsClient *OVSClient, vnis map[int32]bool) error {
+	ovs, err := ovsClient.Get(ctx)
 	if err != nil {
 		// OVS not available, skip cleanup gracefully
 		slog.Debug("OVS client not available, skipping OVS bridge cleanup", "error", err)
 		return nil
 	}
-	defer ovs.Close()
-
-	if _, err := ovs.Monitor(ctx, ovs.NewMonitor(
-		libovsclient.WithTable(&ovsmodel.OpenvSwitch{}),
-		libovsclient.WithTable(&ovsmodel.Bridge{}),
-		libovsclient.WithTable(&ovsmodel.Port{}),
-		libovsclient.WithTable(&ovsmodel.Interface{}),
-	)); err != nil {
-		return fmt.Errorf("failed to setup OVS monitor: %w", err)
-	}
-
 	var bridges []ovsmodel.Bridge
 	if err := ovs.List(ctx, &bridges); err != nil {
 		return fmt.Errorf("failed to list OVS bridges: %w", err)

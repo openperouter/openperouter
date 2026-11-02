@@ -19,33 +19,6 @@ import (
 	"github.com/openperouter/openperouter/internal/ovsmodel"
 )
 
-const (
-	defaultOVSSocketPath = "unix:/var/run/openvswitch/db.sock"
-)
-
-var OVSSocketPath = defaultOVSSocketPath
-
-// NewOVSClient creates a new OVS database client
-func NewOVSClient(ctx context.Context) (libovsclient.Client, error) {
-	dbModel, err := ovsmodel.FullDatabaseModel()
-	if err != nil {
-		return nil, fmt.Errorf("failed to build OVS DB model: %w", err)
-	}
-
-	ovs, err := libovsclient.NewOVSDBClient(
-		dbModel,
-		libovsclient.WithEndpoint(OVSSocketPath),
-	)
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to create OVSDB client: %w", err)
-	}
-	if err := ovs.Connect(ctx); err != nil {
-		return nil, fmt.Errorf("%w: failed to connect to OVSDB: %w", openpeerrors.ErrTransient, err)
-	}
-	return ovs, nil
-}
-
 // EnsureBridge ensures an OVS bridge exists, creating it if necessary
 func EnsureBridge(ctx context.Context, ovs libovsclient.Client, bridgeName string) (string, error) {
 	br := &ovsmodel.Bridge{Name: bridgeName}
@@ -97,7 +70,7 @@ func EnsureBridge(ctx context.Context, ovs libovsclient.Client, bridgeName strin
 	return realUUID, nil
 }
 
-func ensureOVSBridgeAndAttach(ctx context.Context, bridgeName, ifaceName string) error {
+func ensureOVSBridgeAndAttach(ctx context.Context, ovsClient *OVSClient, bridgeName, ifaceName string) error {
 	slog.Info("ensureOVSBridgeAndAttach", "bridge", bridgeName, "interface", ifaceName)
 
 	// Verify the interface exists before trying to attach to OVS
@@ -107,11 +80,10 @@ func ensureOVSBridgeAndAttach(ctx context.Context, bridgeName, ifaceName string)
 	}
 	slog.Info("interface exists on host", "name", ifaceName, "index", link.Attrs().Index, "type", link.Type())
 
-	ovs, err := NewOVSClient(ctx)
+	ovs, err := ovsClient.Get(ctx)
 	if err != nil {
 		return err
 	}
-	defer ovs.Close()
 
 	if err := ensureOVSBridgeAndAttachWithClient(ctx, ovs, bridgeName, ifaceName); err != nil {
 		if !ovs.Connected() {
@@ -125,17 +97,6 @@ func ensureOVSBridgeAndAttach(ctx context.Context, bridgeName, ifaceName string)
 // ensureOVSBridgeAndAttachWithClient ensures an OVS bridge exists and attaches ifaceName as a port.
 // This version accepts a client parameter for testing.
 func ensureOVSBridgeAndAttachWithClient(ctx context.Context, ovs libovsclient.Client, bridgeName, ifaceName string) error {
-	// Cache for indexed operations
-	if _, err := ovs.Monitor(ctx,
-		ovs.NewMonitor(
-			libovsclient.WithTable(&ovsmodel.OpenvSwitch{}),
-			libovsclient.WithTable(&ovsmodel.Bridge{}),
-			libovsclient.WithTable(&ovsmodel.Port{}),
-			libovsclient.WithTable(&ovsmodel.Interface{}),
-		),
-	); err != nil {
-		return fmt.Errorf("failed to setup monitor: %w", err)
-	}
 
 	bridgeUUID, err := EnsureBridge(ctx, ovs, bridgeName)
 	if err != nil {

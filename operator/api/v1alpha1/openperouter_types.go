@@ -82,6 +82,36 @@ type OpenPERouterSpec struct {
 	// +default="kernel"
 	// +kubebuilder:validation:Enum=kernel;grout
 	Datapath *string `json:"datapath,omitempty"`
+	// priorityClassName is the priority class of all OpenPERouter pods
+	// (router, controller, nodemarker, hostbridge). Use system-node-critical,
+	// or system-cluster-critical where cluster policy requires it.
+	// +optional
+	PriorityClassName *string `json:"priorityClassName,omitempty"`
+	// resources overrides the resource requirements of the OpenPERouter
+	// containers. A container left unset keeps the chart defaults.
+	// +optional
+	Resources *ContainerResources `json:"resources,omitempty"`
+}
+
+// ContainerResources holds the resource requirements of the OpenPERouter
+// containers.
+type ContainerResources struct {
+	// controller is the controller container.
+	// +optional
+	// +kubebuilder:validation:XValidation:rule="!has(self.claims) || self.claims.size() == 0",message="claims are not supported"
+	Controller *corev1.ResourceRequirements `json:"controller,omitempty"`
+	// nodemarker is the nodemarker container, which serves the webhooks.
+	// +optional
+	// +kubebuilder:validation:XValidation:rule="!has(self.claims) || self.claims.size() == 0",message="claims are not supported"
+	NodeMarker *corev1.ResourceRequirements `json:"nodemarker,omitempty"`
+	// frr is the FRR container in router pods.
+	// +optional
+	// +kubebuilder:validation:XValidation:rule="!has(self.claims) || self.claims.size() == 0",message="claims are not supported"
+	FRR *corev1.ResourceRequirements `json:"frr,omitempty"`
+	// reloader is the reloader container in router pods.
+	// +optional
+	// +kubebuilder:validation:XValidation:rule="!has(self.claims) || self.claims.size() == 0",message="claims are not supported"
+	Reloader *corev1.ResourceRequirements `json:"reloader,omitempty"`
 }
 
 // OpenPERouterStatus defines the observed state of OpenPERouter

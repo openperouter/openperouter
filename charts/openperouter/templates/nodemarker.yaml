@@ -46,6 +46,9 @@ spec:
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .Values.openperouter.priorityClassName }}
+      priorityClassName: {{ . | quote }}
+      {{- end }}
       containers:
       - args:
         {{- with .Values.openperouter.logLevel }}

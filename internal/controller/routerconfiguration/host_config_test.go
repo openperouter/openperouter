@@ -64,7 +64,7 @@ func TestSetupL2VNIs(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			originalSetup := setupSingleL2VNI
 			t.Cleanup(func() { setupSingleL2VNI = originalSetup })
-			setupSingleL2VNI = func(_ context.Context, vni hostnetwork.L2VNIParams) error {
+			setupSingleL2VNI = func(_ context.Context, _ *hostnetwork.OVSClient, vni hostnetwork.L2VNIParams) error {
 				return tc.setupErrs[vni.Name]
 			}
 			ctx, cancel := context.WithCancel(context.Background())
@@ -75,7 +75,7 @@ func TestSetupL2VNIs(t *testing.T) {
 				}
 			})
 
-			kept, errs := setupL2VNIs(ctx, tc.l2VNIs)
+			kept, errs := setupL2VNIs(ctx, &hostnetwork.OVSClient{}, tc.l2VNIs)
 
 			require.Equal(t, tc.wantKept, kept)
 			require.Equal(t, tc.wantErrs, errs)

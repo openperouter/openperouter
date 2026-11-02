@@ -36,6 +36,12 @@ var _ = Describe("FRR daemon death", PodModeOnly, Ordered, func() {
 
 	BeforeAll(func() {
 		cs = k8sclient.New()
+
+		By("Cleaning all resources")
+		Expect(Updater.CleanAll()).To(Succeed())
+		By("Waiting for all underlays to be deleted")
+		Eventually(Updater.IsUnderlayClean).ProbeEvery(5 * time.Second).WithTimeout(120 * time.Second).Should(Succeed())
+
 		Eventually(func() error {
 			routers, err := openperouter.Get(cs, HostMode)
 			if err != nil {
@@ -63,6 +69,21 @@ var _ = Describe("FRR daemon death", PodModeOnly, Ordered, func() {
 		nodeName := routerPod.Spec.NodeName
 		frrExec := executor.ForPod(openperouter.Namespace, routerPod.Name, "frr")
 
+		validateNeighborSession := func() {
+			By(fmt.Sprintf("validating neighbor session from %s to %s", infra.KindLeaf, nodeName))
+			neighborIP, err := infra.NeighborIP(infra.KindLeaf, nodeName)
+			Expect(err).NotTo(HaveOccurred())
+			validate.SessionWithNeighbor(
+				executor.ForContainer(infra.KindLeaf),
+				validate.SessionParameters{
+					FromName:    infra.KindLeaf,
+					ToName:      nodeName,
+					NeighborIP:  neighborIP,
+					Established: Established,
+				},
+			)
+		}
+
 		daemons, err := frrDaemonNames(frrExec)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(daemons).To(ContainElement(killed), "the daemons watchfrr supervises must include %s", killed)
@@ -73,7 +94,9 @@ var _ = Describe("FRR daemon death", PodModeOnly, Ordered, func() {
 				SatisfyAll(ContainSubstring(`"vrf":"red"`), ContainSubstring(`"vni":100`)))
 		}, 2*time.Minute, time.Second).Should(Succeed())
 
-		By("recording the pid of every daemon watchfrr supervises: " + strings.Join(daemons, " "))
+		validateNeighborSession()
+
+		By(fmt.Sprintf("recording the pid of every daemon watchfrr supervises: %s", strings.Join(daemons, " ")))
 		var pidsBefore map[string][]string
 		Eventually(func(g Gomega) {
 			var err error
@@ -85,7 +108,7 @@ var _ = Describe("FRR daemon death", PodModeOnly, Ordered, func() {
 			}
 		}, 10*time.Second, time.Second).Should(Succeed())
 
-		By("killing " + killed + " with SIGKILL in the router pod")
+		By(fmt.Sprintf("killing %s with SIGKILL in the router pod", killed))
 		Expect(frrExec.Exec("kill", "-9", pidsBefore[killed][0])).Error().ToNot(HaveOccurred())
 
 		By("waiting for the whole stack to come back")
@@ -113,17 +136,7 @@ var _ = Describe("FRR daemon death", PodModeOnly, Ordered, func() {
 			g.Expect(openperouter.AreReady(routers)).To(Succeed())
 		}, 4*time.Minute, 2*time.Second).Should(Succeed())
 
-		neighborIP, err := infra.NeighborIP(infra.KindLeaf, nodeName)
-		Expect(err).NotTo(HaveOccurred())
-		validate.SessionWithNeighbor(
-			executor.ForContainer(infra.KindLeaf),
-			validate.SessionParameters{
-				FromName:    infra.KindLeaf,
-				ToName:      nodeName,
-				NeighborIP:  neighborIP,
-				Established: Established,
-			},
-		)
+		validateNeighborSession()
 	})
 })
 
