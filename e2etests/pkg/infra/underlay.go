@@ -311,10 +311,6 @@ var underlays = map[UnderlayKind]v1alpha1.Underlay{
 						Name:     "toswitch1",
 						IPFamily: new(v1alpha1.IPFamilyDualStack),
 					},
-					{
-						Name:     openperouter.TunnelEndpointInterface,
-						IPFamily: new(v1alpha1.IPFamilyDualStack),
-					},
 				},
 			},
 			TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{

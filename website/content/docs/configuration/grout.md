@@ -38,6 +38,8 @@ Grout support is being delivered incrementally. The current implementation cover
 - **L3Passthrough** forwarding via grout
 - **L3VNI** (EVPN Layer 3 overlays) via grout TAP devices
 - **L2VNI** (EVPN Layer 2 overlays) via grout bridge domains and TAP devices
+- **IS-IS** underlay routing, with the tunnel endpoint carried on a dedicated
+  `vtep-lo` grout port advertised as a passive interface
 
 The following are **not yet supported** with grout:
 

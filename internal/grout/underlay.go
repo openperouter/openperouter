@@ -99,12 +99,17 @@ func SetupUnderlay(
 		}
 	}
 
-	if params.TunnelEndpoint != nil {
-		if err := setupTunnelEndpoint(ctx, client, *params.TunnelEndpoint); err != nil {
-			return err
-		}
+	if params.TunnelEndpoint == nil {
+		return RemoveTunnelEndpoint(ctx, client)
 	}
+	return setupTunnelEndpoint(ctx, client, *params.TunnelEndpoint)
+}
 
+// RemoveTunnelEndpoint removes the grout port associated to the vtep interface
+func RemoveTunnelEndpoint(ctx context.Context, client *Client) error {
+	if err := client.deletePort(ctx, hostnetwork.TunnelLoopback); err != nil {
+		return fmt.Errorf("failed to remove the tunnel endpoint port: %w", err)
+	}
 	return nil
 }
 
@@ -258,9 +263,19 @@ func setupTunnelEndpoint(ctx context.Context, client *Client, ep hostnetwork.Und
 		return fmt.Errorf("at least one tunnel endpoint IP must be provided (IPv4 or IPv6)")
 	}
 
-	if err := assignAddressesToGroutPort(ctx, client, defaultVRFName, addrs); err != nil {
-		return fmt.Errorf("failed to assign tunnel endpoint IPs to grout underlay: %w", err)
+	opts := portOptions{Devargs: "net_null_vtep_lo,no-rx=1"}
+	if err := client.ensurePort(ctx, hostnetwork.TunnelLoopback, opts); err != nil {
+		return fmt.Errorf("failed to create the tunnel endpoint port: %w", err)
 	}
+
+	if err := assignAddressesToGroutPort(ctx, client, hostnetwork.TunnelLoopback, addrs); err != nil {
+		return fmt.Errorf("failed to assign tunnel endpoint IPs to grout: %w", err)
+	}
+
+	if err := client.setPortUp(ctx, hostnetwork.TunnelLoopback); err != nil {
+		return fmt.Errorf("failed to set the tunnel endpoint port up: %w", err)
+	}
+
 	return nil
 }
 

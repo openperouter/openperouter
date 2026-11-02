@@ -31,6 +31,12 @@ type KernelDatapathConfigurator struct {
 	conversion.KernelDatapathConfigValidator
 }
 
+// InterfaceNameForFRR returns the name unchanged: in the kernel datapath FRR
+// peers over the underlay network devices themselves.
+func (k *KernelDatapathConfigurator) InterfaceNameForFRR(name string) string {
+	return name
+}
+
 func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config interfacesConfiguration) error { // nolint:gocognit
 	ovsClient := &hostnetwork.OVSClient{}
 	defer ovsClient.Close()

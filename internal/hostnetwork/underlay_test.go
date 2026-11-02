@@ -389,6 +389,7 @@ func validateTunnelEndpoint(g Gomega, params UnderlayParams) {
 	l, err := netlink.LinkByName(TunnelLoopback)
 	g.Expect(err).NotTo(HaveOccurred(), "tunnel endpoint interface not found")
 	g.Expect(l.Attrs().Flags&net.FlagUp).To(Equal(net.FlagUp), "tunnel endpoint interface should be up")
+	g.Expect(l.Attrs().MTU).To(Equal(tunnelLoopbackMTU), "tunnel endpoint interface MTU")
 	if params.TunnelEndpoint.IPv4CIDR != "" {
 		validateIP(g, l, params.TunnelEndpoint.IPv4CIDR)
 	}
