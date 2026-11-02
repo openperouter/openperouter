@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/conversion"
@@ -38,6 +39,7 @@ func TestConfigureFRR(t *testing.T) {
 	}
 	type step struct {
 		apiConfig  conversion.APIConfigData
+		instanceID string
 		logLevel   string
 		failReload bool
 		wantCalls  int
@@ -66,6 +68,15 @@ func TestConfigureFRR(t *testing.T) {
 			steps: []step{
 				{apiConfig: apiConfigA, wantCalls: 1},
 				{apiConfig: apiConfigA, wantCalls: 1},
+			},
+		},
+		{
+			name: "reconciliation observes FRR instance changes without a restart event",
+			steps: []step{
+				{apiConfig: apiConfigA, instanceID: "router-1", wantCalls: 1},
+				{apiConfig: apiConfigA, instanceID: "router-1", wantCalls: 1},
+				{apiConfig: apiConfigA, instanceID: "router-2", wantCalls: 2},
+				{apiConfig: apiConfigA, instanceID: "router-2", wantCalls: 2},
 			},
 		},
 		{
@@ -117,6 +128,12 @@ func TestConfigureFRR(t *testing.T) {
 			calls := 0
 			for i, step := range tt.steps {
 				t.Run(fmt.Sprintf("step %d", i), func(t *testing.T) {
+					if step.instanceID != "" {
+						router := &mockRouter{instanceID: func(context.Context) (string, error) {
+							return step.instanceID, nil
+						}}
+						require.NoError(t, invalidateFRRConfigCacheOnRestart(context.Background(), router))
+					}
 					err := configureFRR(context.Background(), frrConfigData{
 						configFile:    configFile,
 						APIConfigData: step.apiConfig,
@@ -146,14 +163,58 @@ func TestConfigureFRR(t *testing.T) {
 	}
 }
 
+func TestFRRRestartWatcherReappliesConfiguration(t *testing.T) {
+	resetFRRConfigCache(t)
+	dir := t.TempDir()
+	pidFile := filepath.Join(dir, "router.pid")
+	require.NoError(t, os.WriteFile(pidFile, []byte("100"), 0600))
+	provider := &RouterHostProvider{RouterPidFilePath: pidFile}
+	router := &RouterHostContainer{manager: provider}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	restarted := make(chan struct{}, 1)
+	require.NoError(t, provider.StartFRRRestartWatcher(ctx, func() {
+		select {
+		case restarted <- struct{}{}:
+		default:
+		}
+	}))
+	calls := 0
+	data := frrConfigData{
+		configFile: filepath.Join(dir, "frr.conf"),
+		updater: func(_ context.Context, config string) error {
+			calls++
+			return os.WriteFile(filepath.Join(dir, "frr.conf"), []byte(config), 0600)
+		},
+	}
+	require.NoError(t, invalidateFRRConfigCacheOnRestart(ctx, router))
+	require.NoError(t, configureFRR(ctx, data))
+	require.NoError(t, invalidateFRRConfigCacheOnRestart(ctx, router))
+	require.NoError(t, configureFRR(ctx, data))
+	require.Equal(t, 1, calls)
+
+	require.NoError(t, os.WriteFile(pidFile, []byte("200"), 0600))
+	select {
+	case <-restarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("router restart did not trigger reconciliation")
+	}
+	require.NotNil(t, lastAppliedFRRConfig, "watcher must only enqueue reconciliation")
+	require.NoError(t, invalidateFRRConfigCacheOnRestart(ctx, router))
+	require.NoError(t, configureFRR(ctx, data))
+	require.Equal(t, 2, calls, "identical configuration must be applied to the restarted FRR instance")
+}
+
 func resetFRRConfigCache(t testing.TB) {
 	t.Helper()
 	frrConfigMutex.Lock()
 	lastAppliedFRRConfig = nil
+	lastFRRInstanceID = ""
 	frrConfigMutex.Unlock()
 	t.Cleanup(func() {
 		frrConfigMutex.Lock()
 		lastAppliedFRRConfig = nil
+		lastFRRInstanceID = ""
 		frrConfigMutex.Unlock()
 	})
 }

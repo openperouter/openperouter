@@ -10,11 +10,13 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/go-logr/logr"
 	. "github.com/onsi/gomega"
+	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
@@ -93,12 +95,93 @@ func TestSetupWithManager(t *testing.T) {
 		env.create(t, raw)
 		env.waitForPassesSince(t, start, 1)
 	})
+	t.Run("router lifecycle changes reapply identical FRR configuration", func(t *testing.T) {
+		env.router.mu.Lock()
+		env.router.instanceID = env.namedRouter.FRRInstanceID
+		env.router.mu.Unlock()
+		pod := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "router", Namespace: testNamespace, Labels: map[string]string{"app": "router"},
+			},
+			Spec: corev1.PodSpec{
+				NodeName: coalescenceNodeName,
+				Containers: []corev1.Container{
+					{Name: "frr", Image: "router:test"},
+					{Name: "reloader", Image: "router:test"},
+				},
+			},
+		}
+		env.create(t, pod)
+		pod.Status = corev1.PodStatus{
+			Conditions: []corev1.PodCondition{
+				{Type: corev1.PodReady, Status: corev1.ConditionTrue},
+				{Type: corev1.ContainersReady, Status: corev1.ConditionTrue},
+			},
+			ContainerStatuses: []corev1.ContainerStatus{
+				{Name: "frr", ContainerID: "containerd://frr-1"},
+				{Name: "reloader", ContainerID: "containerd://reloader-1"},
+			},
+		}
+		require.NoError(t, env.client.Status().Update(context.Background(), pod))
+		env.waitForQuiet(t)
+
+		tests := []struct {
+			name       string
+			replacePod bool
+			frrID      string
+			reloaderID string
+			wantReload bool
+		}{
+			{name: "router pod replacement", replacePod: true,
+				frrID: "containerd://frr-2", reloaderID: "containerd://reloader-2", wantReload: true},
+			{name: "FRR container restart with unchanged readiness",
+				frrID: "containerd://frr-3", reloaderID: "containerd://reloader-2", wantReload: true},
+			{name: "unchanged FRR instance",
+				frrID: "containerd://frr-3", reloaderID: "containerd://reloader-2"},
+			{name: "reloader restart preserves FRR configuration",
+				frrID: "containerd://frr-3", reloaderID: "containerd://reloader-3"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				before := env.reloads.Load()
+				if tt.replacePod {
+					require.NoError(t, env.client.Delete(context.Background(), pod,
+						client.GracePeriodSeconds(0)))
+					env.waitForQuiet(t)
+					before = env.reloads.Load()
+					pod = &corev1.Pod{ObjectMeta: metav1.ObjectMeta{
+						Name: "router-rebuilt", Namespace: testNamespace, Labels: map[string]string{"app": "router"},
+					}, Spec: *pod.Spec.DeepCopy()}
+					env.create(t, pod)
+				}
+				pod.Status.Conditions = []corev1.PodCondition{
+					{Type: corev1.PodReady, Status: corev1.ConditionTrue},
+					{Type: corev1.ContainersReady, Status: corev1.ConditionTrue},
+				}
+				pod.Status.ContainerStatuses = []corev1.ContainerStatus{
+					{Name: "frr", ContainerID: tt.frrID},
+					{Name: "reloader", ContainerID: tt.reloaderID},
+				}
+				require.NoError(t, env.client.Status().Update(context.Background(), pod))
+				if tt.wantReload {
+					require.Eventually(t, func() bool { return env.reloads.Load() > before },
+						5*time.Second, 10*time.Millisecond, "fresh FRR instance must receive its configuration")
+					return
+				}
+				require.Never(t, func() bool { return env.reloads.Load() > before },
+					time.Second, 10*time.Millisecond, "unchanged FRR instance must retain its cached configuration")
+			})
+			env.waitForQuiet(t)
+		}
+	})
 }
 
 type wiringEnv struct {
-	client client.Client
-	cache  client.Reader
-	router *recordingRouterProvider
+	client      client.Client
+	cache       client.Reader
+	router      *recordingRouterProvider
+	reloads     *atomic.Int32
+	namedRouter *RouterNamedNS
 }
 
 func startWiringEnv(t *testing.T) *wiringEnv {
@@ -134,7 +217,7 @@ func startWiringEnv(t *testing.T) *wiringEnv {
 
 	dir := t.TempDir()
 	socketPath := filepath.Join(dir, "reload.sock")
-	serveFRRReloader(t, socketPath)
+	env.reloads = serveFRRReloader(t, socketPath)
 
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: scheme,
@@ -151,6 +234,9 @@ func startWiringEnv(t *testing.T) *wiringEnv {
 		t.Fatalf("failed to create manager: %v", err)
 	}
 	env.cache = mgr.GetCache()
+	env.namedRouter = &RouterNamedNS{manager: &RouterNamedNSProvider{
+		Client: mgr.GetClient(), Node: coalescenceNodeName, Namespace: testNamespace,
+	}}
 	reconciler := &PERouterReconciler{
 		Client:               mgr.GetClient(),
 		Scheme:               scheme,
@@ -227,17 +313,18 @@ type pass struct {
 func (p pass) String() string { return fmt.Sprintf("%s@%s", p.request, p.at.Format("15:04:05.000")) }
 
 type recordingRouterProvider struct {
-	mu      sync.Mutex
-	passes  []pass
-	gate    chan struct{}
-	entered chan struct{}
+	mu         sync.Mutex
+	passes     []pass
+	gate       chan struct{}
+	entered    chan struct{}
+	instanceID func(context.Context) (string, error)
 }
 
 func (p *recordingRouterProvider) New(ctx context.Context) (Router, error) {
 	request, _ := ctx.Value(requestKey("request")).(string)
 	p.mu.Lock()
 	p.passes = append(p.passes, pass{request: request, at: time.Now()})
-	gate, entered := p.gate, p.entered
+	gate, entered, instanceID := p.gate, p.entered, p.instanceID
 	p.mu.Unlock()
 
 	if gate != nil {
@@ -247,7 +334,7 @@ func (p *recordingRouterProvider) New(ctx context.Context) (Router, error) {
 		}
 		<-gate
 	}
-	return &mockRouter{}, nil
+	return &mockRouter{instanceID: instanceID}, nil
 }
 
 func (p *recordingRouterProvider) NodeIndex(_ context.Context) (int, error) {
@@ -305,15 +392,18 @@ func l2VNIForWiring(name string, vni int32, nodeLabels map[string]string) *v1alp
 	return l2vni
 }
 
-func serveFRRReloader(t *testing.T, socketPath string) {
+func serveFRRReloader(t *testing.T, socketPath string) *atomic.Int32 {
 	t.Helper()
 	listener, err := net.Listen("unix", socketPath)
 	if err != nil {
 		t.Fatalf("failed to listen on %s: %v", socketPath, err)
 	}
+	calls := &atomic.Int32{}
 	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
 		w.WriteHeader(http.StatusOK)
 	})}
 	go func() { _ = server.Serve(listener) }()
 	t.Cleanup(func() { _ = server.Close() })
+	return calls
 }

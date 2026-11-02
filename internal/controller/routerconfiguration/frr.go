@@ -15,10 +15,11 @@ import (
 	"github.com/openperouter/openperouter/internal/frr"
 )
 
-// The controller process manages a single FRR instance, so we can keep a local copy
-// of the last applied configuration.
+// The controller manages one FRR instance at a time. Reconciliation checks its
+// identity because a fresh instance has no applied configuration.
 var (
 	lastAppliedFRRConfig *frr.Config
+	lastFRRInstanceID    string
 	frrConfigMutex       sync.Mutex
 )
 
@@ -70,6 +71,20 @@ func configureFRR(ctx context.Context, data frrConfigData) error {
 	}
 	if prevErr != nil || string(previousConfig) != string(newConfig) {
 		slog.InfoContext(ctx, "FRR configuration updated", "config", frr.RedactPasswords(string(newConfig)))
+	}
+	return nil
+}
+
+func invalidateFRRConfigCacheOnRestart(ctx context.Context, router Router) error {
+	instanceID, err := router.FRRInstanceID(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to identify FRR instance: %w", err)
+	}
+	frrConfigMutex.Lock()
+	defer frrConfigMutex.Unlock()
+	if instanceID != lastFRRInstanceID {
+		lastAppliedFRRConfig = nil
+		lastFRRInstanceID = instanceID
 	}
 	return nil
 }
