@@ -20,7 +20,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 )
 
-var _ = Describe("IS-IS routes", Ordered, func() {
+var _ = Describe("IS-IS routes", Ordered, GroutSupport, func() {
 	var cs clientset.Interface
 	var routers openperouter.Routers
 
