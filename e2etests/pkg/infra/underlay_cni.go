@@ -21,10 +21,6 @@ import (
 const (
 	// CNIUnderlayASN is the local AS number of the CNI provisioned underlays.
 	CNIUnderlayASN = 64514
-
-	// groutUnderlayPortPrefix is the prefix grout adds when it creates a
-	// kernel port for an underlay interface and migrates the addresses to it.
-	groutUnderlayPortPrefix = "u_"
 )
 
 // CNIUnderlayNeighborIP returns the static IP assigned to the CNI-provisioned
@@ -191,15 +187,9 @@ func ConfigureLeafKind1ForDHCPUnderlay(nodes []corev1.Node, ifName string) error
 }
 
 // DHCPNeighborIP discovers the IPv4 address assigned by DHCP on the CNI
-// interface inside the perouter netns of nodeName. It checks both the plain
-// interface and the grout port (u_<ifName>), since the grout datapath migrates
-// addresses from the kernel interface to the grout port.
+// interface inside the perouter netns of nodeName.
 func DHCPNeighborIP(nodeName, ifName string) (string, error) {
-	ip, err := openperouter.InterfaceIPv4InNetns(nodeName, ifName, openperouter.NamedNetns)
-	if err == nil {
-		return ip, nil
-	}
-	return openperouter.InterfaceIPv4InNetns(nodeName, groutUnderlayPortPrefix+ifName, openperouter.NamedNetns)
+	return openperouter.InterfaceIPv4InNetns(nodeName, ifName, openperouter.NamedNetns)
 }
 
 const dhcpServerContainer = ClabPrefix + "dhcp1"

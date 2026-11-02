@@ -11,7 +11,10 @@ import (
 )
 
 const NamedNetns = "perouter"
-const underlayPortNamePrefix = "u_"
+
+// GroutTapBackingNetdevPrefix is the prefix of the name the netdev backing a
+// grout TAP underlay port is given in the router netns.
+const GroutTapBackingNetdevPrefix = "gu"
 
 // NamedNetnsExists checks whether /var/run/netns/perouter is present on nodeName.
 func NamedNetnsExists(nodeName string) (bool, error) {
@@ -87,14 +90,17 @@ func UnderlayConfigured(nodeName string) (bool, error) {
 		return true, nil
 	}
 
-	// Check if some Grout underlay has been configured
-	out, err = exec.Exec("ip", "netns", "exec", NamedNetns, "ip", "-brief", "link", "show")
+	// Check if some Grout TAP underlay has been configured
+	out, err = exec.Exec("ip", "netns", "exec", NamedNetns, "ip", "-o", "link", "show")
 	if err != nil {
 		return false, err
 	}
 	for line := range strings.SplitSeq(out, "\n") {
-		fields := strings.Fields(line)
-		if len(fields) > 0 && strings.HasPrefix(fields[0], underlayPortNamePrefix) {
+		name, err := ifaceName(line)
+		if err != nil {
+			continue
+		}
+		if strings.HasPrefix(name, GroutTapBackingNetdevPrefix) {
 			return true, nil
 		}
 	}

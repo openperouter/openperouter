@@ -96,7 +96,7 @@ func NetnsLinkLocalOwners(nodeName, ns string) (map[string][]string, error) {
 
 	owners := map[string][]string{}
 	for line := range strings.SplitSeq(out, "\n") {
-		// e.g. "36: u_toswitch1    inet6 fe80::a8c1:abff:fe84:5cc8/128 scope link nodad"
+		// e.g. "36: toswitch1    inet6 fe80::a8c1:abff:fe84:5cc8/128 scope link nodad"
 		fields := strings.Fields(line)
 		if len(fields) < 4 || fields[2] != "inet6" {
 			continue

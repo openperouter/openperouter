@@ -1075,12 +1075,13 @@ var _ = Describe("Underlay explicit address family configuration", Ordered, Grou
 
 	// Regression test for https://github.com/openperouter/openperouter/issues/720.
 	// When grout reuses the backing veth's MAC for the underlay port, the port's
-	// kernel shadow u_<iface> derives the same EUI-64 link-local as the veth. The
-	// collision triggers DAD, which can strip u_<iface>'s link-local and break any
-	// session carrying an IPv6 nexthop (ipv6unicast/ipv6vpn). Assert the
-	// port owns a link-local that is not shared with its backing veth. Note the
-	// shadow shares its link-local with grout's own tap_<iface> by design; only a
-	// collision with the veth is the failure signature.
+	// kernel shadow, named after the underlay interface, derives the same EUI-64
+	// link-local as the veth. The collision triggers DAD, which can strip the
+	// shadow's link-local and break any session carrying an IPv6 nexthop
+	// (ipv6unicast/ipv6vpn). Assert the port owns a link-local that is not shared
+	// with its backing veth, renamed in the router netns. Note the shadow shares
+	// its link-local with grout's own net_tap device by design; only a collision
+	// with the veth is the failure signature.
 	//
 	// This test is marked as failing until we fix this bug.
 	It("assigns each underlay port a unique IPv6 link-local", GroutOnly, func() {
@@ -1104,8 +1105,7 @@ var _ = Describe("Underlay explicit address family configuration", Ordered, Grou
 		By("checking each underlay port owns a link-local not shared with its veth")
 		for _, node := range nodes {
 			for _, iface := range underlay.Spec.Interfaces {
-				veth := iface.NetworkDevice.InterfaceName
-				port := "u_" + veth
+				port := iface.NetworkDevice.InterfaceName
 				Eventually(func(g Gomega) {
 					owners, err := openperouter.NetnsLinkLocalOwners(node.Name, openperouter.NamedNetns)
 					g.Expect(err).NotTo(HaveOccurred())
@@ -1113,9 +1113,10 @@ var _ = Describe("Underlay explicit address family configuration", Ordered, Grou
 					portLinkLocals := linkLocalsOwnedBy(owners, port)
 					g.Expect(portLinkLocals).To(HaveLen(1),
 						"port %s on %s must own exactly one IPv6 link-local, owners=%v", port, node.Name, owners)
-					g.Expect(owners[portLinkLocals[0]]).NotTo(ContainElement(veth),
-						"link-local %s of port %s on %s is shared with its backing veth %s, owners=%v",
-						portLinkLocals[0], port, node.Name, veth, owners[portLinkLocals[0]],
+					g.Expect(owners[portLinkLocals[0]]).NotTo(
+						ContainElement(HavePrefix(openperouter.GroutTapBackingNetdevPrefix)),
+						"link-local %s of port %s on %s is shared with its backing veth, owners=%v",
+						portLinkLocals[0], port, node.Name, owners[portLinkLocals[0]],
 					)
 				}, time.Minute, 2*time.Second).Should(Succeed())
 			}

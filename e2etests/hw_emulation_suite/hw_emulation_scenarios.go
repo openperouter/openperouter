@@ -183,7 +183,7 @@ var _ = Describe("HWEmulation", Ordered, GroutSupport, func() {
 		)
 		underlay := infra.Underlay(infra.Default)
 		customized := underlay.Spec.Interfaces[0].NetworkDevice
-		portName := "u_" + customized.InterfaceName
+		portName := customized.InterfaceName
 		customized.AcceleratedConfig = &v1alpha1.AcceleratedConfig{
 			RXQueues: new(rxQueues),
 			QSize:    new(qSize),
