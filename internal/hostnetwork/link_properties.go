@@ -11,6 +11,7 @@ import (
 	"os"
 
 	"github.com/vishvananda/netlink"
+	"github.com/vishvananda/netlink/nl"
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
 )
@@ -137,6 +138,37 @@ func SuppressLinkLocal(ifaceName string) error {
 		if err := netlink.AddrDel(link, &addr); err != nil {
 			return fmt.Errorf("failed to remove link-local %s from %s: %w", addr.IPNet, ifaceName, err)
 		}
+	}
+	return nil
+}
+
+// EnsureLinkUp sets the link named name up, if it is not already.
+func EnsureLinkUp(name string) error {
+	link, err := netlink.LinkByName(name)
+	if err != nil {
+		return fmt.Errorf("failed to find link %s: %w", name, err)
+	}
+	if err := linkSetUp(link); err != nil {
+		return fmt.Errorf("failed to set link %s up: %w", name, err)
+	}
+	return nil
+}
+
+// MoveAndRenameLink moves the link to the targetNS network namespace, where
+// it is named newName. The kernel moves and renames the link in a single
+// request, so the link never shows up in targetNS under its old name, which
+// may belong to another link there. The request is sent from the network
+// namespace the link is in, which must be the current one.
+func MoveAndRenameLink(link netlink.Link, newName string, targetNS netns.NsHandle) error {
+	req := nl.NewNetlinkRequest(unix.RTM_SETLINK, unix.NLM_F_ACK)
+	msg := nl.NewIfInfomsg(unix.AF_UNSPEC)
+	msg.Index = int32(link.Attrs().Index)
+	req.AddData(msg)
+	req.AddData(nl.NewRtAttr(unix.IFLA_NET_NS_FD, nl.Uint32Attr(uint32(targetNS))))
+	req.AddData(nl.NewRtAttr(unix.IFLA_IFNAME, nl.ZeroTerminated(newName)))
+	if _, err := req.Execute(unix.NETLINK_ROUTE, 0); err != nil {
+		return fmt.Errorf("failed to move link %s to namespace %s as %s: %w",
+			link.Attrs().Name, targetNS, newName, err)
 	}
 	return nil
 }
