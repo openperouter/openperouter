@@ -11,3 +11,8 @@ if ! apt-cache show "$package" > /dev/null 2>&1; then
 fi
 
 sudo apt-get install -y "$package"
+
+# Kind nodes share the host kernel and use a no-op modprobe wrapper.
+for module in dummy vrf bridge veth vxlan 8021q macvlan openvswitch sch_fq_codel; do
+    sudo modprobe "$module"
+done

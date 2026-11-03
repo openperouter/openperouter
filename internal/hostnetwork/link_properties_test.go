@@ -4,8 +4,10 @@ package hostnetwork
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/vishvananda/netlink"
 )
 
@@ -57,6 +59,73 @@ func TestInterfaceHasIPErrors(t *testing.T) {
 			t.Fatalf("expected the list error, got %v", err)
 		}
 	})
+}
+
+func TestListAddresses(t *testing.T) {
+	complete := []netlink.Addr{*mustParseAddr(t, "2001:db8::1/64")}
+	partial := []netlink.Addr{*mustParseAddr(t, "fe80::1/64")}
+	interrupted := fmt.Errorf("address dump: %w", netlink.ErrDumpInterrupted)
+	listErr := errors.New("list failed")
+	tests := []struct {
+		name      string
+		family    int
+		errors    []error
+		want      []netlink.Addr
+		wantError error
+	}{
+		{
+			name:   "complete dump",
+			family: netlink.FAMILY_V6,
+			errors: []error{nil},
+			want:   complete,
+		},
+		{
+			name:   "discard interrupted dumps and recover",
+			family: netlink.FAMILY_ALL,
+			errors: []error{netlink.ErrDumpInterrupted, interrupted, nil},
+			want:   complete,
+		},
+		{
+			name:      "stop after three interrupted dumps",
+			family:    netlink.FAMILY_V6,
+			errors:    []error{interrupted, interrupted, interrupted},
+			wantError: interrupted,
+		},
+		{
+			name:      "return other errors immediately",
+			family:    netlink.FAMILY_ALL,
+			errors:    []error{listErr},
+			wantError: listErr,
+		},
+		{
+			name:      "stop retrying on another error",
+			family:    netlink.FAMILY_V6,
+			errors:    []error{netlink.ErrDumpInterrupted, listErr},
+			wantError: listErr,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			stubAddrList(t, nil, nil)
+			link := testLink()
+			calls := 0
+			addrList = func(gotLink netlink.Link, family int) ([]netlink.Addr, error) {
+				require.Equal(t, link, gotLink)
+				require.Equal(t, tc.family, family)
+				require.Less(t, calls, len(tc.errors), "unexpected address dump attempt")
+				err := tc.errors[calls]
+				calls++
+				if err != nil {
+					return partial, err
+				}
+				return complete, nil
+			}
+			got, err := listAddresses(link, tc.family)
+			require.ErrorIs(t, err, tc.wantError)
+			require.Equal(t, tc.want, got)
+			require.Equal(t, len(tc.errors), calls)
+		})
+	}
 }
 
 func stubAddrList(t *testing.T, addrs []netlink.Addr, err error) {

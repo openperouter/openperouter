@@ -126,7 +126,7 @@ func SuppressLinkLocal(ifaceName string) error {
 		return fmt.Errorf("failed to set addr_gen_mode none on %s: %w", ifaceName, err)
 	}
 
-	addrs, err := netlink.AddrList(link, netlink.FAMILY_V6)
+	addrs, err := listAddresses(link, netlink.FAMILY_V6)
 	if err != nil {
 		return fmt.Errorf("failed to list addresses on %s: %w", ifaceName, err)
 	}
@@ -270,4 +270,23 @@ func LinkExists(name string) (bool, error) {
 		return false, fmt.Errorf("failed to find link %s: %w", name, err)
 	}
 	return true, nil
+}
+
+const addressDumpAttempts = 3
+
+func listAddresses(link netlink.Link, family int) ([]netlink.Addr, error) {
+	// Address changes can interrupt a dump; only a complete snapshot is safe to use.
+	var err error
+	for range addressDumpAttempts {
+		var addresses []netlink.Addr
+		addresses, err = addrList(link, family)
+		if errors.Is(err, netlink.ErrDumpInterrupted) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		return addresses, nil
+	}
+	return nil, err
 }

@@ -5,7 +5,6 @@ package hostnetwork
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -13,80 +12,42 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
-// setupBridge creates the bridge, looks up and binds the VRF when
-// params.VRF is non-empty, applies any bridge options, and brings the link up.
-func setupBridge(params VNIParams, opts ...NetlinkOption) (*netlink.Bridge, error) {
-	name := BridgeName(params.VNI)
-	bridge, err := createBridge(name)
+func setupBridge(params VNIParams) (*netlink.Bridge, error) {
+	bridge, err := createVLANBridge(vlanBridgeName(params.VNI))
 	if err != nil {
 		return nil, err
 	}
-
-	if params.VRF != "" {
-		vrf, err := lookupVRF(params.VRF)
-		if err != nil {
-			return nil, fmt.Errorf("could not find vrf %s for bridge %s: %w", params.VRF, name, err)
+	if bridge.MasterIndex != 0 {
+		if err := netlink.LinkSetNoMaster(bridge); err != nil {
+			return nil, fmt.Errorf("detach switching bridge %s from master: %w", bridge.Name, err)
 		}
-		if err := ensureBridgeMaster(bridge, vrf.Index); err != nil {
-			return nil, err
-		}
+		bridge.MasterIndex = 0
 	}
-
-	for _, opt := range opts {
-		if err := opt(bridge); err != nil {
-			return nil, fmt.Errorf("failed to apply bridge option for %s: %w", bridge.Name, err)
+	if bridge.VlanFiltering == nil || !*bridge.VlanFiltering {
+		if err := netlink.BridgeSetVlanFiltering(bridge, true); err != nil {
+			return nil, fmt.Errorf("enable VLAN filtering on %s: %w", bridge.Name, err)
 		}
+		bridge.VlanFiltering = new(true)
 	}
-
-	err = linkSetUp(bridge)
-	if err != nil {
-		return nil, fmt.Errorf("could not set link up for bridge %s: %v", name, err)
+	if bridge.VlanDefaultPVID == nil || *bridge.VlanDefaultPVID != 0 {
+		if err := netlink.BridgeSetVlanDefaultPVID(bridge, 0); err != nil {
+			return nil, fmt.Errorf("disable default PVID on %s: %w", bridge.Name, err)
+		}
+		bridge.VlanDefaultPVID = new(uint16(0))
+	}
+	if err := ensureVLANMembership(bridge, false, true); err != nil {
+		return nil, err
+	}
+	if err := ensureAddressless(bridge); err != nil {
+		return nil, err
+	}
+	if err := ensureBridgeQueue(bridge); err != nil {
+		return nil, err
+	}
+	if err := linkSetUp(bridge); err != nil {
+		return nil, fmt.Errorf("could not set link up for bridge %s: %w", bridge.Name, err)
 	}
 	return bridge, nil
-}
-
-func createBridge(name string) (*netlink.Bridge, error) {
-	toCreate := &netlink.Bridge{LinkAttrs: netlink.LinkAttrs{
-		Name: name,
-	}}
-
-	link, err := netlink.LinkByName(name)
-	if errors.As(err, &netlink.LinkNotFoundError{}) {
-		if err := netlink.LinkAdd(toCreate); err != nil {
-			return nil, fmt.Errorf("could not create bridge %s: %w", name, err)
-		}
-		return toCreate, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("could find bridge by name %s: %w", name, err)
-	}
-
-	bridge, ok := link.(*netlink.Bridge)
-	if ok {
-		return bridge, nil
-	}
-
-	// link exists but it's not a bridge, delete and recreate
-	err = netlink.LinkDel(link)
-	if err != nil {
-		return nil, fmt.Errorf("failed to delete link %v: %w", link, err)
-	}
-	if err := netlink.LinkAdd(toCreate); err != nil {
-		return nil, fmt.Errorf("could not create bridge %s: %w", name, err)
-	}
-
-	return toCreate, nil
-}
-
-func ensureBridgeMaster(bridge *netlink.Bridge, masterIndex int) error {
-	if bridge.MasterIndex == masterIndex {
-		return nil
-	}
-	if err := netlink.LinkSetMasterByIndex(bridge, masterIndex); err != nil {
-		return fmt.Errorf("could not bind bridge %s to VRF (index %d): %w", bridge.Name, masterIndex, err)
-	}
-	bridge.MasterIndex = masterIndex
-	return nil
 }
 
 const (
@@ -146,4 +107,37 @@ func vniFromBridgeName(name string) (int32, error) {
 		return 0, fmt.Errorf("failed to get vni for bridge %s", name)
 	}
 	return int32(res), nil
+}
+
+const bridgeQueueLength = 1000
+
+func ensureBridgeQueue(bridge *netlink.Bridge) error {
+	if bridge.TxQLen != bridgeQueueLength {
+		if err := netlink.LinkSetTxQLen(bridge, bridgeQueueLength); err != nil {
+			return fmt.Errorf("set switching bridge %s transmit queue length: %w", bridge.Name, err)
+		}
+		bridge.TxQLen = bridgeQueueLength
+	}
+	queues, err := netlink.QdiscList(bridge)
+	if err != nil {
+		return fmt.Errorf("list switching bridge %s queues: %w", bridge.Name, err)
+	}
+	handle := netlink.MakeHandle(1, 0)
+	for _, queue := range queues {
+		if queue.Attrs().Parent != netlink.HANDLE_ROOT || queue.Attrs().Handle != handle {
+			continue
+		}
+		if queue.Type() == "fq_codel" {
+			return nil
+		}
+	}
+	// Use the queued transmit path for routed VLAN/bridge/VXLAN traffic;
+	// fq_codel can still transmit synchronously.
+	queue := netlink.NewFqCodel(netlink.QdiscAttrs{
+		LinkIndex: bridge.Index, Parent: netlink.HANDLE_ROOT, Handle: handle,
+	})
+	if err := netlink.QdiscReplace(queue); err != nil {
+		return fmt.Errorf("set switching bridge %s root fq_codel queue: %w", bridge.Name, err)
+	}
+	return nil
 }

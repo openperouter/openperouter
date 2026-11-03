@@ -76,16 +76,20 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 		// VXLAN tunnels are bound to the current underlay interfaces. If all underlay interfaces are being
 		// replaced, tear down the VNIs first so they don't reference stale interfaces; they'll be recreated
 		// on top of the new underlay.
+		bridgerefresh.StopAllVNIs()
 		if err := hostnetwork.RemoveAllVNIs(ovsClient, config.targetNamespace); err != nil {
 			slog.Warn("failed to remove vnis during underlay change", "err", err)
 		}
-		bridgerefresh.StopAllVNIs()
 	}
 
 	slog.InfoContext(ctx, "setting up underlay")
 
 	if err := hostnetwork.SetupUnderlay(ctx, hostConfig.Underlay); err != nil {
 		return fmt.Errorf("failed to setup underlay: %w", err)
+	}
+
+	if err := removeLegacyVNIs(config.targetNamespace); err != nil {
+		return err
 	}
 
 	var resourceErrors []error
@@ -153,11 +157,10 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 	}
 
 	slog.InfoContext(ctx, "removing deleted vnis")
+	bridgerefresh.StopForRemovedVNIs(l2VNIs)
 	if err := hostnetwork.RemoveNonConfiguredVNIs(ovsClient, config.targetNamespace, configuredVNIs); err != nil {
 		return fmt.Errorf("failed to remove deleted vnis: %w", err)
 	}
-	bridgerefresh.StopForRemovedVNIs(l2VNIs)
-
 	slog.InfoContext(ctx, "removing deleted l3vpns")
 	if err := hostnetwork.RemoveNonConfiguredL3VPNs(config.targetNamespace,
 		configuredL3VPNs); err != nil {
@@ -231,10 +234,11 @@ func setupL2VNIs(
 
 func setupL2VNI(ctx context.Context, ovsClient *hostnetwork.OVSClient, vni hostnetwork.L2VNIParams) error {
 	slog.InfoContext(ctx, "setting up L2VNI", "vni", vni.VNI)
-	if err := setupSingleL2VNI(ctx, ovsClient, vni); err != nil {
-		return err
-	}
-	return bridgerefresh.StartForVNI(ctx, vni)
+	return configureL2VNI(ctx, vni,
+		func(ctx context.Context, params hostnetwork.L2VNIParams) error {
+			return setupSingleL2VNI(ctx, ovsClient, params)
+		},
+		bridgerefresh.StopForVNI, bridgerefresh.StartForVNI)
 }
 
 func l2VNIError(vni hostnetwork.L2VNIParams, message string) error {
@@ -256,6 +260,7 @@ func restoreUnderlay(
 ) {
 	slog.InfoContext(ctx, "underlay removed, cleaning up VNIs and underlay interfaces")
 
+	bridgerefresh.StopAllVNIs()
 	if err := hostnetwork.RemoveAllVNIs(ovsClient, targetNamespace); err != nil {
 		slog.Warn("failed to remove vnis after underlay removal", "err", err)
 	}
@@ -268,7 +273,6 @@ func restoreUnderlay(
 		slog.Warn("failed to remove vrfs after underlay removal", "err", err)
 	}
 
-	bridgerefresh.StopAllVNIs()
 	if err := hostnetwork.RestoreUnderlay(ctx, targetNamespace,
 		currentUnderlayIfaces); err != nil {
 		slog.Warn("failed to remove underlay interfaces after underlay removal", "err", err)
@@ -328,4 +332,38 @@ func areAllUnderlayInterfacesToBeRemoved(
 		)
 	}
 	return allRemoved, nil
+}
+
+// configureL2VNI stops the old neighbour reader before setup can replace its interface.
+// A failed setup leaves it stopped until a later successful reconciliation.
+func configureL2VNI(
+	ctx context.Context, params hostnetwork.L2VNIParams,
+	setup func(context.Context, hostnetwork.L2VNIParams) error,
+	stop func(int32) error,
+	start func(context.Context, hostnetwork.L2VNIParams) error,
+) error {
+	if err := stop(params.VNI); err != nil {
+		return err
+	}
+	if err := setup(ctx, params); err != nil {
+		return err
+	}
+	return start(ctx, params)
+}
+
+func removeLegacyVNIs(targetNamespace string) error {
+	legacyVNIs, err := hostnetwork.LegacyVNIIDs(targetNamespace)
+	if err != nil {
+		return fmt.Errorf("inspect legacy VNIs: %w", err)
+	}
+	for _, vni := range legacyVNIs {
+		if err := bridgerefresh.StopForVNI(vni); err != nil {
+			return err
+		}
+	}
+	if err := hostnetwork.RemoveLegacyVNIs(targetNamespace, legacyVNIs); err != nil {
+		return fmt.Errorf("remove legacy VNIs: %w", err)
+	}
+
+	return nil
 }
