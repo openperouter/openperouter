@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net"
 	"slices"
 	"strconv"
 	"strings"
@@ -40,6 +41,11 @@ type EVPNData struct {
 
 // ContainsType5RouteWithRouterMAC matches the prefix, VTEP, route target and RMAC on one valid path.
 func (e *EVPNData) ContainsType5RouteWithRouterMAC(prefix, vtep string, rt v1alpha1.RouteTarget, mac string) bool {
+	parsedMAC, err := net.ParseMAC(mac)
+	if err != nil {
+		return false
+	}
+	mac = parsedMAC.String()
 	for _, path := range e.allPaths() {
 		if !path.Valid || path.RouteType != 5 || fmt.Sprintf("%s/%d", path.IP, path.IPLen) != prefix {
 			continue
