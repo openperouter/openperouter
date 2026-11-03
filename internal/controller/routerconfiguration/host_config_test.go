@@ -21,17 +21,51 @@ import (
 func TestSetupL2VNIs(t *testing.T) {
 	red := l2VNIForTest("red", 100)
 	blue := l2VNIForTest("blue", 200)
+	const missingNamespace = "/does-not-exist"
+
+	_, openErr := netns.GetFromPath(missingNamespace)
+	require.Error(t, openErr, "the namespace path of the test must not exist")
+	openFailure := fmt.Sprintf("failed to get network namespace %s: %v", missingNamespace, openErr)
+
+	tests := []struct {
+		name            string
+		l2VNIs          []hostnetwork.L2VNIParams
+		targetNamespace string
+		wantErrs        []error
+	}{
+		{
+			name:            "no L2VNIs does not open the namespace",
+			targetNamespace: missingNamespace,
+		},
+		{
+			name:            "a namespace open failure is reported for every L2VNI",
+			l2VNIs:          []hostnetwork.L2VNIParams{red, blue},
+			targetNamespace: missingNamespace,
+			wantErrs: []error{
+				wantL2VNIError("red", openFailure),
+				wantL2VNIError("blue", openFailure),
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			kept, errs := setupL2VNIs(context.Background(), &hostnetwork.OVSClient{}, tc.l2VNIs, tc.targetNamespace)
+
+			require.Nil(t, kept)
+			require.Equal(t, tc.wantErrs, errs)
+		})
+	}
+}
+
+func TestSetupEachL2VNI(t *testing.T) {
+	red := l2VNIForTest("red", 100)
+	blue := l2VNIForTest("blue", 200)
 	errOVSDB := fmt.Errorf("%w: failed to connect to OVSDB", openpeerrors.ErrTransient)
 	errMissingMaster := errors.New("could not find host master br-missing")
-
-	openErr := errors.New("no such file or directory")
-	stateErr := errors.New("could not find underlay MTU")
 
 	tests := []struct {
 		name      string
 		l2VNIs    []hostnetwork.L2VNIParams
-		openErr   error
-		stateErr  error
 		setupErrs map[string]error
 		wantKept  []hostnetwork.L2VNIParams
 		wantErrs  []error
@@ -68,63 +102,9 @@ func TestSetupL2VNIs(t *testing.T) {
 				wantL2VNIError("blue", errMissingMaster.Error()),
 			},
 		},
-		{
-			name:    "a namespace open failure is reported for every L2VNI",
-			l2VNIs:  []hostnetwork.L2VNIParams{red, blue},
-			openErr: openErr,
-			wantErrs: []error{
-				wantL2VNIError("red", "failed to get network namespace /router: "+openErr.Error()),
-				wantL2VNIError("blue", "failed to get network namespace /router: "+openErr.Error()),
-			},
-		},
-		{
-			name:     "a state failure is reported for every L2VNI",
-			l2VNIs:   []hostnetwork.L2VNIParams{red, blue},
-			stateErr: stateErr,
-			wantErrs: []error{
-				wantL2VNIError("red", stateErr.Error()),
-				wantL2VNIError("blue", stateErr.Error()),
-			},
-		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			shared := hostnetwork.L2VNISharedState{}
-			var gotShared []hostnetwork.L2VNISharedState
-			stateCalls := 0
-			originalSetup := setupSingleL2VNI
-			originalOpenNamespace := openNamespace
-			originalSharedState := newL2VNISharedState
-			t.Cleanup(func() {
-				setupSingleL2VNI = originalSetup
-				openNamespace = originalOpenNamespace
-				newL2VNISharedState = originalSharedState
-			})
-			openNamespace = func(string) (netns.NsHandle, error) {
-				if tc.openErr != nil {
-					return netns.None(), tc.openErr
-				}
-				ns, err := netns.Get()
-				require.NoError(t, err)
-				t.Cleanup(func() { _ = ns.Close() })
-				return ns, nil
-			}
-			newL2VNISharedState = func(netns.NsHandle) (hostnetwork.L2VNISharedState, error) {
-				stateCalls++
-				if tc.stateErr != nil {
-					return hostnetwork.L2VNISharedState{}, tc.stateErr
-				}
-				return shared, nil
-			}
-			setupSingleL2VNI = func(
-				_ context.Context,
-				_ *hostnetwork.OVSClient,
-				vni hostnetwork.L2VNIParams,
-				s hostnetwork.L2VNISharedState,
-			) error {
-				gotShared = append(gotShared, s)
-				return tc.setupErrs[vni.Name]
-			}
 			ctx, cancel := context.WithCancel(context.Background())
 			t.Cleanup(func() {
 				cancel()
@@ -132,25 +112,14 @@ func TestSetupL2VNIs(t *testing.T) {
 					require.NoError(t, bridgerefresh.StopForVNI(vni.VNI))
 				}
 			})
+			provisioner := &fakeL2VNIProvisioner{setupErrs: tc.setupErrs}
 
-			kept, errs := setupL2VNIs(ctx, &hostnetwork.OVSClient{}, tc.l2VNIs, "/router")
+			kept, errs := setupEachL2VNI(ctx, provisioner, tc.l2VNIs)
 
 			require.Equal(t, tc.wantKept, kept)
 			require.Equal(t, tc.wantErrs, errs)
-			if tc.openErr != nil || len(tc.l2VNIs) == 0 {
-				require.Zero(t, stateCalls, "the shared state must not be resolved")
-				require.Empty(t, gotShared)
-				return
-			}
-			require.Equal(t, 1, stateCalls, "the shared state must be resolved once per pass")
-			if tc.stateErr != nil {
-				require.Empty(t, gotShared)
-				return
-			}
-			require.Len(t, gotShared, len(tc.l2VNIs))
-			for _, s := range gotShared {
-				require.Equal(t, shared, s, "every L2VNI must reuse the state resolved for the pass")
-			}
+			require.Equal(t, tc.l2VNIs, provisioner.setUp,
+				"every L2VNI must be set up through the provisioner of the pass")
 		})
 	}
 }
@@ -206,4 +175,16 @@ func wantL2VNIError(name, message string) error {
 			Message: message,
 		},
 	}
+}
+
+// fakeL2VNIProvisioner records the L2VNIs of a pass and fails the ones the
+// test configured to fail.
+type fakeL2VNIProvisioner struct {
+	setupErrs map[string]error
+	setUp     []hostnetwork.L2VNIParams
+}
+
+func (f *fakeL2VNIProvisioner) Setup(_ context.Context, params hostnetwork.L2VNIParams) error {
+	f.setUp = append(f.setUp, params)
+	return f.setupErrs[params.Name]
 }

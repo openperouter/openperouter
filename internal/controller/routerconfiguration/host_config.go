@@ -19,12 +19,6 @@ import (
 	"github.com/vishvananda/netns"
 )
 
-var (
-	setupSingleL2VNI    = hostnetwork.SetupL2VNI
-	openNamespace       = netns.GetFromPath
-	newL2VNISharedState = hostnetwork.NewL2VNISharedState
-)
-
 type interfacesConfiguration struct {
 	targetNamespace string
 	nodeIndex       int
@@ -202,18 +196,15 @@ func filterL2VNIsWithNoRoutingDomain(
 	return healthy, errs
 }
 
-// setupL2VNIs sets up each L2VNI of the pass, reusing the state shared by all
-// of them, and returns the ones whose devices must stay on the node, plus an
-// error for each L2VNI that failed. It owns the router namespace handle for
-// the duration of the pass.
-//
-// An L2VNI that fails with openpeerrors.ErrTransient is kept even though its
-// setup did not complete: what it already has on the node, possibly from an
-// earlier pass, is left in place and the next reconcile retries it. Any other
-// failure leaves the L2VNI out, so the cleanup that follows removes its
-// devices. A check that does not depend on the state of the host, and so would
-// fail the same way on every retry, belongs in validation before Configure and
-// must not return ErrTransient.
+// l2VNIProvisioner sets up one L2VNI in the router namespace.
+type l2VNIProvisioner interface {
+	Setup(ctx context.Context, params hostnetwork.L2VNIParams) error
+}
+
+// setupL2VNIs runs an L2VNI pass: it opens the router namespace, builds the
+// configurator that resolves the state shared by all the L2VNIs of the pass,
+// and sets each L2VNI up through it. It owns the namespace handle for the
+// duration of the pass.
 func setupL2VNIs(
 	ctx context.Context,
 	ovsClient *hostnetwork.OVSClient,
@@ -224,7 +215,7 @@ func setupL2VNIs(
 		return nil, nil
 	}
 
-	ns, err := openNamespace(targetNamespace)
+	ns, err := netns.GetFromPath(targetNamespace)
 	if err != nil {
 		return nil, l2VNIStateErrors(l2VNIs,
 			fmt.Errorf("failed to get network namespace %s: %w", targetNamespace, err))
@@ -235,15 +226,33 @@ func setupL2VNIs(
 		}
 	}()
 
-	shared, err := newL2VNISharedState(ns)
+	configurator, err := hostnetwork.NewL2VNIConfigurator(ns, ovsClient)
 	if err != nil {
 		return nil, l2VNIStateErrors(l2VNIs, err)
 	}
+	return setupEachL2VNI(ctx, configurator, l2VNIs)
+}
 
+// setupEachL2VNI sets up every L2VNI through the provisioner holding their
+// shared state, and returns the ones whose devices must stay on the node, plus
+// an error for each L2VNI that failed.
+//
+// An L2VNI that fails with openpeerrors.ErrTransient is kept even though its
+// setup did not complete: what it already has on the node, possibly from an
+// earlier pass, is left in place and the next reconcile retries it. Any other
+// failure leaves the L2VNI out, so the cleanup that follows removes its
+// devices. A check that does not depend on the state of the host, and so would
+// fail the same way on every retry, belongs in validation before Configure and
+// must not return ErrTransient.
+func setupEachL2VNI(
+	ctx context.Context,
+	provisioner l2VNIProvisioner,
+	l2VNIs []hostnetwork.L2VNIParams,
+) ([]hostnetwork.L2VNIParams, []error) {
 	var kept []hostnetwork.L2VNIParams
 	var errs []error
 	for _, vni := range l2VNIs {
-		err := setupL2VNI(ctx, ovsClient, vni, shared)
+		err := setupL2VNI(ctx, provisioner, vni)
 		if errors.Is(err, openpeerrors.ErrTransient) {
 			errs = append(errs, l2VNIError(vni, err.Error()))
 			kept = append(kept, vni)
@@ -260,12 +269,11 @@ func setupL2VNIs(
 
 func setupL2VNI(
 	ctx context.Context,
-	ovsClient *hostnetwork.OVSClient,
+	provisioner l2VNIProvisioner,
 	vni hostnetwork.L2VNIParams,
-	shared hostnetwork.L2VNISharedState,
 ) error {
 	slog.InfoContext(ctx, "setting up L2VNI", "vni", vni.VNI)
-	if err := setupSingleL2VNI(ctx, ovsClient, vni, shared); err != nil {
+	if err := provisioner.Setup(ctx, vni); err != nil {
 		return err
 	}
 	return bridgerefresh.StartForVNI(ctx, vni)

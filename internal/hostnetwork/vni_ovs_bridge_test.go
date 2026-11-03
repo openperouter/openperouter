@@ -50,8 +50,8 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 		}
 
 		createVRFInNamespace(testNS, params.VRF)
-		shared := newSharedStateForTest()
-		err := SetupL2VNI(context.Background(), ovsClient, params, shared)
+		cfg := newConfiguratorForTest(ovsClient)
+		err := cfg.Setup(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -96,8 +96,8 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 			HostMaster: &HostMaster{Type: OVSBridgeLinkType, AutoCreate: new(true)},
 		}
 
-		shared := newSharedStateForTest()
-		Expect(SetupL2VNI(context.Background(), ovsClient, params, shared)).To(MatchError(openpeerrors.ErrTransient))
+		cfg := newConfiguratorForTest(ovsClient)
+		Expect(cfg.Setup(context.Background(), params)).To(MatchError(openpeerrors.ErrTransient))
 	})
 
 	It("should work with a single L2VNI using pre-existing named OVS bridge", func() {
@@ -113,8 +113,8 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 			HostMaster: &HostMaster{Type: OVSBridgeLinkType, Name: new(bridgeName)},
 		}
 
-		shared := newSharedStateForTest()
-		err := SetupL2VNI(context.Background(), ovsClient, params, shared)
+		cfg := newConfiguratorForTest(ovsClient)
+		err := cfg.Setup(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -164,10 +164,10 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 
 		createVRFInNamespace(testNS, params1.VRF)
 		createVRFInNamespace(testNS, params2.VRF)
-		shared := newSharedStateForTest()
-		err := SetupL2VNI(context.Background(), ovsClient, params1, shared)
+		cfg := newConfiguratorForTest(ovsClient)
+		err := cfg.Setup(context.Background(), params1)
 		Expect(err).NotTo(HaveOccurred())
-		err = SetupL2VNI(context.Background(), ovsClient, params2, shared)
+		err = cfg.Setup(context.Background(), params2)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -198,13 +198,13 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 		}
 
 		createVRFInNamespace(testNS, params.VRF)
-		shared := newSharedStateForTest()
-		err := SetupL2VNI(context.Background(), ovsClient, params, shared)
+		cfg := newConfiguratorForTest(ovsClient)
+		err := cfg.Setup(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
-		By("calling SetupL2VNI a second time")
-		err = SetupL2VNI(context.Background(), ovsClient, params, shared)
-		Expect(err).NotTo(HaveOccurred(), "second SetupL2VNI should be idempotent")
+		By("calling Setup a second time")
+		err = cfg.Setup(context.Background(), params)
+		Expect(err).NotTo(HaveOccurred(), "second Setup should be idempotent")
 
 		Eventually(func(g Gomega) {
 			validateL2HostLeg(g, params)
@@ -223,8 +223,8 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 		}
 
 		createVRFInNamespace(testNS, params.VRF)
-		shared := newSharedStateForTest()
-		err := SetupL2VNI(context.Background(), ovsClient, params, shared)
+		cfg := newConfiguratorForTest(ovsClient)
+		err := cfg.Setup(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {

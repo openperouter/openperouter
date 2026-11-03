@@ -349,6 +349,15 @@ var _ = Describe("L2 VNI configuration", func() {
 		ovsClient.Close()
 	})
 
+	DescribeTable("rejects a configurator that was not built by NewL2VNIConfigurator",
+		func(cfg *L2VNIConfigurator) {
+			Expect(cfg.Setup(context.Background(), L2VNIParams{})).
+				To(MatchError(errL2VNIConfiguratorNotInitialized))
+		},
+		Entry("nil configurator", nil),
+		Entry("zero value", &L2VNIConfigurator{}),
+	)
+
 	It("should work with a single L2VNI", func() {
 		params := L2VNIParams{
 			VNIParams: VNIParams{
@@ -366,8 +375,8 @@ var _ = Describe("L2 VNI configuration", func() {
 		}
 
 		createVRFInNamespace(testNS, params.VRF)
-		shared := newSharedStateForTest()
-		err := SetupL2VNI(context.Background(), ovsClient, params, shared)
+		cfg := newConfiguratorForTest(ovsClient)
+		err := cfg.Setup(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -432,10 +441,10 @@ var _ = Describe("L2 VNI configuration", func() {
 				},
 			},
 		}
-		shared := newSharedStateForTest()
+		cfg := newConfiguratorForTest(ovsClient)
 		for _, p := range params {
 			createVRFInNamespace(testNS, p.VRF)
-			err := SetupL2VNI(context.Background(), ovsClient, p, shared)
+			err := cfg.Setup(context.Background(), p)
 			Expect(err).NotTo(HaveOccurred())
 
 			Eventually(func(g Gomega) {
@@ -486,12 +495,12 @@ var _ = Describe("L2 VNI configuration", func() {
 			if params.VRF != "" {
 				createVRFInNamespace(testNS, params.VRF)
 			}
-			shared := newSharedStateForTest()
-			err := SetupL2VNI(context.Background(), ovsClient, params, shared)
+			cfg := newConfiguratorForTest(ovsClient)
+			err := cfg.Setup(context.Background(), params)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Test idempotency - calling setup twice should work
-			err = SetupL2VNI(context.Background(), ovsClient, params, shared)
+			err = cfg.Setup(context.Background(), params)
 			Expect(err).NotTo(HaveOccurred())
 
 			Eventually(func(g Gomega) {
@@ -581,8 +590,8 @@ var _ = Describe("L2 VNI configuration", func() {
 		}
 
 		createVRFInNamespace(testNS, params.VRF)
-		shared := newSharedStateForTest()
-		err := SetupL2VNI(context.Background(), ovsClient, params, shared)
+		cfg := newConfiguratorForTest(ovsClient)
+		err := cfg.Setup(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
 		expectedMTU := underlayMTU - VXLanOverhead
@@ -595,8 +604,8 @@ var _ = Describe("L2 VNI configuration", func() {
 		const underlayMTU = 9000
 		setupFakeUnderlay(testNS, "testunderlayl2", underlayMTU)
 
-		shared := newSharedStateForTest()
-		Expect(shared.underlayMTU).To(Equal(underlayMTU))
+		cfg := newConfiguratorForTest(ovsClient)
+		Expect(cfg.underlayMTU).To(Equal(underlayMTU))
 
 		// Remove the underlay after the pass state is resolved: a fresh lookup
 		// would find no underlay and leave the veth MTU at its default.
@@ -615,7 +624,7 @@ var _ = Describe("L2 VNI configuration", func() {
 		}
 
 		createVRFInNamespace(testNS, params.VRF)
-		Expect(SetupL2VNI(context.Background(), ovsClient, params, shared)).To(Succeed())
+		Expect(cfg.Setup(context.Background(), params)).To(Succeed())
 
 		expectedMTU := underlayMTU - VXLanOverhead
 		Eventually(func(g Gomega) {
@@ -648,9 +657,9 @@ var _ = Describe("L2 VNI configuration", func() {
 		}
 
 		createVRFInNamespace(testNS, params.VRF)
-		shared := newSharedStateForTest()
-		shared.vtepDeviceIndex = vtepDevice.Attrs().Index
-		Expect(SetupL2VNI(context.Background(), ovsClient, params, shared)).To(Succeed())
+		cfg := newConfiguratorForTest(ovsClient)
+		cfg.vtepDeviceIndex = vtepDevice.Attrs().Index
+		Expect(cfg.Setup(context.Background(), params)).To(Succeed())
 
 		vxlanName := vxLanNameFromVNI(params.VNI)
 		Eventually(func(g Gomega) {
@@ -666,7 +675,7 @@ var _ = Describe("L2 VNI configuration", func() {
 	})
 
 	It("should set up the L2VNI in the namespace resolved for the pass", func() {
-		shared := newSharedStateForTest()
+		cfg := newConfiguratorForTest(ovsClient)
 
 		params := L2VNIParams{
 			VNIParams: VNIParams{
@@ -680,7 +689,7 @@ var _ = Describe("L2 VNI configuration", func() {
 		}
 
 		createVRFInNamespace(testNS, params.VRF)
-		Expect(SetupL2VNI(context.Background(), ovsClient, params, shared)).To(Succeed())
+		Expect(cfg.Setup(context.Background(), params)).To(Succeed())
 
 		Eventually(func(g Gomega) {
 			_ = netnamespace.In(testNS, func() error {
@@ -709,8 +718,8 @@ var _ = Describe("L2 VNI configuration", func() {
 		}
 
 		createVRFInNamespace(testNS, params.VRF)
-		shared := newSharedStateForTest()
-		err := SetupL2VNI(context.Background(), ovsClient, params, shared)
+		cfg := newConfiguratorForTest(ovsClient)
+		err := cfg.Setup(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -1042,7 +1051,7 @@ const defaultVethMTU = 1500
 // setupFakeUnderlay creates a dummy interface inside the given namespace with
 // the underlay special address and a configurable MTU, so that FindUnderlayMTU
 // can locate it. It is intended for unit tests exercising the MTU propagation
-// behavior of SetupL2VNI / SetupL3VNI.
+// behavior of L2VNIConfigurator.Setup / SetupL3VNI.
 func setupFakeUnderlay(ns netns.NsHandle, name string, mtu int) {
 	err := netnamespace.In(ns, func() error {
 		dummy := &netlink.Dummy{
@@ -1072,17 +1081,18 @@ func removeFakeUnderlay(ns netns.NsHandle, name string) {
 	})).NotTo(HaveOccurred(), "failed to remove fake underlay")
 }
 
-// newSharedStateForTest resolves the pass state for the test namespace and
-// closes its namespace handle when the test finishes.
-func newSharedStateForTest() L2VNISharedState {
+// newConfiguratorForTest builds an L2VNI configurator for the test namespace,
+// borrowing the given OVS client, and closes its namespace handle when the test
+// finishes.
+func newConfiguratorForTest(ovsClient *OVSClient) *L2VNIConfigurator {
 	ns, err := netns.GetFromPath(testNSPath())
 	Expect(err).NotTo(HaveOccurred())
 	DeferCleanup(func() {
 		Expect(ns.Close()).To(Succeed())
 	})
-	shared, err := NewL2VNISharedState(ns)
+	cfg, err := NewL2VNIConfigurator(ns, ovsClient)
 	Expect(err).NotTo(HaveOccurred())
-	return shared
+	return cfg
 }
 
 func createVRFInNamespace(ns netns.NsHandle, name string) {
