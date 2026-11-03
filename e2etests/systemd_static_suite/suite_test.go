@@ -15,8 +15,6 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
-	"github.com/openperouter/openperouter/e2etests/pkg/triage"
-	"github.com/openshift-kni/k8sreporter"
 	clientset "k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -26,7 +24,6 @@ var (
 	nodeExecImage   string
 	inspectPath     string
 	inspectReporter *k8s.InspectReporter
-	k8sReporter     *k8sreporter.KubernetesReporter
 	reportPath      string
 )
 
@@ -65,9 +62,6 @@ var _ = ginkgo.BeforeSuite(func() {
 		ginkgo.Fail("KUBECONFIG not set")
 	}
 
-	var err error
-	k8sReporter, err = k8s.InitReporter(kubeconfig, reportPath, openperouter.Namespace, frrk8s.Namespace)
-	Expect(err).NotTo(HaveOccurred(), "failed to initialize k8s reporter (kubeconfig=%s)", kubeconfig)
 	inspectHostPath := filepath.Join(filepath.Dir(inspectPath), "inspect_host")
 	inspectReporter = k8s.NewInspectReporter(
 		inspectPath,
@@ -85,13 +79,10 @@ var _ = ginkgo.AfterSuite(func() {
 })
 
 func dumpIfFails(cs clientset.Interface, additionalNamespaces ...string) {
-	triage.DumpIfFails(cs, triage.Config{
-		ReportPath:           reportPath,
-		K8sReporter:          k8sReporter,
-		InspectReporter:      inspectReporter,
-		AdditionalNamespaces: additionalNamespaces,
-		CollectFRRK8sPods:    false,
-		CollectFRRContainers: true,
-		IgnoreRouterPods:     true,
-	})
+	report := ginkgo.CurrentSpecReport()
+	if !report.Failed() {
+		return
+	}
+
+	inspectReporter.Dump(report.FullText(), additionalNamespaces...)
 }

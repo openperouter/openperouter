@@ -30,7 +30,6 @@ import (
 // Config controls which environment-specific diagnostics are collected.
 type Config struct {
 	ReportPath           string
-	HostMode             bool
 	GroutMode            bool
 	K8sReporter          *k8sreporter.KubernetesReporter
 	InspectReporter      *k8s.InspectReporter
@@ -51,7 +50,7 @@ func DumpIfFails(cs clientset.Interface, config Config) {
 			withFRR(),
 		}
 		if !config.IgnoreRouterPods {
-			opts = append(opts, onRouterPods(cs, config.HostMode))
+			opts = append(opts, onRouterPods(cs))
 		}
 		if config.CollectFRRK8sPods {
 			opts = append(opts, onFRRK8sPods(cs))
@@ -82,9 +81,6 @@ func DumpIfFails(cs clientset.Interface, config Config) {
 		if config.InspectReporter != nil {
 			config.InspectReporter.Dump(ginkgo.CurrentSpecReport().FullText())
 		}
-		if config.HostMode {
-			dumpPodmanInfo(cs, config.ReportPath, ginkgo.CurrentSpecReport().FullText())
-		}
 	}
 }
 
@@ -105,9 +101,9 @@ func withFRR() func(dumpOptions *dumpOptions) {
 	}
 }
 
-func onRouterPods(cs clientset.Interface, hostMode bool) func(dumpOptions *dumpOptions) {
+func onRouterPods(cs clientset.Interface) func(dumpOptions *dumpOptions) {
 	return func(dumpOptions *dumpOptions) {
-		routers, err := openperouter.Get(cs, hostMode)
+		routers, err := openperouter.Get(cs, false)
 		Expect(err).NotTo(HaveOccurred())
 
 		for router := range routers.GetExecutors() {
@@ -307,39 +303,6 @@ func dumpNodePCIInfo(cs clientset.Interface, basePath, testName string) {
 				fmt.Fprint(f, out)
 			}
 		}()
-	}
-}
-
-func dumpPodmanInfo(cs clientset.Interface, basePath, testName string) {
-	testPath, err := createTestOutput(basePath, testName)
-	if err != nil {
-		ginkgo.GinkgoWriter.Printf("dumpPodmanInfo: failed to create test dir: %s", err)
-		return
-	}
-
-	nodes, err := k8s.GetNodes(cs)
-	if err != nil {
-		ginkgo.GinkgoWriter.Printf("dumpPodmanInfo: failed to get nodes: %v", err)
-		return
-	}
-
-	dump, err := openperouter.DumpPodmanLogs(nodes)
-	if err != nil {
-		ginkgo.GinkgoWriter.Printf("dumpPodmanInfo: failed to dump podman logs: %v", err)
-	}
-
-	f, err := logFileFor(testPath, "podmandump")
-	if err != nil {
-		ginkgo.GinkgoWriter.Printf("dumpPodmanInfo: failed to open file: %v", err)
-		return
-	}
-	defer f.Close()
-
-	fmt.Fprint(f, "Dumping podman information\n")
-	_, err = fmt.Fprint(f, dump)
-	if err != nil {
-		ginkgo.GinkgoWriter.Printf("dumpPodmanInfo: failed to write to file: %v", err)
-		return
 	}
 }
 
