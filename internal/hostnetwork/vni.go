@@ -60,16 +60,22 @@ type L2VNIParams struct {
 	HostMaster   *HostMaster
 }
 
-// L2VNISharedState is the state shared by every L2VNI of a datapath pass.
-// Resolving it reads node-wide link state from the router namespace, so the
-// caller resolves it once and passes the same state to every SetupL2VNI call
-// of the pass. The state borrows the namespace handle, so the caller must keep
-// it open for as long as the state is in use.
-type L2VNISharedState struct {
+// L2VNIConfigurator sets up the L2VNIs of a datapath pass. Resolving its state
+// reads node-wide link state from the router namespace, so the caller builds
+// it once per pass and sets up every L2VNI through the same value. It borrows
+// the namespace handle and the OVS client, so the caller must keep both open
+// for as long as the configurator is in use.
+type L2VNIConfigurator struct {
 	ns              netns.NsHandle
+	ovsClient       *OVSClient
 	underlayMTU     int
 	vtepDeviceIndex int
 }
+
+// errL2VNIConfiguratorNotInitialized is returned when Setup is called on a
+// configurator that was not built by NewL2VNIConfigurator.
+var errL2VNIConfiguratorNotInitialized = errors.New(
+	"l2vni configurator not initialized, build it with NewL2VNIConfigurator")
 
 type HostMaster struct {
 	Name       *string
@@ -92,21 +98,23 @@ func (e NotRouterInterfaceError) Error() string {
 	return fmt.Sprintf("interface %s is not a router interface", e.Name)
 }
 
-// NewL2VNISharedState resolves the state shared by the L2VNIs of a datapath
-// pass from the router namespace handle ns. The caller keeps ownership of ns
-// and must keep it open for as long as the returned state is in use.
-func NewL2VNISharedState(ns netns.NsHandle) (L2VNISharedState, error) {
+// NewL2VNIConfigurator resolves the state shared by the L2VNIs of a datapath
+// pass from the router namespace handle ns, and binds it to the OVS client used
+// for OVS-backed host masters. The caller keeps ownership of ns and ovsClient
+// and must keep them open for as long as the configurator is in use.
+func NewL2VNIConfigurator(ns netns.NsHandle, ovsClient *OVSClient) (*L2VNIConfigurator, error) {
 	underlayMTU, err := FindUnderlayMTU(ns)
 	if err != nil {
-		return L2VNISharedState{}, fmt.Errorf("could not find underlay MTU: %w", err)
+		return nil, fmt.Errorf("could not find underlay MTU: %w", err)
 	}
 
 	vtepDeviceIndex, err := loopbackIndexIn(ns)
 	if err != nil {
-		return L2VNISharedState{}, err
+		return nil, err
 	}
-	return L2VNISharedState{
+	return &L2VNIConfigurator{
 		ns:              ns,
+		ovsClient:       ovsClient,
 		underlayMTU:     underlayMTU,
 		vtepDeviceIndex: vtepDeviceIndex,
 	}, nil
@@ -159,18 +167,22 @@ func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
 	return nil
 }
 
-// SetupL2VNI sets up a Layer 2 VNI in the target namespace.
-// It uses setupVNI to create the bridge and VXLan interface,
-// and connects the veth leg to the bridge, exposing the L2
+// Setup sets up a Layer 2 VNI in the router namespace the configurator was
+// built for. It uses setupVNIInNamespace to create the bridge and VXLan
+// interface, and connects the veth leg to the bridge, exposing the L2
 // domain to the default host namespace.
 // The VRF must already exist (created by SetupL3VNI); setupBridge
 // looks it up and binds the bridge to it.
-func SetupL2VNI(ctx context.Context, ovsClient *OVSClient, params L2VNIParams, shared L2VNISharedState) error {
-	if err := setupVNIInNamespace(ctx, params.VNIParams, shared.ns, shared.vtepDeviceIndex); err != nil {
+func (c *L2VNIConfigurator) Setup(ctx context.Context, params L2VNIParams) error {
+	// The zero value has no namespace, so it cannot set up any VNI.
+	if c == nil || c.ns == 0 {
+		return errL2VNIConfiguratorNotInitialized
+	}
+	if err := setupVNIInNamespace(ctx, params.VNIParams, c.ns, c.vtepDeviceIndex); err != nil {
 		return fmt.Errorf("SetupL2VNI: failed to setup VNI: %w", err)
 	}
 	vethNames := vethNamesFromVNI(params.VNI)
-	if err := setupNamespacedVethInNamespace(ctx, vethNames, shared.ns); err != nil {
+	if err := setupNamespacedVethInNamespace(ctx, vethNames, c.ns); err != nil {
 		return fmt.Errorf("SetupL2VNI: failed to setup VNI veth: %w", err)
 	}
 
@@ -186,19 +198,18 @@ func SetupL2VNI(ctx context.Context, ovsClient *OVSClient, params L2VNIParams, s
 	}
 	slog.Info("SetupL2VNI: found host veth", "name", vethNames.HostSide, "index", hostVeth.Attrs().Index)
 
-	underlayMTU := shared.underlayMTU
-	if err := SetVethMTUForTunnelOverhead(hostVeth, underlayMTU, params.TunnelOverhead); err != nil {
+	if err := SetVethMTUForTunnelOverhead(hostVeth, c.underlayMTU, params.TunnelOverhead); err != nil {
 		return fmt.Errorf("SetupL2VNI: failed to set MTU on host veth %s: %w", vethNames.HostSide, err)
 	}
 
 	if params.HostMaster != nil {
-		if err := SetupHostMaster(ctx, ovsClient, params, hostVeth); err != nil {
+		if err := SetupHostMaster(ctx, c.ovsClient, params, hostVeth); err != nil {
 			return err
 		}
 	}
 
-	if err := netnamespace.In(shared.ns, func() error {
-		return setupL2VNIRouterSide(params, vethNames.NamespaceSide, underlayMTU)
+	if err := netnamespace.In(c.ns, func() error {
+		return c.setupRouterSide(params, vethNames.NamespaceSide)
 	}); err != nil {
 		return err
 	}
@@ -206,13 +217,13 @@ func SetupL2VNI(ctx context.Context, ovsClient *OVSClient, params L2VNIParams, s
 	return nil
 }
 
-func setupL2VNIRouterSide(params L2VNIParams, vethName string, underlayMTU int) error {
+func (c *L2VNIConfigurator) setupRouterSide(params L2VNIParams, vethName string) error {
 	peVeth, err := netlink.LinkByName(vethName)
 	if err != nil {
 		return fmt.Errorf("could not find peer veth %s in namespace %s: %w", vethName, params.TargetNS, err)
 	}
 
-	if err := SetVethMTUForTunnelOverhead(peVeth, underlayMTU, params.TunnelOverhead); err != nil {
+	if err := SetVethMTUForTunnelOverhead(peVeth, c.underlayMTU, params.TunnelOverhead); err != nil {
 		return fmt.Errorf("failed to set MTU on pe veth %s: %w", vethName, err)
 	}
 
