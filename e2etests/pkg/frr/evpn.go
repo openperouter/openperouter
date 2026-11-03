@@ -38,6 +38,21 @@ type EVPNData struct {
 	TotalPrefix      int       `json:"totalPrefix"`
 }
 
+// ContainsType5RouteWithRouterMAC matches the prefix, VTEP, route target and RMAC on one valid path.
+func (e *EVPNData) ContainsType5RouteWithRouterMAC(prefix, vtep string, rt v1alpha1.RouteTarget, mac string) bool {
+	for _, path := range e.allPaths() {
+		if !path.Valid || path.RouteType != 5 || fmt.Sprintf("%s/%d", path.IP, path.IPLen) != prefix {
+			continue
+		}
+		communities := strings.Fields(path.ExtendedCommunity.String)
+		if pathHasVTEP(path, vtep) && slices.Contains(communities, "RT:"+string(rt)) &&
+			slices.Contains(communities, "Rmac:"+mac) {
+			return true
+		}
+	}
+	return false
+}
+
 // ContainsRouteWithRD matches a Type-2 MAC/IP address or Type-5 prefix inside one RD.
 // The complete route-target set must belong to the same path as the next hop.
 func (e *EVPNData) ContainsRouteWithRD(rd string, routeType int, identity, nextHop string,
