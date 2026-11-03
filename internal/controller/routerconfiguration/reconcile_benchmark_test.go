@@ -93,6 +93,11 @@ func runFirstApplicationBenchmark(b *testing.B, scenario benchmarkScenario) {
 		if err != nil {
 			b.Fatalf("%s setup: %v", b.Name(), err)
 		}
+		// Apply an empty configuration outside the timer so the measured configuration
+		// must be applied, including on revisions that cache the last FRR configuration.
+		if err := configureFRR(env.ctx, frrConfigData{configFile: path, updater: noopUpdater}); err != nil {
+			b.Fatal(errors.Join(err, env.close()))
+		}
 		b.StartTimer()
 		reconcileErr := reconcileBenchmark(env, input, path)
 		b.StopTimer()

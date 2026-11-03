@@ -155,6 +155,9 @@ func (r *PERouterReconciler) reconcile(ctx context.Context, logger *slog.Logger)
 		logger.Info("router is not ready for reconciliation, requeueing")
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
+	if err := invalidateFRRConfigCacheOnRestart(ctx, router); err != nil {
+		return ctrl.Result{}, err
+	}
 
 	updater := frrconfig.UpdaterForSocket(r.FRRReloadSocket, r.FRRConfigPath)
 
@@ -437,12 +440,9 @@ func (r *PERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				oldLabels := labels.Set(old.Labels)
 				newLabels := labels.Set(o.Labels)
 				return !labels.Equals(oldLabels, newLabels)
-			case *v1.Pod: // handle only status updates
+			case *v1.Pod:
 				old := e.ObjectOld.(*v1.Pod)
-				if PodIsReady(old) != PodIsReady(o) {
-					return true
-				}
-				return false
+				return old.UID != o.UID || PodIsReady(old) != PodIsReady(o) || frrContainerID(old) != frrContainerID(o)
 			}
 			return true
 		},

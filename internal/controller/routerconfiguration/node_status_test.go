@@ -128,14 +128,24 @@ func (m *mockRouterProvider) NodeIndex(_ context.Context) (int, error) {
 	return 0, nil
 }
 
-type mockRouter struct{}
+type mockRouter struct {
+	instanceID func(context.Context) (string, error)
+}
 
 func (m *mockRouter) TargetNS(_ context.Context) (string, error)        { return "", nil }
 func (m *mockRouter) CanReconcile() (bool, error)                       { return true, nil }
 func (m *mockRouter) HandleNonRecoverableError(_ context.Context) error { return nil }
 
+func (m *mockRouter) FRRInstanceID(ctx context.Context) (string, error) {
+	if m.instanceID != nil {
+		return m.instanceID(ctx)
+	}
+	return "mock-router", nil
+}
+
 func newTestPERouterReconciler(t *testing.T, datapathConfigurator DatapathConfigurator, objects ...client.Object) *PERouterReconciler {
 	t.Helper()
+	resetFRRConfigCache(t)
 	s := testScheme(t)
 	cli := fake.NewClientBuilder().
 		WithScheme(s).

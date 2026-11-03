@@ -1256,7 +1256,7 @@ func TestUpdate(t *testing.T) {
 	}
 
 	reloadFn := func(t *testing.T, config frr.Config) {
-		if err := frr.ApplyConfig(context.TODO(), &config, updaterFn); err != nil {
+		if err := frr.ApplyConfig(context.TODO(), config, updaterFn); err != nil {
 			t.Fatalf("Failed to apply config: %s", err)
 		}
 		err := update(configFile, dockertest.FRRReload, dockertest.RunVtysh)

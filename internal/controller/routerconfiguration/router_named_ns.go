@@ -18,6 +18,7 @@ import (
 
 type RouterNamedNSProvider struct {
 	Node            string
+	Namespace       string
 	FRRConfigPath   string
 	FRRReloadSocket string
 	client.Client
@@ -88,6 +89,23 @@ func (r *RouterNamedNS) CanReconcile() (bool, error) {
 	return true, nil
 }
 
+func (r *RouterNamedNS) FRRInstanceID(ctx context.Context) (string, error) {
+	var pods v1.PodList
+	if err := r.manager.List(ctx, &pods, client.InNamespace(r.manager.Namespace),
+		client.MatchingFields{nodeNameIndex: r.manager.Node}, client.MatchingLabels{"app": "router"}); err != nil {
+		return "", fmt.Errorf("failed to list router pods: %w", err)
+	}
+	for _, pod := range pods.Items {
+		if !PodIsReady(&pod) {
+			continue
+		}
+		if containerID := frrContainerID(&pod); containerID != "" {
+			return string(pod.UID) + "/" + containerID, nil
+		}
+	}
+	return "", fmt.Errorf("no ready FRR container on node %s", r.manager.Node)
+}
+
 const nodeNameIndex = "spec.NodeName"
 
 // PodIsReady returns true only when the pod is not terminating and both its
@@ -113,4 +131,13 @@ func podConditionStatus(p *v1.Pod, condition v1.PodConditionType) v1.ConditionSt
 	}
 
 	return v1.ConditionUnknown
+}
+
+func frrContainerID(pod *v1.Pod) string {
+	for _, status := range pod.Status.ContainerStatuses {
+		if status.Name == "frr" {
+			return status.ContainerID
+		}
+	}
+	return ""
 }
