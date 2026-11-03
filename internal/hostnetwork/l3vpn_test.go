@@ -13,6 +13,7 @@ import (
 	"github.com/openperouter/openperouter/internal/netnamespace"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
+	"golang.org/x/sys/unix"
 )
 
 var _ = Describe("L3 VPN configuration", func() {
@@ -106,6 +107,35 @@ var _ = Describe("L3 VPN configuration", func() {
 				return nil
 			})
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
+	})
+
+	It("should make the IPv6 addresses usable right after setup", func() {
+		params := L3VPNParams{
+			VRF:              "testred",
+			TargetNS:         testNSPath(),
+			RDAssignedNumber: 100,
+			LinkIPs: &LinkIPs{
+				HostIPv4: "192.168.9.1/32",
+				NSIPv4:   "192.168.9.0/32",
+				HostIPv6: "2001:db8::1/64",
+				NSIPv6:   "2001:db8::2/64",
+			},
+		}
+
+		Expect(SetupL3VPN(context.Background(), params)).To(Succeed())
+
+		// No Eventually: DAD would clear the tentative flag after about a second,
+		// so the check must run right after setup.
+		vethNames := vethNamesFromL3VPN(params.RDAssignedNumber)
+		Expect(addressFlags(vethNames.HostSide, params.LinkIPs.HostIPv6)).
+			To(BeZero(), "host leg IPv6 address flags")
+		var nsFlags int
+		Expect(netnamespace.In(testNS, func() error {
+			var err error
+			nsFlags, err = addressFlags(vethNames.NamespaceSide, params.LinkIPs.NSIPv6)
+			return err
+		})).To(Succeed())
+		Expect(nsFlags).To(BeZero(), "PE leg IPv6 address flags")
 	})
 
 	It("should work with multiple L3VPNs + cleanup", func() {
@@ -533,4 +563,27 @@ func validateL3VPNNamespaceLeg(g Gomega, params L3VPNParams) {
 		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(hasIP).To(BeTrue(), "PE leg does not have IPv6", params.LinkIPs.NSIPv6)
 	}
+}
+
+// addressFlags returns the duplicate address detection related flags of the
+// given address on the named interface.
+func addressFlags(ifaceName, address string) (int, error) {
+	link, err := netlink.LinkByName(ifaceName)
+	if err != nil {
+		return 0, fmt.Errorf("failed to find interface %s: %w", ifaceName, err)
+	}
+	want, err := netlink.ParseAddr(address)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse address %s: %w", address, err)
+	}
+	addrs, err := netlink.AddrList(link, netlink.FAMILY_V6)
+	if err != nil {
+		return 0, fmt.Errorf("failed to list addresses on %s: %w", ifaceName, err)
+	}
+	for _, a := range addrs {
+		if a.IP.Equal(want.IP) {
+			return a.Flags & (unix.IFA_F_TENTATIVE | unix.IFA_F_DADFAILED), nil
+		}
+	}
+	return 0, fmt.Errorf("address %s not found on %s", address, ifaceName)
 }
