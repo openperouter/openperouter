@@ -25,12 +25,14 @@ func TestSetupL2VNIs(t *testing.T) {
 
 	_, openErr := netns.GetFromPath(missingNamespace)
 	require.Error(t, openErr, "the namespace path of the test must not exist")
-	openFailure := fmt.Sprintf("failed to get network namespace %s: %v", missingNamespace, openErr)
+	openFailure := fmt.Sprintf("transient host failure: failed to get network namespace %s: %v",
+		missingNamespace, openErr)
 
 	tests := []struct {
 		name            string
 		l2VNIs          []hostnetwork.L2VNIParams
 		targetNamespace string
+		wantKept        []hostnetwork.L2VNIParams
 		wantErrs        []error
 	}{
 		{
@@ -38,9 +40,10 @@ func TestSetupL2VNIs(t *testing.T) {
 			targetNamespace: missingNamespace,
 		},
 		{
-			name:            "a namespace open failure is reported for every L2VNI",
+			name:            "a namespace open failure keeps every L2VNI and is reported for each",
 			l2VNIs:          []hostnetwork.L2VNIParams{red, blue},
 			targetNamespace: missingNamespace,
+			wantKept:        []hostnetwork.L2VNIParams{red, blue},
 			wantErrs: []error{
 				wantL2VNIError("red", openFailure),
 				wantL2VNIError("blue", openFailure),
@@ -51,7 +54,50 @@ func TestSetupL2VNIs(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			kept, errs := setupL2VNIs(context.Background(), &hostnetwork.OVSClient{}, tc.l2VNIs, tc.targetNamespace)
 
-			require.Nil(t, kept)
+			require.Equal(t, tc.wantKept, kept)
+			require.Equal(t, tc.wantErrs, errs)
+		})
+	}
+}
+
+func TestKeepL2VNIsOnTransientFailure(t *testing.T) {
+	red := l2VNIForTest("red", 100)
+	blue := l2VNIForTest("blue", 200)
+	errTransient := fmt.Errorf("%w: failed to open the router namespace", openpeerrors.ErrTransient)
+	errPermanent := errors.New("invalid router namespace path")
+
+	tests := []struct {
+		name     string
+		l2VNIs   []hostnetwork.L2VNIParams
+		err      error
+		wantKept []hostnetwork.L2VNIParams
+		wantErrs []error
+	}{
+		{
+			name:     "a transient failure keeps every L2VNI",
+			l2VNIs:   []hostnetwork.L2VNIParams{red, blue},
+			err:      errTransient,
+			wantKept: []hostnetwork.L2VNIParams{red, blue},
+			wantErrs: []error{
+				wantL2VNIError("red", errTransient.Error()),
+				wantL2VNIError("blue", errTransient.Error()),
+			},
+		},
+		{
+			name:   "any other failure leaves every L2VNI out",
+			l2VNIs: []hostnetwork.L2VNIParams{red, blue},
+			err:    errPermanent,
+			wantErrs: []error{
+				wantL2VNIError("red", errPermanent.Error()),
+				wantL2VNIError("blue", errPermanent.Error()),
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			kept, errs := keepL2VNIsOnTransientFailure(tc.l2VNIs, tc.err)
+
+			require.Equal(t, tc.wantKept, kept)
 			require.Equal(t, tc.wantErrs, errs)
 		})
 	}

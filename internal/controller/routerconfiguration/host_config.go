@@ -205,6 +205,10 @@ type l2VNIProvisioner interface {
 // configurator that resolves the state shared by all the L2VNIs of the pass,
 // and sets each L2VNI up through it. It owns the namespace handle for the
 // duration of the pass.
+//
+// Opening the namespace and resolving the shared state read the host at the
+// time of the call, so their failures are transient: the pass keeps its
+// L2VNIs, leaving their devices in place for the next reconcile to retry.
 func setupL2VNIs(
 	ctx context.Context,
 	ovsClient *hostnetwork.OVSClient,
@@ -217,8 +221,9 @@ func setupL2VNIs(
 
 	ns, err := netns.GetFromPath(targetNamespace)
 	if err != nil {
-		return nil, l2VNIStateErrors(l2VNIs,
-			fmt.Errorf("failed to get network namespace %s: %w", targetNamespace, err))
+		return keepL2VNIsOnTransientFailure(l2VNIs,
+			fmt.Errorf("%w: failed to get network namespace %s: %w",
+				openpeerrors.ErrTransient, targetNamespace, err))
 	}
 	defer func() {
 		if err := ns.Close(); err != nil {
@@ -228,7 +233,7 @@ func setupL2VNIs(
 
 	configurator, err := hostnetwork.NewL2VNIConfigurator(ns, ovsClient)
 	if err != nil {
-		return nil, l2VNIStateErrors(l2VNIs, err)
+		return keepL2VNIsOnTransientFailure(l2VNIs, fmt.Errorf("%w: %w", openpeerrors.ErrTransient, err))
 	}
 	return setupEachL2VNI(ctx, configurator, l2VNIs)
 }
@@ -253,13 +258,11 @@ func setupEachL2VNI(
 	var errs []error
 	for _, vni := range l2VNIs {
 		err := setupL2VNI(ctx, provisioner, vni)
-		if errors.Is(err, openpeerrors.ErrTransient) {
-			errs = append(errs, l2VNIError(vni, err.Error()))
-			kept = append(kept, vni)
-			continue
-		}
 		if err != nil {
 			errs = append(errs, l2VNIError(vni, err.Error()))
+			if errors.Is(err, openpeerrors.ErrTransient) {
+				kept = append(kept, vni)
+			}
 			continue
 		}
 		kept = append(kept, vni)
@@ -279,14 +282,24 @@ func setupL2VNI(
 	return bridgerefresh.StartForVNI(ctx, vni)
 }
 
-// l2VNIStateErrors reports err against every L2VNI that could not be set up
-// because the state shared by the pass could not be resolved.
-func l2VNIStateErrors(l2VNIs []hostnetwork.L2VNIParams, err error) []error {
+// keepL2VNIsOnTransientFailure reports a pass-wide setup failure against every
+// L2VNI and returns the ones whose devices must stay on the node. A transient
+// host failure keeps them all: what they already have on the node, possibly
+// from an earlier pass, is left in place and the next reconcile retries them.
+// Any other failure leaves them out, so the cleanup that follows removes their
+// devices.
+func keepL2VNIsOnTransientFailure(
+	l2VNIs []hostnetwork.L2VNIParams,
+	err error,
+) ([]hostnetwork.L2VNIParams, []error) {
 	errs := make([]error, 0, len(l2VNIs))
 	for _, vni := range l2VNIs {
 		errs = append(errs, l2VNIError(vni, err.Error()))
 	}
-	return errs
+	if errors.Is(err, openpeerrors.ErrTransient) {
+		return l2VNIs, errs
+	}
+	return nil, errs
 }
 
 func l2VNIError(vni hostnetwork.L2VNIParams, message string) error {
