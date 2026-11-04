@@ -5,6 +5,8 @@ package conversion
 import (
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 
@@ -31,24 +33,12 @@ func ValidateL2TrunksForNodes(nodes []corev1.Node, l2trunks []v1alpha1.L2Trunk) 
 }
 
 // FilterValidL2Trunks validates the L2Trunks of a node and returns the valid
-// ones alongside per-resource errors. The PF and VF of an SR-IOV trunk are
-// node-local, so two trunks applying to the same node cannot select the same
-// PF: the trunk VF carries the tagged frames of every workload VF on its PF,
-// so a second trunk on the same PF would duplicate its traffic and loop it
-// back through the NIC switch. They cannot select the same VF either, and a
-// shared VF is reported as such. The first trunk selecting a PF keeps it.
+// ones alongside per-resource errors.
 func FilterValidL2Trunks(l2trunks []v1alpha1.L2Trunk) ([]v1alpha1.L2Trunk, error) {
 	if len(l2trunks) == 0 {
 		return l2trunks, nil
 	}
 
-	type vfKey struct {
-		pfName  string
-		vfIndex int32
-	}
-
-	vfOwners := map[vfKey]string{}
-	pfOwners := map[string]string{}
 	valid := make([]v1alpha1.L2Trunk, 0, len(l2trunks))
 	var errs []error
 	for _, trunk := range l2trunks {
@@ -56,27 +46,11 @@ func FilterValidL2Trunks(l2trunks []v1alpha1.L2Trunk) ([]v1alpha1.L2Trunk, error
 			errs = append(errs, l2TrunkValidationError(trunk.Name, err.Error()))
 			continue
 		}
-		if trunk.Spec.Type != v1alpha1.L2TrunkTypeSRIOV {
-			valid = append(valid, trunk)
-			continue
-		}
-
-		key := vfKey{pfName: trunk.Spec.SRIOV.PFName, vfIndex: *trunk.Spec.SRIOV.VFIndex}
-		if owner, ok := vfOwners[key]; ok {
-			errs = append(errs, l2TrunkValidationError(trunk.Name,
-				fmt.Sprintf("VF %d of PF %s is already used by L2Trunk %s", key.vfIndex, key.pfName, owner)))
-			continue
-		}
-		if owner, ok := pfOwners[key.pfName]; ok {
-			errs = append(errs, l2TrunkValidationError(trunk.Name,
-				fmt.Sprintf("PF %s is already used by L2Trunk %s", key.pfName, owner)))
-			continue
-		}
-		vfOwners[key] = trunk.Name
-		pfOwners[key.pfName] = trunk.Name
 		valid = append(valid, trunk)
 	}
-	return valid, errors.Join(errs...)
+
+	valid, err := filterL2TrunksSRIOVUniquePF(valid)
+	return valid, errors.Join(append(errs, err)...)
 }
 
 // FilterUniqueTrunkVLANs removes the L2VNIs that reuse the VLAN tag of
@@ -118,23 +92,41 @@ func FilterUniqueTrunkVLANs(l2vnis []v1alpha1.L2VNI) ([]v1alpha1.L2VNI, error) {
 	return valid, errors.Join(errs...)
 }
 
-func validateL2Trunk(trunk v1alpha1.L2Trunk) error {
-	switch trunk.Spec.Type {
-	case v1alpha1.L2TrunkTypeHost:
-		if trunk.Spec.SRIOV != nil {
-			return errors.New("sriov can only be set when type is SRIOV")
+// filterL2TrunksSRIOVUniquePF drops the SR-IOV trunks selecting a PF already
+// selected by an earlier trunk. The trunk VF carries the tagged frames of
+// every workload VF on its PF, so a second trunk on the same PF would
+// duplicate its traffic and loop it back through the NIC switch.
+func filterL2TrunksSRIOVUniquePF(l2trunks []v1alpha1.L2Trunk) ([]v1alpha1.L2Trunk, error) {
+	// Sort the trunks by PF name to ensure deterministic behavior.
+	slices.SortFunc(l2trunks, func(a, b v1alpha1.L2Trunk) int {
+		return strings.Compare(a.Spec.SRIOV.PFName, b.Spec.SRIOV.PFName)
+	})
+
+	pfOwners := map[string]string{}
+	valid := make([]v1alpha1.L2Trunk, 0, len(l2trunks))
+
+	var errs []error
+	for _, trunk := range l2trunks {
+		pfName := trunk.Spec.SRIOV.PFName
+		if owner, ok := pfOwners[pfName]; ok {
+			errs = append(errs, l2TrunkValidationError(trunk.Name,
+				fmt.Sprintf("PF %s is already used by L2Trunk %s", pfName, owner)))
+			continue
 		}
-		return nil
-	case v1alpha1.L2TrunkTypeSRIOV:
-		return validateSRIOVTrunk(trunk.Spec)
+		pfOwners[pfName] = trunk.Name
+		valid = append(valid, trunk)
 	}
-	return fmt.Errorf("unsupported L2Trunk type %q", trunk.Spec.Type)
+	return valid, errors.Join(errs...)
 }
 
-func validateSRIOVTrunk(spec v1alpha1.L2TrunkSpec) error {
-	if spec.HostMaster != nil {
-		return errors.New("hostMaster can only be set when type is Host")
+func validateL2Trunk(trunk v1alpha1.L2Trunk) error {
+	if trunk.Spec.Type != v1alpha1.L2TrunkTypeSRIOV {
+		return fmt.Errorf("unsupported L2Trunk type %q", trunk.Spec.Type)
 	}
+	return validateL2TrunkSRIOV(trunk.Spec)
+}
+
+func validateL2TrunkSRIOV(spec v1alpha1.L2TrunkSpec) error {
 	if spec.SRIOV == nil {
 		return errors.New("sriov must be set when type is SRIOV")
 	}

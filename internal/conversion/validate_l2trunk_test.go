@@ -21,9 +21,22 @@ func TestFilterValidL2Trunks(t *testing.T) {
 		wantFailed []v1alpha1.FailedResource
 	}{
 		{
-			name:      "host and SR-IOV trunks",
-			trunks:    []v1alpha1.L2Trunk{hostTrunk("host"), sriovTrunk("vf1", "enp1s0", 1)},
-			wantValid: []string{"host", "vf1"},
+			name: "host trunk",
+			trunks: []v1alpha1.L2Trunk{
+				// A type outside the enum can only come from a CR created
+				// before the type was dropped or one that bypassed CRD
+				// validation; it must still be rejected here.
+				hostTrunk(),
+				sriovTrunk("vf1", "enp1s0", 1),
+			},
+			wantValid: []string{"vf1"},
+			wantFailed: []v1alpha1.FailedResource{
+				{
+					Kind: openpeerrors.KindL2Trunk, Name: "host",
+					Reason:  v1alpha1.FailedResourceReasonValidationFailed,
+					Message: `unsupported L2Trunk type "Host"`,
+				},
+			},
 		},
 		{
 			name: "different VFs of the same PF",
@@ -47,21 +60,6 @@ func TestFilterValidL2Trunks(t *testing.T) {
 				sriovTrunk("b", "enp2s0", 1),
 			},
 			wantValid: []string{"a", "b"},
-		},
-		{
-			name: "same VF selected twice",
-			trunks: []v1alpha1.L2Trunk{
-				sriovTrunk("first", "enp1s0", 1),
-				sriovTrunk("second", "enp1s0", 1),
-			},
-			wantValid: []string{"first"},
-			wantFailed: []v1alpha1.FailedResource{
-				{
-					Kind: openpeerrors.KindL2Trunk, Name: "second",
-					Reason:  v1alpha1.FailedResourceReasonValidationFailed,
-					Message: "VF 1 of PF enp1s0 is already used by L2Trunk first",
-				},
-			},
 		},
 		{
 			name: "SR-IOV trunk without sriov",
@@ -117,14 +115,6 @@ func TestValidateL2TrunksForNodes(t *testing.T) {
 				onNode(sriovTrunk("a", "enp1s0", 1), "node1"),
 				onNode(sriovTrunk("b", "enp1s0", 1), "node2"),
 			},
-		},
-		{
-			name: "same VF on the same node",
-			trunks: []v1alpha1.L2Trunk{
-				onNode(sriovTrunk("a", "enp1s0", 1), "node1"),
-				sriovTrunk("b", "enp1s0", 1),
-			},
-			wantErr: `invalid l2trunks for node "node1": L2Trunk/b: VF 1 of PF enp1s0 is already used by L2Trunk a`,
 		},
 		{
 			name: "same PF on the same node",
@@ -222,19 +212,20 @@ func TestDatapathValidatorsL2Trunks(t *testing.T) {
 		{
 			name:      "grout rejects host trunks",
 			validator: &GroutDatapathConfigValidator{},
-			trunk:     hostTrunk("host"),
+			trunk:     hostTrunk(),
 			wantErr:   "l2trunk host: type Host is not supported with the grout datapath",
-		},
-		{
-			name:      "kernel accepts host trunks",
-			validator: &KernelDatapathConfigValidator{},
-			trunk:     hostTrunk("host"),
 		},
 		{
 			name:      "kernel rejects SR-IOV trunks",
 			validator: &KernelDatapathConfigValidator{},
 			trunk:     sriovTrunk("vf", "enp1s0", 1),
-			wantErr:   "l2trunk vf: type SRIOV requires grout datapath",
+			wantErr:   "l2trunk vf: L2Trunks are only supported with the grout datapath",
+		},
+		{
+			name:      "kernel rejects host trunks",
+			validator: &KernelDatapathConfigValidator{},
+			trunk:     hostTrunk(),
+			wantErr:   "l2trunk host: L2Trunks are only supported with the grout datapath",
 		},
 	}
 	for _, tt := range tests {
@@ -249,10 +240,12 @@ func TestDatapathValidatorsL2Trunks(t *testing.T) {
 	}
 }
 
-func hostTrunk(name string) v1alpha1.L2Trunk {
+// hostTrunk builds a trunk whose type is outside the current enum, as a CR
+// created before the Host type was dropped would look like.
+func hostTrunk() v1alpha1.L2Trunk {
 	return v1alpha1.L2Trunk{
-		ObjectMeta: metav1.ObjectMeta{Name: name},
-		Spec:       v1alpha1.L2TrunkSpec{Type: v1alpha1.L2TrunkTypeHost},
+		ObjectMeta: metav1.ObjectMeta{Name: "host"},
+		Spec:       v1alpha1.L2TrunkSpec{Type: "Host"},
 	}
 }
 

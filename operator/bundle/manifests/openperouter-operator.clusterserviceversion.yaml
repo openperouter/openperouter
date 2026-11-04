@@ -408,6 +408,26 @@ spec:
     containerPort: 443
     deploymentName: webhook
     failurePolicy: Fail
+    generateName: l2trunkvalidationwebhook.openperouter.io
+    rules:
+    - apiGroups:
+      - network.openperouter.io
+      apiVersions:
+      - v1alpha1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - l2trunks
+    sideEffects: None
+    targetPort: 9443
+    type: ValidatingAdmissionWebhook
+    webhookPath: /validate-openperouter-io-v1alpha1-l2trunk
+  - admissionReviewVersions:
+    - v1
+    containerPort: 443
+    deploymentName: webhook
+    failurePolicy: Fail
     generateName: l2vnivalidationwebhook.openperouter.io
     rules:
     - apiGroups:

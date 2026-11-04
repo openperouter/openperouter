@@ -399,39 +399,35 @@ func l2vniToHost(
 func l2trunksToHost(l2trunks []v1alpha1.L2Trunk, targetNS string) ([]hostnetwork.L2TrunkParams, error) {
 	hostL2Trunks := make([]hostnetwork.L2TrunkParams, 0, len(l2trunks))
 	for _, trunk := range l2trunks {
-		hostL2Trunk, err := l2trunkToHost(trunk, targetNS)
-		if err != nil {
-			return nil, fmt.Errorf("failed to translate L2Trunk %s, err: %w", trunk.Name, err)
+		if trunk.Spec.Type != v1alpha1.L2TrunkTypeSRIOV {
+			return nil, fmt.Errorf("L2Trunk %s: unsupported type %q", trunk.Name, trunk.Spec.Type)
 		}
-		hostL2Trunks = append(hostL2Trunks, hostL2Trunk)
+		hostL2Trunks = append(hostL2Trunks, hostnetwork.L2TrunkParams{
+			Name:     trunk.Name,
+			TargetNS: targetNS,
+			SRIOV:    sriovTrunkToHost(trunk.Spec.SRIOV),
+		})
 	}
 	return hostL2Trunks, nil
 }
 
-func l2trunkToHost(trunk v1alpha1.L2Trunk, targetNS string) (hostnetwork.L2TrunkParams, error) {
-	hostL2Trunk := hostnetwork.L2TrunkParams{
-		Name:     trunk.Name,
-		TargetNS: targetNS,
+// sriovTrunkToHost relies on the trunk having been validated, so a set SRIOV
+// config always carries a VF index.
+func sriovTrunkToHost(sriov *v1alpha1.SRIOVTrunkConfig) *hostnetwork.SRIOVTrunkParams {
+	if sriov == nil {
+		return nil
 	}
-	if trunk.Spec.Type != v1alpha1.L2TrunkTypeSRIOV {
-		return hostL2Trunk, nil
-	}
-	if err := validateSRIOVTrunk(trunk.Spec); err != nil {
-		return hostnetwork.L2TrunkParams{}, err
-	}
-
-	sriov := trunk.Spec.SRIOV
-	hostL2Trunk.SRIOV = &hostnetwork.SRIOVTrunkParams{
+	params := &hostnetwork.SRIOVTrunkParams{
 		PFName:  sriov.PFName,
 		VFIndex: *sriov.VFIndex,
 	}
 	if sriov.AcceleratedConfig != nil {
-		hostL2Trunk.SRIOV.AcceleratedConfig = &hostnetwork.AcceleratedConfigParams{
+		params.AcceleratedConfig = &hostnetwork.AcceleratedConfigParams{
 			RXQueues: sriov.AcceleratedConfig.RXQueues,
 			QSize:    sriov.AcceleratedConfig.QSize,
 		}
 	}
-	return hostL2Trunk, nil
+	return params
 }
 
 func l3vpnsToHost(

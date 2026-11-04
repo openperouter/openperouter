@@ -1950,6 +1950,21 @@ func TestAPItoHostConfigL2Trunks(t *testing.T) {
 	require.Equal(t, wantL2VNIs, got.L2VNIs)
 }
 
+func TestAPItoHostConfigNonSRIOVL2Trunk(t *testing.T) {
+	underlay := v1alpha1.Underlay{Spec: v1alpha1.UnderlaySpec{
+		Interfaces: []v1alpha1.UnderlayInterface{
+			{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}},
+		},
+		TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: []string{"10.0.0.0/24"}},
+	}}
+
+	_, err := APItoHostConfig(0, "namespace", APIConfigData{
+		Underlays: []v1alpha1.Underlay{underlay},
+		L2Trunks:  []v1alpha1.L2Trunk{hostTrunk()},
+	})
+	require.EqualError(t, err, "failed to translate L2Trunks to host, err: L2Trunk host: unsupported type \"Host\"")
+}
+
 func TestAPItoHostConfigL2VNIMissingTrunk(t *testing.T) {
 	underlay := v1alpha1.Underlay{Spec: v1alpha1.UnderlaySpec{
 		Interfaces: []v1alpha1.UnderlayInterface{

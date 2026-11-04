@@ -38,10 +38,9 @@ func (k *KernelDatapathConfigValidator) Validate(apiConfig APIConfigData) error 
 			}
 		}
 	}
-	for _, trunk := range apiConfig.L2Trunks {
-		if trunk.Spec.Type == v1alpha1.L2TrunkTypeSRIOV {
-			return fmt.Errorf("l2trunk %s: type %s requires grout datapath", trunk.Name, trunk.Spec.Type)
-		}
+	if len(apiConfig.L2Trunks) > 0 {
+		return fmt.Errorf("l2trunk %s: L2Trunks are only supported with the grout datapath",
+			apiConfig.L2Trunks[0].Name)
 	}
 	return nil
 }
