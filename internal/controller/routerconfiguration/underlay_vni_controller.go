@@ -229,6 +229,12 @@ func (r *PERouterReconciler) getConfigFromAPI(ctx context.Context, logger *slog.
 		return conversion.APIConfigData{}, err
 	}
 
+	var l2trunks v1alpha1.L2TrunkList
+	if err := r.List(ctx, &l2trunks, r.notStaticConfigsListOpts); err != nil {
+		slog.Error("failed to list l2trunks", "error", err)
+		return conversion.APIConfigData{}, err
+	}
+
 	var l3vpns v1alpha1.L3VPNList
 	if err := r.List(ctx, &l3vpns); err != nil {
 		slog.Error("failed to list l3vpns", "error", err)
@@ -268,6 +274,9 @@ func (r *PERouterReconciler) getConfigFromAPI(ctx context.Context, logger *slog.
 	filteredL2VNIs, err := filter.L2VNIsForNode(node, l2vnis.Items)
 	allErrors = append(allErrors, err)
 
+	filteredL2Trunks, err := filter.L2TrunksForNode(node, l2trunks.Items)
+	allErrors = append(allErrors, err)
+
 	filteredL3VPNs, err := filter.L3VPNsForNode(node, l3vpns.Items)
 	allErrors = append(allErrors, err)
 
@@ -285,6 +294,7 @@ func (r *PERouterReconciler) getConfigFromAPI(ctx context.Context, logger *slog.
 		"underlays", len(filteredUnderlays),
 		"l3vnis", l3vnis.Items,
 		"l2vnis", l2vnis.Items,
+		"l2trunks", l2trunks.Items,
 		"l3passthrough", l3passthrough.Items,
 		"rawfrrconfigs", conversion.RedactRawFRRConfigs(rawFRRConfigs.Items))
 
@@ -292,6 +302,7 @@ func (r *PERouterReconciler) getConfigFromAPI(ctx context.Context, logger *slog.
 		Underlays:     filteredUnderlays,
 		L3VNIs:        filteredL3VNIs,
 		L2VNIs:        filteredL2VNIs,
+		L2Trunks:      filteredL2Trunks,
 		L3VPNs:        filteredL3VPNs,
 		L3Passthrough: filteredL3Passthrough,
 		RawFRRConfigs: filteredRawFRRConfigs,
@@ -469,6 +480,7 @@ func (r *PERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(&v1.Pod{}, enqueueLocalNodeRequestForObject).
 		Watches(&v1alpha1.L3VNI{}, enqueueLocalNodeRequestForObject).
 		Watches(&v1alpha1.L2VNI{}, enqueueLocalNodeRequestForObject).
+		Watches(&v1alpha1.L2Trunk{}, enqueueLocalNodeRequestForObject).
 		Watches(&v1alpha1.L3VPN{}, enqueueLocalNodeRequestForObject).
 		Watches(&v1alpha1.L3Passthrough{}, enqueueLocalNodeRequestForObject).
 		Watches(&v1alpha1.RawFRRConfig{}, enqueueLocalNodeRequestForObject).
@@ -531,6 +543,8 @@ func nodeSelectorOf(obj client.Object) *metav1.LabelSelector {
 	case *v1alpha1.L3VNI:
 		return o.Spec.NodeSelector
 	case *v1alpha1.L2VNI:
+		return o.Spec.NodeSelector
+	case *v1alpha1.L2Trunk:
 		return o.Spec.NodeSelector
 	case *v1alpha1.L3VPN:
 		return o.Spec.NodeSelector
