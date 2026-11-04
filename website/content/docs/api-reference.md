@@ -17,6 +17,7 @@ toc: true
 Package v1alpha1 contains API Schema definitions for the openpe v1alpha1 API group.
 
 ### Resource Types
+- [L2Trunk](#l2trunk)
 - [L2VNI](#l2vni)
 - [L3Passthrough](#l3passthrough)
 - [L3VNI](#l3vni)
@@ -37,6 +38,7 @@ AcceleratedConfig holds optional grout port parameters for underlay interfaces.
 
 _Appears in:_
 - [NetworkDevice](#networkdevice)
+- [SRIOVTrunkConfig](#sriovtrunkconfig)
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
@@ -207,7 +209,7 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `kind` _[FailedResourceKind](#failedresourcekind)_ | kind resource type name (e.g.: L3VNI, L2VNI). |  | Enum: [Underlay L2VNI L3VNI L3VPN FrrConfiguration L3Passthrough RawFRRConfig] <br />Required: \{\} <br /> |
+| `kind` _[FailedResourceKind](#failedresourcekind)_ | kind resource type name (e.g.: L3VNI, L2VNI). |  | Enum: [Underlay L2VNI L2Trunk L3VNI L3VPN FrrConfiguration L3Passthrough RawFRRConfig] <br />Required: \{\} <br /> |
 | `name` _string_ | name failed API resource metadata.name. |  | MaxLength: 253 <br />MinLength: 1 <br />Required: \{\} <br /> |
 | `reason` _[FailedResourceReason](#failedresourcereason)_ | reason failure reason. |  | Enum: [ValidationFailed DependencyFailed OverlayAttachmentFailed FrrConfigurationFailed] <br />MaxLength: 100 <br />MinLength: 1 <br />Required: \{\} <br /> |
 | `message` _string_ | message human-readable failure description. |  | MaxLength: 500 <br />MinLength: 1 <br />Required: \{\} <br /> |
@@ -220,7 +222,7 @@ _Underlying type:_ _string_
 
 
 _Validation:_
-- Enum: [Underlay L2VNI L3VNI L3VPN FrrConfiguration L3Passthrough RawFRRConfig]
+- Enum: [Underlay L2VNI L2Trunk L3VNI L3VPN FrrConfiguration L3Passthrough RawFRRConfig]
 
 _Appears in:_
 - [FailedResource](#failedresource)
@@ -276,6 +278,7 @@ _Appears in:_
 
 
 _Appears in:_
+- [L2TrunkSpec](#l2trunkspec)
 - [L2VNISpec](#l2vnispec)
 
 | Field | Description | Default | Validation |
@@ -416,6 +419,92 @@ _Appears in:_
 
 
 
+#### L2Trunk
+
+
+
+L2Trunk owns a shared attachment for VLAN-tagged L2VNIs.
+
+
+
+
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `apiVersion` _string_ | `network.openperouter.io/v1alpha1` | | |
+| `kind` _string_ | `L2Trunk` | | |
+| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  | Optional: \{\} <br /> |
+| `spec` _[L2TrunkSpec](#l2trunkspec)_ | spec defines the desired state of L2Trunk. |  | Required: \{\} <br /> |
+| `status` _[L2TrunkStatus](#l2trunkstatus)_ | status defines the observed state of L2Trunk. |  | Optional: \{\} <br /> |
+
+
+#### L2TrunkReference
+
+
+
+L2TrunkReference selects an L2Trunk and a VLAN-to-VNI mapping on it.
+
+
+
+_Appears in:_
+- [L2VNISpec](#l2vnispec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `name` _string_ | name is the metadata.name of the L2Trunk in the same namespace. |  | MaxLength: 253 <br />MinLength: 1 <br />Required: \{\} <br /> |
+| `vlan` _[VLANConfig](#vlanconfig)_ | vlan selects the tag carried by this L2VNI on the trunk. |  | Required: \{\} <br /> |
+
+
+#### L2TrunkSpec
+
+
+
+L2TrunkSpec defines a shared attachment for VLAN-tagged L2VNIs.
+
+
+
+_Appears in:_
+- [L2Trunk](#l2trunk)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `nodeSelector` _[LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#labelselector-v1-meta)_ | nodeSelector specifies which nodes this L2Trunk applies to.<br />If empty or not specified, applies to all nodes. |  | Optional: \{\} <br /> |
+| `type` _[L2TrunkType](#l2trunktype)_ | type selects the kind of port that carries the trunk's tagged traffic. |  | Enum: [Host SRIOV] <br />Required: \{\} <br /> |
+| `hostMaster` _[HostMaster](#hostmaster)_ | hostMaster is the host bridge the trunk's host-side interface attaches to.<br />The bridge must have lifecycle External.<br />When omitted, the host-side interface is left for external attachment.<br />Immutable. |  | Optional: \{\} <br /> |
+| `sriov` _[SRIOVTrunkConfig](#sriovtrunkconfig)_ | sriov selects the SR-IOV VF used as the trunk port. The VF is bound<br />to grout and no host-side interface is created. Must be set when<br />type is "SRIOV". Only supported by the grout data path.<br />Immutable. |  | Optional: \{\} <br /> |
+
+
+#### L2TrunkStatus
+
+
+
+L2TrunkStatus defines the observed state of L2Trunk.
+
+
+
+_Appears in:_
+- [L2Trunk](#l2trunk)
+
+
+
+#### L2TrunkType
+
+_Underlying type:_ _string_
+
+L2TrunkType selects the kind of port that carries the trunk's tagged traffic.
+
+_Validation:_
+- Enum: [Host SRIOV]
+
+_Appears in:_
+- [L2TrunkSpec](#l2trunkspec)
+
+| Field | Description |
+| --- | --- |
+| `Host` | L2TrunkTypeHost carries the trunk through a host-side interface.<br /> |
+| `SRIOV` | L2TrunkTypeSRIOV carries the trunk through an SR-IOV VF bound to grout.<br /> |
+
+
 #### L2VNI
 
 
@@ -456,6 +545,7 @@ _Appears in:_
 | `vxlanPort` _integer_ | vxlanPort is the port to be used for VXLan encapsulation. | 4789 | Maximum: 65535 <br />Minimum: 1 <br />Optional: \{\} <br /> |
 | `underlayAddressFamily` _string_ | underlayAddressFamily selects which VTEP address family to use for this VNI's<br />VXLAN interface. When omitted, defaults to the available family in the underlay<br />(IPv4 preferred in dual-stack). |  | Enum: [IPv4 IPv6] <br />Optional: \{\} <br /> |
 | `hostMaster` _[HostMaster](#hostmaster)_ | hostMaster is the interface on the host the veth should be attached to.<br />If not set, the host veth will not be attached to any interface and it must be<br />attached manually (or by some other means). This is useful if another controller<br />is leveraging the host interface for the VNI. |  | Optional: \{\} <br /> |
+| `trunk` _[L2TrunkReference](#l2trunkreference)_ | trunk selects a shared L2Trunk attachment and the VLAN tag carried on it.<br />The reference and tag are immutable and cannot be combined with hostMaster. |  | Optional: \{\} <br /> |
 | `gatewayIPs` _string array_ | gatewayIPs is a list of IP addresses in CIDR notation for the<br />distributed anycast gateway on this L2 segment's bridge<br />(Integrated Routing and Bridging interface). It is a property of<br />the L2 segment itself, so it lives on the L2VNI rather than<br />inside the routing-domain reference.<br />Maximum of 2 addresses are allowed. If 2 addresses are provided, one must be IPv4 and one must be IPv6. |  | MaxItems: 2 <br />Optional: \{\} <br /> |
 | `exportRTs` _[RouteTarget](#routetarget) array_ | exportRTs are the Route Targets to be used for exporting L2 EVPN routes. |  | MaxItems: 100 <br />MaxLength: 21 <br />Optional: \{\} <br /> |
 | `importRTs` _[RouteTarget](#routetarget) array_ | importRTs are the Route Targets to be used for importing L2 EVPN routes. |  | MaxItems: 100 <br />MaxLength: 21 <br />Optional: \{\} <br /> |
@@ -959,6 +1049,24 @@ _Appears in:_
 | `l3vpn` _[L3VPNReference](#l3vpnreference)_ | l3vpn references the L3VPN (metadata.name) in the same namespace that<br />provides the routing domain for this L2VNI. |  | Optional: \{\} <br /> |
 
 
+#### SRIOVTrunkConfig
+
+
+
+SRIOVTrunkConfig identifies the SR-IOV VF bound to grout as the trunk port.
+
+
+
+_Appears in:_
+- [L2TrunkSpec](#l2trunkspec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `pfName` _string_ | pfName is the kernel network interface name of the Physical Function<br />that owns the VF (e.g. "enp1s0"). |  | MaxLength: 15 <br />MinLength: 1 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9._-]*$` <br />Required: \{\} <br /> |
+| `vfIndex` _integer_ | vfIndex is the index of the VF on the PF. The VF must have no VLAN<br />configured so it receives the tagged frames of every workload VF on<br />the same PF. |  | Minimum: 0 <br />Required: \{\} <br /> |
+| `acceleratedConfig` _[AcceleratedConfig](#acceleratedconfig)_ | acceleratedConfig sets optional grout port parameters for the VF. |  | Optional: \{\} <br /> |
+
+
 #### SRV6Config
 
 
@@ -1144,5 +1252,21 @@ UnderlayStatus defines the observed state of Underlay.
 _Appears in:_
 - [Underlay](#underlay)
 
+
+
+#### VLANConfig
+
+
+
+VLANConfig identifies an 802.1Q VLAN on a trunk.
+
+
+
+_Appears in:_
+- [L2TrunkReference](#l2trunkreference)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `tag` _integer_ | tag is the VLAN ID. Untagged traffic and reserved IDs are not supported. |  | Maximum: 4094 <br />Minimum: 1 <br />Required: \{\} <br /> |
 
 
