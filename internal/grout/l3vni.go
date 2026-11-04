@@ -122,6 +122,10 @@ func removeVNI(ctx context.Context, client *Client, vni int32) error {
 	}
 
 	bridgeName := hostnetwork.BridgeName(vni)
+	if err := deleteBridgeAttachedPorts(ctx, client, bridgeName); err != nil {
+		return err
+	}
+
 	if err := client.deleteInterface(ctx, bridgeName); err != nil {
 		return fmt.Errorf("failed to delete bridge %s: %w", bridgeName, err)
 	}
@@ -185,4 +189,22 @@ func vniFromVXLANName(name string) (int32, bool) {
 	}
 	// Sscanf ignores trailing text after the VNI.
 	return vni, vxlanNameFromVNI(vni) == name
+}
+
+// deleteBridgeAttachedPorts removes bridge members before the bridge itself
+// can be deleted.
+func deleteBridgeAttachedPorts(ctx context.Context, client *Client, bridgeName string) error {
+	ifaces, err := client.listInterfaces(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list interfaces: %w", err)
+	}
+	for _, iface := range ifaces {
+		if iface.Domain != bridgeName {
+			continue
+		}
+		if err := client.deleteInterface(ctx, iface.Name); err != nil {
+			return fmt.Errorf("failed to delete VLAN %s of bridge %s: %w", iface.Name, bridgeName, err)
+		}
+	}
+	return nil
 }

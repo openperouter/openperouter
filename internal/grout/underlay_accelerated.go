@@ -4,6 +4,7 @@ package grout
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -20,7 +21,10 @@ import (
 const (
 	netdevPollInterval = 100 * time.Millisecond
 	netdevPollTimeout  = 10 * time.Second
+	pciBus             = "pci"
 )
+
+var errNetdevNotFound = errors.New("kernel netdev not found")
 
 func setupAcceleratedUnderlay(
 	ctx context.Context,
@@ -64,10 +68,7 @@ func setupInterfaceForHWAcceleration(
 		return nil
 
 	case pci.IsBifurcated(driver):
-		if err := hostnetwork.SetupUnderlayNetDevInterface(ctx, perouterNetNS, hostnetwork.UnderlayInterface{
-			InterfaceName: netdev,
-			Kind:          hostnetwork.UnderlayInterfaceNetDev,
-		}); err != nil {
+		if err := moveBifurcatedNetdev(ctx, perouterNetNS, pciAddr, netdev); err != nil {
 			return fmt.Errorf("failed to move bifurcated netlink device %s to namespace: %w", netdev, err)
 		}
 		return nil
@@ -100,7 +101,7 @@ func configureUnderlayAcceleratedPort(
 	}
 
 	if pci.IsBifurcated(state.OriginalDriver) {
-		if err := quiesceBifurcatedNetdev(state.InterfaceName); err != nil {
+		if err := quiesceBifurcatedNetdev(state.PCIAddress); err != nil {
 			return err
 		}
 	}
@@ -122,12 +123,23 @@ func configureUnderlayAcceleratedPort(
 // link-local and stop autoconfiguring new addresses from Router
 // Advertisements: otherwise they clash with grout's connected routes (EBUSY)
 // and with the identical link-local of the port sharing its MAC.
-func quiesceBifurcatedNetdev(netdev string) error {
-	if err := hostnetwork.SuppressLinkLocal(netdev); err != nil {
-		return fmt.Errorf("failed to suppress link-local on bifurcated netdev %s: %w", netdev, err)
+func quiesceBifurcatedNetdev(pciAddr string) error {
+	handle, err := netlink.NewHandle()
+	if err != nil {
+		return fmt.Errorf("failed to get netlink handle: %w", err)
 	}
-	if err := hostnetwork.SuppressAutoconf(netdev); err != nil {
-		return fmt.Errorf("failed to suppress autoconf on bifurcated netdev %s: %w", netdev, err)
+	defer handle.Close()
+
+	link, err := findNetdevByPCI(handle, pciAddr)
+	if err != nil {
+		return fmt.Errorf("failed to find bifurcated netdev: %w", err)
+	}
+	name := link.Attrs().Name
+	if err := hostnetwork.SuppressLinkLocal(name); err != nil {
+		return fmt.Errorf("failed to suppress link-local on bifurcated netdev %s: %w", name, err)
+	}
+	if err := hostnetwork.SuppressAutoconf(name); err != nil {
+		return fmt.Errorf("failed to suppress autoconf on bifurcated netdev %s: %w", name, err)
 	}
 	return nil
 }
@@ -144,6 +156,9 @@ func restoreAcceleratedDevice(
 	case state.OriginalDriver == "" || state.OriginalDriver == pci.DriverVFIOPCI:
 		return nil
 	case pci.IsBifurcated(state.OriginalDriver):
+		if err := restoreBifurcatedNetdevName(targetNS, state); err != nil {
+			return err
+		}
 		return restoreNetdev(ctx, targetNS, state)
 	}
 
@@ -157,6 +172,48 @@ func restoreAcceleratedDevice(
 		return err
 	}
 	return applyStateToLink(ctx, link, state)
+}
+
+// restoreBifurcatedNetdevName gives the netdev of a bifurcated device, in the
+// namespace at nsPath, its saved name back, so that it reaches the host under
+// that name. grout renames the netdev of a device it holds a port on and
+// renames it back only when the same grout process deletes the port.
+func restoreBifurcatedNetdevName(nsPath string, state devicestate.State) error {
+	ns, err := netns.GetFromPath(nsPath)
+	if err != nil {
+		return fmt.Errorf("failed to find network namespace %s: %w", nsPath, err)
+	}
+	defer func() {
+		if err := ns.Close(); err != nil {
+			slog.Error("failed to close namespace", "namespace", nsPath, "error", err)
+		}
+	}()
+	handle, err := netlink.NewHandleAt(ns)
+	if err != nil {
+		return fmt.Errorf("failed to get netlink handle for namespace %s: %w", nsPath, err)
+	}
+	defer handle.Close()
+
+	link, err := findNetdevByPCI(handle, state.PCIAddress)
+	if errors.Is(err, errNetdevNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	currentName := link.Attrs().Name
+	if currentName == state.InterfaceName {
+		return nil
+	}
+	// The kernel refuses to rename a netdev that is up; moving it to the host
+	// namespace sets it up again.
+	if err := handle.LinkSetDown(link); err != nil {
+		return fmt.Errorf("failed to set netdev %s down: %w", currentName, err)
+	}
+	if err := handle.LinkSetName(link, state.InterfaceName); err != nil {
+		return fmt.Errorf("failed to rename netdev %s to %s: %w", currentName, state.InterfaceName, err)
+	}
+	return nil
 }
 
 // waitForPCINetdev returns the netdev of a PCI device just rebound to its
@@ -186,4 +243,45 @@ func waitForPCINetdev(ctx context.Context, pciAddr string, sysfs pci.Sysfs) (net
 		return nil, fmt.Errorf("kernel netdev for PCI device %s did not appear: %w", pciAddr, err)
 	}
 	return link, nil
+}
+
+// moveBifurcatedNetdev moves the netdev of a bifurcated device to the router
+// namespace, unless it is there already.
+func moveBifurcatedNetdev(ctx context.Context, perouterNetNS netns.NsHandle, pciAddr, netdev string) error {
+	handle, err := netlink.NewHandleAt(perouterNetNS)
+	if err != nil {
+		return fmt.Errorf("failed to get netlink handle for the router namespace: %w", err)
+	}
+	defer handle.Close()
+
+	_, err = findNetdevByPCI(handle, pciAddr)
+	if errors.Is(err, errNetdevNotFound) {
+		return hostnetwork.SetupUnderlayNetDevInterface(ctx, perouterNetNS, hostnetwork.UnderlayInterface{
+			InterfaceName: netdev,
+			Kind:          hostnetwork.UnderlayInterfaceNetDev,
+		})
+	}
+	return err
+}
+
+// findNetdevByPCI returns the netdev of the PCI device at pciAddr in the
+// namespace of handle, whatever its name: grout renames the netdev of a device
+// it holds a port on. It returns errNetdevNotFound when there is none.
+func findNetdevByPCI(handle *netlink.Handle, pciAddr string) (netlink.Link, error) {
+	links, err := handle.LinkList()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list netdevs: %w", err)
+	}
+	for _, link := range links {
+		if isNetdevOfPCIDevice(link, pciAddr) {
+			return link, nil
+		}
+	}
+	return nil, fmt.Errorf("%w: PCI device %s", errNetdevNotFound, pciAddr)
+}
+
+// isNetdevOfPCIDevice is a variable so that tests, which have no PCI device,
+// can make a dummy link stand in for one.
+var isNetdevOfPCIDevice = func(link netlink.Link, pciAddr string) bool {
+	return link.Attrs().ParentDevBus == pciBus && link.Attrs().ParentDev == pciAddr
 }

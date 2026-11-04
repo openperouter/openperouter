@@ -14,73 +14,27 @@ import (
 	"k8s.io/utils/ptr"
 )
 
-// SetupL2VNI creates a Grout bridge domain backed by a VXLAN interface and
-// exposes it to the host through a TAP device.
-func SetupL2VNI(ctx context.Context, client *Client, ovsClient *hostnetwork.OVSClient, params hostnetwork.L2VNIParams) error {
+// SetupL2VNI creates a Grout bridge domain backed by a VXLAN interface. The
+// bridge is attached to the trunk port of the referenced L2Trunk through a
+// VLAN sub-interface when the L2VNI is carried by a trunk, and exposed to the
+// host through a TAP device otherwise. trunks holds the successfully
+// configured L2Trunks.
+func SetupL2VNI(
+	ctx context.Context,
+	client *Client,
+	ovsClient *hostnetwork.OVSClient,
+	params hostnetwork.L2VNIParams,
+	trunks ConfiguredTrunks,
+) error {
 	slog.DebugContext(ctx, "setup L2VNI", "vni", params.VNI, "vrf", params.VRF)
 	defer slog.DebugContext(ctx, "setup L2VNI done", "vni", params.VNI)
 
-	vrf := defaultVRFName
-	if params.VRF != "" {
-		vrf = params.VRF
-		if err := client.ensureVRF(ctx, vrf); err != nil {
-			return fmt.Errorf("SetupL2VNI: failed to create VRF %s: %w", vrf, err)
-		}
-	}
-
-	vtepIP, _, err := net.ParseCIDR(params.VTEPIP)
+	bridgeName, err := setupL2VNIBridge(ctx, client, params)
 	if err != nil {
-		return fmt.Errorf("SetupL2VNI: failed to parse VTEP IP %q: %w", params.VTEPIP, err)
+		return fmt.Errorf("SetupL2VNI: %w", err)
 	}
-
-	vxlanName := vxlanNameFromVNI(params.VNI)
-	if err := client.ensureVXLAN(ctx, vxlanName, vtepIP.String(), "", params.VNI,
-		ptr.Deref(params.VXLanPort, defaultVXLanPort)); err != nil {
-		return fmt.Errorf("SetupL2VNI: failed to create VXLAN: %w", err)
-	}
-
-	bridgeName := hostnetwork.BridgeName(params.VNI)
-	if err := client.ensureBridge(ctx, bridgeName, vrf); err != nil {
-		return fmt.Errorf("SetupL2VNI: failed to create bridge %s: %w", bridgeName, err)
-	}
-	if err := client.ensureBridgeMember(ctx, "vxlan", bridgeName, vxlanName); err != nil {
-		return fmt.Errorf("SetupL2VNI: failed to attach VXLAN %s to bridge %s: %w", vxlanName, bridgeName, err)
-	}
-	// The bridge learns its neighbors by snooping, and grout ages them on its
-	// own: make sure it does so at the same pace as the kernel datapath.
-	if err := client.ensureNeighborAgeing(ctx); err != nil {
-		return fmt.Errorf("SetupL2VNI: failed to age neighbors like the kernel: %w", err)
-	}
-
-	linkPair := linkPairFromVNI(params.VNI)
-	ns, err := netns.GetFromPath(params.TargetNS)
-	if err != nil {
-		return fmt.Errorf("SetupL2VNI: failed to find namespace %s: %w", params.TargetNS, err)
-	}
-	defer func() {
-		if err := ns.Close(); err != nil {
-			slog.Error("failed to close namespace", "namespace", params.TargetNS, "error", err)
-		}
-	}()
-
-	if err := ensureTapPortInHostNamespace(ctx, client, linkPair.NamespaceSide, linkPair.HostSide, vrf, ns); err != nil {
-		return fmt.Errorf("SetupL2VNI: failed to create TAP port: %w", err)
-	}
-	if err := client.ensureBridgeMember(ctx, "port", bridgeName, linkPair.NamespaceSide); err != nil {
-		return fmt.Errorf("SetupL2VNI: failed to attach TAP %s to bridge %s: %w", linkPair.NamespaceSide, bridgeName, err)
-	}
-	if err := client.setPortUp(ctx, linkPair.NamespaceSide); err != nil {
-		return fmt.Errorf("SetupL2VNI: failed to set Grout port up: %w", err)
-	}
-
-	hostTap, err := netlink.LinkByName(linkPair.HostSide)
-	if err != nil {
-		return fmt.Errorf("SetupL2VNI: host TAP %s not found after move: %w", linkPair.HostSide, err)
-	}
-	if params.HostMaster != nil {
-		if err := hostnetwork.SetupHostMaster(ctx, ovsClient, params, hostTap); err != nil {
-			return fmt.Errorf("SetupL2VNI: failed to set up host master: %w", err)
-		}
+	if err := attachL2VNIBridge(ctx, client, ovsClient, params, bridgeName, trunks); err != nil {
+		return fmt.Errorf("SetupL2VNI: %w", err)
 	}
 
 	if len(params.L2GatewayIPs) > 0 {
@@ -88,7 +42,90 @@ func SetupL2VNI(ctx context.Context, client *Client, ovsClient *hostnetwork.OVSC
 			return fmt.Errorf("SetupL2VNI: failed to set up L2 gateway: %w", err)
 		}
 	}
+	return nil
+}
 
+// attachL2VNIBridge attaches the bridge of an L2VNI to the carrier its
+// configuration selects: the grout port of its trunk VF, or the host through
+// a TAP device when no trunk carries it.
+func attachL2VNIBridge(
+	ctx context.Context,
+	client *Client,
+	ovsClient *hostnetwork.OVSClient,
+	params hostnetwork.L2VNIParams,
+	bridgeName string,
+	trunks ConfiguredTrunks,
+) error {
+	if params.Trunk == nil {
+		return attachBridgeToHost(ctx, client, ovsClient, params, bridgeName)
+	}
+	return attachBridgeToVFTrunk(ctx, client, params, bridgeName, trunks)
+}
+
+// attachBridgeToHost exposes the bridge to the host through a TAP device,
+// enslaving the host side to the host master when one is configured.
+func attachBridgeToHost(
+	ctx context.Context,
+	client *Client,
+	ovsClient *hostnetwork.OVSClient,
+	params hostnetwork.L2VNIParams,
+	bridgeName string,
+) error {
+	linkPair := linkPairFromVNI(params.VNI)
+	ns, err := netns.GetFromPath(params.TargetNS)
+	if err != nil {
+		return fmt.Errorf("failed to find namespace %s: %w", params.TargetNS, err)
+	}
+	defer func() {
+		if err := ns.Close(); err != nil {
+			slog.Error("failed to close namespace", "namespace", params.TargetNS, "error", err)
+		}
+	}()
+
+	if err := ensureTapPortInHostNamespace(ctx, client, linkPair.NamespaceSide, linkPair.HostSide,
+		bridgeVRF(params), ns); err != nil {
+		return fmt.Errorf("failed to create TAP port: %w", err)
+	}
+	if err := client.ensureBridgeMember(ctx, interfaceTypePort, bridgeName, linkPair.NamespaceSide); err != nil {
+		return fmt.Errorf("failed to attach TAP %s to bridge %s: %w", linkPair.NamespaceSide, bridgeName, err)
+	}
+	if err := client.setPortUp(ctx, linkPair.NamespaceSide); err != nil {
+		return fmt.Errorf("failed to set Grout port up: %w", err)
+	}
+
+	if params.HostMaster == nil {
+		return nil
+	}
+	hostTap, err := netlink.LinkByName(linkPair.HostSide)
+	if err != nil {
+		return fmt.Errorf("host TAP %s not found after move: %w", linkPair.HostSide, err)
+	}
+	if err := hostnetwork.SetupHostMaster(ctx, ovsClient, params, hostTap); err != nil {
+		return fmt.Errorf("failed to set up host master: %w", err)
+	}
+	return nil
+}
+
+// attachBridgeToVFTrunk attaches the bridge of an L2VNI to the grout port of
+// its trunk VF, through a VLAN sub-interface carrying the L2VNI's tag.
+func attachBridgeToVFTrunk(
+	ctx context.Context,
+	client *Client,
+	params hostnetwork.L2VNIParams,
+	bridgeName string,
+	trunks ConfiguredTrunks,
+) error {
+	port, ok := trunks.Port(params.Trunk.Name)
+	if !ok {
+		return fmt.Errorf("L2Trunk %q failed provisioning", params.Trunk.Name)
+	}
+	vlanName := trunkVLANPortName(port, params.Trunk.VLAN)
+	if err := client.ensureVLAN(ctx, vlanName, port, params.Trunk.VLAN); err != nil {
+		return fmt.Errorf("failed to create VLAN %s for trunk %s: %w", vlanName, params.Trunk.Name, err)
+	}
+	if err := client.ensureBridgeMember(ctx, interfaceTypeVLAN, bridgeName, vlanName); err != nil {
+		return fmt.Errorf("failed to attach trunk %s to bridge %s: %w", params.Trunk.Name, bridgeName, err)
+	}
 	return nil
 }
 
@@ -107,4 +144,47 @@ func setupL2Gateway(ctx context.Context, client *Client, bridgeName string, para
 		}
 	}
 	return nil
+}
+
+// setupL2VNIBridge creates the VXLAN interface and the bridge of an L2VNI, in
+// the L2VNI's VRF, and returns the bridge name.
+func setupL2VNIBridge(ctx context.Context, client *Client, params hostnetwork.L2VNIParams) (string, error) {
+	vrf := bridgeVRF(params)
+	if params.VRF != "" {
+		if err := client.ensureVRF(ctx, vrf); err != nil {
+			return "", fmt.Errorf("failed to create VRF %s: %w", vrf, err)
+		}
+	}
+
+	vtepIP, _, err := net.ParseCIDR(params.VTEPIP)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse VTEP IP %q: %w", params.VTEPIP, err)
+	}
+
+	vxlanName := vxlanNameFromVNI(params.VNI)
+	if err := client.ensureVXLAN(ctx, vxlanName, vtepIP.String(), "", params.VNI,
+		ptr.Deref(params.VXLanPort, defaultVXLanPort)); err != nil {
+		return "", fmt.Errorf("failed to create VXLAN: %w", err)
+	}
+
+	bridgeName := hostnetwork.BridgeName(params.VNI)
+	if err := client.ensureBridge(ctx, bridgeName, vrf); err != nil {
+		return "", fmt.Errorf("failed to create bridge %s: %w", bridgeName, err)
+	}
+	if err := client.ensureBridgeMember(ctx, "vxlan", bridgeName, vxlanName); err != nil {
+		return "", fmt.Errorf("failed to attach VXLAN %s to bridge %s: %w", vxlanName, bridgeName, err)
+	}
+	// The bridge learns its neighbors by snooping, and grout ages them on its
+	// own: make sure it does so at the same pace as the kernel datapath.
+	if err := client.ensureNeighborAgeing(ctx); err != nil {
+		return "", fmt.Errorf("failed to age neighbors like the kernel: %w", err)
+	}
+	return bridgeName, nil
+}
+
+func bridgeVRF(params hostnetwork.L2VNIParams) string {
+	if params.VRF != "" {
+		return params.VRF
+	}
+	return defaultVRFName
 }

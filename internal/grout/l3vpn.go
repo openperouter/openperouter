@@ -65,7 +65,7 @@ func RemoveNonConfiguredL3VPNs(ctx context.Context, client *Client, configured [
 func findStaleL3VPNs(ifaces []groutInterface, configuredRDs map[int32]struct{}) []int32 {
 	var stale []int32
 	for _, iface := range ifaces {
-		if iface.Type != "port" {
+		if iface.Type != interfaceTypePort {
 			continue
 		}
 		rd, ok := rdFromL3VPNPortName(iface.Name)

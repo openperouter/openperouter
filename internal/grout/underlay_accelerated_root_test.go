@@ -104,6 +104,7 @@ func TestSetupAcceleratedUnderlayRebindsKernelDriver(t *testing.T) {
 		state, err := store.Load(accelIface)
 		require.NoError(t, err)
 		assert.Equal(t, devicestate.State{
+			DeviceID:       accelIface,
 			InterfaceName:  accelIface,
 			PCIAddress:     testPCIAddr,
 			OriginalDriver: "igb",
@@ -152,6 +153,7 @@ func TestSetupAcceleratedUnderlayMovesBifurcatedNetdev(t *testing.T) {
 	ns := newAccelTestNS(t)
 	addGroutMainInterface(t, ns)
 	addHostDummy(t, accelCIDR)
+	fakePCIParent(t, accelIface, testPCIAddr)
 	store := devicestate.Store{Dir: t.TempDir()}
 
 	sysfs := newFakeSysfs(t, testPCIAddr, pci.DriverMlx5Core)
@@ -212,7 +214,7 @@ func TestRestoreAcceleratedUnderlayRestoresKernelDriver(t *testing.T) {
 	sysfs.addNetDevice(accelIface)
 	addHostDummy(t, "")
 
-	require.NoError(t, store.Save(devicestate.State{
+	require.NoError(t, store.Save(accelIface, devicestate.State{
 		InterfaceName:  accelIface,
 		PCIAddress:     testPCIAddr,
 		OriginalDriver: "igb",
@@ -246,6 +248,10 @@ func TestRestoreAcceleratedDeviceMovesBifurcatedNetdevBack(t *testing.T) {
 	sysfs := newFakeSysfs(t, testPCIAddr, pci.DriverMlx5Core)
 
 	link := addHostDummy(t, "")
+	fakePCIParent(t, accelIface, testPCIAddr)
+	// grout renames the netdev of a device it holds a port on.
+	require.NoError(t, netlink.LinkSetDown(link))
+	require.NoError(t, netlink.LinkSetName(link, "grout_renamed"))
 	require.NoError(t, netlink.LinkSetNsFd(link, int(ns)))
 
 	state := devicestate.State{
@@ -487,4 +493,20 @@ func nsSysctl(t *testing.T, ns netns.NsHandle, path string) string {
 		return err
 	}))
 	return value
+}
+
+// fakePCIParent makes the host link named netdev pass as the netdev of the PCI
+// device at pciAddr. It tags the link with an alias, which, unlike the name and
+// the MAC address, nothing else changes.
+func fakePCIParent(t *testing.T, netdev, pciAddr string) {
+	t.Helper()
+	link, err := netlink.LinkByName(netdev)
+	require.NoError(t, err)
+	require.NoError(t, netlink.LinkSetAlias(link, pciAddr))
+
+	orig := isNetdevOfPCIDevice
+	isNetdevOfPCIDevice = func(link netlink.Link, addr string) bool {
+		return addr == pciAddr && link.Attrs().Alias == pciAddr
+	}
+	t.Cleanup(func() { isNetdevOfPCIDevice = orig })
 }

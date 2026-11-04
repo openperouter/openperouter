@@ -226,7 +226,7 @@ func retrieveAndSaveDeviceState(
 	if err != nil {
 		return devicestate.State{}, err
 	}
-	if err := store.Save(state); err != nil {
+	if err := store.Save(interfaceName, state); err != nil {
 		return devicestate.State{}, fmt.Errorf("failed to save device state for %s: %w", interfaceName, err)
 	}
 	return state, nil
@@ -323,17 +323,18 @@ func deleteUnderlayPort(ctx context.Context, client *Client, ns netns.NsHandle, 
 // backing a TAP port, or a bifurcated device) back to the host namespace and
 // re-applies its saved addresses.
 func restoreNetdev(ctx context.Context, targetNS string, state devicestate.State) error {
-	if err := hostnetwork.RestoreUnderlayNetDevInterface(ctx, targetNS, state.InterfaceName); err != nil {
-		return fmt.Errorf("failed to move netdev %s back to the host namespace: %w", state.InterfaceName, err)
+	name := state.InterfaceName
+	if err := hostnetwork.RestoreUnderlayNetDevInterface(ctx, targetNS, name); err != nil {
+		return fmt.Errorf("failed to move netdev %s back to the host namespace: %w", name, err)
 	}
 
-	link, err := netlink.LinkByName(state.InterfaceName)
+	link, err := netlink.LinkByName(name)
 	if errors.As(err, &netlink.LinkNotFoundError{}) {
-		slog.WarnContext(ctx, "kernel netdev is gone, nothing to restore", "interfaceName", state.InterfaceName)
+		slog.WarnContext(ctx, "kernel netdev is gone, nothing to restore", "interfaceName", name)
 		return nil
 	}
 	if err != nil {
-		return fmt.Errorf("failed to find kernel netdev %s: %w", state.InterfaceName, err)
+		return fmt.Errorf("failed to find kernel netdev %s: %w", name, err)
 	}
 
 	return applyStateToLink(ctx, link, state)
@@ -489,6 +490,9 @@ func retrievePCIState(netdev string, sysfs pci.Sysfs) (string, string, error) {
 // A netdev no longer in the host namespace (moved, or unbound from its kernel
 // driver) has nothing left to remove.
 func removeSavedAddressesFromKernel(state devicestate.State) error {
+	if len(state.Addresses) == 0 {
+		return nil
+	}
 	link, err := netlink.LinkByName(state.InterfaceName)
 	if errors.As(err, &netlink.LinkNotFoundError{}) {
 		return nil

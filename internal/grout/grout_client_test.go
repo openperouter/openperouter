@@ -562,7 +562,7 @@ func TestGetInterfaceInfoParsesPortDetails(t *testing.T) {
 func TestMatchesRequested(t *testing.T) {
 	rxqs := int32(4)
 	qsize := int32(1024)
-	matching := groutInterface{
+	matching := groutInterfaceInfo{
 		Devargs: "0000:03:02.0",
 		MAC:     "aa:bb:cc:dd:ee:ff",
 		NRxq:    4,
@@ -617,7 +617,7 @@ func TestMatchesRequested(t *testing.T) {
 	})
 
 	t.Run("tap devargs with random suffix still match", func(t *testing.T) {
-		tap := groutInterface{
+		tap := groutInterfaceInfo{
 			Devargs: "net_tapabc123,remote=eth0,iface=tap_eth0",
 		}
 		assert.True(t, tap.matchesRequested(portOptions{Devargs: "net_tapxyz789,remote=eth0,iface=tap_eth0"}))
