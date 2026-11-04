@@ -19,8 +19,8 @@ func TestSetupTunnelEndpointRequiresAddress(t *testing.T) {
 
 func TestUnderlayInterfaces(t *testing.T) {
 	store := devicestate.Store{Dir: t.TempDir()}
-	require.NoError(t, store.Save(devicestate.State{InterfaceName: "eth0"}))
-	require.NoError(t, store.Save(devicestate.State{InterfaceName: "ens1f0", PCIAddress: testPCIAddr}))
+	require.NoError(t, store.Save("eth0", devicestate.State{InterfaceName: "eth0"}))
+	require.NoError(t, store.Save("ens1f0", devicestate.State{InterfaceName: "ens1f0", PCIAddress: testPCIAddr}))
 
 	got, err := UnderlayInterfaces(store)
 	require.NoError(t, err)

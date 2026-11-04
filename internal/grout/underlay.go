@@ -226,7 +226,7 @@ func retrieveAndSaveDeviceState(
 	if err != nil {
 		return devicestate.State{}, err
 	}
-	if err := store.Save(state); err != nil {
+	if err := store.Save(interfaceName, state); err != nil {
 		return devicestate.State{}, fmt.Errorf("failed to save device state for %s: %w", interfaceName, err)
 	}
 	return state, nil
@@ -489,6 +489,9 @@ func retrievePCIState(netdev string, sysfs pci.Sysfs) (string, string, error) {
 // A netdev no longer in the host namespace (moved, or unbound from its kernel
 // driver) has nothing left to remove.
 func removeSavedAddressesFromKernel(state devicestate.State) error {
+	if len(state.Addresses) == 0 {
+		return nil
+	}
 	link, err := netlink.LinkByName(state.InterfaceName)
 	if errors.As(err, &netlink.LinkNotFoundError{}) {
 		return nil

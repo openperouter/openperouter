@@ -122,6 +122,20 @@ func removeVNI(ctx context.Context, client *Client, vni int32) error {
 	}
 
 	bridgeName := hostnetwork.BridgeName(vni)
+	if err := deleteBridgeVLANs(ctx, client, bridgeName, ""); err != nil {
+		return err
+	}
+
+	linkPair := linkPairFromVNI(vni)
+
+	if err := client.deletePort(ctx, linkPair.NamespaceSide); err != nil {
+		return fmt.Errorf("failed to delete grout port %s: %w", linkPair.NamespaceSide, err)
+	}
+
+	if err := hostnetwork.RemoveLinkByName(linkPair.HostSide); err != nil {
+		return fmt.Errorf("failed to delete host TAP %s: %w", linkPair.HostSide, err)
+	}
+
 	if err := client.deleteInterface(ctx, bridgeName); err != nil {
 		return fmt.Errorf("failed to delete bridge %s: %w", bridgeName, err)
 	}
