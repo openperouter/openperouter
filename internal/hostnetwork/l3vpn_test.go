@@ -38,7 +38,6 @@ var _ = Describe("L3 VPN configuration", func() {
 	It("should work with IPv4 only L3VPN", func() {
 		params := L3VPNParams{
 			VRF:              "testred",
-			TargetNS:         testNSPath(),
 			RDAssignedNumber: 100,
 			LinkIPs: &LinkIPs{
 				HostIPv4: "192.168.9.1/32",
@@ -46,7 +45,8 @@ var _ = Describe("L3 VPN configuration", func() {
 			},
 		}
 
-		err := SetupL3VPN(context.Background(), params)
+		cfg := newConfiguratorForTest(ovsClient)
+		err := cfg.SetupL3VPN(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -62,7 +62,6 @@ var _ = Describe("L3 VPN configuration", func() {
 	It("should work with IPv6 only L3VPN", func() {
 		params := L3VPNParams{
 			VRF:              "testred",
-			TargetNS:         testNSPath(),
 			RDAssignedNumber: 100,
 			LinkIPs: &LinkIPs{
 				HostIPv6: "2001:db8::1/128",
@@ -70,7 +69,8 @@ var _ = Describe("L3 VPN configuration", func() {
 			},
 		}
 
-		err := SetupL3VPN(context.Background(), params)
+		cfg := newConfiguratorForTest(ovsClient)
+		err := cfg.SetupL3VPN(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -86,7 +86,6 @@ var _ = Describe("L3 VPN configuration", func() {
 	It("should work with dual-stack L3VPN", func() {
 		params := L3VPNParams{
 			VRF:              "testred",
-			TargetNS:         testNSPath(),
 			RDAssignedNumber: 100,
 			LinkIPs: &LinkIPs{
 				HostIPv4: "192.168.9.1/32",
@@ -96,7 +95,8 @@ var _ = Describe("L3 VPN configuration", func() {
 			},
 		}
 
-		err := SetupL3VPN(context.Background(), params)
+		cfg := newConfiguratorForTest(ovsClient)
+		err := cfg.SetupL3VPN(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -112,7 +112,6 @@ var _ = Describe("L3 VPN configuration", func() {
 	It("should make the IPv6 addresses usable right after setup", func() {
 		params := L3VPNParams{
 			VRF:              "testred",
-			TargetNS:         testNSPath(),
 			RDAssignedNumber: 100,
 			LinkIPs: &LinkIPs{
 				HostIPv4: "192.168.9.1/32",
@@ -122,7 +121,7 @@ var _ = Describe("L3 VPN configuration", func() {
 			},
 		}
 
-		Expect(SetupL3VPN(context.Background(), params)).To(Succeed())
+		Expect(newConfiguratorForTest(ovsClient).SetupL3VPN(context.Background(), params)).To(Succeed())
 
 		// No Eventually: DAD would clear the tentative flag after about a second,
 		// so the check must run right after setup.
@@ -142,7 +141,6 @@ var _ = Describe("L3 VPN configuration", func() {
 		params := []L3VPNParams{
 			{
 				VRF:              "testred",
-				TargetNS:         testNSPath(),
 				RDAssignedNumber: 100,
 				LinkIPs: &LinkIPs{
 					HostIPv4: "192.168.9.1/32",
@@ -151,7 +149,6 @@ var _ = Describe("L3 VPN configuration", func() {
 			},
 			{
 				VRF:              "testblue",
-				TargetNS:         testNSPath(),
 				RDAssignedNumber: 101,
 				LinkIPs: &LinkIPs{
 					HostIPv4: "192.168.9.2/32",
@@ -159,8 +156,9 @@ var _ = Describe("L3 VPN configuration", func() {
 				},
 			},
 		}
+		cfg := newConfiguratorForTest(ovsClient)
 		for _, p := range params {
-			err := SetupL3VPN(context.Background(), p)
+			err := cfg.SetupL3VPN(context.Background(), p)
 			Expect(err).NotTo(HaveOccurred())
 
 			Eventually(func(g Gomega) {
@@ -209,7 +207,6 @@ var _ = Describe("L3 VPN configuration", func() {
 		l3vpnParams := []L3VPNParams{
 			{
 				VRF:              "testred",
-				TargetNS:         testNSPath(),
 				RDAssignedNumber: 100,
 				LinkIPs: &LinkIPs{
 					HostIPv4: "192.168.9.1/32",
@@ -218,7 +215,6 @@ var _ = Describe("L3 VPN configuration", func() {
 			},
 			{
 				VRF:              "testblue",
-				TargetNS:         testNSPath(),
 				RDAssignedNumber: 101,
 				LinkIPs: &LinkIPs{
 					HostIPv4: "192.168.9.2/32",
@@ -357,13 +353,13 @@ var _ = Describe("L3 VPN configuration", func() {
 		}
 
 		By("setting up L3VPNs")
+		cfg := newConfiguratorForTest(ovsClient)
 		for _, p := range l3vpnParams {
-			Expect(SetupL3VPN(context.Background(), p)).To(Succeed())
+			Expect(cfg.SetupL3VPN(context.Background(), p)).To(Succeed())
 		}
 		By("setting up L2VNIs")
-		cfg := newConfiguratorForTest(ovsClient)
 		for _, p := range l2vniParams {
-			Expect(cfg.Setup(context.Background(), p)).To(Succeed())
+			Expect(cfg.SetupL2VNI(context.Background(), p)).To(Succeed())
 		}
 		validateAll()
 
@@ -395,7 +391,6 @@ var _ = Describe("L3 VPN configuration", func() {
 	It("should be idempotent", func() {
 		params := L3VPNParams{
 			VRF:              "testred",
-			TargetNS:         testNSPath(),
 			RDAssignedNumber: 100,
 			LinkIPs: &LinkIPs{
 				HostIPv4: "192.168.9.1/32",
@@ -403,10 +398,11 @@ var _ = Describe("L3 VPN configuration", func() {
 			},
 		}
 
-		err := SetupL3VPN(context.Background(), params)
+		cfg := newConfiguratorForTest(ovsClient)
+		err := cfg.SetupL3VPN(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = SetupL3VPN(context.Background(), params)
+		err = cfg.SetupL3VPN(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -422,12 +418,12 @@ var _ = Describe("L3 VPN configuration", func() {
 	It("should configure VRF when LinkIPs is nil", func() {
 		params := L3VPNParams{
 			VRF:              "testred",
-			TargetNS:         testNSPath(),
 			RDAssignedNumber: 100,
 			LinkIPs:          nil,
 		}
 
-		err := SetupL3VPN(context.Background(), params)
+		cfg := newConfiguratorForTest(ovsClient)
+		err := cfg.SetupL3VPN(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -450,7 +446,6 @@ var _ = Describe("L3 VPN configuration", func() {
 
 		l3vpnParams := L3VPNParams{
 			VRF:              "testred",
-			TargetNS:         testNSPath(),
 			RDAssignedNumber: 100,
 			TunnelOverhead:   SRv6Overhead,
 			LinkIPs: &LinkIPs{
@@ -470,9 +465,9 @@ var _ = Describe("L3 VPN configuration", func() {
 			},
 		}
 
-		Expect(SetupL3VPN(context.Background(), l3vpnParams)).To(Succeed())
 		cfg := newConfiguratorForTest(ovsClient)
-		Expect(cfg.Setup(context.Background(), l2vniParams)).To(Succeed())
+		Expect(cfg.SetupL3VPN(context.Background(), l3vpnParams)).To(Succeed())
+		Expect(cfg.SetupL2VNI(context.Background(), l2vniParams)).To(Succeed())
 
 		expectedMTU := underlayMTU - SRv6Overhead
 		Eventually(func(g Gomega) {
@@ -489,11 +484,10 @@ var _ = Describe("L3 VPN configuration", func() {
 	})
 
 	It("should leave veth MTU at default when no underlay interface is configured", func() {
-		// No fake underlay is set up here, so FindUnderlayMTU returns 0
-		// and the veth MTU must be left untouched.
+		// No underlay MTU is passed here, so SetVethMTUForTunnelOverhead must
+		// leave the veth MTU untouched.
 		params := L3VPNParams{
 			VRF:              "testred",
-			TargetNS:         testNSPath(),
 			RDAssignedNumber: 100,
 			LinkIPs: &LinkIPs{
 				HostIPv4: "192.168.9.1/32",
@@ -501,7 +495,8 @@ var _ = Describe("L3 VPN configuration", func() {
 			},
 		}
 
-		err := SetupL3VPN(context.Background(), params)
+		cfg := newConfiguratorForTest(ovsClient)
+		err := cfg.SetupL3VPN(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {

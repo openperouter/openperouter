@@ -59,7 +59,8 @@ var _ = Describe("L3 VNI configuration", func() {
 			},
 		}
 
-		err := SetupL3VNI(context.Background(), params)
+		cfg := newConfiguratorForTest(ovsClient)
+		err := cfg.SetupL3VNI(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -87,7 +88,8 @@ var _ = Describe("L3 VNI configuration", func() {
 			},
 		}
 
-		err := SetupL3VNI(context.Background(), params)
+		cfg := newConfiguratorForTest(ovsClient)
+		err := cfg.SetupL3VNI(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -117,7 +119,8 @@ var _ = Describe("L3 VNI configuration", func() {
 			},
 		}
 
-		err := SetupL3VNI(context.Background(), params)
+		cfg := newConfiguratorForTest(ovsClient)
+		err := cfg.SetupL3VNI(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -159,8 +162,9 @@ var _ = Describe("L3 VNI configuration", func() {
 				},
 			},
 		}
+		cfg := newConfiguratorForTest(ovsClient)
 		for _, p := range params {
-			err := SetupL3VNI(context.Background(), p)
+			err := cfg.SetupL3VNI(context.Background(), p)
 			Expect(err).NotTo(HaveOccurred())
 
 			Eventually(func(g Gomega) {
@@ -219,10 +223,11 @@ var _ = Describe("L3 VNI configuration", func() {
 			},
 		}
 
-		err := SetupL3VNI(context.Background(), params)
+		cfg := newConfiguratorForTest(ovsClient)
+		err := cfg.SetupL3VNI(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = SetupL3VNI(context.Background(), params)
+		err = cfg.SetupL3VNI(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -247,7 +252,8 @@ var _ = Describe("L3 VNI configuration", func() {
 			LinkIPs: nil,
 		}
 
-		err := SetupL3VNI(context.Background(), params)
+		cfg := newConfiguratorForTest(ovsClient)
+		err := cfg.SetupL3VNI(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -282,7 +288,8 @@ var _ = Describe("L3 VNI configuration", func() {
 			},
 		}
 
-		err := SetupL3VNI(context.Background(), params)
+		cfg := newConfiguratorForTest(ovsClient)
+		err := cfg.SetupL3VNI(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
 		expectedMTU := underlayMTU - VXLanOverhead
@@ -297,8 +304,8 @@ var _ = Describe("L3 VNI configuration", func() {
 	})
 
 	It("should leave veth MTU at default when no underlay interface is configured", func() {
-		// No fake underlay is set up here, so findUnderlayMTU returns 0
-		// and SetVethMTUForTunnelOverhead must leave the veth MTU untouched.
+		// No underlay MTU is passed here, so SetVethMTUForTunnelOverhead must
+		// leave the veth MTU untouched.
 		// The host-side veth is not attached to any bridge in the L3 path.
 		// The peer veth is attached to a VRF in the target namespace.
 		// The host leg's MTU reflects only what the code under test set.
@@ -316,7 +323,8 @@ var _ = Describe("L3 VNI configuration", func() {
 			},
 		}
 
-		err := SetupL3VNI(context.Background(), params)
+		cfg := newConfiguratorForTest(ovsClient)
+		err := cfg.SetupL3VNI(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -349,15 +357,6 @@ var _ = Describe("L2 VNI configuration", func() {
 		ovsClient.Close()
 	})
 
-	DescribeTable("rejects a configurator that was not built by NewL2VNIConfigurator",
-		func(cfg *L2VNIConfigurator) {
-			Expect(cfg.Setup(context.Background(), L2VNIParams{})).
-				To(MatchError(errL2VNIConfiguratorNotInitialized))
-		},
-		Entry("nil configurator", nil),
-		Entry("zero value", &L2VNIConfigurator{}),
-	)
-
 	It("should work with a single L2VNI", func() {
 		params := L2VNIParams{
 			VNIParams: VNIParams{
@@ -376,7 +375,7 @@ var _ = Describe("L2 VNI configuration", func() {
 
 		createVRFInNamespace(testNS, params.VRF)
 		cfg := newConfiguratorForTest(ovsClient)
-		err := cfg.Setup(context.Background(), params)
+		err := cfg.SetupL2VNI(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -444,7 +443,7 @@ var _ = Describe("L2 VNI configuration", func() {
 		cfg := newConfiguratorForTest(ovsClient)
 		for _, p := range params {
 			createVRFInNamespace(testNS, p.VRF)
-			err := cfg.Setup(context.Background(), p)
+			err := cfg.SetupL2VNI(context.Background(), p)
 			Expect(err).NotTo(HaveOccurred())
 
 			Eventually(func(g Gomega) {
@@ -496,11 +495,11 @@ var _ = Describe("L2 VNI configuration", func() {
 				createVRFInNamespace(testNS, params.VRF)
 			}
 			cfg := newConfiguratorForTest(ovsClient)
-			err := cfg.Setup(context.Background(), params)
+			err := cfg.SetupL2VNI(context.Background(), params)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Test idempotency - calling setup twice should work
-			err = cfg.Setup(context.Background(), params)
+			err = cfg.SetupL2VNI(context.Background(), params)
 			Expect(err).NotTo(HaveOccurred())
 
 			Eventually(func(g Gomega) {
@@ -591,7 +590,7 @@ var _ = Describe("L2 VNI configuration", func() {
 
 		createVRFInNamespace(testNS, params.VRF)
 		cfg := newConfiguratorForTest(ovsClient)
-		err := cfg.Setup(context.Background(), params)
+		err := cfg.SetupL2VNI(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
 		expectedMTU := underlayMTU - VXLanOverhead
@@ -624,7 +623,7 @@ var _ = Describe("L2 VNI configuration", func() {
 		}
 
 		createVRFInNamespace(testNS, params.VRF)
-		Expect(cfg.Setup(context.Background(), params)).To(Succeed())
+		Expect(cfg.SetupL2VNI(context.Background(), params)).To(Succeed())
 
 		expectedMTU := underlayMTU - VXLanOverhead
 		Eventually(func(g Gomega) {
@@ -659,7 +658,7 @@ var _ = Describe("L2 VNI configuration", func() {
 		createVRFInNamespace(testNS, params.VRF)
 		cfg := newConfiguratorForTest(ovsClient)
 		cfg.vtepDeviceIndex = vtepDevice.Attrs().Index
-		Expect(cfg.Setup(context.Background(), params)).To(Succeed())
+		Expect(cfg.SetupL2VNI(context.Background(), params)).To(Succeed())
 
 		vxlanName := vxLanNameFromVNI(params.VNI)
 		Eventually(func(g Gomega) {
@@ -689,7 +688,7 @@ var _ = Describe("L2 VNI configuration", func() {
 		}
 
 		createVRFInNamespace(testNS, params.VRF)
-		Expect(cfg.Setup(context.Background(), params)).To(Succeed())
+		Expect(cfg.SetupL2VNI(context.Background(), params)).To(Succeed())
 
 		Eventually(func(g Gomega) {
 			_ = netnamespace.In(testNS, func() error {
@@ -719,7 +718,7 @@ var _ = Describe("L2 VNI configuration", func() {
 
 		createVRFInNamespace(testNS, params.VRF)
 		cfg := newConfiguratorForTest(ovsClient)
-		err := cfg.Setup(context.Background(), params)
+		err := cfg.SetupL2VNI(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -1034,7 +1033,7 @@ const defaultVethMTU = 1500
 // setupFakeUnderlay creates a dummy interface inside the given namespace with
 // the underlay special address and a configurable MTU, so that FindUnderlayMTU
 // can locate it. It is intended for unit tests exercising the MTU propagation
-// behavior of L2VNIConfigurator.Setup / SetupL3VNI.
+// behavior of VNIConfigurator.SetupL2VNI / SetupL3VNI.
 func setupFakeUnderlay(ns netns.NsHandle, name string, mtu int) {
 	err := netnamespace.In(ns, func() error {
 		dummy := &netlink.Dummy{
@@ -1064,16 +1063,16 @@ func removeFakeUnderlay(ns netns.NsHandle, name string) {
 	})).NotTo(HaveOccurred(), "failed to remove fake underlay")
 }
 
-// newConfiguratorForTest builds an L2VNI configurator for the test namespace,
+// newConfiguratorForTest builds a VNI configurator for the test namespace,
 // borrowing the given OVS client, and closes its namespace handle when the test
 // finishes.
-func newConfiguratorForTest(ovsClient *OVSClient) *L2VNIConfigurator {
+func newConfiguratorForTest(ovsClient *OVSClient) *VNIConfigurator {
 	ns, err := netns.GetFromPath(testNSPath())
 	Expect(err).NotTo(HaveOccurred())
 	DeferCleanup(func() {
 		Expect(ns.Close()).To(Succeed())
 	})
-	cfg, err := NewL2VNIConfigurator(ns, ovsClient)
+	cfg, err := NewVNIConfigurator(ns, ovsClient)
 	Expect(err).NotTo(HaveOccurred())
 	return cfg
 }

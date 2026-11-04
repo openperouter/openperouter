@@ -60,22 +60,15 @@ type L2VNIParams struct {
 	HostMaster   *HostMaster
 }
 
-// L2VNIConfigurator sets up the L2VNIs of a datapath pass. Resolving its state
-// reads node-wide link state from the router namespace, so the caller builds
-// it once per pass and sets up every L2VNI through the same value. It borrows
-// the namespace handle and the OVS client, so the caller must keep both open
-// for as long as the configurator is in use.
-type L2VNIConfigurator struct {
+// VNIConfigurator sets up VNIs in the router namespace. It borrows the
+// namespace handle and the OVS client, so the caller must keep both open for as
+// long as the configurator is in use.
+type VNIConfigurator struct {
 	ns              netns.NsHandle
 	ovsClient       *OVSClient
 	underlayMTU     int
 	vtepDeviceIndex int
 }
-
-// errL2VNIConfiguratorNotInitialized is returned when Setup is called on a
-// configurator that was not built by NewL2VNIConfigurator.
-var errL2VNIConfiguratorNotInitialized = errors.New(
-	"l2vni configurator not initialized, build it with NewL2VNIConfigurator")
 
 type HostMaster struct {
 	Name       *string
@@ -98,11 +91,11 @@ func (e NotRouterInterfaceError) Error() string {
 	return fmt.Sprintf("interface %s is not a router interface", e.Name)
 }
 
-// NewL2VNIConfigurator resolves the state shared by the L2VNIs of a datapath
-// pass from the router namespace handle ns, and binds it to the OVS client used
-// for OVS-backed host masters. The caller keeps ownership of ns and ovsClient
-// and must keep them open for as long as the configurator is in use.
-func NewL2VNIConfigurator(ns netns.NsHandle, ovsClient *OVSClient) (*L2VNIConfigurator, error) {
+// NewVNIConfigurator builds a VNIConfigurator for the router namespace handle
+// ns, bound to ovsClient for OVS-backed host masters. The caller keeps
+// ownership of both and must keep them open for as long as the configurator is
+// in use.
+func NewVNIConfigurator(ns netns.NsHandle, ovsClient *OVSClient) (*VNIConfigurator, error) {
 	underlayMTU, err := FindUnderlayMTU(ns)
 	if err != nil {
 		return nil, fmt.Errorf("could not find underlay MTU: %w", err)
@@ -112,7 +105,7 @@ func NewL2VNIConfigurator(ns netns.NsHandle, ovsClient *OVSClient) (*L2VNIConfig
 	if err != nil {
 		return nil, err
 	}
-	return &L2VNIConfigurator{
+	return &VNIConfigurator{
 		ns:              ns,
 		ovsClient:       ovsClient,
 		underlayMTU:     underlayMTU,
@@ -120,31 +113,22 @@ func NewL2VNIConfigurator(ns netns.NsHandle, ovsClient *OVSClient) (*L2VNIConfig
 	}, nil
 }
 
-func setupVRFInNS(ctx context.Context, params VNIParams) error {
-	ns, err := netns.GetFromPath(params.TargetNS)
-	if err != nil {
-		return fmt.Errorf("failed to get network namespace %s: %w", params.TargetNS, err)
-	}
-	defer func() {
-		if err := ns.Close(); err != nil {
-			slog.Error("failed to close namespace", "namespace", params.TargetNS, "error", err)
-		}
-	}()
-	return netnamespace.In(ns, func() error {
-		slog.DebugContext(ctx, "setting up vrf", "vrf", params.VRF)
-		return setupVRF(params.VRF)
+func (c *VNIConfigurator) setupVRFInNS(ctx context.Context, vrf string, options ...string) error {
+	return netnamespace.In(c.ns, func() error {
+		slog.DebugContext(ctx, "setting up vrf", "vrf", vrf)
+		return setupVRF(vrf, options...)
 	})
 }
 
-// SetupL3VNI sets up a Layer 3 VNI in the target namespace.
-// It creates the VRF, then uses setupVNI to create the bridge
-// and VXLan interface, and moves the veth to the VRF corresponding
-// to the L3 routing domain, exposing it to the default host namespace.
-func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
-	if err := setupVRFInNS(ctx, params.VNIParams); err != nil {
+// SetupL3VNI sets up a Layer 3 VNI in the router namespace the configurator
+// was built for. It creates the VRF, then the bridge and VXLan interface, and
+// moves the veth to the VRF corresponding to the L3 routing domain, exposing
+// it to the default host namespace.
+func (c *VNIConfigurator) SetupL3VNI(ctx context.Context, params L3VNIParams) error {
+	if err := c.setupVRFInNS(ctx, params.VRF); err != nil {
 		return fmt.Errorf("SetupL3VNI: failed to setup VRF: %w", err)
 	}
-	if err := setupVNI(ctx, params.VNIParams, setAddrGenModeNone); err != nil {
+	if err := c.setupVNI(ctx, params.VNIParams, setAddrGenModeNone); err != nil {
 		return fmt.Errorf("SetupL3VNI: failed to setup VNI: %w", err)
 	}
 	slog.DebugContext(ctx, "setting up l3 VNI", "params", params)
@@ -155,10 +139,9 @@ func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
 		return nil
 	}
 
-	if err := setupHostVeth(
+	if err := c.setupHostVeth(
 		ctx,
 		vethNamesFromVNI(params.VNI),
-		params.TargetNS,
 		params.LinkIPs,
 		params.VRF,
 		params.TunnelOverhead); err != nil {
@@ -167,18 +150,13 @@ func SetupL3VNI(ctx context.Context, params L3VNIParams) error {
 	return nil
 }
 
-// Setup sets up a Layer 2 VNI in the router namespace the configurator was
-// built for. It uses setupVNIInNamespace to create the bridge and VXLan
-// interface, and connects the veth leg to the bridge, exposing the L2
-// domain to the default host namespace.
+// SetupL2VNI sets up a Layer 2 VNI in the router namespace the configurator
+// was built for. It creates the bridge and VXLan interface, and connects the
+// veth leg to the bridge, exposing the L2 domain to the default host namespace.
 // The VRF must already exist (created by SetupL3VNI); setupBridge
 // looks it up and binds the bridge to it.
-func (c *L2VNIConfigurator) Setup(ctx context.Context, params L2VNIParams) error {
-	// The zero value has no namespace, so it cannot set up any VNI.
-	if c == nil || c.ns == 0 {
-		return errL2VNIConfiguratorNotInitialized
-	}
-	if err := setupVNIInNamespace(ctx, params.VNIParams, c.ns, c.vtepDeviceIndex); err != nil {
+func (c *VNIConfigurator) SetupL2VNI(ctx context.Context, params L2VNIParams) error {
+	if err := c.setupVNI(ctx, params.VNIParams); err != nil {
 		return fmt.Errorf("SetupL2VNI: failed to setup VNI: %w", err)
 	}
 	vethNames := vethNamesFromVNI(params.VNI)
@@ -209,7 +187,7 @@ func (c *L2VNIConfigurator) Setup(ctx context.Context, params L2VNIParams) error
 	}
 
 	if err := netnamespace.In(c.ns, func() error {
-		return c.setupRouterSide(params, vethNames.NamespaceSide)
+		return c.setupL2VNIRouterSide(params, vethNames.NamespaceSide)
 	}); err != nil {
 		return err
 	}
@@ -217,10 +195,12 @@ func (c *L2VNIConfigurator) Setup(ctx context.Context, params L2VNIParams) error
 	return nil
 }
 
-func (c *L2VNIConfigurator) setupRouterSide(params L2VNIParams, vethName string) error {
+// setupL2VNIRouterSide configures the router side of the veth pair that backs
+// an L2VNI: its MTU and the bridge it is attached to.
+func (c *VNIConfigurator) setupL2VNIRouterSide(params L2VNIParams, vethName string) error {
 	peVeth, err := netlink.LinkByName(vethName)
 	if err != nil {
-		return fmt.Errorf("could not find peer veth %s in namespace %s: %w", vethName, params.TargetNS, err)
+		return fmt.Errorf("could not find peer veth %s in the router namespace: %w", vethName, err)
 	}
 
 	if err := SetVethMTUForTunnelOverhead(peVeth, c.underlayMTU, params.TunnelOverhead); err != nil {
@@ -230,7 +210,7 @@ func (c *L2VNIConfigurator) setupRouterSide(params L2VNIParams, vethName string)
 	name := BridgeName(params.VNI)
 	bridge, err := netlink.LinkByName(name)
 	if err != nil {
-		return fmt.Errorf("could not find bridge %s in namespace %s: %w", name, params.TargetNS, err)
+		return fmt.Errorf("could not find bridge %s in the router namespace: %w", name, err)
 	}
 	if err := linkSetMaster(peVeth, bridge); err != nil {
 		return fmt.Errorf("failed to set bridge %s as master of pe veth %s: %w", name, peVeth.Attrs().Name, err)
@@ -276,37 +256,18 @@ func SetupHostMaster(ctx context.Context, ovsClient *OVSClient, params L2VNIPara
 }
 
 // setupVNI sets up the configuration required by FRR to
-// serve a given VNI in the target namespace. This includes:
+// serve a given VNI in the router namespace the configurator was built for.
+// This includes:
 // - a linux Bridge, bound to the VRF when params.VRF is non-empty
 // - a VXLan interface
 //
 // The VRF must already exist when params.VRF is set; setupBridge
 // looks it up and returns an error if it is missing.
-func setupVNI(ctx context.Context, params VNIParams, bridgeOptions ...NetlinkOption) error {
-	ns, err := netns.GetFromPath(params.TargetNS)
-	if err != nil {
-		return fmt.Errorf("failed to get network namespace %s: %w", params.TargetNS, err)
-	}
-	defer closeNamespace(ns, params.TargetNS)
-
-	vtepDeviceIndex, err := tunnelEndpointIndexIn(ns)
-	if err != nil {
-		return err
-	}
-	return setupVNIInNamespace(ctx, params, ns, vtepDeviceIndex, bridgeOptions...)
-}
-
-func setupVNIInNamespace(
-	ctx context.Context,
-	params VNIParams,
-	ns netns.NsHandle,
-	vtepDeviceIndex int,
-	bridgeOptions ...NetlinkOption,
-) error {
+func (c *VNIConfigurator) setupVNI(ctx context.Context, params VNIParams, bridgeOptions ...NetlinkOption) error {
 	slog.DebugContext(ctx, "setting up VNI", "params", params)
 	defer slog.DebugContext(ctx, "end setting up VNI", "params", params)
 
-	return netnamespace.In(ns, func() error {
+	return netnamespace.In(c.ns, func() error {
 		slog.DebugContext(ctx, "setting up bridge")
 		bridge, err := setupBridge(params, bridgeOptions...)
 		if err != nil {
@@ -314,7 +275,7 @@ func setupVNIInNamespace(
 		}
 
 		slog.DebugContext(ctx, "setting up vxlan")
-		return setupVXLan(params, bridge, vtepDeviceIndex)
+		return setupVXLan(params, bridge, c.vtepDeviceIndex)
 	})
 }
 
@@ -612,12 +573,6 @@ func hostMaster(vni int32, m HostMaster) (netlink.Link, error) {
 		return nil, fmt.Errorf("getHostMaster: failed to create host bridge %d: %w", vni, err)
 	}
 	return bridge, nil
-}
-
-func closeNamespace(ns netns.NsHandle, namespace string) {
-	if err := ns.Close(); err != nil {
-		slog.Error("failed to close namespace", "namespace", namespace, "error", err)
-	}
 }
 
 // tunnelEndpointIndexIn returns the index of the VTEP source device in ns.

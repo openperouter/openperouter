@@ -44,23 +44,13 @@ func RemoveNonConfiguredVRFs(targetNS string, vrfs map[string]bool) error {
 	})
 }
 
-// setupHostVeth configures the veth pair that connects the host to the perouter namespace, for
-// L3VNI and L3VPN.
-func setupHostVeth(ctx context.Context, vethNames VethNames, targetNS string, linkIPs *LinkIPs,
+// setupHostVeth configures the veth pair that connects the host to the router
+// namespace the configurator was built for, for L3VNI and L3VPN.
+func (c *VNIConfigurator) setupHostVeth(ctx context.Context, vethNames VethNames, linkIPs *LinkIPs,
 	vrfName string, tunnelOverhead int) error {
-	if err := setupNamespacedVeth(ctx, vethNames, targetNS); err != nil {
+	if err := setupNamespacedVethInNamespace(ctx, vethNames, c.ns); err != nil {
 		return fmt.Errorf("failed to setup veth: %w", err)
 	}
-
-	ns, err := netns.GetFromPath(targetNS)
-	if err != nil {
-		return fmt.Errorf("failed to get network namespace %s: %w", targetNS, err)
-	}
-	defer func() {
-		if err := ns.Close(); err != nil {
-			slog.Error("failed to close namespace", "namespace", targetNS, "error", err)
-		}
-	}()
 
 	hostVethLink, err := netlink.LinkByName(vethNames.HostSide)
 	if errors.As(err, &netlink.LinkNotFoundError{}) {
@@ -75,28 +65,23 @@ func setupHostVeth(ctx context.Context, vethNames VethNames, targetNS string, li
 		return fmt.Errorf("failed to assign IPs to host veth: %w", err)
 	}
 
-	underlayMTU, err := FindUnderlayMTU(ns)
-	if err != nil {
-		return fmt.Errorf("could not find underlay MTU: %w", err)
-	}
-
-	if err := SetVethMTUForTunnelOverhead(hostVethLink, underlayMTU, tunnelOverhead); err != nil {
+	if err := SetVethMTUForTunnelOverhead(hostVethLink, c.underlayMTU, tunnelOverhead); err != nil {
 		return fmt.Errorf("failed to set MTU on host veth %s: %w", vethNames.HostSide, err)
 	}
 
-	return netnamespace.In(ns, func() error {
+	return netnamespace.In(c.ns, func() error {
 		peVethLink, err := netlink.LinkByName(vethNames.NamespaceSide)
 		if err != nil {
-			return fmt.Errorf("could not find peer veth %s in namespace %s: %w", vethNames.NamespaceSide, targetNS, err)
+			return fmt.Errorf("could not find peer veth %s in the router namespace: %w", vethNames.NamespaceSide, err)
 		}
 
-		if err := SetVethMTUForTunnelOverhead(peVethLink, underlayMTU, tunnelOverhead); err != nil {
+		if err := SetVethMTUForTunnelOverhead(peVethLink, c.underlayMTU, tunnelOverhead); err != nil {
 			return fmt.Errorf("failed to set MTU on pe veth %s: %w", vethNames.NamespaceSide, err)
 		}
 
 		vrfLink, err := netlink.LinkByName(vrfName)
 		if err != nil {
-			return fmt.Errorf("could not find vrf %s in namespace %s: %w", vrfName, targetNS, err)
+			return fmt.Errorf("could not find vrf %s in the router namespace: %w", vrfName, err)
 		}
 
 		err = linkSetMaster(peVethLink, vrfLink)

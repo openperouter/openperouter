@@ -168,7 +168,7 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 
 	slog.InfoContext(ctx, "removing deleted vnis")
 	if err := grout.RemoveNonConfiguredVNIs(ctx, groutClient, ovsClient, config.targetNamespace, configuredVNIs); err != nil {
-		return fmt.Errorf("failed to remove deleted vnis: %w", err)
+		return errors.Join(append(resourceErrors, fmt.Errorf("failed to remove deleted vnis: %w", err))...)
 	}
 
 	slog.InfoContext(ctx, "removing deleted l3vpns")
@@ -178,12 +178,12 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 
 	slog.InfoContext(ctx, "removing deleted vrfs")
 	if err := grout.RemoveNonConfiguredVRFs(ctx, groutClient, config.targetNamespace, configuredVRFs); err != nil {
-		return fmt.Errorf("failed to remove deleted vrfs: %w", err)
+		return errors.Join(append(resourceErrors, fmt.Errorf("failed to remove deleted vrfs: %w", err))...)
 	}
 
 	if len(apiConfig.L3Passthrough) == 0 {
 		if err := grout.RemovePassthrough(ctx, groutClient); err != nil {
-			return fmt.Errorf("failed to remove passthrough: %w", err)
+			return errors.Join(append(resourceErrors, fmt.Errorf("failed to remove passthrough: %w", err))...)
 		}
 	}
 
