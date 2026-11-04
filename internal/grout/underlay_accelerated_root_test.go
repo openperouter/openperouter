@@ -212,7 +212,7 @@ func TestRestoreAcceleratedUnderlayRestoresKernelDriver(t *testing.T) {
 	sysfs.addNetDevice(accelIface)
 	addHostDummy(t, "")
 
-	require.NoError(t, store.Save(devicestate.State{
+	require.NoError(t, store.Save(accelIface, devicestate.State{
 		InterfaceName:  accelIface,
 		PCIAddress:     testPCIAddr,
 		OriginalDriver: "igb",
