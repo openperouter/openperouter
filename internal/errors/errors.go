@@ -15,6 +15,7 @@ const (
 	KindL3VNI         = v1alpha1.FailedResourceKind("L3VNI")
 	KindL3VPN         = v1alpha1.FailedResourceKind("L3VPN")
 	KindL2VNI         = v1alpha1.FailedResourceKind("L2VNI")
+	KindL2Trunk       = v1alpha1.FailedResourceKind("L2Trunk")
 	KindL3Passthrough = v1alpha1.FailedResourceKind("L3Passthrough")
 )
 

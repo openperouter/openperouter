@@ -16,6 +16,7 @@ type APIConfigData struct {
 	Underlays     []v1alpha1.Underlay
 	L3VNIs        []v1alpha1.L3VNI
 	L2VNIs        []v1alpha1.L2VNI
+	L2Trunks      []v1alpha1.L2Trunk
 	L3VPNs        []v1alpha1.L3VPN
 	L3Passthrough []v1alpha1.L3Passthrough
 	RawFRRConfigs []v1alpha1.RawFRRConfig
@@ -26,6 +27,7 @@ type HostConfigData struct {
 	Underlay      hostnetwork.UnderlayParams
 	L3VNIs        []hostnetwork.L3VNIParams
 	L2VNIs        []hostnetwork.L2VNIParams
+	L2Trunks      []hostnetwork.L2TrunkParams
 	L3VPNs        []hostnetwork.L3VPNParams
 	L3Passthrough *hostnetwork.PassthroughParams
 }
@@ -47,6 +49,7 @@ func MergeAPIConfigs(configs ...APIConfigData) (APIConfigData, error) {
 		merged.Underlays = append(merged.Underlays, config.Underlays...)
 		merged.L3VNIs = append(merged.L3VNIs, config.L3VNIs...)
 		merged.L2VNIs = append(merged.L2VNIs, config.L2VNIs...)
+		merged.L2Trunks = append(merged.L2Trunks, config.L2Trunks...)
 		merged.L3VPNs = append(merged.L3VPNs, config.L3VPNs...)
 		merged.L3Passthrough = append(merged.L3Passthrough, config.L3Passthrough...)
 		merged.RawFRRConfigs = append(merged.RawFRRConfigs, config.RawFRRConfigs...)

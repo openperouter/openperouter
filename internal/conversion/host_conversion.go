@@ -64,6 +64,11 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig APIConfigData) (H
 		return HostConfigData{}, fmt.Errorf("failed to translate passthrough configuration to host, err: %w", err)
 	}
 
+	l2Trunks, err := l2trunksToHost(apiConfig.L2Trunks, targetNS)
+	if err != nil {
+		return HostConfigData{}, fmt.Errorf("failed to translate L2Trunks to host, err: %w", err)
+	}
+
 	// Thanks to validateTunnelEndpointForHostConfig, we know that if the tunnel endpoint is nil, L3VNIs, L2VNIs and
 	// L3VPNs are empty, too, and we must return early here.
 	if underlay.Spec.TunnelEndpoint == nil {
@@ -74,6 +79,7 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig APIConfigData) (H
 			},
 			L3VNIs:        []hostnetwork.L3VNIParams{},
 			L2VNIs:        []hostnetwork.L2VNIParams{},
+			L2Trunks:      l2Trunks,
 			L3Passthrough: l3Passthrough,
 		}, nil
 	}
@@ -113,7 +119,8 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig APIConfigData) (H
 		vtepIPs,
 		targetNS,
 		vrfMap,
-		tunnelOverheads.forL2VNIs)
+		tunnelOverheads.forL2VNIs,
+		l2Trunks)
 	if err != nil {
 		return HostConfigData{}, fmt.Errorf("failed to translate L2VNIs to host, err: %w", err)
 	}
@@ -136,6 +143,7 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig APIConfigData) (H
 		},
 		L3VNIs:        l3VNIs,
 		L2VNIs:        l2VNIs,
+		L2Trunks:      l2Trunks,
 		L3VPNs:        l3VPNs,
 		L3Passthrough: l3Passthrough,
 	}, nil
@@ -314,10 +322,16 @@ func l2vnisToHost(
 	targetNS string,
 	vrfMap map[string]string,
 	tunnelOverheads map[string]int,
+	l2Trunks []hostnetwork.L2TrunkParams,
 ) ([]hostnetwork.L2VNIParams, error) {
+	trunksByName := make(map[string]hostnetwork.L2TrunkParams, len(l2Trunks))
+	for _, trunk := range l2Trunks {
+		trunksByName[trunk.Name] = trunk
+	}
+
 	hostL2VNIs := []hostnetwork.L2VNIParams{}
 	for _, l2vni := range l2vnis {
-		vni, err := l2vniToHost(l2vni, vtepIPs, targetNS, vrfMap, tunnelOverheads)
+		vni, err := l2vniToHost(l2vni, vtepIPs, targetNS, vrfMap, tunnelOverheads, trunksByName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to translate L2VNI %s, err: %w", l2vni.Name, err)
 		}
@@ -332,6 +346,7 @@ func l2vniToHost(
 	targetNS string,
 	vrfMap map[string]string,
 	tunnelOverheads map[string]int,
+	trunksByName map[string]hostnetwork.L2TrunkParams,
 ) (hostnetwork.L2VNIParams, error) {
 	vtepIP, found := vtepIPs.forL2VNIs[l2vni.Name]
 	if !found {
@@ -368,7 +383,57 @@ func l2vniToHost(
 		}
 		hostL2VNI.HostMaster = hm
 	}
+	if l2vni.Spec.Trunk != nil {
+		trunk, found := trunksByName[l2vni.Spec.Trunk.Name]
+		if !found {
+			return hostnetwork.L2VNIParams{}, fmt.Errorf("L2VNI %s: referenced L2Trunk %s not found",
+				l2vni.Name, l2vni.Spec.Trunk.Name)
+		}
+		hostL2VNI.Trunk = &hostnetwork.L2VNITrunkParams{
+			Name:  trunk.Name,
+			VLAN:  l2vni.Spec.Trunk.VLAN.Tag,
+			SRIOV: trunk.SRIOV,
+		}
+	}
 	return hostL2VNI, nil
+}
+
+func l2trunksToHost(l2trunks []v1alpha1.L2Trunk, targetNS string) ([]hostnetwork.L2TrunkParams, error) {
+	hostL2Trunks := make([]hostnetwork.L2TrunkParams, 0, len(l2trunks))
+	for _, trunk := range l2trunks {
+		hostL2Trunk, err := l2trunkToHost(trunk, targetNS)
+		if err != nil {
+			return nil, fmt.Errorf("failed to translate L2Trunk %s, err: %w", trunk.Name, err)
+		}
+		hostL2Trunks = append(hostL2Trunks, hostL2Trunk)
+	}
+	return hostL2Trunks, nil
+}
+
+func l2trunkToHost(trunk v1alpha1.L2Trunk, targetNS string) (hostnetwork.L2TrunkParams, error) {
+	hostL2Trunk := hostnetwork.L2TrunkParams{
+		Name:     trunk.Name,
+		TargetNS: targetNS,
+	}
+	if trunk.Spec.Type != v1alpha1.L2TrunkTypeSRIOV {
+		return hostL2Trunk, nil
+	}
+	if err := validateSRIOVTrunk(trunk.Spec); err != nil {
+		return hostnetwork.L2TrunkParams{}, err
+	}
+
+	sriov := trunk.Spec.SRIOV
+	hostL2Trunk.SRIOV = &hostnetwork.SRIOVTrunkParams{
+		PFName:  sriov.PFName,
+		VFIndex: *sriov.VFIndex,
+	}
+	if sriov.AcceleratedConfig != nil {
+		hostL2Trunk.SRIOV.AcceleratedConfig = &hostnetwork.AcceleratedConfigParams{
+			RXQueues: sriov.AcceleratedConfig.RXQueues,
+			QSize:    sriov.AcceleratedConfig.QSize,
+		}
+	}
+	return hostL2Trunk, nil
 }
 
 func l3vpnsToHost(
