@@ -24,6 +24,7 @@ type GroutDatapathConfigurator struct {
 
 	groutSocketPath  string
 	deviceStateStore devicestate.Store
+	trunkStateStore  devicestate.Store
 	sysfs            pci.Sysfs
 	underlayPortMode grout.UnderlayPortMode
 }
@@ -32,6 +33,7 @@ func NewGroutConfigurator(groutSocketPath string, mode grout.UnderlayPortMode) *
 	return &GroutDatapathConfigurator{
 		groutSocketPath:  groutSocketPath,
 		deviceStateStore: devicestate.Store{Dir: "/var/run/grout/device-state"},
+		trunkStateStore:  devicestate.Store{Dir: "/var/run/grout/trunk-state"},
 		sysfs:            pci.Sysfs{Root: "/sys"},
 		underlayPortMode: mode,
 	}
@@ -72,6 +74,7 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 		L3VNIs:        config.L3VNIs,
 		L2VNIs:        config.L2VNIs,
 		L3VPNs:        config.L3VPNs,
+		L2Trunks:      config.L2Trunks,
 		L3Passthrough: config.L3Passthrough,
 	}
 	hostConfig, err := conversion.APItoHostConfig(config.nodeIndex, config.targetNamespace, apiConfig)
@@ -118,6 +121,9 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 		configuredL3VPNs = append(configuredL3VPNs, l3vpn)
 	}
 
+	trunks, err := g.setupL2Trunks(ctx, groutClient, hostConfig.L2Trunks)
+	resourceErrors = append(resourceErrors, err)
+
 	var configuredL2VNIs []hostnetwork.L2VNIParams
 	for _, vni := range hostConfig.L2VNIs {
 		if failedL3Domains.Has(vni.VRF) {
@@ -130,7 +136,7 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 			continue
 		}
 		slog.InfoContext(ctx, "setting up L2VNI", "vni", vni.VNI)
-		if err := grout.SetupL2VNI(ctx, groutClient, ovsClient, vni, nil); err != nil {
+		if err := grout.SetupL2VNI(ctx, groutClient, ovsClient, vni, trunks.configured); err != nil {
 			resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
 				Obj: v1alpha1.FailedResource{
 					Kind: openpeerrors.KindL2VNI, Name: vni.Name, Reason: reason, Message: err.Error(),
@@ -176,6 +182,12 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 		return fmt.Errorf("failed to remove deleted l3vpns: %w", err)
 	}
 
+	slog.InfoContext(ctx, "removing deleted l2trunks")
+	if err := grout.RemoveNonConfiguredL2Trunks(ctx, groutClient, config.targetNamespace, trunks.desiredPorts(),
+		g.trunkStateStore, g.sysfs); err != nil {
+		return fmt.Errorf("failed to remove deleted l2trunks: %w", err)
+	}
+
 	slog.InfoContext(ctx, "removing deleted vrfs")
 	if err := grout.RemoveNonConfiguredVRFs(ctx, groutClient, config.targetNamespace, configuredVRFs); err != nil {
 		return fmt.Errorf("failed to remove deleted vrfs: %w", err)
@@ -204,6 +216,9 @@ func (g *GroutDatapathConfigurator) cleanupGroutInterfaces(
 	if err := grout.RemoveAllL3VPNs(ctx, groutClient); err != nil {
 		slog.Warn("failed to remove l3vpns after underlay removal", "err", err)
 	}
+	if err := grout.RemoveAllL2Trunks(ctx, groutClient, targetNamespace, g.trunkStateStore, g.sysfs); err != nil {
+		slog.Warn("failed to remove l2trunks after underlay removal", "err", err)
+	}
 	if err := grout.RemoveAllVRFs(ctx, groutClient, targetNamespace); err != nil {
 		slog.Warn("failed to remove vrfs after underlay removal", "err", err)
 	}
@@ -215,4 +230,60 @@ func (g *GroutDatapathConfigurator) cleanupGroutInterfaces(
 		return fmt.Errorf("failed to remove underlay after underlay removal: %w", err)
 	}
 	return nil
+}
+
+// l2TrunkPorts tracks the grout ports of the L2Trunks of a configuration
+// pass.
+type l2TrunkPorts struct {
+	// desired holds the port of every trunk whose VF could be resolved,
+	// configured or not, so a trunk failing a transient check keeps its port.
+	desired map[string]string
+	// configured maps the trunks whose port is ready to carry L2VNIs to the
+	// name of their port.
+	configured map[string]string
+}
+
+func (p l2TrunkPorts) desiredPorts() []string {
+	ports := make([]string, 0, len(p.desired))
+	for _, port := range p.desired {
+		ports = append(ports, port)
+	}
+	return ports
+}
+
+func (g *GroutDatapathConfigurator) setupL2Trunks(
+	ctx context.Context,
+	groutClient *grout.Client,
+	l2Trunks []hostnetwork.L2TrunkParams,
+) (l2TrunkPorts, error) {
+	ports := l2TrunkPorts{
+		desired:    map[string]string{},
+		configured: map[string]string{},
+	}
+	var resourceErrors []error
+	for _, trunk := range l2Trunks {
+		slog.InfoContext(ctx, "setting up L2Trunk", "trunk", trunk.Name)
+		port, err := grout.L2TrunkPortName(trunk, g.sysfs)
+		if err != nil {
+			resourceErrors = append(resourceErrors, l2TrunkError(trunk.Name, err))
+			continue
+		}
+		ports.desired[trunk.Name] = port
+
+		if err := grout.SetupL2Trunk(ctx, groutClient, trunk, g.trunkStateStore, g.sysfs); err != nil {
+			resourceErrors = append(resourceErrors, l2TrunkError(trunk.Name, err))
+			continue
+		}
+		ports.configured[trunk.Name] = port
+	}
+	return ports, errors.Join(resourceErrors...)
+}
+
+func l2TrunkError(name string, err error) error {
+	return &openpeerrors.ResourceError{
+		Obj: v1alpha1.FailedResource{
+			Kind: openpeerrors.KindL2Trunk, Name: name,
+			Reason: v1alpha1.FailedResourceReasonOverlayAttachmentFailed, Message: err.Error(),
+		},
+	}
 }

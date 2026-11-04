@@ -63,11 +63,18 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 		validOverlays.L2VNIs, validOverlays.L3VNIs, validOverlays.L3VPNs)
 	resourceErrors = append(resourceErrors, err)
 
+	validL2Trunks, err := conversion.FilterValidL2Trunks(apiConfig.L2Trunks)
+	resourceErrors = append(resourceErrors, err)
+
+	validOverlays.L2VNIs, err = filterL2VNIsWithMissingTrunk(validOverlays.L2VNIs, validL2Trunks)
+	resourceErrors = append(resourceErrors, err)
+
 	config := conversion.APIConfigData{
 		Underlays:     apiConfig.Underlays,
 		L3VNIs:        validOverlays.L3VNIs,
 		L3VPNs:        validOverlays.L3VPNs,
 		L2VNIs:        validOverlays.L2VNIs,
+		L2Trunks:      validL2Trunks,
 		L3Passthrough: validOverlays.L3Passthrough,
 		RawFRRConfigs: apiConfig.RawFRRConfigs,
 		Passwords:     apiConfig.Passwords,
@@ -115,6 +122,10 @@ func normalizeConfig(config *conversion.APIConfigData) {
 	})
 
 	slices.SortFunc(config.L2VNIs, func(a, b v1alpha1.L2VNI) int {
+		return cmp.Compare(objectKey(&a), objectKey(&b))
+	})
+
+	slices.SortFunc(config.L2Trunks, func(a, b v1alpha1.L2Trunk) int {
 		return cmp.Compare(objectKey(&a), objectKey(&b))
 	})
 
@@ -179,6 +190,38 @@ func filterL2VNIsWithInvalidRoutingDomain(
 			}
 		}
 		valid = append(valid, l2)
+	}
+	return valid, errors.Join(resourceErrors...)
+}
+
+// filterL2VNIsWithMissingTrunk drops the L2VNIs referencing an L2Trunk that
+// does not apply to this node, or that failed validation. They stay in the
+// API, but lose their data plane configuration until the trunk is available.
+func filterL2VNIsWithMissingTrunk(l2Vnis []v1alpha1.L2VNI, validL2Trunks []v1alpha1.L2Trunk) ([]v1alpha1.L2VNI, error) {
+	if len(l2Vnis) == 0 {
+		return l2Vnis, nil
+	}
+
+	trunkNames := sets.New[string]()
+	for _, trunk := range validL2Trunks {
+		trunkNames.Insert(trunk.Name)
+	}
+
+	valid := make([]v1alpha1.L2VNI, 0, len(l2Vnis))
+	var resourceErrors []error
+	for _, l2 := range l2Vnis {
+		if l2.Spec.Trunk == nil || trunkNames.Has(l2.Spec.Trunk.Name) {
+			valid = append(valid, l2)
+			continue
+		}
+		resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
+			Obj: v1alpha1.FailedResource{
+				Kind:    openpeerrors.KindL2VNI,
+				Name:    l2.Name,
+				Reason:  v1alpha1.FailedResourceReasonDependencyFailed,
+				Message: fmt.Sprintf("referenced L2Trunk %q not found", l2.Spec.Trunk.Name),
+			},
+		})
 	}
 	return valid, errors.Join(resourceErrors...)
 }
