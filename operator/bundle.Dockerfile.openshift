@@ -17,6 +17,15 @@ RUN yq -e '.spec.install.spec.permissions[] | select(.serviceAccountName == "ope
 RUN yq -i '(.spec.install.spec.permissions[] | select(.serviceAccountName == "operator") | .rules) \
              += load("/overlay/networkpolicy_rbac.in.yaml")' "$CSV"
 
+# Upstream csv has `GROUT_IMAGE=quay.io/openperouter/router:main-grout` . After all the images substitutions
+# the bundle will contain a wrong value like:
+# registry.redhat.io/openshift4-dev-preview-beta/openperouter-rhel9-operator@sha256:<digest>-grout
+#
+# make the doenstream grout image equal to the operator image.
+RUN yq -e '.spec.install.spec.deployments[].spec.template.spec.containers[].env[] | select(.name == "GROUT_IMAGE")' "$CSV" > /dev/null
+RUN yq -i '(.spec.install.spec.deployments[].spec.template.spec.containers[].env[] | select(.name == "GROUT_IMAGE")).value \
+             = "quay.io/openperouter/router:main"' "$CSV"
+
 RUN if [ -n "$OPERATOR_IMAGE" ]; then \
       yq -i '(.[] | select(.key == "operator")).target = "'"$OPERATOR_IMAGE"'"' /overlay/pin_images.in.yaml && \
       /konflux-bundle-overlay.sh \
