@@ -73,6 +73,29 @@ spec:
 
 Like other OpenPERouter CRDs, `RawFRRConfig` supports the `nodeSelector` field to target specific nodes. See [Node Selector Configuration]({{< ref "node-selector.md" >}}) for details.
 
+## Interface Names with the Grout Datapath
+
+When the router runs with the [grout datapath]({{< ref "grout.md" >}}), FRR
+sees each underlay interface as the grout port it is attached to, named
+`u_<interfaceName>`. Raw snippets that reference an underlay interface must
+use the grout port name.
+
+For example, with an underlay interface named `eth1`:
+
+```yaml
+apiVersion: network.openperouter.io/v1alpha1
+kind: RawFRRConfig
+metadata:
+  name: isis-metric
+  namespace: openperouter-system
+spec:
+  rawConfig: |
+    interface u_eth1
+      isis metric 20
+```
+
+The same snippet with the kernel datapath must reference `eth1`.
+
 ## Caveats
 
 - **No syntax validation**: The raw configuration is injected as-is. If the FRR syntax is invalid, FRR will fail to reload and the configuration will not be applied.

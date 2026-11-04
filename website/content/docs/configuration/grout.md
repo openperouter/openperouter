@@ -279,6 +279,9 @@ spec:
 All `acceleratedConfig` fields are optional. The field can be omitted to use
 grout defaults for either port type.
 All underlay ports are named `u_<interfaceName>`, so interface names must be at most 13 characters.
+Underlay interfaces referenced in a `RawFRRConfig` must use the `u_` prefix.
+Other interface names, such as `vtep-lo`, remain unchanged.
+[Raw FRR Configuration]({{< ref "raw-frr-config.md" >}}).
 
 ## Verification
 
