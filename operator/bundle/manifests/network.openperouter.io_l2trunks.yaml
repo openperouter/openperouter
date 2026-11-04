@@ -172,18 +172,74 @@ spec:
                     type: object
                 type: object
                 x-kubernetes-map-type: atomic
+              sriov:
+                description: |-
+                  sriov selects the SR-IOV VF used as the trunk port. The VF is bound
+                  to grout and no host-side interface is created. Must be set when
+                  type is "SRIOV". Only supported by the grout data path.
+                  Immutable.
+                properties:
+                  acceleratedConfig:
+                    description: acceleratedConfig sets optional grout port parameters
+                      for the VF.
+                    properties:
+                      qSize:
+                        description: |-
+                          qSize is the descriptor ring size for each receive queue. Larger
+                          rings absorb traffic bursts at the cost of memory.
+                        format: int32
+                        maximum: 32768
+                        minimum: 64
+                        type: integer
+                      rxQueues:
+                        description: rxQueues is the number of receive queues to allocate
+                          on the DPDK port.
+                        format: int32
+                        maximum: 64
+                        minimum: 1
+                        type: integer
+                    type: object
+                  pfName:
+                    description: |-
+                      pfName is the kernel network interface name of the Physical Function
+                      that owns the VF (e.g. "enp1s0").
+                    maxLength: 15
+                    minLength: 1
+                    pattern: ^[a-zA-Z][a-zA-Z0-9._-]*$
+                    type: string
+                  vfIndex:
+                    description: |-
+                      vfIndex is the index of the VF on the PF. The VF must have no VLAN
+                      configured so it receives the tagged frames of every workload VF on
+                      the same PF.
+                    format: int32
+                    minimum: 0
+                    type: integer
+                required:
+                - pfName
+                - vfIndex
+                type: object
               type:
                 description: type selects the kind of port that carries the trunk's
                   tagged traffic.
                 enum:
                 - Host
+                - SRIOV
                 type: string
             required:
             - type
             type: object
             x-kubernetes-validations:
+            - message: hostMaster can only be set when type is 'Host'
+              rule: self.type == 'Host' || !has(self.hostMaster)
+            - message: 'type/config mismatch: sriov must be set if and only if type
+                is ''SRIOV'''
+              rule: has(self.sriov) == (self.type == 'SRIOV')
             - message: type is immutable
               rule: self.type == oldSelf.type
+            - message: sriov is immutable
+              rule: has(self.sriov) == has(oldSelf.sriov) && (!has(self.sriov) ||
+                self.sriov == oldSelf.sriov)
             - message: hostMaster is immutable
               rule: has(self.hostMaster) == has(oldSelf.hostMaster) && (!has(self.hostMaster)
                 || self.hostMaster == oldSelf.hostMaster)
