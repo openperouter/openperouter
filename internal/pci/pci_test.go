@@ -5,6 +5,7 @@ package pci
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -149,5 +150,65 @@ func TestPCIAddressForNetDevice_NotPCI(t *testing.T) {
 
 	if _, err := sysfs.PCIAddressForNetDevice(name); err == nil {
 		t.Fatal("expected error for non-PCI symlink target")
+	}
+}
+
+func TestPCIAddressForVF(t *testing.T) {
+	t.Parallel()
+	const pfName = "enp3s0f0"
+
+	tests := []struct {
+		name       string
+		vfIndex    int
+		linkTarget string
+		want       string
+		wantErr    string
+	}{
+		{
+			name:       "VF exists",
+			vfIndex:    1,
+			linkTarget: "../" + testPCIAddress,
+			want:       testPCIAddress,
+		},
+		{
+			name:    "VF index out of range",
+			vfIndex: 7,
+			wantErr: `failed to resolve VF 7 of PF "enp3s0f0" to PCI address`,
+		},
+		{
+			name:       "target is not a PCI address",
+			vfIndex:    1,
+			linkTarget: "../not-pci",
+			wantErr:    `resolved VF symlink target "not-pci" for VF 1 of "enp3s0f0" does not look like a PCI address`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			sysfs := Sysfs{Root: t.TempDir()}
+			deviceDir := filepath.Join(sysfs.Root, "class", "net", pfName, "device")
+			if err := os.MkdirAll(deviceDir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if tt.linkTarget != "" {
+				if err := os.Symlink(tt.linkTarget, filepath.Join(deviceDir, "virtfn1")); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			got, err := sysfs.PCIAddressForVF(pfName, tt.vfIndex)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("expected error containing %q, got %v", tt.wantErr, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("expected %s, got %s", tt.want, got)
+			}
+		})
 	}
 }

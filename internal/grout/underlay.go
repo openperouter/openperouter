@@ -226,7 +226,7 @@ func retrieveAndSaveDeviceState(
 	if err != nil {
 		return devicestate.State{}, err
 	}
-	if err := store.Save(state); err != nil {
+	if err := store.Save(interfaceName, state); err != nil {
 		return devicestate.State{}, fmt.Errorf("failed to save device state for %s: %w", interfaceName, err)
 	}
 	return state, nil
@@ -323,12 +323,22 @@ func deleteUnderlayPort(ctx context.Context, client *Client, ns netns.NsHandle, 
 // backing a TAP port, or a bifurcated device) back to the host namespace and
 // re-applies its saved addresses.
 func restoreNetdev(ctx context.Context, targetNS string, state devicestate.State) error {
-	if err := hostnetwork.RestoreUnderlayNetDevInterface(ctx, targetNS, state.InterfaceName); err != nil {
-		return fmt.Errorf("failed to move netdev %s back to the host namespace: %w", state.InterfaceName, err)
+	name, err := netdevNameInNamespace(targetNS, state)
+	if err != nil {
+		return err
+	}
+	if err := hostnetwork.RestoreUnderlayNetDevInterface(ctx, targetNS, name); err != nil {
+		return fmt.Errorf("failed to move netdev %s back to the host namespace: %w", name, err)
 	}
 
-	link, err := netlink.LinkByName(state.InterfaceName)
-	if errors.As(err, &netlink.LinkNotFoundError{}) {
+	handle, err := netlink.NewHandle()
+	if err != nil {
+		return fmt.Errorf("failed to get netlink handle: %w", err)
+	}
+	defer handle.Close()
+
+	link, err := findNetdev(handle, state.InterfaceName, state.PCIAddress)
+	if errors.Is(err, errNetdevNotFound) {
 		slog.WarnContext(ctx, "kernel netdev is gone, nothing to restore", "interfaceName", state.InterfaceName)
 		return nil
 	}
@@ -337,6 +347,38 @@ func restoreNetdev(ctx context.Context, targetNS string, state devicestate.State
 	}
 
 	return applyStateToLink(ctx, link, state)
+}
+
+// netdevNameInNamespace returns the current name of the device's netdev in
+// the namespace at nsPath, or the saved name when the netdev is not there.
+func netdevNameInNamespace(nsPath string, state devicestate.State) (string, error) {
+	if state.PCIAddress == "" {
+		return state.InterfaceName, nil
+	}
+
+	ns, err := netns.GetFromPath(nsPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to find network namespace %s: %w", nsPath, err)
+	}
+	defer func() {
+		if err := ns.Close(); err != nil {
+			slog.Error("failed to close namespace", "namespace", nsPath, "error", err)
+		}
+	}()
+	handle, err := netlink.NewHandleAt(ns)
+	if err != nil {
+		return "", fmt.Errorf("failed to get netlink handle for namespace %s: %w", nsPath, err)
+	}
+	defer handle.Close()
+
+	link, err := findNetdev(handle, state.InterfaceName, state.PCIAddress)
+	if errors.Is(err, errNetdevNotFound) {
+		return state.InterfaceName, nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return link.Attrs().Name, nil
 }
 
 func applyStateToLink(ctx context.Context, link netlink.Link, state devicestate.State) error {
@@ -489,6 +531,9 @@ func retrievePCIState(netdev string, sysfs pci.Sysfs) (string, string, error) {
 // A netdev no longer in the host namespace (moved, or unbound from its kernel
 // driver) has nothing left to remove.
 func removeSavedAddressesFromKernel(state devicestate.State) error {
+	if len(state.Addresses) == 0 {
+		return nil
+	}
 	link, err := netlink.LinkByName(state.InterfaceName)
 	if errors.As(err, &netlink.LinkNotFoundError{}) {
 		return nil

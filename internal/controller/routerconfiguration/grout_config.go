@@ -118,7 +118,7 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 			continue
 		}
 		slog.InfoContext(ctx, "setting up L2VNI", "vni", vni.VNI)
-		if err := grout.SetupL2VNI(ctx, groutClient, ovsClient, vni); err != nil {
+		if err := grout.SetupL2VNI(ctx, groutClient, ovsClient, vni, nil); err != nil {
 			resourceErrors = append(resourceErrors,
 				overlayAttachmentError(openpeerrors.KindL2VNI, vni.Name, err.Error()))
 			continue

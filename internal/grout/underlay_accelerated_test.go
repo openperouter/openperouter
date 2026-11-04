@@ -234,6 +234,17 @@ func (s *fakeSysfs) addNetClassDevice(name, deviceTarget string) {
 	}
 }
 
+// addVFLink points the PF's virtfn symlink of the given VF index at the
+// device, as the kernel does for SR-IOV VFs.
+func (s *fakeSysfs) addVFLink(pfName string, vfIndex int) {
+	s.t.Helper()
+	dir := filepath.Join(s.Root, "class", "net", pfName, "device")
+	s.mkdir(dir)
+	if err := os.Symlink("../"+s.pciAddr, filepath.Join(dir, fmt.Sprintf("virtfn%d", vfIndex))); err != nil {
+		s.t.Fatal(err)
+	}
+}
+
 func (s *fakeSysfs) devicePath(elem ...string) string {
 	return filepath.Join(append([]string{s.Root, "bus", "pci", "devices", s.pciAddr}, elem...)...)
 }
