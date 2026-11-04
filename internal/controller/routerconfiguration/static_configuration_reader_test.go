@@ -13,6 +13,7 @@ import (
 	"github.com/openperouter/openperouter/api/static"
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/conversion"
+	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/utils/ptr"
@@ -1223,6 +1224,47 @@ func TestStaticConfigToAPIConfig_L2VNIPreservesExplicitRoutingDomain(t *testing.
 	if result.L2VNIs[0].Spec.RoutingDomain.L3VNI.Name != "static-worker-1-my-l3vni" {
 		t.Errorf("expected RoutingDomain L3VNI name static-worker-1-my-l3vni, got %s", result.L2VNIs[0].Spec.RoutingDomain.L3VNI.Name)
 	}
+}
+
+func TestStaticConfigToAPIConfig_L2Trunk(t *testing.T) {
+	cfg := &static.PERouterConfig{
+		L2Trunks: []static.StaticL2Trunk{
+			{
+				Name: "workloads",
+				L2TrunkSpec: v1alpha1.L2TrunkSpec{
+					Type:  v1alpha1.L2TrunkTypeSRIOV,
+					SRIOV: &v1alpha1.SRIOVTrunkConfig{PFName: "enp1s0", VFIndex: new(int32(1))},
+				},
+			},
+		},
+		L2VNIs: []static.StaticL2VNI{
+			{
+				Name: "tenant-a",
+				L2VNISpec: v1alpha1.L2VNISpec{
+					VNI:   500,
+					Trunk: &v1alpha1.L2TrunkReference{Name: "workloads", VLAN: v1alpha1.VLANConfig{Tag: 33}},
+				},
+			},
+		},
+	}
+
+	result, err := staticConfigToAPIConfig(cfg, "worker-1", "ns")
+	require.NoError(t, err)
+
+	require.Len(t, result.L2Trunks, 1)
+	trunk := result.L2Trunks[0]
+	require.Equal(t, "static-worker-1-workloads", trunk.Name)
+	require.Equal(t, map[string]string{StaticSourceLabel: StaticSourceValue, StaticNodeLabel: "worker-1"}, trunk.Labels)
+	require.Equal(t, v1alpha1.L2TrunkSpec{
+		NodeSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"kubernetes.io/hostname": "worker-1"}},
+		Type:         v1alpha1.L2TrunkTypeSRIOV,
+		SRIOV:        &v1alpha1.SRIOVTrunkConfig{PFName: "enp1s0", VFIndex: new(int32(1))},
+	}, trunk.Spec)
+
+	require.Len(t, result.L2VNIs, 1)
+	require.Equal(t,
+		&v1alpha1.L2TrunkReference{Name: "static-worker-1-workloads", VLAN: v1alpha1.VLANConfig{Tag: 33}},
+		result.L2VNIs[0].Spec.Trunk)
 }
 
 func TestStaticConfigToAPIConfig_EmptyConfig(t *testing.T) {
