@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -47,6 +48,17 @@ func DumpIfFails(cs clientset.Interface, config Config) {
 	config.AdditionalNamespaces = slices.Compact(config.AdditionalNamespaces)
 
 	if ginkgo.CurrentSpecReport().Failed() {
+		specReport := ginkgo.CurrentSpecReport()
+		failureTime := specReport.Failure.TimelineLocation.Time
+		if failureTime.IsZero() {
+			failureTime = time.Now()
+		}
+		logsSince := specReport.StartTime
+		if logsSince.IsZero() || logsSince.After(failureTime) {
+			logsSince = failureTime.Add(-10 * time.Minute)
+		}
+		dumpFRRContainerLogs(config.ReportPath, specReport.FullText(), logsSince, failureTime)
+
 		opts := []func(dumpOptions *dumpOptions){
 			withFRR(),
 		}
@@ -70,6 +82,7 @@ func DumpIfFails(cs clientset.Interface, config Config) {
 			opts...,
 		)
 
+		dumpHostNetworkInfo(config.ReportPath, ginkgo.CurrentSpecReport().FullText(), cs, config.AdditionalNamespaces...)
 		for _, namespace := range config.AdditionalNamespaces {
 			dumpWorkloadInfo(config.ReportPath, ginkgo.CurrentSpecReport().FullText(), cs, namespace)
 		}
@@ -128,17 +141,50 @@ func onFRRK8sPods(cs clientset.Interface) func(dumpOptions *dumpOptions) {
 
 func onFRRContainers() func(dumpOptions *dumpOptions) {
 	return func(dumpOptions *dumpOptions) {
-		containers := []string{
-			infra.LeafA,
-			infra.LeafB,
-			infra.LeafSRV6,
-			infra.KindLeaf,
-			infra.KindLeaf2,
-			infra.Spine,
-		}
-		for _, c := range containers {
+		for _, c := range frrContainers() {
 			exec := executor.ForContainer(c)
 			dumpOptions.executors[c] = exec
+		}
+	}
+}
+
+func dumpFRRContainerLogs(basePath, testName string, since, failureTime time.Time) {
+	testPath, err := createTestOutput(basePath, testName)
+	if err != nil {
+		ginkgo.GinkgoWriter.Printf("dumpFRRContainerLogs: failed to create test dir: %v", err)
+		return
+	}
+
+	sinceArg := since.UTC().Format(time.RFC3339Nano)
+	untilArg := failureTime.UTC().Format(time.RFC3339Nano)
+
+	for _, container := range frrContainers() {
+		out, execErr := executor.Host.Exec(
+			executor.ContainerRuntime,
+			"logs",
+			"--timestamps",
+			"--since",
+			sinceArg,
+			"--until",
+			untilArg,
+			container,
+		)
+
+		f, err := logFileFor(testPath, fmt.Sprintf("containerlog-%s", container))
+		if err != nil {
+			ginkgo.GinkgoWriter.Printf("dumpFRRContainerLogs: failed to open log file for container %s: %v", container, err)
+			continue
+		}
+
+		fmt.Fprintf(f, "Dumping logs for %s from %s until %s\n", container, sinceArg, untilArg)
+		if execErr != nil {
+			fmt.Fprintf(f, "Failed to collect logs: %v\n", execErr)
+		}
+		if _, err := fmt.Fprint(f, out); err != nil {
+			ginkgo.GinkgoWriter.Printf("dumpFRRContainerLogs: failed to write logs for container %s: %v", container, err)
+		}
+		if err := f.Close(); err != nil {
+			ginkgo.GinkgoWriter.Printf("dumpFRRContainerLogs: failed to close log file for container %s: %v", container, err)
 		}
 	}
 }
@@ -366,6 +412,17 @@ func createTestOutput(basePath, testName string) (string, error) {
 		return "", fmt.Errorf("failed to create test dir: %w", err)
 	}
 	return testPath, nil
+}
+
+func frrContainers() []string {
+	return []string{
+		infra.LeafA,
+		infra.LeafB,
+		infra.LeafSRV6,
+		infra.KindLeaf,
+		infra.KindLeaf2,
+		infra.Spine,
+	}
 }
 
 func podNetworkInfo(exec executor.Executor) string {

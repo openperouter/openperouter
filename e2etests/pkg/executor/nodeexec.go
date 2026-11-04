@@ -19,8 +19,9 @@ import (
 )
 
 const (
-	nodeExecHelperName  = "node-exec-helper"
-	nodeExecHelperLabel = "app=" + nodeExecHelperName
+	nodeExecHelperName       = "node-exec-helper"
+	nodeExecHelperLabel      = "app=" + nodeExecHelperName
+	hostNetworkNamespacePath = "/run/netns"
 )
 
 var (
@@ -54,10 +55,23 @@ func SetupNodeExec(cs clientset.Interface, namespace, image string) error {
 					HostPID:            true,
 					HostNetwork:        true,
 					Tolerations:        []corev1.Toleration{{Operator: corev1.TolerationOpExists}},
+					Volumes: []corev1.Volume{{
+						Name: "host-network-namespaces",
+						VolumeSource: corev1.VolumeSource{
+							HostPath: &corev1.HostPathVolumeSource{
+								Path: hostNetworkNamespacePath,
+								Type: new(corev1.HostPathDirectoryOrCreate),
+							},
+						},
+					}},
 					Containers: []corev1.Container{{
 						Name:    "nsenter",
 						Image:   image,
 						Command: []string{"sleep", "infinity"},
+						VolumeMounts: []corev1.VolumeMount{{
+							Name:      "host-network-namespaces",
+							MountPath: hostNetworkNamespacePath,
+						}},
 						SecurityContext: &corev1.SecurityContext{
 							Privileged: new(true),
 						},
@@ -126,10 +140,15 @@ func TeardownNodeExec() error {
 
 type nodeExecutor struct {
 	nodeName string
+	inHelper bool
 }
 
 func ForNode(nodeName string) Executor {
 	return &nodeExecutor{nodeName: nodeName}
+}
+
+func ForNodeCapture(nodeName string) Executor {
+	return &nodeExecutor{nodeName: nodeName, inHelper: true}
 }
 
 func (e *nodeExecutor) Exec(cmd string, args ...string) (string, error) {
@@ -140,17 +159,23 @@ func (e *nodeExecutor) Exec(cmd string, args ...string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	nsenterArgs := []string{
-		"exec", podName, "-n", forNodeNamespace, "-c", "nsenter", "--",
-		"chroot", "/proc/1/root",
-		"nsenter",
-		"--target", "1",
-		"--mount", "-u",
-		"--ipc",
-		"--net",
-		cmd}
-	fullargs := append(nsenterArgs, args...)
-	out, err := exec.Command(Kubectl, fullargs...).CombinedOutput()
+
+	execArgs := []string{"exec", podName, "-n", forNodeNamespace, "-c", "nsenter", "--"}
+	if e.inHelper {
+		execArgs = append(execArgs, cmd)
+		execArgs = append(execArgs, args...)
+	} else {
+		execArgs = append(execArgs,
+			"chroot", "/proc/1/root",
+			"nsenter",
+			"--target", "1",
+			"--mount", "-u",
+			"--ipc",
+			"--net",
+			cmd)
+		execArgs = append(execArgs, args...)
+	}
+	out, err := exec.Command(Kubectl, execArgs...).CombinedOutput()
 	if err != nil {
 		return string(out), fmt.Errorf("exec on node via pod %s/%s failed: %w. Output: %s",
 			forNodeNamespace, podName, err, string(out))

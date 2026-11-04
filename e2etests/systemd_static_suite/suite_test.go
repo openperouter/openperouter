@@ -30,7 +30,7 @@ var (
 // handleFlags sets up all flags and parses the command line.
 func handleFlags() {
 	flag.StringVar(&executor.Kubectl, "kubectl", "kubectl", "the path for the kubectl binary")
-	flag.StringVar(&nodeExecImage, "node-exec-image", "busybox:1.36", "container image for node-exec-helper pods")
+	flag.StringVar(&nodeExecImage, "node-exec-image", "docker.io/nicolaka/netshoot:v0.15", "container image for node-exec-helper pods")
 	flag.StringVar(&reportPath, "reporterpath", "/tmp", "the path for the reporter")
 	flag.Parse()
 }
