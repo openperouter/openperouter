@@ -8,9 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/openperouter/openperouter/internal/netnamespace"
 	"github.com/vishvananda/netlink"
-	"github.com/vishvananda/netns"
 )
 
 const (
@@ -25,21 +23,19 @@ type L3VPNParams struct {
 	Name             string
 	LinkIPs          *LinkIPs
 	VRF              string
-	TargetNS         string
 	RDAssignedNumber int32
 	TunnelOverhead   int
 }
 
-// SetupL3VPN sets up a Layer 3 VPN in the target namespace.
-// It uses setupL3VPN to create the necessary VRF, and moves the veth to the
-// VRF corresponding to the L3 routing domain, exposing it to the default host
-// namespace.
-func SetupL3VPN(ctx context.Context, params L3VPNParams) error {
+// SetupL3VPN sets up a Layer 3 VPN in the router namespace the configurator
+// was built for. It creates the VRF and moves the veth to it, exposing the VPN
+// to the default host namespace.
+func (c *VNIConfigurator) SetupL3VPN(ctx context.Context, params L3VPNParams) error {
 	slog.DebugContext(ctx, "setting up L3VPN", "params", params)
 	defer slog.DebugContext(ctx, "end setting up L3VPN", "params", params)
 
-	if err := setupL3VPN(ctx, params); err != nil {
-		return fmt.Errorf("SetupL3VPN: failed to setup L3VPN: %w", err)
+	if err := c.setupVRFInNS(ctx, params.VRF, srv6VRF); err != nil {
+		return fmt.Errorf("SetupL3VPN: failed to setup VRF: %w", err)
 	}
 
 	if params.LinkIPs == nil {
@@ -47,37 +43,15 @@ func SetupL3VPN(ctx context.Context, params L3VPNParams) error {
 		return nil
 	}
 
-	if err := setupHostVeth(
+	if err := c.setupHostVeth(
 		ctx,
 		vethNamesFromL3VPN(params.RDAssignedNumber),
-		params.TargetNS,
 		params.LinkIPs,
 		params.VRF,
 		params.TunnelOverhead); err != nil {
 		return fmt.Errorf("SetupL3VPN: failed to setup host veth pair: %w", err)
 	}
 	return nil
-}
-
-// setupL3VPN sets up the configuration required by FRR to
-// serve a given L3VPN in the target namespace. This includes:
-// - a linux VRF
-// - sysctl strict mode and disable RP filter (for SRv6)
-func setupL3VPN(ctx context.Context, params L3VPNParams) error {
-	ns, err := netns.GetFromPath(params.TargetNS)
-	if err != nil {
-		return fmt.Errorf("failed to get network namespace %s: %w", params.TargetNS, err)
-	}
-	defer func() {
-		if err := ns.Close(); err != nil {
-			slog.Error("failed to close namespace", "namespace", params.TargetNS, "error", err)
-		}
-	}()
-
-	return netnamespace.In(ns, func() error {
-		slog.DebugContext(ctx, "setting up vrf", "vrf", params.VRF)
-		return setupVRF(params.VRF, srv6VRF)
-	})
 }
 
 // RemoveAllL3VPNs removes the host side of the veths of all L3VPNs.
