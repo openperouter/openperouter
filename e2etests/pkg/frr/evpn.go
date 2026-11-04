@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net"
 	"slices"
 	"strconv"
 	"strings"
@@ -36,6 +37,26 @@ type EVPNData struct {
 	Entries          []RdEntry `json:"-"` // handled manually
 	NumPrefix        int       `json:"numPrefix"`
 	TotalPrefix      int       `json:"totalPrefix"`
+}
+
+// ContainsType5RouteWithRouterMAC matches the prefix, VTEP, route target and RMAC on one valid path.
+func (e *EVPNData) ContainsType5RouteWithRouterMAC(prefix, vtep string, rt v1alpha1.RouteTarget, mac string) bool {
+	parsedMAC, err := net.ParseMAC(mac)
+	if err != nil {
+		return false
+	}
+	mac = parsedMAC.String()
+	for _, path := range e.allPaths() {
+		if !path.Valid || path.RouteType != 5 || fmt.Sprintf("%s/%d", path.IP, path.IPLen) != prefix {
+			continue
+		}
+		communities := strings.Fields(path.ExtendedCommunity.String)
+		if pathHasVTEP(path, vtep) && slices.Contains(communities, "RT:"+string(rt)) &&
+			slices.Contains(communities, "Rmac:"+mac) {
+			return true
+		}
+	}
+	return false
 }
 
 // ContainsRouteWithRD matches a Type-2 MAC/IP address or Type-5 prefix inside one RD.

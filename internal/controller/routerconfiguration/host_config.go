@@ -30,6 +30,7 @@ type interfacesConfiguration struct {
 // It supports the full API surface.
 type KernelDatapathConfigurator struct {
 	conversion.KernelDatapathConfigValidator
+	RouterMAC string
 }
 
 func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config interfacesConfiguration) error { // nolint:gocognit
@@ -94,6 +95,7 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 
 	var configuredL3VNIs []hostnetwork.L3VNIParams
 	for _, vni := range hostConfig.L3VNIs {
+		vni.RouterMAC = k.RouterMAC
 		slog.InfoContext(ctx, "setting up VNI", "vni", vni.VRF)
 		if err := hostnetwork.SetupL3VNI(ctx, vni); err != nil {
 			resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
