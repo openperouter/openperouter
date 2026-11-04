@@ -6,6 +6,7 @@ package pci
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 )
@@ -47,6 +48,22 @@ func (s Sysfs) PCIAddressForNetDevice(name string) (string, error) {
 	}
 	if !isPCIAddress(pciAddr) {
 		return "", fmt.Errorf("resolved device symlink target %q for %q does not look like a PCI address", pciAddr, name)
+	}
+	return pciAddr, nil
+}
+
+// PCIAddressForVF returns the PCI address of the VF with the given index on
+// the PF netdev, by reading the PF's "virtfn<index>" sysfs symlink.
+func (s Sysfs) PCIAddressForVF(pfName string, vfIndex int) (string, error) {
+	vfLink := filepath.Join(s.Root, "class", "net", pfName, "device", fmt.Sprintf("virtfn%d", vfIndex))
+	target, err := os.Readlink(vfLink)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve VF %d of PF %q to PCI address: %w", vfIndex, pfName, err)
+	}
+	pciAddr := filepath.Base(target)
+	if !isPCIAddress(pciAddr) {
+		return "", fmt.Errorf("resolved VF symlink target %q for VF %d of %q does not look like a PCI address",
+			pciAddr, vfIndex, pfName)
 	}
 	return pciAddr, nil
 }
