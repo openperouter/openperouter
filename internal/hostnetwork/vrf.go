@@ -58,24 +58,11 @@ func setupVRF(name string, opts ...string) error {
 }
 
 func createVRF(name string) (*netlink.Vrf, error) {
-	tableID, err := findFreeRoutingTableID()
-	if err != nil {
-		return nil, err
-	}
-
-	toCreate := &netlink.Vrf{
-		LinkAttrs: netlink.LinkAttrs{Name: name},
-		Table:     tableID,
-	}
-
 	link, err := netlink.LinkByName(name)
 
 	// does not exist. Let's create.
 	if errors.As(err, &netlink.LinkNotFoundError{}) {
-		if err := netlink.LinkAdd(toCreate); err != nil {
-			return nil, fmt.Errorf("could not add VRF %s: %v", name, err)
-		}
-		return toCreate, nil
+		return addVRF(name)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("could not get link by name %s: %v", name, err)
@@ -91,6 +78,20 @@ func createVRF(name string) (*netlink.Vrf, error) {
 	err = netlink.LinkDel(link)
 	if err != nil {
 		return nil, fmt.Errorf("failed to delete link %v: %w", link, err)
+	}
+	return addVRF(name)
+}
+
+// addVRF creates a VRF with the first free routing table ID.
+func addVRF(name string) (*netlink.Vrf, error) {
+	tableID, err := findFreeRoutingTableID()
+	if err != nil {
+		return nil, err
+	}
+
+	toCreate := &netlink.Vrf{
+		LinkAttrs: netlink.LinkAttrs{Name: name},
+		Table:     tableID,
 	}
 	if err := netlink.LinkAdd(toCreate); err != nil {
 		return nil, fmt.Errorf("could not add VRF %s: %v", name, err)
