@@ -22,7 +22,7 @@ RUN GOEXPERIMENT=strictfipsruntime CGO_ENABLED=1 GOOS=${TARGETOS:-linux} GOARCH=
 
 FROM registry.redhat.io/openshift4/ose-container-networking-plugins-rhel9:v4.22.0-202606220442.p2.g659bc0a.assembly.stream.el9 as openshift-cni-binaries
 
-FROM registry.redhat.io/ubi10/ubi:10.2-1792744468 as operator-runtime
+FROM registry.redhat.io/ubi10/ubi:10.2-1793697573 as operator-runtime
 
 # Enable the repositories that provide FRR (Fast Datapath) and its dependencies.
 RUN . /etc/os-release && \
