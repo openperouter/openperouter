@@ -80,6 +80,7 @@ type requestKey string
 // +kubebuilder:rbac:groups=network.openperouter.io,resources=l2vnis,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=network.openperouter.io,resources=l2vnis/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=network.openperouter.io,resources=l2vnis/finalizers,verbs=update
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=l2trunks,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=network.openperouter.io,resources=l3vpns,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=network.openperouter.io,resources=l3vpns/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=network.openperouter.io,resources=l3vpns/finalizers,verbs=update

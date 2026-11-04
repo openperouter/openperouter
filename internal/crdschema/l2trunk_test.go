@@ -48,6 +48,59 @@ func TestL2TrunkSchema(t *testing.T) {
 			wantErr: `Unsupported value: "Other"`,
 		},
 		{
+			name: "SR-IOV VF", kind: "L2Trunk",
+			spec: map[string]any{"type": "SRIOV", "sriov": trunkSRIOV("enp1s0", 1)},
+		},
+		{
+			name: "SR-IOV VF with accelerated config", kind: "L2Trunk",
+			spec: map[string]any{"type": "SRIOV", "sriov": map[string]any{
+				"pfName": "enp1s0", "vfIndex": int64(0),
+				"acceleratedConfig": map[string]any{"rxQueues": int64(4), "qSize": int64(2048)},
+			}},
+		},
+		{
+			name: "SR-IOV without sriov", kind: "L2Trunk", spec: map[string]any{"type": "SRIOV"},
+			wantErr: "type/config mismatch: sriov must be set if and only if type is 'SRIOV'",
+		},
+		{
+			name: "host with sriov", kind: "L2Trunk",
+			spec:    map[string]any{"type": "Host", "sriov": trunkSRIOV("enp1s0", 1)},
+			wantErr: "type/config mismatch: sriov must be set if and only if type is 'SRIOV'",
+		},
+		{
+			name: "SR-IOV with hostMaster", kind: "L2Trunk",
+			spec: map[string]any{
+				"type": "SRIOV", "sriov": trunkSRIOV("enp1s0", 1),
+				"hostMaster": trunkHostMaster("LinuxBridge", "External"),
+			},
+			wantErr: "hostMaster can only be set when type is 'Host'",
+		},
+		{
+			name: "SR-IOV missing pfName", kind: "L2Trunk",
+			spec:    map[string]any{"type": "SRIOV", "sriov": map[string]any{"vfIndex": int64(1)}},
+			wantErr: "pfName: Required value",
+		},
+		{
+			name: "SR-IOV missing vfIndex", kind: "L2Trunk",
+			spec:    map[string]any{"type": "SRIOV", "sriov": map[string]any{"pfName": "enp1s0"}},
+			wantErr: "vfIndex: Required value",
+		},
+		{
+			name: "SR-IOV negative vfIndex", kind: "L2Trunk",
+			spec:    map[string]any{"type": "SRIOV", "sriov": trunkSRIOV("enp1s0", -1)},
+			wantErr: "should be greater than or equal to 0",
+		},
+		{
+			name: "SR-IOV invalid pfName", kind: "L2Trunk",
+			spec:    map[string]any{"type": "SRIOV", "sriov": trunkSRIOV("1enp", 1)},
+			wantErr: "should match",
+		},
+		{
+			name: "SR-IOV pfName too long", kind: "L2Trunk",
+			spec:    map[string]any{"type": "SRIOV", "sriov": trunkSRIOV("enp1s0f0abcdefgh", 1)},
+			wantErr: "may not be more than 15 bytes",
+		},
+		{
 			name: "standalone L2VNI", kind: "L2VNI", spec: map[string]any{"vni": int64(100)},
 		},
 		{
@@ -173,6 +226,23 @@ func TestTrunkImmutability(t *testing.T) {
 			oldSpec: map[string]any{"type": "Host", "hostMaster": trunkHostMaster("LinuxBridge", "External")},
 			wantErr: "hostMaster is immutable",
 		},
+		{
+			name: "unchanged VF", kind: "L2Trunk",
+			oldSpec: map[string]any{"type": "SRIOV", "sriov": trunkSRIOV("enp1s0", 1)},
+			newSpec: map[string]any{"type": "SRIOV", "sriov": trunkSRIOV("enp1s0", 1)},
+		},
+		{
+			name: "change VF", kind: "L2Trunk",
+			oldSpec: map[string]any{"type": "SRIOV", "sriov": trunkSRIOV("enp1s0", 1)},
+			newSpec: map[string]any{"type": "SRIOV", "sriov": trunkSRIOV("enp1s0", 2)},
+			wantErr: "sriov is immutable",
+		},
+		{
+			name: "change type", kind: "L2Trunk",
+			oldSpec: map[string]any{"type": "Host"},
+			newSpec: map[string]any{"type": "SRIOV", "sriov": trunkSRIOV("enp1s0", 1)},
+			wantErr: "type is immutable",
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -209,4 +279,8 @@ func trunkHostMaster(kind, lifecycle string) map[string]any {
 
 func trunkReference(name string, tag int64) map[string]any {
 	return map[string]any{"name": name, "vlan": map[string]any{"tag": tag}}
+}
+
+func trunkSRIOV(pfName string, vfIndex int64) map[string]any {
+	return map[string]any{"pfName": pfName, "vfIndex": vfIndex}
 }
