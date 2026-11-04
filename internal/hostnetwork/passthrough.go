@@ -23,22 +23,14 @@ var PassthroughNames = VethNames{
 	NamespaceSide: "pt-ns",
 }
 
-func SetupPassthrough(ctx context.Context, params PassthroughParams) error {
+// SetupPassthroughInNamespace sets up the passthrough in the already open
+// router namespace handle ns.
+func SetupPassthroughInNamespace(ctx context.Context, ns netns.NsHandle, params PassthroughParams) error {
 	slog.DebugContext(ctx, "setup passthrough", "params", params)
 	defer slog.DebugContext(ctx, "setup passthrough done")
-	if err := setupNamespacedVeth(ctx, PassthroughNames, params.TargetNS); err != nil {
+	if err := setupNamespacedVeth(ctx, PassthroughNames, ns); err != nil {
 		return fmt.Errorf("SetupPassthrough: failed to setup VNI veth: %w", err)
 	}
-
-	ns, err := netns.GetFromPath(params.TargetNS)
-	if err != nil {
-		return fmt.Errorf("SetupVNI: Failed to get network namespace %s: %w", params.TargetNS, err)
-	}
-	defer func() {
-		if err := ns.Close(); err != nil {
-			slog.Error("failed to close namespace", "namespace", params.TargetNS, "error", err)
-		}
-	}()
 
 	hostVeth, err := netlink.LinkByName(PassthroughNames.HostSide)
 	if errors.As(err, &netlink.LinkNotFoundError{}) {
@@ -67,20 +59,12 @@ func SetupPassthrough(ctx context.Context, params PassthroughParams) error {
 	return nil
 }
 
-func RemovePassthrough(targetNS string) error {
+// RemovePassthroughInNamespace removes the passthrough from the already open
+// router namespace handle ns.
+func RemovePassthroughInNamespace(ns netns.NsHandle) error {
 	if err := RemoveLinkByName(PassthroughNames.HostSide); err != nil {
 		return fmt.Errorf("RemovePassthrough: failed to remove host link %s: %w", PassthroughNames.HostSide, err)
 	}
-
-	ns, err := netns.GetFromPath(targetNS)
-	if err != nil {
-		return fmt.Errorf("RemovePassthrough: failed to get network namespace %s: %w", targetNS, err)
-	}
-	defer func() {
-		if err := ns.Close(); err != nil {
-			slog.Error("failed to close namespace", "namespace", targetNS, "error", err)
-		}
-	}()
 
 	if err := netnamespace.In(ns, func() error {
 		if err := RemoveLinkByName(PassthroughNames.NamespaceSide); err != nil {

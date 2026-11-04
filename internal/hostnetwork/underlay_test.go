@@ -56,7 +56,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 			},
 			TargetNS: underlayTestNSPath(),
 		}
-		err := SetupUnderlay(context.Background(), params)
+		err := SetupUnderlayInNamespace(context.Background(), testNs, params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -72,9 +72,9 @@ var _ = Describe("Underlay configuration should work when", func() {
 			},
 			TargetNS: underlayTestNSPath(),
 		}
-		err := SetupUnderlay(context.Background(), params)
+		err := SetupUnderlayInNamespace(context.Background(), testNs, params)
 		Expect(err).NotTo(HaveOccurred())
-		err = SetupUnderlay(context.Background(), params)
+		err = SetupUnderlayInNamespace(context.Background(), testNs, params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -90,7 +90,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 			},
 			TargetNS: underlayTestNSPath(),
 		}
-		err := SetupUnderlay(context.Background(), params)
+		err := SetupUnderlayInNamespace(context.Background(), testNs, params)
 		Expect(err).NotTo(HaveOccurred())
 		Eventually(func(g Gomega) {
 			validateUnderlayInNS(g, testNs, params)
@@ -103,7 +103,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 			},
 			TargetNS: underlayTestNSPath(),
 		}
-		err = SetupUnderlay(context.Background(), newParams)
+		err = SetupUnderlayInNamespace(context.Background(), testNs, newParams)
 		Expect(err).NotTo(HaveOccurred())
 
 		By("verifying the new interface is in the target namespace")
@@ -136,7 +136,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 			},
 			TargetNS: underlayTestNSPath(),
 		}
-		err := SetupUnderlay(context.Background(), params)
+		err := SetupUnderlayInNamespace(context.Background(), testNs, params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -146,7 +146,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 		params.TunnelEndpoint.IPv4CIDR = "192.168.1.2/32"
 		params.TunnelEndpoint.IPv6CIDR = "2001:db8:192:168:1::2/128"
 
-		err = SetupUnderlay(context.Background(), params)
+		err = SetupUnderlayInNamespace(context.Background(), testNs, params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -159,7 +159,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 			UnderlayInterfaces: netdevInterfaces(underlayTestInterface),
 			TargetNS:           underlayTestNSPath(),
 		}
-		err := SetupUnderlay(context.Background(), params)
+		err := SetupUnderlayInNamespace(context.Background(), testNs, params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -175,7 +175,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 				IPv6CIDR: "2001:db8:192:168::1/128",
 			},
 		}
-		err := SetupUnderlay(context.Background(), params)
+		err := SetupUnderlayInNamespace(context.Background(), testNs, params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -192,7 +192,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 				IPv6CIDR: "2001:db8:192:168::1/128",
 			},
 		}
-		err := SetupUnderlay(context.Background(), params)
+		err := SetupUnderlayInNamespace(context.Background(), testNs, params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -211,7 +211,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 			},
 			TargetNS: underlayTestNSPath(),
 		}
-		Expect(SetupUnderlay(context.Background(), params)).To(Succeed())
+		Expect(SetupUnderlayInNamespace(context.Background(), testNs, params)).To(Succeed())
 
 		By("verifying the interfaces have the original IP while in the target namespace and have the correct group ID")
 		Eventually(func(g Gomega) {
@@ -225,7 +225,7 @@ var _ = Describe("Underlay configuration should work when", func() {
 				Kind:          UnderlayInterfaceNetDev,
 			})
 		}
-		Expect(RestoreUnderlay(context.Background(), underlayTestNSPath(), ifacesToRemove)).To(Succeed())
+		Expect(RestoreUnderlayInNamespace(context.Background(), testNs, ifacesToRemove)).To(Succeed())
 
 		By("verifying the tunnel endpoint interface was deleted from the target namespace")
 		Eventually(func(g Gomega) {
@@ -289,6 +289,8 @@ var _ = Describe("UnderlayInterfacesToRemove", func() {
 })
 
 var _ = Describe("UnderlayInterfaces", func() {
+	var testNs netns.NsHandle
+
 	AfterEach(func() {
 		cleanTest(underlayTestNS)
 	})
@@ -296,13 +298,11 @@ var _ = Describe("UnderlayInterfaces", func() {
 	BeforeEach(func() {
 		cleanTest(underlayTestNS)
 		Expect(createInterface(underlayTestInterface, externalInterfaceIP)).To(Succeed())
-		createTestNS(underlayTestNS)
+		testNs = createTestNS(underlayTestNS)
 	})
 
 	It("should return empty when no underlay interfaces exist", func() {
-		ifaces, err := UnderlayInterfaces(underlayTestNSPath())
-		Expect(err).NotTo(HaveOccurred())
-		Expect(ifaces).To(BeEmpty())
+		Expect(UnderlayInterfacesInNamespace(testNs)).To(BeEmpty())
 	})
 
 	It("should return interface names after setup", func() {
@@ -310,19 +310,17 @@ var _ = Describe("UnderlayInterfaces", func() {
 			UnderlayInterfaces: netdevInterfaces(underlayTestInterface),
 			TargetNS:           underlayTestNSPath(),
 		}
-		Expect(SetupUnderlay(context.Background(), params)).To(Succeed())
+		Expect(SetupUnderlayInNamespace(context.Background(), testNs, params)).To(Succeed())
 
 		Eventually(func(g Gomega) {
-			ifaces, err := UnderlayInterfaces(underlayTestNSPath())
-			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(ifaces).To(Equal([]UnderlayInterface{
+			g.Expect(UnderlayInterfacesInNamespace(testNs)).To(Equal([]UnderlayInterface{
 				{InterfaceName: underlayTestInterface, Kind: UnderlayInterfaceNetDev},
 			}))
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 	})
 
-	It("should error for non-existent namespace", func() {
-		_, err := UnderlayInterfaces("/var/run/netns/doesnotexist")
+	It("should error for an invalid namespace handle", func() {
+		_, err := UnderlayInterfacesInNamespace(netns.None())
 		Expect(err).To(HaveOccurred())
 	})
 })

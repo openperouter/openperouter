@@ -160,7 +160,7 @@ func (c *VNIConfigurator) SetupL2VNI(ctx context.Context, params L2VNIParams) er
 		return fmt.Errorf("SetupL2VNI: failed to setup VNI: %w", err)
 	}
 	vethNames := vethNamesFromVNI(params.VNI)
-	if err := setupNamespacedVethInNamespace(ctx, vethNames, c.ns); err != nil {
+	if err := setupNamespacedVeth(ctx, vethNames, c.ns); err != nil {
 		return fmt.Errorf("SetupL2VNI: failed to setup VNI veth: %w", err)
 	}
 
@@ -279,22 +279,15 @@ func (c *VNIConfigurator) setupVNI(ctx context.Context, params VNIParams, bridge
 	})
 }
 
-// RemoveAllVNIs removes from the target namespace the bridges / veths
-// for all VNIs.
-func RemoveAllVNIs(ovsClient *OVSClient, targetNS string) error {
-	return RemoveNonConfiguredVNIs(ovsClient, targetNS, []VNIParams{})
+// RemoveAllVNIsInNamespace removes every VNI from the already open router
+// namespace handle ns.
+func RemoveAllVNIsInNamespace(ns netns.NsHandle, ovsClient *OVSClient) error {
+	return removeNonConfiguredVNIs(ns, ovsClient, []VNIParams{})
 }
 
 // RemoveNonConfiguredVNIs removes from the target namespace the
 // leftovers corresponding to VNIs that are not configured anymore.
 func RemoveNonConfiguredVNIs(ovsClient *OVSClient, targetNS string, params []VNIParams) error {
-	vnis := map[int32]bool{}
-	for _, p := range params {
-		vnis[p.VNI] = true
-	}
-
-	errs := removeHostSideVNIs(vnis, ovsClient)
-
 	ns, err := netns.GetFromPath(targetNS)
 	if err != nil {
 		return fmt.Errorf("RemoveNonConfiguredVNIs: Failed to get network namespace %s: %w", targetNS, err)
@@ -304,6 +297,24 @@ func RemoveNonConfiguredVNIs(ovsClient *OVSClient, targetNS string, params []VNI
 			slog.Error("failed to close namespace", "namespace", targetNS, "error", err)
 		}
 	}()
+
+	return removeNonConfiguredVNIs(ns, ovsClient, params)
+}
+
+// RemoveNonConfiguredVNIsInNamespace removes from the already open router
+// namespace handle ns the leftovers corresponding to VNIs that are not
+// configured anymore.
+func RemoveNonConfiguredVNIsInNamespace(ns netns.NsHandle, ovsClient *OVSClient, params []VNIParams) error {
+	return removeNonConfiguredVNIs(ns, ovsClient, params)
+}
+
+func removeNonConfiguredVNIs(ns netns.NsHandle, ovsClient *OVSClient, params []VNIParams) error {
+	vnis := map[int32]bool{}
+	for _, p := range params {
+		vnis[p.VNI] = true
+	}
+
+	errs := removeHostSideVNIs(vnis, ovsClient)
 
 	if err := netnamespace.In(ns, func() error {
 		nsErrors := removeNamespaceSideVNIs(vnis)

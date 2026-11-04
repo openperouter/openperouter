@@ -19,7 +19,6 @@ import (
 )
 
 func TestSetupVNIsWhenSharedStateFails(t *testing.T) {
-	const missingNamespace = "/does-not-exist"
 	l3VNI := l3VNIForTest("red", 100)
 	l3VPN := l3VPNForTest("blue")
 	l2VNI := l2VNIForTest("green", 300)
@@ -29,12 +28,11 @@ func TestSetupVNIsWhenSharedStateFails(t *testing.T) {
 		L2VNIs: []hostnetwork.L2VNIParams{l2VNI},
 	}
 
-	_, openErr := netns.GetFromPath(missingNamespace)
-	require.Error(t, openErr, "the namespace path of the test must not exist")
-	wantErr := fmt.Sprintf("transient host failure: failed to get network namespace %s: %v",
-		missingNamespace, openErr)
+	_, configuratorErr := hostnetwork.NewVNIConfigurator(netns.None(), nil)
+	require.Error(t, configuratorErr, "the invalid namespace handle must make the configurator fail")
+	wantErr := fmt.Sprintf("transient host failure: %v", configuratorErr)
 
-	result, errs := setupVNIs(context.Background(), nil, missingNamespace, hostConfig)
+	result, errs := setupVNIs(context.Background(), netns.None(), nil, hostConfig)
 
 	require.Equal(t, []hostnetwork.L3VNIParams{l3VNI}, result.l3VNIs)
 	require.Equal(t, []hostnetwork.L3VPNParams{l3VPN}, result.l3VPNs)
@@ -47,9 +45,9 @@ func TestSetupVNIsWhenSharedStateFails(t *testing.T) {
 }
 
 func TestSetupVNIsWithoutVNIs(t *testing.T) {
-	// A reconcile without VNIs must not touch the host, so a missing router
-	// namespace does not produce errors.
-	result, errs := setupVNIs(context.Background(), nil, "/does-not-exist", conversion.HostConfigData{})
+	// A reconcile without VNIs must not touch the host, so the invalid router
+	// namespace handle it is given does not produce errors.
+	result, errs := setupVNIs(context.Background(), netns.None(), nil, conversion.HostConfigData{})
 
 	require.Empty(t, result.l3VNIs)
 	require.Empty(t, result.l3VPNs)

@@ -21,26 +21,13 @@ type Sysctl struct {
 	UnsupportedWarning string // If non-empty, log this warning and skip instead of failing when the sysctl is not supported
 }
 
-// EnsureInNamespace enables the given sysctls in the target namespace.
-// Each sysctl is checked and only written if not already set to the target value.
-func EnsureInNamespace(namespace string, sysctls ...Sysctl) error {
-	ns, err := netns.GetFromPath(namespace)
-	if err != nil {
-		return fmt.Errorf("failed to get network namespace %s: %w", namespace, err)
-	}
-	defer func() {
-		if err := ns.Close(); err != nil {
-			slog.Error("Ensure: failed to close namespace", "error", err, "namespace", namespace)
-		}
-	}()
-
-	err = netnamespace.In(ns, func() error {
+// EnsureIn enables the given sysctls in the already open network namespace
+// handle ns. Each sysctl is checked and only written if not already set to the
+// target value.
+func EnsureIn(ns netns.NsHandle, sysctls ...Sysctl) error {
+	return netnamespace.In(ns, func() error {
 		return Ensure(sysctls...)
 	})
-	if err != nil {
-		return fmt.Errorf("failed to ensure sysctls at network namespace %q: %w", namespace, err)
-	}
-	return nil
 }
 
 // Ensure enables the given sysctls.
