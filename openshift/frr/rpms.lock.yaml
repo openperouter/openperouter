@@ -606,13 +606,13 @@ arches:
     name: libevent
     evr: 2.1.13-1.el10_2
     sourcerpm: libevent-2.1.13-1.el10_2.src.rpm
-  - url: https://cdn.redhat.com/content/dist/rhel10/10/x86_64/baseos/os/Packages/l/libibverbs-61.0-1.el10.x86_64.rpm
+  - url: https://cdn.redhat.com/content/dist/rhel10/10/x86_64/baseos/os/Packages/l/libibverbs-61.0-2.el10_2.x86_64.rpm
     repoid: rhel-10-for-x86_64-baseos-rpms
-    size: 500849
-    checksum: sha256:599cdd20dcf0fdeb5e3daa3511bcb5f57e1270805715f3cfabd71f5f1380e5ce
+    size: 499916
+    checksum: sha256:3f0b6b26e8462b01b863d345131ec346f80f4218deb33d09724e6efa82792cbc
     name: libibverbs
-    evr: 61.0-1.el10
-    sourcerpm: rdma-core-61.0-1.el10.src.rpm
+    evr: 1:61.0-2.el10_2
+    sourcerpm: rdma-core-61.0-2.el10_2.src.rpm
   - url: https://cdn.redhat.com/content/dist/rhel10/10/x86_64/baseos/os/Packages/l/libnl3-3.11.0-1.el10.x86_64.rpm
     repoid: rhel-10-for-x86_64-baseos-rpms
     size: 374208
