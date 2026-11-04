@@ -21,6 +21,9 @@ func (g *GroutDatapathConfigValidator) Validate(apiConfig APIConfigData) error {
 	for _, underlay := range apiConfig.Underlays {
 		resourceErrors = append(resourceErrors, ValidateGroutUnderlay(underlay))
 	}
+	for _, trunk := range apiConfig.L2Trunks {
+		resourceErrors = append(resourceErrors, ValidateGroutL2Trunk(trunk))
+	}
 	return errors.Join(resourceErrors...)
 }
 
@@ -34,6 +37,10 @@ func (k *KernelDatapathConfigValidator) Validate(apiConfig APIConfigData) error 
 					underlay.Name, iface.NetworkDevice.InterfaceName)
 			}
 		}
+	}
+	if len(apiConfig.L2Trunks) > 0 {
+		return fmt.Errorf("l2trunk %s: L2Trunks are only supported with the grout datapath",
+			apiConfig.L2Trunks[0].Name)
 	}
 	return nil
 }
