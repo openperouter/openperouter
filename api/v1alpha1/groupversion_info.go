@@ -38,6 +38,8 @@ var (
 
 func addKnownTypes(scheme *runtime.Scheme) error {
 	scheme.AddKnownTypes(GroupVersion,
+		&L2Trunk{},
+		&L2TrunkList{},
 		&L2VNI{},
 		&L2VNIList{},
 		&L3VNI{},
