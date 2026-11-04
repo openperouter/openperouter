@@ -1894,3 +1894,62 @@ func netdevInterfaces(names ...string) []hostnetwork.UnderlayInterface {
 	}
 	return res
 }
+
+func TestAPItoHostConfigL2Trunks(t *testing.T) {
+	underlay := v1alpha1.Underlay{Spec: v1alpha1.UnderlaySpec{
+		Interfaces: []v1alpha1.UnderlayInterface{
+			{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}},
+		},
+		TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: []string{"10.0.0.0/24"}},
+	}}
+	trunk := sriovTrunk("workloads", "enp1s0", 1)
+	trunk.Spec.SRIOV.AcceleratedConfig = &v1alpha1.AcceleratedConfig{RXQueues: new(int32(4)), QSize: new(int32(2048))}
+
+	got, err := APItoHostConfig(0, "namespace", APIConfigData{
+		Underlays: []v1alpha1.Underlay{underlay},
+		L2VNIs:    []v1alpha1.L2VNI{trunkL2VNI("tenant-a", 100, "workloads", 33)},
+		L2Trunks:  []v1alpha1.L2Trunk{trunk},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	wantSRIOV := &hostnetwork.SRIOVTrunkParams{
+		PFName:  "enp1s0",
+		VFIndex: 1,
+		AcceleratedConfig: &hostnetwork.AcceleratedConfigParams{
+			RXQueues: new(int32(4)),
+			QSize:    new(int32(2048)),
+		},
+	}
+	wantTrunks := []hostnetwork.L2TrunkParams{
+		{
+			Name:     "workloads",
+			TargetNS: "namespace",
+			SRIOV:    wantSRIOV,
+		},
+	}
+	if !reflect.DeepEqual(got.L2Trunks, wantTrunks) {
+		t.Errorf("L2Trunks = %s, want %s", mustMarshal(got.L2Trunks), mustMarshal(wantTrunks))
+	}
+
+	wantL2VNIs := []hostnetwork.L2VNIParams{
+		{
+			Name: "tenant-a",
+			VNIParams: hostnetwork.VNIParams{
+				TargetNS:       "namespace",
+				VTEPIP:         "10.0.0.0/32",
+				VNI:            100,
+				VXLanPort:      new(int32(4789)),
+				TunnelOverhead: hostnetwork.VXLanOverhead,
+			},
+			Trunk: &hostnetwork.L2VNITrunkParams{
+				Name: "workloads",
+				VLAN: 33,
+			},
+		},
+	}
+	if !reflect.DeepEqual(got.L2VNIs, wantL2VNIs) {
+		t.Errorf("L2VNIs = %s, want %s", mustMarshal(got.L2VNIs), mustMarshal(wantL2VNIs))
+	}
+}

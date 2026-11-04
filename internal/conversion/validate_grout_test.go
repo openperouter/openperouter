@@ -7,6 +7,7 @@ import (
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestValidateGroutUnderlayCNI(t *testing.T) {
@@ -108,6 +109,43 @@ func TestValidateGroutUnderlay(t *testing.T) {
 			err := ValidateGroutUnderlay(underlay)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ValidateGroutUnderlay() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateGroutL2Trunk(t *testing.T) {
+	tests := []struct {
+		name    string
+		vfIndex int32
+		wantErr string
+	}{
+		{
+			name:    "SR-IOV trunk within the VF index bound",
+			vfIndex: 255,
+		},
+		{
+			name:    "VF index above the bound",
+			vfIndex: 256,
+			wantErr: "l2trunk workloads: vfIndex 256 is above 255, the maximum for two-digit hexadecimal VF indexes in grout interface names",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			trunk := v1alpha1.L2Trunk{
+				ObjectMeta: metav1.ObjectMeta{Name: "workloads"},
+				Spec: v1alpha1.L2TrunkSpec{
+					Type:  v1alpha1.L2TrunkTypeSRIOV,
+					SRIOV: &v1alpha1.SRIOVTrunkConfig{PFName: "enp1s0", VFIndex: &tt.vfIndex},
+				},
+			}
+			obtainedErr := ""
+			err := ValidateGroutL2Trunk(trunk)
+			if err != nil {
+				obtainedErr = err.Error()
+			}
+			if obtainedErr != tt.wantErr {
+				t.Errorf("ValidateGroutL2Trunk() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
