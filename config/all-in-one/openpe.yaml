@@ -3054,6 +3054,26 @@ webhooks:
     service:
       name: openpe-webhook-service
       namespace: openperouter-system
+      path: /validate-openperouter-io-v1alpha1-l2trunk
+  failurePolicy: Fail
+  name: l2trunkvalidationwebhook.openperouter.io
+  rules:
+  - apiGroups:
+    - network.openperouter.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - l2trunks
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: openpe-webhook-service
+      namespace: openperouter-system
       path: /validate-openperouter-io-v1alpha1-l2vni
   failurePolicy: Fail
   name: l2vnivalidationwebhook.openperouter.io
