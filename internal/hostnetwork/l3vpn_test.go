@@ -176,7 +176,7 @@ var _ = Describe("L3 VPN configuration", func() {
 		toDelete := params[1]
 
 		By("removing non configured L3VPNs")
-		err := RemoveNonConfiguredL3VPNs(testNSPath(), []L3VPNParams{remaining})
+		err := RemoveNonConfiguredL3VPNs([]L3VPNParams{remaining})
 		Expect(err).NotTo(HaveOccurred())
 		err = RemoveNonConfiguredVRFs(testNSPath(), map[string]bool{remaining.VRF: true})
 		Expect(err).NotTo(HaveOccurred())
@@ -370,7 +370,7 @@ var _ = Describe("L3 VPN configuration", func() {
 		By("removing second configured L3VPN")
 		deletedL3vpnParams = l3vpnParams[1:2]
 		l3vpnParams = l3vpnParams[0:1]
-		Expect(RemoveNonConfiguredL3VPNs(testNSPath(), l3vpnParams)).To(Succeed())
+		Expect(RemoveNonConfiguredL3VPNs(l3vpnParams)).To(Succeed())
 		Expect(RemoveNonConfiguredVNIs(ovsClient, testNSPath(), allVNIParams())).To(Succeed())
 		Expect(RemoveNonConfiguredVRFs(testNSPath(), allVRFs())).To(Succeed())
 		validateAll()
@@ -378,7 +378,7 @@ var _ = Describe("L3 VPN configuration", func() {
 		By("removing configured L2VNI")
 		deletedL2vniParams = l2vniParams[0:1]
 		l2vniParams = []L2VNIParams{}
-		Expect(RemoveNonConfiguredL3VPNs(testNSPath(), l3vpnParams)).To(Succeed())
+		Expect(RemoveNonConfiguredL3VPNs(l3vpnParams)).To(Succeed())
 		Expect(RemoveNonConfiguredVNIs(ovsClient, testNSPath(), allVNIParams())).To(Succeed())
 		Expect(RemoveNonConfiguredVRFs(testNSPath(), allVRFs())).To(Succeed())
 		validateAll()
@@ -386,7 +386,7 @@ var _ = Describe("L3 VPN configuration", func() {
 		By("removing first configured L3VPN")
 		deletedL3vpnParams = append(deletedL3vpnParams, l3vpnParams[0])
 		l3vpnParams = []L3VPNParams{}
-		Expect(RemoveNonConfiguredL3VPNs(testNSPath(), l3vpnParams)).To(Succeed())
+		Expect(RemoveNonConfiguredL3VPNs(l3vpnParams)).To(Succeed())
 		Expect(RemoveNonConfiguredVNIs(ovsClient, testNSPath(), allVNIParams())).To(Succeed())
 		Expect(RemoveNonConfiguredVRFs(testNSPath(), allVRFs())).To(Succeed())
 		validateAll()

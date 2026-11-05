@@ -80,15 +80,14 @@ func setupL3VPN(ctx context.Context, params L3VPNParams) error {
 	})
 }
 
-// RemoveAllL3VPNs removes from the target namespace the veths
-// for all L3VPNs.
-func RemoveAllL3VPNs(targetNS string) error {
-	return RemoveNonConfiguredL3VPNs(targetNS, []L3VPNParams{})
+// RemoveAllL3VPNs removes the host side of the veths of all L3VPNs.
+func RemoveAllL3VPNs() error {
+	return RemoveNonConfiguredL3VPNs([]L3VPNParams{})
 }
 
-// RemoveNonConfiguredL3VPNs removes from the target namespace the
-// leftovers corresponding to L3VPNs that are not configured anymore.
-func RemoveNonConfiguredL3VPNs(targetNS string, params []L3VPNParams) error {
+// RemoveNonConfiguredL3VPNs removes the host side of the veths of the
+// L3VPNs that are not configured anymore.
+func RemoveNonConfiguredL3VPNs(params []L3VPNParams) error {
 	vrfs := map[string]bool{}
 	rdAssignedNumbers := map[int32]bool{}
 	for _, p := range params {
