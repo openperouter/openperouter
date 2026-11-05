@@ -42,7 +42,7 @@ var _ = Describe("Router BGP sessions", Ordered, GroutSupport, func() {
 		Expect(err).NotTo(HaveOccurred())
 		nodesItems, err := cs.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred())
-		nodes, err = k8s.NodesWithLabel(nodesItems.Items, InstrumentedNodesLabel)
+		nodes, err = k8s.NodesWithLabel(nodesItems.Items, openperouter.InstrumentedNodesLabel)
 		Expect(err).NotTo(HaveOccurred())
 		frrk8sPods, err = frrk8s.Pods(cs)
 		Expect(err).NotTo(HaveOccurred())
@@ -559,7 +559,7 @@ var _ = Describe("Underlay external and internal configuration", Ordered, GroutS
 		cs = k8sclient.New()
 		nodesItems, err := cs.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred())
-		nodes, err = k8s.NodesWithLabel(nodesItems.Items, InstrumentedNodesLabel)
+		nodes, err = k8s.NodesWithLabel(nodesItems.Items, openperouter.InstrumentedNodesLabel)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -702,7 +702,7 @@ var _ = Describe("Underlay BFD Configuration", Ordered, GroutSupport, func() {
 		Expect(err).NotTo(HaveOccurred())
 		nodesItems, err := cs.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred())
-		nodes, err = k8s.NodesWithLabel(nodesItems.Items, InstrumentedNodesLabel)
+		nodes, err = k8s.NodesWithLabel(nodesItems.Items, openperouter.InstrumentedNodesLabel)
 		Expect(err).NotTo(HaveOccurred())
 
 		neighbors := []string{}
@@ -874,7 +874,7 @@ var _ = Describe("Add extra neighbor", Ordered, GroutSupport, func() {
 		cs = k8sclient.New()
 		nodesItems, err := cs.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred())
-		nodes, err = k8s.NodesWithLabel(nodesItems.Items, InstrumentedNodesLabel)
+		nodes, err = k8s.NodesWithLabel(nodesItems.Items, openperouter.InstrumentedNodesLabel)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -982,7 +982,7 @@ var _ = Describe("Underlay explicit address family configuration", Ordered, Grou
 		cs = k8sclient.New()
 		nodesItems, err := cs.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred())
-		nodes, err = k8s.NodesWithLabel(nodesItems.Items, InstrumentedNodesLabel)
+		nodes, err = k8s.NodesWithLabel(nodesItems.Items, openperouter.InstrumentedNodesLabel)
 		Expect(err).NotTo(HaveOccurred())
 	})
 

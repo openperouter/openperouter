@@ -15,7 +15,6 @@ var (
 	Updater                 *config.Updater
 	InspectReporter         *k8s.InspectReporter
 	ReportPath              string
-	InstrumentedNodesLabel  string
 	HostMode                bool
 	GroutMode               bool
 	SkipUnderlayPassthrough bool
