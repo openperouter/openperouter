@@ -59,6 +59,7 @@ func TestE2E(t *testing.T) {
 	}
 
 	RegisterFailHandler(ginkgo.Fail)
+	Expect(infra.RegisterLinks(nodeLinkConfigPath)).To(Succeed())
 	ginkgo.RunSpecs(t, "E2E Suite")
 }
 
@@ -79,10 +80,6 @@ var _ = ginkgo.BeforeSuite(func() {
 
 	cs := k8sclient.New()
 	Expect(executor.SetupNodeExec(cs, frrk8s.Namespace, nodeExecImage)).To(Succeed(), "failed to setup node-exec-helper")
-
-	ginkgo.By("Registering fabric and node links from " + nodeLinkConfigPath)
-	Expect(infra.RegisterLinks(nodeLinkConfigPath)).To(Succeed())
-
 })
 
 var _ = ginkgo.AfterSuite(func() {
