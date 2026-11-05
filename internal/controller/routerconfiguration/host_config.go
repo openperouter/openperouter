@@ -165,8 +165,7 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 	bridgerefresh.StopForRemovedVNIs(configuredL2VNIs)
 
 	slog.InfoContext(ctx, "removing deleted l3vpns")
-	if err := hostnetwork.RemoveNonConfiguredL3VPNs(config.targetNamespace,
-		configuredL3VPNs); err != nil {
+	if err := hostnetwork.RemoveNonConfiguredL3VPNs(configuredL3VPNs); err != nil {
 		return fmt.Errorf("failed to remove deleted l3vpns: %w", err)
 	}
 
@@ -331,7 +330,7 @@ func restoreUnderlay(
 		slog.Warn("failed to remove vnis after underlay removal", "err", err)
 	}
 
-	if err := hostnetwork.RemoveAllL3VPNs(targetNamespace); err != nil {
+	if err := hostnetwork.RemoveAllL3VPNs(); err != nil {
 		slog.Warn("failed to remove l3vpns after underlay removal", "err", err)
 	}
 
