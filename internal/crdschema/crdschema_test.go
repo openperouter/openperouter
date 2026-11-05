@@ -430,6 +430,40 @@ func TestValidateSuccessful(t *testing.T) {
 			}),
 		},
 		{
+			name: "Underlay with valid IPv4 routerIDCIDR",
+			gvk:  underlayGVK,
+			obj: newUnstructured("Underlay", map[string]any{
+				"asn":          int64(65000),
+				"routerIDCIDR": "172.16.0.0/16",
+				"interfaces": []any{
+					map[string]any{
+						"type":          "NetworkDevice",
+						"networkDevice": map[string]any{"interfaceName": "eth0"},
+					},
+				},
+				"neighbors": []any{
+					map[string]any{
+						"address": "192.168.1.1",
+						"asn":     int64(65001),
+					},
+				},
+			}),
+		},
+		{
+			name: "L2VNI with valid dual-stack gatewayIPs",
+			gvk:  l2vniGVK,
+			obj: newUnstructured("L2VNI", map[string]any{
+				"vni":        int64(100),
+				"gatewayIPs": []any{"10.0.0.1/24", "fd00::1/64"},
+				"routingDomain": map[string]any{
+					"type": "L3VNI",
+					"l3vni": map[string]any{
+						"name": "test-l3vni",
+					},
+				},
+			}),
+		},
+		{
 			name: "L2VNI with LinuxBridge External lifecycle and name set",
 			gvk:  l2vniGVK,
 			obj: newUnstructured("L2VNI", map[string]any{
@@ -926,6 +960,120 @@ func TestValidateFailure(t *testing.T) {
 				},
 			}),
 			errSubstr: "should be greater than or equal to 64",
+		},
+		{
+			name: "Underlay routerIDCIDR invalid CIDR",
+			gvk:  underlayGVK,
+			obj: newUnstructured("Underlay", map[string]any{
+				"asn": int64(65000),
+				"interfaces": []any{
+					map[string]any{
+						"type": "NetworkDevice",
+						"networkDevice": map[string]any{
+							"interfaceName": "enp3s0f0v0",
+						},
+					},
+				},
+				"routerIDCIDR": "not-a-cidr",
+				"neighbors": []any{
+					map[string]any{
+						"address": "192.168.1.1",
+						"asn":     int64(65001),
+					},
+				},
+			}),
+			errSubstr: `spec.routerIDCIDR: Invalid value: "not-a-cidr": must be a valid IPv4 CIDR`,
+		},
+		{
+			name: "Underlay routerIDCIDR IPv6 CIDR",
+			gvk:  underlayGVK,
+			obj: newUnstructured("Underlay", map[string]any{
+				"asn": int64(65000),
+				"interfaces": []any{
+					map[string]any{
+						"type": "NetworkDevice",
+						"networkDevice": map[string]any{
+							"interfaceName": "enp3s0f0v0",
+						},
+					},
+				},
+				"routerIDCIDR": "fd00::/64",
+				"neighbors": []any{
+					map[string]any{
+						"address": "192.168.1.1",
+						"asn":     int64(65001),
+					},
+				},
+			}),
+			errSubstr: `spec.routerIDCIDR: Invalid value: "fd00::/64": must be a valid IPv4 CIDR`,
+		},
+		{
+			name: "Underlay routerIDCIDR IPv4-mapped IPv6 CIDR",
+			gvk:  underlayGVK,
+			obj: newUnstructured("Underlay", map[string]any{
+				"asn": int64(65000),
+				"interfaces": []any{
+					map[string]any{
+						"type": "NetworkDevice",
+						"networkDevice": map[string]any{
+							"interfaceName": "enp3s0f0v0",
+						},
+					},
+				},
+				"routerIDCIDR": "::ffff:192.0.2.0/120",
+				"neighbors": []any{
+					map[string]any{
+						"address": "192.168.1.1",
+						"asn":     int64(65001),
+					},
+				},
+			}),
+			errSubstr: `spec.routerIDCIDR: Invalid value: "::ffff:192.0.2.0/120": must be a valid IPv4 CIDR`,
+		},
+		{
+			name: "L2VNI gatewayIPs invalid CIDR",
+			gvk:  l2vniGVK,
+			obj: newUnstructured("L2VNI", map[string]any{
+				"vni":        int64(100),
+				"gatewayIPs": []any{"not-a-cidr"},
+				"routingDomain": map[string]any{
+					"type": "L3VNI",
+					"l3vni": map[string]any{
+						"name": "test-l3vni",
+					},
+				},
+			}),
+			errSubstr: "all entries must be valid CIDRs",
+		},
+		{
+			name: "L2VNI gatewayIPs two IPv4 CIDRs",
+			gvk:  l2vniGVK,
+			obj: newUnstructured("L2VNI", map[string]any{
+				"vni":        int64(100),
+				"gatewayIPs": []any{"10.0.0.1/24", "10.1.0.1/24"},
+				"routingDomain": map[string]any{
+					"type": "L3VNI",
+					"l3vni": map[string]any{
+						"name": "test-l3vni",
+					},
+				},
+			}),
+			errSubstr: "at most one IPv4 CIDR is allowed",
+		},
+		{
+			name: "L2VNI gatewayIPs two IPv6 CIDRs",
+			gvk:  l2vniGVK,
+			obj: newUnstructured("L2VNI", map[string]any{
+				"vni":        int64(100),
+				"gatewayIPs": []any{"fd00::1/64", "fd01::1/64"},
+				"routingDomain": map[string]any{
+					"type": "L3VNI",
+					"l3vni": map[string]any{
+						"name": "test-l3vni",
+					},
+				},
+			}),
+			errSubstr: "at most one IPv6 CIDR is allowed",
 		},
 	}
 
