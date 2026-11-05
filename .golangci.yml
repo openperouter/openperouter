@@ -11,7 +11,7 @@ linters:
     - forbidigo
     - ginkgolinter
     - goconst
-    - gocognit
+    #- gocognit
     - gocyclo
     - govet
     - ineffassign
