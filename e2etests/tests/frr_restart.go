@@ -86,9 +86,24 @@ var _ = Describe("North/south traffic after FRR container restart", Ordered, fun
 	AfterAll(func() {
 		err := Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
-		By("waiting for all router pods to be ready after removing the underlay")
+		By("waiting for underlay-node routers to be ready after removing the underlay")
 		Eventually(func() error {
-			routers, err := openperouter.Get(cs, HostMode)
+			if HostMode {
+				routers, err := openperouter.Get(cs, HostMode)
+				if err != nil {
+					return err
+				}
+				return openperouter.AreReady(routers)
+			}
+			allNodes, err := k8s.GetNodes(cs)
+			if err != nil {
+				return err
+			}
+			nodes, err := k8s.NodesWithLabel(allNodes, InstrumentedNodesLabel)
+			if err != nil {
+				return err
+			}
+			routers, err := openperouter.RoutersForNodes(cs, nodes)
 			if err != nil {
 				return err
 			}
@@ -128,9 +143,10 @@ var _ = Describe("North/south traffic after FRR container restart", Ordered, fun
 			Expect(err).NotTo(HaveOccurred())
 		})
 
-		nodes, err := k8s.GetNodes(cs)
+		allNodes, err := k8s.GetNodes(cs)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(len(nodes)).To(BeNumerically(">=", 2), "Expected at least 2 nodes, but got fewer")
+		nodes, err := k8s.NodesWithLabel(allNodes, InstrumentedNodesLabel)
+		Expect(err).NotTo(HaveOccurred())
 
 		By("creating the pods")
 		clientPod, err := k8s.CreateAgnhostPod(cs, "pod1", testNamespace,
@@ -161,7 +177,9 @@ var _ = Describe("North/south traffic after FRR container restart", Ordered, fun
 			Should(Equal(infra.HostARedIPv4), "hostA_red should be able to reach clientPod")
 
 		By("identifying the router pod on clientPod's node")
-		routerPods, err := openperouter.RouterPodsForNodes(cs, map[string]bool{clientPod.Spec.NodeName: true})
+		routerPods, err := openperouter.RouterPodsForNodes(
+			cs, []v1.Node{k8s.NodeForPod(clientPod)},
+		)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(routerPods).To(HaveLen(1))
 		routerPod := routerPods[0]

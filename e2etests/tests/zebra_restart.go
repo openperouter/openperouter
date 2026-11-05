@@ -174,7 +174,9 @@ var _ = Describe("Data plane continuity during zebra restart", PodModeOnly, Orde
 		}).WithTimeout(2 * time.Minute).WithPolling(time.Second).Should(Succeed())
 
 		By("identifying the router pod on the server's node")
-		routerPods, err := openperouter.RouterPodsForNodes(cs, map[string]bool{serverPod.Spec.NodeName: true})
+		routerPods, err := openperouter.RouterPodsForNodes(
+			cs, []corev1.Node{k8s.NodeForPod(serverPod)},
+		)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(routerPods).To(HaveLen(1))
 		routerPod := routerPods[0]

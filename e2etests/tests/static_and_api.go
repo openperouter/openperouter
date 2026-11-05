@@ -113,7 +113,8 @@ var _ = Describe("Hybrid mode: static files and API configuration", Label("syste
 
 		frrk8sPods, err = frrk8s.Pods(cs)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(frrk8sPods).NotTo(BeEmpty(), "Need FRR-K8s pods for BGP route validation")
+		nodes := allNodes(cs)
+		Expect(frrk8sPods).To(HaveLen(len(nodes)), "expected one frr-k8s pod per node")
 
 		frrK8sConfigBlue, err = frrk8s.ConfigFromHostSession(*vniBlueFromAPI.Spec.HostSession, vniBlueFromAPI.Name)
 		Expect(err).NotTo(HaveOccurred())
