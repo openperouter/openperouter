@@ -388,7 +388,7 @@ spec:
           timeoutSeconds: 5
         livenessProbe:
           exec:
-            command: ["/bin/sh", "-c", "grcli -e"]
+            command: ["/bin/sh", "-c", "grcli -e log level set *:debug"]
           periodSeconds: 30
           timeoutSeconds: 5
       {{- end }}
