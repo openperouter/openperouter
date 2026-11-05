@@ -75,7 +75,7 @@ var _ = Describe("Single Session Baseline", Ordered, func() {
 		cs = k8sclient.New()
 		nodesItems, err := cs.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred())
-		nodes, err = k8s.NodesWithLabel(nodesItems.Items, InstrumentedNodesLabel)
+		nodes, err = k8s.NodesWithLabel(nodesItems.Items, openperouter.InstrumentedNodesLabel)
 		Expect(err).NotTo(HaveOccurred())
 
 		By("Setting up underlay with single interface and single neighbor")
@@ -151,14 +151,7 @@ var _ = Describe("Single Session Baseline", Ordered, func() {
 
 		By("waiting for underlay-node routers to be ready after removing the underlay")
 		Eventually(func() error {
-			if HostMode {
-				routers, err := openperouter.Get(cs, HostMode)
-				if err != nil {
-					return err
-				}
-				return openperouter.AreReady(routers)
-			}
-			routers, err := openperouter.RoutersForNodes(cs, nodes)
+			routers, err := openperouter.Get(cs, HostMode)
 			if err != nil {
 				return err
 			}

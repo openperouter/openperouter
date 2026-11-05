@@ -88,22 +88,7 @@ var _ = Describe("North/south traffic after FRR container restart", Ordered, fun
 		Expect(err).NotTo(HaveOccurred())
 		By("waiting for underlay-node routers to be ready after removing the underlay")
 		Eventually(func() error {
-			if HostMode {
-				routers, err := openperouter.Get(cs, HostMode)
-				if err != nil {
-					return err
-				}
-				return openperouter.AreReady(routers)
-			}
-			allNodes, err := k8s.GetNodes(cs)
-			if err != nil {
-				return err
-			}
-			nodes, err := k8s.NodesWithLabel(allNodes, InstrumentedNodesLabel)
-			if err != nil {
-				return err
-			}
-			routers, err := openperouter.RoutersForNodes(cs, nodes)
+			routers, err := openperouter.Get(cs, HostMode)
 			if err != nil {
 				return err
 			}
@@ -145,7 +130,7 @@ var _ = Describe("North/south traffic after FRR container restart", Ordered, fun
 
 		allNodes, err := k8s.GetNodes(cs)
 		Expect(err).NotTo(HaveOccurred())
-		nodes, err := k8s.NodesWithLabel(allNodes, InstrumentedNodesLabel)
+		nodes, err := k8s.NodesWithLabel(allNodes, openperouter.InstrumentedNodesLabel)
 		Expect(err).NotTo(HaveOccurred())
 
 		By("creating the pods")
