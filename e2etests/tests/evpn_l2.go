@@ -616,6 +616,7 @@ var _ = Describe("Disconnected L2VNI east/west traffic", GroutSupport, Ordered, 
 		const rdAssignedNumber int32 = 42000
 
 		BeforeEach(func() {
+			skipMACIPType2OnGrout()
 			By("configuring the L2VNI RD assigned number")
 			configured := l2vniDisconnected.DeepCopy()
 			configured.Spec.RDAssignedNumber = new(rdAssignedNumber)
@@ -660,6 +661,7 @@ var _ = Describe("Disconnected L2VNI east/west traffic", GroutSupport, Ordered, 
 
 	Context("with route targets", func() {
 		BeforeEach(func() {
+			skipMACIPType2OnGrout()
 			firstL2VNI = l2VNIForNode(
 				l2vniDisconnected, "disconnected-first", nodes[0].Name, "64514:300", "64514:301",
 			)
@@ -838,4 +840,17 @@ func arpingMACs(exec executor.Executor, vip string) ([]string, error) {
 		macs = append(macs, strings.ToLower(match[1]))
 	}
 	return macs, nil
+}
+
+// skipMACIPType2OnGrout skips specs expecting MAC+IPv4 Type-2 routes on a
+// disconnected L2VNI. grout only learns ARP/NDP neighbors whose address falls
+// in a connected subnet of the receiving interface (DPDK/grout@3f2f68e865e8).
+// The disconnected L2VNI has no gateway IP, so only the pods' IPv6 link-local
+// addresses are learned and their IPv4 addresses never reach EVPN.
+//
+// See https://github.com/openperouter/openperouter/issues/940
+func skipMACIPType2OnGrout() {
+	if GroutMode {
+		Skip("grout does not learn IPv4 neighbors on L2VNIs without a gateway IP")
+	}
 }
