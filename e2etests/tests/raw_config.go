@@ -22,7 +22,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 )
 
-var _ = Describe("RawFRRConfig", Ordered, func() {
+var _ = Describe("RawFRRConfig", Ordered, GroutSupport, func() {
 	var cs clientset.Interface
 	var routers openperouter.Routers
 
