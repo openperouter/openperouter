@@ -40,6 +40,8 @@ func handleFlags() {
 	flag.StringVar(&inspectPath, "inspect-path", "../../tools/inspect/inspect", "path to the inspect tool")
 	flag.StringVar(&nodeLinkConfigPath, "nodelink-config", "../nodelink-default.json", "path to node links config JSON")
 	flag.StringVar(&nodeExecImage, "node-exec-image", "busybox:1.36", "container image for node-exec-helper pods")
+	flag.StringVar(&tests.InstrumentedNodesLabel, "instrumented-nodes-label", "",
+		"label selector for instrumented nodes (key=value); empty selects all nodes")
 	flag.Parse()
 }
 
@@ -79,6 +81,11 @@ var _ = ginkgo.BeforeSuite(func() {
 	)
 
 	cs := k8sclient.New()
+	nodes, err := k8s.GetNodes(cs)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(k8s.NodesWithLabel(nodes, tests.InstrumentedNodesLabel)).NotTo(
+		BeEmpty(), "no nodes match instrumented node label selector %q", tests.InstrumentedNodesLabel,
+	)
 	Expect(executor.SetupNodeExec(cs, frrk8s.Namespace, nodeExecImage)).To(Succeed(), "failed to setup node-exec-helper")
 })
 

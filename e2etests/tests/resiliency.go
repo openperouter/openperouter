@@ -131,9 +131,10 @@ var _ = Describe("Alpha: Named netns and kernel objects survive FRR crash", Orde
 	})
 
 	It("should preserve named netns at /var/run/netns/perouter when FRR process crashes", func() {
-		routerPods, err := openperouter.RouterPodsForNodes(cs, allNodes(cs))
+		nodes := allNodes(cs)
+		routerPods, err := openperouter.RouterPodsForNodes(cs, nodes)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(routerPods).NotTo(BeEmpty())
+		Expect(routerPods).To(HaveLen(len(nodes)), "expected one router pod per selected node")
 		routerPod := routerPods[0]
 		nodeName := routerPod.Spec.NodeName
 
@@ -197,15 +198,11 @@ var _ = Describe("Alpha: Named netns and kernel objects survive FRR crash", Orde
 	})
 })
 
-// allNodes returns a map of all Kubernetes node names for use with RouterPodsForNodes.
-func allNodes(cs clientset.Interface) map[string]bool {
+// allNodes returns all Kubernetes nodes.
+func allNodes(cs clientset.Interface) []v1.Node {
 	nodes, err := k8s.GetNodes(cs)
 	Expect(err).NotTo(HaveOccurred())
-	result := make(map[string]bool, len(nodes))
-	for _, n := range nodes {
-		result[n.Name] = true
-	}
-	return result
+	return nodes
 }
 
 // killFRREntrypoint kills the tini/docker-start entrypoint process inside the given FRR container.
@@ -435,7 +432,9 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 		}).WithTimeout(3 * time.Minute).WithPolling(time.Second).Should(Succeed())
 
 		By("identifying the router pod on clientPod's node")
-		routerPods, err := openperouter.RouterPodsForNodes(cs, map[string]bool{clientPod.Spec.NodeName: true})
+		routerPods, err := openperouter.RouterPodsForNodes(
+			cs, []v1.Node{k8s.NodeForPod(clientPod)},
+		)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(routerPods).To(HaveLen(1))
 		routerPod := routerPods[0]
@@ -477,7 +476,7 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 
 		By("waiting for a new router pod to come up and become ready")
 		Eventually(func(g Gomega) {
-			newRouterPods, err := openperouter.RouterPodsForNodes(cs, map[string]bool{nodeName: true})
+			newRouterPods, err := openperouter.RouterPodsForNodes(cs, []v1.Node{k8s.NodeForPod(routerPod)})
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(newRouterPods).To(HaveLen(1))
 			newPod := newRouterPods[0]
@@ -505,7 +504,9 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 		dumpPreTrafficState(cs, nodeName)
 
 		By("waiting for bridge FDB entries on rebuilt PE before traffic check")
-		rebuiltRouterPods, err := openperouter.RouterPodsForNodes(cs, map[string]bool{nodeName: true})
+		rebuiltRouterPods, err := openperouter.RouterPodsForNodes(
+			cs, []v1.Node{k8s.NodeForPod(routerPod)},
+		)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rebuiltRouterPods).To(HaveLen(1))
 		rebuiltPEExec := executor.ForPodInNamedNetns(rebuiltRouterPods[0].Namespace, rebuiltRouterPods[0].Name, "frr", resiliencyNetnsPath)
@@ -614,7 +615,9 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 		}).WithTimeout(2 * time.Minute).WithPolling(time.Second).Should(Succeed())
 
 		By("identifying the router pod on the server's node")
-		routerPods, err := openperouter.RouterPodsForNodes(cs, map[string]bool{serverPod.Spec.NodeName: true})
+		routerPods, err := openperouter.RouterPodsForNodes(
+			cs, []v1.Node{k8s.NodeForPod(serverPod)},
+		)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(routerPods).To(HaveLen(1))
 		routerPod := routerPods[0]
@@ -629,7 +632,7 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 
 		By("waiting for a new router pod to become ready")
 		Eventually(func(g Gomega) {
-			newRouterPods, err := openperouter.RouterPodsForNodes(cs, map[string]bool{nodeName: true})
+			newRouterPods, err := openperouter.RouterPodsForNodes(cs, []v1.Node{k8s.NodeForPod(routerPod)})
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(newRouterPods).To(HaveLen(1))
 			newPod := newRouterPods[0]
@@ -759,7 +762,7 @@ func dumpUnderlayVeths(cs clientset.Interface, label string) {
 func dumpPreTrafficState(cs clientset.Interface, nodeName string) {
 	w := GinkgoWriter
 
-	routerPods, err := openperouter.RouterPodsForNodes(cs, map[string]bool{nodeName: true})
+	routerPods, err := openperouter.RouterPodsForNodes(cs, []v1.Node{{ObjectMeta: metav1.ObjectMeta{Name: nodeName}}})
 	if err != nil || len(routerPods) == 0 {
 		w.Printf("DIAG: cannot get rebuilt router pod on %s: %v\n", nodeName, err)
 		return
@@ -925,7 +928,9 @@ var _ = Describe("Configuration Resiliency", Ordered, func() {
 				Name: "bad-underlay", Namespace: openperouter.Namespace,
 			}}
 			Expect(client.IgnoreNotFound(Updater.Client().Delete(context.Background(), badUnderlay))).To(Succeed())
-			Expect(Updater.Update(config.Resources{Underlays: []v1alpha1.Underlay{infra.Underlay(infra.Default)}})).To(Succeed())
+			Expect(Updater.Update(config.Resources{
+				Underlays: []v1alpha1.Underlay{infra.Underlay(infra.Default)},
+			})).To(Succeed())
 		})
 		It("should track resources with invalid node selectors in status", func() {
 			goodSelector := &metav1.LabelSelector{MatchExpressions: []metav1.LabelSelectorRequirement{

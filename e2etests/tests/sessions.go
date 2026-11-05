@@ -18,6 +18,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/frr"
 	"github.com/openperouter/openperouter/e2etests/pkg/frrk8s"
 	"github.com/openperouter/openperouter/e2etests/pkg/infra"
+	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/networklayerprotocol"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
@@ -39,11 +40,14 @@ var _ = Describe("Router BGP sessions", Ordered, GroutSupport, func() {
 		cs = k8sclient.New()
 		_, err = openperouter.Get(cs, HostMode)
 		Expect(err).NotTo(HaveOccurred())
-		frrk8sPods, err = frrk8s.Pods(cs)
-		Expect(err).NotTo(HaveOccurred())
 		nodesItems, err := cs.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred())
-		nodes = nodesItems.Items
+		nodes, err = k8s.NodesWithLabel(nodesItems.Items, InstrumentedNodesLabel)
+		Expect(err).NotTo(HaveOccurred())
+		frrk8sPods, err = frrk8s.Pods(cs)
+		Expect(err).NotTo(HaveOccurred())
+		frrk8sPods = k8s.PodsOnNodes(frrk8sPods, nodes)
+		Expect(frrk8sPods).To(HaveLen(len(nodes)), "expected one frr-k8s pod per selected node")
 
 		err = Updater.Update(config.Resources{
 			Underlays: []v1alpha1.Underlay{
@@ -531,7 +535,7 @@ var _ = Describe("Router BGP sessions", Ordered, GroutSupport, func() {
 		err := Updater.Client().Delete(context.Background(), &underlay)
 		Expect(err).NotTo(HaveOccurred())
 
-		// Validate sessions are down on both leaf nodes
+		// Validate sessions are down on both TOR leaves
 		leaves := []string{infra.KindLeaf, infra.KindLeaf2}
 		for _, leaf := range leaves {
 			exec := executor.ForContainer(leaf)
@@ -555,7 +559,8 @@ var _ = Describe("Underlay external and internal configuration", Ordered, GroutS
 		cs = k8sclient.New()
 		nodesItems, err := cs.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred())
-		nodes = nodesItems.Items
+		nodes, err = k8s.NodesWithLabel(nodesItems.Items, InstrumentedNodesLabel)
+		Expect(err).NotTo(HaveOccurred())
 	})
 
 	AfterAll(func() {
@@ -697,7 +702,8 @@ var _ = Describe("Underlay BFD Configuration", Ordered, GroutSupport, func() {
 		Expect(err).NotTo(HaveOccurred())
 		nodesItems, err := cs.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred())
-		nodes = nodesItems.Items
+		nodes, err = k8s.NodesWithLabel(nodesItems.Items, InstrumentedNodesLabel)
+		Expect(err).NotTo(HaveOccurred())
 
 		neighbors := []string{}
 		for _, node := range nodes {
@@ -852,10 +858,8 @@ var _ = Describe("Underlay BFD Configuration", Ordered, GroutSupport, func() {
 				return nil
 			}, 10*time.Second, time.Second).Should(Succeed())
 		},
-		Entry("simple bfd",
-			infra.Underlay(infra.SimpleBFD)),
-		Entry("bfd with parameters",
-			infra.Underlay(infra.BFDWithParameters)),
+		Entry("simple bfd", infra.Underlay(infra.SimpleBFD)),
+		Entry("bfd with parameters", infra.Underlay(infra.BFDWithParameters)),
 	)
 })
 
@@ -870,7 +874,8 @@ var _ = Describe("Add extra neighbor", Ordered, GroutSupport, func() {
 		cs = k8sclient.New()
 		nodesItems, err := cs.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred())
-		nodes = nodesItems.Items
+		nodes, err = k8s.NodesWithLabel(nodesItems.Items, InstrumentedNodesLabel)
+		Expect(err).NotTo(HaveOccurred())
 	})
 
 	AfterAll(func() {
@@ -977,7 +982,8 @@ var _ = Describe("Underlay explicit address family configuration", Ordered, Grou
 		cs = k8sclient.New()
 		nodesItems, err := cs.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred())
-		nodes = nodesItems.Items
+		nodes, err = k8s.NodesWithLabel(nodesItems.Items, InstrumentedNodesLabel)
+		Expect(err).NotTo(HaveOccurred())
 	})
 
 	AfterAll(func() {

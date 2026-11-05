@@ -75,7 +75,8 @@ var _ = Describe("Single Session Baseline", Ordered, func() {
 		cs = k8sclient.New()
 		nodesItems, err := cs.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 		Expect(err).NotTo(HaveOccurred())
-		nodes = nodesItems.Items
+		nodes, err = k8s.NodesWithLabel(nodesItems.Items, InstrumentedNodesLabel)
+		Expect(err).NotTo(HaveOccurred())
 
 		By("Setting up underlay with single interface and single neighbor")
 		singleNeighborUnderlay := infra.Underlay(infra.Default)
@@ -96,12 +97,10 @@ var _ = Describe("Single Session Baseline", Ordered, func() {
 		_, err = k8s.CreateNamespace(cs, testNamespace)
 		Expect(err).NotTo(HaveOccurred())
 
-		By("Creating the test pod")
-		testPod, err = k8s.CreateAgnhostPod(cs, "test-pod", testNamespace)
+		By("Creating the test pod on an underlay-capable node")
+		testPod, err = k8s.CreateAgnhostPod(cs, "test-pod", testNamespace, k8s.OnNode(nodes[0].Name))
 		Expect(err).NotTo(HaveOccurred())
-
-		_, err = cs.CoreV1().Nodes().Get(context.Background(), testPod.Spec.NodeName, metav1.GetOptions{})
-		Expect(err).NotTo(HaveOccurred())
+		Expect(testPod.Spec.NodeName).To(Equal(nodes[0].Name))
 
 		By("Creating L3VNI and advertising pod IP via FRR-K8s")
 		nodeSelector := k8s.NodeSelectorForPod(testPod)
@@ -150,9 +149,16 @@ var _ = Describe("Single Session Baseline", Ordered, func() {
 		err = Updater.CleanAll()
 		Expect(err).NotTo(HaveOccurred())
 
-		By("waiting for all router pods to be ready after removing the underlay")
+		By("waiting for underlay-node routers to be ready after removing the underlay")
 		Eventually(func() error {
-			routers, err := openperouter.Get(cs, HostMode)
+			if HostMode {
+				routers, err := openperouter.Get(cs, HostMode)
+				if err != nil {
+					return err
+				}
+				return openperouter.AreReady(routers)
+			}
+			routers, err := openperouter.RoutersForNodes(cs, nodes)
 			if err != nil {
 				return err
 			}

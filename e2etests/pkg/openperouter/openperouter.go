@@ -73,18 +73,25 @@ func AreReady(routers Routers) error {
 	return nil
 }
 
-func RouterPodsForNodes(cs clientset.Interface, nodes map[string]bool) ([]*corev1.Pod, error) {
-	routerPods, err := k8s.PodsForLabel(cs, Namespace, routerLabelSelector)
+// RoutersForNodes returns the router pods on the given nodes as a Routers set.
+// Every selected node must have a router pod; use AreReady on the result.
+func RoutersForNodes(cs clientset.Interface, nodes []corev1.Node) (Routers, error) {
+	pods, err := RouterPodsForNodes(cs, nodes)
 	if err != nil {
 		return nil, err
 	}
-	filteredRouterPods := []*corev1.Pod{}
-	for _, p := range routerPods {
-		if nodes[p.Spec.NodeName] {
-			filteredRouterPods = append(filteredRouterPods, p)
-		}
+	if len(pods) != len(nodes) {
+		return nil, fmt.Errorf("expected %d router pods on selected nodes, got %d", len(nodes), len(pods))
 	}
-	return filteredRouterPods, nil
+	return routerPods{pods: pods}, nil
+}
+
+func RouterPodsForNodes(cs clientset.Interface, nodes []corev1.Node) ([]*corev1.Pod, error) {
+	allRouterPods, err := k8s.PodsForLabel(cs, Namespace, routerLabelSelector)
+	if err != nil {
+		return nil, err
+	}
+	return k8s.PodsOnNodes(allRouterPods, nodes), nil
 }
 
 // ExecutorForNode returns the RouterExecutor running on the given node.
