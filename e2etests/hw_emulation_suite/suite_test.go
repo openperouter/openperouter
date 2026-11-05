@@ -48,6 +48,7 @@ func TestQEMUE2E(t *testing.T) {
 		return
 	}
 	RegisterFailHandler(ginkgo.Fail)
+	Expect(infra.RegisterLinks(nodeLinkConfigPath)).To(Succeed())
 	ginkgo.RunSpecs(t, "HWEmulation E2E Suite")
 }
 
@@ -67,9 +68,6 @@ var _ = ginkgo.BeforeSuite(func() {
 		openperouter.Namespace,
 		k8s.WithAdditionalNamespaces(frrk8s.Namespace),
 	)
-
-	ginkgo.By("Registering fabric and node links from " + nodeLinkConfigPath)
-	Expect(infra.RegisterLinks(nodeLinkConfigPath)).To(Succeed())
 
 	ginkgo.By("Waiting for router pods to be ready")
 	cs := k8sclient.New()

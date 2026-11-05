@@ -4,6 +4,7 @@ package tests
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -459,7 +460,7 @@ var _ = Describe("Beta: Named netns auto-rebuilds after deletion", Ordered, func
 
 		By("waiting for check_veths to recreate the underlay veth destroyed by netns deletion")
 		Eventually(func() bool {
-			return openperouter.UnderlayVethsExists(nodeName)
+			return openperouter.InterfacesExists(nodeName, infra.UnderlayInterfaceNames())
 		}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(BeTrue())
 
 		By("waiting for the controller to recreate the named netns")
@@ -705,7 +706,7 @@ func (tr trafficTestResult) eval() error {
 		return fmt.Errorf("no traffic was measured")
 	}
 	if tr.failCount > maxAllowedFailures {
-		return fmt.Errorf(tr.String())
+		return errors.New(tr.String())
 	}
 	return nil
 }

@@ -1,4 +1,5 @@
 {
+  "underlayHostIfaces": ["toswitch1", "toswitch2"],
   "nodes": {
     "pe-kind-control-plane": {
       "ipForKindLeaf": "192.168.11.3",

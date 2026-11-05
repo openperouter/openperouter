@@ -82,11 +82,11 @@ func UnderlayConfigured(nodeName string) (bool, error) {
 	return strings.TrimSpace(out) != "", nil
 }
 
-// UnderlayVethExists checks whether the toswitch interfaces exist on nodeName,
+// InterfacesExists checks whether the underlay interfaces exist on nodeName,
 // either in the default netns or inside the perouter netns.
-func UnderlayVethsExists(nodeName string) bool {
+func InterfacesExists(nodeName string, ifaces []string) bool {
 	exec := executor.ForNode(nodeName)
-	for _, iface := range []string{"toswitch1", "toswitch2"} {
+	for _, iface := range ifaces {
 		if _, err := exec.Exec("ip", "link", "show", iface); err == nil {
 			return true
 		}

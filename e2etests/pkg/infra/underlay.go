@@ -37,31 +37,81 @@ const (
 // and restore the old interfaces before setting up the new ones. While this is now graceful (no pod restart
 // required), changing interfaces mid-test can still disrupt E2E tests that cache router state in BeforeAll().
 
-var defaultInterfaces = []v1alpha1.UnderlayInterface{
-	{
-		Type:          "NetworkDevice",
-		NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch1"},
-	},
-	{
-		Type:          "NetworkDevice",
-		NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch2"},
-	},
-}
+var defaultInterfaces []v1alpha1.UnderlayInterface
 
-// UnderlayKind identifies the underlay fixtures returned by Underlay.
+// UnderlayKind identifies the underlay fixtures.
 type UnderlayKind string
 
-// underlays holds the underlay fixtures. The values are shared
-// package-level state: Underlay only hands out deep copies of them, so
-// callers can modify the returned underlays freely, including in-place
-// interface customization (e.g. the acceleratedConfig port parameters
-// in the hw-emulation suite).
+func initializeUnderlays(interfaces []string) error {
+	if len(interfaces) != 2 {
+		return fmt.Errorf("want 2 names, got %d", len(interfaces))
+	}
+	defaultInterfaces = make([]v1alpha1.UnderlayInterface, 0, 2)
+	for _, name := range interfaces {
+		defaultInterfaces = append(defaultInterfaces, v1alpha1.UnderlayInterface{
+			Type:          "NetworkDevice",
+			NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: name},
+		})
+	}
+
+	placeholderToInterface := func(name string) string {
+		switch name {
+		case "PLACEHOLDER0":
+			return interfaces[0]
+		case "PLACEHOLDER1":
+			return interfaces[1]
+		default:
+			return name
+		}
+	}
+	for kind, underlay := range underlays {
+		for i := range underlay.Spec.Interfaces {
+			device := underlay.Spec.Interfaces[i].NetworkDevice
+			if device != nil {
+				device.InterfaceName = placeholderToInterface(device.InterfaceName)
+			}
+		}
+		if underlay.Spec.ISIS != nil {
+			for i := range underlay.Spec.ISIS.Interfaces {
+				iface := &underlay.Spec.ISIS.Interfaces[i]
+				iface.Name = placeholderToInterface(iface.Name)
+			}
+		}
+		underlays[kind] = underlay
+	}
+	return nil
+}
+
+// Underlay returns a deep copy of the underlay fixture for the given kind,
+// with the namespace set to the active openperouter namespace.
+func Underlay(kind UnderlayKind) v1alpha1.Underlay {
+	u, ok := underlays[kind]
+	if !ok {
+		panic(fmt.Sprintf("unknown underlay kind %q", kind))
+	}
+	underlay := *u.DeepCopy()
+	underlay.Namespace = openperouter.Namespace
+	return underlay
+}
+
+// UnderlayInterfaceNames returns the configured host interface names.
+func UnderlayInterfaceNames() []string {
+	names := make([]string, 0, len(defaultInterfaces))
+	for _, iface := range defaultInterfaces {
+		names = append(names, iface.NetworkDevice.InterfaceName)
+	}
+	return names
+}
+
 var underlays = map[UnderlayKind]v1alpha1.Underlay{
 	Default: {
 		ObjectMeta: metav1.ObjectMeta{Name: "underlay"},
 		Spec: v1alpha1.UnderlaySpec{
-			ASN:        64514,
-			Interfaces: defaultInterfaces,
+			ASN: 64514,
+			Interfaces: []v1alpha1.UnderlayInterface{
+				{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "PLACEHOLDER0"}},
+				{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "PLACEHOLDER1"}},
+			},
 			Neighbors: []v1alpha1.Neighbor{
 				{
 					ASN:                  new(int64(64512)),
@@ -86,8 +136,11 @@ var underlays = map[UnderlayKind]v1alpha1.Underlay{
 	IPv6: {
 		ObjectMeta: metav1.ObjectMeta{Name: "underlay"},
 		Spec: v1alpha1.UnderlaySpec{
-			ASN:        64514,
-			Interfaces: defaultInterfaces,
+			ASN: 64514,
+			Interfaces: []v1alpha1.UnderlayInterface{
+				{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "PLACEHOLDER0"}},
+				{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "PLACEHOLDER1"}},
+			},
 			Neighbors: []v1alpha1.Neighbor{
 				{
 					ASN:                  new(int64(64512)),
@@ -144,8 +197,11 @@ var underlays = map[UnderlayKind]v1alpha1.Underlay{
 	ListenRange: {
 		ObjectMeta: metav1.ObjectMeta{Name: "underlay"},
 		Spec: v1alpha1.UnderlaySpec{
-			ASN:        64514,
-			Interfaces: defaultInterfaces,
+			ASN: 64514,
+			Interfaces: []v1alpha1.UnderlayInterface{
+				{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "PLACEHOLDER0"}},
+				{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "PLACEHOLDER1"}},
+			},
 			Neighbors: []v1alpha1.Neighbor{
 				{
 					ASN:         new(int64(64512)),
@@ -176,8 +232,11 @@ var underlays = map[UnderlayKind]v1alpha1.Underlay{
 	ListenRangeIPv6: {
 		ObjectMeta: metav1.ObjectMeta{Name: "underlay"},
 		Spec: v1alpha1.UnderlaySpec{
-			ASN:        64514,
-			Interfaces: defaultInterfaces,
+			ASN: 64514,
+			Interfaces: []v1alpha1.UnderlayInterface{
+				{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "PLACEHOLDER0"}},
+				{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "PLACEHOLDER1"}},
+			},
 			Neighbors: []v1alpha1.Neighbor{
 				{
 					ASN:         new(int64(64512)),
@@ -206,8 +265,11 @@ var underlays = map[UnderlayKind]v1alpha1.Underlay{
 	SRv6: {
 		ObjectMeta: metav1.ObjectMeta{Name: "underlay"},
 		Spec: v1alpha1.UnderlaySpec{
-			ASN:        64514,
-			Interfaces: defaultInterfaces,
+			ASN: 64514,
+			Interfaces: []v1alpha1.UnderlayInterface{
+				{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "PLACEHOLDER0"}},
+				{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "PLACEHOLDER1"}},
+			},
 			Neighbors: []v1alpha1.Neighbor{
 				{
 					ASN:                  new(int64(64520)),
@@ -229,7 +291,7 @@ var underlays = map[UnderlayKind]v1alpha1.Underlay{
 				Level:   new(int32(1)),
 				Interfaces: []v1alpha1.ISISInterface{
 					{
-						Name:     "toswitch1",
+						Name:     "PLACEHOLDER0",
 						IPFamily: new(v1alpha1.IPFamilyIPv6),
 					},
 				},
@@ -245,8 +307,11 @@ var underlays = map[UnderlayKind]v1alpha1.Underlay{
 	EVPNandSRv6: {
 		ObjectMeta: metav1.ObjectMeta{Name: "underlay"},
 		Spec: v1alpha1.UnderlaySpec{
-			ASN:        64514,
-			Interfaces: defaultInterfaces,
+			ASN: 64514,
+			Interfaces: []v1alpha1.UnderlayInterface{
+				{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "PLACEHOLDER0"}},
+				{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "PLACEHOLDER1"}},
+			},
 			Neighbors: []v1alpha1.Neighbor{
 				// leafSRV6 - use automatically derived address families.
 				{
@@ -278,7 +343,7 @@ var underlays = map[UnderlayKind]v1alpha1.Underlay{
 				Level:   new(int32(1)),
 				Interfaces: []v1alpha1.ISISInterface{
 					{
-						Name:     "toswitch1",
+						Name:     "PLACEHOLDER0",
 						IPFamily: new(v1alpha1.IPFamilyIPv6),
 					},
 				},
@@ -294,8 +359,11 @@ var underlays = map[UnderlayKind]v1alpha1.Underlay{
 	ISISOnly: {
 		ObjectMeta: metav1.ObjectMeta{Name: "underlay"},
 		Spec: v1alpha1.UnderlaySpec{
-			ASN:        64514,
-			Interfaces: defaultInterfaces,
+			ASN: 64514,
+			Interfaces: []v1alpha1.UnderlayInterface{
+				{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "PLACEHOLDER0"}},
+				{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "PLACEHOLDER1"}},
+			},
 			// Although neighbors are not needed for IS-IS only tests, we need a dummy neighbor to make validation happy.
 			Neighbors: []v1alpha1.Neighbor{
 				{
@@ -308,7 +376,7 @@ var underlays = map[UnderlayKind]v1alpha1.Underlay{
 				Level:   new(int32(1)),
 				Interfaces: []v1alpha1.ISISInterface{
 					{
-						Name:     "toswitch1",
+						Name:     "PLACEHOLDER0",
 						IPFamily: new(v1alpha1.IPFamilyDualStack),
 					},
 				},
@@ -326,7 +394,7 @@ var underlays = map[UnderlayKind]v1alpha1.Underlay{
 		Spec: v1alpha1.UnderlaySpec{
 			ASN: 64514,
 			Interfaces: []v1alpha1.UnderlayInterface{
-				{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch1"}},
+				{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "PLACEHOLDER0"}},
 			},
 			TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
 				CIDRs: []string{"100.65.0.0/24"},
@@ -345,7 +413,7 @@ var underlays = map[UnderlayKind]v1alpha1.Underlay{
 		Spec: v1alpha1.UnderlaySpec{
 			ASN: 64514,
 			Interfaces: []v1alpha1.UnderlayInterface{
-				{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch1"}},
+				{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "PLACEHOLDER0"}},
 			},
 			TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
 				CIDRs: []string{"100.65.0.0/24"},
@@ -368,8 +436,11 @@ var underlays = map[UnderlayKind]v1alpha1.Underlay{
 	IBGP: {
 		ObjectMeta: metav1.ObjectMeta{Name: "underlay"},
 		Spec: v1alpha1.UnderlaySpec{
-			ASN:        64512,
-			Interfaces: defaultInterfaces,
+			ASN: 64512,
+			Interfaces: []v1alpha1.UnderlayInterface{
+				{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "PLACEHOLDER0"}},
+				{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "PLACEHOLDER1"}},
+			},
 			Neighbors: []v1alpha1.Neighbor{
 				{
 					Type:    new("Internal"),
@@ -392,8 +463,11 @@ var underlays = map[UnderlayKind]v1alpha1.Underlay{
 	RouteReflector: {
 		ObjectMeta: metav1.ObjectMeta{Name: "rr"},
 		Spec: v1alpha1.UnderlaySpec{
-			ASN:          64514,
-			Interfaces:   defaultInterfaces,
+			ASN: 64514,
+			Interfaces: []v1alpha1.UnderlayInterface{
+				{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "PLACEHOLDER0"}},
+				{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "PLACEHOLDER1"}},
+			},
 			NodeSelector: &k8s.ControlPlaneNodesLabelSelector,
 			RouteReflector: &v1alpha1.RouteReflectorConfig{
 				ClusterID: new("192.0.2.1"),
@@ -424,8 +498,11 @@ var underlays = map[UnderlayKind]v1alpha1.Underlay{
 	RouteReflectorClient: {
 		ObjectMeta: metav1.ObjectMeta{Name: "client"},
 		Spec: v1alpha1.UnderlaySpec{
-			ASN:          64514,
-			Interfaces:   defaultInterfaces,
+			ASN: 64514,
+			Interfaces: []v1alpha1.UnderlayInterface{
+				{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "PLACEHOLDER0"}},
+				{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "PLACEHOLDER1"}},
+			},
 			NodeSelector: &k8s.NonControlPlaneNodesLabelSelector,
 			TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
 				CIDRs: []string{"100.65.0.0/24"},
@@ -438,16 +515,4 @@ var underlays = map[UnderlayKind]v1alpha1.Underlay{
 			},
 		},
 	},
-}
-
-// Underlay returns a deep copy of the underlay fixture for the given kind,
-// with the namespace set to the active openperouter namespace.
-func Underlay(kind UnderlayKind) v1alpha1.Underlay {
-	u, ok := underlays[kind]
-	if !ok {
-		panic(fmt.Sprintf("unknown underlay kind %q", kind))
-	}
-	underlay := *u.DeepCopy()
-	underlay.Namespace = openperouter.Namespace
-	return underlay
 }

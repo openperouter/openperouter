@@ -16,7 +16,8 @@ const (
 )
 
 type nodeLinksConfig struct {
-	Nodes map[string]nodeConfig `json:"nodes"`
+	UnderlayHostIfaces []string              `json:"underlayHostIfaces,omitempty"`
+	Nodes              map[string]nodeConfig `json:"nodes"`
 }
 
 type nodeConfig struct {
@@ -42,6 +43,9 @@ func RegisterLinks(path string) error {
 		return fmt.Errorf("parsing node links config %s: %w", path, err)
 	}
 
+	if err := initializeUnderlays(cfg.UnderlayHostIfaces); err != nil {
+		return fmt.Errorf("underlayHostIfaces in %s: %w", path, err)
+	}
 	registerNodeLinks(cfg)
 	return nil
 }
