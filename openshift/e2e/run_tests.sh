@@ -17,7 +17,6 @@ pushd "$SCRIPT_DIR"/../..
 # downstream setup.
 EXCLUDE_ARRAY=(
   'Routes.between.bgp.and.the.fabric.underlay.address.family.Unnumbered'
-  'DHCP.underlay.lifecycle.removes.the.DHCP.interfaces.when.the.underlay.is.deleted'
   'reflects.type-2.routes.between.client.nodes.via.the.route.reflector'
   'assigns.each.underlay.port.a.unique.IPv6.link-local'
 )
