@@ -99,7 +99,7 @@ func RemoveNonConfiguredL3VPNs(params []L3VPNParams) error {
 	if err != nil {
 		return fmt.Errorf("RemoveNonConfiguredL3VPNs: failed to list links: %w", err)
 	}
-	if err := errors.Join(removeHostSideVeths(hostLinks, HostVethPrefix+SRv6Infix, rdAssignedNumbers)...); err != nil {
+	if err := errors.Join(removeHostSideVeths(hostLinks, HostSRv6Prefix, rdAssignedNumbers)...); err != nil {
 		return fmt.Errorf("RemoveNonConfiguredL3VPNs: failed to remove veths: %w", err)
 	}
 	return nil

@@ -68,8 +68,14 @@ func (v *L3VPNValidator) Handle(ctx context.Context, req admission.Request) (res
 		if err := validateL3VPNCreate(&l3vpn); err != nil {
 			return admission.Denied(err.Error())
 		}
+		if err := DatapathConfigValidator.Validate(conversion.APIConfigData{L3VPNs: []v1alpha1.L3VPN{l3vpn}}); err != nil {
+			return admission.Denied(err.Error())
+		}
 	case v1.Update:
 		if err := validateL3VPNUpdate(&l3vpn, &oldL3VPN); err != nil {
+			return admission.Denied(err.Error())
+		}
+		if err := DatapathConfigValidator.Validate(conversion.APIConfigData{L3VPNs: []v1alpha1.L3VPN{l3vpn}}); err != nil {
 			return admission.Denied(err.Error())
 		}
 	case v1.Delete:

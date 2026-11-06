@@ -4,7 +4,7 @@ title: "SRv6 L3VPN Configuration"
 description: "How to configure OpenPERouter for SRv6 L3VPN"
 icon: "article"
 date: "2025-06-15T15:03:22+02:00"
-lastmod: "2025-06-15T15:03:22+02:00"
+lastmod: "2026-10-14T09:00:00+02:00"
 toc: true
 ---
 
@@ -102,8 +102,34 @@ The `features` list enables optional IS-IS behaviors:
     - "multiTopology"
 ```
 
+#### IS-IS Interface Point-to-Point
+
+Individual underlay interfaces can be configured as IS-IS point-to-point
+circuits. This emits `isis network point-to-point` on the selected
+interface, which is recommended for links with exactly two IS-IS
+endpoints: it skips DIS election and uses point-to-point hello packets.
+
+```yaml
+  isis:
+    baseNet: "49.0001.0002.0003.0004.00"
+    level: 1
+    interfaces:
+    - name: toleafkind1
+      ipFamily: IPv6
+      features:
+      - "point-to-point"
+```
+
+Both endpoints of the link must use point-to-point mode: an interface
+running point-to-point mode does not form an adjacency with a neighbor
+that uses the default broadcast mode.
+
 For the full list of IS-IS configuration fields, see the
 [ISISConfig API Reference]({{< ref "api-reference#isisconfig" >}}).
+
+When running with the grout data path, see
+[Enabling Grout for SRv6 L3VPN]({{< ref "grout.md#enabling-grout-for-srv6-l3vpn" >}})
+for the differences in the generated FRR configuration.
 
 ### SRv6 Configuration
 

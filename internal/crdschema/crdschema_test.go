@@ -23,7 +23,9 @@ var (
 func TestSchemaInitialization(t *testing.T) {
 	gvks := KnownGVKs()
 
-	expectedKinds := []string{"Underlay", "L2VNI", "L3VNI", "L3VPN", "L3Passthrough", "RawFRRConfig", "RouterNodeConfigurationStatus"}
+	expectedKinds := []string{
+		"Underlay", "L2VNI", "L2Trunk", "L3VNI", "L3VPN", "L3Passthrough", "RawFRRConfig", "RouterNodeConfigurationStatus",
+	}
 	sort.Strings(expectedKinds)
 
 	foundKinds := make([]string, 0, len(gvks))
@@ -425,6 +427,36 @@ func TestValidateSuccessful(t *testing.T) {
 					map[string]any{
 						"address": "192.168.1.1",
 						"asn":     int64(65001),
+					},
+				},
+			}),
+		},
+		{
+			name: "Underlay ISIS interface point-to-point feature",
+			gvk:  underlayGVK,
+			obj: newUnstructured("Underlay", map[string]any{
+				"asn": int64(65000),
+				"interfaces": []any{
+					map[string]any{
+						"type":          "NetworkDevice",
+						"networkDevice": map[string]any{"interfaceName": "toleafkind1"},
+					},
+				},
+				"neighbors": []any{
+					map[string]any{
+						"address": "192.168.1.1",
+						"asn":     int64(65001),
+					},
+				},
+				"isis": map[string]any{
+					"baseNet": "49.0001.0002.0003.0004.00",
+					"level":   int64(1),
+					"interfaces": []any{
+						map[string]any{
+							"name":     "toleafkind1",
+							"ipFamily": "IPv6",
+							"features": []any{"point-to-point"},
+						},
 					},
 				},
 			}),
@@ -926,6 +958,37 @@ func TestValidateFailure(t *testing.T) {
 				},
 			}),
 			errSubstr: "should be greater than or equal to 64",
+		},
+		{
+			name: "Underlay ISIS interface unknown feature",
+			gvk:  underlayGVK,
+			obj: newUnstructured("Underlay", map[string]any{
+				"asn": int64(65000),
+				"interfaces": []any{
+					map[string]any{
+						"type":          "NetworkDevice",
+						"networkDevice": map[string]any{"interfaceName": "toleafkind1"},
+					},
+				},
+				"neighbors": []any{
+					map[string]any{
+						"address": "192.168.1.1",
+						"asn":     int64(65001),
+					},
+				},
+				"isis": map[string]any{
+					"baseNet": "49.0001.0002.0003.0004.00",
+					"level":   int64(1),
+					"interfaces": []any{
+						map[string]any{
+							"name":     "toleafkind1",
+							"ipFamily": "IPv6",
+							"features": []any{"someUnknownFeature"},
+						},
+					},
+				},
+			}),
+			errSubstr: "Unsupported value",
 		},
 	}
 

@@ -14,6 +14,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/config"
 	"github.com/openperouter/openperouter/e2etests/pkg/executor"
 	"github.com/openperouter/openperouter/e2etests/pkg/frrk8s"
+	"github.com/openperouter/openperouter/e2etests/pkg/grout"
 	"github.com/openperouter/openperouter/e2etests/pkg/infra"
 	"github.com/openperouter/openperouter/e2etests/pkg/ipfamily"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
@@ -31,6 +32,8 @@ var (
 	leafADefaultPrefixes = []string{"192.168.22.0/24"}
 	leafAVRFRedPrefixes  = []string{"192.168.20.0/24", "2001:db8:20::/64"}
 )
+
+const underlayAltName = "pe-uplink0"
 
 // --- EVPN accelerated scenarios ---
 
@@ -71,6 +74,23 @@ var _ = Describe("HWEmulation", Ordered, GroutSupport, func() {
 			}
 			return openperouter.AreReady(routers)
 		}, 2*time.Minute, time.Second).ShouldNot(HaveOccurred())
+
+		By("Verifying the alternative name is restored on the kernel netdev")
+		for _, node := range nodes {
+			nodeExec := executor.ForNode(node.Name)
+			Eventually(func(g Gomega) {
+				out, err := nodeExec.Exec("ip", "-j", "link", "show", "dev", underlayAltName)
+				g.Expect(err).NotTo(HaveOccurred(), out)
+				var links []struct {
+					Name     string   `json:"ifname"`
+					AltNames []string `json:"altnames"`
+				}
+				g.Expect(json.Unmarshal([]byte(out), &links)).To(Succeed(), out)
+				g.Expect(links).To(HaveLen(1))
+				g.Expect(links[0].Name).To(Equal("toswitch1"))
+				g.Expect(links[0].AltNames).To(ContainElement(underlayAltName))
+			}, time.Minute, time.Second).Should(Succeed(), "node %s", node.Name)
+		}
 	})
 
 	AfterEach(func() {
@@ -78,6 +98,39 @@ var _ = Describe("HWEmulation", Ordered, GroutSupport, func() {
 		Expect(Updater.CleanButUnderlay()).To(Succeed())
 		Expect(infra.LeafAConfig.Reset()).To(Succeed())
 		Expect(infra.LeafBConfig.Reset()).To(Succeed())
+	})
+
+	It("should select an accelerated underlay by alternative name", func() {
+		underlay := infra.Underlay(infra.Default)
+		underlay.Spec.Interfaces[0].NetworkDevice.InterfaceName = underlayAltName
+		portName := "u_" + underlayAltName
+		DeferCleanup(func() {
+			Expect(Updater.Update(config.Resources{
+				Underlays: []v1alpha1.Underlay{infra.Underlay(infra.Default)},
+			})).To(Succeed())
+		})
+
+		By("Selecting the underlay interface by its alternative name")
+		Expect(Updater.Update(config.Resources{
+			Underlays: []v1alpha1.Underlay{underlay},
+		})).To(Succeed())
+
+		By("Verifying the grout port and FRR interface use the alternative name")
+		for router := range routers.GetExecutors() {
+			Eventually(func(g Gomega) {
+				port, err := grout.GroutPortForName(router, portName)
+				g.Expect(err).To(Succeed())
+				expectBoundToVFIO(g, router, port.Devargs)
+				out, err := router.Exec("vtysh", "-c", "show interface "+portName+" json")
+				g.Expect(err).NotTo(HaveOccurred(), out)
+				var interfaces map[string]json.RawMessage
+				g.Expect(json.Unmarshal([]byte(out), &interfaces)).To(Succeed(), out)
+				g.Expect(interfaces).To(HaveKey(portName))
+			}, time.Minute, time.Second).Should(Succeed(), "router %s", router.Name())
+		}
+
+		By("Verifying BGP sessions with leafkind1 and leafkind2")
+		validateUnderlaySessions(nodes)
 	})
 
 	It("should configure L3Passthrough host session in FRR", func() {
@@ -192,7 +245,8 @@ var _ = Describe("HWEmulation", Ordered, GroutSupport, func() {
 		By("Verifying the grout port is recreated with the custom parameters")
 		for router := range routers.GetExecutors() {
 			Eventually(func(g Gomega) {
-				port := showGroutPort(g, router, portName)
+				port, err := grout.GroutPortForName(router, portName)
+				g.Expect(err).To(Succeed())
 				g.Expect(port.RXQueues).To(Equal(rxQueues))
 				g.Expect(port.QSize).To(Equal(qSize))
 				expectBoundToVFIO(g, router, port.Devargs)
@@ -203,20 +257,6 @@ var _ = Describe("HWEmulation", Ordered, GroutSupport, func() {
 		validateUnderlaySessions(nodes)
 	})
 })
-
-type groutPort struct {
-	Devargs  string `json:"devargs"`
-	RXQueues int32  `json:"n_rxq"`
-	QSize    int32  `json:"rxq_size"`
-}
-
-func showGroutPort(g Gomega, router openperouter.RouterExecutor, portName string) groutPort {
-	var port groutPort
-	out, err := router.Exec("grcli", "--json", "interface", "show", "name", portName)
-	g.Expect(err).NotTo(HaveOccurred(), out)
-	g.Expect(json.Unmarshal([]byte(out), &port)).To(Succeed(), out)
-	return port
-}
 
 // validateUnderlaySessions checks the BGP sessions between every node and
 // both kind leaves. leafkind1 is reached through toswitch1, an igb NIC, and

@@ -283,6 +283,10 @@ func setupWebhook(
 		logger.Error("unable to create the webhook", "error", err, "webhook", "L2VNIs")
 		return err
 	}
+	if err := webhooks.SetupL2Trunk(mgr); err != nil {
+		logger.Error("unable to create the webhook", "error", err, "webhook", "L2Trunks")
+		return err
+	}
 	if err := webhooks.SetupL3VPN(mgr); err != nil {
 		logger.Error("unable to create the webhook", "error", err, "webhook", "L3VPNs")
 		return err

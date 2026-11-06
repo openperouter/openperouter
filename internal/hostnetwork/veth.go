@@ -138,24 +138,29 @@ func createVeth(ctx context.Context, logger *slog.Logger, vethNames VethNames) (
 	return vethHost, nil
 }
 
-const HostVethPrefix = "host-"
-const PEVethPrefix = "pe-"
-const EvpnInfix = "e-"
-const SRv6Infix = "s-"
+const (
+	hostVethPrefix = "host-"
+	peVethPrefix   = "pe-"
+
+	HostEVPNPrefix = hostVethPrefix + "e-"
+	PEEVPNPrefix   = peVethPrefix + "e-"
+	HostSRv6Prefix = hostVethPrefix + "s-"
+	PESRv6Prefix   = peVethPrefix + "s-"
+)
 
 // vethNamesFromVNI returns the names of the veth legs
 // corresponding to the default namespace and the target namespace, based on VNI.
 func vethNamesFromVNI(vni int32) VethNames {
-	hostSide := fmt.Sprintf("%s%s%d", HostVethPrefix, EvpnInfix, vni)
-	peSide := fmt.Sprintf("%s%s%d", PEVethPrefix, EvpnInfix, vni)
+	hostSide := fmt.Sprintf("%s%d", HostEVPNPrefix, vni)
+	peSide := fmt.Sprintf("%s%d", PEEVPNPrefix, vni)
 	return VethNames{HostSide: hostSide, NamespaceSide: peSide}
 }
 
 // vethNamesFromL3VPN returns the names of the veth legs
 // corresponding to the default namespace and the target namespace, based on L3VPN.
 func vethNamesFromL3VPN(rdAssignedNumber int32) VethNames {
-	hostSide := fmt.Sprintf("%s%s%d", HostVethPrefix, SRv6Infix, rdAssignedNumber)
-	peSide := fmt.Sprintf("%s%s%d", PEVethPrefix, SRv6Infix, rdAssignedNumber)
+	hostSide := fmt.Sprintf("%s%d", HostSRv6Prefix, rdAssignedNumber)
+	peSide := fmt.Sprintf("%s%d", PESRv6Prefix, rdAssignedNumber)
 	return VethNames{HostSide: hostSide, NamespaceSide: peSide}
 }
 

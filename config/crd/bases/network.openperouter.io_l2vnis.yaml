@@ -276,6 +276,35 @@ spec:
                   rule: self.type != 'L3VNI' || (has(self.l3vni) && !has(self.l3vpn))
                 - message: type L3VPN requires l3vpn to be set and l3vni to be unset
                   rule: self.type != 'L3VPN' || (has(self.l3vpn) && !has(self.l3vni))
+              trunk:
+                description: |-
+                  trunk selects a shared L2Trunk attachment and the VLAN tag carried on it.
+                  The reference and tag are immutable and cannot be combined with hostMaster.
+                properties:
+                  name:
+                    description: name is the metadata.name of the L2Trunk in the same
+                      namespace.
+                    maxLength: 253
+                    minLength: 1
+                    type: string
+                  vlan:
+                    description: vlan selects the tag carried by this L2VNI on the
+                      trunk.
+                    properties:
+                      tag:
+                        description: tag is the VLAN ID. Untagged traffic and reserved
+                          IDs are not supported.
+                        format: int32
+                        maximum: 4094
+                        minimum: 1
+                        type: integer
+                    required:
+                    - tag
+                    type: object
+                required:
+                - name
+                - vlan
+                type: object
               underlayAddressFamily:
                 description: |-
                   underlayAddressFamily selects which VTEP address family to use for this VNI's
@@ -304,6 +333,11 @@ spec:
             x-kubernetes-validations:
             - message: gatewayIPs cannot be set without routingDomain
               rule: '!has(self.gatewayIPs) || size(self.gatewayIPs) == 0 || has(self.routingDomain)'
+            - message: hostMaster and trunk are mutually exclusive
+              rule: '!has(self.hostMaster) || !has(self.trunk)'
+            - message: trunk is immutable
+              rule: has(self.trunk) == has(oldSelf.trunk) && (!has(self.trunk) ||
+                self.trunk == oldSelf.trunk)
           status:
             description: status defines the observed state of L2VNI.
             type: object

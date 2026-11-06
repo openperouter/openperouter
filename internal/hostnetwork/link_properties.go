@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 
+	"github.com/openperouter/openperouter/internal/sysctl"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
@@ -143,6 +144,35 @@ func SuppressLinkLocal(ifaceName string) error {
 		}
 		if err := netlink.AddrDel(link, &addr); err != nil {
 			return fmt.Errorf("failed to remove link-local %s from %s: %w", addr.IPNet, ifaceName, err)
+		}
+	}
+	return nil
+}
+
+// SuppressAutoconf stops the kernel from autoconfiguring IPv6 addresses from
+// router advertisements on the named interface, and removes the ones it
+// already autoconfigured. Autoconfigured addresses are told apart by their
+// finite lifetime, as the ones configured explicitly are permanent.
+// ifaceName may be an alternative name: procfs only exposes the primary one.
+func SuppressAutoconf(ifaceName string) error {
+	link, err := netlink.LinkByName(ifaceName)
+	if err != nil {
+		return fmt.Errorf("failed to find interface %s: %w", ifaceName, err)
+	}
+	if err := sysctl.Ensure(sysctl.DisableAcceptRA(link.Attrs().Name)); err != nil {
+		return fmt.Errorf("failed to disable router advertisements on %s: %w", ifaceName, err)
+	}
+
+	addrs, err := netlink.AddrList(link, netlink.FAMILY_V6)
+	if err != nil {
+		return fmt.Errorf("failed to list addresses on %s: %w", ifaceName, err)
+	}
+	for _, addr := range addrs {
+		if addr.Flags&unix.IFA_F_PERMANENT != 0 || addr.IP.IsLinkLocalUnicast() {
+			continue
+		}
+		if err := netlink.AddrDel(link, &addr); err != nil {
+			return fmt.Errorf("failed to remove autoconfigured address %s from %s: %w", addr.IPNet, ifaceName, err)
 		}
 	}
 	return nil

@@ -4,7 +4,9 @@ package tests
 
 import (
 	"fmt"
+	"net"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,6 +23,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
+	"github.com/openperouter/openperouter/e2etests/pkg/url"
 	"github.com/openperouter/openperouter/e2etests/pkg/validate"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -355,6 +358,140 @@ var _ = Describe("Routes between bgp and the fabric with Underlay in ipv4", Grou
 		}),
 	)
 
+	// A VIP managed by keepalived moves between hosts behind different VTEPs while
+	// both hosts stay up: the old owner only drops the address, and the new owner
+	// announces it with gratuitous ARPs and sends no other traffic from it.
+	Context("VIP mobility across VTEPs", func() {
+		const (
+			l2GatewayIP = "192.171.24.1/24"
+			oldOwnerIP  = "192.171.24.2/24"
+			newOwnerIP  = "192.171.24.3/24"
+			oldNodeIP   = "192.171.24.4/24"
+			newNodeIP   = "192.171.24.5/24"
+			oldOwnerMAC = "02:00:00:00:24:02"
+			newOwnerMAC = "02:00:00:00:24:03"
+			vip         = "192.171.24.10"
+			vipCIDR     = vip + "/32"
+			// keepalived announces a new master with a burst of five gratuitous
+			// ARPs (garp_master_repeat).
+			garpBurst = 5
+			// Longer than the 30s neighbor lifetime grout is configured with.
+			unassignedTimeout  = time.Minute
+			convergenceTimeout = 3 * time.Minute
+		)
+
+		var (
+			oldOwner, newOwner         *corev1.Pod
+			oldOwnerExec, newOwnerExec executor.Executor
+			observers                  map[string]executor.Executor
+			expectObserversReach       func(g Gomega, ownerName, ownerMAC string)
+		)
+
+		BeforeEach(func() {
+			l2VniRedWithGateway := l2VniRed.DeepCopy()
+			l2VniRedWithGateway.Spec.GatewayIPs = []string{l2GatewayIP}
+			Expect(Updater.Update(config.Resources{
+				L3VNIs: []v1alpha1.L3VNI{vniRed},
+				L2VNIs: []v1alpha1.L2VNI{*l2VniRedWithGateway},
+			})).To(Succeed())
+
+			nodes, err := k8s.GetNodes(cs)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(len(nodes)).To(BeNumerically(">=", 2), "Expected at least 2 nodes")
+			oldNode, newNode := nodes[0].Name, nodes[1].Name
+
+			_, err = k8s.CreateNamespace(cs, testNamespace)
+			Expect(err).NotTo(HaveOccurred())
+
+			nadObj, err := k8s.CreateMacvlanNad("110", testNamespace, "br-hs-110", []string{l2GatewayIP})
+			Expect(err).NotTo(HaveOccurred())
+
+			createPod := func(name, node string, network k8s.PodModifier) *corev1.Pod {
+				GinkgoHelper()
+				pod, err := k8s.CreateAgnhostPod(cs, name, testNamespace,
+					network,
+					k8s.OnNode(node),
+					k8s.WithCapabilities("NET_RAW"))
+				Expect(err).NotTo(HaveOccurred())
+				return pod
+			}
+
+			By(fmt.Sprintf("creating the old VIP owner and an observer on %s, the new VIP owner and an observer on %s",
+				oldNode, newNode))
+			oldOwner = createPod("owner-old", oldNode,
+				k8s.WithNadMAC(nadObj.Name, testNamespace, []string{oldOwnerIP}, oldOwnerMAC))
+			newOwner = createPod("owner-new", newNode,
+				k8s.WithNadMAC(nadObj.Name, testNamespace, []string{newOwnerIP}, newOwnerMAC))
+			oldNodeObserver := createPod("observer-old", oldNode,
+				k8s.WithNad(nadObj.Name, testNamespace, []string{oldNodeIP}))
+			newNodeObserver := createPod("observer-new", newNode,
+				k8s.WithNad(nadObj.Name, testNamespace, []string{newNodeIP}))
+
+			oldOwnerExec = executor.ForPod(testNamespace, oldOwner.Name, "agnhost")
+			newOwnerExec = executor.ForPod(testNamespace, newOwner.Name, "agnhost")
+			observers = map[string]executor.Executor{
+				oldNodeObserver.Name: executor.ForPod(testNamespace, oldNodeObserver.Name, "agnhost"),
+				newNodeObserver.Name: executor.ForPod(testNamespace, newNodeObserver.Name, "agnhost"),
+			}
+
+			By(fmt.Sprintf("assigning the VIP %s to %s", vip, oldOwner.Name))
+			Expect(addVIP(oldOwnerExec, vipCIDR)).To(Succeed())
+			Expect(sendGARP(oldOwnerExec, vip, garpBurst)).To(Succeed())
+
+			By(fmt.Sprintf("checking the observers reach the VIP on %s", oldOwner.Name))
+			Eventually(func(g Gomega) {
+				expectObserversReach(g, oldOwner.Name, oldOwnerMAC)
+			}, convergenceTimeout, time.Second).Should(Succeed())
+		})
+
+		// The pods forward IP traffic, so once the old owner learns the new
+		// owner's MAC it relays traffic sent to it for the VIP. Reaching the
+		// new owner then does not prove that the VTEPs moved the VIP: every ARP
+		// reply for the VIP, including those the VTEPs proxy, must carry the
+		// owner's MAC.
+		expectObserversReach = func(g Gomega, ownerName, ownerMAC string) {
+			GinkgoHelper()
+			for name, observer := range observers {
+				g.Expect(arpingMACs(observer, vip)).To(HaveEach(ownerMAC), "VIP ARP replies seen by %s", name)
+				g.Expect(vipOwner(observer, vip)).To(Equal(ownerName), "VIP owner seen by %s", name)
+			}
+		}
+
+		It("moves the VIP when the new owner claims it right after the old owner releases it", func() {
+			By(fmt.Sprintf("moving the VIP from %s to %s", oldOwner.Name, newOwner.Name))
+			Expect(delVIP(oldOwnerExec, vipCIDR)).To(Succeed())
+			Expect(addVIP(newOwnerExec, vipCIDR)).To(Succeed())
+
+			By(fmt.Sprintf("checking the observers reach the VIP on %s", newOwner.Name))
+			Eventually(func(g Gomega) {
+				g.Expect(sendGARP(newOwnerExec, vip, garpBurst)).To(Succeed())
+				expectObserversReach(g, newOwner.Name, newOwnerMAC)
+			}, convergenceTimeout, time.Second).Should(Succeed())
+		})
+
+		It("moves the VIP when the new owner claims it after it stayed unassigned", func() {
+			By(fmt.Sprintf("releasing the VIP from %s", oldOwner.Name))
+			Expect(delVIP(oldOwnerExec, vipCIDR)).To(Succeed())
+
+			// The old owner stays up and keeps trying to reach the VIP, as a
+			// bootstrap node waiting for the API does after handing it over.
+			By(fmt.Sprintf("checking the VIP is unreachable from %s while it is unassigned", oldOwner.Name))
+			Consistently(func() error {
+				_, err := vipOwner(oldOwnerExec, vip)
+				return err
+			}, unassignedTimeout, time.Second).Should(HaveOccurred())
+
+			By(fmt.Sprintf("assigning the VIP to %s", newOwner.Name))
+			Expect(addVIP(newOwnerExec, vipCIDR)).To(Succeed())
+			Expect(sendGARP(newOwnerExec, vip, garpBurst)).To(Succeed())
+
+			By(fmt.Sprintf("checking the observers reach the VIP on %s", newOwner.Name))
+			Eventually(func(g Gomega) {
+				g.Expect(sendGARP(newOwnerExec, vip, garpBurst)).To(Succeed())
+				expectObserversReach(g, newOwner.Name, newOwnerMAC)
+			}, convergenceTimeout, time.Second).Should(Succeed())
+		})
+	})
 })
 
 var _ = Describe("Disconnected L2VNI east/west traffic", GroutSupport, Ordered, func() {
@@ -479,6 +616,7 @@ var _ = Describe("Disconnected L2VNI east/west traffic", GroutSupport, Ordered, 
 		const rdAssignedNumber int32 = 42000
 
 		BeforeEach(func() {
+			skipMACIPType2OnGrout()
 			By("configuring the L2VNI RD assigned number")
 			configured := l2vniDisconnected.DeepCopy()
 			configured.Spec.RDAssignedNumber = new(rdAssignedNumber)
@@ -523,6 +661,7 @@ var _ = Describe("Disconnected L2VNI east/west traffic", GroutSupport, Ordered, 
 
 	Context("with route targets", func() {
 		BeforeEach(func() {
+			skipMACIPType2OnGrout()
 			firstL2VNI = l2VNIForNode(
 				l2vniDisconnected, "disconnected-first", nodes[0].Name, "64514:300", "64514:301",
 			)
@@ -643,4 +782,75 @@ func l2VNIForNode(
 	configured.Spec.ExportRTs = []v1alpha1.RouteTarget{exportRT}
 	configured.Spec.ImportRTs = []v1alpha1.RouteTarget{importRT}
 	return *configured
+}
+
+func addVIP(exec executor.Executor, vipCIDR string) error {
+	out, err := exec.Exec("ip", "addr", "add", vipCIDR, "dev", "net1")
+	if err != nil {
+		return fmt.Errorf("failed to add VIP %s: %s: %w", vipCIDR, out, err)
+	}
+	return nil
+}
+
+func delVIP(exec executor.Executor, vipCIDR string) error {
+	out, err := exec.Exec("ip", "addr", "del", vipCIDR, "dev", "net1")
+	if err != nil {
+		return fmt.Errorf("failed to delete VIP %s: %s: %w", vipCIDR, out, err)
+	}
+	return nil
+}
+
+// sendGARP announces the VIP the way keepalived does: ARP requests with the
+// VIP as both sender and target, one per second.
+func sendGARP(exec executor.Executor, vip string, count int) error {
+	out, err := exec.Exec("arping", "-U", "-c", strconv.Itoa(count), "-I", "net1", "-s", vip, vip)
+	if err != nil {
+		return fmt.Errorf("failed to send gratuitous ARP for %s: %s: %w", vip, out, err)
+	}
+	return nil
+}
+
+// vipOwner returns the name of the pod that answers on the VIP.
+func vipOwner(exec executor.Executor, vip string) (string, error) {
+	hostnameURL := url.Format("http://%s/hostname", net.JoinHostPort(vip, "8090"))
+	out, err := exec.Exec("curl", "-sS", "--max-time", "3", hostnameURL)
+	if err != nil {
+		return "", fmt.Errorf("failed to reach VIP %s: %s: %w", vip, out, err)
+	}
+	return strings.TrimSpace(out), nil
+}
+
+var arpReplyMAC = regexp.MustCompile(`reply from \S+ \[([0-9A-Fa-f:]{17})\]`)
+
+// arpingMACs returns the MAC address of every ARP reply for the VIP. The requests
+// stay broadcast (-b) so that every responder, including a VTEP proxying the
+// reply from its EVPN neighbor cache, answers each of them.
+func arpingMACs(exec executor.Executor, vip string) ([]string, error) {
+	out, err := exec.Exec("arping",
+		"-b",      // broadcast
+		"-c", "2", // count
+		"-w", "3", // timeout in seconds
+		"-I", "net1", // interface to use
+		vip)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve VIP %s: %s: %w", vip, out, err)
+	}
+	var macs []string
+	for _, match := range arpReplyMAC.FindAllStringSubmatch(out, -1) {
+		macs = append(macs, strings.ToLower(match[1]))
+	}
+	return macs, nil
+}
+
+// skipMACIPType2OnGrout skips specs expecting MAC+IPv4 Type-2 routes on a
+// disconnected L2VNI. grout only learns ARP/NDP neighbors whose address falls
+// in a connected subnet of the receiving interface (DPDK/grout@3f2f68e865e8).
+// The disconnected L2VNI has no gateway IP, so only the pods' IPv6 link-local
+// addresses are learned and their IPv4 addresses never reach EVPN.
+//
+// See https://github.com/openperouter/openperouter/issues/940
+func skipMACIPType2OnGrout() {
+	if GroutMode {
+		Skip("grout does not learn IPv4 neighbors on L2VNIs without a gateway IP")
+	}
 }
