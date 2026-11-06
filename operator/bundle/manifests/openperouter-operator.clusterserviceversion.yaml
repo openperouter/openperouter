@@ -13,6 +13,9 @@ spec:
   apiservicedefinitions: {}
   customresourcedefinitions:
     owned:
+    - kind: L2Trunk
+      name: l2trunks.network.openperouter.io
+      version: v1alpha1
     - kind: L2VNI
       name: l2vnis.network.openperouter.io
       version: v1alpha1
