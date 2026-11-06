@@ -272,7 +272,7 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `type` _string_ | type of the host interface. Supported values: "LinuxBridge", "OVSBridge". |  | Enum: [LinuxBridge OVSBridge] <br />Required: \{\} <br /> |
+| `type` _string_ | type of the host interface. Supported values: "LinuxBridge", "OVSBridge".<br />Immutable once set, to change it recreate the object using different value. |  | Enum: [LinuxBridge OVSBridge] <br />Required: \{\} <br /> |
 | `linuxBridge` _[LinuxBridgeConfig](#linuxbridgeconfig)_ | linuxBridge configuration. Must be set when Type is "LinuxBridge". |  | Optional: \{\} <br /> |
 | `ovsBridge` _[OVSBridgeConfig](#ovsbridgeconfig)_ | ovsBridge configuration. Must be set when Type is "OVSBridge". |  | Optional: \{\} <br /> |
 
@@ -447,7 +447,7 @@ _Appears in:_
 | `rdAssignedNumber` _integer_ | rdAssignedNumber sets the Route Distinguisher's Assigned Number subfield.<br />The Administrator subfield is the originating node's router ID, forming<br />a Type 1 Route Distinguisher as defined in RFC4364. |  | Maximum: 65535 <br />Minimum: 1 <br />Optional: \{\} <br /> |
 | `vxlanPort` _integer_ | vxlanPort is the port to be used for VXLan encapsulation. | 4789 | Maximum: 65535 <br />Minimum: 1 <br />Optional: \{\} <br /> |
 | `underlayAddressFamily` _string_ | underlayAddressFamily selects which VTEP address family to use for this VNI's<br />VXLAN interface. When omitted, defaults to the available family in the underlay<br />(IPv4 preferred in dual-stack). |  | Enum: [IPv4 IPv6] <br />Optional: \{\} <br /> |
-| `hostMaster` _[HostMaster](#hostmaster)_ | hostMaster is the interface on the host the veth should be attached to.<br />If not set, the host veth will not be attached to any interface and it must be<br />attached manually (or by some other means). This is useful if another controller<br />is leveraging the host interface for the VNI. |  | Optional: \{\} <br /> |
+| `hostMaster` _[HostMaster](#hostmaster)_ | hostMaster is the interface on the host the veth should be attached to.<br />If not set, the host veth will not be attached to any interface and it must be<br />attached manually (or by some other means). This is useful if another controller<br />is leveraging the host interface for the VNI.<br />Once set, hostMaster cannot be removed; delete and recreate the object to unset it. |  | Optional: \{\} <br /> |
 | `gatewayIPs` _string array_ | gatewayIPs is a list of IP addresses in CIDR notation for the<br />distributed anycast gateway on this L2 segment's bridge<br />(Integrated Routing and Bridging interface). It is a property of<br />the L2 segment itself, so it lives on the L2VNI rather than<br />inside the routing-domain reference.<br />Maximum of 2 addresses are allowed. If 2 addresses are provided, one must be IPv4 and one must be IPv6. |  | MaxItems: 2 <br />Optional: \{\} <br /> |
 | `exportRTs` _[RouteTarget](#routetarget) array_ | exportRTs are the Route Targets to be used for exporting L2 EVPN routes. |  | MaxItems: 100 <br />MaxLength: 21 <br />Optional: \{\} <br /> |
 | `importRTs` _[RouteTarget](#routetarget) array_ | importRTs are the Route Targets to be used for importing L2 EVPN routes. |  | MaxItems: 100 <br />MaxLength: 21 <br />Optional: \{\} <br /> |
@@ -566,7 +566,7 @@ _Appears in:_
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `nodeSelector` _[LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#labelselector-v1-meta)_ | nodeSelector specifies which nodes this L3VNI applies to.<br />If empty or not specified, applies to all nodes.<br />Multiple L3VNIs can match the same node. |  | Optional: \{\} <br /> |
-| `vrf` _string_ | vrf is the name of the linux VRF to be used inside the PERouter namespace. |  | MaxLength: 15 <br />MinLength: 1 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9_-]*$` <br />Required: \{\} <br /> |
+| `vrf` _string_ | vrf is the name of the linux VRF to be used inside the PERouter namespace.<br />Immutable once set, to change it recreate the object using different value. |  | MaxLength: 15 <br />MinLength: 1 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9_-]*$` <br />Required: \{\} <br /> |
 | `vni` _integer_ | vni is the VXLan VNI to be used |  | Maximum: 1.6777215e+07 <br />Minimum: 1 <br />Required: \{\} <br /> |
 | `rdAssignedNumber` _integer_ | rdAssignedNumber sets the Route Distinguisher's Assigned Number subfield.<br />The Administrator subfield is the originating node's router ID, forming<br />a Type 1 Route Distinguisher as defined in RFC4364. |  | Maximum: 65535 <br />Minimum: 1 <br />Optional: \{\} <br /> |
 | `vxlanPort` _integer_ | vxlanPort is the port to be used for VXLan encapsulation. | 4789 | Maximum: 65535 <br />Minimum: 1 <br />Optional: \{\} <br /> |
@@ -692,7 +692,7 @@ _Appears in:_
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `lifecycle` _[BridgeLifecycle](#bridgelifecycle)_ | lifecycle determines if the bridge is managed by the controller or<br />provided by the user. |  | Enum: [Managed External] <br />Required: \{\} <br /> |
-| `name` _string_ | name of the Linux bridge interface. Required when lifecycle is<br />External, and must be omitted when it is Managed, in which case the<br />bridge is named br-hs-<VNI>. |  | MaxLength: 15 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9_-]*$` <br />Optional: \{\} <br /> |
+| `name` _string_ | name of the Linux bridge interface. Required when lifecycle is<br />External, and must be omitted when it is Managed, in which case the<br />bridge is named br-hs-<VNI>.<br />Immutable once set, to change it recreate the object using different value. |  | MaxLength: 15 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9_-]*$` <br />Optional: \{\} <br /> |
 
 
 #### Neighbor
@@ -810,7 +810,7 @@ _Appears in:_
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `lifecycle` _[BridgeLifecycle](#bridgelifecycle)_ | lifecycle determines if the OVS bridge is managed by the controller or<br />provided by the user. |  | Enum: [Managed External] <br />Required: \{\} <br /> |
-| `name` _string_ | name of the OVS bridge interface. Required when lifecycle is<br />External, and must be omitted when it is Managed, in which case the<br />bridge is named br-hs-<VNI>. |  | MaxLength: 15 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9_-]*$` <br />Optional: \{\} <br /> |
+| `name` _string_ | name of the OVS bridge interface. Required when lifecycle is<br />External, and must be omitted when it is Managed, in which case the<br />bridge is named br-hs-<VNI>.<br />Immutable once set, to change it recreate the object using different value. |  | MaxLength: 15 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9_-]*$` <br />Optional: \{\} <br /> |
 
 
 #### RawFRRConfig

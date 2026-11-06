@@ -559,6 +559,74 @@ var _ = Describe("Webhooks", func() {
 			})
 			Expect(err).To(MatchError(ContainSubstring("GatewayIPs cannot be changed")))
 		})
+
+		DescribeTable("should block updates to HostMaster",
+			func(hostMaster *v1alpha1.HostMaster, mutate func(*v1alpha1.HostMaster), expectedErr string) {
+				l2vni := v1alpha1.L2VNI{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "l2vni-linux",
+						Namespace: openperouter.Namespace,
+					},
+					Spec: v1alpha1.L2VNISpec{
+						VNI:        310,
+						VXLanPort:  new(int32(4789)),
+						HostMaster: hostMaster,
+					},
+				}
+				err := Updater.Update(config.Resources{
+					L2VNIs: []v1alpha1.L2VNI{l2vni},
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				updated := l2vni.DeepCopy()
+
+				mutate(updated.Spec.HostMaster)
+
+				err = Updater.Update(config.Resources{
+					L2VNIs: []v1alpha1.L2VNI{*updated},
+				})
+				Expect(err).To(MatchError(ContainSubstring(expectedErr)))
+			},
+			Entry("linuxBridgeConfig name",
+				&v1alpha1.HostMaster{
+					Type: v1alpha1.LinuxBridge,
+					LinuxBridge: &v1alpha1.LinuxBridgeConfig{
+						Lifecycle: v1alpha1.BridgeLifecycleExternal,
+						Name:      new("br0"),
+					},
+				},
+				func(hm *v1alpha1.HostMaster) {
+					hm.LinuxBridge.Name = new("test")
+				},
+				"name is immutable",
+			),
+			Entry("ovsBridgeConfig name",
+				&v1alpha1.HostMaster{
+					Type: v1alpha1.OVSBridge,
+					OVSBridge: &v1alpha1.OVSBridgeConfig{
+						Lifecycle: v1alpha1.BridgeLifecycleExternal,
+						Name:      new("br0"),
+					},
+				},
+				func(hm *v1alpha1.HostMaster) {
+					hm.OVSBridge.Name = new("test")
+				},
+				"name is immutable",
+			),
+			Entry("type",
+				&v1alpha1.HostMaster{
+					Type: v1alpha1.LinuxBridge,
+					LinuxBridge: &v1alpha1.LinuxBridgeConfig{
+						Lifecycle: v1alpha1.BridgeLifecycleExternal,
+						Name:      new("br0"),
+					},
+				},
+				func(hm *v1alpha1.HostMaster) {
+					hm.Type = v1alpha1.OVSBridge
+				},
+				"type is immutable",
+			),
+		)
 	})
 
 	Context("when L3VNI immutability is tested", func() {
@@ -608,6 +676,30 @@ var _ = Describe("Webhooks", func() {
 				L3VNIs: []v1alpha1.L3VNI{l3vniUpdated},
 			})
 			Expect(err).To(MatchError(ContainSubstring("localCIDRs can't be changed")))
+		})
+
+		It("should block updates to VRF", func() {
+			l3vniUpdated := v1alpha1.L3VNI{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "l3vni-immutable",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.L3VNISpec{
+					VRF:       "vrf-renamed",
+					VNI:       400,
+					VXLanPort: new(int32(4789)),
+					HostSession: &v1alpha1.HostSession{
+						ASN:        65000,
+						HostASN:    new(int64(65001)),
+						LocalCIDRs: []string{"10.0.0.0/24"},
+					},
+				},
+			}
+
+			err := Updater.Update(config.Resources{
+				L3VNIs: []v1alpha1.L3VNI{l3vniUpdated},
+			})
+			Expect(err).To(MatchError(ContainSubstring("vrf is immutable")))
 		})
 	})
 
