@@ -6,6 +6,7 @@ package pci
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 )
