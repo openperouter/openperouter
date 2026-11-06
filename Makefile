@@ -35,6 +35,8 @@ CLAB_TOPOLOGY_FILE ?= singlecluster/kind.clab.yml
 # do not want to do this in local setups, but this is needed for CI environments.
 COREDUMP ?= false
 
+SILENT_BUILD_TARGET ?= docker-build
+SILENT_DEPLOY_TARGET ?= deploy
 SILENTDEPLOY_LOG ?= .silentdeploy.log
 SILENTCLEAN_LOG ?= .silentclean.log
 
@@ -219,8 +221,8 @@ deploy: kind deploy-cluster deploy-controller ## Deploy cluster and controller.
 .PHONY: silentdeploy
 silentdeploy: ## Build the router image and deploy while showing only errors.
 	@: > "$(SILENTDEPLOY_LOG)"; \
-	$(MAKE) --no-print-directory --silent docker-build >"$(SILENTDEPLOY_LOG)" 2>&1 && \
-	$(MAKE) --no-print-directory --silent deploy >>"$(SILENTDEPLOY_LOG)" 2>&1 || { \
+	$(MAKE) --no-print-directory --silent $(SILENT_BUILD_TARGET) >"$(SILENTDEPLOY_LOG)" 2>&1 && \
+	$(MAKE) --no-print-directory --silent $(SILENT_DEPLOY_TARGET) >>"$(SILENTDEPLOY_LOG)" 2>&1 || { \
 		status=$$?; \
 		echo "Full silentdeploy log: $(SILENTDEPLOY_LOG)" >&2; \
 		if grep -iE 'error|failed|fatal|permission denied' "$(SILENTDEPLOY_LOG)" | \
@@ -229,6 +231,10 @@ silentdeploy: ## Build the router image and deploy while showing only errors.
 		fi; \
 		exit $$status; \
 	}
+
+.PHONY: silentdeploy-hostmode
+silentdeploy-hostmode: SILENT_DEPLOY_TARGET=deploy-hostmode
+silentdeploy-hostmode: silentdeploy ## Build the router image and deploy hostmode while showing only errors.
 
 .PHONY: deploy-scale
 deploy-scale: export KUSTOMIZE_LAYER=scale
@@ -737,6 +743,11 @@ build-and-push-bundle-images: bundle-build bundle-push catalog-build catalog-pus
 grout-deploy: IMG_TAG=main-grout
 grout-deploy: export KUSTOMIZE_LAYER=grout-test
 grout-deploy: kind deploy-cluster deploy-controller ## Deploy cluster and controller with grout dataplane.
+
+.PHONY: grout-silentdeploy
+grout-silentdeploy: SILENT_BUILD_TARGET=grout-docker-build
+grout-silentdeploy: SILENT_DEPLOY_TARGET=grout-deploy
+grout-silentdeploy: silentdeploy ## Build the Grout router image and deploy while showing only errors.
 
 .PHONY: grout-deploy-operator-with-olm
 grout-deploy-operator-with-olm: IMG_TAG=main-grout
