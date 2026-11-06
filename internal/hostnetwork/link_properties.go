@@ -29,13 +29,6 @@ func AssignIPToInterface(link netlink.Link, address string) error {
 	if hasIP {
 		return nil
 	}
-	// Skip duplicate address detection: the addresses are either allocated per
-	// node or, like the anycast L2 gateway, shared on purpose, so DAD only keeps
-	// an IPv6 address tentative. FRR cannot use a tentative address, and a BGP
-	// session established in that window advertises the link-local address as
-	// the IPv6 next hop for its whole lifetime. The kernel ignores the flag on
-	// IPv4 addresses.
-	addr.Flags |= unix.IFA_F_NODAD
 	err = netlink.AddrAdd(link, addr)
 	if err != nil {
 		return fmt.Errorf("AssignIPToInterface: failed to add address %s to interface %s, err %v", address, link.Attrs().Name, err)
