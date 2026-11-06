@@ -212,3 +212,68 @@ func TestPCIAddressForVF(t *testing.T) {
 		})
 	}
 }
+
+// Not parallel: t.Setenv sets the knob for the whole process.
+func TestPCIAddressForVF_EmulatedVFs(t *testing.T) {
+	t.Setenv(emulatedVFsEnv, "true")
+	const pfName = "toleafkind1"
+
+	tests := []struct {
+		name    string
+		vfIndex int
+		want    string
+		wantErr string
+	}{
+		{
+			name:    "emulated VF exists",
+			vfIndex: 1,
+			want:    testPCIAddress,
+		},
+		{
+			name:    "emulated VF missing",
+			vfIndex: 2,
+			wantErr: `failed to resolve netlink device "toleafkind1v2" to PCI address`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sysfs := Sysfs{Root: t.TempDir()}
+			// The PF has a virtfn1 symlink to a different address, which
+			// must be ignored.
+			pfDeviceDir := filepath.Join(sysfs.Root, "class", "net", pfName, "device")
+			if err := os.MkdirAll(pfDeviceDir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink("../0000:09:00.0", filepath.Join(pfDeviceDir, "virtfn1")); err != nil {
+				t.Fatal(err)
+			}
+			// The emulated VFs are virtio-net NICs, so the netdev hangs
+			// off a virtio child of the PCI device.
+			vfNetDir := filepath.Join(sysfs.Root, "class", "net", pfName+"v1")
+			if err := os.MkdirAll(vfNetDir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.MkdirAll(filepath.Join(sysfs.Root, "devices", testPCIAddress, "virtio3"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink("../../../devices/"+testPCIAddress+"/virtio3",
+				filepath.Join(vfNetDir, "device")); err != nil {
+				t.Fatal(err)
+			}
+
+			got, err := sysfs.PCIAddressForVF(pfName, tt.vfIndex)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("expected error containing %q, got %v", tt.wantErr, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("expected %s, got %s", tt.want, got)
+			}
+		})
+	}
+}

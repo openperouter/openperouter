@@ -40,6 +40,29 @@ rules and passes them through QEMU fw_cfg; cloud-init writes them to
 | 3 | toleafkind1    | toleafkind1_br     | toleafkind1_t   | toleafkind1 | 52:54:00:ab:cd:03 |
 | 4 | toleafkind2    | toleafkind2_br     | toleafkind2_t   | toleafkind2 | 52:54:00:ab:cd:04 |
 
+## Emulated SR-IOV VFs
+
+`vm/create-vfs.sh` emulates six SR-IOV VFs of the `toleafkind1` PF. Each VF
+is a virtio NIC whose TAP joins `toleafkind1_br`, which has VLAN filtering
+enabled and acts as the NIC embedded switch between the PF uplink and its
+VFs. The guest names VF `<index>` `toleafkind1v<index>`.
+
+| VF | Guest NIC     | MAC               | Bridge VLANs             |
+|----|---------------|-------------------|--------------------------|
+| 0  | toleafkind1v0 | 52:54:00:ab:cd:05 | 33, 44 tagged (trunk)    |
+| 1  | toleafkind1v1 | 52:54:00:ab:cd:06 | 33, 44 tagged (trunk)    |
+| 2  | toleafkind1v2 | 52:54:00:ab:cd:07 | 33 untagged (access)     |
+| 3  | toleafkind1v3 | 52:54:00:ab:cd:08 | 33 untagged (access)     |
+| 4  | toleafkind1v4 | 52:54:00:ab:cd:09 | 44 untagged (access)     |
+| 5  | toleafkind1v5 | 52:54:00:ab:cd:0a | 44 untagged (access)     |
+
+The emulated VFs are not linked to the PF in sysfs, so the QEMU lane deploys
+the `config/grout-qemu` layer, which sets the test-only
+`TEST_FLAG_DO_NOT_USE_EMULATED_SRIOV_VFS` environment variable on the
+controller. With the variable set, VF `<index>` of PF `<pfName>` in
+an SR-IOV L2Trunk resolves to the netdev `<pfName>v<index>`, instead of the
+PF's `virtfn<index>` sysfs link.
+
 ## Containerlab topology
 
 ```

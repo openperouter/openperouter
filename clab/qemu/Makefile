@@ -27,6 +27,7 @@ qemu-clab: qemu-image kubectl ## Deploy containerlab topology and bootstrap k3s 
 	  $(QEMU_DIR)/deploy-clab.sh
 
 .PHONY: qemu-deploy
+qemu-deploy: export KUSTOMIZE_LAYER=grout-qemu
 qemu-deploy: qemu-clab qemu-load-image deploy-controller ## Full QEMU environment deploy
 
 .PHONY: qemu-e2etests
