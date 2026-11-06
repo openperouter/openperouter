@@ -264,7 +264,10 @@ func setupTunnelEndpoint(ctx context.Context, client *Client, ep hostnetwork.Und
 		return fmt.Errorf("at least one tunnel endpoint IP must be provided (IPv4 or IPv6)")
 	}
 
-	opts := portOptions{Devargs: "net_null_vtep_lo,no-rx=1"}
+	opts := portOptions{
+		Devargs: "net_null_vtep_lo,no-rx=1",
+		QSize:   new(int32(1)), // qsize 1 is the minimum allowed value
+	}
 	if err := client.ensurePort(ctx, hostnetwork.TunnelLoopback, opts); err != nil {
 		return fmt.Errorf("failed to create the tunnel endpoint port: %w", err)
 	}
