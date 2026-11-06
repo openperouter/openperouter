@@ -17,6 +17,7 @@ import (
 	"github.com/openperouter/openperouter/internal/sysctl"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
+	"golang.org/x/sys/unix"
 )
 
 const UnderlayPortNamePrefix = "u_"
@@ -263,7 +264,10 @@ func setupTunnelEndpoint(ctx context.Context, client *Client, ep hostnetwork.Und
 		return fmt.Errorf("at least one tunnel endpoint IP must be provided (IPv4 or IPv6)")
 	}
 
-	opts := portOptions{Devargs: "net_null_vtep_lo,no-rx=1"}
+	opts := portOptions{
+		Devargs: "net_null_vtep_lo,no-rx=1",
+		QSize:   new(int32(1)), // qsize 1 is the minimum allowed value
+	}
 	if err := client.ensurePort(ctx, hostnetwork.TunnelLoopback, opts); err != nil {
 		return fmt.Errorf("failed to create the tunnel endpoint port: %w", err)
 	}
@@ -364,6 +368,10 @@ func configureUnderlayTapPort(
 	underlayInterface := state.InterfaceName
 	portName := UnderlayPortName(underlayInterface)
 
+	if err := hostnetwork.SuppressAutoconf(underlayInterface); err != nil {
+		return fmt.Errorf("failed to suppress autoconf on underlay interface %s: %w", underlayInterface, err)
+	}
+
 	// Suppress the netdev's kernel IPv6 link-local so it doesn't collide with
 	// the identical EUI-64 link-local on the grout port's kernel interface,
 	// which shares the netdev's MAC. The collision makes DAD strip the port's
@@ -379,15 +387,6 @@ func configureUnderlayTapPort(
 	opts.MTU = state.MTU
 	if err := client.ensurePort(ctx, portName, opts); err != nil {
 		return fmt.Errorf("failed to create grout underlay port: %w", err)
-	}
-
-	// Disable SLAAC on the underlying netlink interface: once the intended
-	// addresses are migrated to the grout port, the kernel must not
-	// autoconfigure new ones from Router Advertisements. A SLAAC address
-	// on the netlink device would be picked up on the next reconcile and
-	// clash with the existing connected route in grout's RIB (EBUSY).
-	if err := sysctl.Ensure(sysctl.DisableAcceptRA(underlayInterface)); err != nil {
-		return fmt.Errorf("failed to disable accept_ra on underlay interface %s: %w", underlayInterface, err)
 	}
 
 	if err := assignAddressesToGroutPort(ctx, client, portName, state.Addresses); err != nil {
@@ -435,6 +434,10 @@ func retrieveDeviceState(
 		return devicestate.State{}, fmt.Errorf("failed to read addresses from %s: %w", interfaceName, err)
 	}
 	for _, a := range netlinkAddrs {
+		// SLAAC addresses must not be migrated or restored as static addresses.
+		if a.IP.To4() == nil && a.Flags&unix.IFA_F_PERMANENT == 0 {
+			continue
+		}
 		state.Addresses = append(state.Addresses, a.IPNet.String())
 	}
 

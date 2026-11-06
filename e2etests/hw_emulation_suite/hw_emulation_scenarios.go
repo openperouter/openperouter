@@ -3,7 +3,6 @@
 package qemu_e2e
 
 import (
-	"encoding/json"
 	"path/filepath"
 	"time"
 
@@ -14,6 +13,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/config"
 	"github.com/openperouter/openperouter/e2etests/pkg/executor"
 	"github.com/openperouter/openperouter/e2etests/pkg/frrk8s"
+	"github.com/openperouter/openperouter/e2etests/pkg/grout"
 	"github.com/openperouter/openperouter/e2etests/pkg/infra"
 	"github.com/openperouter/openperouter/e2etests/pkg/ipfamily"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
@@ -192,7 +192,8 @@ var _ = Describe("HWEmulation", Ordered, GroutSupport, func() {
 		By("Verifying the grout port is recreated with the custom parameters")
 		for router := range routers.GetExecutors() {
 			Eventually(func(g Gomega) {
-				port := showGroutPort(g, router, portName)
+				port, err := grout.GroutPortForName(router, portName)
+				g.Expect(err).To(Succeed())
 				g.Expect(port.RXQueues).To(Equal(rxQueues))
 				g.Expect(port.QSize).To(Equal(qSize))
 				expectBoundToVFIO(g, router, port.Devargs)
@@ -203,20 +204,6 @@ var _ = Describe("HWEmulation", Ordered, GroutSupport, func() {
 		validateUnderlaySessions(nodes)
 	})
 })
-
-type groutPort struct {
-	Devargs  string `json:"devargs"`
-	RXQueues int32  `json:"n_rxq"`
-	QSize    int32  `json:"rxq_size"`
-}
-
-func showGroutPort(g Gomega, router openperouter.RouterExecutor, portName string) groutPort {
-	var port groutPort
-	out, err := router.Exec("grcli", "--json", "interface", "show", "name", portName)
-	g.Expect(err).NotTo(HaveOccurred(), out)
-	g.Expect(json.Unmarshal([]byte(out), &port)).To(Succeed(), out)
-	return port
-}
 
 // validateUnderlaySessions checks the BGP sessions between every node and
 // both kind leaves. leafkind1 is reached through toswitch1, an igb NIC, and
