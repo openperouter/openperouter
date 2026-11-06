@@ -34,5 +34,7 @@ go.work
 *.swo
 *~
 logs_*/
+.silentdeploy.log
+.silentclean.log
 
 cmd/hostbridge/hostbridge
