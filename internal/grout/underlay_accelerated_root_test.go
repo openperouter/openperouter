@@ -44,7 +44,7 @@ func TestSetupTunnelEndpointKeepsExistingPort(t *testing.T) {
 	addGroutMainInterface(t, ns)
 	calls := recordCmdExec(t,
 		okCmd("grcli --err-exit --json --socket sock interface show name vtep-lo",
-			`{"name":"vtep-lo","type":"port","devargs":"net_null_vtep_lo,no-rx=1","mtu":1500}`),
+			`{"name":"vtep-lo","type":"port","devargs":"net_null_vtep_lo,no-rx=1","rxq_size":1,"mtu":1500}`),
 		okCmdEmptyOutput("grcli --err-exit --json --socket sock address add "+accelCIDR+" iface vtep-lo"),
 		okCmdEmptyOutput("grcli --err-exit --json --socket sock interface set port vtep-lo up"),
 	)
