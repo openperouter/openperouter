@@ -7,8 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-
-	"k8s.io/apimachinery/pkg/util/sets"
+	"slices"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/conversion"
@@ -23,6 +22,15 @@ type interfacesConfiguration struct {
 	targetNamespace string
 	nodeIndex       int
 	conversion.APIConfigData
+}
+
+// vnis holds the VNIs whose devices must stay on the node after a
+// datapath reconcile cycle, either because they were configured or because
+// their setup failed transiently.
+type vnis struct {
+	l3VNIs []hostnetwork.L3VNIParams
+	l3VPNs []hostnetwork.L3VPNParams
+	l2VNIs []hostnetwork.L2VNIParams
 }
 
 // KernelDatapathConfigurator configures the host via kernel netlink calls.
@@ -93,68 +101,26 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 		return fmt.Errorf("failed to setup underlay: %w", err)
 	}
 
-	var resourceErrors []error
-	failedL3Domains := sets.New[string]()
-	reason := v1alpha1.FailedResourceReasonOverlayAttachmentFailed
-
-	var configuredL3VNIs []hostnetwork.L3VNIParams
-	for _, vni := range hostConfig.L3VNIs {
-		slog.InfoContext(ctx, "setting up VNI", "vni", vni.VRF)
-		if err := hostnetwork.SetupL3VNI(ctx, vni); err != nil {
-			resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
-				Obj: v1alpha1.FailedResource{
-					Kind: openpeerrors.KindL3VNI, Name: vni.Name, Reason: reason, Message: err.Error(),
-				},
-			})
-			failedL3Domains.Insert(vni.VRF)
-			continue
-		}
-		configuredL3VNIs = append(configuredL3VNIs, vni)
-	}
-
-	var configuredL3VPNs []hostnetwork.L3VPNParams
-	for _, l3vpn := range hostConfig.L3VPNs {
-		slog.InfoContext(ctx, "setting up L3 VPN", "VRF", l3vpn.VRF)
-		if err := hostnetwork.SetupL3VPN(ctx, l3vpn); err != nil {
-			resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
-				Obj: v1alpha1.FailedResource{
-					Kind: openpeerrors.KindL3VPN, Name: l3vpn.Name, Reason: reason, Message: err.Error(),
-				},
-			})
-			failedL3Domains.Insert(l3vpn.VRF)
-			continue
-		}
-		configuredL3VPNs = append(configuredL3VPNs, l3vpn)
-	}
-
-	l2VNIs, l3DomainErrors := filterL2VNIsWithNoRoutingDomain(hostConfig.L2VNIs, failedL3Domains)
-	resourceErrors = append(resourceErrors, l3DomainErrors...)
-
-	configuredL2VNIs, l2VNIErrors := setupL2VNIs(ctx, ovsClient, l2VNIs, config.targetNamespace)
-	resourceErrors = append(resourceErrors, l2VNIErrors...)
-
+	vnisToKeep, resourceErrors := setupVNIs(ctx, ovsClient, config.targetNamespace, hostConfig)
 	slog.InfoContext(ctx, "setting up passthrough")
 	if hostConfig.L3Passthrough != nil {
 		if err := hostnetwork.SetupPassthrough(ctx, *hostConfig.L3Passthrough); err != nil {
-			resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
-				Obj: v1alpha1.FailedResource{
-					Kind: openpeerrors.KindL3Passthrough, Name: config.L3Passthrough[0].Name, Reason: reason, Message: err.Error(),
-				},
-			})
+			resourceErrors = append(resourceErrors, overlayAttachmentError(
+				openpeerrors.KindL3Passthrough, config.L3Passthrough[0].Name, err.Error()))
 		}
 	}
 
-	configuredVNIs := make([]hostnetwork.VNIParams, 0, len(configuredL3VNIs)+len(configuredL2VNIs))
+	configuredVNIs := make([]hostnetwork.VNIParams, 0, len(vnisToKeep.l3VNIs)+len(vnisToKeep.l2VNIs))
 	configuredVRFs := map[string]bool{}
-	for _, vni := range configuredL3VNIs {
+	for _, vni := range vnisToKeep.l3VNIs {
 		configuredVNIs = append(configuredVNIs, vni.VNIParams)
 		configuredVRFs[vni.VRF] = true
 	}
-	for _, l2vni := range configuredL2VNIs {
+	for _, l2vni := range vnisToKeep.l2VNIs {
 		configuredVNIs = append(configuredVNIs, l2vni.VNIParams)
 		configuredVRFs[l2vni.VRF] = true
 	}
-	for _, l3vpn := range configuredL3VPNs {
+	for _, l3vpn := range vnisToKeep.l3VPNs {
 		configuredVRFs[l3vpn.VRF] = true
 	}
 
@@ -162,10 +128,10 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 	if err := hostnetwork.RemoveNonConfiguredVNIs(ovsClient, config.targetNamespace, configuredVNIs); err != nil {
 		return fmt.Errorf("failed to remove deleted vnis: %w", err)
 	}
-	bridgerefresh.StopForRemovedVNIs(configuredL2VNIs)
+	bridgerefresh.StopForRemovedVNIs(vnisToKeep.l2VNIs)
 
 	slog.InfoContext(ctx, "removing deleted l3vpns")
-	if err := hostnetwork.RemoveNonConfiguredL3VPNs(configuredL3VPNs); err != nil {
+	if err := hostnetwork.RemoveNonConfiguredL3VPNs(vnisToKeep.l3VPNs); err != nil {
 		return fmt.Errorf("failed to remove deleted l3vpns: %w", err)
 	}
 
@@ -183,135 +149,198 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 	return errors.Join(resourceErrors...)
 }
 
-// filterL2VNIsWithNoRoutingDomain returns the L2VNIs whose L3 domain was set up,
-// and an error for each of the others.
-func filterL2VNIsWithNoRoutingDomain(
-	l2VNIs []hostnetwork.L2VNIParams,
-	failedL3Domains sets.Set[string],
-) ([]hostnetwork.L2VNIParams, []error) {
-	var healthy []hostnetwork.L2VNIParams
-	var errs []error
-	for _, vni := range l2VNIs {
-		if failedL3Domains.Has(vni.VRF) {
-			errs = append(errs, l2VNIError(vni, fmt.Sprintf("L3 domain %q failed netlink provisioning", vni.VRF)))
-			continue
-		}
-		healthy = append(healthy, vni)
-	}
-	return healthy, errs
-}
-
-// l2VNIProvisioner sets up one L2VNI in the router namespace.
-type l2VNIProvisioner interface {
-	Setup(ctx context.Context, params hostnetwork.L2VNIParams) error
-}
-
-// setupL2VNIs runs an L2VNI pass: it opens the router namespace, builds the
-// configurator that resolves the state shared by all the L2VNIs of the pass,
-// and sets each L2VNI up through it. It owns the namespace handle for the
-// duration of the pass.
-//
-// Opening the namespace and resolving the shared state read the host at the
-// time of the call, so their failures are transient: the pass keeps its
-// L2VNIs, leaving their devices in place for the next reconcile to retry.
-func setupL2VNIs(
+// setupVNIs sets up every VNI of the datapath reconcile cyle. The underlay MTU
+// and the VTEP loopback are node-wide, so it opens the router namespace once
+// and resolves them once for the whole reconcile cycle.
+func setupVNIs(
 	ctx context.Context,
 	ovsClient *hostnetwork.OVSClient,
-	l2VNIs []hostnetwork.L2VNIParams,
-	targetNamespace string,
-) ([]hostnetwork.L2VNIParams, []error) {
-	if len(l2VNIs) == 0 {
-		return nil, nil
+	routerNamespace string,
+	hostConfig conversion.HostConfigData,
+) (vnis, []error) {
+	if len(hostConfig.L3VNIs) == 0 && len(hostConfig.L3VPNs) == 0 && len(hostConfig.L2VNIs) == 0 {
+		return vnis{}, nil
 	}
 
-	ns, err := netns.GetFromPath(targetNamespace)
+	ns, err := netns.GetFromPath(routerNamespace)
 	if err != nil {
-		return keepL2VNIsOnTransientFailure(l2VNIs,
-			fmt.Errorf("%w: failed to get network namespace %s: %w",
-				openpeerrors.ErrTransient, targetNamespace, err))
+		// The namespace lives on the host, so failing to open it now does not
+		// mean it will be missing on the next reconcile.
+		openErr := fmt.Errorf("%w: failed to get network namespace %s: %w",
+			openpeerrors.ErrTransient, routerNamespace, err)
+		return vnisFromHostConfig(hostConfig), errorsForVNIs(hostConfig, openErr)
 	}
 	defer func() {
 		if err := ns.Close(); err != nil {
-			slog.Error("failed to close L2VNI namespace", "namespace", targetNamespace, "error", err)
+			slog.Error("failed to close router namespace", "namespace", routerNamespace, "error", err)
 		}
 	}()
 
-	configurator, err := hostnetwork.NewL2VNIConfigurator(ns, ovsClient)
+	configurator, err := hostnetwork.NewVNIConfigurator(ns, ovsClient)
 	if err != nil {
-		return keepL2VNIsOnTransientFailure(l2VNIs, fmt.Errorf("%w: %w", openpeerrors.ErrTransient, err))
+		configuratorErr := fmt.Errorf("%w: %w", openpeerrors.ErrTransient, err)
+		return vnisFromHostConfig(hostConfig), errorsForVNIs(hostConfig, configuratorErr)
 	}
-	return setupEachL2VNI(ctx, configurator, l2VNIs)
+
+	failedL3Domains := map[string]struct{}{}
+	configuredL3VNIs, l3VNIErrors := setupL3VNIs(ctx, configurator, hostConfig.L3VNIs, failedL3Domains)
+	configuredL3VPNs, l3VPNErrors := setupL3VPNs(ctx, configurator, hostConfig.L3VPNs, failedL3Domains)
+
+	configuredL2VNIs, l2VNIErrors := setupL2VNIs(ctx, configurator, hostConfig.L2VNIs, failedL3Domains)
+
+	return vnis{
+		l3VNIs: configuredL3VNIs,
+		l3VPNs: configuredL3VPNs,
+		l2VNIs: configuredL2VNIs,
+	}, slices.Concat(l3VNIErrors, l3VPNErrors, l2VNIErrors)
 }
 
-// setupEachL2VNI sets up every L2VNI through the provisioner holding their
-// shared state, and returns the ones whose devices must stay on the node, plus
-// an error for each L2VNI that failed.
-//
-// An L2VNI that fails with openpeerrors.ErrTransient is kept even though its
-// setup did not complete: what it already has on the node, possibly from an
-// earlier pass, is left in place and the next reconcile retries it. Any other
-// failure leaves the L2VNI out, so the cleanup that follows removes its
-// devices. A check that does not depend on the state of the host, and so would
-// fail the same way on every retry, belongs in validation before Configure and
-// must not return ErrTransient.
-func setupEachL2VNI(
+// vnisFromHostConfig returns every VNI of the host configuration, so a failure
+// to resolve the state they share keeps their devices for the next reconcile to
+// retry.
+func vnisFromHostConfig(hostConfig conversion.HostConfigData) vnis {
+	return vnis{
+		l3VNIs: hostConfig.L3VNIs,
+		l3VPNs: hostConfig.L3VPNs,
+		l2VNIs: hostConfig.L2VNIs,
+	}
+}
+
+// errorsForVNIs reports err against every configured VNI, so each one shows up
+// in its status with the reason it was not set up.
+func errorsForVNIs(hostConfig conversion.HostConfigData, err error) []error {
+	allErrors := make([]error, 0,
+		len(hostConfig.L3VNIs)+len(hostConfig.L3VPNs)+len(hostConfig.L2VNIs))
+	for _, vni := range hostConfig.L3VNIs {
+		allErrors = append(allErrors, overlayAttachmentError(openpeerrors.KindL3VNI, vni.Name, err.Error()))
+	}
+	for _, l3vpn := range hostConfig.L3VPNs {
+		allErrors = append(allErrors, overlayAttachmentError(openpeerrors.KindL3VPN, l3vpn.Name, err.Error()))
+	}
+	for _, vni := range hostConfig.L2VNIs {
+		allErrors = append(allErrors, overlayAttachmentError(openpeerrors.KindL2VNI, vni.Name, err.Error()))
+	}
+	return allErrors
+}
+
+// A VNIConfigurator implements all three interfaces below. Each setup function
+// accepts only the one it uses.
+type l3VNIConfigurator interface {
+	SetupL3VNI(context.Context, hostnetwork.L3VNIParams) error
+}
+
+type l3VPNConfigurator interface {
+	SetupL3VPN(context.Context, hostnetwork.L3VPNParams) error
+}
+
+type l2VNIConfigurator interface {
+	SetupL2VNI(context.Context, hostnetwork.L2VNIParams) error
+}
+
+// setupL3VNIs sets up every L3VNI through the configurator, and returns the
+// ones it configured plus an error for each that failed. A failed L3VNI marks
+// its routing domain as failed, so its L2VNIs are not set up on top of a
+// missing routing domain.
+func setupL3VNIs(
 	ctx context.Context,
-	provisioner l2VNIProvisioner,
+	configurator l3VNIConfigurator,
+	l3VNIs []hostnetwork.L3VNIParams,
+	failedL3Domains map[string]struct{},
+) ([]hostnetwork.L3VNIParams, []error) {
+	var configured []hostnetwork.L3VNIParams
+	var errs []error
+	for _, vni := range l3VNIs {
+		slog.InfoContext(ctx, "setting up VNI", "vni", vni.VRF)
+		if err := configurator.SetupL3VNI(ctx, vni); err != nil {
+			errs = append(errs, overlayAttachmentError(openpeerrors.KindL3VNI, vni.Name, err.Error()))
+			failedL3Domains[vni.VRF] = struct{}{}
+			continue
+		}
+		configured = append(configured, vni)
+	}
+	return configured, errs
+}
+
+// setupL3VPNs sets up every L3VPN through the configurator, and returns the
+// ones it configured plus an error for each that failed.
+func setupL3VPNs(
+	ctx context.Context,
+	configurator l3VPNConfigurator,
+	l3VPNs []hostnetwork.L3VPNParams,
+	failedL3Domains map[string]struct{},
+) ([]hostnetwork.L3VPNParams, []error) {
+	var configured []hostnetwork.L3VPNParams
+	var errs []error
+	for _, l3vpn := range l3VPNs {
+		slog.InfoContext(ctx, "setting up L3 VPN", "VRF", l3vpn.VRF)
+		if err := configurator.SetupL3VPN(ctx, l3vpn); err != nil {
+			errs = append(errs, overlayAttachmentError(openpeerrors.KindL3VPN, l3vpn.Name, err.Error()))
+			failedL3Domains[l3vpn.VRF] = struct{}{}
+			continue
+		}
+		configured = append(configured, l3vpn)
+	}
+	return configured, errs
+}
+
+// setupL2VNIs sets up every L2VNI whose routing domain is healthy, and
+// returns the ones whose devices must stay on the node, plus an error for each
+// L2VNI that failed. An L2VNI of a failed routing domain is reported and is not
+// set up on top of the missing domain.
+func setupL2VNIs(
+	ctx context.Context,
+	configurator l2VNIConfigurator,
 	l2VNIs []hostnetwork.L2VNIParams,
+	failedL3Domains map[string]struct{},
 ) ([]hostnetwork.L2VNIParams, []error) {
 	var kept []hostnetwork.L2VNIParams
 	var errs []error
 	for _, vni := range l2VNIs {
-		err := setupL2VNI(ctx, provisioner, vni)
-		if err != nil {
-			errs = append(errs, l2VNIError(vni, err.Error()))
-			if errors.Is(err, openpeerrors.ErrTransient) {
-				kept = append(kept, vni)
-			}
+		if _, domainFailed := failedL3Domains[vni.VRF]; domainFailed {
+			errs = append(errs, overlayAttachmentError(openpeerrors.KindL2VNI, vni.Name,
+				fmt.Sprintf("L3 domain %q failed netlink provisioning", vni.VRF)))
 			continue
 		}
-		kept = append(kept, vni)
+		err := setupL2VNI(ctx, configurator, vni)
+		if err != nil {
+			errs = append(errs, overlayAttachmentError(openpeerrors.KindL2VNI, vni.Name, err.Error()))
+		}
+		// A transient failure keeps the devices the VNI already has on the node,
+		// possibly from an earlier reconcile, so the next one retries it; any
+		// other failure leaves the VNI out, so the cleanup that follows removes
+		// its devices.
+		if err == nil || isErrorTransient(err) {
+			kept = append(kept, vni)
+		}
 	}
 	return kept, errs
 }
 
 func setupL2VNI(
 	ctx context.Context,
-	provisioner l2VNIProvisioner,
+	configurator l2VNIConfigurator,
 	vni hostnetwork.L2VNIParams,
 ) error {
 	slog.InfoContext(ctx, "setting up L2VNI", "vni", vni.VNI)
-	if err := provisioner.Setup(ctx, vni); err != nil {
+	if err := configurator.SetupL2VNI(ctx, vni); err != nil {
 		return err
 	}
 	return bridgerefresh.StartForVNI(ctx, vni)
 }
 
-// keepL2VNIsOnTransientFailure reports a pass-wide setup failure against every
-// L2VNI and returns the ones whose devices must stay on the node. A transient
-// host failure keeps them all: what they already have on the node, possibly
-// from an earlier pass, is left in place and the next reconcile retries them.
-// Any other failure leaves them out, so the cleanup that follows removes their
-// devices.
-func keepL2VNIsOnTransientFailure(
-	l2VNIs []hostnetwork.L2VNIParams,
-	err error,
-) ([]hostnetwork.L2VNIParams, []error) {
-	errs := make([]error, 0, len(l2VNIs))
-	for _, vni := range l2VNIs {
-		errs = append(errs, l2VNIError(vni, err.Error()))
-	}
-	if errors.Is(err, openpeerrors.ErrTransient) {
-		return l2VNIs, errs
-	}
-	return nil, errs
+// isErrorTransient reports whether a setup failure may go away on the next
+// reconcile. A check that does not depend on the state of the host, and would
+// therefore fail the same way on every retry, belongs in validation before
+// Configure and must not be marked transient.
+func isErrorTransient(err error) bool {
+	return errors.Is(err, openpeerrors.ErrTransient)
 }
 
-func l2VNIError(vni hostnetwork.L2VNIParams, message string) error {
+func overlayAttachmentError(kind v1alpha1.FailedResourceKind, name, message string) error {
 	return &openpeerrors.ResourceError{
 		Obj: v1alpha1.FailedResource{
-			Kind:    openpeerrors.KindL2VNI,
-			Name:    vni.Name,
+			Kind:    kind,
+			Name:    name,
 			Reason:  v1alpha1.FailedResourceReasonOverlayAttachmentFailed,
 			Message: message,
 		},

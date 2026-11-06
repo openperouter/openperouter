@@ -249,7 +249,6 @@ func TestAPItoHostConfig(t *testing.T) {
 					Name:             "vpn1",
 					VRF:              "red",
 					RDAssignedNumber: 100,
-					TargetNS:         "namespace",
 					// SRv6 normal encaps (64) > VXLan (50), so the L2VNI in this VRF inherits SRv6 overhead.
 					TunnelOverhead: hostnetwork.SRv6Overhead,
 					LinkIPs: &hostnetwork.LinkIPs{
@@ -930,7 +929,6 @@ func TestAPItoHostConfig(t *testing.T) {
 					Name:             "vpn1",
 					VRF:              "blue",
 					RDAssignedNumber: 150,
-					TargetNS:         "namespace",
 					// VXLan overhead (50) > SRv6 encaps reduced (40), so the L2VNI in this VRF bumps both to VXLan.
 					TunnelOverhead: hostnetwork.VXLanOverhead,
 					LinkIPs: &hostnetwork.LinkIPs{
@@ -942,7 +940,6 @@ func TestAPItoHostConfig(t *testing.T) {
 					Name:             "vpn2",
 					VRF:              "green",
 					RDAssignedNumber: 151,
-					TargetNS:         "namespace",
 					// IPv6 VXLan overhead (70) > SRv6 encaps reduced (40), so the L2VNI in this VRF bumps both to IPv6 VXLan.
 					TunnelOverhead: hostnetwork.IPv6VXLanOverhead,
 					LinkIPs: &hostnetwork.LinkIPs{
@@ -954,7 +951,6 @@ func TestAPItoHostConfig(t *testing.T) {
 					Name:             "vpn3",
 					VRF:              "purple",
 					RDAssignedNumber: 152,
-					TargetNS:         "namespace",
 					// No L2VNI in this VRF, so the native SRv6 encaps reduced overhead applies.
 					TunnelOverhead: hostnetwork.SRv6OverheadEncapReduced,
 					LinkIPs: &hostnetwork.LinkIPs{

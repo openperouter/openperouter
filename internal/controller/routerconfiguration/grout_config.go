@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/conversion"
 	openpeerrors "github.com/openperouter/openperouter/internal/errors"
 	"github.com/openperouter/openperouter/internal/grout"
@@ -85,17 +84,13 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 
 	var resourceErrors []error
 	failedL3Domains := sets.New[string]()
-	reason := v1alpha1.FailedResourceReasonOverlayAttachmentFailed
 
 	var configuredL3VNIs []hostnetwork.L3VNIParams
 	for _, vni := range hostConfig.L3VNIs {
 		slog.InfoContext(ctx, "setting up VNI", "vni", vni.VRF)
 		if err := grout.SetupL3VNI(ctx, groutClient, vni); err != nil {
-			resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
-				Obj: v1alpha1.FailedResource{
-					Kind: openpeerrors.KindL3VNI, Name: vni.Name, Reason: reason, Message: err.Error(),
-				},
-			})
+			resourceErrors = append(resourceErrors,
+				overlayAttachmentError(openpeerrors.KindL3VNI, vni.Name, err.Error()))
 			failedL3Domains.Insert(vni.VRF)
 			continue
 		}
@@ -105,22 +100,15 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 	var configuredL2VNIs []hostnetwork.L2VNIParams
 	for _, vni := range hostConfig.L2VNIs {
 		if failedL3Domains.Has(vni.VRF) {
-			resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
-				Obj: v1alpha1.FailedResource{
-					Kind: openpeerrors.KindL2VNI, Name: vni.Name, Reason: reason,
-					Message: fmt.Sprintf("L3 domain %q failed provisioning", vni.VRF),
-				},
-			})
+			message := fmt.Sprintf("L3 domain %q failed provisioning", vni.VRF)
+			resourceErrors = append(resourceErrors, overlayAttachmentError(openpeerrors.KindL2VNI, vni.Name, message))
 			continue
 		}
 
 		slog.InfoContext(ctx, "setting up L2VNI", "vni", vni.VNI)
 		if err := grout.SetupL2VNI(ctx, groutClient, ovsClient, vni); err != nil {
-			resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
-				Obj: v1alpha1.FailedResource{
-					Kind: openpeerrors.KindL2VNI, Name: vni.Name, Reason: reason, Message: err.Error(),
-				},
-			})
+			resourceErrors = append(resourceErrors,
+				overlayAttachmentError(openpeerrors.KindL2VNI, vni.Name, err.Error()))
 			continue
 		}
 		configuredL2VNIs = append(configuredL2VNIs, vni)
@@ -129,11 +117,8 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 	slog.InfoContext(ctx, "setting up passthrough")
 	if hostConfig.L3Passthrough != nil {
 		if err := grout.SetupPassthrough(ctx, groutClient, *hostConfig.L3Passthrough); err != nil {
-			resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
-				Obj: v1alpha1.FailedResource{
-					Kind: openpeerrors.KindL3Passthrough, Name: config.L3Passthrough[0].Name, Reason: reason, Message: err.Error(),
-				},
-			})
+			resourceErrors = append(resourceErrors,
+				overlayAttachmentError(openpeerrors.KindL3Passthrough, config.L3Passthrough[0].Name, err.Error()))
 		}
 	}
 
