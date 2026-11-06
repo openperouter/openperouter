@@ -303,6 +303,45 @@ var _ = Describe("L3 VNI configuration", func() {
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 	})
 
+	It("should use the underlay MTU resolved for the pass instead of looking it up again", func() {
+		const underlayMTU = 9000
+		setupFakeUnderlay(testNS, "testunderlayl3", underlayMTU)
+
+		cfg := newConfiguratorForTest(ovsClient)
+		Expect(cfg.underlayMTU).To(Equal(underlayMTU))
+
+		// Remove the underlay after the pass state is resolved: a fresh lookup
+		// would find no underlay and leave the veth MTU at its default.
+		removeFakeUnderlay(testNS, "testunderlayl3")
+
+		params := L3VNIParams{
+			VNIParams: VNIParams{
+				VRF:            "testred",
+				TargetNS:       testNSPath(),
+				VTEPIP:         "192.170.0.9/32",
+				VNI:            100,
+				VXLanPort:      new(int32(4789)),
+				TunnelOverhead: VXLanOverhead,
+			},
+			LinkIPs: &LinkIPs{
+				HostIPv4: "192.168.9.1/32",
+				NSIPv4:   "192.168.9.0/32",
+			},
+		}
+
+		Expect(cfg.SetupL3VNI(context.Background(), params)).To(Succeed())
+
+		expectedMTU := underlayMTU - VXLanOverhead
+		Eventually(func(g Gomega) {
+			vethNames := vethNamesFromVNI(params.VNI)
+			validateVethMTU(g, vethNames, expectedMTU)
+			_ = netnamespace.In(testNS, func() error {
+				validateNSVethMTU(g, vethNames, expectedMTU)
+				return nil
+			})
+		}, 30*time.Second, 1*time.Second).Should(Succeed())
+	})
+
 	It("should leave veth MTU at default when no underlay interface is configured", func() {
 		// No underlay MTU is passed here, so SetVethMTUForTunnelOverhead must
 		// leave the veth MTU untouched.
