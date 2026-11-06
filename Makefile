@@ -35,6 +35,9 @@ CLAB_TOPOLOGY_FILE ?= singlecluster/kind.clab.yml
 # do not want to do this in local setups, but this is needed for CI environments.
 COREDUMP ?= false
 
+SILENTDEPLOY_LOG ?= .silentdeploy.log
+SILENTCLEAN_LOG ?= .silentclean.log
+
 KIND_EXPORT_LOGS ?=/tmp/kind_logs
 
 .PHONY: all
@@ -212,6 +215,20 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified 
 
 .PHONY: deploy
 deploy: kind deploy-cluster deploy-controller ## Deploy cluster and controller.
+
+.PHONY: silentdeploy
+silentdeploy: ## Build the router image and deploy while showing only errors.
+	@: > "$(SILENTDEPLOY_LOG)"; \
+	$(MAKE) --no-print-directory --silent docker-build >"$(SILENTDEPLOY_LOG)" 2>&1 && \
+	$(MAKE) --no-print-directory --silent deploy >>"$(SILENTDEPLOY_LOG)" 2>&1 || { \
+		status=$$?; \
+		echo "Full silentdeploy log: $(SILENTDEPLOY_LOG)" >&2; \
+		if grep -iE 'error|failed|fatal|permission denied' "$(SILENTDEPLOY_LOG)" | \
+			grep -vE '^make(\[[0-9]+\])?: \*\*\*.* Error [0-9]+' >&2; then :; else \
+			tail -n 20 "$(SILENTDEPLOY_LOG)" >&2; \
+		fi; \
+		exit $$status; \
+	}
 
 .PHONY: deploy-scale
 deploy-scale: export KUSTOMIZE_LAYER=scale
@@ -406,6 +423,19 @@ clab-multi-cluster: kind-node-image-build kubectl ## Deploy multi-cluster setup 
 clean: kind ## Shutdown and clean up kind cluster(s) and containerlab topology.
 	KUBECONFIG_PATH=$(KUBECONFIG_PATH) KIND=$(KIND) CLAB_TOPOLOGY=singlecluster/kind.clab.yml clab/clean.sh pe-kind
 	KUBECONFIG_PATH=$(KUBECONFIG_PATH) KIND=$(KIND) CLAB_TOPOLOGY=multicluster/kind.clab.yml clab/clean.sh pe-kind-a pe-kind-b
+
+.PHONY: silentclean
+silentclean: ## Clean up deployment resources while showing only errors.
+	@: > "$(SILENTCLEAN_LOG)"; \
+	$(MAKE) --no-print-directory --silent clean >"$(SILENTCLEAN_LOG)" 2>&1 || { \
+		status=$$?; \
+		echo "Full silentclean log: $(SILENTCLEAN_LOG)" >&2; \
+		if grep -iE 'error|failed|fatal|permission denied' "$(SILENTCLEAN_LOG)" | \
+			grep -vE '^make(\[[0-9]+\])?: \*\*\*.* Error [0-9]+' >&2; then :; else \
+			tail -n 20 "$(SILENTCLEAN_LOG)" >&2; \
+		fi; \
+		exit $$status; \
+	}
 
 .PHONY: load-on-kind
 load-on-kind: ## Load the docker image into the kind cluster.
