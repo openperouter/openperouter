@@ -25,7 +25,7 @@ func TestSaveLoadDelete(t *testing.T) {
 		MTU:            9000,
 	}
 
-	require.NoError(t, store.Save(state))
+	require.NoError(t, store.Save(state.InterfaceName, state))
 
 	loaded, err := store.Load("enp3s0f0v0")
 	require.NoError(t, err)
@@ -43,11 +43,11 @@ func TestOverwrite(t *testing.T) {
 	t.Parallel()
 	store := Store{Dir: filepath.Join(t.TempDir(), "grout-state")}
 
-	require.NoError(t, store.Save(State{
+	require.NoError(t, store.Save("toswitch1", State{
 		InterfaceName: "toswitch1",
 		Addresses:     []string{"10.0.0.1/24"},
 	}))
-	require.NoError(t, store.Save(State{
+	require.NoError(t, store.Save("toswitch1", State{
 		InterfaceName: "toswitch1",
 		Addresses:     []string{"192.168.1.1/24", "fd00::1/64"},
 	}))
@@ -63,7 +63,7 @@ func TestDeleteNonExistent(t *testing.T) {
 
 	assert.NoError(t, store.Delete("does_not_exist"))
 	assert.ErrorIs(t, store.Delete(""), errMissingDeviceID)
-	assert.ErrorIs(t, store.Save(State{}), errMissingDeviceID)
+	assert.ErrorIs(t, store.Save("", State{}), errMissingDeviceID)
 	_, err := store.Load("")
 	assert.ErrorIs(t, err, errMissingDeviceID)
 }
@@ -78,8 +78,8 @@ func TestList(t *testing.T) {
 
 	tap := State{InterfaceName: "toswitch1", Addresses: []string{"10.0.0.1/24"}}
 	pci := State{InterfaceName: "ens1f0", PCIAddress: "0000:03:02.0", OriginalDriver: "ice"}
-	require.NoError(t, store.Save(tap))
-	require.NoError(t, store.Save(pci))
+	require.NoError(t, store.Save(tap.InterfaceName, tap))
+	require.NoError(t, store.Save(pci.InterfaceName, pci))
 
 	states, err = store.List()
 	require.NoError(t, err)

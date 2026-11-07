@@ -10,14 +10,10 @@ import (
 	"slices"
 
 	"github.com/openperouter/openperouter/internal/hostnetwork"
-	"github.com/vishvananda/netlink"
-	"github.com/vishvananda/netns"
 	"k8s.io/utils/ptr"
 )
 
 const (
-	hostTapPrefix    = "host-"
-	pePortPrefix     = "pe-"
 	vxlanNameFmt     = "vni%d"
 	defaultVRFName   = "main"
 	defaultVXLanPort = 4789
@@ -36,51 +32,16 @@ func SetupL3VNI(ctx context.Context, client *Client, params hostnetwork.L3VNIPar
 		return nil
 	}
 
-	linkPair := linkPairFromVNI(params.VNI)
-
-	ns, err := netns.GetFromPath(params.TargetNS)
-	if err != nil {
-		return fmt.Errorf("SetupL3VNI: failed to find namespace %s: %w", params.TargetNS, err)
+	if err := setupHostTap(ctx, client, linkPairFromVNI(params.VNI), params.TargetNS, params.VRF,
+		*params.LinkIPs, params.TunnelOverhead); err != nil {
+		return fmt.Errorf("SetupL3VNI: failed to setup host TAP: %w", err)
 	}
-	defer func() {
-		if err := ns.Close(); err != nil {
-			slog.Error("failed to close namespace", "namespace", params.TargetNS, "error", err)
-		}
-	}()
-
-	if err := ensureTapPortInHostNamespace(ctx, client, linkPair.NamespaceSide, linkPair.HostSide, params.VRF, ns); err != nil {
-		return err
-	}
-
-	hostTap, err := netlink.LinkByName(linkPair.HostSide)
-	if err != nil {
-		return fmt.Errorf("host TAP %s not found after move: %w", linkPair.HostSide, err)
-	}
-	if err := hostnetwork.AssignIPsToInterface(hostTap, params.LinkIPs.HostIPv4, params.LinkIPs.HostIPv6); err != nil {
-		return fmt.Errorf("failed to assign IPs to host TAP: %w", err)
-	}
-
-	underlayMTU, err := hostnetwork.FindUnderlayMTU(ns)
-	if err != nil {
-		return fmt.Errorf("could not find underlay MTU: %w", err)
-	}
-	if err := hostnetwork.SetVethMTUForTunnelOverhead(hostTap, underlayMTU, hostnetwork.VXLanOverhead); err != nil {
-		return fmt.Errorf("failed to set MTU on host TAP %s: %w", linkPair.HostSide, err)
-	}
-
-	if err := ensurePortAddresses(ctx, client, linkPair.NamespaceSide, params.LinkIPs.NSIPv4, params.LinkIPs.NSIPv6); err != nil {
-		return fmt.Errorf("failed to assign IPs to grout port: %w", err)
-	}
-	if err := client.setPortUp(ctx, linkPair.NamespaceSide); err != nil {
-		return fmt.Errorf("failed to set grout port up: %w", err)
-	}
-
 	return nil
 }
 
 func setupVNI(ctx context.Context, client *Client, params hostnetwork.VNIParams) error {
 	if err := client.ensureVRF(ctx, params.VRF); err != nil {
-		return fmt.Errorf("SetupL3VNI: failed to create VRF %s: %w", params.VRF, err)
+		return fmt.Errorf("failed to create VRF %s: %w", params.VRF, err)
 	}
 
 	vtepIP, _, err := net.ParseCIDR(params.VTEPIP)
@@ -109,10 +70,9 @@ func RemoveNonConfiguredVNIs(ctx context.Context, client *Client, ovsClient *hos
 	slog.DebugContext(ctx, "removing stale VNIs")
 	defer slog.DebugContext(ctx, "removing stale VNIs done")
 
-	configuredVNIs := make(map[int32]bool)
-
+	configuredVNIs := make(map[int32]struct{}, len(configured))
 	for _, p := range configured {
-		configuredVNIs[p.VNI] = true
+		configuredVNIs[p.VNI] = struct{}{}
 	}
 
 	ifaces, err := client.listInterfaces(ctx)
@@ -157,6 +117,15 @@ func RemoveNonConfiguredVRFs(ctx context.Context, client *Client, targetNamespac
 }
 
 func removeVNI(ctx context.Context, client *Client, vni int32) error {
+	if err := removeHostTap(ctx, client, linkPairFromVNI(vni)); err != nil {
+		return err
+	}
+
+	bridgeName := hostnetwork.BridgeName(vni)
+	if err := deleteBridgeVLANs(ctx, client, bridgeName, ""); err != nil {
+		return err
+	}
+
 	linkPair := linkPairFromVNI(vni)
 
 	if err := client.deletePort(ctx, linkPair.NamespaceSide); err != nil {
@@ -167,7 +136,6 @@ func removeVNI(ctx context.Context, client *Client, vni int32) error {
 		return fmt.Errorf("failed to delete host TAP %s: %w", linkPair.HostSide, err)
 	}
 
-	bridgeName := hostnetwork.BridgeName(vni)
 	if err := client.deleteInterface(ctx, bridgeName); err != nil {
 		return fmt.Errorf("failed to delete bridge %s: %w", bridgeName, err)
 	}
@@ -180,20 +148,17 @@ func removeVNI(ctx context.Context, client *Client, vni int32) error {
 	return nil
 }
 
-func findStaleVNIs(ifaces []groutInterface, configuredVNIs map[int32]bool) []int32 {
+func findStaleVNIs(ifaces []groutInterface, configuredVNIs map[int32]struct{}) []int32 {
 	var stale []int32
 	for _, iface := range ifaces {
 		if iface.Type != "vxlan" {
 			continue
 		}
-		var vni int32
-		if n, _ := fmt.Sscanf(iface.Name, "vni%d", &vni); n != 1 {
+		vni, ok := vniFromVXLANName(iface.Name)
+		if !ok {
 			continue
 		}
-		if fmt.Sprintf(vxlanNameFmt, vni) != iface.Name {
-			continue
-		}
-		if !configuredVNIs[vni] {
+		if _, ok := configuredVNIs[vni]; !ok {
 			stale = append(stale, vni)
 		}
 	}
@@ -218,11 +183,20 @@ func findStaleVRFs(ifaces []groutInterface, configuredVRFs []string) []string {
 // linkPairFromVNI returns the names of the link pair legs
 // corresponding to the default namespace and the target namespace, based on VNI.
 func linkPairFromVNI(vni int32) hostnetwork.VethNames {
-	hostSide := fmt.Sprintf("%s%d", hostTapPrefix, vni)
-	peSide := fmt.Sprintf("%s%d", pePortPrefix, vni)
+	hostSide := fmt.Sprintf("%s%d", hostnetwork.HostEVPNPrefix, vni)
+	peSide := fmt.Sprintf("%s%d", hostnetwork.PEEVPNPrefix, vni)
 	return hostnetwork.VethNames{HostSide: hostSide, NamespaceSide: peSide}
 }
 
 func vxlanNameFromVNI(vni int32) string {
 	return fmt.Sprintf(vxlanNameFmt, vni)
+}
+
+func vniFromVXLANName(name string) (int32, bool) {
+	var vni int32
+	if n, _ := fmt.Sscanf(name, vxlanNameFmt, &vni); n != 1 {
+		return 0, false
+	}
+	// Sscanf ignores trailing text after the VNI.
+	return vni, vxlanNameFromVNI(vni) == name
 }

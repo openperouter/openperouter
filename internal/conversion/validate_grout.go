@@ -31,3 +31,12 @@ func ValidateGroutUnderlay(underlay v1alpha1.Underlay) error {
 	}
 	return nil
 }
+
+// ValidateGroutL2Trunk rejects the L2Trunks the grout datapath cannot carry
+// yet: only SR-IOV trunks are implemented.
+func ValidateGroutL2Trunk(trunk v1alpha1.L2Trunk) error {
+	if trunk.Spec.Type != v1alpha1.L2TrunkTypeSRIOV {
+		return fmt.Errorf("l2trunk %s: type %s is not supported with the grout datapath", trunk.Name, trunk.Spec.Type)
+	}
+	return nil
+}

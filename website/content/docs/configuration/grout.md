@@ -4,13 +4,13 @@ title: "Grout (DPDK Dataplane)"
 description: "Using the optional DPDK-accelerated grout dataplane with OpenPERouter"
 icon: "article"
 date: "2026-05-07T09:00:00+02:00"
-lastmod: "2026-09-11T09:00:00+02:00"
+lastmod: "2026-10-14T09:00:00+02:00"
 toc: true
 ---
 
 ## Overview
 
-[Grout](https://github.com/DPDK/grout) is an optional, DPDK-accelerated data plane that can replace the Linux kernel's networking stack for packet forwarding in OpenPERouter. When enabled, grout handles VXLAN encapsulation/decapsulation and routing in user-space using poll-mode drivers, while [FRR](https://frrouting.org/) continues to manage the control plane (BGP, EVPN, route exchange).
+[Grout](https://github.com/DPDK/grout) is an optional, DPDK-accelerated data plane that can replace the Linux kernel's networking stack for packet forwarding in OpenPERouter. When enabled, grout handles VXLAN and SRv6 encapsulation/decapsulation and routing in user-space using poll-mode drivers, while [FRR](https://frrouting.org/) continues to manage the control plane (BGP, EVPN, IS-IS, route exchange).
 
 The integration is opt-in: grout is disabled by default and enabling it does not affect existing kernel-based deployments.
 
@@ -40,10 +40,13 @@ Grout support is being delivered incrementally. The current implementation cover
 - **L2VNI** (EVPN Layer 2 overlays) via grout bridge domains and TAP devices
 - **IS-IS** underlay routing, with the tunnel endpoint carried on a dedicated
   `vtep-lo` grout port advertised as a passive interface
+- **L3VPN** (SRv6 Layer 3 overlays) via grout VRFs and TAP devices
+- **L2Trunk** of type `SRIOV`: L2VNIs carried, VLAN-tagged, by an SR-IOV VF
+  bound to grout, with local VF-to-VF traffic switched by the NIC
 
 The following are **not yet supported** with grout:
 
-- Hardware acceleration of L2VNI via VF pairs
+- `L2Trunk` of type `Host` (TAP trunk attached to a host bridge)
 
 By default grout binds underlay NICs as **PCI ports**. Set
 `--grout-tap-underlay` on the controller to use **TAP devices** (`net_tap` with
@@ -237,6 +240,28 @@ neighbor that doesn't reply is removed. OpenPERouter sets this lifetime on
 grout to match the kernel's default neighbor reachable time, instead of grout's
 20 minute default.
 
+## Enabling Grout for SRv6 L3VPN
+
+`L3VPN` resources, and the `srv6` and `isis` settings of the `Underlay`, use
+the same configuration with the grout data path as with the kernel data path.
+See the [SRv6 L3VPN Configuration]({{< ref "srv6.md" >}}) documentation for
+the available fields and examples.
+
+For each `L3VPN`, grout creates a VRF and, when `hostSession` is set, connects
+it to the host through a TAP device. FRR programs the SRv6 local SIDs and the
+encapsulated routes into grout. `L2VNI` resources can use an `L3VPN` as their
+routing domain, as with the kernel data path.
+
+When grout is enabled, the controller adapts the generated FRR configuration:
+
+- The underlay network devices are attached to grout ports named
+  `u_<interfaceName>`, which are the interfaces FRR runs on. Keep using the
+  network device names in the `Underlay` resource, for example in
+  `isis.interfaces` and in the `interface` of the neighbors: the controller
+  translates them to the grout port names.
+- The tunnel endpoint IPv6 address is set as the SRv6 encapsulation source
+  address (`segment-routing srv6 encapsulation source-address`).
+
 ## DPDK-Accelerated Underlay Ports
 
 The controller binds `NetworkDevice` entries as PCI ports by default, even if
@@ -256,6 +281,14 @@ When the Underlay CR is disposed, the interface will be moved back to the kernel
 together with its addresses and the original driver.
 
 `acceleratedConfig` is rejected when `--datapath=kernel`.
+
+> **Note**: The DPDK `mlx5` driver opens a `mlx5_core` device through its RDMA
+> device as well as its netdev. The controller moves only the netdev into the
+> router namespace, so the RDMA subsystem must run in shared network namespace
+> mode, the kernel default: `rdma system show` must report `netns shared`. In
+> exclusive mode, set for example by the sriov-network-operator for RDMA
+> exclusive pools, the RDMA device stays in the host namespace and grout fails
+> to open the port. This applies to underlay ports and to `SRIOV` trunk VFs.
 
 ```yaml
 apiVersion: network.openperouter.io/v1alpha1
@@ -292,6 +325,90 @@ Other interface names, such as `vtep-lo`, remain unchanged.
 > multiqueue is enabled (`queues=<N>` on the tap netdev and `mq=on` on the `virtio-net-pci` device), and
 > `rxQueues` and `qSize` cannot exceed the queue pairs and the `rx_queue_size`
 > of the device.
+
+## SR-IOV Trunks
+
+An `L2Trunk` of type `SRIOV` binds one SR-IOV Virtual Function to grout as a
+trunk port. Every `L2VNI` referencing the trunk gets a grout VLAN interface on
+that port, carrying its `trunk.vlan.tag`, attached to the L2VNI's bridge
+domain. Workloads consume the other VFs of the same PF, configured with the
+L2VNI's VLAN: the NIC switches the traffic between local VFs, and sends the
+traffic to remote endpoints and to the L2 gateway to grout through the trunk
+VF. No TAP device and no host bridge are involved.
+
+```yaml
+apiVersion: network.openperouter.io/v1alpha1
+kind: L2Trunk
+metadata:
+  name: workloads
+  namespace: openperouter-system
+spec:
+  type: SRIOV
+  sriov:
+    pfName: enp1s0
+    vfIndex: 1
+    acceleratedConfig:
+      rxQueues: 4
+      qSize: 2048
+---
+apiVersion: network.openperouter.io/v1alpha1
+kind: L2VNI
+metadata:
+  name: tenant-a
+  namespace: openperouter-system
+spec:
+  vni: 10100
+  trunk:
+    name: workloads
+    vlan:
+      tag: 100
+```
+
+When the trunk is created, the controller:
+
+1. Resolves the VF PCI address from `/sys/class/net/<pfName>/device/virtfn<vfIndex>`
+2. Saves the VF's original driver
+3. Binds the VF to `vfio-pci`, or moves `mlx5_core` VFs into the router
+   namespace, and creates the grout port `t_<pci address without separators>`
+
+`mlx5_core` VFs need the RDMA subsystem in shared network namespace mode, see
+[DPDK-Accelerated Underlay Ports](#dpdk-accelerated-underlay-ports).
+
+Each L2VNI carried by the trunk gets a VLAN interface on the trunk port, named
+`t<pci address without separators>.<tag>`.
+
+Deleting the trunk removes its VLAN interfaces and its port, and hands the VF
+back to its original driver. The referencing L2VNIs stay in the API, but lose their data plane configuration until the trunk exists again.
+
+Prerequisites:
+
+- SR-IOV is enabled on the PF, with more than `vfIndex` VFs
+- The trunk VF is configured on the PF by the user, as the controller does not
+  change its PF-side settings:
+  - no VLAN, so the workload VFs' traffic reaches grout tagged
+  - `spoofchk off`, as the VF forwards frames of remote endpoints with their
+    own source MAC
+  - `trust on`, so the VF receives frames for MACs it does not own
+
+  For example: `ip link set <pfName> vf <vfIndex> vlan 0 spoofchk off trust on`
+- The trunk VF is not allocated to workloads, for
+  example by excluding it from the sriov-device-plugin resource pools
+- The trunk VF is not an underlay `NetworkDevice`: DPDK opens a PCI device
+  only once. A trunk selecting an underlay's VF fails, and an underlay
+  selecting a trunk's VF fails the underlay setup
+- The PF is not an underlay `NetworkDevice`: using the PF as the underlay
+  breaks the VF-to-VF traffic of the trunk. Use another VF of the PF, or
+  another NIC, as the underlay
+- The workload VFs are configured with the VLAN tags of their L2VNIs, by the
+  user or by the sriov-network-operator
+
+Two trunks applying to the same node cannot select the same VF, and two L2VNIs
+cannot use the same tag on the same trunk. `SRIOV` trunks are rejected when
+`--datapath=kernel`.
+
+For a complete workload setup, including `SriovNetworkNodePolicy`,
+`SriovNetwork`, and DPDK pods, see the [Layer 2 SR-IOV with Grout
+example]({{< relref "../examples/evpnexamples/layer2-sriov.md" >}}).
 
 ## Verification
 

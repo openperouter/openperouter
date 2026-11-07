@@ -24,9 +24,9 @@ type Store struct {
 // handed to grout, so the device can be restored on teardown, or if
 // the setup process is interrupted in the middle.
 //
-// InterfaceName is the primary deviceID and the state file is named
-// "<interfaceName>.json". PCIAddress is stored in the file so a DPDK
-// port can be mapped back to its original kernel interface.
+// The state file is named "<deviceID>.json", with the deviceID chosen by the
+// caller. PCIAddress is stored in the file so a DPDK port can be mapped back
+// to its original kernel interface.
 //
 // AddrGenMode and AcceptRA hold the IPv6 sysctl values the setup overrides
 // on the kernel interface. They are empty when IPv6 is disabled on it, and
@@ -46,8 +46,8 @@ type State struct {
 	MTU            int      `json:"mtu,omitempty"`
 }
 
-func (s Store) Save(state State) error {
-	if state.InterfaceName == "" {
+func (s Store) Save(deviceID string, state State) error {
+	if deviceID == "" {
 		return errMissingDeviceID
 	}
 	if err := os.MkdirAll(s.Dir, 0o755); err != nil {
@@ -57,7 +57,7 @@ func (s Store) Save(state State) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal device state: %w", err)
 	}
-	path := s.filePath(state.InterfaceName)
+	path := s.filePath(deviceID)
 	if err := writeFileAtomic(path, data); err != nil {
 		return fmt.Errorf("failed to write device state to %s: %w", path, err)
 	}
