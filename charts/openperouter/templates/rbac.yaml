@@ -186,6 +186,7 @@ metadata:
     {{ $key }}: {{ $value | quote }}
     {{- end }}
   name: {{ template "openperouter.fullname" . }}-controller
+  namespace: {{ .Release.Namespace | quote }}
 rules:
   - apiGroups:
       - ""
@@ -235,6 +236,7 @@ metadata:
     {{ $key }}: {{ $value | quote }}
     {{- end }}
   name: {{ template "openperouter.fullname" . }}-nodemarker
+  namespace: {{ .Release.Namespace | quote }}
 rules:
   - apiGroups:
       - ""
