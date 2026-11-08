@@ -292,6 +292,14 @@ together with its addresses, alternative names and the original driver.
 > exclusive pools, the RDMA device stays in the host namespace and grout fails
 > to open the port. This applies to underlay ports and to `SRIOV` trunk VFs.
 
+> **Note**: `mlx5_core` devices are opened through libibverbs, which needs the
+> VF's character device under the host's `/dev/infiniband`. The router DaemonSet
+> mounts that directory into the grout container so VFs created after the pod
+> started are usable too. If `grcli interface add port ... devargs <pci>` fails
+> with `Cannot allocate memory (ENOMEM)` on an mlx5 device, the grout log most
+> likely reports `Verbs device not found`: the uverbs device node is missing,
+> it is not a hugepages problem.
+
 ```yaml
 apiVersion: network.openperouter.io/v1alpha1
 kind: Underlay

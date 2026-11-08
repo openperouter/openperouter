@@ -46,8 +46,12 @@ spec:
           $patch: delete
         - mountPath: /dev/vfio
           $patch: delete
+        - mountPath: /dev/infiniband
+          $patch: delete
       volumes:
       - name: hugepages
         $patch: delete
       - name: vfio
+        $patch: delete
+      - name: infiniband
         $patch: delete
