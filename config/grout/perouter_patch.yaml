@@ -97,6 +97,13 @@ spec:
           mountPath: /dev/hugepages
         - name: vfio
           mountPath: /dev/vfio
+        # mlx5 VFs stay bound to mlx5_core and DPDK opens them via
+        # libibverbs, which needs the uverbs character devices. A privileged
+        # container only gets a snapshot of the host /dev taken at startup,
+        # so VFs (and their device nodes) created later are invisible unless
+        # /dev/infiniband is mounted from the host.
+        - name: infiniband
+          mountPath: /dev/infiniband
         startupProbe:
           exec:
             command: ["/bin/sh", "-c", "grcli -e"]
@@ -135,4 +142,11 @@ spec:
       - name: vfio
         hostPath:
           path: /dev/vfio
+          type: DirectoryOrCreate
+      # See the infiniband volumeMount above: mlx5 VFs created after the pod
+      # started have no uverbs device node in the privileged /dev copy.
+      # DirectoryOrCreate keeps hosts without RDMA (Intel-only, kind) working.
+      - name: infiniband
+        hostPath:
+          path: /dev/infiniband
           type: DirectoryOrCreate
