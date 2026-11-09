@@ -43,7 +43,7 @@ spec:
         # grout shrinks the port mempool to 2x the reservation and the tap
         # ports starve for RX buffers.
         - name: GROUT_MEMPOOL_CHUNK_SIZE
-          value: "4095"
+          value: "16384"
         - name: GROUT_MAX_NEXTHOPS
           value: "4096"
         - name: GROUT_MAX_ROUTES
