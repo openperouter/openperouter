@@ -167,6 +167,97 @@ func TestParseChartResourceOverridesLeaveOtherContainersAtDefaults(t *testing.T)
 	}
 }
 
+// defaultGroutResources mirrors the grout resources shipped in the chart's
+// values.yaml.
+func defaultGroutResources() v1.ResourceRequirements {
+	return v1.ResourceRequirements{
+		Requests: v1.ResourceList{
+			v1.ResourceCPU:    resource.MustParse("250m"),
+			v1.ResourceMemory: resource.MustParse("512Mi"),
+		},
+		Limits: v1.ResourceList{
+			v1.ResourceCPU:    resource.MustParse("500m"),
+			v1.ResourceMemory: resource.MustParse("2Gi"),
+		},
+	}
+}
+
+func TestParseChartGroutResourceDefaults(t *testing.T) {
+	g := NewGomegaWithT(t)
+	specs := renderPodSpecs(g, operatorapi.OpenPERouterSpec{Datapath: new(groutDatapath)})
+
+	grout := findContainer(specs[routerDaemonSetName], groutContainerName)
+	g.Expect(grout).ToNot(BeNil())
+	want := defaultGroutResources()
+	g.Expect(grout.Resources.Requests).To(matchResourceQuantities(want.Requests))
+	g.Expect(grout.Resources.Limits).To(matchResourceQuantities(want.Limits))
+}
+
+func TestParseChartGroutResourceOverrides(t *testing.T) {
+	overridden := v1.ResourceRequirements{
+		Requests: v1.ResourceList{
+			v1.ResourceCPU:                   resource.MustParse("1"),
+			v1.ResourceMemory:                resource.MustParse("1Gi"),
+			v1.ResourceName("hugepages-2Mi"): resource.MustParse("2Gi"),
+		},
+		Limits: v1.ResourceList{v1.ResourceMemory: resource.MustParse("4Gi")},
+	}
+	g := NewGomegaWithT(t)
+	specs := renderPodSpecs(g, operatorapi.OpenPERouterSpec{
+		Datapath: new(groutDatapath),
+		Grout:    &operatorapi.GroutConfiguration{Resources: &overridden},
+	})
+
+	grout := findContainer(specs[routerDaemonSetName], groutContainerName)
+	g.Expect(grout).ToNot(BeNil())
+	g.Expect(grout.Resources.Requests).To(matchResourceQuantities(overridden.Requests))
+	// limits deep-merge with the chart defaults, like any other helm value.
+	wantLimits := defaultGroutResources().Limits.DeepCopy()
+	wantLimits[v1.ResourceMemory] = resource.MustParse("4Gi")
+	g.Expect(grout.Resources.Limits).To(matchResourceQuantities(wantLimits))
+
+	// The other containers keep the chart defaults.
+	frr := findContainer(specs[routerDaemonSetName], "frr")
+	g.Expect(frr).ToNot(BeNil())
+	g.Expect(frr.Resources.Requests).To(matchResourceQuantities(defaultFRRRequests()))
+}
+
+func TestParseChartGroutResourceRequestsDoNotInheritDefaults(t *testing.T) {
+	// A requests-only override replaces the default requests, while the
+	// default limits are kept, like any other helm value.
+	requests := v1.ResourceList{
+		v1.ResourceMemory:                resource.MustParse("512Mi"),
+		v1.ResourceName("hugepages-2Mi"): resource.MustParse("1Gi"),
+	}
+	g := NewGomegaWithT(t)
+	specs := renderPodSpecs(g, operatorapi.OpenPERouterSpec{
+		Datapath: new(groutDatapath),
+		Grout: &operatorapi.GroutConfiguration{
+			Resources: &v1.ResourceRequirements{Requests: requests},
+		},
+	})
+
+	grout := findContainer(specs[routerDaemonSetName], groutContainerName)
+	g.Expect(grout).ToNot(BeNil())
+	g.Expect(grout.Resources.Requests).To(matchResourceQuantities(requests))
+	g.Expect(grout.Resources.Limits).To(matchResourceQuantities(defaultGroutResources().Limits))
+}
+
+func TestParseChartGroutResourcesWithKernelDatapath(t *testing.T) {
+	// Grout overrides are inert on the kernel datapath, but must not break
+	// the chart rendering.
+	g := NewGomegaWithT(t)
+	specs := renderPodSpecs(g, operatorapi.OpenPERouterSpec{
+		Grout: &operatorapi.GroutConfiguration{
+			Resources: &v1.ResourceRequirements{
+				Requests: v1.ResourceList{v1.ResourceMemory: resource.MustParse("1Gi")},
+			},
+		},
+	})
+
+	g.Expect(findContainer(specs[routerDaemonSetName], groutContainerName)).To(BeNil())
+}
+
 // renderPodSpecs renders the chart through the operator and returns pod specs
 // keyed by workload name.
 func renderPodSpecs(g Gomega, spec operatorapi.OpenPERouterSpec) map[string]v1.PodSpec {

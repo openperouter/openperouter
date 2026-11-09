@@ -123,6 +123,10 @@ openperouter:
         hugepages-2Mi: "1Gi"
 ```
 
+Operator users request the hugepages through `spec.grout.resources` on the
+`OpenPERouter` resource instead; see
+[Scheduling Priority and Resources]({{< ref "_index.md#scheduling-priority-and-resources" >}}).
+
 Setting `openperouter.grout.testMode` to `true` instead starts grout with
 `--test-mode` and with the `DUMMY` FIB algorithms. Test mode needs no
 hugepages, and `DUMMY` skips the LPM tables whose per-VRF allocation would
