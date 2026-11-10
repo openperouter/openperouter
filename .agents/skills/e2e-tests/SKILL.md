@@ -11,7 +11,7 @@ trigger: run e2e tests, run tests, e2e, run the e2e suite, test e2e
 Use the kubeconfig at `bin/kubeconfig` to check for hostbridge pods:
 
 ```shell
-KUBECONFIG=bin/kubeconfig kubectl get daemonset hostbridge -n kube-system --no-headers
+KUBECONFIG=bin/kubeconfig kubectl get daemonset hostbridge -n openperouter-system --no-headers
 ```
 
 Interpret the result carefully — do not swallow errors:
