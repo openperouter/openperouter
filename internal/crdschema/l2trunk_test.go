@@ -18,26 +18,9 @@ func TestL2TrunkSchema(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name: "host without bridge", kind: "L2Trunk",
-			spec: map[string]any{"type": "Host"},
-		},
-		{
-			name: "external Linux bridge", kind: "L2Trunk",
-			spec: map[string]any{"type": "Host", "hostMaster": trunkHostMaster("LinuxBridge", "External")},
-		},
-		{
-			name: "external OVS bridge", kind: "L2Trunk",
-			spec: map[string]any{"type": "Host", "hostMaster": trunkHostMaster("OVSBridge", "External")},
-		},
-		{
-			name: "managed Linux bridge", kind: "L2Trunk",
-			spec:    map[string]any{"type": "Host", "hostMaster": trunkHostMaster("LinuxBridge", "Managed")},
-			wantErr: "L2Trunk does not support managed Linux bridges",
-		},
-		{
-			name: "managed OVS bridge", kind: "L2Trunk",
-			spec:    map[string]any{"type": "Host", "hostMaster": trunkHostMaster("OVSBridge", "Managed")},
-			wantErr: "L2Trunk does not support managed OVS bridges",
+			name: "host type is not in the enum", kind: "L2Trunk",
+			spec:    map[string]any{"type": "Host"},
+			wantErr: `Unsupported value: "Host"`,
 		},
 		{
 			name: "missing type", kind: "L2Trunk", spec: map[string]any{},
@@ -61,19 +44,6 @@ func TestL2TrunkSchema(t *testing.T) {
 		{
 			name: "SR-IOV without sriov", kind: "L2Trunk", spec: map[string]any{"type": "SRIOV"},
 			wantErr: "type/config mismatch: sriov must be set if and only if type is 'SRIOV'",
-		},
-		{
-			name: "host with sriov", kind: "L2Trunk",
-			spec:    map[string]any{"type": "Host", "sriov": trunkSRIOV("enp1s0", 1)},
-			wantErr: "type/config mismatch: sriov must be set if and only if type is 'SRIOV'",
-		},
-		{
-			name: "SR-IOV with hostMaster", kind: "L2Trunk",
-			spec: map[string]any{
-				"type": "SRIOV", "sriov": trunkSRIOV("enp1s0", 1),
-				"hostMaster": trunkHostMaster("LinuxBridge", "External"),
-			},
-			wantErr: "hostMaster can only be set when type is 'Host'",
 		},
 		{
 			name: "SR-IOV missing pfName", kind: "L2Trunk",
@@ -215,16 +185,6 @@ func TestTrunkImmutability(t *testing.T) {
 			name: "standalone update", kind: "L2VNI",
 			oldSpec: map[string]any{"vni": int64(100)},
 			newSpec: map[string]any{"vni": int64(100), "exportRTs": []any{"65000:100"}},
-		},
-		{
-			name: "add hostMaster", kind: "L2Trunk", oldSpec: map[string]any{"type": "Host"},
-			newSpec: map[string]any{"type": "Host", "hostMaster": trunkHostMaster("LinuxBridge", "External")},
-			wantErr: "hostMaster is immutable",
-		},
-		{
-			name: "remove hostMaster", kind: "L2Trunk", newSpec: map[string]any{"type": "Host"},
-			oldSpec: map[string]any{"type": "Host", "hostMaster": trunkHostMaster("LinuxBridge", "External")},
-			wantErr: "hostMaster is immutable",
 		},
 		{
 			name: "unchanged VF", kind: "L2Trunk",

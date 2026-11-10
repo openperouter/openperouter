@@ -55,84 +55,6 @@ spec:
           spec:
             description: spec defines the desired state of L2Trunk.
             properties:
-              hostMaster:
-                description: |-
-                  hostMaster is the host bridge the trunk's host-side interface attaches to.
-                  The bridge must have lifecycle External.
-                  When omitted, the host-side interface is left for external attachment.
-                  Immutable.
-                properties:
-                  linuxBridge:
-                    description: linuxBridge configuration. Must be set when Type
-                      is "LinuxBridge".
-                    properties:
-                      lifecycle:
-                        description: |-
-                          lifecycle determines if the bridge is managed by the controller or
-                          provided by the user.
-                        enum:
-                        - Managed
-                        - External
-                        type: string
-                      name:
-                        description: |-
-                          name of the Linux bridge interface. Required when lifecycle is
-                          External, and must be omitted when it is Managed, in which case the
-                          bridge is named br-hs-<VNI>.
-                        maxLength: 15
-                        pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
-                        type: string
-                    required:
-                    - lifecycle
-                    type: object
-                    x-kubernetes-validations:
-                    - message: name must be set when lifecycle is External, and must
-                        not be set when it is Managed.
-                      rule: (self.?name.orValue("") != "") != (self.?lifecycle.orValue("")
-                        == 'Managed')
-                  ovsBridge:
-                    description: ovsBridge configuration. Must be set when Type is
-                      "OVSBridge".
-                    properties:
-                      lifecycle:
-                        description: |-
-                          lifecycle determines if the OVS bridge is managed by the controller or
-                          provided by the user.
-                        enum:
-                        - Managed
-                        - External
-                        type: string
-                      name:
-                        description: |-
-                          name of the OVS bridge interface. Required when lifecycle is
-                          External, and must be omitted when it is Managed, in which case the
-                          bridge is named br-hs-<VNI>.
-                        maxLength: 15
-                        pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
-                        type: string
-                    required:
-                    - lifecycle
-                    type: object
-                    x-kubernetes-validations:
-                    - message: name must be set when lifecycle is External, and must
-                        not be set when it is Managed.
-                      rule: (self.?name.orValue("") != "") != (self.?lifecycle.orValue("")
-                        == 'Managed')
-                  type:
-                    description: 'type of the host interface. Supported values: "LinuxBridge",
-                      "OVSBridge".'
-                    enum:
-                    - LinuxBridge
-                    - OVSBridge
-                    type: string
-                required:
-                - type
-                type: object
-                x-kubernetes-validations:
-                - message: 'type/config mismatch: ''LinuxBridge'' requires linuxBridge
-                    field, ''OVSBridge'' requires ovsBridge field'
-                  rule: (self.type == 'LinuxBridge' && has(self.linuxBridge) && !has(self.ovsBridge))
-                    || (self.type == 'OVSBridge' && has(self.ovsBridge) && !has(self.linuxBridge))
               nodeSelector:
                 description: |-
                   nodeSelector specifies which nodes this L2Trunk applies to.
@@ -232,15 +154,12 @@ spec:
                 description: type selects the kind of port that carries the trunk's
                   tagged traffic.
                 enum:
-                - Host
                 - SRIOV
                 type: string
             required:
             - type
             type: object
             x-kubernetes-validations:
-            - message: hostMaster can only be set when type is 'Host'
-              rule: self.type == 'Host' || !has(self.hostMaster)
             - message: 'type/config mismatch: sriov must be set if and only if type
                 is ''SRIOV'''
               rule: has(self.sriov) == (self.type == 'SRIOV')
@@ -249,15 +168,6 @@ spec:
             - message: sriov is immutable
               rule: has(self.sriov) == has(oldSelf.sriov) && (!has(self.sriov) ||
                 self.sriov == oldSelf.sriov)
-            - message: hostMaster is immutable
-              rule: has(self.hostMaster) == has(oldSelf.hostMaster) && (!has(self.hostMaster)
-                || self.hostMaster == oldSelf.hostMaster)
-            - message: L2Trunk does not support managed Linux bridges
-              rule: '!has(self.hostMaster) || !has(self.hostMaster.linuxBridge) ||
-                self.hostMaster.linuxBridge.lifecycle == ''External'''
-            - message: L2Trunk does not support managed OVS bridges
-              rule: '!has(self.hostMaster) || !has(self.hostMaster.ovsBridge) || self.hostMaster.ovsBridge.lifecycle
-                == ''External'''
           status:
             description: status defines the observed state of L2Trunk.
             type: object
