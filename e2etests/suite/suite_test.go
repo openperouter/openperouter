@@ -42,6 +42,7 @@ func handleFlags() {
 	flag.StringVar(&nodeExecImage, "node-exec-image", "busybox:1.36", "container image for node-exec-helper pods")
 	flag.StringVar(&openperouter.InstrumentedNodesLabel, "instrumented-nodes-label", "",
 		"label selector for instrumented nodes (key=value); empty selects all nodes")
+	flag.StringVar(&tests.BootstrapNode, "bootstrap-node", "pe-kind-worker", "kind node with the systemd controller")
 	flag.Parse()
 }
 
