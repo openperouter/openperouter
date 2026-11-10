@@ -20,7 +20,7 @@ require (
 	github.com/testcontainers/testcontainers-go v0.44.0
 	github.com/vishvananda/netlink v1.3.1
 	github.com/vishvananda/netns v0.0.5
-	go.yaml.in/yaml/v2 v2.4.4
+	go.yaml.in/yaml/v2 v2.4.5
 	golang.org/x/net v0.60.0
 	golang.org/x/sys v0.48.0
 	helm.sh/helm/v4 v4.3.0
