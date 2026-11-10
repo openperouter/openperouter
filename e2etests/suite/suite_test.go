@@ -16,6 +16,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
+	"github.com/openperouter/openperouter/e2etests/pkg/systemd"
 	"github.com/openperouter/openperouter/e2etests/tests"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -42,6 +43,11 @@ func handleFlags() {
 	flag.StringVar(&nodeExecImage, "node-exec-image", "busybox:1.36", "container image for node-exec-helper pods")
 	flag.StringVar(&openperouter.InstrumentedNodesLabel, "instrumented-nodes-label", "",
 		"label selector for instrumented nodes (key=value); empty selects all nodes")
+	tests.BootstrapNode = systemd.RebootNode{Runtime: executor.ContainerRuntime}
+	flag.StringVar(&tests.BootstrapNode.Name, "bootstrap-node", "pe-kind-worker", "bootstrap node container to reboot")
+	flag.StringVar(&tests.BootstrapNode.RestartScript, "bootstrap-restart-script",
+		"../../systemdmode/restart-kind-node.sh",
+		"kind restart and link recovery script")
 	flag.Parse()
 }
 
