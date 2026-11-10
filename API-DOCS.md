@@ -270,7 +270,6 @@ _Appears in:_
 
 
 _Appears in:_
-- [L2TrunkSpec](#l2trunkspec)
 - [L2VNISpec](#l2vnispec)
 
 | Field | Description | Default | Validation |
@@ -461,8 +460,7 @@ _Appears in:_
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `nodeSelector` _[LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#labelselector-v1-meta)_ | nodeSelector specifies which nodes this L2Trunk applies to.<br />If empty or not specified, applies to all nodes. |  | Optional: \{\} <br /> |
-| `type` _[L2TrunkType](#l2trunktype)_ | type selects the kind of port that carries the trunk's tagged traffic. |  | Enum: [Host SRIOV] <br />Required: \{\} <br /> |
-| `hostMaster` _[HostMaster](#hostmaster)_ | hostMaster is the host bridge the trunk's host-side interface attaches to.<br />The bridge must have lifecycle External.<br />When omitted, the host-side interface is left for external attachment.<br />Immutable. |  | Optional: \{\} <br /> |
+| `type` _[L2TrunkType](#l2trunktype)_ | type selects the kind of port that carries the trunk's tagged traffic. |  | Enum: [SRIOV] <br />Required: \{\} <br /> |
 | `sriov` _[SRIOVTrunkConfig](#sriovtrunkconfig)_ | sriov selects the SR-IOV VF used as the trunk port. The VF is bound<br />to grout and no host-side interface is created. Must be set when<br />type is "SRIOV". Only supported by the grout data path.<br />Immutable. |  | Optional: \{\} <br /> |
 
 
@@ -486,14 +484,13 @@ _Underlying type:_ _string_
 L2TrunkType selects the kind of port that carries the trunk's tagged traffic.
 
 _Validation:_
-- Enum: [Host SRIOV]
+- Enum: [SRIOV]
 
 _Appears in:_
 - [L2TrunkSpec](#l2trunkspec)
 
 | Field | Description |
 | --- | --- |
-| `Host` | L2TrunkTypeHost carries the trunk through a host-side interface.<br /> |
 | `SRIOV` | L2TrunkTypeSRIOV carries the trunk through an SR-IOV VF bound to grout.<br /> |
 
 

@@ -395,11 +395,6 @@ func (in *L2TrunkSpec) DeepCopyInto(out *L2TrunkSpec) {
 		*out = new(v1.LabelSelector)
 		(*in).DeepCopyInto(*out)
 	}
-	if in.HostMaster != nil {
-		in, out := &in.HostMaster, &out.HostMaster
-		*out = new(HostMaster)
-		(*in).DeepCopyInto(*out)
-	}
 	if in.SRIOV != nil {
 		in, out := &in.SRIOV, &out.SRIOV
 		*out = new(SRIOVTrunkConfig)

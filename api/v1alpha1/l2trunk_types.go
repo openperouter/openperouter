@@ -5,26 +5,19 @@ package v1alpha1
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 // L2TrunkType selects the kind of port that carries the trunk's tagged traffic.
-// +kubebuilder:validation:Enum=Host;SRIOV
+// +kubebuilder:validation:Enum=SRIOV
 type L2TrunkType string
 
 const (
-	// L2TrunkTypeHost carries the trunk through a host-side interface.
-	L2TrunkTypeHost L2TrunkType = "Host"
-
 	// L2TrunkTypeSRIOV carries the trunk through an SR-IOV VF bound to grout.
 	L2TrunkTypeSRIOV L2TrunkType = "SRIOV"
 )
 
 // L2TrunkSpec defines a shared attachment for VLAN-tagged L2VNIs.
 // +union
-// +kubebuilder:validation:XValidation:rule="self.type == 'Host' || !has(self.hostMaster)",message="hostMaster can only be set when type is 'Host'"
 // +kubebuilder:validation:XValidation:rule="has(self.sriov) == (self.type == 'SRIOV')",message="type/config mismatch: sriov must be set if and only if type is 'SRIOV'"
 // +kubebuilder:validation:XValidation:rule="self.type == oldSelf.type",message="type is immutable"
 // +kubebuilder:validation:XValidation:rule="has(self.sriov) == has(oldSelf.sriov) && (!has(self.sriov) || self.sriov == oldSelf.sriov)",message="sriov is immutable"
-// +kubebuilder:validation:XValidation:rule="has(self.hostMaster) == has(oldSelf.hostMaster) && (!has(self.hostMaster) || self.hostMaster == oldSelf.hostMaster)",message="hostMaster is immutable"
-// +kubebuilder:validation:XValidation:rule="!has(self.hostMaster) || !has(self.hostMaster.linuxBridge) || self.hostMaster.linuxBridge.lifecycle == 'External'",message="L2Trunk does not support managed Linux bridges"
-// +kubebuilder:validation:XValidation:rule="!has(self.hostMaster) || !has(self.hostMaster.ovsBridge) || self.hostMaster.ovsBridge.lifecycle == 'External'",message="L2Trunk does not support managed OVS bridges"
 type L2TrunkSpec struct {
 	// nodeSelector specifies which nodes this L2Trunk applies to.
 	// If empty or not specified, applies to all nodes.
@@ -35,13 +28,6 @@ type L2TrunkSpec struct {
 	// +required
 	// +unionDiscriminator
 	Type L2TrunkType `json:"type,omitempty"`
-
-	// hostMaster is the host bridge the trunk's host-side interface attaches to.
-	// The bridge must have lifecycle External.
-	// When omitted, the host-side interface is left for external attachment.
-	// Immutable.
-	// +optional
-	HostMaster *HostMaster `json:"hostMaster,omitempty"`
 
 	// sriov selects the SR-IOV VF used as the trunk port. The VF is bound
 	// to grout and no host-side interface is created. Must be set when
