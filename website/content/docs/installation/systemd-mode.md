@@ -12,18 +12,43 @@ OpenPERouter can run outside of Kubernetes as a systemd service using Podman Qua
 
 ## Prerequisites
 
-- Podman
+- Podman with Quadlet support
 - systemd
+- The bootstrap and runtime router images available locally or through a registry reachable during startup. Missing images are pulled automatically.
 
 ## Setup
 
-Deploy the Quadlet unit files to `/etc/containers/systemd/` and start the service:
+OpenPERouter ships a small one-shot unit, `systemdmode/openperouter-bootstrap.service`. At every boot it runs the `/bootstrap` entry point of the router image, which renders the runtime Quadlets and FRR daemon settings from `/var/lib/openperouter/boot.yaml`, and then starts them. Only the bootstrap unit is enabled; the runtime units are started by it.
+
+Configure `/var/lib/openperouter/node-config.yaml` as described in
+[Node Configuration]({{< ref "../configuration/systemd-mode.md" >}}#node-configuration).
+Bootstrap does not create this file.
+
+For a custom router image, edit `OPENPEROUTER_IMAGE` in
+`systemdmode/openperouter-bootstrap.service` before installing the service file.
+Set `image` in `boot.yaml` to the runtime image.
 
 ```bash
-cp openperouter*.container /etc/containers/systemd/
-systemctl daemon-reload
-systemctl start openperouter
+install -m 0644 systemdmode/openperouter-bootstrap.service /etc/systemd/system/
+mkdir -p /var/lib/openperouter/configs
+install -m 0600 systemdmode/bootstrap/boot.yaml.example /var/lib/openperouter/boot.yaml
+# edit /var/lib/openperouter/boot.yaml
 ```
+
+For offline boot, preload both image references into the host's rootful Podman
+store with `sudo podman pull` while online or `sudo podman load -i <archive>`.
+If both settings use the same image reference, preload it once.
+
+```bash
+systemctl daemon-reload
+systemctl enable --now openperouter-bootstrap.service
+```
+
+### Redeploying
+
+Configuration and image changes take effect at the next boot: edit `boot.yaml` and reboot the host.
+
+Only the kernel datapath is supported by the bootstrap for now.
 
 ## Configuration
 
