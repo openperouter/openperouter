@@ -10,6 +10,44 @@ toc: true
 
 In systemd mode, OpenPERouter is configured via static files on the host instead of Kubernetes Custom Resources. See the [Systemd Mode installation guide]({{< ref "../installation/systemd-mode.md" >}}) for deployment instructions.
 
+## Bootstrap Configuration
+
+The bootstrap unit reads a single file, `/etc/openperouter/openpe_boot.yaml`, and renders from it the runtime Quadlets (under `/etc/containers/systemd/openperouter/`) and FRR daemon settings. Do not edit the rendered files: they are overwritten at every boot. Changes take effect at the next boot.
+
+```yaml
+image: quay.io/openperouter/router:main   # required
+logLevel: info
+healthProbePort: 9081
+bgpListenLimit: 65535
+controllerMaxReconcileBackoffSeconds: 30  # optional
+ovsRunDir: /var/run/openvswitch
+ovsSocketPath: unix:/var/run/openvswitch/db.sock
+runtimeConfiguration:
+  directory: /etc/openperouter
+```
+
+Unknown fields are rejected, and an invalid file makes the bootstrap unit fail without writing anything.
+
+### Deployment Options
+
+The following fields share their name and meaning with the `OpenPERouter` operator resource:
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| `logLevel` | `info` | `debug`, `info`, `warn`, `error`. The operator values `all` and `none` are not supported. |
+| `healthProbePort` | `9081` | Controller health endpoint and container health check. |
+| `bgpListenLimit` | `65535` | 1-65535. |
+| `controllerMaxReconcileBackoffSeconds` | controller default | At least 1 when set. |
+| `ovsSocketPath` | `unix:/var/run/openvswitch/db.sock` | Must be a `unix:` socket inside `ovsRunDir`. |
+| `ovsRunDir` | `/var/run/openvswitch` | Mounted into the controller. |
+| `datapath` | `kernel` | Only `kernel` is supported for now. |
+
+`image` is a required host-only setting.
+
+### FRR Daemons
+
+The FRR `daemons` file is rendered to `/var/lib/openperouter/frr/daemons` and mounted into the FRR container. It is not configurable yet.
+
 ## Node Configuration
 
 Each node requires a mandatory configuration file at `/var/lib/openperouter/node-config.yaml`. This file identifies the node and configures its unique index used for IPAM address allocation from the configured CIDRs.
@@ -47,6 +85,19 @@ nodeIndex:
   interfaceName: eth0
   cidr: "192.168.11.0/24"
 logLevel: debug
+
+```
+
+## Runtime Configuration
+
+`runtimeConfiguration.directory` points to a host directory containing separate
+`openpe_*.yaml` runtime files. The directory is mounted into the controller;
+changes to those files reload live. Runtime configuration cannot be embedded
+in `openpe_boot.yaml`.
+
+Boot and runtime files may share a directory. The runtime reader ignores
+`openpe_boot.yaml`, which contains only deployment settings plus the
+runtime directory reference.
 
 Each `openpe_*.yaml` file contains the `spec` part of the corresponding Kubernetes Custom Resources. A file can contain any combination of `underlay`, `l3vnis`, `l2vnis`, `bgppassthrough`, and `rawfrrconfigs` fields, where each entry follows the same schema as the `spec` section of the equivalent CR (Underlay, L3VNI, L2VNI, L3Passthrough, RawFRRConfig):
 
@@ -89,7 +140,7 @@ l2vnis:
 
 ### Splitting Configuration Across Files
 
-Multiple files can coexist in the configs directory. This is useful when nodes share a common base configuration but require different underlays. For example, a shared VNI definition can live in one file while per-node underlay settings go in another:
+Multiple files can coexist in the runtime configuration directory. This is useful when nodes share a common base configuration but require different underlays. For example, a shared VNI definition can live in one file while per-node underlay settings go in another:
 
 ```yaml
 # openpe_vni.yaml - common across nodes
@@ -123,7 +174,7 @@ Depending on the CNI, the network configuration might need to be complete before
 
 ### Dynamic Reload
 
-Configuration files are watched for changes and dynamically reloaded at runtime. Updating a file triggers a reconciliation cycle without restarting the service.
+Files in the runtime configuration directory are watched for changes and dynamically reloaded at runtime. Updating a file triggers a reconciliation cycle without restarting the service.
 
 ### Kubernetes Visibility
 

@@ -1,0 +1,13 @@
+# OpenPERouter bootstrap configuration.
+# Install as /etc/openperouter/openpe_boot.yaml (mode 0600). Changes apply at next boot.
+image: quay.io/openperouter/router:main
+# datapath: kernel
+logLevel: info                # debug, info, warn, error
+# healthProbePort: 9081
+# bgpListenLimit: 65535
+# controllerMaxReconcileBackoffSeconds: 30
+# ovsRunDir: /var/run/openvswitch
+# ovsSocketPath: unix:/var/run/openvswitch/db.sock
+runtimeConfiguration:
+  # Directory of separate openpe_*.yaml runtime files, reloaded live.
+  directory: /etc/openperouter

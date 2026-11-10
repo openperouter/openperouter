@@ -12,18 +12,32 @@ OpenPERouter can run outside of Kubernetes as a systemd service using Podman Qua
 
 ## Prerequisites
 
-- Podman
+- Podman with Quadlet support
 - systemd
+- The OpenPERouter router image available locally or through a registry reachable during startup. Missing images are pulled automatically; preload images with `podman pull` or `podman load` for offline boot.
 
 ## Setup
 
-Deploy the Quadlet unit files to `/etc/containers/systemd/` and start the service:
+OpenPERouter ships a small one-shot unit, `systemdmode/openperouter-bootstrap.service`. At every boot it runs the `/bootstrap` entry point of the router image, which renders the runtime Quadlets and FRR daemon settings from `/etc/openperouter/openpe_boot.yaml`, and then starts them. Only the bootstrap unit is enabled; the runtime units are started by it.
+
+Configure `/var/lib/openperouter/node-config.yaml` as described in
+[Node Configuration]({{< ref "../configuration/systemd-mode.md" >}}#node-configuration).
+Bootstrap does not create this file.
 
 ```bash
-cp openperouter*.container /etc/containers/systemd/
+install -m 0644 systemdmode/openperouter-bootstrap.service /etc/systemd/system/
+mkdir -p /etc/openperouter
+install -m 0600 systemdmode/bootstrap/openpe_boot.yaml.example /etc/openperouter/openpe_boot.yaml
+# edit /etc/openperouter/openpe_boot.yaml
 systemctl daemon-reload
-systemctl start openperouter
+systemctl enable --now openperouter-bootstrap.service
 ```
+
+### Redeploying
+
+Configuration and image changes take effect at the next boot: edit `openpe_boot.yaml` and reboot the host.
+
+Only the kernel datapath is supported by the bootstrap for now.
 
 ## Configuration
 

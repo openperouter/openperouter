@@ -124,6 +124,13 @@ func TestReadRouterConfigs(t *testing.T) {
 		assertNoConfigAvailable(t, err)
 	})
 
+	t.Run("boot settings only", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		writeTestFile(t, tmpDir, "openpe_boot.yaml", "deployment: [unclosed\n")
+		_, err := ReadRouterConfigs(tmpDir)
+		assertNoConfigAvailable(t, err)
+	})
+
 	t.Run("non-existent directory", func(t *testing.T) {
 		_, err := ReadRouterConfigs("/nonexistent/path")
 		assertNoConfigAvailable(t, err)
@@ -131,6 +138,7 @@ func TestReadRouterConfigs(t *testing.T) {
 
 	t.Run("single file", func(t *testing.T) {
 		tmpDir := t.TempDir()
+		writeTestFile(t, tmpDir, "openpe_boot.yaml", "deployment: [unclosed\n")
 		writeTestFile(t, tmpDir, "openpe_underlay.yaml", "underlays:\n  - asn: 64515\n    routerIDCIDR: \"10.0.0.0/24\"\n")
 
 		configs, err := ReadRouterConfigs(tmpDir)

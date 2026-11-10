@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 QUADLET_DIR="/etc/containers/systemd"
+ROUTER_IMAGE="${ROUTER_IMAGE:-quay.io/openperouter/router:main}"
 
 source "$SCRIPT_DIR/../clab/common.sh"
 
@@ -40,34 +41,6 @@ load_image_to_node() {
     return 1
 }
 
-update_and_restart_routerpod() {
-    local NODE="$1"
-    local ROUTER_IMAGE="quay.io/openperouter/router:main"
-
-    log_info "  Updating routerpod images..."
-    load_image_to_node "$NODE" "$ROUTER_IMAGE"
-
-    log_info "  Restarting routerpod services..."
-    if ! $CONTAINER_ENGINE_CLI exec "$NODE" systemctl restart routerpod-pod.service; then
-        log_error "Failed to restart routerpod-pod.service on $NODE"
-        return 1
-    fi
-}
-
-update_and_restart_controllerpod() {
-    local NODE="$1"
-    local ROUTER_IMAGE="quay.io/openperouter/router:main"
-
-    log_info "  Updating controllerpod images..."
-    load_image_to_node "$NODE" "$ROUTER_IMAGE"
-
-    log_info "  Restarting controllerpod services..."
-    if ! $CONTAINER_ENGINE_CLI exec "$NODE" systemctl restart controllerpod-pod.service; then
-        log_error "Failed to restart controllerpod-pod.service on $NODE"
-        return 1
-    fi
-}
-
 if [[ $# -lt 1 ]]; then
     log_error "Usage: $0 <kind-cluster-name>"
     log_error "Example: $0 my-cluster"
@@ -86,25 +59,31 @@ fi
 for NODE in $NODES; do
     log_info "Deploying to node: $NODE"
 
-    log_info "  Creating quadlet directory..."
-    $CONTAINER_ENGINE_CLI exec "$NODE" mkdir -p "$QUADLET_DIR"
-
-    for quadlet_file in "$SCRIPT_DIR"/quadlets/*.pod "$SCRIPT_DIR"/quadlets/*.container "$SCRIPT_DIR"/quadlets/*.volume; do
-        if [[ -f "$quadlet_file" ]]; then
-            QUADLET_NAME=$(basename "$quadlet_file")
-            log_info "    Copying $QUADLET_NAME"
-            $CONTAINER_ENGINE_CLI cp "$quadlet_file" "$NODE:$QUADLET_DIR/$QUADLET_NAME"
-        fi
+    log_info "  Removing hand-installed quadlets, if any..."
+    for name in routerpod.pod controllerpod.pod frr.container reloader.container controller.container frr-sockets.volume; do
+        $CONTAINER_ENGINE_CLI exec "$NODE" rm -f "$QUADLET_DIR/$name"
     done
 
-    log_info "  Reloading systemd daemon (triggers quadlet generation)..."
+    load_image_to_node "$NODE" "$ROUTER_IMAGE"
+
+    log_info "  Installing the bootstrap unit..."
+    $CONTAINER_ENGINE_CLI cp "$SCRIPT_DIR/openperouter-bootstrap.service" \
+        "$NODE:/etc/systemd/system/openperouter-bootstrap.service"
+    $CONTAINER_ENGINE_CLI exec "$NODE" bash -c "mkdir -p /etc/systemd/system/openperouter-bootstrap.service.d && \
+        printf '[Service]\nEnvironment=OPENPEROUTER_IMAGE=%s\n' '$ROUTER_IMAGE' \
+        > /etc/systemd/system/openperouter-bootstrap.service.d/image.conf"
     $CONTAINER_ENGINE_CLI exec "$NODE" systemctl daemon-reload
+    $CONTAINER_ENGINE_CLI exec "$NODE" systemctl enable openperouter-bootstrap.service
 
-    log_info "  Updating images and (re)starting pods..."
-    update_and_restart_routerpod "$NODE"
-    update_and_restart_controllerpod "$NODE"
-
-    log_info "  Services enabled automatically via quadlet [Install] sections"
+    # A redeploy is meant to be a reboot. Rebooting kind nodes is not
+    # practical, so emulate it: stop the runtime, then rerun bootstrap.
+    log_info "  Running bootstrap..."
+    $CONTAINER_ENGINE_CLI exec "$NODE" systemctl stop routerpod-pod.service controllerpod-pod.service 2>/dev/null || true
+    if ! $CONTAINER_ENGINE_CLI exec "$NODE" systemctl restart openperouter-bootstrap.service; then
+        log_error "Bootstrap failed on $NODE"
+        $CONTAINER_ENGINE_CLI exec "$NODE" journalctl -u openperouter-bootstrap.service --no-pager -n 50 || true
+        exit 1
+    fi
 
     echo ""
 done
