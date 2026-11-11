@@ -340,7 +340,10 @@ jobs:
           trap 'kill "$BOOT_LOG_PID" 2>/dev/null || true; wait "$BOOT_LOG_PID" || true' EXIT
           MAKE_RULE="deploy"
           IMG_REPO="quay.io/openperouter"
-          if [ ${{ matrix.deployment }} = "helm" ]; then MAKE_RULE="deploy-helm"; fi
+          if [ ${{ matrix.deployment }} = "helm" ]; then
+            MAKE_RULE="deploy-helm"
+            export HELM_ARGS="--set openperouter.routerMACPrefix=02:00:00:00:00:00/32"
+          fi
           if [ ${{ matrix.deployment }} = "helm-grout" ]; then MAKE_RULE="grout-deploy-helm"; fi
           if [ ${{ matrix.deployment }} = "grout" ]; then MAKE_RULE="grout-deploy"; fi
           if [ ${{ matrix.deployment }} = "systemdmode" ]; then MAKE_RULE="deploy-hostmode"; fi
@@ -393,8 +396,11 @@ jobs:
             make e2etests-hostmode-boot
           elif [ ${{ matrix.deployment }} = "helm-grout" ] || [ ${{ matrix.deployment }} = "grout" ] || [ ${{ matrix.deployment }} = "operator-grout" ]; then
             make e2etests GINKGO_ARGS="--label-filter='grout-support || grout-only'" TEST_ARGS="--groutmode"
-          else
+          elif [ ${{ matrix.deployment }} = "helm" ]; then
             export GINKGO_ARGS="--label-filter='!systemdmode && !grout-only'"
+            make e2etests
+          else
+            export GINKGO_ARGS="--label-filter='!systemdmode && !grout-only && !router-mac'"
             make e2etests
           fi
 
