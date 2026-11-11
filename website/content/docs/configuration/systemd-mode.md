@@ -47,6 +47,9 @@ nodeIndex:
   interfaceName: eth0
   cidr: "192.168.11.0/24"
 logLevel: debug
+```
+
+## Router Configuration
 
 Each `openpe_*.yaml` file contains the `spec` part of the corresponding Kubernetes Custom Resources. A file can contain any combination of `underlay`, `l3vnis`, `l2vnis`, `bgppassthrough`, and `rawfrrconfigs` fields, where each entry follows the same schema as the `spec` section of the equivalent CR (Underlay, L3VNI, L2VNI, L3Passthrough, RawFRRConfig):
 
