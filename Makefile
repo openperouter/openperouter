@@ -355,7 +355,8 @@ $(KUBECTL): $(LOCALBIN)
 helm: $(HELM) ## Download helm locally if necessary. If wrong version is installed, it will be overwritten.
 $(HELM): $(LOCALBIN)
 	test -s $(LOCALBIN)/helm && $(LOCALBIN)/helm version | grep -q $(HELM_VERSION) || \
-	USE_SUDO=false HELM_INSTALL_DIR=$(LOCALBIN) DESIRED_VERSION=$(HELM_VERSION) bash <(curl -s https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3)
+	PATH="$(LOCALBIN):$$PATH" USE_SUDO=false HELM_INSTALL_DIR=$(LOCALBIN) DESIRED_VERSION=$(HELM_VERSION) \
+	bash <(curl -s https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3)
 
 .PHONY: envtest
 envtest: $(ENVTEST) ## Download envtest-setup locally if necessary.
