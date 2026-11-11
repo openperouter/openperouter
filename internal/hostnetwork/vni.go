@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"strings"
 
 	"github.com/openperouter/openperouter/internal/netnamespace"
@@ -37,8 +38,9 @@ type VNIParams struct {
 
 type L3VNIParams struct {
 	VNIParams
-	Name    string
-	LinkIPs *LinkIPs
+	Name      string
+	LinkIPs   *LinkIPs
+	RouterMAC net.HardwareAddr
 }
 
 type L3PassthroughParams struct {
@@ -128,7 +130,8 @@ func (c *VNIConfigurator) SetupL3VNI(ctx context.Context, params L3VNIParams) er
 	if err := c.setupVRFInNS(ctx, params.VRF); err != nil {
 		return fmt.Errorf("SetupL3VNI: failed to setup VRF: %w", err)
 	}
-	if err := c.setupVNI(ctx, params.VNIParams, setAddrGenModeNone); err != nil {
+	bridgeOptions := l3VNIBridgeOptions(params.RouterMAC)
+	if err := c.setupVNI(ctx, params.VNIParams, bridgeOptions...); err != nil {
 		return fmt.Errorf("SetupL3VNI: failed to setup VNI: %w", err)
 	}
 	slog.DebugContext(ctx, "setting up l3 VNI", "params", params)
@@ -148,6 +151,16 @@ func (c *VNIConfigurator) SetupL3VNI(ctx context.Context, params L3VNIParams) er
 		return fmt.Errorf("SetupL3VNI: failed to setup host veth pair: %w", err)
 	}
 	return nil
+}
+
+func l3VNIBridgeOptions(mac net.HardwareAddr) []NetlinkOption {
+	options := []NetlinkOption{setAddrGenModeNone}
+	if len(mac) == 0 {
+		return options
+	}
+	return append(options, func(bridge netlink.Link) error {
+		return ensureBridgeMACAddress(bridge, mac)
+	})
 }
 
 // SetupL2VNI sets up a Layer 2 VNI in the router namespace the configurator
