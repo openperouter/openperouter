@@ -62,6 +62,7 @@ Kubernetes: `>= 1.19.0-0`
 | openperouter.ovsSocketPath | string | `""` | OVS database socket path. Defaults to standard OVS location if not specified. |
 | openperouter.podAnnotations | object | `{}` |  |
 | openperouter.priorityClassName | string | `""` | Priority class for all openperouter pods (router, controller, nodemarker, hostbridge). Use system-node-critical, or system-cluster-critical where cluster policy requires it: Kubernetes protects both critical classes from node-pressure eviction, and the descheduler excludes critical pods by default. |
+| openperouter.routerMACPrefix | string | `""` | MAC prefix combined with each node index to generate the shared L3VNI router MAC (for example, "02:00:00:00:00:00/32"). Leave empty to preserve existing bridge MAC behavior. |
 | openperouter.runtimeClassName | string | `""` |  |
 | openperouter.serviceAccounts.annotations | object | `{}` |  |
 | openperouter.serviceAccounts.controller.name | string | `""` |  |
