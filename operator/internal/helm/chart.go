@@ -161,6 +161,9 @@ func patchChartValues(envConfig envconfig.EnvConfig, crdConfig *operatorapi.Open
 		openperouterValues["bgpListenLimit"] = *crdConfig.Spec.BGPListenLimit
 	}
 
+	if crdConfig.Spec.RouterMACPrefix != nil {
+		openperouterValues["routerMACPrefix"] = *crdConfig.Spec.RouterMACPrefix
+	}
 	if crdConfig.Spec.ControllerMaxReconcileBackoffSeconds != nil {
 		openperouterValues["maxReconcileBackoffSeconds"] = *crdConfig.Spec.ControllerMaxReconcileBackoffSeconds
 	}
