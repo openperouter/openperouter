@@ -7,8 +7,9 @@ spec:
   template:
     spec:
       containers:
-      - name: frr-k8s
+      - name: controller
         args:
+        - "--metrics-bind-address=0.0.0.0:9140"
         - "--node-name=$(NODE_NAME)"
         - "--log-level=debug"
         - "--namespace=$(NAMESPACE)"
