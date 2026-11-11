@@ -1273,6 +1273,12 @@ spec:
                     - message: claims are not supported
                       rule: '!has(self.claims) || self.claims.size() == 0'
                 type: object
+              routerMACPrefix:
+                description: |-
+                  routerMACPrefix is combined with each node index to generate the router MAC
+                  shared by all L3VNI bridges on that node (for example, "02:00:00:00:00:00/32").
+                  Supported by the kernel and Grout datapaths. Empty preserves existing MAC behavior.
+                type: string
               tolerations:
                 description: |-
                   tolerations for all openperouter pods (router, controller, nodemarker,
