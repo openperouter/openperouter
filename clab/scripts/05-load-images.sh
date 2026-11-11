@@ -20,8 +20,7 @@ load_images_to_clusters() {
     # Define images to load
     local images=(
         "quay.io/frrouting/frr:10.6.0 frr10"
-        "registry.k8s.io/kubebuilder/kube-rbac-proxy:v0.13.1 rbacproxy"
-        "quay.io/metallb/frr-k8s:v0.0.17 frrk8s"
+        "quay.io/metallb/frr-k8s:v0.0.23 frrk8s"
     )
 
     for cluster_name in "${CLUSTER_NAMES[@]}"; do
