@@ -21,6 +21,7 @@ import (
 type GroutDatapathConfigurator struct {
 	conversion.GroutDatapathConfigValidator
 
+	RouterMACPrefix  string
 	groutSocketPath  string
 	deviceStateStore devicestate.Store
 	trunkStateStore  devicestate.Store
@@ -28,8 +29,9 @@ type GroutDatapathConfigurator struct {
 	underlayPortMode grout.UnderlayPortMode
 }
 
-func NewGroutConfigurator(groutSocketPath string, mode grout.UnderlayPortMode) *GroutDatapathConfigurator {
+func NewGroutConfigurator(groutSocketPath string, mode grout.UnderlayPortMode, routerMACPrefix string) *GroutDatapathConfigurator {
 	return &GroutDatapathConfigurator{
+		RouterMACPrefix:  routerMACPrefix,
 		groutSocketPath:  groutSocketPath,
 		deviceStateStore: devicestate.Store{Dir: "/var/run/grout/device-state"},
 		trunkStateStore:  devicestate.Store{Dir: "/var/run/grout/trunk-state"},
@@ -49,6 +51,11 @@ func (g *GroutDatapathConfigurator) InterfaceNameForFRR(name string) string {
 }
 
 func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interfacesConfiguration) error {
+	routerMAC, err := hostnetwork.RouterMACForNode(g.RouterMACPrefix, config.nodeIndex)
+	if err != nil {
+		return fmt.Errorf("failed to generate router MAC: %w", err)
+	}
+
 	groutClient := grout.NewClient(g.groutSocketPath)
 
 	ovsClient := &hostnetwork.OVSClient{}
@@ -91,6 +98,7 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 
 	var configuredL3VNIs []hostnetwork.L3VNIParams
 	for _, vni := range hostConfig.L3VNIs {
+		vni.RouterMAC = routerMAC
 		slog.InfoContext(ctx, "setting up VNI", "vni", vni.VRF)
 		if err := grout.SetupL3VNI(ctx, groutClient, vni); err != nil {
 			resourceErrors = append(resourceErrors,
