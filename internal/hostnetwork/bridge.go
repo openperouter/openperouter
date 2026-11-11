@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"net"
 	"strconv"
 	"strings"
 
@@ -117,7 +118,10 @@ func ensureBridgeFixedMacAddress(bridge netlink.Link, vni int32) error {
 	if err != nil {
 		return err
 	}
+	return ensureBridgeMACAddress(bridge, macAddress)
+}
 
+func ensureBridgeMACAddress(bridge netlink.Link, macAddress net.HardwareAddr) error {
 	if bytes.Equal(bridge.Attrs().HardwareAddr, macAddress) {
 		return nil
 	}
@@ -125,6 +129,7 @@ func ensureBridgeFixedMacAddress(bridge netlink.Link, vni int32) error {
 	if err := netlink.LinkSetHardwareAddr(bridge, macAddress); err != nil {
 		return fmt.Errorf("failed to set mac address to bridge %s %x: %w", bridge.Attrs().Name, macAddress, err)
 	}
+	bridge.Attrs().HardwareAddr = macAddress
 	return nil
 }
 

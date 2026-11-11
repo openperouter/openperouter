@@ -16,6 +16,8 @@ type NodeConfig struct {
 	NodeIndex NodeIndex `json:"nodeIndex"`
 	NodeName  string    `json:"nodeName"`
 	LogLevel  string    `json:"logLevel"`
+	// RouterMACPrefix is the optional MAC prefix used with the node index for all L3VNI bridges.
+	RouterMACPrefix string `json:"routerMACPrefix,omitempty"`
 }
 
 // StaticL3VNI wraps an L3VNISpec with a required name field for static

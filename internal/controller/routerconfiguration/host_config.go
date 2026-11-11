@@ -37,6 +37,7 @@ type vnis struct {
 // It supports the full API surface.
 type KernelDatapathConfigurator struct {
 	conversion.KernelDatapathConfigValidator
+	RouterMACPrefix string
 }
 
 // InterfaceNameForFRR returns the name unchanged: in the kernel datapath FRR
@@ -46,6 +47,10 @@ func (k *KernelDatapathConfigurator) InterfaceNameForFRR(name string) string {
 }
 
 func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config interfacesConfiguration) error { // nolint:gocognit
+	routerMAC, err := hostnetwork.RouterMACForNode(k.RouterMACPrefix, config.nodeIndex)
+	if err != nil {
+		return fmt.Errorf("failed to generate router MAC: %w", err)
+	}
 	ovsClient := &hostnetwork.OVSClient{}
 	defer ovsClient.Close()
 
@@ -101,6 +106,9 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 		return fmt.Errorf("failed to setup underlay: %w", err)
 	}
 
+	for i := range hostConfig.L3VNIs {
+		hostConfig.L3VNIs[i].RouterMAC = routerMAC
+	}
 	vnisToKeep, resourceErrors := setupVNIs(ctx, ovsClient, config.targetNamespace, hostConfig)
 	slog.InfoContext(ctx, "setting up passthrough")
 	if hostConfig.L3Passthrough != nil {

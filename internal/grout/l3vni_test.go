@@ -4,12 +4,62 @@ package grout
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net"
+	"strings"
 	"testing"
 
 	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+func TestSetupL3VNIRouterMAC(t *testing.T) {
+	const mac = "02:00:00:00:00:2a"
+	failure := errors.New("cannot set MAC")
+	tests := []struct {
+		name       string
+		currentMAC string
+		routerMAC  string
+		wantError  error
+	}{
+		{name: "new VXLANs", routerMAC: mac},
+		{name: "matching MAC", currentMAC: mac, routerMAC: mac},
+		{name: "restore drift", currentMAC: "02:ff:ff:ff:ff:ff", routerMAC: mac},
+		{name: "omitted prefix", currentMAC: "02:ff:ff:ff:ff:ff"},
+		{name: "set failure", currentMAC: "02:ff:ff:ff:ff:ff", routerMAC: mac, wantError: failure},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			original := execCmd
+			t.Cleanup(func() { execCmd = original })
+			var routerMAC net.HardwareAddr
+			if tt.routerMAC != "" {
+				var err error
+				routerMAC, err = net.ParseMAC(tt.routerMAC)
+				require.NoError(t, err)
+			}
+			for _, vni := range []int32{100, 200} {
+				calls := l3VNIRouterMACCommands(vni, tt.currentMAC, tt.routerMAC, tt.wantError)
+				next := 0
+				execCmd = func(ctx context.Context, command string, args ...string) ([]byte, error) {
+					require.Less(t, next, len(calls), "unexpected command: %s %v", command, args)
+					call := calls[next]
+					next++
+					require.Equal(t, call.cmd, command+" "+strings.Join(args, " "))
+					return []byte(call.output), call.err
+				}
+				err := SetupL3VNI(context.Background(), NewClient("sock"), hostnetwork.L3VNIParams{
+					VNIParams: hostnetwork.VNIParams{VNI: vni, VRF: "red", VTEPIP: "10.0.0.1/32"},
+					RouterMAC: routerMAC,
+				})
+				require.ErrorIs(t, err, tt.wantError)
+				require.Equal(t, len(calls), next, "missing grcli commands for VNI %d", vni)
+			}
+		})
+	}
+}
 
 func TestFindStaleVNIs(t *testing.T) {
 	tests := []struct {
@@ -321,4 +371,28 @@ func TestDeleteInterface(t *testing.T) {
 			NewClient("sock").deleteInterface(context.Background(), "red"),
 		)
 	})
+}
+
+func l3VNIRouterMACCommands(vni int32, currentMAC, routerMAC string, setError error) []cmdCall {
+	const base = "grcli --err-exit --json --socket sock "
+	name := fmt.Sprintf("vni%d", vni)
+	info := fmt.Sprintf(`{"vni":%d,"local":"10.0.0.1","dst_port":4789,"vrf":"red","mac":%q}`, vni, currentMAC)
+	show := cmdCall{cmd: base + "interface show name " + name, output: info}
+	calls := []cmdCall{{cmd: base + "interface show name red", output: `{"name":"red","type":"vrf"}`}}
+	if currentMAC == "" {
+		calls = append(calls,
+			cmdCall{cmd: show.cmd, output: interfaceNotFoundOutput, err: errors.New("exit status 1")},
+			cmdCall{cmd: fmt.Sprintf("%sinterface add vxlan %s vni %d local 10.0.0.1 dst_port 4789 vrf red encap_vrf main", base, name, vni)},
+		)
+	} else {
+		calls = append(calls, show)
+	}
+	if routerMAC == "" {
+		return calls
+	}
+	calls = append(calls, show)
+	if currentMAC != routerMAC {
+		calls = append(calls, cmdCall{cmd: base + "interface set vxlan " + name + " mac " + routerMAC, err: setError})
+	}
+	return calls
 }
