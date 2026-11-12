@@ -8,12 +8,35 @@ import (
 	"fmt"
 	"strings"
 
+	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	clientset "k8s.io/client-go/kubernetes"
 )
 
-const skipWebhookLabel = "openperouter.io/skip-webhook"
+const (
+	skipWebhookLabel = "openperouter.io/skip-webhook"
+
+	WebhookLabelSelector        = "app=webhook"
+	NodeMarkerLabelSelector     = "app=nodemarker"
+	CertControllerLabelSelector = "app=certcontroller"
+)
+
+// WebhookDeployment returns the deployment serving the admission webhooks.
+// Its name depends on how OpenPERouter was installed, so it is looked up by
+// the labels of its pods.
+func WebhookDeployment(cs clientset.Interface) (*appsv1.Deployment, error) {
+	deployments, err := cs.AppsV1().Deployments(Namespace).List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("listing deployments in %s: %w", Namespace, err)
+	}
+	for i := range deployments.Items {
+		if deployments.Items[i].Spec.Template.Labels["app"] == "webhook" {
+			return &deployments.Items[i], nil
+		}
+	}
+	return nil, fmt.Errorf("no webhook deployment found in %s", Namespace)
+}
 
 func DisableWebhooksForNamespace(cs clientset.Interface, namespace string) error {
 	_, err := cs.CoreV1().Namespaces().Patch(
