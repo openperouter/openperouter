@@ -1,0 +1,27 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: webhook-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - network.openperouter.io
+  resources:
+  - l2vnis
+  - l3passthroughs
+  - l3vnis
+  - l3vpns
+  - rawfrrconfigs
+  - underlays
+  verbs:
+  - get
+  - list
+  - watch

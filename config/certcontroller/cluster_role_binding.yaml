@@ -1,15 +1,15 @@
 apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
+kind: ClusterRoleBinding
 metadata:
   labels:
     app.kubernetes.io/name: openperouter
     app.kubernetes.io/managed-by: kustomize
-  name: nodemarker-rolebinding
-  namespace: system
+  name: certcontroller-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: nodemarker-role
+  kind: ClusterRole
+  name: certcontroller-role
 subjects:
 - kind: ServiceAccount
-  name: nodemarker
+  name: certcontroller
+  namespace: system

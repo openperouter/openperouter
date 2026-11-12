@@ -4,7 +4,7 @@ metadata:
   annotations:
     alm-examples: '[]'
     capabilities: Basic Install
-    createdAt: "2026-10-19T17:36:48Z"
+    createdAt: "2026-11-12T13:15:08Z"
     operators.operatorframework.io/builder: operator-sdk-v1.41.1
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
   name: openperouter-operator.v0.0.0
@@ -121,35 +121,6 @@ spec:
           - patch
           - update
           - watch
-        - apiGroups:
-          - admissionregistration.k8s.io
-          resources:
-          - validatingwebhookconfigurations
-          verbs:
-          - get
-          - list
-          - watch
-        - apiGroups:
-          - admissionregistration.k8s.io
-          resourceNames:
-          - openpe-validating-webhook-configuration
-          resources:
-          - validatingwebhookconfigurations
-          verbs:
-          - update
-        - apiGroups:
-          - network.openperouter.io
-          resources:
-          - l2vnis
-          - l3passthroughs
-          - l3vnis
-          - l3vpns
-          - rawfrrconfigs
-          - underlays
-          verbs:
-          - get
-          - list
-          - watch
         serviceAccountName: nodemarker
       - rules:
         - apiGroups:
@@ -179,6 +150,29 @@ spec:
           - patch
           - update
         serviceAccountName: operator
+      - rules:
+        - apiGroups:
+          - ""
+          resources:
+          - nodes
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - network.openperouter.io
+          resources:
+          - l2vnis
+          - l3passthroughs
+          - l3vnis
+          - l3vpns
+          - rawfrrconfigs
+          - underlays
+          verbs:
+          - get
+          - list
+          - watch
+        serviceAccountName: webhook
       deployments:
       - label:
           app.kubernetes.io/component: operator
@@ -292,7 +286,7 @@ spec:
                 - mountPath: /tmp/k8s-webhook-server/serving-certs
                   name: cert
                   readOnly: true
-              serviceAccountName: nodemarker
+              serviceAccountName: webhook
               volumes:
               - name: cert
                 secret:
@@ -318,24 +312,6 @@ spec:
           - list
           - watch
         serviceAccountName: controller
-      - rules:
-        - apiGroups:
-          - ""
-          resources:
-          - secrets
-          verbs:
-          - get
-          - list
-          - watch
-        - apiGroups:
-          - ""
-          resourceNames:
-          - openpe-webhook-server-cert
-          resources:
-          - secrets
-          verbs:
-          - update
-        serviceAccountName: nodemarker
       - rules:
         - apiGroups:
           - ""

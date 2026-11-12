@@ -5,7 +5,7 @@ resources:
 - secrets_role.yaml
 - nodemarker_cluster_role.yaml
 - nodemarker_cluster_role_binding.yaml
-- nodemarker_role.yaml
-- nodemarker_role_binding.yaml
+- webhook_cluster_role.yaml
+- webhook_cluster_role_binding.yaml
 - perouter_role.yaml
 - perouter_role_binding.yaml
