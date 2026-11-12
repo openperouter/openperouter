@@ -14,7 +14,7 @@ This guide covers the installation of OpenPERouter using different deployment me
 
 Before installing OpenPERouter, ensure you have:
 
-- A Kubernetes cluster (v1.20 or later)
+- A Kubernetes cluster (v1.21 or later)
 - `kubectl` configured to communicate with your cluster
 - Cluster administrator privileges (for creating namespaces and CRDs)
 - Network interfaces configured for BGP peering with external routers
@@ -119,7 +119,15 @@ You should see pods for:
 
 - `openperouter-controller-*` (controller daemonset)
 - `openperouter-router-*` (router daemonset)
-- `openperouter-nodemarker-*` (node labeler deployment)
+- `openperouter-nodemarker-*` (node index allocator deployment)
+- `openperouter-webhook-*` (admission webhook deployment, two replicas)
+- `openperouter-certcontroller-*` (webhook certificate controller deployment)
+
+The admission webhooks run as two active/active replicas, so creating and
+updating OpenPERouter resources keeps working while one replica is restarted,
+rescheduled or drained. The certificate controller generates and rotates the
+webhook serving certificate. Operator installations do not run it, because OLM
+manages the webhook certificates.
 
 ## Next Steps
 
