@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -1893,4 +1895,88 @@ func netdevInterfaces(names ...string) []hostnetwork.UnderlayInterface {
 		})
 	}
 	return res
+}
+
+func TestAPItoHostConfigL2Trunks(t *testing.T) {
+	underlay := v1alpha1.Underlay{Spec: v1alpha1.UnderlaySpec{
+		Interfaces: []v1alpha1.UnderlayInterface{
+			{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}},
+		},
+		TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: []string{"10.0.0.0/24"}},
+	}}
+	trunk := sriovTrunk("workloads", "enp1s0", 1)
+	trunk.Spec.SRIOV.AcceleratedConfig = &v1alpha1.AcceleratedConfig{RXQueues: new(int32(4)), QSize: new(int32(2048))}
+
+	got, err := APItoHostConfig(0, "namespace", APIConfigData{
+		Underlays: []v1alpha1.Underlay{underlay},
+		L2VNIs:    []v1alpha1.L2VNI{trunkL2VNI("tenant-a", 100, "workloads", 33)},
+		L2Trunks:  []v1alpha1.L2Trunk{trunk},
+	})
+	require.NoError(t, err)
+
+	wantSRIOV := &hostnetwork.SRIOVTrunkParams{
+		PFName:  "enp1s0",
+		VFIndex: 1,
+		AcceleratedConfig: &hostnetwork.AcceleratedConfigParams{
+			RXQueues: new(int32(4)),
+			QSize:    new(int32(2048)),
+		},
+	}
+	wantTrunks := []hostnetwork.L2TrunkParams{
+		{
+			Name:     "workloads",
+			TargetNS: "namespace",
+			SRIOV:    wantSRIOV,
+		},
+	}
+	require.Equal(t, wantTrunks, got.L2Trunks)
+
+	wantL2VNIs := []hostnetwork.L2VNIParams{
+		{
+			Name: "tenant-a",
+			VNIParams: hostnetwork.VNIParams{
+				TargetNS:       "namespace",
+				VTEPIP:         "10.0.0.0/32",
+				VNI:            100,
+				VXLanPort:      new(int32(4789)),
+				TunnelOverhead: hostnetwork.VXLanOverhead,
+			},
+			Trunk: &hostnetwork.L2VNITrunkParams{
+				Name: "workloads",
+				VLAN: 33,
+			},
+		},
+	}
+	require.Equal(t, wantL2VNIs, got.L2VNIs)
+}
+
+func TestAPItoHostConfigNonSRIOVL2Trunk(t *testing.T) {
+	underlay := v1alpha1.Underlay{Spec: v1alpha1.UnderlaySpec{
+		Interfaces: []v1alpha1.UnderlayInterface{
+			{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}},
+		},
+		TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: []string{"10.0.0.0/24"}},
+	}}
+
+	_, err := APItoHostConfig(0, "namespace", APIConfigData{
+		Underlays: []v1alpha1.Underlay{underlay},
+		L2Trunks:  []v1alpha1.L2Trunk{hostTrunk()},
+	})
+	require.EqualError(t, err, "failed to translate L2Trunks to host, err: L2Trunk host: unsupported type \"Host\"")
+}
+
+func TestAPItoHostConfigL2VNIMissingTrunk(t *testing.T) {
+	underlay := v1alpha1.Underlay{Spec: v1alpha1.UnderlaySpec{
+		Interfaces: []v1alpha1.UnderlayInterface{
+			{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "eth0"}},
+		},
+		TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: []string{"10.0.0.0/24"}},
+	}}
+
+	_, err := APItoHostConfig(0, "namespace", APIConfigData{
+		Underlays: []v1alpha1.Underlay{underlay},
+		L2VNIs:    []v1alpha1.L2VNI{trunkL2VNI("tenant-a", 100, "missing", 33)},
+	})
+	require.EqualError(t, err, "failed to translate L2VNIs to host, err: failed to translate L2VNI tenant-a, "+
+		"err: L2VNI tenant-a: referenced L2Trunk missing not found")
 }

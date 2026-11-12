@@ -23,7 +23,10 @@ func GroutDump(exec executor.Executor) string {
 		{desc: "grcli address show", cmd: []string{"grcli", "address", "show"}},
 		{desc: "grcli route show", cmd: []string{"grcli", "route", "show"}},
 		{desc: "grcli nexthop show", cmd: []string{"grcli", "nexthop", "show"}},
+		{desc: "grcli nexthop show internal", cmd: []string{"grcli", "nexthop", "show", "internal"}},
+		{desc: "grcli fdb show", cmd: []string{"grcli", "fdb", "show"}},
 		{desc: "grcli stats show", cmd: []string{"grcli", "stats", "show"}},
+		{desc: "grcli trace show", cmd: []string{"grcli", "trace", "show", "count", "200"}},
 		{desc: "tc filter show", cmd: []string{"tc", "filter", "show"}},
 		{desc: "tc qdisc show", cmd: []string{"tc", "qdisc", "show"}},
 	}

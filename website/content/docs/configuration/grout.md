@@ -41,10 +41,12 @@ Grout support is being delivered incrementally. The current implementation cover
 - **IS-IS** underlay routing, with the tunnel endpoint carried on a dedicated
   `vtep-lo` grout port advertised as a passive interface
 - **L3VPN** (SRv6 Layer 3 overlays) via grout VRFs and TAP devices
+- **L2Trunk** of type `SRIOV`: L2VNIs carried, VLAN-tagged, by an SR-IOV VF
+  bound to grout, with local VF-to-VF traffic switched by the NIC
 
 The following are **not yet supported** with grout:
 
-- Hardware acceleration of L2VNI via VF pairs
+- `L2Trunk` of type `Host` (TAP trunk attached to a host bridge)
 
 By default grout binds underlay NICs as **PCI ports**. Set
 `--grout-tap-underlay` on the controller to use **TAP devices** (`net_tap` with
@@ -267,18 +269,36 @@ The controller binds `NetworkDevice` entries as PCI ports by default, even if
 ports for every underlay interface, including those with `acceleratedConfig`.
 For PCI ports, the controller:
 
-1. Resolves the PCI address from `/sys/class/net/<interfaceName>/device`
-2. Saves the original driver and non-link-local addresses
-3. Binds non-bifurcated NICs (for example Intel and virtio-net PCI) to
+1. Resolves `interfaceName` through netlink, then reads the PCI address from
+   `/sys/class/net/<primaryName>/device`
+2. Saves the original driver, alternative names, MTU, IPv6 settings and
+   non-link-local addresses
+3. inds non-bifurcated NICs (for example Intel and virtio-net PCI) to
    `vfio-pci`, or moves `mlx5_core` devices (Mellanox) into the router namespace
 4. Creates the grout port with `grcli interface add port u_<interfaceName> devargs <pci>`
 
 The interface referenced by interfaceName must exist on the host. Any address
 assigned to the interface will be used for the setup in the accelerated data path.
 When the Underlay CR is disposed, the interface will be moved back to the kernel
-together with its addresses and the original driver.
+together with its addresses, alternative names and the original driver.
 
 `acceleratedConfig` is rejected when `--datapath=kernel`.
+
+> **Note**: The DPDK `mlx5` driver opens a `mlx5_core` device through its RDMA
+> device as well as its netdev. The controller moves only the netdev into the
+> router namespace, so the RDMA subsystem must run in shared network namespace
+> mode, the kernel default: `rdma system show` must report `netns shared`. In
+> exclusive mode, set for example by the sriov-network-operator for RDMA
+> exclusive pools, the RDMA device stays in the host namespace and grout fails
+> to open the port. This applies to underlay ports and to `SRIOV` trunk VFs.
+
+> **Note**: `mlx5_core` devices are opened through libibverbs, which needs the
+> VF's character device under the host's `/dev/infiniband`. The router DaemonSet
+> mounts that directory into the grout container so VFs created after the pod
+> started are usable too. If `grcli interface add port ... devargs <pci>` fails
+> with `Cannot allocate memory (ENOMEM)` on an mlx5 device, the grout log most
+> likely reports `Verbs device not found`: the uverbs device node is missing,
+> it is not a hugepages problem.
 
 ```yaml
 apiVersion: network.openperouter.io/v1alpha1
@@ -315,6 +335,132 @@ Other interface names, such as `vtep-lo`, remain unchanged.
 > multiqueue is enabled (`queues=<N>` on the tap netdev and `mq=on` on the `virtio-net-pci` device), and
 > `rxQueues` and `qSize` cannot exceed the queue pairs and the `rx_queue_size`
 > of the device.
+
+### Selecting a device by alternative name
+
+With the grout datapath, `networkDevice.interfaceName` accepts either the
+primary device name or a netlink alternative name (Linux 5.5 or later).
+A role-based alternative name lets one `Underlay` select the right NIC on
+every node even when their primary names differ.
+
+Assign the same alternative name to the appropriate NIC on each node. For
+example:
+
+```bash
+ip link property add dev enp3s0f0v0 altname pe-uplink0
+```
+
+Then reference it in the Underlay:
+
+```yaml
+interfaces:
+  - type: NetworkDevice
+    networkDevice:
+      interfaceName: pe-uplink0
+```
+
+The API's existing **15-character limit** is unchanged: longer alternative
+names cannot be selected. Grout's existing **13-character limit** also
+applies, because its port names include the `u_` prefix. In this example,
+Grout and FRR use `u_pe-uplink0`; the backing kernel device is not renamed.
+This works with both PCI and TAP underlay ports.
+
+
+## SR-IOV Trunks
+
+An `L2Trunk` of type `SRIOV` binds one SR-IOV Virtual Function to grout as a
+trunk port. Every `L2VNI` referencing the trunk gets a grout VLAN interface on
+that port, carrying its `trunk.vlan.tag`, attached to the L2VNI's bridge
+domain. Workloads consume the other VFs of the same PF, configured with the
+L2VNI's VLAN: the NIC switches the traffic between local VFs, and sends the
+traffic to remote endpoints and to the L2 gateway to grout through the trunk
+VF. No TAP device and no host bridge are involved.
+
+```yaml
+apiVersion: network.openperouter.io/v1alpha1
+kind: L2Trunk
+metadata:
+  name: workloads
+  namespace: openperouter-system
+spec:
+  type: SRIOV
+  sriov:
+    pfName: enp1s0
+    vfIndex: 1
+    acceleratedConfig:
+      rxQueues: 4
+      qSize: 2048
+---
+apiVersion: network.openperouter.io/v1alpha1
+kind: L2VNI
+metadata:
+  name: tenant-a
+  namespace: openperouter-system
+spec:
+  vni: 10100
+  trunk:
+    name: workloads
+    vlan:
+      tag: 100
+```
+
+When the trunk is created, the controller:
+
+1. Resolves `pfName` through netlink, so it can be the primary name or an
+   alternative name of the PF, then reads the VF PCI address from
+   `/sys/class/net/<primaryName>/device/virtfn<vfIndex>`
+2. Saves the VF's original driver
+3. Binds the VF to `vfio-pci`, or moves `mlx5_core` VFs into the router
+   namespace, and creates the grout port named after the last 10 characters of
+   the PF name followed by the VF index in two hexadecimal digits (e.g.
+   `enp1s001` for VF 1 of `enp1s0`)
+
+`mlx5_core` VFs need the RDMA subsystem in shared network namespace mode, see
+[DPDK-Accelerated Underlay Ports](#dpdk-accelerated-underlay-ports).
+
+Each L2VNI carried by the trunk gets a VLAN interface on the trunk port, named
+after the trunk port name followed by the VLAN tag in three hexadecimal digits
+(e.g. `enp1s001021` for VLAN 33 on VF 1 of `enp1s0`). The `vfIndex` is
+therefore limited to 255, the highest value whose hexadecimal form fits two
+characters.
+
+Deleting the trunk removes its VLAN interfaces and its port, and hands the VF
+back to its original driver. The referencing L2VNIs stay in the API, but lose their data plane configuration until the trunk exists again.
+
+Prerequisites:
+
+- SR-IOV is enabled on the PF, with more than `vfIndex` VFs
+- The trunk VF is bound to its kernel VF driver when the trunk is created:
+  the controller captures the VF's state from its kernel netdev before
+  handing the VF to grout, and a VF already bound to `vfio-pci`, for example
+  by a `SriovNetworkNodePolicy` with `deviceType: vfio-pci` covering its
+  index, has no kernel netdev and fails the trunk setup
+- The trunk VF is configured on the PF by the user, as the controller does not
+  change its PF-side settings:
+  - no VLAN, so the workload VFs' traffic reaches grout tagged
+  - `spoofchk off`, as the VF forwards frames of remote endpoints with their
+    own source MAC
+  - `trust on`, so the VF receives frames for MACs it does not own
+
+  For example: `ip link set <pfName> vf <vfIndex> vlan 0 spoofchk off trust on`
+- The trunk VF is not allocated to workloads, for
+  example by excluding it from the sriov-device-plugin resource pools
+- The trunk VF is not an underlay `NetworkDevice`: DPDK opens a PCI device
+  only once. A trunk selecting an underlay's VF fails, and an underlay
+  selecting a trunk's VF fails the underlay setup
+- The PF is not an underlay `NetworkDevice`: using the PF as the underlay
+  breaks the VF-to-VF traffic of the trunk. Use another VF of the PF, or
+  another NIC, as the underlay
+- The workload VFs are configured with the VLAN tags of their L2VNIs, by the
+  user or by the sriov-network-operator
+
+Two trunks applying to the same node cannot select the same PF, as each trunk VF
+uplinks its whole PF, and two L2VNIs cannot use the same tag on the same trunk.
+`SRIOV` trunks are rejected when `--datapath=kernel`.
+
+For a complete workload setup, including `SriovNetworkNodePolicy`,
+`SriovNetwork`, and DPDK pods, see the [Layer 2 SR-IOV with Grout
+example]({{< relref "../examples/evpnexamples/layer2-sriov.md" >}}).
 
 ## Verification
 

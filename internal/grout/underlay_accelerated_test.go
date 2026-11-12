@@ -160,15 +160,15 @@ func TestSetupAcceleratedUnderlayRejectsTapDeviceState(t *testing.T) {
 	require.ErrorContains(t, err, "expecting a PCI address")
 }
 
-func TestDeviceStateForAcceleratedDeviceRejectsNonPCIDevices(t *testing.T) {
+func TestRetrievePCIStateRejectsNonPCIDevices(t *testing.T) {
 	t.Parallel()
 	sysfs := newFakeSysfs(t, testPCIAddr, "igb")
 	sysfs.addNetClassDevice("veth0", "../../devices/virtual/net/veth0")
 
-	_, err := retrieveDeviceState("veth0", PortModeAccelerated, sysfs.Sysfs)
+	_, _, err := retrievePCIState("veth0", sysfs.Sysfs)
 	require.ErrorContains(t, err, "does not look like a PCI address")
 
-	_, err = retrieveDeviceState("missing0", PortModeAccelerated, sysfs.Sysfs)
+	_, _, err = retrievePCIState("missing0", sysfs.Sysfs)
 	require.ErrorContains(t, err, "failed to resolve PCI address for missing0")
 }
 
@@ -230,6 +230,17 @@ func (s *fakeSysfs) addNetClassDevice(name, deviceTarget string) {
 	// The pci package resolves the link with EvalSymlinks, so its target must exist.
 	s.mkdir(filepath.Join(dir, deviceTarget))
 	if err := os.Symlink(deviceTarget, filepath.Join(dir, "device")); err != nil {
+		s.t.Fatal(err)
+	}
+}
+
+// addVFLink points the PF's virtfn symlink of the given VF index at the
+// device, as the kernel does for SR-IOV VFs.
+func (s *fakeSysfs) addVFLink(pfName string, vfIndex int) {
+	s.t.Helper()
+	dir := filepath.Join(s.Root, "class", "net", pfName, "device")
+	s.mkdir(dir)
+	if err := os.Symlink("../"+s.pciAddr, filepath.Join(dir, fmt.Sprintf("virtfn%d", vfIndex))); err != nil {
 		s.t.Fatal(err)
 	}
 }

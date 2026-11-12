@@ -32,6 +32,11 @@ kubeconfig to `bin/kubeconfig` (or to `KUBECONFIG_PATH` when overridden).
 | toleafkind1   | toleafkind1_t   | toleafkind1  | 52:54:00:ab:cd:03 | igb            |
 | toleafkind2   | toleafkind2_t   | toleafkind2  | 52:54:00:ab:cd:04 | virtio-net-pci |
 
+Setup also gives guest NIC `toswitch1` the alternative name `pe-uplink0`.
+The accelerated Underlay selects it by that name. It is not in a udev rule,
+so the hardware-emulation tests verify the controller restores it after
+rebinding the original driver on teardown.
+
 ## Cleanup
 
 ```bash

@@ -30,6 +30,7 @@ AcceleratedConfig holds optional grout port parameters for underlay interfaces.
 
 _Appears in:_
 - [NetworkDevice](#networkdevice)
+- [SRIOVTrunkConfig](#sriovtrunkconfig)
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
@@ -269,7 +270,6 @@ _Appears in:_
 
 
 _Appears in:_
-- [L2TrunkSpec](#l2trunkspec)
 - [L2VNISpec](#l2vnispec)
 
 | Field | Description | Default | Validation |
@@ -374,7 +374,7 @@ _Appears in:_
 | --- | --- | --- | --- |
 | `name` _string_ | name of the interface that these settings shall apply to. |  | MaxLength: 15 <br />MinLength: 1 <br />Required: \{\} <br /> |
 | `ipFamily` _[IPFamily](#ipfamily)_ | ipFamily configures which address families ISIS is enabled for on this interface. |  | Enum: [IPv4 IPv6 DualStack] <br />Optional: \{\} <br /> |
-| `features` _[ISISInterfaceFeature](#isisinterfacefeature) array_ | features enables ISIS interface boolean features.<br />Supported features are:<br />passive: configures ISIS passive mode on this interface. |  | Enum: [passive] <br />MaxItems: 32 <br />MaxLength: 128 <br />MinLength: 1 <br />Optional: \{\} <br /> |
+| `features` _[ISISInterfaceFeature](#isisinterfacefeature) array_ | features enables ISIS interface boolean features.<br />Supported features are:<br />passive: configures ISIS passive mode on this interface.<br />point-to-point: configures the interface as an ISIS point-to-point circuit, emitting<br />`isis network point-to-point` on the selected interface. Both ends of the link must<br />use point-to-point mode. |  | Enum: [passive point-to-point] <br />MaxItems: 32 <br />MaxLength: 128 <br />MinLength: 1 <br />Optional: \{\} <br /> |
 
 
 #### ISISInterfaceFeature
@@ -384,7 +384,7 @@ _Underlying type:_ _string_
 ISISInterfaceFeature represents a single ISIS feature of an ISIS interface.
 
 _Validation:_
-- Enum: [passive]
+- Enum: [passive point-to-point]
 - MaxLength: 128
 - MinLength: 1
 
@@ -460,8 +460,8 @@ _Appears in:_
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `nodeSelector` _[LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#labelselector-v1-meta)_ | nodeSelector specifies which nodes this L2Trunk applies to.<br />If empty or not specified, applies to all nodes. |  | Optional: \{\} <br /> |
-| `type` _[L2TrunkType](#l2trunktype)_ | type selects the kind of port that carries the trunk's tagged traffic. |  | Enum: [Host] <br />Required: \{\} <br /> |
-| `hostMaster` _[HostMaster](#hostmaster)_ | hostMaster is the host bridge the trunk's host-side interface attaches to.<br />The bridge must have lifecycle External.<br />When omitted, the host-side interface is left for external attachment.<br />Immutable. |  | Optional: \{\} <br /> |
+| `type` _[L2TrunkType](#l2trunktype)_ | type selects the kind of port that carries the trunk's tagged traffic. |  | Enum: [SRIOV] <br />Required: \{\} <br /> |
+| `sriov` _[SRIOVTrunkConfig](#sriovtrunkconfig)_ | sriov selects the SR-IOV VF used as the trunk port. The VF is bound<br />to grout and no host-side interface is created. Must be set when<br />type is "SRIOV". Only supported by the grout data path.<br />Immutable. |  | Optional: \{\} <br /> |
 
 
 #### L2TrunkStatus
@@ -484,14 +484,14 @@ _Underlying type:_ _string_
 L2TrunkType selects the kind of port that carries the trunk's tagged traffic.
 
 _Validation:_
-- Enum: [Host]
+- Enum: [SRIOV]
 
 _Appears in:_
 - [L2TrunkSpec](#l2trunkspec)
 
 | Field | Description |
 | --- | --- |
-| `Host` | L2TrunkTypeHost carries the trunk through a host-side interface.<br /> |
+| `SRIOV` | L2TrunkTypeSRIOV carries the trunk through an SR-IOV VF bound to grout.<br /> |
 
 
 #### L2VNI
@@ -1036,6 +1036,24 @@ _Appears in:_
 | `type` _string_ | type selects the kind of resource that provides this routing domain. |  | Enum: [L3VNI L3VPN] <br />Required: \{\} <br /> |
 | `l3vni` _[L3VNIReference](#l3vnireference)_ | l3vni references the L3VNI (metadata.name) in the same namespace that<br />provides the routing domain for this L2VNI. |  | Optional: \{\} <br /> |
 | `l3vpn` _[L3VPNReference](#l3vpnreference)_ | l3vpn references the L3VPN (metadata.name) in the same namespace that<br />provides the routing domain for this L2VNI. |  | Optional: \{\} <br /> |
+
+
+#### SRIOVTrunkConfig
+
+
+
+SRIOVTrunkConfig identifies the SR-IOV VF bound to grout as the trunk port.
+
+
+
+_Appears in:_
+- [L2TrunkSpec](#l2trunkspec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `pfName` _string_ | pfName is the kernel network interface name of the Physical Function<br />that owns the VF (e.g. "enp1s0"). |  | MaxLength: 15 <br />MinLength: 1 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9._-]*$` <br />Required: \{\} <br /> |
+| `vfIndex` _integer_ | vfIndex is the index of the VF on the PF. The VF must have no VLAN<br />configured so it receives the tagged frames of every workload VF on<br />the same PF. |  | Minimum: 0 <br />Required: \{\} <br /> |
+| `acceleratedConfig` _[AcceleratedConfig](#acceleratedconfig)_ | acceleratedConfig sets optional grout port parameters for the VF. |  | Optional: \{\} <br /> |
 
 
 #### SRV6Config

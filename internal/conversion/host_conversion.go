@@ -64,6 +64,11 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig APIConfigData) (H
 		return HostConfigData{}, fmt.Errorf("failed to translate passthrough configuration to host, err: %w", err)
 	}
 
+	l2Trunks, err := l2trunksToHost(apiConfig.L2Trunks, targetNS)
+	if err != nil {
+		return HostConfigData{}, fmt.Errorf("failed to translate L2Trunks to host, err: %w", err)
+	}
+
 	// Thanks to validateTunnelEndpointForHostConfig, we know that if the tunnel endpoint is nil, L3VNIs, L2VNIs and
 	// L3VPNs are empty, too, and we must return early here.
 	if underlay.Spec.TunnelEndpoint == nil {
@@ -74,6 +79,7 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig APIConfigData) (H
 			},
 			L3VNIs:        []hostnetwork.L3VNIParams{},
 			L2VNIs:        []hostnetwork.L2VNIParams{},
+			L2Trunks:      l2Trunks,
 			L3Passthrough: l3Passthrough,
 		}, nil
 	}
@@ -113,7 +119,8 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig APIConfigData) (H
 		vtepIPs,
 		targetNS,
 		vrfMap,
-		tunnelOverheads.forL2VNIs)
+		tunnelOverheads.forL2VNIs,
+		l2Trunks)
 	if err != nil {
 		return HostConfigData{}, fmt.Errorf("failed to translate L2VNIs to host, err: %w", err)
 	}
@@ -136,6 +143,7 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig APIConfigData) (H
 		},
 		L3VNIs:        l3VNIs,
 		L2VNIs:        l2VNIs,
+		L2Trunks:      l2Trunks,
 		L3VPNs:        l3VPNs,
 		L3Passthrough: l3Passthrough,
 	}, nil
@@ -314,10 +322,16 @@ func l2vnisToHost(
 	targetNS string,
 	vrfMap map[string]string,
 	tunnelOverheads map[string]int,
+	l2Trunks []hostnetwork.L2TrunkParams,
 ) ([]hostnetwork.L2VNIParams, error) {
+	trunkNames := sets.Set[string]{}
+	for _, trunk := range l2Trunks {
+		trunkNames.Insert(trunk.Name)
+	}
+
 	hostL2VNIs := []hostnetwork.L2VNIParams{}
 	for _, l2vni := range l2vnis {
-		vni, err := l2vniToHost(l2vni, vtepIPs, targetNS, vrfMap, tunnelOverheads)
+		vni, err := l2vniToHost(l2vni, vtepIPs, targetNS, vrfMap, tunnelOverheads, trunkNames)
 		if err != nil {
 			return nil, fmt.Errorf("failed to translate L2VNI %s, err: %w", l2vni.Name, err)
 		}
@@ -332,6 +346,7 @@ func l2vniToHost(
 	targetNS string,
 	vrfMap map[string]string,
 	tunnelOverheads map[string]int,
+	trunkNames sets.Set[string],
 ) (hostnetwork.L2VNIParams, error) {
 	vtepIP, found := vtepIPs.forL2VNIs[l2vni.Name]
 	if !found {
@@ -368,7 +383,51 @@ func l2vniToHost(
 		}
 		hostL2VNI.HostMaster = hm
 	}
+	if l2vni.Spec.Trunk != nil {
+		if !trunkNames.Has(l2vni.Spec.Trunk.Name) {
+			return hostnetwork.L2VNIParams{}, fmt.Errorf("L2VNI %s: referenced L2Trunk %s not found",
+				l2vni.Name, l2vni.Spec.Trunk.Name)
+		}
+		hostL2VNI.Trunk = &hostnetwork.L2VNITrunkParams{
+			Name: l2vni.Spec.Trunk.Name,
+			VLAN: l2vni.Spec.Trunk.VLAN.Tag,
+		}
+	}
 	return hostL2VNI, nil
+}
+
+func l2trunksToHost(l2trunks []v1alpha1.L2Trunk, targetNS string) ([]hostnetwork.L2TrunkParams, error) {
+	hostL2Trunks := make([]hostnetwork.L2TrunkParams, 0, len(l2trunks))
+	for _, trunk := range l2trunks {
+		if trunk.Spec.Type != v1alpha1.L2TrunkTypeSRIOV {
+			return nil, fmt.Errorf("L2Trunk %s: unsupported type %q", trunk.Name, trunk.Spec.Type)
+		}
+		hostL2Trunks = append(hostL2Trunks, hostnetwork.L2TrunkParams{
+			Name:     trunk.Name,
+			TargetNS: targetNS,
+			SRIOV:    sriovTrunkToHost(trunk.Spec.SRIOV),
+		})
+	}
+	return hostL2Trunks, nil
+}
+
+// sriovTrunkToHost relies on the trunk having been validated, so a set SRIOV
+// config always carries a VF index.
+func sriovTrunkToHost(sriov *v1alpha1.SRIOVTrunkConfig) *hostnetwork.SRIOVTrunkParams {
+	if sriov == nil {
+		return nil
+	}
+	params := &hostnetwork.SRIOVTrunkParams{
+		PFName:  sriov.PFName,
+		VFIndex: *sriov.VFIndex,
+	}
+	if sriov.AcceleratedConfig != nil {
+		params.AcceleratedConfig = &hostnetwork.AcceleratedConfigParams{
+			RXQueues: sriov.AcceleratedConfig.RXQueues,
+			QSize:    sriov.AcceleratedConfig.QSize,
+		}
+	}
+	return params
 }
 
 func l3vpnsToHost(

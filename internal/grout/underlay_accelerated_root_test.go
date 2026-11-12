@@ -104,6 +104,7 @@ func TestSetupAcceleratedUnderlayRebindsKernelDriver(t *testing.T) {
 		state, err := store.Load(accelIface)
 		require.NoError(t, err)
 		assert.Equal(t, devicestate.State{
+			DeviceID:       accelIface,
 			InterfaceName:  accelIface,
 			PCIAddress:     testPCIAddr,
 			OriginalDriver: "igb",
@@ -212,7 +213,7 @@ func TestRestoreAcceleratedUnderlayRestoresKernelDriver(t *testing.T) {
 	sysfs.addNetDevice(accelIface)
 	addHostDummy(t, "")
 
-	require.NoError(t, store.Save(devicestate.State{
+	require.NoError(t, store.Save(accelIface, devicestate.State{
 		InterfaceName:  accelIface,
 		PCIAddress:     testPCIAddr,
 		OriginalDriver: "igb",
