@@ -100,7 +100,7 @@ type ContainerResources struct {
 	// +optional
 	// +kubebuilder:validation:XValidation:rule="!has(self.claims) || self.claims.size() == 0",message="claims are not supported"
 	Controller *corev1.ResourceRequirements `json:"controller,omitempty"`
-	// nodemarker is the nodemarker container, which serves the webhooks.
+	// nodemarker is the nodemarker container, which allocates node indexes.
 	// +optional
 	// +kubebuilder:validation:XValidation:rule="!has(self.claims) || self.claims.size() == 0",message="claims are not supported"
 	NodeMarker *corev1.ResourceRequirements `json:"nodemarker,omitempty"`

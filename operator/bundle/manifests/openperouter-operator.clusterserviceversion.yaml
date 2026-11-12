@@ -4,7 +4,7 @@ metadata:
   annotations:
     alm-examples: '[]'
     capabilities: Basic Install
-    createdAt: "2026-11-12T13:15:08Z"
+    createdAt: "2026-11-12T14:08:10Z"
     operators.operatorframework.io/builder: operator-sdk-v1.41.1
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
   name: openperouter-operator.v0.0.0
@@ -243,26 +243,39 @@ spec:
           component: webhook
         name: webhook
         spec:
+          replicas: 2
           selector:
             matchLabels:
               control-plane: webhook
-          strategy: {}
+          strategy:
+            rollingUpdate:
+              maxSurge: 1
+              maxUnavailable: 0
+            type: RollingUpdate
           template:
             metadata:
               annotations:
                 kubectl.kubernetes.io/default-container: webhook
               labels:
+                app: webhook
                 component: webhook
                 control-plane: webhook
             spec:
+              affinity:
+                podAntiAffinity:
+                  preferredDuringSchedulingIgnoredDuringExecution:
+                  - podAffinityTerm:
+                      labelSelector:
+                        matchLabels:
+                          control-plane: webhook
+                      topologyKey: kubernetes.io/hostname
+                    weight: 100
               containers:
               - args:
                 - --loglevel=debug
                 - --namespace=$(NAMESPACE)
-                - --disable-cert-rotation=true
-                - --webhookmode=webhookonly
                 command:
-                - /nodemarker
+                - /webhook
                 env:
                 - name: NAMESPACE
                   valueFrom:
@@ -270,11 +283,28 @@ spec:
                       fieldPath: metadata.namespace
                 image: quay.io/openperouter/router:main
                 imagePullPolicy: IfNotPresent
+                lifecycle:
+                  preStop:
+                    exec:
+                      command:
+                      - sleep
+                      - "5"
+                livenessProbe:
+                  httpGet:
+                    path: /healthz
+                    port: webhook-server
+                    scheme: HTTPS
                 name: webhook
                 ports:
                 - containerPort: 9443
                   name: webhook-server
                   protocol: TCP
+                readinessProbe:
+                  httpGet:
+                    path: /readyz
+                    port: webhook-server
+                    scheme: HTTPS
+                  periodSeconds: 5
                 resources:
                   limits:
                     cpu: 500m
@@ -284,13 +314,26 @@ spec:
                     memory: 64Mi
                 volumeMounts:
                 - mountPath: /tmp/k8s-webhook-server/serving-certs
-                  name: cert
+                  name: webhook-cert
                   readOnly: true
               serviceAccountName: webhook
+              terminationGracePeriodSeconds: 20
+              tolerations:
+              - effect: NoSchedule
+                key: node-role.kubernetes.io/master
+                operator: Exists
+              - effect: NoSchedule
+                key: node-role.kubernetes.io/control-plane
+                operator: Exists
               volumes:
-              - name: cert
+              - name: webhook-cert
                 secret:
                   defaultMode: 420
+                  items:
+                  - key: tls.crt
+                    path: tls.crt
+                  - key: tls.key
+                    path: tls.key
                   secretName: openpe-webhook-server-cert
       permissions:
       - rules:
