@@ -119,7 +119,15 @@ You should see pods for:
 
 - `openperouter-controller-*` (controller daemonset)
 - `openperouter-router-*` (router daemonset)
-- `openperouter-nodemarker-*` (node labeler deployment)
+- `openperouter-nodemarker-*` (node index allocator deployment)
+- `openperouter-webhook-*` (admission webhook deployment, two replicas)
+- `openperouter-certcontroller-*` (webhook certificate controller deployment)
+
+The admission webhooks run as two active/active replicas, so creating and
+updating OpenPERouter resources keeps working while one replica is restarted,
+rescheduled or drained. The certificate controller generates and rotates the
+webhook serving certificate. Operator installations do not run it, because OLM
+manages the webhook certificates.
 
 ## Next Steps
 

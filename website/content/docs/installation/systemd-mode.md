@@ -33,7 +33,7 @@ See the [Systemd Mode configuration guide]({{< ref "../configuration/systemd-mod
 
 When running OpenPERouter on the host via systemd, the Kubernetes cluster still needs a lightweight component: the **hostbridge** DaemonSet. The hostbridge pod runs on each node and exports API server credentials and configuration to the host, allowing the systemd-managed OpenPERouter to connect back to the Kubernetes API.
 
-In this mode, the controller and router DaemonSets are **not** deployed -- they are replaced by the systemd-managed processes. The nodemarker runs in webhook-only mode.
+In this mode, the controller and router DaemonSets are **not** deployed -- they are replaced by the systemd-managed processes. The nodemarker is not deployed either, because node indexes come from the local node configuration. The admission webhook and its certificate controller still run in the cluster.
 
 ### Helm
 
@@ -50,7 +50,7 @@ openperouter:
   hostmode: true
 ```
 
-This deploys only the hostbridge DaemonSet and the nodemarker (in webhook-only mode), skipping the controller and router.
+This deploys only the hostbridge DaemonSet, the admission webhook and the certificate controller, skipping the controller, router and nodemarker.
 
 ### Kustomize
 
@@ -63,7 +63,7 @@ resources:
   - github.com/openperouter/openperouter/config/hostmode?ref=main
 ```
 
-This overlay includes the hostbridge DaemonSet and the nodemarker, but not the controller or router.
+This overlay includes the hostbridge DaemonSet, the admission webhook and the certificate controller, but not the controller, router or nodemarker.
 
 ### Operator
 
