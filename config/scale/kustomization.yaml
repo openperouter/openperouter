@@ -17,3 +17,9 @@ patches:
   patch: |-
     - op: remove
       path: /spec/template/spec/containers/0/resources
+- target:
+    kind: Deployment
+    name: webhook
+  patch: |-
+    - op: remove
+      path: /spec/template/spec/containers/0/resources

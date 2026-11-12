@@ -29,30 +29,23 @@ spec:
         - /nodemarker
         args:
         - "--loglevel=debug"
-        - "--namespace=$(NAMESPACE)"
-        - "--webhookmode=enabled"
-        env:
-        - name: NAMESPACE
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.namespace
         image: router:latest
         imagePullPolicy: IfNotPresent
         name: nodemarker
         ports:
-          - containerPort: 9443
-            name: webhook-server
+          - containerPort: 8081
+            name: health
             protocol: TCP
         readinessProbe:
           httpGet:
             path: /readyz
-            port: webhook-server
-            scheme: HTTPS
+            port: health
+            scheme: HTTP
         livenessProbe:
           httpGet:
             path: /healthz
-            port: webhook-server
-            scheme: HTTPS
+            port: health
+            scheme: HTTP
         resources:
           limits:
             cpu: 500m
@@ -60,16 +53,7 @@ spec:
           requests:
             cpu: 10m
             memory: 64Mi
-        volumeMounts:
-        - name: cert
-          mountPath: /tmp/k8s-webhook-server/serving-certs
-          readOnly: true
       serviceAccountName: nodemarker
-      volumes:
-        - name: cert
-          secret:
-            defaultMode: 420
-            secretName: openpe-webhook-server-cert
       tolerations:
       - effect: NoSchedule
         key: node-role.kubernetes.io/master
