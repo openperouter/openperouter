@@ -56,6 +56,9 @@ spec:
         {{- with .Values.openperouter.controller.healthProbePort }}
         - --health-probe-bind-address=:{{ . }}
         {{- end }}
+        {{- with .Values.openperouter.routerMACPrefix }}
+        - {{ printf "--router-mac-prefix=%s" . | quote }}
+        {{- end }}
         {{- with .Values.openperouter.ovsSocketPath }}
         - --ovssocket={{ . }}
         {{- end }}

@@ -360,6 +360,11 @@
               "reloader": {}
             }
           },
+          "routerMACPrefix": {
+            "type": "string",
+            "description": "MAC prefix combined with each node index to generate the shared L3VNI router MAC. Empty preserves existing bridge MAC behavior.",
+            "default": ""
+          },
           "datapath": {
             "type": "string",
             "description": "Datapath to use for L3 forwarding. \"kernel\" uses the standard Linux kernel datapath; \"grout\" adds a DPDK-accelerated sidecar that runs alongside FRR.",

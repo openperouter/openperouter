@@ -175,6 +175,11 @@ func (in *OpenPERouterSpec) DeepCopyInto(out *OpenPERouterSpec) {
 		*out = new(int32)
 		**out = **in
 	}
+	if in.RouterMACPrefix != nil {
+		in, out := &in.RouterMACPrefix, &out.RouterMACPrefix
+		*out = new(string)
+		**out = **in
+	}
 	if in.Datapath != nil {
 		in, out := &in.Datapath, &out.Datapath
 		*out = new(string)

@@ -77,6 +77,11 @@ type OpenPERouterSpec struct {
 	// +optional
 	// +kubebuilder:validation:Minimum=1
 	ControllerMaxReconcileBackoffSeconds *int32 `json:"controllerMaxReconcileBackoffSeconds,omitempty"`
+	// routerMACPrefix is combined with each node index to generate the router MAC
+	// shared by all L3VNI bridges on that node (for example, "02:00:00:00:00:00/32").
+	// Supported by the kernel and Grout datapaths. Empty preserves existing MAC behavior.
+	// +optional
+	RouterMACPrefix *string `json:"routerMACPrefix,omitempty"`
 	// datapath specifies the datapath to use. Allowed values are: kernel, grout. (default: kernel)
 	// +optional
 	// +default="kernel"

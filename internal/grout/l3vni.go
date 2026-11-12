@@ -23,7 +23,7 @@ func SetupL3VNI(ctx context.Context, client *Client, params hostnetwork.L3VNIPar
 	slog.DebugContext(ctx, "setup L3VNI", "vrf", params.VRF, "vni", params.VNI)
 	defer slog.DebugContext(ctx, "setup L3VNI done", "vrf", params.VRF, "vni", params.VNI)
 
-	if err := setupVNI(ctx, client, params.VNIParams); err != nil {
+	if err := setupVNI(ctx, client, params); err != nil {
 		return fmt.Errorf("SetupL3VNI: failed to setup VNI: %w", err)
 	}
 
@@ -39,7 +39,7 @@ func SetupL3VNI(ctx context.Context, client *Client, params hostnetwork.L3VNIPar
 	return nil
 }
 
-func setupVNI(ctx context.Context, client *Client, params hostnetwork.VNIParams) error {
+func setupVNI(ctx context.Context, client *Client, params hostnetwork.L3VNIParams) error {
 	if err := client.ensureVRF(ctx, params.VRF); err != nil {
 		return fmt.Errorf("failed to create VRF %s: %w", params.VRF, err)
 	}
@@ -49,14 +49,18 @@ func setupVNI(ctx context.Context, client *Client, params hostnetwork.VNIParams)
 		return fmt.Errorf("failed to parse vtep ip %v: %w", params.VTEPIP, err)
 	}
 
+	name := fmt.Sprintf(vxlanNameFmt, params.VNI)
 	if err := client.ensureVXLAN(ctx,
-		fmt.Sprintf(vxlanNameFmt, params.VNI),
+		name,
 		vtepIP.String(),
 		params.VRF,
 		params.VNI,
 		ptr.Deref(params.VXLanPort, defaultVXLanPort),
 	); err != nil {
 		return fmt.Errorf("failed to create vxlan interface: %w", err)
+	}
+	if err := client.ensureVXLANMAC(ctx, name, params.RouterMAC.String()); err != nil {
+		return err
 	}
 
 	return nil
