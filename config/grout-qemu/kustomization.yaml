@@ -1,0 +1,7 @@
+resources:
+- ../grout
+patches:
+  - path: controller_patch.yaml
+    target:
+      kind: DaemonSet
+      name: controller

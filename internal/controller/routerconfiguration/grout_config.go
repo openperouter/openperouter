@@ -23,6 +23,7 @@ type GroutDatapathConfigurator struct {
 
 	groutSocketPath  string
 	deviceStateStore devicestate.Store
+	trunkStateStore  devicestate.Store
 	sysfs            pci.Sysfs
 	underlayPortMode grout.UnderlayPortMode
 }
@@ -31,6 +32,7 @@ func NewGroutConfigurator(groutSocketPath string, mode grout.UnderlayPortMode) *
 	return &GroutDatapathConfigurator{
 		groutSocketPath:  groutSocketPath,
 		deviceStateStore: devicestate.Store{Dir: "/var/run/grout/device-state"},
+		trunkStateStore:  devicestate.Store{Dir: "/var/run/grout/trunk-state"},
 		sysfs:            pci.Sysfs{Root: "/sys"},
 		underlayPortMode: mode,
 	}
@@ -71,6 +73,7 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 		L3VNIs:        config.L3VNIs,
 		L2VNIs:        config.L2VNIs,
 		L3VPNs:        config.L3VPNs,
+		L2Trunks:      config.L2Trunks,
 		L3Passthrough: config.L3Passthrough,
 	}
 	hostConfig, err := conversion.APItoHostConfig(config.nodeIndex, config.targetNamespace, apiConfig)
@@ -110,6 +113,9 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 		configuredL3VPNs = append(configuredL3VPNs, l3vpn)
 	}
 
+	configuredTrunks, err := g.setupL2Trunks(ctx, groutClient, hostConfig.L2Trunks)
+	resourceErrors = append(resourceErrors, err)
+
 	var configuredL2VNIs []hostnetwork.L2VNIParams
 	for _, vni := range hostConfig.L2VNIs {
 		if failedL3Domains.Has(vni.VRF) {
@@ -118,7 +124,7 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 			continue
 		}
 		slog.InfoContext(ctx, "setting up L2VNI", "vni", vni.VNI)
-		if err := grout.SetupL2VNI(ctx, groutClient, ovsClient, vni); err != nil {
+		if err := grout.SetupL2VNI(ctx, groutClient, ovsClient, vni, configuredTrunks); err != nil {
 			resourceErrors = append(resourceErrors,
 				overlayAttachmentError(openpeerrors.KindL2VNI, vni.Name, err.Error()))
 			continue
@@ -158,6 +164,12 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 		return fmt.Errorf("failed to remove deleted l3vpns: %w", err)
 	}
 
+	slog.InfoContext(ctx, "removing deleted l2trunks")
+	if err := grout.RemoveNonConfiguredL2Trunks(ctx, groutClient, config.targetNamespace,
+		hostConfig.L2Trunks, g.trunkStateStore, g.sysfs); err != nil {
+		return fmt.Errorf("failed to remove deleted l2trunks: %w", err)
+	}
+
 	slog.InfoContext(ctx, "removing deleted vrfs")
 	if err := grout.RemoveNonConfiguredVRFs(ctx, groutClient, config.targetNamespace, configuredVRFs); err != nil {
 		return errors.Join(append(resourceErrors, fmt.Errorf("failed to remove deleted vrfs: %w", err))...)
@@ -186,6 +198,9 @@ func (g *GroutDatapathConfigurator) cleanupGroutInterfaces(
 	if err := grout.RemoveAllL3VPNs(ctx, groutClient); err != nil {
 		slog.Warn("failed to remove l3vpns after underlay removal", "err", err)
 	}
+	if err := grout.RemoveAllL2Trunks(ctx, groutClient, targetNamespace, g.trunkStateStore, g.sysfs); err != nil {
+		slog.Warn("failed to remove l2trunks after underlay removal", "err", err)
+	}
 	if err := grout.RemoveAllVRFs(ctx, groutClient, targetNamespace); err != nil {
 		slog.Warn("failed to remove vrfs after underlay removal", "err", err)
 	}
@@ -197,4 +212,25 @@ func (g *GroutDatapathConfigurator) cleanupGroutInterfaces(
 		return fmt.Errorf("failed to remove underlay after underlay removal: %w", err)
 	}
 	return nil
+}
+
+// setupL2Trunks returns the successfully configured trunks and
+// reports the failures as resource errors.
+func (g *GroutDatapathConfigurator) setupL2Trunks(
+	ctx context.Context,
+	groutClient *grout.Client,
+	l2Trunks []hostnetwork.L2TrunkParams,
+) (grout.ConfiguredTrunks, error) {
+	configured := make(grout.ConfiguredTrunks, len(l2Trunks))
+	var resourceErrors []error
+	for _, trunk := range l2Trunks {
+		slog.InfoContext(ctx, "setting up L2Trunk", "trunk", trunk.Name)
+		if err := grout.SetupL2Trunk(ctx, groutClient, trunk, g.trunkStateStore, g.sysfs); err != nil {
+			resourceErrors = append(resourceErrors,
+				overlayAttachmentError(openpeerrors.KindL2Trunk, trunk.Name, err.Error()))
+			continue
+		}
+		configured[trunk.Name] = trunk
+	}
+	return configured, errors.Join(resourceErrors...)
 }

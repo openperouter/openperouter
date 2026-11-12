@@ -27,15 +27,31 @@ type groutAddress struct {
 	Address string `json:"address"`
 }
 
+const (
+	interfaceTypePort = "port"
+	interfaceTypeVLAN = "vlan"
+)
+
+// groutInterface is a list entry. Grout puts type-specific properties in an
+// unstructured info string here; use getInterfaceInfo for those properties.
 type groutInterface struct {
-	Name    string `json:"name"`
-	Type    string `json:"type"`
-	VRF     string `json:"vrf"`
-	Devargs string `json:"devargs"`
-	MAC     string `json:"mac"`
-	NRxq    int32  `json:"n_rxq"`
-	RxqSize int32  `json:"rxq_size"`
-	MTU     int    `json:"mtu"`
+	Name   string `json:"name"`
+	Type   string `json:"type"`
+	Domain string `json:"domain"`
+}
+
+type groutInterfaceInfo struct {
+	Name       string `json:"name"`
+	Type       string `json:"type"`
+	VRF        string `json:"vrf"`
+	Domain     string `json:"domain"`
+	Devargs    string `json:"devargs"`
+	MAC        string `json:"mac"`
+	NRxq       int32  `json:"n_rxq"`
+	RxqSize    int32  `json:"rxq_size"`
+	MTU        int    `json:"mtu"`
+	VLANParent string `json:"vlan_parent"`
+	VLANID     int32  `json:"vlan_id"`
 }
 
 type groutVXLANInfo struct {
@@ -182,7 +198,7 @@ func (c *Client) listInterfaces(ctx context.Context) ([]groutInterface, error) {
 
 // matchesRequested reports whether the existing grout port already has the
 // requested configuration.
-func (d *groutInterface) matchesRequested(opts portOptions) bool {
+func (d *groutInterfaceInfo) matchesRequested(opts portOptions) bool {
 	if !devargsMatch(opts.Devargs, d.Devargs) {
 		return false
 	}
@@ -224,7 +240,7 @@ func (c *Client) portExists(ctx context.Context, name string) (bool, error) {
 	return info != nil, nil
 }
 
-func (c *Client) getInterfaceInfo(ctx context.Context, name string) (*groutInterface, error) {
+func (c *Client) getInterfaceInfo(ctx context.Context, name string) (*groutInterfaceInfo, error) {
 	out, err := c.runOutput(ctx, "interface", "show", "name", name)
 	if err != nil {
 		if isGroutErrno(err, syscall.ENODEV) {
@@ -232,7 +248,7 @@ func (c *Client) getInterfaceInfo(ctx context.Context, name string) (*groutInter
 		}
 		return nil, err
 	}
-	var info groutInterface
+	var info groutInterfaceInfo
 	if err := json.Unmarshal([]byte(out), &info); err != nil {
 		return nil, fmt.Errorf("parsing interface info for %s: %w", name, err)
 	}
@@ -337,6 +353,35 @@ func (c *Client) ensureBridgeMember(ctx context.Context, portType, bridgeName, m
 	slog.InfoContext(ctx, "adding bridge member", "bridge", bridgeName, "member", memberName)
 	if err := c.run(ctx, "interface", "set", portType, memberName, "domain", bridgeName); err != nil {
 		return fmt.Errorf("adding %s to bridge %s: %w", memberName, bridgeName, err)
+	}
+	return nil
+}
+
+// ensureVLAN creates a VLAN sub-interface of parent, recreating it when an
+// existing interface with the same name has a different type, parent or VLAN ID.
+func (c *Client) ensureVLAN(ctx context.Context, name, parent string, vlanID int32) error {
+	info, err := c.getInterfaceInfo(ctx, name)
+	if err != nil {
+		return fmt.Errorf("checking if VLAN %s exists: %w", name, err)
+	}
+	if info != nil && info.Type == interfaceTypeVLAN && info.VLANParent == parent && info.VLANID == vlanID {
+		slog.DebugContext(ctx, "grout VLAN already configured", "name", name)
+		return nil
+	}
+	if info != nil {
+		slog.InfoContext(ctx, "grout VLAN config changed, recreating", "name", name,
+			"oldType", info.Type, "oldParent", info.VLANParent, "newParent", parent,
+			"oldVLAN", info.VLANID, "newVLAN", vlanID)
+		if err := c.deleteInterface(ctx, name); err != nil {
+			return fmt.Errorf("deleting VLAN %s for reconfiguration: %w", name, err)
+		}
+	}
+
+	slog.InfoContext(ctx, "creating grout VLAN", "name", name, "parent", parent, "vlan", vlanID)
+	if err := c.run(ctx, "interface", "add", "vlan", name,
+		"parent", parent,
+		"vlan_id", strconv.Itoa(int(vlanID))); err != nil {
+		return fmt.Errorf("creating grout VLAN %s: %w", name, err)
 	}
 	return nil
 }
