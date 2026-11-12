@@ -324,10 +324,11 @@ positive integer seconds. Leave them unset to keep the controller default rate l
 ## Scheduling Priority and Resources
 
 OpenPERouter sets CPU and memory requests for the controller, node marker,
-FRR, and FRR reloader containers. Requests make the scheduler reserve capacity
+webhook, certificate controller, FRR, and FRR reloader containers. Requests make the scheduler reserve capacity
 for those components; unset limits preserve the existing behavior and avoid
 restarts caused by conservative defaults. Helm users can override the requests
 through `openperouter.controller.resources`, `openperouter.nodemarker.resources`,
+`openperouter.webhook.resources`, `openperouter.certController.resources`,
 `openperouter.frr.resources`, and `openperouter.frr.reloader.resources`.
 
 Operator users can override individual containers with `spec.resources`:
