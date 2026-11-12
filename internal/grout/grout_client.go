@@ -420,8 +420,8 @@ func (c *Client) ensureVXLAN(ctx context.Context, name string, localIP, vrf stri
 	return nil
 }
 
-func (c *Client) ensureVXLANMAC(ctx context.Context, name, routerMAC string) error {
-	if routerMAC == "" {
+func (c *Client) ensureVXLANMAC(ctx context.Context, name, mac string) error {
+	if mac == "" {
 		return nil
 	}
 	info, err := c.getVXLANInterfaceInfo(ctx, name)
@@ -431,11 +431,11 @@ func (c *Client) ensureVXLANMAC(ctx context.Context, name, routerMAC string) err
 	if info == nil {
 		return fmt.Errorf("VXLAN %s not found while setting router MAC", name)
 	}
-	if info.MAC == routerMAC {
+	if info.MAC == mac {
 		return nil
 	}
 	// Grout synchronizes the L3 VXLAN MAC to its VRF for FRR's RMAC advertisements.
-	if err := c.run(ctx, "interface", "set", "vxlan", name, "mac", routerMAC); err != nil {
+	if err := c.run(ctx, "interface", "set", "vxlan", name, "mac", mac); err != nil {
 		return fmt.Errorf("setting router MAC on VXLAN %s: %w", name, err)
 	}
 	return nil
