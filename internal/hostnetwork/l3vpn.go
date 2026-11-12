@@ -61,12 +61,10 @@ func RemoveAllL3VPNs() error {
 }
 
 // RemoveNonConfiguredL3VPNs removes the host side of the veths of the
-// L3VPNs that are not configured anymore.
+// L3VPNs that are not configured anymore. The namespace side dies with it.
 func RemoveNonConfiguredL3VPNs(params []L3VPNParams) error {
-	vrfs := map[string]bool{}
 	rdAssignedNumbers := map[int32]bool{}
 	for _, p := range params {
-		vrfs[p.VRF] = true
 		rdAssignedNumbers[p.RDAssignedNumber] = true
 	}
 

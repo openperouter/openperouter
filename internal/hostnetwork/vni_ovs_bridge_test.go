@@ -63,9 +63,9 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 
 		By("removing the VNI")
-		err = RemoveNonConfiguredVNIs(ovsClient, testNSPath(), []VNIParams{})
+		err = RemoveNonConfiguredVNIsInNamespace(testNS, ovsClient, []VNIParams{})
 		Expect(err).NotTo(HaveOccurred())
-		err = RemoveNonConfiguredVRFs(testNSPath(), map[string]bool{})
+		err = RemoveNonConfiguredVRFsInNamespace(testNS, map[string]bool{})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("checking the VNI and OVS bridge are removed")
@@ -124,9 +124,9 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 
 		By("removing the VNI")
-		err = RemoveNonConfiguredVNIs(ovsClient, testNSPath(), []VNIParams{})
+		err = RemoveNonConfiguredVNIsInNamespace(testNS, ovsClient, []VNIParams{})
 		Expect(err).NotTo(HaveOccurred())
-		err = RemoveNonConfiguredVRFs(testNSPath(), map[string]bool{})
+		err = RemoveNonConfiguredVRFsInNamespace(testNS, map[string]bool{})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("checking the bridge persists but veth is cleaned up")
@@ -176,9 +176,9 @@ var _ = Describe("L2 VNI configuration with OVS bridges", func() {
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 
 		By("removing VNI 100, keeping VNI 101")
-		err = RemoveNonConfiguredVNIs(ovsClient, testNSPath(), []VNIParams{params2.VNIParams})
+		err = RemoveNonConfiguredVNIsInNamespace(testNS, ovsClient, []VNIParams{params2.VNIParams})
 		Expect(err).NotTo(HaveOccurred())
-		err = RemoveNonConfiguredVRFs(testNSPath(), map[string]bool{params2.VRF: true})
+		err = RemoveNonConfiguredVRFsInNamespace(testNS, map[string]bool{params2.VRF: true})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("checking VNI 100 removed, VNI 101 persists")
