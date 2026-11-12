@@ -51,6 +51,10 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
   && \
   CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -o nodemarker ./cmd/nodemarker \
   && \
+  CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -o webhook ./cmd/webhook \
+  && \
+  CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -o certcontroller ./cmd/certcontroller \
+  && \
   CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -o hostbridge ./cmd/hostbridge \
   && \
   CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -o operatorbinary ./operator
@@ -61,6 +65,8 @@ COPY --from=builder /go/openperouter/reloader .
 COPY --from=builder /go/openperouter/controller .
 COPY --from=builder /go/openperouter/hostbridge .
 COPY --from=builder /go/openperouter/nodemarker .
+COPY --from=builder /go/openperouter/webhook .
+COPY --from=builder /go/openperouter/certcontroller .
 COPY --from=builder /go/openperouter/operatorbinary ./operator
 COPY operator/bindata bindata
 COPY --from=cni-plugins-builder /cni-plugins/bin/macvlan /opt/openperouter/cni/bin/

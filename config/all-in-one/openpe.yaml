@@ -2287,6 +2287,15 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: openperouter
+  name: certcontroller
+  namespace: openperouter-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: openperouter
   name: controller
   namespace: openperouter-system
 ---
@@ -2307,6 +2316,41 @@ metadata:
     app.kubernetes.io/name: openperouter
   name: perouter
   namespace: openperouter-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: openperouter
+  name: webhook
+  namespace: openperouter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: openperouter
+  name: certcontroller-role
+  namespace: openperouter-system
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resourceNames:
+  - openpe-webhook-server-cert
+  resources:
+  - secrets
+  verbs:
+  - update
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -2341,32 +2385,6 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: openperouter
-  name: nodemarker-role
-  namespace: openperouter-system
-rules:
-- apiGroups:
-  - ""
-  resources:
-  - secrets
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - ""
-  resourceNames:
-  - openpe-webhook-server-cert
-  resources:
-  - secrets
-  verbs:
-  - update
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  labels:
-    app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: openperouter
   name: perouter-role
   namespace: openperouter-system
 rules:
@@ -2376,6 +2394,28 @@ rules:
   - configmaps
   verbs:
   - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: certcontroller-role
+rules:
+- apiGroups:
+  - admissionregistration.k8s.io
+  resources:
+  - validatingwebhookconfigurations
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - admissionregistration.k8s.io
+  resourceNames:
+  - openpe-validating-webhook-configuration
+  resources:
+  - validatingwebhookconfigurations
+  verbs:
+  - update
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -2450,22 +2490,20 @@ rules:
   - patch
   - update
   - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: webhook-role
+rules:
 - apiGroups:
-  - admissionregistration.k8s.io
+  - ""
   resources:
-  - validatingwebhookconfigurations
+  - nodes
   verbs:
   - get
   - list
   - watch
-- apiGroups:
-  - admissionregistration.k8s.io
-  resourceNames:
-  - openpe-validating-webhook-configuration
-  resources:
-  - validatingwebhookconfigurations
-  verbs:
-  - update
 - apiGroups:
   - network.openperouter.io
   resources:
@@ -2486,6 +2524,23 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: openperouter
+  name: certcontroller-rolebinding
+  namespace: openperouter-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: certcontroller-role
+subjects:
+- kind: ServiceAccount
+  name: certcontroller
+  namespace: openperouter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: openperouter
   name: controller-rolebinding
   namespace: openperouter-system
 roleRef:
@@ -2495,23 +2550,6 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: controller
-  namespace: openperouter-system
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  labels:
-    app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: openperouter
-  name: nodemarker-rolebinding
-  namespace: openperouter-system
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: nodemarker-role
-subjects:
-- kind: ServiceAccount
-  name: nodemarker
   namespace: openperouter-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -2537,6 +2575,22 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: openperouter
+  name: certcontroller-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: certcontroller-role
+subjects:
+- kind: ServiceAccount
+  name: certcontroller
+  namespace: openperouter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: openperouter
   name: controller-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -2561,6 +2615,22 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: nodemarker
+  namespace: openperouter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: openperouter
+  name: webhook-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: webhook-role
+subjects:
+- kind: ServiceAccount
+  name: webhook
   namespace: openperouter-system
 ---
 apiVersion: v1
@@ -2677,7 +2747,86 @@ spec:
   - port: 443
     targetPort: webhook-server
   selector:
-    component: nodemarker
+    component: webhook
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/component: certcontroller
+    app.kubernetes.io/created-by: certcontroller
+    app.kubernetes.io/instance: certcontroller
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: certcontroller
+    app.kubernetes.io/part-of: certcontroller
+    component: certcontroller
+  name: certcontroller
+  namespace: openperouter-system
+spec:
+  selector:
+    matchLabels:
+      control-plane: certcontroller
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: certcontroller
+      labels:
+        app: certcontroller
+        component: certcontroller
+        control-plane: certcontroller
+    spec:
+      containers:
+      - args:
+        - --loglevel=debug
+        - --namespace=$(NAMESPACE)
+        command:
+        - /certcontroller
+        env:
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        image: quay.io/openperouter/router:main
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: health
+            scheme: HTTP
+        name: certcontroller
+        ports:
+        - containerPort: 8081
+          name: health
+          protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: health
+            scheme: HTTP
+        resources:
+          limits:
+            cpu: 500m
+            memory: 128Mi
+          requests:
+            cpu: 10m
+            memory: 64Mi
+        volumeMounts:
+        - mountPath: /tmp/k8s-webhook-server/serving-certs
+          name: cert
+          readOnly: true
+      serviceAccountName: certcontroller
+      tolerations:
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/master
+        operator: Exists
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/control-plane
+        operator: Exists
+      volumes:
+      - name: cert
+        secret:
+          defaultMode: 420
+          secretName: openpe-webhook-server-cert
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -2708,10 +2857,88 @@ spec:
       containers:
       - args:
         - --loglevel=debug
-        - --namespace=$(NAMESPACE)
-        - --webhookmode=enabled
         command:
         - /nodemarker
+        image: quay.io/openperouter/router:main
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: health
+            scheme: HTTP
+        name: nodemarker
+        ports:
+        - containerPort: 8081
+          name: health
+          protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: health
+            scheme: HTTP
+        resources:
+          limits:
+            cpu: 500m
+            memory: 128Mi
+          requests:
+            cpu: 10m
+            memory: 64Mi
+      serviceAccountName: nodemarker
+      tolerations:
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/master
+        operator: Exists
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/control-plane
+        operator: Exists
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/component: webhook
+    app.kubernetes.io/created-by: webhook
+    app.kubernetes.io/instance: webhook
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: webhook
+    app.kubernetes.io/part-of: webhook
+    component: webhook
+  name: webhook
+  namespace: openperouter-system
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      control-plane: webhook
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+    type: RollingUpdate
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: webhook
+      labels:
+        app: webhook
+        component: webhook
+        control-plane: webhook
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  control-plane: webhook
+              topologyKey: kubernetes.io/hostname
+            weight: 100
+      containers:
+      - args:
+        - --loglevel=debug
+        - --namespace=$(NAMESPACE)
+        command:
+        - /webhook
         env:
         - name: NAMESPACE
           valueFrom:
@@ -2719,12 +2946,18 @@ spec:
               fieldPath: metadata.namespace
         image: quay.io/openperouter/router:main
         imagePullPolicy: IfNotPresent
+        lifecycle:
+          preStop:
+            exec:
+              command:
+              - sleep
+              - "5"
         livenessProbe:
           httpGet:
             path: /healthz
             port: webhook-server
             scheme: HTTPS
-        name: nodemarker
+        name: webhook
         ports:
         - containerPort: 9443
           name: webhook-server
@@ -2734,6 +2967,7 @@ spec:
             path: /readyz
             port: webhook-server
             scheme: HTTPS
+          periodSeconds: 5
         resources:
           limits:
             cpu: 500m
@@ -2743,9 +2977,10 @@ spec:
             memory: 64Mi
         volumeMounts:
         - mountPath: /tmp/k8s-webhook-server/serving-certs
-          name: cert
+          name: webhook-cert
           readOnly: true
-      serviceAccountName: nodemarker
+      serviceAccountName: webhook
+      terminationGracePeriodSeconds: 20
       tolerations:
       - effect: NoSchedule
         key: node-role.kubernetes.io/master
@@ -2754,10 +2989,28 @@ spec:
         key: node-role.kubernetes.io/control-plane
         operator: Exists
       volumes:
-      - name: cert
+      - name: webhook-cert
         secret:
           defaultMode: 420
+          items:
+          - key: tls.crt
+            path: tls.crt
+          - key: tls.key
+            path: tls.key
           secretName: openpe-webhook-server-cert
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  labels:
+    component: webhook
+  name: webhook
+  namespace: openperouter-system
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      control-plane: webhook
 ---
 apiVersion: apps/v1
 kind: DaemonSet

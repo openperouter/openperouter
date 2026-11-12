@@ -1,0 +1,108 @@
+{{- if .Values.webhook.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    {{- include "openperouter.labels" . | nindent 4 }}
+    component: certcontroller
+    {{- range $key, $value := .Values.openperouter.labels }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
+  name: certcontroller
+  namespace: {{ .Release.Namespace | quote }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "openperouter.selectorLabels" . | nindent 6 }}
+      component: certcontroller
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: certcontroller
+      labels:
+        {{- include "openperouter.selectorLabels" . | nindent 8 }}
+        component: certcontroller
+        app: certcontroller
+        {{- range $key, $value := .Values.openperouter.labels }}
+        {{ $key }}: {{ $value | quote }}
+        {{- end }}
+    spec:
+      {{- if .Values.openperouter.runtimeClassName }}
+      runtimeClassName: {{ .Values.openperouter.runtimeClassName }}
+      {{- end }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ template "openperouter.certController.serviceAccountName" . }}
+      {{- with .Values.openperouter.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.openperouter.tolerations }}
+      tolerations:
+      {{- toYaml . | nindent 6 }}
+      {{- end }}
+      {{- with .Values.openperouter.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.openperouter.priorityClassName }}
+      priorityClassName: {{ . | quote }}
+      {{- end }}
+      containers:
+      - args:
+        {{- with .Values.openperouter.logLevel }}
+        - --loglevel={{ . }}
+        {{- end }}
+        - "--namespace=$(NAMESPACE)"
+        command:
+        - /certcontroller
+        env:
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        ports:
+          - containerPort: 8081
+            name: health
+            protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: health
+            scheme: HTTP
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 1
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: health
+            scheme: HTTP
+          initialDelaySeconds: 15
+          periodSeconds: 20
+          timeoutSeconds: 1
+          failureThreshold: 3
+        image: {{ .Values.openperouter.image.repository }}:{{ .Values.openperouter.image.tag | default .Chart.AppVersion }}
+        {{- if .Values.openperouter.image.pullPolicy }}
+        imagePullPolicy: {{ .Values.openperouter.image.pullPolicy }}
+        {{- end }}
+        name: certcontroller
+        {{- with .Values.openperouter.certController.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        volumeMounts:
+        - name: cert
+          mountPath: /tmp/k8s-webhook-server/serving-certs
+          readOnly: true
+      volumes:
+        # No keys are listed, so the pod starts while the Secret is still
+        # empty and the certificate shows up once the controller writes it.
+        - name: cert
+          secret:
+            defaultMode: 420
+            secretName: openpe-webhook-server-cert
+{{- end }}

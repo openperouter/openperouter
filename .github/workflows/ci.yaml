@@ -354,7 +354,7 @@ jobs:
             IMG_REPO="quay.io/openperouter" make load-on-kind; 
             kubectl apply -f operator/config/samples/openperouter.yaml; 
             sleep 5; 
-            kubectl -n openperouter-system wait --for=condition=Ready pods -l "component in (controller,router,nodemarker)" --timeout 300s; 
+            kubectl -n openperouter-system wait --for=condition=Ready pods -l "component in (controller,router,nodemarker,webhook)" --timeout 300s; 
           fi
           if [ ${{ matrix.deployment }} = "operator-grout" ]; then
             IMG_TAG="main-grout" IMG_REPO="quay.io/openperouter" make load-on-kind;
@@ -369,7 +369,7 @@ jobs:
             datapath: grout
           EOF
             sleep 5;
-            kubectl -n openperouter-system wait --for=condition=Ready pods -l "component in (controller,router,nodemarker)" --timeout 300s;
+            kubectl -n openperouter-system wait --for=condition=Ready pods -l "component in (controller,router,nodemarker,webhook)" --timeout 300s;
           fi
 
       - name: Make sure that sysctl settings are set correctly

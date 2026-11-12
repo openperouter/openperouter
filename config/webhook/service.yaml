@@ -8,4 +8,4 @@ spec:
     - port: 443
       targetPort: webhook-server
   selector:
-    component: nodemarker
+    component: webhook

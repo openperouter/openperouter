@@ -6,7 +6,8 @@ resources:
 - ../webhook
 - namespace.yaml
 - hostbridgepod.yaml
-- nodemarker.yaml
+- ../admission
+- ../certcontroller
 images:
 - name: router
   newName: quay.io/openperouter/router

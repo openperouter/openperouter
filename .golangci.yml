@@ -75,6 +75,9 @@ linters:
           - lll
         path: internal/*
       - linters:
+          - lll
+        source: "^// \\+kubebuilder:"
+      - linters:
           - kubeapilinter
         path-except: "api/"
       - linters:

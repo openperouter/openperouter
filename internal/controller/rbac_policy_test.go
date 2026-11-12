@@ -18,7 +18,7 @@ import (
 var crdGroup = []string{"network.openperouter.io"}
 
 func TestControllerClusterRole(t *testing.T) {
-	cr := loadClusterRole(t, "role.yaml")
+	cr := loadClusterRole(t, "rbac/role.yaml")
 	assertRules(t, cr.Name, cr.Rules, []expectedRule{
 		{APIGroups: []string{""}, Resources: []string{"nodes"}, Verbs: []string{"get", "list", "patch", "watch"}},
 		{APIGroups: crdGroup, Resources: []string{"l2vnis", "l3passthroughs", "l3vnis", "l3vpns", "rawfrrconfigs", "routernodeconfigurationstatuses", "underlays"}, Verbs: []string{"create", "delete", "get", "list", "patch", "update", "watch"}},
@@ -28,25 +28,38 @@ func TestControllerClusterRole(t *testing.T) {
 }
 
 func TestNodemarkerClusterRole(t *testing.T) {
-	cr := loadClusterRole(t, "nodemarker_cluster_role.yaml")
+	cr := loadClusterRole(t, "rbac/nodemarker_cluster_role.yaml")
 	assertRules(t, cr.Name, cr.Rules, []expectedRule{
 		{APIGroups: []string{""}, Resources: []string{"nodes"}, Verbs: []string{"get", "list", "patch", "update", "watch"}},
-		{APIGroups: []string{"admissionregistration.k8s.io"}, Resources: []string{"validatingwebhookconfigurations"}, Verbs: []string{"get", "list", "watch"}},
-		{APIGroups: []string{"admissionregistration.k8s.io"}, Resources: []string{"validatingwebhookconfigurations"}, ResourceNames: []string{"openpe-validating-webhook-configuration"}, Verbs: []string{"update"}},
+	})
+}
+
+func TestWebhookClusterRole(t *testing.T) {
+	cr := loadClusterRole(t, "rbac/webhook_cluster_role.yaml")
+	assertRules(t, cr.Name, cr.Rules, []expectedRule{
+		{APIGroups: []string{""}, Resources: []string{"nodes"}, Verbs: []string{"get", "list", "watch"}},
 		{APIGroups: crdGroup, Resources: []string{"l2vnis", "l3passthroughs", "l3vnis", "l3vpns", "rawfrrconfigs", "underlays"}, Verbs: []string{"get", "list", "watch"}},
 	})
 }
 
+func TestCertControllerClusterRole(t *testing.T) {
+	cr := loadClusterRole(t, "certcontroller/cluster_role.yaml")
+	assertRules(t, cr.Name, cr.Rules, []expectedRule{
+		{APIGroups: []string{"admissionregistration.k8s.io"}, Resources: []string{"validatingwebhookconfigurations"}, Verbs: []string{"get", "list", "watch"}},
+		{APIGroups: []string{"admissionregistration.k8s.io"}, Resources: []string{"validatingwebhookconfigurations"}, ResourceNames: []string{"openpe-validating-webhook-configuration"}, Verbs: []string{"update"}},
+	})
+}
+
 func TestControllerNamespacedRole(t *testing.T) {
-	role := loadRole(t, "secrets_role.yaml")
+	role := loadRole(t, "rbac/secrets_role.yaml")
 	assertRules(t, role.Name, role.Rules, []expectedRule{
 		{APIGroups: []string{""}, Resources: []string{"secrets"}, Verbs: []string{"get", "list", "watch"}},
 		{APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"delete", "get", "list", "watch"}},
 	})
 }
 
-func TestNodemarkerNamespacedRole(t *testing.T) {
-	role := loadRole(t, "nodemarker_role.yaml")
+func TestCertControllerNamespacedRole(t *testing.T) {
+	role := loadRole(t, "certcontroller/role.yaml")
 	assertRules(t, role.Name, role.Rules, []expectedRule{
 		{APIGroups: []string{""}, Resources: []string{"secrets"}, Verbs: []string{"get", "list", "watch"}},
 		{APIGroups: []string{""}, Resources: []string{"secrets"}, ResourceNames: []string{"openpe-webhook-server-cert"}, Verbs: []string{"update"}},
@@ -69,28 +82,28 @@ func repoRoot(t *testing.T) string {
 	return filepath.Join(filepath.Dir(thisFile), "..", "..")
 }
 
-func loadClusterRole(t *testing.T, filename string) rbacv1.ClusterRole {
+func loadClusterRole(t *testing.T, configPath string) rbacv1.ClusterRole {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), "config", "rbac", filename))
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), "config", configPath))
 	if err != nil {
-		t.Fatalf("read %s: %v", filename, err)
+		t.Fatalf("read %s: %v", configPath, err)
 	}
 	var cr rbacv1.ClusterRole
 	if err := yaml.UnmarshalStrict(data, &cr); err != nil {
-		t.Fatalf("parse %s: %v", filename, err)
+		t.Fatalf("parse %s: %v", configPath, err)
 	}
 	return cr
 }
 
-func loadRole(t *testing.T, filename string) rbacv1.Role {
+func loadRole(t *testing.T, configPath string) rbacv1.Role {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), "config", "rbac", filename))
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), "config", configPath))
 	if err != nil {
-		t.Fatalf("read %s: %v", filename, err)
+		t.Fatalf("read %s: %v", configPath, err)
 	}
 	var r rbacv1.Role
 	if err := yaml.UnmarshalStrict(data, &r); err != nil {
-		t.Fatalf("parse %s: %v", filename, err)
+		t.Fatalf("parse %s: %v", configPath, err)
 	}
 	return r
 }
