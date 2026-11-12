@@ -2857,16 +2857,8 @@ spec:
       containers:
       - args:
         - --loglevel=debug
-        - --namespace=$(NAMESPACE)
-        - --webhookmode=disabled
-        - --disable-cert-rotation=true
         command:
         - /nodemarker
-        env:
-        - name: NAMESPACE
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.namespace
         image: quay.io/openperouter/router:main
         imagePullPolicy: IfNotPresent
         livenessProbe:

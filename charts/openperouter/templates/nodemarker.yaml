@@ -55,16 +55,8 @@ spec:
         {{- with .Values.openperouter.logLevel }}
         - --loglevel={{ . }}
         {{- end }}
-        - "--namespace=$(NAMESPACE)"
-        - "--webhookmode=disabled"
-        - "--disable-cert-rotation=true"
         command:
         - /nodemarker
-        env:
-        - name: NAMESPACE
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.namespace
         ports:
           - containerPort: 8081
             name: health
