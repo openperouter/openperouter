@@ -1,0 +1,159 @@
+{{- if .Values.webhook.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    {{- include "openperouter.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook
+    {{- range $key, $value := .Values.openperouter.labels }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
+  name: {{ template "openperouter.fullname" . }}-webhook
+  namespace: {{ .Release.Namespace | quote }}
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "openperouter.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: webhook
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: webhook
+      labels:
+        {{- include "openperouter.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: webhook
+        app: webhook
+        {{- range $key, $value := .Values.openperouter.labels }}
+        {{ $key }}: {{ $value | quote }}
+        {{- end }}
+    spec:
+      {{- if .Values.openperouter.runtimeClassName }}
+      runtimeClassName: {{ .Values.openperouter.runtimeClassName }}
+      {{- end }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ template "openperouter.webhook.serviceAccountName" . }}
+      {{- with .Values.openperouter.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.openperouter.tolerations }}
+      tolerations:
+      {{- toYaml . | nindent 6 }}
+      {{- end }}
+      affinity:
+        {{- if .Values.openperouter.affinity }}
+        {{- toYaml .Values.openperouter.affinity | nindent 8 }}
+        {{- else }}
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  {{- include "openperouter.selectorLabels" . | nindent 18 }}
+                  app.kubernetes.io/component: webhook
+        {{- end }}
+      {{- with .Values.openperouter.priorityClassName }}
+      priorityClassName: {{ . | quote }}
+      {{- end }}
+      # Covers the preStop delay plus the admission webhook timeout, so
+      # in-flight requests finish before the container is killed.
+      terminationGracePeriodSeconds: 20
+      containers:
+      - args:
+        {{- with .Values.openperouter.logLevel }}
+        - --loglevel={{ . }}
+        {{- end }}
+        - "--namespace=$(NAMESPACE)"
+        {{- if eq .Values.openperouter.datapath "grout" }}
+        - --datapath=grout
+        {{- end }}
+        command:
+        - /webhook
+        env:
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        ports:
+          - containerPort: 9443
+            name: webhook-server
+            protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: webhook-server
+            scheme: HTTPS
+          periodSeconds: 5
+          timeoutSeconds: 1
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: webhook-server
+            scheme: HTTPS
+          periodSeconds: 20
+          timeoutSeconds: 1
+          failureThreshold: 3
+        lifecycle:
+          # Lets the endpoint removal propagate before the server stops.
+          preStop:
+            exec:
+              command:
+              - sleep
+              - "5"
+        volumeMounts:
+        - name: webhook-cert
+          mountPath: /tmp/k8s-webhook-server/serving-certs
+          readOnly: true
+        image: {{ .Values.openperouter.image.repository }}:{{ .Values.openperouter.image.tag | default .Chart.AppVersion }}
+        {{- if .Values.openperouter.image.pullPolicy }}
+        imagePullPolicy: {{ .Values.openperouter.image.pullPolicy }}
+        {{- end }}
+        name: webhook
+        {{- with .Values.openperouter.webhook.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+      volumes:
+        # The listed keys keep the pod from starting until the certificate
+        # controller has written the certificate. OLM replaces the volume
+        # with this name by one backed by the certificate it manages.
+        - name: webhook-cert
+          secret:
+            defaultMode: 420
+            secretName: openpe-webhook-server-cert
+            items:
+            - key: tls.crt
+              path: tls.crt
+            - key: tls.key
+              path: tls.key
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  labels:
+    {{- include "openperouter.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook
+    {{- range $key, $value := .Values.openperouter.labels }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
+  name: {{ template "openperouter.fullname" . }}-webhook
+  namespace: {{ .Release.Namespace | quote }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      {{- include "openperouter.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: webhook
+{{- end }}

@@ -18,7 +18,7 @@ openperouter:
   # -- (int) Maximum retry delay in seconds after failed API reconciliation. Unset uses the controller default rate limiter.
   maxReconcileBackoffSeconds: null
   # -- If true, enables host mode deployment: deploys hostbridge DaemonSet instead of router and controller,
-  # and configures nodemarker to run in webhook-only mode
+  # and skips the nodemarker, since node indexes come from the local node configuration
   hostmode: false
   image:
     repository: quay.io/openperouter/router
@@ -40,14 +40,18 @@ openperouter:
       name: ""
     nodemarker:
       name: ""
+    webhook:
+      name: ""
+    certController:
+      name: ""
     perouter:
       name: ""
     annotations: {}
   # -- Node selector to constrain all openperouter pods (router, controller,
-  # nodemarker, hostbridge) to nodes with matching labels.
+  # nodemarker, webhook, certcontroller, hostbridge) to nodes with matching labels.
   nodeSelector: {}
   # -- Tolerations for all openperouter pods (router, controller, nodemarker,
-  # hostbridge). Defaults to tolerating control-plane/master node taints so
+  # webhook, certcontroller, hostbridge). Defaults to tolerating control-plane/master node taints so
   # the pods can run there.
   tolerations:
     - key: node-role.kubernetes.io/master
@@ -57,13 +61,14 @@ openperouter:
       operator: Exists
       effect: NoSchedule
   # -- Priority class for all openperouter pods (router, controller,
-  # nodemarker, hostbridge). Use system-node-critical, or
+  # nodemarker, webhook, certcontroller, hostbridge). Use system-node-critical, or
   # system-cluster-critical where cluster policy requires it: Kubernetes
   # protects both critical classes from node-pressure eviction, and the
   # descheduler excludes critical pods by default.
   priorityClassName: ""
   # -- Affinity rules for all openperouter pods (router, controller,
-  # nodemarker, hostbridge).
+  # nodemarker, webhook, certcontroller, hostbridge). When unset, the webhook
+  # replicas prefer to run on different nodes.
   affinity: {}
   ## Selects which runtime class will be used by the pod.
   runtimeClassName: ""
@@ -86,12 +91,25 @@ openperouter:
     # -- CNI cache directory for persistent CNI state across pod restarts
     cniCacheDir: "/var/lib/openperouter/cni/cache"
   nodemarker:
-    # -- Resources of the nodemarker container. It serves validating webhooks,
+    # -- Resources of the nodemarker container, which allocates node indexes.
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+  webhook:
+    # -- Resources of the webhook container. It serves validating webhooks,
     # so CPU and memory requests keep admission calls responsive.
     resources:
       requests:
         cpu: 100m
         memory: 128Mi
+  certController:
+    # -- Resources of the certcontroller container, which rotates the webhook
+    # certificate and injects its CA bundle.
+    resources:
+      requests:
+        cpu: 10m
+        memory: 64Mi
   # frr contains configuration specific to the perouter FRR container,
   frr:
     image:

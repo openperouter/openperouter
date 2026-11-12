@@ -1,3 +1,4 @@
+{{- if not .Values.openperouter.hostmode }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -55,15 +56,8 @@ spec:
         - --loglevel={{ . }}
         {{- end }}
         - "--namespace=$(NAMESPACE)"
-        {{- if eq .Values.openperouter.datapath "grout" }}
-        - --datapath=grout
-        {{- end }}
-        {{- if .Values.openperouter.hostmode }}
-        - "--webhookmode=webhookonly"
-        {{- else if not .Values.webhook.enabled }}
         - "--webhookmode=disabled"
         - "--disable-cert-rotation=true"
-        {{- end }}
         command:
         - /nodemarker
         env:
@@ -72,11 +66,6 @@ spec:
             fieldRef:
               fieldPath: metadata.namespace
         ports:
-        {{- if .Values.webhook.enabled }}
-          - containerPort: 9443
-            name: webhook-server
-            protocol: TCP
-        {{- end }}
           - containerPort: 8081
             name: health
             protocol: TCP
@@ -98,12 +87,6 @@ spec:
           periodSeconds: 20
           timeoutSeconds: 1
           failureThreshold: 3
-        {{- if .Values.webhook.enabled }}
-        volumeMounts:
-        - name: cert
-          mountPath: /tmp/k8s-webhook-server/serving-certs
-          readOnly: true
-        {{- end }}
         image: {{ .Values.openperouter.image.repository }}:{{ .Values.openperouter.image.tag | default .Chart.AppVersion }}
         {{- if .Values.openperouter.image.pullPolicy }}
         imagePullPolicy: {{ .Values.openperouter.image.pullPolicy }}
@@ -113,11 +96,4 @@ spec:
         resources:
           {{- toYaml . | nindent 10 }}
         {{- end }}
-      {{- if .Values.webhook.enabled }}
-      volumes:
-        - name: cert
-          secret:
-            defaultMode: 420
-            secretName: openpe-webhook-server-cert
-      {{- end }}
-
+{{- end }}

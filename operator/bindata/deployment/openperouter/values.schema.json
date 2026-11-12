@@ -114,6 +114,39 @@
                 },
                 "default": {}
               },
+              "nodemarker": {
+                "type": "object",
+                "description": "Configuration for the nodemarker service account.",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "The name of the nodemarker ServiceAccount to use. If not set and create is true, a name is generated using the fullname template."
+                  }
+                },
+                "default": {}
+              },
+              "webhook": {
+                "type": "object",
+                "description": "Configuration for the webhook service account.",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "The name of the webhook ServiceAccount to use. If not set and create is true, a name is generated using the fullname template."
+                  }
+                },
+                "default": {}
+              },
+              "certController": {
+                "type": "object",
+                "description": "Configuration for the certcontroller service account.",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "The name of the certcontroller ServiceAccount to use. If not set and create is true, a name is generated using the fullname template."
+                  }
+                },
+                "default": {}
+              },
               "perouter": {
                 "type": "object",
                 "description": "Configuration for the perouter service account.",
@@ -137,18 +170,21 @@
             "default": {
               "create": true,
               "controller": {},
+              "nodemarker": {},
+              "webhook": {},
+              "certController": {},
               "perouter": {},
               "annotations": {}
             }
           },
           "nodeSelector": {
             "type": "object",
-            "description": "Node selector to constrain all openperouter pods (router, controller, nodemarker, hostbridge) to nodes with matching labels.",
+            "description": "Node selector to constrain all openperouter pods (router, controller, nodemarker, webhook, certcontroller, hostbridge) to nodes with matching labels.",
             "default": {}
           },
           "tolerations": {
             "type": "array",
-            "description": "Tolerations for all openperouter pods (router, controller, nodemarker, hostbridge). Defaults to tolerating control-plane/master node taints.",
+            "description": "Tolerations for all openperouter pods (router, controller, nodemarker, webhook, certcontroller, hostbridge). Defaults to tolerating control-plane/master node taints.",
             "items": {
               "type": "object"
             },
@@ -167,12 +203,12 @@
           },
           "priorityClassName": {
             "type": "string",
-            "description": "Priority class for all openperouter pods (router, controller, nodemarker, hostbridge).",
+            "description": "Priority class for all openperouter pods (router, controller, nodemarker, webhook, certcontroller, hostbridge).",
             "default": ""
           },
           "affinity": {
             "type": "object",
-            "description": "Affinity rules for all openperouter pods (router, controller, nodemarker, hostbridge).",
+            "description": "Affinity rules for all openperouter pods (router, controller, nodemarker, webhook, certcontroller, hostbridge).",
             "default": {}
           },
           "runtimeClassName": {
@@ -236,6 +272,70 @@
           "nodemarker": {
             "type": "object",
             "description": "Resource requests and limits for the nodemarker container.",
+            "properties": {
+              "resources": {
+                "type": "object",
+                "description": "Resource requirements.",
+                "properties": {
+                  "limits": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": [
+                        "string",
+                        "integer"
+                      ]
+                    }
+                  },
+                  "requests": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": [
+                        "string",
+                        "integer"
+                      ]
+                    }
+                  }
+                },
+                "default": {}
+              }
+            },
+            "default": {}
+          },
+          "webhook": {
+            "type": "object",
+            "description": "Resource requests and limits for the webhook container.",
+            "properties": {
+              "resources": {
+                "type": "object",
+                "description": "Resource requirements.",
+                "properties": {
+                  "limits": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": [
+                        "string",
+                        "integer"
+                      ]
+                    }
+                  },
+                  "requests": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": [
+                        "string",
+                        "integer"
+                      ]
+                    }
+                  }
+                },
+                "default": {}
+              }
+            },
+            "default": {}
+          },
+          "certController": {
+            "type": "object",
+            "description": "Resource requests and limits for the certcontroller container.",
             "properties": {
               "resources": {
                 "type": "object",
@@ -460,6 +560,9 @@
           "serviceAccounts": {
             "create": true,
             "controller": {},
+            "nodemarker": {},
+            "webhook": {},
+            "certController": {},
             "perouter": {},
             "annotations": {}
           },

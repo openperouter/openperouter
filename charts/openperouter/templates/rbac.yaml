@@ -102,7 +102,7 @@ subjects:
   name: {{ template "openperouter.controller.serviceAccountName" . }}
   namespace: {{ .Release.Namespace | quote }}
 ---
-# Nodemarker ClusterRole — nodes full + CRDs read + webhooks
+# Nodemarker ClusterRole — nodes full
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -124,37 +124,6 @@ rules:
   - patch
   - update
   - watch
-- apiGroups:
-  - network.openperouter.io
-  resources:
-  - l2vnis
-  - l3passthroughs
-  - l3vnis
-  - l3vpns
-  - rawfrrconfigs
-  - underlays
-  verbs:
-  - get
-  - list
-  - watch
-{{- if .Values.webhook.enabled }}
-- apiGroups:
-  - admissionregistration.k8s.io
-  resources:
-  - validatingwebhookconfigurations
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - admissionregistration.k8s.io
-  resourceNames:
-  - openpe-validating-webhook-configuration
-  resources:
-  - validatingwebhookconfigurations
-  verbs:
-  - update
-{{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -223,18 +192,121 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: {{ template "openperouter.controller.serviceAccountName" . }}
+{{- if .Values.webhook.enabled }}
 ---
-# Nodemarker namespace Role — cert secret scoped update
+# Webhook ClusterRole — nodes and CRDs read
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+kind: ClusterRole
 metadata:
+  name: {{ template "openperouter.fullname" . }}-webhook
   labels:
     {{- include "openperouter.labels" . | nindent 4 }}
-    app.kubernetes.io/component: nodemarker
+    app.kubernetes.io/component: webhook
     {{- range $key, $value := .Values.openperouter.labels }}
     {{ $key }}: {{ $value | quote }}
     {{- end }}
-  name: {{ template "openperouter.fullname" . }}-nodemarker
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - network.openperouter.io
+  resources:
+  - l2vnis
+  - l3passthroughs
+  - l3vnis
+  - l3vpns
+  - rawfrrconfigs
+  - underlays
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ template "openperouter.fullname" . }}-webhook
+  labels:
+    {{- include "openperouter.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook
+    {{- range $key, $value := .Values.openperouter.labels }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ template "openperouter.fullname" . }}-webhook
+subjects:
+- kind: ServiceAccount
+  name: {{ template "openperouter.webhook.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace | quote }}
+---
+# Certificate controller ClusterRole — webhook CA bundle injection
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ template "openperouter.fullname" . }}-certcontroller
+  labels:
+    {{- include "openperouter.labels" . | nindent 4 }}
+    app.kubernetes.io/component: certcontroller
+    {{- range $key, $value := .Values.openperouter.labels }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
+rules:
+- apiGroups:
+  - admissionregistration.k8s.io
+  resources:
+  - validatingwebhookconfigurations
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - admissionregistration.k8s.io
+  resourceNames:
+  - openpe-validating-webhook-configuration
+  resources:
+  - validatingwebhookconfigurations
+  verbs:
+  - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ template "openperouter.fullname" . }}-certcontroller
+  labels:
+    {{- include "openperouter.labels" . | nindent 4 }}
+    app.kubernetes.io/component: certcontroller
+    {{- range $key, $value := .Values.openperouter.labels }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ template "openperouter.fullname" . }}-certcontroller
+subjects:
+- kind: ServiceAccount
+  name: {{ template "openperouter.certController.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace | quote }}
+---
+# Certificate controller namespace Role — cert secret scoped update
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ template "openperouter.fullname" . }}-certcontroller
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    {{- include "openperouter.labels" . | nindent 4 }}
+    app.kubernetes.io/component: certcontroller
+    {{- range $key, $value := .Values.openperouter.labels }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
 rules:
   - apiGroups:
       - ""
@@ -256,19 +328,21 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
+  name: {{ template "openperouter.fullname" . }}-certcontroller
+  namespace: {{ .Release.Namespace | quote }}
   labels:
     {{- include "openperouter.labels" . | nindent 4 }}
-    app.kubernetes.io/component: nodemarker
+    app.kubernetes.io/component: certcontroller
     {{- range $key, $value := .Values.openperouter.labels }}
     {{ $key }}: {{ $value | quote }}
     {{- end }}
-  name: {{ template "openperouter.fullname" . }}-nodemarker
-  namespace: {{ .Release.Namespace | quote }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: {{ template "openperouter.fullname" . }}-nodemarker
+  name: {{ template "openperouter.fullname" . }}-certcontroller
 subjects:
 - kind: ServiceAccount
-  name: {{ template "openperouter.nodemarker.serviceAccountName" . }}
+  name: {{ template "openperouter.certController.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace | quote }}
+{{- end }}
 {{- end }}
