@@ -1148,8 +1148,8 @@ spec:
                     - message: claims are not supported
                       rule: '!has(self.claims) || self.claims.size() == 0'
                   nodemarker:
-                    description: nodemarker is the nodemarker container, which serves
-                      the webhooks.
+                    description: nodemarker is the nodemarker container, which allocates
+                      node indexes.
                     properties:
                       claims:
                         description: |-

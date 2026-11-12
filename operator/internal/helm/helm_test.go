@@ -36,17 +36,19 @@ import (
 // var update = flag.Bool("update", false, "update .golden files")
 
 const (
-	invalidChartPath          = "../../bindata/deployment/no-chart"
-	testChartPath             = "../../bindata/deployment/openperouter"
-	openperouterChartName     = "openperouter"
-	openperouterTestNamespace = "openperouter-test-namespace"
-	controllerDaemonSetName   = "controller"
-	routerDaemonSetName       = "router"
-	nodemarkerDeploymentName  = "nodemarker"
-	groutContainerName        = "grout"
-	groutDatapath             = "grout"
-	daemonSetKind             = "DaemonSet"
-	deploymentKind            = "Deployment"
+	invalidChartPath             = "../../bindata/deployment/no-chart"
+	testChartPath                = "../../bindata/deployment/openperouter"
+	openperouterChartName        = "openperouter"
+	openperouterTestNamespace    = "openperouter-test-namespace"
+	controllerDaemonSetName      = "controller"
+	routerDaemonSetName          = "router"
+	nodemarkerDeploymentName     = "nodemarker"
+	webhookDeploymentName        = "webhook"
+	certControllerDeploymentName = "certcontroller"
+	groutContainerName           = "grout"
+	groutDatapath                = "grout"
+	daemonSetKind                = "DaemonSet"
+	deploymentKind               = "Deployment"
 )
 
 var defaultEnvConfig = envconfig.EnvConfig{

@@ -195,6 +195,9 @@ func renderPodSpecs(g Gomega, spec operatorapi.OpenPERouterSpec) map[string]v1.P
 	g.Expect(specs).To(HaveKey(routerDaemonSetName))
 	g.Expect(specs).To(HaveKey(controllerDaemonSetName))
 	g.Expect(specs).To(HaveKey(nodemarkerDeploymentName))
+	// OLM deploys the webhook and manages its certificates.
+	g.Expect(specs).ToNot(HaveKey(webhookDeploymentName))
+	g.Expect(specs).ToNot(HaveKey(certControllerDeploymentName))
 	return specs
 }
 
