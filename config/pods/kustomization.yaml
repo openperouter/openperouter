@@ -4,6 +4,8 @@ resources:
 - perouter.yaml
 - frr-cm.yaml
 - nodemarker.yaml
+- ../admission
+- ../certcontroller
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 images:

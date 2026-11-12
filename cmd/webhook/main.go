@@ -54,6 +54,9 @@ func init() {
 	utilruntime.Must(v1alpha1.AddToScheme(scheme))
 }
 
+// +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
+// +kubebuilder:rbac:groups=network.openperouter.io,resources=l2vnis;l3passthroughs;l3vnis;l3vpns;rawfrrconfigs;underlays,verbs=get;list;watch
+
 func main() {
 	args := struct {
 		metricsAddr   string

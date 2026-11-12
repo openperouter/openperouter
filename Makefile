@@ -75,6 +75,12 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 	$(CONTROLLER_GEN) rbac:roleName=nodemarker-role paths="./internal/controller/nodeindex/..." output:rbac:artifacts:config=config/rbac/.gen-tmp
 	mv config/rbac/.gen-tmp/role.yaml config/rbac/nodemarker_cluster_role.yaml
 	rm -rf config/rbac/.gen-tmp
+	$(CONTROLLER_GEN) rbac:roleName=webhook-role paths="./cmd/webhook/..." output:rbac:artifacts:config=config/rbac/.gen-tmp
+	mv config/rbac/.gen-tmp/role.yaml config/rbac/webhook_cluster_role.yaml
+	rm -rf config/rbac/.gen-tmp
+	$(CONTROLLER_GEN) rbac:roleName=certcontroller-role paths="./cmd/certcontroller/..." output:rbac:artifacts:config=config/certcontroller/.gen-tmp
+	mv config/certcontroller/.gen-tmp/role.yaml config/certcontroller/cluster_role.yaml
+	rm -rf config/certcontroller/.gen-tmp
 	# The following line generates operator/config/webhook/webhook/manifests.yaml
 	$(CONTROLLER_GEN) crd webhook paths="./api/..." paths="./config/..." output:crd:none output:webhook:artifacts:config=operator/config/webhook/webhook
 	cp config/crd/bases/*.yaml charts/openperouter/charts/crds/templates
@@ -307,6 +313,8 @@ deploy-controller-cluster: kubectl kustomize ## Deploy controller to a specific 
 	KUBECONFIG=$(CLUSTER_KUBECONFIG) $(KUBECTL) -n ${NAMESPACE} delete ds controller || true
 	KUBECONFIG=$(CLUSTER_KUBECONFIG) $(KUBECTL) -n ${NAMESPACE} delete ds router || true
 	KUBECONFIG=$(CLUSTER_KUBECONFIG) $(KUBECTL) -n ${NAMESPACE} delete deployment nodemarker || true
+	KUBECONFIG=$(CLUSTER_KUBECONFIG) $(KUBECTL) -n ${NAMESPACE} delete deployment webhook --cascade=foreground || true
+	KUBECONFIG=$(CLUSTER_KUBECONFIG) $(KUBECTL) -n ${NAMESPACE} delete deployment certcontroller || true
 
 	# todo tweak loglevel
 	$(KUSTOMIZE) build config/$(KUSTOMIZE_LAYER) | KUBECONFIG=$(CLUSTER_KUBECONFIG) $(KUBECTL) apply -f -
@@ -666,7 +674,7 @@ bundle: manifests kustomize operator-sdk ## Generate bundle manifests and metada
 	cd operator && $(OPERATOR_SDK) generate kustomize manifests --interactive=false -q
 	cd operator/config/pods && $(KUSTOMIZE) edit set image controller=$(IMG)
 	cd operator/config/webhook/backend && $(KUSTOMIZE) edit set image controller=$(IMG)
-	cd operator && $(KUSTOMIZE) build config/default | $(OPERATOR_SDK) generate bundle $(BUNDLE_GEN_FLAGS) --extra-service-accounts "controller,perouter" --package openperouter-operator
+	cd operator && $(KUSTOMIZE) build config/default | $(OPERATOR_SDK) generate bundle $(BUNDLE_GEN_FLAGS) --extra-service-accounts "controller,nodemarker,perouter" --package openperouter-operator
 	hack/restore-csv-timestamp.sh $(CSV_FILE)
 	cd operator && $(OPERATOR_SDK) bundle validate ./bundle
 

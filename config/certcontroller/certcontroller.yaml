@@ -1,36 +1,35 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: nodemarker
+  name: certcontroller
   namespace: system
   labels:
-    component: nodemarker
-    app.kubernetes.io/name: nodemarker
-    app.kubernetes.io/instance: nodemarker
-    app.kubernetes.io/component: nodemarker
-    app.kubernetes.io/created-by: nodemarker
-    app.kubernetes.io/part-of: nodemarker
+    component: certcontroller
+    app.kubernetes.io/name: certcontroller
+    app.kubernetes.io/instance: certcontroller
+    app.kubernetes.io/component: certcontroller
+    app.kubernetes.io/created-by: certcontroller
+    app.kubernetes.io/part-of: certcontroller
     app.kubernetes.io/managed-by: kustomize
 spec:
   selector:
     matchLabels:
-      control-plane: nodemarker
+      control-plane: certcontroller
   template:
     metadata:
       annotations:
-        kubectl.kubernetes.io/default-container: nodemarker
+        kubectl.kubernetes.io/default-container: certcontroller
       labels:
-        component: nodemarker
-        control-plane: nodemarker
-        app: nodemarker
+        component: certcontroller
+        control-plane: certcontroller
+        app: certcontroller
     spec:
       containers:
       - command:
-        - /nodemarker
+        - /certcontroller
         args:
         - "--loglevel=debug"
         - "--namespace=$(NAMESPACE)"
-        - "--webhookmode=webhookonly"
         env:
         - name: NAMESPACE
           valueFrom:
@@ -38,21 +37,21 @@ spec:
               fieldPath: metadata.namespace
         image: router:latest
         imagePullPolicy: IfNotPresent
-        name: nodemarker
+        name: certcontroller
         ports:
-          - containerPort: 9443
-            name: webhook-server
+          - containerPort: 8081
+            name: health
             protocol: TCP
         readinessProbe:
           httpGet:
             path: /readyz
-            port: webhook-server
-            scheme: HTTPS
+            port: health
+            scheme: HTTP
         livenessProbe:
           httpGet:
             path: /healthz
-            port: webhook-server
-            scheme: HTTPS
+            port: health
+            scheme: HTTP
         resources:
           limits:
             cpu: 500m
@@ -64,12 +63,14 @@ spec:
         - name: cert
           mountPath: /tmp/k8s-webhook-server/serving-certs
           readOnly: true
-      serviceAccountName: nodemarker
       volumes:
+        # No keys are listed, so the pod starts while the Secret is still
+        # empty and the certificate shows up once the controller writes it.
         - name: cert
           secret:
             defaultMode: 420
             secretName: openpe-webhook-server-cert
+      serviceAccountName: certcontroller
       tolerations:
       - effect: NoSchedule
         key: node-role.kubernetes.io/master
