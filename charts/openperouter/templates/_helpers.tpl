@@ -70,6 +70,22 @@ Create the name of the openperouter service accounts to use
 {{- end }}
 {{- end }}
 
+{{- define "openperouter.webhook.serviceAccountName" -}}
+{{- if .Values.openperouter.serviceAccounts.create }}
+{{- default (printf "%s-webhook" (include "openperouter.fullname" .)) .Values.openperouter.serviceAccounts.webhook.name }}
+{{- else }}
+{{- default "default-webhook" .Values.openperouter.serviceAccounts.webhook.name }}
+{{- end }}
+{{- end }}
+
+{{- define "openperouter.certController.serviceAccountName" -}}
+{{- if .Values.openperouter.serviceAccounts.create }}
+{{- default (printf "%s-certcontroller" (include "openperouter.fullname" .)) .Values.openperouter.serviceAccounts.certController.name }}
+{{- else }}
+{{- default "default-certcontroller" .Values.openperouter.serviceAccounts.certController.name }}
+{{- end }}
+{{- end }}
+
 {{- define "openperouter.router.serviceAccountName" -}}
 {{- if .Values.openperouter.serviceAccounts.create }}
 {{- default (printf "%s-perouter" (include "openperouter.fullname" .)) .Values.openperouter.serviceAccounts.perouter.name }}
