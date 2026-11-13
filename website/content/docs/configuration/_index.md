@@ -330,7 +330,13 @@ restarts caused by conservative defaults. Helm users can override the requests
 through `openperouter.controller.resources`, `openperouter.nodemarker.resources`,
 `openperouter.frr.resources`, and `openperouter.frr.reloader.resources`.
 
-Operator users can override individual containers with `spec.resources`:
+When the datapath is `grout`, the grout container ships with default CPU and
+memory requests and limits, which Helm users can override through
+`openperouter.grout.resources`.
+
+Operator users can override individual containers with `spec.resources`, and
+the grout container with `spec.grout.resources` (only used with the grout
+datapath):
 
 ```yaml
 apiVersion: network.openperouter.io/v1alpha1
@@ -344,6 +350,14 @@ spec:
       requests:
         cpu: 500m
         memory: 512Mi
+  grout:
+    resources:
+      requests:
+        memory: 1Gi
+        hugepages-2Mi: 1Gi
+      limits:
+        memory: 1Gi
+        hugepages-2Mi: 1Gi
 ```
 
 Set `openperouter.priorityClassName` in Helm or `spec.priorityClassName` in the

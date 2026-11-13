@@ -82,6 +82,10 @@ type OpenPERouterSpec struct {
 	// +default="kernel"
 	// +kubebuilder:validation:Enum=kernel;grout
 	Datapath *string `json:"datapath,omitempty"`
+	// grout contains the settings of the grout dataplane. It is only used
+	// when the datapath is grout.
+	// +optional
+	Grout *GroutConfiguration `json:"grout,omitempty"`
 	// priorityClassName is the priority class of all OpenPERouter pods
 	// (router, controller, nodemarker, hostbridge). Use system-node-critical,
 	// or system-cluster-critical where cluster policy requires it.
@@ -112,6 +116,15 @@ type ContainerResources struct {
 	// +optional
 	// +kubebuilder:validation:XValidation:rule="!has(self.claims) || self.claims.size() == 0",message="claims are not supported"
 	Reloader *corev1.ResourceRequirements `json:"reloader,omitempty"`
+}
+
+// GroutConfiguration holds the settings of the grout dataplane.
+type GroutConfiguration struct {
+	// resources overrides the resource requirements of the grout container
+	// in router pods. A container left unset keeps the chart defaults.
+	// +optional
+	// +kubebuilder:validation:XValidation:rule="!has(self.claims) || self.claims.size() == 0",message="claims are not supported"
+	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
 }
 
 // OpenPERouterStatus defines the observed state of OpenPERouter
