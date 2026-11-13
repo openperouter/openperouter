@@ -21,6 +21,7 @@ if [[ $# -lt 1 ]]; then
 fi
 
 CLUSTER_NAME="$1"
+ROUTER_IMAGE="${ROUTER_IMAGE:-quay.io/openperouter/router:main}"
 
 if [[ -n "${NODE_CONFIG_DIR:-}" ]]; then
     if [[ ! -d "$NODE_CONFIG_DIR" ]]; then
@@ -39,14 +40,25 @@ fi
 
 NODE_INDEX=0
 for NODE in $NODES; do
-    log_info "Creating configuration file for node $NODE with nodeIndex=$NODE_INDEX..."
+    log_info "Creating bootstrap configuration for node $NODE with nodeIndex=$NODE_INDEX..."
 
-    $CONTAINER_ENGINE_CLI exec "$NODE" mkdir -p /var/lib/openperouter/configs
+    $CONTAINER_ENGINE_CLI exec "$NODE" mkdir -p /var/lib/openperouter/configs /etc/openperouter
 
-    $CONTAINER_ENGINE_CLI exec "$NODE" bash -c "cat > /var/lib/openperouter/node-config.yaml <<EOF
+    # Node identity stays in the existing controller configuration file.
+    $CONTAINER_ENGINE_CLI exec "$NODE" bash -c "umask 077 && cat > /var/lib/openperouter/node-config.yaml <<EOF
 nodeIndex:
   index: $NODE_INDEX
 logLevel: debug
+EOF"
+
+    # The bootstrap unit renders only the Quadlets and FRR daemon settings.
+    # The e2e tests write openpe_*.yaml files into /var/lib/openperouter/configs,
+    # so it is used as the live-reloaded runtime configuration directory.
+    $CONTAINER_ENGINE_CLI exec "$NODE" bash -c "umask 077 && cat > /etc/openperouter/openpe_boot.yaml <<EOF
+image: $ROUTER_IMAGE
+logLevel: debug
+runtimeConfiguration:
+  directory: /var/lib/openperouter/configs
 EOF"
 
     log_info "  Configuration file created successfully"
