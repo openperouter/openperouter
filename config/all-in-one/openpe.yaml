@@ -79,6 +79,7 @@ spec:
                           name of the Linux bridge interface. Required when lifecycle is
                           External, and must be omitted when it is Managed, in which case the
                           bridge is named br-hs-<VNI>.
+                          Immutable once set, to change it recreate the object using different value.
                         maxLength: 15
                         pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
                         type: string
@@ -90,6 +91,10 @@ spec:
                         not be set when it is Managed.
                       rule: (self.?name.orValue("") != "") != (self.?lifecycle.orValue("")
                         == 'Managed')
+                    - message: name is immutable; delete and recreate the object to
+                        change it
+                      rule: has(self.name) == has(oldSelf.name) && (!has(self.name)
+                        || self.name == oldSelf.name)
                   ovsBridge:
                     description: ovsBridge configuration. Must be set when Type is
                       "OVSBridge".
@@ -107,6 +112,7 @@ spec:
                           name of the OVS bridge interface. Required when lifecycle is
                           External, and must be omitted when it is Managed, in which case the
                           bridge is named br-hs-<VNI>.
+                          Immutable once set, to change it recreate the object using different value.
                         maxLength: 15
                         pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
                         type: string
@@ -118,13 +124,22 @@ spec:
                         not be set when it is Managed.
                       rule: (self.?name.orValue("") != "") != (self.?lifecycle.orValue("")
                         == 'Managed')
+                    - message: name is immutable; delete and recreate the object to
+                        change it
+                      rule: has(self.name) == has(oldSelf.name) && (!has(self.name)
+                        || self.name == oldSelf.name)
                   type:
-                    description: 'type of the host interface. Supported values: "LinuxBridge",
-                      "OVSBridge".'
+                    description: |-
+                      type of the host interface. Supported values: "LinuxBridge", "OVSBridge".
+                      Immutable once set, to change it recreate the object using different value.
                     enum:
                     - LinuxBridge
                     - OVSBridge
                     type: string
+                    x-kubernetes-validations:
+                    - message: type is immutable; delete and recreate the object to
+                        change it
+                      rule: self == oldSelf
                 required:
                 - type
                 type: object
@@ -301,6 +316,7 @@ spec:
                   If not set, the host veth will not be attached to any interface and it must be
                   attached manually (or by some other means). This is useful if another controller
                   is leveraging the host interface for the VNI.
+                  Once set, hostMaster cannot be removed; delete and recreate the object to unset it.
                 properties:
                   linuxBridge:
                     description: linuxBridge configuration. Must be set when Type
@@ -319,6 +335,7 @@ spec:
                           name of the Linux bridge interface. Required when lifecycle is
                           External, and must be omitted when it is Managed, in which case the
                           bridge is named br-hs-<VNI>.
+                          Immutable once set, to change it recreate the object using different value.
                         maxLength: 15
                         pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
                         type: string
@@ -330,6 +347,10 @@ spec:
                         not be set when it is Managed.
                       rule: (self.?name.orValue("") != "") != (self.?lifecycle.orValue("")
                         == 'Managed')
+                    - message: name is immutable; delete and recreate the object to
+                        change it
+                      rule: has(self.name) == has(oldSelf.name) && (!has(self.name)
+                        || self.name == oldSelf.name)
                   ovsBridge:
                     description: ovsBridge configuration. Must be set when Type is
                       "OVSBridge".
@@ -347,6 +368,7 @@ spec:
                           name of the OVS bridge interface. Required when lifecycle is
                           External, and must be omitted when it is Managed, in which case the
                           bridge is named br-hs-<VNI>.
+                          Immutable once set, to change it recreate the object using different value.
                         maxLength: 15
                         pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
                         type: string
@@ -358,13 +380,22 @@ spec:
                         not be set when it is Managed.
                       rule: (self.?name.orValue("") != "") != (self.?lifecycle.orValue("")
                         == 'Managed')
+                    - message: name is immutable; delete and recreate the object to
+                        change it
+                      rule: has(self.name) == has(oldSelf.name) && (!has(self.name)
+                        || self.name == oldSelf.name)
                   type:
-                    description: 'type of the host interface. Supported values: "LinuxBridge",
-                      "OVSBridge".'
+                    description: |-
+                      type of the host interface. Supported values: "LinuxBridge", "OVSBridge".
+                      Immutable once set, to change it recreate the object using different value.
                     enum:
                     - LinuxBridge
                     - OVSBridge
                     type: string
+                    x-kubernetes-validations:
+                    - message: type is immutable; delete and recreate the object to
+                        change it
+                      rule: self == oldSelf
                 required:
                 - type
                 type: object
@@ -552,6 +583,9 @@ spec:
             - message: trunk is immutable
               rule: has(self.trunk) == has(oldSelf.trunk) && (!has(self.trunk) ||
                 self.trunk == oldSelf.trunk)
+            - message: hostMaster cannot be unset once set; delete and recreate the
+                object to remove it
+              rule: '!has(oldSelf.hostMaster) || has(self.hostMaster)'
           status:
             description: status defines the observed state of L2VNI.
             type: object
@@ -944,12 +978,17 @@ spec:
                 minimum: 1
                 type: integer
               vrf:
-                description: vrf is the name of the linux VRF to be used inside the
-                  PERouter namespace.
+                description: |-
+                  vrf is the name of the linux VRF to be used inside the PERouter namespace.
+                  Immutable once set, to change it recreate the object using different value.
                 maxLength: 15
                 minLength: 1
                 pattern: ^[a-zA-Z][a-zA-Z0-9_-]*$
                 type: string
+                x-kubernetes-validations:
+                - message: vrf is immutable; delete and recreate the object to change
+                    it
+                  rule: self == oldSelf
               vxlanPort:
                 default: 4789
                 description: vxlanPort is the port to be used for VXLan encapsulation.
