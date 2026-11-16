@@ -18,10 +18,14 @@ package operator
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
+	"helm.sh/helm/v4/pkg/chart/common"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -118,8 +122,11 @@ func (r *OpenPERouterReconciler) syncK8SResources(ctx context.Context, config *o
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *OpenPERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	var err error
-	r.chart, err = helm.NewChart(openperouterChartPath, defaultResourceName, r.Namespace)
+	kubeVersion, err := clusterKubeVersion(mgr.GetConfig())
+	if err != nil {
+		return err
+	}
+	r.chart, err = helm.NewChart(openperouterChartPath, defaultResourceName, r.Namespace, kubeVersion)
 	if err != nil {
 		return err
 	}
@@ -127,4 +134,21 @@ func (r *OpenPERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&operatorapi.OpenPERouter{}).
 		Complete(r)
+}
+
+// clusterKubeVersion returns the Kubernetes version reported by the API server.
+func clusterKubeVersion(config *rest.Config) (*common.KubeVersion, error) {
+	discoveryClient, err := discovery.NewDiscoveryClientForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create discovery client: %w", err)
+	}
+	serverVersion, err := discoveryClient.ServerVersion()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get the kubernetes version: %w", err)
+	}
+	kubeVersion, err := common.ParseKubeVersion(serverVersion.GitVersion)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse the kubernetes version %q: %w", serverVersion.GitVersion, err)
+	}
+	return kubeVersion, nil
 }
