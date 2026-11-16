@@ -12,7 +12,7 @@ An open implementation of a PE router.
 
 ## Requirements
 
-Kubernetes: `>= 1.19.0-0`
+Kubernetes: `>= 1.21.0-0`
 
 | Repository | Name | Version |
 |------------|------|---------|

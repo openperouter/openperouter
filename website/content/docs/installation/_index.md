@@ -14,7 +14,7 @@ This guide covers the installation of OpenPERouter using different deployment me
 
 Before installing OpenPERouter, ensure you have:
 
-- A Kubernetes cluster (v1.20 or later)
+- A Kubernetes cluster (v1.21 or later)
 - `kubectl` configured to communicate with your cluster
 - Cluster administrator privileges (for creating namespaces and CRDs)
 - Network interfaces configured for BGP peering with external routers

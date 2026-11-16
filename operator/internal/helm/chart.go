@@ -24,6 +24,7 @@ import (
 	"github.com/openperouter/openperouter/operator/internal/envconfig"
 	"helm.sh/helm/v4/pkg/action"
 	"helm.sh/helm/v4/pkg/chart"
+	"helm.sh/helm/v4/pkg/chart/common"
 	"helm.sh/helm/v4/pkg/chart/loader"
 	"helm.sh/helm/v4/pkg/cli"
 	"helm.sh/helm/v4/pkg/release"
@@ -42,14 +43,17 @@ type Chart struct {
 
 // NewChart initializes helm chart after loading it from given
 // chart path and creating config object from environment variables.
+// The chart is rendered without contacting the cluster, so kubeVersion is
+// the Kubernetes version its kubeVersion constraint is checked against.
 // nolint:unparam
-func NewChart(chartPath, chartName, namespace string) (*Chart, error) {
+func NewChart(chartPath, chartName, namespace string, kubeVersion *common.KubeVersion) (*Chart, error) {
 	chart := &Chart{}
 	chart.envSettings = cli.New()
 	chart.client = action.NewInstall(new(action.Configuration))
 	chart.client.ReleaseName = chartName
 	chart.client.DryRunStrategy = action.DryRunClient
 	chart.client.Namespace = namespace
+	chart.client.KubeVersion = kubeVersion
 	cp, err := chart.client.LocateChart(chartPath, chart.envSettings)
 	if err != nil {
 		return nil, err
