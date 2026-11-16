@@ -635,6 +635,40 @@ var _ = Describe("Webhooks", GroutSupport, func() {
 					},
 				},
 			}, "all entries must be valid CIDRs"),
+			Entry("when trying to create an underlay with an invalid routerIDCIDR", v1alpha1.Underlay{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "underlay-bad-routerid",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.UnderlaySpec{
+					ASN:          65000,
+					RouterIDCIDR: new("notacidr"),
+					Interfaces:   []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "nic1"}}},
+					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+						CIDRs: []string{"192.168.1.0/24"},
+					},
+					Neighbors: []v1alpha1.Neighbor{
+						{ASN: new(int64(65001)), Address: new("192.168.1.1")},
+					},
+				},
+			}, `Underlay/underlay-bad-routerid: underlay underlay-bad-routerid has invalid routerIDCIDR: netip.ParsePrefix("notacidr"): no '/'`),
+			Entry("when trying to create an underlay with an IPv6 routerIDCIDR", v1alpha1.Underlay{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "underlay-ipv6-routerid",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.UnderlaySpec{
+					ASN:          65000,
+					RouterIDCIDR: new("fd00::/64"),
+					Interfaces:   []v1alpha1.UnderlayInterface{{Type: "NetworkDevice", NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "nic1"}}},
+					TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{
+						CIDRs: []string{"192.168.1.0/24"},
+					},
+					Neighbors: []v1alpha1.Neighbor{
+						{ASN: new(int64(65001)), Address: new("192.168.1.1")},
+					},
+				},
+			}, `Underlay/underlay-ipv6-routerid: underlay underlay-ipv6-routerid has invalid routerIDCIDR: must be an IPv4 CIDR`),
 		)
 
 		It("should allow creating an underlay with multiple NICs and neighbors", func() {
