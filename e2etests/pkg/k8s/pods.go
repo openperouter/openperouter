@@ -144,10 +144,6 @@ func DeletePodsByLabel(cs clientset.Interface, namespace, label string) ([]*core
 // WaitPodsRolled waits until every pod matching the label is a fresh, ready
 // replacement of the deleted ones.
 func WaitPodsRolled(cs clientset.Interface, namespace, label string, oldPods []*corev1.Pod) error {
-	oldNames := map[string]bool{}
-	for _, pod := range oldPods {
-		oldNames[pod.Name] = true
-	}
 	interval := 2 * time.Second
 	timeout := 3 * time.Minute
 	threeMinutesTimeout := wait.Backoff{
@@ -158,23 +154,32 @@ func WaitPodsRolled(cs clientset.Interface, namespace, label string, oldPods []*
 		return true
 	}
 	return retry.OnError(threeMinutesTimeout, allErrors, func() error {
-		newPods, err := PodsForLabel(cs, namespace, label)
-		if err != nil {
-			return err
-		}
-		if len(newPods) != len(oldPods) {
-			return fmt.Errorf("number of pods mismatchings")
-		}
-		for _, pod := range newPods {
-			if oldNames[pod.Name] {
-				return fmt.Errorf("pod %q not recreated yet", pod.Name)
-			}
-			if !PodIsReady(pod) {
-				return fmt.Errorf("pod %q not ready", pod.Name)
-			}
-		}
-		return nil
+		return PodsRolled(cs, namespace, label, oldPods)
 	})
+}
+
+// PodsRolled checks once whether all matching pods are ready replacements for oldPods.
+func PodsRolled(cs clientset.Interface, namespace, label string, oldPods []*corev1.Pod) error {
+	oldNames := map[string]struct{}{}
+	for _, pod := range oldPods {
+		oldNames[pod.Name] = struct{}{}
+	}
+	newPods, err := PodsForLabel(cs, namespace, label)
+	if err != nil {
+		return err
+	}
+	if len(newPods) != len(oldPods) {
+		return fmt.Errorf("number of pods mismatchings")
+	}
+	for _, pod := range newPods {
+		if _, old := oldNames[pod.Name]; old {
+			return fmt.Errorf("pod %q not recreated yet", pod.Name)
+		}
+		if !PodIsReady(pod) {
+			return fmt.Errorf("pod %q not ready", pod.Name)
+		}
+	}
+	return nil
 }
 
 func PodLogsSinceTime(cs clientset.Interface, pod *corev1.Pod,

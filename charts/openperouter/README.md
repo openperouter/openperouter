@@ -12,7 +12,7 @@ An open implementation of a PE router.
 
 ## Requirements
 
-Kubernetes: `>= 1.19.0-0`
+Kubernetes: `>= 1.21.0-0`
 
 | Repository | Name | Version |
 |------------|------|---------|
@@ -26,8 +26,9 @@ Kubernetes: `>= 1.19.0-0`
 | crds.validationFailurePolicy | string | `"Fail"` |  |
 | fullnameOverride | string | `""` |  |
 | nameOverride | string | `""` |  |
-| openperouter.affinity | object | `{}` | Affinity rules for all openperouter pods (router, controller, nodemarker, hostbridge). |
+| openperouter.affinity | object | `{}` | Affinity rules for all openperouter pods (router, controller, nodemarker, webhook, certcontroller, hostbridge). When unset, the webhook replicas prefer to run on different nodes. |
 | openperouter.bgpListenLimit | int | `65535` | Maximum number of dynamic BGP sessions accepted via underlay listen ranges (FRR `bgp listen limit`, 1-65535). |
+| openperouter.certController.resources | object | `{"requests":{"cpu":"10m","memory":"64Mi"}}` | Resources of the certcontroller container, which rotates the webhook certificate and injects its CA bundle. |
 | openperouter.controller.cniCacheDir | string | `"/var/lib/openperouter/cni/cache"` | CNI cache directory for persistent CNI state across pod restarts |
 | openperouter.controller.cniPluginDirs | list | `["/opt/openperouter/cni/bin/"]` | CNI plugin binary directories. The default matches the path baked into the controller image. Override only to use externally-provided binaries (e.g. host-mounted). |
 | openperouter.controller.healthProbePort | int | `9081` | Health probe port for liveness and readiness checks |
@@ -49,27 +50,30 @@ Kubernetes: `>= 1.19.0-0`
 | openperouter.grout.resources.requests.memory | string | `"512Mi"` |  |
 | openperouter.grout.tapUnderlay | bool | `false` | Use TAP ports for grout underlay interfaces instead of PCI ports. |
 | openperouter.grout.testMode | bool | `false` | Run grout in test mode. Test mode requires no hugepages and uses dummy FIB algorithms, which keeps memory usage low at the cost of real longest prefix match lookups. Leave it disabled for a hugepage-backed dataplane, requesting hugepages under grout.resources. |
-| openperouter.hostmode | bool | `false` | If true, enables host mode deployment: deploys hostbridge DaemonSet instead of router and controller, and configures nodemarker to run in webhook-only mode |
+| openperouter.hostmode | bool | `false` | If true, enables host mode deployment: deploys hostbridge DaemonSet instead of router and controller, and skips the nodemarker, since node indexes come from the local node configuration |
 | openperouter.image.pullPolicy | string | `""` |  |
 | openperouter.image.repository | string | `"quay.io/openperouter/router"` |  |
 | openperouter.image.tag | string | `""` |  |
 | openperouter.labels | object | `{}` |  |
 | openperouter.logLevel | string | `"info"` | Controller log level. Must be one of: `debug`, `info`, `warn` or `error`. |
 | openperouter.maxReconcileBackoffSeconds | int | `nil` | Maximum retry delay in seconds after failed API reconciliation. Unset uses the controller default rate limiter. |
-| openperouter.nodeSelector | object | `{}` | Node selector to constrain all openperouter pods (router, controller, nodemarker, hostbridge) to nodes with matching labels. |
-| openperouter.nodemarker.resources | object | `{"requests":{"cpu":"100m","memory":"128Mi"}}` | Resources of the nodemarker container. It serves validating webhooks, so CPU and memory requests keep admission calls responsive. |
+| openperouter.nodeSelector | object | `{}` | Node selector to constrain all openperouter pods (router, controller, nodemarker, webhook, certcontroller, hostbridge) to nodes with matching labels. |
+| openperouter.nodemarker.resources | object | `{"requests":{"cpu":"100m","memory":"128Mi"}}` | Resources of the nodemarker container, which allocates node indexes. |
 | openperouter.ovsRunDir | string | `"/var/run/openvswitch"` | OVS run directory to mount. This is the directory containing the OVS socket. |
 | openperouter.ovsSocketPath | string | `""` | OVS database socket path. Defaults to standard OVS location if not specified. |
 | openperouter.podAnnotations | object | `{}` |  |
-| openperouter.priorityClassName | string | `""` | Priority class for all openperouter pods (router, controller, nodemarker, hostbridge). Use system-node-critical, or system-cluster-critical where cluster policy requires it: Kubernetes protects both critical classes from node-pressure eviction, and the descheduler excludes critical pods by default. |
+| openperouter.priorityClassName | string | `""` | Priority class for all openperouter pods (router, controller, nodemarker, webhook, certcontroller, hostbridge). Use system-node-critical, or system-cluster-critical where cluster policy requires it: Kubernetes protects both critical classes from node-pressure eviction, and the descheduler excludes critical pods by default. |
 | openperouter.runtimeClassName | string | `""` |  |
 | openperouter.serviceAccounts.annotations | object | `{}` |  |
+| openperouter.serviceAccounts.certController.name | string | `""` |  |
 | openperouter.serviceAccounts.controller.name | string | `""` |  |
 | openperouter.serviceAccounts.create | bool | `true` |  |
 | openperouter.serviceAccounts.nodemarker.name | string | `""` |  |
 | openperouter.serviceAccounts.perouter.name | string | `""` |  |
-| openperouter.tolerations | list | `[{"effect":"NoSchedule","key":"node-role.kubernetes.io/master","operator":"Exists"},{"effect":"NoSchedule","key":"node-role.kubernetes.io/control-plane","operator":"Exists"}]` | Tolerations for all openperouter pods (router, controller, nodemarker, hostbridge). Defaults to tolerating control-plane/master node taints so the pods can run there. |
+| openperouter.serviceAccounts.webhook.name | string | `""` |  |
+| openperouter.tolerations | list | `[{"effect":"NoSchedule","key":"node-role.kubernetes.io/master","operator":"Exists"},{"effect":"NoSchedule","key":"node-role.kubernetes.io/control-plane","operator":"Exists"}]` | Tolerations for all openperouter pods (router, controller, nodemarker, webhook, certcontroller, hostbridge). Defaults to tolerating control-plane/master node taints so the pods can run there. |
 | openperouter.updateStrategy.type | string | `"RollingUpdate"` |  |
+| openperouter.webhook.resources | object | `{"requests":{"cpu":"100m","memory":"128Mi"}}` | Resources of the webhook container. It serves validating webhooks, so CPU and memory requests keep admission calls responsive. |
 | rbac.create | bool | `true` |  |
 | webhook.enabled | bool | `true` |  |
 
