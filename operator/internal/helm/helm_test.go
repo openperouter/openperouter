@@ -26,6 +26,7 @@ import (
 	operatorapi "github.com/openperouter/openperouter/operator/api/v1alpha1"
 	"github.com/openperouter/openperouter/operator/internal/envconfig"
 	helmchart "helm.sh/helm/v4/pkg/chart"
+	"helm.sh/helm/v4/pkg/chart/common"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -65,11 +66,13 @@ var defaultEnvConfig = envconfig.EnvConfig{
 	Namespace:      openperouterTestNamespace,
 }
 
+var testKubeVersion = &common.KubeVersion{Version: "v1.32.0", Major: "1", Minor: "32"}
+
 func TestLoadChart(t *testing.T) {
 	g := NewGomegaWithT(t)
-	_, err := NewChart(invalidChartPath, openperouterChartName, openperouterTestNamespace)
+	_, err := NewChart(invalidChartPath, openperouterChartName, openperouterTestNamespace, testKubeVersion)
 	g.Expect(err).To(HaveOccurred())
-	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace)
+	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace, testKubeVersion)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(chart.chart).ToNot(BeNil())
 	chartAccessor, err := helmchart.NewAccessor(chart.chart)
@@ -77,9 +80,43 @@ func TestLoadChart(t *testing.T) {
 	g.Expect(chartAccessor.Name()).To(Equal(openperouterChartName))
 }
 
+func TestChartKubeVersionConstraint(t *testing.T) {
+	tests := []struct {
+		name        string
+		kubeVersion *common.KubeVersion
+		wantErr     bool
+	}{
+		{
+			name:        "version without policy/v1 PodDisruptionBudget",
+			kubeVersion: &common.KubeVersion{Version: "v1.20.0", Major: "1", Minor: "20"},
+			wantErr:     true,
+		},
+		{
+			name:        "minimum supported version",
+			kubeVersion: &common.KubeVersion{Version: "v1.21.0", Major: "1", Minor: "21"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := NewGomegaWithT(t)
+			chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace, tt.kubeVersion)
+			g.Expect(err).ToNot(HaveOccurred())
+			openperouter := &operatorapi.OpenPERouter{
+				ObjectMeta: metav1.ObjectMeta{Name: "openperouter", Namespace: openperouterTestNamespace},
+			}
+			_, err = chart.Objects(defaultEnvConfig, openperouter)
+			if tt.wantErr {
+				g.Expect(err).To(MatchError(ContainSubstring("kubeVersion")))
+				return
+			}
+			g.Expect(err).ToNot(HaveOccurred())
+		})
+	}
+}
+
 func TestParseChartWithCustomValues(t *testing.T) {
 	g := NewGomegaWithT(t)
-	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace)
+	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace, testKubeVersion)
 	g.Expect(err).ToNot(HaveOccurred())
 	openperouter := &operatorapi.OpenPERouter{
 		ObjectMeta: metav1.ObjectMeta{
@@ -147,7 +184,7 @@ func TestParseChartControllerHasNoCRISocket(t *testing.T) {
 	for _, isOpenshift := range []bool{false, true} {
 		t.Run(fmt.Sprintf("openshift=%t", isOpenshift), func(t *testing.T) {
 			g := NewGomegaWithT(t)
-			chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace)
+			chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace, testKubeVersion)
 			g.Expect(err).ToNot(HaveOccurred())
 			env := defaultEnvConfig
 			env.IsOpenshift = isOpenshift
@@ -190,7 +227,7 @@ func expectNoCRISocket(t *testing.T, pod v1.PodSpec) {
 
 func TestParseChartRouterHasNoMultusAnnotation(t *testing.T) {
 	g := NewGomegaWithT(t)
-	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace)
+	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace, testKubeVersion)
 	g.Expect(err).ToNot(HaveOccurred())
 
 	openperouter := &operatorapi.OpenPERouter{
@@ -252,7 +289,7 @@ func validateObject(testcase, name string, obj *unstructured.Unstructured) error
 
 func TestParseChartWithGroutEnabled(t *testing.T) {
 	g := NewGomegaWithT(t)
-	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace)
+	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace, testKubeVersion)
 	g.Expect(err).ToNot(HaveOccurred())
 
 	openperouter := &operatorapi.OpenPERouter{
@@ -328,7 +365,7 @@ func TestParseChartWithGroutEnabled(t *testing.T) {
 
 func TestParseChartWithGroutTestModeAndTapUnderlay(t *testing.T) {
 	g := NewGomegaWithT(t)
-	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace)
+	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace, testKubeVersion)
 	g.Expect(err).ToNot(HaveOccurred())
 
 	openperouter := &operatorapi.OpenPERouter{
@@ -390,7 +427,7 @@ func TestParseChartWithGroutTestModeAndTapUnderlay(t *testing.T) {
 
 func TestParseChartWithGroutDisabled(t *testing.T) {
 	g := NewGomegaWithT(t)
-	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace)
+	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace, testKubeVersion)
 	g.Expect(err).ToNot(HaveOccurred())
 
 	openperouter := &operatorapi.OpenPERouter{
@@ -438,7 +475,7 @@ func TestParseChartWithGroutDisabled(t *testing.T) {
 
 func TestParseChartWithSchedulingPrimitives(t *testing.T) {
 	g := NewGomegaWithT(t)
-	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace)
+	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace, testKubeVersion)
 	g.Expect(err).ToNot(HaveOccurred())
 
 	testTolerations := []v1.Toleration{{
@@ -553,7 +590,7 @@ func TestParseChartWithSchedulingPrimitives(t *testing.T) {
 
 func TestParseChartWithBGPListenLimit(t *testing.T) {
 	g := NewGomegaWithT(t)
-	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace)
+	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace, testKubeVersion)
 	g.Expect(err).ToNot(HaveOccurred())
 	limit := int32(512)
 	openperouter := &operatorapi.OpenPERouter{
@@ -609,7 +646,7 @@ func TestParseChartWithMaxReconcileBackoff(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			g := NewGomegaWithT(t)
-			chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace)
+			chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace, testKubeVersion)
 			g.Expect(err).To(Succeed())
 			resource := &operatorapi.OpenPERouter{
 				Spec: operatorapi.OpenPERouterSpec{ControllerMaxReconcileBackoffSeconds: tt.backoff},

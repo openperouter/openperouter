@@ -170,7 +170,7 @@ func TestParseChartResourceOverridesLeaveOtherContainersAtDefaults(t *testing.T)
 // renderPodSpecs renders the chart through the operator and returns pod specs
 // keyed by workload name.
 func renderPodSpecs(g Gomega, spec operatorapi.OpenPERouterSpec) map[string]v1.PodSpec {
-	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace)
+	chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace, testKubeVersion)
 	g.Expect(err).To(Succeed())
 	openperouter := &operatorapi.OpenPERouter{
 		ObjectMeta: metav1.ObjectMeta{Name: "openperouter", Namespace: openperouterTestNamespace},
