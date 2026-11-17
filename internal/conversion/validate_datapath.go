@@ -48,3 +48,27 @@ func (k *KernelDatapathConfigValidator) Validate(apiConfig APIConfigData) error 
 func hasAcceleratedConfig(iface v1alpha1.UnderlayInterface) bool {
 	return iface.NetworkDevice != nil && iface.NetworkDevice.AcceleratedConfig != nil
 }
+
+// FilterL2Trunks removes trunks unsupported by the grout datapath.
+func (g *GroutDatapathConfigValidator) FilterL2Trunks(trunks []v1alpha1.L2Trunk) ([]v1alpha1.L2Trunk, error) {
+	valid := trunks[:0]
+	errs := make([]error, 0, len(trunks))
+	for _, trunk := range trunks {
+		if err := ValidateGroutL2Trunk(trunk); err != nil {
+			errs = append(errs, l2TrunkValidationError(trunk.Name, err.Error()))
+			continue
+		}
+		valid = append(valid, trunk)
+	}
+	return valid, errors.Join(errs...)
+}
+
+// FilterL2Trunks removes all trunks because the kernel datapath cannot carry them.
+func (k *KernelDatapathConfigValidator) FilterL2Trunks(trunks []v1alpha1.L2Trunk) ([]v1alpha1.L2Trunk, error) {
+	errs := make([]error, 0, len(trunks))
+	for _, trunk := range trunks {
+		errs = append(errs, l2TrunkValidationError(trunk.Name,
+			fmt.Sprintf("l2trunk %s: L2Trunks are only supported with the grout datapath", trunk.Name)))
+	}
+	return trunks[:0], errors.Join(errs...)
+}

@@ -25,7 +25,9 @@ var failingUpdater = frr.ConfigUpdater(func(_ context.Context, _ string) error {
 	return fmt.Errorf("frr-reload failed")
 })
 
-type noopDatapathConfigurator struct{}
+type noopDatapathConfigurator struct {
+	conversion.GroutDatapathConfigValidator
+}
 
 func (n *noopDatapathConfigurator) Configure(_ context.Context, _ interfacesConfiguration) error {
 	return nil
@@ -769,6 +771,7 @@ func TestReconcileFrrReloadFailure(t *testing.T) {
 // recordingDatapathConfigurator appends to a shared list every time the datapath
 // is configured, so that tests can assert the order of the reconcile steps.
 type recordingDatapathConfigurator struct {
+	conversion.GroutDatapathConfigValidator
 	steps *[]string
 }
 
@@ -917,4 +920,55 @@ func sriovL2Trunk(name string) v1alpha1.L2Trunk {
 			SRIOV: &v1alpha1.SRIOVTrunkConfig{PFName: "enp1s0", VFIndex: new(int32(1))},
 		},
 	}
+}
+
+func TestReconcileFiltersKernelTrunks(t *testing.T) {
+	trunk := sriovL2Trunk("workloads")
+	config := conversion.APIConfigData{
+		L2Trunks: []v1alpha1.L2Trunk{trunk},
+		L2VNIs: []v1alpha1.L2VNI{
+			trunkL2VNI("trunked", 100, trunk.Name, 33),
+		},
+		L3VNIs: []v1alpha1.L3VNI{l3VNI("unrelated", "red", 200)},
+	}
+	var frrConfig conversion.APIConfigData
+	datapath := &kernelRecordingConfigurator{}
+	err := Reconcile(context.Background(), config, 0, "", "", "", noopUpdater, datapath,
+		func(_ context.Context, data frrConfigData) error {
+			frrConfig = data.APIConfigData
+			return nil
+		})
+	wantFailures := []v1alpha1.FailedResource{
+		{Kind: openpeerrors.KindL2Trunk, Name: "workloads",
+			Reason:  v1alpha1.FailedResourceReasonValidationFailed,
+			Message: "l2trunk workloads: L2Trunks are only supported with the grout datapath"},
+		{Kind: openpeerrors.KindL2VNI, Name: "trunked",
+			Reason:  v1alpha1.FailedResourceReasonDependencyFailed,
+			Message: `referenced L2Trunk "workloads" not found`},
+	}
+	if diff := cmp.Diff(wantFailures, openpeerrors.CollectFailures(err)); diff != "" {
+		t.Fatalf("failures (-want +got):\n%s", diff)
+	}
+	want := conversion.APIConfigData{
+		L3VNIs: config.L3VNIs, L2VNIs: []v1alpha1.L2VNI{}, L2Trunks: []v1alpha1.L2Trunk{},
+	}
+	for name, got := range map[string]conversion.APIConfigData{"frr": frrConfig, "datapath": datapath.config} {
+		if diff := cmp.Diff(want, got); diff != "" {
+			t.Errorf("%s configuration (-want +got):\n%s", name, diff)
+		}
+	}
+}
+
+type kernelRecordingConfigurator struct {
+	conversion.KernelDatapathConfigValidator
+	config conversion.APIConfigData
+}
+
+func (k *kernelRecordingConfigurator) Configure(_ context.Context, config interfacesConfiguration) error {
+	k.config = config.APIConfigData
+	return nil
+}
+
+func (k *kernelRecordingConfigurator) InterfaceNameForFRR(name string) string {
+	return name
 }

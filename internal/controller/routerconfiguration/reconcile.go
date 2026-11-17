@@ -25,6 +25,7 @@ type DatapathConfigurator interface {
 	conversion.InterfaceNameTranslator
 
 	Configure(ctx context.Context, config interfacesConfiguration) error
+	FilterL2Trunks([]v1alpha1.L2Trunk) ([]v1alpha1.L2Trunk, error)
 }
 
 func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeIndex int, logLevel string,
@@ -38,7 +39,9 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 	var resourceErrors []error
 	var err error
 
-	err = datapathConfigurator.Validate(apiConfig)
+	validationConfig := apiConfig
+	validationConfig.L2Trunks = nil
+	err = datapathConfigurator.Validate(validationConfig)
 	resourceErrors = append(resourceErrors, err)
 
 	if conversion.HasMissingSRv6ForL3VPNs(apiConfig.Underlays, apiConfig.L3VPNs) {
@@ -64,6 +67,9 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 	resourceErrors = append(resourceErrors, err)
 
 	validL2Trunks, err := conversion.FilterValidL2Trunks(apiConfig.L2Trunks)
+	resourceErrors = append(resourceErrors, err)
+
+	validL2Trunks, err = datapathConfigurator.FilterL2Trunks(validL2Trunks)
 	resourceErrors = append(resourceErrors, err)
 
 	validOverlays.L2VNIs, err = filterL2VNIsWithMissingTrunk(validOverlays.L2VNIs, validL2Trunks)
