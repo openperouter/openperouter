@@ -14,26 +14,17 @@ import (
 	"k8s.io/utils/ptr"
 )
 
-// SetupL2VNI creates a Grout bridge domain backed by a VXLAN interface. The
-// bridge is attached to the trunk port of the referenced L2Trunk through a
-// VLAN sub-interface when the L2VNI is carried by a trunk, and exposed to the
-// host through a TAP device otherwise. trunks holds the successfully
-// configured L2Trunks.
+// SetupL2VNI creates the VXLAN bridge and gateway of an L2VNI.
 func SetupL2VNI(
 	ctx context.Context,
 	client *Client,
-	ovsClient *hostnetwork.OVSClient,
 	params hostnetwork.L2VNIParams,
-	trunks ConfiguredTrunks,
 ) error {
 	slog.DebugContext(ctx, "setup L2VNI", "vni", params.VNI, "vrf", params.VRF)
 	defer slog.DebugContext(ctx, "setup L2VNI done", "vni", params.VNI)
 
 	bridgeName, err := setupL2VNIBridge(ctx, client, params)
 	if err != nil {
-		return fmt.Errorf("SetupL2VNI: %w", err)
-	}
-	if err := attachL2VNIBridge(ctx, client, ovsClient, params, bridgeName, trunks); err != nil {
 		return fmt.Errorf("SetupL2VNI: %w", err)
 	}
 
@@ -45,32 +36,15 @@ func SetupL2VNI(
 	return nil
 }
 
-// attachL2VNIBridge attaches the bridge of an L2VNI to the carrier its
-// configuration selects: the grout port of its trunk VF, or the host through
-// a TAP device when no trunk carries it.
-func attachL2VNIBridge(
-	ctx context.Context,
-	client *Client,
-	ovsClient *hostnetwork.OVSClient,
-	params hostnetwork.L2VNIParams,
-	bridgeName string,
-	trunks ConfiguredTrunks,
-) error {
-	if params.Trunk == nil {
-		return attachBridgeToHost(ctx, client, ovsClient, params, bridgeName)
-	}
-	return attachBridgeToVFTrunk(ctx, client, params, bridgeName, trunks)
-}
-
-// attachBridgeToHost exposes the bridge to the host through a TAP device,
+// AttachL2VNIToHost exposes the bridge to the host through a TAP device,
 // enslaving the host side to the host master when one is configured.
-func attachBridgeToHost(
+func AttachL2VNIToHost(
 	ctx context.Context,
 	client *Client,
 	ovsClient *hostnetwork.OVSClient,
 	params hostnetwork.L2VNIParams,
-	bridgeName string,
 ) error {
+	bridgeName := hostnetwork.BridgeName(params.VNI)
 	linkPair := linkPairFromVNI(params.VNI)
 	ns, err := netns.GetFromPath(params.TargetNS)
 	if err != nil {
@@ -106,15 +80,15 @@ func attachBridgeToHost(
 	return nil
 }
 
-// attachBridgeToVFTrunk attaches the bridge of an L2VNI to the grout port of
+// AttachL2VNIToVFTrunk attaches the bridge of an L2VNI to the grout port of
 // its trunk VF, through a VLAN sub-interface carrying the L2VNI's tag.
-func attachBridgeToVFTrunk(
+func AttachL2VNIToVFTrunk(
 	ctx context.Context,
 	client *Client,
 	params hostnetwork.L2VNIParams,
-	bridgeName string,
 	trunks ConfiguredTrunks,
 ) error {
+	bridgeName := hostnetwork.BridgeName(params.VNI)
 	port, ok := trunks.Port(params.Trunk.Name)
 	if !ok {
 		return fmt.Errorf("L2Trunk %q failed provisioning", params.Trunk.Name)
