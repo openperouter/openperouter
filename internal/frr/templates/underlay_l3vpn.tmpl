@@ -8,6 +8,7 @@
 {{- else }}
     neighbor {{ $neighbor.ID }} next-hop-self
 {{- end }}
+{{- template "fabricneighborpolicy" dict "neighbor" $neighbor "routerASN" $.Underlay.MyASN }}
 {{- end }}
 {{- end }}
   exit-address-family
@@ -21,6 +22,7 @@
 {{- else }}
     neighbor {{ $neighbor.ID }} next-hop-self
 {{- end }}
+{{- template "fabricneighborpolicy" dict "neighbor" $neighbor "routerASN" $.Underlay.MyASN }}
 {{- end }}
 {{- end }}
   exit-address-family

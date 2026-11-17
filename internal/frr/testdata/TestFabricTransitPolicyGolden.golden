@@ -1,0 +1,197 @@
+log stdout 
+log timestamp precision 3
+hostname hostname
+ip nht resolve-via-default
+ipv6 nht resolve-via-default
+
+route-map allowall permit 1
+
+bgp community-list standard openpe-fabric permit 65432:10
+route-map openpe-fabric-in permit 1
+  set community 65432:10 additive
+route-map openpe-fabric-out deny 1
+  match community openpe-fabric
+route-map openpe-fabric-out permit 2
+  set comm-list openpe-fabric delete
+route-map openpe-fabric-strip permit 1
+  set comm-list openpe-fabric delete
+router bgp 65000
+  no bgp ebgp-requires-policy
+  no bgp network import-check
+  no bgp default ipv4-unicast
+  bgp bestpath as-path multipath-relax
+  bgp router-id 192.0.2.1
+  bgp listen limit 65535
+  neighbor 192.0.2.100 remote-as 65000
+  
+  
+  
+  neighbor 192.0.2.101 remote-as internal
+  
+  
+  
+  neighbor 192.0.2.10 remote-as 65001
+  
+  
+  
+  neighbor 192.0.2.10 disable-connected-check
+  neighbor dynamic-external peer-group
+  neighbor dynamic-external remote-as external
+  bgp listen range 192.0.2.0/24 peer-group dynamic-external
+  
+  
+  
+  neighbor eth1 interface remote-as external
+  
+  
+  
+
+  address-family ipv4 unicast
+    neighbor 192.0.2.100 activate
+    neighbor 192.0.2.100 next-hop-self force
+    neighbor 192.0.2.100 route-map openpe-fabric-strip out
+  exit-address-family
+  address-family ipv6 unicast
+    neighbor 192.0.2.100 activate
+    neighbor 192.0.2.100 next-hop-self force
+    neighbor 192.0.2.100 route-map openpe-fabric-strip out
+  exit-address-family
+
+  address-family ipv4 unicast
+    neighbor 192.0.2.101 activate
+    neighbor 192.0.2.101 next-hop-self force
+    neighbor 192.0.2.101 route-map openpe-fabric-strip out
+  exit-address-family
+  address-family ipv6 unicast
+    neighbor 192.0.2.101 activate
+    neighbor 192.0.2.101 next-hop-self force
+    neighbor 192.0.2.101 route-map openpe-fabric-strip out
+  exit-address-family
+
+  address-family ipv4 unicast
+    neighbor 192.0.2.10 activate
+    neighbor 192.0.2.10 allowas-in
+    neighbor 192.0.2.10 route-map openpe-fabric-in in
+    neighbor 192.0.2.10 route-map openpe-fabric-out out
+  exit-address-family
+  address-family ipv6 unicast
+    neighbor 192.0.2.10 activate
+    neighbor 192.0.2.10 allowas-in
+    neighbor 192.0.2.10 route-map openpe-fabric-in in
+    neighbor 192.0.2.10 route-map openpe-fabric-out out
+  exit-address-family
+
+  address-family ipv4 unicast
+    neighbor dynamic-external activate
+    neighbor dynamic-external allowas-in
+    neighbor dynamic-external route-map openpe-fabric-in in
+    neighbor dynamic-external route-map openpe-fabric-out out
+  exit-address-family
+  address-family ipv6 unicast
+    neighbor dynamic-external activate
+    neighbor dynamic-external allowas-in
+    neighbor dynamic-external route-map openpe-fabric-in in
+    neighbor dynamic-external route-map openpe-fabric-out out
+  exit-address-family
+
+  address-family ipv4 unicast
+    neighbor eth1 activate
+    neighbor eth1 allowas-in
+    neighbor eth1 route-map openpe-fabric-in in
+    neighbor eth1 route-map openpe-fabric-out out
+  exit-address-family
+  address-family ipv6 unicast
+    neighbor eth1 activate
+    neighbor eth1 allowas-in
+    neighbor eth1 route-map openpe-fabric-in in
+    neighbor eth1 route-map openpe-fabric-out out
+  exit-address-family
+  address-family ipv4 unicast
+    network 100.64.0.1/32
+  exit-address-family
+
+  address-family l2vpn evpn
+    neighbor 192.0.2.100 activate
+    neighbor 192.0.2.100 route-map openpe-fabric-strip out
+    neighbor 192.0.2.101 activate
+    neighbor 192.0.2.101 route-map openpe-fabric-strip out
+    neighbor 192.0.2.10 activate
+    neighbor 192.0.2.10 allowas-in
+    neighbor 192.0.2.10 route-map openpe-fabric-in in
+    neighbor 192.0.2.10 route-map openpe-fabric-out out
+    neighbor dynamic-external activate
+    neighbor dynamic-external allowas-in
+    neighbor dynamic-external route-map openpe-fabric-in in
+    neighbor dynamic-external route-map openpe-fabric-out out
+    neighbor eth1 activate
+    neighbor eth1 allowas-in
+    neighbor eth1 route-map openpe-fabric-in in
+    neighbor eth1 route-map openpe-fabric-out out
+    advertise-all-vni
+  exit-address-family
+  address-family ipv4 vpn
+    neighbor 192.0.2.100 activate
+    neighbor 192.0.2.100 next-hop-self
+    neighbor 192.0.2.100 route-map openpe-fabric-strip out
+    neighbor 192.0.2.101 activate
+    neighbor 192.0.2.101 next-hop-self
+    neighbor 192.0.2.101 route-map openpe-fabric-strip out
+    neighbor 192.0.2.10 activate
+    neighbor 192.0.2.10 next-hop-self
+    neighbor 192.0.2.10 route-map openpe-fabric-in in
+    neighbor 192.0.2.10 route-map openpe-fabric-out out
+    neighbor dynamic-external activate
+    neighbor dynamic-external next-hop-self
+    neighbor dynamic-external route-map openpe-fabric-in in
+    neighbor dynamic-external route-map openpe-fabric-out out
+    neighbor eth1 activate
+    neighbor eth1 next-hop-self
+    neighbor eth1 route-map openpe-fabric-in in
+    neighbor eth1 route-map openpe-fabric-out out
+  exit-address-family
+  !
+  address-family ipv6 vpn
+    neighbor 192.0.2.100 activate
+    neighbor 192.0.2.100 next-hop-self
+    neighbor 192.0.2.100 route-map openpe-fabric-strip out
+    neighbor 192.0.2.101 activate
+    neighbor 192.0.2.101 next-hop-self
+    neighbor 192.0.2.101 route-map openpe-fabric-strip out
+    neighbor 192.0.2.10 activate
+    neighbor 192.0.2.10 next-hop-self
+    neighbor 192.0.2.10 route-map openpe-fabric-in in
+    neighbor 192.0.2.10 route-map openpe-fabric-out out
+    neighbor dynamic-external activate
+    neighbor dynamic-external next-hop-self
+    neighbor dynamic-external route-map openpe-fabric-in in
+    neighbor dynamic-external route-map openpe-fabric-out out
+    neighbor eth1 activate
+    neighbor eth1 next-hop-self
+    neighbor eth1 route-map openpe-fabric-in in
+    neighbor eth1 route-map openpe-fabric-out out
+  exit-address-family
+  !
+  segment-routing srv6
+    encap-behavior H_Encaps
+    locator MAIN
+  exit
+exit
+!
+segment-routing
+  srv6
+    encapsulation
+      source-address fc00::1
+    exit
+    locators
+      locator MAIN
+        prefix fd00::/48 block-len 32 node-len 16
+        behavior usid
+        format usid-f3216
+      exit
+      !
+    exit
+    !
+  exit
+  !
+exit
+!
