@@ -12,7 +12,6 @@ import (
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/e2etests/pkg/executor"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8s"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	clientset "k8s.io/client-go/kubernetes"
 )
 
@@ -30,15 +29,6 @@ type L2VNIPod struct {
 // bridge of an L2VNI.
 func HostBridgeName(vni int32) string {
 	return fmt.Sprintf("br-hs-%d", vni)
-}
-
-// EnsureNamespace creates the test namespace, tolerating the one left over
-// by a previous spec of an ordered suite.
-func EnsureNamespace(cs clientset.Interface, name string) {
-	GinkgoHelper()
-	if _, err := k8s.CreateNamespace(cs, name); err != nil {
-		Expect(apierrors.IsAlreadyExists(err)).To(BeTrue(), "creating namespace %s: %v", name, err)
-	}
 }
 
 // CreateL2VNIPods creates one macvlan NAD and one agnhost pod per entry, all

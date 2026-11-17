@@ -142,6 +142,7 @@ var _ = Describe("SR-IOV L2Trunk", Ordered, QEMUSupport, GroutSupport, func() {
 	BeforeAll(func() {
 		Expect(Updater.CleanAll()).To(Succeed())
 		cs = k8sclient.New()
+		Expect(k8s.CreateNamespace(cs, l2trunkTestNS)).Error().To(Succeed())
 
 		var err error
 		routers, err = openperouter.Get(cs, false)
@@ -237,7 +238,6 @@ var _ = Describe("SR-IOV L2Trunk", Ordered, QEMUSupport, GroutSupport, func() {
 
 		// The pods share their L2 segments across nodes, so they all run
 		// on a single node to avoid address conflicts.
-		workloads.EnsureNamespace(cs, l2trunkTestNS)
 		executors := workloads.CreateL2VNIPods(cs, l2trunkTestNS, openperouter.FirstRouterNode(routers), pods)
 
 		for _, from := range pods {
@@ -278,7 +278,6 @@ var _ = Describe("SR-IOV L2Trunk", Ordered, QEMUSupport, GroutSupport, func() {
 
 		// The pods share their L2 segments across nodes, so they all run
 		// on a single node to avoid address conflicts.
-		workloads.EnsureNamespace(cs, l2trunkTestNS)
 		executors := workloads.CreateL2VNIPods(cs, l2trunkTestNS, openperouter.FirstRouterNode(routers), pods)
 
 		for _, p := range pods {
