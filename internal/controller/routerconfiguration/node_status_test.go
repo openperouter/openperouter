@@ -23,7 +23,9 @@ import (
 	"github.com/openperouter/openperouter/internal/conversion"
 )
 
-type failingDatapathConfigurator struct{}
+type failingDatapathConfigurator struct {
+	conversion.GroutDatapathConfigValidator
+}
 
 func (f *failingDatapathConfigurator) Configure(_ context.Context, _ interfacesConfiguration) error {
 	return fmt.Errorf("failed to setup underlay: link not found")
