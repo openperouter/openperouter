@@ -53,7 +53,15 @@ type LinkIPs struct {
 	NSIPv6   string
 }
 
+type L2VNIAttachment int
+
+const (
+	L2VNIAttachmentHost L2VNIAttachment = iota
+	L2VNIAttachmentVFTrunk
+)
+
 type L2VNIParams struct {
+	Attachment L2VNIAttachment
 	VNIParams
 	Name         string
 	L2GatewayIPs []string

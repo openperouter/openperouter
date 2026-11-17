@@ -1943,6 +1943,7 @@ func TestAPItoHostConfigL2Trunks(t *testing.T) {
 				VXLanPort:      new(int32(4789)),
 				TunnelOverhead: hostnetwork.VXLanOverhead,
 			},
+			Attachment: hostnetwork.L2VNIAttachmentVFTrunk,
 			Trunk: &hostnetwork.L2VNITrunkParams{
 				Name: "workloads",
 				VLAN: 33,

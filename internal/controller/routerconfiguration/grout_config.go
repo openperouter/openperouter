@@ -116,21 +116,9 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 	configuredTrunks, err := g.setupL2Trunks(ctx, groutClient, hostConfig.L2Trunks)
 	resourceErrors = append(resourceErrors, err)
 
-	var configuredL2VNIs []hostnetwork.L2VNIParams
-	for _, vni := range hostConfig.L2VNIs {
-		if failedL3Domains.Has(vni.VRF) {
-			message := fmt.Sprintf("L3 domain %q failed provisioning", vni.VRF)
-			resourceErrors = append(resourceErrors, overlayAttachmentError(openpeerrors.KindL2VNI, vni.Name, message))
-			continue
-		}
-		slog.InfoContext(ctx, "setting up L2VNI", "vni", vni.VNI)
-		if err := grout.SetupL2VNI(ctx, groutClient, ovsClient, vni, configuredTrunks); err != nil {
-			resourceErrors = append(resourceErrors,
-				overlayAttachmentError(openpeerrors.KindL2VNI, vni.Name, err.Error()))
-			continue
-		}
-		configuredL2VNIs = append(configuredL2VNIs, vni)
-	}
+	configuredL2VNIs, err := setupGroutL2VNIs(ctx, groutClient, ovsClient,
+		hostConfig.L2VNIs, failedL3Domains, configuredTrunks)
+	resourceErrors = append(resourceErrors, err)
 
 	slog.InfoContext(ctx, "setting up passthrough")
 	if hostConfig.L3Passthrough != nil {
@@ -233,4 +221,46 @@ func (g *GroutDatapathConfigurator) setupL2Trunks(
 		configured[trunk.Name] = trunk
 	}
 	return configured, errors.Join(resourceErrors...)
+}
+
+func setupGroutL2VNIs(
+	ctx context.Context,
+	client *grout.Client,
+	ovsClient *hostnetwork.OVSClient,
+	l2VNIs []hostnetwork.L2VNIParams,
+	failedL3Domains sets.Set[string],
+	configuredTrunks grout.ConfiguredTrunks,
+) ([]hostnetwork.L2VNIParams, error) {
+	var errs []error
+	var err error
+	var configuredL2VNIs []hostnetwork.L2VNIParams
+	for _, vni := range l2VNIs {
+		if failedL3Domains.Has(vni.VRF) {
+			message := fmt.Sprintf("L3 domain %q failed provisioning", vni.VRF)
+			errs = append(errs, overlayAttachmentError(openpeerrors.KindL2VNI, vni.Name, message))
+			continue
+		}
+		slog.InfoContext(ctx, "setting up L2VNI", "vni", vni.VNI)
+		if err := grout.SetupL2VNI(ctx, client, vni); err != nil {
+			errs = append(errs,
+				overlayAttachmentError(openpeerrors.KindL2VNI, vni.Name, err.Error()))
+			continue
+		}
+		switch vni.Attachment {
+		case hostnetwork.L2VNIAttachmentHost:
+			err = grout.AttachL2VNIToHost(ctx, client, ovsClient, vni)
+		case hostnetwork.L2VNIAttachmentVFTrunk:
+			err = grout.AttachL2VNIToVFTrunk(ctx, client, vni, configuredTrunks)
+		default:
+			err = fmt.Errorf("unsupported L2VNI attachment %d", vni.Attachment)
+		}
+		if err != nil {
+			errs = append(errs,
+				overlayAttachmentError(openpeerrors.KindL2VNI, vni.Name, err.Error()))
+			continue
+		}
+		configuredL2VNIs = append(configuredL2VNIs, vni)
+	}
+
+	return configuredL2VNIs, errors.Join(errs...)
 }

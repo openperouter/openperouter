@@ -73,16 +73,17 @@ func TestAttachL2VNIBridgeToTrunk(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := recordGrcli(t, map[string]string{showVLAN: tt.existing})
-			params := hostnetwork.L2VNIParams{Trunk: &hostnetwork.L2VNITrunkParams{
-				Name: "workloads", VLAN: 33,
-			}}
+			params := hostnetwork.L2VNIParams{
+				VNIParams: hostnetwork.VNIParams{VNI: 100},
+				Trunk:     &hostnetwork.L2VNITrunkParams{Name: "workloads", VLAN: 33},
+			}
 			trunks := ConfiguredTrunks{
 				"workloads": {
 					Name:  "workloads",
 					SRIOV: &hostnetwork.SRIOVTrunkParams{PFName: "enp1s0", VFIndex: 1},
 				},
 			}
-			err := attachL2VNIBridge(context.Background(), NewClient("sock"), nil, params, "br-pe-100", trunks)
+			err := AttachL2VNIToVFTrunk(context.Background(), NewClient("sock"), params, trunks)
 			require.NoError(t, err)
 			require.Equal(t, tt.want, *got)
 		})
@@ -108,10 +109,11 @@ func TestAttachL2VNIBridgeWithUnconfiguredTrunk(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := recordGrcli(t, nil)
-			params := hostnetwork.L2VNIParams{Trunk: &hostnetwork.L2VNITrunkParams{
-				Name: "workloads", VLAN: 33,
-			}}
-			err := attachL2VNIBridge(context.Background(), NewClient("sock"), nil, params, "br-pe-100", tt.trunks)
+			params := hostnetwork.L2VNIParams{
+				VNIParams: hostnetwork.VNIParams{VNI: 100},
+				Trunk:     &hostnetwork.L2VNITrunkParams{Name: "workloads", VLAN: 33},
+			}
+			err := AttachL2VNIToVFTrunk(context.Background(), NewClient("sock"), params, tt.trunks)
 			require.EqualError(t, err, `L2Trunk "workloads" failed provisioning`)
 			require.Empty(t, *got, "an unconfigured trunk must not create or attach a VLAN")
 		})

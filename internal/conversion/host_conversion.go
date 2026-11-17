@@ -373,6 +373,7 @@ func l2vniToHost(
 		hostL2VNI.HostMaster = hm
 	}
 	if l2vni.Spec.Trunk != nil {
+		hostL2VNI.Attachment = hostnetwork.L2VNIAttachmentVFTrunk
 		hostL2VNI.Trunk = &hostnetwork.L2VNITrunkParams{
 			Name: l2vni.Spec.Trunk.Name,
 			VLAN: l2vni.Spec.Trunk.VLAN.Tag,
