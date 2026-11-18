@@ -60,6 +60,15 @@ func TestSetupVNIsWithoutVNIs(t *testing.T) {
 func TestSetupL2VNIs(t *testing.T) {
 	red := l2VNIForTest("red", 100)
 	blue := l2VNIForTest("blue", 200)
+	trunked := hostnetwork.L2VNIParams{
+		VNIParams: hostnetwork.VNIParams{VNI: 300},
+		Name:      "trunked",
+		Trunk: &hostnetwork.L2VNITrunkParams{
+			TrunkID: "trunk-id",
+			Name:    "workloads",
+			VLAN:    100,
+		},
+	}
 	errOVSDB := fmt.Errorf("%w: failed to connect to OVSDB", openpeerrors.ErrTransient)
 	errMissingMaster := errors.New("could not find host master br-missing")
 
@@ -67,6 +76,7 @@ func TestSetupL2VNIs(t *testing.T) {
 		name            string
 		l2VNIs          []hostnetwork.L2VNIParams
 		failedL3Domains map[string]struct{}
+		failedTrunks    map[string]struct{}
 		setupErrs       map[string]error
 		wantSetUp       []hostnetwork.L2VNIParams
 		wantKept        []hostnetwork.L2VNIParams
@@ -116,6 +126,22 @@ func TestSetupL2VNIs(t *testing.T) {
 			wantKept:        []hostnetwork.L2VNIParams{blue},
 			wantErrs:        []error{wantResourceError(openpeerrors.KindL2VNI, "red", `L3 domain "red" failed netlink provisioning`)},
 		},
+		{
+			name:         "an L2VNI of a failed trunk is reported and left out",
+			l2VNIs:       []hostnetwork.L2VNIParams{red, trunked},
+			failedTrunks: map[string]struct{}{"trunk-id": {}},
+			wantSetUp:    []hostnetwork.L2VNIParams{red},
+			wantKept:     []hostnetwork.L2VNIParams{red},
+			wantErrs: []error{
+				wantResourceError(openpeerrors.KindL2VNI, "trunked", `L2Trunk "workloads" failed netlink provisioning`),
+			},
+		},
+		{
+			name:      "a trunk-attached L2VNI goes through the trunk provisioner",
+			l2VNIs:    []hostnetwork.L2VNIParams{trunked},
+			wantSetUp: []hostnetwork.L2VNIParams{trunked},
+			wantKept:  []hostnetwork.L2VNIParams{trunked},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -128,7 +154,7 @@ func TestSetupL2VNIs(t *testing.T) {
 			})
 			configurator := &fakeVNIConfigurator{setupErrs: tc.setupErrs}
 
-			kept, errs := setupL2VNIs(ctx, configurator, tc.l2VNIs, tc.failedL3Domains)
+			kept, errs := setupL2VNIs(ctx, configurator, tc.l2VNIs, tc.failedL3Domains, tc.failedTrunks)
 
 			require.Equal(t, tc.wantKept, kept)
 			require.Equal(t, tc.wantErrs, errs)
@@ -252,6 +278,71 @@ func TestSetupL3VPNs(t *testing.T) {
 	}
 }
 
+func TestSetupL2Trunks(t *testing.T) {
+	red := l2TrunkForTest("red")
+	blue := l2TrunkForTest("blue")
+	errTransient := fmt.Errorf("%w: failed to open router namespace", openpeerrors.ErrTransient)
+	errPermanent := errors.New("could not find host master br-missing")
+
+	tests := []struct {
+		name       string
+		l2Trunks   []hostnetwork.L2TrunkParams
+		setupErrs  map[string]error
+		wantKept   []hostnetwork.L2TrunkParams
+		wantErrs   []error
+		wantFailed map[string]struct{}
+	}{
+		{
+			name:       "no L2Trunks",
+			wantFailed: map[string]struct{}{},
+		},
+		{
+			name:       "all set up",
+			l2Trunks:   []hostnetwork.L2TrunkParams{red, blue},
+			wantKept:   []hostnetwork.L2TrunkParams{red, blue},
+			wantFailed: map[string]struct{}{},
+		},
+		{
+			name:      "a transient failure keeps the trunk's devices but still marks it failed",
+			l2Trunks:  []hostnetwork.L2TrunkParams{red, blue},
+			setupErrs: map[string]error{"red": errTransient},
+			wantKept:  []hostnetwork.L2TrunkParams{red, blue},
+			wantErrs:  []error{wantResourceError(openpeerrors.KindL2Trunk, "red", errTransient.Error())},
+			wantFailed: map[string]struct{}{
+				hostnetwork.TrunkID(red.Namespace, red.Name): {},
+			},
+		},
+		{
+			name:      "any other failure drops the trunk and marks it failed",
+			l2Trunks:  []hostnetwork.L2TrunkParams{red, blue},
+			setupErrs: map[string]error{"blue": errPermanent},
+			wantKept:  []hostnetwork.L2TrunkParams{red},
+			wantErrs:  []error{wantResourceError(openpeerrors.KindL2Trunk, "blue", errPermanent.Error())},
+			wantFailed: map[string]struct{}{
+				hostnetwork.TrunkID(blue.Namespace, blue.Name): {},
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			failedTrunks := map[string]struct{}{}
+			configurator := &fakeVNIConfigurator{setupErrs: tc.setupErrs}
+
+			kept, errs := setupL2Trunks(context.Background(), configurator, tc.l2Trunks, failedTrunks)
+
+			require.Equal(t, tc.wantKept, kept)
+			require.Equal(t, tc.wantErrs, errs)
+			require.Equal(t, tc.wantFailed, failedTrunks)
+			require.Equal(t, tc.l2Trunks, configurator.l2Trunks,
+				"every L2Trunk must be set up through the configurator")
+		})
+	}
+}
+
+func l2TrunkForTest(name string) hostnetwork.L2TrunkParams {
+	return hostnetwork.L2TrunkParams{Name: name, Namespace: "default"}
+}
+
 func l2VNIForTest(name string, vni int32) hostnetwork.L2VNIParams {
 	return hostnetwork.L2VNIParams{
 		VNIParams: hostnetwork.VNIParams{VRF: name, VNI: vni},
@@ -288,6 +379,7 @@ type fakeVNIConfigurator struct {
 	l3VNIs    []hostnetwork.L3VNIParams
 	l3VPNs    []hostnetwork.L3VPNParams
 	l2VNIs    []hostnetwork.L2VNIParams
+	l2Trunks  []hostnetwork.L2TrunkParams
 }
 
 func (f *fakeVNIConfigurator) SetupL3VNI(_ context.Context, params hostnetwork.L3VNIParams) error {
@@ -302,5 +394,15 @@ func (f *fakeVNIConfigurator) SetupL3VPN(_ context.Context, params hostnetwork.L
 
 func (f *fakeVNIConfigurator) SetupL2VNI(_ context.Context, params hostnetwork.L2VNIParams) error {
 	f.l2VNIs = append(f.l2VNIs, params)
+	return f.setupErrs[params.Name]
+}
+
+func (f *fakeVNIConfigurator) SetupL2TrunkVNI(_ context.Context, params hostnetwork.L2VNIParams) error {
+	f.l2VNIs = append(f.l2VNIs, params)
+	return f.setupErrs[params.Name]
+}
+
+func (f *fakeVNIConfigurator) SetupL2Trunk(_ context.Context, params hostnetwork.L2TrunkParams) error {
+	f.l2Trunks = append(f.l2Trunks, params)
 	return f.setupErrs[params.Name]
 }

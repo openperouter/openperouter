@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSetupL2Trunks(t *testing.T) {
+func TestGroutSetupL2Trunks(t *testing.T) {
 	tests := []struct {
 		name    string
 		trunks  []hostnetwork.SRIOVTrunkParams

@@ -96,30 +96,13 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 	var resourceErrors []error
 	failedL3Domains := sets.New[string]()
 
-	var configuredL3VNIs []hostnetwork.L3VNIParams
-	for _, vni := range hostConfig.L3VNIs {
-		vni.RouterMAC = routerMAC
-		slog.InfoContext(ctx, "setting up VNI", "vni", vni.VRF)
-		if err := grout.SetupL3VNI(ctx, groutClient, vni); err != nil {
-			resourceErrors = append(resourceErrors,
-				overlayAttachmentError(openpeerrors.KindL3VNI, vni.Name, err.Error()))
-			failedL3Domains.Insert(vni.VRF)
-			continue
-		}
-		configuredL3VNIs = append(configuredL3VNIs, vni)
+	for i := range hostConfig.L3VNIs {
+		hostConfig.L3VNIs[i].RouterMAC = routerMAC
 	}
-
-	var configuredL3VPNs []hostnetwork.L3VPNParams
-	for _, l3vpn := range hostConfig.L3VPNs {
-		slog.InfoContext(ctx, "setting up L3 VPN", "VRF", l3vpn.VRF)
-		if err := grout.SetupL3VPN(ctx, groutClient, l3vpn); err != nil {
-			resourceErrors = append(resourceErrors,
-				overlayAttachmentError(openpeerrors.KindL3VPN, l3vpn.Name, err.Error()))
-			failedL3Domains.Insert(l3vpn.VRF)
-			continue
-		}
-		configuredL3VPNs = append(configuredL3VPNs, l3vpn)
-	}
+	configuredL3VNIs, l3vniErrors := setupGroutL3VNIs(ctx, groutClient, hostConfig.L3VNIs, failedL3Domains)
+	resourceErrors = append(resourceErrors, l3vniErrors...)
+	configuredL3VPNs, l3vpnErrors := setupGroutL3VPNs(ctx, groutClient, hostConfig.L3VPNs, failedL3Domains)
+	resourceErrors = append(resourceErrors, l3vpnErrors...)
 
 	// The grout datapath does not implement Host trunks (TAP port pair) yet;
 	// report them rather than silently leaving their L2VNIs unconfigured.
@@ -279,4 +262,36 @@ func attachGroutL2VNI(ctx context.Context, client *grout.Client, ovsClient *host
 		return grout.AttachL2VNIToHost(ctx, client, ovsClient, vni)
 	}
 	return grout.AttachL2VNIToVFTrunk(ctx, client, vni, trunks)
+}
+
+func setupGroutL3VNIs(ctx context.Context, groutClient *grout.Client, l3VNIs []hostnetwork.L3VNIParams,
+	failedL3Domains sets.Set[string]) ([]hostnetwork.L3VNIParams, []error) {
+	var configured []hostnetwork.L3VNIParams
+	var errs []error
+	for _, vni := range l3VNIs {
+		slog.InfoContext(ctx, "setting up VNI", "vni", vni.VRF)
+		if err := grout.SetupL3VNI(ctx, groutClient, vni); err != nil {
+			errs = append(errs, overlayAttachmentError(openpeerrors.KindL3VNI, vni.Name, err.Error()))
+			failedL3Domains.Insert(vni.VRF)
+			continue
+		}
+		configured = append(configured, vni)
+	}
+	return configured, errs
+}
+
+func setupGroutL3VPNs(ctx context.Context, groutClient *grout.Client, l3VPNs []hostnetwork.L3VPNParams,
+	failedL3Domains sets.Set[string]) ([]hostnetwork.L3VPNParams, []error) {
+	var configured []hostnetwork.L3VPNParams
+	var errs []error
+	for _, l3vpn := range l3VPNs {
+		slog.InfoContext(ctx, "setting up L3 VPN", "VRF", l3vpn.VRF)
+		if err := grout.SetupL3VPN(ctx, groutClient, l3vpn); err != nil {
+			errs = append(errs, overlayAttachmentError(openpeerrors.KindL3VPN, l3vpn.Name, err.Error()))
+			failedL3Domains.Insert(l3vpn.VRF)
+			continue
+		}
+		configured = append(configured, l3vpn)
+	}
+	return configured, errs
 }

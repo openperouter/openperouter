@@ -58,6 +58,10 @@ func (r *MirrorController) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		mirrorErrors = append(mirrorErrors, err)
 	}
 
+	if err := r.mirrorAndClean(ctx, &v1alpha1.L2TrunkList{}, toObjects(staticConfig.L2Trunks), logger, "l2trunk"); err != nil {
+		mirrorErrors = append(mirrorErrors, err)
+	}
+
 	if err := r.mirrorAndClean(ctx, &v1alpha1.L2VNIList{}, toObjects(staticConfig.L2VNIs), logger, "l2vni"); err != nil {
 		mirrorErrors = append(mirrorErrors, err)
 	}

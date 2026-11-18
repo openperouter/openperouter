@@ -73,156 +73,25 @@ func staticConfigToAPIConfig(staticConfig *static.PERouterConfig, nodeName, name
 	underlays, passwords, underlayErrs := staticUnderlaysToAPI(staticConfig.Underlays, nodeName, namespace, nodeSelector)
 	allErrors = append(allErrors, underlayErrs...)
 
-	staticName := func(name string) string {
-		return fmt.Sprintf("static-%s-%s", nodeName, name)
-	}
+	l3vnis, l3vniErrs := staticL3VNIsToAPI(staticConfig.L3VNIs, nodeName, namespace, nodeSelector)
+	allErrors = append(allErrors, l3vniErrs...)
 
-	l3vnis := make([]v1alpha1.L3VNI, len(staticConfig.L3VNIs))
-	for i, staticL3 := range staticConfig.L3VNIs {
-		spec := staticL3.L3VNISpec
-		spec.NodeSelector = nodeSelector
-		l3vnis[i] = v1alpha1.L3VNI{
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "L3VNI",
-				APIVersion: "network.openperouter.io/v1alpha1",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      staticName(staticL3.Name),
-				Namespace: namespace,
-				Labels: map[string]string{
-					StaticSourceLabel: StaticSourceValue,
-					StaticNodeLabel:   nodeName,
-				},
-			},
-			Spec: spec,
-		}
-		result, errs := applyDefaultsAndValidate(&l3vnis[i], l3vniGVK)
-		if len(errs) > 0 {
-			allErrors = append(allErrors, errs...)
-			continue
-		}
-		l3vnis[i] = *result
-	}
-
-	l2vnis := make([]v1alpha1.L2VNI, len(staticConfig.L2VNIs))
-	for i, staticL2 := range staticConfig.L2VNIs {
-		spec := staticL2.L2VNISpec
-		spec.NodeSelector = nodeSelector
-		if spec.RoutingDomain != nil {
-			if spec.RoutingDomain.L3VNI != nil {
-				spec.RoutingDomain.L3VNI.Name = staticName(spec.RoutingDomain.L3VNI.Name)
-			}
-			if spec.RoutingDomain.L3VPN != nil {
-				spec.RoutingDomain.L3VPN.Name = staticName(spec.RoutingDomain.L3VPN.Name)
-			}
-		}
-		if spec.Trunk != nil {
-			spec.Trunk.Name = staticName(spec.Trunk.Name)
-		}
-		l2vnis[i] = v1alpha1.L2VNI{
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "L2VNI",
-				APIVersion: "network.openperouter.io/v1alpha1",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      staticName(staticL2.Name),
-				Namespace: namespace,
-				Labels: map[string]string{
-					StaticSourceLabel: StaticSourceValue,
-					StaticNodeLabel:   nodeName,
-				},
-			},
-			Spec: spec,
-		}
-		result, errs := applyDefaultsAndValidate(&l2vnis[i], l2vniGVK)
-		if len(errs) > 0 {
-			allErrors = append(allErrors, errs...)
-			continue
-		}
-		l2vnis[i] = *result
-	}
+	l2vnis, l2vniErrs := staticL2VNIsToAPI(staticConfig.L2VNIs, nodeName, namespace, nodeSelector)
+	allErrors = append(allErrors, l2vniErrs...)
 
 	l2trunks, l2trunkErrs := staticL2TrunksToAPI(staticConfig.L2Trunks, nodeName, namespace, nodeSelector)
 	allErrors = append(allErrors, l2trunkErrs...)
 
-	l3vpns := make([]v1alpha1.L3VPN, len(staticConfig.L3VPNs))
-	for i, staticVPN := range staticConfig.L3VPNs {
-		l3vpns[i] = v1alpha1.L3VPN{
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "L3VPN",
-				APIVersion: "network.openperouter.io/v1alpha1",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      staticName(staticVPN.Name),
-				Namespace: namespace,
-				Labels: map[string]string{
-					StaticSourceLabel: StaticSourceValue,
-					StaticNodeLabel:   nodeName,
-				},
-			},
-			Spec: staticVPN.L3VPNSpec,
-		}
-		result, errs := applyDefaultsAndValidate(&l3vpns[i], l3vpnGVK)
-		if len(errs) > 0 {
-			allErrors = append(allErrors, errs...)
-			continue
-		}
-		l3vpns[i] = *result
-	}
+	l3vpns, l3vpnErrs := staticL3VPNsToAPI(staticConfig.L3VPNs, nodeName, namespace)
+	allErrors = append(allErrors, l3vpnErrs...)
 
-	var l3passthrough []v1alpha1.L3Passthrough
-	if staticConfig.BGPPassthrough.HostSession.ASN > 0 {
-		passthroughSpec := staticConfig.BGPPassthrough
-		passthroughSpec.NodeSelector = nodeSelector
-		pt := v1alpha1.L3Passthrough{
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "L3Passthrough",
-				APIVersion: "network.openperouter.io/v1alpha1",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      fmt.Sprintf("static-%s-l3passthrough", nodeName),
-				Namespace: namespace,
-				Labels: map[string]string{
-					StaticSourceLabel: StaticSourceValue,
-					StaticNodeLabel:   nodeName,
-				},
-			},
-			Spec: passthroughSpec,
-		}
-		result, errs := applyDefaultsAndValidate(&pt, l3passthroughGVK)
-		if len(errs) > 0 {
-			allErrors = append(allErrors, errs...)
-		}
-		if result != nil {
-			l3passthrough = []v1alpha1.L3Passthrough{*result}
-		}
-	}
+	l3passthrough, passthroughErrs := staticL3PassthroughToAPI(
+		staticConfig.BGPPassthrough, nodeName, namespace, nodeSelector)
+	allErrors = append(allErrors, passthroughErrs...)
 
-	rawFRRConfigs := make([]v1alpha1.RawFRRConfig, len(staticConfig.RawFRRConfigs))
-	for i, spec := range staticConfig.RawFRRConfigs {
-		spec.NodeSelector = nodeSelector
-		rawFRRConfigs[i] = v1alpha1.RawFRRConfig{
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "RawFRRConfig",
-				APIVersion: "network.openperouter.io/v1alpha1",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      fmt.Sprintf("static-%s-rawfrrconfig-%d", nodeName, i),
-				Namespace: namespace,
-				Labels: map[string]string{
-					StaticSourceLabel: StaticSourceValue,
-					StaticNodeLabel:   nodeName,
-				},
-			},
-			Spec: spec,
-		}
-		result, errs := applyDefaultsAndValidate(&rawFRRConfigs[i], rawFRRConfigGVK)
-		if len(errs) > 0 {
-			allErrors = append(allErrors, errs...)
-			continue
-		}
-		rawFRRConfigs[i] = *result
-	}
+	rawFRRConfigs, rawFRRErrs := staticRawFRRConfigsToAPI(
+		staticConfig.RawFRRConfigs, nodeName, namespace, nodeSelector)
+	allErrors = append(allErrors, rawFRRErrs...)
 
 	if len(allErrors) > 0 {
 		return conversion.APIConfigData{}, fmt.Errorf("validation errors in static config: %v", allErrors.ToAggregate())
@@ -238,6 +107,174 @@ func staticConfigToAPIConfig(staticConfig *static.PERouterConfig, nodeName, name
 		RawFRRConfigs: rawFRRConfigs,
 		Passwords:     passwords,
 	}, nil
+}
+
+func staticL3VNIsToAPI(staticL3VNIs []static.StaticL3VNI, nodeName, namespace string,
+	nodeSelector *metav1.LabelSelector) ([]v1alpha1.L3VNI, field.ErrorList) {
+	l3vnis := make([]v1alpha1.L3VNI, len(staticL3VNIs))
+	var errs field.ErrorList
+	for i, staticL3 := range staticL3VNIs {
+		spec := staticL3.L3VNISpec
+		spec.NodeSelector = nodeSelector
+		l3vnis[i] = v1alpha1.L3VNI{
+			TypeMeta:   staticTypeMeta("L3VNI"),
+			ObjectMeta: staticObjectMeta(staticL3.Name, nodeName, namespace),
+			Spec:       spec,
+		}
+		result, validationErrs := applyDefaultsAndValidate(&l3vnis[i], l3vniGVK)
+		if len(validationErrs) > 0 {
+			errs = append(errs, validationErrs...)
+			continue
+		}
+		l3vnis[i] = *result
+	}
+	return l3vnis, errs
+}
+
+func staticL2VNIsToAPI(staticL2VNIs []static.StaticL2VNI, nodeName, namespace string,
+	nodeSelector *metav1.LabelSelector) ([]v1alpha1.L2VNI, field.ErrorList) {
+	l2vnis := make([]v1alpha1.L2VNI, len(staticL2VNIs))
+	var errs field.ErrorList
+	for i, staticL2 := range staticL2VNIs {
+		spec := staticL2.L2VNISpec
+		spec.NodeSelector = nodeSelector
+		rewriteL2VNIDependencies(&spec, nodeName)
+		l2vnis[i] = v1alpha1.L2VNI{
+			TypeMeta:   staticTypeMeta("L2VNI"),
+			ObjectMeta: staticObjectMeta(staticL2.Name, nodeName, namespace),
+			Spec:       spec,
+		}
+		result, validationErrs := applyDefaultsAndValidate(&l2vnis[i], l2vniGVK)
+		if len(validationErrs) > 0 {
+			errs = append(errs, validationErrs...)
+			continue
+		}
+		l2vnis[i] = *result
+	}
+	return l2vnis, errs
+}
+
+func staticL2TrunksToAPI(staticL2Trunks []static.StaticL2Trunk, nodeName, namespace string,
+	nodeSelector *metav1.LabelSelector) ([]v1alpha1.L2Trunk, field.ErrorList) {
+	l2trunks := make([]v1alpha1.L2Trunk, len(staticL2Trunks))
+	var errs field.ErrorList
+	for i, staticTrunk := range staticL2Trunks {
+		spec := staticTrunk.L2TrunkSpec
+		spec.NodeSelector = nodeSelector
+		l2trunks[i] = v1alpha1.L2Trunk{
+			TypeMeta:   staticTypeMeta("L2Trunk"),
+			ObjectMeta: staticObjectMeta(staticTrunk.Name, nodeName, namespace),
+			Spec:       spec,
+		}
+		result, validationErrs := applyDefaultsAndValidate(&l2trunks[i], l2trunkGVK)
+		if len(validationErrs) > 0 {
+			errs = append(errs, validationErrs...)
+			continue
+		}
+		// The webhook runs the same validation on dynamic trunks; static trunks
+		// must not bypass the rules the CRD schema does not express.
+		if _, err := conversion.FilterValidL2Trunks([]v1alpha1.L2Trunk{*result}); err != nil {
+			errs = append(errs, field.Invalid(
+				field.NewPath("l2trunks").Index(i), staticTrunk.Name, err.Error()))
+			continue
+		}
+		l2trunks[i] = *result
+	}
+	return l2trunks, errs
+}
+
+func staticL3VPNsToAPI(staticL3VPNs []static.StaticL3VPN, nodeName, namespace string) ([]v1alpha1.L3VPN, field.ErrorList) {
+	l3vpns := make([]v1alpha1.L3VPN, len(staticL3VPNs))
+	var errs field.ErrorList
+	for i, staticVPN := range staticL3VPNs {
+		l3vpns[i] = v1alpha1.L3VPN{
+			TypeMeta:   staticTypeMeta("L3VPN"),
+			ObjectMeta: staticObjectMeta(staticVPN.Name, nodeName, namespace),
+			Spec:       staticVPN.L3VPNSpec,
+		}
+		result, validationErrs := applyDefaultsAndValidate(&l3vpns[i], l3vpnGVK)
+		if len(validationErrs) > 0 {
+			errs = append(errs, validationErrs...)
+			continue
+		}
+		l3vpns[i] = *result
+	}
+	return l3vpns, errs
+}
+
+func staticL3PassthroughToAPI(spec v1alpha1.L3PassthroughSpec, nodeName, namespace string,
+	nodeSelector *metav1.LabelSelector) ([]v1alpha1.L3Passthrough, field.ErrorList) {
+	if spec.HostSession.ASN == 0 {
+		return nil, nil
+	}
+	spec.NodeSelector = nodeSelector
+	passthrough := v1alpha1.L3Passthrough{
+		TypeMeta:   staticTypeMeta("L3Passthrough"),
+		ObjectMeta: staticObjectMeta("l3passthrough", nodeName, namespace),
+		Spec:       spec,
+	}
+	result, errs := applyDefaultsAndValidate(&passthrough, l3passthroughGVK)
+	if len(errs) > 0 {
+		return nil, errs
+	}
+	return []v1alpha1.L3Passthrough{*result}, nil
+}
+
+func staticRawFRRConfigsToAPI(specs []v1alpha1.RawFRRConfigSpec, nodeName, namespace string,
+	nodeSelector *metav1.LabelSelector) ([]v1alpha1.RawFRRConfig, field.ErrorList) {
+	configs := make([]v1alpha1.RawFRRConfig, len(specs))
+	var errs field.ErrorList
+	for i, spec := range specs {
+		spec.NodeSelector = nodeSelector
+		configs[i] = v1alpha1.RawFRRConfig{
+			TypeMeta:   staticTypeMeta("RawFRRConfig"),
+			ObjectMeta: staticObjectMeta(fmt.Sprintf("rawfrrconfig-%d", i), nodeName, namespace),
+			Spec:       spec,
+		}
+		result, validationErrs := applyDefaultsAndValidate(&configs[i], rawFRRConfigGVK)
+		if len(validationErrs) > 0 {
+			errs = append(errs, validationErrs...)
+			continue
+		}
+		configs[i] = *result
+	}
+	return configs, errs
+}
+
+func rewriteL2VNIDependencies(spec *v1alpha1.L2VNISpec, nodeName string) {
+	if spec.RoutingDomain != nil {
+		if spec.RoutingDomain.L3VNI != nil {
+			spec.RoutingDomain.L3VNI.Name = staticResourceName(nodeName, spec.RoutingDomain.L3VNI.Name)
+		}
+		if spec.RoutingDomain.L3VPN != nil {
+			spec.RoutingDomain.L3VPN.Name = staticResourceName(nodeName, spec.RoutingDomain.L3VPN.Name)
+		}
+	}
+	if spec.Trunk != nil {
+		spec.Trunk.Name = staticResourceName(nodeName, spec.Trunk.Name)
+	}
+}
+
+func staticTypeMeta(kind string) metav1.TypeMeta {
+	return metav1.TypeMeta{
+		Kind:       kind,
+		APIVersion: "network.openperouter.io/v1alpha1",
+	}
+}
+
+func staticObjectMeta(name, nodeName, namespace string) metav1.ObjectMeta {
+	return metav1.ObjectMeta{
+		Name:      staticResourceName(nodeName, name),
+		Namespace: namespace,
+		Labels: map[string]string{
+			StaticSourceLabel: StaticSourceValue,
+			StaticNodeLabel:   nodeName,
+		},
+	}
+}
+
+func staticResourceName(nodeName, name string) string {
+	return fmt.Sprintf("static-%s-%s", nodeName, name)
 }
 
 // applyDefaultsAndValidate converts a typed CRD object to unstructured, applies
@@ -308,41 +345,6 @@ func normalizeGoTypes(m map[string]any) (map[string]any, error) {
 		return nil, fmt.Errorf("unmarshalling from JSON: %w", err)
 	}
 	return normalized, nil
-}
-
-func staticL2TrunksToAPI(
-	staticTrunks []static.StaticL2Trunk,
-	nodeName, namespace string,
-	nodeSelector *metav1.LabelSelector,
-) ([]v1alpha1.L2Trunk, field.ErrorList) {
-	var allErrors field.ErrorList
-	l2trunks := make([]v1alpha1.L2Trunk, len(staticTrunks))
-	for i, staticTrunk := range staticTrunks {
-		spec := staticTrunk.L2TrunkSpec
-		spec.NodeSelector = nodeSelector
-		l2trunks[i] = v1alpha1.L2Trunk{
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "L2Trunk",
-				APIVersion: "network.openperouter.io/v1alpha1",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      fmt.Sprintf("static-%s-%s", nodeName, staticTrunk.Name),
-				Namespace: namespace,
-				Labels: map[string]string{
-					StaticSourceLabel: StaticSourceValue,
-					StaticNodeLabel:   nodeName,
-				},
-			},
-			Spec: spec,
-		}
-		result, errs := applyDefaultsAndValidate(&l2trunks[i], l2trunkGVK)
-		if len(errs) > 0 {
-			allErrors = append(allErrors, errs...)
-			continue
-		}
-		l2trunks[i] = *result
-	}
-	return l2trunks, allErrors
 }
 
 func staticUnderlaysToAPI(

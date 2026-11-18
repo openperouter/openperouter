@@ -15,6 +15,7 @@ import (
 	"github.com/openperouter/openperouter/internal/conversion"
 	openpeerrors "github.com/openperouter/openperouter/internal/errors"
 	"github.com/openperouter/openperouter/internal/frr"
+	"github.com/stretchr/testify/require"
 )
 
 var noopUpdater = frr.ConfigUpdater(func(_ context.Context, _ string) error {
@@ -972,4 +973,41 @@ func (k *kernelRecordingConfigurator) Configure(_ context.Context, config interf
 
 func (k *kernelRecordingConfigurator) InterfaceNameForFRR(name string) string {
 	return name
+}
+
+func TestFilterL2VNIsWithMissingTrunk(t *testing.T) {
+	trunk := v1alpha1.L2Trunk{ObjectMeta: metav1.ObjectMeta{Namespace: "tenant-a", Name: "workloads"}}
+	otherNamespaceTrunk := v1alpha1.L2Trunk{ObjectMeta: metav1.ObjectMeta{Namespace: "tenant-b", Name: "workloads"}}
+
+	attached := v1alpha1.L2VNI{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "tenant-a", Name: "attached"},
+		Spec: v1alpha1.L2VNISpec{
+			VNI:   10100,
+			Trunk: &v1alpha1.L2TrunkReference{Name: "workloads", VLAN: v1alpha1.VLANConfig{Tag: 100}},
+		},
+	}
+	missing := v1alpha1.L2VNI{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "tenant-a", Name: "missing"},
+		Spec: v1alpha1.L2VNISpec{
+			VNI:   10200,
+			Trunk: &v1alpha1.L2TrunkReference{Name: "gone", VLAN: v1alpha1.VLANConfig{Tag: 200}},
+		},
+	}
+	standalone := v1alpha1.L2VNI{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "tenant-a", Name: "standalone"},
+		Spec:       v1alpha1.L2VNISpec{VNI: 10300},
+	}
+
+	valid, err := filterL2VNIsWithMissingTrunk(
+		[]v1alpha1.L2VNI{attached, missing, standalone},
+		[]v1alpha1.L2Trunk{trunk, otherNamespaceTrunk})
+	require.Equal(t, []v1alpha1.L2VNI{attached, standalone}, valid)
+
+	expected := []v1alpha1.FailedResource{{
+		Kind:    openpeerrors.KindL2VNI,
+		Name:    "missing",
+		Reason:  v1alpha1.FailedResourceReasonDependencyFailed,
+		Message: `referenced L2Trunk "gone" not found`,
+	}}
+	require.Equal(t, expected, openpeerrors.CollectFailures(err))
 }

@@ -23,7 +23,7 @@ func TestL2TrunkSchema(t *testing.T) {
 		},
 		{
 			name: "host type with a host master", kind: "L2Trunk",
-			spec: map[string]any{"type": "Host", "hostMaster": trunkHostMaster("LinuxBridge", "External")},
+			spec: map[string]any{"type": "Host", "hostMaster": trunkHostMaster("External")},
 		},
 		{
 			name: "host type with sriov", kind: "L2Trunk",
@@ -33,7 +33,7 @@ func TestL2TrunkSchema(t *testing.T) {
 		{
 			name: "SRIOV with a host master", kind: "L2Trunk",
 			spec: map[string]any{"type": "SRIOV", "sriov": trunkSRIOV("enp1s0", 1),
-				"hostMaster": trunkHostMaster("LinuxBridge", "External")},
+				"hostMaster": trunkHostMaster("External")},
 			wantErr: "hostMaster can only be set when type is 'Host'",
 		},
 		{
@@ -89,13 +89,13 @@ func TestL2TrunkSchema(t *testing.T) {
 		},
 		{
 			name: "standalone managed bridge", kind: "L2VNI",
-			spec: map[string]any{"vni": int64(100), "hostMaster": trunkHostMaster("LinuxBridge", "Managed")},
+			spec: map[string]any{"vni": int64(100), "hostMaster": trunkHostMaster("Managed")},
 		},
 		{
 			name: "trunk with hostMaster", kind: "L2VNI",
 			spec: map[string]any{
 				"vni": int64(100), "trunk": trunkReference("workloads", 100),
-				"hostMaster": trunkHostMaster("LinuxBridge", "External"),
+				"hostMaster": trunkHostMaster("External"),
 			},
 			wantErr: "hostMaster and trunk are mutually exclusive",
 		},
@@ -239,16 +239,12 @@ func TestTrunkImmutability(t *testing.T) {
 	}
 }
 
-func trunkHostMaster(kind, lifecycle string) map[string]any {
+func trunkHostMaster(lifecycle string) map[string]any {
 	bridge := map[string]any{"lifecycle": lifecycle}
 	if lifecycle == "External" {
 		bridge["name"] = "br-workloads"
 	}
-	fieldName := "linuxBridge"
-	if kind == "OVSBridge" {
-		fieldName = "ovsBridge"
-	}
-	return map[string]any{"type": kind, fieldName: bridge}
+	return map[string]any{"type": "LinuxBridge", "linuxBridge": bridge}
 }
 
 func trunkReference(name string, tag int64) map[string]any {
