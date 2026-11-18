@@ -13,7 +13,7 @@ import (
 	openpeerrors "github.com/openperouter/openperouter/internal/errors"
 )
 
-func TestFilterValidL2Trunks(t *testing.T) {
+func TestFilterValidL2TrunksUnion(t *testing.T) {
 	tests := []struct {
 		name       string
 		trunks     []v1alpha1.L2Trunk
@@ -41,7 +41,7 @@ func TestFilterValidL2Trunks(t *testing.T) {
 				{
 					Kind: openpeerrors.KindL2Trunk, Name: "unsupported",
 					Reason:  v1alpha1.FailedResourceReasonValidationFailed,
-					Message: `unsupported L2Trunk type "Foo"`,
+					Message: `unsupported type "Foo" for L2Trunk "unsupported"`,
 				},
 			},
 		},
@@ -140,66 +140,6 @@ func TestValidateL2TrunksForNodes(t *testing.T) {
 				return
 			}
 			require.ErrorContains(t, err, tt.wantErr)
-		})
-	}
-}
-
-func TestFilterUniqueTrunkVLANs(t *testing.T) {
-	tests := []struct {
-		name       string
-		l2vnis     []v1alpha1.L2VNI
-		wantValid  []string
-		wantFailed []v1alpha1.FailedResource
-	}{
-		{
-			name: "different tags on the same trunk",
-			l2vnis: []v1alpha1.L2VNI{
-				trunkL2VNI("a", 100, "workloads", 100),
-				trunkL2VNI("b", 200, "workloads", 200),
-			},
-			wantValid: []string{"a", "b"},
-		},
-		{
-			name: "same tag on different trunks",
-			l2vnis: []v1alpha1.L2VNI{
-				trunkL2VNI("a", 100, "workloads", 100),
-				trunkL2VNI("b", 200, "other", 100),
-			},
-			wantValid: []string{"a", "b"},
-		},
-		{
-			name: "standalone L2VNIs are ignored",
-			l2vnis: []v1alpha1.L2VNI{
-				{ObjectMeta: metav1.ObjectMeta{Name: "a"}, Spec: v1alpha1.L2VNISpec{VNI: 100}},
-				{ObjectMeta: metav1.ObjectMeta{Name: "b"}, Spec: v1alpha1.L2VNISpec{VNI: 200}},
-			},
-			wantValid: []string{"a", "b"},
-		},
-		{
-			name: "same tag on the same trunk",
-			l2vnis: []v1alpha1.L2VNI{
-				trunkL2VNI("a", 100, "workloads", 100),
-				trunkL2VNI("b", 200, "workloads", 100),
-			},
-			wantValid: []string{"a"},
-			wantFailed: []v1alpha1.FailedResource{
-				{
-					Kind: openpeerrors.KindL2VNI, Name: "b",
-					Reason:  v1alpha1.FailedResourceReasonValidationFailed,
-					Message: "VLAN 100 on L2Trunk workloads is already used by L2VNI a",
-				},
-			},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			valid, err := FilterUniqueTrunkVLANs(tt.l2vnis)
-			names := make([]string, 0, len(valid))
-			for _, l2vni := range valid {
-				names = append(names, l2vni.Name)
-			}
-			require.Equal(t, tt.wantValid, names)
-			require.Equal(t, tt.wantFailed, openpeerrors.CollectFailures(err))
 		})
 	}
 }

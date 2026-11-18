@@ -36,8 +36,9 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig APIConfigData) (H
 	e := NoUnderlaysError("")
 	if err != nil && errors.As(err, &e) {
 		return HostConfigData{
-			L3VNIs: []hostnetwork.L3VNIParams{},
-			L2VNIs: []hostnetwork.L2VNIParams{},
+			L3VNIs:   []hostnetwork.L3VNIParams{},
+			L2VNIs:   []hostnetwork.L2VNIParams{},
+			L2Trunks: []hostnetwork.L2TrunkParams{},
 		}, nil
 	}
 	if err != nil {
@@ -64,11 +65,6 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig APIConfigData) (H
 		return HostConfigData{}, fmt.Errorf("failed to translate passthrough configuration to host, err: %w", err)
 	}
 
-	l2Trunks, sriovTrunks, err := l2trunksToHost(apiConfig.L2Trunks, targetNS)
-	if err != nil {
-		return HostConfigData{}, fmt.Errorf("failed to translate L2Trunks to host, err: %w", err)
-	}
-
 	// Thanks to validateTunnelEndpointForHostConfig, we know that if the tunnel endpoint is nil, L3VNIs, L2VNIs and
 	// L3VPNs are empty, too, and we must return early here.
 	if underlay.Spec.TunnelEndpoint == nil {
@@ -79,8 +75,8 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig APIConfigData) (H
 			},
 			L3VNIs:        []hostnetwork.L3VNIParams{},
 			L2VNIs:        []hostnetwork.L2VNIParams{},
-			L2Trunks:      l2Trunks,
-			SRIOVTrunks:   sriovTrunks,
+			L2Trunks:      []hostnetwork.L2TrunkParams{},
+			SRIOVTrunks:   []hostnetwork.SRIOVTrunkParams{},
 			L3Passthrough: l3Passthrough,
 		}, nil
 	}
@@ -125,6 +121,11 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig APIConfigData) (H
 		return HostConfigData{}, fmt.Errorf("failed to translate L2VNIs to host, err: %w", err)
 	}
 
+	l2Trunks, sriovTrunks, err := l2trunksToHost(apiConfig.L2Trunks, apiConfig.L2VNIs, targetNS, underlayConfigTunnelEndpoint)
+	if err != nil {
+		return HostConfigData{}, fmt.Errorf("failed to translate L2Trunks to host, err: %w", err)
+	}
+
 	l3VPNs, err := l3vpnsToHost(
 		apiConfig.L3VPNs,
 		underlay.Spec.SRV6,
@@ -163,6 +164,9 @@ func validateTunnelEndpointForHostConfig(tunnelEndpoint *v1alpha1.TunnelEndpoint
 	}
 	if len(apiConfig.L2VNIs) > 0 {
 		errs = append(errs, fmt.Errorf("underlay tunnel endpoint configuration is required when L2VNIs are defined"))
+	}
+	if len(apiConfig.L2Trunks) > 0 {
+		errs = append(errs, fmt.Errorf("underlay tunnel endpoint configuration is required when L2Trunks are defined"))
 	}
 	if len(apiConfig.L3VPNs) > 0 {
 		errs = append(errs, fmt.Errorf("underlay tunnel endpoint configuration is required when L3VPNs are defined"))
@@ -205,6 +209,9 @@ func validateOverlayPrerequisitesForHost(config APIConfigData, tunnelEndpoint ho
 	}
 	if len(config.L2VNIs) > 0 && tunnelEndpoint.IPv4CIDR == "" && tunnelEndpoint.IPv6CIDR == "" {
 		errs = append(errs, errors.New("tunnel endpoint IPv4 or IPv6 configuration is required when L2VNIs are defined"))
+	}
+	if len(config.L2Trunks) > 0 && tunnelEndpoint.IPv4CIDR == "" && tunnelEndpoint.IPv6CIDR == "" {
+		errs = append(errs, errors.New("tunnel endpoint IPv4 or IPv6 configuration is required when L2Trunks are defined"))
 	}
 	if len(config.L3VPNs) > 0 && tunnelEndpoint.IPv6CIDR == "" {
 		errs = append(errs, errors.New("tunnel endpoint IPv6 configuration is required when L3VPNs are defined"))
@@ -388,10 +395,15 @@ func l2vniToHost(
 }
 
 // l2trunksToHost splits the trunks into the datapath-specific host
-// representations: Host trunks keep the simple host attachment the kernel
-// datapath consumes, while SRIOV trunks extend it with the VF the grout
-// datapath binds.
-func l2trunksToHost(trunks []v1alpha1.L2Trunk, targetNS string) ([]hostnetwork.L2TrunkParams, []hostnetwork.SRIOVTrunkParams, error) {
+// representations. Host trunks keep the simple host attachment and the shared
+// VXLAN settings the kernel datapath consumes; SRIOV trunks extend them with
+// the VF the grout datapath binds.
+func l2trunksToHost(
+	trunks []v1alpha1.L2Trunk,
+	l2vnis []v1alpha1.L2VNI,
+	targetNS string,
+	tunnelEndpoint hostnetwork.UnderlayTunnelEndpointParams,
+) ([]hostnetwork.L2TrunkParams, []hostnetwork.SRIOVTrunkParams, error) {
 	hostTrunks := make([]hostnetwork.L2TrunkParams, 0, len(trunks))
 	sriovTrunks := make([]hostnetwork.SRIOVTrunkParams, 0, len(trunks))
 	for _, trunk := range trunks {
@@ -412,7 +424,19 @@ func l2trunksToHost(trunks []v1alpha1.L2Trunk, targetNS string) ([]hostnetwork.L
 		if err != nil {
 			return nil, nil, err
 		}
+		family, port := trunkNetworkDefaults(trunk, l2vnis)
+		vtepIP, err := resolveVTEPIP(family, tunnelEndpoint)
+		if err != nil {
+			return nil, nil, fmt.Errorf("L2Trunk %s: %w", client.ObjectKeyFromObject(&trunk), err)
+		}
+		overhead, err := tunnelOverheadForVTEPIP(vtepIP)
+		if err != nil {
+			return nil, nil, fmt.Errorf("L2Trunk %s: %w", client.ObjectKeyFromObject(&trunk), err)
+		}
 		base.HostMaster = hostMaster
+		base.VTEPIP = vtepIP
+		base.VXLanPort = port
+		base.TunnelOverhead = overhead
 		hostTrunks = append(hostTrunks, base)
 	}
 	return hostTrunks, sriovTrunks, nil
@@ -445,6 +469,22 @@ func trunkHostMaster(trunk v1alpha1.L2Trunk) (*hostnetwork.HostMaster, error) {
 		return nil, nil
 	}
 	return convertHostMaster(trunk.Spec.HostMaster, client.ObjectKeyFromObject(&trunk).String())
+}
+
+// trunkNetworkDefaults derives the trunk's VXLAN settings from the L2VNIs that
+// reference it. Validation guarantees those L2VNIs agree; a trunk with no
+// references uses the node defaults.
+func trunkNetworkDefaults(trunk v1alpha1.L2Trunk, l2vnis []v1alpha1.L2VNI) (*string, int32) {
+	for _, l2vni := range l2vnis {
+		if l2vni.Namespace != trunk.Namespace {
+			continue
+		}
+		if l2vni.Spec.Trunk == nil || l2vni.Spec.Trunk.Name != trunk.Name {
+			continue
+		}
+		return l2vni.Spec.UnderlayAddressFamily, *vxlanPort(l2vni.Spec.VXLanPort)
+	}
+	return nil, *vxlanPort(nil)
 }
 
 func l3vpnsToHost(
@@ -645,6 +685,10 @@ func overheadForVXLANTunnel(vniName string, forVNIs map[string]string) (int, err
 	if !found {
 		return 0, fmt.Errorf("not found in map of tunnel VTEP IPs: %+v", forVNIs)
 	}
+	return tunnelOverheadForVTEPIP(vtepIP)
+}
+
+func tunnelOverheadForVTEPIP(vtepIP string) (int, error) {
 	switch ipfamily.ForCIDRString(vtepIP) {
 	case ipfamily.IPv4:
 		return hostnetwork.VXLanOverhead, nil

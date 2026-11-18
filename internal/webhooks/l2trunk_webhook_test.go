@@ -41,7 +41,7 @@ func TestValidateL2Trunk(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "unsupported", Namespace: "default"},
 				Spec:       v1alpha1.L2TrunkSpec{Type: "Foo"},
 			},
-			wantErr: `L2Trunk/unsupported: unsupported L2Trunk type "Foo"`,
+			wantErr: `L2Trunk/unsupported: unsupported type "Foo" for L2Trunk "unsupported"`,
 		},
 		{
 			name:     "different VF of the same PF",

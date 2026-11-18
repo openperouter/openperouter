@@ -158,9 +158,15 @@ func validateL3VPN(l3vpn *v1alpha1.L3VPN) error {
 		return err
 	}
 
+	l2trunks, err := getL2Trunks()
+	if err != nil {
+		return err
+	}
+
 	if err := conversion.ValidateOverlayResourcesForNodes(
 		nodeList.Items,
 		l2vniList.Items,
+		l2trunks.Items,
 		l3vniList.Items,
 		toValidate,
 		l3passthroughs.Items,

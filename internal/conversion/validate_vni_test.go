@@ -1590,7 +1590,7 @@ func TestValidateOverlayResourcesForNodes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateOverlayResourcesForNodes(tt.nodes, tt.l2vnis, tt.l3vnis, tt.l3vpns, tt.passthroughs)
+			err := ValidateOverlayResourcesForNodes(tt.nodes, tt.l2vnis, nil, tt.l3vnis, tt.l3vpns, tt.passthroughs)
 			if tt.wantErrStr != "" {
 				if err == nil {
 					t.Fatalf("expected error containing %q, got nil", tt.wantErrStr)

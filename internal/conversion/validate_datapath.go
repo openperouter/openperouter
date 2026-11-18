@@ -16,7 +16,7 @@ type DatapathConfigValidator interface {
 type GroutDatapathConfigValidator struct{}
 
 func (g *GroutDatapathConfigValidator) Validate(apiConfig APIConfigData) error {
-	resourceErrors := make([]error, 0, 1)
+	resourceErrors := make([]error, 0, len(apiConfig.Underlays)+len(apiConfig.L2Trunks)+len(apiConfig.L2VNIs))
 
 	for _, underlay := range apiConfig.Underlays {
 		resourceErrors = append(resourceErrors, ValidateGroutUnderlay(underlay))

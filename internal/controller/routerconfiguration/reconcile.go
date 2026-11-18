@@ -55,6 +55,7 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 		L3VNIs:        apiConfig.L3VNIs,
 		L3VPNs:        apiConfig.L3VPNs,
 		L2VNIs:        apiConfig.L2VNIs,
+		L2Trunks:      apiConfig.L2Trunks,
 		L3Passthrough: apiConfig.L3Passthrough,
 	})
 	if openpeerrors.IsNonResourceError(err) {
@@ -66,9 +67,7 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 		validOverlays.L2VNIs, validOverlays.L3VNIs, validOverlays.L3VPNs)
 	resourceErrors = append(resourceErrors, err)
 
-	validL2Trunks, err := conversion.FilterValidL2Trunks(apiConfig.L2Trunks)
-	resourceErrors = append(resourceErrors, err)
-
+	validL2Trunks := validOverlays.L2Trunks
 	validL2Trunks, err = datapathConfigurator.FilterL2Trunks(validL2Trunks)
 	resourceErrors = append(resourceErrors, err)
 

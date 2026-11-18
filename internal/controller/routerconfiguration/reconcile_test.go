@@ -332,18 +332,19 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 			},
 		},
 		{
-			name: "L2VNI reusing a VLAN tag on its trunk is skipped",
+			name: "L2VNIs reusing a VLAN tag on their trunk are skipped",
 			l2VNIs: []v1alpha1.L2VNI{
 				trunkL2VNI("a", 100, "workloads", 33),
 				trunkL2VNI("b", 200, "workloads", 33),
 			},
 			l2Trunks: []v1alpha1.L2Trunk{sriovL2Trunk("workloads")},
 			expectedFailures: []v1alpha1.FailedResource{
+				{Kind: openpeerrors.KindL2VNI, Name: "a", Reason: v1alpha1.FailedResourceReasonValidationFailed,
+					Message: `duplicate vlan tag 33 on L2Trunk "workloads": a, b`},
 				{Kind: openpeerrors.KindL2VNI, Name: "b", Reason: v1alpha1.FailedResourceReasonValidationFailed,
-					Message: "VLAN 33 on L2Trunk workloads is already used by L2VNI a"},
+					Message: `duplicate vlan tag 33 on L2Trunk "workloads": a, b`},
 			},
 			wantConfig: conversion.APIConfigData{
-				L2VNIs:   []v1alpha1.L2VNI{trunkL2VNI("a", 100, "workloads", 33)},
 				L2Trunks: []v1alpha1.L2Trunk{sriovL2Trunk("workloads")},
 			},
 		},

@@ -18,9 +18,23 @@ func TestL2TrunkSchema(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name: "host type is not in the enum", kind: "L2Trunk",
-			spec:    map[string]any{"type": "Host"},
-			wantErr: `Unsupported value: "Host"`,
+			name: "host type is in the enum", kind: "L2Trunk",
+			spec: map[string]any{"type": "Host"},
+		},
+		{
+			name: "host type with a host master", kind: "L2Trunk",
+			spec: map[string]any{"type": "Host", "hostMaster": trunkHostMaster("LinuxBridge", "External")},
+		},
+		{
+			name: "host type with sriov", kind: "L2Trunk",
+			spec:    map[string]any{"type": "Host", "sriov": trunkSRIOV("enp1s0", 1)},
+			wantErr: "type/config mismatch: sriov must be set if and only if type is 'SRIOV'",
+		},
+		{
+			name: "SRIOV with a host master", kind: "L2Trunk",
+			spec: map[string]any{"type": "SRIOV", "sriov": trunkSRIOV("enp1s0", 1),
+				"hostMaster": trunkHostMaster("LinuxBridge", "External")},
+			wantErr: "hostMaster can only be set when type is 'Host'",
 		},
 		{
 			name: "missing type", kind: "L2Trunk", spec: map[string]any{},
