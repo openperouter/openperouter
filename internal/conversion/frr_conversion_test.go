@@ -3,13 +3,16 @@
 package conversion
 
 import (
+	"context"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/frr"
+	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/openperouter/openperouter/internal/networklayerprotocol"
 )
 
@@ -2257,7 +2260,7 @@ func TestAPItoFRR(t *testing.T) {
 						Interfaces: []frr.ISISInterface{
 							{Name: "eth0", IPv6: true},
 							{Name: "eth10", IPv6: true},
-							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "vtep-lo", IPv6: true, IsPassive: true},
 						},
 					},
 					RouterID: "10.0.0.0",
@@ -2307,9 +2310,6 @@ func TestAPItoFRR(t *testing.T) {
 							Level:   new(int32(1)),
 							Interfaces: []v1alpha1.ISISInterface{
 								{
-									Name: "lo",
-								},
-								{
 									Name:     "eth0",
 									IPFamily: new(v1alpha1.IPFamilyDualStack),
 								},
@@ -2336,7 +2336,7 @@ func TestAPItoFRR(t *testing.T) {
 							{Name: "eth0", IPv4: true, IPv6: true},
 							{Name: "eth1", IPv4: true, IsPassive: true},
 							{Name: "eth10", IPv6: true},
-							{Name: "lo"},
+							{Name: "vtep-lo", IPv6: true, IsPassive: true},
 						},
 					},
 					RouterID: "10.0.0.0",
@@ -2399,7 +2399,7 @@ func TestAPItoFRR(t *testing.T) {
 						Interfaces: []frr.ISISInterface{
 							{Name: "eth0", IPv4: true, IPv6: true},
 							{Name: "eth1", IPv4: false, IPv6: true},
-							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "vtep-lo", IPv6: true, IsPassive: true},
 						},
 					},
 					RouterID: "10.0.0.0",
@@ -2450,7 +2450,7 @@ func TestAPItoFRR(t *testing.T) {
 						Net:   frr.MustParseISISNet("49.0001.0002.0003.0004.00"),
 						Level: 2,
 						Interfaces: []frr.ISISInterface{
-							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "vtep-lo", IPv6: true, IsPassive: true},
 						},
 					},
 					RouterID: "10.0.0.0",
@@ -2625,7 +2625,7 @@ func TestAPItoFRR(t *testing.T) {
 						Level: 1,
 						Interfaces: []frr.ISISInterface{
 							{Name: "eth0", IPv4: true, IPv6: true},
-							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "vtep-lo", IPv6: true, IsPassive: true},
 						},
 					},
 					RouterID: "10.0.0.0",
@@ -2648,7 +2648,8 @@ func TestAPItoFRR(t *testing.T) {
 						IPv6CIDR: "2001:db8:1234:5678::/128",
 					},
 					SegmentRouting: &frr.UnderlaySegmentRouting{
-						SourceAddress: "2001:db8:1234:5678::",
+						SourceAddress:       "2001:db8:1234:5678::",
+						EncapsulationSource: "2001:db8:1234:5678::",
 						Locator: frr.SRV6Locator{
 							Name:     locatorName,
 							Prefix:   "fd00:0:32::/48",
@@ -2797,7 +2798,7 @@ func TestAPItoFRR(t *testing.T) {
 						Level: 1,
 						Interfaces: []frr.ISISInterface{
 							{Name: "eth0", IPv4: true, IPv6: true},
-							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "vtep-lo", IPv6: true, IsPassive: true},
 						},
 					},
 					RouterID: "10.0.0.0",
@@ -2820,7 +2821,8 @@ func TestAPItoFRR(t *testing.T) {
 						IPv6CIDR: "2001:db8:1234:5678::/128",
 					},
 					SegmentRouting: &frr.UnderlaySegmentRouting{
-						SourceAddress: "2001:db8:1234:5678::",
+						SourceAddress:       "2001:db8:1234:5678::",
+						EncapsulationSource: "2001:db8:1234:5678::",
 						Locator: frr.SRV6Locator{
 							Name:     locatorName,
 							Prefix:   "fd00:0:32::/48",
@@ -2918,7 +2920,7 @@ func TestAPItoFRR(t *testing.T) {
 						Level: 1,
 						Interfaces: []frr.ISISInterface{
 							{Name: "eth0", IPv4: true, IPv6: true},
-							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "vtep-lo", IPv6: true, IsPassive: true},
 						},
 					},
 					RouterID: "10.0.0.0",
@@ -2941,7 +2943,8 @@ func TestAPItoFRR(t *testing.T) {
 						IPv6CIDR: "2001:db8:1234:5678::/128",
 					},
 					SegmentRouting: &frr.UnderlaySegmentRouting{
-						SourceAddress: "2001:db8:1234:5678::",
+						SourceAddress:       "2001:db8:1234:5678::",
+						EncapsulationSource: "2001:db8:1234:5678::",
 						Locator: frr.SRV6Locator{
 							Name:     locatorName,
 							Prefix:   "fd00:0:32::/48",
@@ -3050,7 +3053,7 @@ func TestAPItoFRR(t *testing.T) {
 						Level: 1,
 						Interfaces: []frr.ISISInterface{
 							{Name: "eth0", IPv4: true, IPv6: true},
-							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "vtep-lo", IPv6: true, IsPassive: true},
 						},
 					},
 					RouterID: "10.0.0.0",
@@ -3073,7 +3076,8 @@ func TestAPItoFRR(t *testing.T) {
 						},
 					},
 					SegmentRouting: &frr.UnderlaySegmentRouting{
-						SourceAddress: "2001:db8:1234:5678::",
+						SourceAddress:       "2001:db8:1234:5678::",
+						EncapsulationSource: "2001:db8:1234:5678::",
 						Locator: frr.SRV6Locator{
 							Name:     locatorName,
 							Prefix:   "fd00:0:32::/48",
@@ -3247,7 +3251,7 @@ func TestAPItoFRR(t *testing.T) {
 						Level: 1,
 						Interfaces: []frr.ISISInterface{
 							{Name: "eth0", IPv4: true, IPv6: true},
-							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "vtep-lo", IPv4: true, IPv6: true, IsPassive: true},
 						},
 					},
 					RouterID: "10.0.0.0",
@@ -3287,7 +3291,8 @@ func TestAPItoFRR(t *testing.T) {
 						IPv6CIDR: "2001:db8:1234:5678::/128",
 					},
 					SegmentRouting: &frr.UnderlaySegmentRouting{
-						SourceAddress: "2001:db8:1234:5678::",
+						SourceAddress:       "2001:db8:1234:5678::",
+						EncapsulationSource: "2001:db8:1234:5678::",
 						Locator: frr.SRV6Locator{
 							Name:     locatorName,
 							Prefix:   "fd00:0:32::/48",
@@ -3437,16 +3442,21 @@ func TestAPItoFRR(t *testing.T) {
 				L3Passthrough: tt.l3Passthrough,
 				L3VPNs:        tt.vpns,
 			}
-			got, err := APItoFRR(apiConfig, tt.nodeIndex, tt.logLevel)
+			converter := APIToFRRConverter{
+				NodeIndex:      tt.nodeIndex,
+				LogLevel:       tt.logLevel,
+				InterfaceNames: kernelDatapath,
+			}
+			got, err := converter.Convert(apiConfig)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("APItoFRR() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("APIToFRRConverter.Convert() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if tt.wantErr {
 				return
 			}
 			if !cmp.Equal(got, tt.want) {
-				t.Errorf("APItoFRR() = %v, diff %s", got, cmp.Diff(got, tt.want))
+				t.Errorf("APIToFRRConverter.Convert() = %v, diff %s", got, cmp.Diff(got, tt.want))
 			}
 		})
 	}
@@ -3585,12 +3595,17 @@ func TestAPItoFRRRawConfig(t *testing.T) {
 				Underlays:     baseUnderlay,
 				RawFRRConfigs: tt.rawFRRConfigs,
 			}
-			got, err := APItoFRR(apiConfig, 0, "debug")
+			converter := APIToFRRConverter{
+				NodeIndex:      0,
+				LogLevel:       "debug",
+				InterfaceNames: kernelDatapath,
+			}
+			got, err := converter.Convert(apiConfig)
 			if err != nil {
-				t.Fatalf("APItoFRR() unexpected error: %v", err)
+				t.Fatalf("APIToFRRConverter.Convert() unexpected error: %v", err)
 			}
 			if !cmp.Equal(got.RawConfig, tt.wantSnippets) {
-				t.Errorf("APItoFRR() RawConfig diff: %s", cmp.Diff(got.RawConfig, tt.wantSnippets))
+				t.Errorf("APIToFRRConverter.Convert() RawConfig diff: %s", cmp.Diff(got.RawConfig, tt.wantSnippets))
 			}
 		})
 	}
@@ -3697,13 +3712,18 @@ func TestAPItoFRRRawConfigWithoutUnderlay(t *testing.T) {
 				L3VNIs:        tt.l3VNIs,
 				L3Passthrough: tt.l3Passthrough,
 			}
-			got, err := APItoFRR(apiConfig, 0, "debug")
+			converter := APIToFRRConverter{
+				NodeIndex:      0,
+				LogLevel:       "debug",
+				InterfaceNames: kernelDatapath,
+			}
+			got, err := converter.Convert(apiConfig)
 			if err != nil {
-				t.Fatalf("APItoFRR() unexpected error: %v", err)
+				t.Fatalf("APIToFRRConverter.Convert() unexpected error: %v", err)
 			}
 
 			if !cmp.Equal(got, wantConfig) {
-				t.Errorf("APItoFRR() diff: %s", cmp.Diff(got, wantConfig))
+				t.Errorf("APIToFRRConverter.Convert() diff: %s", cmp.Diff(got, wantConfig))
 			}
 		})
 	}
@@ -3756,9 +3776,14 @@ func TestAPItoFRRGracefulRestart(t *testing.T) {
 			config := APIConfigData{
 				Underlays: []v1alpha1.Underlay{*u},
 			}
-			got, err := APItoFRR(config, 0, "")
+			converter := APIToFRRConverter{
+				NodeIndex:      0,
+				LogLevel:       "",
+				InterfaceNames: kernelDatapath,
+			}
+			got, err := converter.Convert(config)
 			if err != nil {
-				t.Fatalf("APItoFRR() unexpected error: %v", err)
+				t.Fatalf("APIToFRRConverter.Convert() unexpected error: %v", err)
 			}
 
 			if !cmp.Equal(got.Underlay.GracefulRestart, tt.want) {
@@ -4009,6 +4034,41 @@ func TestVrfsWithL2Gateways(t *testing.T) {
 	}
 }
 
+func TestSRv6EncapsulationSource(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		source *string
+		want   string
+	}{
+		{name: "legacy tunnel endpoint", want: "2001:db8::1"},
+		{name: "explicit encapsulation source", source: new("2001:db8::99"), want: "2001:db8::99"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			segmentRouting, err := underlaySegmentRoutingToFRR(&v1alpha1.SRV6Config{
+				EncapsulationSource: tc.source,
+				Locator:             v1alpha1.SRV6Locator{BasePrefix: "fc00:10::/32", Format: "usid-f3216"},
+			}, 1, &frr.TunnelEndpoint{IPv6CIDR: "2001:db8::1/128"})
+			require.NoError(t, err)
+			require.Equal(t, tc.want, segmentRouting.EncapsulationSource)
+			require.Equal(t, "2001:db8::1", segmentRouting.SourceAddress)
+			neighbor, err := (APIToFRRConverter{}).neighborToFRR(v1alpha1.Neighbor{
+				ASN: new(int64(65001)), Address: new("2001:db8::2"),
+				AddressFamilies: []v1alpha1.NeighborAddressFamily{{Type: "ipv6vpn"}},
+			}, nil, nil, nil, nil, nil, segmentRouting, "")
+			require.NoError(t, err)
+			require.Equal(t, "2001:db8::1", neighbor.UpdateSource)
+			var rendered string
+			require.NoError(t, frr.ApplyConfig(context.Background(), frr.Config{
+				Underlay: frr.UnderlayConfig{SegmentRouting: segmentRouting},
+			}, func(_ context.Context, config string) error {
+				rendered = config
+				return nil
+			}))
+			require.Contains(t, rendered, "source-address "+tc.want+"\n")
+		})
+	}
+}
+
 func l3vniRoutingDomain(name string) *v1alpha1.RoutingDomain {
 	return &v1alpha1.RoutingDomain{
 		Type:  v1alpha1.RoutingDomainTypeL3VNI,
@@ -4085,9 +4145,14 @@ func TestAPItoFRRRouteReflector(t *testing.T) {
 			config := APIConfigData{
 				Underlays: []v1alpha1.Underlay{*u},
 			}
-			got, err := APItoFRR(config, 0, "")
+			converter := APIToFRRConverter{
+				NodeIndex:      0,
+				LogLevel:       "",
+				InterfaceNames: kernelDatapath,
+			}
+			got, err := converter.Convert(config)
 			if err != nil {
-				t.Fatalf("APItoFRR() unexpected error: %v", err)
+				t.Fatalf("APIToFRRConverter.Convert() unexpected error: %v", err)
 			}
 
 			if !cmp.Equal(got.Underlay.RouteReflector, tt.want) {
@@ -4113,13 +4178,160 @@ func TestAPItoFRRListenLimit(t *testing.T) {
 		Underlays: []v1alpha1.Underlay{underlay},
 	}
 	BGPListenLimit = 512
-	got, err := APItoFRR(config, 0, "")
+	converter := APIToFRRConverter{
+		NodeIndex:      0,
+		LogLevel:       "",
+		InterfaceNames: kernelDatapath,
+	}
+	got, err := converter.Convert(config)
 	if err != nil {
-		t.Fatalf("APItoFRR() unexpected error: %v", err)
+		t.Fatalf("APIToFRRConverter.Convert() unexpected error: %v", err)
 	}
 
 	if got.Underlay.ListenLimit != 512 {
 		t.Errorf("ListenLimit = %d, want 512", got.Underlay.ListenLimit)
+	}
+}
+
+func TestAPItoFRRISISTunnelEndpointFamilies(t *testing.T) {
+	tests := []struct {
+		name  string
+		cidrs []string
+		want  frr.ISISInterface
+	}{
+		{
+			name:  "IPv4",
+			cidrs: []string{"192.0.2.0/24"},
+			want:  frr.ISISInterface{Name: "vtep-lo", IPv4: true, IsPassive: true},
+		},
+		{
+			name:  "IPv6",
+			cidrs: []string{"2001:db8::/64"},
+			want:  frr.ISISInterface{Name: "vtep-lo", IPv6: true, IsPassive: true},
+		},
+		{
+			name:  "dual stack",
+			cidrs: []string{"192.0.2.0/24", "2001:db8::/64"},
+			want:  frr.ISISInterface{Name: "vtep-lo", IPv4: true, IPv6: true, IsPassive: true},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := APIConfigData{
+				Underlays: []v1alpha1.Underlay{
+					{
+						Spec: v1alpha1.UnderlaySpec{
+							ASN:            65000,
+							TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: tt.cidrs},
+							ISIS:           &v1alpha1.ISISConfig{BaseNet: "49.0001.0002.0003.0004.00"},
+						},
+					},
+				},
+			}
+			converter := APIToFRRConverter{InterfaceNames: kernelDatapath}
+			got, err := converter.Convert(config)
+			if err != nil {
+				t.Fatalf("APIToFRRConverter.Convert() unexpected error: %v", err)
+			}
+			want := []frr.ISISInterface{tt.want}
+			if diff := cmp.Diff(want, got.Underlay.ISIS.Interfaces); diff != "" {
+				t.Errorf("ISIS interfaces diff (-want +got): %s", diff)
+			}
+		})
+	}
+}
+
+func TestAPItoFRRDatapath(t *testing.T) {
+	underlay := v1alpha1.Underlay{
+		ObjectMeta: metav1.ObjectMeta{Name: "underlay", Namespace: "openperouter-system"},
+		Spec: v1alpha1.UnderlaySpec{
+			ASN: 64514,
+			Interfaces: []v1alpha1.UnderlayInterface{
+				{Type: v1alpha1.UnderlayInterfaceTypeNetworkDevice, NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch1"}},
+				{Type: v1alpha1.UnderlayInterfaceTypeNetworkDevice, NetworkDevice: &v1alpha1.NetworkDevice{InterfaceName: "toswitch2"}},
+			},
+			Neighbors: []v1alpha1.Neighbor{
+				{ASN: new(int64(64512)), Interface: new("toswitch1")},
+				{ASN: new(int64(64512)), Interface: new("eth9")},
+				{ASN: new(int64(64520)), Address: new("2001:db8:1234::1")},
+			},
+			TunnelEndpoint: &v1alpha1.TunnelEndpointConfig{CIDRs: []string{"2001:db8:1234:5678::/64"}},
+			ISIS: &v1alpha1.ISISConfig{
+				BaseNet: "49.0001.0002.0003.0004.00",
+				Interfaces: []v1alpha1.ISISInterface{
+					{Name: "toswitch1", IPFamily: new(v1alpha1.IPFamilyDualStack)},
+					{Name: "eth9", IPFamily: new(v1alpha1.IPFamilyIPv6)},
+				},
+			},
+			SRV6: &v1alpha1.SRV6Config{
+				Locator: v1alpha1.SRV6Locator{BasePrefix: "fd00:0:32::/48", Format: "usid-f3216"},
+			},
+		},
+	}
+	config := APIConfigData{Underlays: []v1alpha1.Underlay{underlay}}
+
+	tests := []struct {
+		name               string
+		datapath           InterfaceNameTranslator
+		wantISISInterfaces []frr.ISISInterface
+		wantNeighbors      []neighborInterface
+	}{
+		{
+			name:     "kernel datapath keeps the interface names",
+			datapath: kernelDatapath,
+			wantISISInterfaces: []frr.ISISInterface{
+				{Name: "eth9", IPv6: true},
+				{Name: "toswitch1", IPv4: true, IPv6: true},
+				{Name: "toswitch2", IPv6: true},
+				{Name: "vtep-lo", IPv6: true, IsPassive: true},
+			},
+			wantNeighbors: []neighborInterface{
+				{ID: "toswitch1", Interface: "toswitch1"},
+				{ID: "eth9", Interface: "eth9"},
+				{ID: "2001:db8:1234::1"},
+			},
+		},
+		{
+			name:     "renamed interfaces in ISIS and neighbors",
+			datapath: testDatapath{underlayPrefix: "u_"},
+			wantISISInterfaces: []frr.ISISInterface{
+				{Name: "u_eth9", IPv6: true},
+				{Name: "u_toswitch1", IPv4: true, IPv6: true},
+				{Name: "u_toswitch2", IPv6: true},
+				{Name: "vtep-lo", IPv6: true, IsPassive: true},
+			},
+			wantNeighbors: []neighborInterface{
+				{ID: "u_toswitch1", Interface: "u_toswitch1"},
+				{ID: "u_eth9", Interface: "u_eth9"},
+				{ID: "2001:db8:1234::1"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			converter := APIToFRRConverter{
+				NodeIndex:      0,
+				LogLevel:       "",
+				InterfaceNames: tt.datapath,
+			}
+			got, err := converter.Convert(config)
+			if err != nil {
+				t.Fatalf("APIToFRRConverter.Convert() unexpected error: %v", err)
+			}
+
+			if diff := cmp.Diff(tt.wantISISInterfaces, got.Underlay.ISIS.Interfaces); diff != "" {
+				t.Errorf("ISIS interfaces diff: %s", diff)
+			}
+
+			gotNeighbors := []neighborInterface{}
+			for _, n := range got.Underlay.Neighbors {
+				gotNeighbors = append(gotNeighbors, neighborInterface{ID: n.ID, Interface: n.Interface})
+			}
+			if diff := cmp.Diff(tt.wantNeighbors, gotNeighbors); diff != "" {
+				t.Errorf("neighbors diff (-want +got): %s", diff)
+			}
+		})
 	}
 }
 
@@ -4231,9 +4443,14 @@ func TestAPItoFRRListenRange(t *testing.T) {
 			config := APIConfigData{
 				Underlays: []v1alpha1.Underlay{*u},
 			}
-			got, err := APItoFRR(config, 0, "")
+			converter := APIToFRRConverter{
+				NodeIndex:      0,
+				LogLevel:       "",
+				InterfaceNames: kernelDatapath,
+			}
+			got, err := converter.Convert(config)
 			if err != nil {
-				t.Fatalf("APItoFRR() unexpected error: %v", err)
+				t.Fatalf("APIToFRRConverter.Convert() unexpected error: %v", err)
 			}
 
 			if !cmp.Equal(got.Underlay.Neighbors, tt.wantNeighbors) {
@@ -4461,4 +4678,26 @@ func TestL3VNIConfigsToFRR(t *testing.T) {
 			}
 		})
 	}
+}
+
+// neighborInterface holds the neighbor fields that depend on the interface
+// names the datapath exposes to FRR.
+type neighborInterface struct {
+	ID        string
+	Interface string
+}
+
+// testDatapath exposes the interfaces to FRR prefixed by underlayPrefix,
+// except for the tunnel endpoint interface.
+type testDatapath struct {
+	underlayPrefix string
+}
+
+var kernelDatapath = testDatapath{}
+
+func (d testDatapath) InterfaceNameForFRR(name string) string {
+	if name == hostnetwork.TunnelLoopback {
+		return name
+	}
+	return d.underlayPrefix + name
 }

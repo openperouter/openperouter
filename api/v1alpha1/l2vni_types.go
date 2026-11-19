@@ -33,6 +33,8 @@ const (
 
 // L2VNISpec defines the desired state of VNI.
 // +kubebuilder:validation:XValidation:rule="!has(self.gatewayIPs) || size(self.gatewayIPs) == 0 || has(self.routingDomain)",message="gatewayIPs cannot be set without routingDomain"
+// +kubebuilder:validation:XValidation:rule="!has(self.hostMaster) || !has(self.trunk)",message="hostMaster and trunk are mutually exclusive"
+// +kubebuilder:validation:XValidation:rule="has(self.trunk) == has(oldSelf.trunk) && (!has(self.trunk) || self.trunk == oldSelf.trunk)",message="trunk is immutable"
 type L2VNISpec struct {
 	// nodeSelector specifies which nodes this L2VNI applies to.
 	// If empty or not specified, applies to all nodes.
@@ -82,6 +84,11 @@ type L2VNISpec struct {
 	// +optional
 	HostMaster *HostMaster `json:"hostMaster,omitempty"`
 
+	// trunk selects a shared L2Trunk attachment and the VLAN tag carried on it.
+	// The reference and tag are immutable and cannot be combined with hostMaster.
+	// +optional
+	Trunk *L2TrunkReference `json:"trunk,omitempty"`
+
 	// gatewayIPs is a list of IP addresses in CIDR notation for the
 	// distributed anycast gateway on this L2 segment's bridge
 	// (Integrated Routing and Bridging interface). It is a property of
@@ -105,6 +112,28 @@ type L2VNISpec struct {
 	// +listType=atomic
 	// +optional
 	ImportRTs []RouteTarget `json:"importRTs,omitempty"`
+}
+
+// L2TrunkReference selects an L2Trunk and a VLAN-to-VNI mapping on it.
+type L2TrunkReference struct {
+	// name is the metadata.name of the L2Trunk in the same namespace.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	// +required
+	Name string `json:"name,omitempty"`
+
+	// vlan selects the tag carried by this L2VNI on the trunk.
+	// +required
+	VLAN VLANConfig `json:"vlan,omitzero"`
+}
+
+// VLANConfig identifies an 802.1Q VLAN on a trunk.
+type VLANConfig struct {
+	// tag is the VLAN ID. Untagged traffic and reserved IDs are not supported.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=4094
+	// +required
+	Tag int32 `json:"tag,omitempty"`
 }
 
 // RoutingDomain is a discriminated union over the resource kinds that can

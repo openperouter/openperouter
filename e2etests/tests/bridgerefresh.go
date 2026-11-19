@@ -417,6 +417,16 @@ var _ = Describe("BridgeRefresher E2E - Type 2 Route Persistence", Ordered, func
 
 				By(fmt.Sprintf("Verifying migrating pod (%s) can ping the local gateway", migratingPod.Name))
 				newMigratingExec := executor.ForPod(testNamespace, migratingPod.Name, "agnhost")
+				if strings.Contains(tc.migratingPodIP, ":") {
+					// Newer kernels answer DAD from the stale remote neighbor entry.
+					// Re-add the address with nodad to clear any DAD failure from CNI
+					// setup while preserving the stale-route migration scenario (#944).
+					By("Re-adding the migrating pod IPv6 address without DAD")
+					_, err = newMigratingExec.Exec("ip", "-6", "addr", "del", tc.migratingPodIP, "dev", "net1")
+					Expect(err).NotTo(HaveOccurred())
+					_, err = newMigratingExec.Exec("ip", "-6", "addr", "add", tc.migratingPodIP, "dev", "net1", "nodad")
+					Expect(err).NotTo(HaveOccurred())
+				}
 				canPingFromPodWithTimeout(newMigratingExec, l2GatewayIPOnly, 60*time.Second)
 
 				By(fmt.Sprintf("Verifying stationary pod (%s) can reach migrating pod (%s) after migration",

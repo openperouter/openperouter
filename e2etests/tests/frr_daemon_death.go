@@ -62,9 +62,10 @@ var _ = Describe("FRR daemon death", PodModeOnly, Ordered, func() {
 
 	It("heals in place after zebra dies", func() {
 		const killed = "zebra"
-		routerPods, err := openperouter.RouterPodsForNodes(cs, allNodes(cs))
+		nodes := allNodes(cs)
+		routerPods, err := openperouter.RouterPodsForNodes(cs, nodes)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(routerPods).NotTo(BeEmpty())
+		Expect(routerPods).To(HaveLen(len(nodes)), "expected one router pod per selected node")
 		routerPod := routerPods[0]
 		nodeName := routerPod.Spec.NodeName
 		frrExec := executor.ForPod(openperouter.Namespace, routerPod.Name, "frr")

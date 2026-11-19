@@ -25,12 +25,12 @@ kubeconfig to `bin/kubeconfig` (or to `KUBECONFIG_PATH` when overridden).
 
 ## NIC Mapping
 
-| Clab interface | TAP in QEMU container | Guest NIC    | MAC               |
-|----------------|-----------------------|--------------|-------------------|
-| toswitch1     | toswitch1_t     | toswitch1    | 52:54:00:ab:cd:01 |
-| toswitch2     | toswitch2_t     | toswitch2    | 52:54:00:ab:cd:02 |
-| toleafkind1   | toleafkind1_t   | toleafkind1  | 52:54:00:ab:cd:03 |
-| toleafkind2   | toleafkind2_t   | toleafkind2  | 52:54:00:ab:cd:04 |
+| Clab interface | TAP in QEMU container | Guest NIC    | MAC               | Model          |
+|----------------|-----------------------|--------------|-------------------|----------------|
+| toswitch1     | toswitch1_t     | toswitch1    | 52:54:00:ab:cd:01 | igb            |
+| toswitch2     | toswitch2_t     | toswitch2    | 52:54:00:ab:cd:02 | virtio-net-pci |
+| toleafkind1   | toleafkind1_t   | toleafkind1  | 52:54:00:ab:cd:03 | igb            |
+| toleafkind2   | toleafkind2_t   | toleafkind2  | 52:54:00:ab:cd:04 | virtio-net-pci |
 
 ## Cleanup
 

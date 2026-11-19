@@ -955,7 +955,8 @@ func TestUpdate(t *testing.T) {
 						},
 					},
 					SegmentRouting: &frr.UnderlaySegmentRouting{
-						SourceAddress: "2001:db8:1::1",
+						SourceAddress:       "2001:db8:1::1",
+						EncapsulationSource: "2001:db8:1::1",
 						Locator: frr.SRV6Locator{
 							Name:     "Main",
 							Prefix:   "2001:db8::/48",
@@ -1032,7 +1033,7 @@ func TestUpdate(t *testing.T) {
 						Name:  "ISIS",
 						Level: 1,
 						Interfaces: []frr.ISISInterface{
-							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "vtep-lo", IPv6: true, IsPassive: true},
 							{Name: "eth0", IPv4: true, IPv6: false},
 							{Name: "eth1", IPv4: false, IPv6: true},
 							{Name: "eth2", IPv4: true, IPv6: true},
@@ -1052,7 +1053,7 @@ func TestUpdate(t *testing.T) {
 						Net:   frr.MustParseISISNet("49.0001.0002.0003.0004.00"),
 						Level: 1,
 						Interfaces: []frr.ISISInterface{
-							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "vtep-lo", IPv6: true, IsPassive: true},
 							{Name: "eth0", IPv4: true, IPv6: true},
 						},
 					},
@@ -1091,7 +1092,8 @@ func TestUpdate(t *testing.T) {
 						IPv6CIDR: "2001:db8:1234:5678::/128",
 					},
 					SegmentRouting: &frr.UnderlaySegmentRouting{
-						SourceAddress: "2001:db8:1234:5678::",
+						SourceAddress:       "2001:db8:1234:5678::",
+						EncapsulationSource: "2001:db8:1234:5678::",
 						Locator: frr.SRV6Locator{
 							Name:     "MAIN",
 							Prefix:   "fd00:0:32::/48",
@@ -1158,7 +1160,7 @@ func TestUpdate(t *testing.T) {
 						Level:                1,
 						AdvertisePassiveOnly: true,
 						Interfaces: []frr.ISISInterface{
-							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "vtep-lo", IPv6: true, IsPassive: true},
 							{Name: "eth0", IPv4: true, IPv6: false},
 							{Name: "eth1", IPv4: false, IPv6: true},
 							{Name: "eth2", IPv4: true, IPv6: true},
@@ -1192,12 +1194,13 @@ func TestUpdate(t *testing.T) {
 						Name:  "ISIS",
 						Level: 1,
 						Interfaces: []frr.ISISInterface{
-							{Name: "lo", IPv6: true, IsPassive: true},
+							{Name: "vtep-lo", IPv6: true, IsPassive: true},
 							{Name: "eth0", IPv4: false, IPv6: true},
 						},
 					},
 					SegmentRouting: &frr.UnderlaySegmentRouting{
-						SourceAddress: "fc00::2:172:31:1:32",
+						SourceAddress:       "fc00::2:172:31:1:32",
+						EncapsulationSource: "fc00::2:172:31:1:32",
 						Locator: frr.SRV6Locator{
 							Name:     "MAIN",
 							Prefix:   "fd00:0:32::/48",
@@ -1256,7 +1259,7 @@ func TestUpdate(t *testing.T) {
 	}
 
 	reloadFn := func(t *testing.T, config frr.Config) {
-		if err := frr.ApplyConfig(context.TODO(), &config, updaterFn); err != nil {
+		if err := frr.ApplyConfig(context.TODO(), config, updaterFn); err != nil {
 			t.Fatalf("Failed to apply config: %s", err)
 		}
 		err := update(configFile, dockertest.FRRReload, dockertest.RunVtysh)

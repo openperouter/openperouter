@@ -23,6 +23,7 @@ var (
 	underlayGVK      = schema.GroupVersionKind{Group: "network.openperouter.io", Version: "v1alpha1", Kind: "Underlay"}
 	l3vniGVK         = schema.GroupVersionKind{Group: "network.openperouter.io", Version: "v1alpha1", Kind: "L3VNI"}
 	l2vniGVK         = schema.GroupVersionKind{Group: "network.openperouter.io", Version: "v1alpha1", Kind: "L2VNI"}
+	l2trunkGVK       = schema.GroupVersionKind{Group: "network.openperouter.io", Version: "v1alpha1", Kind: "L2Trunk"}
 	l3vpnGVK         = schema.GroupVersionKind{Group: "network.openperouter.io", Version: "v1alpha1", Kind: "L3VPN"}
 	l3passthroughGVK = schema.GroupVersionKind{Group: "network.openperouter.io", Version: "v1alpha1", Kind: "L3Passthrough"}
 	rawFRRConfigGVK  = schema.GroupVersionKind{Group: "network.openperouter.io", Version: "v1alpha1", Kind: "RawFRRConfig"}
@@ -115,6 +116,9 @@ func staticConfigToAPIConfig(staticConfig *static.PERouterConfig, nodeName, name
 				spec.RoutingDomain.L3VPN.Name = staticName(spec.RoutingDomain.L3VPN.Name)
 			}
 		}
+		if spec.Trunk != nil {
+			spec.Trunk.Name = staticName(spec.Trunk.Name)
+		}
 		l2vnis[i] = v1alpha1.L2VNI{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "L2VNI",
@@ -137,6 +141,9 @@ func staticConfigToAPIConfig(staticConfig *static.PERouterConfig, nodeName, name
 		}
 		l2vnis[i] = *result
 	}
+
+	l2trunks, l2trunkErrs := staticL2TrunksToAPI(staticConfig.L2Trunks, nodeName, namespace, nodeSelector)
+	allErrors = append(allErrors, l2trunkErrs...)
 
 	l3vpns := make([]v1alpha1.L3VPN, len(staticConfig.L3VPNs))
 	for i, staticVPN := range staticConfig.L3VPNs {
@@ -225,6 +232,7 @@ func staticConfigToAPIConfig(staticConfig *static.PERouterConfig, nodeName, name
 		Underlays:     underlays,
 		L3VNIs:        l3vnis,
 		L2VNIs:        l2vnis,
+		L2Trunks:      l2trunks,
 		L3VPNs:        l3vpns,
 		L3Passthrough: l3passthrough,
 		RawFRRConfigs: rawFRRConfigs,
@@ -300,6 +308,41 @@ func normalizeGoTypes(m map[string]any) (map[string]any, error) {
 		return nil, fmt.Errorf("unmarshalling from JSON: %w", err)
 	}
 	return normalized, nil
+}
+
+func staticL2TrunksToAPI(
+	staticTrunks []static.StaticL2Trunk,
+	nodeName, namespace string,
+	nodeSelector *metav1.LabelSelector,
+) ([]v1alpha1.L2Trunk, field.ErrorList) {
+	var allErrors field.ErrorList
+	l2trunks := make([]v1alpha1.L2Trunk, len(staticTrunks))
+	for i, staticTrunk := range staticTrunks {
+		spec := staticTrunk.L2TrunkSpec
+		spec.NodeSelector = nodeSelector
+		l2trunks[i] = v1alpha1.L2Trunk{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "L2Trunk",
+				APIVersion: "network.openperouter.io/v1alpha1",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      fmt.Sprintf("static-%s-%s", nodeName, staticTrunk.Name),
+				Namespace: namespace,
+				Labels: map[string]string{
+					StaticSourceLabel: StaticSourceValue,
+					StaticNodeLabel:   nodeName,
+				},
+			},
+			Spec: spec,
+		}
+		result, errs := applyDefaultsAndValidate(&l2trunks[i], l2trunkGVK)
+		if len(errs) > 0 {
+			allErrors = append(allErrors, errs...)
+			continue
+		}
+		l2trunks[i] = *result
+	}
+	return l2trunks, allErrors
 }
 
 func staticUnderlaysToAPI(

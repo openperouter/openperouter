@@ -1,0 +1,7 @@
+# grout-qemu config is used in the QEMU lane, where independent NICs bridged
+# with the PF emulate its SR-IOV VFs, see clab/qemu/vm/create-vfs.sh.
+- op: add
+  path: /spec/template/spec/containers/0/env/-
+  value:
+    name: TEST_FLAG_DO_NOT_USE_EMULATED_SRIOV_VFS
+    value: "true"

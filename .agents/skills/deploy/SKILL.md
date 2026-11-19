@@ -10,18 +10,24 @@ Run these steps in order:
 
 1. Choose the build and deployment targets based on the user's request:
 
-   | Mode | Build image | Deploy |
+   | Mode | Build and deploy |
    | --- | --- | --- |
-   | Kubernetes (default) | `make docker-build` | `make deploy` |
-   | Hostmode | `make docker-build` | `make deploy-hostmode` |
-   | Grout | `make grout-docker-build` | `make grout-deploy` |
+   | Kubernetes (default) | `make silentdeploy` |
+   | Hostmode | `make silentdeploy-hostmode` |
+   | Grout | `make grout-silentdeploy` |
 
-2. Run the build target, followed by the deployment target. For example, to
-   deploy Grout:
+2. Run the selected target. For example, to deploy Grout:
 
    ```shell
-   make grout-docker-build
-   make grout-deploy
+   make grout-silentdeploy
    ```
 
-Wait for each step to complete before proceeding to the next. Report any errors immediately.
+All silent deployment targets build the appropriate image, deploy it, and print
+only errors. Do not follow the log continuously. Check the live log once every
+10 minutes to confirm the deployment is still progressing:
+
+```shell
+tail -n 50 .silentdeploy.log
+```
+
+Wait for each target to complete before proceeding. Report any errors immediately.

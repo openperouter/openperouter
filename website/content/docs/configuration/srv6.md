@@ -4,7 +4,7 @@ title: "SRv6 L3VPN Configuration"
 description: "How to configure OpenPERouter for SRv6 L3VPN"
 icon: "article"
 date: "2025-06-15T15:03:22+02:00"
-lastmod: "2025-06-15T15:03:22+02:00"
+lastmod: "2026-10-14T09:00:00+02:00"
 toc: true
 ---
 
@@ -104,6 +104,10 @@ The `features` list enables optional IS-IS behaviors:
 
 For the full list of IS-IS configuration fields, see the
 [ISISConfig API Reference]({{< ref "api-reference#isisconfig" >}}).
+
+When running with the grout data path, see
+[Enabling Grout for SRv6 L3VPN]({{< ref "grout.md#enabling-grout-for-srv6-l3vpn" >}})
+for the differences in the generated FRR configuration.
 
 ### SRv6 Configuration
 

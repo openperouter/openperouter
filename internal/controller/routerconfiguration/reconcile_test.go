@@ -25,14 +25,24 @@ var failingUpdater = frr.ConfigUpdater(func(_ context.Context, _ string) error {
 	return fmt.Errorf("frr-reload failed")
 })
 
-type noopDatapathConfigurator struct{}
+type noopDatapathConfigurator struct {
+	onConfigure func(interfacesConfiguration)
+	conversion.GroutDatapathConfigValidator
+}
 
-func (n *noopDatapathConfigurator) Configure(_ context.Context, _ interfacesConfiguration) error {
+func (n *noopDatapathConfigurator) Configure(_ context.Context, config interfacesConfiguration) error {
+	if n.onConfigure != nil {
+		n.onConfigure(config)
+	}
 	return nil
 }
 
 func (n *noopDatapathConfigurator) Validate(_ conversion.APIConfigData) error {
 	return nil
+}
+
+func (n *noopDatapathConfigurator) InterfaceNameForFRR(name string) string {
+	return name
 }
 
 func TestReconcilePerResourceErrors(t *testing.T) {
@@ -42,6 +52,7 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 		l3VNIs           []v1alpha1.L3VNI
 		l3VPNs           []v1alpha1.L3VPN
 		l2VNIs           []v1alpha1.L2VNI
+		l2Trunks         []v1alpha1.L2Trunk
 		l3Passthroughs   []v1alpha1.L3Passthrough
 		expectedFailures []v1alpha1.FailedResource
 		wantConfig       conversion.APIConfigData
@@ -285,6 +296,59 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 				},
 				L3VNIs: nil,
 				L2VNIs: nil,
+			},
+		},
+		{
+			name: "L2VNI referencing a missing L2Trunk reports DependencyFailed",
+			l2VNIs: []v1alpha1.L2VNI{
+				trunkL2VNI("on-trunk", 100, "workloads", 33),
+				trunkL2VNI("orphan", 200, "missing", 44),
+			},
+			l2Trunks: []v1alpha1.L2Trunk{sriovL2Trunk("workloads")},
+			expectedFailures: []v1alpha1.FailedResource{
+				{Kind: openpeerrors.KindL2VNI, Name: "orphan", Reason: v1alpha1.FailedResourceReasonDependencyFailed,
+					Message: `referenced L2Trunk "missing" not found`},
+			},
+			wantConfig: conversion.APIConfigData{
+				L2VNIs:   []v1alpha1.L2VNI{trunkL2VNI("on-trunk", 100, "workloads", 33)},
+				L2Trunks: []v1alpha1.L2Trunk{sriovL2Trunk("workloads")},
+			},
+		},
+		{
+			name: "L2Trunk reusing a PF drops it and its L2VNIs",
+			l2VNIs: []v1alpha1.L2VNI{
+				trunkL2VNI("on-first", 100, "first", 33),
+				trunkL2VNI("on-second", 200, "second", 44),
+			},
+			l2Trunks: []v1alpha1.L2Trunk{
+				sriovL2Trunk("first"),
+				sriovL2Trunk("second"),
+			},
+			expectedFailures: []v1alpha1.FailedResource{
+				{Kind: openpeerrors.KindL2Trunk, Name: "second", Reason: v1alpha1.FailedResourceReasonValidationFailed,
+					Message: "PF enp1s0 is already used by L2Trunk first"},
+				{Kind: openpeerrors.KindL2VNI, Name: "on-second", Reason: v1alpha1.FailedResourceReasonDependencyFailed,
+					Message: `referenced L2Trunk "second" not found`},
+			},
+			wantConfig: conversion.APIConfigData{
+				L2VNIs:   []v1alpha1.L2VNI{trunkL2VNI("on-first", 100, "first", 33)},
+				L2Trunks: []v1alpha1.L2Trunk{sriovL2Trunk("first")},
+			},
+		},
+		{
+			name: "L2VNI reusing a VLAN tag on its trunk is skipped",
+			l2VNIs: []v1alpha1.L2VNI{
+				trunkL2VNI("a", 100, "workloads", 33),
+				trunkL2VNI("b", 200, "workloads", 33),
+			},
+			l2Trunks: []v1alpha1.L2Trunk{sriovL2Trunk("workloads")},
+			expectedFailures: []v1alpha1.FailedResource{
+				{Kind: openpeerrors.KindL2VNI, Name: "b", Reason: v1alpha1.FailedResourceReasonValidationFailed,
+					Message: "VLAN 33 on L2Trunk workloads is already used by L2VNI a"},
+			},
+			wantConfig: conversion.APIConfigData{
+				L2VNIs:   []v1alpha1.L2VNI{trunkL2VNI("a", 100, "workloads", 33)},
+				L2Trunks: []v1alpha1.L2Trunk{sriovL2Trunk("workloads")},
 			},
 		},
 		{
@@ -669,6 +733,7 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 				L3VNIs:        tt.l3VNIs,
 				L3VPNs:        tt.l3VPNs,
 				L2VNIs:        tt.l2VNIs,
+				L2Trunks:      tt.l2Trunks,
 				L3Passthrough: tt.l3Passthroughs,
 			}
 
@@ -690,6 +755,7 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 }
 
 func TestReconcileFrrReloadFailure(t *testing.T) {
+	resetFRRConfigCache(t)
 	reconcileErr := Reconcile(context.Background(), conversion.APIConfigData{}, 0, "",
 		"", "", failingUpdater, &noopDatapathConfigurator{}, configureFRR)
 	if reconcileErr == nil {
@@ -709,6 +775,7 @@ func TestReconcileFrrReloadFailure(t *testing.T) {
 // recordingDatapathConfigurator appends to a shared list every time the datapath
 // is configured, so that tests can assert the order of the reconcile steps.
 type recordingDatapathConfigurator struct {
+	conversion.GroutDatapathConfigValidator
 	steps *[]string
 }
 
@@ -719,6 +786,10 @@ func (r *recordingDatapathConfigurator) Configure(_ context.Context, _ interface
 
 func (r *recordingDatapathConfigurator) Validate(_ conversion.APIConfigData) error {
 	return nil
+}
+
+func (r *recordingDatapathConfigurator) InterfaceNameForFRR(name string) string {
+	return name
 }
 
 // TestReconcileAppliesFRRConfigBeforeDatapath pins the ordering between the FRR
@@ -749,6 +820,7 @@ func TestReconcileAppliesFRRConfigBeforeDatapath(t *testing.T) {
 // TestReconcileSkipsDatapathOnFrrReloadFailure ensures no kernel object is created
 // when FRR could not be configured, so that the datapath never gets ahead of FRR.
 func TestReconcileSkipsDatapathOnFrrReloadFailure(t *testing.T) {
+	resetFRRConfigCache(t)
 	var steps []string
 
 	reconcileErr := Reconcile(context.Background(), conversion.APIConfigData{}, 0, "",
@@ -759,6 +831,107 @@ func TestReconcileSkipsDatapathOnFrrReloadFailure(t *testing.T) {
 
 	if len(steps) != 0 {
 		t.Errorf("expected the datapath not to be configured, got steps: %v", steps)
+	}
+}
+
+func TestIsolationValidationUsesSurvivingVPNs(t *testing.T) {
+	const redName, blueName = "red", "blue"
+	const missingMessage = "cannot specify L3VPN configuration without an underlay with SRV6 configuration"
+	for _, tc := range []struct {
+		name                                  string
+		invalid, missingUnderlay, wantApplied bool
+		wantVPNs                              []string
+		wantFailures                          []v1alpha1.FailedResource
+		wantError                             string
+	}{
+		{name: "filtered VPN", invalid: true, wantApplied: true, wantVPNs: []string{redName},
+			wantFailures: []v1alpha1.FailedResource{{Kind: openpeerrors.KindL3VPN, Name: blueName, Reason: v1alpha1.FailedResourceReasonValidationFailed, Message: "invalid vrf name for vpn \"blue\", vrf \"\": interface name cannot be empty"}}},
+		{name: "surviving incompatible tables", wantError: "share underlayTable"},
+		{name: "missing SRv6 dependency", missingUnderlay: true, wantApplied: true, wantVPNs: []string{},
+			wantFailures: []v1alpha1.FailedResource{
+				{Kind: openpeerrors.KindL3VPN, Name: blueName, Reason: v1alpha1.FailedResourceReasonValidationFailed, Message: missingMessage},
+				{Kind: openpeerrors.KindL3VPN, Name: redName, Reason: v1alpha1.FailedResourceReasonValidationFailed, Message: missingMessage},
+			}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			underlays := srv6Underlays()
+			underlays[0].Spec.SRV6.EncapsulationSource = new("2001:db8::1")
+			red, blue := l3VPN(redName, redName, 100), l3VPN(blueName, blueName, 200)
+			red.Spec.RoutingIsolation = &v1alpha1.SRV6RoutingIsolation{UnderlayTable: 701, RemoteLocatorPrefixes: []string{"fc00:20::/48"}}
+			blue.Spec.RoutingIsolation = &v1alpha1.SRV6RoutingIsolation{UnderlayTable: 702, RemoteLocatorPrefixes: []string{"fc00:20::/48"}}
+			if tc.invalid {
+				blue.Spec.VRF = ""
+			}
+			if tc.missingUnderlay {
+				underlays = nil
+			}
+			called := false
+			configure := func(_ context.Context, data frrConfigData) error {
+				called = true
+				names := make([]string, 0, len(data.L3VPNs))
+				for _, vpn := range data.L3VPNs {
+					names = append(names, vpn.Name)
+				}
+				if diff := cmp.Diff(tc.wantVPNs, names); diff != "" {
+					t.Fatalf("surviving VPNs (-want +got):\n%s", diff)
+				}
+				return nil
+			}
+			err := Reconcile(context.Background(), conversion.APIConfigData{Underlays: underlays, L3VPNs: []v1alpha1.L3VPN{red, blue}}, 0, "", "", "", noopUpdater, &noopDatapathConfigurator{}, configure)
+			if called != tc.wantApplied {
+				t.Fatalf("FRR called=%t; want %t; error=%v", called, tc.wantApplied, err)
+			}
+			if diff := cmp.Diff(tc.wantFailures, openpeerrors.CollectFailures(err)); diff != "" {
+				t.Fatalf("resource failures (-want +got):\n%s", diff)
+			}
+			if tc.wantError != "" && (err == nil || !strings.Contains(err.Error(), tc.wantError)) {
+				t.Fatalf("want %s, got %v", tc.wantError, err)
+			}
+		})
+	}
+}
+
+func TestReconcileWithdrawsUnusedEncapsulationSource(t *testing.T) {
+	for _, invalidVPN := range []bool{false, true} {
+		t.Run(fmt.Sprintf("filtered_last_VPN_%t", invalidVPN), func(t *testing.T) {
+			underlays := srv6Underlays()
+			underlays[0].Spec.SRV6.EncapsulationSource = new("2001:db8::1")
+			input := conversion.APIConfigData{Underlays: underlays}
+			if invalidVPN {
+				vpn := l3VPN("red", "", 100)
+				vpn.Spec.RoutingIsolation = &v1alpha1.SRV6RoutingIsolation{UnderlayTable: 701, RemoteLocatorPrefixes: []string{"fc00:20::/48"}}
+				input.L3VPNs = []v1alpha1.L3VPN{vpn}
+			}
+			called := false
+			configure := func(_ context.Context, data frrConfigData) error {
+				called = true
+				if len(data.L3VPNs) != 0 || data.Underlays[0].Spec.SRV6.EncapsulationSource != nil {
+					t.Fatalf("source survived VPN withdrawal: %+v", data.APIConfigData)
+				}
+				return nil
+			}
+			datapathCalled := false
+			datapath := &noopDatapathConfigurator{onConfigure: func(config interfacesConfiguration) {
+				datapathCalled = true
+				if len(config.L3VPNs) != 0 || config.Underlays[0].Spec.SRV6.EncapsulationSource != nil {
+					t.Fatal("withdrawal did not reach datapath with effective source cleared")
+				}
+			}}
+			err := Reconcile(context.Background(), input, 0, "", "", "", noopUpdater, datapath, configure)
+			if !called || !datapathCalled {
+				t.Fatalf("withdrawal did not reach FRR: %v", err)
+			}
+			failures := openpeerrors.CollectFailures(err)
+			if invalidVPN && (len(failures) != 1 || failures[0].Name != "red") {
+				t.Fatalf("missing filtered-red error: %v", err)
+			}
+			if !invalidVPN && err != nil {
+				t.Fatal(err)
+			}
+			if underlays[0].Spec.SRV6.EncapsulationSource == nil {
+				t.Fatal("API source was mutated")
+			}
+		})
 	}
 }
 
@@ -831,4 +1004,76 @@ func l2VNIWithGateway(name string, rd *v1alpha1.RoutingDomain, vni int32, gatewa
 	l2 := l2VNI(name, rd, vni)
 	l2.Spec.GatewayIPs = gatewayIPs
 	return l2
+}
+
+func trunkL2VNI(name string, vni int32, trunk string, tag int32) v1alpha1.L2VNI {
+	return v1alpha1.L2VNI{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Spec: v1alpha1.L2VNISpec{
+			VNI:   vni,
+			Trunk: &v1alpha1.L2TrunkReference{Name: trunk, VLAN: v1alpha1.VLANConfig{Tag: tag}},
+		},
+	}
+}
+
+// sriovL2Trunk returns an SR-IOV trunk on VF 1 of enp1s0.
+func sriovL2Trunk(name string) v1alpha1.L2Trunk {
+	return v1alpha1.L2Trunk{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Spec: v1alpha1.L2TrunkSpec{
+			Type:  v1alpha1.L2TrunkTypeSRIOV,
+			SRIOV: &v1alpha1.SRIOVTrunkConfig{PFName: "enp1s0", VFIndex: new(int32(1))},
+		},
+	}
+}
+
+func TestReconcileFiltersKernelTrunks(t *testing.T) {
+	trunk := sriovL2Trunk("workloads")
+	config := conversion.APIConfigData{
+		L2Trunks: []v1alpha1.L2Trunk{trunk},
+		L2VNIs: []v1alpha1.L2VNI{
+			trunkL2VNI("trunked", 100, trunk.Name, 33),
+		},
+		L3VNIs: []v1alpha1.L3VNI{l3VNI("unrelated", "red", 200)},
+	}
+	var frrConfig conversion.APIConfigData
+	datapath := &kernelRecordingConfigurator{}
+	err := Reconcile(context.Background(), config, 0, "", "", "", noopUpdater, datapath,
+		func(_ context.Context, data frrConfigData) error {
+			frrConfig = data.APIConfigData
+			return nil
+		})
+	wantFailures := []v1alpha1.FailedResource{
+		{Kind: openpeerrors.KindL2Trunk, Name: "workloads",
+			Reason:  v1alpha1.FailedResourceReasonValidationFailed,
+			Message: "l2trunk workloads: L2Trunks are only supported with the grout datapath"},
+		{Kind: openpeerrors.KindL2VNI, Name: "trunked",
+			Reason:  v1alpha1.FailedResourceReasonDependencyFailed,
+			Message: `referenced L2Trunk "workloads" not found`},
+	}
+	if diff := cmp.Diff(wantFailures, openpeerrors.CollectFailures(err)); diff != "" {
+		t.Fatalf("failures (-want +got):\n%s", diff)
+	}
+	want := conversion.APIConfigData{
+		L3VNIs: config.L3VNIs, L2VNIs: []v1alpha1.L2VNI{}, L2Trunks: []v1alpha1.L2Trunk{},
+	}
+	for name, got := range map[string]conversion.APIConfigData{"frr": frrConfig, "datapath": datapath.config} {
+		if diff := cmp.Diff(want, got); diff != "" {
+			t.Errorf("%s configuration (-want +got):\n%s", name, diff)
+		}
+	}
+}
+
+type kernelRecordingConfigurator struct {
+	conversion.KernelDatapathConfigValidator
+	config conversion.APIConfigData
+}
+
+func (k *kernelRecordingConfigurator) Configure(_ context.Context, config interfacesConfiguration) error {
+	k.config = config.APIConfigData
+	return nil
+}
+
+func (k *kernelRecordingConfigurator) InterfaceNameForFRR(name string) string {
+	return name
 }

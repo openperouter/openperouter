@@ -13,6 +13,7 @@ import (
 	"github.com/openperouter/openperouter/internal/netnamespace"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
+	"golang.org/x/sys/unix"
 )
 
 var _ = Describe("L3 VPN configuration", func() {
@@ -28,7 +29,7 @@ var _ = Describe("L3 VPN configuration", func() {
 		DeferCleanup(func() {
 			ovsClient.Close()
 		})
-		setupLoopback(testNS)
+		setupTunnelLoopback(testNS)
 	})
 	AfterEach(func() {
 		cleanTest(testNSName)
@@ -37,7 +38,6 @@ var _ = Describe("L3 VPN configuration", func() {
 	It("should work with IPv4 only L3VPN", func() {
 		params := L3VPNParams{
 			VRF:              "testred",
-			TargetNS:         testNSPath(),
 			RDAssignedNumber: 100,
 			LinkIPs: &LinkIPs{
 				HostIPv4: "192.168.9.1/32",
@@ -45,7 +45,8 @@ var _ = Describe("L3 VPN configuration", func() {
 			},
 		}
 
-		err := SetupL3VPN(context.Background(), params)
+		cfg := newConfiguratorForTest(ovsClient)
+		err := cfg.SetupL3VPN(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -61,7 +62,6 @@ var _ = Describe("L3 VPN configuration", func() {
 	It("should work with IPv6 only L3VPN", func() {
 		params := L3VPNParams{
 			VRF:              "testred",
-			TargetNS:         testNSPath(),
 			RDAssignedNumber: 100,
 			LinkIPs: &LinkIPs{
 				HostIPv6: "2001:db8::1/128",
@@ -69,7 +69,8 @@ var _ = Describe("L3 VPN configuration", func() {
 			},
 		}
 
-		err := SetupL3VPN(context.Background(), params)
+		cfg := newConfiguratorForTest(ovsClient)
+		err := cfg.SetupL3VPN(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -85,7 +86,6 @@ var _ = Describe("L3 VPN configuration", func() {
 	It("should work with dual-stack L3VPN", func() {
 		params := L3VPNParams{
 			VRF:              "testred",
-			TargetNS:         testNSPath(),
 			RDAssignedNumber: 100,
 			LinkIPs: &LinkIPs{
 				HostIPv4: "192.168.9.1/32",
@@ -95,7 +95,8 @@ var _ = Describe("L3 VPN configuration", func() {
 			},
 		}
 
-		err := SetupL3VPN(context.Background(), params)
+		cfg := newConfiguratorForTest(ovsClient)
+		err := cfg.SetupL3VPN(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -108,11 +109,38 @@ var _ = Describe("L3 VPN configuration", func() {
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 	})
 
+	It("should make the IPv6 addresses usable right after setup", func() {
+		params := L3VPNParams{
+			VRF:              "testred",
+			RDAssignedNumber: 100,
+			LinkIPs: &LinkIPs{
+				HostIPv4: "192.168.9.1/32",
+				NSIPv4:   "192.168.9.0/32",
+				HostIPv6: "2001:db8::1/64",
+				NSIPv6:   "2001:db8::2/64",
+			},
+		}
+
+		Expect(newConfiguratorForTest(ovsClient).SetupL3VPN(context.Background(), params)).To(Succeed())
+
+		// No Eventually: DAD would clear the tentative flag after about a second,
+		// so the check must run right after setup.
+		vethNames := vethNamesFromL3VPN(params.RDAssignedNumber)
+		Expect(addressFlags(vethNames.HostSide, params.LinkIPs.HostIPv6)).
+			To(BeZero(), "host leg IPv6 address flags")
+		var nsFlags int
+		Expect(netnamespace.In(testNS, func() error {
+			var err error
+			nsFlags, err = addressFlags(vethNames.NamespaceSide, params.LinkIPs.NSIPv6)
+			return err
+		})).To(Succeed())
+		Expect(nsFlags).To(BeZero(), "PE leg IPv6 address flags")
+	})
+
 	It("should work with multiple L3VPNs + cleanup", func() {
 		params := []L3VPNParams{
 			{
 				VRF:              "testred",
-				TargetNS:         testNSPath(),
 				RDAssignedNumber: 100,
 				LinkIPs: &LinkIPs{
 					HostIPv4: "192.168.9.1/32",
@@ -121,7 +149,6 @@ var _ = Describe("L3 VPN configuration", func() {
 			},
 			{
 				VRF:              "testblue",
-				TargetNS:         testNSPath(),
 				RDAssignedNumber: 101,
 				LinkIPs: &LinkIPs{
 					HostIPv4: "192.168.9.2/32",
@@ -129,8 +156,9 @@ var _ = Describe("L3 VPN configuration", func() {
 				},
 			},
 		}
+		cfg := newConfiguratorForTest(ovsClient)
 		for _, p := range params {
-			err := SetupL3VPN(context.Background(), p)
+			err := cfg.SetupL3VPN(context.Background(), p)
 			Expect(err).NotTo(HaveOccurred())
 
 			Eventually(func(g Gomega) {
@@ -146,7 +174,7 @@ var _ = Describe("L3 VPN configuration", func() {
 		toDelete := params[1]
 
 		By("removing non configured L3VPNs")
-		err := RemoveNonConfiguredL3VPNs(testNSPath(), []L3VPNParams{remaining})
+		err := RemoveNonConfiguredL3VPNs([]L3VPNParams{remaining})
 		Expect(err).NotTo(HaveOccurred())
 		err = RemoveNonConfiguredVRFs(testNSPath(), map[string]bool{remaining.VRF: true})
 		Expect(err).NotTo(HaveOccurred())
@@ -179,7 +207,6 @@ var _ = Describe("L3 VPN configuration", func() {
 		l3vpnParams := []L3VPNParams{
 			{
 				VRF:              "testred",
-				TargetNS:         testNSPath(),
 				RDAssignedNumber: 100,
 				LinkIPs: &LinkIPs{
 					HostIPv4: "192.168.9.1/32",
@@ -188,7 +215,6 @@ var _ = Describe("L3 VPN configuration", func() {
 			},
 			{
 				VRF:              "testblue",
-				TargetNS:         testNSPath(),
 				RDAssignedNumber: 101,
 				LinkIPs: &LinkIPs{
 					HostIPv4: "192.168.9.2/32",
@@ -327,19 +353,20 @@ var _ = Describe("L3 VPN configuration", func() {
 		}
 
 		By("setting up L3VPNs")
+		cfg := newConfiguratorForTest(ovsClient)
 		for _, p := range l3vpnParams {
-			Expect(SetupL3VPN(context.Background(), p)).To(Succeed())
+			Expect(cfg.SetupL3VPN(context.Background(), p)).To(Succeed())
 		}
 		By("setting up L2VNIs")
 		for _, p := range l2vniParams {
-			Expect(SetupL2VNI(context.Background(), ovsClient, p)).To(Succeed())
+			Expect(cfg.SetupL2VNI(context.Background(), p)).To(Succeed())
 		}
 		validateAll()
 
 		By("removing second configured L3VPN")
 		deletedL3vpnParams = l3vpnParams[1:2]
 		l3vpnParams = l3vpnParams[0:1]
-		Expect(RemoveNonConfiguredL3VPNs(testNSPath(), l3vpnParams)).To(Succeed())
+		Expect(RemoveNonConfiguredL3VPNs(l3vpnParams)).To(Succeed())
 		Expect(RemoveNonConfiguredVNIs(ovsClient, testNSPath(), allVNIParams())).To(Succeed())
 		Expect(RemoveNonConfiguredVRFs(testNSPath(), allVRFs())).To(Succeed())
 		validateAll()
@@ -347,7 +374,7 @@ var _ = Describe("L3 VPN configuration", func() {
 		By("removing configured L2VNI")
 		deletedL2vniParams = l2vniParams[0:1]
 		l2vniParams = []L2VNIParams{}
-		Expect(RemoveNonConfiguredL3VPNs(testNSPath(), l3vpnParams)).To(Succeed())
+		Expect(RemoveNonConfiguredL3VPNs(l3vpnParams)).To(Succeed())
 		Expect(RemoveNonConfiguredVNIs(ovsClient, testNSPath(), allVNIParams())).To(Succeed())
 		Expect(RemoveNonConfiguredVRFs(testNSPath(), allVRFs())).To(Succeed())
 		validateAll()
@@ -355,7 +382,7 @@ var _ = Describe("L3 VPN configuration", func() {
 		By("removing first configured L3VPN")
 		deletedL3vpnParams = append(deletedL3vpnParams, l3vpnParams[0])
 		l3vpnParams = []L3VPNParams{}
-		Expect(RemoveNonConfiguredL3VPNs(testNSPath(), l3vpnParams)).To(Succeed())
+		Expect(RemoveNonConfiguredL3VPNs(l3vpnParams)).To(Succeed())
 		Expect(RemoveNonConfiguredVNIs(ovsClient, testNSPath(), allVNIParams())).To(Succeed())
 		Expect(RemoveNonConfiguredVRFs(testNSPath(), allVRFs())).To(Succeed())
 		validateAll()
@@ -364,7 +391,6 @@ var _ = Describe("L3 VPN configuration", func() {
 	It("should be idempotent", func() {
 		params := L3VPNParams{
 			VRF:              "testred",
-			TargetNS:         testNSPath(),
 			RDAssignedNumber: 100,
 			LinkIPs: &LinkIPs{
 				HostIPv4: "192.168.9.1/32",
@@ -372,10 +398,11 @@ var _ = Describe("L3 VPN configuration", func() {
 			},
 		}
 
-		err := SetupL3VPN(context.Background(), params)
+		cfg := newConfiguratorForTest(ovsClient)
+		err := cfg.SetupL3VPN(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = SetupL3VPN(context.Background(), params)
+		err = cfg.SetupL3VPN(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -391,12 +418,12 @@ var _ = Describe("L3 VPN configuration", func() {
 	It("should configure VRF when LinkIPs is nil", func() {
 		params := L3VPNParams{
 			VRF:              "testred",
-			TargetNS:         testNSPath(),
 			RDAssignedNumber: 100,
 			LinkIPs:          nil,
 		}
 
-		err := SetupL3VPN(context.Background(), params)
+		cfg := newConfiguratorForTest(ovsClient)
+		err := cfg.SetupL3VPN(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -419,7 +446,6 @@ var _ = Describe("L3 VPN configuration", func() {
 
 		l3vpnParams := L3VPNParams{
 			VRF:              "testred",
-			TargetNS:         testNSPath(),
 			RDAssignedNumber: 100,
 			TunnelOverhead:   SRv6Overhead,
 			LinkIPs: &LinkIPs{
@@ -439,8 +465,9 @@ var _ = Describe("L3 VPN configuration", func() {
 			},
 		}
 
-		Expect(SetupL3VPN(context.Background(), l3vpnParams)).To(Succeed())
-		Expect(SetupL2VNI(context.Background(), ovsClient, l2vniParams)).To(Succeed())
+		cfg := newConfiguratorForTest(ovsClient)
+		Expect(cfg.SetupL3VPN(context.Background(), l3vpnParams)).To(Succeed())
+		Expect(cfg.SetupL2VNI(context.Background(), l2vniParams)).To(Succeed())
 
 		expectedMTU := underlayMTU - SRv6Overhead
 		Eventually(func(g Gomega) {
@@ -456,12 +483,45 @@ var _ = Describe("L3 VPN configuration", func() {
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 	})
 
-	It("should leave veth MTU at default when no underlay interface is configured", func() {
-		// No fake underlay is set up here, so FindUnderlayMTU returns 0
-		// and the veth MTU must be left untouched.
+	It("should use the underlay MTU resolved for the pass instead of looking it up again", func() {
+		const underlayMTU = 9000
+		setupFakeUnderlay(testNS, "testunderlayvpn", underlayMTU)
+
+		cfg := newConfiguratorForTest(ovsClient)
+		Expect(cfg.underlayMTU).To(Equal(underlayMTU))
+
+		// Remove the underlay after the pass state is resolved: a fresh lookup
+		// would find no underlay and leave the veth MTU at its default.
+		removeFakeUnderlay(testNS, "testunderlayvpn")
+
 		params := L3VPNParams{
 			VRF:              "testred",
-			TargetNS:         testNSPath(),
+			RDAssignedNumber: 100,
+			TunnelOverhead:   SRv6Overhead,
+			LinkIPs: &LinkIPs{
+				HostIPv4: "192.168.9.1/32",
+				NSIPv4:   "192.168.9.0/32",
+			},
+		}
+
+		Expect(cfg.SetupL3VPN(context.Background(), params)).To(Succeed())
+
+		expectedMTU := underlayMTU - SRv6Overhead
+		Eventually(func(g Gomega) {
+			vethNames := vethNamesFromL3VPN(params.RDAssignedNumber)
+			validateVethMTU(g, vethNames, expectedMTU)
+			_ = netnamespace.In(testNS, func() error {
+				validateNSVethMTU(g, vethNames, expectedMTU)
+				return nil
+			})
+		}, 30*time.Second, 1*time.Second).Should(Succeed())
+	})
+
+	It("should leave veth MTU at default when no underlay interface is configured", func() {
+		// No underlay MTU is passed here, so SetVethMTUForTunnelOverhead must
+		// leave the veth MTU untouched.
+		params := L3VPNParams{
+			VRF:              "testred",
 			RDAssignedNumber: 100,
 			LinkIPs: &LinkIPs{
 				HostIPv4: "192.168.9.1/32",
@@ -469,7 +529,8 @@ var _ = Describe("L3 VPN configuration", func() {
 			},
 		}
 
-		err := SetupL3VPN(context.Background(), params)
+		cfg := newConfiguratorForTest(ovsClient)
+		err := cfg.SetupL3VPN(context.Background(), params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -531,4 +592,27 @@ func validateL3VPNNamespaceLeg(g Gomega, params L3VPNParams) {
 		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(hasIP).To(BeTrue(), "PE leg does not have IPv6", params.LinkIPs.NSIPv6)
 	}
+}
+
+// addressFlags returns the duplicate address detection related flags of the
+// given address on the named interface.
+func addressFlags(ifaceName, address string) (int, error) {
+	link, err := netlink.LinkByName(ifaceName)
+	if err != nil {
+		return 0, fmt.Errorf("failed to find interface %s: %w", ifaceName, err)
+	}
+	want, err := netlink.ParseAddr(address)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse address %s: %w", address, err)
+	}
+	addrs, err := netlink.AddrList(link, netlink.FAMILY_V6)
+	if err != nil {
+		return 0, fmt.Errorf("failed to list addresses on %s: %w", ifaceName, err)
+	}
+	for _, a := range addrs {
+		if a.IP.Equal(want.IP) {
+			return a.Flags & (unix.IFA_F_TENTATIVE | unix.IFA_F_DADFAILED), nil
+		}
+	}
+	return 0, fmt.Errorf("address %s not found on %s", address, ifaceName)
 }

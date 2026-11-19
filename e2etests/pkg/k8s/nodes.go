@@ -8,6 +8,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	applyconfigurationscorev1 "k8s.io/client-go/applyconfigurations/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 )
@@ -95,4 +96,24 @@ func LabelNodes(cs clientset.Interface, labels map[string]string, nodes ...corev
 func UnlabelNodes(cs clientset.Interface, nodes ...corev1.Node) error {
 	// This will remove the labels applied with the specified field manager
 	return LabelNodes(cs, map[string]string{}, nodes...)
+}
+
+// NodesWithLabel returns nodes matching the label selector. Empty selects all nodes.
+func NodesWithLabel(nodes []corev1.Node, label string) ([]corev1.Node, error) {
+	selector, err := labels.Parse(label)
+	if err != nil {
+		return nil, fmt.Errorf("invalid node label selector %q: %w", label, err)
+	}
+	out := make([]corev1.Node, 0, len(nodes))
+	for _, node := range nodes {
+		if selector.Matches(labels.Set(node.Labels)) {
+			out = append(out, node)
+		}
+	}
+	return out, nil
+}
+
+// NodeForPod returns a node reference with the pod's scheduled node name.
+func NodeForPod(pod *corev1.Pod) corev1.Node {
+	return corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: pod.Spec.NodeName}}
 }

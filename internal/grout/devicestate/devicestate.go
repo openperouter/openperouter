@@ -24,9 +24,10 @@ type Store struct {
 // handed to grout, so the device can be restored on teardown, or if
 // the setup process is interrupted in the middle.
 //
-// InterfaceName is the primary deviceID and the state file is named
-// "<interfaceName>.json". PCIAddress is stored in the file so a DPDK
-// port can be mapped back to its original kernel interface.
+// The state file is named "<deviceID>.json", with the deviceID chosen by the
+// caller. DeviceID repeats the key inside the file, so a state returned by
+// Load or List knows the key it is stored under. PCIAddress is stored in the
+// file so a DPDK port can be mapped back to its original kernel interface.
 //
 // AddrGenMode and AcceptRA hold the IPv6 sysctl values the setup overrides
 // on the kernel interface. They are empty when IPv6 is disabled on it, and
@@ -37,6 +38,7 @@ type Store struct {
 // teardown, as a TAP port sets its own MTU on the remote interface, and a
 // driver rebind resets it.
 type State struct {
+	DeviceID       string   `json:"deviceID"`
 	InterfaceName  string   `json:"interfaceName"`
 	PCIAddress     string   `json:"pciAddress,omitempty"`
 	OriginalDriver string   `json:"originalDriver,omitempty"`
@@ -46,18 +48,21 @@ type State struct {
 	MTU            int      `json:"mtu,omitempty"`
 }
 
-func (s Store) Save(state State) error {
-	if state.InterfaceName == "" {
+func (s Store) Save(deviceID string, state State) error {
+	if deviceID == "" {
 		return errMissingDeviceID
 	}
 	if err := os.MkdirAll(s.Dir, 0o755); err != nil {
 		return fmt.Errorf("failed to create device state directory: %w", err)
 	}
+	// Save owns the key: stamping it keeps the field and the file name in
+	// sync without trusting the caller to set it.
+	state.DeviceID = deviceID
 	data, err := json.Marshal(state)
 	if err != nil {
 		return fmt.Errorf("failed to marshal device state: %w", err)
 	}
-	path := s.filePath(state.InterfaceName)
+	path := s.filePath(deviceID)
 	if err := writeFileAtomic(path, data); err != nil {
 		return fmt.Errorf("failed to write device state to %s: %w", path, err)
 	}

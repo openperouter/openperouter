@@ -48,7 +48,10 @@ update_and_restart_routerpod() {
     load_image_to_node "$NODE" "$ROUTER_IMAGE"
 
     log_info "  Restarting routerpod services..."
-    $CONTAINER_ENGINE_CLI exec "$NODE" systemctl restart routerpod-pod.service || log_warn "Failed to restart routerpod-pod.service on $NODE"
+    if ! $CONTAINER_ENGINE_CLI exec "$NODE" systemctl restart routerpod-pod.service; then
+        log_error "Failed to restart routerpod-pod.service on $NODE"
+        return 1
+    fi
 }
 
 update_and_restart_controllerpod() {
@@ -59,7 +62,10 @@ update_and_restart_controllerpod() {
     load_image_to_node "$NODE" "$ROUTER_IMAGE"
 
     log_info "  Restarting controllerpod services..."
-    $CONTAINER_ENGINE_CLI exec "$NODE" systemctl restart controllerpod-pod.service || log_warn "Failed to restart controllerpod-pod.service on $NODE"
+    if ! $CONTAINER_ENGINE_CLI exec "$NODE" systemctl restart controllerpod-pod.service; then
+        log_error "Failed to restart controllerpod-pod.service on $NODE"
+        return 1
+    fi
 }
 
 if [[ $# -lt 1 ]]; then

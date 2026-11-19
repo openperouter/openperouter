@@ -8,6 +8,10 @@ lastmod: "2025-06-15T15:03:22+02:00"
 toc: true
 ---
 
+Linux L3VNI tenant VRFs have unreachable default routes to prevent fallthrough
+into the main routing table. See [EVPN VRF isolation]({{< ref "/docs/configuration/vrf-isolation" >}})
+for applicability, FRR interaction, recovery, and SRv6 limitations.
+
 ## Underlay Configuration
 
 In addition to the configuration described in the [underlay configuration section]({{< ref "configuration/#underlay-configuration" >}}), the VTEP (Virtual Tunnel End Point) source must be configured via the `evpn.vtepCIDR` field.
@@ -39,7 +43,7 @@ The `tunnelEndpoint.cidrs` field defines the IP range used for VTEP addresses. O
 - Node 3: `100.65.0.3`
 - etc.
 
-A loopback interface is created inside the router namespace with the allocated IP, and OpenPERouter advertises the VTEP IP to the fabric over the BGP underlay session.
+A dummy interface named `vtep-lo` is created inside the router namespace with the allocated IP, and OpenPERouter advertises the VTEP IP to the fabric over the BGP underlay session.
 
 #### IPv6 and Dual-Stack VTEP
 

@@ -70,17 +70,17 @@ type BestPath struct {
 	SelectionReason string `json:"selectionReason"`
 }
 
-type ipRoute struct {
+type IPRoute struct {
 	Destination string      `json:"dst"`
-	Encap       *ipEncap    `json:"encap,omitempty"`
-	Nexthops    []ipNexthop `json:"nexthops,omitempty"`
+	Encap       *IPEncap    `json:"encap,omitempty"`
+	Nexthops    []IPNexthop `json:"nexthops,omitempty"`
 }
 
-type ipNexthop struct {
-	Encap ipEncap `json:"encap"`
+type IPNexthop struct {
+	Encap IPEncap `json:"encap"`
 }
 
-type ipEncap struct {
+type IPEncap struct {
 	EncapType string `json:"encap_type"`
 	EncapMode string `json:"mode"`
 }
@@ -153,9 +153,9 @@ func (l3 L3VPNData) ContainsBGPRouteForL3VPN(prefix string, routerID string, imp
 }
 
 // GetKernelRoute takes an executor, a vrf and a prefix (CIDR string) and returns
-// the ipRoute if found, nil if no route could be found or an error in case of
+// the IPRoute if found, nil if no route could be found or an error in case of
 // an issue with the input.
-func GetKernelRoute(exec openperouter.RouterExecutor, vrf string, prefix string) (*ipRoute, error) {
+func GetKernelRoute(exec openperouter.RouterExecutor, vrf string, prefix string) (*IPRoute, error) {
 	flag := ""
 	switch ipfamily.ForCIDRString(prefix) {
 	case ipfamily.IPv4:
@@ -183,17 +183,17 @@ func GetKernelRoute(exec openperouter.RouterExecutor, vrf string, prefix string)
 	parsedRoute := parsedRoutes[0]
 
 	// FRR may install a single nexthop or multiple. Either Encap is set (single nexthop) or Nexthops is
-	// (multiple nexthops). For a single nexthop, let's build our own []ipNexthop so that the caller can
+	// (multiple nexthops). For a single nexthop, let's build our own []IPNexthop so that the caller can
 	// simply check Nexthops for either case.
 	if parsedRoute.Encap != nil && len(parsedRoute.Nexthops) == 0 {
-		parsedRoute.Nexthops = []ipNexthop{{Encap: *parsedRoute.Encap}}
+		parsedRoute.Nexthops = []IPNexthop{{Encap: *parsedRoute.Encap}}
 	}
 
 	return &parsedRoute, nil
 }
 
-func parseIPRoutes(input string) ([]ipRoute, error) {
-	var routes []ipRoute
+func parseIPRoutes(input string) ([]IPRoute, error) {
+	var routes []IPRoute
 	if err := json.Unmarshal([]byte(input), &routes); err != nil {
 		return nil, err
 	}

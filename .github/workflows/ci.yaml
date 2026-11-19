@@ -488,8 +488,7 @@ jobs:
 
       - name: Deploy the QEMU cluster
         run: |
-          KUSTOMIZE_LAYER=grout \
-            make qemu-deploy IMG_TAG=main-grout
+          make qemu-deploy IMG_TAG=main-grout
 
       - name: Run QEMU e2e tests
         run: |

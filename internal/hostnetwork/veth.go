@@ -25,9 +25,6 @@ const VethLinkType = "veth"
 // setupNamespacedVeth sets up a veth pair with the provided names and one leg in the
 // given namespace.
 func setupNamespacedVeth(ctx context.Context, vethNames VethNames, namespace string) error {
-	slog.DebugContext(ctx, "setupNamespacedVeth", "hostSide", vethNames.HostSide, "nsSide", vethNames.NamespaceSide)
-	defer slog.DebugContext(ctx, "end setupNamespacedVeth", "hostSide", vethNames.HostSide, "nsSide", vethNames.NamespaceSide)
-
 	targetNS, err := netns.GetFromPath(namespace)
 	if err != nil {
 		return fmt.Errorf("setupNamespacedVeth: Failed to get network namespace %s: %w", namespace, err)
@@ -37,6 +34,12 @@ func setupNamespacedVeth(ctx context.Context, vethNames VethNames, namespace str
 			slog.Error("failed to close namespace", "namespace", namespace, "error", err)
 		}
 	}()
+	return setupNamespacedVethInNamespace(ctx, vethNames, targetNS)
+}
+
+func setupNamespacedVethInNamespace(ctx context.Context, vethNames VethNames, targetNS netns.NsHandle) error {
+	slog.DebugContext(ctx, "setupNamespacedVeth", "hostSide", vethNames.HostSide, "nsSide", vethNames.NamespaceSide)
+	defer slog.DebugContext(ctx, "end setupNamespacedVeth", "hostSide", vethNames.HostSide, "nsSide", vethNames.NamespaceSide)
 
 	logger := slog.Default().With("host side", vethNames.HostSide, "pe side", vethNames.NamespaceSide)
 	logger.DebugContext(ctx, "setting up veth")
@@ -135,24 +138,29 @@ func createVeth(ctx context.Context, logger *slog.Logger, vethNames VethNames) (
 	return vethHost, nil
 }
 
-const HostVethPrefix = "host-"
-const PEVethPrefix = "pe-"
-const EvpnInfix = "e-"
-const SRv6Infix = "s-"
+const (
+	hostVethPrefix = "host-"
+	peVethPrefix   = "pe-"
+
+	HostEVPNPrefix = hostVethPrefix + "e-"
+	PEEVPNPrefix   = peVethPrefix + "e-"
+	HostSRv6Prefix = hostVethPrefix + "s-"
+	PESRv6Prefix   = peVethPrefix + "s-"
+)
 
 // vethNamesFromVNI returns the names of the veth legs
 // corresponding to the default namespace and the target namespace, based on VNI.
 func vethNamesFromVNI(vni int32) VethNames {
-	hostSide := fmt.Sprintf("%s%s%d", HostVethPrefix, EvpnInfix, vni)
-	peSide := fmt.Sprintf("%s%s%d", PEVethPrefix, EvpnInfix, vni)
+	hostSide := fmt.Sprintf("%s%d", HostEVPNPrefix, vni)
+	peSide := fmt.Sprintf("%s%d", PEEVPNPrefix, vni)
 	return VethNames{HostSide: hostSide, NamespaceSide: peSide}
 }
 
 // vethNamesFromL3VPN returns the names of the veth legs
 // corresponding to the default namespace and the target namespace, based on L3VPN.
 func vethNamesFromL3VPN(rdAssignedNumber int32) VethNames {
-	hostSide := fmt.Sprintf("%s%s%d", HostVethPrefix, SRv6Infix, rdAssignedNumber)
-	peSide := fmt.Sprintf("%s%s%d", PEVethPrefix, SRv6Infix, rdAssignedNumber)
+	hostSide := fmt.Sprintf("%s%d", HostSRv6Prefix, rdAssignedNumber)
+	peSide := fmt.Sprintf("%s%d", PESRv6Prefix, rdAssignedNumber)
 	return VethNames{HostSide: hostSide, NamespaceSide: peSide}
 }
 

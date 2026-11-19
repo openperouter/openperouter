@@ -2,6 +2,7 @@ resources:
 - bases/network.openperouter.io_underlays.yaml
 - bases/network.openperouter.io_l3vnis.yaml
 - bases/network.openperouter.io_l2vnis.yaml
+- bases/network.openperouter.io_l2trunks.yaml
 - bases/network.openperouter.io_l3vpns.yaml
 - bases/network.openperouter.io_l3passthroughs.yaml
 - bases/network.openperouter.io_rawfrrconfigs.yaml

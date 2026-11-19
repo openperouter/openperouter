@@ -25,7 +25,7 @@ type FRR struct {
 // in unit tests.
 var osHostname = os.Hostname
 
-func ApplyConfig(ctx context.Context, config *Config, updater ConfigUpdater) error {
+func ApplyConfig(ctx context.Context, config Config, updater ConfigUpdater) error {
 	hostname, err := osHostname()
 	if err != nil {
 		return err

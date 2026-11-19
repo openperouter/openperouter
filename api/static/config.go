@@ -34,6 +34,14 @@ type StaticL2VNI struct {
 	v1alpha1.L2VNISpec `json:",inline" yaml:",inline"`
 }
 
+// StaticL2Trunk wraps an L2TrunkSpec with a required name field for static
+// configuration. The name becomes the L2Trunk's metadata.name.
+type StaticL2Trunk struct {
+	// name becomes the metadata.name of the L2Trunk.
+	Name                 string `json:"name" yaml:"name"`
+	v1alpha1.L2TrunkSpec `json:",inline" yaml:",inline"`
+}
+
 // StaticL3VPN wraps an L3VPNSpec with a required name field for static
 // configuration. The name becomes the L3VPN's metadata.name.
 type StaticL3VPN struct {
@@ -65,6 +73,7 @@ type StaticUnderlaySpec struct {
 type PERouterConfig struct {
 	Underlays      []StaticUnderlaySpec        `yaml:"underlays"`
 	L2VNIs         []StaticL2VNI               `yaml:"l2vnis"`
+	L2Trunks       []StaticL2Trunk             `yaml:"l2trunks"`
 	L3VNIs         []StaticL3VNI               `yaml:"l3vnis"`
 	L3VPNs         []StaticL3VPN               `yaml:"l3vpns"`
 	BGPPassthrough v1alpha1.L3PassthroughSpec  `yaml:"bgppassthrough"`

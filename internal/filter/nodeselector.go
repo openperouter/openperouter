@@ -35,6 +35,13 @@ func L2VNIsForNode(node *corev1.Node, l2vnis []v1alpha1.L2VNI) ([]v1alpha1.L2VNI
 	})
 }
 
+// L2TrunksForNode returns L2Trunks that match the given node's labels.
+func L2TrunksForNode(node *corev1.Node, l2trunks []v1alpha1.L2Trunk) ([]v1alpha1.L2Trunk, error) {
+	return filterForNode(node, l2trunks, "L2Trunk", func(v v1alpha1.L2Trunk) (*metav1.LabelSelector, string) {
+		return v.Spec.NodeSelector, v.Name
+	})
+}
+
 // L3VPNsForNode returns L3VPNs that match the given node's labels.
 func L3VPNsForNode(node *corev1.Node, l3vpns []v1alpha1.L3VPN) ([]v1alpha1.L3VPN, error) {
 	return filterForNode(node, l3vpns, "L3VPN", func(v v1alpha1.L3VPN) (*metav1.LabelSelector, string) {

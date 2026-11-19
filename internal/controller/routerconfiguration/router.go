@@ -14,4 +14,5 @@ type RouterProvider interface {
 type Router interface {
 	TargetNS(ctx context.Context) (string, error)
 	CanReconcile() (bool, error)
+	FRRInstanceID(ctx context.Context) (string, error)
 }

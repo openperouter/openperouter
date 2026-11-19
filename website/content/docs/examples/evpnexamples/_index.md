@@ -178,6 +178,18 @@ Configure OpenPERouter for Layer2 EVPN scenarios with direct BGP peering.
 
 [View Layer2 Integration Example →]({{< ref "layer2" >}})
 
+### Layer 2 SR-IOV with Grout
+
+Connect DPDK applications across nodes using an SR-IOV trunk and the Grout datapath.
+
+**Key Features:**
+
+- Dedicated Grout trunk VF with a VLAN-to-VNI mapping
+- SR-IOV Network Operator policies and workload networks
+- DPDK pod configuration and east-west traffic validation
+
+[View Layer 2 SR-IOV Example →]({{< ref "layer2-sriov" >}})
+
 ### Route Reflector
 
 Run one node as a pure BGP route reflector that distributes EVPN routes between the other nodes, without a full iBGP mesh or fabric reflection.

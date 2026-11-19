@@ -155,6 +155,16 @@ func validateL3VNI(l3vni *v1alpha1.L3VNI) error {
 		return err
 	}
 
+	if hasIsolatedVPNs(l3vpnList.Items) {
+		underlays, err := getUnderlays()
+		if err != nil {
+			return err
+		}
+		if err := conversion.ValidateRoutingIsolationForNodes(nodeList.Items, underlays.Items, l3vpnList.Items, toValidate); err != nil {
+			return err
+		}
+	}
+
 	if err := conversion.ValidateOverlayResourcesForNodes(
 		nodeList.Items,
 		toValidateL2.Items,
