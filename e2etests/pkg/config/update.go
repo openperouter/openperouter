@@ -9,6 +9,7 @@ import (
 	frrk8sv1beta1 "github.com/metallb/frr-k8s/api/v1beta1"
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -160,6 +161,15 @@ func (o Updater) Update(r Resources) error {
 		}
 	}
 	return nil
+}
+
+// DeleteL2VNI deletes a named L2VNI. Update only creates or updates the
+// resources it is given, so removing an entry from Resources does not remove
+// it from the cluster.
+func (o Updater) DeleteL2VNI(name string) error {
+	return client.IgnoreNotFound(o.cli.Delete(context.Background(), &v1alpha1.L2VNI{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: o.openpeNamespace},
+	}))
 }
 
 // CleanAll deletes all relevant resources in the namespace.
