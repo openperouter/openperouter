@@ -5,6 +5,7 @@
 package netnamespace
 
 import (
+	"net"
 	"testing"
 
 	"github.com/vishvananda/netlink"
@@ -12,6 +13,12 @@ import (
 )
 
 func TestEnsureNamespace(t *testing.T) {
+	t.Cleanup(func() {
+		if err := DeleteNamespace(); err != nil {
+			t.Logf("cleanup: failed to delete netns: %v", err)
+		}
+	})
+
 	// First call should create the namespace
 	if err := EnsureNamespace(); err != nil {
 		t.Fatalf("first EnsureNamespace() failed: %v", err)
@@ -22,6 +29,18 @@ func TestEnsureNamespace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("namespace should exist after EnsureNamespace(): %v", err)
 	}
+	handle, err := netlink.NewHandleAt(ns)
+	if err != nil {
+		t.Fatalf("failed to open namespace netlink handle: %v", err)
+	}
+	defer handle.Close()
+	loopback, err := handle.LinkByName("lo")
+	if err != nil {
+		t.Fatalf("failed to retrieve namespace loopback: %v", err)
+	}
+	if loopback.Attrs().Flags&net.FlagUp == 0 {
+		t.Error("namespace loopback should be up after EnsureNamespace()")
+	}
 	if ns.Close() != nil {
 		t.Fatalf("namespace should close after EnsureNamespace(): %v", err)
 	}
@@ -29,11 +48,6 @@ func TestEnsureNamespace(t *testing.T) {
 	// Second call should be idempotent (no error)
 	if err := EnsureNamespace(); err != nil {
 		t.Fatalf("second EnsureNamespace() should be idempotent: %v", err)
-	}
-
-	// Clean up
-	if err := DeleteNamespace(); err != nil {
-		t.Logf("cleanup: failed to delete netns: %v", err)
 	}
 }
 

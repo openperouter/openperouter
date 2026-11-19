@@ -56,35 +56,66 @@ func TestDriverForPCIAddress_Unbound(t *testing.T) {
 
 func TestNetDeviceForPCIAddress(t *testing.T) {
 	t.Parallel()
-	sysfs := Sysfs{Root: t.TempDir()}
-
-	pciAddr := testPCIAddress
-	netDir := filepath.Join(sysfs.Root, "bus", "pci", "devices", pciAddr, "net", "enp3s0f0v0")
-	if err := os.MkdirAll(netDir, 0o755); err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		name           string
+		dirs           []string
+		want           string
+		wantErrMessage string
+	}{
+		{
+			name: "direct net device",
+			dirs: []string{"net/enp3s0f0v0"},
+			want: "enp3s0f0v0",
+		},
+		{
+			name: "virtio net device without direct net directory",
+			dirs: []string{"virtio0/net/ens3"},
+			want: "ens3",
+		},
+		{
+			name: "direct net device takes precedence over virtio",
+			dirs: []string{"net/enp3s0f0v0", "virtio0/net/ens3"},
+			want: "enp3s0f0v0",
+		},
+		{
+			name: "empty direct net directory falls back to virtio",
+			dirs: []string{"net", "virtio0/net/ens3"},
+			want: "ens3",
+		},
+		{
+			name:           "missing net directories",
+			wantErrMessage: "no kernel net device found for PCI device " + testPCIAddress,
+		},
 	}
 
-	name, err := sysfs.NetDeviceForPCIAddress(pciAddr)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if name != "enp3s0f0v0" {
-		t.Fatalf("expected enp3s0f0v0, got %s", name)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			sysfs := Sysfs{Root: t.TempDir()}
+			deviceDir := filepath.Join(sysfs.Root, "bus", "pci", "devices", testPCIAddress)
+			if err := os.MkdirAll(deviceDir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			for _, dir := range tt.dirs {
+				if err := os.MkdirAll(filepath.Join(deviceDir, dir), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
 
-func TestNetDeviceForPCIAddress_NoNetDir(t *testing.T) {
-	t.Parallel()
-	sysfs := Sysfs{Root: t.TempDir()}
-
-	pciAddr := testPCIAddress
-	deviceDir := filepath.Join(sysfs.Root, "bus", "pci", "devices", pciAddr)
-	if err := os.MkdirAll(deviceDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := sysfs.NetDeviceForPCIAddress(pciAddr); err == nil {
-		t.Fatal("expected error for missing net directory")
+			name, err := sysfs.NetDeviceForPCIAddress(testPCIAddress)
+			if tt.wantErrMessage != "" {
+				if err == nil || err.Error() != tt.wantErrMessage {
+					t.Fatalf("expected error %q, got %v", tt.wantErrMessage, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if name != tt.want {
+				t.Fatalf("expected %s, got %s", tt.want, name)
+			}
+		})
 	}
 }
 

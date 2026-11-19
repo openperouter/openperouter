@@ -4,6 +4,7 @@ package infra
 
 import (
 	"fmt"
+	"net/netip"
 
 	"github.com/openperouter/openperouter/e2etests/pkg/frr"
 	"github.com/openperouter/openperouter/e2etests/pkg/ipfamily"
@@ -50,26 +51,64 @@ func init() {
 	linksForFamily = map[ipfamily.Family]map[link]linkAddresses{}
 }
 
-func registerFabricLinks() {
-	addLinkIPs(KindLeaf, Spine, "192.168.1.5", "192.168.1.4")
-	addLinkIPs(KindLeaf2, Spine, "192.168.1.7", "192.168.1.6")
-	addLinkIPs(LeafA, Spine, "192.168.1.1", "192.168.1.0")
-	addLinkIPs(LeafB, Spine, "192.168.1.3", "192.168.1.2")
-	addLinkIPs(LeafA, ClabPrefix+"hostA_red", "192.168.20.1", HostARedIPv4)
-	addLinkIPs(LeafA, ClabPrefix+"hostA_blue", "192.168.21.1", HostABlueIPv4)
-	addLinkIPs(LeafB, ClabPrefix+"hostB_red", "192.169.20.1", HostBRedIPv4)
-	addLinkIPs(LeafB, ClabPrefix+"hostB_blue", "192.169.21.1", HostBBlueIPv4)
+func registerFabricLinks() error {
+	if err := addLinkIPs(KindLeaf, Spine, "192.168.1.5", "192.168.1.4"); err != nil {
+		return err
+	}
+	if err := addLinkIPs(KindLeaf2, Spine, "192.168.1.7", "192.168.1.6"); err != nil {
+		return err
+	}
+	if err := addLinkIPs(LeafA, Spine, "192.168.1.1", "192.168.1.0"); err != nil {
+		return err
+	}
+	if err := addLinkIPs(LeafB, Spine, "192.168.1.3", "192.168.1.2"); err != nil {
+		return err
+	}
+	if err := addLinkIPs(LeafA, ClabPrefix+"hostA_red", "192.168.20.1", HostARedIPv4); err != nil {
+		return err
+	}
+	if err := addLinkIPs(LeafA, ClabPrefix+"hostA_blue", "192.168.21.1", HostABlueIPv4); err != nil {
+		return err
+	}
+	if err := addLinkIPs(LeafB, ClabPrefix+"hostB_red", "192.169.20.1", HostBRedIPv4); err != nil {
+		return err
+	}
+	if err := addLinkIPs(LeafB, ClabPrefix+"hostB_blue", "192.169.21.1", HostBBlueIPv4); err != nil {
+		return err
+	}
+	return nil
 }
 
-func registerNodeLinks(cfg nodeLinksConfig) {
+// registerNodeLinks registers per-node underlay links from nodelink JSON.
+func registerNodeLinks(cfg nodeLinksConfig) error {
 	for nodeName, nc := range cfg.Nodes {
-		addLinkIPs(KindLeaf, nodeName, kindLeafIP, nc.IPForKindLeaf)
-		addLinkIPs(KindLeaf2, nodeName, kindLeaf2IP, nc.IPForKindLeaf2)
-		addLinkIPv6s(KindLeaf, nodeName, kindLeafIPv6, nc.IPv6ForKindLeaf)
-		addLinkIPv6s(KindLeaf2, nodeName, kindLeaf2IPv6, nc.IPv6ForKindLeaf2)
-		addLinkInterfaces(KindLeaf, nodeName, nc.LeafIfaceForKindLeaf, nc.IfaceForKindLeaf)
-		addLinkInterfaces(KindLeaf2, nodeName, nc.LeafIfaceForKindLeaf2, nc.IfaceForKindLeaf2)
+		if err := addLinkIPs(KindLeaf, nodeName, kindLeafIP, nc.IPForKindLeaf); err != nil {
+			return err
+		}
+		if err := addLinkIPs(KindLeaf2, nodeName, kindLeaf2IP, nc.IPForKindLeaf2); err != nil {
+			return err
+		}
+
+		if nc.IPv6ForKindLeaf != "" || nc.IPv6ForKindLeaf2 != "" {
+			if err := addLinkIPv6s(KindLeaf, nodeName, kindLeafIPv6, nc.IPv6ForKindLeaf); err != nil {
+				return err
+			}
+			if err := addLinkIPv6s(KindLeaf2, nodeName, kindLeaf2IPv6, nc.IPv6ForKindLeaf2); err != nil {
+				return err
+			}
+		}
+
+		if nc.LeafIfaceForKindLeaf != "" || nc.IfaceForKindLeaf != "" ||
+			nc.LeafIfaceForKindLeaf2 != "" || nc.IfaceForKindLeaf2 != "" {
+			if err := addLinkInterfaces(KindLeaf, nodeName, nc.LeafIfaceForKindLeaf, nc.IfaceForKindLeaf); err != nil {
+				return err
+			}
+			if err := addLinkInterfaces(KindLeaf2, nodeName, nc.LeafIfaceForKindLeaf2, nc.IfaceForKindLeaf2); err != nil {
+				return err
+			}
+		}
 	}
+	return nil
 }
 
 type link struct {
@@ -110,26 +149,45 @@ func NeighborForFamily(from, to string, af ipfamily.Family) (Neighbor, error) {
 	return Neighbor{ID: neighborID, IsInterface: af == ipfamily.Unnumbered}, nil
 }
 
-func addLinkIPs(from, to, addressFrom, addressTo string) {
-	family := ipfamily.IPv4
-	add(family, from, to, addressFrom, addressTo)
+func addLinkIPs(from, to, addressFrom, addressTo string) error {
+	for _, address := range []string{addressFrom, addressTo} {
+		ip, err := netip.ParseAddr(address)
+		if err != nil {
+			return fmt.Errorf("IPv4 link %q to %q: %w", from, to, err)
+		}
+		if !ip.Is4() {
+			return fmt.Errorf("link %q to %q: expected IPv4 address, got %q", from, to, address)
+		}
+	}
+	return add(ipfamily.IPv4, from, to, addressFrom, addressTo)
 }
 
-func addLinkIPv6s(from, to, addressFrom, addressTo string) {
-	family := ipfamily.IPv6
-	add(family, from, to, addressFrom, addressTo)
+func addLinkIPv6s(from, to, addressFrom, addressTo string) error {
+	for _, address := range []string{addressFrom, addressTo} {
+		ip, err := netip.ParseAddr(address)
+		if err != nil {
+			return fmt.Errorf("IPv6 link %q to %q: %w", from, to, err)
+		}
+		if !ip.Is6() {
+			return fmt.Errorf("link %q to %q: expected IPv6 address, got %q", from, to, address)
+		}
+	}
+	return add(ipfamily.IPv6, from, to, addressFrom, addressTo)
 }
 
-func addLinkInterfaces(from, to, addressFrom, addressTo string) {
-	family := ipfamily.Unnumbered
-	add(family, from, to, addressFrom, addressTo)
+func addLinkInterfaces(from, to, interfaceFrom, interfaceTo string) error {
+	return add(ipfamily.Unnumbered, from, to, interfaceFrom, interfaceTo)
 }
 
 // add registers a link in both directions so that NeighborForFamily can
 // resolve the remote address from either endpoint of the link.
-func add(family ipfamily.Family, from, to, addressFrom, addressTo string) {
+func add(family ipfamily.Family, from, to, addressFrom, addressTo string) error {
+	if from == "" || to == "" || addressFrom == "" || addressTo == "" {
+		return fmt.Errorf("link %q to %q requires non-empty endpoints and addresses or interfaces", from, to)
+	}
 	addLink(family, from, to, addressFrom, addressTo)
 	addLink(family, to, from, addressTo, addressFrom)
+	return nil
 }
 
 // addLink stores one direction of a link, mapping (from, to) to the local

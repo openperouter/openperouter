@@ -12,6 +12,7 @@ import (
 	"github.com/openperouter/openperouter/e2etests/pkg/config"
 	"github.com/openperouter/openperouter/e2etests/pkg/executor"
 	"github.com/openperouter/openperouter/e2etests/pkg/frrk8s"
+	"github.com/openperouter/openperouter/e2etests/pkg/infra"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 	"github.com/openperouter/openperouter/e2etests/scale_tests"
@@ -20,11 +21,13 @@ import (
 )
 
 var (
-	updater *config.Updater
+	updater            *config.Updater
+	nodeLinkConfigPath string
 )
 
 func handleFlags() {
 	flag.StringVar(&executor.Kubectl, "kubectl", "kubectl", "the path for the kubectl binary")
+	flag.StringVar(&nodeLinkConfigPath, "nodelink-config", "../nodelink-default.json", "path to node links config JSON")
 	flag.Parse()
 }
 
@@ -43,6 +46,7 @@ func TestScaleE2E(t *testing.T) {
 	}
 
 	RegisterFailHandler(ginkgo.Fail)
+	Expect(infra.RegisterLinks(nodeLinkConfigPath)).To(Succeed())
 	ginkgo.RunSpecs(t, "E2E Scale Suite")
 }
 

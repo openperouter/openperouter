@@ -19,6 +19,7 @@ type Resources struct {
 	Underlays         []v1alpha1.Underlay      `json:"underlays"`
 	L3VNIs            []v1alpha1.L3VNI         `json:"l3vnis"`
 	L2VNIs            []v1alpha1.L2VNI         `json:"l2vnis"`
+	L2Trunks          []v1alpha1.L2Trunk       `json:"l2trunks"`
 	L3VPNs            []v1alpha1.L3VPN         `json:"l3vpns"`
 	L3Passthrough     []v1alpha1.L3Passthrough `json:"l3passthrough"`
 	RawFRRConfigs     []v1alpha1.RawFRRConfig  `json:"rawfrrconfigs"`
@@ -84,6 +85,11 @@ func (o Updater) Update(r Resources) error {
 		oldValues[key] = vni.DeepCopy()
 		key++
 	}
+	for _, trunk := range r.L2Trunks {
+		objects[key] = trunk.DeepCopy()
+		oldValues[key] = trunk.DeepCopy()
+		key++
+	}
 	for _, vpn := range r.L3VPNs {
 		objects[key] = vpn.DeepCopy()
 		oldValues[key] = vpn.DeepCopy()
@@ -126,6 +132,9 @@ func (o Updater) Update(r Resources) error {
 				toChange.Spec = *old.Spec.DeepCopy()
 			case *v1alpha1.L2VNI:
 				old := oldValues[i].(*v1alpha1.L2VNI)
+				toChange.Spec = *old.Spec.DeepCopy()
+			case *v1alpha1.L2Trunk:
+				old := oldValues[i].(*v1alpha1.L2Trunk)
 				toChange.Spec = *old.Spec.DeepCopy()
 			case *v1alpha1.L3VPN:
 				old := oldValues[i].(*v1alpha1.L3VPN)
@@ -171,6 +180,10 @@ func (o Updater) CleanButUnderlay() error {
 		return err
 	}
 	if err := o.cli.DeleteAllOf(context.Background(), &v1alpha1.L2VNI{},
+		client.InNamespace(o.openpeNamespace)); err != nil {
+		return err
+	}
+	if err := o.cli.DeleteAllOf(context.Background(), &v1alpha1.L2Trunk{},
 		client.InNamespace(o.openpeNamespace)); err != nil {
 		return err
 	}

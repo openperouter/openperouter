@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 
+	"github.com/openperouter/openperouter/internal/sysctl"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
@@ -29,6 +30,13 @@ func AssignIPToInterface(link netlink.Link, address string) error {
 	if hasIP {
 		return nil
 	}
+	// Skip duplicate address detection: the addresses are either allocated per
+	// node or, like the anycast L2 gateway, shared on purpose, so DAD only keeps
+	// an IPv6 address tentative. FRR cannot use a tentative address, and a BGP
+	// session established in that window advertises the link-local address as
+	// the IPv6 next hop for its whole lifetime. The kernel ignores the flag on
+	// IPv4 addresses.
+	addr.Flags |= unix.IFA_F_NODAD
 	err = netlink.AddrAdd(link, addr)
 	if err != nil {
 		return fmt.Errorf("AssignIPToInterface: failed to add address %s to interface %s, err %v", address, link.Attrs().Name, err)
@@ -136,6 +144,34 @@ func SuppressLinkLocal(ifaceName string) error {
 		}
 		if err := netlink.AddrDel(link, &addr); err != nil {
 			return fmt.Errorf("failed to remove link-local %s from %s: %w", addr.IPNet, ifaceName, err)
+		}
+	}
+	return nil
+}
+
+// SuppressAutoconf stops the kernel from autoconfiguring IPv6 addresses from
+// router advertisements on the named interface, and removes the ones it
+// already autoconfigured. Autoconfigured addresses are told apart by their
+// finite lifetime, as the ones configured explicitly are permanent.
+func SuppressAutoconf(ifaceName string) error {
+	if err := sysctl.Ensure(sysctl.DisableAcceptRA(ifaceName)); err != nil {
+		return fmt.Errorf("failed to disable router advertisements on %s: %w", ifaceName, err)
+	}
+
+	link, err := netlink.LinkByName(ifaceName)
+	if err != nil {
+		return fmt.Errorf("failed to find interface %s: %w", ifaceName, err)
+	}
+	addrs, err := netlink.AddrList(link, netlink.FAMILY_V6)
+	if err != nil {
+		return fmt.Errorf("failed to list addresses on %s: %w", ifaceName, err)
+	}
+	for _, addr := range addrs {
+		if addr.Flags&unix.IFA_F_PERMANENT != 0 || addr.IP.IsLinkLocalUnicast() {
+			continue
+		}
+		if err := netlink.AddrDel(link, &addr); err != nil {
+			return fmt.Errorf("failed to remove autoconfigured address %s from %s: %w", addr.IPNet, ifaceName, err)
 		}
 	}
 	return nil

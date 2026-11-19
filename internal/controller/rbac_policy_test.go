@@ -21,7 +21,7 @@ func TestControllerClusterRole(t *testing.T) {
 	cr := loadClusterRole(t, "role.yaml")
 	assertRules(t, cr.Name, cr.Rules, []expectedRule{
 		{APIGroups: []string{""}, Resources: []string{"nodes"}, Verbs: []string{"get", "list", "patch", "watch"}},
-		{APIGroups: crdGroup, Resources: []string{"l2vnis", "l3passthroughs", "l3vnis", "l3vpns", "rawfrrconfigs", "routernodeconfigurationstatuses", "underlays"}, Verbs: []string{"create", "delete", "get", "list", "patch", "update", "watch"}},
+		{APIGroups: crdGroup, Resources: []string{"l2trunks", "l2vnis", "l3passthroughs", "l3vnis", "l3vpns", "rawfrrconfigs", "routernodeconfigurationstatuses", "underlays"}, Verbs: []string{"create", "delete", "get", "list", "patch", "update", "watch"}},
 		{APIGroups: crdGroup, Resources: []string{"l2vnis/finalizers", "l3passthroughs/finalizers", "l3vnis/finalizers", "l3vpns/finalizers", "rawfrrconfigs/finalizers", "underlays/finalizers"}, Verbs: []string{"update"}},
 		{APIGroups: crdGroup, Resources: []string{"l2vnis/status", "l3passthroughs/status", "l3vnis/status", "l3vpns/status", "rawfrrconfigs/status", "routernodeconfigurationstatuses/status", "underlays/status"}, Verbs: []string{"get", "patch", "update"}},
 	})
@@ -33,7 +33,7 @@ func TestNodemarkerClusterRole(t *testing.T) {
 		{APIGroups: []string{""}, Resources: []string{"nodes"}, Verbs: []string{"get", "list", "patch", "update", "watch"}},
 		{APIGroups: []string{"admissionregistration.k8s.io"}, Resources: []string{"validatingwebhookconfigurations"}, Verbs: []string{"get", "list", "watch"}},
 		{APIGroups: []string{"admissionregistration.k8s.io"}, Resources: []string{"validatingwebhookconfigurations"}, ResourceNames: []string{"openpe-validating-webhook-configuration"}, Verbs: []string{"update"}},
-		{APIGroups: crdGroup, Resources: []string{"l2vnis", "l3passthroughs", "l3vnis", "l3vpns", "rawfrrconfigs", "underlays"}, Verbs: []string{"get", "list", "watch"}},
+		{APIGroups: crdGroup, Resources: []string{"l2trunks", "l2vnis", "l3passthroughs", "l3vnis", "l3vpns", "rawfrrconfigs", "underlays"}, Verbs: []string{"get", "list", "watch"}},
 	})
 }
 

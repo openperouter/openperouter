@@ -21,6 +21,23 @@ const (
 	MinVethMTU = 1280
 )
 
+var deleteVRFLink = netlink.LinkDel
+var deleteVRFAttachment = netlink.LinkDel
+
+// CleanupOrphanVRFDefaultGuards retries owned route cleanup after the VRF is gone.
+func CleanupOrphanVRFDefaultGuards(targetNS string) error {
+	ns, err := netns.GetFromPath(targetNS)
+	if err != nil {
+		return fmt.Errorf("open orphan guard namespace: %w", err)
+	}
+	defer func() {
+		if err := ns.Close(); err != nil {
+			slog.Error("close orphan guard namespace", "err", err)
+		}
+	}()
+	return netnamespace.In(ns, cleanupOrphanVRFDefaultGuards)
+}
+
 // RemoveAllVRFs removes all VRFs from the target namespace.
 func RemoveAllVRFs(targetNS string) error {
 	return RemoveNonConfiguredVRFs(targetNS, map[string]bool{})
@@ -44,23 +61,29 @@ func RemoveNonConfiguredVRFs(targetNS string, vrfs map[string]bool) error {
 	})
 }
 
-// setupHostVeth configures the veth pair that connects the host to the perouter namespace, for
-// L3VNI and L3VPN.
-func setupHostVeth(ctx context.Context, vethNames VethNames, targetNS string, linkIPs *LinkIPs,
-	vrfName string, tunnelOverhead int) error {
-	if err := setupNamespacedVeth(ctx, vethNames, targetNS); err != nil {
-		return fmt.Errorf("failed to setup veth: %w", err)
-	}
-
+// CleanupObsoleteIsolationVRF removes only the confirmed managed table owner.
+func CleanupObsoleteIsolationVRF(targetNS string, desired map[string]bool, conflict *VRFTableOwnershipError) error {
 	ns, err := netns.GetFromPath(targetNS)
 	if err != nil {
-		return fmt.Errorf("failed to get network namespace %s: %w", targetNS, err)
+		return fmt.Errorf("open obsolete VRF namespace: %w", err)
 	}
 	defer func() {
 		if err := ns.Close(); err != nil {
-			slog.Error("failed to close namespace", "namespace", targetNS, "error", err)
+			slog.Error("close obsolete VRF namespace", "err", err)
 		}
 	}()
+	return netnamespace.In(ns, func() error {
+		return cleanupObsoleteIsolationVRF(desired, conflict)
+	})
+}
+
+// setupHostVeth configures the veth pair that connects the host to the router
+// namespace the configurator was built for, for L3VNI and L3VPN.
+func (c *VNIConfigurator) setupHostVeth(ctx context.Context, vethNames VethNames, linkIPs *LinkIPs,
+	vrfName string, tunnelOverhead int) error {
+	if err := setupNamespacedVethInNamespace(ctx, vethNames, c.ns); err != nil {
+		return fmt.Errorf("failed to setup veth: %w", err)
+	}
 
 	hostVethLink, err := netlink.LinkByName(vethNames.HostSide)
 	if errors.As(err, &netlink.LinkNotFoundError{}) {
@@ -75,28 +98,23 @@ func setupHostVeth(ctx context.Context, vethNames VethNames, targetNS string, li
 		return fmt.Errorf("failed to assign IPs to host veth: %w", err)
 	}
 
-	underlayMTU, err := FindUnderlayMTU(ns)
-	if err != nil {
-		return fmt.Errorf("could not find underlay MTU: %w", err)
-	}
-
-	if err := SetVethMTUForTunnelOverhead(hostVethLink, underlayMTU, tunnelOverhead); err != nil {
+	if err := SetVethMTUForTunnelOverhead(hostVethLink, c.underlayMTU, tunnelOverhead); err != nil {
 		return fmt.Errorf("failed to set MTU on host veth %s: %w", vethNames.HostSide, err)
 	}
 
-	return netnamespace.In(ns, func() error {
+	return netnamespace.In(c.ns, func() error {
 		peVethLink, err := netlink.LinkByName(vethNames.NamespaceSide)
 		if err != nil {
-			return fmt.Errorf("could not find peer veth %s in namespace %s: %w", vethNames.NamespaceSide, targetNS, err)
+			return fmt.Errorf("could not find peer veth %s in the router namespace: %w", vethNames.NamespaceSide, err)
 		}
 
-		if err := SetVethMTUForTunnelOverhead(peVethLink, underlayMTU, tunnelOverhead); err != nil {
+		if err := SetVethMTUForTunnelOverhead(peVethLink, c.underlayMTU, tunnelOverhead); err != nil {
 			return fmt.Errorf("failed to set MTU on pe veth %s: %w", vethNames.NamespaceSide, err)
 		}
 
 		vrfLink, err := netlink.LinkByName(vrfName)
 		if err != nil {
-			return fmt.Errorf("could not find vrf %s in namespace %s: %w", vrfName, targetNS, err)
+			return fmt.Errorf("could not find vrf %s in the router namespace: %w", vrfName, err)
 		}
 
 		err = linkSetMaster(peVethLink, vrfLink)
@@ -184,6 +202,12 @@ func removeNamespaceSideVRFs(vrfs map[string]bool) []error {
 		return []error{fmt.Errorf("removeNamespaceSideVRFs: failed to list links: %w", err)}
 	}
 
+	retainedTables := map[uint32]bool{}
+	for _, link := range links {
+		if vrf, ok := link.(*netlink.Vrf); ok && vrfs[vrf.Name] {
+			retainedTables[vrf.Table] = true
+		}
+	}
 	var failedDeletes []error
 	for _, l := range links {
 		if l.Type() != VRFLinkType {
@@ -192,9 +216,205 @@ func removeNamespaceSideVRFs(vrfs map[string]bool) []error {
 		if vrfs[l.Attrs().Name] {
 			continue
 		}
-		if err := netlink.LinkDel(l); err != nil {
-			failedDeletes = append(failedDeletes, fmt.Errorf("remove non configured interfaces: failed to delete vrf %s %w", l.Attrs().Name, err))
+		if err := deleteObsoleteVRF(l.(*netlink.Vrf), retainedTables[l.(*netlink.Vrf).Table]); err != nil {
+			failedDeletes = append(failedDeletes, err)
+		}
+	}
+	if len(failedDeletes) == 0 {
+		if err := cleanupOrphanVRFDefaultGuards(); err != nil {
+			failedDeletes = append(failedDeletes, err)
 		}
 	}
 	return failedDeletes
+}
+
+func deleteObsoleteVRF(vrf *netlink.Vrf, retainGuards bool) error {
+	var stale []netlink.Route
+	if !retainGuards {
+		var err error
+		stale, err = vrfDefaultGuardsToRemove(vrf)
+		if err != nil {
+			return err
+		}
+	}
+	if err := deleteVRFLink(vrf); err != nil {
+		return fmt.Errorf("remove obsolete VRF %s: %w", vrf.Name, err)
+	}
+	return deleteVRFDefaultGuards(stale)
+}
+
+func cleanupOrphanVRFDefaultGuards() error {
+	links, err := netlink.LinkList()
+	if err != nil {
+		return fmt.Errorf("list VRF tables before orphan guard cleanup: %w", err)
+	}
+	tables := map[uint32]bool{}
+	for _, link := range links {
+		if vrf, ok := link.(*netlink.Vrf); ok {
+			tables[vrf.Table] = true
+		}
+	}
+	stale, err := vrfDefaultGuardsToRemove(&netlink.Vrf{Table: 0})
+	if err != nil {
+		return err
+	}
+	var orphaned []netlink.Route
+	for _, route := range stale {
+		if !tables[uint32(route.Table)] && !reservedVRFTable(uint32(route.Table)) {
+			orphaned = append(orphaned, route)
+		}
+	}
+	return deleteVRFDefaultGuards(orphaned)
+}
+
+func cleanupObsoleteIsolationVRF(desired map[string]bool, conflict *VRFTableOwnershipError) error {
+	link, err := netlink.LinkByName(conflict.VRF)
+	if err != nil {
+		return fmt.Errorf("inspect obsolete VRF %s: %w", conflict.VRF, err)
+	}
+	owner, ok := link.(*netlink.Vrf)
+	if !ok || desired[conflict.VRF] || owner.Alias != managedVRFAlias || owner.Table != conflict.Table {
+		return conflict
+	}
+	links, err := netlink.LinkList()
+	if err != nil {
+		return fmt.Errorf("list retained VRF tables: %w", err)
+	}
+	attachments, err := obsoleteVRFAttachments(owner, links)
+	if err != nil {
+		return err
+	}
+	if err := recheckObsoleteVRF(owner); err != nil {
+		return err
+	}
+	for _, attachment := range attachments {
+		if err := removeObsoleteVRFAttachment(attachment); err != nil {
+			return err
+		}
+	}
+	if err := recheckObsoleteVRF(owner); err != nil {
+		return err
+	}
+	if err := requireNoAttachedLinks(owner); err != nil {
+		return err
+	}
+	// Refresh shared-table ownership after deleting the attachments.
+	links, err = netlink.LinkList()
+	if err != nil {
+		return fmt.Errorf("list retained VRF tables after attachment cleanup: %w", err)
+	}
+	retainGuards := false
+	for _, other := range links {
+		retained, ok := other.(*netlink.Vrf)
+		if ok && retained.Index != owner.Index && retained.Table == owner.Table {
+			retainGuards = true
+		}
+	}
+	return deleteObsoleteVRF(owner, retainGuards)
+}
+
+func recheckObsoleteVRF(owner *netlink.Vrf) error {
+	link, err := netlink.LinkByName(owner.Name)
+	if err != nil {
+		return fmt.Errorf("recheck obsolete VRF %s: %w", owner.Name, err)
+	}
+	current, ok := link.(*netlink.Vrf)
+	if !ok || current.Index != owner.Index || current.Table != owner.Table || current.Alias != managedVRFAlias {
+		return fmt.Errorf("obsolete VRF %s changed before deletion", owner.Name)
+	}
+	return nil
+}
+
+// Validate the whole attachment set before deleting anything. Managed bridges
+// must lose their ports first so deletion cannot move tenant traffic into main.
+func obsoleteVRFAttachments(owner *netlink.Vrf, links []netlink.Link) ([]netlink.Link, error) {
+	var attachments []netlink.Link
+	for _, link := range links {
+		if link.Attrs().MasterIndex != owner.Index {
+			continue
+		}
+		if managedVRFVeth(link) {
+			attachments = append(attachments, link)
+			continue
+		}
+		bridge, ok := link.(*netlink.Bridge)
+		if !ok {
+			return nil, fmt.Errorf("cannot remove obsolete VRF %s while interface %s is attached", owner.Name, link.Attrs().Name)
+		}
+		ports, err := obsoleteVNIBridgePorts(bridge, links)
+		if err != nil {
+			return nil, err
+		}
+		attachments = append(attachments, ports...)
+		attachments = append(attachments, bridge)
+	}
+	return attachments, nil
+}
+
+func managedVRFVeth(link netlink.Link) bool {
+	if link.Type() != VethLinkType {
+		return false
+	}
+	for _, prefix := range []string{PESRv6Prefix, PEEVPNPrefix} {
+		id, err := interfaceIDFromPrefix(link.Attrs().Name, prefix)
+		if err == nil && id > 0 && link.Attrs().Name == fmt.Sprintf("%s%d", prefix, id) {
+			return true
+		}
+	}
+	return false
+}
+
+func obsoleteVNIBridgePorts(bridge *netlink.Bridge, links []netlink.Link) ([]netlink.Link, error) {
+	vni, err := vniFromBridgeName(bridge.Name)
+	if err != nil || vni <= 0 || bridge.Name != BridgeName(vni) {
+		return nil, fmt.Errorf("cannot remove unmanaged bridge %s from obsolete VRF", bridge.Name)
+	}
+	var ports []netlink.Link
+	for _, link := range links {
+		if link.Attrs().MasterIndex != bridge.Index {
+			continue
+		}
+		if link.Type() == VethLinkType && link.Attrs().Name == vethNamesFromVNI(vni).NamespaceSide {
+			ports = append(ports, link)
+			continue
+		}
+		vxlan, ok := link.(*netlink.Vxlan)
+		if ok && vxlan.VxlanId == int(vni) && vxlan.Name == vxLanNameFromVNI(vni) {
+			ports = append(ports, link)
+			continue
+		}
+		return nil, fmt.Errorf("cannot remove obsolete bridge %s while interface %s is attached", bridge.Name, link.Attrs().Name)
+	}
+	return ports, nil
+}
+
+func removeObsoleteVRFAttachment(link netlink.Link) error {
+	current, err := netlink.LinkByName(link.Attrs().Name)
+	if err != nil {
+		return fmt.Errorf("recheck obsolete attachment %s: %w", link.Attrs().Name, err)
+	}
+	if current.Attrs().Index != link.Attrs().Index || current.Type() != link.Type() ||
+		current.Attrs().MasterIndex != link.Attrs().MasterIndex {
+		return fmt.Errorf("obsolete attachment %s changed before deletion", link.Attrs().Name)
+	}
+	if err := requireNoAttachedLinks(current); err != nil {
+		return err
+	}
+	if err := deleteVRFAttachment(current); err != nil {
+		return fmt.Errorf("remove obsolete attachment %s: %w", current.Attrs().Name, err)
+	}
+	return nil
+}
+
+func requireNoAttachedLinks(master netlink.Link) error {
+	links, err := netlink.LinkList()
+	if err != nil {
+		return fmt.Errorf("list attachments of %s: %w", master.Attrs().Name, err)
+	}
+	for _, link := range links {
+		if link.Attrs().MasterIndex == master.Attrs().Index {
+			return fmt.Errorf("cannot remove %s while interface %s is attached", master.Attrs().Name, link.Attrs().Name)
+		}
+	}
+	return nil
 }

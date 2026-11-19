@@ -10,10 +10,10 @@ require (
 	github.com/onsi/gomega v1.44.0
 	github.com/openperouter/openperouter v0.0.0-00010101000000-000000000000
 	github.com/openshift-kni/k8sreporter v1.0.7
-	k8s.io/api v0.37.1
-	k8s.io/apiextensions-apiserver v0.37.1
-	k8s.io/apimachinery v0.37.1
-	k8s.io/client-go v0.37.1
+	k8s.io/api v0.37.2
+	k8s.io/apiextensions-apiserver v0.37.2
+	k8s.io/apimachinery v0.37.2
+	k8s.io/client-go v0.37.2
 	k8s.io/utils v0.0.0-20261023123148-ca04ba58ecab
 	sigs.k8s.io/controller-runtime v0.25.2
 	sigs.k8s.io/yaml v1.6.0
@@ -62,7 +62,7 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.1 // indirect
-	go.yaml.in/yaml/v2 v2.4.4 // indirect
+	go.yaml.in/yaml/v2 v2.4.5 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/mod v0.41.0 // indirect
 	golang.org/x/net v0.60.0 // indirect
@@ -85,5 +85,3 @@ require (
 )
 
 replace github.com/openperouter/openperouter => ../
-
-replace go.universe.tf/e2etest => github.com/metallb/metallb/e2etest v0.0.0-20261018140220-93bc2b2567fd

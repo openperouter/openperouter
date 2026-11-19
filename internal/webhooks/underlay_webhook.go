@@ -142,7 +142,7 @@ func validateUnderlay(underlay *v1alpha1.Underlay) error {
 		return fmt.Errorf("validation failed: %w", err)
 	}
 
-	return nil
+	return validateUnderlayRoutingIsolation(nodeList.Items, toValidate)
 }
 
 var getUnderlays = func() (*v1alpha1.UnderlayList, error) {
@@ -243,4 +243,19 @@ func cniDevicesByInterface(interfaces []v1alpha1.UnderlayInterface) map[string]*
 // defaults compare equal.
 func cniInterfaceName(iface v1alpha1.UnderlayInterface) string {
 	return ptr.Deref(iface.CNIDevice.InterfaceName, cniinvoker.DefaultInterfaceName)
+}
+
+func validateUnderlayRoutingIsolation(nodes []corev1.Node, underlays []v1alpha1.Underlay) error {
+	vpns, err := getL3VPNs()
+	if err != nil {
+		return err
+	}
+	if !hasIsolatedVPNs(vpns.Items) {
+		return nil
+	}
+	vnis, err := getL3VNIs()
+	if err != nil {
+		return err
+	}
+	return conversion.ValidateRoutingIsolationForNodes(nodes, underlays, vpns.Items, vnis.Items)
 }

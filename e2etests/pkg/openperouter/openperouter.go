@@ -16,7 +16,10 @@ import (
 
 const routerLabelSelector = "app=router"
 
-var Namespace = "openperouter-system"
+var (
+	Namespace              = "openperouter-system"
+	InstrumentedNodesLabel string
+)
 
 type Routers interface {
 	Dump(writer io.Writer)
@@ -30,18 +33,32 @@ type RouterExecutor interface {
 	NodeName() string
 }
 
+// Get returns routers on nodes matching InstrumentedNodesLabel.
+// An empty selector includes all routers.
 func Get(cs clientset.Interface, hostMode bool) (Routers, error) {
 	if !hostMode {
-		pods, err := k8s.PodsForLabel(cs, Namespace, routerLabelSelector)
+		pods, err := RouterPods(cs)
 		if err != nil {
-			return nil, fmt.Errorf("failed to retrieve pods %w", err)
+			return nil, err
+		}
+		if InstrumentedNodesLabel == "" {
+			return routerPods{pods: pods}, nil
+		}
+
+		nodes, err := instrumentedNodes(cs)
+		if err != nil {
+			return nil, err
+		}
+		pods = k8s.PodsOnNodes(pods, nodes)
+		if len(pods) != len(nodes) {
+			return nil, fmt.Errorf("expected %d router pods on selected nodes, got %d", len(nodes), len(pods))
 		}
 		return routerPods{pods: pods}, nil
 	}
 
-	nodes, err := k8s.GetNodes(cs)
+	nodes, err := instrumentedNodes(cs)
 	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve nodes %w", err)
+		return nil, err
 	}
 
 	routers := []routerPodman{}
@@ -73,18 +90,12 @@ func AreReady(routers Routers) error {
 	return nil
 }
 
-func RouterPodsForNodes(cs clientset.Interface, nodes map[string]bool) ([]*corev1.Pod, error) {
-	routerPods, err := k8s.PodsForLabel(cs, Namespace, routerLabelSelector)
+func RouterPodsForNodes(cs clientset.Interface, nodes []corev1.Node) ([]*corev1.Pod, error) {
+	allRouterPods, err := k8s.PodsForLabel(cs, Namespace, routerLabelSelector)
 	if err != nil {
 		return nil, err
 	}
-	filteredRouterPods := []*corev1.Pod{}
-	for _, p := range routerPods {
-		if nodes[p.Spec.NodeName] {
-			filteredRouterPods = append(filteredRouterPods, p)
-		}
-	}
-	return filteredRouterPods, nil
+	return k8s.PodsOnNodes(allRouterPods, nodes), nil
 }
 
 // ExecutorForNode returns the RouterExecutor running on the given node.
@@ -113,4 +124,19 @@ func DaemonsetRolled(oldRouters Routers, newRouters Routers) error {
 	default:
 		return fmt.Errorf("unknown router type: %T", oldRouters)
 	}
+}
+
+func instrumentedNodes(cs clientset.Interface) ([]corev1.Node, error) {
+	nodes, err := k8s.GetNodes(cs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve nodes: %w", err)
+	}
+	nodes, err = k8s.NodesWithLabel(nodes, InstrumentedNodesLabel)
+	if err != nil {
+		return nil, err
+	}
+	if len(nodes) == 0 {
+		return nil, fmt.Errorf("no nodes match instrumented node label selector %q", InstrumentedNodesLabel)
+	}
+	return nodes, nil
 }

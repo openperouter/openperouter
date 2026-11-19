@@ -298,3 +298,18 @@ func CreateSilentPod(cs clientset.Interface, podName, namespace string, modifier
 	}
 	return res, nil
 }
+
+// PodsOnNodes filters pods by their scheduled node.
+func PodsOnNodes(pods []*corev1.Pod, nodes []corev1.Node) []*corev1.Pod {
+	nodeNames := make(map[string]struct{}, len(nodes))
+	for _, node := range nodes {
+		nodeNames[node.Name] = struct{}{}
+	}
+	filtered := make([]*corev1.Pod, 0, len(pods))
+	for _, pod := range pods {
+		if _, ok := nodeNames[pod.Spec.NodeName]; ok {
+			filtered = append(filtered, pod)
+		}
+	}
+	return filtered
+}

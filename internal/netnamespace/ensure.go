@@ -58,6 +58,7 @@ func EnsureNamespace() error {
 	if err != nil {
 		return fmt.Errorf("failed to retrieve %s in %s, err: %w", loopbackName, NamedNSPath, err)
 	}
+	// FRR requires the native loopback to be up when validating VPN nexthops.
 	if err := handle.LinkSetUp(loopback); err != nil {
 		return fmt.Errorf("failed to bring up %s in %s: %w", loopbackName, NamedNSPath, err)
 	}

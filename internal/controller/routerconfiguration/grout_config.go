@@ -8,13 +8,11 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/conversion"
 	openpeerrors "github.com/openperouter/openperouter/internal/errors"
 	"github.com/openperouter/openperouter/internal/grout"
 	"github.com/openperouter/openperouter/internal/grout/devicestate"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
-	"github.com/openperouter/openperouter/internal/hostnetwork/bridgerefresh"
 	"github.com/openperouter/openperouter/internal/pci"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
@@ -25,6 +23,7 @@ type GroutDatapathConfigurator struct {
 
 	groutSocketPath  string
 	deviceStateStore devicestate.Store
+	trunkStateStore  devicestate.Store
 	sysfs            pci.Sysfs
 	underlayPortMode grout.UnderlayPortMode
 }
@@ -33,9 +32,20 @@ func NewGroutConfigurator(groutSocketPath string, mode grout.UnderlayPortMode) *
 	return &GroutDatapathConfigurator{
 		groutSocketPath:  groutSocketPath,
 		deviceStateStore: devicestate.Store{Dir: "/var/run/grout/device-state"},
+		trunkStateStore:  devicestate.Store{Dir: "/var/run/grout/trunk-state"},
 		sysfs:            pci.Sysfs{Root: "/sys"},
 		underlayPortMode: mode,
 	}
+}
+
+// InterfaceNameForFRR returns the grout port an underlay network device is
+// attached to, as FRR sees the port and not the device. The tunnel endpoint
+// port is not attached to a device and is named after the interface itself.
+func (g *GroutDatapathConfigurator) InterfaceNameForFRR(name string) string {
+	if name == hostnetwork.TunnelLoopback {
+		return name
+	}
+	return grout.UnderlayPortName(name)
 }
 
 func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interfacesConfiguration) error {
@@ -62,6 +72,8 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 		Underlays:     config.Underlays,
 		L3VNIs:        config.L3VNIs,
 		L2VNIs:        config.L2VNIs,
+		L3VPNs:        config.L3VPNs,
+		L2Trunks:      config.L2Trunks,
 		L3Passthrough: config.L3Passthrough,
 	}
 	hostConfig, err := conversion.APItoHostConfig(config.nodeIndex, config.targetNamespace, apiConfig)
@@ -76,68 +88,44 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 
 	var resourceErrors []error
 	failedL3Domains := sets.New[string]()
-	reason := v1alpha1.FailedResourceReasonOverlayAttachmentFailed
 
 	var configuredL3VNIs []hostnetwork.L3VNIParams
 	for _, vni := range hostConfig.L3VNIs {
 		slog.InfoContext(ctx, "setting up VNI", "vni", vni.VRF)
 		if err := grout.SetupL3VNI(ctx, groutClient, vni); err != nil {
-			resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
-				Obj: v1alpha1.FailedResource{
-					Kind: openpeerrors.KindL3VNI, Name: vni.Name, Reason: reason, Message: err.Error(),
-				},
-			})
+			resourceErrors = append(resourceErrors,
+				overlayAttachmentError(openpeerrors.KindL3VNI, vni.Name, err.Error()))
 			failedL3Domains.Insert(vni.VRF)
 			continue
 		}
 		configuredL3VNIs = append(configuredL3VNIs, vni)
 	}
 
-	var configuredL2VNIs []hostnetwork.L2VNIParams
-	for _, vni := range hostConfig.L2VNIs {
-		if failedL3Domains.Has(vni.VRF) {
-			resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
-				Obj: v1alpha1.FailedResource{
-					Kind: openpeerrors.KindL2VNI, Name: vni.Name, Reason: reason,
-					Message: fmt.Sprintf("L3 domain %q failed provisioning", vni.VRF),
-				},
-			})
+	var configuredL3VPNs []hostnetwork.L3VPNParams
+	for _, l3vpn := range hostConfig.L3VPNs {
+		slog.InfoContext(ctx, "setting up L3 VPN", "VRF", l3vpn.VRF)
+		if err := grout.SetupL3VPN(ctx, groutClient, l3vpn); err != nil {
+			resourceErrors = append(resourceErrors,
+				overlayAttachmentError(openpeerrors.KindL3VPN, l3vpn.Name, err.Error()))
+			failedL3Domains.Insert(l3vpn.VRF)
 			continue
 		}
-
-		slog.InfoContext(ctx, "setting up L2VNI", "vni", vni.VNI)
-		if err := grout.SetupL2VNI(ctx, groutClient, ovsClient, vni); err != nil {
-			resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
-				Obj: v1alpha1.FailedResource{
-					Kind: openpeerrors.KindL2VNI, Name: vni.Name, Reason: reason, Message: err.Error(),
-				},
-			})
-			continue
-		}
-		if err := bridgerefresh.StartForVNI(ctx, vni); err != nil {
-			resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
-				Obj: v1alpha1.FailedResource{
-					Kind: openpeerrors.KindL2VNI, Name: vni.Name, Reason: reason, Message: err.Error(),
-				},
-			})
-			continue
-		}
-		configuredL2VNIs = append(configuredL2VNIs, vni)
+		configuredL3VPNs = append(configuredL3VPNs, l3vpn)
 	}
+
+	configuredTrunks, err := g.setupL2Trunks(ctx, groutClient, hostConfig.L2Trunks)
+	resourceErrors = append(resourceErrors, err)
+
+	configuredL2VNIs, err := setupGroutL2VNIs(ctx, groutClient, ovsClient,
+		hostConfig.L2VNIs, failedL3Domains, configuredTrunks)
+	resourceErrors = append(resourceErrors, err)
 
 	slog.InfoContext(ctx, "setting up passthrough")
 	if hostConfig.L3Passthrough != nil {
 		if err := grout.SetupPassthrough(ctx, groutClient, *hostConfig.L3Passthrough); err != nil {
-			resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
-				Obj: v1alpha1.FailedResource{
-					Kind: openpeerrors.KindL3Passthrough, Name: config.L3Passthrough[0].Name, Reason: reason, Message: err.Error(),
-				},
-			})
+			resourceErrors = append(resourceErrors,
+				overlayAttachmentError(openpeerrors.KindL3Passthrough, config.L3Passthrough[0].Name, err.Error()))
 		}
-	}
-
-	if len(resourceErrors) > 0 {
-		slog.Error("configuration failed", "errors", resourceErrors)
 	}
 
 	configuredVNIs := make([]hostnetwork.VNIParams, 0, len(configuredL3VNIs)+len(configuredL2VNIs))
@@ -150,21 +138,34 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 		configuredVNIs = append(configuredVNIs, vni.VNIParams)
 		configuredVRFs = append(configuredVRFs, vni.VRF)
 	}
+	for _, l3vpn := range configuredL3VPNs {
+		configuredVRFs = append(configuredVRFs, l3vpn.VRF)
+	}
 
 	slog.InfoContext(ctx, "removing deleted vnis")
 	if err := grout.RemoveNonConfiguredVNIs(ctx, groutClient, ovsClient, config.targetNamespace, configuredVNIs); err != nil {
-		return fmt.Errorf("failed to remove deleted vnis: %w", err)
+		return errors.Join(append(resourceErrors, fmt.Errorf("failed to remove deleted vnis: %w", err))...)
 	}
-	bridgerefresh.StopForRemovedVNIs(configuredL2VNIs)
+
+	slog.InfoContext(ctx, "removing deleted l3vpns")
+	if err := grout.RemoveNonConfiguredL3VPNs(ctx, groutClient, configuredL3VPNs); err != nil {
+		return fmt.Errorf("failed to remove deleted l3vpns: %w", err)
+	}
+
+	slog.InfoContext(ctx, "removing deleted l2trunks")
+	if err := grout.RemoveNonConfiguredL2Trunks(ctx, groutClient, config.targetNamespace,
+		hostConfig.L2Trunks, g.trunkStateStore, g.sysfs); err != nil {
+		return fmt.Errorf("failed to remove deleted l2trunks: %w", err)
+	}
 
 	slog.InfoContext(ctx, "removing deleted vrfs")
 	if err := grout.RemoveNonConfiguredVRFs(ctx, groutClient, config.targetNamespace, configuredVRFs); err != nil {
-		return fmt.Errorf("failed to remove deleted vrfs: %w", err)
+		return errors.Join(append(resourceErrors, fmt.Errorf("failed to remove deleted vrfs: %w", err))...)
 	}
 
 	if len(apiConfig.L3Passthrough) == 0 {
 		if err := grout.RemovePassthrough(ctx, groutClient); err != nil {
-			return fmt.Errorf("failed to remove passthrough: %w", err)
+			return errors.Join(append(resourceErrors, fmt.Errorf("failed to remove passthrough: %w", err))...)
 		}
 	}
 
@@ -182,13 +183,84 @@ func (g *GroutDatapathConfigurator) cleanupGroutInterfaces(
 	if err := grout.RemoveAllVNIs(ctx, groutClient, ovsClient, targetNamespace); err != nil {
 		slog.Warn("failed to remove vnis after underlay removal", "err", err)
 	}
-	bridgerefresh.StopAllVNIs()
+	if err := grout.RemoveAllL3VPNs(ctx, groutClient); err != nil {
+		slog.Warn("failed to remove l3vpns after underlay removal", "err", err)
+	}
+	if err := grout.RemoveAllL2Trunks(ctx, groutClient, targetNamespace, g.trunkStateStore, g.sysfs); err != nil {
+		slog.Warn("failed to remove l2trunks after underlay removal", "err", err)
+	}
 	if err := grout.RemoveAllVRFs(ctx, groutClient, targetNamespace); err != nil {
 		slog.Warn("failed to remove vrfs after underlay removal", "err", err)
+	}
+	if err := grout.RemoveTunnelEndpoint(ctx, groutClient); err != nil {
+		slog.Warn("failed to remove tunnel endpoint after underlay removal", "err", err)
 	}
 	if err := grout.RestoreUnderlay(ctx, groutClient, targetNamespace,
 		currentUnderlayIfaces, g.deviceStateStore, g.sysfs); err != nil {
 		return fmt.Errorf("failed to remove underlay after underlay removal: %w", err)
 	}
 	return nil
+}
+
+// setupL2Trunks returns the successfully configured trunks and
+// reports the failures as resource errors.
+func (g *GroutDatapathConfigurator) setupL2Trunks(
+	ctx context.Context,
+	groutClient *grout.Client,
+	l2Trunks []hostnetwork.L2TrunkParams,
+) (grout.ConfiguredTrunks, error) {
+	configured := make(grout.ConfiguredTrunks, len(l2Trunks))
+	var resourceErrors []error
+	for _, trunk := range l2Trunks {
+		slog.InfoContext(ctx, "setting up L2Trunk", "trunk", trunk.Name)
+		if err := grout.SetupL2Trunk(ctx, groutClient, trunk, g.trunkStateStore, g.sysfs); err != nil {
+			resourceErrors = append(resourceErrors,
+				overlayAttachmentError(openpeerrors.KindL2Trunk, trunk.Name, err.Error()))
+			continue
+		}
+		configured[trunk.Name] = trunk
+	}
+	return configured, errors.Join(resourceErrors...)
+}
+
+func setupGroutL2VNIs(
+	ctx context.Context,
+	client *grout.Client,
+	ovsClient *hostnetwork.OVSClient,
+	l2VNIs []hostnetwork.L2VNIParams,
+	failedL3Domains sets.Set[string],
+	configuredTrunks grout.ConfiguredTrunks,
+) ([]hostnetwork.L2VNIParams, error) {
+	var errs []error
+	var err error
+	var configuredL2VNIs []hostnetwork.L2VNIParams
+	for _, vni := range l2VNIs {
+		if failedL3Domains.Has(vni.VRF) {
+			message := fmt.Sprintf("L3 domain %q failed provisioning", vni.VRF)
+			errs = append(errs, overlayAttachmentError(openpeerrors.KindL2VNI, vni.Name, message))
+			continue
+		}
+		slog.InfoContext(ctx, "setting up L2VNI", "vni", vni.VNI)
+		if err := grout.SetupL2VNI(ctx, client, vni); err != nil {
+			errs = append(errs,
+				overlayAttachmentError(openpeerrors.KindL2VNI, vni.Name, err.Error()))
+			continue
+		}
+		switch vni.Attachment {
+		case hostnetwork.L2VNIAttachmentHost:
+			err = grout.AttachL2VNIToHost(ctx, client, ovsClient, vni)
+		case hostnetwork.L2VNIAttachmentVFTrunk:
+			err = grout.AttachL2VNIToVFTrunk(ctx, client, vni, configuredTrunks)
+		default:
+			err = fmt.Errorf("unsupported L2VNI attachment %d", vni.Attachment)
+		}
+		if err != nil {
+			errs = append(errs,
+				overlayAttachmentError(openpeerrors.KindL2VNI, vni.Name, err.Error()))
+			continue
+		}
+		configuredL2VNIs = append(configuredL2VNIs, vni)
+	}
+
+	return configuredL2VNIs, errors.Join(errs...)
 }

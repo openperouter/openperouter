@@ -62,6 +62,10 @@ func (r *MirrorController) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		mirrorErrors = append(mirrorErrors, err)
 	}
 
+	if err := r.mirrorAndClean(ctx, &v1alpha1.L2TrunkList{}, toObjects(staticConfig.L2Trunks), logger, "l2trunk"); err != nil {
+		mirrorErrors = append(mirrorErrors, err)
+	}
+
 	if err := r.mirrorAndClean(ctx, &v1alpha1.L3PassthroughList{}, toObjects(staticConfig.L3Passthrough), logger, "l3passthrough"); err != nil {
 		mirrorErrors = append(mirrorErrors, err)
 	}
@@ -89,6 +93,7 @@ func (r *MirrorController) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(&v1alpha1.Underlay{}, &handler.EnqueueRequestForObject{}, builder.WithPredicates(staticSourcePredicate)).
 		Watches(&v1alpha1.L3VNI{}, &handler.EnqueueRequestForObject{}, builder.WithPredicates(staticSourcePredicate)).
 		Watches(&v1alpha1.L2VNI{}, &handler.EnqueueRequestForObject{}, builder.WithPredicates(staticSourcePredicate)).
+		Watches(&v1alpha1.L2Trunk{}, &handler.EnqueueRequestForObject{}, builder.WithPredicates(staticSourcePredicate)).
 		Watches(&v1alpha1.L3Passthrough{}, &handler.EnqueueRequestForObject{}, builder.WithPredicates(staticSourcePredicate)).
 		Watches(&v1alpha1.RawFRRConfig{}, &handler.EnqueueRequestForObject{}, builder.WithPredicates(staticSourcePredicate))
 
@@ -164,6 +169,8 @@ func newEmptyObject(obj client.Object) (client.Object, error) {
 		return &v1alpha1.L3VNI{}, nil
 	case *v1alpha1.L2VNI:
 		return &v1alpha1.L2VNI{}, nil
+	case *v1alpha1.L2Trunk:
+		return &v1alpha1.L2Trunk{}, nil
 	case *v1alpha1.L3Passthrough:
 		return &v1alpha1.L3Passthrough{}, nil
 	case *v1alpha1.RawFRRConfig:
@@ -180,6 +187,8 @@ func copySpec(src, dst client.Object) {
 		s.Spec.DeepCopyInto(&dst.(*v1alpha1.L3VNI).Spec)
 	case *v1alpha1.L2VNI:
 		s.Spec.DeepCopyInto(&dst.(*v1alpha1.L2VNI).Spec)
+	case *v1alpha1.L2Trunk:
+		s.Spec.DeepCopyInto(&dst.(*v1alpha1.L2Trunk).Spec)
 	case *v1alpha1.L3Passthrough:
 		s.Spec.DeepCopyInto(&dst.(*v1alpha1.L3Passthrough).Spec)
 	case *v1alpha1.RawFRRConfig:
@@ -198,6 +207,8 @@ func resourceMatchesDesired(existing, desired client.Object) bool {
 		return equality.Semantic.DeepEqual(e.Spec, desired.(*v1alpha1.L3VNI).Spec)
 	case *v1alpha1.L2VNI:
 		return equality.Semantic.DeepEqual(e.Spec, desired.(*v1alpha1.L2VNI).Spec)
+	case *v1alpha1.L2Trunk:
+		return equality.Semantic.DeepEqual(e.Spec, desired.(*v1alpha1.L2Trunk).Spec)
 	case *v1alpha1.L3Passthrough:
 		return equality.Semantic.DeepEqual(e.Spec, desired.(*v1alpha1.L3Passthrough).Spec)
 	case *v1alpha1.RawFRRConfig:
@@ -225,6 +236,8 @@ func extractItems(listObj client.ObjectList) []client.Object {
 	case *v1alpha1.L3VNIList:
 		return toObjects(l.Items)
 	case *v1alpha1.L2VNIList:
+		return toObjects(l.Items)
+	case *v1alpha1.L2TrunkList:
 		return toObjects(l.Items)
 	case *v1alpha1.L3PassthroughList:
 		return toObjects(l.Items)

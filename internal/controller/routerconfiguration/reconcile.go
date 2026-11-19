@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"slices"
 
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -16,14 +17,17 @@ import (
 	"github.com/openperouter/openperouter/internal/conversion"
 	openpeerrors "github.com/openperouter/openperouter/internal/errors"
 	"github.com/openperouter/openperouter/internal/frr"
+	"github.com/openperouter/openperouter/internal/hostnetwork"
 )
 
 // DatapathConfigurator abstracts host-level network configuration so the
 // reconciler can work with different datapaths (kernel netlink, grout/DPDK).
 type DatapathConfigurator interface {
 	conversion.DatapathConfigValidator
+	conversion.InterfaceNameTranslator
 
 	Configure(ctx context.Context, config interfacesConfiguration) error
+	FilterL2Trunks([]v1alpha1.L2Trunk) ([]v1alpha1.L2Trunk, error)
 }
 
 func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeIndex int, logLevel string,
@@ -37,7 +41,9 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 	var resourceErrors []error
 	var err error
 
-	err = datapathConfigurator.Validate(apiConfig)
+	validationConfig := apiConfig
+	validationConfig.L2Trunks = nil
+	err = datapathConfigurator.Validate(validationConfig)
 	resourceErrors = append(resourceErrors, err)
 
 	if conversion.HasMissingSRv6ForL3VPNs(apiConfig.Underlays, apiConfig.L3VPNs) {
@@ -62,14 +68,48 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 		validOverlays.L2VNIs, validOverlays.L3VNIs, validOverlays.L3VPNs)
 	resourceErrors = append(resourceErrors, err)
 
+	validL2Trunks, err := conversion.FilterValidL2Trunks(apiConfig.L2Trunks)
+	resourceErrors = append(resourceErrors, err)
+
+	validL2Trunks, err = datapathConfigurator.FilterL2Trunks(validL2Trunks)
+	resourceErrors = append(resourceErrors, err)
+
+	validOverlays.L2VNIs, err = filterL2VNIsWithMissingTrunk(validOverlays.L2VNIs, validL2Trunks)
+	resourceErrors = append(resourceErrors, err)
+
 	config := conversion.APIConfigData{
 		Underlays:     apiConfig.Underlays,
 		L3VNIs:        validOverlays.L3VNIs,
 		L3VPNs:        validOverlays.L3VPNs,
 		L2VNIs:        validOverlays.L2VNIs,
+		L2Trunks:      validL2Trunks,
 		L3Passthrough: validOverlays.L3Passthrough,
 		RawFRRConfigs: apiConfig.RawFRRConfigs,
 		Passwords:     apiConfig.Passwords,
+	}
+
+	// Filtering may withdraw the last isolated VPN while its underlay remains.
+	// Copy before clearing the effective source; the API objects must stay intact.
+	if !slices.ContainsFunc(config.L3VPNs, func(vpn v1alpha1.L3VPN) bool { return vpn.Spec.RoutingIsolation != nil }) {
+		config.Underlays = slices.Clone(config.Underlays)
+		for i := range config.Underlays {
+			if config.Underlays[i].Spec.SRV6 == nil {
+				continue
+			}
+			config.Underlays[i] = *config.Underlays[i].DeepCopy()
+			config.Underlays[i].Spec.SRV6.EncapsulationSource = nil
+		}
+	}
+	if err := conversion.ValidateRoutingIsolation(config); err != nil {
+		return err
+	}
+	if err := conversion.ValidateEncapsulationSourceUsage(config); err != nil {
+		return err
+	}
+	if _, kernel := datapathConfigurator.(*KernelDatapathConfigurator); kernel && len(config.L3VPNs) > 0 {
+		if err := stageHostIsolationBeforeFRR(nodeIndex, targetNamespace, config); err != nil {
+			return err
+		}
 	}
 
 	// The FRR configuration must be applied before the datapath creates the kernel
@@ -80,11 +120,12 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 	// Removals keep working in this order because ZEBRA_VNI_DEL does not touch the
 	// EVPN instance, and FRR stops referencing the objects before they are deleted.
 	if err = frrConfigurator(ctx, frrConfigData{
-		configFile:    frrConfigPath,
-		updater:       updater,
-		APIConfigData: config,
-		nodeIndex:     nodeIndex,
-		logLevel:      logLevel,
+		configFile:              frrConfigPath,
+		updater:                 updater,
+		APIConfigData:           config,
+		nodeIndex:               nodeIndex,
+		logLevel:                logLevel,
+		interfaceNameTranslator: datapathConfigurator,
 	}); err != nil {
 		return err
 	}
@@ -102,6 +143,48 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 	return errors.Join(resourceErrors...)
 }
 
+func stageHostIsolationBeforeFRR(nodeIndex int, targetNamespace string, config conversion.APIConfigData) error {
+	hostConfig, err := conversion.APItoHostConfig(nodeIndex, targetNamespace, config)
+	if err != nil {
+		return fmt.Errorf("convert SRv6 isolation plan: %w", err)
+	}
+	var source net.IP
+	if len(config.Underlays) == 1 {
+		source, err = remainingSRv6Source(config.Underlays[0].Spec.SRV6, hostConfig.Underlay.TunnelEndpoint)
+		if err != nil {
+			return err
+		}
+	}
+	if err := stageIsolationBeforeFRR(targetNamespace, hostConfig, source); err != nil {
+		return fmt.Errorf("prepare SRv6 isolation before FRR update: %w", err)
+	}
+	return nil
+}
+
+func stageIsolationBeforeFRR(targetNamespace string, hostConfig conversion.HostConfigData, source net.IP) error {
+	for {
+		err := hostnetwork.StageSRv6Isolation(targetNamespace, hostConfig.L3VPNs, source,
+			isolationTenantNames(hostConfig)...)
+		if err == nil {
+			return nil
+		}
+		var conflict *hostnetwork.VRFTableOwnershipError
+		if !errors.As(err, &conflict) {
+			return err
+		}
+		desired := map[string]bool{}
+		for _, name := range isolationTenantNames(hostConfig) {
+			desired[name] = true
+		}
+		for _, vpn := range hostConfig.L3VPNs {
+			desired[vpn.VRF] = true
+		}
+		if err := hostnetwork.CleanupObsoleteIsolationVRF(targetNamespace, desired, conflict); err != nil {
+			return err
+		}
+	}
+}
+
 // normalizeConfig sorts resources by namespace/name so validation order is deterministic.
 func normalizeConfig(config *conversion.APIConfigData) {
 	slices.SortFunc(config.L3VNIs, func(a, b v1alpha1.L3VNI) int {
@@ -113,6 +196,10 @@ func normalizeConfig(config *conversion.APIConfigData) {
 	})
 
 	slices.SortFunc(config.L2VNIs, func(a, b v1alpha1.L2VNI) int {
+		return cmp.Compare(objectKey(&a), objectKey(&b))
+	})
+
+	slices.SortFunc(config.L2Trunks, func(a, b v1alpha1.L2Trunk) int {
 		return cmp.Compare(objectKey(&a), objectKey(&b))
 	})
 
@@ -177,6 +264,38 @@ func filterL2VNIsWithInvalidRoutingDomain(
 			}
 		}
 		valid = append(valid, l2)
+	}
+	return valid, errors.Join(resourceErrors...)
+}
+
+// filterL2VNIsWithMissingTrunk drops the L2VNIs referencing an L2Trunk that
+// does not apply to this node, or that failed validation. They stay in the
+// API, but lose their data plane configuration until the trunk is available.
+func filterL2VNIsWithMissingTrunk(l2Vnis []v1alpha1.L2VNI, validL2Trunks []v1alpha1.L2Trunk) ([]v1alpha1.L2VNI, error) {
+	if len(l2Vnis) == 0 {
+		return l2Vnis, nil
+	}
+
+	trunkNames := sets.New[string]()
+	for _, trunk := range validL2Trunks {
+		trunkNames.Insert(trunk.Name)
+	}
+
+	valid := make([]v1alpha1.L2VNI, 0, len(l2Vnis))
+	var resourceErrors []error
+	for _, l2 := range l2Vnis {
+		if l2.Spec.Trunk == nil || trunkNames.Has(l2.Spec.Trunk.Name) {
+			valid = append(valid, l2)
+			continue
+		}
+		resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
+			Obj: v1alpha1.FailedResource{
+				Kind:    openpeerrors.KindL2VNI,
+				Name:    l2.Name,
+				Reason:  v1alpha1.FailedResourceReasonDependencyFailed,
+				Message: fmt.Sprintf("referenced L2Trunk %q not found", l2.Spec.Trunk.Name),
+			},
+		})
 	}
 	return valid, errors.Join(resourceErrors...)
 }
