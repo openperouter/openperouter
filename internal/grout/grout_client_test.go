@@ -144,7 +144,7 @@ func TestEnsureBridge(t *testing.T) {
 				err:    fmt.Errorf("exit status 1"),
 			},
 			cmdCall{
-				cmd: "grcli --err-exit --json --socket sock interface add bridge br-pe-100 vrf red neigh_suppress on neigh_snoop on",
+				cmd: "grcli --err-exit --json --socket sock interface add bridge br-pe-100 vrf red neigh_snoop on",
 			},
 		)()
 
@@ -159,7 +159,7 @@ func TestEnsureBridge(t *testing.T) {
 				err:    fmt.Errorf("exit status 1"),
 			},
 			cmdCall{
-				cmd: "grcli --err-exit --json --socket sock interface add bridge br-pe-100 neigh_suppress on neigh_snoop on",
+				cmd: "grcli --err-exit --json --socket sock interface add bridge br-pe-100 neigh_snoop on",
 			},
 		)()
 
@@ -196,7 +196,7 @@ func TestEnsureBridge(t *testing.T) {
 			case "grcli --err-exit --json --socket sock interface show name br-pe-100":
 				return []byte(`{"name":"br-pe-100","type":"bridge","vrf":"red"}`), nil
 			case "grcli --err-exit --json --socket sock interface del br-pe-100",
-				"grcli --err-exit --json --socket sock interface add bridge br-pe-100 vrf blue neigh_suppress on neigh_snoop on":
+				"grcli --err-exit --json --socket sock interface add bridge br-pe-100 vrf blue neigh_snoop on":
 				return nil, nil
 			default:
 				return nil, fmt.Errorf("unexpected command: %s", cmd)
@@ -208,7 +208,7 @@ func TestEnsureBridge(t *testing.T) {
 			"grcli --err-exit --json --socket sock interface show name br-pe-100",
 			"grcli --err-exit --json --socket sock interface show name br-pe-100",
 			"grcli --err-exit --json --socket sock interface del br-pe-100",
-			"grcli --err-exit --json --socket sock interface add bridge br-pe-100 vrf blue neigh_suppress on neigh_snoop on",
+			"grcli --err-exit --json --socket sock interface add bridge br-pe-100 vrf blue neigh_snoop on",
 		}, got)
 	})
 }

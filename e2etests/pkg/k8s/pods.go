@@ -71,19 +71,23 @@ func CreateAgnhostPod(cs clientset.Interface, podName, namespace string, modifie
 
 func WithNad(name, namespace string, ips []string) func(*corev1.Pod) {
 	GinkgoHelper()
-	networks := []nadclientv1.NetworkSelectionElement{{
+	return withNetwork(nadclientv1.NetworkSelectionElement{
 		Name:      name,
 		Namespace: namespace,
 		IPRequest: ips,
-	}}
-	marshaledNetworks, err := json.Marshal(networks)
-	Expect(err).ToNot(HaveOccurred())
-	return func(p *corev1.Pod) {
-		if p.Annotations == nil {
-			p.Annotations = make(map[string]string)
-		}
-		p.Annotations["k8s.v1.cni.cncf.io/networks"] = string(marshaledNetworks)
-	}
+	})
+}
+
+// WithNadMAC attaches the pod to the network with a fixed MAC address. The
+// network must declare the "mac" capability.
+func WithNadMAC(name, namespace string, ips []string, mac string) func(*corev1.Pod) {
+	GinkgoHelper()
+	return withNetwork(nadclientv1.NetworkSelectionElement{
+		Name:       name,
+		Namespace:  namespace,
+		IPRequest:  ips,
+		MacRequest: mac,
+	})
 }
 
 func OnNode(nodeName string) func(*corev1.Pod) {
@@ -102,6 +106,18 @@ func WithCapabilities(caps ...corev1.Capability) PodModifier {
 			c.SecurityContext.Capabilities = &corev1.Capabilities{}
 		}
 		c.SecurityContext.Capabilities.Add = append(c.SecurityContext.Capabilities.Add, caps...)
+	}
+}
+
+func withNetwork(network nadclientv1.NetworkSelectionElement) func(*corev1.Pod) {
+	GinkgoHelper()
+	marshaledNetworks, err := json.Marshal([]nadclientv1.NetworkSelectionElement{network})
+	Expect(err).ToNot(HaveOccurred())
+	return func(p *corev1.Pod) {
+		if p.Annotations == nil {
+			p.Annotations = make(map[string]string)
+		}
+		p.Annotations["k8s.v1.cni.cncf.io/networks"] = string(marshaledNetworks)
 	}
 }
 

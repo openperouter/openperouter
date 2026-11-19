@@ -62,6 +62,7 @@ func CreateMacvlanNad(name, namespace, master string, gatewayIPs []string) (nad.
       "type": "macvlan",
       "master": "%s",
       "mode": "bridge",
+      "capabilities": {"mac": true},
       "ipam": {
          "type": "static",
          "routes": [
