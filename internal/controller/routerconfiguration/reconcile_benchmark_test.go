@@ -30,6 +30,7 @@ type benchmarkScenario struct {
 var benchmarkScenarios = []benchmarkScenario{
 	{name: "vxlan", directory: "testdata/benchmarks/vxlan"},
 	{name: "vxlan-srv6", directory: "testdata/benchmarks/vxlan-srv6"},
+	{name: "vxlan-trunk", directory: "testdata/benchmarks/vxlan-trunk"},
 }
 
 func BenchmarkReconcile(b *testing.B) {

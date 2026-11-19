@@ -1,0 +1,9 @@
+l3vnis:
+  - name: red
+    vrf: red
+    vni: 100
+    hostSession:
+      asn: 64514
+      hostASN: 64515
+      localCIDRs:
+        - 192.168.10.0/24
