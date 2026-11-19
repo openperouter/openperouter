@@ -393,10 +393,16 @@ func underlaySegmentRoutingToFRR(srv6Config *v1alpha1.SRV6Config, nodeIndex int,
 		encapBehavior = frr.HEncapsRed
 	}
 
+	encapsulationSource := ip.String()
+	if srv6Config.EncapsulationSource != nil {
+		encapsulationSource = *srv6Config.EncapsulationSource
+	}
+
 	return &frr.UnderlaySegmentRouting{
-		SourceAddress: ip.String(),
-		Locator:       locator,
-		EncapBehavior: encapBehavior,
+		SourceAddress:       ip.String(),
+		EncapsulationSource: encapsulationSource,
+		Locator:             locator,
+		EncapBehavior:       encapBehavior,
 	}, nil
 }
 

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/openperouter/openperouter/internal/netnamespace"
 	"github.com/vishvananda/netlink"
 )
 
@@ -26,6 +27,7 @@ type L3VPNParams struct {
 	TargetNS         string
 	RDAssignedNumber int32
 	TunnelOverhead   int
+	RoutingIsolation *SRv6Isolation
 }
 
 // SetupL3VPN sets up a Layer 3 VPN in the router namespace the configurator
@@ -35,7 +37,12 @@ func (c *VNIConfigurator) SetupL3VPN(ctx context.Context, params L3VPNParams) er
 	slog.DebugContext(ctx, "setting up L3VPN", "params", params)
 	defer slog.DebugContext(ctx, "end setting up L3VPN", "params", params)
 
-	if err := c.setupVRFInNS(ctx, params.VRF, srv6VRF); err != nil {
+	if params.RoutingIsolation != nil {
+		if err := params.RoutingIsolation.Validate(); err != nil {
+			return err
+		}
+	}
+	if err := c.setupL3VPN(ctx, params); err != nil {
 		return fmt.Errorf("SetupL3VPN: failed to setup VRF: %w", err)
 	}
 
@@ -78,4 +85,17 @@ func RemoveNonConfiguredL3VPNs(params []L3VPNParams) error {
 		return fmt.Errorf("RemoveNonConfiguredL3VPNs: failed to remove veths: %w", err)
 	}
 	return nil
+}
+
+func (c *VNIConfigurator) setupL3VPN(ctx context.Context, params L3VPNParams) error {
+	return netnamespace.In(c.ns, func() error {
+		slog.DebugContext(ctx, "setting up vrf", "vrf", params.VRF)
+		if params.RoutingIsolation != nil {
+			if err := verifySRv6Isolation(params.VRF, *params.RoutingIsolation); err != nil {
+				return err
+			}
+			return setupVRFWithSnapshot(params.VRF, c.guards, srv6VRF, guardedSRv6VRF)
+		}
+		return setupVRFWithSnapshot(params.VRF, c.guards, srv6VRF)
+	})
 }

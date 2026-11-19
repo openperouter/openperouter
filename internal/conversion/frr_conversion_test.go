@@ -3,9 +3,11 @@
 package conversion
 
 import (
+	"context"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
@@ -2646,7 +2648,8 @@ func TestAPItoFRR(t *testing.T) {
 						IPv6CIDR: "2001:db8:1234:5678::/128",
 					},
 					SegmentRouting: &frr.UnderlaySegmentRouting{
-						SourceAddress: "2001:db8:1234:5678::",
+						SourceAddress:       "2001:db8:1234:5678::",
+						EncapsulationSource: "2001:db8:1234:5678::",
 						Locator: frr.SRV6Locator{
 							Name:     locatorName,
 							Prefix:   "fd00:0:32::/48",
@@ -2818,7 +2821,8 @@ func TestAPItoFRR(t *testing.T) {
 						IPv6CIDR: "2001:db8:1234:5678::/128",
 					},
 					SegmentRouting: &frr.UnderlaySegmentRouting{
-						SourceAddress: "2001:db8:1234:5678::",
+						SourceAddress:       "2001:db8:1234:5678::",
+						EncapsulationSource: "2001:db8:1234:5678::",
 						Locator: frr.SRV6Locator{
 							Name:     locatorName,
 							Prefix:   "fd00:0:32::/48",
@@ -2939,7 +2943,8 @@ func TestAPItoFRR(t *testing.T) {
 						IPv6CIDR: "2001:db8:1234:5678::/128",
 					},
 					SegmentRouting: &frr.UnderlaySegmentRouting{
-						SourceAddress: "2001:db8:1234:5678::",
+						SourceAddress:       "2001:db8:1234:5678::",
+						EncapsulationSource: "2001:db8:1234:5678::",
 						Locator: frr.SRV6Locator{
 							Name:     locatorName,
 							Prefix:   "fd00:0:32::/48",
@@ -3071,7 +3076,8 @@ func TestAPItoFRR(t *testing.T) {
 						},
 					},
 					SegmentRouting: &frr.UnderlaySegmentRouting{
-						SourceAddress: "2001:db8:1234:5678::",
+						SourceAddress:       "2001:db8:1234:5678::",
+						EncapsulationSource: "2001:db8:1234:5678::",
 						Locator: frr.SRV6Locator{
 							Name:     locatorName,
 							Prefix:   "fd00:0:32::/48",
@@ -3285,7 +3291,8 @@ func TestAPItoFRR(t *testing.T) {
 						IPv6CIDR: "2001:db8:1234:5678::/128",
 					},
 					SegmentRouting: &frr.UnderlaySegmentRouting{
-						SourceAddress: "2001:db8:1234:5678::",
+						SourceAddress:       "2001:db8:1234:5678::",
+						EncapsulationSource: "2001:db8:1234:5678::",
 						Locator: frr.SRV6Locator{
 							Name:     locatorName,
 							Prefix:   "fd00:0:32::/48",
@@ -4023,6 +4030,41 @@ func TestVrfsWithL2Gateways(t *testing.T) {
 			if diff := cmp.Diff(tt.want, got); diff != "" {
 				t.Errorf("vrfsWithL2Gateways() mismatch (-want +got):\n%s", diff)
 			}
+		})
+	}
+}
+
+func TestSRv6EncapsulationSource(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		source *string
+		want   string
+	}{
+		{name: "legacy tunnel endpoint", want: "2001:db8::1"},
+		{name: "explicit encapsulation source", source: new("2001:db8::99"), want: "2001:db8::99"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			segmentRouting, err := underlaySegmentRoutingToFRR(&v1alpha1.SRV6Config{
+				EncapsulationSource: tc.source,
+				Locator:             v1alpha1.SRV6Locator{BasePrefix: "fc00:10::/32", Format: "usid-f3216"},
+			}, 1, &frr.TunnelEndpoint{IPv6CIDR: "2001:db8::1/128"})
+			require.NoError(t, err)
+			require.Equal(t, tc.want, segmentRouting.EncapsulationSource)
+			require.Equal(t, "2001:db8::1", segmentRouting.SourceAddress)
+			neighbor, err := (APIToFRRConverter{}).neighborToFRR(v1alpha1.Neighbor{
+				ASN: new(int64(65001)), Address: new("2001:db8::2"),
+				AddressFamilies: []v1alpha1.NeighborAddressFamily{{Type: "ipv6vpn"}},
+			}, nil, nil, nil, nil, nil, segmentRouting, "")
+			require.NoError(t, err)
+			require.Equal(t, "2001:db8::1", neighbor.UpdateSource)
+			var rendered string
+			require.NoError(t, frr.ApplyConfig(context.Background(), frr.Config{
+				Underlay: frr.UnderlayConfig{SegmentRouting: segmentRouting},
+			}, func(_ context.Context, config string) error {
+				rendered = config
+				return nil
+			}))
+			require.Contains(t, rendered, "source-address "+tc.want+"\n")
 		})
 	}
 }

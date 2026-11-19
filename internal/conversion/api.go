@@ -108,5 +108,8 @@ func validateAPIConfigData(config APIConfigData) error {
 		return NoUnderlaysError("no underlays provided")
 	}
 
-	return nil
+	if err := ValidateRoutingIsolation(config); err != nil {
+		return err
+	}
+	return ValidateEncapsulationSourceUsage(config)
 }

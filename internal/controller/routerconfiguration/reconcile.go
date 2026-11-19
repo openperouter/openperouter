@@ -86,6 +86,25 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 		Passwords:     apiConfig.Passwords,
 	}
 
+	// Filtering may withdraw the last isolated VPN while its underlay remains.
+	// Copy before clearing the effective source; the API objects must stay intact.
+	if !slices.ContainsFunc(config.L3VPNs, func(vpn v1alpha1.L3VPN) bool { return vpn.Spec.RoutingIsolation != nil }) {
+		config.Underlays = slices.Clone(config.Underlays)
+		for i := range config.Underlays {
+			if config.Underlays[i].Spec.SRV6 == nil {
+				continue
+			}
+			config.Underlays[i] = *config.Underlays[i].DeepCopy()
+			config.Underlays[i].Spec.SRV6.EncapsulationSource = nil
+		}
+	}
+	if err := conversion.ValidateRoutingIsolation(config); err != nil {
+		return err
+	}
+	if err := conversion.ValidateEncapsulationSourceUsage(config); err != nil {
+		return err
+	}
+
 	// The FRR configuration must be applied before the datapath creates the kernel
 	// objects it references. bgpd handles ZEBRA_VNI_ADD in bgp_evpn_local_vni_add(),
 	// which dereferences the instance returned by bgp_get_evpn() without checking it

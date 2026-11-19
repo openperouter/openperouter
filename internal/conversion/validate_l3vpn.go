@@ -80,7 +80,7 @@ func FilterUniqueVRFsForL3VPNs(l3vpns []v1alpha1.L3VPN, vrfToVNI map[string]type
 			})
 			continue
 		}
-		if existing, duplicateFound := vrfToVNI[l3vpn.Spec.VRF]; duplicateFound {
+		if existing, duplicateFound := vrfToVNI[l3vpn.Spec.VRF]; duplicateFound && l3vpn.Spec.RoutingIsolation == nil {
 			allErrors = append(allErrors, &openpeerrors.ResourceError{
 				Obj: v1alpha1.FailedResource{
 					Kind: "L3VPN", Name: l3vpn.Name, Reason: reason,

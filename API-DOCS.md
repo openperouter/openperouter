@@ -745,11 +745,12 @@ _Appears in:_
 | --- | --- | --- | --- |
 | `nodeSelector` _[LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#labelselector-v1-meta)_ | nodeSelector specifies which nodes this L3VPN applies to.<br />If empty or not specified, applies to all nodes.<br />Multiple L3VPNs can match the same node. |  | Optional: \{\} <br /> |
 | `vrf` _string_ | vrf is the name of the linux VRF to be used inside the PERouter namespace. |  | MaxLength: 15 <br />MinLength: 1 <br />Pattern: `^[a-zA-Z][a-zA-Z0-9_-]*$` <br />Required: \{\} <br /> |
+| `routingIsolation` _[SRV6RoutingIsolation](#srv6routingisolation)_ | routingIsolation enables unreachable tenant defaults and narrowly scoped<br />SRv6 underlay lookups. The underlay must configure encapsulationSource.<br />Source/destination selectors do not authenticate tenant traffic. |  | Optional: \{\} <br /> |
 | `exportRTs` _[RouteTarget](#routetarget) array_ | exportRTs are the Route Targets to be used for exporting routes.<br />If no exportRTs are provided, defaults to single export Route Target<br /><asn>:<rdAssignedNumber>. |  | MaxItems: 100 <br />MaxLength: 21 <br />Optional: \{\} <br /> |
 | `importRTs` _[RouteTarget](#routetarget) array_ | importRTs are the Route Targets to be used for importing routes.<br />importRTs must always be provided explicitly. |  | MaxItems: 100 <br />MaxLength: 21 <br />Required: \{\} <br /> |
 | `rdAssignedNumber` _integer_ | rdAssignedNumber sets the Route Distinguisher's Assigned Number subfield.<br />The Administrator subfield is automatically set to the value of the router<br />ID. OpenPERouter uses Type 1 Route Distinguishers as defined in RFC4364,<br />meaning <Administrator subfield>:<Assigned Number subfield>. |  | Maximum: 65535 <br />Minimum: 1 <br />Required: \{\} <br /> |
 | `hostSession` _[HostSession](#hostsession)_ | hostSession is the configuration for the host session. |  | Optional: \{\} <br /> |
-| `features` _[L3VPNFeature](#l3vpnfeature) array_ | features enables L3VPN boolean features.<br />Supported features are:<br />uDT4uDT6: configures the OpenPERouter to create separate functions for uDT4 and uDT6 (default: unified uDT46). |  | Enum: [uDT4uDT6] <br />MaxItems: 32 <br />MaxLength: 128 <br />MinLength: 1 <br />Optional: \{\} <br /> |
+| `features` _[L3VPNFeature](#l3vpnfeature) array_ | features enables L3VPN boolean features.<br />Supported features are:<br />uDT4uDT6: configures the OpenPERouter to create separate functions for uDT4 and uDT6 (default: unified uDT46).<br />With routingIsolation this feature requires underlayTable 254 (main). |  | Enum: [uDT4uDT6] <br />MaxItems: 32 <br />MaxLength: 128 <br />MinLength: 1 <br />Optional: \{\} <br /> |
 
 
 #### L3VPNStatus
@@ -1069,6 +1070,7 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
+| `encapsulationSource` _string_ | encapsulationSource explicitly sets the namespace's SRv6 outer IPv6 source.<br />Used only with L3VPN routingIsolation. Reconciliation omits the source<br />from effective configuration when no isolated L3VPN survives filtering.<br />Source/destination selectors do not authenticate packet origin;<br />ingress source protection is external. |  | MaxLength: 39 <br />MinLength: 2 <br />Optional: \{\} <br /> |
 | `encapBehavior` _[SRV6EncapBehavior](#srv6encapbehavior)_ | encapBehavior defines the behavior for SRv6 encapsulation as specified<br />in RFC 8986 sections 5.1 and 5.2.<br />If unset, defaults to H.Encaps. |  | Enum: [H.Encaps H.Encaps.Red] <br />MaxLength: 12 <br />MinLength: 1 <br />Optional: \{\} <br /> |
 | `locator` _[SRV6Locator](#srv6locator)_ | locator defines the locator for this SRv6 VPN. |  | Required: \{\} <br /> |
 
@@ -1109,6 +1111,23 @@ _Appears in:_
 | --- | --- | --- | --- |
 | `basePrefix` _string_ | basePrefix is the CIDR to be used for the locator, offset by the router index. |  | MaxLength: 43 <br />MinLength: 1 <br />Required: \{\} <br /> |
 | `format` _string_ | format specifies the format of the locator. Defaults to usid-f3216 |  | Enum: [usid-f3216] <br />MaxLength: 40 <br />MinLength: 1 <br />Required: \{\} <br /> |
+
+
+#### SRV6RoutingIsolation
+
+
+
+SRV6RoutingIsolation configures scoped outer-packet lookups for guarded SRv6 VRFs.
+
+
+
+_Appears in:_
+- [L3VPNSpec](#l3vpnspec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `underlayTable` _integer_ | underlayTable is the actual Linux table containing remote locator routes.<br />It must not be a tenant table. There is no implicit main-table fallback. |  | Maximum: 4.294967295e+09 <br />Minimum: 1 <br />Required: \{\} <br /> |
+| `remoteLocatorPrefixes` _string array_ | remoteLocatorPrefixes select destinations eligible for underlay exceptions. |  | MaxItems: 64 <br />MinItems: 1 <br />items:MaxLength: 43 <br />items:XValidation: \{isCIDR(self) && cidr(self).ip().family() == 6 && cidr(self).prefixLength() > 0 remote locator must be a non-default IPv6 CIDR    <nil>\} <br />Required: \{\} <br /> |
 
 
 #### SecretKeyRef

@@ -712,6 +712,19 @@ spec:
                     maxLength: 12
                     minLength: 1
                     type: string
+                  encapsulationSource:
+                    description: |-
+                      encapsulationSource explicitly sets the namespace's SRv6 outer IPv6 source.
+                      Used only with L3VPN routingIsolation. Reconciliation omits the source
+                      from effective configuration when no isolated L3VPN survives filtering.
+                      Source/destination selectors do not authenticate packet origin;
+                      ingress source protection is external.
+                    maxLength: 39
+                    minLength: 2
+                    type: string
+                    x-kubernetes-validations:
+                    - message: encapsulationSource must be an IPv6 address
+                      rule: isIP(self) && ip(self).family() == 6
                   locator:
                     description: locator defines the locator for this SRv6 VPN.
                     properties:

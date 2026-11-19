@@ -1007,6 +1007,7 @@ spec:
                   features enables L3VPN boolean features.
                   Supported features are:
                   uDT4uDT6: configures the OpenPERouter to create separate functions for uDT4 and uDT6 (default: unified uDT46).
+                  With routingIsolation this feature requires underlayTable 254 (main).
                 items:
                   description: L3VPNFeature represents a single L3VPN feature.
                   enum:
@@ -1146,6 +1147,41 @@ spec:
                 maximum: 65535
                 minimum: 1
                 type: integer
+              routingIsolation:
+                description: |-
+                  routingIsolation enables unreachable tenant defaults and narrowly scoped
+                  SRv6 underlay lookups. The underlay must configure encapsulationSource.
+                  Source/destination selectors do not authenticate tenant traffic.
+                properties:
+                  remoteLocatorPrefixes:
+                    description: remoteLocatorPrefixes select destinations eligible
+                      for underlay exceptions.
+                    items:
+                      maxLength: 43
+                      type: string
+                      x-kubernetes-validations:
+                      - message: remote locator must be a non-default IPv6 CIDR
+                        rule: isCIDR(self) && cidr(self).ip().family() == 6 && cidr(self).prefixLength()
+                          > 0
+                    maxItems: 64
+                    minItems: 1
+                    type: array
+                    x-kubernetes-list-type: set
+                  underlayTable:
+                    description: |-
+                      underlayTable is the actual Linux table containing remote locator routes.
+                      It must not be a tenant table. There is no implicit main-table fallback.
+                    format: int64
+                    maximum: 4294967295
+                    minimum: 1
+                    type: integer
+                    x-kubernetes-validations:
+                    - message: default and local tables cannot be used as underlay
+                      rule: self != 253 && self != 255
+                required:
+                - remoteLocatorPrefixes
+                - underlayTable
+                type: object
               vrf:
                 description: vrf is the name of the linux VRF to be used inside the
                   PERouter namespace.
@@ -1159,6 +1195,10 @@ spec:
             - vrf
             type: object
             x-kubernetes-validations:
+            - message: uDT4uDT6 requires main underlay table; use per-VRF SID for
+                a dedicated table
+              rule: '!has(self.routingIsolation) || !has(self.features) || !self.features.exists(f,
+                f == ''uDT4uDT6'') || self.routingIsolation.underlayTable == 254'
             - message: hostASN must be different from asn
               rule: '!has(self.hostSession) || self.hostSession.hostASN != self.hostSession.asn'
           status:
@@ -2167,6 +2207,19 @@ spec:
                     maxLength: 12
                     minLength: 1
                     type: string
+                  encapsulationSource:
+                    description: |-
+                      encapsulationSource explicitly sets the namespace's SRv6 outer IPv6 source.
+                      Used only with L3VPN routingIsolation. Reconciliation omits the source
+                      from effective configuration when no isolated L3VPN survives filtering.
+                      Source/destination selectors do not authenticate packet origin;
+                      ingress source protection is external.
+                    maxLength: 39
+                    minLength: 2
+                    type: string
+                    x-kubernetes-validations:
+                    - message: encapsulationSource must be an IPv6 address
+                      rule: isIP(self) && ip(self).family() == 6
                   locator:
                     description: locator defines the locator for this SRv6 VPN.
                     properties:

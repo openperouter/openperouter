@@ -44,6 +44,47 @@ func RemoveNonConfiguredVRFs(targetNS string, vrfs map[string]bool) error {
 	})
 }
 
+// CleanupObsoleteIsolationVRF removes only a confirmed managed, no-longer-desired
+// table owner. All other namespace links are retained during this early cleanup.
+func CleanupObsoleteIsolationVRF(targetNS string, desired map[string]bool, conflict *VRFTableOwnershipError) error {
+	ns, err := netns.GetFromPath(targetNS)
+	if err != nil {
+		return fmt.Errorf("open obsolete VRF namespace: %w", err)
+	}
+	defer func() {
+		if err := ns.Close(); err != nil {
+			slog.Error("close obsolete VRF namespace", "err", err)
+		}
+	}()
+	keep := map[string]bool{}
+	if err := netnamespace.In(ns, func() error {
+		links, err := netlink.LinkList()
+		if err != nil {
+			return fmt.Errorf("list obsolete VRF ownership: %w", err)
+		}
+		confirmed := false
+		for _, link := range links {
+			keep[link.Attrs().Name] = true
+			vrf, ok := link.(*netlink.Vrf)
+			if !ok || vrf.Name != conflict.VRF {
+				continue
+			}
+			if desired[vrf.Name] || vrf.Alias != managedVRFAlias || vrf.Table != conflict.Table {
+				return conflict
+			}
+			confirmed = true
+			delete(keep, vrf.Name)
+		}
+		if !confirmed {
+			return conflict
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	return RemoveNonConfiguredVRFs(targetNS, keep)
+}
+
 // setupHostVeth configures the veth pair that connects the host to the router
 // namespace the configurator was built for, for L3VNI and L3VPN.
 func (c *VNIConfigurator) setupHostVeth(ctx context.Context, vethNames VethNames, linkIPs *LinkIPs,
@@ -169,6 +210,12 @@ func removeNamespaceSideVRFs(vrfs map[string]bool) []error {
 		return []error{fmt.Errorf("removeNamespaceSideVRFs: failed to list links: %w", err)}
 	}
 
+	retainedTables := map[uint32]bool{}
+	for _, link := range links {
+		if vrf, ok := link.(*netlink.Vrf); ok && vrfs[vrf.Name] {
+			retainedTables[vrf.Table] = true
+		}
+	}
 	var failedDeletes []error
 	for _, l := range links {
 		if l.Type() != VRFLinkType {
@@ -176,6 +223,12 @@ func removeNamespaceSideVRFs(vrfs map[string]bool) []error {
 		}
 		if vrfs[l.Attrs().Name] {
 			continue
+		}
+		if !retainedTables[l.(*netlink.Vrf).Table] {
+			if err := removeVRFDefaultGuards(l.(*netlink.Vrf)); err != nil {
+				failedDeletes = append(failedDeletes, err)
+				continue
+			}
 		}
 		if err := netlink.LinkDel(l); err != nil {
 			failedDeletes = append(failedDeletes, fmt.Errorf("remove non configured interfaces: failed to delete vrf %s %w", l.Attrs().Name, err))
