@@ -122,6 +122,7 @@ spec:
                       enum:
                       - Underlay
                       - L2VNI
+                      - L2Trunk
                       - L3VNI
                       - L3VPN
                       - FrrConfiguration

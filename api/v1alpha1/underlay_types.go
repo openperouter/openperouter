@@ -271,7 +271,7 @@ type GracefulRestartConfig struct {
 // TunnelEndpointConfig contains tunnel endpoint configuration for the underlay.
 type TunnelEndpointConfig struct {
 	// cidrs is a list of CIDRs to be used to assign IPs to the local tunnel endpoint on
-	// each node. IPs derived from these CIDRs will be assigned to the local loopback.
+	// each node. IPs derived from these CIDRs will be assigned to the tunnel endpoint interface.
 	// At least one IPv4 or IPv6 CIDR is required. At most one of each family may be specified.
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=2
@@ -373,6 +373,17 @@ const (
 
 // SRV6Config contains SRV6 configuration for the underlay.
 type SRV6Config struct {
+	// encapsulationSource explicitly sets the namespace's SRv6 outer IPv6 source.
+	// Used only with L3VPN routingIsolation. Reconciliation omits the source
+	// from effective configuration when no isolated L3VPN survives filtering.
+	// Source/destination selectors do not authenticate packet origin;
+	// ingress source protection is external.
+	// +kubebuilder:validation:XValidation:rule="isIP(self) && ip(self).family() == 6",message="encapsulationSource must be an IPv6 address"
+	// +kubebuilder:validation:MaxLength:=39
+	// +kubebuilder:validation:MinLength:=2
+	// +optional
+	EncapsulationSource *string `json:"encapsulationSource,omitempty"`
+
 	// encapBehavior defines the behavior for SRv6 encapsulation as specified
 	// in RFC 8986 sections 5.1 and 5.2.
 	// If unset, defaults to H.Encaps.

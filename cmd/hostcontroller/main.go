@@ -489,6 +489,7 @@ func runK8sConfigReconciler(ctx context.Context,
 		FRRReloadSocket: args.reloaderSocket,
 		Client:          mgr.GetClient(),
 		Node:            args.nodeName,
+		Namespace:       args.namespace,
 	}
 
 	var datapathConfigurator routerconfiguration.DatapathConfigurator = &routerconfiguration.KernelDatapathConfigurator{}

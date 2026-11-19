@@ -49,6 +49,9 @@ func FilterOverlayResources(resources OverlayResources) (OverlayResources, error
 	validL2VNIs, err = FilterUniqueL2VNIs(validL2VNIs, allocatedVNIs)
 	resourceErrors = append(resourceErrors, err)
 
+	validL2VNIs, err = FilterUniqueTrunkVLANs(validL2VNIs)
+	resourceErrors = append(resourceErrors, err)
+
 	validL3VNIs, vrfToVNI, err := FilterUniqueVRFsForL3VNIs(validL3VNIs)
 	resourceErrors = append(resourceErrors, err)
 

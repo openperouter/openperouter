@@ -10,7 +10,6 @@ import (
 
 	"github.com/openperouter/openperouter/internal/netnamespace"
 	"github.com/vishvananda/netlink"
-	"github.com/vishvananda/netns"
 )
 
 const (
@@ -28,18 +27,23 @@ type L3VPNParams struct {
 	TargetNS         string
 	RDAssignedNumber int32
 	TunnelOverhead   int
+	RoutingIsolation *SRv6Isolation
 }
 
-// SetupL3VPN sets up a Layer 3 VPN in the target namespace.
-// It uses setupL3VPN to create the necessary VRF, and moves the veth to the
-// VRF corresponding to the L3 routing domain, exposing it to the default host
-// namespace.
-func SetupL3VPN(ctx context.Context, params L3VPNParams) error {
+// SetupL3VPN sets up a Layer 3 VPN in the router namespace the configurator
+// was built for. It creates the VRF and moves the veth to it, exposing the VPN
+// to the default host namespace.
+func (c *VNIConfigurator) SetupL3VPN(ctx context.Context, params L3VPNParams) error {
 	slog.DebugContext(ctx, "setting up L3VPN", "params", params)
 	defer slog.DebugContext(ctx, "end setting up L3VPN", "params", params)
 
-	if err := setupL3VPN(ctx, params); err != nil {
-		return fmt.Errorf("SetupL3VPN: failed to setup L3VPN: %w", err)
+	if params.RoutingIsolation != nil {
+		if err := params.RoutingIsolation.Validate(); err != nil {
+			return err
+		}
+	}
+	if err := c.setupL3VPN(ctx, params); err != nil {
+		return fmt.Errorf("SetupL3VPN: failed to setup VRF: %w", err)
 	}
 
 	if params.LinkIPs == nil {
@@ -47,10 +51,9 @@ func SetupL3VPN(ctx context.Context, params L3VPNParams) error {
 		return nil
 	}
 
-	if err := setupHostVeth(
+	if err := c.setupHostVeth(
 		ctx,
 		vethNamesFromL3VPN(params.RDAssignedNumber),
-		params.TargetNS,
 		params.LinkIPs,
 		params.VRF,
 		params.TunnelOverhead); err != nil {
@@ -59,36 +62,14 @@ func SetupL3VPN(ctx context.Context, params L3VPNParams) error {
 	return nil
 }
 
-// setupL3VPN sets up the configuration required by FRR to
-// serve a given L3VPN in the target namespace. This includes:
-// - a linux VRF
-// - sysctl strict mode and disable RP filter (for SRv6)
-func setupL3VPN(ctx context.Context, params L3VPNParams) error {
-	ns, err := netns.GetFromPath(params.TargetNS)
-	if err != nil {
-		return fmt.Errorf("failed to get network namespace %s: %w", params.TargetNS, err)
-	}
-	defer func() {
-		if err := ns.Close(); err != nil {
-			slog.Error("failed to close namespace", "namespace", params.TargetNS, "error", err)
-		}
-	}()
-
-	return netnamespace.In(ns, func() error {
-		slog.DebugContext(ctx, "setting up vrf", "vrf", params.VRF)
-		return setupVRF(params.VRF, srv6VRF)
-	})
+// RemoveAllL3VPNs removes the host side of the veths of all L3VPNs.
+func RemoveAllL3VPNs() error {
+	return RemoveNonConfiguredL3VPNs([]L3VPNParams{})
 }
 
-// RemoveAllL3VPNs removes from the target namespace the veths
-// for all L3VPNs.
-func RemoveAllL3VPNs(targetNS string) error {
-	return RemoveNonConfiguredL3VPNs(targetNS, []L3VPNParams{})
-}
-
-// RemoveNonConfiguredL3VPNs removes from the target namespace the
-// leftovers corresponding to L3VPNs that are not configured anymore.
-func RemoveNonConfiguredL3VPNs(targetNS string, params []L3VPNParams) error {
+// RemoveNonConfiguredL3VPNs removes the host side of the veths of the
+// L3VPNs that are not configured anymore.
+func RemoveNonConfiguredL3VPNs(params []L3VPNParams) error {
 	vrfs := map[string]bool{}
 	rdAssignedNumbers := map[int32]bool{}
 	for _, p := range params {
@@ -100,8 +81,21 @@ func RemoveNonConfiguredL3VPNs(targetNS string, params []L3VPNParams) error {
 	if err != nil {
 		return fmt.Errorf("RemoveNonConfiguredL3VPNs: failed to list links: %w", err)
 	}
-	if err := errors.Join(removeHostSideVeths(hostLinks, HostVethPrefix+SRv6Infix, rdAssignedNumbers)...); err != nil {
+	if err := errors.Join(removeHostSideVeths(hostLinks, HostSRv6Prefix, rdAssignedNumbers)...); err != nil {
 		return fmt.Errorf("RemoveNonConfiguredL3VPNs: failed to remove veths: %w", err)
 	}
 	return nil
+}
+
+func (c *VNIConfigurator) setupL3VPN(ctx context.Context, params L3VPNParams) error {
+	return netnamespace.In(c.ns, func() error {
+		slog.DebugContext(ctx, "setting up vrf", "vrf", params.VRF)
+		if params.RoutingIsolation != nil {
+			if err := verifySRv6Isolation(params.VRF, *params.RoutingIsolation); err != nil {
+				return err
+			}
+			return setupVRFWithSnapshot(params.VRF, c.guards, srv6VRF, guardedSRv6VRF)
+		}
+		return setupVRFWithSnapshot(params.VRF, c.guards, srv6VRF)
+	})
 }

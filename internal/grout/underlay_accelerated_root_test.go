@@ -39,6 +39,54 @@ var accelUnderlay = hostnetwork.UnderlayInterface{
 	Kind:          hostnetwork.UnderlayInterfaceNetDev,
 }
 
+func TestSetupTunnelEndpointKeepsExistingPort(t *testing.T) {
+	ns := newAccelTestNS(t)
+	addGroutMainInterface(t, ns)
+	calls := recordCmdExec(t,
+		okCmd("grcli --err-exit --json --socket sock interface show name vtep-lo",
+			`{"name":"vtep-lo","type":"port","devargs":"net_null_vtep_lo,no-rx=1","rxq_size":1,"mtu":1500}`),
+		okCmdEmptyOutput("grcli --err-exit --json --socket sock address add "+accelCIDR+" iface vtep-lo"),
+		okCmdEmptyOutput("grcli --err-exit --json --socket sock interface set port vtep-lo up"),
+	)
+	for range 2 {
+		require.NoError(t, netnamespace.In(ns, func() error {
+			return setupTunnelEndpoint(context.Background(), NewClient("sock"),
+				hostnetwork.UnderlayTunnelEndpointParams{IPv4CIDR: accelCIDR})
+		}))
+	}
+	assert.Len(t, *calls, 6)
+	assert.True(t, hasSubnetRoute(t, ns, "192.168.50.0/24"))
+}
+
+func TestDeviceStateExcludesAutoconfiguredAddresses(t *testing.T) {
+	link := addHostDummy(t, accelCIDR)
+	static, err := netlink.ParseAddr("2001:db8::1/64")
+	require.NoError(t, err)
+	require.NoError(t, netlink.AddrAdd(link, static))
+	dynamic, err := netlink.ParseAddr("2001:db8::2/64")
+	require.NoError(t, err)
+	dynamic.ValidLft = 300
+	dynamic.PreferedLft = 300
+	require.NoError(t, netlink.AddrAdd(link, dynamic))
+	require.NoError(t, sysctl.Ensure(sysctl.AcceptRA(accelIface, "2")))
+
+	store := devicestate.Store{Dir: t.TempDir()}
+	state, err := ensureDeviceState(accelIface, PortModeTAP, store, pci.Sysfs{})
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{accelCIDR, static.IPNet.String()}, state.Addresses)
+	assert.Equal(t, "2", state.AcceptRA)
+	assert.Equal(t, "2", hostSysctl(t, sysctl.AcceptRA(accelIface, "")))
+
+	require.NoError(t, hostnetwork.SuppressAutoconf(accelIface))
+	assert.NotContains(t, linkAddresses(t, link), dynamic.IPNet.String())
+	assert.Equal(t, "0", hostSysctl(t, sysctl.AcceptRA(accelIface, "")))
+
+	require.NoError(t, applyStateToLink(context.Background(), link, state))
+	assert.Contains(t, linkAddresses(t, link), static.IPNet.String())
+	assert.NotContains(t, linkAddresses(t, link), dynamic.IPNet.String())
+	assert.Equal(t, "2", hostSysctl(t, sysctl.AcceptRA(accelIface, "")))
+}
+
 func TestSetupAcceleratedUnderlayRebindsKernelDriver(t *testing.T) {
 	ns := newAccelTestNS(t)
 	addGroutMainInterface(t, ns)
@@ -56,6 +104,7 @@ func TestSetupAcceleratedUnderlayRebindsKernelDriver(t *testing.T) {
 		state, err := store.Load(accelIface)
 		require.NoError(t, err)
 		assert.Equal(t, devicestate.State{
+			DeviceID:       accelIface,
 			InterfaceName:  accelIface,
 			PCIAddress:     testPCIAddr,
 			OriginalDriver: "igb",
@@ -104,6 +153,7 @@ func TestSetupAcceleratedUnderlayMovesBifurcatedNetdev(t *testing.T) {
 	ns := newAccelTestNS(t)
 	addGroutMainInterface(t, ns)
 	addHostDummy(t, accelCIDR)
+	fakePCIParent(t, accelIface, testPCIAddr)
 	store := devicestate.Store{Dir: t.TempDir()}
 
 	sysfs := newFakeSysfs(t, testPCIAddr, pci.DriverMlx5Core)
@@ -164,7 +214,7 @@ func TestRestoreAcceleratedUnderlayRestoresKernelDriver(t *testing.T) {
 	sysfs.addNetDevice(accelIface)
 	addHostDummy(t, "")
 
-	require.NoError(t, store.Save(devicestate.State{
+	require.NoError(t, store.Save(accelIface, devicestate.State{
 		InterfaceName:  accelIface,
 		PCIAddress:     testPCIAddr,
 		OriginalDriver: "igb",
@@ -198,6 +248,10 @@ func TestRestoreAcceleratedDeviceMovesBifurcatedNetdevBack(t *testing.T) {
 	sysfs := newFakeSysfs(t, testPCIAddr, pci.DriverMlx5Core)
 
 	link := addHostDummy(t, "")
+	fakePCIParent(t, accelIface, testPCIAddr)
+	// grout renames the netdev of a device it holds a port on.
+	require.NoError(t, netlink.LinkSetDown(link))
+	require.NoError(t, netlink.LinkSetName(link, "grout_renamed"))
 	require.NoError(t, netlink.LinkSetNsFd(link, int(ns)))
 
 	state := devicestate.State{
@@ -439,4 +493,20 @@ func nsSysctl(t *testing.T, ns netns.NsHandle, path string) string {
 		return err
 	}))
 	return value
+}
+
+// fakePCIParent makes the host link named netdev pass as the netdev of the PCI
+// device at pciAddr. It tags the link with an alias, which, unlike the name and
+// the MAC address, nothing else changes.
+func fakePCIParent(t *testing.T, netdev, pciAddr string) {
+	t.Helper()
+	link, err := netlink.LinkByName(netdev)
+	require.NoError(t, err)
+	require.NoError(t, netlink.LinkSetAlias(link, pciAddr))
+
+	orig := isNetdevOfPCIDevice
+	isNetdevOfPCIDevice = func(link netlink.Link, addr string) bool {
+		return addr == pciAddr && link.Attrs().Alias == pciAddr
+	}
+	t.Cleanup(func() { isNetdevOfPCIDevice = orig })
 }

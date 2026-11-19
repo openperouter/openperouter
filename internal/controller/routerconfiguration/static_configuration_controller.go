@@ -71,6 +71,9 @@ func (r *StaticConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		logger.Info("router not ready for reconciliation, will retry", "retryAfter", "10s")
 		return ctrl.Result{Requeue: true, RequeueAfter: 2 * time.Second}, nil
 	}
+	if err := invalidateFRRConfigCacheOnRestart(ctx, router); err != nil {
+		return ctrl.Result{}, err
+	}
 
 	targetNS, err := router.TargetNS(ctx)
 	if err != nil {

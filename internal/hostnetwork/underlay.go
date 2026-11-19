@@ -15,7 +15,14 @@ import (
 )
 
 const (
-	loopbackName = "lo"
+	// TunnelLoopback is the interface carrying the tunnel
+	// endpoint addresses, which IS-IS advertises to the fabric.
+	TunnelLoopback = "vtep-lo"
+	// tunnelLoopbackMTU matches the loopback MTU. The kernel caps the MTU of a
+	// VXLAN interface to the MTU of its source device minus the encapsulation
+	// overhead, so the tunnel endpoint must not be the bottleneck: the
+	// underlay interfaces bound the size of the encapsulated packets.
+	tunnelLoopbackMTU = 65536
 )
 
 // UnderlayGroupID is the link group ID assigned to all underlay interfaces
@@ -126,11 +133,7 @@ func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
 	if ip := params.TunnelEndpoint.IPv6CIDR; ip != "" {
 		vtepIPs = append(vtepIPs, ip)
 	}
-	if err := ensureLoopback(ctx, targetNetNS, vtepIPs...); err != nil {
-		return err
-	}
-
-	return nil
+	return ensureTunnelLoopback(ctx, targetNetNS, vtepIPs...)
 }
 
 // SetupUnderlayNetDevInterface provisions a single underlay net dev interface
@@ -220,17 +223,27 @@ func underlayInterfaces(ns netns.NsHandle) ([]UnderlayInterface, error) {
 	for _, name := range netdevs {
 		res = append(res, UnderlayInterface{InterfaceName: name, Kind: UnderlayInterfaceNetDev})
 	}
-	if cniinvoker.Invoker == nil {
-		return res, nil
-	}
-	cniIfaces, err := cniinvoker.Invoker.CachedIfNames()
+	cniIfaces, err := cniUnderlayInterfaceNames()
 	if err != nil {
-		return nil, fmt.Errorf("failed to list cni underlay interfaces: %w", err)
+		return nil, err
 	}
 	for _, name := range cniIfaces {
 		res = append(res, UnderlayInterface{InterfaceName: name, Kind: UnderlayInterfaceCNIDev})
 	}
 	return res, nil
+}
+
+// cniUnderlayInterfaceNames returns the names of the CNI-provisioned underlay
+// interfaces, or nil when CNI is not in use.
+func cniUnderlayInterfaceNames() ([]string, error) {
+	if cniinvoker.Invoker == nil {
+		return nil, nil
+	}
+	names, err := cniinvoker.Invoker.CachedIfNames()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list cni underlay interfaces: %w", err)
+	}
+	return names, nil
 }
 
 // UnderlayInterfacesToRemove returns the existing underlay interfaces that
@@ -252,38 +265,38 @@ func UnderlayInterfacesToRemove(existing,
 	return removed
 }
 
-func ensureLoopback(ctx context.Context, ns netns.NsHandle, vtepIPs ...string) error {
-	slog.DebugContext(ctx, "setup underlay", "step", "setting up loopback interface")
-	defer slog.DebugContext(ctx, "setup underlay", "step", "loopback interface set up")
+// ensureTunnelLoopback assigns the tunnel endpoint addresses to a dedicated
+// dummy interface, which the VXLAN interfaces use as their source device.
+func ensureTunnelLoopback(ctx context.Context, ns netns.NsHandle, vtepIPs ...string) error {
+	slog.DebugContext(ctx, "setup underlay", "step", "setting up tunnel endpoint interface")
+	defer slog.DebugContext(ctx, "setup underlay", "step", "tunnel endpoint interface set up")
 
-	if err := netnamespace.In(ns, func() error {
-		loopback, err := netlink.LinkByName(loopbackName)
+	return netnamespace.In(ns, func() error {
+		tunnelLoopback, err := ensureDummyInterface(TunnelLoopback)
 		if err != nil {
-			return fmt.Errorf("ensureLoopback: failed to retrieve %s, err: %w", loopbackName, err)
+			return fmt.Errorf("ensureTunnelLoopback: %w", err)
 		}
 
 		for _, vtepIP := range vtepIPs {
-			err = AssignIPToInterface(loopback, vtepIP)
-			if err != nil {
+			if err := AssignIPToInterface(tunnelLoopback, vtepIP); err != nil {
 				return err
 			}
 		}
-		// The link is already set up during namespace creation. However, in order to be idempotent, do this here again,
-		// in case something external set the link to down.
-		if err := netlink.LinkSetUp(loopback); err != nil {
-			return fmt.Errorf("ensureLoopback: failed to bring up %s: %w", loopbackName, err)
+		if tunnelLoopback.Attrs().MTU != tunnelLoopbackMTU {
+			if err := netlink.LinkSetMTU(tunnelLoopback, tunnelLoopbackMTU); err != nil {
+				return fmt.Errorf("ensureTunnelLoopback: failed to set MTU on %s: %w",
+					TunnelLoopback, err)
+			}
 		}
-
+		if err := netlink.LinkSetUp(tunnelLoopback); err != nil {
+			return fmt.Errorf("ensureTunnelLoopback: failed to bring up %s: %w", TunnelLoopback, err)
+		}
 		return nil
-	}); err != nil {
-		return err
-	}
-
-	return nil
+	})
 }
 
 // RestoreUnderlay restores the underlay state:
-//   - it clears all non-default IP addresses from the loopback in the namespace identified by fromNetNSPath
+//   - it deletes the tunnel endpoint interface in the namespace identified by fromNetNSPath
 //     (`/var/run/netns/perouter`).
 //   - it moves the interfaces to remove that are identified by the groupID marker from the aforementioned
 //     namespace back to the default network namespace.
@@ -302,9 +315,8 @@ func RestoreUnderlay(ctx context.Context, fromNetNSPath string, ifacesToRemove [
 	}
 	restoreUnderlay := func(ctx context.Context, fromNetNSHandle, defaultNetNSHandle *netlink.Handle,
 		defaultNetNS netns.NsHandle) error {
-		if err := clearNonDefaultLoopbackIPs(fromNetNSHandle, loopbackName); err != nil {
-			return fmt.Errorf("RestoreUnderlay: failed to clear non default loopback IPs from interface %s, err: %w",
-				loopbackName, err)
+		if err := deleteLink(fromNetNSHandle, TunnelLoopback); err != nil {
+			return fmt.Errorf("RestoreUnderlay: %w", err)
 		}
 
 		links, err := fromNetNSHandle.LinkList()
@@ -389,16 +401,16 @@ func FindInterfacesInGroup(ns netns.NsHandle, groupID uint32) ([]string, error) 
 }
 
 // FindUnderlayMTU retrieves the lowest MTU among all underlay interfaces.
-// This ensures that packets can traverse all underlay paths.
+// This ensures that packets can traverse all underlay paths. Both the group
+// membership and the MTUs are read from a single link dump.
 func FindUnderlayMTU(ns netns.NsHandle) (int, error) {
-	underlayInterfaces, err := underlayInterfaces(ns)
+	cniIfaces, err := cniUnderlayInterfaceNames()
 	if err != nil {
 		return 0, fmt.Errorf("failed finding underlay interfaces to calculate MTU: %w", err)
 	}
-
-	underlayNames := make(map[string]struct{}, len(underlayInterfaces))
-	for _, iface := range underlayInterfaces {
-		underlayNames[iface.InterfaceName] = struct{}{}
+	cniNames := make(map[string]struct{}, len(cniIfaces))
+	for _, name := range cniIfaces {
+		cniNames[name] = struct{}{}
 	}
 
 	minMTU := 0
@@ -408,11 +420,13 @@ func FindUnderlayMTU(ns netns.NsHandle) (int, error) {
 			return fmt.Errorf("failed to list links: %w", err)
 		}
 		for _, l := range links {
-			if _, ok := underlayNames[l.Attrs().Name]; ok {
-				mtu := l.Attrs().MTU
-				if minMTU == 0 || mtu < minMTU {
-					minMTU = mtu
-				}
+			attrs := l.Attrs()
+			if !isUnderlayLink(attrs, cniNames) {
+				continue
+			}
+			mtu := attrs.MTU
+			if minMTU == 0 || mtu < minMTU {
+				minMTU = mtu
 			}
 		}
 		if minMTU == 0 {
@@ -426,27 +440,43 @@ func FindUnderlayMTU(ns netns.NsHandle) (int, error) {
 	return minMTU, nil
 }
 
-func clearNonDefaultLoopbackIPs(nsHandle *netlink.Handle, intf string) error {
-	lo, err := nsHandle.LinkByName(intf)
-	if err != nil {
-		return fmt.Errorf("failed to find %s: %w", intf, err)
+// isUnderlayLink reports whether attrs describes an underlay interface: a
+// device in the underlay group or one provisioned by the CNI plugin.
+func isUnderlayLink(attrs *netlink.LinkAttrs, cniNames map[string]struct{}) bool {
+	if attrs.Group == UnderlayGroupID {
+		return true
 	}
+	_, ok := cniNames[attrs.Name]
+	return ok
+}
 
-	addresses, err := nsHandle.AddrList(lo, netlink.FAMILY_ALL)
-	if err != nil {
-		return fmt.Errorf("failed to list addresses on %s: %w", intf, err)
+func ensureDummyInterface(name string) (netlink.Link, error) {
+	link, err := netlink.LinkByName(name)
+	if err == nil {
+		return link, nil
 	}
+	if !errors.As(err, &netlink.LinkNotFoundError{}) {
+		return nil, fmt.Errorf("failed to retrieve %s: %w", name, err)
+	}
+	dummy := &netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: name}}
+	if err := netlink.LinkAdd(dummy); err != nil {
+		return nil, fmt.Errorf("failed to create %s: %w", name, err)
+	}
+	return dummy, nil
+}
 
-	var errs []error
-	for _, address := range addresses {
-		if address.IP.IsLoopback() {
-			continue
-		}
-		if err := nsHandle.AddrDel(lo, &address); err != nil {
-			errs = append(errs, err)
-		}
+func deleteLink(nsHandle *netlink.Handle, name string) error {
+	link, err := nsHandle.LinkByName(name)
+	if errors.As(err, &netlink.LinkNotFoundError{}) {
+		return nil
 	}
-	return errors.Join(errs...)
+	if err != nil {
+		return fmt.Errorf("failed to find %s: %w", name, err)
+	}
+	if err := nsHandle.LinkDel(link); err != nil {
+		return fmt.Errorf("failed to delete %s: %w", name, err)
+	}
+	return nil
 }
 
 // moveDefaultNamespaceInterface moves the host network device into the

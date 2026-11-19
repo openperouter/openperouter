@@ -36,7 +36,8 @@ func CNIUnderlayNeighborIP(nodeIndex int) string {
 }
 
 // CNIUnderlaysForNodes builds one node-scoped Underlay per node, whose
-// interface is provisioned by the macvlan CNI plugin on top of toswitch1
+// interface is provisioned by the macvlan CNI plugin on top of the primary
+// underlay interface
 // (which stays in the host netns) with a per-node static IP. The node index
 // used for addressing is the position in the given slice, so callers must
 // pass a deterministic order.
@@ -57,7 +58,7 @@ func cniUnderlayForNode(nodeIndex int, node corev1.Node, ifName string) v1alpha1
   "plugins": [
     {
       "type": "macvlan",
-      "master": "toswitch1",
+      "master": "%s",
       "mode": "bridge",
       "ipam": {
         "type": "static",
@@ -67,7 +68,7 @@ func cniUnderlayForNode(nodeIndex int, node corev1.Node, ifName string) v1alpha1
       }
     }
   ]
-}`, CNIUnderlayNeighborIP(nodeIndex))
+}`, UnderlayInterfaceNames()[0], CNIUnderlayNeighborIP(nodeIndex))
 
 	return v1alpha1.Underlay{
 		ObjectMeta: metav1.ObjectMeta{
@@ -115,7 +116,8 @@ func ConfigureLeafKind1ForCNIUnderlay(nodes []corev1.Node) error {
 }
 
 // DHCPCNIUnderlaysForNodes builds one node-scoped Underlay per node, whose
-// interface is provisioned by the macvlan CNI plugin on top of toswitch1
+// interface is provisioned by the macvlan CNI plugin on top of the primary
+// underlay interface
 // with DHCP IPAM. Addresses are acquired from the DHCP server (dhcp1) on
 // the leafkind1-sw bridge segment.
 func DHCPCNIUnderlaysForNodes(nodes []corev1.Node, ifName string) []v1alpha1.Underlay {
@@ -127,20 +129,20 @@ func DHCPCNIUnderlaysForNodes(nodes []corev1.Node, ifName string) []v1alpha1.Und
 }
 
 func dhcpCNIUnderlayForNode(nodeIndex int, node corev1.Node, ifName string) v1alpha1.Underlay {
-	rawConfig := `{
+	rawConfig := fmt.Sprintf(`{
   "cniVersion": "1.0.0",
   "name": "macvlan-underlay",
   "plugins": [
     {
       "type": "macvlan",
-      "master": "toswitch1",
+      "master": "%s",
       "mode": "bridge",
       "ipam": {
         "type": "dhcp"
       }
     }
   ]
-}`
+}`, UnderlayInterfaceNames()[0])
 	return v1alpha1.Underlay{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("underlay-dhcp-%d", nodeIndex),

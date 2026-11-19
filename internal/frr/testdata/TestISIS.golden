@@ -27,7 +27,7 @@ router isis ISIS
   is-type level-1
 exit
 !
-interface lo
+interface vtep-lo
   ipv6 router isis ISIS
   isis passive
 exit

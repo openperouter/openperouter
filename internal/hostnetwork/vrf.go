@@ -13,7 +13,10 @@ import (
 )
 
 const (
-	srv6VRF = "srv6VRF"
+	managedVRFAlias = "openperouter:tenant-vrf"
+	srv6VRF         = "srv6VRF"
+	evpnVRF         = "evpnVRF"
+	guardedSRv6VRF  = "guardedSRv6VRF"
 )
 
 // lookupVRF finds an existing VRF by name and returns an error if it
@@ -32,20 +35,26 @@ func lookupVRF(name string) (*netlink.Vrf, error) {
 
 // setupVRF creates a new VRF and sets it up.
 func setupVRF(name string, opts ...string) error {
+	return setupVRFWithSnapshot(name, nil, opts...)
+}
+
+func setupVRFWithSnapshot(name string, snapshot *vrfGuardSnapshot, opts ...string) error {
+	if slices.Contains(opts, srv6VRF) && slices.Contains(opts, evpnVRF) && !slices.Contains(opts, guardedSRv6VRF) {
+		return fmt.Errorf("VRF %s cannot use both EVPN isolation and SRv6", name)
+	}
 	vrf, err := createVRF(name)
 	if err != nil {
 		return err
 	}
 
 	if slices.Contains(opts, srv6VRF) {
-		// VRF strict mode is needed when using SRV6 and we need to do this as close
-		// to VRF creation as possible to minimize the risk of rejected "B>r"
-		// routes in BGP. Likewise, we must disable the RPFilter for SRv6 setups.
-		if err := sysctl.Ensure(sysctl.EnableVRFStrictMode()); err != nil {
-			return fmt.Errorf("failed to ensure VRF strict mode after adding VRF %s: %w", name, err)
+		if err := setupSRv6VRF(vrf, slices.Contains(opts, guardedSRv6VRF)); err != nil {
+			return err
 		}
-		if err := sysctl.Ensure(sysctl.DisableRPFilter(vrf.Name)); err != nil {
-			return fmt.Errorf("failed to disable rp_filter after adding VRF %s: %w", name, err)
+	}
+	if slices.Contains(opts, evpnVRF) || slices.Contains(opts, guardedSRv6VRF) {
+		if err := ensureVRFDefaultGuardsWithSnapshot(vrf, snapshot); err != nil {
+			return &VRFGuardError{VRF: name, Err: err}
 		}
 	}
 
@@ -57,25 +66,12 @@ func setupVRF(name string, opts ...string) error {
 	return nil
 }
 
-func createVRF(name string) (*netlink.Vrf, error) {
-	tableID, err := findFreeRoutingTableID()
-	if err != nil {
-		return nil, err
-	}
-
-	toCreate := &netlink.Vrf{
-		LinkAttrs: netlink.LinkAttrs{Name: name},
-		Table:     tableID,
-	}
-
+func createVRF(name string, excludedTables ...uint32) (*netlink.Vrf, error) {
 	link, err := netlink.LinkByName(name)
 
 	// does not exist. Let's create.
 	if errors.As(err, &netlink.LinkNotFoundError{}) {
-		if err := netlink.LinkAdd(toCreate); err != nil {
-			return nil, fmt.Errorf("could not add VRF %s: %v", name, err)
-		}
-		return toCreate, nil
+		return addVRF(name, excludedTables...)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("could not get link by name %s: %v", name, err)
@@ -92,13 +88,30 @@ func createVRF(name string) (*netlink.Vrf, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to delete link %v: %w", link, err)
 	}
+	return addVRF(name, excludedTables...)
+}
+
+// addVRF creates a VRF with the first free routing table ID.
+func addVRF(name string, excludedTables ...uint32) (*netlink.Vrf, error) {
+	tableID, err := findFreeRoutingTableID(excludedTables...)
+	if err != nil {
+		return nil, err
+	}
+
+	toCreate := &netlink.Vrf{
+		LinkAttrs: netlink.LinkAttrs{Name: name},
+		Table:     tableID,
+	}
 	if err := netlink.LinkAdd(toCreate); err != nil {
 		return nil, fmt.Errorf("could not add VRF %s: %v", name, err)
+	}
+	if err := netlink.LinkSetAlias(toCreate, managedVRFAlias); err != nil {
+		return nil, fmt.Errorf("mark managed VRF %s: %w", name, err)
 	}
 	return toCreate, nil
 }
 
-func findFreeRoutingTableID() (uint32, error) {
+func findFreeRoutingTableID(excludedTables ...uint32) (uint32, error) {
 	links, err := netlink.LinkList()
 	if err != nil {
 		return 0, fmt.Errorf("findFreeRoutingTableID: Failed to find links %v", err)
@@ -112,9 +125,28 @@ func findFreeRoutingTableID() (uint32, error) {
 	}
 
 	for res := uint32(1); res < math.MaxUint32; res++ {
+		if reservedVRFTable(res) || slices.Contains(excludedTables, res) {
+			continue
+		}
 		if _, ok := takenTables[res]; !ok {
 			return res, nil
 		}
 	}
 	return 0, fmt.Errorf("findFreeRoutingTableID: Failed to find an available routing id")
+}
+
+func setupSRv6VRF(vrf *netlink.Vrf, guarded bool) error {
+	// VRF strict mode is needed when using SRV6 and we need to do this as close
+	// to VRF creation as possible to minimize the risk of rejected "B>r"
+	// routes in BGP. Likewise, we must disable the RPFilter for SRv6 setups.
+	if err := sysctl.Ensure(sysctl.EnableVRFStrictMode()); err != nil {
+		return fmt.Errorf("failed to ensure VRF strict mode after adding VRF %s: %w", vrf.Name, err)
+	}
+	if err := sysctl.Ensure(sysctl.DisableRPFilter(vrf.Name)); err != nil {
+		return fmt.Errorf("failed to disable rp_filter after adding VRF %s: %w", vrf.Name, err)
+	}
+	if guarded {
+		return nil
+	}
+	return removeVRFDefaultGuards(vrf)
 }

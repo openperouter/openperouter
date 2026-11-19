@@ -70,6 +70,15 @@ func (r *RouterHostContainer) TargetNS(_ context.Context) (string, error) {
 	return netnamespace.NamedNSPath, nil
 }
 
+func (r *RouterHostContainer) FRRInstanceID(_ context.Context) (string, error) {
+	info, err := os.Stat(r.manager.RouterPidFilePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to stat router PID file: %w", err)
+	}
+	// The timestamp distinguishes restarts even when the host reuses a PID.
+	return fmt.Sprintf("%s/%d", r.manager.RouterPidFilePath, info.ModTime().UnixNano()), nil
+}
+
 func (r *RouterHostContainer) CanReconcile() (bool, error) {
 	client, err := systemdctl.NewClient()
 	if err != nil {
