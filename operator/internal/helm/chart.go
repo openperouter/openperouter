@@ -174,25 +174,9 @@ func patchChartValues(envConfig envconfig.EnvConfig, crdConfig *operatorapi.Open
 	datapath := ptr.Deref(crdConfig.Spec.Datapath, "kernel")
 	openperouterValues["datapath"] = datapath
 	if datapath == "grout" {
-		groutImage := envConfig.GroutImage
-		if groutImage == nil {
-			groutImage = &envconfig.ImageInfo{
-				Repo: "quay.io/openperouter/router",
-				Tag:  "main-grout",
-			}
-		}
-
-		groutValues := map[string]any{
-			"enabled":     true,
-			"testMode":    envConfig.GroutTestMode,
-			"tapUnderlay": envConfig.GroutTapUnderlay,
-			"image": map[string]any{
-				"repository": groutImage.Repo,
-				"tag":        groutImage.Tag,
-			},
-		}
-		if envConfig.GroutMaxMTU > 0 {
-			groutValues["maxMTU"] = envConfig.GroutMaxMTU
+		groutValues, err := groutChartValues(envConfig, crdConfig.Spec.Grout)
+		if err != nil {
+			return err
 		}
 		openperouterValues["grout"] = groutValues
 	}
@@ -237,6 +221,55 @@ func patchResourceValues(resources *operatorapi.ContainerResources, openperouter
 		clearOmittedResourceRequests(resourceValues, target.reqs.Requests)
 		subMap(openperouterValues, target.path)["resources"] = value
 	}
+	return nil
+}
+
+// groutChartValues builds the helm values of the grout dataplane, applying
+// the resources override from the CRD when set.
+func groutChartValues(envConfig envconfig.EnvConfig, grout *operatorapi.GroutConfiguration) (map[string]any, error) {
+	groutImage := envConfig.GroutImage
+	if groutImage == nil {
+		groutImage = &envconfig.ImageInfo{
+			Repo: "quay.io/openperouter/router",
+			Tag:  "main-grout",
+		}
+	}
+
+	groutValues := map[string]any{
+		"enabled":     true,
+		"testMode":    envConfig.GroutTestMode,
+		"tapUnderlay": envConfig.GroutTapUnderlay,
+		"image": map[string]any{
+			"repository": groutImage.Repo,
+			"tag":        groutImage.Tag,
+		},
+	}
+	if envConfig.GroutMaxMTU > 0 {
+		groutValues["maxMTU"] = envConfig.GroutMaxMTU
+	}
+	if err := patchGroutResourceValues(grout, groutValues); err != nil {
+		return nil, err
+	}
+	return groutValues, nil
+}
+
+// patchGroutResourceValues sets the grout container resources override inside
+// the given grout values, clearing the omitted CPU and memory requests so they
+// do not inherit the chart defaults.
+func patchGroutResourceValues(grout *operatorapi.GroutConfiguration, groutValues map[string]any) error {
+	if grout == nil || grout.Resources == nil {
+		return nil
+	}
+	value, err := toJSONValue(grout.Resources)
+	if err != nil {
+		return fmt.Errorf("failed to convert grout resources to helm value: %w", err)
+	}
+	resourceValues, ok := value.(map[string]any)
+	if !ok {
+		return fmt.Errorf("failed to convert grout resources to helm value: unexpected type %T", value)
+	}
+	clearOmittedResourceRequests(resourceValues, grout.Resources.Requests)
+	groutValues["resources"] = value
 	return nil
 }
 
