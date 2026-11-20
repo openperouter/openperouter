@@ -49,12 +49,26 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 	ovsClient := &hostnetwork.OVSClient{}
 	defer ovsClient.Close()
 
-	currentUnderlayIfaces, err := hostnetwork.UnderlayInterfaces(config.targetNamespace)
+	ns, err := netns.GetFromPath(config.targetNamespace)
+	if err != nil {
+		// The router namespace is opened once and every step of the reconcile
+		// cycle reuses the handle, so the namespace path is not opened again
+		// per step.
+		return fmt.Errorf("%w: failed to get network namespace %s: %w",
+			openpeerrors.ErrTransient, config.targetNamespace, err)
+	}
+	defer func() {
+		if err := ns.Close(); err != nil {
+			slog.Error("failed to close router namespace", "namespace", config.targetNamespace, "error", err)
+		}
+	}()
+
+	currentUnderlayIfaces, err := hostnetwork.UnderlayInterfacesInNamespace(ns)
 	if err != nil {
 		return fmt.Errorf("failed to check if target namespace %s has underlay: %w", config.targetNamespace, err)
 	}
 	if len(currentUnderlayIfaces) > 0 && len(config.Underlays) == 0 {
-		restoreUnderlay(ctx, ovsClient, config.targetNamespace, currentUnderlayIfaces)
+		restoreUnderlay(ctx, ovsClient, ns, currentUnderlayIfaces)
 		return nil
 	}
 
@@ -77,19 +91,15 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 	}
 
 	// This must run before underlay interfaces are added to the namespace.
-	if err := ensureSysctlsForConfig(ctx, config); err != nil {
+	if err := ensureSysctlsForConfig(ctx, config, ns); err != nil {
 		return err
 	}
 
-	removeAllVNIs, err := areAllUnderlayInterfacesToBeRemoved(ctx, config, hostConfig)
-	if err != nil {
-		return err
-	}
-	if removeAllVNIs {
+	if areAllUnderlayInterfacesToBeRemoved(ctx, hostConfig, currentUnderlayIfaces) {
 		// VXLAN tunnels are bound to the current underlay interfaces. If all underlay interfaces are being
 		// replaced, tear down the VNIs first so they don't reference stale interfaces; they'll be recreated
 		// on top of the new underlay.
-		if err := hostnetwork.RemoveAllVNIs(ovsClient, config.targetNamespace); err != nil {
+		if err := hostnetwork.RemoveAllVNIsInNamespace(ns, ovsClient); err != nil {
 			slog.Warn("failed to remove vnis during underlay change", "err", err)
 		}
 		bridgerefresh.StopAllVNIs()
@@ -97,14 +107,15 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 
 	slog.InfoContext(ctx, "setting up underlay")
 
-	if err := hostnetwork.SetupUnderlay(ctx, hostConfig.Underlay); err != nil {
+	hostConfig.Underlay.ExistingInterfaces = currentUnderlayIfaces
+	if err := hostnetwork.SetupUnderlayInNamespace(ctx, ns, hostConfig.Underlay); err != nil {
 		return fmt.Errorf("failed to setup underlay: %w", err)
 	}
 
-	vnisToKeep, resourceErrors := setupVNIs(ctx, ovsClient, config.targetNamespace, hostConfig)
+	vnisToKeep, resourceErrors := setupVNIs(ctx, ns, ovsClient, hostConfig)
 	slog.InfoContext(ctx, "setting up passthrough")
 	if hostConfig.L3Passthrough != nil {
-		if err := hostnetwork.SetupPassthrough(ctx, *hostConfig.L3Passthrough); err != nil {
+		if err := hostnetwork.SetupPassthroughInNamespace(ctx, ns, *hostConfig.L3Passthrough); err != nil {
 			resourceErrors = append(resourceErrors, overlayAttachmentError(
 				openpeerrors.KindL3Passthrough, config.L3Passthrough[0].Name, err.Error()))
 		}
@@ -125,7 +136,7 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 	}
 
 	slog.InfoContext(ctx, "removing deleted vnis")
-	if err := hostnetwork.RemoveNonConfiguredVNIs(ovsClient, config.targetNamespace, configuredVNIs); err != nil {
+	if err := hostnetwork.RemoveNonConfiguredVNIsInNamespace(ns, ovsClient, configuredVNIs); err != nil {
 		return errors.Join(append(resourceErrors, fmt.Errorf("failed to remove deleted vnis: %w", err))...)
 	}
 	bridgerefresh.StopForRemovedVNIs(vnisToKeep.l2VNIs)
@@ -136,45 +147,31 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 	}
 
 	slog.InfoContext(ctx, "removing deleted vrfs")
-	if err := hostnetwork.RemoveNonConfiguredVRFs(config.targetNamespace,
+	if err := hostnetwork.RemoveNonConfiguredVRFsInNamespace(ns,
 		configuredVRFs); err != nil {
 		return errors.Join(append(resourceErrors, fmt.Errorf("failed to remove deleted vrfs: %w", err))...)
 	}
 
 	if len(config.L3Passthrough) == 0 {
-		if err := hostnetwork.RemovePassthrough(config.targetNamespace); err != nil {
+		if err := hostnetwork.RemovePassthroughInNamespace(ns); err != nil {
 			return errors.Join(append(resourceErrors, fmt.Errorf("failed to remove passthrough: %w", err))...)
 		}
 	}
 	return errors.Join(resourceErrors...)
 }
 
-// setupVNIs sets up every VNI of the datapath reconcile cyle. The underlay MTU
-// and the VTEP loopback are node-wide, so it opens the router namespace once
-// and resolves them once for the whole reconcile cycle.
+// setupVNIs sets up every VNI of the datapath reconcile cycle in the router
+// namespace handle ns. The underlay MTU and the VTEP loopback are node-wide, so
+// it resolves them once for the whole reconcile cycle.
 func setupVNIs(
 	ctx context.Context,
+	ns netns.NsHandle,
 	ovsClient *hostnetwork.OVSClient,
-	routerNamespace string,
 	hostConfig conversion.HostConfigData,
 ) (vnis, []error) {
 	if len(hostConfig.L3VNIs) == 0 && len(hostConfig.L3VPNs) == 0 && len(hostConfig.L2VNIs) == 0 {
 		return vnis{}, nil
 	}
-
-	ns, err := netns.GetFromPath(routerNamespace)
-	if err != nil {
-		// The namespace lives on the host, so failing to open it now does not
-		// mean it will be missing on the next reconcile.
-		openErr := fmt.Errorf("%w: failed to get network namespace %s: %w",
-			openpeerrors.ErrTransient, routerNamespace, err)
-		return vnisFromHostConfig(hostConfig), errorsForVNIs(hostConfig, openErr)
-	}
-	defer func() {
-		if err := ns.Close(); err != nil {
-			slog.Error("failed to close router namespace", "namespace", routerNamespace, "error", err)
-		}
-	}()
 
 	configurator, err := hostnetwork.NewVNIConfigurator(ns, ovsClient)
 	if err != nil {
@@ -350,12 +347,12 @@ func overlayAttachmentError(kind v1alpha1.FailedResourceKind, name, message stri
 func restoreUnderlay(
 	ctx context.Context,
 	ovsClient *hostnetwork.OVSClient,
-	targetNamespace string,
+	ns netns.NsHandle,
 	currentUnderlayIfaces []hostnetwork.UnderlayInterface,
 ) {
 	slog.InfoContext(ctx, "underlay removed, cleaning up VNIs and underlay interfaces")
 
-	if err := hostnetwork.RemoveAllVNIs(ovsClient, targetNamespace); err != nil {
+	if err := hostnetwork.RemoveAllVNIsInNamespace(ns, ovsClient); err != nil {
 		slog.Warn("failed to remove vnis after underlay removal", "err", err)
 	}
 
@@ -363,18 +360,18 @@ func restoreUnderlay(
 		slog.Warn("failed to remove l3vpns after underlay removal", "err", err)
 	}
 
-	if err := hostnetwork.RemoveAllVRFs(targetNamespace); err != nil {
+	if err := hostnetwork.RemoveAllVRFsInNamespace(ns); err != nil {
 		slog.Warn("failed to remove vrfs after underlay removal", "err", err)
 	}
 
 	bridgerefresh.StopAllVNIs()
-	if err := hostnetwork.RestoreUnderlay(ctx, targetNamespace,
+	if err := hostnetwork.RestoreUnderlayInNamespace(ctx, ns,
 		currentUnderlayIfaces); err != nil {
 		slog.Warn("failed to remove underlay interfaces after underlay removal", "err", err)
 	}
 }
 
-func ensureSysctlsForConfig(ctx context.Context, config interfacesConfiguration) error {
+func ensureSysctlsForConfig(ctx context.Context, config interfacesConfiguration, ns netns.NsHandle) error {
 	slog.InfoContext(ctx, "ensuring sysctls")
 	sysctls := []sysctl.Sysctl{
 		sysctl.IPv4Forwarding(),
@@ -392,10 +389,7 @@ func ensureSysctlsForConfig(ctx context.Context, config interfacesConfiguration)
 			sysctl.EnableSeg6All(),
 		)
 	}
-	if err := sysctl.EnsureInNamespace(
-		config.targetNamespace,
-		sysctls...,
-	); err != nil {
+	if err := sysctl.EnsureIn(ns, sysctls...); err != nil {
 		return fmt.Errorf("failed to ensure sysctls: %w", err)
 	}
 	return nil
@@ -410,14 +404,9 @@ func isSRV6(underlay v1alpha1.Underlay) bool {
 // network devices and the CNI-provisioned interfaces.
 func areAllUnderlayInterfacesToBeRemoved(
 	ctx context.Context,
-	config interfacesConfiguration,
 	hostConfig conversion.HostConfigData,
-) (bool, error) {
-	existing, err := hostnetwork.UnderlayInterfaces(config.targetNamespace)
-	if err != nil {
-		return false, fmt.Errorf("failed to list existing underlay interfaces: %w", err)
-	}
-
+	existing []hostnetwork.UnderlayInterface,
+) bool {
 	toRemove := hostnetwork.UnderlayInterfacesToRemove(existing, hostConfig.Underlay.UnderlayInterfaces)
 	allRemoved := len(toRemove) > 0 && len(toRemove) == len(existing)
 	if allRemoved {
@@ -426,5 +415,5 @@ func areAllUnderlayInterfacesToBeRemoved(
 			"requested", hostConfig.Underlay.UnderlayInterfaces,
 		)
 	}
-	return allRemoved, nil
+	return allRemoved
 }

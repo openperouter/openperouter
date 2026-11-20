@@ -68,7 +68,7 @@ var _ = Describe("Ensure", func() {
 				Expect(setSysctl(ns, sysctlName, preEnable)).To(Succeed())
 			}
 
-			Expect(EnsureInNamespace(fmt.Sprintf("/var/run/netns/%s", testNS), sysctls...)).To(Succeed())
+			Expect(EnsureIn(ns, sysctls...)).To(Succeed())
 
 			for _, s := range sysctls {
 				sysctlName := strings.ReplaceAll(s.Path, "/", ".")
@@ -91,7 +91,7 @@ var _ = Describe("Ensure", func() {
 
 	It("should skip optional sysctl when proc file does not exist", func() {
 		testNS := "test-optional-skip"
-		_ = createTestNS(testNS)
+		ns := createTestNS(testNS)
 		defer cleanTest(testNS)
 
 		s := Sysctl{
@@ -99,20 +99,18 @@ var _ = Describe("Ensure", func() {
 			Description:        "nonexistent sysctl with UnsupportedWarning",
 			UnsupportedWarning: "expected to be skipped",
 		}
-		err := EnsureInNamespace(fmt.Sprintf("/var/run/netns/%s", testNS), s)
-		Expect(err).NotTo(HaveOccurred())
+		Expect(EnsureIn(ns, s)).To(Succeed())
 	})
 
 	It("should fail for non-optional sysctl when proc file does not exist", func() {
 		testNS := "test-nonoptional-fail"
-		_ = createTestNS(testNS)
+		ns := createTestNS(testNS)
 		defer cleanTest(testNS)
 
 		s := Sysctl{
 			Path:        "net/ipv6/conf/all/nonexistent_sysctl",
 			Description: "nonexistent sysctl without UnsupportedWarning",
 		}
-		err := EnsureInNamespace(fmt.Sprintf("/var/run/netns/%s", testNS), s)
-		Expect(err).To(HaveOccurred())
+		Expect(EnsureIn(ns, s)).To(HaveOccurred())
 	})
 })

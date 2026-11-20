@@ -42,7 +42,7 @@ var _ = Describe("Passthrough configuration", func() {
 			},
 		}
 
-		err := SetupPassthrough(context.Background(), params)
+		err := SetupPassthroughInNamespace(context.Background(), testNS, params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -59,7 +59,7 @@ var _ = Describe("Passthrough configuration", func() {
 			},
 		}
 
-		err := SetupPassthrough(context.Background(), params)
+		err := SetupPassthroughInNamespace(context.Background(), testNS, params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -78,7 +78,7 @@ var _ = Describe("Passthrough configuration", func() {
 			},
 		}
 
-		err := SetupPassthrough(context.Background(), params)
+		err := SetupPassthroughInNamespace(context.Background(), testNS, params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -95,14 +95,14 @@ var _ = Describe("Passthrough configuration", func() {
 			},
 		}
 
-		err := SetupPassthrough(context.Background(), params)
+		err := SetupPassthroughInNamespace(context.Background(), testNS, params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
 			validatePassthrough(g, params, testNS)
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 
-		err = RemovePassthrough(testPassthroughNSPath())
+		err = RemovePassthroughInNamespace(testNS)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -119,10 +119,10 @@ var _ = Describe("Passthrough configuration", func() {
 			},
 		}
 
-		err := SetupPassthrough(context.Background(), params)
+		err := SetupPassthroughInNamespace(context.Background(), testNS, params)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = SetupPassthrough(context.Background(), params)
+		err = SetupPassthroughInNamespace(context.Background(), testNS, params)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
@@ -131,7 +131,7 @@ var _ = Describe("Passthrough configuration", func() {
 	})
 
 	It("should handle removal of non-existent passthrough gracefully", func() {
-		err := RemovePassthrough(testPassthroughNSPath())
+		err := RemovePassthroughInNamespace(testNS)
 		Expect(err).NotTo(HaveOccurred())
 	})
 })

@@ -22,22 +22,7 @@ type VethNames struct {
 
 const VethLinkType = "veth"
 
-// setupNamespacedVeth sets up a veth pair with the provided names and one leg in the
-// given namespace.
-func setupNamespacedVeth(ctx context.Context, vethNames VethNames, namespace string) error {
-	targetNS, err := netns.GetFromPath(namespace)
-	if err != nil {
-		return fmt.Errorf("setupNamespacedVeth: Failed to get network namespace %s: %w", namespace, err)
-	}
-	defer func() {
-		if err := targetNS.Close(); err != nil {
-			slog.Error("failed to close namespace", "namespace", namespace, "error", err)
-		}
-	}()
-	return setupNamespacedVethInNamespace(ctx, vethNames, targetNS)
-}
-
-func setupNamespacedVethInNamespace(ctx context.Context, vethNames VethNames, targetNS netns.NsHandle) error {
+func setupNamespacedVeth(ctx context.Context, vethNames VethNames, targetNS netns.NsHandle) error {
 	slog.DebugContext(ctx, "setupNamespacedVeth", "hostSide", vethNames.HostSide, "nsSide", vethNames.NamespaceSide)
 	defer slog.DebugContext(ctx, "end setupNamespacedVeth", "hostSide", vethNames.HostSide, "nsSide", vethNames.NamespaceSide)
 

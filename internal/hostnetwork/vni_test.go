@@ -180,9 +180,9 @@ var _ = Describe("L3 VNI configuration", func() {
 		toDelete := params[1]
 
 		By("removing non configured L3VNIs")
-		err := RemoveNonConfiguredVNIs(ovsClient, testNSPath(), []VNIParams{remaining.VNIParams})
+		err := RemoveNonConfiguredVNIsInNamespace(testNS, ovsClient, []VNIParams{remaining.VNIParams})
 		Expect(err).NotTo(HaveOccurred())
-		err = RemoveNonConfiguredVRFs(testNSPath(), map[string]bool{remaining.VRF: true})
+		err = RemoveNonConfiguredVRFsInNamespace(testNS, map[string]bool{remaining.VRF: true})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("checking remaining L3VNIs")
@@ -427,9 +427,9 @@ var _ = Describe("L2 VNI configuration", func() {
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 
 		By("removing the VNI")
-		err = RemoveNonConfiguredVNIs(ovsClient, testNSPath(), []VNIParams{})
+		err = RemoveNonConfiguredVNIsInNamespace(testNS, ovsClient, []VNIParams{})
 		Expect(err).NotTo(HaveOccurred())
-		err = RemoveNonConfiguredVRFs(testNSPath(), map[string]bool{})
+		err = RemoveNonConfiguredVRFsInNamespace(testNS, map[string]bool{})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("checking the VNI is removed")
@@ -498,9 +498,9 @@ var _ = Describe("L2 VNI configuration", func() {
 		toDelete := params[1]
 
 		By("removing non configured L2VNIs")
-		err := RemoveNonConfiguredVNIs(ovsClient, testNSPath(), []VNIParams{remaining.VNIParams})
+		err := RemoveNonConfiguredVNIsInNamespace(testNS, ovsClient, []VNIParams{remaining.VNIParams})
 		Expect(err).NotTo(HaveOccurred())
-		err = RemoveNonConfiguredVRFs(testNSPath(), map[string]bool{remaining.VRF: true})
+		err = RemoveNonConfiguredVRFsInNamespace(testNS, map[string]bool{remaining.VRF: true})
 		Expect(err).NotTo(HaveOccurred())
 
 		By("checking remaining L2VNIs")

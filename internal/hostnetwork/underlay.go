@@ -37,6 +37,11 @@ type UnderlayParams struct {
 	UnderlayInterfaces []UnderlayInterface
 	TargetNS           string
 	TunnelEndpoint     *UnderlayTunnelEndpointParams
+	// ExistingInterfaces are the underlay interfaces already provisioned in
+	// TargetNS. When nil, SetupUnderlayInNamespace lists them itself. Callers
+	// that already listed them to decide whether the underlay changed pass
+	// the result so the namespace is listed once per pass.
+	ExistingInterfaces []UnderlayInterface
 }
 
 // UnderlayInterface describes how a single underlay interface is
@@ -75,33 +80,29 @@ type UnderlayTunnelEndpointParams struct {
 	IPv6CIDR string
 }
 
-func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
+// SetupUnderlayInNamespace sets up the underlay in the already open router
+// namespace handle ns.
+func SetupUnderlayInNamespace(ctx context.Context, ns netns.NsHandle, params UnderlayParams) error {
 	slog.DebugContext(ctx, "setup underlay", "params", params)
 	defer slog.DebugContext(ctx, "setup underlay done")
 
-	targetNetNS, err := netns.GetFromPath(params.TargetNS)
-	if err != nil {
-		return fmt.Errorf("setupUnderlay: Failed to find network namespace %s: %w", params.TargetNS, err)
-	}
-	defer func() {
-		if err := targetNetNS.Close(); err != nil {
-			slog.Error("failed to close namespace", "namespace", params.TargetNS, "error", err)
+	existing := params.ExistingInterfaces
+	if existing == nil {
+		var err error
+		existing, err = UnderlayInterfacesInNamespace(ns)
+		if err != nil {
+			return err
 		}
-	}()
-
+	}
 	// If any existing underlay interfaces were removed from the new list,
 	// clean them up before setting up the new ones: network devices are
 	// restored to the default namespace, CNI-provisioned interfaces are
 	// deleted with a CNI DEL. The caller tears down VNIs beforehand since
 	// they are bound to the old underlay and would be non-functional.
-	existing, err := UnderlayInterfaces(params.TargetNS)
-	if err != nil {
-		return err
-	}
 	if toRemove := UnderlayInterfacesToRemove(existing, params.UnderlayInterfaces); len(toRemove) > 0 {
 		slog.InfoContext(ctx, "underlay interfaces changed, removing old interfaces before setup",
 			"removed", toRemove, "requested", params.UnderlayInterfaces)
-		if err := RestoreUnderlay(ctx, params.TargetNS, toRemove); err != nil {
+		if err := RestoreUnderlayInNamespace(ctx, ns, toRemove); err != nil {
 			return fmt.Errorf("failed to remove old underlay interfaces: %w", err)
 		}
 	}
@@ -109,7 +110,7 @@ func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
 	for _, iface := range params.UnderlayInterfaces {
 		switch iface.Kind {
 		case UnderlayInterfaceNetDev:
-			if err := SetupUnderlayNetDevInterface(ctx, targetNetNS, iface); err != nil {
+			if err := SetupUnderlayNetDevInterface(ctx, ns, iface); err != nil {
 				return err
 			}
 		case UnderlayInterfaceCNIDev:
@@ -133,7 +134,7 @@ func SetupUnderlay(ctx context.Context, params UnderlayParams) error {
 	if ip := params.TunnelEndpoint.IPv6CIDR; ip != "" {
 		vtepIPs = append(vtepIPs, ip)
 	}
-	return ensureTunnelLoopback(ctx, targetNetNS, vtepIPs...)
+	return ensureTunnelLoopback(ctx, ns, vtepIPs...)
 }
 
 // SetupUnderlayNetDevInterface provisions a single underlay net dev interface
@@ -195,26 +196,11 @@ const (
 	UnderlayInterfaceCNIDev UnderlayInterfaceKind = "cnidev"
 )
 
-// UnderlayInterfaces returns all the underlay interfaces currently
-// provisioned for the given network namespace: the network
-// devices marked with the underlay group ID and the CNI-provisioned
-// interfaces recorded in the libcni result cache (skipped when no invoker is
-// configured).
-func UnderlayInterfaces(namespace string) ([]UnderlayInterface, error) {
-	ns, err := netns.GetFromPath(namespace)
-	if err != nil {
-		return nil, fmt.Errorf("UnderlayInterfaces: failed to find network namespace %s: %w", namespace, err)
-	}
-	defer func() {
-		if err := ns.Close(); err != nil {
-			slog.Error("failed to close namespace", "namespace", namespace, "error", err)
-		}
-	}()
-
-	return underlayInterfaces(ns)
-}
-
-func underlayInterfaces(ns netns.NsHandle) ([]UnderlayInterface, error) {
+// UnderlayInterfacesInNamespace returns all the underlay interfaces currently
+// provisioned in the already open namespace handle ns: the network devices
+// marked with the underlay group ID and the CNI-provisioned interfaces
+// recorded in the libcni result cache (skipped when no invoker is configured).
+func UnderlayInterfacesInNamespace(ns netns.NsHandle) ([]UnderlayInterface, error) {
 	netdevs, err := FindInterfacesInGroup(ns, UnderlayGroupID)
 	if err != nil {
 		return nil, err
@@ -295,12 +281,13 @@ func ensureTunnelLoopback(ctx context.Context, ns netns.NsHandle, vtepIPs ...str
 	})
 }
 
-// RestoreUnderlay restores the underlay state:
-//   - it deletes the tunnel endpoint interface in the namespace identified by fromNetNSPath
-//     (`/var/run/netns/perouter`).
-//   - it moves the interfaces to remove that are identified by the groupID marker from the aforementioned
-//     namespace back to the default network namespace.
-func RestoreUnderlay(ctx context.Context, fromNetNSPath string, ifacesToRemove []UnderlayInterface) error {
+// RestoreUnderlayInNamespace restores the underlay state from the already open
+// router namespace handle fromNetNS:
+//   - it deletes the tunnel endpoint interface in that namespace.
+//   - it moves the interfaces to remove that are identified by the groupID
+//     marker from that namespace back to the default network namespace.
+func RestoreUnderlayInNamespace(ctx context.Context, fromNetNS netns.NsHandle,
+	ifacesToRemove []UnderlayInterface) error {
 	// index the interfaces to remove by name for the link list lookup
 	toMoveByName := map[string]UnderlayInterface{}
 	for _, ifaceToRemove := range ifacesToRemove {
@@ -339,11 +326,11 @@ func RestoreUnderlay(ctx context.Context, fromNetNSPath string, ifacesToRemove [
 		return errors.Join(errs...)
 	}
 
-	return restoreUnderlayWithHandles(ctx, fromNetNSPath, restoreUnderlay)
+	return restoreUnderlayWithHandle(ctx, fromNetNS, restoreUnderlay)
 }
 
-// restoreUnderlayWithHandles sets up the required netns and netlink handles for RestoreUnderlay and then calls
-// restoreFn with those handles.
+// restoreUnderlayWithHandles opens the namespace at fromNetNSPath and calls
+// restoreFn with handles for it and for the default namespace.
 func restoreUnderlayWithHandles(ctx context.Context, fromNetNSPath string,
 	restoreFn func(context.Context, *netlink.Handle, *netlink.Handle, netns.NsHandle) error) error {
 	fromNetNS, err := netns.GetFromPath(fromNetNSPath)
@@ -356,6 +343,14 @@ func restoreUnderlayWithHandles(ctx context.Context, fromNetNSPath string,
 		}
 	}()
 
+	return restoreUnderlayWithHandle(ctx, fromNetNS, restoreFn)
+}
+
+// restoreUnderlayWithHandle sets up the netlink handles for the already open
+// router namespace fromNetNS and for the default namespace, then calls
+// restoreFn with them.
+func restoreUnderlayWithHandle(ctx context.Context, fromNetNS netns.NsHandle,
+	restoreFn func(context.Context, *netlink.Handle, *netlink.Handle, netns.NsHandle) error) error {
 	defaultNetNS, err := netns.Get()
 	if err != nil {
 		return fmt.Errorf("RestoreUnderlay: failed to get netns for default namespace: %w", err)
@@ -368,7 +363,7 @@ func restoreUnderlayWithHandles(ctx context.Context, fromNetNSPath string,
 
 	fromNetNSHandle, err := netlink.NewHandleAt(fromNetNS)
 	if err != nil {
-		return fmt.Errorf("RestoreUnderlay: failed to get netlink handle for namespace %s: %w", fromNetNSPath, err)
+		return fmt.Errorf("RestoreUnderlay: failed to get netlink handle for the router namespace: %w", err)
 	}
 	defer fromNetNSHandle.Close()
 

@@ -21,24 +21,19 @@ const (
 	MinVethMTU = 1280
 )
 
-// RemoveAllVRFs removes all VRFs from the target namespace.
-func RemoveAllVRFs(targetNS string) error {
-	return RemoveNonConfiguredVRFs(targetNS, map[string]bool{})
+// RemoveAllVRFsInNamespace removes all VRFs from the already open router
+// namespace handle ns.
+func RemoveAllVRFsInNamespace(ns netns.NsHandle) error {
+	return removeNonConfiguredVRFs(ns, map[string]bool{})
 }
 
-// RemoveNonConfiguredVRFs removes from the target namespace the leftover VRFs
-// that are not configured anymore.
-func RemoveNonConfiguredVRFs(targetNS string, vrfs map[string]bool) error {
-	ns, err := netns.GetFromPath(targetNS)
-	if err != nil {
-		return fmt.Errorf("RemoveNonConfiguredVRFs: failed to get network namespace %s: %w", targetNS, err)
-	}
-	defer func() {
-		if err := ns.Close(); err != nil {
-			slog.Error("failed to close namespace", "namespace", targetNS, "error", err)
-		}
-	}()
+// RemoveNonConfiguredVRFsInNamespace removes from the already open router
+// namespace handle ns the leftover VRFs that are not configured anymore.
+func RemoveNonConfiguredVRFsInNamespace(ns netns.NsHandle, vrfs map[string]bool) error {
+	return removeNonConfiguredVRFs(ns, vrfs)
+}
 
+func removeNonConfiguredVRFs(ns netns.NsHandle, vrfs map[string]bool) error {
 	return netnamespace.In(ns, func() error {
 		return errors.Join(removeNamespaceSideVRFs(vrfs)...)
 	})
@@ -48,7 +43,7 @@ func RemoveNonConfiguredVRFs(targetNS string, vrfs map[string]bool) error {
 // namespace the configurator was built for, for L3VNI and L3VPN.
 func (c *VNIConfigurator) setupHostVeth(ctx context.Context, vethNames VethNames, linkIPs *LinkIPs,
 	vrfName string, tunnelOverhead int) error {
-	if err := setupNamespacedVethInNamespace(ctx, vethNames, c.ns); err != nil {
+	if err := setupNamespacedVeth(ctx, vethNames, c.ns); err != nil {
 		return fmt.Errorf("failed to setup veth: %w", err)
 	}
 
@@ -139,25 +134,28 @@ func SetVethMTUForTunnelOverhead(link netlink.Link, underlayMTU int, overhead in
 	return linkSetMTU(link, targetMTU)
 }
 
-func removeHostSideVeths(hostLinks []netlink.Link, prefix string, interfaceIDs map[int32]bool) []error {
+// removeHostSideVeths deletes the veths whose name starts with prefix and
+// whose interface ID is not in configured. links are the links of the namespace
+// the veths live in.
+func removeHostSideVeths(links []netlink.Link, prefix string, configured map[int32]bool) []error {
 	var failedDeletes []error
-	for _, hl := range hostLinks {
-		if hl.Type() != VethLinkType {
+	for _, link := range links {
+		if link.Type() != VethLinkType {
 			continue
 		}
-		if !strings.HasPrefix(hl.Attrs().Name, prefix) {
+		if !strings.HasPrefix(link.Attrs().Name, prefix) {
 			continue
 		}
-		interfaceID, err := interfaceIDFromPrefix(hl.Attrs().Name, prefix)
+		interfaceID, err := interfaceIDFromPrefix(link.Attrs().Name, prefix)
 		if err != nil {
-			failedDeletes = append(failedDeletes, fmt.Errorf("remove host leg: %s %w", hl.Attrs().Name, err))
+			failedDeletes = append(failedDeletes, fmt.Errorf("remove veth: %s %w", link.Attrs().Name, err))
 			continue
 		}
-		if interfaceIDs[interfaceID] {
+		if configured[interfaceID] {
 			continue
 		}
-		if err := netlink.LinkDel(hl); err != nil {
-			failedDeletes = append(failedDeletes, fmt.Errorf("remove host leg: %s %w", hl.Attrs().Name, err))
+		if err := netlink.LinkDel(link); err != nil {
+			failedDeletes = append(failedDeletes, fmt.Errorf("remove veth: %s %w", link.Attrs().Name, err))
 		}
 	}
 	return failedDeletes

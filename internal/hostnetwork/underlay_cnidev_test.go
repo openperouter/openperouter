@@ -129,7 +129,7 @@ var _ = Describe("Underlay CNI configuration", func() {
 		// The fake CNI plugin provisions the interface with the default
 		// 1500 MTU; it is discovered through the CNI cache since it does
 		// not carry the underlay group ID.
-		Expect(SetupUnderlay(context.Background(), cniParams("net1"))).To(Succeed())
+		Expect(SetupUnderlayInNamespace(context.Background(), testNs, cniParams("net1"))).To(Succeed())
 
 		mtu, err := FindUnderlayMTU(testNs)
 		Expect(err).NotTo(HaveOccurred())
@@ -137,10 +137,10 @@ var _ = Describe("Underlay CNI configuration", func() {
 	})
 
 	It("returns the cni interfaces with their kind from UnderlayInterfaces", func() {
-		Expect(SetupUnderlay(context.Background(), cniParams("net1"))).To(Succeed())
+		Expect(SetupUnderlayInNamespace(context.Background(), testNs, cniParams("net1"))).To(Succeed())
 		setupFakeUnderlay(testNs, "testnetdev", 1500)
 
-		ifaces, err := UnderlayInterfaces(underlayCNITestNSPath())
+		ifaces, err := UnderlayInterfacesInNamespace(testNs)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(ifaces).To(ConsistOf(
 			UnderlayInterface{InterfaceName: "net1", Kind: UnderlayInterfaceCNIDev},
@@ -150,7 +150,7 @@ var _ = Describe("Underlay CNI configuration", func() {
 
 	It("provisions a cni interface recorded in the cni cache", func() {
 		params := cniParams("net1")
-		Expect(SetupUnderlay(context.Background(), params)).To(Succeed())
+		Expect(SetupUnderlayInNamespace(context.Background(), testNs, params)).To(Succeed())
 
 		validateCNIInterfaceInNS(testNs, "net1")
 		cached, err := cniinvoker.Invoker.CachedIfNames()
@@ -161,8 +161,8 @@ var _ = Describe("Underlay CNI configuration", func() {
 
 	It("is idempotent through the cni cache when the interface is healthy", func() {
 		params := cniParams("net1")
-		Expect(SetupUnderlay(context.Background(), params)).To(Succeed())
-		Expect(SetupUnderlay(context.Background(), params)).To(Succeed())
+		Expect(SetupUnderlayInNamespace(context.Background(), testNs, params)).To(Succeed())
+		Expect(SetupUnderlayInNamespace(context.Background(), testNs, params)).To(Succeed())
 
 		Expect(loggedCommands()).To(HaveExactElements("ADD net1", "CHECK net1"),
 			"the second setup should pass cni check and be served from the cache, without a new ADD")
@@ -171,7 +171,7 @@ var _ = Describe("Underlay CNI configuration", func() {
 
 	It("rebuilds the cni interface when cni check finds it missing from the netns", func() {
 		params := cniParams("net1")
-		Expect(SetupUnderlay(context.Background(), params)).To(Succeed())
+		Expect(SetupUnderlayInNamespace(context.Background(), testNs, params)).To(Succeed())
 
 		// Simulate drift between the cni cache and the real namespace state:
 		// remove the link directly, bypassing the invoker, so the cache
@@ -180,7 +180,7 @@ var _ = Describe("Underlay CNI configuration", func() {
 			return netlink.LinkDel(&netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: "net1"}})
 		})).To(Succeed())
 
-		Expect(SetupUnderlay(context.Background(), params)).To(Succeed())
+		Expect(SetupUnderlayInNamespace(context.Background(), testNs, params)).To(Succeed())
 
 		Expect(loggedCommands()).To(HaveExactElements("ADD net1", "CHECK net1", "DEL net1", "ADD net1"),
 			"a failed check should tear down and re-provision the interface")
@@ -188,9 +188,9 @@ var _ = Describe("Underlay CNI configuration", func() {
 	})
 
 	It("deletes the stale cni interface when it is renamed in the spec", func() {
-		Expect(SetupUnderlay(context.Background(), cniParams("net1"))).To(Succeed())
+		Expect(SetupUnderlayInNamespace(context.Background(), testNs, cniParams("net1"))).To(Succeed())
 
-		Expect(SetupUnderlay(context.Background(), cniParams("underlay0"))).To(Succeed())
+		Expect(SetupUnderlayInNamespace(context.Background(), testNs, cniParams("underlay0"))).To(Succeed())
 
 		Expect(loggedCommands()).To(ConsistOf("ADD net1", "DEL net1", "ADD underlay0"))
 		validateCNIInterfaceInNS(testNs, "underlay0")
@@ -203,12 +203,12 @@ var _ = Describe("Underlay CNI configuration", func() {
 	})
 
 	It("deletes the cni interfaces when they are removed from the spec", func() {
-		Expect(SetupUnderlay(context.Background(), cniParams("net1"))).To(Succeed())
+		Expect(SetupUnderlayInNamespace(context.Background(), testNs, cniParams("net1"))).To(Succeed())
 
 		params := cniParams()
 		params.UnderlayInterfaces = append(params.UnderlayInterfaces, netdevInterfaces(underlayCNITestInterface)...)
 		Expect(createInterface(underlayCNITestInterface, underlayCNITestPhysIP)).To(Succeed())
-		Expect(SetupUnderlay(context.Background(), params)).To(Succeed())
+		Expect(SetupUnderlayInNamespace(context.Background(), testNs, params)).To(Succeed())
 
 		Expect(loggedCommands()).To(ConsistOf("ADD net1", "DEL net1"))
 		err := netnamespace.In(testNs, func() error {
@@ -220,12 +220,12 @@ var _ = Describe("Underlay CNI configuration", func() {
 	})
 
 	It("removes the cni interfaces and their cache on RestoreUnderlay", func() {
-		Expect(SetupUnderlay(context.Background(), cniParams("net1"))).To(Succeed())
+		Expect(SetupUnderlayInNamespace(context.Background(), testNs, cniParams("net1"))).To(Succeed())
 
 		removeAllUnderlayInterfaces := func() {
-			existing, err := UnderlayInterfaces(underlayCNITestNSPath())
+			existing, err := UnderlayInterfacesInNamespace(testNs)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(RestoreUnderlay(context.Background(), underlayCNITestNSPath(),
+			Expect(RestoreUnderlayInNamespace(context.Background(), testNs,
 				existing)).To(Succeed())
 		}
 
@@ -244,18 +244,18 @@ var _ = Describe("Underlay CNI configuration", func() {
 	})
 
 	It("provisions again after the namespace is rebuilt and the cache cleared", func() {
-		Expect(SetupUnderlay(context.Background(), cniParams("net1"))).To(Succeed())
+		Expect(SetupUnderlayInNamespace(context.Background(), testNs, cniParams("net1"))).To(Succeed())
 
 		// Simulate the netns rebuild flow: CNI DEL, then netns rebuild,
 		// then a reconcile with a different interface name.
-		existing, err := UnderlayInterfaces(underlayCNITestNSPath())
+		existing, err := UnderlayInterfacesInNamespace(testNs)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(RestoreUnderlay(context.Background(), underlayCNITestNSPath(),
+		Expect(RestoreUnderlayInNamespace(context.Background(), testNs,
 			existing)).To(Succeed())
 		cleanTest(underlayCNITestNS)
 		testNs = createTestNS(underlayCNITestNS)
 
-		Expect(SetupUnderlay(context.Background(), cniParams("net1"))).To(Succeed())
+		Expect(SetupUnderlayInNamespace(context.Background(), testNs, cniParams("net1"))).To(Succeed())
 		Expect(loggedCommands()).To(ConsistOf("ADD net1", "DEL net1", "ADD net1"))
 		validateCNIInterfaceInNS(testNs, "net1")
 	})

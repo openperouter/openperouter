@@ -289,14 +289,6 @@ func MoveInterfaceToNamespace(ctx context.Context, intf string, fromHandle, toHa
 	return nil
 }
 
-func DeleteAddressFromInterface(ifaceName string, addr netlink.Addr) error {
-	link, err := netlink.LinkByName(ifaceName)
-	if err != nil {
-		return fmt.Errorf("failed to find underlay interface %s: %w", ifaceName, err)
-	}
-	return netlink.AddrDel(link, &addr)
-}
-
 func LinkExists(name string) (bool, error) {
 	_, err := netlink.LinkByName(name)
 	if errors.As(err, &netlink.LinkNotFoundError{}) {
