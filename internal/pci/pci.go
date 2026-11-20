@@ -5,10 +5,13 @@
 package pci
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+
+	"github.com/vishvananda/netlink"
 )
 
 const (
@@ -61,7 +64,16 @@ func (s Sysfs) PCIAddressForNetDevice(name string) (string, error) {
 
 // PCIAddressForVF returns the PCI address of the VF with the given index on
 // the PF netdev, by reading the PF's "virtfn<index>" sysfs symlink.
+// pfName may be an alternative name; sysfs only exposes the primary name.
 func (s Sysfs) PCIAddressForVF(pfName string, vfIndex int) (string, error) {
+	link, err := netlink.LinkByName(pfName)
+	switch {
+	case err == nil:
+		pfName = link.Attrs().Name
+	case !errors.As(err, &netlink.LinkNotFoundError{}):
+		return "", fmt.Errorf("failed to find PF %s: %w", pfName, err)
+	}
+
 	if os.Getenv(emulatedVFsEnv) != "" {
 		return s.PCIAddressForNetDevice(emulatedVFName(pfName, vfIndex))
 	}

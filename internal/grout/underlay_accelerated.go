@@ -202,7 +202,7 @@ func restoreBifurcatedNetdevName(nsPath string, state devicestate.State) error {
 		return err
 	}
 	currentName := link.Attrs().Name
-	if currentName == state.InterfaceName {
+	if currentName == state.PrimaryName {
 		return nil
 	}
 	// The kernel refuses to rename a netdev that is up; moving it to the host
@@ -210,8 +210,8 @@ func restoreBifurcatedNetdevName(nsPath string, state devicestate.State) error {
 	if err := handle.LinkSetDown(link); err != nil {
 		return fmt.Errorf("failed to set netdev %s down: %w", currentName, err)
 	}
-	if err := handle.LinkSetName(link, state.InterfaceName); err != nil {
-		return fmt.Errorf("failed to rename netdev %s to %s: %w", currentName, state.InterfaceName, err)
+	if err := handle.LinkSetName(link, state.PrimaryName); err != nil {
+		return fmt.Errorf("failed to rename netdev %s to %s: %w", currentName, state.PrimaryName, err)
 	}
 	return nil
 }

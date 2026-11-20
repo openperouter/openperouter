@@ -106,6 +106,7 @@ func TestSetupAcceleratedUnderlayRebindsKernelDriver(t *testing.T) {
 		assert.Equal(t, devicestate.State{
 			DeviceID:       accelIface,
 			InterfaceName:  accelIface,
+			PrimaryName:    accelIface,
 			PCIAddress:     testPCIAddr,
 			OriginalDriver: "igb",
 			Addresses:      []string{accelCIDR},
@@ -244,33 +245,70 @@ func TestRestoreAcceleratedUnderlayRestoresKernelDriver(t *testing.T) {
 }
 
 func TestRestoreAcceleratedDeviceMovesBifurcatedNetdevBack(t *testing.T) {
-	ns := newAccelTestNS(t)
-	sysfs := newFakeSysfs(t, testPCIAddr, pci.DriverMlx5Core)
-
-	link := addHostDummy(t, "")
-	fakePCIParent(t, accelIface, testPCIAddr)
-	// grout renames the netdev of a device it holds a port on.
-	require.NoError(t, netlink.LinkSetDown(link))
-	require.NoError(t, netlink.LinkSetName(link, "grout_renamed"))
-	require.NoError(t, netlink.LinkSetNsFd(link, int(ns)))
-
-	state := devicestate.State{
-		InterfaceName:  accelIface,
-		PCIAddress:     testPCIAddr,
-		OriginalDriver: pci.DriverMlx5Core,
-		Addresses:      []string{accelCIDR},
-		AddrGenMode:    "1",
-		AcceptRA:       "2",
-		MTU:            9000,
+	tests := []struct {
+		name          string
+		interfaceName string
+		currentName   string
+		altNames      []string
+	}{
+		{
+			name:          "primary name",
+			interfaceName: accelIface,
+			currentName:   "grout_renamed",
+		},
+		{
+			name:          "alternative name with unchanged primary name",
+			interfaceName: "pe-uplink0",
+			currentName:   accelIface,
+			altNames:      []string{"pe-uplink0"},
+		},
+		{
+			name:          "long alternative name with renamed primary name",
+			interfaceName: "enp65s0f0npf0vf12-uplink",
+			currentName:   "grout_renamed",
+			altNames:      []string{"enp65s0f0npf0vf12-uplink"},
+		},
 	}
-	require.NoError(t, restoreAcceleratedDevice(context.Background(), accelTestNSPath, state, sysfs.Sysfs))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ns := newAccelTestNS(t)
+			sysfs := newFakeSysfs(t, testPCIAddr, pci.DriverMlx5Core)
 
-	link, err := netlink.LinkByName(accelIface)
-	require.NoError(t, err)
-	assert.Contains(t, linkAddresses(t, link), accelCIDR)
-	assert.Equal(t, "1", hostSysctl(t, sysctl.AddrGenMode(accelIface, "")))
-	assert.Equal(t, "2", hostSysctl(t, sysctl.AcceptRA(accelIface, "")))
-	assert.Equal(t, 9000, link.Attrs().MTU)
+			link := addHostDummy(t, "")
+			fakePCIParent(t, accelIface, testPCIAddr)
+			for _, name := range tt.altNames {
+				require.NoError(t, netlink.LinkAddAltName(link, name))
+			}
+			// grout renames the netdev of a device it holds a port on.
+			require.NoError(t, netlink.LinkSetDown(link))
+			require.NoError(t, netlink.LinkSetName(link, tt.currentName))
+			require.NoError(t, netlink.LinkSetNsFd(link, int(ns)))
+
+			state := devicestate.State{
+				InterfaceName:  tt.interfaceName,
+				PrimaryName:    accelIface,
+				PCIAddress:     testPCIAddr,
+				OriginalDriver: pci.DriverMlx5Core,
+				AltNames:       tt.altNames,
+				Addresses:      []string{accelCIDR},
+				AddrGenMode:    "1",
+				AcceptRA:       "2",
+				MTU:            9000,
+			}
+			for range 2 {
+				require.NoError(t, restoreAcceleratedDevice(context.Background(), accelTestNSPath, state, sysfs.Sysfs))
+			}
+
+			link, err := netlink.LinkByName(tt.interfaceName)
+			require.NoError(t, err)
+			assert.Equal(t, accelIface, link.Attrs().Name)
+			assert.ElementsMatch(t, tt.altNames, link.Attrs().AltNames)
+			assert.Contains(t, linkAddresses(t, link), accelCIDR)
+			assert.Equal(t, "1", hostSysctl(t, sysctl.AddrGenMode(accelIface, "")))
+			assert.Equal(t, "2", hostSysctl(t, sysctl.AcceptRA(accelIface, "")))
+			assert.Equal(t, 9000, link.Attrs().MTU)
+		})
+	}
 }
 
 func TestRetrieveDeviceStateRecordsIPv6SettingsAndMTU(t *testing.T) {
@@ -283,6 +321,7 @@ func TestRetrieveDeviceStateRecordsIPv6SettingsAndMTU(t *testing.T) {
 
 	assert.Equal(t, devicestate.State{
 		InterfaceName: accelIface,
+		PrimaryName:   accelIface,
 		Addresses:     []string{accelCIDR},
 		AddrGenMode:   "1",
 		AcceptRA:      "2",
