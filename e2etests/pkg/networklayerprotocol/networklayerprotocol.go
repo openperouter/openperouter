@@ -13,6 +13,7 @@ const (
 
 	EVPN    SAFI = "evpn"
 	Unicast SAFI = "unicast"
+	VPN     SAFI = "vpn"
 )
 
 // NLP (NetworkLayerProtocol) represents a full address family plus subsequent address family, as defined in RFC4760 for

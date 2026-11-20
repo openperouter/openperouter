@@ -12,6 +12,8 @@ A BGP Route Reflector (RFC 4456) lets a router re-advertise iBGP routes learned 
 
 In OpenPERouter this is useful to distribute EVPN (type-2/type-3) and VTEP reachability routes between nodes without relying on the fabric, for scenarios where the fabric does not support EVPN.
 
+[Fabric transit protection]({{< ref "underlay-split-horizon.md" >}}) remains active on external peers when RR clients are configured. Internal peers retain existing per-family client/non-client reflection rules and loop prevention.
+
 ## Enabling Route Reflection
 
 Route reflection is built from three pieces:

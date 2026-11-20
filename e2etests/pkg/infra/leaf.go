@@ -102,11 +102,24 @@ type LeafConfiguration struct {
 	TemplateName string
 }
 
+type EVPNNetwork struct {
+	Prefix      string
+	RD          string
+	EthernetTag int
+	Label       int
+	ESI         string
+	RouterMAC   string
+}
+
 type LeafKindConfiguration struct {
+	Networks              map[string][]string
+	EVPNNetworks          []EVPNNetwork
 	ASN                   int
 	SpinePeerAddress      string
 	ToSwitchInterface     string
 	ISISNet               string
+	DisableSpinePeer      bool
+	DisableISIS           bool
 	EnableBFD             bool
 	RedistributeConnected bool
 	Neighbors             []Neighbor

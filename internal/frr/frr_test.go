@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -1781,4 +1782,166 @@ func TestEBGPMultiHopWithTTL(t *testing.T) {
 	}
 
 	testCheckConfigFile(t)
+}
+
+func TestFabricTransitPolicyAllFamilies(t *testing.T) {
+	for _, reflector := range []bool{false, true} {
+		t.Run(fmt.Sprintf("reflector=%t", reflector), func(t *testing.T) {
+			config := fabricTransitFixture(t, reflector, true)
+			client := &config.Underlay.Neighbors[0]
+			client.NetworkLayerProtocols = slices.Clone(client.NetworkLayerProtocols)
+			for index := range client.NetworkLayerProtocols {
+				client.NetworkLayerProtocols[index].Properties.RouteReflectorClient = reflector
+			}
+			rendered := renderFabricTransitConfig(t, config)
+			assertNotContains(t, rendered, "match src-peer")
+			assertContains(t, rendered, "route-map openpe-fabric-in permit 1\n  set community 65432:10 additive")
+			assertContains(t, rendered, "route-map openpe-fabric-out deny 1\n  match community openpe-fabric\nroute-map openpe-fabric-out permit 2\n  set comm-list openpe-fabric delete")
+			assertContains(t, rendered, "route-map openpe-fabric-strip permit 1\n  set comm-list openpe-fabric delete")
+			for _, neighbor := range config.Underlay.Neighbors {
+				wantOut := "openpe-fabric-strip"
+				wantIn := 0
+				if neighbor.ASN.IsExternalTo(config.Underlay.MyASN) {
+					wantOut = "openpe-fabric-out"
+					wantIn = len(neighbor.NetworkLayerProtocols)
+				}
+				inBinding := "neighbor " + neighbor.ID + " route-map openpe-fabric-in in"
+				if got := strings.Count(rendered, inBinding); got != wantIn {
+					t.Fatalf("%s count = %d, want %d", inBinding, got, wantIn)
+				}
+				outBinding := "neighbor " + neighbor.ID + " route-map " + wantOut + " out"
+				if got := strings.Count(rendered, outBinding); got != len(neighbor.NetworkLayerProtocols) {
+					t.Fatalf("%s count = %d, want %d", outBinding, got, len(neighbor.NetworkLayerProtocols))
+				}
+			}
+			if reflector {
+				assertContains(t, rendered, "bgp route-reflector allow-outbound-policy")
+				if got := strings.Count(rendered, "neighbor "+client.ID+" route-reflector-client"); got != 5 {
+					t.Fatalf("client bindings = %d, want 5", got)
+				}
+			}
+		})
+	}
+}
+
+func TestFabricTransitPolicyRenderTransitions(t *testing.T) {
+	config := fabricTransitFixture(t, false, true)
+	for _, asn := range []PeerASN{mustNewPeerASNFromNumber(65001), mustNewPeerASNFromType("Internal"), mustNewPeerASNFromType("External")} {
+		config.Underlay.Neighbors[2].ASN = asn
+		rendered := renderFabricTransitConfig(t, config)
+		if asn.IsExternalTo(config.Underlay.MyASN) {
+			assertContains(t, rendered, "neighbor 192.0.2.10 route-map openpe-fabric-in in")
+			assertContains(t, rendered, "neighbor 192.0.2.10 route-map openpe-fabric-out out")
+			assertNotContains(t, rendered, "neighbor 192.0.2.10 route-map openpe-fabric-strip out")
+		} else {
+			assertNotContains(t, rendered, "neighbor 192.0.2.10 route-map openpe-fabric-in in")
+			assertNotContains(t, rendered, "neighbor 192.0.2.10 route-map openpe-fabric-out out")
+			assertContains(t, rendered, "neighbor 192.0.2.10 route-map openpe-fabric-strip out")
+		}
+	}
+}
+
+func TestFabricTransitPolicyGolden(t *testing.T) {
+	configFile := testSetup(t)
+	config := fabricTransitFixture(t, false, true)
+	if err := ApplyConfig(context.Background(), config, testUpdater(configFile)); err != nil {
+		t.Fatal(err)
+	}
+	testCheckConfigFile(t)
+}
+
+func renderFabricTransitConfig(t *testing.T, config Config) string {
+	t.Helper()
+
+	configFile := filepath.Join(t.TempDir(), "frr.conf")
+	if err := ApplyConfig(context.Background(), config, testUpdater(configFile)); err != nil {
+		t.Fatal(err)
+	}
+	rendered, err := os.ReadFile(configFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(rendered)
+}
+
+func fabricTransitFixture(t *testing.T, routeReflector bool, includeExternal bool) Config {
+	t.Helper()
+
+	families := []networklayerprotocol.NLP{
+		{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast},
+		{AFI: networklayerprotocol.IPv6, SAFI: networklayerprotocol.Unicast},
+		{AFI: networklayerprotocol.L2VPN, SAFI: networklayerprotocol.EVPN},
+		{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.VPN},
+		{AFI: networklayerprotocol.IPv6, SAFI: networklayerprotocol.VPN},
+	}
+	externalNeighbor := func(asn PeerASN, id string) NeighborConfig {
+		return NeighborConfig{
+			ASN:                   asn,
+			ID:                    id,
+			NetworkLayerProtocols: families,
+		}
+	}
+	neighbors := []NeighborConfig{
+		{
+			ASN:                   mustNewPeerASNFromNumber(65000),
+			Addr:                  "192.0.2.100",
+			ID:                    "192.0.2.100",
+			NetworkLayerProtocols: families,
+		},
+		{
+			ASN:                   mustNewPeerASNFromType("Internal"),
+			Addr:                  "192.0.2.101",
+			ID:                    "192.0.2.101",
+			NetworkLayerProtocols: families,
+		},
+	}
+	if includeExternal {
+		neighbors = append(neighbors,
+			externalNeighbor(mustNewPeerASNFromNumber(65001), "192.0.2.10"),
+			externalNeighbor(mustNewPeerASNFromType("External"), "dynamic-external"),
+			externalNeighbor(mustNewPeerASNFromType("External"), "eth1"),
+		)
+		neighbors[2].Addr = "192.0.2.10"
+		neighbors[3].ListenRange = "192.0.2.0/24"
+		neighbors[4].Interface = "eth1"
+	}
+
+	config := Config{
+		Underlay: UnderlayConfig{
+			MyASN:          65000,
+			RouterID:       "192.0.2.1",
+			TunnelEndpoint: &TunnelEndpoint{IPv4CIDR: "100.64.0.1/32"},
+			Neighbors:      neighbors,
+			SegmentRouting: &UnderlaySegmentRouting{
+				SourceAddress: "fc00::1",
+				Locator: SRV6Locator{
+					Name:     locatorName,
+					Prefix:   "fd00::/48",
+					BlockLen: 32,
+					NodeLen:  16,
+					Behavior: "usid",
+					Format:   "usid-f3216",
+				},
+				EncapBehavior: HEncaps,
+			},
+		},
+	}
+	if routeReflector {
+		config.Underlay.RouteReflector = &RouteReflector{ClusterID: "192.0.2.1"}
+	}
+	return config
+}
+
+func assertContains(t *testing.T, rendered string, want string) {
+	t.Helper()
+	if !strings.Contains(rendered, want) {
+		t.Fatalf("rendered configuration does not contain %q:\n%s", want, rendered)
+	}
+}
+
+func assertNotContains(t *testing.T, rendered string, unwanted string) {
+	t.Helper()
+	if strings.Contains(rendered, unwanted) {
+		t.Fatalf("rendered configuration contains %q:\n%s", unwanted, rendered)
+	}
 }

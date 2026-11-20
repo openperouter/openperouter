@@ -25,7 +25,9 @@ router bgp {{ .ASN }}
  no bgp network import-check
  no bgp default ipv4-unicast
 
+{{- if not .DisableSpinePeer }}
  neighbor {{ .SpinePeerAddress }} remote-as 64612
+{{- end }}
 
 {{- range .Neighbors }}
 {{- if .IsInterface }}
@@ -45,10 +47,15 @@ router bgp {{ .ASN }}
  !
 {{- range $af := .BGPAddressFamilies }}
  address-family {{ $af.AFI }} {{ $af.SAFI }}
+{{- range index $.Networks (printf "%s %s" $af.AFI $af.SAFI) }}
+  network {{ . }}
+{{- end }}
 {{- if $.RedistributeConnected }}
   redistribute connected
 {{- end }}
+{{- if not $.DisableSpinePeer }}
   neighbor {{ $.SpinePeerAddress }} activate
+{{- end }}
 {{- range $.Neighbors }}
   neighbor {{ .ID }} activate
 {{- if $.NextHopSelf }}
@@ -59,26 +66,37 @@ router bgp {{ .ASN }}
 {{- end }}
  !
  address-family l2vpn evpn
+{{- if not $.DisableSpinePeer }}
   neighbor {{ .SpinePeerAddress }} activate
+{{- end }}
 {{- range .Neighbors }}
   neighbor {{ .ID }} activate
+{{- end }}
+{{- range .EVPNNetworks }}
+  network {{ .Prefix }} rd {{ .RD }} ethtag {{ .EthernetTag }} label {{ .Label }} esi {{ .ESI }} gwip 0.0.0.0 routermac {{ .RouterMAC }}
 {{- end }}
   advertise-all-vni
   advertise-svi-ip
  exit-address-family
 exit
 ! 
+{{- if not .DisableISIS }}
 router isis ISIS
   is-type level-1
   advertise-passive-only
   net {{ .ISISNet }}
 exit
 !
+{{- end }}
 interface eth1
+{{- if not .DisableISIS }}
   ipv6 router isis ISIS
+{{- end }}
 exit
 !
 interface {{ .ToSwitchInterface }}
+{{- if not .DisableISIS }}
   ipv6 router isis ISIS
+{{- end }}
 exit
 !

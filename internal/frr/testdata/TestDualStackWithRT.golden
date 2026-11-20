@@ -8,6 +8,16 @@ vrf red
 exit-vrf
 
 route-map allowall permit 1
+
+bgp community-list standard openpe-fabric permit 65432:10
+route-map openpe-fabric-in permit 1
+  set community 65432:10 additive
+route-map openpe-fabric-out deny 1
+  match community openpe-fabric
+route-map openpe-fabric-out permit 2
+  set comm-list openpe-fabric delete
+route-map openpe-fabric-strip permit 1
+  set comm-list openpe-fabric delete
 router bgp 64512
   no bgp ebgp-requires-policy
   no bgp network import-check
@@ -22,6 +32,8 @@ router bgp 64512
   address-family ipv4 unicast
     neighbor 192.168.1.2 activate
     neighbor 192.168.1.2 allowas-in
+    neighbor 192.168.1.2 route-map openpe-fabric-in in
+    neighbor 192.168.1.2 route-map openpe-fabric-out out
   exit-address-family
   address-family ipv4 unicast
     network 100.64.0.1/32
@@ -30,6 +42,8 @@ router bgp 64512
   address-family l2vpn evpn
     neighbor 192.168.1.2 activate
     neighbor 192.168.1.2 allowas-in
+    neighbor 192.168.1.2 route-map openpe-fabric-in in
+    neighbor 192.168.1.2 route-map openpe-fabric-out out
     advertise-all-vni
   exit-address-family
 exit
@@ -46,14 +60,14 @@ router bgp 64512 vrf red
     network 192.169.10.2/24
     neighbor 192.168.1.2 activate
     neighbor 192.168.1.2 route-map allowall in
-    neighbor 192.168.1.2 route-map allowall out
+    neighbor 192.168.1.2 route-map openpe-fabric-strip out
   exit-address-family
 
   address-family ipv6 unicast
     network 2001:db8::2/64
     neighbor 192.168.1.2 activate
     neighbor 192.168.1.2 route-map allowall in
-    neighbor 192.168.1.2 route-map allowall out
+    neighbor 192.168.1.2 route-map openpe-fabric-strip out
   exit-address-family
 
   address-family l2vpn evpn
