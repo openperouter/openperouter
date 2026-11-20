@@ -5,6 +5,7 @@ package e2e
 import (
 	"flag"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/onsi/ginkgo/v2"
@@ -72,12 +73,19 @@ var _ = ginkgo.BeforeSuite(func() {
 	updater, err = config.UpdaterForCRs(clientconfig, openperouter.Namespace, frrk8s.Namespace)
 	Expect(err).NotTo(HaveOccurred())
 	tests.Updater = updater
+	options := []func(*k8s.InspectReporter){
+		k8s.WithAdditionalNamespaces(frrk8s.Namespace),
+	}
+	if tests.HostMode {
+		inspectHostPath := filepath.Join(filepath.Dir(inspectPath), "inspect_host")
+		options = append(options, k8s.WithHostInspection(inspectHostPath, executor.ContainerRuntime))
+	}
 	tests.InspectReporter = k8s.NewInspectReporter(
 		inspectPath,
 		tests.ReportPath,
 		executor.Kubectl,
 		openperouter.Namespace,
-		k8s.WithAdditionalNamespaces(frrk8s.Namespace),
+		options...,
 	)
 
 	cs := k8sclient.New()
