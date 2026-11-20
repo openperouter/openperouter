@@ -1,0 +1,27 @@
+# OpenPERouter bootstrap unit. Renders the runtime Quadlets from
+# /etc/openperouter/openpe_boot.yaml at every boot and starts them.
+# Install: copy to /etc/systemd/system/ and `systemctl enable openperouter-bootstrap.service`.
+# Override the image with a drop-in:
+#   [Service]
+#   Environment=OPENPEROUTER_IMAGE=quay.io/openperouter/router:<tag>
+[Unit]
+Description=Render and start OpenPERouter host services
+After=local-fs.target
+RequiresMountsFor=/etc/openperouter /var/lib/openperouter /var/lib/containers
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=600
+Environment=OPENPEROUTER_IMAGE=quay.io/openperouter/router:main
+ExecStartPre=/usr/bin/mkdir -p /etc/containers/systemd /var/lib/openperouter
+ExecStart=/usr/bin/podman run --rm --pull=missing --name openperouter-bootstrap --network=none --security-opt=label=disable \
+  -v /etc/openperouter:/host/etc/openperouter:ro \
+  -v /etc/containers/systemd:/host/etc/containers/systemd \
+  -v /var/lib/openperouter:/host/var/lib/openperouter \
+  --entrypoint=/bootstrap ${OPENPEROUTER_IMAGE} --config=/etc/openperouter/openpe_boot.yaml --root=/host
+ExecStartPost=/usr/bin/systemctl daemon-reload
+ExecStartPost=/usr/bin/systemctl start routerpod-pod.service controllerpod-pod.service frr.service reloader.service controller.service
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,10 @@
+image: quay.io/openperouter/router:v0.1.0
+datapath: kernel
+logLevel: debug
+healthProbePort: 9181
+bgpListenLimit: 4096
+controllerMaxReconcileBackoffSeconds: 30
+ovsRunDir: /run/openvswitch
+ovsSocketPath: unix:/run/openvswitch/db.sock
+runtimeConfiguration:
+  directory: /etc/openperouter

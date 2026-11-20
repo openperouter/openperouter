@@ -11,6 +11,8 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
+const bootConfigFileName = "openpe_boot.yaml"
+
 // NoConfigAvailable is returned when no configuration files are available.
 type NoConfigAvailable struct {
 	message string
@@ -74,6 +76,10 @@ func ReadRouterConfigs(configDir string) ([]*static.PERouterConfig, error) {
 
 	configs := make([]*static.PERouterConfig, 0, len(matches))
 	for _, path := range matches {
+		// Boot settings may share the runtime directory but are not router configuration.
+		if filepath.Base(path) == bootConfigFileName {
+			continue
+		}
 		config, err := readRouterConfig(path)
 		if err != nil {
 			return nil, err
@@ -81,6 +87,11 @@ func ReadRouterConfigs(configDir string) ([]*static.PERouterConfig, error) {
 		configs = append(configs, config)
 	}
 
+	if len(configs) == 0 {
+		return nil, &NoConfigAvailable{
+			message: fmt.Sprintf("no runtime configuration files found in directory: %s", configDir),
+		}
+	}
 	return configs, nil
 }
 

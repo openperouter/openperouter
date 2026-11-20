@@ -3,8 +3,8 @@
 # verify-quadlets.sh
 # OpenPERouter Quadlet Deployment Verification Script
 #
-# This script tests all lifecycle operations for quadlet-based deployment.
-# Run this script after deploying quadlet files to verify functionality.
+# This script tests lifecycle operations of a bootstrap-based deployment.
+# Run it after installing and starting openperouter-bootstrap.service.
 #
 # Usage:
 #   sudo ./verify-quadlets.sh
@@ -61,18 +61,30 @@ log_info "OpenPERouter Quadlet Verification Script"
 log_info "========================================="
 
 # Test 1: Verify quadlet files exist
-test_start "Quadlet files exist in /etc/containers/systemd/"
-if [ -f "/etc/containers/systemd/routerpod.pod" ] && \
-   [ -f "/etc/containers/systemd/controllerpod.pod" ] && \
-   [ -f "/etc/containers/systemd/frr.container" ] && \
-   [ -f "/etc/containers/systemd/reloader.container" ] && \
-   [ -f "/etc/containers/systemd/controller.container" ] && \
-   [ -f "/etc/containers/systemd/frr-sockets.volume" ]; then
+QUADLET_DIR=/etc/containers/systemd/openperouter
+test_start "Rendered quadlet files exist in $QUADLET_DIR"
+if [ -f "$QUADLET_DIR/routerpod.pod" ] && \
+   [ -f "$QUADLET_DIR/controllerpod.pod" ] && \
+   [ -f "$QUADLET_DIR/frr.container" ] && \
+   [ -f "$QUADLET_DIR/reloader.container" ] && \
+   [ -f "$QUADLET_DIR/controller.container" ] && \
+   [ -f "$QUADLET_DIR/frr-sockets.volume" ]; then
     test_pass "All quadlet files present"
 else
-    test_fail "Missing quadlet files in /etc/containers/systemd/"
-    log_error "Run 'sudo cp systemdmode/quadlets/*.{pod,container,volume} /etc/containers/systemd/' first"
+    test_fail "Missing quadlet files in $QUADLET_DIR"
+    log_error "Start openperouter-bootstrap.service first"
     exit 1
+fi
+
+test_start "Bootstrap unit is enabled and has exited successfully"
+if systemctl is-enabled --quiet openperouter-bootstrap.service && \
+   [ "$(systemctl show -p ActiveState --value openperouter-bootstrap.service)" = "active" ] && \
+   [ "$(systemctl show -p SubState --value openperouter-bootstrap.service)" = "exited" ] && \
+   ! podman container exists openperouter-bootstrap; then
+    test_pass "Bootstrap unit enabled, active/exited, no bootstrap container left"
+else
+    test_fail "Bootstrap unit not enabled or not active/exited"
+    systemctl status openperouter-bootstrap.service --no-pager || true
 fi
 
 # Test 2: Verify systemd daemon-reload
@@ -163,29 +175,20 @@ else
     test_fail "Cannot access service logs"
 fi
 
-# Test 11: Test enable operation
-test_start "Enable services for boot"
-if systemctl enable routerpod-pod.service controllerpod-pod.service > /dev/null 2>&1; then
-    test_pass "Services enabled for boot"
+# Test 11: Runtime units are started by bootstrap, never enabled directly
+test_start "Runtime units are not enabled"
+ENABLED=0
+for unit in routerpod-pod.service controllerpod-pod.service controller.service frr.service reloader.service; do
+    state=$(systemctl is-enabled "$unit" 2>/dev/null || true)
+    if [ "$state" = "enabled" ]; then
+        log_error "$unit is enabled"
+        ENABLED=1
+    fi
+done
+if [ "$ENABLED" -eq 0 ]; then
+    test_pass "Only the bootstrap unit is enabled"
 else
-    test_fail "Failed to enable services"
-fi
-
-# Test 12: Verify enabled status
-test_start "Verify services are enabled"
-if systemctl is-enabled --quiet routerpod-pod.service && \
-   systemctl is-enabled --quiet controllerpod-pod.service; then
-    test_pass "Services are enabled"
-else
-    test_fail "Services are not enabled"
-fi
-
-# Test 13: Test disable operation
-test_start "Disable services"
-if systemctl disable routerpod-pod.service controllerpod-pod.service > /dev/null 2>&1; then
-    test_pass "Services disabled"
-else
-    test_fail "Failed to disable services"
+    test_fail "Runtime units must not be enabled"
 fi
 
 # Test 14: Verify FRR container logs
