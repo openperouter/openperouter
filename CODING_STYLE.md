@@ -176,6 +176,15 @@ if params.VRF != "" {
 ### Unnecessary Comments
 Remove obvious comments that restate what the code already says. Comments should explain *why*, never *what*. AI-generated boilerplate comments are especially problematic — they add noise without value.
 
+Do not comment on what the code is not doing or on previous iterations of the same implementation. Describe only the current behavior and the reasoning required to understand it.
+
+```go
+// Avoid: Previously, this used a timer; now, it uses a channel directly.
+
+// Prefer: Consume the channel directly so reconciliation stops as soon as
+// the context is cancelled.
+```
+
 **Bad:** `// Create the client` above `client := NewClient()`
 **Good:** `// Retry with a new client because FRR drops idle connections after 90s`
 
