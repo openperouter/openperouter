@@ -104,6 +104,31 @@ var _ = Describe("OpenPERouter Controller", func() {
 			}, "claims are not supported"),
 		)
 
+		DescribeTable("validates the grout resource requirements", func(
+			resources *v1.ResourceRequirements, wantError string,
+		) {
+			openperouter := &operatorapi.OpenPERouter{
+				ObjectMeta: metav1.ObjectMeta{Name: "openperouter", Namespace: openperouterTestNamespace},
+				Spec: operatorapi.OpenPERouterSpec{
+					LogLevel: new(operatorapi.LogLevelInfo),
+					Grout:    &operatorapi.GroutConfiguration{Resources: resources},
+				},
+			}
+			err := k8sClient.Create(context.Background(), openperouter)
+			if wantError != "" {
+				Expect(err).To(MatchError(ContainSubstring(wantError)))
+				return
+			}
+			Expect(err).To(Succeed())
+		},
+			Entry("accepts requests without claims", &v1.ResourceRequirements{
+				Requests: v1.ResourceList{v1.ResourceCPU: apiresource.MustParse("100m")},
+			}, ""),
+			Entry("rejects claims on grout", &v1.ResourceRequirements{
+				Claims: []v1.ResourceClaim{{Name: "grout"}},
+			}, "claims are not supported"),
+		)
+
 		It("should successfully reconcile the resource", func() {
 			controllerContainers := map[string]string{
 				"controller": controllerImage,
