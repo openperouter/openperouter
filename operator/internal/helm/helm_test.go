@@ -642,6 +642,50 @@ func TestParseChartWithMaxReconcileBackoff(t *testing.T) {
 	}
 }
 
+func TestParseChartWithRouterMACPrefix(t *testing.T) {
+	tests := []struct {
+		name     string
+		prefix   *string
+		wantArgs []string
+	}{
+		{name: "unset"},
+		{name: "empty", prefix: new("")},
+		{name: "configured", prefix: new("02:00:00:00:00:00/32"),
+			wantArgs: []string{"--router-mac-prefix=02:00:00:00:00:00/32"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := NewGomegaWithT(t)
+			chart, err := NewChart(testChartPath, openperouterChartName, openperouterTestNamespace)
+			g.Expect(err).To(Succeed())
+			resource := &operatorapi.OpenPERouter{
+				Spec: operatorapi.OpenPERouterSpec{RouterMACPrefix: tt.prefix},
+			}
+			objects, err := chart.Objects(defaultEnvConfig, resource)
+			g.Expect(err).To(Succeed())
+			var prefixArgs []string
+			controllerFound := false
+			for _, obj := range objects {
+				if obj.GetKind() != daemonSetKind || obj.GetName() != controllerDaemonSetName {
+					continue
+				}
+				controllerFound = true
+				var controller appsv1.DaemonSet
+				g.Expect(runtime.DefaultUnstructuredConverter.FromUnstructured(obj.UnstructuredContent(), &controller)).To(Succeed())
+				for _, container := range controller.Spec.Template.Spec.Containers {
+					for _, arg := range container.Args {
+						if strings.HasPrefix(arg, "--router-mac-prefix=") {
+							prefixArgs = append(prefixArgs, arg)
+						}
+					}
+				}
+			}
+			g.Expect(controllerFound).To(BeTrue())
+			g.Expect(prefixArgs).To(Equal(tt.wantArgs))
+		})
+	}
+}
+
 func validateLogLevel(level string, pod v1.PodTemplateSpec) error {
 	foundOne := false
 	for _, c := range pod.Spec.Containers {

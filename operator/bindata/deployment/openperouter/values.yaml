@@ -117,6 +117,10 @@ openperouter:
   # kernel datapath; "grout" adds a DPDK-accelerated sidecar that runs
   # alongside FRR (FRR's dplane_grout module syncs routes automatically).
   datapath: "kernel"
+  # -- MAC prefix combined with each node index to generate the shared L3VNI
+  # router MAC (for example, "02:00:00:00:00:00/32").
+  # Leave empty to preserve existing bridge MAC behavior.
+  routerMACPrefix: ""
   # grout contains configuration for the grout DPDK dataplane sidecar.
   # Only used when datapath is set to "grout".
   grout:

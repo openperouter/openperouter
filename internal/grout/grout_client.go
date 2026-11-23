@@ -55,6 +55,7 @@ type groutInterfaceInfo struct {
 }
 
 type groutVXLANInfo struct {
+	MAC     string `json:"mac"`
 	VNI     int32  `json:"vni"`
 	Local   string `json:"local"`
 	DstPort int32  `json:"dst_port"`
@@ -433,7 +434,6 @@ func (c *Client) ensureVXLAN(ctx context.Context, name string, localIP, vrf stri
 	}
 	if info != nil {
 		if info.VNI == vni && info.Local == localIP && info.DstPort == dstPort && info.VRF == vrf {
-			slog.InfoContext(ctx, "grout VXLAN already configured", "name", name)
 			return nil
 		}
 		slog.InfoContext(ctx, "grout VXLAN config changed, recreating",
@@ -461,6 +461,27 @@ func (c *Client) ensureVXLAN(ctx context.Context, name string, localIP, vrf stri
 	slog.InfoContext(ctx, "creating grout VXLAN", "name", name, "vni", vni, "local", localIP, "vrf", vrf)
 	if err := c.run(ctx, args...); err != nil {
 		return fmt.Errorf("creating grout VXLAN %s: %w", name, err)
+	}
+	return nil
+}
+
+func (c *Client) ensureVXLANMAC(ctx context.Context, name, mac string) error {
+	if mac == "" {
+		return nil
+	}
+	info, err := c.getVXLANInterfaceInfo(ctx, name)
+	if err != nil {
+		return fmt.Errorf("checking router MAC on VXLAN %s: %w", name, err)
+	}
+	if info == nil {
+		return fmt.Errorf("VXLAN %s not found while setting router MAC", name)
+	}
+	if info.MAC == mac {
+		return nil
+	}
+	// Grout synchronizes the L3 VXLAN MAC to its VRF for FRR's RMAC advertisements.
+	if err := c.run(ctx, "interface", "set", "vxlan", name, "mac", mac); err != nil {
+		return fmt.Errorf("setting router MAC on VXLAN %s: %w", name, err)
 	}
 	return nil
 }

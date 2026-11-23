@@ -68,6 +68,14 @@ func setupVRFWithSnapshot(name string, snapshot *vrfGuardSnapshot, opts ...strin
 		return fmt.Errorf("could not set link up for VRF %s: %v", name, err)
 	}
 
+	// A desired VRF successfully provisioned by this controller is managed even
+	// when it was created before aliases were introduced. Never replace another
+	// owner's explicit alias.
+	if vrf.Alias == "" {
+		if err := netlink.LinkSetAlias(vrf, managedVRFAlias); err != nil {
+			return &VRFGuardError{VRF: name, Err: fmt.Errorf("mark configured VRF %s: %w", name, err)}
+		}
+	}
 	return nil
 }
 

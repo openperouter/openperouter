@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"net"
 	"testing"
-	"time"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/conversion"
@@ -42,17 +41,9 @@ func TestReconcileStagesIsolationBeforeFRR(t *testing.T) {
 				calls++
 				require.Len(t, data.L3VPNs, 1)
 				require.NoError(t, netnamespace.In(target, func() error {
-					for _, source := range []string{oldSource, newSource} {
-						rules, err := netlink.RuleList(netlink.FAMILY_V6)
-						require.NoError(t, err)
-						count := 0
-						for _, rule := range rules {
-							if rule.Protocol == 242 && rule.Src != nil && rule.Src.IP.Equal(net.ParseIP(source)) {
-								count++
-							}
-						}
-						require.Equal(t, 4, count, "rules for %s must precede FRR source change", source)
-					}
+					rules, err := netlink.RuleList(netlink.FAMILY_V6)
+					require.NoError(t, err)
+					requireOwnedSourcePairs(t, rules, isolationRuleActions(t), []string{oldSource, newSource})
 					return nil
 				}))
 				return failure
@@ -93,6 +84,7 @@ func TestKernelConfiguratorRetiresLegacyDespiteIndependentL2Failure(t *testing.T
 				Reason:  v1alpha1.FailedResourceReasonOverlayAttachmentFailed,
 				Message: "SetupL2VNI: failed to get host master for VRF : could not find host master missing: Link not found",
 			}}, openpeerrors.CollectFailures(err))
+			require.EqualError(t, err, "L2VNI/blue: SetupL2VNI: failed to get host master for VRF : could not find host master missing: Link not found")
 			return nil
 		}))
 		require.NoError(t, netnamespace.In(target, func() error {
@@ -117,6 +109,63 @@ func TestKernelConfiguratorRetiresLegacyDespiteIndependentL2Failure(t *testing.T
 	require.NoError(t, netnamespace.In(host, func() error {
 		return (&KernelDatapathConfigurator{}).Configure(context.Background(), config)
 	}))
+}
+
+func TestKernelConfiguratorPassthroughCleanupAfterVRFRemovalFailure(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		orphanOnly bool
+	}{
+		{name: "orphan guards", orphanOnly: true},
+		{name: "live VRF"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			host, target, config := isolationTransitionFixture(t)
+			original := removeNonConfiguredVRFs
+			t.Cleanup(func() { removeNonConfiguredVRFs = original })
+			failure := errors.New("VRF cleanup interrupted")
+			removeNonConfiguredVRFs = func(string, map[string]bool) error {
+				return &hostnetwork.VRFRemovalError{OnlyOrphanGuards: tc.orphanOnly, Err: failure}
+			}
+			require.NoError(t, netnamespace.In(host, func() error {
+				link := &netlink.Veth{LinkAttrs: netlink.LinkAttrs{Name: hostnetwork.PassthroughNames.HostSide},
+					PeerName: hostnetwork.PassthroughNames.NamespaceSide, PeerNamespace: netlink.NsFd(target)}
+				return netlink.LinkAdd(link)
+			}))
+			checkLinks := func(wantRemoved bool) {
+				t.Helper()
+				for _, side := range []struct {
+					ns   netns.NsHandle
+					name string
+				}{
+					{ns: host, name: hostnetwork.PassthroughNames.HostSide},
+					{ns: target, name: hostnetwork.PassthroughNames.NamespaceSide},
+				} {
+					require.NoError(t, netnamespace.In(side.ns, func() error {
+						_, err := netlink.LinkByName(side.name)
+						if wantRemoved {
+							var missing netlink.LinkNotFoundError
+							require.ErrorAs(t, err, &missing)
+							return nil
+						}
+						return err
+					}))
+				}
+			}
+			for range 2 {
+				err := netnamespace.In(host, func() error {
+					return (&KernelDatapathConfigurator{}).Configure(context.Background(), config)
+				})
+				require.ErrorIs(t, err, failure)
+				checkLinks(tc.orphanOnly)
+			}
+			removeNonConfiguredVRFs = original
+			require.NoError(t, netnamespace.In(host, func() error {
+				return (&KernelDatapathConfigurator{}).Configure(context.Background(), config)
+			}))
+			checkLinks(true)
+		})
+	}
 }
 
 func TestKernelConfiguratorCleansOrphanGuardsWithoutUnderlay(t *testing.T) {
@@ -173,6 +222,7 @@ func TestReconcileRejectsIncompleteLegacyLocatorBeforeFRR(t *testing.T) {
 		return (&KernelDatapathConfigurator{}).Configure(context.Background(), config)
 	}))
 	var before []netlink.Rule
+	var beforeActions map[int]uint8
 	var source net.IP
 	var missingTerminal netlink.Rule
 	require.NoError(t, netnamespace.In(target, func() error {
@@ -189,6 +239,7 @@ func TestReconcileRejectsIncompleteLegacyLocatorBeforeFRR(t *testing.T) {
 		}
 		require.True(t, removed)
 		before, err = netlink.RuleList(netlink.FAMILY_V6)
+		beforeActions = isolationRuleActions(t)
 		source = configuratorTunnelSource(t)
 		return err
 	}))
@@ -206,6 +257,7 @@ func TestReconcileRejectsIncompleteLegacyLocatorBeforeFRR(t *testing.T) {
 			rules, err := netlink.RuleList(netlink.FAMILY_V6)
 			require.NoError(t, err)
 			require.Equal(t, before, rules)
+			require.Equal(t, beforeActions, isolationRuleActions(t))
 			require.Equal(t, source, configuratorTunnelSource(t))
 			return nil
 		}))
@@ -239,9 +291,11 @@ func TestReconcileRejectsInsufficientRotationCapacityBeforeFRR(t *testing.T) {
 		}
 	}
 	var before []netlink.Rule
+	var beforeActions map[int]uint8
 	require.NoError(t, netnamespace.In(target, func() error {
 		var err error
 		before, err = netlink.RuleList(netlink.FAMILY_V6)
+		beforeActions = isolationRuleActions(t)
 		return err
 	}))
 	calls := 0
@@ -253,6 +307,7 @@ func TestReconcileRejectsInsufficientRotationCapacityBeforeFRR(t *testing.T) {
 		after, err := netlink.RuleList(netlink.FAMILY_V6)
 		require.NoError(t, err)
 		require.Equal(t, before, after)
+		require.Equal(t, beforeActions, isolationRuleActions(t))
 		return nil
 	}))
 }
@@ -266,14 +321,19 @@ func TestConfiguratorRemovesTunnelLoopbackWithoutUnderlay(t *testing.T) {
 		require.NoError(t, err)
 		return netlink.AddrAdd(loopback, address)
 	}))
+	originalCleanup := cleanupOrphanGuards
+	t.Cleanup(func() { cleanupOrphanGuards = originalCleanup })
+	failure := errors.New("orphan guard dump interrupted")
+	cleanupOrphanGuards = func(string) error { return failure }
 	// A failed loopback deletion after the last CNI DEL leaves this inventory.
 	require.Empty(t, mustUnderlayInterfaces(t, config.targetNamespace))
 	for range 2 {
-		require.NoError(t, netnamespace.In(host, func() error {
+		err := netnamespace.In(host, func() error {
 			return (&KernelDatapathConfigurator{}).Configure(context.Background(), interfacesConfiguration{
 				targetNamespace: config.targetNamespace,
 			})
-		}))
+		})
+		require.ErrorIs(t, err, failure)
 		require.NoError(t, netnamespace.In(target, func() error {
 			_, err := netlink.LinkByName(hostnetwork.TunnelLoopback)
 			var missing netlink.LinkNotFoundError
@@ -281,6 +341,39 @@ func TestConfiguratorRemovesTunnelLoopbackWithoutUnderlay(t *testing.T) {
 			return nil
 		}))
 	}
+}
+
+func TestRestoreUnderlayAfterLiveVRFFailure(t *testing.T) {
+	host, target, config := isolationTransitionFixture(t)
+	require.NoError(t, netnamespace.In(host, func() error {
+		return (&KernelDatapathConfigurator{}).Configure(context.Background(), config)
+	}))
+	original := removeAllVRFs
+	t.Cleanup(func() { removeAllVRFs = original })
+	failure := errors.New("VRF link deletion failed")
+	calls := 0
+	removeAllVRFs = func(string) error { calls++; return &hostnetwork.VRFRemovalError{Err: failure} }
+	empty := interfacesConfiguration{targetNamespace: config.targetNamespace}
+	for attempt := range 2 {
+		require.NoError(t, netnamespace.In(host, func() error {
+			require.ErrorIs(t, (&KernelDatapathConfigurator{}).Configure(context.Background(), empty), failure)
+			_, err := netlink.LinkByName("uplink")
+			return err
+		}))
+		require.Equal(t, attempt+1, calls)
+		require.Empty(t, mustUnderlayInterfaces(t, config.targetNamespace))
+		require.NoError(t, netnamespace.In(target, func() error { _, err := netlink.LinkByName("red"); return err }))
+	}
+	removeAllVRFs = original
+	require.NoError(t, netnamespace.In(host, func() error {
+		return (&KernelDatapathConfigurator{}).Configure(context.Background(), empty)
+	}))
+	require.NoError(t, netnamespace.In(target, func() error {
+		_, err := netlink.LinkByName("red")
+		var missing netlink.LinkNotFoundError
+		require.ErrorAs(t, err, &missing)
+		return nil
+	}))
 }
 
 func TestRestoreUnderlayAfterOrphanGuardFailure(t *testing.T) {
@@ -346,12 +439,12 @@ func checkObsoleteManagedAttachedTable(t *testing.T, realFRR bool) {
 	config.L3VPNs[0].Spec.HostSession = &v1alpha1.HostSession{
 		ASN: 65001, HostASN: new(int64(65002)), LocalCIDRs: []string{"192.0.2.0/30"},
 	}
-	require.Eventually(t, func() bool {
+	requireReconcileEventually(t, func() error {
 		return netnamespace.In(host, func() error {
 			return Reconcile(context.Background(), config.APIConfigData, 0, "info", "", config.targetNamespace,
 				updater, &KernelDatapathConfigurator{}, applyFRR)
-		}) == nil
-	}, 15*time.Second, 100*time.Millisecond)
+		})
+	})
 
 	var table uint32
 	require.NoError(t, netnamespace.In(target, func() error {
@@ -444,7 +537,7 @@ func checkObsoleteManagedAttachedTable(t *testing.T, realFRR bool) {
 			for _, rule := range rules {
 				if rule.Protocol == 242 {
 					require.NotNil(t, rule.Src)
-					require.Equal(t, transitionNewSource, rule.Src.IP.String())
+					require.Equal(t, transitionNewSource+"/128", rule.Src.String())
 					require.Equal(t, "fc00:20::/48", rule.Dst.String())
 					pairs[rule.IifName] = append(pairs[rule.IifName], rule)
 				}
@@ -540,6 +633,7 @@ func checkIsolationTableOwner(t *testing.T, retained bool, wantError string) {
 		Spec: v1alpha1.L3VNISpec{VRF: "evpn", VNI: 100, VXLanPort: new(int32(4789)),
 			ImportRTs: []v1alpha1.RouteTarget{"65001:100"}}}}
 	var beforeRules []netlink.Rule
+	var beforeActions map[int]uint8
 	var beforeSource net.IP
 	var beforeIndex int
 	require.NoError(t, netnamespace.In(target, func() error {
@@ -570,6 +664,7 @@ func checkIsolationTableOwner(t *testing.T, retained bool, wantError string) {
 		beforeSource = configuratorTunnelSource(t)
 		var err error
 		beforeRules, err = netlink.RuleList(netlink.FAMILY_V6)
+		beforeActions = isolationRuleActions(t)
 		return err
 	}))
 	if !retained {
@@ -590,6 +685,7 @@ func checkIsolationTableOwner(t *testing.T, retained bool, wantError string) {
 		rules, err := netlink.RuleList(netlink.FAMILY_V6)
 		require.NoError(t, err)
 		require.Equal(t, beforeRules, rules)
+		require.Equal(t, beforeActions, isolationRuleActions(t))
 		require.Equal(t, beforeSource, configuratorTunnelSource(t))
 		vrf, err := netlink.LinkByName("evpn")
 		require.NoError(t, err)

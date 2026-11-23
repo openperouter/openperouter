@@ -22,12 +22,12 @@ import (
 
 	"github.com/openperouter/openperouter/internal/frr"
 	"github.com/openperouter/openperouter/internal/netnamespace"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netlink/nl"
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
+	"k8s.io/apimachinery/pkg/util/wait"
 )
 
 const (
@@ -48,9 +48,7 @@ func TestControllerFRRSourceTransitions(t *testing.T) {
 	}
 	// The integrated config references the locator in bgpd before zebra's
 	// backend has published it. A controller retry completes initial startup.
-	require.EventuallyWithT(t, func(collect *assert.CollectT) {
-		assert.NoError(collect, apply())
-	}, 15*time.Second, 100*time.Millisecond)
+	requireReconcileEventually(t, apply)
 	checkSource := func(source string, wantRules int) {
 		t.Helper()
 		require.NoError(t, netnamespace.In(target, func() error {
@@ -108,7 +106,7 @@ func TestControllerFRRSourceTransitions(t *testing.T) {
 			var lookup, terminal *netlink.Rule
 			for i := range pairs[iface] {
 				rule := &pairs[iface][i]
-				require.Equal(t, newSource, rule.Src.IP.String())
+				require.Equal(t, newSource+"/128", rule.Src.String())
 				require.Equal(t, "fc00:20::/48", rule.Dst.String())
 				switch actions[rule.Priority] {
 				case unix.FR_ACT_TO_TBL:
@@ -147,68 +145,93 @@ func TestControllerFRRSupersededSourceReloads(t *testing.T) {
 				updater, &KernelDatapathConfigurator{}, configure)
 		})
 	}
-	require.EventuallyWithT(t, func(collect *assert.CollectT) { assert.NoError(collect, apply(configureFRR)) },
-		15*time.Second, 100*time.Millisecond)
+	requireReconcileEventually(t, func() error { return apply(configureFRR) })
 	active := transitionLegacySource
 	failure := errors.New("reload interrupted")
 	for _, step := range []struct {
 		source string
 		apply  bool
 		fail   bool
+		retry  bool
 	}{
 		{source: transitionNewSource, fail: true},
 		{source: "2001:db8:ffff::100", fail: true},
-		{source: "2001:db8:ffff::101", apply: true, fail: true},
+		{source: "2001:db8:ffff::101", apply: true, fail: true, retry: true},
+		{source: "2001:db8:ffff::102", apply: true, fail: true},
 		{source: transitionNewSource, apply: true},
 		{source: transitionLegacySource, apply: true},
 	} {
-		t.Run(step.source+fmt.Sprint(step.fail), func(t *testing.T) {
-			config.Underlays[0].Spec.SRV6.EncapsulationSource = &step.source
+		t.Logf("source=%s apply=%t fail=%t", step.source, step.apply, step.fail)
+		config.Underlays[0].Spec.SRV6.EncapsulationSource = &step.source
+		require.NoError(t, netnamespace.In(target, func() error {
+			lo, err := netlink.LinkByName("lo")
+			if err != nil {
+				return err
+			}
+			return netlink.AddrReplace(lo, &netlink.Addr{IPNet: &net.IPNet{
+				IP: net.ParseIP(step.source), Mask: net.CIDRMask(128, 128),
+			}})
+		}))
+		calls := 0
+		err := apply(func(ctx context.Context, data frrConfigData) error {
+			calls++
 			require.NoError(t, netnamespace.In(target, func() error {
-				lo, err := netlink.LinkByName("lo")
-				if err != nil {
-					return err
-				}
-				return netlink.AddrReplace(lo, &netlink.Addr{IPNet: &net.IPNet{
-					IP: net.ParseIP(step.source), Mask: net.CIDRMask(128, 128),
-				}})
+				require.True(t, configuratorTunnelSource(t).Equal(net.ParseIP(active)))
+				rules, err := netlink.RuleList(netlink.FAMILY_V6)
+				require.NoError(t, err)
+				requireOwnedSourcePairs(t, rules, isolationRuleActions(t), []string{active, step.source})
+				requireLegacyGuards(t, []string{active})
+				return nil
 			}))
-			calls := 0
-			err := apply(func(ctx context.Context, data frrConfigData) error {
-				calls++
-				require.NoError(t, netnamespace.In(target, func() error {
-					require.True(t, configuratorTunnelSource(t).Equal(net.ParseIP(active)))
-					rules, err := netlink.RuleList(netlink.FAMILY_V6)
-					require.NoError(t, err)
-					requireOwnedSourcePairs(t, rules, isolationRuleActions(t), []string{active, step.source})
-					requireLegacyGuards(t, []string{active})
-					return nil
-				}))
+			data.updater = func(ctx context.Context, rendered string) error {
 				if step.apply {
-					require.NoError(t, configureFRR(ctx, data))
+					if err := updater(ctx, rendered); err != nil {
+						return err
+					}
+					requireKernelSourceEventually(t, target, step.source)
 					active = step.source
 				}
 				if step.fail {
 					return failure
 				}
 				return nil
-			})
-			require.Equal(t, 1, calls)
-			if step.fail {
-				require.ErrorIs(t, err, failure)
-			} else {
-				require.NoError(t, err)
 			}
+			return configureFRR(ctx, data)
+		})
+		require.Equal(t, 1, calls)
+		if step.fail {
+			require.Nil(t, lastAppliedFRRConfig, "failed updater must invalidate the cache")
+			require.ErrorIs(t, err, failure)
+		} else {
+			require.NoError(t, err)
+		}
+		require.NoError(t, netnamespace.In(target, func() error {
+			require.True(t, configuratorTunnelSource(t).Equal(net.ParseIP(active)))
+			if !step.fail {
+				rules, err := netlink.RuleList(netlink.FAMILY_V6)
+				require.NoError(t, err)
+				requireOwnedSourcePairs(t, rules, isolationRuleActions(t), []string{active})
+			}
+			return nil
+		}))
+		if step.retry {
+			reloadCalls := 0
+			require.NoError(t, apply(func(ctx context.Context, data frrConfigData) error {
+				data.updater = func(ctx context.Context, rendered string) error {
+					reloadCalls++
+					return updater(ctx, rendered)
+				}
+				return configureFRR(ctx, data)
+			}), "retry the same source after partial reload")
+			require.Equal(t, 1, reloadCalls, "retry must reach the real FRR updater")
 			require.NoError(t, netnamespace.In(target, func() error {
 				require.True(t, configuratorTunnelSource(t).Equal(net.ParseIP(active)))
-				if !step.fail {
-					rules, err := netlink.RuleList(netlink.FAMILY_V6)
-					require.NoError(t, err)
-					requireOwnedSourcePairs(t, rules, isolationRuleActions(t), []string{active})
-				}
+				rules, err := netlink.RuleList(netlink.FAMILY_V6)
+				require.NoError(t, err)
+				requireOwnedSourcePairs(t, rules, isolationRuleActions(t), []string{active})
 				return nil
 			}))
-		})
+		}
 	}
 }
 
@@ -216,6 +239,7 @@ func requireSourceTransitionFRR(t *testing.T) {
 	t.Helper()
 	for _, binary := range []string{
 		"/usr/lib/frr/mgmtd", "/usr/lib/frr/zebra", "/usr/lib/frr/bgpd", "/usr/lib/frr/isisd", "/usr/bin/vtysh",
+		"/usr/bin/python3", "/usr/lib/frr/frr-reload.py",
 	} {
 		if _, err := os.Stat(binary); errors.Is(err, os.ErrNotExist) {
 			t.Skip("real FRR is required: " + binary)
@@ -247,9 +271,7 @@ func TestControllerFRRLastIsolatedToLegacyAfterHostFailure(t *testing.T) {
 				updater, &KernelDatapathConfigurator{}, configureFRR)
 		})
 	}
-	require.EventuallyWithT(t, func(collect *assert.CollectT) {
-		assert.NoError(collect, apply())
-	}, 15*time.Second, 100*time.Millisecond)
+	requireReconcileEventually(t, apply)
 	config.L3VPNs[0].Spec.RoutingIsolation = nil
 	config.Underlays[0].Spec.SRV6.EncapsulationSource = nil
 
@@ -260,6 +282,7 @@ func TestControllerFRRLastIsolatedToLegacyAfterHostFailure(t *testing.T) {
 		if err := updateFRR(ctx, configuration); err != nil {
 			return err
 		}
+		requireKernelSourceEventually(t, target, legacySource)
 		return reloadFailure
 	}
 	require.ErrorIs(t, apply(), reloadFailure)
@@ -274,6 +297,93 @@ func TestControllerFRRLastIsolatedToLegacyAfterHostFailure(t *testing.T) {
 	requireLegacySourcePairs(t, target, nil)
 	require.NoError(t, apply(), "retry after completion is idempotent")
 	requireLegacySourcePairs(t, target, nil)
+}
+
+func TestControllerFRRClearedSourceRecovery(t *testing.T) {
+	for _, continuation := range []string{"retry legacy", "rollback isolated", "new isolated"} {
+		t.Run(continuation, func(t *testing.T) {
+			requireSourceTransitionFRR(t)
+			resetFRRConfigCache(t)
+			host, target, config := isolationTransitionFixture(t)
+			oldSource := transitionNewSource
+			legacySource := transitionLegacySource
+			config.Underlays[0].Spec.SRV6.EncapsulationSource = &oldSource
+			require.NoError(t, netnamespace.In(target, func() error {
+				lo, err := netlink.LinkByName("lo")
+				if err != nil {
+					return err
+				}
+				return netlink.AddrAdd(lo, &netlink.Addr{IPNet: &net.IPNet{
+					IP: net.ParseIP(oldSource), Mask: net.CIDRMask(128, 128),
+				}})
+			}))
+			updateFRR := sourceTransitionFRR(t, target)
+			updater := updateFRR
+			apply := func() error {
+				return netnamespace.In(host, func() error {
+					return Reconcile(context.Background(), config.APIConfigData, 0, "warning", "", config.targetNamespace,
+						updater, &KernelDatapathConfigurator{}, configureFRR)
+				})
+			}
+			requireReconcileEventually(t, apply)
+			originalIsolation := config.L3VPNs[0].Spec.RoutingIsolation
+			config.L3VPNs[0].Spec.RoutingIsolation = nil
+			config.Underlays[0].Spec.SRV6.EncapsulationSource = nil
+
+			failure := errors.New("reload interrupted after source deletion")
+			updater = func(ctx context.Context, rendered string) error {
+				lines := strings.Split(rendered, "\n")
+				var partial []string
+				removed := false
+				for _, line := range lines {
+					if strings.HasPrefix(strings.TrimSpace(line), "source-address ") {
+						removed = true
+						continue
+					}
+					partial = append(partial, line)
+				}
+				require.True(t, removed)
+				if err := updateFRR(ctx, strings.Join(partial, "\n")); err != nil {
+					return err
+				}
+				requireKernelSourceEventually(t, target, "::")
+				return failure
+			}
+			require.ErrorIs(t, apply(), failure)
+			require.Nil(t, lastAppliedFRRConfig)
+			require.NoError(t, netnamespace.In(target, func() error {
+				rules, err := netlink.RuleList(netlink.FAMILY_V6)
+				require.NoError(t, err)
+				requireOwnedSourcePairs(t, rules, isolationRuleActions(t), []string{oldSource, legacySource})
+				requireLegacyGuards(t, []string{oldSource})
+				return nil
+			}))
+			wantSource := legacySource
+			wantPairs := []string(nil)
+			if continuation != "retry legacy" {
+				config.L3VPNs[0].Spec.RoutingIsolation = originalIsolation
+				if continuation == "rollback isolated" {
+					wantSource = oldSource
+				}
+				config.Underlays[0].Spec.SRV6.EncapsulationSource = &wantSource
+				wantPairs = []string{wantSource}
+			}
+			calls := 0
+			updater = func(ctx context.Context, rendered string) error { calls++; return updateFRR(ctx, rendered) }
+			require.NoError(t, apply())
+			require.Equal(t, 1, calls, "retry must reach FRR")
+			requireKernelSourceEventually(t, target, wantSource)
+			require.NoError(t, netnamespace.In(target, func() error {
+				rules, err := netlink.RuleList(netlink.FAMILY_V6)
+				require.NoError(t, err)
+				requireOwnedSourcePairs(t, rules, isolationRuleActions(t), wantPairs)
+				requireLegacyGuards(t, wantPairs)
+				return nil
+			}))
+			require.NoError(t, apply())
+			require.Equal(t, 1, calls, "successful retry must be cached")
+		})
+	}
 }
 
 func requireLegacySourcePairs(t *testing.T, target netns.NsHandle, protected []string) {
@@ -294,6 +404,7 @@ func requireOwnedSourcePairs(t *testing.T, rules []netlink.Rule, actions map[int
 	for _, rule := range rules {
 		if rule.Protocol == 242 {
 			require.NotNil(t, rule.Src)
+			require.Equal(t, net.CIDRMask(128, 128), rule.Src.Mask)
 			owned[rule.Src.IP.String()] = append(owned[rule.Src.IP.String()], rule)
 		}
 	}
@@ -423,12 +534,29 @@ func sourceTransitionFRR(t *testing.T, ns netns.NsHandle) frr.ConfigUpdater {
 		}
 		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
-		output, err := exec.CommandContext(ctx, "/usr/bin/vtysh", "-N", name, "-f", path).CombinedOutput()
+		before, err := exec.CommandContext(ctx, "/usr/bin/vtysh", "-N", name, "-c", "show running-config").CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("read running FRR config: %w: %s", err, before)
+		}
+		output, err := exec.CommandContext(ctx, "/usr/bin/python3", "/usr/lib/frr/frr-reload.py",
+			"--reload", "--pathspace", name, "--logfile", "/dev/null", path).CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("apply FRR source transition: %w: %s", errors.Join(err, ctx.Err()), output)
 		}
 		if strings.Contains(string(output), "% Unknown command") {
 			return fmt.Errorf("FRR rejected source transition configuration: %s", output)
+		}
+		after, err := exec.CommandContext(ctx, "/usr/bin/vtysh", "-N", name, "-c", "show running-config").CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("verify FRR withdrawal: %w: %s", err, after)
+		}
+		for _, line := range strings.Split(string(before), "\n") {
+			if !strings.HasPrefix(line, "router bgp ") || strings.Contains(config, line+"\n") {
+				continue
+			}
+			if strings.Contains(string(after), line+"\n") {
+				return fmt.Errorf("FRR did not withdraw %q before VRF cleanup", line)
+			}
 		}
 		return nil
 	}
@@ -461,4 +589,31 @@ func stopSourceTransitionFRR(t *testing.T, cmd *exec.Cmd) {
 			t.Error("FRR did not exit after kill")
 		}
 	}
+}
+
+// A reconciliation may mutate the fixture. It must finish before cleanup starts,
+// including when the retry deadline expires during an attempt.
+func requireReconcileEventually(t *testing.T, reconcile func() error) {
+	t.Helper()
+	var lastErr error
+	err := wait.PollUntilContextTimeout(context.Background(), 100*time.Millisecond, 15*time.Second, true,
+		func(context.Context) (bool, error) {
+			lastErr = reconcile()
+			return lastErr == nil, nil
+		})
+	require.NoError(t, errors.Join(err, lastErr))
+}
+
+func requireKernelSourceEventually(t *testing.T, ns netns.NsHandle, source string) {
+	t.Helper()
+	err := wait.PollUntilContextTimeout(context.Background(), 20*time.Millisecond, 5*time.Second, true,
+		func(context.Context) (bool, error) {
+			matches := false
+			err := netnamespace.In(ns, func() error {
+				matches = configuratorTunnelSource(t).Equal(net.ParseIP(source))
+				return nil
+			})
+			return matches, err
+		})
+	require.NoError(t, err, "kernel source must become %s", source)
 }

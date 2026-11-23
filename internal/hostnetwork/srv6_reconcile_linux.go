@@ -752,8 +752,14 @@ func legacyLocatorTemplates(vrf string, current []isolationPolicyRule, source, a
 		if !ownedIsolationPolicyRule(entry) || lookup.IifName != vrf {
 			continue
 		}
-		if lookup.Src.IP.Equal(activeSource) {
+		if activeSource.Equal(net.IPv6zero) || lookup.Src.IP.Equal(activeSource) {
 			selectors = append(selectors, lookup.Dst.String())
+		}
+		// After a cleared source, only complete pairs for the requested source
+		// establish recovery coverage. Do not infer selectors from an arbitrary
+		// older source or silently drop a locator with an incomplete pair.
+		if activeSource.Equal(net.IPv6zero) && !lookup.Src.IP.Equal(source) {
+			continue
 		}
 		if !completeLegacyIsolationPair(lookup, current) {
 			continue

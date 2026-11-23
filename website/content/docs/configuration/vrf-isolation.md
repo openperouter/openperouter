@@ -90,9 +90,11 @@ client inputs: local ports, VXLAN inner traffic and SRv6-decapsulated traffic.
 IPv4 rp_filter alone does not establish IPv6 source authenticity. Processes
 inside the router namespace are also within the operational trust boundary.
 
-For ordinary tenant sources that do not match an exception, unknown destinations
-remain blocked by the tenant unreachable default. Higher-priority administrator
-rules can deliberately alter this behavior and are outside this guarantee.
+For ordinary tenant sources that do not match an exception, the tenant unreachable
+default blocks destinations with no working tenant route, including no working
+tenant default. A working tenant default can forward otherwise unknown
+destinations. Higher-priority administrator rules can deliberately alter this
+behavior and are outside this guarantee.
 
 ## Supported SRv6 modes
 
@@ -311,3 +313,16 @@ establish only the exercised Linux/FRR topologies; full Kubernetes/hostmode e2e,
 other kernels and independent zebra-only restart behavior require separate
 checks. No availability claim is based on recovery after an artificial VRF
 interface down/up cycle.
+
+### Upgrading VRFs created without ownership aliases
+
+A successful reconciliation marks an explicitly configured VRF that has no
+ownership alias as managed. Reconcile the existing VPN configuration after an
+upgrade before withdrawing a legacy VRF and reusing its table for SRv6 underlay.
+An explicit foreign alias is never overwritten.
+
+A VRF already absent from configuration at upgrade time cannot be distinguished
+from an unrelated unmarked VRF using its name and table alone. Automatic underlay
+table reuse therefore rejects that conflict. Confirm ownership and remove the
+obsolete object administratively, or select a free underlay table. Removing the
+ownership check would risk deleting unrelated forwarding state.

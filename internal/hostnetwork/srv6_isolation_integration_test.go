@@ -20,6 +20,38 @@ import (
 )
 
 var _ = Describe("SRv6 exception lifecycle", func() {
+	It("removes only managed VRFs during underlay teardown", func() {
+		ns := newGuardNamespace()
+		path := fmt.Sprintf("/proc/self/fd/%d", ns)
+		Expect(netnamespace.In(ns, func() error {
+			Expect(setupVRF("managed", evpnVRF)).To(Succeed())
+			for i, name := range []string{"unmarked", "foreign"} {
+				vrf := &netlink.Vrf{LinkAttrs: netlink.LinkAttrs{Name: name}, Table: uint32(900 + i)}
+				Expect(netlink.LinkAdd(vrf)).To(Succeed())
+				if name == "foreign" {
+					Expect(netlink.LinkSetAlias(vrf, "foreign-owner")).To(Succeed())
+				}
+				Expect(ensureVRFDefaultGuards(vrf)).To(Succeed())
+			}
+			return nil
+		})).To(Succeed())
+		for range 2 {
+			Expect(RemoveAllVRFs(path)).To(Succeed())
+			Expect(netnamespace.In(ns, func() error {
+				_, err := lookupVRF("managed")
+				Expect(errors.As(err, &netlink.LinkNotFoundError{})).To(BeTrue())
+				for _, name := range []string{"unmarked", "foreign"} {
+					vrf, err := lookupVRF(name)
+					Expect(err).To(Succeed())
+					for _, family := range []int{netlink.FAMILY_V4, netlink.FAMILY_V6} {
+						Expect(listVRFDefaultGuards(vrfDefaultGuard(vrf.Table, family))).To(HaveLen(1))
+					}
+				}
+				return nil
+			})).To(Succeed())
+		}
+	})
+
 	It("filters concrete guard tables in the kernel when supported", func() {
 		ns := newGuardNamespace()
 		Expect(netnamespace.In(ns, func() error {
@@ -49,6 +81,42 @@ var _ = Describe("SRv6 exception lifecycle", func() {
 			return nil
 		})).To(Succeed())
 	})
+
+	DescribeTable("classifies failures relative to VRF deletion", func(failDelete bool) {
+		ns := newGuardNamespace()
+		path := fmt.Sprintf("/proc/self/fd/%d", ns)
+		Expect(netnamespace.In(ns, func() error {
+			return setupVRF("red", evpnVRF)
+		})).To(Succeed())
+		originalDelete, originalList := deleteVRFLink, listRemainingVRFs
+		DeferCleanup(func() { deleteVRFLink, listRemainingVRFs = originalDelete, originalList })
+		if failDelete {
+			deleteVRFLink = func(netlink.Link) error { return unix.EPERM }
+		} else {
+			listRemainingVRFs = func() ([]netlink.Link, error) { return nil, unix.EINTR }
+		}
+		err := RemoveAllVRFs(path)
+		var removal *VRFRemovalError
+		Expect(errors.As(err, &removal)).To(BeTrue())
+		Expect(removal.OnlyOrphanGuards).To(Equal(!failDelete))
+		Expect(netnamespace.In(ns, func() error {
+			_, err := lookupVRF("red")
+			if failDelete {
+				Expect(err).To(Succeed())
+			} else {
+				Expect(err).To(HaveOccurred())
+			}
+			return nil
+		})).To(Succeed())
+		deleteVRFLink, listRemainingVRFs = originalDelete, originalList
+		Expect(RemoveAllVRFs(path)).To(Succeed())
+		Expect(netnamespace.In(ns, func() error {
+			for _, family := range []int{netlink.FAMILY_V4, netlink.FAMILY_V6} {
+				Expect(listVRFDefaultGuards(vrfDefaultGuard(0, family))).To(BeEmpty())
+			}
+			return nil
+		})).To(Succeed())
+	}, Entry("live VRF", true), Entry("only route cleanup remains", false))
 
 	It("keeps shared-table guards until all obsolete owners have been deleted", func() {
 		ns := newGuardNamespace()
@@ -533,6 +601,38 @@ var _ = Describe("SRv6 exception lifecycle", func() {
 			return nil
 		})).To(Succeed())
 	})
+
+	DescribeTable("migrates ownership only for configured legacy VRFs", func(alias string, configure bool, wantRemoval bool) {
+		ns := newGuardNamespace()
+		path := fmt.Sprintf("/proc/self/fd/%d", ns)
+		Expect(netnamespace.In(ns, func() error {
+			vrf := &netlink.Vrf{LinkAttrs: netlink.LinkAttrs{Name: "old"}, Table: 701}
+			Expect(netlink.LinkAdd(vrf)).To(Succeed())
+			if alias != "" {
+				Expect(netlink.LinkSetAlias(vrf, alias)).To(Succeed())
+			}
+			if configure {
+				Expect(setupVRF("old", evpnVRF)).To(Succeed())
+			}
+			return nil
+		})).To(Succeed())
+		conflict := &VRFTableOwnershipError{VRF: "old", Table: 701}
+		Expect(CleanupObsoleteIsolationVRF(path, map[string]bool{"old": true}, conflict)).To(HaveOccurred())
+		err := CleanupObsoleteIsolationVRF(path, map[string]bool{"red": true}, conflict)
+		if wantRemoval {
+			Expect(err).To(Succeed())
+		} else {
+			Expect(err).To(MatchError(conflict))
+			Expect(netnamespace.In(ns, func() error {
+				vrf, err := lookupVRF("old")
+				Expect(err).To(Succeed())
+				Expect(vrf.Alias).To(Equal(alias))
+				return nil
+			})).To(Succeed())
+		}
+	}, Entry("previously configured legacy owner", "", true, true),
+		Entry("unknown unmarked object", "", false, false),
+		Entry("explicit foreign ownership", "foreign", true, false))
 
 	It("cleans only an obsolete managed table owner before retrying isolation", func() {
 		for _, managed := range []bool{false, true} {

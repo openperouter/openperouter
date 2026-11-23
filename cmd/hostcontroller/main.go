@@ -128,6 +128,7 @@ type parameters struct {
 	mode                string
 	ovsSocketPath       string
 	nodeName            string
+	routerMACPrefix     string
 	namespace           string
 	logLevel            string
 	bgpListenLimit      uint
@@ -167,6 +168,8 @@ func main() {
 	flag.BoolVar(&args.groutTapUnderlay, "grout-tap-underlay", false, "Use TAP ports for grout underlay interfaces")
 
 	flag.StringVar(&args.nodeName, "nodename", "", "The name of the node the controller runs on")
+	flag.StringVar(&args.routerMACPrefix, "router-mac-prefix", "",
+		"MAC prefix combined with the node index for all L3VNIs")
 	flag.StringVar(&args.namespace, "namespace", "", "The namespace the controller runs in")
 
 	flag.DurationVar(&hostModeParams.k8sWaitInterval, "k8s-wait-timeout", time.Minute,
@@ -383,10 +386,7 @@ func runK8sConfigReconcilerHostMode(ctx context.Context,
 	triggerChan := make(chan event.GenericEvent, 1)
 	mirrorTriggerChan := make(chan event.GenericEvent, 1)
 
-	var datapathConfigurator routerconfiguration.DatapathConfigurator = &routerconfiguration.KernelDatapathConfigurator{}
-	if args.datapath == datapathGrout {
-		datapathConfigurator = routerconfiguration.NewGroutConfigurator(args.groutSocketPath, args.groutUnderlayPortMode())
-	}
+	datapathConfigurator := newDatapathConfigurator(args)
 
 	dhcpSupervisor.OnRestart = triggerKubernetesReconcile(triggerChan, types.NamespacedName{
 		Namespace: restartDHCPEvent,
@@ -492,10 +492,7 @@ func runK8sConfigReconciler(ctx context.Context,
 		Namespace:       args.namespace,
 	}
 
-	var datapathConfigurator routerconfiguration.DatapathConfigurator = &routerconfiguration.KernelDatapathConfigurator{}
-	if args.datapath == datapathGrout {
-		datapathConfigurator = routerconfiguration.NewGroutConfigurator(args.groutSocketPath, args.groutUnderlayPortMode())
-	}
+	datapathConfigurator := newDatapathConfigurator(args)
 
 	triggerChan := make(chan event.GenericEvent, 1)
 	dhcpSupervisor.OnRestart = triggerKubernetesReconcile(triggerChan, types.NamespacedName{
@@ -560,10 +557,7 @@ func runStaticConfigReconciler(ctx context.Context,
 		RouterHealthCheckPort: hostModeParams.routerHealthCheckPort,
 	}
 
-	var datapathConfigurator routerconfiguration.DatapathConfigurator = &routerconfiguration.KernelDatapathConfigurator{}
-	if args.datapath == datapathGrout {
-		datapathConfigurator = routerconfiguration.NewGroutConfigurator(args.groutSocketPath, args.groutUnderlayPortMode())
-	}
+	datapathConfigurator := newDatapathConfigurator(args)
 
 	staticReconciler := &routerconfiguration.StaticConfigReconciler{
 		Scheme:               mgr.GetScheme(),
@@ -716,6 +710,9 @@ func pingAPIServer() (*rest.Config, error) {
 }
 
 func validateParameters(args parameters, hostModeParams hostModeParameters) error {
+	if _, err := hostnetwork.RouterMACForNode(args.routerMACPrefix, 0); err != nil {
+		return err
+	}
 	if args.mode != modeK8s && args.mode != modeHost {
 		return fmt.Errorf("invalid mode %q, must be '%s' or '%s'", args.mode, modeK8s, modeHost)
 	}
@@ -746,6 +743,9 @@ func validateParameters(args parameters, hostModeParams hostModeParameters) erro
 // have an uniform deployment while being able to provide different
 // knobs for different nodes.
 func overrideHostMode(args *parameters, nodeConfig static.NodeConfig) error {
+	if nodeConfig.RouterMACPrefix != "" {
+		args.routerMACPrefix = nodeConfig.RouterMACPrefix
+	}
 	if nodeConfig.LogLevel != "" {
 		setupLog.Info("overriding log level from static configuration", "loglevel", nodeConfig.LogLevel)
 		args.logLevel = nodeConfig.LogLevel
@@ -800,4 +800,13 @@ func triggerKubernetesReconcile(
 			slog.Debug("reconciliation already queued, skipping DHCP restart trigger")
 		}
 	}
+}
+
+func newDatapathConfigurator(args parameters) routerconfiguration.DatapathConfigurator {
+	if args.datapath == datapathGrout {
+		return routerconfiguration.NewGroutConfigurator(
+			args.groutSocketPath, args.groutUnderlayPortMode(), args.routerMACPrefix,
+		)
+	}
+	return &routerconfiguration.KernelDatapathConfigurator{RouterMACPrefix: args.routerMACPrefix}
 }

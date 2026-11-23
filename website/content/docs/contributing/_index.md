@@ -113,6 +113,11 @@ You can run unit tests locally with:
 make test
 ```
 
+The Linux `runasroot` tests require a kernel built with `CONFIG_IPV6_SUBTREES=y`.
+The source-specific IPv6 route fixture uses this capability to verify that guard
+cleanup preserves routes with a source selector. A kernel without it cannot run
+that test; a route-add failure must not be treated as proof of correct isolation.
+
 To run the end-to-end (e2e) tests, first ensure that the local development environment is running (see above), then execute:
 
 ```bash

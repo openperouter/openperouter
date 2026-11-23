@@ -33,6 +33,7 @@ func (e *VRFRemovalError) Unwrap() error { return e.Err }
 
 var deleteVRFLink = netlink.LinkDel
 var deleteVRFAttachment = netlink.LinkDel
+var listRemainingVRFs = netlink.LinkList
 
 // CleanupOrphanVRFDefaultGuards retries owned route cleanup after the VRF is gone.
 func CleanupOrphanVRFDefaultGuards(targetNS string) error {
@@ -48,38 +49,15 @@ func CleanupOrphanVRFDefaultGuards(targetNS string) error {
 	return netnamespace.In(ns, cleanupOrphanVRFDefaultGuards)
 }
 
-// RemoveAllVRFs removes all VRFs from the target namespace.
+// RemoveAllVRFs removes managed VRFs from the target namespace.
 func RemoveAllVRFs(targetNS string) error {
-	return RemoveNonConfiguredVRFs(targetNS, map[string]bool{})
+	return removeVRFs(targetNS, map[string]bool{}, true)
 }
 
 // RemoveNonConfiguredVRFs removes from the target namespace the leftover VRFs
 // that are not configured anymore.
 func RemoveNonConfiguredVRFs(targetNS string, vrfs map[string]bool) error {
-	ns, err := netns.GetFromPath(targetNS)
-	if err != nil {
-		return fmt.Errorf("RemoveNonConfiguredVRFs: failed to get network namespace %s: %w", targetNS, err)
-	}
-	defer func() {
-		if err := ns.Close(); err != nil {
-			slog.Error("failed to close namespace", "namespace", targetNS, "error", err)
-		}
-	}()
-
-	return netnamespace.In(ns, func() error {
-		failures := removeNamespaceSideVRFs(vrfs)
-		if len(failures) == 0 {
-			return nil
-		}
-		orphanOnly := true
-		for _, failure := range failures {
-			var cleanup *VRFRemovalError
-			if !errors.As(failure, &cleanup) || !cleanup.OnlyOrphanGuards {
-				orphanOnly = false
-			}
-		}
-		return &VRFRemovalError{OnlyOrphanGuards: orphanOnly, Err: errors.Join(failures...)}
-	})
+	return removeVRFs(targetNS, vrfs, false)
 }
 
 // CleanupObsoleteIsolationVRF removes only the confirmed managed table owner.
@@ -241,6 +219,44 @@ func removeHostSideVeths(hostLinks []netlink.Link, prefix string, interfaceIDs m
 	return failedDeletes
 }
 
+func removeVRFs(targetNS string, vrfs map[string]bool, managedOnly bool) error {
+	ns, err := netns.GetFromPath(targetNS)
+	if err != nil {
+		return fmt.Errorf("RemoveNonConfiguredVRFs: failed to get network namespace %s: %w", targetNS, err)
+	}
+	defer func() {
+		if err := ns.Close(); err != nil {
+			slog.Error("failed to close namespace", "namespace", targetNS, "error", err)
+		}
+	}()
+
+	return netnamespace.In(ns, func() error {
+		if managedOnly {
+			links, err := netlink.LinkList()
+			if err != nil {
+				return fmt.Errorf("inspect managed VRFs: %w", err)
+			}
+			for _, link := range links {
+				if link.Type() == VRFLinkType && link.Attrs().Alias != managedVRFAlias {
+					vrfs[link.Attrs().Name] = true
+				}
+			}
+		}
+		failures := removeNamespaceSideVRFs(vrfs)
+		if len(failures) == 0 {
+			return nil
+		}
+		orphanOnly := true
+		for _, failure := range failures {
+			var cleanup *VRFRemovalError
+			if !errors.As(failure, &cleanup) || !cleanup.OnlyOrphanGuards {
+				orphanOnly = false
+			}
+		}
+		return &VRFRemovalError{OnlyOrphanGuards: orphanOnly, Err: errors.Join(failures...)}
+	})
+}
+
 func removeNamespaceSideVRFs(vrfs map[string]bool) []error {
 	links, err := netlink.LinkList()
 	if err != nil {
@@ -278,9 +294,10 @@ func deleteObsoleteVRF(vrf *netlink.Vrf) error {
 		return fmt.Errorf("remove obsolete VRF %s: %w", vrf.Name, err)
 	}
 	// An obsolete owner whose deletion failed still needs the table's guards.
-	links, err := netlink.LinkList()
+	links, err := listRemainingVRFs()
 	if err != nil {
-		return fmt.Errorf("inspect live VRF owners after deleting %s: %w", vrf.Name, err)
+		return &VRFRemovalError{OnlyOrphanGuards: true,
+			Err: fmt.Errorf("inspect live VRF owners after deleting %s: %w", vrf.Name, err)}
 	}
 	for _, link := range links {
 		if live, ok := link.(*netlink.Vrf); ok && live.Table == vrf.Table {

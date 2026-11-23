@@ -297,6 +297,19 @@ A node can act as a BGP route reflector (RFC 4456) to reflect underlay and EVPN 
 
 For detailed information and examples, see the [Route Reflector]({{< ref "route-reflector.md" >}}) documentation.
 
+## L3VNI Router MAC
+
+Set a shared prefix, such as `02:00:00:00:00:00/32`, to generate a distinct
+MAC per node, shared by all L3VNIs on that node. This supports Cisco NX-OS,
+which requires one router MAC (RMAC) per VTEP.
+
+Configure the prefix through:
+
+- **Helm:** `openperouter.routerMACPrefix`.
+- **Operator:** `spec.routerMACPrefix` on the `OpenPERouter` resource.
+- **Systemd mode:** `routerMACPrefix` in `node-config.yaml`; restart the
+  hostcontroller after changing it.
+
 ## Sysctl Configuration
 
 OpenPERouter automatically tunes several kernel sysctl settings inside the

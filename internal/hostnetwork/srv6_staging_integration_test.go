@@ -18,6 +18,51 @@ import (
 )
 
 var _ = Describe("SRv6 staging recovery", func() {
+	DescribeTable("rejects incomplete recovery coverage after a cleared source", func(removeTerminal bool) {
+		const vrfName = "red"
+		ns := newGuardNamespace()
+		path := fmt.Sprintf("/proc/self/fd/%d", ns)
+		config := &SRv6Isolation{Source: "2001:db8::1", UnderlayTable: 254,
+			RemoteLocatorPrefixes: []string{"fc00:20::/48", "fc00:30::/48"}}
+		Expect(ReconcileSRv6Isolation(path, []L3VPNParams{{VRF: vrfName, RoutingIsolation: config}})).To(Succeed())
+		legacy := []L3VPNParams{{VRF: vrfName}}
+		next := net.ParseIP("2001:db8::2")
+		Expect(StageSRv6Isolation(path, legacy, next)).To(Succeed())
+		var before []isolationPolicyRule
+		Expect(netnamespace.In(ns, func() error {
+			if removeTerminal {
+				rules, err := listIsolationPolicyRules()
+				if err != nil {
+					return err
+				}
+				removed := false
+				for _, entry := range rules {
+					rule := entry.rule
+					if ownedIsolationPolicyRule(entry) && rule.Src.IP.Equal(next) && rule.IifName == vrfName &&
+						rule.Type == unix.FR_ACT_UNREACHABLE && rule.Dst.String() == "fc00:30::/48" {
+						Expect(netlink.RuleDel(&rule)).To(Succeed())
+						removed = true
+					}
+				}
+				Expect(removed).To(BeTrue())
+			} else {
+				next = net.ParseIP("2001:db8::3")
+			}
+			Expect(setSRv6TunnelSource(net.IPv6zero)).To(Succeed())
+			var err error
+			before, err = listIsolationPolicyRules()
+			return err
+		})).To(Succeed())
+		for range 2 {
+			Expect(StageSRv6Isolation(path, legacy, next)).To(MatchError(ContainSubstring("lacks a complete SRv6 exception pair")))
+			Expect(netnamespace.In(ns, func() error {
+				Expect(listIsolationPolicyRules()).To(Equal(before))
+				Expect(getSRv6TunnelSource()).To(Equal(net.IPv6zero))
+				return nil
+			})).To(Succeed())
+		}
+	}, Entry("missing desired terminal", true), Entry("unstaged desired source", false))
+
 	It("allows existing large configurations to retire without reserving another rotation", func() {
 		ns := newGuardNamespace()
 		path := fmt.Sprintf("/proc/self/fd/%d", ns)
@@ -132,6 +177,15 @@ var _ = Describe("SRv6 staging recovery", func() {
 		}
 		Expect(errors.Is(StageSRv6Isolation(path, next, net.ParseIP(red.Source)), unix.EPERM)).To(BeTrue())
 		guardRouteDel = original
+		Expect(netnamespace.In(ns, func() error {
+			vrf, err := lookupVRF("red")
+			if err != nil {
+				return err
+			}
+			Expect(listVRFDefaultGuards(vrfDefaultGuard(vrf.Table, netlink.FAMILY_V4))).To(BeEmpty())
+			Expect(listVRFDefaultGuards(vrfDefaultGuard(vrf.Table, netlink.FAMILY_V6))).To(HaveLen(1))
+			return nil
+		})).To(Succeed())
 		if rollback {
 			Expect(StageSRv6Isolation(path, originalVPNs, net.ParseIP(red.Source))).To(Succeed())
 			Expect(ReconcileSRv6Isolation(path, originalVPNs)).To(Succeed())

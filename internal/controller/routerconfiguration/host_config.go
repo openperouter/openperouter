@@ -38,10 +38,13 @@ type vnis struct {
 // It supports the full API surface.
 type KernelDatapathConfigurator struct {
 	conversion.KernelDatapathConfigValidator
+	RouterMACPrefix string
 }
 
 var newVNIConfigurator = hostnetwork.NewVNIConfigurator
 var removeAllVRFs = hostnetwork.RemoveAllVRFs
+var removeNonConfiguredVRFs = hostnetwork.RemoveNonConfiguredVRFs
+var cleanupOrphanGuards = hostnetwork.CleanupOrphanVRFDefaultGuards
 
 // InterfaceNameForFRR returns the name unchanged: in the kernel datapath FRR
 // peers over the underlay network devices themselves.
@@ -50,6 +53,10 @@ func (k *KernelDatapathConfigurator) InterfaceNameForFRR(name string) string {
 }
 
 func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config interfacesConfiguration) error { // nolint:gocognit
+	routerMAC, err := hostnetwork.RouterMACForNode(k.RouterMACPrefix, config.nodeIndex)
+	if err != nil {
+		return fmt.Errorf("failed to generate router MAC: %w", err)
+	}
 	ovsClient := &hostnetwork.OVSClient{}
 	defer ovsClient.Close()
 
@@ -65,11 +72,13 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 		if err := hostnetwork.ReconcileSRv6Isolation(config.targetNamespace, nil); err != nil {
 			return err
 		}
-		if err := hostnetwork.CleanupOrphanVRFDefaultGuards(config.targetNamespace); err != nil {
-			return err
-		}
 		// CNI DEL can empty the inventory before tunnel loopback deletion succeeds.
-		return hostnetwork.RestoreUnderlay(ctx, config.targetNamespace, nil)
+		// Orphan routes and the loopback can be removed independently.
+		vrfErr := removeAllVRFs(config.targetNamespace)
+		bridgerefresh.StopAllVNIs()
+		guardErr := cleanupOrphanGuards(config.targetNamespace)
+		loopbackErr := hostnetwork.RestoreUnderlay(ctx, config.targetNamespace, nil)
+		return errors.Join(vrfErr, guardErr, loopbackErr)
 	}
 
 	slog.InfoContext(ctx, "configure interface start", "namespace", config.targetNamespace)
@@ -120,6 +129,9 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 		return err
 	}
 
+	for i := range hostConfig.L3VNIs {
+		hostConfig.L3VNIs[i].RouterMAC = routerMAC
+	}
 	vnisToKeep, resourceErrors := setupVNIs(ctx, ovsClient, config.targetNamespace, hostConfig, failedDomains)
 	if err := hostnetwork.FinishSRv6Isolation(config.targetNamespace, hostConfig.L3VPNs, remainingSource,
 		isolationTenantNames(hostConfig)...); err != nil {
@@ -159,9 +171,13 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 	}
 
 	slog.InfoContext(ctx, "removing deleted vrfs")
-	if err := hostnetwork.RemoveNonConfiguredVRFs(config.targetNamespace,
+	if err := removeNonConfiguredVRFs(config.targetNamespace,
 		configuredVRFs); err != nil {
-		return errors.Join(append(resourceErrors, fmt.Errorf("failed to remove deleted vrfs: %w", err))...)
+		resourceErrors = append(resourceErrors, fmt.Errorf("failed to remove deleted vrfs: %w", err))
+		var removal *hostnetwork.VRFRemovalError
+		if !errors.As(err, &removal) || !removal.OnlyOrphanGuards {
+			return errors.Join(resourceErrors...)
+		}
 	}
 
 	if len(config.L3Passthrough) == 0 {
@@ -445,12 +461,6 @@ func restoreUnderlay(
 	}
 
 	cleanupErr := removeAllVRFs(targetNamespace)
-	if cleanupErr != nil {
-		var removal *hostnetwork.VRFRemovalError
-		if !errors.As(cleanupErr, &removal) || !removal.OnlyOrphanGuards {
-			return fmt.Errorf("remove VRFs before restoring underlay: %w", cleanupErr)
-		}
-	}
 
 	bridgerefresh.StopAllVNIs()
 	if err := hostnetwork.RestoreUnderlay(ctx, targetNamespace,
