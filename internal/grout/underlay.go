@@ -383,8 +383,8 @@ func configureUnderlayTapPort(
 		return fmt.Errorf("failed to suppress link-local on underlay interface %s: %w", underlayInterface, err)
 	}
 
-	opts.Devargs = fmt.Sprintf("net_tap%s,remote=%s,iface=%s",
-		makeTapRandomString(), underlayInterface, "tap_"+underlayInterface)
+	opts.Devargs = fmt.Sprintf("net_tap%s,remote=%s,iface=t_%s",
+		makeTapRandomString(), underlayInterface, underlayInterface)
 	opts.MTU = state.MTU
 	if err := client.ensurePort(ctx, portName, opts); err != nil {
 		return fmt.Errorf("failed to create grout underlay port: %w", err)
