@@ -14,6 +14,8 @@ toc: true
 
 ### New Features
 
+- Prevent ToR-learned routes from being re-advertised to external Underlay peers by default in all enabled address families. Protection also applies to external peers on route reflectors; existing iBGP client reflection remains available. (#623)
+
 - The underlay `interfaces` union supports a new `CNI` type: the controller provisions underlay interfaces in the router namespace by invoking a CNI plugin defined inline in the Underlay spec (`cniDevice.rawConfig`), with IPAM delegated to the plugin. The non-functional `multusNetworkAnnotation` chart value and operator API field were removed. (#543, @qinqon)
 - The controller now bundles CNI plugin binaries (macvlan, ipvlan, static, dhcp) and exposes a libcni-based invoker, preparing for direct underlay interface provisioning in the router netns without Multus. (#544, @maiqueb)
 - Introduce route reflector support: some nodes can be instructed to have route reflector clients. This enables scenarios where the TOR can't be modified in order to propagate routes across the nodes. (#509, @qinqon)
