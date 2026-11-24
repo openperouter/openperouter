@@ -46,6 +46,13 @@ type State struct {
 	AddrGenMode    string   `json:"addrGenMode,omitempty"`
 	AcceptRA       string   `json:"acceptRA,omitempty"`
 	MTU            int      `json:"mtu,omitempty"`
+
+	// PrimaryName is the kernel netdev name to restore after grout renames it.
+	PrimaryName string `json:"primaryName,omitempty"`
+
+	// AltNames holds the alternative names lost when a driver rebind destroys the
+	// netdev. InterfaceName remains the configured name, which may be one of them.
+	AltNames []string `json:"altNames,omitempty"`
 }
 
 func (s Store) Save(deviceID string, state State) error {
