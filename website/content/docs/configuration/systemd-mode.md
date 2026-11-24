@@ -58,7 +58,6 @@ Set `nodeIndex.index` to a unique integer per node:
 ```yaml
 nodeIndex:
   index: 0
-logLevel: debug
 ```
 
 #### Deriving Node Index from an Interface
@@ -72,7 +71,6 @@ This allows deploying the same `node-config.yaml` to every node, since each node
 ```yaml
 nodeIndex:
   interfaceName: eth0
-logLevel: debug
 ```
 
 When an interface has multiple IP addresses, you can use the optional `nodeIndex.cidr` field to select which address to use. Only addresses within the specified CIDR are considered. This also allows explicitly selecting an IPv6 address over IPv4.
@@ -81,10 +79,7 @@ When an interface has multiple IP addresses, you can use the optional `nodeIndex
 nodeIndex:
   interfaceName: eth0
   cidr: "192.168.11.0/24"
-logLevel: debug
 ```
-
-## Router Configuration
 
 ## Runtime Configuration
 

@@ -47,7 +47,6 @@ for NODE in $NODES; do
     $CONTAINER_ENGINE_CLI exec "$NODE" bash -c "cat > /var/lib/openperouter/node-config.yaml <<EOF
 nodeIndex:
   index: $NODE_INDEX
-logLevel: debug
 EOF"
 
     # Match the documented mode 0600 when creating boot.yaml.
