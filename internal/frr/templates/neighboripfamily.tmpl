@@ -12,6 +12,7 @@
     neighbor {{.neighbor.ID}} next-hop-self force
 {{- end }}
 {{- end }}
+{{- template "fabricneighborpolicy" . }}
   exit-address-family
 
 {{- end -}}
@@ -27,6 +28,7 @@
     neighbor {{.neighbor.ID}} next-hop-self force
 {{- end }}
 {{- end }}
+{{- template "fabricneighborpolicy" . }}
   exit-address-family
 {{- end -}}
 {{- end -}}

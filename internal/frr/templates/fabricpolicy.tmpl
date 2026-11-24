@@ -1,0 +1,21 @@
+{{- define "fabricpolicy"}}
+{{/* This community is router-local: preserve other communities and remove only this tag on egress. */}}
+bgp community-list standard openpe-fabric permit 65432:10
+route-map openpe-fabric-in permit 1
+  set community 65432:10 additive
+route-map openpe-fabric-out deny 1
+  match community openpe-fabric
+route-map openpe-fabric-out permit 2
+  set comm-list openpe-fabric delete
+route-map openpe-fabric-strip permit 1
+  set comm-list openpe-fabric delete
+{{- end }}
+
+{{- define "fabricneighborpolicy"}}
+{{- if isEBGP .routerASN .neighbor.ASN }}
+    neighbor {{.neighbor.ID}} route-map openpe-fabric-in in
+    neighbor {{.neighbor.ID}} route-map openpe-fabric-out out
+{{- else }}
+    neighbor {{.neighbor.ID}} route-map openpe-fabric-strip out
+{{- end }}
+{{- end }}
