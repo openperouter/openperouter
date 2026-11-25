@@ -102,4 +102,31 @@ var _ = Describe("VLAN-aware primitives", func() {
 
 		Expect(memberships(bridge)).To(ConsistOf(vlanMembership{VID: 100}))
 	})
+
+	It("reads one link's VLAN table like the full dump", func() {
+		bridge, port := portForVLANs()
+		Expect(netnamespace.In(ns, func() error {
+			if err := netlink.BridgeVlanAdd(port, 100, false, false, false, false); err != nil {
+				return err
+			}
+			if err := netlink.BridgeVlanAdd(port, 200, true, true, false, false); err != nil {
+				return err
+			}
+			return netlink.BridgeVlanAdd(bridge, 300, false, false, true, false)
+		})).To(Succeed())
+
+		var wantPort, wantBridge []vlanMembership
+		Expect(netnamespace.In(ns, func() error {
+			all, err := netlink.BridgeVlanList()
+			if err != nil {
+				return err
+			}
+			wantPort = expandVlanMemberships(all[int32(port.Attrs().Index)])
+			wantBridge = expandVlanMemberships(all[int32(bridge.Attrs().Index)])
+			return nil
+		})).To(Succeed())
+
+		Expect(memberships(port)).To(ConsistOf(wantPort))
+		Expect(memberships(bridge)).To(ConsistOf(wantBridge))
+	})
 })

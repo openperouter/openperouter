@@ -69,13 +69,13 @@ func ensureSwitchingBridge(name string) (*netlink.Bridge, error) {
 		if err := netlink.LinkAdd(bridge); err != nil {
 			return nil, fmt.Errorf("creating switching bridge %s: %w", name, err)
 		}
-	}
 
-	current, err := netlink.LinkByIndex(bridge.Index)
-	if err != nil {
-		return nil, fmt.Errorf("looking up switching bridge %s: %w", name, err)
+		current, err := netlink.LinkByIndex(bridge.Index)
+		if err != nil {
+			return nil, fmt.Errorf("looking up switching bridge %s: %w", name, err)
+		}
+		bridge = current.(*netlink.Bridge)
 	}
-	bridge = current.(*netlink.Bridge)
 
 	if bridge.MasterIndex != 0 {
 		if err := netlink.LinkSetNoMaster(bridge); err != nil {
@@ -243,11 +243,55 @@ func withoutVlanMembership(memberships []vlanMembership, vid uint16) []vlanMembe
 }
 
 func portVlanMemberships(link netlink.Link) ([]vlanMembership, error) {
-	all, err := netlink.BridgeVlanList()
+	entries, err := bridgeVlanListForLink(int32(link.Attrs().Index))
 	if err != nil {
 		return nil, fmt.Errorf("listing VLAN memberships: %w", err)
 	}
-	return expandVlanMemberships(all[int32(link.Attrs().Index)]), nil
+	return expandVlanMemberships(entries), nil
+}
+
+// bridgeVlanListForLink returns the bridge VLAN entries of one device. Asking
+// for the link index keeps the kernel from walking every bridge port on the
+// node, which netlink.BridgeVlanList does: the trunk path reads several ports
+// per reconcile and every standalone VNI reads its own VXLAN.
+func bridgeVlanListForLink(index int32) ([]*nl.BridgeVlanInfo, error) {
+	req := nl.NewNetlinkRequest(unix.RTM_GETLINK, unix.NLM_F_DUMP)
+	ifInfo := nl.NewIfInfomsg(unix.AF_BRIDGE)
+	ifInfo.Index = index
+	req.AddData(ifInfo)
+	req.AddData(nl.NewRtAttr(unix.IFLA_EXT_MASK, nl.Uint32Attr(uint32(nl.RTEXT_FILTER_BRVLAN))))
+
+	messages, err := req.Execute(unix.NETLINK_ROUTE, unix.RTM_NEWLINK)
+	if err != nil && !errors.Is(err, nl.ErrDumpInterrupted) {
+		return nil, err
+	}
+
+	var entries []*nl.BridgeVlanInfo
+	for _, message := range messages {
+		msg := nl.DeserializeIfInfomsg(message)
+		if msg.Index != index {
+			continue
+		}
+		attrs, err := nl.ParseRouteAttr(message[msg.Len():])
+		if err != nil {
+			return nil, err
+		}
+		for _, attr := range attrs {
+			if attr.Attr.Type != unix.IFLA_AF_SPEC {
+				continue
+			}
+			nested, err := nl.ParseRouteAttr(attr.Value)
+			if err != nil {
+				return nil, err
+			}
+			for _, nestedAttr := range nested {
+				if nestedAttr.Attr.Type == nl.IFLA_BRIDGE_VLAN_INFO {
+					entries = append(entries, nl.DeserializeBridgeVlanInfo(nestedAttr.Value))
+				}
+			}
+		}
+	}
+	return entries, err
 }
 
 func expandVlanMemberships(entries []*nl.BridgeVlanInfo) []vlanMembership {
@@ -311,8 +355,10 @@ func ensureVLANEndpoint(name string, parent *netlink.Bridge, vid uint16, options
 		link = desired
 	}
 
-	if err := linkSetMTU(link, mtu); err != nil {
-		return nil, fmt.Errorf("setting MTU on VLAN endpoint %s: %w", name, err)
+	if link.Attrs().MTU != mtu {
+		if err := netlink.LinkSetMTU(link, mtu); err != nil {
+			return nil, fmt.Errorf("setting MTU on VLAN endpoint %s: %w", name, err)
+		}
 	}
 	if err := sysctl.Ensure(sysctl.AddrGenMode(name, "1")); err != nil {
 		return nil, err
@@ -322,10 +368,13 @@ func ensureVLANEndpoint(name string, parent *netlink.Bridge, vid uint16, options
 			return nil, fmt.Errorf("applying option to VLAN endpoint %s: %w", name, err)
 		}
 	}
-	if err := linkSetUp(link); err != nil {
-		return nil, fmt.Errorf("setting VLAN endpoint %s up: %w", name, err)
+	if link.Attrs().Flags&net.FlagUp == 0 {
+		if err := netlink.LinkSetUp(link); err != nil {
+			return nil, fmt.Errorf("setting VLAN endpoint %s up: %w", name, err)
+		}
+		link.Attrs().Flags |= net.FlagUp
 	}
-	return netlink.LinkByIndex(link.Attrs().Index)
+	return link, nil
 }
 
 func matchesVLANEndpoint(link netlink.Link, parentIndex int, vid uint16) bool {
@@ -482,8 +531,8 @@ func ensureVlanTunnelPort(vxlan netlink.Link) error {
 // plain VLAN membership, tunnel_info, then the VNI filter entry. Steps 2-4 fail
 // EINVAL out of order.
 func ensureVlanToVNI(vxlan netlink.Link, vid uint16, vni uint32) error {
-	if err := requireVlanTunnelReady(vxlan, vid, vni); err != nil {
-		return err
+	if err := requireVlanTunnelReady(vxlan); err != nil {
+		return fmt.Errorf("mapping VLAN %d to VNI %d: %w", vid, vni, err)
 	}
 	vlanCurrent, err := portVlanMemberships(vxlan)
 	if err != nil {
@@ -500,20 +549,18 @@ func ensureVlanToVNI(vxlan netlink.Link, vid uint16, vni uint32) error {
 	return applyVlanToVNI(vxlan, vid, vni, &vlanCurrent, &mappings, &filterEntries)
 }
 
-// requireVlanTunnelReady checks the preconditions ensureVlanToVNI's caller
-// must already have established on vxlan.
-func requireVlanTunnelReady(vxlan netlink.Link, vid uint16, vni uint32) error {
+// requireVlanTunnelReady checks the preconditions a VLAN-to-VNI mapping needs
+// on vxlan.
+func requireVlanTunnelReady(vxlan netlink.Link) error {
 	if vxlan.Attrs().MasterIndex == 0 {
-		return fmt.Errorf("mapping VLAN %d to VNI %d on %s: device is not enslaved to a bridge",
-			vid, vni, vxlan.Attrs().Name)
+		return fmt.Errorf("VXLAN %s is not enslaved to a bridge", vxlan.Attrs().Name)
 	}
 	protinfo, err := netlink.LinkGetProtinfo(vxlan)
 	if err != nil {
 		return fmt.Errorf("reading bridge port state for %s: %w", vxlan.Attrs().Name, err)
 	}
 	if !protinfo.VlanTunnel {
-		return fmt.Errorf("mapping VLAN %d to VNI %d on %s: VLAN tunnel mode is not enabled",
-			vid, vni, vxlan.Attrs().Name)
+		return fmt.Errorf("VLAN tunnel mode is not enabled on %s", vxlan.Attrs().Name)
 	}
 	return nil
 }

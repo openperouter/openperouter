@@ -185,11 +185,14 @@ func (c *VNIConfigurator) SetupL2Trunk(ctx context.Context, params L2TrunkParams
 	return nil
 }
 
-// trunkPortSnapshot caches one trunk's VLAN membership, tunnel mappings and
-// VNI filter entries across the several SetupL2TrunkVNI calls needed to bring
-// up every L2VNI on the trunk, so a trunk with many tags reads each device's
-// state once per reconcile instead of once per tag.
+// trunkPortSnapshot caches one trunk's devices and their VLAN membership,
+// tunnel mappings and VNI filter entries across the several SetupL2TrunkVNI
+// calls needed to bring up every L2VNI on the trunk, so a trunk with many tags
+// resolves and reads each device once per reconcile instead of once per tag.
 type trunkPortSnapshot struct {
+	bridge           *netlink.Bridge
+	svd              netlink.Link
+	routerVeth       netlink.Link
 	routerVethVlans  []vlanMembership
 	bridgeVlans      []vlanMembership
 	svdVlans         []vlanMembership
@@ -197,13 +200,33 @@ type trunkPortSnapshot struct {
 	svdFilterEntries []vniFilterRange
 }
 
-// trunkSnapshotFor returns the cached snapshot for trunkID, building it from
-// the current kernel state the first time it's needed. SetupL2Trunk runs
-// before any SetupL2TrunkVNI call in a reconcile and adds no VLAN membership
-// of its own, so taking the snapshot lazily on first use is safe.
-func (c *VNIConfigurator) trunkSnapshotFor(routerVeth, bridge, svd netlink.Link, trunkID string) (*trunkPortSnapshot, error) {
+// trunkSnapshotFor returns the cached snapshot for trunkID, resolving the
+// trunk's devices and reading their state the first time it's needed.
+// SetupL2Trunk runs before any SetupL2TrunkVNI call in a reconcile and adds no
+// VLAN membership of its own, so taking the snapshot lazily on first use is
+// safe.
+func (c *VNIConfigurator) trunkSnapshotFor(names TrunkDeviceNames, trunkID string) (*trunkPortSnapshot, error) {
 	if snapshot, ok := c.trunkSnapshots[trunkID]; ok {
 		return snapshot, nil
+	}
+	bridgeLink, err := netlink.LinkByName(names.Bridge)
+	if err != nil {
+		return nil, fmt.Errorf("could not find trunk bridge %s: %w", names.Bridge, err)
+	}
+	bridge, ok := bridgeLink.(*netlink.Bridge)
+	if !ok {
+		return nil, fmt.Errorf("trunk switching device %s is not a bridge", names.Bridge)
+	}
+	svd, err := netlink.LinkByName(names.VXLan)
+	if err != nil {
+		return nil, fmt.Errorf("could not find trunk VXLAN %s: %w", names.VXLan, err)
+	}
+	routerVeth, err := netlink.LinkByName(names.NamespaceSide)
+	if err != nil {
+		return nil, fmt.Errorf("could not find trunk veth %s: %w", names.NamespaceSide, err)
+	}
+	if err := requireVlanTunnelReady(svd); err != nil {
+		return nil, err
 	}
 	routerVethVlans, err := portVlanMemberships(routerVeth)
 	if err != nil {
@@ -226,6 +249,9 @@ func (c *VNIConfigurator) trunkSnapshotFor(routerVeth, bridge, svd netlink.Link,
 		return nil, err
 	}
 	snapshot := &trunkPortSnapshot{
+		bridge:           bridge,
+		svd:              svd,
+		routerVeth:       routerVeth,
 		routerVethVlans:  routerVethVlans,
 		bridgeVlans:      bridgeVlans,
 		svdVlans:         svdVlans,
@@ -270,47 +296,28 @@ func (c *VNIConfigurator) SetupL2TrunkVNI(ctx context.Context, params L2VNIParam
 	return nil
 }
 
-// mapTrunkVIDToVNI resolves the trunk's shared devices and converges params'
-// VLAN tag onto them, returning the trunk bridge so the caller can attach
-// params' br-pe-<vni> endpoint to it.
+// mapTrunkVIDToVNI converges params' VLAN tag onto the trunk's shared devices,
+// returning the trunk bridge so the caller can attach params' br-pe-<vni>
+// endpoint to it. The devices and their snapshots are resolved once per trunk,
+// not once per tag.
 func (c *VNIConfigurator) mapTrunkVIDToVNI(names TrunkDeviceNames, params L2VNIParams, vid uint16) (*netlink.Bridge, error) {
-	bridgeLink, err := netlink.LinkByName(names.Bridge)
-	if err != nil {
-		return nil, fmt.Errorf("could not find trunk bridge %s: %w", names.Bridge, err)
-	}
-	bridge, ok := bridgeLink.(*netlink.Bridge)
-	if !ok {
-		return nil, fmt.Errorf("trunk switching device %s is not a bridge", names.Bridge)
-	}
-	svd, err := netlink.LinkByName(names.VXLan)
-	if err != nil {
-		return nil, fmt.Errorf("could not find trunk VXLAN %s: %w", names.VXLan, err)
-	}
-	routerVeth, err := netlink.LinkByName(names.NamespaceSide)
-	if err != nil {
-		return nil, fmt.Errorf("could not find trunk veth %s: %w", names.NamespaceSide, err)
-	}
-
-	snapshot, err := c.trunkSnapshotFor(routerVeth, bridge, svd, params.Trunk.TrunkID)
+	snapshot, err := c.trunkSnapshotFor(names, params.Trunk.TrunkID)
 	if err != nil {
 		return nil, err
 	}
-	if err := applyVlanMembership(routerVeth, vlanMembership{VID: vid},
+	if err := applyVlanMembership(snapshot.routerVeth, vlanMembership{VID: vid},
 		&snapshot.routerVethVlans); err != nil {
 		return nil, err
 	}
-	if err := applyVlanMembership(bridge, vlanMembership{VID: vid},
+	if err := applyVlanMembership(snapshot.bridge, vlanMembership{VID: vid},
 		&snapshot.bridgeVlans, withBridgeInterface()); err != nil {
 		return nil, err
 	}
-	if err := requireVlanTunnelReady(svd, vid, uint32(params.VNI)); err != nil {
-		return nil, err
-	}
-	if err := applyVlanToVNI(svd, vid, uint32(params.VNI),
+	if err := applyVlanToVNI(snapshot.svd, vid, uint32(params.VNI),
 		&snapshot.svdVlans, &snapshot.svdMappings, &snapshot.svdFilterEntries); err != nil {
 		return nil, err
 	}
-	return bridge, nil
+	return snapshot.bridge, nil
 }
 
 // setupTrunkVNIEndpoint creates params' br-pe-<vni> endpoint on bridge and
