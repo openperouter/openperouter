@@ -103,6 +103,9 @@ for nic in "${NICS[@]}"; do
     slot=$((slot + 1))
 done
 
+# shellcheck disable=SC2016 # udev expands $name after renaming the interface.
+echo 'SUBSYSTEM=="net", ACTION=="add", NAME=="toswitch1", RUN+="/usr/sbin/ip link property add dev $name altname toswitch1-alt"' \
+    >> "${UDEV_RULES}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/create-vfs.sh"

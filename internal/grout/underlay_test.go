@@ -8,13 +8,33 @@ import (
 
 	"github.com/openperouter/openperouter/internal/grout/devicestate"
 	"github.com/openperouter/openperouter/internal/hostnetwork"
+	"github.com/openperouter/openperouter/internal/pci"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/vishvananda/netlink"
 )
 
 func TestSetupTunnelEndpointRequiresAddress(t *testing.T) {
 	err := setupTunnelEndpoint(context.Background(), NewClient("sock"), hostnetwork.UnderlayTunnelEndpointParams{})
 	require.ErrorContains(t, err, "at least one tunnel endpoint IP must be provided")
+}
+
+func TestRetrieveDeviceStateRejectsMissingTAPInterface(t *testing.T) {
+	t.Parallel()
+
+	state, err := retrieveDeviceState("missing0", PortModeTAP, pci.Sysfs{})
+	require.ErrorAs(t, err, &netlink.LinkNotFoundError{})
+	require.ErrorContains(t, err, "failed to find interface missing0")
+	assert.Equal(t, devicestate.State{}, state)
+}
+
+func TestRetrieveDeviceStateRejectsMissingAcceleratedInterface(t *testing.T) {
+	t.Parallel()
+
+	state, err := retrieveDeviceState("missing0", PortModeAccelerated, pci.Sysfs{})
+	require.ErrorAs(t, err, &netlink.LinkNotFoundError{})
+	require.ErrorContains(t, err, "failed to find interface missing0")
+	assert.Equal(t, devicestate.State{}, state)
 }
 
 func TestUnderlayInterfaces(t *testing.T) {

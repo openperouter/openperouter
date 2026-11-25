@@ -18,12 +18,14 @@ func TestSaveLoadDelete(t *testing.T) {
 	state := State{
 		DeviceID:       "enp3s0f0v0",
 		InterfaceName:  "enp3s0f0v0",
+		PrimaryName:    "eth0",
 		PCIAddress:     "0000:03:02.0",
 		OriginalDriver: "ice",
 		Addresses:      []string{"192.168.1.10/24", "fd00::10/64"},
 		AddrGenMode:    "0",
 		AcceptRA:       "1",
 		MTU:            9000,
+		AltNames:       []string{"toswitch1-alt", "enp65s0f0npf0vf12-uplink"},
 	}
 
 	require.NoError(t, store.Save(state.InterfaceName, state))

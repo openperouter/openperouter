@@ -269,8 +269,10 @@ The controller binds `NetworkDevice` entries as PCI ports by default, even if
 ports for every underlay interface, including those with `acceleratedConfig`.
 For PCI ports, the controller:
 
-1. Resolves the PCI address from `/sys/class/net/<interfaceName>/device`
-2. Saves the original driver and non-link-local addresses
+1. Resolves `interfaceName` through netlink, then reads the PCI address from
+   `/sys/class/net/<primaryName>/device`
+2. Saves the original driver, alternative names, MTU, IPv6 settings and
+   non-link-local addresses
 3. Binds non-bifurcated NICs (for example Intel and virtio-net PCI) to
    `vfio-pci`, or moves `mlx5_core` devices (Mellanox) into the router namespace
 4. Creates the grout port with `grcli interface add port u_<interfaceName> devargs <pci>`
@@ -278,7 +280,7 @@ For PCI ports, the controller:
 The interface referenced by interfaceName must exist on the host. Any address
 assigned to the interface will be used for the setup in the accelerated data path.
 When the Underlay CR is disposed, the interface will be moved back to the kernel
-together with its addresses and the original driver.
+together with its addresses, alternative names and the original driver.
 
 `acceleratedConfig` is rejected when `--datapath=kernel`.
 
@@ -325,6 +327,36 @@ Other interface names, such as `vtep-lo`, remain unchanged.
 > multiqueue is enabled (`queues=<N>` on the tap netdev and `mq=on` on the `virtio-net-pci` device), and
 > `rxQueues` and `qSize` cannot exceed the queue pairs and the `rx_queue_size`
 > of the device.
+
+### Selecting a device by alternative name
+
+With the grout datapath, `networkDevice.interfaceName` accepts either the
+primary device name or a netlink alternative name (Linux 5.5 or later).
+A role-based alternative name lets one `Underlay` select the right NIC on
+every node even when their primary names differ.
+
+Assign the same alternative name to the appropriate NIC on each node. For
+example:
+
+```bash
+ip link property add dev enp3s0f0v0 altname toswitch1-alt
+```
+
+Then reference it in the Underlay:
+
+```yaml
+interfaces:
+  - type: NetworkDevice
+    networkDevice:
+      interfaceName: toswitch1-alt
+```
+
+The API limits interface names, including alternative names, to **15 characters**.
+Grout limits them to **13 characters** because its port names include the
+`u_` prefix. TAP ports have an effective **11-character limit** because their
+kernel TAP names include the `tap_` prefix. In this accelerated-port example,
+Grout and FRR use `u_toswitch1-alt`. For TAP ports, choose an alternative name
+of at most 11 characters.
 
 ## SR-IOV Trunks
 

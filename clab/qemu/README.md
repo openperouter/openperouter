@@ -32,6 +32,12 @@ kubeconfig to `bin/kubeconfig` (or to `KUBECONFIG_PATH` when overridden).
 | toleafkind1   | toleafkind1_t   | toleafkind1  | 52:54:00:ab:cd:03 | igb            |
 | toleafkind2   | toleafkind2_t   | toleafkind2  | 52:54:00:ab:cd:04 | virtio-net-pci |
 
+The generated udev rules also give guest NIC `toswitch1` the alternative
+name `toswitch1-alt` after renaming it. The alternative-name Underlay test selects
+it by that name. Udev reapplies it on boot and after driver rebinds,
+so the hardware-emulation tests do not independently verify the controller's
+alternative-name restoration on teardown.
+
 ## Cleanup
 
 ```bash

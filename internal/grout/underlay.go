@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"slices"
 	"syscall"
 
 	"github.com/openperouter/openperouter/internal/grout/devicestate"
@@ -341,6 +342,9 @@ func restoreNetdev(ctx context.Context, targetNS string, state devicestate.State
 }
 
 func applyStateToLink(ctx context.Context, link netlink.Link, state devicestate.State) error {
+	if err := restoreAltNames(ctx, link, state.AltNames); err != nil {
+		return err
+	}
 	name := link.Attrs().Name
 	if state.MTU > 0 {
 		if err := netlink.LinkSetMTU(link, state.MTU); err != nil {
@@ -413,21 +417,23 @@ func retrieveDeviceState(
 	mode UnderlayPortMode,
 	sysfs pci.Sysfs,
 ) (devicestate.State, error) {
-	state := devicestate.State{InterfaceName: interfaceName}
+	link, err := netlink.LinkByName(interfaceName)
+	if err != nil {
+		return devicestate.State{}, fmt.Errorf("failed to find interface %s: %w", interfaceName, err)
+	}
+	primaryName := link.Attrs().Name
+	state := devicestate.State{InterfaceName: interfaceName, PrimaryName: primaryName}
 
 	if mode == PortModeAccelerated {
-		pciAddr, driver, err := retrievePCIState(interfaceName, sysfs)
+		pciAddr, driver, err := retrievePCIState(primaryName, sysfs)
 		if err != nil {
 			return devicestate.State{}, err
 		}
 		state.PCIAddress = pciAddr
 		state.OriginalDriver = driver
+		state.AltNames = link.Attrs().AltNames
 	}
 
-	link, err := netlink.LinkByName(interfaceName)
-	if err != nil {
-		return devicestate.State{}, fmt.Errorf("failed to find interface %s: %w", interfaceName, err)
-	}
 	state.MTU = link.Attrs().MTU
 
 	netlinkAddrs, err := hostnetwork.AddressesForInterface(interfaceName, hostnetwork.ExcludeLinkLocal())
@@ -442,15 +448,33 @@ func retrieveDeviceState(
 		state.Addresses = append(state.Addresses, a.IPNet.String())
 	}
 
-	state.AddrGenMode, err = sysctl.Read(sysctl.AddrGenMode(interfaceName, ""))
+	state.AddrGenMode, err = sysctl.Read(sysctl.AddrGenMode(primaryName, ""))
 	if err != nil {
-		return devicestate.State{}, fmt.Errorf("failed to read addr_gen_mode of %s: %w", interfaceName, err)
+		return devicestate.State{}, fmt.Errorf("failed to read addr_gen_mode of %s: %w", primaryName, err)
 	}
-	state.AcceptRA, err = sysctl.Read(sysctl.AcceptRA(interfaceName, ""))
+	state.AcceptRA, err = sysctl.Read(sysctl.AcceptRA(primaryName, ""))
 	if err != nil {
-		return devicestate.State{}, fmt.Errorf("failed to read accept_ra of %s: %w", interfaceName, err)
+		return devicestate.State{}, fmt.Errorf("failed to read accept_ra of %s: %w", primaryName, err)
 	}
 	return state, nil
+}
+
+func restoreAltNames(ctx context.Context, link netlink.Link, names []string) error {
+	for _, name := range names {
+		if name == link.Attrs().Name || slices.Contains(link.Attrs().AltNames, name) {
+			continue
+		}
+		err := netlink.LinkAddAltName(link, name)
+		if errors.Is(err, syscall.EEXIST) {
+			slog.WarnContext(ctx, "alternative name already taken, skipping restore",
+				"interfaceName", link.Attrs().Name, "altName", name)
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("failed to restore alternative name %s on %s: %w", name, link.Attrs().Name, err)
+		}
+	}
+	return nil
 }
 
 // restoreIPv6Settings re-applies the IPv6 sysctls the setup overrides to keep
