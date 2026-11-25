@@ -47,8 +47,13 @@ echo "OVS is ready"
 ovs-vsctl show
 
 umask 0
-for test_bin in "$@"; do
-    echo "Running $test_bin..."
+# Each argument is <package dir>:<test binary>. Tests run from their package
+# directory, as go test does, so that relative paths such as testdata resolve.
+for test in "$@"; do
+    pkg_dir="${test%%:*}"
+    test_bin="${test#*:}"
+    echo "Running $test_bin in $pkg_dir..."
+    cd "$pkg_dir"
     if "$test_bin" -help 2>&1 | grep -q ginkgo; then
         "$test_bin" -test.v -ginkgo.v
     else
