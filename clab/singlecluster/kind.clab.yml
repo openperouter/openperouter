@@ -34,10 +34,12 @@ topology:
       group: frr
       binds:
         - leafkind1/frr.conf:/etc/frr/frr.conf
+        - ../leafkind/setup.sh:/setup.sh
     leafkind2:
       group: frr
       binds:
         - leafkind2/frr.conf:/etc/frr/frr.conf
+        - ../leafkind/setup.sh:/setup.sh
     spine:
       group: frr
       binds:

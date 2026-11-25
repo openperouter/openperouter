@@ -234,6 +234,7 @@ type Nexthop struct {
 }
 
 type Path struct {
+	Removed           bool              `json:"removed"`
 	Valid             bool              `json:"valid"`
 	Bestpath          bool              `json:"bestpath"`
 	SelectionReason   string            `json:"selectionReason"`

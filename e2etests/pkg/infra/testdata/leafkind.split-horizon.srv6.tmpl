@@ -1,0 +1,87 @@
+! SRv6 VPN split-horizon fixture: exchange VPN routes with OpenPE and export
+! leafkind1's test prefix from the permanent sh-evpn VRF provisioned by setup.sh.
+! ISIS advertises locators only toward OpenPE; spine peering stays disabled.
+!
+log file /etc/frr/frr.log debug
+ipv6 forwarding
+!
+vrf sh-evpn
+exit-vrf
+!
+router bgp {{ .ASN }}
+ bgp router-id {{ .RouterID }}
+ no bgp ebgp-requires-policy
+ no bgp network import-check
+ no bgp default ipv4-unicast
+{{- range .Neighbors }}
+ neighbor {{ .ID }} remote-as {{ $.PERouterASN }}
+ neighbor {{ .ID }} timers connect 5
+{{- end }}
+ !
+ address-family ipv4 vpn
+{{- range .Neighbors }}
+  neighbor {{ .ID }} activate
+{{- end }}
+ exit-address-family
+ !
+ address-family ipv6 vpn
+{{- range .Neighbors }}
+  neighbor {{ .ID }} activate
+{{- end }}
+ exit-address-family
+ !
+{{/* Keep EVPN initialized to avoid an FRR config-writer crash when restoring defaults. */}}
+ address-family l2vpn evpn
+ exit-address-family
+ !
+ segment-routing srv6
+  encap-behavior {{ .SRv6.EncapBehavior }}
+  locator MAIN
+ exit
+exit
+!
+router bgp {{ .ASN }} vrf sh-evpn
+ bgp router-id {{ .RouterID }}
+ no bgp network import-check
+ sid vpn per-vrf export auto
+{{- range $af := .BGPAddressFamilies }}
+ address-family {{ $af.AFI }} {{ $af.SAFI }}
+{{- $familyKey := safiAFIKey $af.AFI $af.SAFI }}
+{{- $prefixes := index $.Networks $familyKey }}
+{{- range $prefix := $prefixes }}
+  network {{ $prefix }}
+{{- end }}
+  rd vpn export {{ $.ASN }}:100
+  rt vpn export {{ $.ASN }}:100
+  export vpn
+ exit-address-family
+{{- end }}
+exit
+!
+interface eth1
+exit
+!
+interface {{ .ToSwitchInterface }}
+ ipv6 router isis ISIS
+exit
+!
+router isis ISIS
+ is-type level-1
+ advertise-passive-only
+ net {{ .ISISNet }}
+ segment-routing srv6
+  locator MAIN
+ exit
+exit
+!
+segment-routing
+ srv6
+  locators
+   locator MAIN
+    prefix {{ .SRv6.Prefix }} block-len 32 node-len 16
+    behavior usid
+    format usid-f3216
+   exit
+  exit
+ exit
+exit

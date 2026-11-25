@@ -13,6 +13,7 @@ const (
 
 	EVPN    SAFI = "evpn"
 	Unicast SAFI = "unicast"
+	VPN     SAFI = "vpn"
 )
 
 // NLP (NetworkLayerProtocol) represents a full address family plus subsequent address family, as defined in RFC4760 for
@@ -31,5 +32,10 @@ type SAFI string
 
 // String returns a string representation of the NLP with AFI and SAFI separated by a single whitespace.
 func (nlp NLP) String() string {
-	return fmt.Sprintf("%s %s", nlp.AFI, nlp.SAFI)
+	return SAFIAFIKey(nlp.AFI, nlp.SAFI)
+}
+
+// SAFIAFIKey returns the map key for an AFI/SAFI pair.
+func SAFIAFIKey(afi AFI, safi SAFI) string {
+	return fmt.Sprintf("%s %s", afi, safi)
 }

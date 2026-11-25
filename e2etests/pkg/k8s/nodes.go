@@ -117,3 +117,10 @@ func NodesWithLabel(nodes []corev1.Node, label string) ([]corev1.Node, error) {
 func NodeForPod(pod *corev1.Pod) corev1.Node {
 	return corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: pod.Spec.NodeName}}
 }
+
+// NodeSelectorForNode selects the given node by its hostname label.
+func NodeSelectorForNode(node corev1.Node) *metav1.LabelSelector {
+	return &metav1.LabelSelector{
+		MatchLabels: map[string]string{"kubernetes.io/hostname": node.Name},
+	}
+}

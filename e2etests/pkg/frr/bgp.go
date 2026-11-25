@@ -7,9 +7,32 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/openperouter/openperouter/e2etests/pkg/executor"
+	"github.com/openperouter/openperouter/e2etests/pkg/ipfamily"
 )
+
+// BGPIPRoutesFor returns the BGP IP routing table for the given address family.
+func BGPIPRoutesFor(exec executor.Executor, family ipfamily.Family) (IPInfo, error) {
+	command := fmt.Sprintf("show bgp %s json", family)
+	output, err := exec.Exec("vtysh", "-c", command)
+	if err != nil {
+		return IPInfo{}, fmt.Errorf("failed to run `%s`: %w. Output: %s", command, err, output)
+	}
+	if hasFRRCommandError(output) {
+		return IPInfo{}, fmt.Errorf("FRR rejected `%s`: %s", command, output)
+	}
+
+	var routes IPInfo
+	if err := json.Unmarshal([]byte(output), &routes); err != nil {
+		return IPInfo{}, fmt.Errorf("invalid JSON from `%s`: %w. Output: %s", command, err, output)
+	}
+	if routes.Routes == nil {
+		return IPInfo{}, fmt.Errorf("output from `%s` has no routes object: %s", command, output)
+	}
+	return routes, nil
+}
 
 // NeighborInfo returns informations for the given neighbor in the given
 // executor.
@@ -222,4 +245,13 @@ func GetBFDPeers(exec executor.Executor) (BFDPeers, error) {
 	}
 
 	return bfdPeers, nil
+}
+
+func hasFRRCommandError(output string) bool {
+	for line := range strings.SplitSeq(output, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "%") {
+			return true
+		}
+	}
+	return false
 }
