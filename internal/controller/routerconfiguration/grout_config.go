@@ -121,7 +121,14 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 		configuredL3VPNs = append(configuredL3VPNs, l3vpn)
 	}
 
-	configuredTrunks, err := g.setupL2Trunks(ctx, groutClient, hostConfig.L2Trunks)
+	// The grout datapath does not implement Host trunks (TAP port pair) yet;
+	// report them rather than silently leaving their L2VNIs unconfigured.
+	for _, trunk := range hostConfig.L2Trunks {
+		resourceErrors = append(resourceErrors,
+			overlayAttachmentError(openpeerrors.KindL2Trunk, trunk.Name,
+				"Host L2Trunks are not supported by the grout datapath yet"))
+	}
+	configuredTrunks, err := g.setupL2Trunks(ctx, groutClient, hostConfig.SRIOVTrunks)
 	resourceErrors = append(resourceErrors, err)
 
 	configuredL2VNIs, err := setupGroutL2VNIs(ctx, groutClient, ovsClient,
@@ -162,7 +169,7 @@ func (g *GroutDatapathConfigurator) Configure(ctx context.Context, config interf
 
 	slog.InfoContext(ctx, "removing deleted l2trunks")
 	if err := grout.RemoveNonConfiguredL2Trunks(ctx, groutClient, config.targetNamespace,
-		hostConfig.L2Trunks, g.trunkStateStore, g.sysfs); err != nil {
+		hostConfig.SRIOVTrunks, g.trunkStateStore, g.sysfs); err != nil {
 		return fmt.Errorf("failed to remove deleted l2trunks: %w", err)
 	}
 
@@ -215,7 +222,7 @@ func (g *GroutDatapathConfigurator) cleanupGroutInterfaces(
 func (g *GroutDatapathConfigurator) setupL2Trunks(
 	ctx context.Context,
 	groutClient *grout.Client,
-	l2Trunks []hostnetwork.L2TrunkParams,
+	l2Trunks []hostnetwork.SRIOVTrunkParams,
 ) (grout.ConfiguredTrunks, error) {
 	configured := make(grout.ConfiguredTrunks, len(l2Trunks))
 	var resourceErrors []error
@@ -240,7 +247,6 @@ func setupGroutL2VNIs(
 	configuredTrunks grout.ConfiguredTrunks,
 ) ([]hostnetwork.L2VNIParams, error) {
 	var errs []error
-	var err error
 	var configuredL2VNIs []hostnetwork.L2VNIParams
 	for _, vni := range l2VNIs {
 		if failedL3Domains.Has(vni.VRF) {
@@ -254,15 +260,7 @@ func setupGroutL2VNIs(
 				overlayAttachmentError(openpeerrors.KindL2VNI, vni.Name, err.Error()))
 			continue
 		}
-		switch vni.Attachment {
-		case hostnetwork.L2VNIAttachmentHost:
-			err = grout.AttachL2VNIToHost(ctx, client, ovsClient, vni)
-		case hostnetwork.L2VNIAttachmentVFTrunk:
-			err = grout.AttachL2VNIToVFTrunk(ctx, client, vni, configuredTrunks)
-		default:
-			err = fmt.Errorf("unsupported L2VNI attachment %d", vni.Attachment)
-		}
-		if err != nil {
+		if err := attachGroutL2VNI(ctx, client, ovsClient, vni, configuredTrunks); err != nil {
 			errs = append(errs,
 				overlayAttachmentError(openpeerrors.KindL2VNI, vni.Name, err.Error()))
 			continue
@@ -271,4 +269,14 @@ func setupGroutL2VNIs(
 	}
 
 	return configuredL2VNIs, errors.Join(errs...)
+}
+
+// attachGroutL2VNI attaches the VNI to the grout endpoint its trunk
+// configuration selects.
+func attachGroutL2VNI(ctx context.Context, client *grout.Client, ovsClient *hostnetwork.OVSClient,
+	vni hostnetwork.L2VNIParams, trunks grout.ConfiguredTrunks) error {
+	if vni.Trunk == nil {
+		return grout.AttachL2VNIToHost(ctx, client, ovsClient, vni)
+	}
+	return grout.AttachL2VNIToVFTrunk(ctx, client, vni, trunks)
 }

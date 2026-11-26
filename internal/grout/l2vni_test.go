@@ -79,8 +79,9 @@ func TestAttachL2VNIBridgeToTrunk(t *testing.T) {
 			}
 			trunks := ConfiguredTrunks{
 				"workloads": {
-					Name:  "workloads",
-					SRIOV: &hostnetwork.SRIOVTrunkParams{PFName: "enp1s0", VFIndex: 1},
+					L2TrunkParams: hostnetwork.L2TrunkParams{Name: "workloads"},
+					PFName:        "enp1s0",
+					VFIndex:       1,
 				},
 			}
 			err := AttachL2VNIToVFTrunk(context.Background(), NewClient("sock"), params, trunks)
@@ -100,8 +101,9 @@ func TestAttachL2VNIBridgeWithUnconfiguredTrunk(t *testing.T) {
 			name: "only another trunk is configured",
 			trunks: ConfiguredTrunks{
 				"other": {
-					Name:  "other",
-					SRIOV: &hostnetwork.SRIOVTrunkParams{PFName: "enp1s0", VFIndex: 2},
+					L2TrunkParams: hostnetwork.L2TrunkParams{Name: "other"},
+					PFName:        "enp1s0",
+					VFIndex:       2,
 				},
 			},
 		},

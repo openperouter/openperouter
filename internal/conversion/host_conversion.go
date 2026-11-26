@@ -64,7 +64,10 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig APIConfigData) (H
 		return HostConfigData{}, fmt.Errorf("failed to translate passthrough configuration to host, err: %w", err)
 	}
 
-	l2Trunks := l2trunksToHost(apiConfig.L2Trunks, targetNS)
+	l2Trunks, sriovTrunks, err := l2trunksToHost(apiConfig.L2Trunks, targetNS)
+	if err != nil {
+		return HostConfigData{}, fmt.Errorf("failed to translate L2Trunks to host, err: %w", err)
+	}
 
 	// Thanks to validateTunnelEndpointForHostConfig, we know that if the tunnel endpoint is nil, L3VNIs, L2VNIs and
 	// L3VPNs are empty, too, and we must return early here.
@@ -77,6 +80,7 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig APIConfigData) (H
 			L3VNIs:        []hostnetwork.L3VNIParams{},
 			L2VNIs:        []hostnetwork.L2VNIParams{},
 			L2Trunks:      l2Trunks,
+			SRIOVTrunks:   sriovTrunks,
 			L3Passthrough: l3Passthrough,
 		}, nil
 	}
@@ -140,6 +144,7 @@ func APItoHostConfig(nodeIndex int, targetNS string, apiConfig APIConfigData) (H
 		L3VNIs:        l3VNIs,
 		L2VNIs:        l2VNIs,
 		L2Trunks:      l2Trunks,
+		SRIOVTrunks:   sriovTrunks,
 		L3VPNs:        l3VPNs,
 		L3Passthrough: l3Passthrough,
 	}, nil
@@ -366,51 +371,80 @@ func l2vniToHost(
 		copy(hostL2VNI.L2GatewayIPs, l2vni.Spec.GatewayIPs)
 	}
 	if l2vni.Spec.HostMaster != nil {
-		hm, err := convertHostMaster(&l2vni)
+		hm, err := convertHostMaster(l2vni.Spec.HostMaster, client.ObjectKeyFromObject(&l2vni).String())
 		if err != nil {
 			return hostnetwork.L2VNIParams{}, err
 		}
 		hostL2VNI.HostMaster = hm
 	}
 	if l2vni.Spec.Trunk != nil {
-		hostL2VNI.Attachment = hostnetwork.L2VNIAttachmentVFTrunk
 		hostL2VNI.Trunk = &hostnetwork.L2VNITrunkParams{
-			Name: l2vni.Spec.Trunk.Name,
-			VLAN: l2vni.Spec.Trunk.VLAN.Tag,
+			TrunkID: hostnetwork.TrunkID(l2vni.Namespace, l2vni.Spec.Trunk.Name),
+			Name:    l2vni.Spec.Trunk.Name,
+			VLAN:    l2vni.Spec.Trunk.VLAN.Tag,
 		}
 	}
 	return hostL2VNI, nil
 }
 
-func l2trunksToHost(l2trunks []v1alpha1.L2Trunk, targetNS string) []hostnetwork.L2TrunkParams {
-	hostL2Trunks := make([]hostnetwork.L2TrunkParams, 0, len(l2trunks))
-	for _, trunk := range l2trunks {
-		hostL2Trunks = append(hostL2Trunks, hostnetwork.L2TrunkParams{
-			Name:     trunk.Name,
-			TargetNS: targetNS,
-			SRIOV:    sriovTrunkToHost(trunk.Spec.SRIOV),
-		})
+// l2trunksToHost splits the trunks into the datapath-specific host
+// representations: Host trunks keep the simple host attachment the kernel
+// datapath consumes, while SRIOV trunks extend it with the VF the grout
+// datapath binds.
+func l2trunksToHost(trunks []v1alpha1.L2Trunk, targetNS string) ([]hostnetwork.L2TrunkParams, []hostnetwork.SRIOVTrunkParams, error) {
+	hostTrunks := make([]hostnetwork.L2TrunkParams, 0, len(trunks))
+	sriovTrunks := make([]hostnetwork.SRIOVTrunkParams, 0, len(trunks))
+	for _, trunk := range trunks {
+		base := hostnetwork.L2TrunkParams{
+			Name:      trunk.Name,
+			Namespace: trunk.Namespace,
+			TargetNS:  targetNS,
+		}
+		if trunk.Spec.Type == v1alpha1.L2TrunkTypeSRIOV {
+			sriov, err := sriovTrunkToHost(trunk, base)
+			if err != nil {
+				return nil, nil, err
+			}
+			sriovTrunks = append(sriovTrunks, sriov)
+			continue
+		}
+		hostMaster, err := trunkHostMaster(trunk)
+		if err != nil {
+			return nil, nil, err
+		}
+		base.HostMaster = hostMaster
+		hostTrunks = append(hostTrunks, base)
 	}
-	return hostL2Trunks
+	return hostTrunks, sriovTrunks, nil
 }
 
-// sriovTrunkToHost relies on the trunk having been validated, so a set SRIOV
-// config always carries a VF index.
-func sriovTrunkToHost(sriov *v1alpha1.SRIOVTrunkConfig) *hostnetwork.SRIOVTrunkParams {
-	if sriov == nil {
-		return nil
+// sriovTrunkToHost relies on the trunk having been validated, so a SRIOV trunk
+// always carries a VF index.
+func sriovTrunkToHost(trunk v1alpha1.L2Trunk, base hostnetwork.L2TrunkParams) (hostnetwork.SRIOVTrunkParams, error) {
+	if trunk.Spec.SRIOV == nil || trunk.Spec.SRIOV.VFIndex == nil {
+		return hostnetwork.SRIOVTrunkParams{}, fmt.Errorf("L2Trunk %s: sriov vfIndex is required for type SRIOV",
+			client.ObjectKeyFromObject(&trunk))
 	}
-	params := &hostnetwork.SRIOVTrunkParams{
-		PFName:  sriov.PFName,
-		VFIndex: *sriov.VFIndex,
+	sriov := hostnetwork.SRIOVTrunkParams{
+		L2TrunkParams: base,
+		PFName:        trunk.Spec.SRIOV.PFName,
+		VFIndex:       *trunk.Spec.SRIOV.VFIndex,
 	}
-	if sriov.AcceleratedConfig != nil {
-		params.AcceleratedConfig = &hostnetwork.AcceleratedConfigParams{
-			RXQueues: sriov.AcceleratedConfig.RXQueues,
-			QSize:    sriov.AcceleratedConfig.QSize,
+	if trunk.Spec.SRIOV.AcceleratedConfig != nil {
+		sriov.AcceleratedConfig = &hostnetwork.AcceleratedConfigParams{
+			RXQueues: trunk.Spec.SRIOV.AcceleratedConfig.RXQueues,
+			QSize:    trunk.Spec.SRIOV.AcceleratedConfig.QSize,
 		}
 	}
-	return params
+	return sriov, nil
+}
+
+// trunkHostMaster converts the trunk's optional host attachment.
+func trunkHostMaster(trunk v1alpha1.L2Trunk) (*hostnetwork.HostMaster, error) {
+	if trunk.Spec.HostMaster == nil {
+		return nil, nil
+	}
+	return convertHostMaster(trunk.Spec.HostMaster, client.ObjectKeyFromObject(&trunk).String())
 }
 
 func l3vpnsToHost(
@@ -642,37 +676,28 @@ func vxlanPort(p *int32) *int32 {
 	return p
 }
 
-func convertHostMaster(l2vni *v1alpha1.L2VNI) (*hostnetwork.HostMaster, error) {
-	switch l2vni.Spec.HostMaster.Type {
+func convertHostMaster(hostMaster *v1alpha1.HostMaster, owner string) (*hostnetwork.HostMaster, error) {
+	switch hostMaster.Type {
 	case v1alpha1.LinuxBridge:
-		if l2vni.Spec.HostMaster.LinuxBridge != nil {
+		if hostMaster.LinuxBridge != nil {
 			return &hostnetwork.HostMaster{
-				Name:       l2vni.Spec.HostMaster.LinuxBridge.Name,
-				Type:       l2vni.Spec.HostMaster.Type,
-				AutoCreate: new(l2vni.Spec.HostMaster.LinuxBridge.Lifecycle == v1alpha1.BridgeLifecycleManaged),
+				Name:       hostMaster.LinuxBridge.Name,
+				Type:       hostMaster.Type,
+				AutoCreate: new(hostMaster.LinuxBridge.Lifecycle == v1alpha1.BridgeLifecycleManaged),
 			}, nil
 		}
 	case v1alpha1.OVSBridge:
-		if l2vni.Spec.HostMaster.OVSBridge != nil {
+		if hostMaster.OVSBridge != nil {
 			return &hostnetwork.HostMaster{
-				Name:       l2vni.Spec.HostMaster.OVSBridge.Name,
-				Type:       l2vni.Spec.HostMaster.Type,
-				AutoCreate: new(l2vni.Spec.HostMaster.OVSBridge.Lifecycle == v1alpha1.BridgeLifecycleManaged),
+				Name:       hostMaster.OVSBridge.Name,
+				Type:       hostMaster.Type,
+				AutoCreate: new(hostMaster.OVSBridge.Lifecycle == v1alpha1.BridgeLifecycleManaged),
 			}, nil
 		}
 	default:
-		return nil, fmt.Errorf(
-			"unknown host master type %q for L2VNI %s",
-			l2vni.Spec.HostMaster.Type,
-			client.ObjectKeyFromObject(l2vni),
-		)
+		return nil, fmt.Errorf("unknown host master type %q for %s", hostMaster.Type, owner)
 	}
-
-	return nil, fmt.Errorf(
-		"host master config is nil for type %q in L2VNI %s",
-		l2vni.Spec.HostMaster.Type,
-		client.ObjectKeyFromObject(l2vni),
-	)
+	return nil, fmt.Errorf("host master config is nil for type %q in %s", hostMaster.Type, owner)
 }
 
 func resolveVTEPIP(

@@ -36,10 +36,10 @@ func TestSetupL2Trunk(t *testing.T) {
 	require.NoError(t, err)
 	commands := recordGroutCommands(t)
 
-	params := hostnetwork.L2TrunkParams{
-		Name:     "workloads",
-		TargetNS: accelTestNSPath,
-		SRIOV:    &hostnetwork.SRIOVTrunkParams{PFName: "pf0", VFIndex: 1},
+	params := hostnetwork.SRIOVTrunkParams{
+		L2TrunkParams: hostnetwork.L2TrunkParams{Name: "workloads", TargetNS: accelTestNSPath},
+		PFName:        "pf0",
+		VFIndex:       1,
 	}
 	store := devicestate.Store{Dir: t.TempDir()}
 	require.NoError(t, SetupL2Trunk(context.Background(), NewClient("sock"), params, store, sysfs.Sysfs))

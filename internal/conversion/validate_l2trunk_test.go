@@ -21,20 +21,27 @@ func TestFilterValidL2Trunks(t *testing.T) {
 		wantFailed []v1alpha1.FailedResource
 	}{
 		{
-			name: "host trunk",
+			name: "host trunk is valid",
 			trunks: []v1alpha1.L2Trunk{
-				// A type outside the enum can only come from a CR created
-				// before the type was dropped or one that bypassed CRD
-				// validation; it must still be rejected here.
 				hostTrunk(),
+				sriovTrunk("vf1", "enp1s0", 1),
+			},
+			wantValid: []string{"host", "vf1"},
+		},
+		{
+			name: "unsupported trunk type",
+			trunks: []v1alpha1.L2Trunk{
+				// A type outside the enum can only come from a CR that
+				// bypassed CRD validation; it must still be rejected here.
+				unsupportedTrunk(),
 				sriovTrunk("vf1", "enp1s0", 1),
 			},
 			wantValid: []string{"vf1"},
 			wantFailed: []v1alpha1.FailedResource{
 				{
-					Kind: openpeerrors.KindL2Trunk, Name: "host",
+					Kind: openpeerrors.KindL2Trunk, Name: "unsupported",
 					Reason:  v1alpha1.FailedResourceReasonValidationFailed,
-					Message: `unsupported L2Trunk type "Host"`,
+					Message: `unsupported L2Trunk type "Foo"`,
 				},
 			},
 		},
@@ -210,22 +217,32 @@ func TestDatapathValidatorsL2Trunks(t *testing.T) {
 			trunk:     sriovTrunk("vf", "enp1s0", 1),
 		},
 		{
-			name:      "grout rejects host trunks",
+			name:      "grout accepts host trunks",
 			validator: &GroutDatapathConfigValidator{},
 			trunk:     hostTrunk(),
-			wantErr:   "l2trunk host: type Host is not supported with the grout datapath",
+		},
+		{
+			name:      "grout rejects unsupported trunk types",
+			validator: &GroutDatapathConfigValidator{},
+			trunk:     unsupportedTrunk(),
+			wantErr:   "l2trunk unsupported: type Foo is not supported with the grout datapath",
 		},
 		{
 			name:      "kernel rejects SR-IOV trunks",
 			validator: &KernelDatapathConfigValidator{},
 			trunk:     sriovTrunk("vf", "enp1s0", 1),
-			wantErr:   "l2trunk vf: L2Trunks are only supported with the grout datapath",
+			wantErr:   "l2trunk vf: the kernel datapath only supports type Host",
 		},
 		{
-			name:      "kernel rejects host trunks",
+			name:      "kernel accepts host trunks",
 			validator: &KernelDatapathConfigValidator{},
 			trunk:     hostTrunk(),
-			wantErr:   "l2trunk host: L2Trunks are only supported with the grout datapath",
+		},
+		{
+			name:      "kernel rejects unsupported trunk types",
+			validator: &KernelDatapathConfigValidator{},
+			trunk:     unsupportedTrunk(),
+			wantErr:   "l2trunk unsupported: the kernel datapath only supports type Host",
 		},
 	}
 	for _, tt := range tests {
@@ -240,12 +257,20 @@ func TestDatapathValidatorsL2Trunks(t *testing.T) {
 	}
 }
 
-// hostTrunk builds a trunk whose type is outside the current enum, as a CR
-// created before the Host type was dropped would look like.
+// hostTrunk builds a kernel (Host) trunk.
 func hostTrunk() v1alpha1.L2Trunk {
 	return v1alpha1.L2Trunk{
 		ObjectMeta: metav1.ObjectMeta{Name: "host"},
-		Spec:       v1alpha1.L2TrunkSpec{Type: "Host"},
+		Spec:       v1alpha1.L2TrunkSpec{Type: v1alpha1.L2TrunkTypeHost},
+	}
+}
+
+// unsupportedTrunk builds a trunk whose type is outside the enum, as a CR that
+// bypassed CRD validation would look like.
+func unsupportedTrunk() v1alpha1.L2Trunk {
+	return v1alpha1.L2Trunk{
+		ObjectMeta: metav1.ObjectMeta{Name: "unsupported"},
+		Spec:       v1alpha1.L2TrunkSpec{Type: "Foo"},
 	}
 }
 

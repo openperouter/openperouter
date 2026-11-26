@@ -105,26 +105,12 @@ func PurgeLegacyVXLans(targetNS string, ports []int32) error {
 		}
 		var errs []error
 		for _, link := range links {
-			vxlan, ok := link.(*netlink.Vxlan)
-			if !ok {
-				continue
-			}
-			if _, configured := configuredPorts[int32(vxlan.Port)]; !configured {
-				continue
-			}
-			vni, err := vniFromVXLanName(vxlan.Name)
-			if errors.As(err, &NotRouterInterfaceError{}) {
-				continue
-			}
+			vxlan, err := legacyVXLanToPurge(link, configuredPorts)
 			if err != nil {
 				errs = append(errs, err)
 				continue
 			}
-			// External devices have no fixed VNI and are already migrated.
-			if vxlan.FlowBased && vxlan.VxlanId == 0 {
-				continue
-			}
-			if vxlan.VxlanId != int(vni) {
+			if vxlan == nil {
 				continue
 			}
 			slog.Info("purging legacy VXLAN device", "device", vxlan.Name, "port", vxlan.Port,
@@ -137,11 +123,37 @@ func PurgeLegacyVXLans(targetNS string, ports []int32) error {
 	})
 }
 
+// legacyVXLanToPurge returns the legacy per-VNI VXLAN a link represents on one
+// of the configured ports, or nil when the link is not one to purge.
+func legacyVXLanToPurge(link netlink.Link, configuredPorts map[int32]struct{}) (*netlink.Vxlan, error) {
+	vxlan, ok := link.(*netlink.Vxlan)
+	if !ok {
+		return nil, nil
+	}
+	if _, configured := configuredPorts[int32(vxlan.Port)]; !configured {
+		return nil, nil
+	}
+	vni, err := vniFromVXLanName(vxlan.Name)
+	if errors.As(err, &NotRouterInterfaceError{}) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	// External devices have no fixed VNI and are already migrated.
+	if vxlan.FlowBased && vxlan.VxlanId == 0 {
+		return nil, nil
+	}
+	if vxlan.VxlanId != int(vni) {
+		return nil, nil
+	}
+	return vxlan, nil
+}
+
 // checkVXLanConfigured reports why an existing VXLAN must be replaced. An
 // external vnifilter device has VxlanId 0: the VNI set lives in the VNI filter
 // entries, so comparing VxlanId alone would recreate the device on every
-// reconcile. The entries themselves are converged in place by
-// setVniFilterEntries.
+// reconcile. The entries themselves are converged in place by ensureVlanToVNI.
 func checkVXLanConfigured(observed, desired *netlink.Vxlan, vniFilterEnabled bool) error {
 	if !observed.FlowBased || observed.VxlanId != 0 {
 		return errors.New("VXLAN is not an external metadata device")

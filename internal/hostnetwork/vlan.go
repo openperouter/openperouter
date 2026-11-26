@@ -290,11 +290,9 @@ func ensureVLANEndpoint(name string, parent *netlink.Bridge, vid uint16, options
 		return nil, fmt.Errorf("looking up VLAN endpoint %s: %w", name, err)
 	}
 
-	if link != nil && !matchesVLANEndpoint(link, parentIndex, vid) {
-		if err := netlink.LinkDel(link); err != nil {
-			return nil, fmt.Errorf("deleting mismatched VLAN endpoint %s: %w", name, err)
-		}
-		link = nil
+	link, err = discardMismatchedVLANEndpoint(link, parentIndex, vid, name)
+	if err != nil {
+		return nil, err
 	}
 
 	if link == nil {
@@ -335,19 +333,16 @@ func matchesVLANEndpoint(link netlink.Link, parentIndex int, vid uint16) bool {
 	return ok && existing.ParentIndex == parentIndex && existing.VlanId == int(vid)
 }
 
-// removeVLANEndpoint deletes the named VLAN endpoint if it exists.
-func removeVLANEndpoint(name string) error {
-	link, err := netlink.LinkByName(name)
-	if errors.As(err, &netlink.LinkNotFoundError{}) {
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("looking up VLAN endpoint %s: %w", name, err)
+// discardMismatchedVLANEndpoint deletes the endpoint when it does not sit on
+// the expected parent and VLAN, so the caller recreates it.
+func discardMismatchedVLANEndpoint(link netlink.Link, parentIndex int, vid uint16, name string) (netlink.Link, error) {
+	if link == nil || matchesVLANEndpoint(link, parentIndex, vid) {
+		return link, nil
 	}
 	if err := netlink.LinkDel(link); err != nil {
-		return fmt.Errorf("deleting VLAN endpoint %s: %w", name, err)
+		return nil, fmt.Errorf("deleting mismatched VLAN endpoint %s: %w", name, err)
 	}
-	return nil
+	return nil, nil
 }
 
 // ensureSVD creates or converges the external vnifilter VXLAN device for a
@@ -377,17 +372,14 @@ func ensureSVD(params svdParams) (*netlink.Vxlan, error) {
 		return nil, fmt.Errorf("looking up VXLAN %s: %w", params.Name, err)
 	}
 
+	reconciled, err := reconcileExistingVXLan(link, desired, params.Bridge)
+	if err != nil {
+		return nil, err
+	}
+	if reconciled != nil {
+		return reconciled, nil
+	}
 	if link != nil {
-		existing, ok := link.(*netlink.Vxlan)
-		if ok {
-			enabled, err := vniFilterEnabled(existing.Index)
-			if err != nil {
-				return nil, err
-			}
-			if checkVXLanConfigured(existing, desired, enabled) == nil {
-				return reconcileSVDParams(existing, params.Bridge, desired.HardwareAddr)
-			}
-		}
 		if err := netlink.LinkDel(link); err != nil {
 			return nil, fmt.Errorf("deleting mismatched VXLAN %s: %w", params.Name, err)
 		}
@@ -447,6 +439,28 @@ func reconcileSVDParams(vxlan *netlink.Vxlan, bridge *netlink.Bridge, mac net.Ha
 	return result, nil
 }
 
+// reconcileExistingVXLan converges an existing external VNI-filtering VXLAN in
+// place and returns it. It returns nil when the link cannot be reused, leaving
+// its deletion to the caller.
+func reconcileExistingVXLan(link netlink.Link, desired *netlink.Vxlan,
+	bridge *netlink.Bridge) (*netlink.Vxlan, error) {
+	if link == nil {
+		return nil, nil
+	}
+	existing, ok := link.(*netlink.Vxlan)
+	if !ok {
+		return nil, nil
+	}
+	enabled, err := vniFilterEnabled(existing.Index)
+	if err != nil {
+		return nil, err
+	}
+	if checkVXLanConfigured(existing, desired, enabled) != nil {
+		return nil, nil
+	}
+	return reconcileSVDParams(existing, bridge, desired.HardwareAddr)
+}
+
 // ensureVlanTunnelPort enslaves the VXLAN to its bridge and enables VLAN
 // tunnel mode, which the VLAN-to-VNI mapping requires.
 func ensureVlanTunnelPort(vxlan netlink.Link) error {
@@ -468,6 +482,27 @@ func ensureVlanTunnelPort(vxlan netlink.Link) error {
 // plain VLAN membership, tunnel_info, then the VNI filter entry. Steps 2-4 fail
 // EINVAL out of order.
 func ensureVlanToVNI(vxlan netlink.Link, vid uint16, vni uint32) error {
+	if err := requireVlanTunnelReady(vxlan, vid, vni); err != nil {
+		return err
+	}
+	vlanCurrent, err := portVlanMemberships(vxlan)
+	if err != nil {
+		return err
+	}
+	mappings, err := vxlanTunnelMappings(vxlan.Attrs().Index)
+	if err != nil {
+		return err
+	}
+	filterEntries, err := vniFilterEntries(vxlan.Attrs().Index)
+	if err != nil {
+		return err
+	}
+	return applyVlanToVNI(vxlan, vid, vni, &vlanCurrent, &mappings, &filterEntries)
+}
+
+// requireVlanTunnelReady checks the preconditions ensureVlanToVNI's caller
+// must already have established on vxlan.
+func requireVlanTunnelReady(vxlan netlink.Link, vid uint16, vni uint32) error {
 	if vxlan.Attrs().MasterIndex == 0 {
 		return fmt.Errorf("mapping VLAN %d to VNI %d on %s: device is not enslaved to a bridge",
 			vid, vni, vxlan.Attrs().Name)
@@ -480,23 +515,32 @@ func ensureVlanToVNI(vxlan netlink.Link, vid uint16, vni uint32) error {
 		return fmt.Errorf("mapping VLAN %d to VNI %d on %s: VLAN tunnel mode is not enabled",
 			vid, vni, vxlan.Attrs().Name)
 	}
+	return nil
+}
 
-	if err := ensurePortVlans(vxlan, []vlanMembership{{VID: vid}}); err != nil {
+// applyVlanToVNI converges vid -> vni on vxlan against vlanCurrent, mappings
+// and filterEntries, the caller's own snapshots of its VLAN membership,
+// tunnel mappings and VNI filter table, updating each snapshot in place
+// instead of re-reading it. SetupL2TrunkVNI reuses one set of snapshots
+// across every L2VNI on a shared trunk so a 20-tag trunk reads the three
+// tables once per reconcile instead of once per tag.
+func applyVlanToVNI(vxlan netlink.Link, vid uint16, vni uint32,
+	vlanCurrent *[]vlanMembership, mappings *[]nl.TunnelInfo, filterEntries *[]vniFilterRange) error {
+	if err := applyVlanMembership(vxlan, vlanMembership{VID: vid}, vlanCurrent); err != nil {
 		return err
 	}
 
-	mappings, err := vxlanTunnelMappings(vxlan.Attrs().Index)
-	if err != nil {
-		return err
-	}
 	var staleTunnel uint32
+	remaining := make([]nl.TunnelInfo, 0, len(*mappings))
 	mappingPresent := false
-	for _, mapping := range mappings {
+	for _, mapping := range *mappings {
 		if mapping.Vid != vid {
+			remaining = append(remaining, mapping)
 			continue
 		}
 		if mapping.TunId == vni {
 			mappingPresent = true
+			remaining = append(remaining, mapping)
 			continue
 		}
 		staleTunnel = mapping.TunId
@@ -504,55 +548,23 @@ func ensureVlanToVNI(vxlan netlink.Link, vid uint16, vni uint32) error {
 			return fmt.Errorf("removing stale VLAN %d tunnel mapping from %s: %w", vid, vxlan.Attrs().Name, err)
 		}
 	}
+	*mappings = remaining
 
 	if !mappingPresent {
 		if err := netlink.BridgeVlanAddTunnelInfo(vxlan, vid, vni, false, false); err != nil {
 			return fmt.Errorf("mapping VLAN %d to VNI %d on %s: %w", vid, vni, vxlan.Attrs().Name, err)
 		}
+		*mappings = append(*mappings, nl.TunnelInfo{Vid: vid, TunId: vni})
 	}
-	if err := addVniFilterEntry(vxlan.Attrs().Index, vni); err != nil {
+	if err := applyVniFilterEntryAdd(vxlan.Attrs().Index, vni, filterEntries); err != nil {
 		return err
 	}
 	if staleTunnel != 0 && staleTunnel != vni {
-		if err := removeVniFilterEntry(vxlan.Attrs().Index, staleTunnel); err != nil {
+		if err := applyVniFilterEntryRemoval(vxlan.Attrs().Index, staleTunnel, filterEntries); err != nil {
 			return err
 		}
 	}
 	return nil
-}
-
-// removeVlanToVNI removes a VLAN-to-VNI mapping and its VNI filter entry. The
-// VLAN membership itself is left to the port-convergence helpers, which know
-// the full desired set.
-func removeVlanToVNI(vxlan netlink.Link, vid uint16, vni uint32) error {
-	mappings, err := vxlanTunnelMappings(vxlan.Attrs().Index)
-	if err != nil {
-		return err
-	}
-	found := false
-	for _, mapping := range mappings {
-		if mapping.Vid != vid || mapping.TunId != vni {
-			continue
-		}
-		found = true
-		if err := netlink.BridgeVlanDelTunnelInfo(vxlan, vid, vni, false, false); err != nil {
-			return fmt.Errorf("removing VLAN %d tunnel mapping from %s: %w", vid, vxlan.Attrs().Name, err)
-		}
-	}
-	if !found {
-		return nil
-	}
-
-	remaining, err := vxlanTunnelMappings(vxlan.Attrs().Index)
-	if err != nil {
-		return err
-	}
-	for _, mapping := range remaining {
-		if mapping.TunId == vni {
-			return nil
-		}
-	}
-	return removeVniFilterEntry(vxlan.Attrs().Index, vni)
 }
 
 // ensureLocalFDBEntry installs the anycast MAC as a local FDB entry on the

@@ -24,10 +24,9 @@ const MaxTrunkVFIndex = 0xff
 // VF index and the three-digit hexadecimal VLAN tag.
 const trunkPFChars = 10
 
-var errUnsupportedTrunk = errors.New("only SR-IOV L2Trunks are supported by the grout datapath")
-
-// ConfiguredTrunks holds the successfully configured L2Trunks, keyed by name.
-type ConfiguredTrunks map[string]hostnetwork.L2TrunkParams
+// ConfiguredTrunks holds the successfully configured SRIOV L2Trunks, keyed by
+// name.
+type ConfiguredTrunks map[string]hostnetwork.SRIOVTrunkParams
 
 // Port returns the grout port of the named trunk, and whether the trunk
 // was configured.
@@ -42,11 +41,8 @@ func (c ConfiguredTrunks) Port(trunkName string) (string, bool) {
 // GroutPortNameForTrunk returns the last 10 characters of the trunk's PF
 // name followed by its VF index in two hexadecimal digits. A trunk with no
 // SR-IOV parameters has no port, so its name is empty.
-func GroutPortNameForTrunk(params hostnetwork.L2TrunkParams) string {
-	if params.SRIOV == nil {
-		return ""
-	}
-	return fmt.Sprintf("%s%02x", pfNameSuffix(params.SRIOV.PFName, trunkPFChars), params.SRIOV.VFIndex)
+func GroutPortNameForTrunk(params hostnetwork.SRIOVTrunkParams) string {
+	return fmt.Sprintf("%s%02x", pfNameSuffix(params.PFName, trunkPFChars), params.VFIndex)
 }
 
 // SetupL2Trunk binds the VF of an SR-IOV L2Trunk to grout as a dedicated DPDK
@@ -57,21 +53,18 @@ func GroutPortNameForTrunk(params hostnetwork.L2TrunkParams) string {
 func SetupL2Trunk(
 	ctx context.Context,
 	client *Client,
-	params hostnetwork.L2TrunkParams,
+	params hostnetwork.SRIOVTrunkParams,
 	store devicestate.Store,
 	sysfs pci.Sysfs,
 ) error {
 	slog.DebugContext(ctx, "setup L2Trunk", "trunk", params.Name)
 	defer slog.DebugContext(ctx, "setup L2Trunk done", "trunk", params.Name)
 
-	if params.SRIOV == nil {
-		return errUnsupportedTrunk
-	}
-	if params.SRIOV.VFIndex < 0 || params.SRIOV.VFIndex > MaxTrunkVFIndex {
-		return fmt.Errorf("vfIndex %d must be between 0 and %d", params.SRIOV.VFIndex, MaxTrunkVFIndex)
+	if params.VFIndex < 0 || params.VFIndex > MaxTrunkVFIndex {
+		return fmt.Errorf("vfIndex %d must be between 0 and %d", params.VFIndex, MaxTrunkVFIndex)
 	}
 	portName := GroutPortNameForTrunk(params)
-	state, err := ensureTrunkDeviceState(portName, params.SRIOV, store, sysfs)
+	state, err := ensureTrunkDeviceState(portName, params, store, sysfs)
 	if err != nil {
 		return err
 	}
@@ -95,7 +88,7 @@ func SetupL2Trunk(
 		return fmt.Errorf("failed to prepare grout port driver for %s: %w", state.PCIAddress, err)
 	}
 	return netnamespace.In(perouterNetNS, func() error {
-		return configureTrunkPort(ctx, client, portName, trunkPortOptions(params.SRIOV), state)
+		return configureTrunkPort(ctx, client, portName, trunkPortOptions(params), state)
 	})
 }
 
@@ -120,7 +113,7 @@ func RemoveNonConfiguredL2Trunks(
 	ctx context.Context,
 	client *Client,
 	targetNS string,
-	configuredTrunks []hostnetwork.L2TrunkParams,
+	configuredTrunks []hostnetwork.SRIOVTrunkParams,
 	store devicestate.Store,
 	sysfs pci.Sysfs,
 ) error {
@@ -175,7 +168,7 @@ func teardownL2Trunk(
 // before the VF is touched, and never updated afterwards.
 func ensureTrunkDeviceState(
 	portName string,
-	sriov *hostnetwork.SRIOVTrunkParams,
+	sriov hostnetwork.SRIOVTrunkParams,
 	store devicestate.Store,
 	sysfs pci.Sysfs,
 ) (devicestate.State, error) {
@@ -202,7 +195,7 @@ func ensureTrunkDeviceState(
 // bound to vfio-pci has no kernel netdev, and its original driver can no
 // longer be recovered.
 func retrieveTrunkDeviceState(
-	sriov *hostnetwork.SRIOVTrunkParams,
+	sriov hostnetwork.SRIOVTrunkParams,
 	sysfs pci.Sysfs,
 ) (devicestate.State, error) {
 	pciAddr, err := sysfs.PCIAddressForVF(sriov.PFName, int(sriov.VFIndex))
@@ -280,7 +273,7 @@ func deleteVLanInterfaces(ctx context.Context, client *Client, portName string) 
 	return nil
 }
 
-func trunkPortOptions(sriov *hostnetwork.SRIOVTrunkParams) portOptions {
+func trunkPortOptions(sriov hostnetwork.SRIOVTrunkParams) portOptions {
 	if sriov.AcceleratedConfig == nil {
 		return portOptions{}
 	}

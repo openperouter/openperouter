@@ -97,33 +97,51 @@ func FilterUniqueTrunkVLANs(l2vnis []v1alpha1.L2VNI) ([]v1alpha1.L2VNI, error) {
 // every workload VF on its PF, so a second trunk on the same PF would
 // duplicate its traffic and loop it back through the NIC switch.
 func filterL2TrunksSRIOVUniquePF(l2trunks []v1alpha1.L2Trunk) ([]v1alpha1.L2Trunk, error) {
-	// Sort the trunks by PF name to ensure deterministic behavior.
-	slices.SortFunc(l2trunks, func(a, b v1alpha1.L2Trunk) int {
+	// Host trunks have no PF, so only the SRIOV ones take part in the check.
+	sriovTrunks := make([]v1alpha1.L2Trunk, 0, len(l2trunks))
+	for _, trunk := range l2trunks {
+		if trunk.Spec.Type == v1alpha1.L2TrunkTypeSRIOV {
+			sriovTrunks = append(sriovTrunks, trunk)
+		}
+	}
+	// Sort by PF name to ensure deterministic behavior.
+	slices.SortFunc(sriovTrunks, func(a, b v1alpha1.L2Trunk) int {
 		return strings.Compare(a.Spec.SRIOV.PFName, b.Spec.SRIOV.PFName)
 	})
 
 	pfOwners := map[string]string{}
-	valid := make([]v1alpha1.L2Trunk, 0, len(l2trunks))
-
+	rejected := map[string]struct{}{}
 	var errs []error
-	for _, trunk := range l2trunks {
+	for _, trunk := range sriovTrunks {
 		pfName := trunk.Spec.SRIOV.PFName
 		if owner, ok := pfOwners[pfName]; ok {
 			errs = append(errs, l2TrunkValidationError(trunk.Name,
 				fmt.Sprintf("PF %s is already used by L2Trunk %s", pfName, owner)))
+			rejected[trunk.Name] = struct{}{}
 			continue
 		}
 		pfOwners[pfName] = trunk.Name
+	}
+
+	valid := make([]v1alpha1.L2Trunk, 0, len(l2trunks))
+	for _, trunk := range l2trunks {
+		if _, drop := rejected[trunk.Name]; drop {
+			continue
+		}
 		valid = append(valid, trunk)
 	}
 	return valid, errors.Join(errs...)
 }
 
 func validateL2Trunk(trunk v1alpha1.L2Trunk) error {
-	if trunk.Spec.Type != v1alpha1.L2TrunkTypeSRIOV {
+	switch trunk.Spec.Type {
+	case v1alpha1.L2TrunkTypeSRIOV:
+		return validateL2TrunkSRIOV(trunk.Spec)
+	case v1alpha1.L2TrunkTypeHost:
+		return nil
+	default:
 		return fmt.Errorf("unsupported L2Trunk type %q", trunk.Spec.Type)
 	}
-	return validateL2TrunkSRIOV(trunk.Spec)
 }
 
 func validateL2TrunkSRIOV(spec v1alpha1.L2TrunkSpec) error {

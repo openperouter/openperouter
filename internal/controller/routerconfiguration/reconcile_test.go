@@ -941,7 +941,7 @@ func TestReconcileFiltersKernelTrunks(t *testing.T) {
 	wantFailures := []v1alpha1.FailedResource{
 		{Kind: openpeerrors.KindL2Trunk, Name: "workloads",
 			Reason:  v1alpha1.FailedResourceReasonValidationFailed,
-			Message: "l2trunk workloads: L2Trunks are only supported with the grout datapath"},
+			Message: "l2trunk workloads: the kernel datapath only supports type Host"},
 		{Kind: openpeerrors.KindL2VNI, Name: "trunked",
 			Reason:  v1alpha1.FailedResourceReasonDependencyFailed,
 			Message: `referenced L2Trunk "workloads" not found`},

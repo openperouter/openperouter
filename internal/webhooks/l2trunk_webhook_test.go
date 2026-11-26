@@ -29,12 +29,19 @@ func TestValidateL2Trunk(t *testing.T) {
 			newTrunk: webhookSRIOVTrunk("a", 1, nil),
 		},
 		{
-			name: "unsupported trunk type",
+			name: "host trunk is accepted",
 			newTrunk: &v1alpha1.L2Trunk{
 				ObjectMeta: metav1.ObjectMeta{Name: "host", Namespace: "default"},
-				Spec:       v1alpha1.L2TrunkSpec{Type: "Host"},
+				Spec:       v1alpha1.L2TrunkSpec{Type: v1alpha1.L2TrunkTypeHost},
 			},
-			wantErr: `L2Trunk/host: unsupported L2Trunk type "Host"`,
+		},
+		{
+			name: "unsupported trunk type",
+			newTrunk: &v1alpha1.L2Trunk{
+				ObjectMeta: metav1.ObjectMeta{Name: "unsupported", Namespace: "default"},
+				Spec:       v1alpha1.L2TrunkSpec{Type: "Foo"},
+			},
+			wantErr: `L2Trunk/unsupported: unsupported L2Trunk type "Foo"`,
 		},
 		{
 			name:     "different VF of the same PF",

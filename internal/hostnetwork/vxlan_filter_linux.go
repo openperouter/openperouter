@@ -39,10 +39,6 @@ type vniFilterRange struct {
 	End   uint32
 }
 
-func (r vniFilterRange) contains(vni uint32) bool {
-	return vni >= r.Start && vni <= r.End
-}
-
 // createVniFilterVxlan creates an external vnifilter VXLAN device. The typed
 // LinkAdd path cannot express IFLA_VXLAN_VNIFILTER, so the request is
 // serialized here.
@@ -106,65 +102,55 @@ func vniFilterEntries(index int) ([]vniFilterRange, error) {
 	return entries, nil
 }
 
-// setVniFilterEntries converges the device's VNI filter entries to desired.
-// Extra entries are deleted and missing ones added, so a device never keeps a
-// VNI that no configured resource owns.
-func setVniFilterEntries(index int, desired []vniFilterRange) error {
-	existing, err := vniFilterEntries(index)
-	if err != nil {
-		return err
-	}
-
-	for _, entry := range existing {
-		if containsVniFilterRange(desired, entry) {
-			continue
-		}
-		if _, err := vniFilterRequest(unix.RTM_DELTUNNEL, index, entry).Execute(unix.NETLINK_ROUTE, 0); err != nil {
-			return fmt.Errorf("deleting VXLAN %d VNI filter %d-%d: %w", index, entry.Start, entry.End, err)
-		}
-	}
-
-	for _, entry := range desired {
-		if containsVniFilterRange(existing, entry) {
-			continue
-		}
-		if _, err := vniFilterRequest(unix.RTM_NEWTUNNEL, index, entry).Execute(unix.NETLINK_ROUTE, 0); err != nil {
-			return fmt.Errorf("adding VXLAN %d VNI filter %d-%d: %w", index, entry.Start, entry.End, err)
-		}
-	}
-	return nil
-}
-
-// addVniFilterEntry adds a single VNI to the device's filter table, the
-// equivalent of `bridge vni add dev <device> vni <vni>`.
-func addVniFilterEntry(index int, vni uint32) error {
+// applyVniFilterEntryAdd adds a single VNI to the device's filter table, the
+// equivalent of `bridge vni add dev <device> vni <vni>`. It converges against
+// entries, the caller's own snapshot of the device's filter table, and
+// updates it in place instead of re-reading the table: SetupL2TrunkVNI reuses
+// one snapshot across every L2VNI on a shared trunk so a 20-tag trunk reads
+// the filter table once per reconcile instead of once per tag.
+func applyVniFilterEntryAdd(index int, vni uint32, entries *[]vniFilterRange) error {
 	entry := vniFilterRange{Start: vni, End: vni}
-	existing, err := vniFilterEntries(index)
-	if err != nil {
-		return err
-	}
-	if containsVniFilterRange(existing, entry) {
+	if containsVniFilterRange(*entries, entry) {
 		return nil
 	}
 	if _, err := vniFilterRequest(unix.RTM_NEWTUNNEL, index, entry).Execute(unix.NETLINK_ROUTE, 0); err != nil {
 		return fmt.Errorf("adding VNI %d to VXLAN %d VNI filters: %w", vni, index, err)
 	}
+	*entries = append(*entries, entry)
 	return nil
 }
 
-// removeVniFilterEntry removes a single VNI from the device's filter table,
-// the equivalent of `bridge vni del dev <device> vni <vni>`.
-func removeVniFilterEntry(index int, vni uint32) error {
+// applyVniFilterEntryRemoval removes a single VNI from the device's filter
+// table, the equivalent of `bridge vni del dev <device> vni <vni>`. It
+// converges against entries, the caller's own snapshot, and updates it in
+// place; see applyVniFilterEntryAdd.
+func applyVniFilterEntryRemoval(index int, vni uint32, entries *[]vniFilterRange) error {
 	entry := vniFilterRange{Start: vni, End: vni}
-	existing, err := vniFilterEntries(index)
-	if err != nil {
-		return err
-	}
-	if !containsVniFilterRange(existing, entry) {
+	if !containsVniFilterRange(*entries, entry) {
 		return nil
 	}
+	if err := deleteVniFilterEntry(index, entry); err != nil {
+		return err
+	}
+	*entries = withoutVniFilterRange(*entries, entry)
+	return nil
+}
+
+func withoutVniFilterRange(ranges []vniFilterRange, target vniFilterRange) []vniFilterRange {
+	result := make([]vniFilterRange, 0, len(ranges))
+	for _, r := range ranges {
+		if r != target {
+			result = append(result, r)
+		}
+	}
+	return result
+}
+
+// deleteVniFilterEntry deletes an already-read VNI filter entry without
+// re-reading the table.
+func deleteVniFilterEntry(index int, entry vniFilterRange) error {
 	if _, err := vniFilterRequest(unix.RTM_DELTUNNEL, index, entry).Execute(unix.NETLINK_ROUTE, 0); err != nil {
-		return fmt.Errorf("removing VNI %d from VXLAN %d VNI filters: %w", vni, index, err)
+		return fmt.Errorf("removing VNI %d-%d from VXLAN %d VNI filters: %w", entry.Start, entry.End, index, err)
 	}
 	return nil
 }
