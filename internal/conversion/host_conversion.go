@@ -429,6 +429,16 @@ func l3vpnsToHost(
 		if err != nil {
 			return nil, fmt.Errorf("failed to translate L3VPN %s, err: %w", l3vpn.Name, err)
 		}
+		if isolation := l3vpn.Spec.RoutingIsolation; isolation != nil {
+			source := ""
+			if srv6Config.EncapsulationSource != nil {
+				source = *srv6Config.EncapsulationSource
+			}
+			hostL3VPN.RoutingIsolation = &hostnetwork.SRv6Isolation{
+				Source: source, UnderlayTable: uint32(isolation.UnderlayTable),
+				RemoteLocatorPrefixes: isolation.RemoteLocatorPrefixes,
+			}
+		}
 		hostL3VPNs = append(hostL3VPNs, hostL3VPN)
 	}
 	return hostL3VPNs, nil

@@ -34,7 +34,7 @@ func TestSetupVNIsWhenSharedStateFails(t *testing.T) {
 	wantErr := fmt.Sprintf("transient host failure: failed to get network namespace %s: %v",
 		missingNamespace, openErr)
 
-	result, errs := setupVNIs(context.Background(), nil, missingNamespace, hostConfig)
+	result, errs := setupVNIs(context.Background(), nil, missingNamespace, hostConfig, nil)
 
 	require.Equal(t, []hostnetwork.L3VNIParams{l3VNI}, result.l3VNIs)
 	require.Equal(t, []hostnetwork.L3VPNParams{l3VPN}, result.l3VPNs)
@@ -49,7 +49,7 @@ func TestSetupVNIsWhenSharedStateFails(t *testing.T) {
 func TestSetupVNIsWithoutVNIs(t *testing.T) {
 	// A reconcile without VNIs must not touch the host, so a missing router
 	// namespace does not produce errors.
-	result, errs := setupVNIs(context.Background(), nil, "/does-not-exist", conversion.HostConfigData{})
+	result, errs := setupVNIs(context.Background(), nil, "/does-not-exist", conversion.HostConfigData{}, nil)
 
 	require.Empty(t, result.l3VNIs)
 	require.Empty(t, result.l3VPNs)
@@ -66,7 +66,7 @@ func TestSetupL2VNIs(t *testing.T) {
 	tests := []struct {
 		name            string
 		l2VNIs          []hostnetwork.L2VNIParams
-		failedL3Domains map[string]struct{}
+		failedL3Domains map[string]error
 		setupErrs       map[string]error
 		wantSetUp       []hostnetwork.L2VNIParams
 		wantKept        []hostnetwork.L2VNIParams
@@ -111,7 +111,7 @@ func TestSetupL2VNIs(t *testing.T) {
 		{
 			name:            "an L2VNI of a failed L3 domain is reported and left out",
 			l2VNIs:          []hostnetwork.L2VNIParams{red, blue},
-			failedL3Domains: map[string]struct{}{"red": {}},
+			failedL3Domains: map[string]error{"red": errors.New("domain failed")},
 			wantSetUp:       []hostnetwork.L2VNIParams{blue},
 			wantKept:        []hostnetwork.L2VNIParams{blue},
 			wantErrs:        []error{wantResourceError(openpeerrors.KindL2VNI, "red", `L3 domain "red" failed netlink provisioning`)},
@@ -150,17 +150,17 @@ func TestSetupL3VNIs(t *testing.T) {
 		setupErrs   map[string]error
 		wantKept    []hostnetwork.L3VNIParams
 		wantErrs    []error
-		wantDomains map[string]struct{}
+		wantDomains map[string]error
 	}{
 		{
 			name:        "no L3VNIs",
-			wantDomains: map[string]struct{}{},
+			wantDomains: map[string]error{},
 		},
 		{
 			name:        "all set up",
 			l3VNIs:      []hostnetwork.L3VNIParams{red, blue},
 			wantKept:    []hostnetwork.L3VNIParams{red, blue},
-			wantDomains: map[string]struct{}{},
+			wantDomains: map[string]error{},
 		},
 		{
 			name:        "an error marked transient leaves the L3VNI out and marks its domain",
@@ -168,7 +168,7 @@ func TestSetupL3VNIs(t *testing.T) {
 			setupErrs:   map[string]error{"red": errTransient},
 			wantKept:    []hostnetwork.L3VNIParams{blue},
 			wantErrs:    []error{wantResourceError(openpeerrors.KindL3VNI, "red", errTransient.Error())},
-			wantDomains: map[string]struct{}{"red": {}},
+			wantDomains: map[string]error{"red": errTransient},
 		},
 		{
 			name:        "any other failure leaves the L3VNI out and marks its domain",
@@ -176,12 +176,12 @@ func TestSetupL3VNIs(t *testing.T) {
 			setupErrs:   map[string]error{"blue": errInvalidVRF},
 			wantKept:    []hostnetwork.L3VNIParams{red},
 			wantErrs:    []error{wantResourceError(openpeerrors.KindL3VNI, "blue", errInvalidVRF.Error())},
-			wantDomains: map[string]struct{}{"blue": {}},
+			wantDomains: map[string]error{"blue": errInvalidVRF},
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			failedL3Domains := map[string]struct{}{}
+			failedL3Domains := map[string]error{}
 			configurator := &fakeVNIConfigurator{setupErrs: tc.setupErrs}
 
 			kept, errs := setupL3VNIs(context.Background(), configurator, tc.l3VNIs, failedL3Domains)
@@ -207,17 +207,17 @@ func TestSetupL3VPNs(t *testing.T) {
 		setupErrs   map[string]error
 		wantKept    []hostnetwork.L3VPNParams
 		wantErrs    []error
-		wantDomains map[string]struct{}
+		wantDomains map[string]error
 	}{
 		{
 			name:        "no L3VPNs",
-			wantDomains: map[string]struct{}{},
+			wantDomains: map[string]error{},
 		},
 		{
 			name:        "all set up",
 			l3VPNs:      []hostnetwork.L3VPNParams{red, blue},
 			wantKept:    []hostnetwork.L3VPNParams{red, blue},
-			wantDomains: map[string]struct{}{},
+			wantDomains: map[string]error{},
 		},
 		{
 			name:        "an error marked transient leaves the L3VPN out and marks its domain",
@@ -225,7 +225,7 @@ func TestSetupL3VPNs(t *testing.T) {
 			setupErrs:   map[string]error{"red": errTransient},
 			wantKept:    []hostnetwork.L3VPNParams{blue},
 			wantErrs:    []error{wantResourceError(openpeerrors.KindL3VPN, "red", errTransient.Error())},
-			wantDomains: map[string]struct{}{"red": {}},
+			wantDomains: map[string]error{"red": errTransient},
 		},
 		{
 			name:        "any other failure leaves the L3VPN out and marks its domain",
@@ -233,12 +233,12 @@ func TestSetupL3VPNs(t *testing.T) {
 			setupErrs:   map[string]error{"blue": errPermanent},
 			wantKept:    []hostnetwork.L3VPNParams{red},
 			wantErrs:    []error{wantResourceError(openpeerrors.KindL3VPN, "blue", errPermanent.Error())},
-			wantDomains: map[string]struct{}{"blue": {}},
+			wantDomains: map[string]error{"blue": errPermanent},
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			failedL3Domains := map[string]struct{}{}
+			failedL3Domains := map[string]error{}
 			configurator := &fakeVNIConfigurator{setupErrs: tc.setupErrs}
 
 			kept, errs := setupL3VPNs(context.Background(), configurator, tc.l3VPNs, failedL3Domains)
@@ -250,6 +250,43 @@ func TestSetupL3VPNs(t *testing.T) {
 				"every L3VPN must be set up through the configurator")
 		})
 	}
+}
+
+func TestGuardConflictKeepsAttachmentsWithoutSetup(t *testing.T) {
+	red, blue := l3VNIForTest("red", 100), l3VNIForTest("blue", 200)
+	guardError := &hostnetwork.VRFGuardError{Err: errors.New("guard conflict")}
+	configurator := &fakeVNIConfigurator{setupErrs: map[string]error{"red": guardError}}
+	failed := map[string]error{}
+	kept, errs := setupL3VNIs(context.Background(), configurator, []hostnetwork.L3VNIParams{red, blue}, failed)
+	require.Equal(t, []hostnetwork.L3VNIParams{red, blue}, kept)
+	require.Len(t, errs, 1)
+	l2 := l2VNIForTest("red", 300)
+	configurator.l2VNIs = nil
+	l2Kept, l2Errors := setupL2VNIs(context.Background(), configurator, []hostnetwork.L2VNIParams{l2}, failed)
+	require.Equal(t, []hostnetwork.L2VNIParams{l2}, l2Kept)
+	require.Len(t, l2Errors, 1)
+	require.Empty(t, configurator.l2VNIs, "failed protected domain must not attach new ports")
+}
+
+func TestIsolationGuardFailureSkipsOnlyAffectedDomain(t *testing.T) {
+	red, blue := l3VNIForTest("red", 100), l3VNIForTest("blue", 200)
+	guardError := &hostnetwork.VRFGuardError{VRF: "red", Err: errors.New("guard conflict")}
+	failed := map[string]error{"red": guardError}
+	configurator := &fakeVNIConfigurator{}
+	kept, errs := setupL3VNIs(context.Background(), configurator, []hostnetwork.L3VNIParams{red, blue}, failed)
+	require.Equal(t, []hostnetwork.L3VNIParams{red, blue}, kept)
+	require.Len(t, errs, 1)
+	require.Equal(t, []hostnetwork.L3VNIParams{blue}, configurator.l3VNIs)
+	redVPN, blueVPN := l3VPNForTest("red"), l3VPNForTest("blue")
+	vpns, vpnErrors := setupL3VPNs(context.Background(), configurator, []hostnetwork.L3VPNParams{redVPN, blueVPN}, failed)
+	require.Equal(t, []hostnetwork.L3VPNParams{redVPN, blueVPN}, vpns)
+	require.Len(t, vpnErrors, 1)
+	require.Equal(t, []hostnetwork.L3VPNParams{blueVPN}, configurator.l3VPNs)
+	l2 := []hostnetwork.L2VNIParams{l2VNIForTest("red", 300), l2VNIForTest("blue", 400)}
+	retained, l2Errors := setupL2VNIs(context.Background(), configurator, l2[:1], failed)
+	require.Equal(t, l2[:1], retained)
+	require.Len(t, l2Errors, 1)
+	require.Empty(t, configurator.l2VNIs)
 }
 
 func l2VNIForTest(name string, vni int32) hostnetwork.L2VNIParams {

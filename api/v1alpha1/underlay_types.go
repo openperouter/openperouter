@@ -373,6 +373,17 @@ const (
 
 // SRV6Config contains SRV6 configuration for the underlay.
 type SRV6Config struct {
+	// encapsulationSource explicitly sets the namespace's SRv6 outer IPv6 source.
+	// Used only with L3VPN routingIsolation. Reconciliation omits the source
+	// from effective configuration when no isolated L3VPN survives filtering.
+	// Source/destination selectors do not authenticate packet origin;
+	// ingress source protection is external.
+	// +kubebuilder:validation:XValidation:rule="isIP(self) && ip(self).family() == 6",message="encapsulationSource must be an IPv6 address"
+	// +kubebuilder:validation:MaxLength:=39
+	// +kubebuilder:validation:MinLength:=2
+	// +optional
+	EncapsulationSource *string `json:"encapsulationSource,omitempty"`
+
 	// encapBehavior defines the behavior for SRv6 encapsulation as specified
 	// in RFC 8986 sections 5.1 and 5.2.
 	// If unset, defaults to H.Encaps.

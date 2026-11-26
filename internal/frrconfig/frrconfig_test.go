@@ -955,7 +955,8 @@ func TestUpdate(t *testing.T) {
 						},
 					},
 					SegmentRouting: &frr.UnderlaySegmentRouting{
-						SourceAddress: "2001:db8:1::1",
+						SourceAddress:       "2001:db8:1::1",
+						EncapsulationSource: "2001:db8:1::1",
 						Locator: frr.SRV6Locator{
 							Name:     "Main",
 							Prefix:   "2001:db8::/48",
@@ -1091,7 +1092,8 @@ func TestUpdate(t *testing.T) {
 						IPv6CIDR: "2001:db8:1234:5678::/128",
 					},
 					SegmentRouting: &frr.UnderlaySegmentRouting{
-						SourceAddress: "2001:db8:1234:5678::",
+						SourceAddress:       "2001:db8:1234:5678::",
+						EncapsulationSource: "2001:db8:1234:5678::",
 						Locator: frr.SRV6Locator{
 							Name:     "MAIN",
 							Prefix:   "fd00:0:32::/48",
@@ -1197,7 +1199,8 @@ func TestUpdate(t *testing.T) {
 						},
 					},
 					SegmentRouting: &frr.UnderlaySegmentRouting{
-						SourceAddress: "fc00::2:172:31:1:32",
+						SourceAddress:       "fc00::2:172:31:1:32",
+						EncapsulationSource: "fc00::2:172:31:1:32",
 						Locator: frr.SRV6Locator{
 							Name:     "MAIN",
 							Prefix:   "fd00:0:32::/48",

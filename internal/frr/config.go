@@ -103,9 +103,10 @@ type UnderlayISIS struct {
 }
 
 type UnderlaySegmentRouting struct {
-	SourceAddress string
-	Locator       SRV6Locator
-	EncapBehavior string
+	SourceAddress       string
+	EncapsulationSource string
+	Locator             SRV6Locator
+	EncapBehavior       string
 }
 
 type SRV6Locator struct {

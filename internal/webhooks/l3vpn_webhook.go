@@ -158,6 +158,10 @@ func validateL3VPN(l3vpn *v1alpha1.L3VPN) error {
 		return err
 	}
 
+	if err := conversion.ValidateRoutingIsolationForNodes(nodeList.Items, underlayList.Items, toValidate, l3vniList.Items); err != nil {
+		return fmt.Errorf("validation failed: %w", err)
+	}
+
 	if err := conversion.ValidateOverlayResourcesForNodes(
 		nodeList.Items,
 		l2vniList.Items,
@@ -178,4 +182,13 @@ func getL3VPNs() (*v1alpha1.L3VPNList, error) {
 		return nil, errors.Join(err, errors.New("failed to get existing L3VPN objects"))
 	}
 	return l3vpnList, nil
+}
+
+func hasIsolatedVPNs(vpns []v1alpha1.L3VPN) bool {
+	for _, vpn := range vpns {
+		if vpn.Spec.RoutingIsolation != nil {
+			return true
+		}
+	}
+	return false
 }

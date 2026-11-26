@@ -1181,7 +1181,8 @@ func TestSegmentRouting(t *testing.T) {
 				},
 			},
 			SegmentRouting: &UnderlaySegmentRouting{
-				SourceAddress: "fc00::2:172:31:1:32",
+				SourceAddress:       "fc00::2:172:31:1:32",
+				EncapsulationSource: "fc00::2:172:31:1:32",
 				Locator: SRV6Locator{
 					Name:     locatorName,
 					Prefix:   "fd00:0:32::/48",
@@ -1285,7 +1286,8 @@ func TestSegmentRoutingWithL2VNI(t *testing.T) {
 				IPv6CIDR: "2001:db8:1234:5678::/128",
 			},
 			SegmentRouting: &UnderlaySegmentRouting{
-				SourceAddress: "2001:db8:1234:5678::",
+				SourceAddress:       "2001:db8:1234:5678::",
+				EncapsulationSource: "2001:db8:1234:5678::",
 				Locator: SRV6Locator{
 					Name:     locatorName,
 					Prefix:   "fd00:0:32::/48",
@@ -1596,7 +1598,8 @@ func TestRouteReflectorL3VPN(t *testing.T) {
 				},
 			},
 			SegmentRouting: &UnderlaySegmentRouting{
-				SourceAddress: "fc00::2:172:31:1:32",
+				SourceAddress:       "fc00::2:172:31:1:32",
+				EncapsulationSource: "fc00::2:172:31:1:32",
 				Locator: SRV6Locator{
 					Name:     locatorName,
 					Prefix:   "fd00:0:32::/48",

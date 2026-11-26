@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"slices"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
@@ -40,6 +41,11 @@ type KernelDatapathConfigurator struct {
 	RouterMACPrefix string
 }
 
+var newVNIConfigurator = hostnetwork.NewVNIConfigurator
+var removeAllVRFs = hostnetwork.RemoveAllVRFs
+var removeNonConfiguredVRFs = hostnetwork.RemoveNonConfiguredVRFs
+var cleanupOrphanGuards = hostnetwork.CleanupOrphanVRFDefaultGuards
+
 // InterfaceNameForFRR returns the name unchanged: in the kernel datapath FRR
 // peers over the underlay network devices themselves.
 func (k *KernelDatapathConfigurator) InterfaceNameForFRR(name string) string {
@@ -59,12 +65,20 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 		return fmt.Errorf("failed to check if target namespace %s has underlay: %w", config.targetNamespace, err)
 	}
 	if len(currentUnderlayIfaces) > 0 && len(config.Underlays) == 0 {
-		restoreUnderlay(ctx, ovsClient, config.targetNamespace, currentUnderlayIfaces)
-		return nil
+		return restoreUnderlay(ctx, ovsClient, config.targetNamespace, currentUnderlayIfaces)
 	}
 
 	if len(config.Underlays) == 0 {
-		return nil // nothing to do
+		if err := hostnetwork.ReconcileSRv6Isolation(config.targetNamespace, nil); err != nil {
+			return err
+		}
+		// CNI DEL can empty the inventory before tunnel loopback deletion succeeds.
+		// Orphan routes and the loopback can be removed independently.
+		vrfErr := removeAllVRFs(config.targetNamespace)
+		bridgerefresh.StopAllVNIs()
+		guardErr := cleanupOrphanGuards(config.targetNamespace)
+		loopbackErr := hostnetwork.RestoreUnderlay(ctx, config.targetNamespace, nil)
+		return errors.Join(vrfErr, guardErr, loopbackErr)
 	}
 
 	slog.InfoContext(ctx, "configure interface start", "namespace", config.targetNamespace)
@@ -106,10 +120,23 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 		return fmt.Errorf("failed to setup underlay: %w", err)
 	}
 
+	remainingSource, err := remainingSRv6Source(config.Underlays[0].Spec.SRV6, hostConfig.Underlay.TunnelEndpoint)
+	if err != nil {
+		return err
+	}
+	failedDomains, err := prepareIsolationWithObsoleteCleanup(config.targetNamespace, hostConfig, remainingSource)
+	if err != nil {
+		return err
+	}
+
 	for i := range hostConfig.L3VNIs {
 		hostConfig.L3VNIs[i].RouterMAC = routerMAC
 	}
-	vnisToKeep, resourceErrors := setupVNIs(ctx, ovsClient, config.targetNamespace, hostConfig)
+	vnisToKeep, resourceErrors := setupVNIs(ctx, ovsClient, config.targetNamespace, hostConfig, failedDomains)
+	if err := hostnetwork.FinishSRv6Isolation(config.targetNamespace, hostConfig.L3VPNs, remainingSource,
+		isolationTenantNames(hostConfig)...); err != nil {
+		return errors.Join(append(resourceErrors, fmt.Errorf("retire SRv6 isolation after attachment setup: %w", err))...)
+	}
 	slog.InfoContext(ctx, "setting up passthrough")
 	if hostConfig.L3Passthrough != nil {
 		if err := hostnetwork.SetupPassthrough(ctx, *hostConfig.L3Passthrough); err != nil {
@@ -144,9 +171,13 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 	}
 
 	slog.InfoContext(ctx, "removing deleted vrfs")
-	if err := hostnetwork.RemoveNonConfiguredVRFs(config.targetNamespace,
+	if err := removeNonConfiguredVRFs(config.targetNamespace,
 		configuredVRFs); err != nil {
-		return errors.Join(append(resourceErrors, fmt.Errorf("failed to remove deleted vrfs: %w", err))...)
+		resourceErrors = append(resourceErrors, fmt.Errorf("failed to remove deleted vrfs: %w", err))
+		var removal *hostnetwork.VRFRemovalError
+		if !errors.As(err, &removal) || !removal.OnlyOrphanGuards {
+			return errors.Join(resourceErrors...)
+		}
 	}
 
 	if len(config.L3Passthrough) == 0 {
@@ -157,6 +188,41 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 	return errors.Join(resourceErrors...)
 }
 
+func prepareIsolationWithObsoleteCleanup(targetNamespace string, hostConfig conversion.HostConfigData,
+	remainingSource net.IP,
+) (map[string]error, error) {
+	failedDomains := map[string]error{}
+	for {
+		err := hostnetwork.PrepareSRv6Isolation(targetNamespace, hostConfig.L3VPNs, remainingSource, isolationTenantNames(hostConfig)...)
+		if err == nil {
+			return failedDomains, nil
+		}
+		var conflict *hostnetwork.VRFTableOwnershipError
+		if errors.As(err, &conflict) {
+			desired := map[string]bool{}
+			for _, vni := range hostConfig.L3VNIs {
+				desired[vni.VRF] = true
+			}
+			for _, vpn := range hostConfig.L3VPNs {
+				desired[vpn.VRF] = true
+			}
+			for _, vni := range hostConfig.L2VNIs {
+				desired[vni.VRF] = true
+			}
+			if err := hostnetwork.CleanupObsoleteIsolationVRF(targetNamespace, desired, conflict); err != nil {
+				return nil, fmt.Errorf("reconcile SRv6 table ownership: %w", err)
+			}
+			continue
+		}
+		var guardError *hostnetwork.VRFGuardError
+		if !errors.As(err, &guardError) {
+			return nil, fmt.Errorf("reconcile SRv6 routing isolation: %w", err)
+		}
+		failedDomains[guardError.VRF] = err
+		return failedDomains, nil
+	}
+}
+
 // setupVNIs sets up every VNI of the datapath reconcile cyle. The underlay MTU
 // and the VTEP loopback are node-wide, so it opens the router namespace once
 // and resolves them once for the whole reconcile cycle.
@@ -165,6 +231,7 @@ func setupVNIs(
 	ovsClient *hostnetwork.OVSClient,
 	routerNamespace string,
 	hostConfig conversion.HostConfigData,
+	failedL3Domains map[string]error,
 ) (vnis, []error) {
 	if len(hostConfig.L3VNIs) == 0 && len(hostConfig.L3VPNs) == 0 && len(hostConfig.L2VNIs) == 0 {
 		return vnis{}, nil
@@ -184,13 +251,15 @@ func setupVNIs(
 		}
 	}()
 
-	configurator, err := hostnetwork.NewVNIConfigurator(ns, ovsClient)
+	configurator, err := newVNIConfigurator(ns, ovsClient)
 	if err != nil {
 		configuratorErr := fmt.Errorf("%w: %w", openpeerrors.ErrTransient, err)
 		return vnisFromHostConfig(hostConfig), errorsForVNIs(hostConfig, configuratorErr)
 	}
 
-	failedL3Domains := map[string]struct{}{}
+	if failedL3Domains == nil {
+		failedL3Domains = map[string]error{}
+	}
 	configuredL3VNIs, l3VNIErrors := setupL3VNIs(ctx, configurator, hostConfig.L3VNIs, failedL3Domains)
 	configuredL3VPNs, l3VPNErrors := setupL3VPNs(ctx, configurator, hostConfig.L3VPNs, failedL3Domains)
 
@@ -253,15 +322,22 @@ func setupL3VNIs(
 	ctx context.Context,
 	configurator l3VNIConfigurator,
 	l3VNIs []hostnetwork.L3VNIParams,
-	failedL3Domains map[string]struct{},
+	failedL3Domains map[string]error,
 ) ([]hostnetwork.L3VNIParams, []error) {
 	var configured []hostnetwork.L3VNIParams
 	var errs []error
 	for _, vni := range l3VNIs {
 		slog.InfoContext(ctx, "setting up VNI", "vni", vni.VRF)
-		if err := configurator.SetupL3VNI(ctx, vni); err != nil {
+		err := failedL3Domains[vni.VRF]
+		if !isVRFGuardError(err) {
+			err = configurator.SetupL3VNI(ctx, vni)
+		}
+		if err != nil {
 			errs = append(errs, overlayAttachmentError(openpeerrors.KindL3VNI, vni.Name, err.Error()))
-			failedL3Domains[vni.VRF] = struct{}{}
+			failedL3Domains[vni.VRF] = err
+			if isVRFGuardError(err) {
+				configured = append(configured, vni)
+			}
 			continue
 		}
 		configured = append(configured, vni)
@@ -275,15 +351,22 @@ func setupL3VPNs(
 	ctx context.Context,
 	configurator l3VPNConfigurator,
 	l3VPNs []hostnetwork.L3VPNParams,
-	failedL3Domains map[string]struct{},
+	failedL3Domains map[string]error,
 ) ([]hostnetwork.L3VPNParams, []error) {
 	var configured []hostnetwork.L3VPNParams
 	var errs []error
 	for _, l3vpn := range l3VPNs {
 		slog.InfoContext(ctx, "setting up L3 VPN", "VRF", l3vpn.VRF)
-		if err := configurator.SetupL3VPN(ctx, l3vpn); err != nil {
+		err := failedL3Domains[l3vpn.VRF]
+		if !isVRFGuardError(err) {
+			err = configurator.SetupL3VPN(ctx, l3vpn)
+		}
+		if err != nil {
 			errs = append(errs, overlayAttachmentError(openpeerrors.KindL3VPN, l3vpn.Name, err.Error()))
-			failedL3Domains[l3vpn.VRF] = struct{}{}
+			failedL3Domains[l3vpn.VRF] = err
+			if isVRFGuardError(err) {
+				configured = append(configured, l3vpn)
+			}
 			continue
 		}
 		configured = append(configured, l3vpn)
@@ -299,14 +382,17 @@ func setupL2VNIs(
 	ctx context.Context,
 	configurator l2VNIConfigurator,
 	l2VNIs []hostnetwork.L2VNIParams,
-	failedL3Domains map[string]struct{},
+	failedL3Domains map[string]error,
 ) ([]hostnetwork.L2VNIParams, []error) {
 	var kept []hostnetwork.L2VNIParams
 	var errs []error
 	for _, vni := range l2VNIs {
-		if _, domainFailed := failedL3Domains[vni.VRF]; domainFailed {
+		if cause, domainFailed := failedL3Domains[vni.VRF]; domainFailed {
 			errs = append(errs, overlayAttachmentError(openpeerrors.KindL2VNI, vni.Name,
 				fmt.Sprintf("L3 domain %q failed netlink provisioning", vni.VRF)))
+			if isVRFGuardError(cause) {
+				kept = append(kept, vni)
+			}
 			continue
 		}
 		err := setupL2VNI(ctx, configurator, vni)
@@ -360,8 +446,11 @@ func restoreUnderlay(
 	ovsClient *hostnetwork.OVSClient,
 	targetNamespace string,
 	currentUnderlayIfaces []hostnetwork.UnderlayInterface,
-) {
+) error {
 	slog.InfoContext(ctx, "underlay removed, cleaning up VNIs and underlay interfaces")
+	if err := hostnetwork.ReconcileSRv6Isolation(targetNamespace, nil); err != nil {
+		return fmt.Errorf("remove SRv6 isolation: %w", err)
+	}
 
 	if err := hostnetwork.RemoveAllVNIs(ovsClient, targetNamespace); err != nil {
 		slog.Warn("failed to remove vnis after underlay removal", "err", err)
@@ -371,15 +460,14 @@ func restoreUnderlay(
 		slog.Warn("failed to remove l3vpns after underlay removal", "err", err)
 	}
 
-	if err := hostnetwork.RemoveAllVRFs(targetNamespace); err != nil {
-		slog.Warn("failed to remove vrfs after underlay removal", "err", err)
-	}
+	cleanupErr := removeAllVRFs(targetNamespace)
 
 	bridgerefresh.StopAllVNIs()
 	if err := hostnetwork.RestoreUnderlay(ctx, targetNamespace,
 		currentUnderlayIfaces); err != nil {
-		slog.Warn("failed to remove underlay interfaces after underlay removal", "err", err)
+		return errors.Join(cleanupErr, fmt.Errorf("restore underlay interfaces: %w", err))
 	}
+	return cleanupErr
 }
 
 func ensureSysctlsForConfig(ctx context.Context, config interfacesConfiguration) error {
@@ -435,4 +523,31 @@ func areAllUnderlayInterfacesToBeRemoved(
 		)
 	}
 	return allRemoved, nil
+}
+
+func isolationTenantNames(config conversion.HostConfigData) []string {
+	names := make([]string, 0, len(config.L3VNIs))
+	for _, vni := range config.L3VNIs {
+		names = append(names, vni.VRF)
+	}
+	return names
+}
+
+func isVRFGuardError(err error) bool {
+	var guardError *hostnetwork.VRFGuardError
+	return errors.As(err, &guardError)
+}
+
+func remainingSRv6Source(config *v1alpha1.SRV6Config, endpoint *hostnetwork.UnderlayTunnelEndpointParams) (net.IP, error) {
+	if config == nil {
+		return nil, nil
+	}
+	if endpoint == nil {
+		return nil, fmt.Errorf("SRv6 encapsulation requires a tunnel endpoint")
+	}
+	ip, _, err := net.ParseCIDR(endpoint.IPv6CIDR)
+	if err != nil {
+		return nil, fmt.Errorf("parse SRv6 tunnel endpoint: %w", err)
+	}
+	return net.ParseIP(conversion.SRv6EncapsulationSource(config, ip.String())), nil
 }

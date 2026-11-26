@@ -21,6 +21,7 @@ import (
 )
 
 // L3VPNSpec defines the desired state of L3VPN.
+// +kubebuilder:validation:XValidation:rule="!has(self.routingIsolation) || !has(self.features) || !self.features.exists(f, f == 'uDT4uDT6') || self.routingIsolation.underlayTable == 254",message="uDT4uDT6 requires main underlay table; use per-VRF SID for a dedicated table"
 // +kubebuilder:validation:XValidation:rule="!has(self.hostSession) || self.hostSession.hostASN != self.hostSession.asn",message="hostASN must be different from asn"
 type L3VPNSpec struct {
 	// nodeSelector specifies which nodes this L3VPN applies to.
@@ -35,6 +36,12 @@ type L3VPNSpec struct {
 	// +kubebuilder:validation:MaxLength:=15
 	// +required
 	VRF string `json:"vrf,omitempty"`
+
+	// routingIsolation enables unreachable tenant defaults and narrowly scoped
+	// SRv6 underlay lookups. The underlay must configure encapsulationSource.
+	// Source/destination selectors do not authenticate tenant traffic.
+	// +optional
+	RoutingIsolation *SRV6RoutingIsolation `json:"routingIsolation,omitempty"`
 
 	// exportRTs are the Route Targets to be used for exporting routes.
 	// If no exportRTs are provided, defaults to single export Route Target
@@ -68,10 +75,31 @@ type L3VPNSpec struct {
 	// features enables L3VPN boolean features.
 	// Supported features are:
 	// uDT4uDT6: configures the OpenPERouter to create separate functions for uDT4 and uDT6 (default: unified uDT46).
+	// With routingIsolation this feature requires underlayTable 254 (main).
 	// +kubebuilder:validation:MaxItems:=32
 	// +listType=atomic
 	// +optional
 	Features []L3VPNFeature `json:"features,omitempty"`
+}
+
+// SRV6RoutingIsolation configures scoped outer-packet lookups for guarded SRv6 VRFs.
+type SRV6RoutingIsolation struct {
+	// underlayTable is the actual Linux table containing remote locator routes.
+	// It must not be a tenant table. There is no implicit main-table fallback.
+	// +kubebuilder:validation:Minimum:=1
+	// +kubebuilder:validation:Maximum:=4294967295
+	// +kubebuilder:validation:XValidation:rule="self != 253 && self != 255",message="default and local tables cannot be used as underlay"
+	// +required
+	UnderlayTable int64 `json:"underlayTable,omitempty"`
+
+	// remoteLocatorPrefixes select destinations eligible for underlay exceptions.
+	// +kubebuilder:validation:MinItems:=1
+	// +kubebuilder:validation:MaxItems:=64
+	// +listType=set
+	// +kubebuilder:validation:items:MaxLength:=43
+	// +kubebuilder:validation:items:XValidation:rule="isCIDR(self) && cidr(self).ip().family() == 6 && cidr(self).prefixLength() > 0",message="remote locator must be a non-default IPv6 CIDR"
+	// +required
+	RemoteLocatorPrefixes []string `json:"remoteLocatorPrefixes,omitempty"`
 }
 
 // L3VPNFeature represents a single L3VPN feature.

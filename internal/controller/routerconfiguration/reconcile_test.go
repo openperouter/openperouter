@@ -26,10 +26,14 @@ var failingUpdater = frr.ConfigUpdater(func(_ context.Context, _ string) error {
 })
 
 type noopDatapathConfigurator struct {
+	onConfigure func(interfacesConfiguration)
 	conversion.GroutDatapathConfigValidator
 }
 
-func (n *noopDatapathConfigurator) Configure(_ context.Context, _ interfacesConfiguration) error {
+func (n *noopDatapathConfigurator) Configure(_ context.Context, config interfacesConfiguration) error {
+	if n.onConfigure != nil {
+		n.onConfigure(config)
+	}
 	return nil
 }
 
@@ -827,6 +831,107 @@ func TestReconcileSkipsDatapathOnFrrReloadFailure(t *testing.T) {
 
 	if len(steps) != 0 {
 		t.Errorf("expected the datapath not to be configured, got steps: %v", steps)
+	}
+}
+
+func TestIsolationValidationUsesSurvivingVPNs(t *testing.T) {
+	const redName, blueName = "red", "blue"
+	const missingMessage = "cannot specify L3VPN configuration without an underlay with SRV6 configuration"
+	for _, tc := range []struct {
+		name                                  string
+		invalid, missingUnderlay, wantApplied bool
+		wantVPNs                              []string
+		wantFailures                          []v1alpha1.FailedResource
+		wantError                             string
+	}{
+		{name: "filtered VPN", invalid: true, wantApplied: true, wantVPNs: []string{redName},
+			wantFailures: []v1alpha1.FailedResource{{Kind: openpeerrors.KindL3VPN, Name: blueName, Reason: v1alpha1.FailedResourceReasonValidationFailed, Message: "invalid vrf name for vpn \"blue\", vrf \"\": interface name cannot be empty"}}},
+		{name: "surviving incompatible tables", wantError: "share underlayTable"},
+		{name: "missing SRv6 dependency", missingUnderlay: true, wantApplied: true, wantVPNs: []string{},
+			wantFailures: []v1alpha1.FailedResource{
+				{Kind: openpeerrors.KindL3VPN, Name: blueName, Reason: v1alpha1.FailedResourceReasonValidationFailed, Message: missingMessage},
+				{Kind: openpeerrors.KindL3VPN, Name: redName, Reason: v1alpha1.FailedResourceReasonValidationFailed, Message: missingMessage},
+			}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			underlays := srv6Underlays()
+			underlays[0].Spec.SRV6.EncapsulationSource = new("2001:db8::1")
+			red, blue := l3VPN(redName, redName, 100), l3VPN(blueName, blueName, 200)
+			red.Spec.RoutingIsolation = &v1alpha1.SRV6RoutingIsolation{UnderlayTable: 701, RemoteLocatorPrefixes: []string{"fc00:20::/48"}}
+			blue.Spec.RoutingIsolation = &v1alpha1.SRV6RoutingIsolation{UnderlayTable: 702, RemoteLocatorPrefixes: []string{"fc00:20::/48"}}
+			if tc.invalid {
+				blue.Spec.VRF = ""
+			}
+			if tc.missingUnderlay {
+				underlays = nil
+			}
+			called := false
+			configure := func(_ context.Context, data frrConfigData) error {
+				called = true
+				names := make([]string, 0, len(data.L3VPNs))
+				for _, vpn := range data.L3VPNs {
+					names = append(names, vpn.Name)
+				}
+				if diff := cmp.Diff(tc.wantVPNs, names); diff != "" {
+					t.Fatalf("surviving VPNs (-want +got):\n%s", diff)
+				}
+				return nil
+			}
+			err := Reconcile(context.Background(), conversion.APIConfigData{Underlays: underlays, L3VPNs: []v1alpha1.L3VPN{red, blue}}, 0, "", "", "", noopUpdater, &noopDatapathConfigurator{}, configure)
+			if called != tc.wantApplied {
+				t.Fatalf("FRR called=%t; want %t; error=%v", called, tc.wantApplied, err)
+			}
+			if diff := cmp.Diff(tc.wantFailures, openpeerrors.CollectFailures(err)); diff != "" {
+				t.Fatalf("resource failures (-want +got):\n%s", diff)
+			}
+			if tc.wantError != "" && (err == nil || !strings.Contains(err.Error(), tc.wantError)) {
+				t.Fatalf("want %s, got %v", tc.wantError, err)
+			}
+		})
+	}
+}
+
+func TestReconcileWithdrawsUnusedEncapsulationSource(t *testing.T) {
+	for _, invalidVPN := range []bool{false, true} {
+		t.Run(fmt.Sprintf("filtered_last_VPN_%t", invalidVPN), func(t *testing.T) {
+			underlays := srv6Underlays()
+			underlays[0].Spec.SRV6.EncapsulationSource = new("2001:db8::1")
+			input := conversion.APIConfigData{Underlays: underlays}
+			if invalidVPN {
+				vpn := l3VPN("red", "", 100)
+				vpn.Spec.RoutingIsolation = &v1alpha1.SRV6RoutingIsolation{UnderlayTable: 701, RemoteLocatorPrefixes: []string{"fc00:20::/48"}}
+				input.L3VPNs = []v1alpha1.L3VPN{vpn}
+			}
+			called := false
+			configure := func(_ context.Context, data frrConfigData) error {
+				called = true
+				if len(data.L3VPNs) != 0 || data.Underlays[0].Spec.SRV6.EncapsulationSource != nil {
+					t.Fatalf("source survived VPN withdrawal: %+v", data.APIConfigData)
+				}
+				return nil
+			}
+			datapathCalled := false
+			datapath := &noopDatapathConfigurator{onConfigure: func(config interfacesConfiguration) {
+				datapathCalled = true
+				if len(config.L3VPNs) != 0 || config.Underlays[0].Spec.SRV6.EncapsulationSource != nil {
+					t.Fatal("withdrawal did not reach datapath with effective source cleared")
+				}
+			}}
+			err := Reconcile(context.Background(), input, 0, "", "", "", noopUpdater, datapath, configure)
+			if !called || !datapathCalled {
+				t.Fatalf("withdrawal did not reach FRR: %v", err)
+			}
+			failures := openpeerrors.CollectFailures(err)
+			if invalidVPN && (len(failures) != 1 || failures[0].Name != "red") {
+				t.Fatalf("missing filtered-red error: %v", err)
+			}
+			if !invalidVPN && err != nil {
+				t.Fatal(err)
+			}
+			if underlays[0].Spec.SRV6.EncapsulationSource == nil {
+				t.Fatal("API source was mutated")
+			}
+		})
 	}
 }
 

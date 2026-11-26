@@ -100,6 +100,7 @@ type VNIConfigurator struct {
 	ovsClient       *OVSClient
 	underlayMTU     int
 	vtepDeviceIndex int
+	guards          *vrfGuardSnapshot
 }
 
 type HostMaster struct {
@@ -123,8 +124,8 @@ func (e NotRouterInterfaceError) Error() string {
 	return fmt.Sprintf("interface %s is not a router interface", e.Name)
 }
 
-// NewVNIConfigurator builds a VNIConfigurator for the router namespace handle
-// ns, bound to ovsClient for OVS-backed host masters. The caller keeps
+// NewVNIConfigurator builds a VNIConfigurator for one configuration pass in ns,
+// bound to ovsClient for OVS-backed host masters. The caller keeps
 // ownership of both and must keep them open for as long as the configurator is
 // in use.
 func NewVNIConfigurator(ns netns.NsHandle, ovsClient *OVSClient) (*VNIConfigurator, error) {
@@ -142,13 +143,14 @@ func NewVNIConfigurator(ns netns.NsHandle, ovsClient *OVSClient) (*VNIConfigurat
 		ovsClient:       ovsClient,
 		underlayMTU:     underlayMTU,
 		vtepDeviceIndex: vtepDeviceIndex,
+		guards:          &vrfGuardSnapshot{},
 	}, nil
 }
 
 func (c *VNIConfigurator) setupVRFInNS(ctx context.Context, vrf string, options ...string) error {
 	return netnamespace.In(c.ns, func() error {
 		slog.DebugContext(ctx, "setting up vrf", "vrf", vrf)
-		return setupVRF(vrf, options...)
+		return setupVRFWithSnapshot(vrf, c.guards, options...)
 	})
 }
 
@@ -157,7 +159,7 @@ func (c *VNIConfigurator) setupVRFInNS(ctx context.Context, vrf string, options 
 // moves the veth to the VRF corresponding to the L3 routing domain, exposing
 // it to the default host namespace.
 func (c *VNIConfigurator) SetupL3VNI(ctx context.Context, params L3VNIParams) error {
-	if err := c.setupVRFInNS(ctx, params.VRF); err != nil {
+	if err := c.setupVRFInNS(ctx, params.VRF, evpnVRF); err != nil {
 		return fmt.Errorf("SetupL3VNI: failed to setup VRF: %w", err)
 	}
 	bridgeOptions := l3VNIBridgeOptions(params.RouterMAC)

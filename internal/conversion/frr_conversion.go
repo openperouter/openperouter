@@ -44,6 +44,17 @@ var locatorFormats = map[string]frr.SRV6Locator{
 
 type NoUnderlaysError string
 
+// SRv6EncapsulationSource selects the namespace source shared by FRR and isolation cleanup.
+func SRv6EncapsulationSource(config *v1alpha1.SRV6Config, tunnelSource string) string {
+	if config == nil {
+		return ""
+	}
+	if config.EncapsulationSource != nil {
+		return *config.EncapsulationSource
+	}
+	return tunnelSource
+}
+
 func (e NoUnderlaysError) Error() string {
 	return string(e)
 }
@@ -393,10 +404,13 @@ func underlaySegmentRoutingToFRR(srv6Config *v1alpha1.SRV6Config, nodeIndex int,
 		encapBehavior = frr.HEncapsRed
 	}
 
+	encapsulationSource := SRv6EncapsulationSource(srv6Config, ip.String())
+
 	return &frr.UnderlaySegmentRouting{
-		SourceAddress: ip.String(),
-		Locator:       locator,
-		EncapBehavior: encapBehavior,
+		SourceAddress:       ip.String(),
+		EncapsulationSource: encapsulationSource,
+		Locator:             locator,
+		EncapBehavior:       encapBehavior,
 	}, nil
 }
 

@@ -114,6 +114,12 @@ func validateUnderlay(underlay v1alpha1.Underlay) error {
 	if srv6Config == nil {
 		return nil
 	}
+	if srv6Config.EncapsulationSource != nil {
+		source, err := netip.ParseAddr(*srv6Config.EncapsulationSource)
+		if err != nil || !source.Is6() || source.Is4In6() || !source.IsGlobalUnicast() || source.Zone() != "" {
+			return fmt.Errorf("encapsulationSource must be a unicast IPv6 address")
+		}
+	}
 	if _, isValid := locatorFormats[srv6Config.Locator.Format]; !isValid {
 		return &openpeerrors.ResourceError{
 			Obj: v1alpha1.FailedResource{

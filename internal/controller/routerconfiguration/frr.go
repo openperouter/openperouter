@@ -24,8 +24,9 @@ var (
 )
 
 type frrConfigData struct {
-	configFile string
-	updater    frr.ConfigUpdater
+	configFile              string
+	srv6EncapsulationSource *string
+	updater                 frr.ConfigUpdater
 	conversion.APIConfigData
 	nodeIndex               int
 	logLevel                string
@@ -49,6 +50,10 @@ func configureFRR(ctx context.Context, data frrConfigData) error {
 	}
 	if err != nil && !errors.As(err, &emptyConfig) {
 		return fmt.Errorf("failed to generate the frr configuration: %w", err)
+	}
+
+	if data.srv6EncapsulationSource != nil && frrConfig.Underlay.SegmentRouting != nil {
+		frrConfig.Underlay.SegmentRouting.EncapsulationSource = *data.srv6EncapsulationSource
 	}
 
 	frrConfigMutex.Lock()

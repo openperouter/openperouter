@@ -2,7 +2,7 @@
 segment-routing
   srv6
     encapsulation
-      source-address {{ .SourceAddress }}
+      source-address {{ .EncapsulationSource }}
     exit
     locators
       locator {{ .Locator.Name }}
