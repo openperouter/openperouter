@@ -47,7 +47,8 @@ The output root directory contains the following:
 - `node_info/` - Per node network and routing infrastructure information, and grout device state files
   (`device_state/<interface>.json`, only with the grout datapath)
 - `<openperouter namespace>/` - OpenPERouter namespace objects and workload logs (defaults to `openperouter-system`)
-- `<additional namespace>/` - Objects and workload logs for each requested additional namespace
+- `<additional namespace>/` - Generic objects, events, pod manifests, and pod logs for each requested additional
+  namespace; router commands are not run in additional namespaces
 - `nodes.yaml` - Kubernetes node manifests
 - `<namespace name>/` - Per namespaces containing config resources directory (Underlay, L2VNI, L3VNI, L3VPN, FRRConfiguration, etc.)
 
@@ -130,15 +131,15 @@ $ tree /tmp/openperouter-inspect/
 
 ## Inspect OpenPERouter nodes when running on systemd mode
 
-When OpenPERouter runs on systemd mode, related info cannot be collected via cluster API as the router container is not
-managed by the cluster.
+When OpenPERouter runs on systemd mode, node, router, Podman, systemd, and static-configuration information cannot be
+collected through the cluster API because the router container is not managed by the cluster.
 
 `inspect_host` can be used for collecting related info by executing the script directly on the target node.
 
 Artifacts are stored at the host (default is `/openperouter-inspect-host`), and can be copied to base station for inspection.
 
 ### Prerequisites
-- SSH access to the target node.How to use:
+- Direct shell access to the target node, for example through SSH or a kind node container.
 
 ### How to use:
 
@@ -156,12 +157,27 @@ $ docker cp pe-kind-worker:/openperouter-inspect-host ./pe-kind-worker-inspect-h
 $ make inspect-systemd-mode
 ```
 
+### Environment variables
+| Variable            | Description                                  | Default                    |
+|---------------------|----------------------------------------------|----------------------------|
+| `ARTIFACTS_DIR`     | Directory on the node for collected artifacts | `/openperouter-inspect-host` |
+| `ROUTER_CONTAINER`  | OpenPERouter FRR container name              | `frr`                      |
+| `CONF_DIR`          | Directory containing static YAML files       | `/var/lib/openperouter`    |
+
 ### Output
-- `router_info_podman.log` - router infrastructure information collected from podman (for Podman Quadlet containers)
-- `router_info_crictl.log` - router infrastructure information collected using crictl (e.g.: from CRI-O, containerd)
-- `root_netns_info.log` - Root network namespace information
-- `configs/` - Contains collected static config resources in YAML form
-- `config_files.log` - Static config resources collection log
+- `root_network/` - Root network namespace state, including links, addresses, IPv4 and IPv6 routes from all tables,
+  neighbors, interface details and statistics, VRFs, and bridge FDB entries
+- `router/router_info_podman.log` - OpenPERouter router and FRR information collected from the Podman FRR container
+- `router/router_info_crictl.log` - OpenPERouter router and FRR information collected through crictl
+- `podman/pods.log` and `podman/containers.log` - Podman pod and container state, including stopped containers
+- `podman/logs/<container>.log` - Logs from the last ten minutes for available OpenPERouter Podman containers
+- `systemd/<unit>.status.log` and `systemd/<unit>.journal.log` - Status and journal output for the hostmode
+  OpenPERouter systemd units
+- `configs/` - Static configuration resources in YAML form
+- `config_files.log` - Static configuration collection log
+
+When hostmode e2e specs fail, `inspect_host` runs on every node in the kind cluster. Its artifacts are copied into the
+failed spec's inspect directory under `HOST_INFO/<node-name>/`, with one subdirectory per Kubernetes node.
 
 #### Example:
 ```bash
@@ -175,16 +191,33 @@ $ make inspect-systemd-mode
 $ tree /tmp/openperouter-systemd-mode-inspect/ 
 ├── pe-kind-control-plane
 │   ├── config_files.log
-│   ├── root_netns_info.log
-│   ├── router_info_podman.log
-│   └── configs
-│       └── node-config.yaml
+│   ├── configs
+│   │   └── node-config.yaml
+│   ├── podman
+│   │   ├── containers.log
+│   │   ├── logs
+│   │   │   ├── controller.log
+│   │   │   ├── frr.log
+│   │   │   └── reloader.log
+│   │   └── pods.log
+│   ├── root_network
+│   │   ├── addresses.log
+│   │   ├── bridge_fdb.log
+│   │   ├── ipv4_routes_all_tables.log
+│   │   ├── ipv6_routes_all_tables.log
+│   │   ├── link_details_and_statistics.log
+│   │   ├── links.log
+│   │   ├── neighbors.log
+│   │   └── vrfs.log
+│   ├── router
+│   │   └── router_info_podman.log
+│   └── systemd
+│       ├── controllerpod-pod.service.journal.log
+│       ├── controllerpod-pod.service.status.log
+│       ├── routerpod-pod.service.journal.log
+│       └── routerpod-pod.service.status.log
 └── pe-kind-worker
-    ├── config_files.log
-    ├── root_netns_info.log
-    ├── router_info_podman.log
-    └── configs
-        └── node-config.yaml
+    └── ...
      
 # inspect a specific node     
 $ make inspect-systemd-mode NODES=pe-kind-worker

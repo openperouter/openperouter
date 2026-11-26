@@ -4,64 +4,249 @@
 
 set -ueo pipefail
 
-readonly NETNS_INFO=(\
-	"ip link" \
-	"ip address" \
-	"ip route" \
-	"ip neigh" \
-	"ip vrf" \
-	"bridge fdb show" \
+readonly ROUTER_VTYSH_COMMANDS=(
+	"show version"
+	"show running-config"
+	"show bgp vrf all summary"
+	"show bgp vrf all neighbor"
+	"show ip route"
+	"show ipv6 route"
+	"show bgp vrf all ipv4"
+	"show bgp vrf all ipv6"
+	"show bgp l2vpn evpn"
+	"show bgp ipv4 vpn"
+	"show bgp ipv6 vpn"
+	"show isis database"
+	"show isis interface"
+	"show isis neighbor"
+	"show bfd peers"
+	"show interface"
 )
-readonly FRR_INFO=(\
-	"timeout 10s vtysh -c 'show running-config'" \
-	"timeout 10s vtysh -c 'show bgp ipv4'" \
-	"timeout 10s vtysh -c 'show bgp ipv6'" \
-	"timeout 10s vtysh -c 'show bgp neighbor'" \
-	"timeout 10s vtysh -c 'show bfd peer'" \
-	"timeout 10s vtysh -c 'show bgp l2vpn evpn'" \
+readonly OPENPEROUTER_PODMAN_CONTAINERS=(
+	"controller"
+	"frr"
+	"reloader"
+)
+readonly HOSTMODE_SYSTEMD_UNITS=(
+	"routerpod-pod.service"
+	"controllerpod-pod.service"
+	"controller.service"
+	"frr.service"
+	"reloader.service"
 )
 
-function dump_netns_info() {
-	echo "### Network namespace info [root]:"
-	for cmd in "${NETNS_INFO[@]}"; do
-		echo "$ $cmd"
-		$cmd
-		echo ""
+function run_command() {
+	local -r description="$1"
+	shift
+
+	printf '$ %s\n' "$description"
+	local status=0
+	"$@" || status=$?
+	if ((status != 0)); then
+		printf 'Command failed with exit status %d\n' "$status" >&2
+	fi
+	printf '\n'
+}
+
+function run_router_command() {
+	local -r runtime="$1"
+	local -r container_id="$2"
+	local -r description="$3"
+	shift 3
+
+	printf '$ %s\n' "$description"
+	local status=0
+	"$runtime" exec "$container_id" "$@" || status=$?
+	if ((status != 0)); then
+		printf 'Command failed with exit status %d\n' "$status" >&2
+	fi
+	printf '\n'
+}
+
+function run_router_vtysh_command() {
+	local -r runtime="$1"
+	local -r container_id="$2"
+	local -r command="$3"
+
+	run_router_command \
+		"$runtime" \
+		"$container_id" \
+		"timeout 10s vtysh -c '$command'" \
+		timeout 10s vtysh -c "$command"
+}
+
+function router_neighbor_addresses() {
+	local -r runtime="$1"
+	local -r container_id="$2"
+	local -r address_family="$3"
+
+	local neighbors
+	local status=0
+	neighbors="$(
+		"$runtime" exec "$container_id" timeout 10s vtysh -c "show bgp ${address_family} neighbors" 2>/dev/null
+	)" || status=$?
+	if ((status != 0)); then
+		printf 'Failed to list %s BGP neighbors with exit status %d\n' "$address_family" "$status" >&2
+		return
+	fi
+
+	printf '%s\n' "$neighbors" | sed -n 's/^BGP neighbor is \([^,]*\),.*/\1/p'
+}
+
+function dump_router_neighbor_routes() {
+	local -r runtime="$1"
+	local -r container_id="$2"
+	local -r address_family="$3"
+
+	local -a neighbors=()
+	mapfile -t neighbors < <(router_neighbor_addresses "$runtime" "$container_id" "$address_family")
+	if ((${#neighbors[@]} == 0)); then
+		return
+	fi
+
+	local neighbor command
+	for neighbor in "${neighbors[@]}"; do
+		for command in \
+			"show bgp ${address_family} neighbors ${neighbor} advertised-routes" \
+			"show bgp ${address_family} neighbors ${neighbor} advertised-routes detail" \
+			"show bgp ${address_family} neighbors ${neighbor} received-routes" \
+			"show bgp ${address_family} neighbors ${neighbor} graceful-restart"; do
+			run_router_vtysh_command "$runtime" "$container_id" "$command"
+		done
 	done
-	printf "###\n\n"
 }
 
 function dump_router_info() {
-	local -r oci_ctl="$1"
+	local -r runtime="$1"
 	local -r container_id="$2"
+	local -r output_file="$3"
 
-	echo "### Routing infrastructure info via [$oci_ctl]:"
-	for cmd in "${FRR_INFO[@]}"; do
-		echo "$ $cmd"
-		$oci_ctl exec -i "$container_id" bash -c "$cmd"
-		echo ""
+	mkdir -p "$(dirname "$output_file")"
+	{
+		echo "### OpenPERouter router information via $runtime:"
+		local command
+		for command in "${ROUTER_VTYSH_COMMANDS[@]}"; do
+			run_router_vtysh_command "$runtime" "$container_id" "$command"
+		done
+
+		echo "### Per-neighbor BGP routes:"
+		dump_router_neighbor_routes "$runtime" "$container_id" ipv4
+		dump_router_neighbor_routes "$runtime" "$container_id" ipv6
+
+		echo "### Router network information:"
+		run_router_command "$runtime" "$container_id" "ip link" ip link
+		run_router_command "$runtime" "$container_id" "ip address" ip address
+		run_router_command "$runtime" "$container_id" "ip neigh" ip neigh
+		run_router_command "$runtime" "$container_id" "ip -d -s -s link" ip -d -s -s link
+		run_router_command "$runtime" "$container_id" "ip vrf" ip vrf
+		run_router_command "$runtime" "$container_id" "ip route show table all" ip route show table all
+		run_router_command "$runtime" "$container_id" "ip -6 route show table all" ip -6 route show table all
+		run_router_command "$runtime" "$container_id" "bridge fdb show" bridge fdb show
+		run_router_command "$runtime" "$container_id" "cat /etc/frr/frr.log" cat /etc/frr/frr.log
+		echo "###"
+	} >"$output_file" 2>&1
+}
+
+function dump_root_network_info() {
+	local -r base_dir="$1"
+	mkdir -p "$base_dir"
+
+	run_command "ip link" ip link >"$base_dir/links.log" 2>&1
+	run_command "ip address" ip address >"$base_dir/addresses.log" 2>&1
+	run_command "ip route show table all" ip route show table all >"$base_dir/ipv4_routes_all_tables.log" 2>&1
+	run_command "ip -6 route show table all" ip -6 route show table all >"$base_dir/ipv6_routes_all_tables.log" 2>&1
+	run_command "ip neigh" ip neigh >"$base_dir/neighbors.log" 2>&1
+	run_command "ip -d -s -s link" ip -d -s -s link >"$base_dir/link_details_and_statistics.log" 2>&1
+	run_command "ip vrf" ip vrf >"$base_dir/vrfs.log" 2>&1
+	run_command "bridge fdb show" bridge fdb show >"$base_dir/bridge_fdb.log" 2>&1
+}
+
+function podman_router_container_id() {
+	local containers
+	if ! containers="$(podman ps --format '{{.ID}} {{.Names}}' --filter status=running 2>/dev/null)"; then
+		return 1
+	fi
+	printf '%s\n' "$containers" | awk -v name="$ROUTER_CONTAINER" '$2 == name {print $1; exit}'
+}
+
+function crictl_router_container_id() {
+	local containers
+	if ! containers="$(crictl ps -q --name "$ROUTER_CONTAINER" --state Running 2>/dev/null)"; then
+		return 1
+	fi
+	printf '%s\n' "$containers" | awk 'NR == 1 {print; exit}'
+}
+
+function safe_filename() {
+	local -r value="$1"
+	printf '%s' "${value//[^a-zA-Z0-9_.-]/_}"
+}
+
+function dump_podman_info() {
+	local -r base_dir="$1"
+	mkdir -p "$base_dir"
+
+	run_command "podman pod ps" podman pod ps >"$base_dir/pods.log" 2>&1
+	run_command "podman ps -a" podman ps -a >"$base_dir/containers.log" 2>&1
+
+	local -r logs_dir="${base_dir}/logs"
+	mkdir -p "$logs_dir"
+	local container filename
+	for container in "${OPENPEROUTER_PODMAN_CONTAINERS[@]}"; do
+		filename="$(safe_filename "$container")"
+		run_command "podman logs --since 10m $container" podman logs --since 10m "$container" \
+			>"${logs_dir}/${filename}.log" 2>&1
 	done
-	printf "###\n\n"
+}
+
+function dump_systemd_info() {
+	local -r base_dir="$1"
+	mkdir -p "$base_dir"
+
+	local unit filename
+	for unit in "${HOSTMODE_SYSTEMD_UNITS[@]}"; do
+		filename="$(safe_filename "$unit")"
+		run_command "systemctl status $unit --no-pager" systemctl status "$unit" --no-pager \
+			>"${base_dir}/${filename}.status.log" 2>&1
+		run_command "journalctl -u $unit --since '10 minutes ago' --no-pager" \
+			journalctl -u "$unit" --since "10 minutes ago" --no-pager \
+			>"${base_dir}/${filename}.journal.log" 2>&1
+	done
 }
 
 function dump_config_files() {
 	local -r conf_dir="$1"
 	local -r base_dir="$2"
 
-	local -r yamls="$(find "$conf_dir" -type f -name '*.yaml')"
-	if [[ -z $yamls ]]; then
-		return
-	fi
+	mkdir -p "$base_dir"
+	local -r configs_dir="${base_dir}/configs"
+	local -r config_list="${base_dir}/config_files.list"
+	mkdir -p "$configs_dir"
 
-	local out_conf_dir="$base_dir/configs"
-	mkdir -p "$out_conf_dir"
-	
-	local f
-	for yaml in $yamls; do	
-		f="$out_conf_dir/$(basename "$yaml")"
-		cat "$yaml" > "$f"
-		echo "Dumped configuration file [$yaml] to [$f]"
-	done
+	{
+		if [[ ! -d "$conf_dir" ]]; then
+			echo "Configuration directory $conf_dir does not exist"
+			return
+		fi
+		if ! find "$conf_dir" -type f -name '*.yaml' -print0 >"$config_list"; then
+			echo "Failed to list YAML files in $conf_dir"
+			rm -f "$config_list"
+			return
+		fi
+
+		local yaml relative destination
+		while IFS= read -r -d '' yaml; do
+			relative="${yaml#"$conf_dir"/}"
+			destination="${configs_dir}/${relative}"
+			mkdir -p "${destination%/*}"
+			if cp "$yaml" "$destination"; then
+				echo "Dumped configuration file $yaml to $destination"
+			else
+				echo "Failed to copy configuration file $yaml to $destination"
+			fi
+		done <"$config_list"
+		rm -f "$config_list"
+	} >"$base_dir/config_files.log" 2>&1
 }
 
 ARTIFACTS_DIR=${ARTIFACTS_DIR:-"/openperouter-inspect-host"}
@@ -70,25 +255,63 @@ CONF_DIR=${CONF_DIR:-"/var/lib/openperouter"}
 
 mkdir -p "$ARTIFACTS_DIR"
 
-pushd "$ARTIFACTS_DIR"
-	dump_netns_info > "root_netns_info.log"
+dump_root_network_info "$ARTIFACTS_DIR/root_network"
 
-	if podman info &> /dev/null; then
-		router_container_id="$(podman ps -q -f name="$ROUTER_CONTAINER" -f status=running)"
-		if [[ -n $router_container_id ]]; then
-			dump_router_info "podman" "$router_container_id" > "router_info_podman.log"
+if command -v podman >/dev/null 2>&1; then
+	if podman info >/dev/null 2>&1; then
+		if router_container_id="$(podman_router_container_id)"; then
+			if [[ -n "$router_container_id" ]]; then
+				dump_router_info "podman" "$router_container_id" "$ARTIFACTS_DIR/router/router_info_podman.log"
+			else
+				mkdir -p "$ARTIFACTS_DIR/router"
+				echo "No running Podman container named $ROUTER_CONTAINER was found" \
+					>"$ARTIFACTS_DIR/router/router_info_podman.log"
+			fi
+		else
+			router_list_status=$?
+			mkdir -p "$ARTIFACTS_DIR/router"
+			echo "Finding the Podman container named $ROUTER_CONTAINER failed with exit status $router_list_status" \
+				>"$ARTIFACTS_DIR/router/router_info_podman.log"
 		fi
+		dump_podman_info "$ARTIFACTS_DIR/podman"
+	else
+		podman_probe_status=$?
+		mkdir -p "$ARTIFACTS_DIR/router"
+		echo "podman info failed with exit status $podman_probe_status, skipping Podman collection" \
+			>"$ARTIFACTS_DIR/router/router_info_podman.log"
 	fi
-	if crictl info &> /dev/null; then
-		router_container_id="$(crictl ps -q --name frr --state Running)"
-		if [[ -n $router_container_id ]]; then
-			dump_router_info "crictl" "$router_container_id" > "router_info_crictl.log"
+fi
+
+if command -v crictl >/dev/null 2>&1; then
+	if crictl info >/dev/null 2>&1; then
+		if router_container_id="$(crictl_router_container_id)"; then
+			if [[ -n "$router_container_id" ]]; then
+				dump_router_info "crictl" "$router_container_id" "$ARTIFACTS_DIR/router/router_info_crictl.log"
+			else
+				mkdir -p "$ARTIFACTS_DIR/router"
+				echo "No running crictl container named $ROUTER_CONTAINER was found" \
+					>"$ARTIFACTS_DIR/router/router_info_crictl.log"
+			fi
+		else
+			router_list_status=$?
+			mkdir -p "$ARTIFACTS_DIR/router"
+			echo "Finding the crictl container named $ROUTER_CONTAINER failed with exit status $router_list_status" \
+				>"$ARTIFACTS_DIR/router/router_info_crictl.log"
 		fi
+	else
+		crictl_probe_status=$?
+		mkdir -p "$ARTIFACTS_DIR/router"
+		echo "crictl info failed with exit status $crictl_probe_status, skipping crictl collection" \
+			>"$ARTIFACTS_DIR/router/router_info_crictl.log"
 	fi
+fi
 
-	if [[ -d $CONF_DIR ]]; then
-		dump_config_files "$CONF_DIR" "$ARTIFACTS_DIR" > "config_files.log"
-	fi 
-popd 
+if command -v systemctl >/dev/null 2>&1; then
+	dump_systemd_info "$ARTIFACTS_DIR/systemd"
+fi
 
-echo "Inspect completed. Artifacts are stored in ${ARTIFACTS_DIR}"
+if [[ -d "$CONF_DIR" ]]; then
+	dump_config_files "$CONF_DIR" "$ARTIFACTS_DIR"
+fi
+
+echo "Inspect completed. Artifacts are stored in $ARTIFACTS_DIR"
