@@ -6,8 +6,14 @@ Each direct subfolder is a complete static router configuration set. Only its `o
 |---|---:|---:|---:|---:|
 | vxlan | 1 | 3 | 3 | 0 |
 | vxlan-srv6 | 1 | 3 | 3 | 3 |
+| vxlan-trunk | 1 | 1 | 40 | 0 |
 
-Both configurations use a dummy `bench-underlay` device, a host session for every L3 domain, and a managed Linux host bridge for every L2VNI. The harness creates the underlay in an isolated source namespace, and reconciliation moves it into a separate router namespace. The SRv6 set adds an ISIS/SRv6 underlay and three L3VPN host sessions with distinct identifiers and address ranges. No OVS service, CNI plugin, live FRR or cluster is required.
+The `vxlan-trunk` set puts two trunks with 20 tagged L2VNIs each beside a single
+L3VNI, all in the `red` routing domain, to price the per-tag work at the scale
+the feature exists for. Its trunks leave `hostMaster` unset, so no external host
+bridge is required.
+
+All configurations use a dummy `bench-underlay` device, a host session for every L3 domain, and a managed Linux host bridge for every standalone L2VNI. The harness creates the underlay in an isolated source namespace, and reconciliation moves it into a separate router namespace. The SRv6 set adds an ISIS/SRv6 underlay and three L3VPN host sessions with distinct identifiers and address ranges. No OVS service, CNI plugin, live FRR or cluster is required.
 
 Each folder runs as `BenchmarkReconcile/<folder>/FirstApplication` and `BenchmarkReconcile/<folder>/RepeatedReconcile`. First application starts from fresh network namespaces and prerequisite interfaces. Repeated reconciliation starts after untimed successful convergence. FRR conversion/template rendering and kernel datapath operations are measured; the FRR updater is mocked. Fixture loads, per-iteration snapshots, namespace setup, initial convergence and teardown are excluded. Production bridge refresh workers remain enabled; their asynchronous allocations can add noise to B/op and allocs/op.
 

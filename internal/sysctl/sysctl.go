@@ -86,6 +86,26 @@ func IPv6Forwarding() Sysctl {
 	}
 }
 
+// DisableIPv4Forwarding returns the sysctl definition for disabling IPv4
+// forwarding on the given interface.
+func DisableIPv4Forwarding(ifname string) Sysctl {
+	return Sysctl{
+		Path:        fmt.Sprintf("net/ipv4/conf/%s/forwarding", ifname),
+		Description: fmt.Sprintf("disable IPv4 forwarding on interface %s", ifname),
+		Value:       "0",
+	}
+}
+
+// DisableIPv6Forwarding returns the sysctl definition for disabling IPv6
+// forwarding on the given interface.
+func DisableIPv6Forwarding(ifname string) Sysctl {
+	return Sysctl{
+		Path:        fmt.Sprintf("net/ipv6/conf/%s/forwarding", ifname),
+		Description: fmt.Sprintf("disable IPv6 forwarding on interface %s", ifname),
+		Value:       "0",
+	}
+}
+
 // ArpAcceptAll returns the sysctl definition for enabling arp_accept on all
 // running interfaces. Enabling arp_accept allows the kernel to create neighbor entries
 // from received Gratuitous ARP packets, which is critical for fast EVPN MAC/IP route

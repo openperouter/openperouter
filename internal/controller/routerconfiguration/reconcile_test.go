@@ -15,6 +15,7 @@ import (
 	"github.com/openperouter/openperouter/internal/conversion"
 	openpeerrors "github.com/openperouter/openperouter/internal/errors"
 	"github.com/openperouter/openperouter/internal/frr"
+	"github.com/stretchr/testify/require"
 )
 
 var noopUpdater = frr.ConfigUpdater(func(_ context.Context, _ string) error {
@@ -332,18 +333,19 @@ func TestReconcilePerResourceErrors(t *testing.T) {
 			},
 		},
 		{
-			name: "L2VNI reusing a VLAN tag on its trunk is skipped",
+			name: "L2VNIs reusing a VLAN tag on their trunk are skipped",
 			l2VNIs: []v1alpha1.L2VNI{
 				trunkL2VNI("a", 100, "workloads", 33),
 				trunkL2VNI("b", 200, "workloads", 33),
 			},
 			l2Trunks: []v1alpha1.L2Trunk{sriovL2Trunk("workloads")},
 			expectedFailures: []v1alpha1.FailedResource{
+				{Kind: openpeerrors.KindL2VNI, Name: "a", Reason: v1alpha1.FailedResourceReasonValidationFailed,
+					Message: `duplicate vlan tag 33 on L2Trunk "workloads": a, b`},
 				{Kind: openpeerrors.KindL2VNI, Name: "b", Reason: v1alpha1.FailedResourceReasonValidationFailed,
-					Message: "VLAN 33 on L2Trunk workloads is already used by L2VNI a"},
+					Message: `duplicate vlan tag 33 on L2Trunk "workloads": a, b`},
 			},
 			wantConfig: conversion.APIConfigData{
-				L2VNIs:   []v1alpha1.L2VNI{trunkL2VNI("a", 100, "workloads", 33)},
 				L2Trunks: []v1alpha1.L2Trunk{sriovL2Trunk("workloads")},
 			},
 		},
@@ -941,7 +943,7 @@ func TestReconcileFiltersKernelTrunks(t *testing.T) {
 	wantFailures := []v1alpha1.FailedResource{
 		{Kind: openpeerrors.KindL2Trunk, Name: "workloads",
 			Reason:  v1alpha1.FailedResourceReasonValidationFailed,
-			Message: "l2trunk workloads: L2Trunks are only supported with the grout datapath"},
+			Message: "l2trunk workloads: the kernel datapath only supports type Host"},
 		{Kind: openpeerrors.KindL2VNI, Name: "trunked",
 			Reason:  v1alpha1.FailedResourceReasonDependencyFailed,
 			Message: `referenced L2Trunk "workloads" not found`},
@@ -971,4 +973,41 @@ func (k *kernelRecordingConfigurator) Configure(_ context.Context, config interf
 
 func (k *kernelRecordingConfigurator) InterfaceNameForFRR(name string) string {
 	return name
+}
+
+func TestFilterL2VNIsWithMissingTrunk(t *testing.T) {
+	trunk := v1alpha1.L2Trunk{ObjectMeta: metav1.ObjectMeta{Namespace: "tenant-a", Name: "workloads"}}
+	otherNamespaceTrunk := v1alpha1.L2Trunk{ObjectMeta: metav1.ObjectMeta{Namespace: "tenant-b", Name: "workloads"}}
+
+	attached := v1alpha1.L2VNI{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "tenant-a", Name: "attached"},
+		Spec: v1alpha1.L2VNISpec{
+			VNI:   10100,
+			Trunk: &v1alpha1.L2TrunkReference{Name: "workloads", VLAN: v1alpha1.VLANConfig{Tag: 100}},
+		},
+	}
+	missing := v1alpha1.L2VNI{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "tenant-a", Name: "missing"},
+		Spec: v1alpha1.L2VNISpec{
+			VNI:   10200,
+			Trunk: &v1alpha1.L2TrunkReference{Name: "gone", VLAN: v1alpha1.VLANConfig{Tag: 200}},
+		},
+	}
+	standalone := v1alpha1.L2VNI{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "tenant-a", Name: "standalone"},
+		Spec:       v1alpha1.L2VNISpec{VNI: 10300},
+	}
+
+	valid, err := filterL2VNIsWithMissingTrunk(
+		[]v1alpha1.L2VNI{attached, missing, standalone},
+		[]v1alpha1.L2Trunk{trunk, otherNamespaceTrunk})
+	require.Equal(t, []v1alpha1.L2VNI{attached, standalone}, valid)
+
+	expected := []v1alpha1.FailedResource{{
+		Kind:    openpeerrors.KindL2VNI,
+		Name:    "missing",
+		Reason:  v1alpha1.FailedResourceReasonDependencyFailed,
+		Message: `referenced L2Trunk "gone" not found`,
+	}}
+	require.Equal(t, expected, openpeerrors.CollectFailures(err))
 }

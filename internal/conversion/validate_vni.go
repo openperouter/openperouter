@@ -19,6 +19,7 @@ import (
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	openpeerrors "github.com/openperouter/openperouter/internal/errors"
 	"github.com/openperouter/openperouter/internal/filter"
+	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/openperouter/openperouter/internal/ipfamily"
 )
 
@@ -210,20 +211,187 @@ func validateL2VNI(l2Vni v1alpha1.L2VNI) error {
 	return nil
 }
 
+// FilterValidL2Trunks validates L2Trunks per-field and returns the valid
+// resources alongside per-resource errors.
+func FilterValidL2Trunks(trunks []v1alpha1.L2Trunk) ([]v1alpha1.L2Trunk, error) {
+	var valid []v1alpha1.L2Trunk
+	var allErrors []error
+	for _, trunk := range trunks {
+		if err := validateL2Trunk(trunk); err != nil {
+			allErrors = append(allErrors, &openpeerrors.ResourceError{
+				Obj: v1alpha1.FailedResource{
+					Kind: openpeerrors.KindL2Trunk, Name: trunk.Name,
+					Reason: v1alpha1.FailedResourceReasonValidationFailed, Message: err.Error(),
+				},
+			})
+			continue
+		}
+		valid = append(valid, trunk)
+	}
+	valid, err := filterL2TrunksSRIOVUniquePF(valid)
+	return valid, errors.Join(append(allErrors, err)...)
+}
+
+func validateL2Trunk(trunk v1alpha1.L2Trunk) error {
+	switch trunk.Spec.Type {
+	case v1alpha1.L2TrunkTypeSRIOV:
+		return validateL2TrunkSRIOV(trunk.Spec)
+	case v1alpha1.L2TrunkTypeHost:
+		if trunk.Spec.HostMaster == nil {
+			return nil
+		}
+		if err := validateHostMaster(trunk.Name, trunk.Spec.HostMaster); err != nil {
+			return err
+		}
+		return validateExternalHostMaster(trunk.Name, trunk.Spec.HostMaster)
+	default:
+		return fmt.Errorf("unsupported type %q for L2Trunk %q", trunk.Spec.Type, trunk.Name)
+	}
+}
+
+func validateExternalHostMaster(owner string, hostMaster *v1alpha1.HostMaster) error {
+	var lifecycle v1alpha1.BridgeLifecycle
+	switch hostMaster.Type {
+	case v1alpha1.LinuxBridge:
+		if hostMaster.LinuxBridge != nil {
+			lifecycle = hostMaster.LinuxBridge.Lifecycle
+		}
+	case v1alpha1.OVSBridge:
+		if hostMaster.OVSBridge != nil {
+			lifecycle = hostMaster.OVSBridge.Lifecycle
+		}
+	default:
+		return fmt.Errorf("invalid host master type %q for L2Trunk %q", hostMaster.Type, owner)
+	}
+	if lifecycle != v1alpha1.BridgeLifecycleExternal {
+		return fmt.Errorf("L2Trunk %q requires an External host master, got lifecycle %q", owner, lifecycle)
+	}
+	return nil
+}
+
+// FilterUniqueTrunkIDs removes trunks whose derived device identifier collides
+// with another trunk's. The identifier is a hash of namespace/name, so a
+// collision would silently merge two tenants onto one bridge.
+func FilterUniqueTrunkIDs(trunks []v1alpha1.L2Trunk) ([]v1alpha1.L2Trunk, error) {
+	owners := map[string]string{}
+	var valid []v1alpha1.L2Trunk
+	var allErrors []error
+	for _, trunk := range trunks {
+		id := hostnetwork.TrunkID(trunk.Namespace, trunk.Name)
+		identity := types.NamespacedName{Namespace: trunk.Namespace, Name: trunk.Name}.String()
+		if existing, found := owners[id]; found {
+			allErrors = append(allErrors, &openpeerrors.ResourceError{Obj: v1alpha1.FailedResource{
+				Kind: openpeerrors.KindL2Trunk, Name: trunk.Name,
+				Reason:  v1alpha1.FailedResourceReasonValidationFailed,
+				Message: fmt.Sprintf("trunk id %q of %s collides with %s", id, identity, existing),
+			}})
+			continue
+		}
+		owners[id] = identity
+		valid = append(valid, trunk)
+	}
+	return valid, errors.Join(allErrors...)
+}
+
+// FilterUniqueL2VNITrunkTags removes every L2VNI that reuses a VLAN tag on the
+// same trunk, reporting all the resources involved.
+func FilterUniqueL2VNITrunkTags(l2vnis []v1alpha1.L2VNI) ([]v1alpha1.L2VNI, error) {
+	type trunkTag struct {
+		key trunkKey
+		tag int32
+	}
+	return rejectConflictingGroups(l2vnis,
+		func(l2vni v1alpha1.L2VNI) (trunkTag, bool) {
+			key, trunked := trunkKeyForL2VNI(l2vni)
+			if !trunked {
+				return trunkTag{}, false
+			}
+			return trunkTag{key: key, tag: l2vni.Spec.Trunk.VLAN.Tag}, true
+		},
+		func(group trunkTag, members []v1alpha1.L2VNI) string {
+			names := make([]string, 0, len(members))
+			for _, member := range members {
+				names = append(names, member.Name)
+			}
+			return fmt.Sprintf("duplicate vlan tag %d on L2Trunk %q: %s",
+				group.tag, group.key.name, strings.Join(names, ", "))
+		})
+}
+
+// FilterUniqueTrunkTagsAcrossHostMasters rejects the same VLAN tag being used
+// by trunks that share a host master. Trunks with no host master attach to no
+// shared bridge, so they are exempt.
+func FilterUniqueTrunkTagsAcrossHostMasters(l2vnis []v1alpha1.L2VNI, trunks []v1alpha1.L2Trunk) ([]v1alpha1.L2VNI, error) {
+	trunkByKey := map[trunkKey]v1alpha1.L2Trunk{}
+	for _, trunk := range trunks {
+		trunkByKey[trunkKey{namespace: trunk.Namespace, name: trunk.Name}] = trunk
+	}
+
+	type hostMasterTag struct {
+		hostMaster string
+		tag        int32
+	}
+	return rejectConflictingGroups(l2vnis,
+		func(l2vni v1alpha1.L2VNI) (hostMasterTag, bool) {
+			key, trunked := trunkKeyForL2VNI(l2vni)
+			if !trunked {
+				return hostMasterTag{}, false
+			}
+			trunk, found := trunkByKey[key]
+			if !found {
+				return hostMasterTag{}, false
+			}
+			hostMaster := hostMasterIdentity(trunk.Spec.HostMaster)
+			if hostMaster == "" {
+				return hostMasterTag{}, false
+			}
+			return hostMasterTag{hostMaster: hostMaster, tag: l2vni.Spec.Trunk.VLAN.Tag}, true
+		},
+		func(group hostMasterTag, members []v1alpha1.L2VNI) string {
+			identities := make([]string, 0, len(members))
+			for _, member := range members {
+				identities = append(identities, fmt.Sprintf("%s on L2Trunk %q", member.Name, member.Spec.Trunk.Name))
+			}
+			return fmt.Sprintf("duplicate vlan tag %d across L2Trunks sharing host master %q: %s",
+				group.tag, group.hostMaster, strings.Join(identities, ", "))
+		})
+}
+
+// FilterTrunkSettingsAgreement rejects L2VNIs on one trunk that disagree on
+// the effective vxlanPort or underlayAddressFamily: they share one VXLAN
+// device, so there is only one possible setting.
+func FilterTrunkSettingsAgreement(l2vnis []v1alpha1.L2VNI) ([]v1alpha1.L2VNI, error) {
+	return rejectConflictingGroups(l2vnis, trunkKeyForL2VNI,
+		func(key trunkKey, members []v1alpha1.L2VNI) string {
+			expected := effectiveVXLanSettings(members[0])
+			for i := 1; i < len(members); i++ {
+				actual := effectiveVXLanSettings(members[i])
+				if actual == expected {
+					continue
+				}
+				return fmt.Sprintf("L2VNIs on L2Trunk %q disagree on vxlanPort or underlayAddressFamily: "+
+					"%s uses (port %d, family %q), %s uses (port %d, family %q)",
+					key.name, members[0].Name, expected.port, expected.family,
+					members[i].Name, actual.port, actual.family)
+			}
+			return ""
+		})
+}
+
 // ValidateOverlayResourcesForNodes validates that the VNI / VPN information as a whole is correct, per Node.
-func ValidateOverlayResourcesForNodes(nodes []corev1.Node, l2vnis []v1alpha1.L2VNI, l3vnis []v1alpha1.L3VNI,
-	l3vpns []v1alpha1.L3VPN, passthroughs []v1alpha1.L3Passthrough) error {
+func ValidateOverlayResourcesForNodes(nodes []corev1.Node, l2vnis []v1alpha1.L2VNI, l2trunks []v1alpha1.L2Trunk,
+	l3vnis []v1alpha1.L3VNI, l3vpns []v1alpha1.L3VPN, passthroughs []v1alpha1.L3Passthrough) error {
 	var errs []error
 	for _, node := range nodes {
-		if err := validateOverlayResourcesForNode(node, l2vnis, l3vnis, l3vpns, passthroughs); err != nil {
+		if err := validateOverlayResourcesForNode(node, l2vnis, l2trunks, l3vnis, l3vpns, passthroughs); err != nil {
 			errs = append(errs, err)
 		}
 	}
 	return errors.Join(errs...)
 }
 
-func validateOverlayResourcesForNode(node corev1.Node, l2vnis []v1alpha1.L2VNI, l3vnis []v1alpha1.L3VNI,
-	l3vpns []v1alpha1.L3VPN, passthroughs []v1alpha1.L3Passthrough) error {
+func validateOverlayResourcesForNode(node corev1.Node, l2vnis []v1alpha1.L2VNI, l2trunks []v1alpha1.L2Trunk,
+	l3vnis []v1alpha1.L3VNI, l3vpns []v1alpha1.L3VPN, passthroughs []v1alpha1.L3Passthrough) error {
 	filteredL3VNIs, err := filter.L3VNIsForNode(&node, l3vnis)
 	if err != nil {
 		return fmt.Errorf("failed to filter l3vnis for node %q: %w", node.Name, err)
@@ -239,6 +407,11 @@ func validateOverlayResourcesForNode(node corev1.Node, l2vnis []v1alpha1.L2VNI, 
 		return fmt.Errorf("failed to filter l2vnis for node %q: %w", node.Name, err)
 	}
 
+	filteredL2Trunks, err := filter.L2TrunksForNode(&node, l2trunks)
+	if err != nil {
+		return fmt.Errorf("failed to filter l2trunks for node %q: %w", node.Name, err)
+	}
+
 	filteredPassthroughs, err := filter.L3PassthroughsForNode(&node, passthroughs)
 	if err != nil {
 		return fmt.Errorf("failed to filter passthroughs for node %q: %w", node.Name, err)
@@ -248,6 +421,7 @@ func validateOverlayResourcesForNode(node corev1.Node, l2vnis []v1alpha1.L2VNI, 
 		L3VNIs:        filteredL3VNIs,
 		L3VPNs:        filteredL3VPNs,
 		L2VNIs:        filteredL2VNIs,
+		L2Trunks:      filteredL2Trunks,
 		L3Passthrough: filteredPassthroughs,
 	})
 	if err != nil {
@@ -675,4 +849,107 @@ func parseMemberNumber(value string) (uint64, error) {
 func isIPv4RouteTarget(value string) bool {
 	addr, err := ipfamily.ForAddresses(value)
 	return err == nil && addr == ipfamily.IPv4
+}
+
+type trunkKey struct {
+	namespace string
+	name      string
+}
+
+func trunkKeyForL2VNI(l2vni v1alpha1.L2VNI) (trunkKey, bool) {
+	if l2vni.Spec.Trunk == nil {
+		return trunkKey{}, false
+	}
+	return trunkKey{namespace: l2vni.Namespace, name: l2vni.Spec.Trunk.Name}, true
+}
+
+// hostMasterIdentity identifies the host bridge a trunk attaches to, so trunks
+// that share one are compared against each other.
+func hostMasterIdentity(hostMaster *v1alpha1.HostMaster) string {
+	if hostMaster == nil {
+		return ""
+	}
+	switch hostMaster.Type {
+	case v1alpha1.LinuxBridge:
+		if hostMaster.LinuxBridge != nil {
+			return hostMaster.Type + "/" + ptr.Deref(hostMaster.LinuxBridge.Name, "")
+		}
+	case v1alpha1.OVSBridge:
+		if hostMaster.OVSBridge != nil {
+			return hostMaster.Type + "/" + ptr.Deref(hostMaster.OVSBridge.Name, "")
+		}
+	}
+	return ""
+}
+
+type vxlanSettings struct {
+	port   int32
+	family string
+}
+
+func effectiveVXLanSettings(l2vni v1alpha1.L2VNI) vxlanSettings {
+	return vxlanSettings{
+		port:   *vxlanPort(l2vni.Spec.VXLanPort),
+		family: ptr.Deref(l2vni.Spec.UnderlayAddressFamily, ""),
+	}
+}
+
+// rejectConflictingGroups groups the L2VNIs by key and rejects every member of
+// a group for which conflictMessage reports a conflict. A group with fewer than
+// two members cannot conflict. conflictMessage returns an empty string when the
+// group is consistent.
+func rejectConflictingGroups[K comparable](
+	l2vnis []v1alpha1.L2VNI,
+	groupKey func(v1alpha1.L2VNI) (K, bool),
+	conflictMessage func(key K, members []v1alpha1.L2VNI) string,
+) ([]v1alpha1.L2VNI, error) {
+	groups := map[K][]v1alpha1.L2VNI{}
+	var order []K
+	for _, l2vni := range l2vnis {
+		key, grouped := groupKey(l2vni)
+		if !grouped {
+			continue
+		}
+		if _, seen := groups[key]; !seen {
+			order = append(order, key)
+		}
+		groups[key] = append(groups[key], l2vni)
+	}
+
+	invalid := map[types.NamespacedName]struct{}{}
+	var allErrors []error
+	for _, key := range order {
+		members := groups[key]
+		if len(members) < 2 {
+			continue
+		}
+		message := conflictMessage(key, members)
+		if message == "" {
+			continue
+		}
+		for _, member := range members {
+			invalid[types.NamespacedName{Namespace: member.Namespace, Name: member.Name}] = struct{}{}
+			allErrors = append(allErrors, &openpeerrors.ResourceError{Obj: v1alpha1.FailedResource{
+				Kind:    openpeerrors.KindL2VNI,
+				Name:    member.Name,
+				Reason:  v1alpha1.FailedResourceReasonValidationFailed,
+				Message: message,
+			}})
+		}
+	}
+	return rejectL2VNIs(l2vnis, invalid), errors.Join(allErrors...)
+}
+
+func rejectL2VNIs(l2vnis []v1alpha1.L2VNI, invalid map[types.NamespacedName]struct{}) []v1alpha1.L2VNI {
+	if len(invalid) == 0 {
+		return l2vnis
+	}
+	valid := make([]v1alpha1.L2VNI, 0, len(l2vnis)-len(invalid))
+	for _, l2vni := range l2vnis {
+		if _, rejected := invalid[types.NamespacedName{Namespace: l2vni.Namespace, Name: l2vni.Name}]; rejected {
+			continue
+		}
+		valid = append(valid, l2vni)
+	}
+	return valid
 }

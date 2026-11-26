@@ -74,7 +74,7 @@ func AttachL2VNIToHost(
 	if err != nil {
 		return fmt.Errorf("host TAP %s not found after move: %w", linkPair.HostSide, err)
 	}
-	if err := hostnetwork.SetupHostMaster(ctx, ovsClient, params, hostTap); err != nil {
+	if err := hostnetwork.SetupHostMaster(ctx, ovsClient, params.HostMaster, params.VNI, hostTap); err != nil {
 		return fmt.Errorf("failed to set up host master: %w", err)
 	}
 	return nil

@@ -1564,3 +1564,107 @@ func TestApplyDefaultsAndValidateApplyDefaultsError(t *testing.T) {
 func testNodeSelector(nodeName string) *metav1.LabelSelector {
 	return &metav1.LabelSelector{MatchLabels: map[string]string{"kubernetes.io/hostname": nodeName}}
 }
+
+func TestReadStaticConfigs_L2Trunk(t *testing.T) {
+	dir := t.TempDir()
+	writeYAMLFile(t, dir, "openpe_l2trunk.yaml", `
+underlays:
+  - asn: 64515
+    routerIDCIDR: "10.0.0.0/24"
+    interfaces:
+      - type: NetworkDevice
+        networkDevice:
+          interfaceName: eth0
+    neighbors:
+      - asn: 64512
+        address: "192.168.11.2"
+    tunnelEndpoint:
+      cidrs:
+      - "100.65.0.0/24"
+l2trunks:
+  - name: workloads
+    type: Host
+    hostMaster:
+      type: LinuxBridge
+      linuxBridge:
+        lifecycle: External
+        name: br-ex
+l2vnis:
+  - vni: 300
+    trunk:
+      name: workloads
+      vlan:
+        tag: 100
+`)
+
+	apiConfig, err := readStaticConfigs(dir, "test-node", "test-namespace")
+	if err != nil {
+		t.Fatalf("readStaticConfigs() unexpected error: %v", err)
+	}
+
+	if len(apiConfig.L2Trunks) != 1 {
+		t.Fatalf("expected 1 L2Trunk, got %d", len(apiConfig.L2Trunks))
+	}
+	trunk := apiConfig.L2Trunks[0]
+	if trunk.Name != "static-test-node-workloads" {
+		t.Errorf("expected rewritten trunk name, got %q", trunk.Name)
+	}
+	if trunk.Namespace != "test-namespace" {
+		t.Errorf("expected test-namespace, got %q", trunk.Namespace)
+	}
+	if trunk.Spec.Type != v1alpha1.L2TrunkTypeHost {
+		t.Errorf("expected type Host, got %q", trunk.Spec.Type)
+	}
+	if trunk.Labels[StaticSourceLabel] != StaticSourceValue || trunk.Labels[StaticNodeLabel] != "test-node" {
+		t.Errorf("expected static labels, got %v", trunk.Labels)
+	}
+	if trunk.Spec.HostMaster == nil || trunk.Spec.HostMaster.LinuxBridge == nil ||
+		ptr.Deref(trunk.Spec.HostMaster.LinuxBridge.Name, "") != "br-ex" {
+		t.Errorf("unexpected host master: %+v", trunk.Spec.HostMaster)
+	}
+
+	if len(apiConfig.L2VNIs) != 1 {
+		t.Fatalf("expected 1 L2VNI, got %d", len(apiConfig.L2VNIs))
+	}
+	if apiConfig.L2VNIs[0].Spec.Trunk == nil ||
+		apiConfig.L2VNIs[0].Spec.Trunk.Name != "static-test-node-workloads" {
+		t.Errorf("expected L2VNI trunk reference to be rewritten, got %+v", apiConfig.L2VNIs[0].Spec.Trunk)
+	}
+	if apiConfig.L2VNIs[0].Spec.Trunk.VLAN.Tag != 100 {
+		t.Errorf("expected tag 100, got %d", apiConfig.L2VNIs[0].Spec.Trunk.VLAN.Tag)
+	}
+}
+
+func TestReadStaticConfigs_InvalidL2TrunkIsReported(t *testing.T) {
+	dir := t.TempDir()
+	writeYAMLFile(t, dir, "openpe_l2trunk.yaml", `
+underlays:
+  - asn: 64515
+    routerIDCIDR: "10.0.0.0/24"
+    interfaces:
+      - type: NetworkDevice
+        networkDevice:
+          interfaceName: eth0
+    neighbors:
+      - asn: 64512
+        address: "192.168.11.2"
+    tunnelEndpoint:
+      cidrs:
+      - "100.65.0.0/24"
+l2trunks:
+  - name: workloads
+    type: Host
+    hostMaster:
+      type: LinuxBridge
+      linuxBridge:
+        lifecycle: Managed
+`)
+
+	_, err := readStaticConfigs(dir, "test-node", "test-namespace")
+	if err == nil {
+		t.Fatal("expected an error for a managed host master, got none")
+	}
+	if !strings.Contains(err.Error(), "L2Trunk") {
+		t.Fatalf("expected the error to name the L2Trunk, got %q", err)
+	}
+}

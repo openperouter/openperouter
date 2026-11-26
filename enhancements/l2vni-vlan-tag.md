@@ -12,9 +12,11 @@ host attachment, bridge, and VXLAN device:
 ![Proposed shared VLAN trunk model](drawings/vlan_novlanbridges.png)
 
 In order to make the two implementations coexist, the current L2VNI
-is reimplemented using the VLan aware model. This is because in order to make a VLan aware
-bridge and a non VLan aware bridge, we would have to use different VXLan ports (a limitation
-of linux).
+is reimplemented using the VLAN aware model. This is because the kernel only
+lets devices that all use the external (VNI filtering) mode share one VXLAN
+UDP port; a traditional per-VNI VXLAN device cannot share its port with an
+external one. Keeping both models would therefore require a second UDP port
+per node, so every VNI is moved to the VLAN aware model instead.
 
 All L2VNIs and L3VNIs use the
 [FRR VLAN filtering bridge and single VXLAN device model](https://docs.frrouting.org/en/latest/evpn.html#vlan-filtering-bridge-and-single-vxlan-device).
@@ -82,6 +84,7 @@ kind: L2Trunk
 metadata:
   name: workloads
 spec:
+  type: Host
   hostMaster:
     type: LinuxBridge
     linuxBridge:
@@ -405,3 +408,31 @@ including for existing L2VNIs and L3VNIs migrated to this model.
 Existing manifests and host-facing behavior remain valid. Internal VLANs
 require no user configuration. Static configuration supports the same
 `L2Trunk` and `L2VNI.trunk` fields and semantics as the Kubernetes API.
+
+## Upgrade
+
+The migration is in-place and runs once per node when the new version starts:
+the controller deletes the traditional per-VNI VXLAN devices and recreates
+every VNI on a VLAN aware bridge with an external VNI filtering device. FRR
+configuration and the public API do not change, and the gateway addresses,
+anycast MACs, VRF membership and neighbour table stay on `br-pe-<vni>`.
+
+- **Disruption window.** Each node's overlay is reprogrammed once, in a single
+  reconcile pass. Traffic on a VNI can drop from the moment its traditional
+  device is deleted until the external device is up and zebra rediscovers the
+  SVI. Session state is unaffected: BGP sessions stay up, since the underlay
+  and `frr.conf` do not change. Removing the devices also drops VXLAN FDB
+  entries, which recover as traffic and EVPN routes repopulate them.
+- **Kernel requirement.** The new dataplane needs kernel 5.18 or newer for
+  VXLAN VNI filtering. The controller probes the capability before touching
+  the dataplane: on an older kernel it fails closed, refuses to purge the
+  legacy devices, and reports the affected node, so an accidental upgrade
+  leaves the existing overlay running.
+- **Rollback.** The previous version manages traditional VXLAN devices. Running
+  it again converges back to that model only after the external devices are
+  removed, which is not automatic: a downgrade is a manual, node-by-node
+  operation that requires deleting the VLAN aware devices first. Plan the
+  upgrade as one way, and validate it on a non-production node first.
+- **New capability.** Once a node runs the new dataplane it can accept
+  `L2Trunk` resources and tagged L2VNIs, and standalone and trunk-attached
+  L2VNIs share one VXLAN UDP port on that node.

@@ -16,6 +16,7 @@ import (
 	"github.com/openperouter/openperouter/internal/hostnetwork/bridgerefresh"
 	"github.com/openperouter/openperouter/internal/sysctl"
 	"github.com/vishvananda/netns"
+	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 type interfacesConfiguration struct {
@@ -28,9 +29,10 @@ type interfacesConfiguration struct {
 // datapath reconcile cycle, either because they were configured or because
 // their setup failed transiently.
 type vnis struct {
-	l3VNIs []hostnetwork.L3VNIParams
-	l3VPNs []hostnetwork.L3VPNParams
-	l2VNIs []hostnetwork.L2VNIParams
+	l3VNIs   []hostnetwork.L3VNIParams
+	l3VPNs   []hostnetwork.L3VPNParams
+	l2VNIs   []hostnetwork.L2VNIParams
+	l2Trunks []hostnetwork.L2TrunkParams
 }
 
 // KernelDatapathConfigurator configures the host via kernel netlink calls.
@@ -69,16 +71,23 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 
 	slog.InfoContext(ctx, "configure interface start", "namespace", config.targetNamespace)
 	defer slog.InfoContext(ctx, "configure interface end", "namespace", config.targetNamespace)
-	apiConfig := conversion.APIConfigData{
-		Underlays:     config.Underlays,
-		L3VNIs:        config.L3VNIs,
-		L2VNIs:        config.L2VNIs,
-		L3VPNs:        config.L3VPNs,
-		L3Passthrough: config.L3Passthrough,
-	}
-	hostConfig, err := conversion.APItoHostConfig(config.nodeIndex, config.targetNamespace, apiConfig)
+	hostConfig, err := conversion.APItoHostConfig(config.nodeIndex, config.targetNamespace, config.APIConfigData)
 	if err != nil {
 		return fmt.Errorf("failed to convert config to host configuration: %w", err)
+	}
+
+	// Fail closed before the legacy purge deletes the devices currently carrying
+	// traffic: on a kernel without VNI filtering the migration cannot complete.
+	configuredPorts := configuredVXLanPorts(hostConfig)
+	if len(configuredPorts) > 0 {
+		if err := hostnetwork.EnsureVniFilterSupport(config.targetNamespace); err != nil {
+			return &openpeerrors.ResourceError{Obj: v1alpha1.FailedResource{
+				Kind:    openpeerrors.KindUnderlay,
+				Name:    config.Underlays[0].Name,
+				Reason:  v1alpha1.FailedResourceReasonValidationFailed,
+				Message: err.Error(),
+			}}
+		}
 	}
 
 	// This must run before underlay interfaces are added to the namespace.
@@ -97,6 +106,9 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 		if err := hostnetwork.RemoveAllVNIs(ovsClient, config.targetNamespace); err != nil {
 			slog.Warn("failed to remove vnis during underlay change", "err", err)
 		}
+		if err := hostnetwork.RemoveAllTrunks(config.targetNamespace); err != nil {
+			slog.Warn("failed to remove l2trunks during underlay change", "err", err)
+		}
 		bridgerefresh.StopAllVNIs()
 	}
 
@@ -109,7 +121,29 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 	for i := range hostConfig.L3VNIs {
 		hostConfig.L3VNIs[i].RouterMAC = routerMAC
 	}
-	vnisToKeep, resourceErrors := setupVNIs(ctx, ovsClient, config.targetNamespace, hostConfig)
+
+	var resourceErrors []error
+
+	// The purge and the new external devices cannot share a UDP port, so every
+	// legacy device must go before setupVNIs creates the first external one. A
+	// device that fails to purge does not block every other VNI's setup: a VNI
+	// that actually needs the same port fails on its own in setupVNIs, with its
+	// own per-resource error; one unrelated stuck device must not take down
+	// every VNI on the node.
+	if err := hostnetwork.PurgeLegacyVXLans(config.targetNamespace, configuredPorts); err != nil {
+		resourceErrors = append(resourceErrors, fmt.Errorf("failed to purge legacy VXLAN devices: %w", err))
+	}
+
+	// spec.trunk is immutable, so converting a standalone L2VNI to a
+	// trunk-attached one is a delete-and-recreate. Release the VNI from the old
+	// device before setup adds it to the trunk's shared device. A reclaim
+	// failure is scoped the same way: it must not block every other VNI's setup.
+	if err := hostnetwork.ReclaimVNIs(config.targetNamespace, hostConfig.L2VNIs); err != nil {
+		resourceErrors = append(resourceErrors, fmt.Errorf("failed to reclaim trunk VNIs: %w", err))
+	}
+
+	vnisToKeep, setupErrors := setupVNIs(ctx, ovsClient, config.targetNamespace, hostConfig)
+	resourceErrors = append(resourceErrors, setupErrors...)
 	slog.InfoContext(ctx, "setting up passthrough")
 	if hostConfig.L3Passthrough != nil {
 		if err := hostnetwork.SetupPassthrough(ctx, *hostConfig.L3Passthrough); err != nil {
@@ -125,8 +159,13 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 		configuredVRFs[vni.VRF] = true
 	}
 	for _, l2vni := range vnisToKeep.l2VNIs {
-		configuredVNIs = append(configuredVNIs, l2vni.VNIParams)
 		configuredVRFs[l2vni.VRF] = true
+		// A trunk-attached L2VNI owns no standalone devices; its endpoint is
+		// owned by the trunk's own garbage collection.
+		if l2vni.Trunk != nil {
+			continue
+		}
+		configuredVNIs = append(configuredVNIs, l2vni.VNIParams)
 	}
 	for _, l3vpn := range vnisToKeep.l3VPNs {
 		configuredVRFs[l3vpn.VRF] = true
@@ -135,6 +174,9 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 	slog.InfoContext(ctx, "removing deleted vnis")
 	if err := hostnetwork.RemoveNonConfiguredVNIs(ovsClient, config.targetNamespace, configuredVNIs); err != nil {
 		return errors.Join(append(resourceErrors, fmt.Errorf("failed to remove deleted vnis: %w", err))...)
+	}
+	if err := hostnetwork.RemoveNonConfiguredTrunks(config.targetNamespace, vnisToKeep.l2Trunks, vnisToKeep.l2VNIs); err != nil {
+		return errors.Join(append(resourceErrors, fmt.Errorf("failed to remove deleted l2trunks: %w", err))...)
 	}
 	bridgerefresh.StopForRemovedVNIs(vnisToKeep.l2VNIs)
 
@@ -157,6 +199,29 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 	return errors.Join(resourceErrors...)
 }
 
+// configuredVXLanPorts returns every UDP port the node's VNIs use. VXLanPort
+// is per-resource, so a node can legitimately use several, and the legacy purge
+// must cover all of them.
+func configuredVXLanPorts(hostConfig conversion.HostConfigData) []int32 {
+	ports := sets.New[int32]()
+	for _, vni := range hostConfig.L3VNIs {
+		if vni.VXLanPort != nil {
+			ports.Insert(*vni.VXLanPort)
+		}
+	}
+	for _, vni := range hostConfig.L2VNIs {
+		if vni.VXLanPort != nil {
+			ports.Insert(*vni.VXLanPort)
+		}
+	}
+	for _, trunk := range hostConfig.L2Trunks {
+		ports.Insert(trunk.VXLanPort)
+	}
+	result := ports.UnsortedList()
+	slices.Sort(result)
+	return result
+}
+
 // setupVNIs sets up every VNI of the datapath reconcile cyle. The underlay MTU
 // and the VTEP loopback are node-wide, so it opens the router namespace once
 // and resolves them once for the whole reconcile cycle.
@@ -166,7 +231,8 @@ func setupVNIs(
 	routerNamespace string,
 	hostConfig conversion.HostConfigData,
 ) (vnis, []error) {
-	if len(hostConfig.L3VNIs) == 0 && len(hostConfig.L3VPNs) == 0 && len(hostConfig.L2VNIs) == 0 {
+	if len(hostConfig.L3VNIs) == 0 && len(hostConfig.L3VPNs) == 0 &&
+		len(hostConfig.L2VNIs) == 0 && len(hostConfig.L2Trunks) == 0 {
 		return vnis{}, nil
 	}
 
@@ -191,16 +257,19 @@ func setupVNIs(
 	}
 
 	failedL3Domains := map[string]struct{}{}
+	failedTrunks := map[string]struct{}{}
+	configuredTrunks, trunkErrors := setupL2Trunks(ctx, configurator, hostConfig.L2Trunks, failedTrunks)
 	configuredL3VNIs, l3VNIErrors := setupL3VNIs(ctx, configurator, hostConfig.L3VNIs, failedL3Domains)
 	configuredL3VPNs, l3VPNErrors := setupL3VPNs(ctx, configurator, hostConfig.L3VPNs, failedL3Domains)
 
-	configuredL2VNIs, l2VNIErrors := setupL2VNIs(ctx, configurator, hostConfig.L2VNIs, failedL3Domains)
+	configuredL2VNIs, l2VNIErrors := setupL2VNIs(ctx, configurator, hostConfig.L2VNIs, failedL3Domains, failedTrunks)
 
 	return vnis{
-		l3VNIs: configuredL3VNIs,
-		l3VPNs: configuredL3VPNs,
-		l2VNIs: configuredL2VNIs,
-	}, slices.Concat(l3VNIErrors, l3VPNErrors, l2VNIErrors)
+		l3VNIs:   configuredL3VNIs,
+		l3VPNs:   configuredL3VPNs,
+		l2VNIs:   configuredL2VNIs,
+		l2Trunks: configuredTrunks,
+	}, slices.Concat(trunkErrors, l3VNIErrors, l3VPNErrors, l2VNIErrors)
 }
 
 // vnisFromHostConfig returns every VNI of the host configuration, so a failure
@@ -208,9 +277,10 @@ func setupVNIs(
 // retry.
 func vnisFromHostConfig(hostConfig conversion.HostConfigData) vnis {
 	return vnis{
-		l3VNIs: hostConfig.L3VNIs,
-		l3VPNs: hostConfig.L3VPNs,
-		l2VNIs: hostConfig.L2VNIs,
+		l3VNIs:   hostConfig.L3VNIs,
+		l3VPNs:   hostConfig.L3VPNs,
+		l2VNIs:   hostConfig.L2VNIs,
+		l2Trunks: hostConfig.L2Trunks,
 	}
 }
 
@@ -228,10 +298,13 @@ func errorsForVNIs(hostConfig conversion.HostConfigData, err error) []error {
 	for _, vni := range hostConfig.L2VNIs {
 		allErrors = append(allErrors, overlayAttachmentError(openpeerrors.KindL2VNI, vni.Name, err.Error()))
 	}
+	for _, trunk := range hostConfig.L2Trunks {
+		allErrors = append(allErrors, overlayAttachmentError(openpeerrors.KindL2Trunk, trunk.Name, err.Error()))
+	}
 	return allErrors
 }
 
-// A VNIConfigurator implements all three interfaces below. Each setup function
+// A VNIConfigurator implements all four interfaces below. Each setup function
 // accepts only the one it uses.
 type l3VNIConfigurator interface {
 	SetupL3VNI(context.Context, hostnetwork.L3VNIParams) error
@@ -243,6 +316,11 @@ type l3VPNConfigurator interface {
 
 type l2VNIConfigurator interface {
 	SetupL2VNI(context.Context, hostnetwork.L2VNIParams) error
+	SetupL2TrunkVNI(context.Context, hostnetwork.L2VNIParams) error
+}
+
+type l2TrunkConfigurator interface {
+	SetupL2Trunk(context.Context, hostnetwork.L2TrunkParams) error
 }
 
 // setupL3VNIs sets up every L3VNI through the configurator, and returns the
@@ -291,15 +369,42 @@ func setupL3VPNs(
 	return configured, errs
 }
 
-// setupL2VNIs sets up every L2VNI whose routing domain is healthy, and
-// returns the ones whose devices must stay on the node, plus an error for each
-// L2VNI that failed. An L2VNI of a failed routing domain is reported and is not
-// set up on top of the missing domain.
+// setupL2Trunks sets up every L2Trunk before the L2VNIs that reference them.
+// A failed trunk is reported and its L2VNIs are not configured on top of it.
+func setupL2Trunks(
+	ctx context.Context,
+	configurator l2TrunkConfigurator,
+	l2Trunks []hostnetwork.L2TrunkParams,
+	failedTrunks map[string]struct{},
+) ([]hostnetwork.L2TrunkParams, []error) {
+	var kept []hostnetwork.L2TrunkParams
+	var errs []error
+	for _, trunk := range l2Trunks {
+		slog.InfoContext(ctx, "setting up L2Trunk", "l2trunk", trunk.Name, "namespace", trunk.Namespace)
+		err := configurator.SetupL2Trunk(ctx, trunk)
+		if err != nil {
+			errs = append(errs, overlayAttachmentError(openpeerrors.KindL2Trunk, trunk.Name, err.Error()))
+			failedTrunks[hostnetwork.TrunkID(trunk.Namespace, trunk.Name)] = struct{}{}
+		}
+		// Mirror the L2VNI policy: a transient failure keeps the devices the
+		// trunk already has; any other failure lets the cleanup remove them.
+		if err == nil || isErrorTransient(err) {
+			kept = append(kept, trunk)
+		}
+	}
+	return kept, errs
+}
+
+// setupL2VNIs sets up every L2VNI whose routing domain and trunk are healthy,
+// and returns the ones whose devices must stay on the node, plus an error for
+// each L2VNI that failed. An L2VNI of a failed routing domain or trunk is
+// reported and is not set up on top of the missing dependency.
 func setupL2VNIs(
 	ctx context.Context,
 	configurator l2VNIConfigurator,
 	l2VNIs []hostnetwork.L2VNIParams,
 	failedL3Domains map[string]struct{},
+	failedTrunks map[string]struct{},
 ) ([]hostnetwork.L2VNIParams, []error) {
 	var kept []hostnetwork.L2VNIParams
 	var errs []error
@@ -308,6 +413,13 @@ func setupL2VNIs(
 			errs = append(errs, overlayAttachmentError(openpeerrors.KindL2VNI, vni.Name,
 				fmt.Sprintf("L3 domain %q failed netlink provisioning", vni.VRF)))
 			continue
+		}
+		if vni.Trunk != nil && vni.Trunk.TrunkID != "" {
+			if _, trunkFailed := failedTrunks[vni.Trunk.TrunkID]; trunkFailed {
+				errs = append(errs, overlayAttachmentError(openpeerrors.KindL2VNI, vni.Name,
+					fmt.Sprintf("L2Trunk %q failed netlink provisioning", vni.Trunk.Name)))
+				continue
+			}
 		}
 		err := setupL2VNI(ctx, configurator, vni)
 		if err != nil {
@@ -329,6 +441,14 @@ func setupL2VNI(
 	configurator l2VNIConfigurator,
 	vni hostnetwork.L2VNIParams,
 ) error {
+	if vni.Trunk != nil && vni.Trunk.TrunkID != "" {
+		slog.InfoContext(ctx, "setting up trunk-attached L2VNI",
+			"vni", vni.VNI, "trunk", vni.Trunk.Name, "tag", vni.Trunk.VLAN)
+		if err := configurator.SetupL2TrunkVNI(ctx, vni); err != nil {
+			return err
+		}
+		return bridgerefresh.StartForVNI(ctx, vni)
+	}
 	slog.InfoContext(ctx, "setting up L2VNI", "vni", vni.VNI)
 	if err := configurator.SetupL2VNI(ctx, vni); err != nil {
 		return err

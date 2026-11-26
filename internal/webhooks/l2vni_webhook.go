@@ -148,8 +148,13 @@ func validateL2VNI(l2vni *v1alpha1.L2VNI) error {
 		return err
 	}
 
+	l2trunks, err := getL2Trunks()
+	if err != nil {
+		return err
+	}
+
 	if err := conversion.ValidateOverlayResourcesForNodes(nodeList.Items, toValidate,
-		toValidateL3.Items, l3vpnList.Items, l3passthroughs.Items); err != nil {
+		l2trunks.Items, toValidateL3.Items, l3vpnList.Items, l3passthroughs.Items); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
 	}
 

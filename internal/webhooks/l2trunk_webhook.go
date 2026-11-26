@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/internal/conversion"
@@ -17,9 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
-const (
-	l2trunkValidationWebhookPath = "/validate-openperouter-io-v1alpha1-l2trunk"
-)
+const l2trunkValidationWebhookPath = "/validate-openperouter-io-v1alpha1-l2trunk"
 
 type L2TrunkValidator struct {
 	client  client.Client
@@ -43,34 +42,73 @@ func SetupL2Trunk(mgr ctrl.Manager) error {
 }
 
 func (v *L2TrunkValidator) Handle(_ context.Context, req admission.Request) admission.Response {
-	if req.Operation != v1.Create && req.Operation != v1.Update {
-		return admission.Allowed("")
-	}
-
-	var l2trunk v1alpha1.L2Trunk
-	if err := v.decoder.Decode(req, &l2trunk); err != nil {
+	l2trunk, err := v.decodeL2Trunk(req)
+	if err != nil {
 		return admission.Errored(http.StatusBadRequest, err)
 	}
+
+	switch req.Operation {
+	case v1.Create, v1.Update:
+		return validateL2TrunkAdmission(l2trunk)
+	case v1.Delete:
+		return warnOrphanedL2VNIs(l2trunk)
+	}
+	return admission.Allowed("")
+}
+
+func (v *L2TrunkValidator) decodeL2Trunk(req admission.Request) (v1alpha1.L2Trunk, error) {
+	var l2trunk v1alpha1.L2Trunk
+	var err error
+	if req.Operation == v1.Delete {
+		err = v.decoder.DecodeRaw(req.OldObject, &l2trunk)
+	} else {
+		err = v.decoder.Decode(req, &l2trunk)
+	}
+	return l2trunk, err
+}
+
+func validateL2TrunkAdmission(l2trunk v1alpha1.L2Trunk) admission.Response {
 	if err := validateL2Trunk(&l2trunk); err != nil {
 		return admission.Denied(err.Error())
 	}
-	if err := DatapathConfigValidator.Validate(conversion.APIConfigData{L2Trunks: []v1alpha1.L2Trunk{l2trunk}}); err != nil {
+	if err := DatapathConfigValidator.Validate(conversion.APIConfigData{
+		L2Trunks: []v1alpha1.L2Trunk{l2trunk},
+	}); err != nil {
 		return admission.Denied(err.Error())
 	}
 	return admission.Allowed("")
+}
+
+func warnOrphanedL2VNIs(l2trunk v1alpha1.L2Trunk) admission.Response {
+	warnings, err := orphanedL2VNIWarnings(l2trunk)
+	if err != nil {
+		return admission.Errored(http.StatusInternalServerError, err)
+	}
+	if len(warnings) == 0 {
+		return admission.Allowed("")
+	}
+	return admission.Allowed("").WithWarnings(warnings...)
 }
 
 func validateL2Trunk(l2trunk *v1alpha1.L2Trunk) error {
 	Logger.Debug("webhook l2trunk", "action", "validate", "name", l2trunk.Name, "namespace", l2trunk.Namespace)
 	defer Logger.Debug("webhook l2trunk", "action", "end validate", "name", l2trunk.Name, "namespace", l2trunk.Namespace)
 
-	existingL2Trunks, err := getL2Trunks()
+	trunks, err := getL2Trunks()
+	if err != nil {
+		return err
+	}
+	l2vnis, err := getL2VNIs()
+	if err != nil {
+		return err
+	}
+	nodes, err := getNodes()
 	if err != nil {
 		return err
 	}
 
-	toValidate := make([]v1alpha1.L2Trunk, 0, len(existingL2Trunks.Items)+1)
-	for _, existing := range existingL2Trunks.Items {
+	toValidate := make([]v1alpha1.L2Trunk, 0, len(trunks.Items)+1)
+	for _, existing := range trunks.Items {
 		if existing.Name == l2trunk.Name && existing.Namespace == l2trunk.Namespace {
 			continue
 		}
@@ -80,15 +118,36 @@ func validateL2Trunk(l2trunk *v1alpha1.L2Trunk) error {
 	// against it rather than against the trunk already using the VF.
 	toValidate = append(toValidate, *l2trunk.DeepCopy())
 
-	nodeList := &corev1.NodeList{}
-	if err := WebhookClient.List(context.Background(), nodeList, &client.ListOptions{}); err != nil {
-		return fmt.Errorf("failed to get existing Node objects when validating L2Trunk: %w", err)
-	}
-
-	if err := conversion.ValidateL2TrunksForNodes(nodeList.Items, toValidate); err != nil {
+	if err := conversion.ValidateOverlayResourcesForNodes(
+		nodes, l2vnis.Items, toValidate, nil, nil, nil); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
 	}
 	return nil
+}
+
+// orphanedL2VNIWarnings lists the L2VNIs whose dataplane will be torn down by
+// this deletion. The delete is admitted, per the L2Trunk contract, but the
+// operator gets an explicit signal before a whole set of tenant segments goes
+// dark.
+func orphanedL2VNIWarnings(l2trunk v1alpha1.L2Trunk) ([]string, error) {
+	l2vnis, err := getL2VNIs()
+	if err != nil {
+		return nil, err
+	}
+	var warnings []string
+	for _, l2vni := range l2vnis.Items {
+		if l2vni.Namespace != l2trunk.Namespace {
+			continue
+		}
+		if l2vni.Spec.Trunk == nil || l2vni.Spec.Trunk.Name != l2trunk.Name {
+			continue
+		}
+		warnings = append(warnings, fmt.Sprintf(
+			"L2VNI %s/%s references this L2Trunk and will lose its dataplane configuration",
+			l2vni.Namespace, l2vni.Name))
+	}
+	slices.Sort(warnings)
+	return warnings, nil
 }
 
 var getL2Trunks = func() (*v1alpha1.L2TrunkList, error) {
@@ -97,4 +156,12 @@ var getL2Trunks = func() (*v1alpha1.L2TrunkList, error) {
 		return nil, fmt.Errorf("failed to get existing L2Trunk objects: %w", err)
 	}
 	return l2trunkList, nil
+}
+
+var getNodes = func() ([]corev1.Node, error) {
+	nodeList := &corev1.NodeList{}
+	if err := WebhookClient.List(context.Background(), nodeList, &client.ListOptions{}); err != nil {
+		return nil, fmt.Errorf("failed to get existing Node objects when validating L2Trunk: %w", err)
+	}
+	return nodeList.Items, nil
 }

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"slices"
 
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -55,6 +56,7 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 		L3VNIs:        apiConfig.L3VNIs,
 		L3VPNs:        apiConfig.L3VPNs,
 		L2VNIs:        apiConfig.L2VNIs,
+		L2Trunks:      apiConfig.L2Trunks,
 		L3Passthrough: apiConfig.L3Passthrough,
 	})
 	if openpeerrors.IsNonResourceError(err) {
@@ -66,13 +68,12 @@ func Reconcile(ctx context.Context, apiConfig conversion.APIConfigData, nodeInde
 		validOverlays.L2VNIs, validOverlays.L3VNIs, validOverlays.L3VPNs)
 	resourceErrors = append(resourceErrors, err)
 
-	validL2Trunks, err := conversion.FilterValidL2Trunks(apiConfig.L2Trunks)
-	resourceErrors = append(resourceErrors, err)
-
+	validL2Trunks := validOverlays.L2Trunks
 	validL2Trunks, err = datapathConfigurator.FilterL2Trunks(validL2Trunks)
 	resourceErrors = append(resourceErrors, err)
 
-	validOverlays.L2VNIs, err = filterL2VNIsWithMissingTrunk(validOverlays.L2VNIs, validL2Trunks)
+	validOverlays.L2VNIs, err = filterL2VNIsWithMissingTrunk(
+		validOverlays.L2VNIs, validL2Trunks)
 	resourceErrors = append(resourceErrors, err)
 
 	config := conversion.APIConfigData{
@@ -144,16 +145,41 @@ func objectKey(o client.Object) string {
 	return client.ObjectKeyFromObject(o).String()
 }
 
+// missingTrunkMessagePrefix starts the message of an L2VNI dependency failure
+// caused by an L2Trunk that is absent for this node.
+const missingTrunkMessagePrefix = "referenced L2Trunk "
+
+// filterL2VNIsWithMissingTrunk reports and removes L2VNIs whose referenced
+// L2Trunk was filtered out or does not exist for this node. Resources may be
+// created in any order, so this is a reconciliation concern, not a filter of
+// the resource set.
+func filterL2VNIsWithMissingTrunk(
+	l2Vnis []v1alpha1.L2VNI,
+	l2Trunks []v1alpha1.L2Trunk,
+) ([]v1alpha1.L2VNI, error) {
+	validTrunks := sets.New[types.NamespacedName]()
+	for _, trunk := range l2Trunks {
+		validTrunks.Insert(types.NamespacedName{Namespace: trunk.Namespace, Name: trunk.Name})
+	}
+
+	return filterL2VNIsByDependency(l2Vnis, func(l2 v1alpha1.L2VNI) error {
+		if l2.Spec.Trunk == nil {
+			return nil
+		}
+		key := types.NamespacedName{Namespace: l2.Namespace, Name: l2.Spec.Trunk.Name}
+		if validTrunks.Has(key) {
+			return nil
+		}
+		return missingDependencyError(l2.Name, openpeerrors.KindL2Trunk, l2.Spec.Trunk.Name)
+	})
+}
+
 // filterL2VNIsWithInvalidRoutingDomain must be called after all L3VNI/L3VPN filtering is complete.
 func filterL2VNIsWithInvalidRoutingDomain(
 	l2Vnis []v1alpha1.L2VNI,
 	validL3VNIs []v1alpha1.L3VNI,
 	validL3VPNs []v1alpha1.L3VPN,
 ) ([]v1alpha1.L2VNI, error) {
-	if len(l2Vnis) == 0 {
-		return l2Vnis, nil
-	}
-
 	validL3VNINames := sets.New[string]()
 	for _, l3 := range validL3VNIs {
 		validL3VNINames.Insert(l3.Name)
@@ -162,72 +188,53 @@ func filterL2VNIsWithInvalidRoutingDomain(
 	for _, vpn := range validL3VPNs {
 		validL3VPNNames.Insert(vpn.Name)
 	}
-	valid := make([]v1alpha1.L2VNI, 0, len(l2Vnis))
-	var resourceErrors []error
-	for _, l2 := range l2Vnis {
+
+	return filterL2VNIsByDependency(l2Vnis, func(l2 v1alpha1.L2VNI) error {
 		if l2.Spec.RoutingDomain == nil {
-			valid = append(valid, l2)
-			continue
+			return nil
 		}
 		switch l2.Spec.RoutingDomain.Type {
 		case v1alpha1.RoutingDomainTypeL3VNI:
 			if l2.Spec.RoutingDomain.L3VNI != nil && !validL3VNINames.Has(l2.Spec.RoutingDomain.L3VNI.Name) {
-				resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
-					Obj: v1alpha1.FailedResource{
-						Kind:    openpeerrors.KindL2VNI,
-						Name:    l2.Name,
-						Reason:  v1alpha1.FailedResourceReasonDependencyFailed,
-						Message: fmt.Sprintf("referenced L3VNI %q not found", l2.Spec.RoutingDomain.L3VNI.Name),
-					},
-				})
-				continue
+				return missingDependencyError(l2.Name, openpeerrors.KindL3VNI, l2.Spec.RoutingDomain.L3VNI.Name)
 			}
 		case v1alpha1.RoutingDomainTypeL3VPN:
 			if l2.Spec.RoutingDomain.L3VPN != nil && !validL3VPNNames.Has(l2.Spec.RoutingDomain.L3VPN.Name) {
-				resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
-					Obj: v1alpha1.FailedResource{
-						Kind:    openpeerrors.KindL2VNI,
-						Name:    l2.Name,
-						Reason:  v1alpha1.FailedResourceReasonDependencyFailed,
-						Message: fmt.Sprintf("referenced L3VPN %q not found", l2.Spec.RoutingDomain.L3VPN.Name),
-					},
-				})
-				continue
+				return missingDependencyError(l2.Name, openpeerrors.KindL3VPN, l2.Spec.RoutingDomain.L3VPN.Name)
 			}
+		}
+		return nil
+	})
+}
+
+// filterL2VNIsByDependency keeps the L2VNIs whose dependency check passes and
+// reports one dependency failure per rejected L2VNI.
+func filterL2VNIsByDependency(
+	l2Vnis []v1alpha1.L2VNI,
+	dependencyError func(v1alpha1.L2VNI) error,
+) ([]v1alpha1.L2VNI, error) {
+	if len(l2Vnis) == 0 {
+		return l2Vnis, nil
+	}
+	valid := make([]v1alpha1.L2VNI, 0, len(l2Vnis))
+	var resourceErrors []error
+	for _, l2 := range l2Vnis {
+		if err := dependencyError(l2); err != nil {
+			resourceErrors = append(resourceErrors, err)
+			continue
 		}
 		valid = append(valid, l2)
 	}
 	return valid, errors.Join(resourceErrors...)
 }
 
-// filterL2VNIsWithMissingTrunk drops the L2VNIs referencing an L2Trunk that
-// does not apply to this node, or that failed validation. They stay in the
-// API, but lose their data plane configuration until the trunk is available.
-func filterL2VNIsWithMissingTrunk(l2Vnis []v1alpha1.L2VNI, validL2Trunks []v1alpha1.L2Trunk) ([]v1alpha1.L2VNI, error) {
-	if len(l2Vnis) == 0 {
-		return l2Vnis, nil
+func missingDependencyError(l2vniName string, kind v1alpha1.FailedResourceKind, dependencyName string) error {
+	return &openpeerrors.ResourceError{
+		Obj: v1alpha1.FailedResource{
+			Kind:    openpeerrors.KindL2VNI,
+			Name:    l2vniName,
+			Reason:  v1alpha1.FailedResourceReasonDependencyFailed,
+			Message: fmt.Sprintf("referenced %s %q not found", kind, dependencyName),
+		},
 	}
-
-	trunkNames := sets.New[string]()
-	for _, trunk := range validL2Trunks {
-		trunkNames.Insert(trunk.Name)
-	}
-
-	valid := make([]v1alpha1.L2VNI, 0, len(l2Vnis))
-	var resourceErrors []error
-	for _, l2 := range l2Vnis {
-		if l2.Spec.Trunk == nil || trunkNames.Has(l2.Spec.Trunk.Name) {
-			valid = append(valid, l2)
-			continue
-		}
-		resourceErrors = append(resourceErrors, &openpeerrors.ResourceError{
-			Obj: v1alpha1.FailedResource{
-				Kind:    openpeerrors.KindL2VNI,
-				Name:    l2.Name,
-				Reason:  v1alpha1.FailedResourceReasonDependencyFailed,
-				Message: fmt.Sprintf("referenced L2Trunk %q not found", l2.Spec.Trunk.Name),
-			},
-		})
-	}
-	return valid, errors.Join(resourceErrors...)
 }

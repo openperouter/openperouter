@@ -19,19 +19,18 @@ const grcliPrefix = "grcli --err-exit --json --socket sock "
 func TestGroutPortNameForTrunk(t *testing.T) {
 	tests := []struct {
 		name  string
-		sriov *hostnetwork.SRIOVTrunkParams
+		sriov hostnetwork.SRIOVTrunkParams
 		want  string
 	}{
-		{"VF index 0", &hostnetwork.SRIOVTrunkParams{PFName: "enp1s0", VFIndex: 0}, "enp1s000"},
-		{"VF index past one hex digit", &hostnetwork.SRIOVTrunkParams{PFName: "enp1s0", VFIndex: 16}, "enp1s010"},
-		{"highest VF index", &hostnetwork.SRIOVTrunkParams{PFName: "enp1s0", VFIndex: 255}, "enp1s0ff"},
-		{"PF name at the suffix limit", &hostnetwork.SRIOVTrunkParams{PFName: "enp131s0f0", VFIndex: 1}, "enp131s0f001"},
-		{"PF name truncated", &hostnetwork.SRIOVTrunkParams{PFName: "enp131s0f0d1npx", VFIndex: 1}, "1s0f0d1npx01"},
-		{"no SR-IOV parameters", nil, ""},
+		{"VF index 0", hostnetwork.SRIOVTrunkParams{PFName: "enp1s0", VFIndex: 0}, "enp1s000"},
+		{"VF index past one hex digit", hostnetwork.SRIOVTrunkParams{PFName: "enp1s0", VFIndex: 16}, "enp1s010"},
+		{"highest VF index", hostnetwork.SRIOVTrunkParams{PFName: "enp1s0", VFIndex: 255}, "enp1s0ff"},
+		{"PF name at the suffix limit", hostnetwork.SRIOVTrunkParams{PFName: "enp131s0f0", VFIndex: 1}, "enp131s0f001"},
+		{"PF name truncated", hostnetwork.SRIOVTrunkParams{PFName: "enp131s0f0d1npx", VFIndex: 1}, "1s0f0d1npx01"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := GroutPortNameForTrunk(hostnetwork.L2TrunkParams{Name: "workloads", SRIOV: tt.sriov})
+			got := GroutPortNameForTrunk(tt.sriov)
 			require.Equal(t, tt.want, got)
 			require.Less(t, len(got), 16, "grout interface names must fit in IFNAMSIZ")
 		})
@@ -53,8 +52,8 @@ func TestConfiguredTrunksPort(t *testing.T) {
 		{
 			name: "configured trunk",
 			trunks: ConfiguredTrunks{
-				"workloads": {Name: "workloads", SRIOV: &hostnetwork.SRIOVTrunkParams{PFName: "enp1s0", VFIndex: 1}},
-				"storage":   {Name: "storage", SRIOV: &hostnetwork.SRIOVTrunkParams{PFName: "enp1s0", VFIndex: 2}},
+				"workloads": {PFName: "enp1s0", VFIndex: 1},
+				"storage":   {PFName: "enp1s0", VFIndex: 2},
 			},
 			lookup:   "storage",
 			wantPort: "enp1s002",
@@ -63,7 +62,7 @@ func TestConfiguredTrunksPort(t *testing.T) {
 		{
 			name: "unconfigured trunk",
 			trunks: ConfiguredTrunks{
-				"workloads": {Name: "workloads", SRIOV: &hostnetwork.SRIOVTrunkParams{PFName: "enp1s0", VFIndex: 1}},
+				"workloads": {PFName: "enp1s0", VFIndex: 1},
 			},
 			lookup: "storage",
 		},
@@ -109,28 +108,23 @@ func TestTrunkVLANName(t *testing.T) {
 func TestSetupL2TrunkRejectsInvalidParams(t *testing.T) {
 	tests := []struct {
 		name    string
-		sriov   *hostnetwork.SRIOVTrunkParams
+		sriov   hostnetwork.SRIOVTrunkParams
 		wantErr string
 	}{
 		{
-			name:    "missing SR-IOV parameters",
-			wantErr: errUnsupportedTrunk.Error(),
-		},
-		{
 			name:    "negative VF index",
-			sriov:   &hostnetwork.SRIOVTrunkParams{PFName: "enp1s0", VFIndex: -1},
+			sriov:   hostnetwork.SRIOVTrunkParams{PFName: "enp1s0", VFIndex: -1},
 			wantErr: "vfIndex -1 must be between 0 and 255",
 		},
 		{
 			name:    "VF index exceeds two hexadecimal digits",
-			sriov:   &hostnetwork.SRIOVTrunkParams{PFName: "enp131s0f0d1", VFIndex: 256},
+			sriov:   hostnetwork.SRIOVTrunkParams{PFName: "enp131s0f0d1", VFIndex: 256},
 			wantErr: "vfIndex 256 must be between 0 and 255",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			params := hostnetwork.L2TrunkParams{Name: "workloads", SRIOV: tt.sriov}
-			err := SetupL2Trunk(context.Background(), nil, params, devicestate.Store{}, pci.Sysfs{})
+			err := SetupL2Trunk(context.Background(), nil, tt.sriov, devicestate.Store{}, pci.Sysfs{})
 			require.EqualError(t, err, tt.wantErr)
 		})
 	}
@@ -306,8 +300,8 @@ func TestRemoveNonConfiguredL2Trunks(t *testing.T) {
 		grcliPrefix + "interface show name eno207":   portJSON("eno207"),
 	})
 
-	desired := []hostnetwork.L2TrunkParams{
-		{Name: "workloads", SRIOV: &hostnetwork.SRIOVTrunkParams{PFName: "enp1s0", VFIndex: 1}},
+	desired := []hostnetwork.SRIOVTrunkParams{
+		{L2TrunkParams: hostnetwork.L2TrunkParams{Name: "workloads"}, PFName: "enp1s0", VFIndex: 1},
 	}
 	err := RemoveNonConfiguredL2Trunks(context.Background(), NewClient("sock"), "", desired, store,
 		pci.Sysfs{Root: t.TempDir()})
@@ -347,7 +341,7 @@ func TestEnsureTrunkDeviceState(t *testing.T) {
 	bifurcated := kernel
 	bifurcated.OriginalDriver = pci.DriverMlx5Core
 
-	sriov := &hostnetwork.SRIOVTrunkParams{PFName: "enp1s0", VFIndex: 2}
+	sriov := hostnetwork.SRIOVTrunkParams{PFName: "enp1s0", VFIndex: 2}
 
 	tests := []struct {
 		name    string
@@ -442,7 +436,7 @@ func TestConfigureTrunkPort(t *testing.T) {
 		OriginalDriver: "iavf",
 		MTU:            9000,
 	}
-	sriov := &hostnetwork.SRIOVTrunkParams{
+	sriov := hostnetwork.SRIOVTrunkParams{
 		AcceleratedConfig: &hostnetwork.AcceleratedConfigParams{RXQueues: new(int32(4)), QSize: new(int32(1024))},
 	}
 	for _, tt := range tests {

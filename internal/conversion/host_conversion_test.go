@@ -1914,23 +1914,25 @@ func TestAPItoHostConfigL2Trunks(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	wantSRIOV := &hostnetwork.SRIOVTrunkParams{
-		PFName:  "enp1s0",
-		VFIndex: 1,
-		AcceleratedConfig: &hostnetwork.AcceleratedConfigParams{
-			RXQueues: new(int32(4)),
-			QSize:    new(int32(2048)),
-		},
-	}
-	wantTrunks := []hostnetwork.L2TrunkParams{
+	wantSRIOV := []hostnetwork.SRIOVTrunkParams{
 		{
-			Name:     "workloads",
-			TargetNS: "namespace",
-			SRIOV:    wantSRIOV,
+			L2TrunkParams: hostnetwork.L2TrunkParams{
+				Name:     "workloads",
+				TargetNS: "namespace",
+			},
+			PFName:  "enp1s0",
+			VFIndex: 1,
+			AcceleratedConfig: &hostnetwork.AcceleratedConfigParams{
+				RXQueues: new(int32(4)),
+				QSize:    new(int32(2048)),
+			},
 		},
 	}
-	if !reflect.DeepEqual(got.L2Trunks, wantTrunks) {
-		t.Errorf("L2Trunks = %s, want %s", mustMarshal(got.L2Trunks), mustMarshal(wantTrunks))
+	if !reflect.DeepEqual(got.SRIOVTrunks, wantSRIOV) {
+		t.Errorf("SRIOVTrunks = %s, want %s", mustMarshal(got.SRIOVTrunks), mustMarshal(wantSRIOV))
+	}
+	if len(got.L2Trunks) != 0 {
+		t.Errorf("L2Trunks = %s, want none for a SRIOV-only config", mustMarshal(got.L2Trunks))
 	}
 
 	wantL2VNIs := []hostnetwork.L2VNIParams{
@@ -1943,10 +1945,10 @@ func TestAPItoHostConfigL2Trunks(t *testing.T) {
 				VXLanPort:      new(int32(4789)),
 				TunnelOverhead: hostnetwork.VXLanOverhead,
 			},
-			Attachment: hostnetwork.L2VNIAttachmentVFTrunk,
 			Trunk: &hostnetwork.L2VNITrunkParams{
-				Name: "workloads",
-				VLAN: 33,
+				TrunkID: hostnetwork.TrunkID("", "workloads"),
+				Name:    "workloads",
+				VLAN:    33,
 			},
 		},
 	}

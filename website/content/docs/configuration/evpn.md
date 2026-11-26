@@ -178,6 +178,9 @@ L2VNIs provide Layer 2 connectivity across nodes using EVPN tunnels. Unlike L3VN
 | `exportRTs` | string array | Route targets attached to Type-2 EVPN routes advertised by this L2VNI. Maximum 100 entries. | No |
 | `importRTs` | string array | Route targets accepted when importing Type-2 EVPN routes for this L2VNI. Maximum 100 entries. | No |
 | `underlayAddressFamily` | string | VTEP address family for this VNI (`IPv4` or `IPv6`). Defaults to available family (IPv4 preferred in dual-stack). | No |
+| `trunk` | object | Carries this L2VNI on a shared [`L2Trunk`]({{< ref "l2trunk.md" >}}) instead of a dedicated host interface. Mutually exclusive with `hostMaster`. | No |
+| `trunk.name` | string | metadata.name of the L2Trunk | Yes (when trunk is set) |
+| `trunk.vlan.tag` | integer | VLAN tag this L2VNI uses on the trunk (1-4094) | Yes (when trunk is set) |
 | `hostMaster.type` | string | Type of host interface management (`LinuxBridge` or `OVSBridge`) | Yes |
 | `hostMaster.linuxBridge.lifecycle` | string | How the Linux bridge is provisioned (`Managed` or `External`) | Yes |
 | `hostMaster.linuxBridge.name` | string | Name of the Linux bridge to attach to. Only valid when `External` | Only when `External` |
@@ -213,6 +216,9 @@ spec:
 Route targets use the same `ASN:member` or `IPv4-address:member` formats as
 L3VNIs and L3VPNs. Both lists are optional. When they are omitted, the L2VNI
 retains the default route-target behavior.
+
+To carry several tagged L2VNIs over a single host attachment, see the
+[shared VLAN trunk]({{< ref "l2trunk.md" >}}) guide.
 
 ## What Happens During Reconciliation
 

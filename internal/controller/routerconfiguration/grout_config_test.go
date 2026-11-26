@@ -13,34 +13,32 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSetupL2Trunks(t *testing.T) {
-	const unsupported = "only SR-IOV L2Trunks are supported by the grout datapath"
+func TestGroutSetupL2Trunks(t *testing.T) {
 	tests := []struct {
 		name    string
-		trunks  []hostnetwork.L2TrunkParams
+		trunks  []hostnetwork.SRIOVTrunkParams
 		wantErr error
 	}{
 		{name: "no trunks"},
 		{
-			name:    "failed trunk has no configured port",
-			trunks:  []hostnetwork.L2TrunkParams{{Name: "workloads"}},
-			wantErr: errors.Join(wantResourceError(openpeerrors.KindL2Trunk, "workloads", unsupported)),
-		},
-		{
 			name: "out-of-range VF index has no configured port",
-			trunks: []hostnetwork.L2TrunkParams{{
-				Name:  "workloads",
-				SRIOV: &hostnetwork.SRIOVTrunkParams{PFName: "enp131s0f0d1", VFIndex: 256},
+			trunks: []hostnetwork.SRIOVTrunkParams{{
+				L2TrunkParams: hostnetwork.L2TrunkParams{Name: "workloads"},
+				PFName:        "enp131s0f0d1",
+				VFIndex:       256,
 			}},
 			wantErr: errors.Join(wantResourceError(openpeerrors.KindL2Trunk, "workloads",
 				"vfIndex 256 must be between 0 and 255")),
 		},
 		{
-			name:   "reports every failed trunk",
-			trunks: []hostnetwork.L2TrunkParams{{Name: "workloads"}, {Name: "storage"}},
+			name: "reports every failed trunk",
+			trunks: []hostnetwork.SRIOVTrunkParams{
+				{L2TrunkParams: hostnetwork.L2TrunkParams{Name: "workloads"}, PFName: "enp131s0f0d1", VFIndex: 256},
+				{L2TrunkParams: hostnetwork.L2TrunkParams{Name: "storage"}, PFName: "enp131s0f0d1", VFIndex: 257},
+			},
 			wantErr: errors.Join(
-				wantResourceError(openpeerrors.KindL2Trunk, "workloads", unsupported),
-				wantResourceError(openpeerrors.KindL2Trunk, "storage", unsupported),
+				wantResourceError(openpeerrors.KindL2Trunk, "workloads", "vfIndex 256 must be between 0 and 255"),
+				wantResourceError(openpeerrors.KindL2Trunk, "storage", "vfIndex 257 must be between 0 and 255"),
 			),
 		},
 	}

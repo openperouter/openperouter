@@ -21,6 +21,7 @@ webhooks:
     operations:
     - CREATE
     - UPDATE
+    - DELETE
     resources:
     - l2trunks
   sideEffects: None

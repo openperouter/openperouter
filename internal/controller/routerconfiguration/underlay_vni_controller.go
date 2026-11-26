@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"strings"
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -37,6 +38,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/recorder"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	"github.com/openperouter/openperouter/api/v1alpha1"
@@ -44,6 +46,7 @@ import (
 	openpeerrors "github.com/openperouter/openperouter/internal/errors"
 	"github.com/openperouter/openperouter/internal/filter"
 	"github.com/openperouter/openperouter/internal/frrconfig"
+	"github.com/openperouter/openperouter/internal/hostnetwork"
 	"github.com/openperouter/openperouter/internal/staticconfiguration"
 	v1 "k8s.io/api/core/v1"
 )
@@ -62,6 +65,7 @@ type PERouterReconciler struct {
 	NodeConfigPath       string
 	RouterProvider       RouterProvider
 	DatapathConfigurator DatapathConfigurator
+	Recorder             recorder.EventRecorder
 
 	// TriggerChan receives events from FileWatcher (in host mode)
 	TriggerChan chan event.GenericEvent
@@ -170,6 +174,7 @@ func (r *PERouterReconciler) reconcile(ctx context.Context, logger *slog.Logger)
 
 	reconcileErr := Reconcile(ctx, config, nodeIndex, r.LogLevel, r.FRRConfigPath, targetNS, updater,
 		r.DatapathConfigurator, configureFRR)
+	r.emitTrunkDependencyEvents(config, reconcileErr)
 	if reconcileErr != nil {
 		logger.Error("failed to reconcile host configuration", "error", reconcileErr)
 	}
@@ -276,6 +281,7 @@ func (r *PERouterReconciler) getConfigFromAPI(ctx context.Context, logger *slog.
 
 	filteredL2Trunks, err := filter.L2TrunksForNode(node, l2trunks.Items)
 	allErrors = append(allErrors, err)
+	r.ensureTrunkIDLabels(ctx, l2trunks.Items)
 
 	filteredL3VPNs, err := filter.L3VPNsForNode(node, l3vpns.Items)
 	allErrors = append(allErrors, err)
@@ -309,6 +315,51 @@ func (r *PERouterReconciler) getConfigFromAPI(ctx context.Context, logger *slog.
 	}
 
 	return apiConfig, errors.Join(allErrors...)
+}
+
+// ensureTrunkIDLabels records the derived device identifier on each trunk so
+// an operator can map a device name back to its resource. A failed label write
+// does not affect the dataplane, so it is logged and reconciliation continues.
+func (r *PERouterReconciler) ensureTrunkIDLabels(ctx context.Context, trunks []v1alpha1.L2Trunk) {
+	for i := range trunks {
+		trunk := &trunks[i]
+		id := hostnetwork.TrunkID(trunk.Namespace, trunk.Name)
+		if trunk.Labels[v1alpha1.TrunkIDLabel] == id {
+			continue
+		}
+		patch := []byte(fmt.Sprintf(`{"metadata":{"labels":{%q:%q}}}`, v1alpha1.TrunkIDLabel, id))
+		if err := r.Patch(ctx, trunk, client.RawPatch(types.MergePatchType, patch)); err != nil {
+			slog.WarnContext(ctx, "failed to label L2Trunk with its trunk id",
+				"l2trunk", client.ObjectKeyFromObject(trunk), "error", err)
+			continue
+		}
+		slog.InfoContext(ctx, "labeled L2Trunk with its trunk id",
+			"l2trunk", client.ObjectKeyFromObject(trunk), "trunkID", id)
+	}
+}
+
+// emitTrunkDependencyEvents reports, on each affected L2VNI, that its dataplane
+// was torn down because its trunk is missing. A single trunk deletion can
+// black-hole many tenant segments, and the per-node status alone buries that.
+func (r *PERouterReconciler) emitTrunkDependencyEvents(config conversion.APIConfigData, err error) {
+	if err == nil || r.Recorder == nil {
+		return
+	}
+	for _, failure := range openpeerrors.CollectFailures(err) {
+		if failure.Kind != openpeerrors.KindL2VNI ||
+			failure.Reason != v1alpha1.FailedResourceReasonDependencyFailed ||
+			!strings.HasPrefix(failure.Message, missingTrunkMessagePrefix) {
+			continue
+		}
+		for i := range config.L2VNIs {
+			l2vni := &config.L2VNIs[i]
+			if l2vni.Name != failure.Name {
+				continue
+			}
+			r.Recorder.Eventf(l2vni, nil, v1.EventTypeWarning, "TrunkUnavailable", "Reconcile",
+				"dataplane torn down: %s", failure.Message)
+		}
+	}
 }
 
 func (r *PERouterReconciler) resolvePasswordSecrets(ctx context.Context, config *conversion.APIConfigData) error {
@@ -408,6 +459,7 @@ func (r *PERouterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if r.MaxReconcileBackoff < 0 {
 		return fmt.Errorf("maximum reconciliation backoff must not be negative")
 	}
+	r.Recorder = mgr.GetEventRecorder("routerconfiguration")
 	filterLocalNodeStatus := predicate.NewPredicateFuncs(func(object client.Object) bool {
 		if o, ok := object.(*v1alpha1.RouterNodeConfigurationStatus); ok {
 			return o.Name == r.MyNode

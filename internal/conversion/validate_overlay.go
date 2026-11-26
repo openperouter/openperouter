@@ -13,6 +13,7 @@ type OverlayResources struct {
 	L3VNIs        []v1alpha1.L3VNI
 	L3VPNs        []v1alpha1.L3VPN
 	L2VNIs        []v1alpha1.L2VNI
+	L2Trunks      []v1alpha1.L2Trunk
 	L3Passthrough []v1alpha1.L3Passthrough
 }
 
@@ -34,6 +35,21 @@ func FilterOverlayResources(resources OverlayResources) (OverlayResources, error
 	validL2VNIs, err := FilterValidL2VNIs(resources.L2VNIs)
 	resourceErrors = append(resourceErrors, err)
 
+	validL2Trunks, err := FilterValidL2Trunks(resources.L2Trunks)
+	resourceErrors = append(resourceErrors, err)
+
+	validL2Trunks, err = FilterUniqueTrunkIDs(validL2Trunks)
+	resourceErrors = append(resourceErrors, err)
+
+	validL2VNIs, err = FilterUniqueL2VNITrunkTags(validL2VNIs)
+	resourceErrors = append(resourceErrors, err)
+
+	validL2VNIs, err = FilterUniqueTrunkTagsAcrossHostMasters(validL2VNIs, validL2Trunks)
+	resourceErrors = append(resourceErrors, err)
+
+	validL2VNIs, err = FilterTrunkSettingsAgreement(validL2VNIs)
+	resourceErrors = append(resourceErrors, err)
+
 	validL3VPNs, err = FilterUniqueL3VPNRDNumbers(validL3VPNs)
 	resourceErrors = append(resourceErrors, err)
 
@@ -47,9 +63,6 @@ func FilterOverlayResources(resources OverlayResources) (OverlayResources, error
 	resourceErrors = append(resourceErrors, err)
 
 	validL2VNIs, err = FilterUniqueL2VNIs(validL2VNIs, allocatedVNIs)
-	resourceErrors = append(resourceErrors, err)
-
-	validL2VNIs, err = FilterUniqueTrunkVLANs(validL2VNIs)
 	resourceErrors = append(resourceErrors, err)
 
 	validL3VNIs, vrfToVNI, err := FilterUniqueVRFsForL3VNIs(validL3VNIs)
@@ -72,6 +85,7 @@ func FilterOverlayResources(resources OverlayResources) (OverlayResources, error
 		L3VNIs:        validL3VNIs,
 		L3VPNs:        validL3VPNs,
 		L2VNIs:        validL2VNIs,
+		L2Trunks:      validL2Trunks,
 		L3Passthrough: validPassthroughs,
 	}, errors.Join(resourceErrors...)
 }

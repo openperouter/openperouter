@@ -52,6 +52,23 @@ func ExcludeLinkLocal() AddressFilter {
 	}
 }
 
+// OnlyLinkLocal matches the IPv6 link-local addresses the kernel derives from
+// the interface MAC.
+func OnlyLinkLocal() AddressFilter {
+	return func(addr netlink.Addr) bool {
+		return addr.IP.IsLinkLocalUnicast()
+	}
+}
+
+// Autoconfigured matches the addresses the kernel learned from router
+// advertisements. They are told apart from explicitly configured ones by their
+// finite lifetime.
+func Autoconfigured() AddressFilter {
+	return func(addr netlink.Addr) bool {
+		return addr.Flags&unix.IFA_F_PERMANENT == 0 && !addr.IP.IsLinkLocalUnicast()
+	}
+}
+
 func AddressesForInterface(ifaceName string, filters ...AddressFilter) ([]netlink.Addr, error) {
 	link, err := netlink.LinkByName(ifaceName)
 	if err != nil {
@@ -64,19 +81,39 @@ func AddressesForInterface(ifaceName string, filters ...AddressFilter) ([]netlin
 
 	var addrs []netlink.Addr
 	for _, addr := range all {
-		keep := true
-		for _, f := range filters {
-			if !f(addr) {
-				keep = false
-				break
-			}
-		}
-		if keep {
+		if matchesAddressFilters(addr, filters) {
 			addrs = append(addrs, addr)
 		}
 	}
 
 	return addrs, nil
+}
+
+// removeAddresses deletes the addresses of link in family that satisfy every
+// filter. Without filters it removes every address in the family.
+func removeAddresses(link netlink.Link, family int, filters ...AddressFilter) error {
+	addresses, err := addrList(link, family)
+	if err != nil {
+		return fmt.Errorf("listing addresses on %s: %w", link.Attrs().Name, err)
+	}
+	for _, addr := range addresses {
+		if !matchesAddressFilters(addr, filters) {
+			continue
+		}
+		if err := netlink.AddrDel(link, &addr); err != nil {
+			return fmt.Errorf("removing address %s from %s: %w", addr.IPNet, link.Attrs().Name, err)
+		}
+	}
+	return nil
+}
+
+func matchesAddressFilters(addr netlink.Addr, filters []AddressFilter) bool {
+	for _, filter := range filters {
+		if !filter(addr) {
+			return false
+		}
+	}
+	return true
 }
 
 // addrList is a variable so that unit tests can replace it.
@@ -133,20 +170,7 @@ func SuppressLinkLocal(ifaceName string) error {
 	if err := setAddrGenModeNone(link); err != nil {
 		return fmt.Errorf("failed to set addr_gen_mode none on %s: %w", ifaceName, err)
 	}
-
-	addrs, err := netlink.AddrList(link, netlink.FAMILY_V6)
-	if err != nil {
-		return fmt.Errorf("failed to list addresses on %s: %w", ifaceName, err)
-	}
-	for _, addr := range addrs {
-		if !addr.IP.IsLinkLocalUnicast() {
-			continue
-		}
-		if err := netlink.AddrDel(link, &addr); err != nil {
-			return fmt.Errorf("failed to remove link-local %s from %s: %w", addr.IPNet, ifaceName, err)
-		}
-	}
-	return nil
+	return removeAddresses(link, netlink.FAMILY_V6, OnlyLinkLocal())
 }
 
 // SuppressAutoconf stops the kernel from autoconfiguring IPv6 addresses from
@@ -162,19 +186,7 @@ func SuppressAutoconf(ifaceName string) error {
 	if err != nil {
 		return fmt.Errorf("failed to find interface %s: %w", ifaceName, err)
 	}
-	addrs, err := netlink.AddrList(link, netlink.FAMILY_V6)
-	if err != nil {
-		return fmt.Errorf("failed to list addresses on %s: %w", ifaceName, err)
-	}
-	for _, addr := range addrs {
-		if addr.Flags&unix.IFA_F_PERMANENT != 0 || addr.IP.IsLinkLocalUnicast() {
-			continue
-		}
-		if err := netlink.AddrDel(link, &addr); err != nil {
-			return fmt.Errorf("failed to remove autoconfigured address %s from %s: %w", addr.IPNet, ifaceName, err)
-		}
-	}
-	return nil
+	return removeAddresses(link, netlink.FAMILY_V6, Autoconfigured())
 }
 
 // linkSetUp sets the link up only if it's not already up.

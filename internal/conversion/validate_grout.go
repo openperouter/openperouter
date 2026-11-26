@@ -32,10 +32,13 @@ func ValidateGroutUnderlay(underlay v1alpha1.Underlay) error {
 	return nil
 }
 
-// ValidateGroutL2Trunk rejects the L2Trunks the grout datapath cannot carry:
-// only SR-IOV trunks are supported, and the VF index must fit the two hex
-// digits reserved in trunk port and VLAN sub-interface names.
+// ValidateGroutL2Trunk validates the L2Trunks the grout datapath carries. It
+// supports Host and SRIOV trunks; an SRIOV trunk's VF index must fit the two
+// hex digits reserved in trunk port and VLAN sub-interface names.
 func ValidateGroutL2Trunk(trunk v1alpha1.L2Trunk) error {
+	if trunk.Spec.Type == v1alpha1.L2TrunkTypeHost {
+		return nil
+	}
 	if trunk.Spec.Type != v1alpha1.L2TrunkTypeSRIOV {
 		return fmt.Errorf("l2trunk %s: type %s is not supported with the grout datapath", trunk.Name, trunk.Spec.Type)
 	}

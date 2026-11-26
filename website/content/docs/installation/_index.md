@@ -18,7 +18,7 @@ Before installing OpenPERouter, ensure you have:
 - `kubectl` configured to communicate with your cluster
 - Cluster administrator privileges (for creating namespaces and CRDs)
 - Network interfaces configured for BGP peering with external routers
-- Linux kernel **5.18 or later** is recommended for full IPv6 EVPN support (see [Sysctl Configuration]({{< ref "../configuration/sysctl.md" >}}))
+- Linux kernel **5.18 or later** is required: every VNI runs on a VXLAN device with VNI filtering (`vnifilter`), which older kernels do not support. OpenPERouter probes the capability and leaves an existing dataplane untouched when it is missing. Newer kernels are still recommended for full IPv6 EVPN support (see [Sysctl Configuration]({{< ref "../configuration/sysctl.md" >}}))
 - For OpenShift: `oc` CLI tool and cluster admin access
 
 ## Installation Methods

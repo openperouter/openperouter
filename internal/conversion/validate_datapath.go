@@ -16,7 +16,7 @@ type DatapathConfigValidator interface {
 type GroutDatapathConfigValidator struct{}
 
 func (g *GroutDatapathConfigValidator) Validate(apiConfig APIConfigData) error {
-	resourceErrors := make([]error, 0, 1)
+	resourceErrors := make([]error, 0, len(apiConfig.Underlays)+len(apiConfig.L2Trunks)+len(apiConfig.L2VNIs))
 
 	for _, underlay := range apiConfig.Underlays {
 		resourceErrors = append(resourceErrors, ValidateGroutUnderlay(underlay))
@@ -38,9 +38,10 @@ func (k *KernelDatapathConfigValidator) Validate(apiConfig APIConfigData) error 
 			}
 		}
 	}
-	if len(apiConfig.L2Trunks) > 0 {
-		return fmt.Errorf("l2trunk %s: L2Trunks are only supported with the grout datapath",
-			apiConfig.L2Trunks[0].Name)
+	for _, trunk := range apiConfig.L2Trunks {
+		if trunk.Spec.Type != v1alpha1.L2TrunkTypeHost {
+			return fmt.Errorf("l2trunk %s: the kernel datapath only supports type Host", trunk.Name)
+		}
 	}
 	return nil
 }
@@ -63,12 +64,18 @@ func (g *GroutDatapathConfigValidator) FilterL2Trunks(trunks []v1alpha1.L2Trunk)
 	return valid, errors.Join(errs...)
 }
 
-// FilterL2Trunks removes all trunks because the kernel datapath cannot carry them.
+// FilterL2Trunks removes the trunks the kernel datapath cannot carry: only
+// Host trunks are supported.
 func (k *KernelDatapathConfigValidator) FilterL2Trunks(trunks []v1alpha1.L2Trunk) ([]v1alpha1.L2Trunk, error) {
+	valid := make([]v1alpha1.L2Trunk, 0, len(trunks))
 	errs := make([]error, 0, len(trunks))
 	for _, trunk := range trunks {
-		errs = append(errs, l2TrunkValidationError(trunk.Name,
-			fmt.Sprintf("l2trunk %s: L2Trunks are only supported with the grout datapath", trunk.Name)))
+		if trunk.Spec.Type != v1alpha1.L2TrunkTypeHost {
+			errs = append(errs, l2TrunkValidationError(trunk.Name,
+				fmt.Sprintf("l2trunk %s: the kernel datapath only supports type Host", trunk.Name)))
+			continue
+		}
+		valid = append(valid, trunk)
 	}
-	return trunks[:0], errors.Join(errs...)
+	return valid, errors.Join(errs...)
 }

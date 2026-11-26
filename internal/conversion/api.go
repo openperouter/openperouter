@@ -28,6 +28,7 @@ type HostConfigData struct {
 	L3VNIs        []hostnetwork.L3VNIParams
 	L2VNIs        []hostnetwork.L2VNIParams
 	L2Trunks      []hostnetwork.L2TrunkParams
+	SRIOVTrunks   []hostnetwork.SRIOVTrunkParams
 	L3VPNs        []hostnetwork.L3VPNParams
 	L3Passthrough *hostnetwork.PassthroughParams
 }

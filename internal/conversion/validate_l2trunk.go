@@ -32,98 +32,45 @@ func ValidateL2TrunksForNodes(nodes []corev1.Node, l2trunks []v1alpha1.L2Trunk) 
 	return errors.Join(errs...)
 }
 
-// FilterValidL2Trunks validates the L2Trunks of a node and returns the valid
-// ones alongside per-resource errors.
-func FilterValidL2Trunks(l2trunks []v1alpha1.L2Trunk) ([]v1alpha1.L2Trunk, error) {
-	if len(l2trunks) == 0 {
-		return l2trunks, nil
-	}
-
-	valid := make([]v1alpha1.L2Trunk, 0, len(l2trunks))
-	var errs []error
-	for _, trunk := range l2trunks {
-		if err := validateL2Trunk(trunk); err != nil {
-			errs = append(errs, l2TrunkValidationError(trunk.Name, err.Error()))
-			continue
-		}
-		valid = append(valid, trunk)
-	}
-
-	valid, err := filterL2TrunksSRIOVUniquePF(valid)
-	return valid, errors.Join(append(errs, err)...)
-}
-
-// FilterUniqueTrunkVLANs removes the L2VNIs that reuse the VLAN tag of
-// another L2VNI on the same trunk. Different trunks can carry the same tag.
-func FilterUniqueTrunkVLANs(l2vnis []v1alpha1.L2VNI) ([]v1alpha1.L2VNI, error) {
-	if len(l2vnis) == 0 {
-		return l2vnis, nil
-	}
-
-	type trunkVLAN struct {
-		trunk string
-		tag   int32
-	}
-
-	owners := map[trunkVLAN]string{}
-	valid := make([]v1alpha1.L2VNI, 0, len(l2vnis))
-	var errs []error
-	for _, l2vni := range l2vnis {
-		if l2vni.Spec.Trunk == nil {
-			valid = append(valid, l2vni)
-			continue
-		}
-
-		key := trunkVLAN{trunk: l2vni.Spec.Trunk.Name, tag: l2vni.Spec.Trunk.VLAN.Tag}
-		if owner, ok := owners[key]; ok {
-			errs = append(errs, &openpeerrors.ResourceError{
-				Obj: v1alpha1.FailedResource{
-					Kind: openpeerrors.KindL2VNI, Name: l2vni.Name,
-					Reason: v1alpha1.FailedResourceReasonValidationFailed,
-					Message: fmt.Sprintf("VLAN %d on L2Trunk %s is already used by L2VNI %s",
-						key.tag, key.trunk, owner),
-				},
-			})
-			continue
-		}
-		owners[key] = l2vni.Name
-		valid = append(valid, l2vni)
-	}
-	return valid, errors.Join(errs...)
-}
-
 // filterL2TrunksSRIOVUniquePF drops the SR-IOV trunks selecting a PF already
 // selected by an earlier trunk. The trunk VF carries the tagged frames of
 // every workload VF on its PF, so a second trunk on the same PF would
 // duplicate its traffic and loop it back through the NIC switch.
 func filterL2TrunksSRIOVUniquePF(l2trunks []v1alpha1.L2Trunk) ([]v1alpha1.L2Trunk, error) {
-	// Sort the trunks by PF name to ensure deterministic behavior.
-	slices.SortFunc(l2trunks, func(a, b v1alpha1.L2Trunk) int {
+	// Host trunks have no PF, so only the SRIOV ones take part in the check.
+	sriovTrunks := make([]v1alpha1.L2Trunk, 0, len(l2trunks))
+	for _, trunk := range l2trunks {
+		if trunk.Spec.Type == v1alpha1.L2TrunkTypeSRIOV {
+			sriovTrunks = append(sriovTrunks, trunk)
+		}
+	}
+	// Sort by PF name to ensure deterministic behavior.
+	slices.SortFunc(sriovTrunks, func(a, b v1alpha1.L2Trunk) int {
 		return strings.Compare(a.Spec.SRIOV.PFName, b.Spec.SRIOV.PFName)
 	})
 
 	pfOwners := map[string]string{}
-	valid := make([]v1alpha1.L2Trunk, 0, len(l2trunks))
-
+	rejected := map[string]struct{}{}
 	var errs []error
-	for _, trunk := range l2trunks {
+	for _, trunk := range sriovTrunks {
 		pfName := trunk.Spec.SRIOV.PFName
 		if owner, ok := pfOwners[pfName]; ok {
 			errs = append(errs, l2TrunkValidationError(trunk.Name,
 				fmt.Sprintf("PF %s is already used by L2Trunk %s", pfName, owner)))
+			rejected[trunk.Name] = struct{}{}
 			continue
 		}
 		pfOwners[pfName] = trunk.Name
+	}
+
+	valid := make([]v1alpha1.L2Trunk, 0, len(l2trunks))
+	for _, trunk := range l2trunks {
+		if _, drop := rejected[trunk.Name]; drop {
+			continue
+		}
 		valid = append(valid, trunk)
 	}
 	return valid, errors.Join(errs...)
-}
-
-func validateL2Trunk(trunk v1alpha1.L2Trunk) error {
-	if trunk.Spec.Type != v1alpha1.L2TrunkTypeSRIOV {
-		return fmt.Errorf("unsupported L2Trunk type %q", trunk.Spec.Type)
-	}
-	return validateL2TrunkSRIOV(trunk.Spec)
 }
 
 func validateL2TrunkSRIOV(spec v1alpha1.L2TrunkSpec) error {

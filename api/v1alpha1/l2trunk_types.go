@@ -4,19 +4,29 @@ package v1alpha1
 
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+// TrunkIDLabel records the controller-derived identifier used in the trunk's
+// device names, so an operator can map a device back to its resource.
+const TrunkIDLabel = "network.openperouter.io/trunk-id"
+
 // L2TrunkType selects the kind of port that carries the trunk's tagged traffic.
-// +kubebuilder:validation:Enum=SRIOV
+// +kubebuilder:validation:Enum=Host;SRIOV
 type L2TrunkType string
 
 const (
+	// L2TrunkTypeHost carries the trunk through a host-side interface,
+	// optionally attached to the bridge selected by hostMaster.
+	L2TrunkTypeHost L2TrunkType = "Host"
+
 	// L2TrunkTypeSRIOV carries the trunk through an SR-IOV VF bound to grout.
 	L2TrunkTypeSRIOV L2TrunkType = "SRIOV"
 )
 
 // L2TrunkSpec defines a shared attachment for VLAN-tagged L2VNIs.
 // +union
+// +kubebuilder:validation:XValidation:rule="self.type == 'Host' || !has(self.hostMaster)",message="hostMaster can only be set when type is 'Host'"
 // +kubebuilder:validation:XValidation:rule="has(self.sriov) == (self.type == 'SRIOV')",message="type/config mismatch: sriov must be set if and only if type is 'SRIOV'"
 // +kubebuilder:validation:XValidation:rule="self.type == oldSelf.type",message="type is immutable"
+// +kubebuilder:validation:XValidation:rule="has(self.hostMaster) == has(oldSelf.hostMaster) && (!has(self.hostMaster) || self.hostMaster == oldSelf.hostMaster)",message="hostMaster is immutable"
 // +kubebuilder:validation:XValidation:rule="has(self.sriov) == has(oldSelf.sriov) && (!has(self.sriov) || self.sriov == oldSelf.sriov)",message="sriov is immutable"
 type L2TrunkSpec struct {
 	// nodeSelector specifies which nodes this L2Trunk applies to.
@@ -28,6 +38,14 @@ type L2TrunkSpec struct {
 	// +required
 	// +unionDiscriminator
 	Type L2TrunkType `json:"type,omitempty"`
+
+	// hostMaster is the host bridge the trunk's host-side interface is
+	// attached to, as defined by the standalone L2VNI. Can only be set when
+	// type is "Host"; when omitted, the host-side interface is left for
+	// external attachment.
+	// Immutable.
+	// +optional
+	HostMaster *HostMaster `json:"hostMaster,omitempty"`
 
 	// sriov selects the SR-IOV VF used as the trunk port. The VF is bound
 	// to grout and no host-side interface is created. Must be set when
@@ -64,8 +82,9 @@ type L2TrunkStatus struct{}
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:webhook:verbs=create;update,path=/validate-openperouter-io-v1alpha1-l2trunk,mutating=false,failurePolicy=fail,groups=network.openperouter.io,resources=l2trunks,versions=v1alpha1,name=l2trunkvalidationwebhook.openperouter.io,sideEffects=None,admissionReviewVersions=v1
+// +kubebuilder:webhook:verbs=create;update;delete,path=/validate-openperouter-io-v1alpha1-l2trunk,mutating=false,failurePolicy=fail,groups=network.openperouter.io,resources=l2trunks,versions=v1alpha1,name=l2trunkvalidationwebhook.openperouter.io,sideEffects=None,admissionReviewVersions=v1
 // +kubebuilder:printcolumn:name="Type",type=string,JSONPath=`.spec.type`
+// +kubebuilder:printcolumn:name="Trunk ID",type=string,JSONPath=`.metadata.labels['network\.openperouter\.io/trunk-id']`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // L2Trunk owns a shared attachment for VLAN-tagged L2VNIs.

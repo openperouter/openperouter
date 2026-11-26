@@ -1,0 +1,487 @@
+l2trunks:
+  - name: tenant-a
+    type: Host
+  - name: tenant-b
+    type: Host
+
+l2vnis:
+  - name: tenant-a-100
+    vni: 10100
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-a
+      vlan:
+        tag: 100
+    gatewayIPs:
+      - 10.1.0.1/24
+  - name: tenant-a-101
+    vni: 10101
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-a
+      vlan:
+        tag: 101
+    gatewayIPs:
+      - 10.1.1.1/24
+  - name: tenant-a-102
+    vni: 10102
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-a
+      vlan:
+        tag: 102
+    gatewayIPs:
+      - 10.1.2.1/24
+  - name: tenant-a-103
+    vni: 10103
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-a
+      vlan:
+        tag: 103
+    gatewayIPs:
+      - 10.1.3.1/24
+  - name: tenant-a-104
+    vni: 10104
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-a
+      vlan:
+        tag: 104
+    gatewayIPs:
+      - 10.1.4.1/24
+  - name: tenant-a-105
+    vni: 10105
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-a
+      vlan:
+        tag: 105
+    gatewayIPs:
+      - 10.1.5.1/24
+  - name: tenant-a-106
+    vni: 10106
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-a
+      vlan:
+        tag: 106
+    gatewayIPs:
+      - 10.1.6.1/24
+  - name: tenant-a-107
+    vni: 10107
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-a
+      vlan:
+        tag: 107
+    gatewayIPs:
+      - 10.1.7.1/24
+  - name: tenant-a-108
+    vni: 10108
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-a
+      vlan:
+        tag: 108
+    gatewayIPs:
+      - 10.1.8.1/24
+  - name: tenant-a-109
+    vni: 10109
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-a
+      vlan:
+        tag: 109
+    gatewayIPs:
+      - 10.1.9.1/24
+  - name: tenant-a-110
+    vni: 10110
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-a
+      vlan:
+        tag: 110
+    gatewayIPs:
+      - 10.1.10.1/24
+  - name: tenant-a-111
+    vni: 10111
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-a
+      vlan:
+        tag: 111
+    gatewayIPs:
+      - 10.1.11.1/24
+  - name: tenant-a-112
+    vni: 10112
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-a
+      vlan:
+        tag: 112
+    gatewayIPs:
+      - 10.1.12.1/24
+  - name: tenant-a-113
+    vni: 10113
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-a
+      vlan:
+        tag: 113
+    gatewayIPs:
+      - 10.1.13.1/24
+  - name: tenant-a-114
+    vni: 10114
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-a
+      vlan:
+        tag: 114
+    gatewayIPs:
+      - 10.1.14.1/24
+  - name: tenant-a-115
+    vni: 10115
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-a
+      vlan:
+        tag: 115
+    gatewayIPs:
+      - 10.1.15.1/24
+  - name: tenant-a-116
+    vni: 10116
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-a
+      vlan:
+        tag: 116
+    gatewayIPs:
+      - 10.1.16.1/24
+  - name: tenant-a-117
+    vni: 10117
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-a
+      vlan:
+        tag: 117
+    gatewayIPs:
+      - 10.1.17.1/24
+  - name: tenant-a-118
+    vni: 10118
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-a
+      vlan:
+        tag: 118
+    gatewayIPs:
+      - 10.1.18.1/24
+  - name: tenant-a-119
+    vni: 10119
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-a
+      vlan:
+        tag: 119
+    gatewayIPs:
+      - 10.1.19.1/24
+  - name: tenant-b-200
+    vni: 10200
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-b
+      vlan:
+        tag: 200
+    gatewayIPs:
+      - 10.2.0.1/24
+  - name: tenant-b-201
+    vni: 10201
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-b
+      vlan:
+        tag: 201
+    gatewayIPs:
+      - 10.2.1.1/24
+  - name: tenant-b-202
+    vni: 10202
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-b
+      vlan:
+        tag: 202
+    gatewayIPs:
+      - 10.2.2.1/24
+  - name: tenant-b-203
+    vni: 10203
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-b
+      vlan:
+        tag: 203
+    gatewayIPs:
+      - 10.2.3.1/24
+  - name: tenant-b-204
+    vni: 10204
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-b
+      vlan:
+        tag: 204
+    gatewayIPs:
+      - 10.2.4.1/24
+  - name: tenant-b-205
+    vni: 10205
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-b
+      vlan:
+        tag: 205
+    gatewayIPs:
+      - 10.2.5.1/24
+  - name: tenant-b-206
+    vni: 10206
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-b
+      vlan:
+        tag: 206
+    gatewayIPs:
+      - 10.2.6.1/24
+  - name: tenant-b-207
+    vni: 10207
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-b
+      vlan:
+        tag: 207
+    gatewayIPs:
+      - 10.2.7.1/24
+  - name: tenant-b-208
+    vni: 10208
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-b
+      vlan:
+        tag: 208
+    gatewayIPs:
+      - 10.2.8.1/24
+  - name: tenant-b-209
+    vni: 10209
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-b
+      vlan:
+        tag: 209
+    gatewayIPs:
+      - 10.2.9.1/24
+  - name: tenant-b-210
+    vni: 10210
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-b
+      vlan:
+        tag: 210
+    gatewayIPs:
+      - 10.2.10.1/24
+  - name: tenant-b-211
+    vni: 10211
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-b
+      vlan:
+        tag: 211
+    gatewayIPs:
+      - 10.2.11.1/24
+  - name: tenant-b-212
+    vni: 10212
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-b
+      vlan:
+        tag: 212
+    gatewayIPs:
+      - 10.2.12.1/24
+  - name: tenant-b-213
+    vni: 10213
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-b
+      vlan:
+        tag: 213
+    gatewayIPs:
+      - 10.2.13.1/24
+  - name: tenant-b-214
+    vni: 10214
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-b
+      vlan:
+        tag: 214
+    gatewayIPs:
+      - 10.2.14.1/24
+  - name: tenant-b-215
+    vni: 10215
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-b
+      vlan:
+        tag: 215
+    gatewayIPs:
+      - 10.2.15.1/24
+  - name: tenant-b-216
+    vni: 10216
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-b
+      vlan:
+        tag: 216
+    gatewayIPs:
+      - 10.2.16.1/24
+  - name: tenant-b-217
+    vni: 10217
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-b
+      vlan:
+        tag: 217
+    gatewayIPs:
+      - 10.2.17.1/24
+  - name: tenant-b-218
+    vni: 10218
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-b
+      vlan:
+        tag: 218
+    gatewayIPs:
+      - 10.2.18.1/24
+  - name: tenant-b-219
+    vni: 10219
+    routingDomain:
+      type: L3VNI
+      l3vni:
+        name: red
+    trunk:
+      name: tenant-b
+      vlan:
+        tag: 219
+    gatewayIPs:
+      - 10.2.19.1/24
