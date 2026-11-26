@@ -1,0 +1,35 @@
+apiVersion: network.openperouter.io/v1alpha1
+kind: OpenPERouter
+metadata:
+  name: openperouter
+spec:
+  datapath: kernel
+  logLevel: info
+  healthProbePort: 61981
+  bgpListenLimit: 65535
+  ovsRunDir: /var/run/openvswitch
+  ovsSocketPath: unix:/var/run/openvswitch/db.sock
+  resources:
+    controller:
+      requests:
+        cpu: 250m
+        memory: 256Mi
+    frr:
+      requests:
+        cpu: 250m
+        memory: 256Mi
+    nodemarker:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+    reloader:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+  tolerations:
+  - key: node-role.kubernetes.io/master
+    operator: Exists
+    effect: NoSchedule
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule

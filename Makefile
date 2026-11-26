@@ -664,7 +664,7 @@ bundle: manifests kustomize operator-sdk ## Generate bundle manifests and metada
 	cd operator && $(OPERATOR_SDK) generate kustomize manifests --interactive=false -q
 	cd operator/config/pods && $(KUSTOMIZE) edit set image controller=$(IMG)
 	cd operator/config/webhook/backend && $(KUSTOMIZE) edit set image controller=$(IMG)
-	cd operator && $(KUSTOMIZE) build config/default | $(OPERATOR_SDK) generate bundle $(BUNDLE_GEN_FLAGS) --extra-service-accounts "controller,perouter" --package openperouter-operator
+	cd operator && $(KUSTOMIZE) build config/olm-examples | $(OPERATOR_SDK) generate bundle $(BUNDLE_GEN_FLAGS) --extra-service-accounts "controller,perouter" --package openperouter-operator
 	hack/restore-csv-timestamp.sh $(CSV_FILE)
 	cd operator && $(OPERATOR_SDK) bundle validate ./bundle
 

@@ -100,6 +100,26 @@ helm install openperouter openperouter/openperouter -f values.yaml
 
 ### OpenShift
 
+#### Operator console example
+
+The Operator console provides an editable example when you create an
+`OpenPERouter` instance. Its values are suggestions, not API defaults, and are
+saved in the resource unless you change them.
+
+Before creating the instance, review these settings for your cluster:
+
+- **Health probe port:** The example uses `61981`. Check that it is free on
+  every node where the controller may run. If omitted, the API defaults to `9081`.
+- **Node placement:** The example allows scheduling on control-plane nodes,
+  including single-node clusters. Use `nodeSelector` or affinity to restrict
+  placement; other taints are not tolerated.
+- **Resources:** CPU and memory requests match the chart defaults. Adjust them
+  for your cluster and routing workload.
+- **OVS paths:** If you change `ovsRunDir`, update `ovsSocketPath` to match the
+  socket location on your nodes.
+
+#### Security Context Constraints
+
 When running on OpenShift, additional Security Context Constraints (SCCs) must be configured:
 
 ```bash

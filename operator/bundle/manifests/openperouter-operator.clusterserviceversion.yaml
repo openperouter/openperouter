@@ -2,7 +2,62 @@ apiVersion: operators.coreos.com/v1alpha1
 kind: ClusterServiceVersion
 metadata:
   annotations:
-    alm-examples: '[]'
+    alm-examples: |-
+      [
+        {
+          "apiVersion": "network.openperouter.io/v1alpha1",
+          "kind": "OpenPERouter",
+          "metadata": {
+            "name": "openperouter"
+          },
+          "spec": {
+            "bgpListenLimit": 65535,
+            "datapath": "kernel",
+            "healthProbePort": 61981,
+            "logLevel": "info",
+            "ovsRunDir": "/var/run/openvswitch",
+            "ovsSocketPath": "unix:/var/run/openvswitch/db.sock",
+            "resources": {
+              "controller": {
+                "requests": {
+                  "cpu": "250m",
+                  "memory": "256Mi"
+                }
+              },
+              "frr": {
+                "requests": {
+                  "cpu": "250m",
+                  "memory": "256Mi"
+                }
+              },
+              "nodemarker": {
+                "requests": {
+                  "cpu": "100m",
+                  "memory": "128Mi"
+                }
+              },
+              "reloader": {
+                "requests": {
+                  "cpu": "100m",
+                  "memory": "128Mi"
+                }
+              }
+            },
+            "tolerations": [
+              {
+                "effect": "NoSchedule",
+                "key": "node-role.kubernetes.io/master",
+                "operator": "Exists"
+              },
+              {
+                "effect": "NoSchedule",
+                "key": "node-role.kubernetes.io/control-plane",
+                "operator": "Exists"
+              }
+            ]
+          }
+        }
+      ]
     capabilities: Basic Install
     createdAt: "2026-10-19T17:36:48Z"
     operators.operatorframework.io/builder: operator-sdk-v1.41.1
