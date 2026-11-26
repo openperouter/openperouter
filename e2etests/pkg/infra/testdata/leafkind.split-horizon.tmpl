@@ -1,0 +1,58 @@
+! Unicast split-horizon fixture: peer only with OpenPE and originate test networks
+! on leafkind1. Spine BGP and ISIS stay disabled to prevent alternate paths.
+!
+log file /etc/frr/frr.log debug
+ipv6 forwarding
+
+debug zebra events
+debug zebra vxlan
+debug zebra nht
+debug zebra kernel
+debug zebra rib
+debug zebra nexthop
+debug bgp neighbor-events
+debug bgp updates
+debug bgp keepalives
+debug bgp nht
+debug bgp zebra
+debug bgp neighbor
+debug bgp graceful-restart
+debug bfd network
+debug bfd peer
+debug bfd zebra
+
+router bgp {{ .ASN }}
+ bgp graceful-restart
+ bgp graceful-restart preserve-fw-state
+ no bgp ebgp-requires-policy
+ no bgp network import-check
+ no bgp default ipv4-unicast
+{{- range .Neighbors }}
+{{- if .IsInterface }}
+ neighbor {{ .ID }} interface remote-as {{ $.PERouterASN }}
+{{- else }}
+ neighbor {{ .ID }} remote-as {{ $.PERouterASN }}
+{{- end }}
+ neighbor {{ .ID }} timers connect 5
+{{- end }}
+ !
+{{- range $af := .BGPAddressFamilies }}
+ address-family {{ $af.AFI }} {{ $af.SAFI }}
+{{- $familyKey := safiAFIKey $af.AFI $af.SAFI }}
+{{- $prefixes := index $.Networks $familyKey }}
+{{- range $prefix := $prefixes }}
+  network {{ $prefix }}
+{{- end }}
+{{- range $.Neighbors }}
+  neighbor {{ .ID }} activate
+{{- end }}
+ exit-address-family
+{{- end }}
+exit
+!
+interface eth1
+exit
+!
+interface {{ .ToSwitchInterface }}
+exit
+!

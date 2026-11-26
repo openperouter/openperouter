@@ -20,6 +20,7 @@
 {{- else if $neighbor.IsRouteReflectorClientFor "l2vpn" "evpn" }}
     neighbor {{ $neighbor.ID }} route-reflector-client
 {{- end }}
+{{- template "fabricneighborpolicy" dict "neighbor" $neighbor "routerASN" $.Underlay.MyASN }}
 {{- end }}
 {{- end }}
 {{- if .Underlay.TunnelEndpoint }}

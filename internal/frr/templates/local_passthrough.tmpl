@@ -14,7 +14,7 @@
   {{- end }}
     neighbor {{ .Passthrough.LocalNeighborV4.ID }} activate
     neighbor {{ .Passthrough.LocalNeighborV4.ID }} route-map allowall in
-    neighbor {{ .Passthrough.LocalNeighborV4.ID }} route-map allowall out
+    neighbor {{ .Passthrough.LocalNeighborV4.ID }} route-map openpe-fabric-strip out
   {{- if not (isEBGP .Underlay.MyASN .Passthrough.LocalNeighborV4.ASN) }}
     neighbor {{ .Passthrough.LocalNeighborV4.ID }} next-hop-self force
   {{- end }}
@@ -35,7 +35,7 @@
   {{- end }}
     neighbor {{ .Passthrough.LocalNeighborV6.ID }} activate
     neighbor {{ .Passthrough.LocalNeighborV6.ID }} route-map allowall in
-    neighbor {{ .Passthrough.LocalNeighborV6.ID }} route-map allowall out
+    neighbor {{ .Passthrough.LocalNeighborV6.ID }} route-map openpe-fabric-strip out
   {{- if not (isEBGP .Underlay.MyASN .Passthrough.LocalNeighborV6.ASN) }}
     neighbor {{ .Passthrough.LocalNeighborV6.ID }} next-hop-self force
   {{- end }}

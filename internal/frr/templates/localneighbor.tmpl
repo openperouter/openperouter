@@ -7,7 +7,7 @@
   {{- end }}
     neighbor {{ .vni.LocalNeighbor.ID }} activate
     neighbor {{ .vni.LocalNeighbor.ID }} route-map allowall in
-    neighbor {{ .vni.LocalNeighbor.ID }} route-map allowall out
+    neighbor {{ .vni.LocalNeighbor.ID }} route-map openpe-fabric-strip out
   {{- if not (isEBGP .routerASN .vni.LocalNeighbor.ASN) }}
     neighbor {{ .vni.LocalNeighbor.ID }} next-hop-self force
   {{- end }}
@@ -19,7 +19,7 @@
   {{- end }}
     neighbor {{ .vni.LocalNeighbor.ID }} activate
     neighbor {{ .vni.LocalNeighbor.ID }} route-map allowall in
-    neighbor {{ .vni.LocalNeighbor.ID }} route-map allowall out
+    neighbor {{ .vni.LocalNeighbor.ID }} route-map openpe-fabric-strip out
   {{- if not (isEBGP .routerASN .vni.LocalNeighbor.ASN) }}
     neighbor {{ .vni.LocalNeighbor.ID }} next-hop-self force
   {{- end }}

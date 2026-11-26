@@ -1279,6 +1279,54 @@ func TestUpdate(t *testing.T) {
 	})
 }
 
+func TestFabricTransitReload(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping FRR container integration test")
+	}
+
+	configFile := filepath.Join(t.TempDir(), "frr.conf")
+	config := frr.Config{
+		Underlay: frr.UnderlayConfig{
+			MyASN:          64514,
+			RouterID:       "10.0.0.2",
+			TunnelEndpoint: &frr.TunnelEndpoint{IPv4CIDR: "100.65.0.2/32"},
+			Neighbors: []frr.NeighborConfig{{
+				ASN:  mustNewPeerASNFromNumber(64512),
+				Addr: "192.168.11.2",
+				ID:   "192.168.11.2",
+				NetworkLayerProtocols: []networklayerprotocol.NLP{
+					{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast},
+				},
+			}},
+		},
+	}
+	dockertest.TestWithDockerT(t, func(t *testing.T) {
+		for cycle := range 3 {
+			for _, desired := range []frr.Config{
+				{Underlay: frr.UnderlayConfig{MyASN: 64520, RouterID: "10.0.0.20"}},
+				{},
+				config,
+			} {
+				if err := frr.ApplyConfig(context.Background(), desired, func(_ context.Context, rendered string) error {
+					return os.WriteFile(configFile, []byte(rendered), 0600)
+				}); err != nil {
+					t.Fatalf("cycle %d: rendering config: %v", cycle, err)
+				}
+				if err := update(configFile, dockertest.FRRReload, dockertest.RunVtysh); err != nil {
+					t.Fatalf("cycle %d: reloading config: %v", cycle, err)
+				}
+			}
+			routes, err := dockertest.RunVtysh("show bgp ipv4 unicast json")
+			if err != nil {
+				t.Fatalf("cycle %d: reading BGP routes after reload: %v", cycle, err)
+			}
+			if !strings.Contains(routes, "100.65.0.2/32") {
+				t.Fatalf("cycle %d: local route missing after BGP recreation: %s", cycle, routes)
+			}
+		}
+	})
+}
+
 // helper function that redirects the execution to a mock process implemented by
 // TestHelperProcess
 func fakeExecCommand(name string, args ...string) *exec.Cmd {

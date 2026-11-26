@@ -102,6 +102,25 @@ type L3VPNSidContext struct {
 	Table   int    `json:"table"`
 }
 
+// ContainsPrefixWithRouteTarget reports whether VPN data contains the prefix and route target.
+func ContainsPrefixWithRouteTarget(data L3VPNData, prefix string, routeTarget string) bool {
+	for _, pathsByPrefix := range data.Routes.RouteDistinguishers {
+		for paths := range pathsByPrefix {
+			if string(paths) != prefix {
+				continue
+			}
+			for _, path := range pathsByPrefix[paths] {
+				for token := range strings.FieldsSeq(path.ExtendedCommunity.String) {
+					if token == "RT:"+routeTarget {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
 func L3VPNInfo(exec executor.Executor, family ipfamily.Family) (L3VPNData, error) {
 	res, err := exec.Exec("vtysh", "-c", fmt.Sprintf("show bgp %s vpn detail json", family))
 	if err != nil {

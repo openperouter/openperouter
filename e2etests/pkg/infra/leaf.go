@@ -103,10 +103,15 @@ type LeafConfiguration struct {
 }
 
 type LeafKindConfiguration struct {
+	RouterID              string
+	SRv6                  *SRv6Config
+	Networks              map[string][]string
+	VTEPIP                string
 	ASN                   int
 	SpinePeerAddress      string
 	ToSwitchInterface     string
 	ISISNet               string
+	TemplateName          string
 	EnableBFD             bool
 	RedistributeConnected bool
 	Neighbors             []Neighbor
@@ -198,8 +203,11 @@ func LeafConfigToFRR(config LeafConfiguration) (string, error) {
 
 // LeafKindConfigToFRR reads a Go template from the testdata directory and generates a string for leafkind.
 func LeafKindConfigToFRR(config LeafKindConfiguration) (string, error) {
+	if config.TemplateName == "" {
+		config.TemplateName = "leafkind.tmpl"
+	}
 	_, currentFile, _, _ := runtime.Caller(0) // current file's path
-	templatePath := filepath.Join(filepath.Dir(currentFile), "testdata", "leafkind.tmpl")
+	templatePath := filepath.Join(filepath.Dir(currentFile), "testdata", config.TemplateName)
 
 	// Read the template file
 	tmplContent, err := os.ReadFile(templatePath)
@@ -207,7 +215,9 @@ func LeafKindConfigToFRR(config LeafKindConfiguration) (string, error) {
 		return "", err
 	}
 
-	tmpl, err := template.New("leafkind.tmpl").Parse(string(tmplContent))
+	tmpl, err := template.New(config.TemplateName).Funcs(template.FuncMap{
+		"safiAFIKey": networklayerprotocol.SAFIAFIKey,
+	}).Parse(string(tmplContent))
 	if err != nil {
 		return "", err
 	}

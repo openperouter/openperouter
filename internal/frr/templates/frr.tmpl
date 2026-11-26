@@ -40,6 +40,7 @@ exit
 
 route-map allowall permit 1
 
+{{- template "fabricpolicy" . -}}
 {{- if .Underlay.MyASN }}
 router bgp {{ .Underlay.MyASN }}
   no bgp ebgp-requires-policy
@@ -64,6 +65,8 @@ router bgp {{ .Underlay.MyASN }}
 
 {{- if .Underlay.RouteReflector }}
   bgp cluster-id {{ .Underlay.RouteReflector.ClusterID }}
+{{/* Reflected routes must lose the router-local fabric tag on egress too. */}}
+  bgp route-reflector allow-outbound-policy
 {{- end }}
 {{- if .Underlay.HasListenRange }}
 {{- /* raises the FRR default dynamic neighbors cap (100), needed to
