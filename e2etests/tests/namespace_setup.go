@@ -42,6 +42,13 @@ var _ = Describe("Namespace setup", Ordered, func() {
 		})).To(Succeed())
 	})
 
+	AfterAll(func() {
+		By("cleaning all objects")
+		Expect(Updater.CleanAll()).To(Succeed())
+		By("Waiting for all underlays to be deleted")
+		Eventually(Updater.IsUnderlayClean).ProbeEvery(5 * time.Second).WithTimeout(120 * time.Second).Should(Succeed())
+	})
+
 	It("has expected sysctl settings after underlay deployment", func() {
 		By("making sure that perouter namespace has correct values for rp_filters on toswitch{1,2}, all, default interfaces")
 		Eventually(func() error {
@@ -61,4 +68,5 @@ var _ = Describe("Namespace setup", Ordered, func() {
 			return nil
 		}).ProbeEvery(5 * time.Second).WithTimeout(60 * time.Second).Should(Succeed())
 	})
+
 })
