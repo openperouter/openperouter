@@ -29,19 +29,14 @@ func TestReadNodeConfig(t *testing.T) {
 			expected: &static.NodeConfig{NodeIndex: static.NodeIndex{Index: 42}, RouterMACPrefix: "02:00:00:00:00:00/32"},
 		},
 		{
-			name:     "valid yaml config",
-			content:  "nodeIndex:\n  index: 42\nlogLevel: debug\n",
-			expected: &static.NodeConfig{NodeIndex: static.NodeIndex{Index: 42}, LogLevel: "debug"},
-		},
-		{
 			name:     "valid yaml with zero value",
-			content:  "nodeIndex:\n  index: 0\nlogLevel: info\n",
-			expected: &static.NodeConfig{NodeIndex: static.NodeIndex{Index: 0}, LogLevel: "info"},
+			content:  "nodeIndex:\n  index: 0\n",
+			expected: &static.NodeConfig{NodeIndex: static.NodeIndex{Index: 0}},
 		},
 		{
 			name:     "valid yaml with only nodeIndex",
 			content:  "nodeIndex:\n  index: 1\n",
-			expected: &static.NodeConfig{NodeIndex: static.NodeIndex{Index: 1}, LogLevel: ""},
+			expected: &static.NodeConfig{NodeIndex: static.NodeIndex{Index: 1}},
 		},
 		{
 			name:        "interfaceName resolution fails for non-existent interface",
@@ -86,9 +81,6 @@ func TestReadNodeConfig(t *testing.T) {
 				t.Errorf("expected NodeIndex %+v, got %+v", tt.expected.NodeIndex, config.NodeIndex)
 			}
 
-			if config.LogLevel != tt.expected.LogLevel {
-				t.Errorf("expected LogLevel %s, got %s", tt.expected.LogLevel, config.LogLevel)
-			}
 			if config.RouterMACPrefix != tt.expected.RouterMACPrefix {
 				t.Errorf("expected RouterMACPrefix %s, got %s", tt.expected.RouterMACPrefix, config.RouterMACPrefix)
 			}

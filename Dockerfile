@@ -57,6 +57,8 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
   && \
   CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -o hostbridge ./cmd/hostbridge \
   && \
+  CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -o bootstrap ./cmd/bootstrap \
+  && \
   CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -o operatorbinary ./operator
 
 FROM ${FRR_IMAGE}
@@ -64,6 +66,7 @@ WORKDIR /
 COPY --from=builder /go/openperouter/reloader .
 COPY --from=builder /go/openperouter/controller .
 COPY --from=builder /go/openperouter/hostbridge .
+COPY --from=builder /go/openperouter/bootstrap .
 COPY --from=builder /go/openperouter/nodemarker .
 COPY --from=builder /go/openperouter/webhook .
 COPY --from=builder /go/openperouter/certcontroller .

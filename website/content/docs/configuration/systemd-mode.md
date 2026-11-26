@@ -10,6 +10,41 @@ toc: true
 
 In systemd mode, OpenPERouter is configured via static files on the host instead of Kubernetes Custom Resources. See the [Systemd Mode installation guide]({{< ref "../installation/systemd-mode.md" >}}) for deployment instructions.
 
+## Bootstrap Configuration
+
+The bootstrap unit reads a single file, `/var/lib/openperouter/boot.yaml`, and renders from it the runtime Quadlets (under `/etc/containers/systemd/openperouter/`) and FRR daemon settings. Do not edit the rendered files: they are overwritten at every boot. Changes take effect at the next boot.
+
+```yaml
+image: quay.io/openperouter/router:main
+logLevel: info
+healthProbePort: 9081
+bgpListenLimit: 65535
+controllerMaxReconcileBackoffSeconds: 30
+ovsRunDir: /var/run/openvswitch
+ovsSocketPath: unix:/var/run/openvswitch/db.sock
+```
+
+Bootstrap rejects unknown fields. If the boot file is invalid, bootstrap logs the error to stderr and exits before writing any rendered files. View the error with `journalctl -u openperouter-bootstrap.service`.
+
+### Deployment Options
+
+With the exception of `image`, these fields share their names and meanings with the `OpenPERouter` operator resource.
+
+| Field | Required | Default | Notes |
+|-------|----------|---------|-------|
+| `image` | Yes | None | Router image used by the generated Quadlets. |
+| `logLevel` | No | `info` | `debug`, `info`, `warn`, `error`. The operator values `all` and `none` are not supported. |
+| `healthProbePort` | No | `9081` | Controller health endpoint and container health check. |
+| `bgpListenLimit` | No | `65535` | 1-65535. |
+| `controllerMaxReconcileBackoffSeconds` | No | controller default | At least 1 when set. |
+| `ovsSocketPath` | No | `unix:/var/run/openvswitch/db.sock` | Must be a `unix:` socket inside `ovsRunDir`. |
+| `ovsRunDir` | No | `/var/run/openvswitch` | Mounted into the controller. |
+| `datapath` | No | `kernel` | Only `kernel` is supported for now. |
+
+### FRR Daemons
+
+The bootstrap unit writes `/var/lib/openperouter/frr/daemons` at boot. The generated FRR Quadlet mounts that file into the container. Bootstrap currently uses built-in daemon settings.
+
 ## Node Configuration
 
 Each node requires a mandatory configuration file at `/var/lib/openperouter/node-config.yaml`. This file identifies the node and configures its unique index used for IPAM address allocation from the configured CIDRs.
@@ -23,7 +58,6 @@ Set `nodeIndex.index` to a unique integer per node:
 ```yaml
 nodeIndex:
   index: 0
-logLevel: debug
 ```
 
 #### Deriving Node Index from an Interface
@@ -37,7 +71,6 @@ This allows deploying the same `node-config.yaml` to every node, since each node
 ```yaml
 nodeIndex:
   interfaceName: eth0
-logLevel: debug
 ```
 
 When an interface has multiple IP addresses, you can use the optional `nodeIndex.cidr` field to select which address to use. Only addresses within the specified CIDR are considered. This also allows explicitly selecting an IPv6 address over IPv4.
@@ -46,10 +79,12 @@ When an interface has multiple IP addresses, you can use the optional `nodeIndex
 nodeIndex:
   interfaceName: eth0
   cidr: "192.168.11.0/24"
-logLevel: debug
 ```
 
-## Router Configuration
+## Runtime Configuration
+
+Put runtime files in `/var/lib/openperouter/configs` on the host. Changes
+to those files reload live.
 
 Each `openpe_*.yaml` file contains the `spec` part of the corresponding Kubernetes Custom Resources. A file can contain any combination of `underlay`, `l3vnis`, `l2vnis`, `bgppassthrough`, and `rawfrrconfigs` fields, where each entry follows the same schema as the `spec` section of the equivalent CR (Underlay, L3VNI, L2VNI, L3Passthrough, RawFRRConfig):
 
@@ -92,7 +127,7 @@ l2vnis:
 
 ### Splitting Configuration Across Files
 
-Multiple files can coexist in the configs directory. This is useful when nodes share a common base configuration but require different underlays. For example, a shared VNI definition can live in one file while per-node underlay settings go in another:
+Multiple files can coexist in the runtime configuration directory. This is useful when nodes share a common base configuration but require different underlays. For example, a shared VNI definition can live in one file while per-node underlay settings go in another:
 
 ```yaml
 # openpe_vni.yaml - common across nodes
@@ -126,7 +161,7 @@ Depending on the CNI, the network configuration might need to be complete before
 
 ### Dynamic Reload
 
-Configuration files are watched for changes and dynamically reloaded at runtime. Updating a file triggers a reconciliation cycle without restarting the service.
+Files in the runtime configuration directory are watched for changes and dynamically reloaded at runtime. Updating a file triggers a reconciliation cycle without restarting the service.
 
 ### Kubernetes Visibility
 

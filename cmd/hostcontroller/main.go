@@ -746,10 +746,6 @@ func overrideHostMode(args *parameters, nodeConfig static.NodeConfig) error {
 	if nodeConfig.RouterMACPrefix != "" {
 		args.routerMACPrefix = nodeConfig.RouterMACPrefix
 	}
-	if nodeConfig.LogLevel != "" {
-		setupLog.Info("overriding log level from static configuration", "loglevel", nodeConfig.LogLevel)
-		args.logLevel = nodeConfig.LogLevel
-	}
 	if nodeConfig.NodeName != "" {
 		setupLog.Info("overriding node name from static configuration", "nodename", nodeConfig.NodeName)
 		args.nodeName = nodeConfig.NodeName
