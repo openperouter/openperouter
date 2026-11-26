@@ -10,6 +10,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/e2etests/pkg/config"
+	"github.com/openperouter/openperouter/e2etests/pkg/infra"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -688,6 +689,37 @@ var _ = Describe("Webhooks", GroutSupport, func() {
 			l3vni.Spec.VRF = "vrf-renamed"
 
 			Expect(Updater.Client().Update(context.Background(), l3vni)).To(MatchError(ContainSubstring("vrf is immutable")))
+		})
+	})
+
+	Context("when L3VPN immutability is tested", func() {
+		It("should block updates to VRF", func() {
+			Expect(Updater.Update(config.Resources{
+				Underlays: []v1alpha1.Underlay{infra.Underlay(infra.SRv6)},
+			})).To(Succeed())
+
+			l3vpn := v1alpha1.L3VPN{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "l3vpn-immutable",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.L3VPNSpec{
+					VRF:              "vrf-immutable",
+					RDAssignedNumber: 400,
+					ImportRTs:        []v1alpha1.RouteTarget{"65000:400"},
+				},
+			}
+			By("creating an L3VPN")
+			Expect(Updater.Update(config.Resources{
+				L3VPNs: []v1alpha1.L3VPN{l3vpn},
+			})).To(Succeed())
+
+			By("rename vrf")
+			l3vpn.Spec.VRF = "vrf-renamed"
+
+			Expect(Updater.Update(config.Resources{
+				L3VPNs: []v1alpha1.L3VPN{l3vpn},
+			})).To(MatchError(ContainSubstring("vrf is immutable")))
 		})
 	})
 
