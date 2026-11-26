@@ -1085,7 +1085,7 @@ var _ = Describe("Underlay explicit address family configuration", Ordered, Grou
 	// collision triggers DAD, which can strip u_<iface>'s link-local and break any
 	// session carrying an IPv6 nexthop (ipv6unicast/ipv6vpn). Assert the
 	// port owns a link-local that is not shared with its backing veth. Note the
-	// shadow shares its link-local with grout's own tap_<iface> by design; only a
+	// shadow shares its link-local with grout's own t_<iface> by design; only a
 	// collision with the veth is the failure signature.
 	//
 	// This test is marked as failing until we fix this bug.
