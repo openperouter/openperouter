@@ -238,8 +238,12 @@ spec:
                 description: exportRTs are the Route Targets to be used for exporting
                   L2 EVPN routes.
                 items:
-                  description: RouteTarget defines a BGP Extended Community for route
-                    filtering.
+                  description: |-
+                    RouteTarget defines a BGP Extended Community for route filtering.
+
+                    Supports two formats per RFC 4360:
+                      - ASN:NN   (e.g. "64514:100")        where ASN is a 2- or 4-byte ASN (<= 4294967295)
+                      - IP:NN    (e.g. "192.168.1.1:100")  where IP is a valid IPv4 address
                   maxLength: 21
                   type: string
                 maxItems: 100
@@ -256,6 +260,7 @@ spec:
                 items:
                   type: string
                 maxItems: 2
+                minItems: 1
                 type: array
                 x-kubernetes-list-type: atomic
                 x-kubernetes-validations:
@@ -343,8 +348,12 @@ spec:
                 description: importRTs are the Route Targets to be used for importing
                   L2 EVPN routes.
                 items:
-                  description: RouteTarget defines a BGP Extended Community for route
-                    filtering.
+                  description: |-
+                    RouteTarget defines a BGP Extended Community for route filtering.
+
+                    Supports two formats per RFC 4360:
+                      - ASN:NN   (e.g. "64514:100")        where ASN is a 2- or 4-byte ASN (<= 4294967295)
+                      - IP:NN    (e.g. "192.168.1.1:100")  where IP is a valid IPv4 address
                   maxLength: 21
                   type: string
                 maxItems: 100
@@ -759,8 +768,12 @@ spec:
                   exportRTs are the Route Targets to be used for exporting routes.
                   RouteTarget defines a BGP Extended Community for route filtering.
                 items:
-                  description: RouteTarget defines a BGP Extended Community for route
-                    filtering.
+                  description: |-
+                    RouteTarget defines a BGP Extended Community for route filtering.
+
+                    Supports two formats per RFC 4360:
+                      - ASN:NN   (e.g. "64514:100")        where ASN is a 2- or 4-byte ASN (<= 4294967295)
+                      - IP:NN    (e.g. "192.168.1.1:100")  where IP is a valid IPv4 address
                   maxLength: 21
                   type: string
                 maxItems: 100
@@ -829,8 +842,12 @@ spec:
                   importRTs are the Route Targets to be used for importing routes.
                   RouteTarget defines a BGP Extended Community for route filtering.
                 items:
-                  description: RouteTarget defines a BGP Extended Community for route
-                    filtering.
+                  description: |-
+                    RouteTarget defines a BGP Extended Community for route filtering.
+
+                    Supports two formats per RFC 4360:
+                      - ASN:NN   (e.g. "64514:100")        where ASN is a 2- or 4-byte ASN (<= 4294967295)
+                      - IP:NN    (e.g. "192.168.1.1:100")  where IP is a valid IPv4 address
                   maxLength: 21
                   type: string
                 maxItems: 100
@@ -995,8 +1012,12 @@ spec:
                   If no exportRTs are provided, defaults to single export Route Target
                   <asn>:<rdAssignedNumber>.
                 items:
-                  description: RouteTarget defines a BGP Extended Community for route
-                    filtering.
+                  description: |-
+                    RouteTarget defines a BGP Extended Community for route filtering.
+
+                    Supports two formats per RFC 4360:
+                      - ASN:NN   (e.g. "64514:100")        where ASN is a 2- or 4-byte ASN (<= 4294967295)
+                      - IP:NN    (e.g. "192.168.1.1:100")  where IP is a valid IPv4 address
                   maxLength: 21
                   type: string
                 maxItems: 100
@@ -1080,8 +1101,12 @@ spec:
                   importRTs are the Route Targets to be used for importing routes.
                   importRTs must always be provided explicitly.
                 items:
-                  description: RouteTarget defines a BGP Extended Community for route
-                    filtering.
+                  description: |-
+                    RouteTarget defines a BGP Extended Community for route filtering.
+
+                    Supports two formats per RFC 4360:
+                      - ASN:NN   (e.g. "64514:100")        where ASN is a 2- or 4-byte ASN (<= 4294967295)
+                      - IP:NN    (e.g. "192.168.1.1:100")  where IP is a valid IPv4 address
                   maxLength: 21
                   type: string
                 maxItems: 100

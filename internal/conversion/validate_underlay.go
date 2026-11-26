@@ -66,6 +66,12 @@ func validateUnderlay(underlay v1alpha1.Underlay) error {
 		return fmt.Errorf("underlay %s must have at least one neighbor configured", underlay.Name)
 	}
 
+	for _, neiAddr := range neighborAddressesOf(underlay.Spec.Neighbors) {
+		if _, err := netip.ParseAddr(neiAddr); err != nil {
+			return fmt.Errorf("underlay %s has invalid neighbor address: %w", underlay.Name, err)
+		}
+	}
+
 	if err := validateNoDuplicates(neighborAddressesOf(underlay.Spec.Neighbors)); err != nil {
 		return fmt.Errorf("underlay %s has duplicate neighbor address: %w", underlay.Name, err)
 	}
@@ -82,6 +88,10 @@ func validateUnderlay(underlay v1alpha1.Underlay) error {
 	if err := validateNoDuplicates(neighborIDsOf(underlay.Spec.Neighbors)); err != nil {
 		return fmt.Errorf("underlay %s has neighbors sharing an identity (address, listen range or interface): %w",
 			underlay.Name, err)
+	}
+
+	if err := validateRouterIDCIDR(underlay.Spec.RouterIDCIDR); err != nil {
+		return fmt.Errorf("underlay %s has invalid routerIDCIDR: %w", underlay.Name, err)
 	}
 
 	// do a no-op conversion to catch validation errors
@@ -221,6 +231,20 @@ func validateNoDuplicates(items []string) error {
 			return fmt.Errorf("duplicate entry %s", item)
 		}
 		seen[item] = struct{}{}
+	}
+	return nil
+}
+
+func validateRouterIDCIDR(routerIDCIDR *string) error {
+	if routerIDCIDR == nil {
+		return nil
+	}
+	prefix, err := netip.ParsePrefix(*routerIDCIDR)
+	if err != nil {
+		return err
+	}
+	if !prefix.Addr().Is4() {
+		return fmt.Errorf("must be an IPv4 CIDR")
 	}
 	return nil
 }
