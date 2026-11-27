@@ -5,6 +5,7 @@ package qemu_e2e
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -227,18 +228,16 @@ var _ = Describe("SR-IOV L2Trunk", Ordered, QEMUSupport, GroutSupport, func() {
 	})
 
 	It("should connect the workload VFs on the same VLAN through the trunk", func() {
-		// Each pod gets its own VF, so that same-VNI traffic crosses the
-		// emulated embedded switch instead of staying inside the node.
+		// Each pod gets its own VF to exercise the emulated embedded switch.
+		node := openperouter.FirstRouterNode(routers)
 		pods := []workloads.L2VNIPod{
-			{Name: "tenant-a-1", VNI: l2vniA, IP: "10.110.0.10/24", NADMaster: vlan33VF1},
-			{Name: "tenant-a-2", VNI: l2vniA, IP: "10.110.0.11/24", NADMaster: vlan33VF2},
-			{Name: "tenant-b-1", VNI: l2vniB, IP: "10.120.0.10/24", NADMaster: vlan44VF1},
-			{Name: "tenant-b-2", VNI: l2vniB, IP: "10.120.0.11/24", NADMaster: vlan44VF2},
+			{Name: "tenant-a-1", NodeName: node, VNI: l2vniA, IP: "10.110.0.10/24", NADMaster: vlan33VF1},
+			{Name: "tenant-a-2", NodeName: node, VNI: l2vniA, IP: "10.110.0.11/24", NADMaster: vlan33VF2},
+			{Name: "tenant-b-1", NodeName: node, VNI: l2vniB, IP: "10.120.0.10/24", NADMaster: vlan44VF1},
+			{Name: "tenant-b-2", NodeName: node, VNI: l2vniB, IP: "10.120.0.11/24", NADMaster: vlan44VF2},
 		}
 
-		// The pods share their L2 segments across nodes, so they all run
-		// on a single node to avoid address conflicts.
-		executors := workloads.CreateL2VNIPods(cs, l2trunkTestNS, openperouter.FirstRouterNode(routers), pods)
+		executors := workloads.CreateL2VNIPods(cs, l2trunkTestNS, pods)
 
 		for _, from := range pods {
 			By(fmt.Sprintf("pinging the gateway of VNI %d from %s", from.VNI.Spec.VNI, from.Name))
@@ -254,7 +253,15 @@ var _ = Describe("SR-IOV L2Trunk", Ordered, QEMUSupport, GroutSupport, func() {
 		}
 	})
 
-	It("should route between a tap-attached L2VNI and a trunk-attached L2VNI in the same L3VNI", func() {
+	It("should route between tap and trunk workloads on different nodes through the same L3VNI", func() {
+		var nodes []string
+		for router := range routers.GetExecutors() {
+			nodes = append(nodes, router.NodeName())
+		}
+		slices.Sort(nodes)
+		nodes = slices.Compact(nodes)
+		Expect(nodes).To(HaveLen(2), "cross-node traffic requires two QEMU router nodes")
+
 		By("adding the tap-attached L2VNI to the same L3VNI as the trunked ones")
 		Expect(Updater.Update(config.Resources{
 			L3VNIs:   []v1alpha1.L3VNI{l3vniRed},
@@ -272,13 +279,11 @@ var _ = Describe("SR-IOV L2Trunk", Ordered, QEMUSupport, GroutSupport, func() {
 		// VFs. The trunk pod gets a fresh IP to avoid colliding with the pods
 		// left over by the previous spec.
 		pods := []workloads.L2VNIPod{
-			{Name: "tenant-c-tap", VNI: l2vniC, IP: "10.130.0.10/24", NADMaster: workloads.HostBridgeName(l2vniC.Spec.VNI)},
-			{Name: "tenant-a-trunk", VNI: l2vniA, IP: "10.110.0.12/24", NADMaster: vlan33VF1},
+			{Name: "tenant-c-tap", NodeName: nodes[0], VNI: l2vniC, IP: "10.130.0.10/24", NADMaster: workloads.HostBridgeName(l2vniC.Spec.VNI)},
+			{Name: "tenant-a-trunk", NodeName: nodes[1], VNI: l2vniA, IP: "10.110.0.12/24", NADMaster: vlan33VF1},
 		}
 
-		// The pods share their L2 segments across nodes, so they all run
-		// on a single node to avoid address conflicts.
-		executors := workloads.CreateL2VNIPods(cs, l2trunkTestNS, openperouter.FirstRouterNode(routers), pods)
+		executors := workloads.CreateL2VNIPods(cs, l2trunkTestNS, pods)
 
 		for _, p := range pods {
 			By(fmt.Sprintf("pinging the gateway of VNI %d from %s", p.VNI.Spec.VNI, p.Name))
