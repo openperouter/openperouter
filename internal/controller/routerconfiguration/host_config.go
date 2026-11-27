@@ -16,6 +16,7 @@ import (
 	"github.com/openperouter/openperouter/internal/hostnetwork/bridgerefresh"
 	"github.com/openperouter/openperouter/internal/sysctl"
 	"github.com/vishvananda/netns"
+	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 type interfacesConfiguration struct {
@@ -81,6 +82,20 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 		return fmt.Errorf("failed to convert config to host configuration: %w", err)
 	}
 
+	// Fail closed before the legacy purge deletes the devices currently carrying
+	// traffic: on a kernel without VNI filtering the migration cannot complete.
+	configuredPorts := configuredVXLanPorts(hostConfig)
+	if len(configuredPorts) > 0 {
+		if err := hostnetwork.EnsureVniFilterSupport(config.targetNamespace); err != nil {
+			return &openpeerrors.ResourceError{Obj: v1alpha1.FailedResource{
+				Kind:    openpeerrors.KindUnderlay,
+				Name:    config.Underlays[0].Name,
+				Reason:  v1alpha1.FailedResourceReasonValidationFailed,
+				Message: err.Error(),
+			}}
+		}
+	}
+
 	// This must run before underlay interfaces are added to the namespace.
 	if err := ensureSysctlsForConfig(ctx, config); err != nil {
 		return err
@@ -109,6 +124,13 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 	for i := range hostConfig.L3VNIs {
 		hostConfig.L3VNIs[i].RouterMAC = routerMAC
 	}
+
+	// The purge and the new external devices cannot share a UDP port, so every
+	// legacy device must go before setupVNIs creates the first external one.
+	if err := hostnetwork.PurgeLegacyVXLans(config.targetNamespace, configuredPorts); err != nil {
+		return fmt.Errorf("failed to purge legacy VXLAN devices: %w", err)
+	}
+
 	vnisToKeep, resourceErrors := setupVNIs(ctx, ovsClient, config.targetNamespace, hostConfig)
 	slog.InfoContext(ctx, "setting up passthrough")
 	if hostConfig.L3Passthrough != nil {
@@ -155,6 +177,26 @@ func (k *KernelDatapathConfigurator) Configure(ctx context.Context, config inter
 		}
 	}
 	return errors.Join(resourceErrors...)
+}
+
+// configuredVXLanPorts returns every UDP port the node's VNIs use. VXLanPort
+// is per-resource, so a node can legitimately use several, and the legacy purge
+// must cover all of them.
+func configuredVXLanPorts(hostConfig conversion.HostConfigData) []int32 {
+	ports := sets.New[int32]()
+	for _, vni := range hostConfig.L3VNIs {
+		if vni.VXLanPort != nil {
+			ports.Insert(*vni.VXLanPort)
+		}
+	}
+	for _, vni := range hostConfig.L2VNIs {
+		if vni.VXLanPort != nil {
+			ports.Insert(*vni.VXLanPort)
+		}
+	}
+	result := ports.UnsortedList()
+	slices.Sort(result)
+	return result
 }
 
 // setupVNIs sets up every VNI of the datapath reconcile cyle. The underlay MTU

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -114,35 +113,6 @@ func PurgeLegacyVXLans(targetNS string, ports []int32) error {
 	})
 }
 
-// setupVXLan sets up a vxlan interface corresponding to the provided
-// vniParams.
-func setupVXLan(params VNIParams, bridge *netlink.Bridge, vtepDeviceIndex int) error {
-	vxlan, err := createVXLan(params, bridge, vtepDeviceIndex)
-	if err != nil {
-		return err
-	}
-
-	if err := setAddrGenModeNone(vxlan); err != nil {
-		return fmt.Errorf("failed to set addr_gen_mode to 1 for %s: %w", vxlan.Name, err)
-	}
-	if err := netlink.LinkSetBrNeighSuppress(vxlan, true); err != nil {
-		return fmt.Errorf("failed to set neigh suppression for %s: %w", vxlan.Name, err)
-	}
-	// LinkSetLearning disables MAC learning for the bridge_slave. ip link syntax is:
-	// ip link set <...> type bridge_slave learning off
-	// Note that this is different from the VXLAN's 'nolearning' parameter (which we set inside createVXLan via
-	// Learning: false) and which disables VTEP learning.
-	if err := netlink.LinkSetLearning(vxlan, false); err != nil {
-		return fmt.Errorf("failed to disable MAC learning (learning off) for %s: %w", vxlan.Name, err)
-	}
-
-	if err = linkSetUp(vxlan); err != nil {
-		return fmt.Errorf("could not set link up for vxlan %s: %v", vxlan.Name, err)
-	}
-
-	return nil
-}
-
 // checkVXLanConfigured reports why an existing VXLAN must be replaced. An
 // external vnifilter device has VxlanId 0: the VNI set lives in the VNI filter
 // entries, so comparing VxlanId alone would recreate the device on every
@@ -170,84 +140,6 @@ func checkVXLanConfigured(observed, desired *netlink.Vxlan, vniFilterEnabled boo
 	return nil
 }
 
-// checkLegacyVXLanConfigured checks if a pre-VLAN-aware VXLan has the required
-// properties passed as parameters.
-func checkLegacyVXLanConfigured(vxLan *netlink.Vxlan, bridgeIndex, vtepDeviceIndex int, params VNIParams) error {
-	if vxLan.MasterIndex != bridgeIndex {
-		return fmt.Errorf("master index is not bridge index: %d, %d", vxLan.MasterIndex, bridgeIndex)
-	}
-
-	if vxLan.VxlanId != int(params.VNI) {
-		return fmt.Errorf("vxlanid is not vni: %d, %d", vxLan.VxlanId, params.VNI)
-	}
-
-	if params.VXLanPort == nil {
-		return errors.New("failed to parse VXLAN information, VXLAN port is nil")
-	}
-
-	paramsVXLanPort := int(*params.VXLanPort)
-	if vxLan.Port != paramsVXLanPort {
-		return fmt.Errorf("port is not one coming from params: %d, %d", vxLan.Port, paramsVXLanPort)
-	}
-	if vxLan.Learning {
-		return errors.New("VTEP learning is enabled")
-	}
-	if err := validateVxlan(vxLan, params); err != nil {
-		return err
-	}
-	if vxLan.VtepDevIndex != vtepDeviceIndex {
-		return fmt.Errorf("vtep dev index is not tunnel endpoint index: %d %d", vxLan.VtepDevIndex, vtepDeviceIndex)
-	}
-	return nil
-}
-
-func createVXLan(params VNIParams, bridge *netlink.Bridge, vtepDeviceIndex int) (*netlink.Vxlan, error) {
-	vtepIP, _, err := net.ParseCIDR(params.VTEPIP)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse vtep ip %v: %w", params.VTEPIP, err)
-	}
-
-	if params.VXLanPort == nil {
-		return nil, errors.New("failed to parse VXLAN information, VXLAN port is nil")
-	}
-
-	vxlanName := vxLanNameFromVNI(params.VNI)
-	toCreate := &netlink.Vxlan{
-		LinkAttrs: netlink.LinkAttrs{
-			Name:        vxlanName,
-			MasterIndex: bridge.Index,
-		},
-		VxlanId:      int(params.VNI),
-		Port:         int(*params.VXLanPort),
-		Learning:     false, // Disable VTEP learning (ip link add <...> type vxlan <...> nolearning).
-		VtepDevIndex: vtepDeviceIndex,
-		SrcAddr:      vtepIP,
-	}
-
-	link, err := netlink.LinkByName(vxlanName)
-	if err != nil && errors.As(err, &netlink.LinkNotFoundError{}) {
-		if err := netlink.LinkAdd(toCreate); err != nil {
-			return nil, fmt.Errorf("failed to create vxlan %s: %w", vxlanName, err)
-		}
-		return toCreate, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to get vxlan link by name %s: %w", vxlanName, err)
-	}
-	vxlan, ok := link.(*netlink.Vxlan)
-	if ok && checkLegacyVXLanConfigured(vxlan, bridge.Index, vtepDeviceIndex, params) == nil {
-		return vxlan, nil
-	}
-	if err := netlink.LinkDel(link); err != nil {
-		return nil, fmt.Errorf("failed to delete link %v: %w", link, err)
-	}
-
-	if err = netlink.LinkAdd(toCreate); err != nil {
-		return nil, fmt.Errorf("failed to create vxlan %s: %w", vxlan.Name, err)
-	}
-	return toCreate, nil
-}
-
 const vniPrefix = "vni"
 
 func vxLanNameFromVNI(vni int32) string {
@@ -264,17 +156,6 @@ func vniFromVXLanName(name string) (int32, error) {
 		return 0, fmt.Errorf("failed to get vni for vxlan %s", name)
 	}
 	return int32(res), nil
-}
-
-func validateVxlan(vxLan *netlink.Vxlan, params VNIParams) error {
-	vtepIP, _, err := net.ParseCIDR(params.VTEPIP)
-	if err != nil {
-		return fmt.Errorf("failed to parse vtep ip %v: %w", params.VTEPIP, err)
-	}
-	if !vxLan.SrcAddr.Equal(vtepIP) {
-		return fmt.Errorf("src addr does not match vtep ip: %v, expected %v", vxLan.SrcAddr, vtepIP)
-	}
-	return nil
 }
 
 // purgeLegacyVXLan deletes link when it is a legacy per-VNI VXLAN on a

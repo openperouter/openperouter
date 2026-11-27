@@ -48,16 +48,9 @@ func RemoveNonConfiguredVRFs(targetNS string, vrfs map[string]bool) error {
 // namespace the configurator was built for, for L3VNI and L3VPN.
 func (c *VNIConfigurator) setupHostVeth(ctx context.Context, vethNames VethNames, linkIPs *LinkIPs,
 	vrfName string, tunnelOverhead int) error {
-	if err := setupNamespacedVethInNamespace(ctx, vethNames, c.ns); err != nil {
-		return fmt.Errorf("failed to setup veth: %w", err)
-	}
-
-	hostVethLink, err := netlink.LinkByName(vethNames.HostSide)
-	if errors.As(err, &netlink.LinkNotFoundError{}) {
-		return fmt.Errorf("host veth %s does not exist, cannot setup", vethNames.HostSide)
-	}
+	hostVethLink, err := setupNamespacedVethInNamespace(ctx, vethNames, c.ns)
 	if err != nil {
-		return fmt.Errorf("failed to get host veth %s: %w", vethNames.HostSide, err)
+		return fmt.Errorf("failed to setup veth: %w", err)
 	}
 
 	err = AssignIPsToInterface(hostVethLink, linkIPs.HostIPv4, linkIPs.HostIPv6)
@@ -122,7 +115,8 @@ func AssignIPsToInterface(link netlink.Link, ipv4, ipv6 string) error {
 
 // SetVethMTUForTunnelOverhead sets the MTU on a veth interface to account for tunnel overhead.
 // If the underlay MTU is not found, or if the resulting MTU would be too small,
-// the MTU is left unchanged.
+// the MTU is left unchanged. Callers pass a link they just looked up or created,
+// so its MTU is compared in place: a matching MTU issues no RTM_NEWLINK event.
 func SetVethMTUForTunnelOverhead(link netlink.Link, underlayMTU int, overhead int) error {
 	if underlayMTU == 0 {
 		slog.Debug("No underlay MTU found, leaving veth MTU at default", "veth", link.Attrs().Name)
@@ -136,7 +130,10 @@ func SetVethMTUForTunnelOverhead(link netlink.Link, underlayMTU int, overhead in
 			"calculatedMTU", targetMTU)
 		return nil
 	}
-	return linkSetMTU(link, targetMTU)
+	if link.Attrs().MTU == targetMTU {
+		return nil
+	}
+	return netlink.LinkSetMTU(link, targetMTU)
 }
 
 func removeHostSideVeths(hostLinks []netlink.Link, prefix string, interfaceIDs map[int32]bool) []error {

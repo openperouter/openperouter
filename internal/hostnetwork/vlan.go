@@ -19,9 +19,6 @@ package hostnetwork
 // VLAN memberships are converged by value: a vlanMembership carries the VID
 // and its pvid/untagged flags, and ensurePortVlans removes every VID that is
 // not desired before adding or rewriting the wanted ones.
-//
-// The kernel-touching helpers are stubs until the follow-up commits implement
-// them; each stub names the work it owes.
 
 import (
 	"bytes"

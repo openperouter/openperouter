@@ -3,6 +3,7 @@
 package hostnetwork
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -15,7 +16,9 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/openperouter/openperouter/internal/netnamespace"
 	"github.com/vishvananda/netlink"
+	"github.com/vishvananda/netlink/nl"
 	"github.com/vishvananda/netns"
+	"golang.org/x/sys/unix"
 	"k8s.io/utils/ptr"
 )
 
@@ -45,52 +48,60 @@ var _ = Describe("L3 VNI configuration", func() {
 	})
 
 	It("should share the router MAC across L3VNIs and restore it after drift or recreation", func() {
-		mac, err := RouterMACForNode("02:00:00:00:00:00/32", 42)
+		routerMAC, err := RouterMACForNode("02:00:00:00:00:00/32", 42)
 		Expect(err).To(Succeed())
-		routerMAC := mac.String()
-		options := l3VNIBridgeOptions(mac)
-		Expect(netnamespace.In(testNS, func() error {
-			for _, vni := range []int32{100, 200} {
-				bridge, err := setupBridge(VNIParams{VNI: vni}, options...)
-				if err != nil {
-					return err
-				}
-				Expect(bridge.Attrs().HardwareAddr.String()).To(Equal(routerMAC))
+		cfg := newConfiguratorForTest(ovsClient)
 
-				Expect(netlink.LinkSetHardwareAddr(bridge, net.HardwareAddr{2, 0, 0, 0, 0, 2})).To(Succeed())
-				bridge, err = setupBridge(VNIParams{VNI: vni}, options...)
-				if err != nil {
-					return err
-				}
-				Expect(bridge.Attrs().HardwareAddr.String()).To(Equal(routerMAC))
-
-				Expect(netlink.LinkDel(bridge)).To(Succeed())
-				bridge, err = setupBridge(VNIParams{VNI: vni}, options...)
-				if err != nil {
-					return err
-				}
-				Expect(bridge.Attrs().HardwareAddr.String()).To(Equal(routerMAC))
+		for i, vni := range []int32{100, 200} {
+			params := L3VNIParams{
+				VNIParams: VNIParams{
+					VRF:       fmt.Sprintf("testred%d", vni),
+					TargetNS:  testNSPath(),
+					VTEPIP:    fmt.Sprintf("192.170.0.%d/32", 9+i),
+					VNI:       vni,
+					VXLanPort: new(int32(4789)),
+				},
+				RouterMAC: routerMAC,
 			}
-			return nil
-		})).To(Succeed())
+
+			By(fmt.Sprintf("setting up L3VNI %d", vni))
+			Expect(cfg.SetupL3VNI(context.Background(), params)).To(Succeed())
+			Expect(l3VNISVIMAC(testNS, vni)).To(Equal(routerMAC))
+
+			By(fmt.Sprintf("restoring the drifted router MAC of L3VNI %d", vni))
+			Expect(inVLANEndpoint(testNS, vni, func(endpoint netlink.Link) error {
+				return netlink.LinkSetHardwareAddr(endpoint, net.HardwareAddr{2, 0, 0, 0, 0, 2})
+			})).To(Succeed())
+			Expect(cfg.SetupL3VNI(context.Background(), params)).To(Succeed())
+			Expect(l3VNISVIMAC(testNS, vni)).To(Equal(routerMAC))
+
+			By(fmt.Sprintf("recreating the router MAC of L3VNI %d", vni))
+			Expect(inVLANEndpoint(testNS, vni, netlink.LinkDel)).To(Succeed())
+			Expect(cfg.SetupL3VNI(context.Background(), params)).To(Succeed())
+			Expect(l3VNISVIMAC(testNS, vni)).To(Equal(routerMAC))
+		}
 	})
 
-	It("should apply the router MAC before bringing a new bridge up", func() {
+	It("should apply the endpoint options before bringing the SVI up", func() {
 		Expect(netnamespace.In(testNS, func() error {
+			bridge, err := ensureSwitchingBridge(switchingBridgeName(100))
+			if err != nil {
+				return err
+			}
 			mac := net.HardwareAddr{2, 0, 0, 0, 0, 1}
-			bridge, err := setupBridge(VNIParams{VNI: 100}, func(link netlink.Link) error {
-				Expect(link.Attrs().Flags & net.FlagUp).To(BeZero())
+			endpoint, err := ensureVLANEndpoint(BridgeName(100), bridge, internalVLANID, func(link netlink.Link) error {
+				actual, err := netlink.LinkByName(link.Attrs().Name)
+				if err != nil {
+					return err
+				}
+				Expect(actual.Attrs().Flags&net.FlagUp).To(BeZero(), "endpoint was up before its options ran")
 				return ensureBridgeMACAddress(link, mac)
 			})
 			if err != nil {
 				return err
 			}
-			actual, err := netlink.LinkByName(bridge.Name)
-			if err != nil {
-				return err
-			}
-			Expect(actual.Attrs().HardwareAddr).To(Equal(mac))
-			Expect(actual.Attrs().Flags & net.FlagUp).To(Equal(net.FlagUp))
+			Expect(endpoint.Attrs().HardwareAddr).To(Equal(mac))
+			Expect(endpoint.Attrs().Flags & net.FlagUp).To(Equal(net.FlagUp))
 			return nil
 		})).To(Succeed())
 	})
@@ -815,6 +826,102 @@ var _ = Describe("L2 VNI configuration", func() {
 			validateBothVethMTUs(g, testNS, params.VNI, defaultVethMTU)
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 	})
+
+	It("should convert a pre-existing gateway bridge into a VLAN endpoint", func() {
+		params := L2VNIParams{
+			VNIParams: VNIParams{
+				VRF:       "testred",
+				TargetNS:  testNSPath(),
+				VTEPIP:    "192.170.0.9/32",
+				VNI:       100,
+				VXLanPort: new(int32(4789)),
+			},
+			L2GatewayIPs: []string{"192.168.1.1/24"},
+		}
+		createVRFInNamespace(testNS, params.VRF)
+
+		By("pre-creating a non-VLAN-filtering gateway bridge")
+		Expect(netnamespace.In(testNS, func() error {
+			if err := netlink.LinkAdd(&netlink.Bridge{LinkAttrs: netlink.LinkAttrs{Name: BridgeName(params.VNI)}}); err != nil {
+				return err
+			}
+			current, err := netlink.LinkByName(BridgeName(params.VNI))
+			if err != nil {
+				return err
+			}
+			mac, err := BridgeFixedMAC(params.VNI)
+			if err != nil {
+				return err
+			}
+			if err := netlink.LinkSetHardwareAddr(current, mac); err != nil {
+				return err
+			}
+			for _, ip := range params.L2GatewayIPs {
+				if err := AssignIPToInterface(current, ip); err != nil {
+					return err
+				}
+			}
+			vrf, err := netlink.LinkByName(params.VRF)
+			if err != nil {
+				return err
+			}
+			return linkSetMaster(current, vrf)
+		})).To(Succeed())
+
+		cfg := newConfiguratorForTest(ovsClient)
+		Expect(cfg.SetupL2VNI(context.Background(), params)).To(Succeed())
+
+		Eventually(func(g Gomega) {
+			_ = netnamespace.In(testNS, func() error {
+				validateL2VNI(g, params)
+				return nil
+			})
+		}, 30*time.Second, 1*time.Second).Should(Succeed())
+	})
+
+	It("should bind multiple L2VNIs to one routing domain VRF", func() {
+		createVRFInNamespace(testNS, "testred")
+		params := []L2VNIParams{
+			{
+				VNIParams: VNIParams{
+					VRF:       "testred",
+					TargetNS:  testNSPath(),
+					VTEPIP:    "192.170.0.9/32",
+					VNI:       100,
+					VXLanPort: new(int32(4789)),
+				},
+				L2GatewayIPs: []string{"192.168.1.1/24"},
+				HostMaster: &HostMaster{
+					Name: new(bridgeName),
+					Type: BridgeLinkType,
+				},
+			},
+			{
+				VNIParams: VNIParams{
+					VRF:       "testred",
+					TargetNS:  testNSPath(),
+					VTEPIP:    "192.170.0.10/32",
+					VNI:       101,
+					VXLanPort: new(int32(4789)),
+				},
+				L2GatewayIPs: []string{"192.168.2.1/24"},
+			},
+		}
+
+		cfg := newConfiguratorForTest(ovsClient)
+		for _, p := range params {
+			Expect(cfg.SetupL2VNI(context.Background(), p)).To(Succeed())
+		}
+
+		Eventually(func(g Gomega) {
+			_ = netnamespace.In(testNS, func() error {
+				for _, p := range params {
+					validateL2VNI(g, p)
+				}
+				return nil
+			})
+		}, 30*time.Second, 1*time.Second).Should(Succeed())
+	})
 })
 
 func validateL3HostLeg(g Gomega, params L3VNIParams) {
@@ -880,19 +987,20 @@ func validateL3VNI(g Gomega, params L3VNIParams) {
 	}
 	validateVethForVNI(g, params.VNIParams)
 
-	bridgeLink, err := netlink.LinkByName(BridgeName(params.VNI))
-	g.Expect(err).NotTo(HaveOccurred(), "bridge not found for addr_gen_mode check", BridgeName(params.VNI))
-	addrGenModeNone, err := checkAddrGenModeNone(bridgeLink)
+	endpointLink, err := netlink.LinkByName(BridgeName(params.VNI))
+	g.Expect(err).NotTo(HaveOccurred(), "VLAN endpoint not found", BridgeName(params.VNI))
+	hasNoIP, err := interfaceHasNoIP(endpointLink, netlink.FAMILY_ALL)
 	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(addrGenModeNone).To(BeTrue(), "L3VNI bridge must have addr_gen_mode=1")
+	g.Expect(hasNoIP).To(BeTrue(), "L3-SVI must not carry an address")
+
+	vrfLink, err := netlink.LinkByName(params.VRF)
+	g.Expect(err).NotTo(HaveOccurred(), "vrf not found", params.VRF)
+	g.Expect(endpointLink.Attrs().MasterIndex).To(Equal(vrfLink.Attrs().Index))
 
 	vethNames := vethNamesFromVNI(params.VNI)
 	peLegLink, err := netlink.LinkByName(vethNames.NamespaceSide)
 	g.Expect(err).NotTo(HaveOccurred(), "veth pe side not found", vethNames.NamespaceSide)
 	g.Expect(peLegLink.Attrs().OperState).To(BeEquivalentTo(netlink.OperUp))
-
-	vrfLink, err := netlink.LinkByName(params.VRF)
-	g.Expect(err).NotTo(HaveOccurred(), "vrf not found", params.VRF)
 	g.Expect(peLegLink.Attrs().MasterIndex).To(Equal(vrfLink.Attrs().Index))
 
 	// Check IPv4 address if provided
@@ -911,75 +1019,148 @@ func validateL3VNI(g Gomega, params L3VNIParams) {
 }
 
 func validateL2VNI(g Gomega, params L2VNIParams) {
-	validateVNI(g, params.VNIParams)
+	switchingBridge := validateVNI(g, params.VNIParams)
 	validateVethForVNI(g, params.VNIParams)
-
-	bridgeLinkForMode, err := netlink.LinkByName(BridgeName(params.VNI))
-	g.Expect(err).NotTo(HaveOccurred(), "bridge not found for addr_gen_mode check", BridgeName(params.VNI))
-	addrGenModeNone, err := checkAddrGenModeNone(bridgeLinkForMode)
-	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(addrGenModeNone).To(BeFalse(), "L2VNI bridge must NOT have addr_gen_mode=1")
 
 	vethNames := vethNamesFromVNI(params.VNI)
 	peLegLink, err := netlink.LinkByName(vethNames.NamespaceSide)
 	g.Expect(err).NotTo(HaveOccurred(), "veth pe side not found", vethNames.NamespaceSide)
 	g.Expect(peLegLink.Attrs().OperState).To(BeEquivalentTo(netlink.OperUp))
+	g.Expect(peLegLink.Attrs().MasterIndex).To(Equal(switchingBridge.Index))
 
 	hasNoIP, err := interfaceHasNoIP(peLegLink, netlink.FAMILY_V4)
 	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(hasNoIP).To(BeTrue(), "host leg does have ip")
+	g.Expect(hasNoIP).To(BeTrue(), "pe leg does have ip")
 
-	bridgeLink, err := netlink.LinkByName(BridgeName(params.VNI))
-	g.Expect(err).NotTo(HaveOccurred(), "bridge not found", BridgeName(params.VNI))
-	g.Expect(peLegLink.Attrs().MasterIndex).To(Equal(bridgeLink.Attrs().Index))
-	if len(params.L2GatewayIPs) > 0 {
-		for _, ip := range params.L2GatewayIPs {
-			hasIP, err := interfaceHasIP(bridgeLink, ip)
-			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(hasIP).To(BeTrue(), "bridge does not have ip", ip)
-		}
+	validateVlanMembership(g, peLegLink, []vlanMembership{{VID: internalVLANID, PVID: true, Untagged: true}})
 
-		validateBridgeMacAddress(g, bridgeLink, params.VNI)
-		return
-	} else {
-		hasNoIP, err := interfaceHasNoIP(bridgeLink, netlink.FAMILY_V4)
+	endpointLink, err := netlink.LinkByName(BridgeName(params.VNI))
+	g.Expect(err).NotTo(HaveOccurred(), "VLAN endpoint not found", BridgeName(params.VNI))
+
+	if len(params.L2GatewayIPs) == 0 {
+		hasNoIP, err := interfaceHasNoIP(endpointLink, netlink.FAMILY_ALL)
 		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(hasNoIP).To(BeTrue(), "bridge does have ip")
+		g.Expect(hasNoIP).To(BeTrue(), "endpoint does have ip")
+		g.Expect(endpointLink.Attrs().MasterIndex).To(BeZero(), "gateway-less endpoint should not be in a VRF")
+		return
 	}
+
+	for _, ip := range params.L2GatewayIPs {
+		hasIP, err := interfaceHasIP(endpointLink, ip)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(hasIP).To(BeTrue(), "endpoint does not have ip", ip)
+	}
+	validateBridgeMacAddress(g, endpointLink, params.VNI)
+
+	vrfLink, err := netlink.LinkByName(params.VRF)
+	g.Expect(err).NotTo(HaveOccurred(), "vrf not found", params.VRF)
+	g.Expect(endpointLink.Attrs().MasterIndex).To(Equal(vrfLink.Attrs().Index))
+
+	mac, err := BridgeFixedMAC(params.VNI)
+	g.Expect(err).NotTo(HaveOccurred())
+	validateLocalFDB(g, switchingBridge, internalVLANID, mac)
 }
 
-func validateVNI(g Gomega, params VNIParams) {
+// validateVNI checks the shared VLAN-aware device model of an L2VNI or L3VNI
+// and returns the private switching bridge.
+func validateVNI(g Gomega, params VNIParams) *netlink.Bridge {
+	switchingBridgeLink, err := netlink.LinkByName(switchingBridgeName(params.VNI))
+	g.Expect(err).NotTo(HaveOccurred(), "switching bridge not found", switchingBridgeName(params.VNI))
+	switchingBridge := switchingBridgeLink.(*netlink.Bridge)
+	g.Expect(switchingBridge.VlanFiltering).NotTo(BeNil())
+	g.Expect(*switchingBridge.VlanFiltering).To(BeTrue(), "switching bridge must filter VLANs")
+	g.Expect(switchingBridge.VlanDefaultPVID).NotTo(BeNil())
+	g.Expect(*switchingBridge.VlanDefaultPVID).To(Equal(uint16(0)), "switching bridge must not have a default PVID")
+	g.Expect(switchingBridge.MasterIndex).To(BeZero(), "switching bridge must not belong to a VRF")
+	g.Expect(switchingBridge.OperState).To(BeEquivalentTo(netlink.OperUp))
+
+	validateVlanMembership(g, switchingBridge, []vlanMembership{{VID: internalVLANID}})
+
+	validateSVD(g, params, switchingBridge)
+
+	endpointLink, err := netlink.LinkByName(BridgeName(params.VNI))
+	g.Expect(err).NotTo(HaveOccurred(), "VLAN endpoint not found", BridgeName(params.VNI))
+	endpoint, ok := endpointLink.(*netlink.Vlan)
+	g.Expect(ok).To(BeTrue(), "%s must be a VLAN device, got %s", BridgeName(params.VNI), endpointLink.Type())
+	g.Expect(endpoint.VlanId).To(Equal(int(internalVLANID)))
+	g.Expect(endpoint.ParentIndex).To(Equal(switchingBridge.Index))
+	g.Expect(endpoint.OperState).To(BeEquivalentTo(netlink.OperUp))
+
+	addrGenModeNone, err := checkAddrGenModeNone(endpoint)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(addrGenModeNone).To(BeTrue(), "VLAN endpoint must have addr_gen_mode=1")
+
+	return switchingBridge
+}
+
+func validateSVD(g Gomega, params VNIParams, switchingBridge *netlink.Bridge) *netlink.Vxlan {
 	vtepDev, err := netlink.LinkByName(TunnelLoopback)
 	g.Expect(err).NotTo(HaveOccurred(), "vtep device not found %q", TunnelLoopback)
 
 	vxlanLink, err := netlink.LinkByName(vxLanNameFromVNI(params.VNI))
 	g.Expect(err).NotTo(HaveOccurred(), "vxlan link not found %q", vxLanNameFromVNI(params.VNI))
-
 	vxlan := vxlanLink.(*netlink.Vxlan)
-	g.Expect(vxlan.OperState).To(BeEquivalentTo(netlink.OperUnknown))
+
+	g.Expect(vxlan.FlowBased).To(BeTrue(), "VXLAN must be in collect-metadata mode")
+	g.Expect(vxlan.VxlanId).To(BeZero(), "external VXLAN must not have a fixed VNI")
+	g.Expect(params.VXLanPort).NotTo(BeNil())
+	g.Expect(vxlan.Port).To(Equal(int(*params.VXLanPort)))
+	g.Expect(vxlan.VtepDevIndex).To(Equal(vtepDev.Attrs().Index))
+	g.Expect(vxlan.MasterIndex).To(Equal(switchingBridge.Index))
+
+	enabled, err := vniFilterEnabled(vxlan.Index)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(enabled).To(BeTrue(), "VXLAN VNI filtering must be enabled")
 
 	g.Expect(checkVXLanPostSetup(vxlan)).To(Succeed())
 
-	bridgeLink, err := netlink.LinkByName(BridgeName(params.VNI))
-	g.Expect(err).NotTo(HaveOccurred(), "bridge not found", BridgeName(params.VNI))
-
-	bridge := bridgeLink.(*netlink.Bridge)
-	g.Expect(bridge.OperState).To(BeEquivalentTo(netlink.OperUp))
-
-	if params.VRF == "" {
-		g.Expect(bridge.MasterIndex).To(BeZero(), "disconnected bridge should not be attached to a VRF")
-
-		err = checkLegacyVXLanConfigured(vxlan, bridge.Index, vtepDev.Attrs().Index, params)
-		g.Expect(err).NotTo(HaveOccurred())
-		return
-	}
-
-	_, vrf := validateVRF(g, params.VRF)
-
-	g.Expect(bridge.MasterIndex).To(Equal(vrf.Index))
-
-	err = checkLegacyVXLanConfigured(vxlan, bridge.Index, vtepDev.Attrs().Index, params)
+	protinfo, err := netlink.LinkGetProtinfo(vxlan)
 	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(protinfo.VlanTunnel).To(BeTrue(), "VXLAN must have vlan_tunnel on")
+
+	mappings, err := vxlanTunnelMappings(vxlan.Index)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(mappings).To(ContainElement(nl.TunnelInfo{Vid: internalVLANID, TunId: uint32(params.VNI)}))
+
+	entries, err := vniFilterEntries(vxlan.Index)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(entries).To(ContainElement(vniFilterRange{Start: uint32(params.VNI), End: uint32(params.VNI)}))
+
+	return vxlan
+}
+
+func validateVlanMembership(g Gomega, link netlink.Link, desired []vlanMembership) {
+	all, err := netlink.BridgeVlanList()
+	g.Expect(err).NotTo(HaveOccurred())
+	observed := expandVlanMemberships(all[int32(link.Attrs().Index)])
+	for _, want := range desired {
+		got, found := indexOfMembership(observed, want.VID)
+		g.Expect(found).To(BeTrue(), "VLAN %d missing on %s: %v", want.VID, link.Attrs().Name, observed)
+		g.Expect(got.PVID).To(Equal(want.PVID), "VLAN %d PVID flag on %s", want.VID, link.Attrs().Name)
+		g.Expect(got.Untagged).To(Equal(want.Untagged), "VLAN %d untagged flag on %s", want.VID, link.Attrs().Name)
+	}
+}
+
+func indexOfMembership(memberships []vlanMembership, vid uint16) (vlanMembership, bool) {
+	for _, membership := range memberships {
+		if membership.VID == vid {
+			return membership, true
+		}
+	}
+	return vlanMembership{}, false
+}
+
+func validateLocalFDB(g Gomega, bridge *netlink.Bridge, vid uint16, mac net.HardwareAddr) {
+	entries, err := netlink.NeighList(bridge.Index, unix.AF_BRIDGE)
+	g.Expect(err).NotTo(HaveOccurred())
+	found := false
+	for _, entry := range entries {
+		if entry.Vlan == int(vid) && bytes.Equal(entry.HardwareAddr, mac) && entry.State&netlink.NUD_PERMANENT != 0 {
+			found = true
+			break
+		}
+	}
+	g.Expect(found).To(BeTrue(), "no local FDB entry for %s on VLAN %d of %s", mac, vid, bridge.Name)
 }
 
 func checkVXLanPostSetup(vxlan *netlink.Vxlan) error {
@@ -1042,6 +1223,7 @@ func checkLinkExists(g Gomega, name string) {
 func validateVNIIsNotConfigured(g Gomega, params VNIParams) {
 	checkLinkdeleted(g, vxLanNameFromVNI(params.VNI))
 	checkLinkdeleted(g, BridgeName(params.VNI))
+	checkLinkdeleted(g, switchingBridgeName(params.VNI))
 
 	vethNames := vethNamesFromVNI(params.VNI)
 	checkLinkdeleted(g, vethNames.NamespaceSide)
@@ -1172,4 +1354,23 @@ func createVRFInNamespace(ns netns.NsHandle, name string) {
 		return setupVRF(name)
 	})
 	Expect(err).NotTo(HaveOccurred(), "failed to create VRF %s", name)
+}
+
+func l3VNISVIMAC(ns netns.NsHandle, vni int32) (net.HardwareAddr, error) {
+	var mac net.HardwareAddr
+	err := inVLANEndpoint(ns, vni, func(endpoint netlink.Link) error {
+		mac = endpoint.Attrs().HardwareAddr
+		return nil
+	})
+	return mac, err
+}
+
+func inVLANEndpoint(ns netns.NsHandle, vni int32, fn func(endpoint netlink.Link) error) error {
+	return netnamespace.In(ns, func() error {
+		endpoint, err := netlink.LinkByName(BridgeName(vni))
+		if err != nil {
+			return err
+		}
+		return fn(endpoint)
+	})
 }
