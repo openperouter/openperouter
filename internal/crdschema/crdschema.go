@@ -137,17 +137,39 @@ func ApplyDefaults(obj *unstructured.Unstructured, gvk schema.GroupVersionKind) 
 // oldSelf (immutability constraints) are automatically skipped because oldObj
 // is nil (static config is always a fresh load, not an update).
 func Validate(ctx context.Context, obj *unstructured.Unstructured, gvk schema.GroupVersionKind) field.ErrorList {
+	return ValidateUpdate(ctx, obj, nil, gvk)
+}
+
+// ValidateUpdate runs both OpenAPI schema validation and CEL validation rules from
+// the CRD schema against the given unstructured object. OpenAPI validation
+// enforces constraints like minimum/maximum values, string patterns, required
+// fields, etc. CEL validation enforces custom validation rules.
+// Support validating rules that use oldSelf (immutability constraints).
+func ValidateUpdate(ctx context.Context, newObj, oldObj *unstructured.Unstructured, gvk schema.GroupVersionKind) field.ErrorList {
 	structural, ok := schemas[gvk]
 	if !ok {
 		// No schema means no validation rules for this type — return empty
 		return nil
 	}
 
-	// Validate that the object has a spec field
-	spec, hasSpec := obj.Object["spec"]
-	if !hasSpec || spec == nil {
-		return field.ErrorList{
-			field.Required(field.NewPath("spec"), "spec is required"),
+	var objs []unstructured.Unstructured
+	var newJSON, oldJSON map[string]any
+	if newObj != nil && newObj.Object != nil {
+		objs = append(objs, *newObj)
+		newJSON = newObj.Object
+	}
+	if oldObj != nil && oldObj.Object != nil {
+		objs = append(objs, *oldObj)
+		oldJSON = oldObj.Object
+	}
+
+	for _, obj := range objs {
+		// Validate that the object has a spec field
+		spec, hasSpec := obj.Object["spec"]
+		if !hasSpec || spec == nil {
+			return field.ErrorList{
+				field.Required(field.NewPath("spec"), "spec is required"),
+			}
 		}
 	}
 
@@ -156,16 +178,17 @@ func Validate(ctx context.Context, obj *unstructured.Unstructured, gvk schema.Gr
 	// First, run OpenAPI schema validation (min/max, patterns, required fields, etc.)
 	schemaValidator, ok := schemaValidators[gvk]
 	if ok {
-		if schemaErrs := schemavalidation.ValidateCustomResource(field.NewPath(""), obj.Object, schemaValidator); len(schemaErrs) > 0 {
-			allErrs = append(allErrs, schemaErrs...)
+		for _, obj := range objs {
+			if schemaErrs := schemavalidation.ValidateCustomResource(field.NewPath(""), obj.Object, schemaValidator); len(schemaErrs) > 0 {
+				allErrs = append(allErrs, schemaErrs...)
+			}
 		}
 	}
 
 	// Then, run CEL validation rules
 	validator, ok := validators[gvk]
 	if ok {
-		// Pass nil for oldObj so transition rules (oldSelf) are skipped.
-		celErrs, _ := validator.Validate(ctx, field.NewPath(""), structural, obj.Object, nil, celconfig.RuntimeCELCostBudget)
+		celErrs, _ := validator.Validate(ctx, field.NewPath(""), structural, newJSON, oldJSON, celconfig.RuntimeCELCostBudget)
 		allErrs = append(allErrs, celErrs...)
 	}
 

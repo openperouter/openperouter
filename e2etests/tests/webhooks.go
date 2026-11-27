@@ -3,16 +3,19 @@
 package tests
 
 import (
+	"context"
 	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/openperouter/openperouter/api/v1alpha1"
 	"github.com/openperouter/openperouter/e2etests/pkg/config"
+	"github.com/openperouter/openperouter/e2etests/pkg/infra"
 	"github.com/openperouter/openperouter/e2etests/pkg/k8sclient"
 	"github.com/openperouter/openperouter/e2etests/pkg/openperouter"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var _ = Describe("Webhooks", GroutSupport, func() {
@@ -559,6 +562,86 @@ var _ = Describe("Webhooks", GroutSupport, func() {
 			})
 			Expect(err).To(MatchError(ContainSubstring("GatewayIPs cannot be changed")))
 		})
+
+		DescribeTable("should block updates to HostMaster",
+			func(hostMaster *v1alpha1.HostMaster, mutate func(spec *v1alpha1.L2VNISpec), expectedErr string) {
+				l2vni := v1alpha1.L2VNI{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "l2vni-linux",
+						Namespace: openperouter.Namespace,
+					},
+					Spec: v1alpha1.L2VNISpec{
+						VNI:        310,
+						VXLanPort:  new(int32(4789)),
+						HostMaster: hostMaster,
+					},
+				}
+				cfg := config.Resources{
+					L2VNIs: []v1alpha1.L2VNI{l2vni},
+				}
+				Expect(Updater.Update(cfg)).NotTo(HaveOccurred())
+
+				updated := l2vni.DeepCopy()
+
+				mutate(&updated.Spec)
+
+				cfgUpdated := config.Resources{
+					L2VNIs: []v1alpha1.L2VNI{*updated},
+				}
+				Expect(Updater.Update(cfgUpdated)).To(MatchError(ContainSubstring(expectedErr)))
+			},
+			Entry("linuxBridgeConfig name",
+				&v1alpha1.HostMaster{
+					Type: v1alpha1.LinuxBridge,
+					LinuxBridge: &v1alpha1.LinuxBridgeConfig{
+						Lifecycle: v1alpha1.BridgeLifecycleExternal,
+						Name:      new("br0"),
+					},
+				},
+				func(spec *v1alpha1.L2VNISpec) {
+					spec.HostMaster.LinuxBridge.Name = new("test")
+				},
+				"name is immutable",
+			),
+			Entry("ovsBridgeConfig name",
+				&v1alpha1.HostMaster{
+					Type: v1alpha1.OVSBridge,
+					OVSBridge: &v1alpha1.OVSBridgeConfig{
+						Lifecycle: v1alpha1.BridgeLifecycleExternal,
+						Name:      new("br0"),
+					},
+				},
+				func(spec *v1alpha1.L2VNISpec) {
+					spec.HostMaster.OVSBridge.Name = new("test")
+				},
+				"name is immutable",
+			),
+			Entry("type",
+				&v1alpha1.HostMaster{
+					Type: v1alpha1.LinuxBridge,
+					LinuxBridge: &v1alpha1.LinuxBridgeConfig{
+						Lifecycle: v1alpha1.BridgeLifecycleExternal,
+						Name:      new("br0"),
+					},
+				},
+				func(spec *v1alpha1.L2VNISpec) {
+					spec.HostMaster.Type = v1alpha1.OVSBridge
+				},
+				"type is immutable",
+			),
+			Entry("remove hostMaster altogether",
+				&v1alpha1.HostMaster{
+					Type: v1alpha1.LinuxBridge,
+					LinuxBridge: &v1alpha1.LinuxBridgeConfig{
+						Lifecycle: v1alpha1.BridgeLifecycleManaged,
+					},
+				},
+				func(spec *v1alpha1.L2VNISpec) {
+					spec.HostMaster = nil
+				},
+				"hostMaster cannot be unset once set; delete and recreate the object to remove it",
+			),
+		)
 	})
 
 	Context("when L3VNI immutability is tested", func() {
@@ -608,6 +691,47 @@ var _ = Describe("Webhooks", GroutSupport, func() {
 				L3VNIs: []v1alpha1.L3VNI{l3vniUpdated},
 			})
 			Expect(err).To(MatchError(ContainSubstring("localCIDRs can't be changed")))
+		})
+
+		It("should block updates to VRF", func() {
+			key := crclient.ObjectKey{Namespace: openperouter.Namespace, Name: "l3vni-immutable"}
+			l3vni := &v1alpha1.L3VNI{}
+			Expect(Updater.Client().Get(context.Background(), key, l3vni)).To(Succeed())
+
+			l3vni.Spec.VRF = "vrf-renamed"
+
+			Expect(Updater.Client().Update(context.Background(), l3vni)).To(MatchError(ContainSubstring("vrf is immutable")))
+		})
+	})
+
+	Context("when L3VPN immutability is tested", func() {
+		It("should block updates to VRF", func() {
+			Expect(Updater.Update(config.Resources{
+				Underlays: []v1alpha1.Underlay{infra.Underlay(infra.SRv6)},
+			})).To(Succeed())
+
+			l3vpn := v1alpha1.L3VPN{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "l3vpn-immutable",
+					Namespace: openperouter.Namespace,
+				},
+				Spec: v1alpha1.L3VPNSpec{
+					VRF:              "vrf-immutable",
+					RDAssignedNumber: 400,
+					ImportRTs:        []v1alpha1.RouteTarget{"65000:400"},
+				},
+			}
+			By("creating an L3VPN")
+			Expect(Updater.Update(config.Resources{
+				L3VPNs: []v1alpha1.L3VPN{l3vpn},
+			})).To(Succeed())
+
+			By("rename vrf")
+			l3vpn.Spec.VRF = "vrf-renamed"
+
+			Expect(Updater.Update(config.Resources{
+				L3VPNs: []v1alpha1.L3VPN{l3vpn},
+			})).To(MatchError(ContainSubstring("vrf is immutable")))
 		})
 	})
 
