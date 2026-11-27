@@ -1,6 +1,18 @@
 name: kind
 topology:
   groups:
+    qemu:
+      kind: linux
+      image: docker.io/qemux/qemu:7.50
+      devices:
+        - /dev/kvm
+        - /dev/net/tun
+      entrypoint: /vm/run_vm.sh
+      binds:
+        - ./vm:/vm
+      env:
+        VM_CPUS: "4"
+        VM_MEM: "6144"
     frr:
       kind: linux
       image: quay.io/frrouting/frr:10.6.0
@@ -81,25 +93,21 @@ topology:
       kind: bridge
 
     pe-kind-control-plane:
-      kind: linux
-      image: docker.io/qemux/qemu:7.50
-      devices:
-        - /dev/kvm
-        - /dev/net/tun
-      entrypoint: /vm/run_vm.sh
-      binds:
-        - ./vm:/vm
-        - ../../bin:/shared-bin
-        - ../kind/frr-k8s:/frr-k8s-manifests
-      exec:
-        - bash -c 'KUBECONFIG_PATH=/shared-bin/kubeconfig /vm/setup.sh'
+      group: qemu
       ports:
         - "127.0.0.1:${QEMU_SSH_PORT:-2222}:2222/tcp"
         - "${QEMU_K8S_PORT:-6443}:6443/tcp"
       env:
-        VM_CPUS: "4"
-        VM_MEM: "6144"
-        QEMU_K8S_PORT: "${QEMU_K8S_PORT:-6443}"
+        VM_NAME: pe-kind-control-plane
+        FORWARD_K8S: "true"
+
+    pe-kind-worker:
+      group: qemu
+      ports:
+        - "127.0.0.1:${QEMU_WORKER_SSH_PORT:-2223}:2222/tcp"
+      env:
+        VM_NAME: pe-kind-worker
+        VM_MAC_PREFIX: "52:54:00:ab:ce"
 
   links:
     - endpoints: ["leafA:eth1", "spine:eth1"]
@@ -120,3 +128,8 @@ topology:
     - endpoints: ["leafkind2:tokindctrlpl", "pe-kind-control-plane:toleafkind2"]
     - endpoints: ["pe-kind-control-plane:toswitch1", "leafkind1-sw:kindctrlpl1"]
     - endpoints: ["pe-kind-control-plane:toswitch2", "leafkind2-sw:kindctrlpl2"]
+    - endpoints: ["leafkind1:tokindworker", "pe-kind-worker:toleafkind1"]
+    - endpoints: ["leafkind2:tokindworker", "pe-kind-worker:toleafkind2"]
+    - endpoints: ["pe-kind-worker:toswitch1", "leafkind1-sw:kindwrk1sw1"]
+    - endpoints: ["pe-kind-worker:toswitch2", "leafkind2-sw:kindwrk1sw2"]
+    - endpoints: ["pe-kind-control-plane:cluster", "pe-kind-worker:cluster"]

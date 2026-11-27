@@ -16,6 +16,7 @@ deploy_containerlab() {
         docker run --rm --privileged \
             --network host \
             -e "QEMU_SSH_PORT=${QEMU_SSH_PORT:-}" \
+            -e "QEMU_WORKER_SSH_PORT=${QEMU_WORKER_SSH_PORT:-}" \
             -e "QEMU_K8S_PORT=${QEMU_K8S_PORT:-}" \
             -v /var/run/docker.sock:/var/run/docker.sock \
             -v /var/run/netns:/var/run/netns \
@@ -34,6 +35,7 @@ deploy_containerlab() {
         fi
         sudo env \
             "QEMU_SSH_PORT=${QEMU_SSH_PORT:-}" \
+            "QEMU_WORKER_SSH_PORT=${QEMU_WORKER_SSH_PORT:-}" \
             "QEMU_K8S_PORT=${QEMU_K8S_PORT:-}" \
             clab deploy --reconfigure --topo $CLAB_TOPOLOGY $RUNTIME_OPTION
     fi
