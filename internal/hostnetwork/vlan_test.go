@@ -3,7 +3,9 @@
 package hostnetwork
 
 import (
+	"bytes"
 	"errors"
+	"net"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -13,6 +15,7 @@ import (
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netlink/nl"
 	"github.com/vishvananda/netns"
+	"golang.org/x/sys/unix"
 )
 
 func TestSwitchingBridgeName(t *testing.T) {
@@ -190,3 +193,158 @@ var _ = Describe("VLAN-aware primitives", func() {
 		Expect(memberships(bridge)).To(ConsistOf(wantBridge))
 	})
 })
+
+var _ = Describe("VLAN-aware VXLAN and endpoint primitives", func() {
+	const nsName = "svdtestns"
+	var ns netns.NsHandle
+
+	BeforeEach(func() {
+		cleanTest(nsName)
+		ns = createTestNS(nsName)
+	})
+	AfterEach(func() {
+		cleanTest(nsName)
+	})
+
+	It("maps the internal VLAN to the VNI and removes the mapping", func() {
+		Expect(netnamespace.In(ns, func() error {
+			bridge, err := ensureSwitchingBridge("svdtestbr")
+			if err != nil {
+				return err
+			}
+			vtepDev, err := vtepDeviceInTestNS("192.0.2.1/32")
+			if err != nil {
+				return err
+			}
+			svd, err := ensureSVD(svdParams{
+				Name:            "vni100",
+				Bridge:          bridge,
+				VTEPIP:          "192.0.2.1/32",
+				Port:            4789,
+				HardwareAddr:    bridge.HardwareAddr,
+				VtepDeviceIndex: vtepDev.Attrs().Index,
+			})
+			if err != nil {
+				return err
+			}
+			Expect(svd.FlowBased).To(BeTrue(), "SVD must be a collect-metadata device")
+			Expect(svd.VxlanId).To(BeZero(), "SVD must not have a fixed VNI")
+
+			enabled, err := vniFilterEnabled(svd.Index)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(enabled).To(BeTrue(), "SVD must enable VNI filtering")
+
+			protinfo, err := netlink.LinkGetProtinfo(svd)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(protinfo.VlanTunnel).To(BeTrue(), "SVD must enable VLAN tunnel mode")
+
+			Expect(ensureVlanToVNI(svd, internalVLANID, 100)).To(Succeed())
+			mappings, err := vxlanTunnelMappings(svd.Index)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(mappings).To(ContainElement(nl.TunnelInfo{Vid: internalVLANID, TunId: 100}))
+			entries, err := vniFilterEntries(svd.Index)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(entries).To(ContainElement(vniFilterRange{Start: 100, End: 100}))
+
+			Expect(removeVlanToVNI(svd, internalVLANID, 100)).To(Succeed())
+			mappings, err = vxlanTunnelMappings(svd.Index)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(mappings).NotTo(ContainElement(nl.TunnelInfo{Vid: internalVLANID, TunId: 100}))
+			entries, err = vniFilterEntries(svd.Index)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(entries).NotTo(ContainElement(vniFilterRange{Start: 100, End: 100}))
+			return nil
+		})).To(Succeed())
+	})
+
+	It("turns a pre-existing bridge into a VLAN endpoint and removes it", func() {
+		Expect(netnamespace.In(ns, func() error {
+			bridge, err := ensureSwitchingBridge("endptestbr")
+			if err != nil {
+				return err
+			}
+			name := BridgeName(100)
+			if err := netlink.LinkAdd(&netlink.Bridge{LinkAttrs: netlink.LinkAttrs{Name: name}}); err != nil {
+				return err
+			}
+
+			endpoint, err := ensureVLANEndpoint(name, bridge, internalVLANID)
+			if err != nil {
+				return err
+			}
+			vlan, ok := endpoint.(*netlink.Vlan)
+			Expect(ok).To(BeTrue(), "endpoint must be a VLAN device, got %s", endpoint.Type())
+			Expect(vlan.VlanId).To(Equal(int(internalVLANID)))
+			Expect(vlan.ParentIndex).To(Equal(bridge.Index))
+			Expect(vlan.Attrs().HardwareAddr).To(Equal(bridge.HardwareAddr))
+			Expect(vlan.Attrs().Flags & net.FlagUp).To(Equal(net.FlagUp))
+
+			Expect(removeVLANEndpoint(name)).To(Succeed())
+			_, err = netlink.LinkByName(name)
+			Expect(errors.As(err, &netlink.LinkNotFoundError{})).To(BeTrue())
+			Expect(removeVLANEndpoint(name)).To(Succeed(), "removal must tolerate absence")
+			return nil
+		})).To(Succeed())
+	})
+
+	It("installs and removes the local gateway FDB entry", func() {
+		Expect(netnamespace.In(ns, func() error {
+			bridge, err := ensureSwitchingBridge("fdbtestbr")
+			if err != nil {
+				return err
+			}
+			mac, err := BridgeFixedMAC(100)
+			if err != nil {
+				return err
+			}
+
+			// The kernel rejects an FDB entry whose VLAN is missing from the
+			// bridge's self entry; setupVNI configures it before installing.
+			Expect(ensurePortVlans(bridge, newTrunk([]uint16{internalVLANID}), withBridgeInterface())).To(Succeed())
+
+			Expect(ensureLocalFDBEntry(bridge, internalVLANID, mac)).To(Succeed())
+			Expect(hasLocalFDBEntry(bridge, internalVLANID, mac)).To(BeTrue(),
+				"the anycast MAC must be installed as a local entry")
+			Expect(ensureLocalFDBEntry(bridge, internalVLANID, mac)).To(Succeed(), "install must be idempotent")
+
+			Expect(removeLocalFDBEntry(bridge, internalVLANID, mac)).To(Succeed())
+			Expect(hasLocalFDBEntry(bridge, internalVLANID, mac)).To(BeFalse())
+			return nil
+		})).To(Succeed())
+	})
+})
+
+func hasLocalFDBEntry(bridge *netlink.Bridge, vid uint16, mac []byte) bool {
+	entries, err := netlink.NeighList(bridge.Index, unix.AF_BRIDGE)
+	Expect(err).NotTo(HaveOccurred())
+	for _, entry := range entries {
+		if entry.Vlan == int(vid) && bytes.Equal(entry.HardwareAddr, mac) &&
+			entry.State&netlink.NUD_PERMANENT != 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// vtepDeviceInTestNS creates a dummy carrying vtepIP so an external VXLAN can
+// use it as its VTEP source, mirroring the tunnel loopback of a real node.
+func vtepDeviceInTestNS(vtepIP string) (netlink.Link, error) {
+	const name = "vtepdummy"
+	link, err := netlink.LinkByName(name)
+	if errors.As(err, &netlink.LinkNotFoundError{}) {
+		if err := netlink.LinkAdd(&netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: name}}); err != nil {
+			return nil, err
+		}
+		link, err = netlink.LinkByName(name)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := AssignIPToInterface(link, vtepIP); err != nil {
+		return nil, err
+	}
+	if err := linkSetUp(link); err != nil {
+		return nil, err
+	}
+	return link, nil
+}

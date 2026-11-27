@@ -969,7 +969,7 @@ func validateVNI(g Gomega, params VNIParams) {
 	if params.VRF == "" {
 		g.Expect(bridge.MasterIndex).To(BeZero(), "disconnected bridge should not be attached to a VRF")
 
-		err = checkVXLanConfigured(vxlan, bridge.Index, vtepDev.Attrs().Index, params)
+		err = checkLegacyVXLanConfigured(vxlan, bridge.Index, vtepDev.Attrs().Index, params)
 		g.Expect(err).NotTo(HaveOccurred())
 		return
 	}
@@ -978,7 +978,7 @@ func validateVNI(g Gomega, params VNIParams) {
 
 	g.Expect(bridge.MasterIndex).To(Equal(vrf.Index))
 
-	err = checkVXLanConfigured(vxlan, bridge.Index, vtepDev.Attrs().Index, params)
+	err = checkLegacyVXLanConfigured(vxlan, bridge.Index, vtepDev.Attrs().Index, params)
 	g.Expect(err).NotTo(HaveOccurred())
 }
 

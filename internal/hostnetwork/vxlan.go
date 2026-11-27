@@ -41,9 +41,36 @@ func setupVXLan(params VNIParams, bridge *netlink.Bridge, vtepDeviceIndex int) e
 	return nil
 }
 
-// checkVXLanConfigured checks if the given VXLan has the required properties
-// passed as parameters.
-func checkVXLanConfigured(vxLan *netlink.Vxlan, bridgeIndex, vtepDeviceIndex int, params VNIParams) error {
+// checkVXLanConfigured reports why an existing VXLAN must be replaced. An
+// external vnifilter device has VxlanId 0: the VNI set lives in the VNI filter
+// entries, so comparing VxlanId alone would recreate the device on every
+// reconcile. The entries themselves are converged in place by
+// ensureVlanToVNI and removeVlanToVNI.
+func checkVXLanConfigured(observed, desired *netlink.Vxlan, vniFilterEnabled bool) error {
+	if !observed.FlowBased || observed.VxlanId != 0 {
+		return errors.New("VXLAN is not an external metadata device")
+	}
+	if !vniFilterEnabled {
+		return errors.New("VXLAN VNI filtering is not enabled")
+	}
+	if observed.Port != desired.Port {
+		return fmt.Errorf("port is not one coming from params: %d, %d", observed.Port, desired.Port)
+	}
+	if observed.Learning {
+		return errors.New("VTEP learning is enabled")
+	}
+	if !observed.SrcAddr.Equal(desired.SrcAddr) {
+		return fmt.Errorf("src addr does not match vtep ip: %v, expected %v", observed.SrcAddr, desired.SrcAddr)
+	}
+	if observed.VtepDevIndex != desired.VtepDevIndex {
+		return fmt.Errorf("vtep dev index is not tunnel endpoint index: %d %d", observed.VtepDevIndex, desired.VtepDevIndex)
+	}
+	return nil
+}
+
+// checkLegacyVXLanConfigured checks if a pre-VLAN-aware VXLan has the required
+// properties passed as parameters.
+func checkLegacyVXLanConfigured(vxLan *netlink.Vxlan, bridgeIndex, vtepDeviceIndex int, params VNIParams) error {
 	if vxLan.MasterIndex != bridgeIndex {
 		return fmt.Errorf("master index is not bridge index: %d, %d", vxLan.MasterIndex, bridgeIndex)
 	}
@@ -106,7 +133,7 @@ func createVXLan(params VNIParams, bridge *netlink.Bridge, vtepDeviceIndex int) 
 		return nil, fmt.Errorf("failed to get vxlan link by name %s: %w", vxlanName, err)
 	}
 	vxlan, ok := link.(*netlink.Vxlan)
-	if ok && checkVXLanConfigured(vxlan, bridge.Index, vtepDeviceIndex, params) == nil {
+	if ok && checkLegacyVXLanConfigured(vxlan, bridge.Index, vtepDeviceIndex, params) == nil {
 		return vxlan, nil
 	}
 	if err := netlink.LinkDel(link); err != nil {
