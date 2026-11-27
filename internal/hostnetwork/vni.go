@@ -153,17 +153,25 @@ func (c *VNIConfigurator) setupVRFInNS(ctx context.Context, vrf string, options 
 }
 
 // SetupL3VNI sets up a Layer 3 VNI in the router namespace the configurator
-// was built for. It creates the VRF, then the bridge and VXLan interface, and
-// moves the veth to the VRF corresponding to the L3 routing domain, exposing
-// it to the default host namespace.
+// was built for. It creates the VRF, then the private switching bridge, its
+// external VXLAN device and the br-pe-<vni> VLAN endpoint that zebra discovers
+// as the L3-SVI, and moves the veth to the VRF corresponding to the L3 routing
+// domain, exposing it to the default host namespace. The SVI carries
+// params.RouterMAC so all the L3VNIs of a node advertise the same RMAC.
 func (c *VNIConfigurator) SetupL3VNI(ctx context.Context, params L3VNIParams) error {
 	if err := c.setupVRFInNS(ctx, params.VRF); err != nil {
 		return fmt.Errorf("SetupL3VNI: failed to setup VRF: %w", err)
 	}
-	bridgeOptions := l3VNIBridgeOptions(params.RouterMAC)
-	if err := c.setupVNI(ctx, params.VNIParams, bridgeOptions...); err != nil {
+	_, endpoint, err := c.setupVNI(ctx, params.VNIParams, l3VNIBridgeOptions(params.RouterMAC)...)
+	if err != nil {
 		return fmt.Errorf("SetupL3VNI: failed to setup VNI: %w", err)
 	}
+	if err := netnamespace.In(c.ns, func() error {
+		return enslaveEndpointToVRF(endpoint, params.VRF)
+	}); err != nil {
+		return fmt.Errorf("SetupL3VNI: failed to attach L3-SVI to VRF %s: %w", params.VRF, err)
+	}
+
 	slog.DebugContext(ctx, "setting up l3 VNI", "params", params)
 	defer slog.DebugContext(ctx, "end setting up l3 VNI", "params", params)
 
@@ -188,36 +196,46 @@ func l3VNIBridgeOptions(mac net.HardwareAddr) []NetlinkOption {
 	if len(mac) == 0 {
 		return options
 	}
-	return append(options, func(bridge netlink.Link) error {
-		return ensureBridgeMACAddress(bridge, mac)
-	})
+	return append(options, bridgeMACOption(mac))
+}
+
+// bridgeMACOption returns an option that sets mac on the endpoint.
+func bridgeMACOption(mac net.HardwareAddr) NetlinkOption {
+	return func(link netlink.Link) error {
+		return ensureBridgeMACAddress(link, mac)
+	}
 }
 
 // SetupL2VNI sets up a Layer 2 VNI in the router namespace the configurator
-// was built for. It creates the bridge and VXLan interface, and connects the
-// veth leg to the bridge, exposing the L2 domain to the default host namespace.
-// The VRF must already exist (created by SetupL3VNI); setupBridge
-// looks it up and binds the bridge to it.
+// was built for. It creates the private switching bridge, its external VXLAN
+// device and the br-pe-<vni> VLAN endpoint, then connects the router-side veth
+// leg to the bridge as an untagged access port, exposing the L2 domain to the
+// default host namespace.
 func (c *VNIConfigurator) SetupL2VNI(ctx context.Context, params L2VNIParams) error {
-	if err := c.setupVNI(ctx, params.VNIParams); err != nil {
+	var endpointOptions []NetlinkOption
+	if len(params.L2GatewayIPs) > 0 {
+		mac, err := BridgeFixedMAC(params.VNI)
+		if err != nil {
+			return fmt.Errorf("SetupL2VNI: failed to compute gateway MAC: %w", err)
+		}
+		// The same MAC on every node keeps the distributed gateway identity shared.
+		endpointOptions = append(endpointOptions, bridgeMACOption(mac))
+	}
+
+	bridge, endpoint, err := c.setupVNI(ctx, params.VNIParams, endpointOptions...)
+	if err != nil {
 		return fmt.Errorf("SetupL2VNI: failed to setup VNI: %w", err)
 	}
 	vethNames := vethNamesFromVNI(params.VNI)
-	if err := setupNamespacedVethInNamespace(ctx, vethNames, c.ns); err != nil {
+	hostVeth, err := setupNamespacedVethInNamespace(ctx, vethNames, c.ns)
+	if err != nil {
 		return fmt.Errorf("SetupL2VNI: failed to setup VNI veth: %w", err)
 	}
 
 	slog.DebugContext(ctx, "setting up l2 VNI", "params", params)
 	defer slog.DebugContext(ctx, "end setting up l2 VNI", "params", params)
 
-	hostVeth, err := netlink.LinkByName(vethNames.HostSide)
-	if errors.As(err, &netlink.LinkNotFoundError{}) {
-		return fmt.Errorf("SetupL2VNI: host veth %s does not exist, cannot setup L2 VNI", vethNames.HostSide)
-	}
-	if err != nil {
-		return fmt.Errorf("SetupL2VNI: failed to get host veth %s: %w", vethNames.HostSide, err)
-	}
-	slog.Info("SetupL2VNI: found host veth", "name", vethNames.HostSide, "index", hostVeth.Attrs().Index)
+	slog.Info("SetupL2VNI: found host veth", "name", hostVeth.Attrs().Name, "index", hostVeth.Attrs().Index)
 
 	if err := SetVethMTUForTunnelOverhead(hostVeth, c.underlayMTU, params.TunnelOverhead); err != nil {
 		return fmt.Errorf("SetupL2VNI: failed to set MTU on host veth %s: %w", vethNames.HostSide, err)
@@ -230,7 +248,7 @@ func (c *VNIConfigurator) SetupL2VNI(ctx context.Context, params L2VNIParams) er
 	}
 
 	if err := netnamespace.In(c.ns, func() error {
-		return c.setupL2VNIRouterSide(params, vethNames.NamespaceSide)
+		return c.setupL2VNIRouterSide(params, vethNames.NamespaceSide, bridge, endpoint)
 	}); err != nil {
 		return err
 	}
@@ -239,8 +257,10 @@ func (c *VNIConfigurator) SetupL2VNI(ctx context.Context, params L2VNIParams) er
 }
 
 // setupL2VNIRouterSide configures the router side of the veth pair that backs
-// an L2VNI: its MTU and the bridge it is attached to.
-func (c *VNIConfigurator) setupL2VNIRouterSide(params L2VNIParams, vethName string) error {
+// an L2VNI and, when the VNI has a gateway, the br-pe-<vni> endpoint that owns
+// the gateway addresses, anycast MAC and VRF membership.
+func (c *VNIConfigurator) setupL2VNIRouterSide(params L2VNIParams, vethName string, bridge *netlink.Bridge,
+	endpoint netlink.Link) error {
 	peVeth, err := netlink.LinkByName(vethName)
 	if err != nil {
 		return fmt.Errorf("could not find peer veth %s in the router namespace: %w", vethName, err)
@@ -250,25 +270,33 @@ func (c *VNIConfigurator) setupL2VNIRouterSide(params L2VNIParams, vethName stri
 		return fmt.Errorf("failed to set MTU on pe veth %s: %w", vethName, err)
 	}
 
-	name := BridgeName(params.VNI)
-	bridge, err := netlink.LinkByName(name)
-	if err != nil {
-		return fmt.Errorf("could not find bridge %s in the router namespace: %w", name, err)
-	}
 	if err := linkSetMaster(peVeth, bridge); err != nil {
-		return fmt.Errorf("failed to set bridge %s as master of pe veth %s: %w", name, peVeth.Attrs().Name, err)
+		return fmt.Errorf("failed to set bridge %s as master of pe veth %s: %w", bridge.Name, peVeth.Attrs().Name, err)
 	}
-	if len(params.L2GatewayIPs) > 0 {
-		for _, ip := range params.L2GatewayIPs {
-			if err := AssignIPToInterface(bridge, ip); err != nil {
-				return fmt.Errorf("failed to assign L2 gateway IP %s to bridge %s: %w", ip, name, err)
-			}
-		}
+	if err := ensurePortVlans(peVeth, newAccessPort(internalVLANID)); err != nil {
+		return fmt.Errorf("failed to configure access VLAN on pe veth %s: %w", peVeth.Attrs().Name, err)
+	}
 
-		// setting up the same mac address for all the nodes for distributed gateway
-		if err := ensureBridgeFixedMacAddress(bridge, params.VNI); err != nil {
-			return fmt.Errorf("failed to set bridge mac address %s: %v", name, err)
+	if len(params.L2GatewayIPs) == 0 {
+		return nil
+	}
+
+	if err := enslaveEndpointToVRF(endpoint, params.VRF); err != nil {
+		return fmt.Errorf("failed to attach gateway endpoint %s to VRF %s: %w", endpoint.Attrs().Name, params.VRF, err)
+	}
+	for _, ip := range params.L2GatewayIPs {
+		if err := AssignIPToInterface(endpoint, ip); err != nil {
+			return fmt.Errorf("failed to assign L2 gateway IP %s to %s: %w", ip, endpoint.Attrs().Name, err)
 		}
+	}
+
+	// The gateway MAC is already set on the endpoint by the bridge MAC option.
+	mac, err := BridgeFixedMAC(params.VNI)
+	if err != nil {
+		return err
+	}
+	if err := ensureLocalFDBEntry(bridge, internalVLANID, mac); err != nil {
+		return err
 	}
 	return nil
 }
@@ -298,28 +326,73 @@ func SetupHostMaster(ctx context.Context, ovsClient *OVSClient, params L2VNIPara
 	return nil
 }
 
-// setupVNI sets up the configuration required by FRR to
-// serve a given VNI in the router namespace the configurator was built for.
-// This includes:
-// - a linux Bridge, bound to the VRF when params.VRF is non-empty
-// - a VXLan interface
-//
-// The VRF must already exist when params.VRF is set; setupBridge
-// looks it up and returns an error if it is missing.
-func (c *VNIConfigurator) setupVNI(ctx context.Context, params VNIParams, bridgeOptions ...NetlinkOption) error {
+// setupVNI creates the private VLAN-aware switching bridge that backs a VNI,
+// its external vnifilter VXLAN device, the internal VLAN-to-VNI mapping and the
+// br-pe-<vni> VLAN endpoint. The endpoint keeps the name downstream code
+// depends on while becoming the VLAN device zebra discovers as the SVI. The
+// options are applied to the endpoint before it is brought up.
+func (c *VNIConfigurator) setupVNI(ctx context.Context, params VNIParams,
+	endpointOptions ...NetlinkOption) (*netlink.Bridge, netlink.Link, error) {
 	slog.DebugContext(ctx, "setting up VNI", "params", params)
 	defer slog.DebugContext(ctx, "end setting up VNI", "params", params)
 
-	return netnamespace.In(c.ns, func() error {
-		slog.DebugContext(ctx, "setting up bridge")
-		bridge, err := setupBridge(params, bridgeOptions...)
+	var bridge *netlink.Bridge
+	var endpoint netlink.Link
+	err := netnamespace.In(c.ns, func() error {
+		var err error
+		bridge, err = ensureSwitchingBridge(switchingBridgeName(params.VNI))
 		if err != nil {
 			return err
 		}
-
-		slog.DebugContext(ctx, "setting up vxlan")
-		return setupVXLan(params, bridge, c.vtepDeviceIndex)
+		if err := ensurePortVlans(bridge, newTrunk([]uint16{internalVLANID}), withBridgeInterface()); err != nil {
+			return err
+		}
+		if params.VXLanPort == nil {
+			return errors.New("failed to parse VXLAN information, VXLAN port is nil")
+		}
+		svd, err := ensureSVD(svdParams{
+			Name:            vxLanNameFromVNI(params.VNI),
+			Bridge:          bridge,
+			VTEPIP:          params.VTEPIP,
+			Port:            *params.VXLanPort,
+			VtepDeviceIndex: c.vtepDeviceIndex,
+			HardwareAddr:    bridge.HardwareAddr,
+		})
+		if err != nil {
+			return err
+		}
+		if err := ensureVlanToVNI(svd, internalVLANID, uint32(params.VNI)); err != nil {
+			return err
+		}
+		endpoint, err = ensureVLANEndpoint(BridgeName(params.VNI), bridge, internalVLANID, endpointOptions...)
+		return err
 	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return bridge, endpoint, nil
+}
+
+// enslaveEndpointToVRF binds the VLAN endpoint to its routing domain, or
+// detaches it when the VNI has no VRF.
+func enslaveEndpointToVRF(endpoint netlink.Link, vrfName string) error {
+	if vrfName == "" {
+		if endpoint.Attrs().MasterIndex == 0 {
+			return nil
+		}
+		if err := netlink.LinkSetNoMaster(endpoint); err != nil {
+			return fmt.Errorf("detaching VLAN endpoint %s from its master: %w", endpoint.Attrs().Name, err)
+		}
+		return nil
+	}
+	vrf, err := lookupVRF(vrfName)
+	if err != nil {
+		return fmt.Errorf("could not find VRF %s for VLAN endpoint %s: %w", vrfName, endpoint.Attrs().Name, err)
+	}
+	if err := linkSetMaster(endpoint, vrf); err != nil {
+		return fmt.Errorf("failed to set VRF %s as master of VLAN endpoint %s: %w", vrfName, endpoint.Attrs().Name, err)
+	}
+	return nil
 }
 
 // RemoveAllVNIs removes from the target namespace the bridges / veths
@@ -385,11 +458,25 @@ func removeNamespaceSideVNIs(vnis map[int32]bool) []error {
 	if err != nil {
 		return []error{fmt.Errorf("remove non configured vnis: failed to list links: %w", err)}
 	}
-	if err := deleteLinksForType(VXLanLinkType, vnis, links, vniFromVXLanName); err != nil {
-		failedDeletes = append(failedDeletes, fmt.Errorf("remove vlan links: %w", err))
-	}
-	if err := deleteLinksForType(BridgeLinkType, vnis, links, vniFromBridgeName); err != nil {
-		failedDeletes = append(failedDeletes, fmt.Errorf("remove bridge links: %w", err))
+	// Delete upper devices before their parents: a previous partial deletion may
+	// already have removed some children from this snapshot.
+	for _, owned := range []struct {
+		kind  string
+		parse func(string) (int32, error)
+	}{
+		// br-pe-<vni> VLAN endpoints and pre-migration macvlan leftovers.
+		{"vlan", vniFromBridgeName},
+		{"macvlan", vniFromBridgeName},
+		// vni<vni> external VXLAN devices.
+		{VXLanLinkType, vniFromVXLanName},
+		// br-vl-<vni> switching bridges.
+		{BridgeLinkType, vniFromSwitchingBridgeName},
+		// br-pe-<vni> bridges created by the pre-VLAN-aware model.
+		{BridgeLinkType, vniFromBridgeName},
+	} {
+		if err := deleteLinksForType(owned.kind, vnis, links, owned.parse); err != nil {
+			failedDeletes = append(failedDeletes, fmt.Errorf("remove %s links: %w", owned.kind, err))
+		}
 	}
 	return failedDeletes
 }

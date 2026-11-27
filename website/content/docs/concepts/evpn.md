@@ -52,6 +52,10 @@ mapped to an L3 overlay
 
 ![](/images/openpel2l3host.svg)
 
+Every VNI is realized with a VLAN-aware bridge and an external VNI-filtering
+VXLAN device. See [VLAN-aware VNI dataplane]({{< ref "/docs/concepts/vlan-aware-datapath" >}})
+for the device model and upgrade notes.
+
 ### L3 VNI Components
 
 In addition to what's described in the [concepts page]({{< ref "concepts/#l3-vpn-components" >}}), for each Layer 3 VNI OpenPERouter automatically creates:

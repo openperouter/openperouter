@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/vishvananda/netlink"
+	"golang.org/x/sys/unix"
 )
 
 func TestInterfaceHasIP(t *testing.T) {
@@ -57,6 +58,76 @@ func TestInterfaceHasIPErrors(t *testing.T) {
 			t.Fatalf("expected the list error, got %v", err)
 		}
 	})
+}
+
+func TestOnlyLinkLocal(t *testing.T) {
+	tests := []struct {
+		name    string
+		address string
+		want    bool
+	}{
+		{name: "IPv6 link-local address", address: "fe80::1/64", want: true},
+		{name: "IPv6 global address", address: "2001:db8::1/64", want: false},
+		{name: "IPv4 address", address: "192.0.2.1/24", want: false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			addr := mustParseAddr(t, tc.address)
+			if got := OnlyLinkLocal()(*addr); got != tc.want {
+				t.Errorf("OnlyLinkLocal()(%s) = %v, want %v", tc.address, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestAutoconfigured(t *testing.T) {
+	tests := []struct {
+		name    string
+		address string
+		flags   int
+		want    bool
+	}{
+		{name: "IPv6 address with a finite lifetime", address: "2001:db8::1/64", want: true},
+		{name: "permanent IPv6 address", address: "2001:db8::1/64", flags: unix.IFA_F_PERMANENT, want: false},
+		{name: "IPv6 link-local address", address: "fe80::1/64", flags: 0, want: false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			addr := mustParseAddr(t, tc.address)
+			addr.Flags = tc.flags
+			if got := Autoconfigured()(*addr); got != tc.want {
+				t.Errorf("Autoconfigured()(%s, flags %d) = %v, want %v", tc.address, tc.flags, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestMatchesAddressFilters(t *testing.T) {
+	permanent := mustParseAddr(t, "2001:db8::1/64")
+	permanent.Flags = unix.IFA_F_PERMANENT
+	tests := []struct {
+		name    string
+		addr    *netlink.Addr
+		filters []AddressFilter
+		want    bool
+	}{
+		{name: "no filters keeps everything", addr: permanent, want: true},
+		{name: "one matching filter", addr: permanent, filters: []AddressFilter{ExcludeLinkLocal()}, want: true},
+		{name: "one non-matching filter", addr: permanent, filters: []AddressFilter{OnlyLinkLocal()}, want: false},
+		{
+			name:    "every filter must match",
+			addr:    permanent,
+			filters: []AddressFilter{ExcludeLinkLocal(), Autoconfigured()},
+			want:    false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := matchesAddressFilters(*tc.addr, tc.filters); got != tc.want {
+				t.Errorf("matchesAddressFilters(%s) = %v, want %v", tc.addr, got, tc.want)
+			}
+		})
+	}
 }
 
 func stubAddrList(t *testing.T, addrs []netlink.Addr, err error) {

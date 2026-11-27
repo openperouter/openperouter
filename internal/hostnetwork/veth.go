@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"strconv"
 	"strings"
 
@@ -34,10 +35,14 @@ func setupNamespacedVeth(ctx context.Context, vethNames VethNames, namespace str
 			slog.Error("failed to close namespace", "namespace", namespace, "error", err)
 		}
 	}()
-	return setupNamespacedVethInNamespace(ctx, vethNames, targetNS)
+	_, err = setupNamespacedVethInNamespace(ctx, vethNames, targetNS)
+	return err
 }
 
-func setupNamespacedVethInNamespace(ctx context.Context, vethNames VethNames, targetNS netns.NsHandle) error {
+// setupNamespacedVethInNamespace sets up a veth pair with the host leg in the
+// current namespace and the peer in targetNS, returning the host leg so the
+// caller does not look it up again.
+func setupNamespacedVethInNamespace(ctx context.Context, vethNames VethNames, targetNS netns.NsHandle) (netlink.Link, error) {
 	slog.DebugContext(ctx, "setupNamespacedVeth", "hostSide", vethNames.HostSide, "nsSide", vethNames.NamespaceSide)
 	defer slog.DebugContext(ctx, "end setupNamespacedVeth", "hostSide", vethNames.HostSide, "nsSide", vethNames.NamespaceSide)
 
@@ -46,10 +51,13 @@ func setupNamespacedVethInNamespace(ctx context.Context, vethNames VethNames, ta
 
 	hostSide, err := createVeth(ctx, logger, vethNames)
 	if err != nil {
-		return fmt.Errorf("could not create veth for %s - %s: %w", vethNames.HostSide, vethNames.NamespaceSide, err)
+		return nil, fmt.Errorf("could not create veth for %s - %s: %w", vethNames.HostSide, vethNames.NamespaceSide, err)
 	}
-	if err = netlink.LinkSetUp(hostSide); err != nil {
-		return fmt.Errorf("could not set link up for host leg %s: %v", hostSide.Attrs().Name, err)
+	if hostSide.Attrs().Flags&net.FlagUp == 0 {
+		if err = netlink.LinkSetUp(hostSide); err != nil {
+			return nil, fmt.Errorf("could not set link up for host leg %s: %w", hostSide.Attrs().Name, err)
+		}
+		hostSide.Attrs().Flags |= net.FlagUp
 	}
 
 	// Let's try to look into the namespace
@@ -62,28 +70,28 @@ func setupNamespacedVethInNamespace(ctx context.Context, vethNames VethNames, ta
 		return nil
 	})
 	if err != nil && !errors.As(err, &netlink.LinkNotFoundError{}) { // real error
-		return fmt.Errorf("could not find peer by name for %s: %w", vethNames.HostSide, err)
+		return nil, fmt.Errorf("could not find peer by name for %s: %w", vethNames.HostSide, err)
 	}
 	if err == nil {
-		return nil
+		return hostSide, nil
 	}
 
 	// Not in the namespace, let's try locally
 	peerIndex, err := netlink.VethPeerIndex(hostSide)
 	if err != nil {
-		return fmt.Errorf("could not find peer veth for %s: %w", vethNames.HostSide, err)
+		return nil, fmt.Errorf("could not find peer veth for %s: %w", vethNames.HostSide, err)
 	}
 	nsSide, err := netlink.LinkByIndex(peerIndex)
 	if errors.As(err, &netlink.LinkNotFoundError{}) {
-		return fmt.Errorf("peer veth not found by index for %s: %w", vethNames.HostSide, err)
+		return nil, fmt.Errorf("peer veth not found by index for %s: %w", vethNames.HostSide, err)
 	}
 
 	if err != nil {
-		return fmt.Errorf("could not find peer by index for %s: %w", vethNames.HostSide, err)
+		return nil, fmt.Errorf("could not find peer by index for %s: %w", vethNames.HostSide, err)
 	}
 
 	if err = netlink.LinkSetNsFd(nsSide, int(targetNS)); err != nil {
-		return fmt.Errorf("setupUnderlay: Failed to move %s to network namespace %s: %w", nsSide.Attrs().Name, targetNS.String(), err)
+		return nil, fmt.Errorf("setupUnderlay: Failed to move %s to network namespace %s: %w", nsSide.Attrs().Name, targetNS.String(), err)
 	}
 	slog.DebugContext(ctx, "pe leg moved to ns", "pe veth", nsSide.Attrs().Name)
 
@@ -94,15 +102,15 @@ func setupNamespacedVethInNamespace(ctx context.Context, vethNames VethNames, ta
 		}
 		err = netlink.LinkSetUp(nsSideLink)
 		if err != nil {
-			return fmt.Errorf("could not set link up for namespace leg %s: %v", vethNames.NamespaceSide, err)
+			return fmt.Errorf("could not set link up for namespace leg %s: %w", vethNames.NamespaceSide, err)
 		}
 		return nil
 	}); err != nil {
-		return fmt.Errorf("could not set link up for namespace leg %s: %v", vethNames.NamespaceSide, err)
+		return nil, fmt.Errorf("could not set link up for namespace leg %s: %w", vethNames.NamespaceSide, err)
 	}
 
 	slog.DebugContext(ctx, "veth is set up", "hostside", vethNames.HostSide, "peside", vethNames.NamespaceSide)
-	return nil
+	return hostSide, nil
 }
 
 func createVeth(ctx context.Context, logger *slog.Logger, vethNames VethNames) (*netlink.Veth, error) {
