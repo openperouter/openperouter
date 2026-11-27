@@ -1,0 +1,27 @@
+name: Mark inactive flake issues
+
+on:
+  schedule:
+    - cron: "23 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  issues: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v11
+        with:
+          only-issue-labels: kind/flake
+          days-before-issue-stale: 30
+          days-before-pr-stale: -1
+          days-before-close: -1
+          stale-issue-label: stale
+          exempt-issue-labels: keep-open
+          remove-issue-stale-when-updated: true
+          remove-pr-stale-when-updated: false
+          # Enable writes only after reviewing a dry run on the default branch.
+          debug-only: true
