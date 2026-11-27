@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
 #
-# Imports a container image into k3s running inside the QEMU VM.
+# Imports a container image into k3s on both QEMU VMs.
 
 set -euo pipefail
 
@@ -24,14 +24,12 @@ trap cleanup EXIT
 if [[ -z "${TAR_PATH}" ]]; then
     TAR_PATH=$(mktemp /tmp/qemu-image-XXXXXX.tar)
     echo "Saving ${IMAGE_REF} to ${TAR_PATH}..."
-    docker save -o "${TAR_PATH}" "${IMAGE_REF}"
     CLEANUP_TAR=true
+    docker save -o "${TAR_PATH}" "${IMAGE_REF}"
 fi
 
-echo "Copying image to VM..."
-scp_to_vm "${TAR_PATH}" /tmp/openperouter.tar
-
-echo "Importing image into k3s..."
-ssh_vm "sudo k3s ctr images import /tmp/openperouter.tar && sudo rm -f /tmp/openperouter.tar"
-
-echo "Image ${IMAGE_REF} loaded into QEMU VM."
+for port in "${QEMU_SSH_PORT}" "${QEMU_WORKER_SSH_PORT}"; do
+    echo "Importing ${IMAGE_REF} on the VM at SSH port ${port}..."
+    QEMU_SSH_PORT="${port}" scp_to_vm "${TAR_PATH}" /tmp/openperouter.tar
+    QEMU_SSH_PORT="${port}" ssh_vm "sudo k3s ctr images import /tmp/openperouter.tar && sudo rm -f /tmp/openperouter.tar"
+done

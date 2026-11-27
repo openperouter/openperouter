@@ -471,7 +471,7 @@ jobs:
       - name: Install QEMU and dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y qemu-system-x86 qemu-utils genisoimage sshpass
+          sudo apt-get install -y qemu-system-x86 qemu-utils genisoimage openssh-client
 
       - name: Verify KVM support
         run: |
@@ -495,6 +495,7 @@ jobs:
       - name: Deploy the QEMU cluster
         run: |
           make qemu-deploy IMG_TAG=main-grout
+          bin/kubectl --kubeconfig bin/kubeconfig get nodes -o wide
 
       - name: Run QEMU e2e tests
         run: |
@@ -506,7 +507,9 @@ jobs:
         with:
           retention-days: 5
           name: qemu-e2e-logs
-          path: /tmp/kind_logs/
+          path: |
+            /tmp/kind_logs/
+            clab/qemu/vm/serial-*.log
 
       - name: Cleanup
         if: always()

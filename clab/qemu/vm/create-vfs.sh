@@ -26,7 +26,7 @@ bridge vlan add vid 44 dev "${EMULATED_PF_BRIDGE}" self
 for ((vf_index = 0; vf_index < EMULATED_VF_COUNT; vf_index++)); do
     nic="${EMULATED_PF}v${vf_index}"
     tap="${nic}_t"
-    mac=$(printf "52:54:00:ab:cd:%02x" "${slot}")
+    mac=$(printf "%s:%02x" "${VM_MAC_PREFIX}" "${slot}")
 
     ip tuntap add dev "${tap}" mode tap
     ip link set "${tap}" master "${EMULATED_PF_BRIDGE}"

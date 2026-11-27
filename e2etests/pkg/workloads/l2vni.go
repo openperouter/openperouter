@@ -20,6 +20,7 @@ import (
 // a plain L2VNI.
 type L2VNIPod struct {
 	Name      string
+	NodeName  string
 	VNI       v1alpha1.L2VNI
 	IP        string
 	NADMaster string
@@ -31,18 +32,18 @@ func HostBridgeName(vni int32) string {
 	return fmt.Sprintf("br-hs-%d", vni)
 }
 
-// CreateL2VNIPods creates one macvlan NAD and one agnhost pod per entry, all
-// on the given node, and returns the pods' executors keyed by pod name.
-func CreateL2VNIPods(cs clientset.Interface, namespace, nodeName string, pods []L2VNIPod) map[string]executor.Executor {
+// CreateL2VNIPods creates one macvlan NAD and one agnhost pod per entry on
+// its assigned node and returns the pods' executors keyed by pod name.
+func CreateL2VNIPods(cs clientset.Interface, namespace string, pods []L2VNIPod) map[string]executor.Executor {
 	GinkgoHelper()
 	executors := map[string]executor.Executor{}
 	for _, pod := range pods {
-		By(fmt.Sprintf("creating pod %s in VNI %d", pod.Name, pod.VNI.Spec.VNI))
+		By(fmt.Sprintf("creating pod %s in VNI %d on %s", pod.Name, pod.VNI.Spec.VNI, pod.NodeName))
 		nad, err := k8s.CreateMacvlanNad(pod.Name, namespace, pod.NADMaster, pod.VNI.Spec.GatewayIPs)
 		Expect(err).To(Succeed())
 		created, err := k8s.CreateAgnhostPod(cs, pod.Name, namespace,
 			k8s.WithNad(nad.Name, namespace, []string{pod.IP}),
-			k8s.OnNode(nodeName),
+			k8s.OnNode(pod.NodeName),
 		)
 		Expect(err).To(Succeed())
 		executors[pod.Name] = executor.ForPod(created.Namespace, created.Name, "agnhost")

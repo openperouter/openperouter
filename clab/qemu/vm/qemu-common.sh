@@ -6,7 +6,10 @@
 QEMU_COMMON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SSH_KEY="${QEMU_COMMON_DIR}/qemu-vm-key"
 QEMU_SSH_PORT="${QEMU_SSH_PORT:-2222}"
+QEMU_WORKER_SSH_PORT="${QEMU_WORKER_SSH_PORT:-2223}"
 SSH_OPTIONS=(
+    -o BatchMode=yes
+    -o ConnectTimeout=5
     -o StrictHostKeyChecking=no
     -o UserKnownHostsFile=/dev/null
     -o LogLevel=ERROR

@@ -1,23 +1,25 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
 #
-# Entrypoint for the pe-kind-control-plane clab container.
+# Entrypoint for each QEMU container.
 # Waits for clab interfaces, bridges each to a TAP device, and launches
 # QEMU with igb and virtio NICs backed by those TAPs.
 
 set -euo pipefail
 set -x
 
-readonly NICS=(toswitch1 toswitch2 toleafkind1 toleafkind2)
+readonly NICS=(toswitch1 toswitch2 toleafkind1 toleafkind2 cluster)
 # NICs emulated as virtio-net, the others are igb. Mixing the two covers both
 # DPDK drivers grout binds the underlay to.
-readonly VIRTIO_NICS=(toswitch2 toleafkind2)
+readonly VIRTIO_NICS=(toswitch2 toleafkind2 cluster)
 VM_CPUS="${VM_CPUS:-4}"
 VM_MEM="${VM_MEM:-6144}"
 SSH_PORT="${SSH_PORT:-2222}"
 K8S_PORT="${K8S_PORT:-6443}"
 VM_BASE_IMAGE="${VM_BASE_IMAGE:-/vm/fedora-cloud.qcow2}"
-VM_OVERLAY="/vm/overlay.qcow2"
+VM_NAME="${VM_NAME:?Set VM_NAME to the Kubernetes node name}"
+VM_MAC_PREFIX="${VM_MAC_PREFIX:-52:54:00:ab:cd}"
+VM_OVERLAY="/vm/overlay-${VM_NAME}.qcow2"
 CLOUD_INIT_ISO="${CLOUD_INIT_ISO:-/vm/cloud-init.iso}"
 MAX_WAIT="${MAX_WAIT:-120}"
 # Queue pairs and RX ring size of the underlay virtio NICs. A virtio NIC has a
@@ -70,7 +72,7 @@ slot=1
 for nic in "${NICS[@]}"; do
     tap="${nic}_t"
     br="${nic}_br"
-    mac=$(printf "52:54:00:ab:cd:%02x" "${slot}")
+    mac=$(printf "%s:%02x" "${VM_MAC_PREFIX}" "${slot}")
 
     if is_virtio_nic "${nic}"; then
         # QEMU opens the TAP with one queue per virtio queue pair, which needs
@@ -109,7 +111,10 @@ source "${SCRIPT_DIR}/create-vfs.sh"
 
 echo "Launching QEMU with ${#NICS[@]} NICs (virtio: ${VIRTIO_NICS[*]}, emulated VFs: ${EMULATED_VF_COUNT})..."
 
-MGMT_NETDEV="user,id=mgmt,hostfwd=tcp::${SSH_PORT}-:22,hostfwd=tcp::${K8S_PORT}-:6443"
+MGMT_NETDEV="user,id=mgmt,hostfwd=tcp::${SSH_PORT}-:22"
+if [[ "${FORWARD_K8S:-false}" == true ]]; then
+    MGMT_NETDEV+=",hostfwd=tcp::${K8S_PORT}-:6443"
+fi
 
 # DPDK maps its buffers with IOVA=VA through vfio, so the virtio NICs it
 # drives must translate DMA through the vIOMMU (iommu_platform, plus ats with
@@ -128,7 +133,7 @@ exec qemu-system-x86_64 \
     -device virtio-net-pci,netdev=mgmt \
     "${QEMU_NIC_ARGS[@]}" \
     -fw_cfg "name=opt/udev-nic-rules,file=${UDEV_RULES}" \
-    -smbios "type=1,serial=ds=nocloud;h=`hostname`;i=`hostname`" \
+    -smbios "type=1,serial=ds=nocloud;h=${VM_NAME};i=${VM_NAME}" \
     -display none \
-    -serial file:/vm/serial.log \
+    -serial file:/vm/serial-${VM_NAME}.log \
     -monitor unix:/tmp/monitor.sock,server,nowait
