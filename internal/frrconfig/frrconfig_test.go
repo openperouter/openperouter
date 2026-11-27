@@ -4,6 +4,7 @@ package frrconfig
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -11,10 +12,12 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/openperouter/openperouter/internal/dockertest"
 	"github.com/openperouter/openperouter/internal/frr"
 	"github.com/openperouter/openperouter/internal/networklayerprotocol"
+	"k8s.io/apimachinery/pkg/util/wait"
 )
 
 var tests = map[string]struct {
@@ -41,7 +44,16 @@ func TestReload(t *testing.T) {
 
 	for tc, params := range tests {
 		t.Run(fmt.Sprintf("reload %s", tc), func(t *testing.T) {
-			err := Update(tc)
+			if err := os.WriteFile(tc, []byte("hostname test\n"), 0600); err != nil {
+				t.Fatalf("failed to write config: %v", err)
+			}
+			t.Cleanup(func() {
+				if err := os.Remove(tc); err != nil {
+					t.Fatalf("failed to remove config: %v", err)
+				}
+			})
+
+			err := update(tc, filepath.Join(t.TempDir(), "frr.conf"), reloadAction, runVtysh)
 			if (params.failReload || params.failValidate) && err == nil {
 				t.Fatalf("expecting failure, got no error")
 			}
@@ -53,6 +65,72 @@ func TestReload(t *testing.T) {
 			}
 			if !params.failReload && !params.failValidate && err != nil {
 				t.Fatalf("expecting no error, got %v", err)
+			}
+		})
+	}
+}
+
+func TestUpdateWritesBootConfig(t *testing.T) {
+	const (
+		desiredConfig  = "router bgp 64512\n"
+		previousConfig = "hostname startup\n"
+	)
+	errAction := errors.New("action failed")
+
+	tcs := []struct {
+		name       string
+		failAction string
+		wantBoot   string
+		wantErr    error
+	}{
+		{
+			name:     "copies the validated config",
+			wantBoot: desiredConfig,
+		},
+		{
+			name:       "keeps the previous config when validation fails",
+			failAction: test,
+			wantBoot:   previousConfig,
+			wantErr:    errAction,
+		},
+		{
+			name:       "copies the config before reloading",
+			failAction: reload,
+			wantBoot:   desiredConfig,
+			wantErr:    errAction,
+		},
+	}
+
+	for _, tc := range tcs {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "desired.conf")
+			bootConfigPath := filepath.Join(dir, "frr.conf")
+			if err := os.WriteFile(path, []byte(desiredConfig), 0600); err != nil {
+				t.Fatalf("failed to write the desired config: %v", err)
+			}
+			if err := os.WriteFile(bootConfigPath, []byte(previousConfig), 0600); err != nil {
+				t.Fatalf("failed to write the boot config: %v", err)
+			}
+			reloadAction := func(_ string, action string) error {
+				if action == tc.failAction {
+					return errAction
+				}
+				return nil
+			}
+			noRunningConfig := func(...string) (string, error) { return "", nil }
+
+			err := update(path, bootConfigPath, reloadAction, noRunningConfig)
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("expecting error %v, got %v", tc.wantErr, err)
+			}
+
+			got, err := os.ReadFile(bootConfigPath)
+			if err != nil {
+				t.Fatalf("failed to read the boot config: %v", err)
+			}
+			if string(got) != tc.wantBoot {
+				t.Fatalf("expecting the boot config to hold %q, got %q", tc.wantBoot, string(got))
 			}
 		})
 	}
@@ -1259,7 +1337,7 @@ func TestUpdate(t *testing.T) {
 		if err := frr.ApplyConfig(context.TODO(), config, updaterFn); err != nil {
 			t.Fatalf("Failed to apply config: %s", err)
 		}
-		err := update(configFile, dockertest.FRRReload, dockertest.RunVtysh)
+		err := update(configFile, filepath.Join(dir, "boot.conf"), dockertest.FRRReload, dockertest.RunVtysh)
 		if err != nil {
 			t.Fatalf("Failed to update FRR with config: %s", err)
 		}
@@ -1275,6 +1353,64 @@ func TestUpdate(t *testing.T) {
 				reloadFn(t, tc.after)
 				reloadFn(t, tc.before)
 			})
+		}
+	})
+}
+
+// TestBgpdComesBackConfiguredAfterCrash checks the FRR behavior writeBootConfig
+// relies on: watchfrr restarts a dead bgpd and feeds it /etc/frr/frr.conf.
+func TestBgpdComesBackConfiguredAfterCrash(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping FRR container integration test")
+	}
+
+	config := frr.Config{
+		Underlay: frr.UnderlayConfig{
+			MyASN:    64512,
+			RouterID: "10.0.0.1",
+			Neighbors: []frr.NeighborConfig{
+				{
+					ASN:                   mustNewPeerASNFromNumber(64513),
+					Addr:                  "192.168.1.2",
+					ID:                    "192.168.1.2",
+					NetworkLayerProtocols: []networklayerprotocol.NLP{{AFI: networklayerprotocol.IPv4, SAFI: networklayerprotocol.Unicast}},
+				},
+			},
+		},
+	}
+
+	dockertest.TestWithDockerT(t, func(t *testing.T) {
+		dir := t.TempDir()
+		configFile := filepath.Join(dir, "frr.conf")
+
+		updaterFn := func(_ context.Context, config string) error {
+			if err := os.WriteFile(configFile, []byte(config), 0600); err != nil {
+				return fmt.Errorf("failed to write the config to %s", configFile)
+			}
+			return nil
+		}
+
+		if err := frr.ApplyConfig(context.TODO(), config, updaterFn); err != nil {
+			t.Fatalf("Failed to apply config: %s", err)
+		}
+		if err := update(configFile, filepath.Join(dir, "boot.conf"), dockertest.FRRReload, dockertest.RunVtysh); err != nil {
+			t.Fatalf("Failed to update FRR with config: %s", err)
+		}
+
+		if err := dockertest.KillDaemon("bgpd"); err != nil {
+			t.Fatalf("Failed to kill bgpd: %s", err)
+		}
+
+		err := wait.PollUntilContextTimeout(context.TODO(), time.Second, 30*time.Second, true,
+			func(ctx context.Context) (bool, error) {
+				running, err := dockertest.RunVtysh("show running-config")
+				if err != nil {
+					return false, nil
+				}
+				return strings.Contains(running, "router bgp 64512"), nil
+			})
+		if err != nil {
+			t.Fatalf("bgpd did not come back configured: %s", err)
 		}
 	})
 }
