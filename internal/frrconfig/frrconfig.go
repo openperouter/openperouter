@@ -13,19 +13,20 @@ import (
 )
 
 const (
-	test         = "test"
-	reload       = "reload"
-	reloaderPath = "/usr/lib/frr/frr-reload.py"
-	vtyshPath    = "/usr/bin/vtysh"
+	test           = "test"
+	reload         = "reload"
+	reloaderPath   = "/usr/lib/frr/frr-reload.py"
+	vtyshPath      = "/usr/bin/vtysh"
+	bootConfigPath = "/etc/frr/frr.conf"
 )
 
-// Update reloads the frr configuration at the given path.
+// Update reloads the FRR configuration at the given path.
 func Update(path string) error {
-	return update(path, reloadAction, runVtysh)
+	return update(path, bootConfigPath, reloadAction, runVtysh)
 }
 
 func update(
-	path string,
+	path, bootConfigPath string,
 	reloadAction func(path string, action string) error,
 	vtyshRunner func(...string) (string, error),
 ) error {
@@ -36,7 +37,31 @@ func update(
 	if err := reloadAction(path, test); err != nil {
 		return err
 	}
+	if err := writeBootConfig(path, bootConfigPath); err != nil {
+		return err
+	}
 	return reloadAction(path, reload)
+}
+
+// writeBootConfig copies the configuration to the file FRR feeds to a daemon
+// that watchfrr restarts (vtysh -b). Without it, a daemon that crashes comes
+// back with the startup (empty) configuration, and nothing reapplies the desired one after the crash.
+// The copy happens before the reload because the reload itself can crash a
+// daemon (e.g. FRRouting/frr#23835).
+func writeBootConfig(path, bootConfigPath string) error {
+	config, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("failed to read config %s: %w", path, err)
+	}
+	// Renaming keeps a daemon restarting concurrently from reading a partial file.
+	tmp := bootConfigPath + ".tmp"
+	if err := os.WriteFile(tmp, config, 0600); err != nil {
+		return fmt.Errorf("failed to write boot config %s: %w", tmp, err)
+	}
+	if err := os.Rename(tmp, bootConfigPath); err != nil {
+		return fmt.Errorf("failed to replace boot config %s: %w", bootConfigPath, err)
+	}
+	return nil
 }
 
 var execCommand = exec.Command

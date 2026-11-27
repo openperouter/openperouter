@@ -181,6 +181,26 @@ func RunVtysh(commands ...string) (string, error) {
 	return bufOut.String(), nil
 }
 
+// KillDaemon kills an FRR daemon in the test container the way a crash
+// does. The FRR supervisor notices and restarts it, feeding it the
+// configuration from /etc/frr/frr.conf.
+func KillDaemon(name string) error {
+	ctx := context.Background()
+	code, reader, err := frrContainer.Exec(ctx, []string{"pkill", "-KILL", name}, tcexec.Multiplexed())
+	if err != nil {
+		return errors.Join(err, fmt.Errorf("failed to kill %s inside the container", name))
+	}
+
+	bufOut := new(bytes.Buffer)
+	if reader != nil {
+		_, _ = bufOut.ReadFrom(reader)
+	}
+	if code != 0 {
+		return fmt.Errorf("failed to kill %s, code: %d, buffer out: %q", name, code, bufOut.String())
+	}
+	return nil
+}
+
 func getTestDataDir() string {
 	_, file, _, _ := runtime.Caller(0)
 	return filepath.Join(filepath.Dir(file), "testdata")
